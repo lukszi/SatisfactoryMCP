@@ -796,6 +796,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/factories/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Health
+         * @description Uptime, states and the worst machines of every named factory, worst factory first.
+         */
+        get: operations["factory_health_api_factories_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/power/circuits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Power Circuits
+         * @description Generation against draw, nameplate and measured, for the world and for each circuit.
+         *
+         *     ``unwired`` and ``no_generator`` are ``assess``'s two lists over every machine in the
+         *     world: no power edge at all, and a wire to a circuit no generator stands on.
+         */
+        get: operations["power_circuits_api_power_circuits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/milestones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Milestones
+         * @description Every HUB milestone with its bill, what stock is short of it, and what it unlocks.
+         */
+        get: operations["progress_milestones_api_progress_milestones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -888,6 +951,55 @@ export interface components {
             attachments: components["schemas"]["AttachmentRow"][];
             /** Attachment Count */
             attachment_count: number;
+        };
+        /**
+         * CircuitRow
+         * @description ``bbox_m`` is null when no record on the circuit has a position.
+         */
+        CircuitRow: {
+            /** Index */
+            index: number;
+            ledger: components["schemas"]["Ledger"];
+            /** Generators */
+            generators: components["schemas"]["GeneratorGroup"][];
+            /** Starved */
+            starved: components["schemas"]["StarvedGenerator"][];
+            /** Consumers */
+            consumers: number;
+            /** Poles */
+            poles: number;
+            /** Factories */
+            factories: string[];
+            /** Centroid M */
+            centroid_m: [
+                number,
+                number
+            ] | null;
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+        };
+        /** CircuitsResponse */
+        CircuitsResponse: {
+            world: components["schemas"]["Ledger"];
+            /** Paused */
+            paused: number;
+            /** Generators */
+            generators: components["schemas"]["GeneratorGroup"][];
+            /** Starved */
+            starved: components["schemas"]["StarvedGenerator"][];
+            /** Unmodellable */
+            unmodellable: string[];
+            /** Circuits */
+            circuits: components["schemas"]["CircuitRow"][];
+            /** Unwired */
+            unwired: components["schemas"]["MachineRef"][];
+            /** No Generator */
+            no_generator: components["schemas"]["MachineRef"][];
         };
         /**
          * CollectibleRow
@@ -1080,6 +1192,64 @@ export interface components {
             labels: components["schemas"]["FactoryRow"][];
             /** Proposals */
             proposals: components["schemas"]["ProposalRow"][];
+        };
+        /**
+         * FactoryHealthResponse
+         * @description ``actionable_states`` is the subset of ``states`` that ``actionable`` counts.
+         */
+        FactoryHealthResponse: {
+            /** States */
+            states: string[];
+            /** Actionable States */
+            actionable_states: string[];
+            /** Factories */
+            factories: components["schemas"]["FactoryHealthRow"][];
+        };
+        /**
+         * FactoryHealthRow
+         * @description ``review`` is ``LabelStore.review``'s status, null when every anchor still stands.
+         */
+        FactoryHealthRow: {
+            /** Name */
+            name: string;
+            /** Centroid M */
+            centroid_m: [
+                number,
+                number
+            ];
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Anchors */
+            anchors: number;
+            /** Alive */
+            alive: number;
+            /** Review */
+            review: string | null;
+            /** Machines */
+            machines: number;
+            /** Uptime */
+            uptime: number | null;
+            /** Measured Mw */
+            measured_mw: number;
+            /** Nameplate Mw */
+            nameplate_mw: number;
+            /** States */
+            states: components["schemas"]["StateCount"][];
+            /** Actionable */
+            actionable: number;
+            /** Unwired */
+            unwired: number;
+            /** No Generator */
+            no_generator: number;
+            /** Worst */
+            worst: components["schemas"]["MachineIssue"][];
+            /** Attention */
+            attention: number;
         };
         /**
          * FactoryRow
@@ -1304,6 +1474,15 @@ export interface components {
             violations: components["schemas"]["FloorRun"][];
             rules: components["schemas"]["FloorRules"];
         };
+        /** GeneratorGroup */
+        GeneratorGroup: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Mw */
+            mw: number;
+        };
         /**
          * GeneratorTotal
          * @description One generator class, counted and summed. A value of ``PowerSummary.by_generator``.
@@ -1351,6 +1530,67 @@ export interface components {
             /** Save Error */
             save_error: string | null;
         };
+        /** ItemAmount */
+        ItemAmount: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: number;
+        };
+        /** Ledger */
+        Ledger: {
+            /** Generation Mw */
+            generation_mw: number;
+            /** Starved Generation Mw */
+            starved_generation_mw: number;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Measured Draw Mw */
+            measured_draw_mw: number;
+            /** Headroom Mw */
+            headroom_mw: number;
+            /** Measured Headroom Mw */
+            measured_headroom_mw: number;
+            /** Utilisation */
+            utilisation: number;
+            /** Monitored */
+            monitored: number;
+            /** Unmonitored */
+            unmonitored: number;
+        };
+        /**
+         * MachineIssue
+         * @description ``x_m``/``y_m`` are null for a record the projection placed nowhere.
+         */
+        MachineIssue: {
+            /** Instance */
+            instance: string;
+            /** State */
+            state: string;
+            /** Uptime */
+            uptime: number | null;
+            /** What */
+            what: string;
+            /** Cause */
+            cause: string[];
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /** MachineRef */
+        MachineRef: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
         /**
          * MachinesResponse
          * @description What ``/api/machines`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
@@ -1362,6 +1602,42 @@ export interface components {
             extractors: components["schemas"]["PlacementRow"][];
             /** Generators */
             generators: components["schemas"]["PlacementRow"][];
+        };
+        /**
+         * MilestoneRow
+         * @description ``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
+         */
+        MilestoneRow: {
+            /** Cls */
+            cls: string;
+            /** Tier */
+            tier: number;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Cost */
+            cost: components["schemas"]["ItemAmount"][];
+            /** Short */
+            short: components["schemas"]["ItemAmount"][];
+            /** Unlocks */
+            unlocks: number;
+            /** Blocked By */
+            blocked_by: string[];
+        };
+        /**
+         * MilestonesResponse
+         * @description ``highest_complete_tier`` is null when no tier is finished; there is no tier 0.
+         */
+        MilestonesResponse: {
+            /** Game Phase */
+            game_phase: string | null;
+            /** Highest Complete Tier */
+            highest_complete_tier: number | null;
+            /** Tiers */
+            tiers: components["schemas"]["TierRow"][];
+            /** Milestones */
+            milestones: components["schemas"]["MilestoneRow"][];
         };
         /**
          * NearestNode
@@ -1913,6 +2189,28 @@ export interface components {
             /** Mtime Ns */
             mtime_ns: number;
         };
+        /** StarvedGenerator */
+        StarvedGenerator: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** Mw */
+            mw: number;
+            /** Missing */
+            missing: string[];
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /** StateCount */
+        StateCount: {
+            /** State */
+            state: string;
+            /** Count */
+            count: number;
+        };
         /**
          * StorageFluid
          * @description A fluid buffer: what is in it, how much it holds, and the fraction those two make.
@@ -2106,6 +2404,15 @@ export interface components {
             power: components["schemas"]["PowerSummary"];
             progression: components["schemas"]["ProgressionSummary"];
             player: components["schemas"]["PlayerPosition"];
+        };
+        /** TierRow */
+        TierRow: {
+            /** Tier */
+            tier: number;
+            /** Done */
+            done: number;
+            /** Total */
+            total: number;
         };
         /**
          * UnsupportedFile
@@ -2941,6 +3248,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlansResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_health_api_factories_health_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryHealthResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    power_circuits_api_power_circuits_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CircuitsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_milestones_api_progress_milestones_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MilestonesResponse"];
                 };
             };
             /** @description Validation Error */

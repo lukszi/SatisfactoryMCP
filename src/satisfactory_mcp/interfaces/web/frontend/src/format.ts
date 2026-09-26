@@ -5,6 +5,8 @@
  * same fact at two different clicks.
  */
 
+import { count } from "./dom";
+
 import type { Region } from "./api-shapes";
 
 /* A resource class as the short name the whole page uses: Desc_OreIron_C -> OreIron. */
@@ -32,4 +34,12 @@ export function phaseText(raw: string | null | undefined): string | null {
   var match = /^GP_(.+)_Phase_(\d+)$/.exec(raw);
   if (match) return match[1]!.replace(/_/g, " ") + " phase " + match[2];
   return raw;
+}
+
+export function mw(value: number): string {
+  return count(Math.round(value)) + " MW";
+}
+
+export function pct(value: number | null | undefined): string {
+  return value === null || value === undefined ? "–" : Math.round(value * 100) + "%";
 }

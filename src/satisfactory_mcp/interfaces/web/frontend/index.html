@@ -19,12 +19,28 @@
   <body>
     <header id="bar">
       <strong>Satisfactory</strong>
+      <nav id="views">
+        <a href="#" data-view="map" class="view-link">Map</a>
+        <a href="#" data-view="dash" class="view-link">Dashboard</a>
+      </nav>
       <select id="world" title="which world to read"></select>
       <select id="save" title="which save of this world to read; 'newest save' follows the game as it writes"></select>
       <span id="summary" class="muted">loading&hellip;</span>
       <span id="live" class="dot" title="connecting to the save watcher&hellip;"></span>
     </header>
     <div id="map"></div>
+    <main id="dash" hidden>
+      <nav id="dash-nav"></nav>
+      <div id="dash-body"></div>
+    </main>
+    <aside id="panel">
+      <div class="panel-tabs">
+        <button type="button" data-tab="factories">Factories</button>
+        <button type="button" data-tab="power">Power</button>
+        <button type="button" id="panel-fold"></button>
+      </div>
+      <div id="panel-body"></div>
+    </aside>
     <!-- The encodings no checkbox can explain, because they are inside a layer rather than
          a layer of their own.
 

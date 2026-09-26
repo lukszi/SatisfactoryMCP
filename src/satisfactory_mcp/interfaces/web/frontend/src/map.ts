@@ -128,7 +128,7 @@ map.getPane("foundations")!.style.zIndex = "360";
  * tiles.ts' probes answering. A pan in that window must not pin a mode the page has not chosen
  * yet: the fragment would say `plain` on a machine whose artwork was about to load, and the
  * next reload would honour it. */
-export function writeHash(): void {
+export function hashFor(dash: string): string {
   var parts: string[] = [];
   if (state.world) parts.push("world=" + encodeURIComponent(state.world));
   var pinned = pinnedFilename();
@@ -139,10 +139,15 @@ export function writeHash(): void {
   // by default and a link about a drop pod is a link about a layer. Category names are the
   // API's own snake_case, so joining them needs no escaping.
   if (state.pickups.length) parts.push("pickups=" + state.pickups.join(","));
+  if (dash) parts.push("dash=" + encodeURIComponent(dash).replace(/%2F/g, "/"));
   var c = map.getCenter();
   parts.push("z=" + map.getZoom());
   parts.push("c=" + Math.round(c.lng * 10) / 10 + "," + Math.round(-c.lat * 10) / 10);
-  wrote = "#" + parts.join("&");
+  return "#" + parts.join("&");
+}
+
+export function writeHash(): void {
+  wrote = hashFor(state.dash);
   history.replaceState(null, "", wrote);
 }
 

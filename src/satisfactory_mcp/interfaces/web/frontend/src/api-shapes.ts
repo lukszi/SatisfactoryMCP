@@ -113,6 +113,23 @@ export type FactoryRow = Schema["FactoryRow"];
 export type ProposalRow = Schema["ProposalRow"];
 export type FactoriesResponse = Body<"FactoriesResponse">;
 
+/* ------------------------------------- /api/factories/health and /api/power/circuits */
+
+export type MachineIssue = Schema["MachineIssue"];
+export type FactoryHealthRow = Schema["FactoryHealthRow"];
+export type FactoryHealthResponse = Body<"FactoryHealthResponse">;
+
+export type Ledger = Schema["Ledger"];
+export type StarvedGenerator = Schema["StarvedGenerator"];
+export type MachineRef = Schema["MachineRef"];
+export type CircuitRow = Schema["CircuitRow"];
+export type CircuitsResponse = Body<"CircuitsResponse">;
+
+/* ------------------------------------------------------- /api/progress/milestones */
+
+export type MilestoneRow = Schema["MilestoneRow"];
+export type MilestonesResponse = Body<"MilestonesResponse">;
+
 /* ------------------------------------------------------------------ /api/plans */
 
 /** A stored plan's pad. Its coordinates are METRES already -- the siting is a statement the

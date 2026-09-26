@@ -809,3 +809,30 @@ the build it was rasterised for, so a cache from another render is rebuilt. `--k
 is the honest way to draw without the geometry: it draws **recipe 2 whole** — no rocks, no
 lattice split, no de-terracing — and records that recipe number, so a before/after against it
 is a comparison of two recipes rather than of one recipe against half of itself.
+
+## 21. The side panel: factory health and power circuits (2026-09-26)
+
+Two tabs over the map, fed by two routes that call the same domain code the MCP tools do.
+
+**Factories** is `/api/factories/health`: `factory_health`'s sweep over every named factory,
+one row each — `assess` for the states and the worst machines, `build_view` for the measured
+MW, `LabelStore.review` for a label whose anchors have shrunk or gone. Sorted by how many
+machines sit in an actionable state (`health.ACTIONABLE`: dead node, no recipe, blocked,
+starved, stalled), then by uptime.
+A row flies to the factory's box and outlines it; a machine under it flies to that machine.
+Clicking a factory label on the map selects its row.
+
+**Power** is `/api/power/circuits`: `power_report`'s world ledger at the top, then one row per
+**circuit**, where a circuit is a connected component of the save's power edges and its
+figures are `PowerLedger` run over only the records standing on it. Nothing new is computed;
+the split is the only addition, and it has three limits worth knowing before trusting it:
+
+- **Switches join.** The save carries no `mCircuitID` and no switch state, so an open power
+  switch or priority switch still joins the two sides here. Two circuits the game keeps apart
+  may read as one. This errs the same way `health._lit` does.
+- **Batteries are not in the ledger.** `PowerLedger` counts generators and consumers; a
+  circuit running on Power Storage reads as generation 0 with draw, which is also what a
+  circuit with no source looks like.
+- **Unwired machines are in the world totals and in no circuit**, so the circuit rows do not
+  sum to the world line. They are listed on their own, beside the machines wired to a circuit
+  no generator stands on — `assess`'s two lists over every machine in the world.

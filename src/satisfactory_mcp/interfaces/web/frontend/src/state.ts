@@ -69,6 +69,8 @@ export interface PageState {
    * ask for -- and it is held here rather than read off the map because a fragment can name a
    * category whose layer the current world has no rows for and therefore has not created. */
   pickups: string[];
+  /** The dashboard address, `tab` or `tab/subject`; "" while the map is the view. */
+  dash: string;
 }
 
 /* The selection lives in the URL fragment so a reload, a bookmark or a pasted link lands on the
@@ -95,6 +97,7 @@ export var state: PageState = {
   imagery: false,
   floor: null,
   pickups: parseList(BOOT.pickups),
+  dash: dashOf(BOOT),
 };
 
 /* A function and not just `BOOT`, because the fragment is read more than once: `BOOT` is the one
@@ -110,6 +113,14 @@ export function parseHash(hash: string): Record<string, string> {
       if (eq > 0) out[piece.slice(0, eq)] = decodeURIComponent(piece.slice(eq + 1));
     });
   return out;
+}
+
+export function dashOf(asked: Record<string, string>): string {
+  if (asked.dash) return asked.dash;
+  var mapped = ["z", "c", "floor", "mode", "pickups"].some(function (key) {
+    return key in asked;
+  });
+  return mapped ? "" : "overview";
 }
 
 /** A comma-separated fragment value as the list it spells, sorted and without blanks, so that

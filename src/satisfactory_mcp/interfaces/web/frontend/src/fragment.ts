@@ -12,11 +12,12 @@
  * fragment is a request to press the buttons the page already has.
  */
 
+import { applyDash } from "./dashboard";
 import { applyFloorFragment } from "./floors";
 import { reload } from "./load";
 import { map, writeHash, writtenHash } from "./map";
 import { applyPickupFragment } from "./markers";
-import { parseHash, pinnedPath, state } from "./state";
+import { dashOf, parseHash, pinnedPath, state } from "./state";
 import { setMode } from "./tiles";
 import { syncPickers } from "./worlds";
 
@@ -102,6 +103,7 @@ function apply(hash: string): void {
   // normalising write beats two.
   if (mode && mode !== state.mode) setMode(mode, false);
   applyPickupFragment(asked.pickups);
+  applyDash(dashOf(asked));
   // Not while the floor half is still moving: `enterFloors` is a fetch and a flight, and it
   // writes the fragment itself when it lands. Applying a stale `z` and `c` over it would
   // undo the flight the same request just asked for.

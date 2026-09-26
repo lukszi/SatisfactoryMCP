@@ -68,6 +68,7 @@ export function listen() {
     if (!isNews(event)) return;
     blink();
     loadOne("/api/factories");
+    loadOne("/api/factories/health");
     loadOne("/api/plans");
   });
 }

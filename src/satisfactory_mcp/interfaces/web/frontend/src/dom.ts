@@ -135,6 +135,17 @@ export function count(n: number): string {
   return n.toLocaleString("en-GB");
 }
 
+export function make<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string | number
+): HTMLElementTagNameMap[K] {
+  var node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = String(text);
+  return node;
+}
+
 /* One tile: the picture, the quantity over its bottom-right corner, and the name underneath
  * all of it -- literally. `.item-abbr` sits in the tile the whole time and is revealed when
  * the <img> stacked over it gives up.

@@ -49,9 +49,11 @@ import { loadWorlds } from "./worlds";
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
 import "./crates";
+import "./dashboard";
 import "./header";
 import "./labels";
 import "./markers";
+import "./panel";
 import "./placements";
 import "./plans";
 import "./power";

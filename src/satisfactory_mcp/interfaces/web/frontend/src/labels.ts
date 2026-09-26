@@ -67,6 +67,8 @@ export function reveal(names: string[]): void {
  * thing this function must never do. */
 var FACTORY_LAYERS = ["machines", "belts", "pipes"];
 
+export var FACTORY_PICKED = "factory-picked";
+
 /* Factory labels: a permanent tooltip has to hang off something, and that something is a
  * zero-sized divIcon. The DEFAULT icon would request two image files and append 25x41 px of
  * <img> to the marker pane at zIndex 600, above the canvas everything clickable is drawn on --
@@ -137,7 +139,25 @@ function factoryAnchor(
       map.flyToBounds(to, { maxZoom: FACTORY_MAX_ZOOM });
     });
   }
+  if (factory !== null) {
+    var picked = factory;
+    marker.on("click", function () {
+      document.dispatchEvent(new CustomEvent(FACTORY_PICKED, { detail: picked }));
+    });
+  }
   return marker;
+}
+
+export function flyToFactory(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
+  var bounds = factoryBounds(bbox_m);
+  if (!bounds) return null;
+  reveal(FACTORY_LAYERS);
+  map.flyToBounds(bounds, { maxZoom: FACTORY_MAX_ZOOM });
+  return bounds;
+}
+
+export function paddedBounds(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
+  return factoryBounds(bbox_m);
 }
 
 export function drawFactories(data: FactoriesResponse): void {
