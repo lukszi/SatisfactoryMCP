@@ -763,9 +763,9 @@ def factory_health(
     line that cannot climb to the machine is never answered with its supply rates. Solids
     have no head-lift rung and read exactly as before.
 
-    **Blocked is not automatically a fault.** A base whose output nobody consumes fills
-    its buffers and stops, which is what a mature factory at rest looks like. Starved,
-    stalled and no-recipe are the actionable ones.
+    **Blocked counts as needing action**, alongside dead node, no recipe, starved and
+    stalled: a full output box means nothing is taking what the machine makes. The sweep's
+    `todo` column counts those five.
 
     The sweep over every factory also reports three plumbing faults that belong to no machine
     set: fluid buffers holding too little to output at their intake rate, pipeline pumps no
@@ -775,6 +775,7 @@ def factory_health(
     `offset` pages every table in the answer at once, worst first throughout.
     """
     from ....domain.factories.health import (
+        ACTIONABLE,
         FLOW_RATE,
         NOTHING,
         OPEN,
@@ -811,9 +812,7 @@ def factory_health(
             report = assess(label.name, standing, st.game, st.projection, st.graph)
             view = build_view(label.name, standing, st.graph, st.game, st.projection, st.labels)
             mean = report.mean_uptime
-            actionable = sum(
-                report.by_state[s] for s in ("dead node", "no recipe", "starved", "stalled")
-            )
+            actionable = sum(report.by_state[s] for s in ACTIONABLE)
             blocked_total += report.by_state["blocked"]
             dark_total += len(report.unwired) + len(report.no_generator)
             rows.append(
@@ -840,9 +839,9 @@ def factory_health(
         )
         if blocked_total:
             notes.append(
-                f"{blocked_total} machine(s) are blocked -- their output stack is full. "
-                "That is what a factory nobody is drawing from looks like, not a fault. "
-                "Look at starved/stalled/no-recipe first."
+                f"{blocked_total} machine(s) are blocked -- their output stack is full, so "
+                "nothing is taking what they make. They count in todo; factory_health on "
+                "one factory names the items backing up"
             )
         if dark_total:
             # No column for it: this table is sorted on accumulated values because a

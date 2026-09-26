@@ -15,6 +15,7 @@ import pytest
 from satisfactory_mcp.core.saveio import ports
 from satisfactory_mcp.domain.factories.build import build_graph, class_of
 from satisfactory_mcp.domain.factories.health import (
+    ACTIONABLE,
     CONNECTION,
     FED,
     FLOW_RATE,
@@ -265,6 +266,14 @@ def test_states_are_ordered_worst_first_and_ok_is_a_subset(game):
     assert OK <= set(STATES)
     assert STATES.index("blocked") < STATES.index("saturated")
     assert STATES.index("dead node") < STATES.index("starved")
+
+
+def test_a_blocked_machine_needs_action_and_a_paused_one_does_not():
+    """Lukas, 2026-09-26: a full output box is a problem, not a factory at rest."""
+    assert "blocked" in ACTIONABLE
+    assert not OK & set(ACTIONABLE)
+    assert "paused" not in ACTIONABLE and "intermittent" not in ACTIONABLE
+    assert list(ACTIONABLE) == [s for s in STATES if s in ACTIONABLE], "report order"
 
 
 def test_worst_reports_only_what_needs_attention(game):

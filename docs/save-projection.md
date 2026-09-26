@@ -405,10 +405,13 @@ settle it. **Every rule below was wrong before it was measured:**
 the numbers are game knowledge. Verified against observed buffers — Wire 500 = `SS_HUGE`,
 Iron Rod 200 = `SS_BIG`.
 
-**Blocked is not automatically a fault.** 319 of 563 machines on the reference save are
-blocked, because a base whose output nobody consumes fills its buffers and stops. That is
-what a mature factory at rest looks like. The overview therefore ranks by a `todo` column
-counting only `dead node`, `no recipe`, `starved` and `stalled`.
+**Blocked needs action.** 319 of 563 machines on the reference save are blocked: a base
+whose output nobody consumes fills its buffers and stops. That once read as a factory at
+rest, and the overview's `todo` column left it out. Lukas decided on 2026-09-26 that a
+blocked machine is a problem, because nothing is taking what it makes, so `todo` counts
+`health.ACTIONABLE`: `dead node`, `no recipe`, `blocked`, `starved` and `stalled`. The web
+dashboard counts the same tuple (docs/frontend_vision.md §8.6). The map's machine paint is a
+separate question and still draws `blocked` like a running machine.
 
 ### 6.3 Labels — anchor sets matched by recall
 

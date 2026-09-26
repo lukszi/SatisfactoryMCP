@@ -31,6 +31,7 @@ from ...core.saveio import ports
 from ..power.report import NO_FUEL, dry_input_classes, dry_inputs
 
 __all__ = [
+    "ACTIONABLE",
     "NO_GENERATOR",
     "NO_SOURCE",
     "NO_WIRE",
@@ -68,6 +69,10 @@ STATES = (
 
 #: States that need no action.
 OK = frozenset({"saturated", "unmonitored"})
+
+#: States that need the player to act, in report order: every one but ``OK``, ``paused``
+#: and ``intermittent``. ``blocked`` is here by Lukas's decision -- docs/frontend_vision.md §8.6.
+ACTIONABLE = ("dead node", "no recipe", "blocked", "starved", "stalled")
 
 #: What a starved input's supply came to. ``NOTHING`` and ``UNFED`` are FINDINGS: no run of
 #: that medium reaches the machine, or a pipe does and no source anywhere reaches the network

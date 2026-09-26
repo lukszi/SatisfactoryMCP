@@ -539,8 +539,8 @@ about fill.
    is **not** "has never produced": 770 of that save's 1,023 carriers hold it and **353 of those
    also hold a closed window**, so it separates nothing. It is not projected either, and there
    is no reason to project it. A full **output** box on a never-run machine is left alone: it is
-   the same evidence `blocked` reads with a window, but `blocked` is not actionable on its own —
-   the tool's own note says so — and there is no structural second fact behind it.
+   the same evidence `blocked` reads with a window, and there is no structural second fact
+   behind it.
 5. **A pump's declared ceiling and its measured reach are now separate.** `mMaxPressure`
    stays what the game declares; `PUMP_MEASURED_REACH_M` carries what a class was measured to
    do, keyed by class because no multiplier fits both the machine's ×1.102 and the Mk1's
