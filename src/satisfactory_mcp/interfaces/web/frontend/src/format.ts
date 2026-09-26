@@ -43,3 +43,8 @@ export function mw(value: number): string {
 export function pct(value: number | null | undefined): string {
   return value === null || value === undefined ? "–" : Math.round(value * 100) + "%";
 }
+
+export function spoken(names: string[], last: string): string {
+  if (names.length < 2) return names.join("");
+  return names.slice(0, -1).join(", ") + " " + last + " " + names[names.length - 1];
+}

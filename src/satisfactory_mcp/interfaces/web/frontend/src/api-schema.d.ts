@@ -315,8 +315,8 @@ export interface paths {
          *     ``health.assess`` is asked once for the whole world rather than per row. Over the
          *     reference projection's 570 actors: 1.3 ms to build these rows without it, 2.5 ms with.
          *
-         *     195 of those 570 are ``blocked``, which on a mature base is a full output box and not a
-         *     fault. What the map does with that is STOPPED in ``frontend/src/placements.ts``.
+         *     195 of those 570 are ``blocked``: a full output box, and ``actionable`` like the other
+         *     states in ``health.ACTIONABLE``. How the map marks it: docs/save-projection.md §6.2d.
          */
         get: operations["machines_api_machines_get"];
         put?: never;
@@ -1839,7 +1839,8 @@ export interface components {
          *     ``state`` is one of ``health.STATES`` and never null; ``paused`` is the save's own field
          *     beside it, where ``state`` is a reading of the buffers. ``uptime`` is the fraction of the
          *     machine's own ~300 s window it spent producing, null for a building carrying no monitor
-         *     at all -- a different claim from zero.
+         *     at all -- a different claim from zero. ``actionable`` is ``state in health.ACTIONABLE``,
+         *     sent so the map cannot keep its own list.
          */
         PlacementRow: {
             /** Instance Leaf */
@@ -1864,6 +1865,8 @@ export interface components {
             paused: boolean;
             /** State */
             state: string;
+            /** Actionable */
+            actionable: boolean;
             /** Uptime */
             uptime: number | null;
             /** Yaw */

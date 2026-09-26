@@ -2,9 +2,10 @@
  * addressed by the fragment's `dash=` key. See docs/frontend_vision.md §8. */
 
 import { count, el, make } from "./dom";
-import { mw, pct, phaseText } from "./format";
+import { mw, pct, phaseText, spoken } from "./format";
 import { hashFor, writeHash } from "./map";
 import { onVitals, showCircuit, showFactory, showPoint, vitals } from "./panel";
+import { stateTone } from "./placements";
 import { registerFetch } from "./registry";
 import { onSetting, setSetting, setting, SETTINGS } from "./settings";
 import { state } from "./state";
@@ -134,11 +135,6 @@ function actionable(): string[] {
 
 function needsAction(name: string): boolean {
   return actionable().indexOf(name) >= 0;
-}
-
-function spoken(names: string[], last: string): string {
-  if (names.length < 2) return names.join("");
-  return names.slice(0, -1).join(", ") + " " + last + " " + names[names.length - 1];
 }
 
 function middling(): string[] {
@@ -433,7 +429,7 @@ function renderAttention(parent: HTMLElement): void {
   var list = make("ul", "dash-list");
   found.slice(0, ATTENTION_SHOWN).forEach(function (a) {
     var li = make("li", "dash-issue");
-    li.appendChild(make("span", "dash-state", a.issue.state));
+    li.appendChild(make("span", "dash-state " + stateTone(a.issue.state, true), a.issue.state));
     li.appendChild(make("span", "dash-what", a.issue.what));
     li.appendChild(link("factories/" + a.factory, a.factory, "dash-where"));
     li.appendChild(pointButton(a.issue));
@@ -608,10 +604,11 @@ function renderFactory(body: HTMLElement, name: string): void {
     var tr = make("tr");
     var bad = needsAction(s.state);
     var ok = FINE.indexOf(s.state) >= 0;
-    cell(tr, s.state, bad ? "bad" : "");
+    var tone = stateTone(s.state, bad);
+    cell(tr, s.state, tone);
     cell(tr, s.count, "num");
     var bar = make("div", "dash-hbar");
-    var fill = make("span", "dash-mix-" + (bad ? "bad" : ok ? "ok" : "mid"));
+    var fill = make("span", "dash-mix-" + (tone || (ok ? "ok" : "mid")));
     fill.style.width = (s.count / biggest) * 100 + "%";
     bar.appendChild(fill);
     cell(tr, bar, "bar");
@@ -627,7 +624,7 @@ function renderFactory(body: HTMLElement, name: string): void {
     var list = make("ul", "dash-list");
     row.worst.forEach(function (issue) {
       var li = make("li", "dash-issue");
-      li.appendChild(make("span", "dash-state", issue.state));
+      li.appendChild(make("span", "dash-state " + stateTone(issue.state, true), issue.state));
       li.appendChild(make("span", "dash-what", issue.what));
       li.appendChild(make("span", "dash-where", pct(issue.uptime) + " up"));
       li.appendChild(pointButton(issue));

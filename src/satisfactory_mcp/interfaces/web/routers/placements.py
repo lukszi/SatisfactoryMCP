@@ -60,7 +60,8 @@ class PlacementRow(TypedDict):
     ``state`` is one of ``health.STATES`` and never null; ``paused`` is the save's own field
     beside it, where ``state`` is a reading of the buffers. ``uptime`` is the fraction of the
     machine's own ~300 s window it spent producing, null for a building carrying no monitor
-    at all -- a different claim from zero.
+    at all -- a different claim from zero. ``actionable`` is ``state in health.ACTIONABLE``,
+    sent so the map cannot keep its own list.
     """
 
     instance_leaf: str
@@ -74,6 +75,7 @@ class PlacementRow(TypedDict):
     clock: float | None
     paused: bool
     state: str
+    actionable: bool
     uptime: float | None
     yaw: float | None
     w_m: float | None
@@ -151,6 +153,7 @@ def _record_row(st: WorldState, row: dict, verdict: health.MachineHealth) -> Pla
         "clock": row.get("clock"),
         "paused": bool(row.get("paused", False)),
         "state": verdict.state,
+        "actionable": verdict.state in health.ACTIONABLE,
         # Three decimals: at two, 0.9994 rounds onto 1.0 and health.SATURATED's line vanishes.
         "uptime": None if verdict.uptime is None else round(verdict.uptime, 3),
         "yaw": _yaw(row.get("yaw")),
@@ -171,8 +174,8 @@ def machines(request: Request, save: str | None = None, world: str | None = None
     ``health.assess`` is asked once for the whole world rather than per row. Over the
     reference projection's 570 actors: 1.3 ms to build these rows without it, 2.5 ms with.
 
-    195 of those 570 are ``blocked``, which on a mature base is a full output box and not a
-    fault. What the map does with that is STOPPED in ``frontend/src/placements.ts``.
+    195 of those 570 are ``blocked``: a full output box, and ``actionable`` like the other
+    states in ``health.ACTIONABLE``. How the map marks it: docs/save-projection.md §6.2d.
     """
     try:
         st = _state(request, save, world)

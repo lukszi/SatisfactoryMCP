@@ -818,7 +818,10 @@ Two tabs over the map, fed by two routes that call the same domain code the MCP 
 one row each — `assess` for the states and the worst machines, `build_view` for the measured
 MW, `LabelStore.review` for a label whose anchors have shrunk or gone. Sorted by how many
 machines sit in an actionable state (`health.ACTIONABLE`: dead node, no recipe, blocked,
-starved, stalled), then by uptime.
+starved, stalled), then by uptime. The map marks the same set on the machines themselves: a
+thick outline for every actionable machine, red and hollow when stopped, yellow and solid when
+blocked (docs/save-projection.md §6.2d). The panel's header names the same set, read from
+`actionable_states`.
 A row flies to the factory's box and outlines it; a machine under it flies to that machine.
 Clicking a factory label on the map selects its row.
 

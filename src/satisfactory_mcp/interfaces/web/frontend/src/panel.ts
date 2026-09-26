@@ -2,11 +2,12 @@
  * docs/spatial-and-map.md §21. */
 
 import { el, make } from "./dom";
-import { mw, pct } from "./format";
+import { mw, pct, spoken } from "./format";
 import { FACTORY_PICKED, flyToFactory, paddedBounds } from "./labels";
 import { L } from "./leaflet";
 import { hashFor, map } from "./map";
 import { declareColours } from "./palette";
+import { stateTone } from "./placements";
 import { registerFetch } from "./registry";
 
 import type {
@@ -158,7 +159,8 @@ function stateChips(row: FactoryHealthRow): HTMLElement {
   row.states.forEach(function (s) {
     if (s.state === "saturated" || s.state === "unmonitored") return;
     var bad = !!view.health && view.health.actionable_states.indexOf(s.state) >= 0;
-    chips.appendChild(make("span", "panel-chip" + (bad ? " bad" : ""), s.count + " " + s.state));
+    var tone = stateTone(s.state, bad);
+    chips.appendChild(make("span", "panel-chip" + (tone ? " " + tone : ""), s.count + " " + s.state));
   });
   if (row.unwired) chips.appendChild(make("span", "panel-chip bad", row.unwired + " no wire"));
   if (row.no_generator) {
@@ -170,7 +172,7 @@ function stateChips(row: FactoryHealthRow): HTMLElement {
 
 function issueRow(issue: MachineIssue): HTMLElement {
   var line = make("li", "panel-issue" + (located(issue) ? " go" : ""));
-  line.appendChild(make("span", "panel-issue-state", issue.state));
+  line.appendChild(make("span", "panel-issue-state " + stateTone(issue.state, true), issue.state));
   line.appendChild(make("span", "panel-issue-what", issue.what));
   var detail = issue.cause.length ? issue.cause.join(", ") : "";
   if (issue.uptime !== null) detail = (detail ? detail + " · " : "") + pct(issue.uptime) + " up";
@@ -238,7 +240,7 @@ function renderFactories(body: HTMLElement): void {
   var todo = rows.filter(function (r) {
     return r.actionable > 0;
   }).length;
-  say(body, rows.length + " named · " + todo + " with starved, stalled, dead or unset machines");
+  say(body, rows.length + " named · " + todo + " with " + spoken(view.health.actionable_states, "or") + " machines");
   var list = make("ul", "panel-list");
   rows.forEach(function (row) {
     list.appendChild(factoryRow(row));

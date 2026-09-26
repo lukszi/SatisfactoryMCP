@@ -926,6 +926,21 @@ select {
   font-weight: 600;
 }
 
+.panel-chip.blocked {
+  border-color: color-mix(in srgb, var(--blocked) 60%, transparent);
+  color: var(--blocked);
+}
+
+.panel-issue-state.blocked,
+.dash-state.blocked,
+.dash-table td.blocked {
+  color: var(--blocked);
+}
+
+.dash-mix-blocked {
+  background: var(--blocked);
+}
+
 .panel-issue-cause {
   flex-basis: 100%;
   color: #9aa0a8;

@@ -45,6 +45,7 @@ def test_machines_split_by_kind_and_name_their_buildings(client, state):
         "clock",
         "paused",
         "state",
+        "actionable",
         "uptime",
         "yaw",
         "w_m",
@@ -93,17 +94,20 @@ def test_every_machine_carries_the_state_the_health_report_would_give_it(client,
     assert {r["state"] for r in rows.values()} <= set(health.STATES)
 
 
-def test_a_blocked_machine_is_not_dressed_as_a_broken_one(client):
-    """The objection this field exists under: ``blocked`` is the commonest state on a mature
-    base and is a full output box, not a fault. The wire has to keep it TELLABLE from the
-    states that stop a machine against the player's wishes, or the page cannot weigh them
-    differently -- so the two must never be collapsed into one "unhealthy" flag."""
+def test_actionable_is_the_health_tuple_and_blocked_stays_tellable(client):
+    """``actionable`` is ``health.ACTIONABLE`` read on the server, so the map, the dashboard
+    and ``factory_health`` share one list. ``blocked`` is in it and is still sent as its own
+    ``state``, because the map marks it apart from the empty-box states."""
+    from satisfactory_mcp.domain.factories import health
+
     body = client.get("/api/machines").json()
     counts: dict[str, int] = {}
     for kind in body:
         for row in body[kind]:
             counts[row["state"]] = counts.get(row["state"], 0) + 1
+            assert row["actionable"] == (row["state"] in health.ACTIONABLE), row
     assert counts["blocked"] > counts["starved"], counts
+    assert "blocked" in health.ACTIONABLE
     # And a paused machine keeps both spellings: the save's own field, and the assessment.
     for kind in body:
         for row in body[kind]:

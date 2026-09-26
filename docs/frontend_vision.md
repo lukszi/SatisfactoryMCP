@@ -517,8 +517,9 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   (`actionable`, and `actionable_states`, which the dashboard and the side panel read instead
   of keeping their own list). Uptime still reads 0% on a backed-up factory, and that is true:
   a blocked machine produces nothing. It now sits beside a non-zero "need action" count, so
-  the two agree. The map's machine paint (`placements.ts`) still draws `blocked` like a
-  running machine; that is a separate question.
+  the two agree. The map follows the same tuple: `/api/machines` sends `actionable`. A stopped
+  machine gets a red outline, and a blocked one a yellow outline, because blocked is waiting on
+  downstream, not broken (docs/save-projection.md §6.2d).
 - **Spoilers are a setting, on by default.** Settings (`dash=settings`) holds a "Show
   upcoming milestones" switch. Off, Progress shows only tiers with at least one milestone done
   (done and not done), plus tier 1 before anything is done; the tier strip, the tallies and
