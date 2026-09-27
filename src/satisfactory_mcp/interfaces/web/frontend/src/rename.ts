@@ -10,6 +10,8 @@ import type { RenamedResponse } from "./api-shapes";
 
 var formerly: Record<string, string> = {};
 
+var open: { input: HTMLInputElement; cancel: () => void } | null = null;
+
 export function renamedTo(name: string): string | undefined {
   var seen: Record<string, boolean> = {};
   var now = formerly[name];
@@ -23,6 +25,15 @@ export function renamedTo(name: string): string | undefined {
 export function refreshLabels(): void {
   loadOne("/api/factories");
   loadOne("/api/factories/health");
+  loadOne("/api/power/circuits");
+}
+
+export function renamingIn(container: HTMLElement): boolean {
+  return !!open && open.input.isConnected && container.contains(open.input);
+}
+
+export function cancelRename(): void {
+  if (open) open.cancel();
 }
 
 export function editName(
@@ -31,6 +42,8 @@ export function editName(
   version: number,
   done: (reply: RenamedResponse | null) => void
 ): void {
+  cancelRename();
+  var kept = Array.prototype.slice.call(host.childNodes) as Node[];
   var input = make("input", "dash-name");
   input.type = "text";
   input.value = name;
@@ -38,16 +51,32 @@ export function editName(
   input.setAttribute("aria-label", "new name for " + name);
   input.setAttribute("data-renaming", name);
   var saving = false;
+  var closed = false;
   var finish = function (reply: RenamedResponse | null) {
+    if (closed) return;
+    closed = true;
     saving = true;
+    if (open && open.input === input) open = null;
+    if (!reply && input.parentNode === host) {
+      host.textContent = "";
+      kept.forEach(function (node) {
+        host.appendChild(node);
+      });
+    }
     done(reply);
+  };
+  var cancel = function () {
+    if (!saving) finish(null);
   };
   input.onclick = function (event) {
     event.stopPropagation();
   };
+  input.onblur = function () {
+    if (document.hasFocus()) cancel();
+  };
   input.onkeydown = function (event) {
     event.stopPropagation();
-    if (event.key === "Escape") finish(null);
+    if (event.key === "Escape") cancel();
     if (event.key !== "Enter" || saving) return;
     var to = input.value.trim();
     if (!to) {
@@ -80,6 +109,7 @@ export function editName(
         } else input.focus();
       });
   };
+  open = { input: input, cancel: cancel };
   host.textContent = "";
   host.appendChild(input);
   input.focus();

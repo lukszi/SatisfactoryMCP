@@ -13,7 +13,7 @@ import { renderPlanner } from "./planner";
 import { stateTone } from "./placements";
 import { milestoneTile, onProgress, renderProgress } from "./progress";
 import { renderRecipes } from "./recipes";
-import { editName, refreshLabels, renamedTo } from "./rename";
+import { cancelRename, editName, refreshLabels, renamedTo, renamingIn } from "./rename";
 import { amount, choice, onSetting, setSetting, setting, SETTINGS } from "./settings";
 import { state } from "./state";
 import { fail, friendly, note as said } from "./toast";
@@ -76,7 +76,7 @@ var detect = {
   asked: "",
 };
 
-var renaming = "";
+var missed = false;
 
 var graphView = {
   source: "",
@@ -975,11 +975,9 @@ function renameButton(name: string, host: HTMLElement, onRenamed: (to: string) =
   return actionButton("rename", "rename this factory", function () {
     var h = vitals().health;
     if (!h) return;
-    renaming = name;
     editName(host, name, h.labels_version, function (reply) {
-      renaming = "";
       if (reply) onRenamed(reply.name);
-      else render();
+      else if (missed) render();
     });
   });
 }
@@ -1010,6 +1008,10 @@ function renderFactory(body: HTMLElement, name: string): void {
   head.appendChild(title);
   head.appendChild(
     renameButton(row.name, title, function (to) {
+      if (state.dash !== "factories/" + row!.name) {
+        render();
+        return;
+      }
       history.replaceState(null, "", hashFor("factories/" + to));
       state.dash = "factories/" + to;
       render();
@@ -1342,7 +1344,12 @@ function settingChanged(): void {
 }
 
 function render(): void {
-  if (!state.dash || renaming) return;
+  if (!state.dash) return;
+  if (renamingIn(el("dash"))) {
+    missed = true;
+    return;
+  }
+  missed = false;
   var at = address();
   renderNav(at.tab);
   var body = el("dash-body");
@@ -1386,6 +1393,7 @@ function show(): void {
 
 export function applyDash(raw: string): void {
   if (raw === state.dash) return;
+  cancelRename();
   var before = address().tab + "/" + address().subject;
   state.dash = raw;
   if (address().tab + "/" + address().subject !== before) el("dash").scrollTop = 0;

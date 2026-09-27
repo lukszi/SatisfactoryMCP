@@ -9,7 +9,7 @@ import { hashFor, map } from "./map";
 import { declareColours } from "./palette";
 import { stateTone } from "./placements";
 import { registerFetch } from "./registry";
-import { editName } from "./rename";
+import { editName, renamingIn } from "./rename";
 
 import type {
   CircuitRow,
@@ -47,7 +47,7 @@ var mark = L.layerGroup();
 
 var listeners: Array<() => void> = [];
 
-var renaming = false;
+var missed = false;
 
 export interface Vitals {
   health: FactoryHealthResponse | null;
@@ -225,11 +225,9 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
       var health = view.health;
       var nameEl = head.querySelector<HTMLElement>(".panel-row-name");
       if (!health || !nameEl) return;
-      renaming = true;
       editName(nameEl, row.name, health.labels_version, function (reply) {
-        renaming = false;
         if (reply) view.factory = reply.name;
-        render();
+        if (reply || missed) render();
       });
     };
     tools.appendChild(rename);
@@ -447,8 +445,12 @@ function renderPower(body: HTMLElement): void {
 }
 
 function render(): void {
-  if (renaming) return;
   var panel = el("panel");
+  if (renamingIn(panel)) {
+    missed = true;
+    return;
+  }
+  missed = false;
   panel.className = view.open ? "" : "shut";
   var tabs = panel.querySelectorAll<HTMLButtonElement>("[data-tab]");
   Array.prototype.forEach.call(tabs, function (button: HTMLButtonElement) {
