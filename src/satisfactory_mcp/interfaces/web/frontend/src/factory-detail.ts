@@ -565,12 +565,13 @@ function renderFloors(body: HTMLElement, data: FactoryFloorsResponse, name: stri
     empty(body, "no floors under this factory", data.note || "it stands on no foundation that has a deck");
     return;
   }
+  var section = body;
   platforms.forEach(function (p) {
-    var section = card(body, "platform " + p.index + (p.label && p.label !== name ? " · " + p.label : ""));
+    section = card(body, "platform " + p.index + (p.label && p.label !== name ? " · " + p.label : ""));
     note(section, counted(p.bands.length, "floor") + " · " + num(p.area_m2, 0) + " m² over " + counted(p.cells, "tile"));
     section.appendChild(bandsTable(p, name));
   });
-  note(body, "floors are recovered from foundation heights; a platform is poured foundation, and two factories on one slab share it");
+  note(section, "floors are recovered from foundation heights; a platform is poured foundation, and two factories on one slab share it");
 }
 
 function siteBox(s: SiteRow): [number, number, number, number] | null {
