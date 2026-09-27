@@ -1703,3 +1703,160 @@ a.dash-where:hover {
   font-size: 10px;
   text-anchor: middle;
 }
+
+.err-act {
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: transparent;
+  color: #6ea8d8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.err-act:hover {
+  border-color: #6ea8d8;
+}
+
+.plan-bench {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plan-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.plan-label {
+  color: #9aa0a8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plan-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.plan-row > .plan-conflict {
+  grid-column: 2;
+}
+
+.plan-text {
+  width: 260px;
+  min-width: 0;
+}
+
+.plan-add {
+  width: 220px;
+  min-width: 0;
+  border-style: dashed;
+}
+
+.plan-sub {
+  color: #9aa0a8;
+  font-size: 11px;
+}
+
+.plan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.plan-chip-x {
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  color: #9aa0a8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.plan-chip-x:hover {
+  color: #f08c89;
+}
+
+.dash-map.on {
+  border-color: #6ea8d8;
+  color: var(--ink);
+}
+
+.plan-status {
+  color: #9aa0a8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-status.bad,
+.plan-headline.bad {
+  color: #f08c89;
+}
+
+.plan-headline {
+  margin: 4px 0;
+  font-weight: 600;
+}
+
+.plan-warning {
+  margin: 2px 0;
+  color: #f08c89;
+  font-size: 12px;
+}
+
+.plan-conflict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 6px;
+  border-left: 2px solid #f08c89;
+  font-size: 12px;
+}
+
+.plan-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: #6ea8d8;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dash-issue > .plan-tag:first-child,
+.dash-title > .plan-tag:first-child {
+  margin-left: 0;
+}
+
+.plan-strip {
+  border-color: #6ea8d8;
+}
+
+.plan-stale {
+  opacity: 0.5;
+}
+
+.dash-table tr.plan-picked td {
+  background: rgba(110, 168, 216, 0.12);
+}
+
+.graph-node.kind-process rect {
+  stroke: #6ea8d8;
+}

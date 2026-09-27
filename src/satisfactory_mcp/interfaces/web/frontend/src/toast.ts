@@ -35,6 +35,24 @@ export function toast(message: string, kind: "fail" | "note", ms: number): void 
   }, ms);
 }
 
+export function offer(message: string, label: string, action: () => void): void {
+  toast(message, "note", NOTE_MS * 2);
+  var box = el("err");
+  var row = box.lastElementChild;
+  if (!row) return;
+  var button = document.createElement("button");
+  button.type = "button";
+  button.className = "err-act";
+  button.textContent = label;
+  button.onclick = function (event) {
+    event.stopPropagation();
+    row!.remove();
+    action();
+  };
+  row.appendChild(document.createTextNode(" "));
+  row.appendChild(button);
+}
+
 export function fail(message: string): void {
   toast(message, "fail", FAIL_MS);
 }

@@ -60,6 +60,18 @@ export var SETTINGS: Setting[] = [
     min: 1,
     fallback: 2,
   },
+  {
+    kind: "choice",
+    key: "follow",
+    label: "Follow chat",
+    hint: "What the page does when chat solves a plan or opens one. A change chat makes to the plan you have open always shows up, whatever this says; the page never moves while you are typing.",
+    options: [
+      ["follow", "follow: open what chat works on"],
+      ["toasts", "toasts only"],
+      ["off", "off"],
+    ],
+    fallback: "follow",
+  },
 ];
 
 var STORE_KEY = "settings";

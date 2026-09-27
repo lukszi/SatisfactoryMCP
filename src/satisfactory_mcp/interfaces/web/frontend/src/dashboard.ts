@@ -7,6 +7,7 @@ import { mw, pct, phaseText, spoken } from "./format";
 import { drawGraph } from "./graph";
 import { hashFor, writeHash } from "./map";
 import { onVitals, showBox, showCircuit, showFactory, showPoint, vitals } from "./panel";
+import { renderPlanner } from "./planner";
 import { stateTone } from "./placements";
 import { registerFetch } from "./registry";
 import { editName, refreshLabels, renamedTo } from "./rename";
@@ -32,13 +33,14 @@ import type {
   StarvedGenerator,
 } from "./api-shapes";
 
-type Tab = "overview" | "factories" | "power" | "progress" | "settings";
+type Tab = "overview" | "factories" | "power" | "progress" | "planner" | "settings";
 
 var TABS: [Tab, string][] = [
   ["overview", "Overview"],
   ["factories", "Factories"],
   ["power", "Power"],
   ["progress", "Progress"],
+  ["planner", "Planner"],
   ["settings", "Settings"],
 ];
 
@@ -1511,6 +1513,10 @@ function render(): void {
   var at = address();
   renderNav(at.tab);
   var body = el("dash-body");
+  if (at.tab === "planner") {
+    renderPlanner(body, at.subject);
+    return;
+  }
   var scroll = el("dash").scrollTop;
   var focused = document.activeElement;
   var typing = focused && body.contains(focused) ? focused.getAttribute("data-candidate") : null;
