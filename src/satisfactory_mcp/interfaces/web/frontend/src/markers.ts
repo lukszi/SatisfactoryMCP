@@ -14,6 +14,7 @@ import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
 import { map, xy } from "./map";
 import { declareColours } from "./palette";
+import { pinButtons } from "./pins";
 import { registerFetch } from "./registry";
 import { parseList, state } from "./state";
 import { fail } from "./toast";
@@ -145,6 +146,13 @@ export function drawNodes(data: NodesResponse): void {
               ],
               ["selector", code("node:" + n.name)],
               ["at", n.x_m + ", " + n.y_m + " m"],
+              [
+                "pin",
+                pinButtons([
+                  { kind: "node", ref: { node: n.name }, text: "pin node" },
+                  { kind: "field", ref: { node: n.name }, text: "pin field" },
+                ]),
+              ],
             ])
           );
         dot._occupied = n.occupied;

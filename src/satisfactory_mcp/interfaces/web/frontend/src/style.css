@@ -2864,3 +2864,137 @@ path.lasso-area {
   fill-opacity: 0.12;
 }
 
+
+.plan-result {
+  display: flex;
+  flex-direction: column;
+}
+
+.plan-main {
+  min-width: 0;
+}
+
+.plan-main > .dash-card:first-child,
+.plan-result > .plan-drawer {
+  margin-top: 0;
+}
+
+.plan-drawer .dash-title {
+  flex-wrap: wrap;
+}
+
+.plan-drawer .dash-table td.right,
+.plan-drawer .dash-table td:last-child {
+  white-space: nowrap;
+}
+
+.plan-raw {
+  display: block;
+}
+
+.dash-table tr.plan-locked td {
+  color: var(--muted);
+}
+
+.plan-recipe .chip {
+  margin-left: var(--sp-1);
+}
+
+.plan-node .dash-sub {
+  margin: 0;
+}
+
+.plan-node .dash-acts {
+  margin-top: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+@media (min-width: 1280px) {
+  .plan-result.with-drawer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 56%);
+    gap: var(--sp-2);
+    align-items: start;
+  }
+}
+
+@media (max-width: 1279px) {
+  .plan-result > .plan-drawer {
+    order: -1;
+    margin-bottom: var(--sp-2);
+  }
+}
+
+.dash-tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.pin-rename {
+  width: 16em;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.graph-node.picked rect,
+.graph-node.pickable.picked:hover rect {
+  stroke: var(--select);
+  stroke-width: 3;
+}
+
+.graph-badge rect {
+  fill: var(--bg);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.graph-badge text {
+  fill: var(--muted);
+  font-size: var(--fs-s);
+  text-anchor: middle;
+}
+
+.graph-node.flash rect {
+  animation: graph-flash 1s ease-in-out 4;
+}
+
+@keyframes graph-flash {
+  50% {
+    stroke: var(--accent-hi);
+    stroke-width: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-node.flash rect {
+    animation: none;
+  }
+}
+
+.pin-tag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: var(--r);
+  font-size: var(--fs-s);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.pin-tag.gone {
+  color: var(--muted);
+  border-color: var(--line);
+  border-style: dashed;
+}
+
+.pin-tag:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

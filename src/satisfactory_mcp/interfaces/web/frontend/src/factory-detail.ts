@@ -2,12 +2,13 @@
  * links, floors and sites. The address is `factories/<name>/<aspect>`. */
 
 import { get, latest } from "./api";
-import { chip, empty, error, heading, link, loading, note, table, tabs2, tile } from "./dashkit";
+import { button, chip, empty, error, heading, link, loading, note, table, tabs2, tile } from "./dashkit";
 import { make } from "./dom";
 import { count, mw, num, pct, perMin } from "./format";
 import { enterFloors } from "./floors";
 import { hashFor } from "./map";
 import { showBox } from "./panel";
+import { pinThis } from "./pins";
 import { state } from "./state";
 import { counted, W } from "./words";
 import { mapButton, pointButton, render } from "./dashboard";
@@ -66,6 +67,21 @@ export function factoryDash(name: string, aspect: string): string {
 }
 
 export function aspectTabs(name: string, aspect: string): HTMLElement {
+  var row = make("div", "dash-tabs-row");
+  row.appendChild(sectionTabs(name, aspect));
+  row.appendChild(
+    button(
+      W.pin,
+      function () {
+        pinThis("factory", { factory: name });
+      },
+      { title: "pin this factory and copy its pin:N for chat", label: "pin " + name }
+    )
+  );
+  return row;
+}
+
+function sectionTabs(name: string, aspect: string): HTMLElement {
   return tabs2(
     ASPECTS.map(function (a) {
       return { id: a[0], label: a[1], href: hashFor(factoryDash(name, a[0])) };

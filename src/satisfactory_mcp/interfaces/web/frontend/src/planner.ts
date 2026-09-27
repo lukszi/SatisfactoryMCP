@@ -4,12 +4,33 @@
 import { get, send } from "./api";
 import { loading } from "./dashkit";
 import { keepFocus, make } from "./dom";
-import { go } from "./nav";
+import { dashParts, go } from "./nav";
 import { onVitals } from "./panel";
 import { renderBench } from "./planner-bench";
-import { actorWord, bench, changed, followHead, forgetSolves, inbox, loadItems, onBench, openPlan, redoLast, reset, resyncHead, sav, undoLast, viewRev } from "./planner-core";
+import {
+  actorWord,
+  bench,
+  changed,
+  followHead,
+  forgetSolves,
+  hideAlternates,
+  inbox,
+  loadAlternates,
+  loadItems,
+  onBench,
+  openPlan,
+  redoLast,
+  reset,
+  resyncHead,
+  sav,
+  showAlternates,
+  undoLast,
+  viewRev,
+} from "./planner-core";
 import { loadActivity } from "./planner-history";
 import { loadList, planTitle, renderList } from "./planner-list";
+import { clearPick } from "./planner-result";
+import { onPins } from "./pins";
 import { choice, onSetting } from "./settings";
 import { state } from "./state";
 import { note, offer } from "./toast";
@@ -29,19 +50,33 @@ var heard = 0;
 var focusTimer = 0;
 var drawTimer = 0;
 var pressed = false;
+var refocus = "";
+var focusSig = "";
 
-function parts(at: string): { key: string; view: number } {
-  var cut = at.indexOf("/");
-  if (cut < 0) return { key: at, view: 0 };
-  var m = /^v(\d+)$/.exec(at.slice(cut + 1));
-  return { key: at.slice(0, cut), view: m ? Number(m[1]) : 0 };
+function parts(at: string): { key: string; view: number; alt: string } {
+  var rest = dashParts("planner/" + at).rest;
+  var key = rest[0] || "";
+  var m = /^v(\d+)$/.exec(rest[1] || "");
+  var alt = rest[1] === "alt" && rest[2] ? rest.slice(2).join("/") : "";
+  return { key: key, view: m ? Number(m[1]) : 0, alt: alt };
 }
 
 function subject(): string | null {
-  var dash = state.dash;
-  if (dash === "planner") return "";
-  if (dash.indexOf("planner/") === 0) return parts(dash.slice("planner/".length)).key;
-  return null;
+  var at = dashParts();
+  if (at.tab !== "planner") return null;
+  return parts(at.subject).key;
+}
+
+function altDash(key: string, item: string): string {
+  return "planner/" + key + "/alt/" + item;
+}
+
+function closeAlternates(): void {
+  var opener = hideAlternates();
+  refocus = opener;
+  if (opener && dashParts().rest[1] === "alt") history.back();
+  else go("planner/" + bench.key);
+  changed();
 }
 
 function typing(): boolean {
@@ -94,9 +129,21 @@ function draw(): void {
   heldDraw = false;
   keepFocus(root, function () {
     root.textContent = "";
-    if (mounted) renderBench(root, select);
+    if (mounted) renderBench(root, select, closeAlternates);
     else renderList(root);
   });
+  if (refocus) {
+    var back = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(refocus) + '"]');
+    if (back) {
+      refocus = "";
+      back.focus({ preventScroll: true });
+    }
+  }
+  var sig = JSON.stringify([bench.tab, bench.alt ? bench.alt.item : "", bench.selection]);
+  if (sig !== focusSig) {
+    focusSig = sig;
+    scheduleFocus();
+  }
   if (held.length && !typing()) flush();
 }
 
@@ -129,7 +176,15 @@ export function renderPlanner(body: HTMLElement, at: string): void {
     scheduleFocus();
   }
   if (key && bench.view !== wanted.view) viewRev(wanted.view);
+  if (key && wanted.alt) showAlternates(wanted.alt);
+  else if (bench.alt) refocus = hideAlternates();
   draw();
+}
+
+function altSelection(): Selection | null {
+  var alt = bench.alt;
+  if (!alt) return null;
+  return { kind: "item", label: alt.data ? alt.data.name : alt.item, ref: alt.item };
 }
 
 function focusBody(): Record<string, unknown> {
@@ -141,8 +196,8 @@ function focusBody(): Record<string, unknown> {
     dash: state.dash,
     plan: planner && at && bench.key === at ? at : null,
     rev: planner && at && bench.plan ? bench.plan.rev : null,
-    tab: planner ? (at ? "workbench" : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
-    selection: planner && at ? bench.selection : null,
+    tab: planner ? (at ? (bench.tab === "graph" ? "graph" : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
+    selection: planner && at ? altSelection() || bench.selection : null,
     follow: choice("follow"),
     sav: sav(),
   };
@@ -190,6 +245,20 @@ export function onActivityEvent(entry: ActivityEvent): void {
   var mode = choice("follow");
   if (mode === "off") return;
   var who = actorWord(entry.actor);
+  var args = entry.args || {};
+  if (entry.kind === "plan.view" && entry.plan && args.view === "alternates" && typeof args.item === "string") {
+    var at = altDash(entry.plan, args.item);
+    if (mode === "toasts") {
+      offer(who + " " + entry.text, "open", function () {
+        go(at);
+      });
+    } else if (state.dash !== at) {
+      whenIdle(function () {
+        go(at);
+      });
+    }
+    return;
+  }
   if (entry.kind === "plan.solve") {
     if (mode === "toasts") {
       offer(who + " solved: " + entry.text, "open", function () {
@@ -233,13 +302,26 @@ export function resyncPlanner(): void {
 
 export function onSaveEvent(): void {
   if (bench.plan) forgetSolves();
+  if (bench.alt) loadAlternates();
+}
+
+function escape(event: KeyboardEvent): void {
+  if (event.key !== "Escape" || !subject() || !root.isConnected) return;
+  if (bench.alt) {
+    event.preventDefault();
+    closeAlternates();
+  } else if (clearPick()) event.preventDefault();
 }
 
 function keys(event: KeyboardEvent): void {
-  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
-  if (!subject() || !bench.plan) return;
   var active = document.activeElement as HTMLElement | null;
   if (active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) return;
+  if (event.key === "Escape") {
+    escape(event);
+    return;
+  }
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+  if (!subject() || !bench.plan) return;
   event.preventDefault();
   if (event.shiftKey) redoLast();
   else undoLast();
@@ -247,6 +329,7 @@ function keys(event: KeyboardEvent): void {
 
 function wire(): void {
   onBench(later);
+  onPins(later);
   onVitals(function () {
     if (mounted) later();
   });

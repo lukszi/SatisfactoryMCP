@@ -28,7 +28,23 @@ export var W = {
   actorYou: "you",
   actorChat: "chat",
   noSaves: "no readable saves",
+  letSolverChoose: "let the solver choose",
+  recipes: "recipes",
+  pin: "pin",
+  lockedHidden: function (n: number): string {
+    return counted(n, "locked recipe") + " hidden";
+  },
 } as const;
+
+export var PIN_KIND: Record<string, string> = {
+  plan: "plan",
+  process: "process",
+  machine: "machine",
+  factory: "factory",
+  field: "field",
+  node: "node",
+  point: "point",
+};
 
 export var OBJECTIVES: Record<string, string> = {
   max_mw: "max MW",

@@ -8,6 +8,7 @@ import { go } from "./nav";
 import { renderCard } from "./planner-bench";
 import { actorWord, age, changed, commitWords, createPlan, itemList, knownItem, loadItems } from "./planner-core";
 import { renderActivity } from "./planner-history";
+import { renderPins } from "./pins-card";
 import { state } from "./state";
 import { friendly } from "./toast";
 import { OBJECTIVES } from "./words";
@@ -230,4 +231,5 @@ export function renderList(root: HTMLElement): void {
   root.appendChild(card);
   form(root);
   renderActivity(root);
+  renderPins(root, changed);
 }

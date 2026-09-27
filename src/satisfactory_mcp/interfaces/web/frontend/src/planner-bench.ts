@@ -31,8 +31,9 @@ import {
 import { duplicateButton, renderVersions, renderView } from "./planner-history";
 import { loadList, planTitle } from "./planner-list";
 import { banOps, recipeName, renderResult } from "./planner-result";
+import { pinFor, pinThis } from "./pins";
 import { fail, friendly } from "./toast";
-import { counted, OBJECTIVES, objectiveText } from "./words";
+import { counted, OBJECTIVES, objectiveText, W } from "./words";
 
 import type { Op, Selection } from "./planner-core";
 
@@ -650,6 +651,19 @@ function header(parent: HTMLElement): void {
   if (!bench.gone) acts.appendChild(button("forget", forgetPlan, { title: "hide this plan from the list; its history is kept and restore brings it back" }));
   acts.appendChild(pressed("versions", bench.versionsOpen, toggleVersions, { title: "every version of this plan: view one, or restore it as a new version" }));
   acts.appendChild(duplicateButton());
+  var key = bench.key;
+  var pinned = pinFor("plan", function (ref) {
+    return ref.plan === key;
+  });
+  acts.appendChild(
+    button(
+      pinned ? "copy " + pinned.id : W.pin,
+      function () {
+        pinThis("plan", { plan: key });
+      },
+      { title: "pin this plan and copy its pin:N for chat", label: pinned ? undefined : "pin this plan" }
+    )
+  );
   var call = "plan_factory(plan=" + JSON.stringify(plan.name) + ")  # base_rev=" + plan.rev;
   var copy = make("button", "btn " + COPY_CLASS, "copy as tool call");
   copy.type = "button";
@@ -666,7 +680,7 @@ function gone(parent: HTMLElement): void {
   parent.appendChild(line);
 }
 
-export function renderBench(root: HTMLElement, select: (s: Selection) => void): void {
+export function renderBench(root: HTMLElement, select: (s: Selection) => void, close: () => void): void {
   if (shown !== bench.key) {
     shown = bench.key;
     invalid = {};
@@ -711,5 +725,5 @@ export function renderBench(root: HTMLElement, select: (s: Selection) => void): 
   supply(controls);
   notes(controls);
   root.appendChild(controls);
-  renderResult(root, select);
+  renderResult(root, select, close);
 }

@@ -1,11 +1,12 @@
 /* The open plan as the page knows it, and every write it makes. See docs/planner_slice_contract.md §12. */
 
 import { get, missing, push, send } from "./api";
+import { setting } from "./settings";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 import { W } from "./words";
 
-import type { ApiError, StatusError } from "./api";
+import type { ApiError, ApiPath, StatusError } from "./api";
 import type {
   ActivityRow,
   ActorBody,
@@ -17,6 +18,7 @@ import type {
   NameTakenResponse,
   OutdatedResponse,
   PlanOpBody,
+  PlanAlternatesResponse,
   PlanOpsResponse,
   PlanStateBody,
   PushedResponse,
@@ -63,6 +65,19 @@ export interface Chip {
 
 type Refusal = Partial<OutdatedResponse & AlreadyUndoneResponse & NameTakenResponse>;
 
+export type ResultTab = "build list" | "graph";
+
+export interface AltView {
+  item: string;
+  data: PlanAlternatesResponse | null;
+  error: string;
+  seq: number;
+  asked: number;
+  opener: string;
+}
+
+var ALTERNATES = "/api/plan/alternates" as ApiPath;
+
 export var bench = {
   world: "",
   key: "",
@@ -82,7 +97,10 @@ export var bench = {
   redo: [] as { target: number; by: number }[],
   own: {} as Record<number, boolean>,
   selection: null as Selection | null,
-  graph: false,
+  picked: "",
+  tab: "build list" as ResultTab,
+  alt: null as AltView | null,
+  chatRows: {} as Record<string, true>,
   versions: null as VersionsResponse | null,
   versionsOpen: false,
   versionsError: "",
@@ -212,6 +230,9 @@ export function reset(key: string): void {
   bench.redo = [];
   bench.own = {};
   bench.selection = null;
+  bench.picked = "";
+  bench.alt = null;
+  bench.chatRows = {};
   bench.versions = null;
   bench.versionsError = "";
   bench.view = 0;
@@ -272,7 +293,65 @@ function adopt(plan: PlanStateBody): void {
     if (bench.versionsOpen) loadVersions();
     deltaForStrip();
     if (bench.view) deltaForView();
+    if (bench.alt) loadAlternates();
   }
+}
+
+export function showAlternates(item: string, opener?: string): void {
+  if (bench.alt && bench.alt.item === item) {
+    if (opener) bench.alt.opener = opener;
+    return;
+  }
+  bench.alt = { item: item, data: null, error: "", seq: 0, asked: 0, opener: opener || "" };
+  loadAlternates();
+}
+
+export function hideAlternates(): string {
+  var opener = bench.alt ? bench.alt.opener : "";
+  bench.alt = null;
+  return opener;
+}
+
+var altSeq = 0;
+
+export function loadAlternates(): void {
+  var alt = bench.alt;
+  var plan = bench.plan;
+  if (!alt || !plan) return;
+  var key = bench.key;
+  var rev = plan.rev;
+  var seq = ++altSeq;
+  alt.seq = seq;
+  alt.asked = rev;
+  changed();
+  send<PlanAlternatesResponse>("POST", ALTERNATES, { key: key, rev: rev, item: alt.item }, undefined, "spoilers=" + (setting("spoilers") ? 1 : 0))
+    .then(function (data) {
+      var now = bench.alt;
+      if (!now || now.seq !== seq || bench.key !== key) return;
+      now.data = data;
+      now.error = "";
+      now.asked = 0;
+      changed();
+    })
+    .catch(function (reason) {
+      var now = bench.alt;
+      if (!now || now.seq !== seq || bench.key !== key) return;
+      now.error = friendly(reason);
+      now.asked = 0;
+      changed();
+    });
+}
+
+function chatTouched(d: DeltaResponse): Record<string, true> {
+  var out: Record<string, true> = {};
+  var fromChat = bench.strip.some(function (row) {
+    return row.who === W.actorChat;
+  });
+  if (!fromChat) return out;
+  (d.rows || []).forEach(function (r) {
+    if (r.change !== "removed") out[r.id] = true;
+  });
+  return out;
 }
 
 function strip(commit: CommitBody): void {
@@ -290,8 +369,10 @@ export function dismissStrip(rev: number | null): void {
   bench.strip = bench.strip.filter(function (row) {
     return rev !== null && row.rev !== rev;
   });
-  if (!bench.strip.length) bench.stripDelta = null;
-  else deltaForStrip();
+  if (!bench.strip.length) {
+    bench.stripDelta = null;
+    bench.chatRows = {};
+  } else deltaForStrip();
   changed();
 }
 
@@ -315,8 +396,9 @@ function deltaForStrip(): void {
   var key = bench.key;
   delta(key, from, to)
     .then(function (d) {
-      if (bench.key !== key || !bench.plan || bench.plan.rev !== to) return;
+      if (bench.key !== key || !bench.plan || bench.plan.rev !== to || !bench.strip.length) return;
       bench.stripDelta = d;
+      bench.chatRows = chatTouched(d);
       changed();
     })
     .catch(function () {});

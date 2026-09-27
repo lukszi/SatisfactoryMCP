@@ -6,6 +6,7 @@
 
 import { el } from "./dom";
 import { loadLive, loadOne } from "./load";
+import { onActivity as onPinActivity, refetchPins } from "./pins";
 import { onActivityEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
 import { state } from "./state";
 import { fail } from "./toast";
@@ -78,6 +79,7 @@ export function listen() {
     loadOne("/api/factories/health");
     loadOne("/api/power/circuits");
     loadOne("/api/plans");
+    refetchPins();
     resyncPlanner();
   };
   var blink = function () {
@@ -119,6 +121,8 @@ export function listen() {
   });
   source.addEventListener("activity", function (event) {
     var data = parsed<ActivityEvent>(event);
-    if (data && isNews(event)) onActivityEvent(data);
+    if (!data || !isNews(event)) return;
+    onPinActivity(data);
+    onActivityEvent(data);
   });
 }
