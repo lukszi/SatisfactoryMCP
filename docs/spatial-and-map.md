@@ -142,7 +142,9 @@ answering a different question than the one asked is worse than refusing.
 
 ### 7.2b Map deep links
 
-`show_on_map(at=)` builds a satisfactory-calculator.com interactive-map link centred on
+`show_on_map(at=)` leads with a link to this project's own web map, on the host and port in
+`config.web_url()` (`SATISFACTORY_WEB_PORT`, default 8712; frontend_vision.md §10.2). Below
+it, it builds a satisfactory-calculator.com interactive-map link centred on
 any place the shared resolver takes ([selectors.md](selectors.md)), plus one kind of its
 own — `resource:<name>`, the centroid of every node of that resource — with the relevant
 overlays switched on.

@@ -109,7 +109,8 @@ uv run satisfactory-mcp-web
 
 The map is at <http://127.0.0.1:8712>, and it follows your saves live as you play. It binds to
 localhost on purpose: the API answers with the contents of your save directory and has no
-authentication, so it is a local tool.
+authentication, so it is a local tool. To use another port, set `SATISFACTORY_WEB_PORT` for
+both the web server and the MCP server, so the map links the tools print point at it.
 
 ### Where your saves come from
 

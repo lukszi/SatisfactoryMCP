@@ -25,14 +25,15 @@ from . import (
     nodes,
     placements,
     plans,
-    progress,
     power,
+    progress,
     regions,
     routes_layer,
     search,
     stock,
     storage,
     tiles,
+    trace,
     world,
 )
 
@@ -66,4 +67,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     stock.router,
     gamedata.router,
     search.router,
+    trace.router,
 )

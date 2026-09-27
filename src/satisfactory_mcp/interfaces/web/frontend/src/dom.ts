@@ -65,6 +65,35 @@ export function code(text: unknown): Markup {
   );
 }
 
+export var TRACE_ATTR = "data-trace";
+export var TRACE_DIR_ATTR = "data-trace-dir";
+
+export function traceButtons(seed: string): Markup {
+  var value = esc(seed);
+  function button(dir: string, text: string, title: string): string {
+    return (
+      '<button type="button" class="trace-go" ' +
+      TRACE_ATTR +
+      '="' +
+      value +
+      '" ' +
+      TRACE_DIR_ATTR +
+      '="' +
+      dir +
+      '" title="' +
+      title +
+      '">' +
+      text +
+      "</button>"
+    );
+  }
+  return html(
+    button("up", "supply ↑", "draw what feeds this on the map") +
+      " " +
+      button("down", "output ↓", "draw what this feeds on the map")
+  );
+}
+
 export function popup(pairs: Row[]): string {
   return (
     "<table>" +

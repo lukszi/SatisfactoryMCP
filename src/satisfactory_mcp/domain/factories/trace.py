@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 
-__all__ = ["Reached", "Trace", "orient", "trace"]
+__all__ = ["Reached", "Trace", "orient", "resolve_seeds", "trace"]
 
 #: Hard stop on the walk. The reference save's deepest chain is 72 hops of mostly belt,
 #: so this is far above anything real -- it exists so a malformed graph cannot spin.
@@ -147,6 +147,33 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
             down.setdefault(source, set()).add(target)
             up.setdefault(target, set()).add(source)
     return up, down, ambiguous
+
+
+def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
+    """A seed as machine leaves plus a subject line: an instance, a building, else a factory.
+
+    Raises ``SelectorError`` when the text is none of the three.
+    """
+    from .resolve import resolve_factory
+
+    records = {r["instance"].rsplit(".", 1)[-1]: r for r in state._all_records()}
+    what = seed.strip()
+    if what in records:
+        return [what], f"{records[what].get('cls', '?')} {what}"
+    by_class = [
+        inst
+        for inst, rec in records.items()
+        if rec.get("cls") == what
+        or (
+            rec.get("cls") in game.buildings
+            and game.buildings[rec["cls"]].name.casefold() == what.casefold()
+        )
+    ]
+    if by_class:
+        return by_class, f"{len(by_class)}x {what}"
+    name, machines = resolve_factory(state, what)
+    seeds = [str(m) for m in machines]
+    return seeds, f"factory {name!r} ({len(seeds)} machines)"
 
 
 def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Trace:

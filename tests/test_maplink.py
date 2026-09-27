@@ -131,7 +131,7 @@ def test_every_target_gets_this_projects_own_map_link(game):
 
     for target in ("0,0", "resource:Crude Oil"):
         out = srv.show_on_map(target)
-        assert "local map: " + maplink.LOCAL_BASE + "#" in out, target
+        assert "local map: " + maplink.local_base() + "#" in out, target
         assert "public map: " + maplink.BASE + "#" in out, target
         # The local one leads, because it is the one that knows what was built.
         assert out.index("local map:") < out.index("public map:")

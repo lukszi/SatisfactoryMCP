@@ -33,6 +33,7 @@ import { wireSearch } from "./search";
 import { listen } from "./sse";
 import { BOOT, state } from "./state";
 import { loadBaseMap } from "./tiles";
+import { listenForTraces } from "./trace";
 import { loadWorlds } from "./worlds";
 
 /* ---------------------------------------------------------------- features */
@@ -124,6 +125,7 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
  * here and not in whatever module last built a popup. */
 listenForCopies();
 wireSearch();
+listenForTraces();
 
 /* -------------------------------------------------------------------- boot */
 

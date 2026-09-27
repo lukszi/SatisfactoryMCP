@@ -155,7 +155,7 @@ tool table.
 | `describe_location` | Map click inspector | click point, radius | popup: region, elevation, nodes, conduits, buildings | exists `/api/inspect` (same default radius); add conduits/buildings counts |
 | `search_conduits` | World > Conduits; context menu "conduits here" | near (click), radius, to (second click), belt/pipe, runs/networks | run list; runs highlighted on the map | new (geometry exists in `/api/belts`, `/api/pipes`) |
 | `search_resource_nodes` | World > Nodes | sources builder, resource, purity, kind, free only, view fields/nodes/nearest, near | field clusters or node rows; map filters to the result | partial `/api/nodes`; new for fields and nearest |
-| `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick | exists (fragment) |
+| `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick | exists (fragment); the tool's local link follows the configured port (§13) |
 | `rank_build_sites` | Planner > Site > "where to mine X"; World > Nodes | resource, sources | ranked fields with raw components; numbered pins on map | new |
 | `list_plans` | Planner > Plans list | name filter | table: sited, world moved, field moved | exists `/api/plans` (siting only) + new for status |
 | `forget_plan` | Plans list row menu | confirm | row gone | new, W |
@@ -195,7 +195,7 @@ tool table.
 | `amend_factory` | Factory detail > edit | add/drop via lasso or selector, prune missing, dry run | diff preview, then applied | new, W |
 | `list_factories` | Factories list (step 0) | none | named factories, % still standing | exists `/api/factories` |
 | `forget_factory` | "undo" after naming in the dashboard | none | label gone | **built** `DELETE /api/labels/{name}`, W (§9); detail-view button still open |
-| `trace_upstream` | Factory/machine detail > Trace | seed (selection), up/down | tree; path drawn on the map | new |
+| `trace_upstream` | Machine popup, right-click inspector, factory detail, side panel > Trace | seed (selection), up/down | path drawn on the map; items, rates, flows in a card | **built** `/api/trace` (§13) |
 | `factory_floors` | Factory detail > Floors; floor picker | factory or platform | decks with machines; floor picker jumps | exists `/api/floors` |
 
 ### 3.2 Resources (4)
@@ -292,7 +292,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/power/report` | GET | `domain/power/report.py` | step 0 may already add it |
 | `/api/factories/{id}` + `?aspect=` | GET | `domain/factories/query.py` | one aspect per call |
 | `/api/factories/{id}/health` | GET | `domain/factories/health.py` | `all` for the list colours |
-| `/api/trace` | GET | `domain/factories/trace.py` | seed, direction |
+| `/api/trace` | GET | `domain/factories/trace.py` | seed, direction; **built** (§13) |
 | `/api/stock` | GET | `domain/world/inventory.py` | four piles and every place; **built** (§10) |
 | `/api/progress/{milestones,mam,phase}` | GET | `domain/progression/ladder.py`, `phases.py` | **built**; one ladder, three views |
 | `/api/progress/harddrives` | GET | `domain/progression/harddrives.py` | **built**, under `/api/progress/` |
@@ -345,7 +345,7 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
 | 5 | **Recipes codex + search box**. **Built 2026-09-27** (§12; `list_buildings` still open) | 5 game-data tools, `unlocked_recipes` | 6 | no |
 | 6 | **World finders:** nodes, fields, conduits, collectibles, whereami, inspector upgrade | 7 spatial tools, `collected_from_world` | 3 | no |
-| 7 | **Trace:** upstream/downstream drawn on the map | `trace_upstream` | 1 | no |
+| 7 | **Trace:** upstream/downstream drawn on the map — **built** (§13) | `trace_upstream` | 1 | no |
 | 8 | **Planner (stateless):** solve, bill, compare, byproducts | 4 planning tools | 4 POST | no |
 | 9 | **Write guard + Plans:** save, rename, forget, site by dragging | 4 plan tools | CRUD | **yes** |
 | 10 | **Plan follow-through:** layout, diff, startup order | `plan_layout`, `diff_vs_save`, `commission_plan` | 3 | no |
@@ -994,3 +994,56 @@ Items are never hidden. An item carries no unlock of its own.
 - Plans, regions, node ids, `x,y` and `chain:<n>` in the search box (§2.1).
 - Whether items should follow the spoiler switch, and whether the census should hide its
   totals too, are left for a decision.
+
+---
+
+## 13. Trace on the map (2026-09-27)
+
+Phase 7 of §6. What feeds a machine or a factory, or what it feeds, drawn on the map.
+
+### 13.1 What was built
+
+- **Route.** `GET /api/trace?seed=&direction=up|down&as_of=` (`routers/trace.py`). The seed
+  grammar is `resolve_seeds` in `domain/factories/trace.py`: an instance, a building name, a
+  factory label, or any selector. The MCP tool `trace_upstream` now calls the same function,
+  so the two cannot disagree about what a seed means. The walk is the existing `trace()`.
+- **What it sends.** Every machine on the path (seeds included) with position, hops, recipe,
+  nameplate rates at its clock and its `health.assess` state; every conduit run the walk
+  crossed, as polylines; and `flowgraph.build` over the seeds plus everything reached, which
+  gives recipe groups and item flows with apportioned rates. `items` totals what the reached
+  machines make (up) or use (down).
+- **Frontend.** `frontend/src/trace.ts`. Entry points: the machine popup, the right-click
+  inspector when the click lands on a machine (the machine layer has to be on), the selected
+  row in the side panel's Factories tab, and "trace supply" on the dashboard's factory page.
+  All but the dashboard use one delegated click on `data-trace` buttons, so no drawing module
+  imports the trace module. The card toggles up/down and clears; it refetches on each live
+  save and clears on a world switch.
+- **On the map.** Crossed runs in the panel highlight colour. Each machine on the path gets a
+  ring: red when stopped, yellow when blocked, highlight otherwise; seeds are larger. The
+  colours are the placements layer's own, so the marker key still reads.
+
+### 13.2 The two bugs
+
+- **`trace_upstream` with a factory label.** Did not reproduce at `bb5b04c`: the fix is already
+  in, and `tests/test_trace_seeds.py` covers labels and selectors. The seed resolution moved from
+  the tool body into the domain (`resolve_seeds`) so the route shares it, with a domain-level
+  test for the label path.
+- **`show_on_map` links.** The tool already led with a local link; its host and port were
+  hard-coded. `config.web_url()` now builds it from `WEB_HOST` and `web_port()`
+  (`SATISFACTORY_WEB_PORT`, default 8712), and `satisfactory-mcp-web` binds the same values.
+  The MCP server and the web server are separate processes, so both need the variable when the
+  port moves. The satisfactory-calculator.com link stays second: spatial-and-map.md §7.2b
+  documents it as the public map, and the tool's `layers` tokens only mean anything there.
+
+### 13.3 Limits, stated
+
+- **Over-reporting.** Belt-to-belt and pipe-to-pipe joins state no direction, and the walk
+  takes them both ways (§5.3, physical trace mode). On the reference save a factory's upstream
+  can include feeders that only share a manifold with it. The card says so whenever the save
+  has such joins.
+- **Rates are nameplate**, apportioned by `flowgraph` as on the production graph (§9.8), not
+  measured belt throughput. A run on the map carries no item of its own.
+- **Not in the fragment yet.** A trace is not deep-linkable (§1 principle 9); a `trace=` key
+  would need `state.ts` and `fragment.ts`.
+- **Right-click on a machine under a trace ring** opens the ring's popup rather than the
+  machine's; the ring's popup has the same trace buttons.
