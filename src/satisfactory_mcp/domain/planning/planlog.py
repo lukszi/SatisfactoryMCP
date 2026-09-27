@@ -388,7 +388,7 @@ def _fmt(value) -> str:
     if isinstance(value, bool):
         return "on" if value else "off"
     if isinstance(value, float):
-        return f"{value:g}"
+        return f"{value:,.4f}".rstrip("0").rstrip(".")
     return str(value)
 
 

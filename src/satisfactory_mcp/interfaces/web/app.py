@@ -14,14 +14,15 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import PlainTextResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from ... import config
 from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
+from ...core.schema import NewerSchema
 from ...domain.planning import journal
 from ...domain.world.state import WorldState, load_state
 from .guard import guard
@@ -42,6 +43,16 @@ _NOT_BUILT = (
     "\n"
     "The JSON API is up regardless -- see /docs.\n"
 )
+
+
+def _newer(request: Request, exc: NewerSchema) -> JSONResponse:
+    """A 503 naming what cannot be read, never the file's path: nothing is written."""
+    what = "the factory names" if exc.path.parent == config.labels_dir() else "the plans"
+    text = (
+        f"{what} were saved by a newer version of satisfactory-mcp (schema {exc.found}; this "
+        f"one reads up to {exc.known}). Upgrade to read them; nothing was changed"
+    )
+    return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
 
 
 @lru_cache(maxsize=1)
@@ -87,6 +98,7 @@ def create_app(
     instance.state.game = load_game
     instance.state.watcher = SaveWatcher(prewarm=prewarm, tail=tail)
     instance.middleware("http")(guard)
+    instance.add_exception_handler(NewerSchema, _newer)
     # The whole JSON surface, in one loop over one tuple: there is no second include, so
     # ``ALL_ROUTERS`` alone decides registration order. See its declaration.
     for extracted in ALL_ROUTERS:
