@@ -17,8 +17,9 @@ import { applyFloorFragment } from "./floors";
 import { reload } from "./load";
 import { map, writeHash, writtenHash } from "./map";
 import { applyPickupFragment } from "./markers";
-import { dashOf, parseHash, pinnedPath, state } from "./state";
+import { dashOf, garbledNote, parseHash, pinnedPath, state } from "./state";
 import { setMode } from "./tiles";
+import { fail } from "./toast";
 import { syncPickers } from "./worlds";
 
 import type { BaseMode } from "./state";
@@ -91,7 +92,9 @@ function applyView(asked: Record<string, string>): void {
  */
 function apply(hash: string): void {
   if (hash === writtenHash()) return; // the page's own handwriting; see writtenHash
-  var asked = parseHash(hash);
+  var garbled: string[] = [];
+  var asked = parseHash(hash, garbled);
+  if (garbled.length) fail(garbledNote(garbled));
   var moved = applySubject(asked);
   // How much of the subject, before the picture and before the viewport: entering floor mode
   // flies the map, so a `#floor=…&z=…&c=…` that applied the viewport first would have its own

@@ -31,8 +31,9 @@ import { noteRegionChoice, updateRegionBlend } from "./regions";
 import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
 import { wireSearch } from "./search";
 import { listen } from "./sse";
-import { BOOT, state } from "./state";
+import { BOOT, BOOT_GARBLED, garbledNote, state } from "./state";
 import { loadBaseMap } from "./tiles";
+import { fail } from "./toast";
 import { listenForTraces } from "./trace";
 import { loadWorlds } from "./worlds";
 
@@ -126,6 +127,7 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
 listenForCopies();
 wireSearch();
 listenForTraces();
+if (BOOT_GARBLED.length) fail(garbledNote(BOOT_GARBLED));
 
 /* -------------------------------------------------------------------- boot */
 
