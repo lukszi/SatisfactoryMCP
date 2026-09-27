@@ -13,6 +13,9 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
+from fastapi.testclient import TestClient
+
+from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers import factories as web_factories
 
 # ------------------------------------------------------------------ factories
@@ -82,13 +85,13 @@ def test_a_proposal_the_player_already_named_is_not_proposed_again(client, state
         assert set(shown) < set(range(len(state.proposals)))
 
 
-def test_a_factory_whose_machines_are_all_gone_has_no_box_to_fly_to(
-    client, monkeypatch, reference_labels
-):
+def test_a_factory_whose_machines_are_all_gone_has_no_box_to_fly_to(labelled, game, monkeypatch):
     """A label outlives its machines -- that is the point of anchoring to instance ids --
     so the honest answer is a name with nowhere to go, not a zero box at the world centre
     that would fly the map to (0, 0) and read as a bug in the projection."""
     monkeypatch.setattr(web_factories.fidentity, "positions", lambda projection: {})
-    body = client.get("/api/factories").json()
+    app = create_app(state_loader=lambda save=None, world=None: labelled, game_loader=lambda: game)
+    with TestClient(app) as client:
+        body = client.get("/api/factories").json()
     assert body["labels"], "the labels survive; only their positions are gone"
     assert all(row["bbox_m"] is None for row in body["labels"])

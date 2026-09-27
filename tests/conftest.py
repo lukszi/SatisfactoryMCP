@@ -226,11 +226,12 @@ def state(game, projection) -> WorldState:
 
 
 @pytest.fixture
-def reference_labels(tmp_path, monkeypatch) -> Path:
-    """The reference world's factory names, in a private label store.
+def labelled(game, projection, tmp_path, monkeypatch) -> WorldState:
+    """The fixture world with its own factory names, read from a private label store.
 
-    ``tier 1&2`` and ``steel factory`` are the reference world's own labels, so a test that
-    names them reads this copy rather than whatever the machine's label store holds.
+    ``tier 1&2`` and ``steel factory`` are the reference world's labels, so a test that names
+    them reads this copy rather than whatever the machine's label store holds. A fresh state,
+    because ``state`` is shared and caches the labels it saw first.
     """
     labels = tmp_path / "labels"
     labels.mkdir()
@@ -238,7 +239,7 @@ def reference_labels(tmp_path, monkeypatch) -> Path:
         (FIXTURES / "labels_reference.json").read_bytes()
     )
     monkeypatch.setattr(config, "labels_dir", lambda: labels)
-    return labels
+    return WorldState(projection=projection, game=game)
 
 
 def _explode(save=None, world=None):
