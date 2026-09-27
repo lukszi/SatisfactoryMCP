@@ -71,11 +71,17 @@ function altDash(key: string, item: string): string {
   return "planner/" + key + "/alt/" + item;
 }
 
+function goAlt(plan: string, at: string): void {
+  var switching = subject() === plan && dashParts().rest[1] === "alt";
+  if (!switching) bench.altBack = false;
+  go(at, switching);
+}
+
 function closeAlternates(): void {
-  var opener = hideAlternates();
-  refocus = opener;
-  if (opener && dashParts().rest[1] === "alt") history.back();
-  else go("planner/" + bench.key);
+  var back = bench.altBack && dashParts().rest[1] === "alt";
+  refocus = hideAlternates();
+  if (back) history.back();
+  else go("planner/" + bench.key, true);
   changed();
 }
 
@@ -132,6 +138,12 @@ function draw(): void {
     if (mounted) renderBench(root, select, closeAlternates);
     else renderList(root);
   });
+  var alt = bench.alt;
+  var shut = alt && alt.enter && parts(dashParts().subject).alt === alt.item ? root.querySelector<HTMLElement>('[data-ctl="alt-close"]') : null;
+  if (alt && shut) {
+    alt.enter = false;
+    shut.focus();
+  }
   if (refocus) {
     var back = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(refocus) + '"]');
     if (back) {
@@ -247,14 +259,15 @@ export function onActivityEvent(entry: ActivityEvent): void {
   var who = actorWord(entry.actor);
   var args = entry.args || {};
   if (entry.kind === "plan.view" && entry.plan && args.view === "alternates" && typeof args.item === "string") {
-    var at = altDash(entry.plan, args.item);
+    var plan = entry.plan;
+    var at = altDash(plan, args.item);
     if (mode === "toasts") {
       offer(who + " " + entry.text, "open", function () {
-        go(at);
+        goAlt(plan, at);
       });
     } else if (state.dash !== at) {
       whenIdle(function () {
-        go(at);
+        goAlt(plan, at);
       });
     }
     return;

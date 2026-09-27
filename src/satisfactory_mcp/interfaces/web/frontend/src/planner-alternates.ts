@@ -3,8 +3,8 @@
 
 import { button, chip, empty, error, loading, table } from "./dashkit";
 import { make } from "./dom";
-import { count, mw, perMin } from "./format";
-import { bench, gesture, loadAlternates } from "./planner-core";
+import { count, mw, perMin, signed } from "./format";
+import { bench, gesture, loadAlternates, pushing } from "./planner-core";
 import { counted, W } from "./words";
 
 import type { Column } from "./dashkit";
@@ -19,10 +19,6 @@ function ops(list: PlanOpBody[]): Op[] {
   });
 }
 
-function signed(n: number, text: string): string {
-  return (n > 0 ? "+" : "") + text;
-}
-
 function shown(o: SwapOption): boolean {
   return o.solved && !!o.delta && o.delta.comparable;
 }
@@ -30,7 +26,7 @@ function shown(o: SwapOption): boolean {
 function machines(o: SwapOption): string {
   if (!o.solved || !o.delta) return NONE;
   if (!o.delta.comparable) return o.delta.text;
-  return signed(o.delta.machines, count(o.delta.machines));
+  return signed(o.delta.machines, count);
 }
 
 function power(o: SwapOption, field: "mw_draw" | "mw_net"): string {
@@ -47,11 +43,11 @@ function raw(o: SwapOption): string | HTMLElement {
   var cell = make("span", "");
   cell.title = moved
     .map(function (r: DeltaRow) {
-      return signed(r.delta, perMin(r.delta)) + " " + r.name;
+      return signed(r.delta, perMin) + " " + r.name;
     })
     .join("\n");
   moved.slice(0, 2).forEach(function (r: DeltaRow) {
-    cell.appendChild(make("span", "plan-raw", signed(r.delta, perMin(r.delta)) + " " + r.name));
+    cell.appendChild(make("span", "plan-raw", signed(r.delta, perMin) + " " + r.name));
   });
   if (moved.length > 2) cell.appendChild(make("span", "plan-raw dash-sub", counted(moved.length - 2, "more input", "more inputs")));
   return cell;
@@ -61,6 +57,15 @@ function recipeCell(o: SwapOption): HTMLElement {
   var cell = make("span", "", o.name);
   if (o.status === "locked" && o.granted_by.length) cell.appendChild(make("span", "dash-sub", "granted by " + o.granted_by.join(", ")));
   return cell;
+}
+
+function settled(): boolean {
+  var alt = bench.alt;
+  return !!alt && !!alt.data && !alt.asked && !pushing() && !!bench.plan && alt.data.rev === bench.plan.rev;
+}
+
+function act(list: Op[]): void {
+  if (settled()) gesture(list);
 }
 
 function acts(o: SwapOption): HTMLElement {
@@ -78,7 +83,7 @@ function acts(o: SwapOption): HTMLElement {
       button(
         "require",
         function () {
-          gesture(require);
+          act(require);
         },
         { title: "make every " + (bench.alt && bench.alt.data ? bench.alt.data.name : "unit") + " in this plan with " + o.name, label: "require " + o.name }
       )
@@ -89,7 +94,7 @@ function acts(o: SwapOption): HTMLElement {
       button(
         "ban",
         function () {
-          gesture(ban);
+          act(ban);
         },
         { title: "keep " + o.name + " out of this plan", label: "ban " + o.name }
       )
@@ -100,13 +105,15 @@ function acts(o: SwapOption): HTMLElement {
       button(
         W.letSolverChoose,
         function () {
-          gesture(free);
+          act(free);
         },
         { title: "drop " + o.name + " from the required and banned lists", label: W.letSolverChoose + " for " + o.name }
       )
     );
   }
+  var live = settled();
   box.querySelectorAll("button").forEach(function (b) {
+    if (!live) b.setAttribute("aria-disabled", "true");
     b.setAttribute("data-ctl", "alt:" + o.recipe_id);
   });
   return box;
@@ -179,14 +186,16 @@ export function renderAlternates(parent: HTMLElement, close: () => void): void {
   var head = make("div", "dash-title");
   head.appendChild(make("h2", "dash-h", "recipes for " + name + (data ? " · v" + data.rev : "")));
   if (alt.asked) head.appendChild(make("span", "plan-status", "solving v" + alt.asked + "…"));
-  head.appendChild(button("×", close, { title: "close the recipes (Escape)", label: "close the recipes for " + name }));
+  var shut = button("×", close, { title: "close the recipes (Escape)", label: "close the recipes for " + name });
+  shut.setAttribute("data-ctl", "alt-close");
+  head.appendChild(shut);
   drawer.appendChild(head);
   if (alt.error) {
     error(drawer, "the recipes", alt.error, loadAlternates);
   } else if (!data) {
     loading(drawer, "the recipes for " + name);
   } else {
-    var body = make("div", alt.asked ? "plan-stale" : "");
+    var body = make("div", settled() ? "" : "plan-stale");
     if (!data.head_feasible) body.appendChild(make("p", "plan-warning", "v" + data.rev + " is not solvable"));
     if (!data.options.length) empty(body, "no recipe makes " + name);
     else body.appendChild(optionTable(data.options));

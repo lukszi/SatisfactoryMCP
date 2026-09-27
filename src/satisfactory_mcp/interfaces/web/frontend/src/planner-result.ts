@@ -5,7 +5,7 @@ import { button, chip, copyButton, error, loading, table, tabs2 } from "./dashki
 import { make } from "./dom";
 import { count, flow, mw, pct } from "./format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "./graph";
-import { go } from "./nav";
+import { dashParts, go } from "./nav";
 import { vitals } from "./panel";
 import { renderAlternates } from "./planner-alternates";
 import { bench, changed, gesture, showAlternates, undoRev } from "./planner-core";
@@ -36,6 +36,7 @@ var order: SortState = { key: "building", desc: false };
 
 var POWER = "MW";
 var FLASH_MS = 4000;
+var WIDE = window.matchMedia("(min-width: 1280px)");
 var TABS: { id: ResultTab; label: string }[] = [
   { id: "build list", label: "build list" },
   { id: "graph", label: "graph" },
@@ -177,6 +178,10 @@ function mainItem(data: SolveResponse, row: SolveRow): string | null {
   return node ? node.item : null;
 }
 
+WIDE.addEventListener("change", function () {
+  if (bench.alt) changed();
+});
+
 function pickRow(row: SolveRow, select: (s: Selection) => void): void {
   bench.picked = row.id;
   select({ kind: "process", label: row.building + " · " + row.recipe, ref: row.recipe_id || row.recipe });
@@ -188,8 +193,10 @@ function recipesButton(item: string, name: string, where: string): HTMLButtonEle
   var b = button(
     W.recipes,
     function () {
+      var switching = dashParts().rest[1] === "alt";
       showAlternates(item, ctl);
-      go("planner/" + bench.key + "/alt/" + item);
+      if (!switching) bench.altBack = true;
+      go("planner/" + bench.key + "/alt/" + item, switching);
     },
     { title: "every recipe for " + name + " and what requiring each would change", label: "recipes for " + name }
   );
@@ -550,10 +557,12 @@ export function renderResult(parent: HTMLElement, select: (s: Selection) => void
       "result view"
     )
   );
-  var split = make("div", "plan-result" + (bench.alt && bench.tab === "graph" ? " beside" : ""));
+  var beside = !!bench.alt && bench.tab === "graph" && WIDE.matches;
+  var split = make("div", "plan-result" + (beside ? " beside" : ""));
   var main = make("div", "plan-main" + (bench.solving && bench.solving !== bench.resultRev ? " plan-stale" : ""));
+  if (bench.alt && !beside) renderAlternates(split, close);
   split.appendChild(main);
-  if (bench.alt) renderAlternates(split, close);
+  if (bench.alt && beside) renderAlternates(split, close);
   var frame = bench.tab === "graph" ? graphTab(main, data, select) : null;
   if (bench.tab !== "graph") buildList(main, data, select, true);
   parent.appendChild(split);

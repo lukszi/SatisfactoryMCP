@@ -4,7 +4,7 @@
 import { get, latest } from "./api";
 import { button, chip, empty, error, heading, link, loading, note, table, tabs2, tile } from "./dashkit";
 import { make } from "./dom";
-import { count, mw, num, pct, perMin } from "./format";
+import { count, mw, num, pct, perMin, signed } from "./format";
 import { enterFloors } from "./floors";
 import { hashFor } from "./map";
 import { showBox } from "./panel";
@@ -192,9 +192,10 @@ function card(parent: HTMLElement, title: string): HTMLElement {
   return section;
 }
 
-function signed(value: number): string {
-  if (Math.abs(value) < 0.05) return "0";
-  return (value > 0 ? "+" : "−") + perMin(Math.abs(value), false);
+function net(value: number): string {
+  return signed(value, function (magnitude) {
+    return perMin(magnitude, false);
+  });
 }
 
 var flowSort: SortState = { key: "net", desc: true };
@@ -264,7 +265,7 @@ function renderFlows(body: HTMLElement, data: FactoryAspectsResponse): void {
             return r.net;
           },
           render: function (r) {
-            return signed(r.net);
+            return net(r.net);
           },
         },
         {
@@ -276,7 +277,7 @@ function renderFlows(body: HTMLElement, data: FactoryAspectsResponse): void {
             return r.measured_net === null ? -Infinity : r.measured_net;
           },
           render: function (r) {
-            return r.measured_net === null ? "–" : signed(r.measured_net);
+            return r.measured_net === null ? "–" : net(r.measured_net);
           },
         },
         {

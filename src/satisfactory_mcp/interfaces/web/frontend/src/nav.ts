@@ -21,6 +21,7 @@ export function dashParts(dash?: string): DashParts {
   };
 }
 
-export function go(dash: string): void {
-  location.hash = hashFor(dash);
+export function go(dash: string, replace?: boolean): void {
+  if (replace) location.replace(hashFor(dash));
+  else location.hash = hashFor(dash);
 }

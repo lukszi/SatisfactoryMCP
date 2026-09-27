@@ -74,6 +74,7 @@ export interface AltView {
   seq: number;
   asked: number;
   opener: string;
+  enter: boolean;
 }
 
 var ALTERNATES: ApiPath = "/api/plan/alternates";
@@ -100,6 +101,7 @@ export var bench = {
   picked: "",
   tab: "build list" as ResultTab,
   alt: null as AltView | null,
+  altBack: false,
   chatRows: {} as Record<string, true>,
   versions: null as VersionsResponse | null,
   versionsOpen: false,
@@ -189,6 +191,10 @@ export function knownItem(text: string): string | null {
   return hit || null;
 }
 
+export function pushing(): boolean {
+  return inflight > 0;
+}
+
 export function status(): string {
   if (inflight) return "pushing…";
   if (bench.chips.length) return "conflict";
@@ -232,6 +238,7 @@ export function reset(key: string): void {
   bench.selection = null;
   bench.picked = "";
   bench.alt = null;
+  bench.altBack = false;
   bench.chatRows = {};
   bench.versions = null;
   bench.versionsError = "";
@@ -299,16 +306,20 @@ function adopt(plan: PlanStateBody): void {
 
 export function showAlternates(item: string, opener?: string): void {
   if (bench.alt && bench.alt.item === item) {
-    if (opener) bench.alt.opener = opener;
+    if (opener) {
+      bench.alt.opener = opener;
+      bench.alt.enter = true;
+    }
     return;
   }
-  bench.alt = { item: item, data: null, error: "", seq: 0, asked: 0, opener: opener || "" };
+  bench.alt = { item: item, data: null, error: "", seq: 0, asked: 0, opener: opener || "", enter: !!opener };
   loadAlternates();
 }
 
 export function hideAlternates(): string {
   var opener = bench.alt ? bench.alt.opener : "";
   bench.alt = null;
+  bench.altBack = false;
   return opener;
 }
 

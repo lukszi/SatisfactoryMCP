@@ -68,7 +68,6 @@ function labelCell(p: PinRow, redraw: () => void): HTMLElement | string {
 }
 
 function place(p: PinRow): HTMLElement | string {
-  if (p.gone) return "";
   if (p.x_m !== null && p.y_m !== null) {
     return button(
       "map",
@@ -78,7 +77,7 @@ function place(p: PinRow): HTMLElement | string {
       { map: true, title: "fly the map to " + p.id + " and open it", label: "show " + p.id + " on the map" }
     );
   }
-  if (p.ref.plan) return link("planner/" + p.ref.plan, "open plan", "btn btn-map");
+  if (p.ref.plan && !p.gone) return link("planner/" + p.ref.plan, "open plan", "btn btn-map");
   return "";
 }
 

@@ -35,11 +35,13 @@ register(pathToFileURL(process.env.FORMAT_HOOK).href);
 RUN = """import { pathToFileURL } from "node:url";
 const m = await import(pathToFileURL(process.argv[2]).href);
 const cases = JSON.parse(process.argv[3]);
-console.log(JSON.stringify(cases.map(([v, signed]) => m.mw(v, { signed }))));
+const say = { count: m.count, perMin: (n) => m.perMin(n), bare: (n) => m.perMin(n, false) };
+console.log(JSON.stringify(cases.map(([v, signed]) =>
+  typeof signed === "string" ? m.signed(v, say[signed]) : m.mw(v, { signed }))));
 """
 
 
-def _mw(tmp_path: Path, cases: list[tuple[float, bool]]) -> list[str]:
+def _mw(tmp_path: Path, cases: list[tuple[float, bool | str]]) -> list[str]:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -74,3 +76,8 @@ def test_mw_rounds_a_half_away_from_zero_on_both_signs(tmp_path):
 
 def test_mw_keeps_small_negatives_unsigned_zero(tmp_path):
     assert _mw(tmp_path, [(-0.4, True), (0.4, True), (-0.5, True)]) == ["0 MW", "0 MW", "-1 MW"]
+
+
+def test_signed_shares_one_sign_rule_across_units(tmp_path):
+    got = _mw(tmp_path, [(3, "count"), (-3, "count"), (0, "count"), (-12.34, "perMin"), (0.04, "bare"), (-0.04, "bare")])
+    assert got == ["+3", "-3", "0", "-12.3/min", "0", "0"]

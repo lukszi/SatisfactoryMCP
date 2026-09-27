@@ -2924,22 +2924,18 @@ path.lasso-area {
 }
 
 .plan-result > .plan-drawer {
-  order: -1;
   margin-bottom: var(--sp-2);
 }
 
-@media (min-width: 1280px) {
-  .plan-result.beside {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 56%);
-    gap: var(--sp-2);
-    align-items: start;
-  }
+.plan-result.beside {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 56%);
+  gap: var(--sp-2);
+  align-items: start;
+}
 
-  .plan-result.beside > .plan-drawer {
-    order: 0;
-    margin-bottom: 0;
-  }
+.plan-result.beside > .plan-drawer {
+  margin-bottom: 0;
 }
 
 .pin-rename {
