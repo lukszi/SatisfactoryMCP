@@ -1,7 +1,7 @@
 /* The dashboard's Factories tab: the named factories, unnamed-cluster detection and the
  * production graph, addressed as `dash=factories[/<name>]`. */
 
-import { get, send } from "./api";
+import { get, latest, send } from "./api";
 import { button, cell, heading, link, note, table as kitTable, tile } from "./dashkit";
 import { count, make } from "./dom";
 import { mw, pct, spoken } from "./format";
@@ -12,11 +12,13 @@ import { stateTone } from "./placements";
 import { refreshLabels, renamedTo } from "./rename";
 import { amount, choice, onSetting, setting } from "./settings";
 import { state } from "./state";
+import { tone, toneClass } from "./states";
 import { fail, friendly, note as said } from "./toast";
 import { startTrace } from "./trace";
 import { actionButton, factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, table, toMap } from "./dashboard";
-import { actionable, FINE, mixBar, mixOf, needsAction } from "./overview";
+import { actionable, mixBar, mixOf } from "./overview";
 
+import type { Ticket } from "./api";
 import type {
   CandidateRow,
   CandidatesResponse,
@@ -147,13 +149,18 @@ function detectPath(): `/api/factories/candidates?${string}` {
   ) as `/api/factories/candidates?${string}`;
 }
 
+var detectRun: Ticket | null = null;
+
 function runDetect(keep?: boolean): void {
+  var ticket = latest("detect");
+  detectRun = ticket;
   detect.busy = true;
   detect.error = "";
   detect.asked = detectAsked();
   render();
   get<CandidatesResponse>(detectPath())
     .then(function (data) {
+      if (!ticket.fresh()) return;
       detect.data = data;
       detect.world = state.world;
       if (!keep) {
@@ -162,10 +169,12 @@ function runDetect(keep?: boolean): void {
       }
     })
     .catch(function (error) {
+      if (!ticket.fresh()) return;
       detect.data = null;
       detect.error = friendly(error);
     })
     .then(function () {
+      if (detectRun !== ticket) return;
       detect.busy = false;
       render();
     });
@@ -606,7 +615,8 @@ export function renderFactory(body: HTMLElement, name: string): void {
   });
   type StateRow = FactoryHealthRow["states"][number];
   function toneOf(s: StateRow): string {
-    return stateTone(s.state, needsAction(s.state));
+    var shade = tone(s.state);
+    return shade === "bad" || shade === "blocked" ? shade : "";
   }
   states.appendChild(
     kitTable<StateRow>(
@@ -631,9 +641,8 @@ export function renderFactory(body: HTMLElement, name: string): void {
           label: "",
           className: "bar",
           render: function (s) {
-            var ok = FINE.indexOf(s.state) >= 0;
             var bar = make("div", "dash-hbar");
-            var fill = make("span", "dash-mix-" + (toneOf(s) || (ok ? "ok" : "mid")));
+            var fill = make("span", "dash-mix-" + toneClass(tone(s.state)));
             fill.style.width = (s.count / biggest) * 100 + "%";
             bar.appendChild(fill);
             return bar;

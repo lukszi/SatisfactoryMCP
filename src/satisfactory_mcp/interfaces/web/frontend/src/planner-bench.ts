@@ -2,6 +2,7 @@
 
 import { COPY_ATTR, COPY_CLASS, make } from "./dom";
 import { hashFor } from "./map";
+import { go } from "./nav";
 import {
   age,
   applyArgs,
@@ -33,9 +34,7 @@ var OBJECTIVES: [string, string][] = [
 
 var CLOCKS = [1, 1.5, 2, 2.5];
 
-export function go(dash: string): void {
-  location.hash = hashFor(dash);
-}
+export { go };
 
 export function back(parent: HTMLElement, text: string): void {
   var a = make("a", "dash-back", text);

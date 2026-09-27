@@ -9,6 +9,8 @@ import { count } from "./dom";
 
 import type { Region } from "./api-shapes";
 
+export { count };
+
 /* A resource class as the short name the whole page uses: Desc_OreIron_C -> OreIron. */
 export function shortResource(resource: string | null | undefined): string {
   return String(resource || "")
@@ -36,8 +38,18 @@ export function phaseText(raw: string | null | undefined): string | null {
   return raw;
 }
 
-export function mw(value: number): string {
-  return count(Math.round(value)) + " MW";
+export function mw(value: number, options?: { signed?: boolean }): string {
+  var whole = Math.round(value) + 0;
+  return (options && options.signed && whole > 0 ? "+" : "") + count(whole) + " MW";
+}
+
+export function num(value: number, dp?: number): string {
+  var scale = Math.pow(10, dp === undefined ? 1 : dp);
+  return count(Math.round(value * scale) / scale + 0);
+}
+
+export function perMin(value: number, unit?: boolean): string {
+  return num(value, 1) + (unit === false ? "" : "/min");
 }
 
 export function pct(value: number | null | undefined): string {
