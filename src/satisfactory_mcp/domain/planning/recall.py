@@ -46,6 +46,11 @@ PLAN_DEFAULTS: dict = {
 }
 
 
+def overrides_of(supplied: dict) -> dict:
+    """The arguments this call set away from their declared default: what it overrode."""
+    return {k: v for k, v in supplied.items() if k in PLAN_DEFAULTS and v != PLAN_DEFAULTS[k]}
+
+
 def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[str]]:
     """Merge a stored plan's arguments with anything explicitly overridden this call.
 
@@ -59,7 +64,7 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
         known = ", ".join(x.name for x in st.plans.plans) or "(none saved yet)"
         raise KeyError(f"no saved plan named {plan!r}. Saved: {known}")
 
-    overrides = {k: v for k, v in clean.items() if v != PLAN_DEFAULTS.get(k)}
+    overrides = overrides_of(clean)
     merged = {**PLAN_DEFAULTS, **stored.kwargs(), **overrides}
     notes = [f'recalled plan "{stored.name}" v{stored.rev}']
     if stored.notes:

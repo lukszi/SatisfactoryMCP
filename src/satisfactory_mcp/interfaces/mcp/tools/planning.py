@@ -42,7 +42,7 @@ from ....domain.planning.planlog import (
     describe_op,
 )
 from ....domain.planning.prepare import prepare
-from ....domain.planning.recall import PLAN_DEFAULTS
+from ....domain.planning.recall import PLAN_DEFAULTS, overrides_of
 from ....domain.planning.recall import recall_plan as _plan_kwargs
 from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
@@ -722,13 +722,48 @@ def _save_new(st, name, plan_kwargs, logistics, labels, field, plan_id, sit, ctx
     )
 
 
-def _save_over(st, existing, base_rev, plan_kwargs, logistics, labels, sit, ctx):
+def _save_target(st, save_as: str, base_rev):
+    """The stored plan ``save_as`` writes over, or None for a new one; or a refusal.
+
+    A live name wins. Failing that, with ``base_rev``, the plan that carried that name at
+    ``base_rev`` (renamed since) or whose key it is, so a rename merges instead of forking.
+    """
+    live = _live_named(st, save_as)
+    if live is not None or base_rev is None:
+        return live, ""
+    log = _log(st)
+    wanted = save_as.strip().casefold()
+    hits = []
+    for state in log.heads(include_forgotten=True):
+        if state.key == wanted and not state.forgotten:
+            return state, ""
+        if not isinstance(base_rev, int) or not 1 <= base_rev <= state.rev:
+            continue
+        try:
+            then = log.state(state.key, base_rev)
+        except PlanLogError:
+            continue
+        if not then.forgotten and then.name.casefold() == wanted:
+            hits.append(state)
+    if len(hits) > 1:
+        keys = ", ".join(f'"{s.name}" (key {s.key})' for s in hits)
+        return None, (
+            f'! no plan is called "{save_as}" now, and {len(hits)} plans were at '
+            f"v{base_rev}: {keys}. Pass save_as=<key>; nothing saved"
+        )
+    return (hits[0] if hits else None), ""
+
+
+def _save_over(st, existing, base_rev, plan_kwargs, logistics, labels, sit, ctx, overrides=None):
     notes, factory = labels
     log = _log(st)
 
     def push() -> Pushed:
         base = log.state(existing.key, base_rev)
-        args = dict(plan_kwargs)
+        if overrides is None:
+            args = dict(plan_kwargs)
+        else:
+            args = {**PLAN_DEFAULTS, **base.kwargs(), **overrides}
         args["logistics_items"] = (
             list(logistics) if logistics is not None else list(base.args.logistics_items)
         )
@@ -901,9 +936,14 @@ def plan_factory(
     if refused:
         return refused
 
-    existing = _live_named(st, save_as) if save_as else None
+    existing, refusal = _save_target(st, save_as, base_rev) if save_as else (None, "")
+    if refusal:
+        return refusal
     if existing is not None and base_rev is None:
         return _needs_base(existing.name, existing.rev, "nothing saved")
+    if plan and existing is not None and plan.strip().casefold() == save_as.strip().casefold():
+        if st.plans.find(existing.key) is not None:
+            plan = existing.key
 
     supplied = dict(
         objective=objective,
@@ -974,7 +1014,7 @@ def plan_factory(
         path = PlanLog.dir_for(st.world_id)
         pinned = "; ".join(f"{e['selector']}={e['count']} node(s)" for e in field["selectors"])
         recall = (
-            f"Recall with plan={save_as.strip()!r} on plan_factory, plan_layout or diff_vs_save"
+            f"Recall with plan={(existing.name if existing else save_as.strip())!r} on plan_factory, plan_layout or diff_vs_save"
             + (f". Field recorded: {pinned}" if pinned else "")
             + (f". Sited: {sit.describe()}" if sit is not None else "")
         )
@@ -1002,6 +1042,8 @@ def plan_factory(
             if base_rev is not None:
                 save_as_note += f". base_rev={base_rev} was ignored: this is a new plan"
         else:
+            recalled = st.plans.find(plan) if plan else None
+            same = recalled is not None and recalled.key == existing.key
             pushed, tail = _save_over(
                 st,
                 existing,
@@ -1011,6 +1053,7 @@ def plan_factory(
                 (plan_notes_text, for_factory),
                 sit,
                 ctx,
+                overrides_of(supplied) if same else None,
             )
             if pushed is not None:
                 save_as_note = f'saved over "{pushed.state.name}" in {path}. {recall}'

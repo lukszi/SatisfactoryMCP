@@ -124,6 +124,57 @@ def test_a_busy_lock_writes_nothing_and_says_so(log, monkeypatch):
     assert srv.rename_plan(name="north oil", to="x", base_rev=1) == planning.BUSY
 
 
+def _over(log, key, base_rev, overrides, whole=None):
+    head = log.state(key)
+    kwargs = whole if whole is not None else {**planning.PLAN_DEFAULTS, **head.kwargs(), **overrides}
+    return planning._save_over(
+        _World(), head, base_rev, kwargs, None, ("", ""), None, None, overrides
+    )
+
+
+def test_a_recalled_save_diffs_only_what_chat_overrode_against_its_base(log):
+    key = _key(log)
+    log.push(key, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
+    log.push(key, 2, [{"op": "set", "field": "sloops", "value": 3}], actor=PAGE)
+    head = log.state(key)
+    stale = {**planning.PLAN_DEFAULTS, **head.kwargs(), "water_extractors": 5}
+    pushed, tail = planning._save_over(
+        _World(), head, 1, stale, None, ("", ""), None, None, None
+    )
+    assert pushed is None and "sloops: you 3, page set 2 in v2" in tail
+
+    pushed, tail = _over(log, key, 1, {"water_extractors": 5})
+    assert pushed is not None, tail
+    now = log.state(key)
+    assert (now.rev, now.args.sloops, now.args.water_extractors) == (4, 3, 5)
+
+
+def test_a_save_over_a_plan_renamed_since_base_rev_merges_into_it(log):
+    key = _key(log)
+    log.push(key, 1, [{"op": "rename", "name": "coast oil"}], actor=PAGE)
+    assert planning._save_target(_World(), "north oil", None) == (None, "")
+    target, refusal = planning._save_target(_World(), "north oil", 1)
+    assert refusal == "" and target.key == key
+    assert planning._save_target(_World(), key, 2)[0].key == key
+
+    pushed, tail = _over(log, key, 1, {"sloops": 2})
+    assert pushed is not None, tail
+    now = log.state(key)
+    assert (now.name, now.args.sloops) == ("coast oil", 2)
+    assert len(log.heads()) == 1
+
+
+def test_a_stale_name_two_plans_carried_is_refused_not_guessed(log):
+    first = _key(log)
+    log.push(first, 1, [{"op": "rename", "name": "coast oil"}], actor=PAGE)
+    second = log.create("north oil", {}, actor=PAGE).key
+    log.push(second, 1, [{"op": "rename", "name": "desert oil"}], actor=PAGE)
+    target, refusal = planning._save_target(_World(), "north oil", 1)
+    assert target is None
+    assert refusal.startswith('! no plan is called "north oil" now, and 2 plans were at v1')
+    assert refusal.endswith("Pass save_as=<key>; nothing saved")
+
+
 # ------------------------------------------------------------------ plan_log
 
 
@@ -262,6 +313,21 @@ def test_save_as_creates_then_needs_base_rev_then_merges(scratch, game):
     head = PlanLog(world).state(key)
     assert (head.rev, head.args.sloops, head.notes) == (3, 1, "page")
     assert head.plan_id, "the stamp recorded the new head's solve-input hash"
+
+
+@pytest.mark.integration
+def test_recall_and_save_over_one_plan_merges_page_edits_made_since(scratch, game):
+    srv.plan_factory(save_as="probe", **PROBE)
+    world = srv._state().world_id
+    key = PlanLog(world).find("probe").key
+    PlanLog(world).push(key, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
+    PlanLog(world).push(key, 2, [{"op": "set", "field": "sloops", "value": 3}], actor=PAGE)
+    PlanLog(world).push(key, 3, [{"op": "rename", "name": "probe two"}], actor=PAGE)
+    out = srv.plan_factory(plan="probe", save_as="probe", base_rev=1, water_extractors=5, limit=2)
+    assert "merged onto v4 (you were on v1) -> now v5" in out
+    head = PlanLog(world).state(key)
+    assert (head.name, head.args.sloops, head.args.water_extractors) == ("probe two", 3, 5)
+    assert len(PlanLog(world).heads()) == 1
 
 
 @pytest.mark.integration
