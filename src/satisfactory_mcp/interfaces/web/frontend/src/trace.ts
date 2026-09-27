@@ -218,8 +218,13 @@ function render(): void {
     if (data.items.length > SHOWN) items.appendChild(make("li", "trace-more", data.items.length - SHOWN + " more"));
     box.appendChild(items);
   }
+  var groupIds = new Set(
+    data.groups.map(function (g) {
+      return g.id;
+    })
+  );
   var flows = data.edges.filter(function (e) {
-    return e.per_min !== null && e.target.indexOf(":") < 0 && e.target.indexOf("|") > 0;
+    return e.per_min !== null && groupIds.has(e.target);
   });
   flows.sort(function (a, b) {
     return (b.per_min || 0) - (a.per_min || 0);

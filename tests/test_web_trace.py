@@ -90,3 +90,21 @@ def test_a_stale_pin_is_refused(api):
         api.get("/api/trace", params={"seed": CONSTRUCTOR, "as_of": "sav:000000000000"}).status_code
         == 409
     )
+
+
+def test_an_alternate_recipe_group_is_an_edge_target_despite_its_colon(game):
+    """The trace card once kept only targets without a ``:``, which dropped every flow
+    into a group named for an alternate recipe; group ids are the only safe test."""
+    from fastapi.testclient import TestClient
+
+    from satisfactory_mcp.interfaces.web.app import create_app
+
+    projection = _projection()
+    projection["machines"][1]["recipe"] = "Recipe_Alternate_Screw_C"
+    plant = WorldState(projection=projection, game=game)
+    app = create_app(state_loader=lambda save=None, world=None: plant, game_loader=lambda: game)
+    with TestClient(app) as c:
+        body = c.get("/api/trace", params={"seed": CONSTRUCTOR}).json()
+    groups = {g["id"] for g in body["groups"]}
+    into = [e for e in body["edges"] if e["target"] in groups and e["item"] == "Iron Ingot"]
+    assert into and all(":" in e["target"] for e in into)
