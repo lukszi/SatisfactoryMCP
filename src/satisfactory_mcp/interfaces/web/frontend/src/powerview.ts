@@ -109,7 +109,7 @@ export function readFull(r: Rated): Reading {
 }
 
 export function biomassLine(ledger: Figures): string {
-  return ledger.biomass_generators ? mw(ledger.biomass_mw, { signed: true }) + " " + W.biomassNotCounted : "";
+  return ledger.biomass_generators && ledger.biomass_mw > 0 ? mw(ledger.biomass_mw, { signed: true }) + " " + W.biomassNotCounted : "";
 }
 
 export interface Where {
