@@ -23,6 +23,7 @@ from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...domain.world.state import WorldState, load_state
+from .guard import guard
 from .routers import ALL_ROUTERS
 from .watch import SaveWatcher
 
@@ -79,6 +80,7 @@ def create_app(
     instance.state.load_state = load
     instance.state.game = load_game
     instance.state.watcher = SaveWatcher(prewarm=prewarm)
+    instance.middleware("http")(guard)
     # The whole JSON surface, in one loop over one tuple: there is no second include, so
     # ``ALL_ROUTERS`` alone decides registration order. See its declaration.
     for extracted in ALL_ROUTERS:

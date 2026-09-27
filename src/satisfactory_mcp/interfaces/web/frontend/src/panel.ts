@@ -9,6 +9,7 @@ import { hashFor, map } from "./map";
 import { declareColours } from "./palette";
 import { stateTone } from "./placements";
 import { registerFetch } from "./registry";
+import { editName } from "./rename";
 
 import type {
   CircuitRow,
@@ -45,6 +46,8 @@ var view = {
 var mark = L.layerGroup();
 
 var listeners: Array<() => void> = [];
+
+var renaming = false;
 
 export interface Vitals {
   health: FactoryHealthResponse | null;
@@ -211,7 +214,27 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
     )
   );
   item.appendChild(stateChips(row));
-  if (selected) item.appendChild(dashLink("factories/" + row.name, "open in dashboard ›"));
+  if (selected) {
+    var tools = make("div", "panel-row-tools");
+    tools.appendChild(dashLink("factories/" + row.name, "open in dashboard ›"));
+    var rename = make("button", "panel-rename", "rename");
+    rename.type = "button";
+    rename.title = "rename this factory";
+    rename.onclick = function (event) {
+      event.stopPropagation();
+      var health = view.health;
+      var nameEl = head.querySelector<HTMLElement>(".panel-row-name");
+      if (!health || !nameEl) return;
+      renaming = true;
+      editName(nameEl, row.name, health.labels_version, function (reply) {
+        renaming = false;
+        if (reply) view.factory = reply.name;
+        render();
+      });
+    };
+    tools.appendChild(rename);
+    item.appendChild(tools);
+  }
   if (selected && row.worst.length) {
     var list = make("ul", "panel-issues");
     row.worst.forEach(function (issue) {
@@ -418,6 +441,7 @@ function renderPower(body: HTMLElement): void {
 }
 
 function render(): void {
+  if (renaming) return;
   var panel = el("panel");
   panel.className = view.open ? "" : "shut";
   var tabs = panel.querySelectorAll<HTMLButtonElement>("[data-tab]");
@@ -461,6 +485,11 @@ export function showCircuit(index: number): void {
 
 export function showPoint(x_m: number, y_m: number): void {
   pin(x_m, y_m);
+}
+
+export function showBox(bbox_m: [number, number, number, number]): void {
+  var bounds = flyToFactory(bbox_m);
+  if (bounds) outline(bounds);
 }
 
 function scrollToFactory(): void {

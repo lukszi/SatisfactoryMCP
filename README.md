@@ -119,6 +119,10 @@ Both locations are auto-detected:
   with `SATISFACTORY_SAVES`.
 - **Game data**: `CommunityResources/Docs/en-US.json` under common Steam and Epic install
   paths. Override with `SATISFACTORY_DOCS` (pointing at the `en-US.json` file itself).
+- **Your factory names and plans** are kept in the platform's user data directory
+  (`%LOCALAPPDATA%\satisfactory-mcp`). Override with `SATISFACTORY_USER_DATA`. Pointing it at
+  an empty folder lets you try naming without touching your real labels.
+  `satisfactory-mcp-web --port N` serves the map on another port.
 
 Saves are grouped into worlds; within a world the newest save is used by default, and every
 answer says which file it read.

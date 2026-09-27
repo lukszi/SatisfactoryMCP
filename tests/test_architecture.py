@@ -1530,6 +1530,9 @@ def _annotation_name(node: ast.expr | None) -> str | None:
     return None
 
 
+WRITE_VERBS = frozenset({"post", "put", "patch", "delete"})
+
+
 def _get_routes() -> list[tuple[str, str, int, ast.Call, ast.expr | None]]:
     """Every handler in ``routers/`` that answers a GET, read off the AST.
 
@@ -1563,7 +1566,7 @@ def _get_routes() -> list[tuple[str, str, int, ast.Call, ast.expr | None]]:
                     )
                     if "GET" not in names:
                         continue
-                elif verb != "get":
+                elif verb not in WRITE_VERBS | {"get"}:
                     continue
                 found.append((path.stem, node.name, node.lineno, deco, node.returns))
     return found
@@ -1584,9 +1587,8 @@ def test_every_get_says_what_it_sends():
     compiles, serves, and is correct. Nothing says anything until somebody needs its type on
     the page and writes one down.
 
-    GET only, because GET is all this surface has. Stated as the decorators it walks rather
-    than as "every handler", so that adding the first POST is a decision somebody makes here
-    rather than a hole that opens quietly.
+    The write verbs are walked too (``WRITE_VERBS``): the first POST was a decision made
+    here, on 2026-09-27, and a write owes the page its reply type as much as a read does.
     """
     missing = []
     for module, name, lineno, deco, returns in _get_routes():

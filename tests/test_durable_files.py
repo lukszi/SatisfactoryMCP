@@ -235,7 +235,7 @@ def test_the_two_stores_survive_a_crash_mid_save(tmp_path, monkeypatch, store_di
     with pytest.raises(OSError):
         store.save()
     assert path.read_bytes() == first, "a crashed save must not cost what was already stored"
-    assert [p.name for p in tmp_path.iterdir()] == [path.name]
+    assert [p.name for p in tmp_path.iterdir()] == [path.name, path.name + ".lock"]
 
 
 # --------------------------------------------------------------- table reloading

@@ -63,6 +63,9 @@ class MachineRow:
     clock: float
     paused: bool
     pos: tuple[float, float, float]
+    #: Nameplate items/min this machine makes and uses, by item name; empty when paused.
+    makes: dict[str, float] = field(default_factory=dict)
+    uses: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -244,10 +247,13 @@ def build_view(
             continue
         share = measured_share(record)
         census(record, share)
+        row = view.machines[-1]
         for f in recipe.products:
             flow(game.item_name(f.item), "produced", f.per_min * clock, share)
+            row.makes[game.item_name(f.item)] = f.per_min * clock
         for f in recipe.ingredients:
             flow(game.item_name(f.item), "consumed", f.per_min * clock, share)
+            row.uses[game.item_name(f.item)] = f.per_min * clock
         if game.buildings.get(record.get("cls", "")) is None:
             # Silently contributing 0 MW would understate the whole factory's draw.
             view.issues.append(
@@ -306,12 +312,9 @@ def build_view(
                 census(record, share)
                 # Water volumes have no purity multiplier: extraction is the flat rate.
                 grade = "normal" if purity == "n/a (water volume)" else purity
-                flow(
-                    game.item_name(resource),
-                    "produced",
-                    building.extract_rate(grade, clock),
-                    share,
-                )
+                rate = building.extract_rate(grade, clock)
+                flow(game.item_name(resource), "produced", rate, share)
+                view.machines[-1].makes[game.item_name(resource)] = rate
             elif not node:
                 view.issues.append(f"{short}: extractor bound to no node, output unknown")
             else:
@@ -349,6 +352,7 @@ def build_view(
             share = measured_share(record)
             census(record, share)
             flow(fuel.name, "consumed", building.fuel_rate_per_min(fuel) * clock, share)
+            view.machines[-1].uses[fuel.name] = building.fuel_rate_per_min(fuel) * clock
 
     view.flows = dict(flows)
 

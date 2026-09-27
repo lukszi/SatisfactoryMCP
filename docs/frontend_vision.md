@@ -30,9 +30,9 @@ means a route on master today.
 7. **Selectors are visible.** Every form that takes a selector shows the selector text it built,
    copyable (the click-to-copy in `copy.ts` already does this for popups). The UI teaches the
    MCP grammar instead of hiding it.
-8. **Reads first, writes later, writes guarded.** Every route today is a GET. The first POST
-   (naming a factory, saving a plan) needs the Host/Origin allowlist from roadmap §4 item 5 in
-   the same change.
+8. **Reads first, writes later, writes guarded.** The first writes landed on 2026-09-27:
+   naming and forgetting a factory label (§9). They came with the Host/Origin guard from
+   roadmap §4 item 5, which every non-GET request passes through (§9.2).
 9. **Deep-linkable.** Panel, selection and form state live in the URL fragment beside the
    existing `#z=…&c=…` keys, so `show_on_map` links and bookmarks open the same view.
 
@@ -188,13 +188,13 @@ tool table.
 | `factory_map` | Factories > Candidates / Slabs / Unlabelled | show candidates/named/slabs/unlabelled/all | lists; slab outlines on the map | exists `/api/factories`, `/api/structures` (partial) |
 | `factory_query` | Factory detail tabs | factory, aspects (summary, machines, recipes, buildings, balance, inputs, outputs, internal, power, nodes, links, issues) | one sub-tab per aspect | new |
 | `factory_health` | Factory detail > Health; Factories list colour | factory or all | per state counts, why stopped, evidence line | new (map colours exist via `/api/machines`) |
-| `propose_factories` | Factories > Proposals | max span, unnamed only | proposals with score; outlines on map; "name this" | exists `/api/factories` (proposals) |
+| `propose_factories` | Dashboard > Factories > unnamed factories | none (default span, unnamed only) | candidates with products, region, suggested name; map outline | **built** `/api/factories/candidates` (§9) |
 | `select_machines` | Name/amend dialog, live preview | selector text or map lasso, split, expand | highlighted machines + count | new |
-| `name_factory` | Name dialog | name, selector/lasso, notes, dry run | new label; map outline | new, W |
-| `rename_factory` | Factory detail > edit | text | renamed | new, W |
+| `name_factory` | Dashboard > Factories > unnamed factories | name (prefilled), one proposal | new label; joins the table and panel | **built** `POST /api/labels`, W (§9); selector/lasso still open |
+| `rename_factory` | Factories table, factory detail, side panel: edit in place | text | renamed; plans follow | **built** `PATCH /api/labels/{name}`, W (§9.7) |
 | `amend_factory` | Factory detail > edit | add/drop via lasso or selector, prune missing, dry run | diff preview, then applied | new, W |
 | `list_factories` | Factories list (step 0) | none | named factories, % still standing | exists `/api/factories` |
-| `forget_factory` | Factory detail > edit | confirm | label gone | new, W |
+| `forget_factory` | "undo" after naming in the dashboard | none | label gone | **built** `DELETE /api/labels/{name}`, W (§9); detail-view button still open |
 | `trace_upstream` | Factory/machine detail > Trace | seed (selection), up/down | tree; path drawn on the map | new |
 | `factory_floors` | Factory detail > Floors; floor picker | factory or platform | decks with machines; floor picker jumps | exists `/api/floors` |
 
@@ -305,10 +305,10 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/plan/solve`, `/bom`, `/compare`, `/byproducts` | POST | `prepare.py`, `bom.py`, `compare.py`, `byproducts.py` | body = plan kwargs |
 | `/api/plan/layout`, `/diff`, `/commission`, `/unlocks` | POST | `layout_service`, `diff_service`, `commission_service`, `sensitivity` | `/unlocks` slow |
 | `/api/plans` (CRUD) + `/api/plans/{n}/site` | POST/PATCH/DELETE | `domain/planning/store.py`, `siting.py` | W; watcher already publishes store events |
-| `/api/labels` (CRUD) | POST/PATCH/DELETE | `domain/factories/labels.py` | W |
+| `/api/labels` (CRUD) | POST/PATCH/DELETE | `domain/factories/labels.py` | W; POST, PATCH and DELETE **built** (§9) |
 
 Before any W route: the Host/Origin allowlist (roadmap §4.5). Local writes from a hostile
-page are the one new exposure this vision creates.
+page are the one new exposure this vision creates. **Built with the first W route** (§9.2).
 
 Before designing async solves: **measure** solve, `rank_unlocks` and `advise_hard_drive_pick`
 latency on the reference save. Only then decide between plain requests, a progress SSE, or a
@@ -372,7 +372,8 @@ None of these are assumed above. Each changes the design.
 
 **Writes**
 5. §16 said the site-outline idea was "read-only; no editing". Should the page write labels
-   and plans at all, or stay read-only with writes via chat?
+   and plans at all, or stay read-only with writes via chat? **Answered 2026-09-27 for labels:
+   the page writes them** (§9). Plans are still open.
 6. If yes: drag-to-site on the map, or typed coordinates only?
 
 **Planning**
@@ -418,7 +419,7 @@ Evidence only: each row cites where the decision is written down.
 | Palette closed, "lgtm" 2026-08-06 | memory `map-ui-future-ideas` | No new colour. The dashboard uses `--ok`, `--warn`, the panel's accent blue and its greys |
 | Colours are audited, dE 15 across owners | `palette.ts`; commit `db50aa7` | The dashboard declares no map colour, so the audit has nothing new to compare. Its three bar colours are 25.8 or more apart (CIE76) |
 | Comment budget, no exemptions | memory `prose-goes-in-docs` ("No excemptions"); docs/comments.md | `dashboard.ts` has a two-line header and no other comments |
-| Read-only | parked.md §16 "Read-only; no editing"; every route is a GET (`test_every_get_says_what_it_sends`) | The dashboard reads. No POST |
+| Read-only | parked.md §16 "Read-only; no editing"; every route is a GET (`test_every_get_says_what_it_sends`) | The dashboard reads. No POST. **Reversed for labels on 2026-09-27** (§9) |
 | Facts, not advice | commit `deadb0b` "Name the machines no wire reaches, instead of advising a power check"; roadmap §2.3 bans ETAs from one 300 s window | No "next best" score, no ETA, no trend line (the timeline has no consumer yet) |
 | Ask before encoding play patterns | memory `verify-play-patterns` (a hand-feeding setup read as a factory; shoreline siting) | Order comes from the domain. "temporary …" factories are neither hidden nor discounted |
 | Belt arrows and fog of war held; transport deferred | memory `map-ui-future-ideas`; "I'm not at transportnetworks yet" | No logistics section |
@@ -526,8 +527,8 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   the Overview's "affordable" count follow the same filter. Nothing in the docs or memory
   decided the default, so it is **on**, which was the behaviour before. `settings.ts` keeps
   the values in `localStorage` under `settings`, wrapped in try/catch, so the page still works
-  without storage. There is no write route: the web UI stays read-only (parked.md §16). A new
-  setting is one more entry in `SETTINGS`.
+  without storage. Settings have no write route (labels have had one since 2026-09-27, §9). A
+  new setting is one more entry in `SETTINGS`.
 - **The page lands on the dashboard.** A fragment with no `dash=` and none of the map's keys
   (`z`, `c`, `floor`, `mode`, `pickups`) opens the Overview (`dashOf` in `state.ts`, used at
   boot and by `fragment.ts`). A map deep link still opens the map, because the page writes `z`
@@ -539,3 +540,294 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   is gone from the Overview: its figures are the two subtitles and its bar moved into the
   generation tile. Power and the circuit detail use the same two tiles, and the circuits
   table uses the same two names.
+
+---
+
+## 9. Naming factories from the page (2026-09-27)
+
+Lukas asked: "Extend the factories UI by adding a feature that runs detection on the factories,
+and help me name them." Later the same day he added "I like my style more, maybe make it a
+setting", a filter for trivial clusters ("is it connected to a source other than just a
+storage box"), and "renaming a factory is kinda elemental". This **reverses parked.md §16's
+"read-only" for factory labels**, at his request, on 2026-09-27. Plans stay read-only on the page.
+
+### 9.1 What was built
+
+- **Detect.** Dashboard > Factories has an "unnamed factories" card with **Detect factories**.
+  It calls `GET /api/factories/candidates` (`routers/naming.py`). The reply lists every
+  `st.proposals` entry that `LabelStore.covers` does not claim: the same proposal list and the
+  same "already named" test that `propose_factories unnamed_only=true` and `/api/factories`
+  use. Each row carries:
+  - the machine count and whether the cluster is fed (§9.5);
+  - a **graph** action that draws its production graph (§9.8);
+  - its products (with where they go), intermediates, sunk, unrouted items and inputs in
+    items/min, none of them truncated (§9.4);
+  - every building type, the region at its centroid, its box and its `proposal:N` selector;
+  - a suggested name, with `confident: false` when that name is a guess.
+
+  The reply also carries the save `token`, the label-store `version`, and how many clusters
+  the filters hid and why.
+- **Map.** A row's **map** button switches to the map, flies to the cluster's box and draws the
+  panel's dashed outline around it (`showBox` in `panel.ts`).
+- **Name, edit, skip.** The name is an editable field, prefilled with the suggestion. A guessed
+  name has a dashed border. **name** (or Enter) writes it, and Esc restores the suggestion.
+  **skip** hides the row for this page session only; nothing is stored.
+- **Write.** `POST /api/labels {name, proposal, as_of, version}` resolves `proposal:N` through
+  `select.select_machines`, describes the machines with `identity.describe`, and writes through
+  `edits.name`, which is what `name_factory` calls too. So the tool and the page write the same
+  label (pinned by `test_the_page_and_the_tool_write_the_same_label`).
+  Unlike the tool, the page **refuses a name the world already holds** (409) instead of
+  re-anchoring it: `put`'s substring match could otherwise silently move another label.
+  `as_of` is the detect reply's token. If a save was written since detection, the request is
+  refused (409, `pin.check`) rather than naming whatever cluster now holds that index.
+- **After naming.** The page refetches `/api/factories` and `/api/factories/health`, so the
+  factory appears in the Factories table, the side panel and the map labels with no reload.
+  The card lists what was named in this session, with the file it was written to and an
+  **undo**. Undo is `DELETE /api/labels/{name}?version=`, which removes an exact name through
+  the same `edits.forget` that `forget_factory` uses.
+- **Not built:** amend, lasso selection and a dry-run preview.
+
+### 9.2 The write guard
+
+`interfaces/web/guard.py` is installed as HTTP middleware in `create_app`. GET, HEAD and
+OPTIONS pass untouched. Any other method is refused with 403 `{"error": …}` unless both of
+these hold:
+
+1. **Host** is the server's bound address and port (`scope["server"]`). When the server is
+   bound to loopback, the aliases `127.0.0.1`, `localhost` and `[::1]` are all accepted, on
+   that port only. A server bound anywhere else accepts only its own name. This check defeats
+   DNS rebinding.
+2. **Origin** is exactly `http://<that Host>`. When there is no Origin, the Referer's origin
+   stands in. When neither is present, or Origin is `null`, the request is refused. So a bare
+   `curl` cannot write; the MCP tools remain the non-browser path.
+
+There is no env override yet. Roadmap §4.5 proposed one for LAN use, and Q3 is still open.
+
+### 9.3 Trying it on an empty store
+
+`SATISFACTORY_USER_DATA=<dir>` moves the player's own files (`<dir>/labels` and `<dir>/plans`)
+away from the platform data directory. `satisfactory-mcp-web --port N` serves on another port.
+With a copy of a save in its own folder:
+
+    $env:SATISFACTORY_SAVES = "<dir holding a copied .sav>"
+    $env:SATISFACTORY_USER_DATA = "<empty dir>"
+    uv run satisfactory-mcp-web --port 8713
+
+The projection cache and the `as_of` token ledger stay in the shared cache directory. Both can
+be regenerated.
+
+### 9.4 Flows, destinations and the suggested name
+
+**Rates** come from `query.build_view`, the same pass `factory_query` makes. Every machine row
+carries nameplate `makes` and `uses`, meaning recipe rate × clock. Measured figures exist, but
+a backed-up factory reads as producing nothing (the steel cluster has 97 of 108 machines
+blocked), and a name is about what the factory is built to make.
+
+**Classes come from topology, not from rates** (Lukas, 2026-09-27: "If it outputs them into a
+box somewhere, that is a product. If it just outputs them into a sink, it's not an output.").
+`flowgraph.ends` walks each producing machine's outputs downstream over `st.physical`, the
+contracted belt and pipe runs. It passes through splitters, mergers, junctions, pumps and
+valves; lifts are part of a run. It sorts where the walk ends:
+
+| The walk reaches | Class |
+|---|---|
+| a box or tank with no way out (`storage`) | **product** |
+| a machine or other building outside the cluster (`export`) | **product** |
+| the AWESOME Sink (`sink`) | **sunk**, listed separately, not a product |
+| only machines inside the cluster | **intermediate** |
+| nothing, a run that ends open, or a fitting with no way on (`nowhere`) | **unrouted** |
+
+An item that reaches several of these takes the first class in that order that it reached.
+So a splitter feeding a box and a machine makes a **product**. Each item also lists every
+kind it reached, in `to`. An item consumed inside and made nowhere inside is an **input**.
+
+- **Pass-through buffers.** A box or tank that something drains is a buffer, not an end: the
+  walk continues through it. "Miner → box → constructor" is therefore an intermediate, and
+  "constructor → box" with nothing after the box is a product. The two are told apart by
+  whether any belt or pipe leaves the box. A box emptied by hand looks like a final box.
+  `buffers` counts the pass-throughs.
+- **Fluids** walk pipes, solids walk belts, chosen by the item's form. A tank at the end of a
+  pipe is storage. Pipe runs whose direction the save does not state are walked both ways,
+  which can only over-report.
+- **Dead ends** are `nowhere`, and an item that reaches only those is unrouted, not a product.
+  On his save that is the FICSMAS line's outputs (3 open runs), several oil and water
+  extractors whose pipes end open, and the 15-machine refinery cluster's Heavy Oil Residue.
+- **Generators** burn fuel as a recipe input. Water reaching a generator counts as consumed
+  inside, although `build_view` does not rate it.
+
+**Edge rates** in the graph are apportioned from nameplate figures, since the save records no
+per-belt throughput. A consumer group's demand for an item is split across the inside
+producers that reach it, in proportion to their production. Demand no inside producer covers
+becomes an input edge. What a producer has left after that is split evenly across the
+terminal kinds it reaches. A terminal it reaches with nothing left over gets an edge with no
+rate. Product rates in the Detect list are what the cluster makes; the graph shows the split.
+
+**On Lukas's save:**
+
+- The 78-machine cluster: products Wire 810, Cable 120, Copper Sheet 80, **Rotor 25, Stator
+  25**, Motor 10 /min, all to storage. Intermediates: Copper Ingot, Water, Steel Pipe. So the
+  suggestion is "wire factory".
+- The 110-machine cluster: products **Reinforced Iron Plate 40**, Rotor 20, Modular Frame 12
+  and Modular Engine 2.5 /min, all to storage. **Smart Plating 8/min stays an intermediate**:
+  on this save no box is reachable from its assemblers, only the Manufacturer that makes
+  Modular Engines. The suggestion is "reinforced iron plate factory".
+- The 108-machine cluster: Steel Ingot 1,395/min is exported (some of it belts out to the
+  78-machine cluster), and Concrete, Steel Beam, Steel Pipe and Encased Industrial Beam go to
+  storage. The suggestion is "steel ingot factory".
+- Sunk: Polymer Resin in the 50- and 15-machine oil clusters.
+
+**The lead item** is `naming.lead`. It picks the first of these that exists:
+
+1. the top product a recipe makes, by rate;
+2. the commonest generator, for a set that makes power;
+3. the top extracted product (a mining outpost);
+4. the top item made at all, marked as a guess;
+5. the commonest building, marked as a guess.
+
+Extracted items rank below made ones because a miner inside a cluster otherwise leads with
+its ore.
+
+**Wording** is `naming.suggest(item, region, taken, style)`, with a style from `STYLES`:
+
+- **`mine`** (the default) is `<lead item, lowercase> factory`, for example "steel pipe
+  factory". This is his style: his names are lowercase, short and product-led ("steel
+  factory", "speedwire factory", "tor factory"), with no region.
+  He also writes "setup" ("oil setup", "aluminium setup", "biofuel setup", "concrete setup").
+  That choice is **not decidable from the data**. His setups range from 2 to 50 machines and
+  his factories from 11 to 110, so size does not separate them. Oil, aluminium and biofuel all
+  have a "setup", while blackpowder and steel have "factory". So the suggestion always says
+  "factory", and he edits the rest.
+- **`product, region`** is `<Lead Item>, <region>`, for example "Steel Pipe, Rocky Desert".
+  The region is `RegionMap.label_for` at the centroid, and is left out in the sea or off the
+  map.
+
+In both styles, a name already held by a label, or by an earlier suggestion in the same reply,
+gets " 2", " 3" and so on. The comparison ignores case and compares slugs.
+
+The route validates `style` against `STYLES` (400 names them). The **Factory name
+suggestions** setting picks it, and changing the setting re-asks the open Detect list while
+keeping names already edited.
+
+### 9.5 Fed or not, and the size floor
+
+`fed.feeding` answers "is this a real factory or a box somebody fills by hand". It walks
+upstream with `trace.trace`, the walk `trace_upstream` makes (belts and pipes walked through,
+directions read from connector roles). The verdict is one of three:
+
+- **fed:** the set contains an extractor (miner, water, oil or well extractor). Or the walk
+  reaches an extractor or a production machine outside the set.
+- **not fed:** the walk reaches neither. A storage container is walked through, so it counts
+  only when something real feeds it. A box with nothing inbound ends the walk.
+- **transport:** the walk reached a train, drone or truck station (`model.kind_of`, plus
+  freight platforms by `DockingStation`). What arrives there cannot be seen, so the source is
+  **unknown**. It is never hidden by the filter. Lukas has no transport yet, so this branch is
+  untested on his save.
+
+**What the walk cannot see:**
+
+- **Dimensional Depot:** items come out of the depot into the player's inventory, not onto a
+  belt. A cluster hand-fed from the depot reads "not fed", which is the truth about its belts.
+- **Mixed belts:** the walk is item-agnostic. "Fed" means something real arrives, not that
+  every ingredient does. Health's starved state covers that.
+- **Hand-fed:** machines filled by hand and never belted read "not fed".
+- **Direction:** belt-to-belt joins are walked both ways where no port says a direction, so
+  the walk can only over-report a source.
+
+**Filters** are query parameters on the candidates route: `fed_only` (hides "not fed") and
+`min_machines`. Both default to off, so the API reports everything unless asked. The page
+sends the **Only suggest fed clusters** switch (default on) and the **Minimum machines**
+number (default **2**). The list says what was hidden and why, for example "10 hidden: 2 not
+fed, 8 below 2 machines". **show all** re-asks with both filters off for that list only.
+
+Why 2: the unnamed cluster sizes on his save are 110, 108, 78, 50, 47, 30, 28, 18, 15, 15,
+15, 15, 11, 10, 7, 7, 4, 3, 3, 2, 2, and eight clusters of 1. His smallest named factory,
+"concrete setup", is 2 machines. So 2 hides exactly the singletons: six lone miners and
+extractors, one Manufacturer and one Smelter. It hides nothing he has shown he would name.
+
+On that save, 4 clusters are not fed (30, 7, 1 and 1 machines) and none reach a station. The
+30 is his FICSMAS line and the 7 is a FICSMAS and SAM crafting corner, both filled from boxes.
+**He named the 30-machine one ("christmas factory")**, so the fed filter hides a factory he
+did name. That is why "show all" is one click.
+
+### 9.6 Concurrent writers
+
+Every chat session runs its own MCP stdio process, and the web server is another. They share
+each world's label and plan files. A plain read-modify-write in two of them at once silently
+dropped one change. Now:
+
+- **Lock.** `core/filelock.py` holds an OS byte-range lock on `<file>.lock` (`msvcrt` on
+  Windows, `fcntl` elsewhere; no dependency). A crashed process releases it. The lock waits up
+  to 10 s and then raises `LockTimeout`, which names the file (the web routes answer 503).
+  The `.lock` file stays on disk on purpose: deleting it would race the next writer.
+- **Re-read inside the lock.** `LabelStore.editing` and `PlanStore.editing` load the file
+  inside the lock, hand it to the block, and write it on a clean exit (atomic temp-file plus
+  `os.replace`, `core/atomic.py`). Every production write goes through them:
+  `domain/factories/edits.py` for labels (name, rename, amend, forget, and the plan repoint a
+  rename carries), and `_editing` in the planning tools for plans. `save()` still exists; it
+  overwrites whole under the lock and is kept for setup in tests.
+- **Version.** Both files carry a `version` that every write bumps. `/api/factories/health`
+  (`labels_version`) and the candidates route send it. The web writes send it back, and a
+  mismatch is 409 "the factory labels changed elsewhere (chat, or another tab) since this page
+  loaded them". The page shows that, refetches, and the next attempt works. The MCP tools do
+  not pass a version: last writer wins under the lock, and an unrelated label is never lost.
+- **Lock order** is labels, then plans, because only a rename holds both. Nothing takes them
+  the other way round.
+
+`test_label_store_lock.py` runs two processes naming 12 factories each at once. All 24
+survive, and version reads 24.
+
+### 9.7 Rename
+
+`PATCH /api/labels/{name} {to, version}` goes through `edits.rename`, which `rename_factory`
+now calls too. It keeps the label's machines, notes and dates, moves its slug, and repoints
+stored plans whose `factory` is the old name. That repoint moved out of the tool body into
+the shared domain code. The new name is free text (the naming style does not apply); it is
+trimmed, and a blank or taken name is refused. A missing old name, a taken or blank new name,
+or a stale version is 409. `test_the_page_and_the_tool_rename_to_the_same_files` compares
+both label and plan files after each path.
+
+The UI edits in place (Enter saves, Esc cancels) in three places: the Factories table row, the
+factory detail header, and the side panel's selected row (`rename.ts`). After a rename, the
+detail view replaces its own address with the new name. The page also remembers renames it made
+in this session, so an old `dash=factories/<name>` link lands on the renamed factory. A link
+from before this session, or a rename made in chat, says the factory "may have been renamed or
+forgotten since this link was made": the store keeps no history of former names.
+
+### 9.8 Production graph
+
+Lukas asked for "a function that shows me the product graph in the factory view, and can show
+me that graph for a detected factory".
+
+- **Route.** `GET /api/factories/graph` takes either `factory=<exact name>` or
+  `candidate=proposal:N&token=<the detect token>`. A stale token gets 409, since the index may
+  now name another cluster. Passing both or neither gets 400, and an unknown factory gets 404.
+  It is built by `flowgraph.build`, the same code that classes the Detect items (§9.4).
+- **Nodes.**
+  - Recipe groups, e.g. "8× Assembler · Rotor", with machine count, mean clock, nameplate
+    outputs with destinations, and a running / blocked / stopped mix from `health.assess`
+    (`ACTIONABLE` minus blocked counts as stopped).
+  - One input node per item that enters the cluster.
+  - One terminal per kind: to storage, leaves the cluster, AWESOME Sink, goes nowhere.
+
+  Edges are items with apportioned items/min (§9.4). The payload is grouped by recipe: the
+  110-machine cluster is 16 nodes and 20 edges.
+- **Drawing.** `frontend/src/graph.ts` is hand SVG with no library.
+  - Inputs sit in the first column. Each group is placed by its longest path from the
+    inputs, with cycles cut where the walk meets them. Terminals sit in the last column.
+    Three barycentre sweeps order each column.
+  - Edges between the same two nodes share one curve and one label. A backward edge dips
+    below the nodes.
+  - Outlines follow the map: red when a machine in the group is stopped, yellow when one is
+    blocked. Storage and export terminals are green. The sink is dotted grey and reads
+    "sunk: not a product"; "goes nowhere" is dashed.
+  - Hovering shows each group's outputs and where they go. Clicking a group flies the map to
+    its machines and outlines them.
+  - Wheel zooms, dragging pans, and a double-click resets. The first view is about 1:1 scale,
+    so a wide graph is panned rather than shrunk.
+- **Where.** The factory detail view has a **graph** button next to **map**. Each Detect row
+  has a **graph** action, which opens the same card above the list. The component takes any
+  `{nodes, edges}` of that shape, so the planner's production graph (planner_vision.md §4.2)
+  can reuse it.
+- **Not yet.** Per-machine drill-down, belt tiers on edges, and a layout that keeps positions
+  steady across saves.
+

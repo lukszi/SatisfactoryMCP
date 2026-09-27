@@ -170,6 +170,8 @@ Two are defused. Four are live, and their ordering is unchanged.
    network's, not the code's.** The repo is public, and a stranger who clones it inherits the
    same behaviour without inheriting the NAT, so this stays on the list for the stranger-facing
    cluster in §5 and should be revisited before the project is advertised anywhere.
+   **Partly closed 2026-09-27:** every non-GET request now passes a Host/Origin guard
+   (frontend_vision.md §9.2), added with the first write routes. Reads still accept any Host.
    Low p in any case — it needs a hostile page open while the map runs, and DNS rebinding
    defeats the absent CORS header. Fix is a Host allowlist with an env override. Caveat:
    dropping `path` is costlier than pitched, because `routers/world.py:41` documents it as the

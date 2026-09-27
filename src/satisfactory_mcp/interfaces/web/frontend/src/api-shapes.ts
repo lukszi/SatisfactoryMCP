@@ -113,6 +113,17 @@ export type FactoryRow = Schema["FactoryRow"];
 export type ProposalRow = Schema["ProposalRow"];
 export type FactoriesResponse = Body<"FactoriesResponse">;
 
+/* ------------------------------------- /api/factories/candidates and /api/labels */
+
+export type CandidateRow = Schema["CandidateRow"];
+export type Flow = Schema["Flow"];
+export type CandidatesResponse = Body<"CandidatesResponse">;
+export type NamedResponse = Body<"NamedResponse">;
+export type ForgotResponse = Body<"ForgotResponse">;
+export type RenamedResponse = Body<"RenamedResponse">;
+export type GraphNode = Schema["GraphNode"];
+export type FactoryGraphResponse = Body<"FactoryGraphResponse">;
+
 /* ------------------------------------- /api/factories/health and /api/power/circuits */
 
 export type MachineIssue = Schema["MachineIssue"];

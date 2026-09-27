@@ -102,11 +102,17 @@ def cache_dir() -> Path:
     return d
 
 
+def user_dir() -> Path:
+    """Where the player's own writing lives: ``SATISFACTORY_USER_DATA``, else the platform's."""
+    env = os.environ.get("SATISFACTORY_USER_DATA")
+    return Path(env) if env else Path(user_data_dir("satisfactory-mcp", appauthor=False))
+
+
 @lru_cache(maxsize=1)
 def plans_dir() -> Path:
     """Named plans the player saved. Same reasoning as labels_dir: not regenerable,
     not the cache, not the repo."""
-    d = Path(user_data_dir("satisfactory-mcp", appauthor=False)) / "plans"
+    d = user_dir() / "plans"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -119,6 +125,6 @@ def labels_dir() -> Path:
     that tree, and a hand-written name is not regenerable. Out of the repo because it
     belongs to a save file, not to the source.
     """
-    d = Path(user_data_dir("satisfactory-mcp", appauthor=False)) / "labels"
+    d = user_dir() / "labels"
     d.mkdir(parents=True, exist_ok=True)
     return d

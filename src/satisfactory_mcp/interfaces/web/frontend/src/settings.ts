@@ -1,33 +1,88 @@
 /* Per-browser preferences, kept in localStorage and never sent to the server. The page
  * works without storage: a setting then lasts until reload. See docs/frontend_vision.md §8.6. */
 
-export interface Setting {
+interface Base {
   key: string;
   label: string;
   hint: string;
+}
+
+export interface Switch extends Base {
+  kind: "switch";
   fallback: boolean;
 }
 
+export interface Choice extends Base {
+  kind: "choice";
+  options: [string, string][];
+  fallback: string;
+}
+
+export interface Amount extends Base {
+  kind: "number";
+  min: number;
+  fallback: number;
+}
+
+export type Setting = Switch | Choice | Amount;
+
 export var SETTINGS: Setting[] = [
   {
+    kind: "switch",
     key: "spoilers",
     label: "Show upcoming milestones",
     hint: "Off: Progress shows the tiers you have started, done and not done, and hides the tiers ahead.",
     fallback: true,
   },
+  {
+    kind: "choice",
+    key: "naming",
+    label: "Factory name suggestions",
+    hint: "How Detect factories words the name it offers. Every suggestion stays editable.",
+    options: [
+      ["mine", "like yours: “steel pipe factory”"],
+      ["product, region", "product and region: “Steel Pipe, Rocky Desert”"],
+    ],
+    fallback: "mine",
+  },
+  {
+    kind: "switch",
+    key: "fedOnly",
+    label: "Only suggest fed clusters",
+    hint: "Hide clusters whose belts and pipes reach no miner, extractor or outside machine. A box filled by hand is not a source; a train, drone or truck station counts as unknown and stays.",
+    fallback: true,
+  },
+  {
+    kind: "number",
+    key: "minMachines",
+    label: "Minimum machines",
+    hint: "Hide smaller clusters from Detect factories. Your smallest named factory has 2.",
+    min: 1,
+    fallback: 2,
+  },
 ];
 
 var STORE_KEY = "settings";
 
-var values: Record<string, boolean> = {};
+var values: Record<string, boolean | string | number> = {};
 
 var listeners: Array<() => void> = [];
+
+function valid(s: Setting, value: unknown): boolean {
+  if (s.kind === "switch") return typeof value === "boolean";
+  if (s.kind === "choice") {
+    return s.options.some(function (o) {
+      return o[0] === value;
+    });
+  }
+  return typeof value === "number" && Number.isInteger(value) && value >= s.min;
+}
 
 function recall(): void {
   try {
     var saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
     SETTINGS.forEach(function (s) {
-      if (typeof saved[s.key] === "boolean") values[s.key] = saved[s.key];
+      if (valid(s, saved[s.key])) values[s.key] = saved[s.key];
     });
   } catch (ignored) {
     /* storage is a convenience */
@@ -42,15 +97,35 @@ function remember(): void {
   }
 }
 
-export function setting(key: string): boolean {
-  if (key in values) return values[key]!;
-  var found = SETTINGS.filter(function (s) {
+function find(key: string): Setting | undefined {
+  return SETTINGS.filter(function (s) {
     return s.key === key;
   })[0];
-  return found ? found.fallback : false;
 }
 
-export function setSetting(key: string, value: boolean): void {
+function read(key: string): boolean | string | number | undefined {
+  if (key in values) return values[key];
+  var found = find(key);
+  return found ? found.fallback : undefined;
+}
+
+export function setting(key: string): boolean {
+  return read(key) === true;
+}
+
+export function choice(key: string): string {
+  var value = read(key);
+  return typeof value === "string" ? value : "";
+}
+
+export function amount(key: string): number {
+  var value = read(key);
+  return typeof value === "number" ? value : 0;
+}
+
+export function setSetting(key: string, value: boolean | string | number): void {
+  var found = find(key);
+  if (!found || !valid(found, value)) return;
   values[key] = value;
   remember();
   listeners.forEach(function (listener) {

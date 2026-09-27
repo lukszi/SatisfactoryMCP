@@ -81,6 +81,8 @@ class Trace:
     #: The conduit runs the walk crossed, contracted out of the belt and pipe nodes it
     #: passed through. Empty when no physical graph was supplied.
     crossed: list = field(default_factory=list)
+    #: Every node visited, logistics included, seeds included.
+    nodes: set[str] = field(default_factory=set)
 
     def by_class(self) -> dict[str, list[Reached]]:
         out: dict[str, list[Reached]] = {}
@@ -169,6 +171,7 @@ def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Tra
             queue.append(nxt)
 
     out.visited = len(seen)
+    out.nodes = set(seen)
     out.deepest = max(seen.values(), default=0)
     # The same nodes, contracted rather than re-walked: the traversal above is untouched and
     # this only keeps what it already crossed. Deduplicated by identity, because one run is

@@ -859,10 +859,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/factories/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Candidates
+         * @description Every proposal the player has not named, filtered, each with a suggested name.
+         */
+        get: operations["factory_candidates_api_factories_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Name Candidate
+         * @description Name one proposal as a new factory. 409 for a taken name, a moved save or store.
+         */
+        post: operations["name_candidate_api_labels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/labels/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget Label
+         * @description Delete a label by its exact name. The machines are untouched.
+         */
+        delete: operations["forget_label_api_labels__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename Label
+         * @description Rename a label by its exact name; its machines stay and plans scoped to it follow.
+         */
+        patch: operations["rename_label_api_labels__name__patch"];
+        trace?: never;
+    };
+    "/api/factories/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Graph
+         * @description The recipe-group production graph of a named factory, or of a detected candidate.
+         *
+         *     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
+         *     written since then is refused (409), since the index may now name another cluster.
+         */
+        get: operations["factory_graph_api_factories_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Amount */
+        Amount: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
         /**
          * AttachmentRow
          * @description A splitter or a merger: a piece of the belt network, drawn by the belt layer.
@@ -951,6 +1045,102 @@ export interface components {
             attachments: components["schemas"]["AttachmentRow"][];
             /** Attachment Count */
             attachment_count: number;
+        };
+        /** Body_name_candidate_api_labels_post */
+        Body_name_candidate_api_labels_post: {
+            /** Name */
+            name: string;
+            /** Proposal */
+            proposal: number;
+            /** As Of */
+            as_of: string;
+            /** Version */
+            version: number;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+        };
+        /** Body_rename_label_api_labels__name__patch */
+        Body_rename_label_api_labels__name__patch: {
+            /** To */
+            to: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * CandidateRow
+         * @description ``region`` is null in the sea and off the map; ``selector`` is what the MCP tools take.
+         *
+         *     ``confident`` is false when the suggestion leads with something that is not a product.
+         */
+        CandidateRow: {
+            /** Index */
+            index: number;
+            /** Selector */
+            selector: string;
+            /** Machines */
+            machines: number;
+            /** Fed */
+            fed: string;
+            /** Products */
+            products: components["schemas"]["Flow"][];
+            /** Intermediates */
+            intermediates: components["schemas"]["Flow"][];
+            /** Sunk */
+            sunk: components["schemas"]["Flow"][];
+            /** Unrouted */
+            unrouted: components["schemas"]["Flow"][];
+            /** Inputs */
+            inputs: components["schemas"]["Flow"][];
+            /** Buffers */
+            buffers: number;
+            /** Buildings */
+            buildings: components["schemas"]["Amount"][];
+            /** Region */
+            region: string | null;
+            /** Centroid M */
+            centroid_m: [
+                number,
+                number
+            ];
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Spread M */
+            spread_m: number;
+            /** Score */
+            score: number;
+            /** Suggested Name */
+            suggested_name: string;
+            /** Confident */
+            confident: boolean;
+        };
+        /**
+         * CandidatesResponse
+         * @description ``token`` goes back as ``as_of`` and ``version`` as ``version`` when naming.
+         */
+        CandidatesResponse: {
+            /** Token */
+            token: string;
+            /** Version */
+            version: number;
+            /** Style */
+            style: string;
+            /** Min Machines */
+            min_machines: number;
+            /** Fed Only */
+            fed_only: boolean;
+            /** Named */
+            named: number;
+            hidden: components["schemas"]["Hidden"];
+            /** Candidates */
+            candidates: components["schemas"]["CandidateRow"][];
         };
         /**
          * CircuitRow
@@ -1193,11 +1383,27 @@ export interface components {
             /** Proposals */
             proposals: components["schemas"]["ProposalRow"][];
         };
+        /** FactoryGraphResponse */
+        FactoryGraphResponse: {
+            /** Title */
+            title: string;
+            /** Token */
+            token: string;
+            /** Buffers */
+            buffers: number;
+            /** Nodes */
+            nodes: components["schemas"]["GraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["GraphEdge"][];
+        };
         /**
          * FactoryHealthResponse
-         * @description ``actionable_states`` is the subset of ``states`` that ``actionable`` counts.
+         * @description ``actionable_states`` is the subset of ``states`` that ``actionable`` counts;
+         *     ``labels_version`` is what a rename or forget sends back as ``version``.
          */
         FactoryHealthResponse: {
+            /** Labels Version */
+            labels_version: number;
             /** States */
             states: string[];
             /** Actionable States */
@@ -1474,6 +1680,30 @@ export interface components {
             violations: components["schemas"]["FloorRun"][];
             rules: components["schemas"]["FloorRules"];
         };
+        /**
+         * Flow
+         * @description Items per minute at nameplate: made, or for an input consumed. ``to`` is where the
+         *     output physically ends up (``storage``, ``export``, ``sink``, ``nowhere``).
+         */
+        Flow: {
+            /** Name */
+            name: string;
+            /** Per Min */
+            per_min: number;
+            /** To */
+            to: string[];
+        };
+        /** ForgotResponse */
+        ForgotResponse: {
+            /** Name */
+            name: string;
+            /** Machines */
+            machines: number;
+            /** Version */
+            version: number;
+            /** Stored In */
+            stored_in: string;
+        };
         /** GeneratorGroup */
         GeneratorGroup: {
             /** Name */
@@ -1495,10 +1725,65 @@ export interface components {
             /** Mw */
             mw: number;
         };
+        /**
+         * GraphEdge
+         * @description ``per_min`` is null where an output reaches a terminal with no surplus to apportion.
+         */
+        GraphEdge: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number | null;
+        };
+        /**
+         * GraphNode
+         * @description ``kind`` is ``group`` (machines on one recipe), ``input``, or a terminal: ``storage``,
+         *     ``export``, ``sink``, ``nowhere``. Counts and ``bbox_m`` are for groups only.
+         */
+        GraphNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /** Machines */
+            machines: number;
+            /** Clock */
+            clock: number | null;
+            /** Makes */
+            makes: components["schemas"]["Flow"][];
+            /** Running */
+            running: number;
+            /** Blocked */
+            blocked: number;
+            /** Stopped */
+            stopped: number;
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** Hidden */
+        Hidden: {
+            /** Small */
+            small: number;
+            /** Not Fed */
+            not_fed: number;
         };
         /**
          * InspectAt
@@ -1638,6 +1923,19 @@ export interface components {
             tiers: components["schemas"]["TierRow"][];
             /** Milestones */
             milestones: components["schemas"]["MilestoneRow"][];
+        };
+        /** NamedResponse */
+        NamedResponse: {
+            /** Name */
+            name: string;
+            /** Machines */
+            machines: number;
+            /** Overlaps */
+            overlaps: string[];
+            /** Version */
+            version: number;
+            /** Stored In */
+            stored_in: string;
         };
         /**
          * NearestNode
@@ -2165,6 +2463,21 @@ export interface components {
             regions: {
                 [key: string]: components["schemas"]["RegionExtent"];
             };
+        };
+        /** RenamedResponse */
+        RenamedResponse: {
+            /** Name */
+            name: string;
+            /** Was */
+            was: string;
+            /** Machines */
+            machines: number;
+            /** Plans */
+            plans: string[];
+            /** Version */
+            version: number;
+            /** Stored In */
+            stored_in: string;
         };
         /**
          * SaveRow
@@ -3347,6 +3660,185 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MilestonesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_candidates_api_factories_candidates_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+                style?: string;
+                min_machines?: number;
+                fed_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    name_candidate_api_labels_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_name_candidate_api_labels_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_label_api_labels__name__delete: {
+        parameters: {
+            query: {
+                version: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_label_api_labels__name__patch: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_rename_label_api_labels__name__patch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenamedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_graph_api_factories_graph_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                candidate?: string | null;
+                token?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryGraphResponse"];
                 };
             };
             /** @description Validation Error */

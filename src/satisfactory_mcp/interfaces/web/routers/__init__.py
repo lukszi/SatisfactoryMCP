@@ -20,6 +20,7 @@ from . import (
     health,
     icons,
     inspect,
+    naming,
     nodes,
     placements,
     plans,
@@ -58,4 +59,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     health.router,
     grid.router,
     progress.router,
+    naming.router,
 )

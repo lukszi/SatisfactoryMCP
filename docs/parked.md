@@ -127,6 +127,10 @@ non-obvious and would be expensive to redo.
 where a factory floor actually has room -- an outline you declare, against which a plan can be
 fit-checked. Read-only; no editing.
 
+> **2026-09-27, Lukas:** the read-only rule no longer covers factory **labels**. At his
+> request, the web page now detects unnamed factories and writes their names
+> (frontend_vision.md §9). Plans and site outlines stay read-only on the page.
+
 **The finding that makes it feasible.** Existing foundations are fully readable from the save.
 `FGLightweightBuildableSubsystem.actorSpecificInfo` is shaped
 `[count, [classPath, [instance, ...]], ...]`, and each instance is a 12-field list where

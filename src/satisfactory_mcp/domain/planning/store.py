@@ -10,11 +10,13 @@ world under ``saveIdentifier``: a plan for one world is meaningless in another.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from ... import config
-from ...core import atomic
+from ...core import atomic, filelock
 
 __all__ = ["SCHEMA", "Plan", "PlanStore"]
 
@@ -71,6 +73,8 @@ class PlanStore:
     world_id: str
     session_name: str = ""
     plans: list[Plan] = field(default_factory=list)
+    #: Bumped by every write, as ``LabelStore.version`` is.
+    version: int = 0
 
     @staticmethod
     def path_for(world_id: str) -> Path:
@@ -87,18 +91,34 @@ class PlanStore:
             world_id=raw.get("world_id", world_id),
             session_name=raw.get("session_name", session_name),
             plans=[Plan(**p) for p in raw.get("plans", ())],
+            version=int(raw.get("version", 0)),
         )
 
+    @classmethod
+    @contextmanager
+    def editing(cls, world_id: str, session_name: str = "") -> Iterator[PlanStore]:
+        """Locked read-modify-write, as ``LabelStore.editing``; written on a clean exit."""
+        with filelock.held(cls.path_for(world_id)):
+            store = cls.load(world_id, session_name)
+            yield store
+            store._write()
+
     def save(self) -> Path:
-        """Persist the store, atomically: a plan is a request the reader typed and nothing
-        on this machine can reconstruct it."""
+        """Overwrite the file with this store, whole, under the lock; ``editing`` merges."""
+        with filelock.held(self.path_for(self.world_id)):
+            return self._write()
+
+    def _write(self) -> Path:
+        """Atomically: a plan is a request the reader typed and nothing can reconstruct it."""
         path = self.path_for(self.world_id)
         path.parent.mkdir(parents=True, exist_ok=True)
+        self.version += 1
         return atomic.write_text(
             path,
             json.dumps(
                 {
                     "schema": SCHEMA,
+                    "version": self.version,
                     "world_id": self.world_id,
                     "session_name": self.session_name,
                     "plans": [asdict(p) for p in self.plans],

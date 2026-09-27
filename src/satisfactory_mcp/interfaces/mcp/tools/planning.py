@@ -24,7 +24,7 @@ from ....domain.planning.recall import recall_plan as _plan_kwargs
 from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
 from ....domain.planning.sensitivity import sweep_unlocks
-from ....domain.planning.store import PLAN_ARGS
+from ....domain.planning.store import PLAN_ARGS, PlanStore
 from ....presenters.text import byproducts as byproducts_text
 from ....presenters.text import primitives as render
 from ....presenters.text.bom import render_bom
@@ -224,6 +224,11 @@ def list_plans(
     )
 
 
+def _editing(st):
+    """The plan store for ``st``'s world, locked and re-read; see ``PlanStore.editing``."""
+    return PlanStore.editing(st.world_id, st.header.get("session_name") or "")
+
+
 @mcp.tool(structured_output=False)
 def forget_plan(
     name: str, save: str | None = None, world: str | None = None, as_of: AsOf = None
@@ -237,8 +242,8 @@ def forget_plan(
     if stored is None:
         known = ", ".join(x.name for x in st.plans.plans) or "(none)"
         return f"! no saved plan named {name!r}. Saved: {known}"
-    st.plans.remove(stored.name)
-    st.plans.save()
+    with _editing(st) as plans:
+        plans.remove(stored.name)
     return f"forgot plan {stored.name!r}"
 
 
@@ -275,8 +280,12 @@ def rename_plan(
     was = stored.name
     if was == wanted:
         return f"plan {was!r} already has that name"
-    stored.name = wanted
-    path = st.plans.save()
+    with _editing(st) as plans:
+        fresh = plans.find(was)
+        if fresh is None:
+            return f"! plan {was!r} was forgotten elsewhere a moment ago; nothing renamed"
+        fresh.name = wanted
+    path = PlanStore.path_for(st.world_id)
     return render.envelope(
         f"# renamed plan {was!r} to {wanted!r}\nstored in {path}",
         "",
@@ -343,8 +352,10 @@ def site_plan(
     if clear:
         if not stored.siting:
             return f"plan {stored.name!r} carries no siting; nothing to clear"
-        stored.siting = {}
-        st.plans.save()
+        with _editing(st) as plans:
+            fresh = plans.find(stored.name)
+            if fresh is not None:
+                fresh.siting = {}
         return f"cleared the siting of plan {stored.name!r}. The plan itself is untouched"
 
     existing = siting_mod.parse(stored)
@@ -391,8 +402,12 @@ def site_plan(
     except ValueError as exc:
         return f"! {exc}"
 
-    stored.siting = sit.to_dict()
-    path = st.plans.save()
+    with _editing(st) as plans:
+        fresh = plans.find(stored.name)
+        if fresh is None:
+            return f"! plan {stored.name!r} was forgotten elsewhere a moment ago; not sited"
+        fresh.siting = sit.to_dict()
+    path = PlanStore.path_for(st.world_id)
 
     from ....domain.spatial import maplink, regions
 
@@ -617,20 +632,21 @@ def plan_factory(
                 )
             except ValueError as exc:
                 return f"! {exc} -- nothing saved"
-        stored = st.plans.put(
-            save_as,
-            plan_kwargs,
-            plan_id,
-            notes=plan_notes_text,
-            factory=for_factory,
-            when=when,
-            provenance=field,
-        )
-        sited = ""
-        if sit is not None:
-            stored.siting = sit.to_dict()
-            sited = f". Sited: {sit.describe()}"
-        path = st.plans.save()
+        with _editing(st) as plans:
+            stored = plans.put(
+                save_as,
+                plan_kwargs,
+                plan_id,
+                notes=plan_notes_text,
+                factory=for_factory,
+                when=when,
+                provenance=field,
+            )
+            sited = ""
+            if sit is not None:
+                stored.siting = sit.to_dict()
+                sited = f". Sited: {sit.describe()}"
+        path = PlanStore.path_for(st.world_id)
         pinned = "; ".join(f"{e['selector']}={e['count']} node(s)" for e in field["selectors"])
         save_as_note = (
             f"saved as {stored.name!r} (plan_id {plan_id}) in {path}. "

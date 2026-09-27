@@ -8,6 +8,8 @@ the worker model need.
 
 from __future__ import annotations
 
+import argparse
+
 import uvicorn
 
 __all__ = ["HOST", "PORT", "main"]
@@ -17,8 +19,11 @@ HOST = "127.0.0.1"
 PORT = 8712
 
 
-def main() -> None:
-    uvicorn.run("satisfactory_mcp.interfaces.web.app:app", host=HOST, port=PORT)
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="satisfactory-mcp-web")
+    parser.add_argument("--port", type=int, default=PORT)
+    port = parser.parse_args(argv).port
+    uvicorn.run("satisfactory_mcp.interfaces.web.app:app", host=HOST, port=port)
 
 
 if __name__ == "__main__":

@@ -1055,6 +1055,30 @@ select {
   text-decoration: underline;
 }
 
+.panel-row-tools {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.panel-rename {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #6ea8d8;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.panel-rename:hover {
+  text-decoration: underline;
+}
+
+.panel-row-name .dash-name {
+  min-width: 0;
+}
+
 body.dash-on #map {
   visibility: hidden;
 }
@@ -1497,6 +1521,76 @@ a.dash-where:hover {
   font-size: 11px;
 }
 
+.dash-name {
+  width: 100%;
+  min-width: 220px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+.dash-name:focus {
+  border-color: #6ea8d8;
+  outline: none;
+}
+
+.dash-acts {
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.dash-map:disabled {
+  color: #7b828c;
+  cursor: default;
+}
+
+.dash-table tr.dash-skipped td {
+  opacity: 0.5;
+}
+
+.dash-name.guess {
+  border-style: dashed;
+}
+
+.dash-makes {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dash-sub {
+  color: #9aa0a8;
+  font-size: 11px;
+}
+
+.dash-named {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.dash-title h1 .dash-name {
+  font-size: 16px;
+}
+
+.dash-select,
+.dash-number {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+.dash-number {
+  width: 64px;
+}
+
 @media (max-width: 600px) {
   #dash {
     padding: 10px 16px 24px;
@@ -1505,4 +1599,107 @@ a.dash-where:hover {
   .dash-split {
     grid-template-columns: 1fr;
   }
+}
+
+.dash-sunk {
+  font-style: italic;
+}
+
+.dash-graph .graph {
+  display: block;
+  width: 100%;
+  height: 560px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-node rect {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.graph-node.kind-group {
+  cursor: pointer;
+}
+
+.graph-node.kind-group:hover rect {
+  stroke: #6ea8d8;
+}
+
+.graph-node.blocked rect {
+  stroke: var(--blocked);
+  stroke-width: 3;
+}
+
+.graph-node.stopped rect {
+  stroke: #f08c89;
+  stroke-width: 3;
+}
+
+.graph-node.kind-input rect {
+  fill: transparent;
+  stroke-dasharray: 4 3;
+}
+
+.graph-node.kind-storage rect,
+.graph-node.kind-export rect {
+  stroke: var(--ok);
+  stroke-width: 2;
+}
+
+.graph-node.kind-sink rect {
+  fill: transparent;
+  stroke: #9aa0a8;
+  stroke-dasharray: 2 4;
+}
+
+.graph-node.kind-nowhere rect {
+  fill: transparent;
+  stroke: #7b828c;
+  stroke-dasharray: 6 4;
+}
+
+.graph-node text {
+  fill: var(--ink);
+  font-size: 12px;
+}
+
+.graph-node .graph-node-k {
+  font-weight: 600;
+}
+
+.graph-node .graph-node-d,
+.graph-node .graph-node-s {
+  fill: #9aa0a8;
+  font-size: 11px;
+}
+
+.graph-node.kind-sink .graph-node-d {
+  fill: #f08c89;
+}
+
+.graph-edge {
+  fill: none;
+  stroke: #6ea8d8;
+  stroke-opacity: 0.55;
+  stroke-width: 1.5;
+}
+
+.graph-edge.sunk {
+  stroke: #9aa0a8;
+  stroke-dasharray: 3 3;
+}
+
+.graph-arrowhead {
+  fill: #6ea8d8;
+}
+
+.graph-edge-label {
+  fill: #b8bec6;
+  font-size: 10px;
+  text-anchor: middle;
 }

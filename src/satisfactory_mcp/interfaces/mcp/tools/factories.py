@@ -11,6 +11,8 @@ from typing import Annotated
 from pydantic import Field
 
 from ....core.saveio import ports
+from ....domain.factories import edits
+from ....domain.factories.labels import LabelError, stamp
 from ....domain.factories.query import ASPECTS as QUERY_ASPECTS
 from ....domain.factories.resolve import resolve_factory
 from ....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
@@ -113,12 +115,10 @@ def _pick(st, terms: list[str], split: bool = False, expand: bool = False) -> li
 
 def _overlaps(store, machines, name: str) -> list[str]:
     """Which OTHER labels already hold the machines about to be named here."""
-    stolen: dict[str, int] = {}
-    for machine in machines:
-        other = store.label_for(machine)
-        if other and other.name.casefold() != name.strip().casefold():
-            stolen[other.name] = stolen.get(other.name, 0) + 1
-    return [f"overlaps {other!r} on {n} machine(s)" for other, n in sorted(stolen.items())]
+    return [
+        f"overlaps {other!r} on {n} machine(s)"
+        for other, n in store.overlaps(machines, name).items()
+    ]
 
 
 def _cand_row(c, store, labelled: set[str]) -> tuple:
@@ -1392,29 +1392,13 @@ def name_factory(
     if dry_run:
         return render.envelope(f"# {head}", "", warn + ["dry run: nothing written"])
 
-    when = st.header.get("save_datetime") or st.header.get("filename") or ""
-    label = store.put(name, picked, notes=notes, when=str(when))
-    label.centroid = cand.centroid
-    label.signature = dict(cand.buildings)
-    path = store.save()
+    edits.name(st.world_id, _session(st), name, cand, notes=notes, when=stamp(st.header))
+    path = store.path_for(store.world_id)
     return render.envelope(f"# {head}", f"stored in {path}", warn)
 
 
-def _repoint_plans(st, was: str, now: str) -> list[str]:
-    """Point stored plans scoped to a factory at its new name.
-
-    ``Plan.factory`` is resolved by name every time ``diff_vs_save`` or ``plan_layout``
-    scopes itself to one, so a rename that left it behind would send both looking for a
-    factory nothing answers to.
-    """
-    moved = []
-    for plan in st.plans.plans:
-        if plan.factory and plan.factory.casefold() == was.casefold():
-            plan.factory = now
-            moved.append(plan.name)
-    if moved:
-        st.plans.save()
-    return moved
+def _session(st) -> str:
+    return st.header.get("session_name") or ""
 
 
 @mcp.tool(structured_output=False)
@@ -1438,8 +1422,6 @@ def rename_factory(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
-    from ....domain.factories.labels import LabelError
-
     store = st.labels
     label = store.find(name)
     if label is None:
@@ -1448,20 +1430,19 @@ def rename_factory(
     if label.name == to.strip():
         return f"factory {label.name!r} already has that name"
     try:
-        was = store.rename(label, to)
+        done = edits.rename(st.world_id, _session(st), label.name, to, exact=True)
     except LabelError as exc:
         return f"! {exc}"
-    path = store.save()
     notes = [
         (
-            f"recall it as factory={label.name!r}; its {len(label.anchors)} anchor "
+            f"recall it as factory={done.name!r}; its {done.machines} anchor "
             "machine(s), notes and dates are untouched"
         )
     ]
-    if moved := _repoint_plans(st, was, label.name):
-        notes.append(f"{len(moved)} stored plan(s) followed it: {', '.join(moved)}")
+    if done.plans:
+        notes.append(f"{len(done.plans)} stored plan(s) followed it: {', '.join(done.plans)}")
     return render.envelope(
-        f"# renamed factory {was!r} to {label.name!r}\nstored in {path}", "", notes
+        f"# renamed factory {done.was!r} to {done.name!r}\nstored in {done.path}", "", notes
     )
 
 
@@ -1500,7 +1481,6 @@ def amend_factory(
     except Exception as exc:
         return f"could not read save: {exc}"
     from ....domain.factories import identity
-    from ....domain.factories.labels import LabelError
 
     store = st.labels
     label = store.find(name)
@@ -1554,13 +1534,21 @@ def amend_factory(
     if not added and not dropped and not notes:
         return render.envelope(f"# {head}", "", warn + ["nothing changed, so nothing written"])
 
-    if standing:
-        label.centroid = cand.centroid
-        label.signature = dict(cand.buildings)
-    if notes:
-        label.notes = notes
-    label.last_matched = str(st.header.get("save_datetime") or st.header.get("filename") or "")
-    path = store.save()
+    label.anchors = before
+    try:
+        label = edits.amend(
+            st.world_id,
+            _session(st),
+            label.name,
+            wanted,
+            going,
+            cand=cand if standing else None,
+            notes=notes,
+            when=stamp(st.header),
+        )
+    except LabelError as exc:
+        return f"! {exc}"
+    path = store.path_for(store.world_id)
     if left := len(set(label.anchors) - alive):
         warn.append(
             f"{left} anchor(s) still name machines this save does not have; "
@@ -1629,8 +1617,10 @@ def forget_factory(
     if label is None:
         known = ", ".join(x.name for x in store.labels) or "(none)"
         return f"! no label named {name!r}. Known: {known}"
-    store.remove(label.name)
-    store.save()
+    try:
+        edits.forget(st.world_id, _session(st), label.name, exact=True)
+    except LabelError as exc:
+        return f"! {exc}"
     return f"forgot {label.name!r} ({len(label.anchors)} machine(s) released)"
 
 

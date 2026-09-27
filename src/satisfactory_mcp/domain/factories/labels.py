@@ -28,12 +28,13 @@ site inside a single belt-connected mass). Only an arbitrary machine set covers 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ... import config
-from ...core import atomic
+from ...core import atomic, filelock
 
 __all__ = [
     "MATCH_THRESHOLD",
@@ -42,6 +43,8 @@ __all__ = [
     "Label",
     "LabelError",
     "LabelStore",
+    "StaleStore",
+    "stamp",
 ]
 
 #: Above this share of a machine set covered by labels, the set is something the player has
@@ -64,6 +67,17 @@ SCHEMA = 1
 
 class LabelError(ValueError):
     """An edit a label cannot take, with the thing that refused it named."""
+
+
+class StaleStore(RuntimeError):
+    """The file was written by someone else after the caller read the version it expects."""
+
+    def __init__(self, expected: int, found: int) -> None:
+        super().__init__(
+            f"the factory labels changed elsewhere (chat, or another tab) since this page "
+            f"loaded them: version {expected}, now {found}. Reload and try again."
+        )
+        self.expected, self.found = expected, found
 
 
 @dataclass
@@ -111,6 +125,11 @@ class Label:
         )
 
 
+def stamp(header: dict) -> str:
+    """The save a label edit is dated by."""
+    return str(header.get("save_datetime") or header.get("filename") or "")
+
+
 def slugify(name: str) -> str:
     out = "".join(c.lower() if c.isalnum() else "-" for c in name).strip("-")
     while "--" in out:
@@ -129,6 +148,8 @@ class LabelStore:
     world_id: str
     session_name: str = ""
     labels: list[Label] = field(default_factory=list)
+    #: Bumped by every write, so a writer can tell the file moved since it read it.
+    version: int = 0
 
     @staticmethod
     def path_for(world_id: str) -> Path:
@@ -145,21 +166,45 @@ class LabelStore:
             world_id=raw.get("world_id", world_id),
             session_name=raw.get("session_name", session_name),
             labels=[Label.from_json(x) for x in raw.get("labels", ())],
+            version=int(raw.get("version", 0)),
         )
 
-    def save(self) -> Path:
-        """Persist the store. Atomic, for the reason ``PlanStore.save`` gives.
+    @classmethod
+    @contextmanager
+    def editing(
+        cls, world_id: str, session_name: str = "", expect: int | None = None
+    ) -> Iterator[LabelStore]:
+        """The one safe read-modify-write: locked, re-read inside the lock, written on exit.
 
-        A factory name is the one thing here the player typed rather than the game
-        recorded, and there is nowhere to get it back from. See ``core.atomic``.
+        ``expect`` refuses with ``StaleStore`` when the file is no longer that version.
+        Nothing is written when the block raises.
         """
+        with filelock.held(cls.path_for(world_id)):
+            store = cls.load(world_id, session_name)
+            if expect is not None and store.version != expect:
+                raise StaleStore(expect, store.version)
+            yield store
+            store._write()
+
+    def save(self) -> Path:
+        """Overwrite the file with this store, whole, under the lock.
+
+        Every other process's edits since this store was loaded are lost; ``editing`` is
+        the read-modify-write.
+        """
+        with filelock.held(self.path_for(self.world_id)):
+            return self._write()
+
+    def _write(self) -> Path:
         path = self.path_for(self.world_id)
         path.parent.mkdir(parents=True, exist_ok=True)
+        self.version += 1
         return atomic.write_text(
             path,
             json.dumps(
                 {
                     "schema": SCHEMA,
+                    "version": self.version,
                     "world_id": self.world_id,
                     "session_name": self.session_name,
                     "labels": [x.to_json() for x in self.labels],
@@ -179,8 +224,10 @@ class LabelStore:
         hits = [x for x in self.labels if needle in x.name.casefold()]
         return hits[0] if len(hits) == 1 else None
 
-    def put(self, name: str, machines: list[str], notes: str = "", when: str = "") -> Label:
-        existing = self.find(name)
+    def put(
+        self, name: str, machines: list[str], notes: str = "", when: str = "", create: bool = False
+    ) -> Label:
+        existing = None if create else self.find(name)
         if existing is None:
             existing = Label(id=slugify(name), name=name.strip(), created=when)
             self.labels.append(existing)
@@ -204,12 +251,19 @@ class LabelStore:
         label left holding its old slug would go on answering to the name it was renamed
         away from, and the rename would be a rename in the listing only.
         """
-        wanted = to.strip()
+        wanted = self._free(to, besides=label)
+        was = label.name
+        label.name, label.id = wanted, slugify(wanted)
+        return was
+
+    def _free(self, name: str, besides: Label | None = None) -> str:
+        """``name`` stripped, or ``LabelError`` when it is blank or another label holds it."""
+        wanted = name.strip()
         if not wanted:
             raise LabelError("a factory name cannot be blank")
         slug = slugify(wanted)
         for other in self.labels:
-            if other is label:
+            if other is besides:
                 continue
             if other.name.casefold() == wanted.casefold():
                 raise LabelError(f"this world already has a factory named {other.name!r}")
@@ -218,9 +272,28 @@ class LabelStore:
                     f"{wanted!r} and the existing {other.name!r} both slug to {slug!r}, "
                     "which find() cannot tell apart"
                 )
-        was = label.name
-        label.name, label.id = wanted, slug
-        return was
+        return wanted
+
+    def name(self, name: str, cand, notes: str = "", when: str = "", create: bool = False) -> Label:
+        """What naming a factory writes: ``put`` plus the candidate's centroid and signature.
+
+        ``create`` refuses a name this world already holds instead of re-anchoring it.
+        """
+        if create:
+            name = self._free(name)
+        label = self.put(name, cand.machines, notes=notes, when=when, create=create)
+        label.centroid = cand.centroid
+        label.signature = dict(cand.buildings)
+        return label
+
+    def overlaps(self, machines: Iterable[str], name: str) -> dict[str, int]:
+        """Machines per OTHER label among ``machines``."""
+        stolen: dict[str, int] = {}
+        for machine in machines:
+            other = self.label_for(machine)
+            if other and other.name.casefold() != name.strip().casefold():
+                stolen[other.name] = stolen.get(other.name, 0) + 1
+        return dict(sorted(stolen.items()))
 
     def attach(self, label: Label, machines: Iterable[str]) -> list[str]:
         """Add machines to one label, leaving every other anchor of it alone.

@@ -57,7 +57,7 @@ export function tilePath(
  * compile-time check on every registered path is lost. See registry.ts. */
 export type ApiUrl = ApiPath | `${ApiPath}?${string}`;
 
-export function get<T extends ApiError>(path: ApiUrl): Promise<T> {
+function pinned(path: string): string {
   var q = "";
   var sep = path.indexOf("?") < 0 ? "?" : "&";
   if (state.world) {
@@ -67,10 +67,37 @@ export function get<T extends ApiError>(path: ApiUrl): Promise<T> {
   if (state.save) {
     q += sep + "save=" + encodeURIComponent(state.save);
   }
-  return fetch(path + q).then(function (r) {
-    return r.json().then(function (body: T) {
-      if (!r.ok || body.error) throw new Error(body.error || r.status + " " + path);
-      return body;
-    });
+  return path + q;
+}
+
+function answer<T extends ApiError>(path: string, r: Response): Promise<T> {
+  return r.json().then(function (body: T) {
+    if (!r.ok || body.error) throw new Error(body.error || r.status + " " + path);
+    return body;
+  });
+}
+
+export function get<T extends ApiError>(path: ApiUrl): Promise<T> {
+  return fetch(pinned(path)).then(function (r) {
+    return answer<T>(path, r);
+  });
+}
+
+export function send<T extends ApiError>(
+  method: "POST" | "PATCH" | "DELETE",
+  path: ApiPath,
+  body?: object,
+  subject?: string,
+  query?: string
+): Promise<T> {
+  var url = subject === undefined ? path : path.replace(/\{[^}]+\}/, encodeURIComponent(subject));
+  if (query) url += "?" + query;
+  var init: RequestInit = { method: method };
+  if (body) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  return fetch(pinned(url), init).then(function (r) {
+    return answer<T>(url, r);
   });
 }
