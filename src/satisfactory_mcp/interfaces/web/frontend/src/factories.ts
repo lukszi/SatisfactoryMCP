@@ -2,7 +2,7 @@
  * production graph, addressed as `dash=factories[/<name>]`. */
 
 import { get, latest, send } from "./api";
-import { button, empty, error, fieldError, heading, link, loading, note, table, tile } from "./dashkit";
+import { button, empty, error, fieldError, heading, issueCount, issueGroups, issueTable, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
 import { count, flow, mw, pct, spoken } from "./format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, stateLine } from "./graph";
@@ -12,7 +12,7 @@ import { showBox, vitals } from "./panel";
 import { blankOrLong, NAME_MAX, newest, refreshLabels, refusal, renamedTo, wrote } from "./rename";
 import { amount, choice, onSetting, setting } from "./settings";
 import { state } from "./state";
-import { stateSets, tone, toneClass } from "./states";
+import { actionTone, stateSets, tone, toneClass } from "./states";
 import { fail, friendly, note as said } from "./toast";
 import { startTrace } from "./trace";
 import { counted, W } from "./words";
@@ -28,7 +28,6 @@ import type {
   Flow,
   ForgotResponse,
   GraphNode,
-  MachineIssue,
   NamedResponse,
 } from "./api-shapes";
 
@@ -102,6 +101,14 @@ function counter(key: keyof FactoryHealthRow, label: string, flag: boolean, titl
   };
 }
 
+function needColumn(): Column<FactoryHealthRow> {
+  var column = counter("actionable", W.needAction, false, W.needAction + ": " + spoken(actionable(), "or"));
+  column.tone = function (row) {
+    return actionTone(row.states);
+  };
+  return column;
+}
+
 function factoryColumns(): Column<FactoryHealthRow>[] {
   return [
     {
@@ -145,7 +152,7 @@ function factoryColumns(): Column<FactoryHealthRow>[] {
         return pct(r.uptime);
       },
     },
-    counter("actionable", W.needAction, true, W.needAction + ": " + spoken(actionable(), "or")),
+    needColumn(),
     counter("attention", W.notRunning, false, "every machine that is not " + spoken(stateSets().ok, "or")),
     counter("unwired", W.noWire, true, W.powerProblems + ": machines with " + W.noWire),
     counter("no_generator", W.noGenerator, true, W.powerProblems + ": machines on a circuit with " + W.noGenerator),
@@ -709,8 +716,8 @@ function graphCard(parent: HTMLElement): void {
 function worstList(parent: HTMLElement, row: FactoryHealthRow): void {
   var section = make("section", "dash-card");
   heading(section, W.needAction);
-  var shown = row.worst_actionable;
-  if (!shown.length) {
+  var found = issueGroups([row]);
+  if (!found.length) {
     empty(
       section,
       "none " + W.needAction,
@@ -720,49 +727,16 @@ function worstList(parent: HTMLElement, row: FactoryHealthRow): void {
     return;
   }
   section.appendChild(
-    table<MachineIssue>(
-      [
-        {
-          key: "what",
-          label: "machine",
-          render: function (issue) {
-            return issue.what;
-          },
-        },
-        {
-          key: "state",
-          label: "state",
-          tone: function (issue) {
-            return toneClass(tone(issue.state));
-          },
-          render: function (issue) {
-            return issue.state;
-          },
-        },
-        {
-          key: "cause",
-          label: "cause",
-          className: "dash-muted",
-          render: function (issue) {
-            return issue.cause.join(", ") || "–";
-          },
-        },
-        {
-          key: "uptime",
-          label: "uptime",
-          align: "right",
-          render: function (issue) {
-            return pct(issue.uptime);
-          },
-        },
-        { key: "map", label: "", align: "right", render: pointButton },
-      ],
-      shown,
-      { caption: "machines that need action" }
+    issueTable(
+      found,
+      function (g) {
+        return pointButton(g.issues[0]!, "show " + g.what + " on the map");
+      },
+      false
     )
   );
-  var rest = row.actionable - shown.length;
-  if (rest > 0) note(section, "showing " + count(shown.length) + " of " + count(row.actionable));
+  var listed = issueCount(found);
+  if (listed < row.actionable) note(section, "showing " + count(listed) + " of " + count(row.actionable));
   parent.appendChild(section);
 }
 
@@ -886,9 +860,10 @@ export function renderFactory(body: HTMLElement, name: string): void {
   var tiles = make("div", "dash-tiles");
   tiles.appendChild(tile("machines", count(row.machines), count(row.alive) + " of " + count(row.anchors) + " anchors standing"));
   tiles.appendChild(tile("uptime", pct(row.uptime), "mean of each machine's last 300 s"));
-  tiles.appendChild(
-    tile(W.needAction, count(row.actionable), count(row.attention) + " " + W.notRunning, row.actionable > 0)
-  );
+  var need = tile(W.needAction, count(row.actionable), count(row.attention) + " " + W.notRunning);
+  var shade = actionTone(row.states);
+  if (shade) need.classList.add(shade);
+  tiles.appendChild(need);
   tiles.appendChild(tile(W.measuredDraw, mw(row.measured_mw), mw(row.nameplate_mw) + " nameplate"));
   tiles.appendChild(
     tile(

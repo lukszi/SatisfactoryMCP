@@ -39,6 +39,30 @@ export function tone(state: string, actionable?: boolean): Tone {
   return isFine(state) ? "ok" : "mid";
 }
 
+export interface StateCount {
+  state: string;
+  count: number;
+}
+
+export function statesOf(rows: { states: StateCount[] }[]): StateCount[] {
+  var all: StateCount[] = [];
+  rows.forEach(function (r) {
+    all = all.concat(r.states);
+  });
+  return all;
+}
+
+export function actionTone(states: StateCount[]): "bad" | "blocked" | "" {
+  var found: "bad" | "blocked" | "" = "";
+  for (var i = 0; i < states.length; i++) {
+    var s = states[i]!;
+    if (!s.count || !needsAction(s.state)) continue;
+    if (s.state !== BLOCKED) return "bad";
+    found = "blocked";
+  }
+  return found;
+}
+
 export function toneClass(t: Tone): string {
   return t;
 }

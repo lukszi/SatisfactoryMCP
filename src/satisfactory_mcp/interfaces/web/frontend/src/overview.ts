@@ -1,14 +1,14 @@
 /* The dashboard's Overview tab: headline tiles, the factories and machines that need action,
  * power problems and power per circuit, addressed as `dash=overview`. */
 
-import { empty, error, heading, link, loading, note, table, tile } from "./dashkit";
+import { empty, error, heading, issueCount, issueGroups, issueTable, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
 import { count, pct, spoken } from "./format";
 import { loadOne } from "./load";
 import { hashFor } from "./map";
 import { vitals } from "./panel";
 import { milestoneTile } from "./progress";
-import { isFine, needsAction, stateSets, tone } from "./states";
+import { actionTone, isFine, needsAction, stateSets, statesOf, tone } from "./states";
 import { factoryMapButton, go, pointButton } from "./dashboard";
 import {
   circuitTable,
@@ -23,7 +23,7 @@ import {
 import { bar as powerBar, ratedWorld } from "./powerview";
 import { counted, W } from "./words";
 
-import type { FactoryHealthRow, MachineIssue } from "./api-shapes";
+import type { FactoryHealthRow } from "./api-shapes";
 
 var ROWS_SHOWN = 12;
 
@@ -126,10 +126,11 @@ function actionTile(rows: FactoryHealthRow[]): HTMLElement {
     W.needAction,
     count(mix.bad + mix.blocked),
     "machines, in " + count(todo) + " of " + counted(rows.length, "named factory", "named factories"),
-    mix.bad > 0,
+    false,
     hashFor("factories")
   );
-  if (!mix.bad && mix.blocked) box.classList.add("blocked");
+  var shade = actionTone(statesOf(rows));
+  if (shade) box.classList.add(shade);
   box.appendChild(mixBar(mix));
   box.appendChild(mixLegend(mix));
   return box;
@@ -204,7 +205,9 @@ function factoriesCard(parent: HTMLElement): void {
           key: "actionable",
           label: W.needAction,
           align: "right",
-          className: "bad",
+          tone: function (r) {
+            return actionTone(r.states);
+          },
           render: function (r) {
             return count(r.actionable);
           },
@@ -230,121 +233,33 @@ function factoriesCard(parent: HTMLElement): void {
   );
 }
 
-interface Group {
-  factory: string;
-  state: string;
-  what: string;
-  cause: string;
-  issues: MachineIssue[];
-}
-
-function because(issue: MachineIssue): string {
-  if (!issue.cause.length) return "";
-  var items = issue.cause.join(", ");
-  if (issue.state === W.blocked) return "can't output " + items;
-  if (issue.state === "starved") return "short of " + items;
-  return items;
-}
-
-function groups(): { rows: Group[]; listed: number; total: number } {
-  var found: Group[] = [];
-  var listed = 0;
-  var total = 0;
-  vitals().health!.factories.forEach(function (r) {
-    total += r.actionable;
-    r.worst_actionable.forEach(function (issue) {
-      listed += 1;
-      var cause = because(issue);
-      var same = found.filter(function (g) {
-        return g.factory === r.name && g.state === issue.state && g.what === issue.what && g.cause === cause;
-      })[0];
-      if (same) same.issues.push(issue);
-      else found.push({ factory: r.name, state: issue.state, what: issue.what, cause: cause, issues: [issue] });
-    });
-  });
-  return { rows: found, listed: listed, total: total };
-}
-
 function machinesCard(parent: HTMLElement): void {
   var card = make("section", "dash-card");
   heading(card, "machines that " + W.needAction);
   parent.appendChild(card);
   if (healthMissing(card)) return;
-  var found = groups();
-  if (!found.rows.length) {
+  var factories = vitals().health!.factories;
+  var found = issueGroups(factories);
+  if (!found.length) {
     empty(card, "none " + W.needAction);
     return;
   }
-  var shown = found.rows.slice(0, ROWS_SHOWN);
+  var total = 0;
+  factories.forEach(function (r) {
+    total += r.actionable;
+  });
+  var shown = found.slice(0, ROWS_SHOWN);
   card.appendChild(
-    table<Group>(
-      [
-        {
-          key: "state",
-          label: "state",
-          className: "dash-nowrap",
-          tone: function (g) {
-            return tone(g.state, true);
-          },
-          render: function (g) {
-            return g.state;
-          },
-        },
-        {
-          key: "n",
-          label: "machines",
-          align: "right",
-          render: function (g) {
-            return count(g.issues.length);
-          },
-        },
-        {
-          key: "what",
-          label: "machine",
-          className: "dash-wide",
-          render: function (g) {
-            if (!g.cause) return g.what;
-            var cell = make("span", "", g.what);
-            cell.appendChild(make("span", "dash-sub", g.cause));
-            return cell;
-          },
-        },
-        {
-          key: "factory",
-          label: W.factory,
-          render: function (g) {
-            var a = link("factories/" + g.factory, g.factory, "dash-trunc");
-            a.title = g.factory;
-            return a;
-          },
-        },
-        {
-          key: "map",
-          label: "",
-          align: "right",
-          render: function (g) {
-            return pointButton(g.issues[0]!, "show " + g.what + " in " + g.factory + " on the map");
-          },
-        },
-      ],
+    issueTable(
       shown,
-      {
-        rowTitle: function (g) {
-          return g.issues
-            .map(function (i) {
-              return i.instance;
-            })
-            .join(", ");
-        },
-        caption: "machines that " + W.needAction,
-      }
+      function (g) {
+        return pointButton(g.issues[0]!, "show " + g.what + " in " + g.factory + " on the map");
+      },
+      true
     )
   );
-  var listed = 0;
-  shown.forEach(function (g) {
-    listed += g.issues.length;
-  });
-  if (listed < found.total) note(card, "showing " + count(listed) + " of " + count(found.total) + "; Factories lists all");
+  var listed = issueCount(shown);
+  if (listed < total) note(card, "showing " + count(listed) + " of " + count(total) + "; Factories lists all");
 }
 
 function problemsCard(parent: HTMLElement): void {

@@ -1,9 +1,9 @@
 /* The side panel: factory health and the power circuits, over the map. See
  * docs/spatial-and-map.md §21. */
 
-import { button, chip, empty, error, link, loading } from "./dashkit";
+import { button, chip, empty, error, issueCount, issueGroups, link, loading } from "./dashkit";
 import { el, keepFocus, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
-import { mw, pct } from "./format";
+import { count, mw, pct } from "./format";
 import { chooseLabel, FACTORY_PICKED, flyToFactory, paddedBounds, reveal } from "./labels";
 import { onLayersToggle, setLayersOpen } from "./layercontrol";
 import { L } from "./leaflet";
@@ -28,10 +28,11 @@ import {
 import { registerFetch } from "./registry";
 import { editName, renamingIn } from "./rename";
 import { state } from "./state";
-import { learnStates, tone } from "./states";
+import { actionTone, learnStates, statesOf, tone } from "./states";
 import { counted, W } from "./words";
 
-import type { CircuitRow, CircuitsResponse, FactoryHealthResponse, FactoryHealthRow, MachineIssue, MachineRef, StarvedGenerator } from "./api-shapes";
+import type { IssueGroup } from "./dashkit";
+import type { CircuitRow, CircuitsResponse, FactoryHealthResponse, FactoryHealthRow, MachineRef, StarvedGenerator } from "./api-shapes";
 import type { Rated, Reading } from "./powerview";
 
 type Tab = "factories" | "power";
@@ -213,16 +214,15 @@ function stateChips(row: FactoryHealthRow): HTMLElement {
   return chips;
 }
 
-function issueRow(issue: MachineIssue): HTMLElement {
+function issueRow(group: IssueGroup): HTMLElement {
   var line = make("li", "panel-issue");
   var text = make("span", "panel-issue-text");
-  text.appendChild(make("span", "panel-issue-state " + tone(issue.state, true), issue.state));
-  text.appendChild(make("span", "panel-issue-what", issue.what));
-  var detail = issue.cause.length ? issue.cause.join(", ") : "";
-  if (issue.uptime !== null) detail = (detail ? detail + " · " : "") + pct(issue.uptime) + " up";
-  if (detail) text.appendChild(make("span", "panel-issue-cause", detail));
+  text.appendChild(make("span", "panel-issue-state " + tone(group.state, true), group.state));
+  text.appendChild(make("span", "panel-issue-what", group.what));
+  var detail = [counted(group.issues.length, "machine"), group.cause].filter(Boolean).join(" · ");
+  text.appendChild(make("span", "panel-issue-cause", detail));
   line.appendChild(text);
-  var go = pinButton(issue, issue.what);
+  var go = pinButton(group.issues[0]!, group.what);
   if (go) line.appendChild(go);
   return line;
 }
@@ -293,12 +293,13 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
     tools.appendChild(trace);
     item.appendChild(tools);
   }
-  if (selected && row.worst.length) {
+  var groups = selected ? issueGroups([row]) : [];
+  if (groups.length) {
     var list = make("ul", "panel-issues");
-    row.worst.forEach(function (issue) {
-      list.appendChild(issueRow(issue));
+    groups.forEach(function (group) {
+      list.appendChild(issueRow(group));
     });
-    var rest = row.attention - row.worst.length;
+    var rest = row.actionable - issueCount(groups);
     if (rest > 0) list.appendChild(make("li", "panel-more", counted(rest, "more machine", "more machines") + " " + W.needAction));
     item.appendChild(list);
   }
@@ -336,7 +337,10 @@ function renderFactories(body: HTMLElement): void {
   var todo = rows.filter(function (r) {
     return r.actionable > 0;
   }).length;
-  say(body, counted(rows.length, W.factory, W.factories) + " · " + todo + " " + W.needAction);
+  var line = make("p", "panel-note", counted(rows.length, W.factory, W.factories) + " · ");
+  line.appendChild(make("span", actionTone(statesOf(rows)), count(todo)));
+  line.appendChild(document.createTextNode(" " + W.needAction));
+  body.appendChild(line);
   var list = make("ul", "panel-list");
   rows.forEach(function (row) {
     list.appendChild(factoryRow(row));
