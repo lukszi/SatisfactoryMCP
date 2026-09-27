@@ -143,8 +143,8 @@ def test_the_false_known_limitation_is_gone():
 
 
 def test_the_build_is_pinned_so_a_consumer_can_tell_it_predates_theirs():
-    assert "495413" in META["game_version_pinned"]
-    assert "495413" in (META["game_build"] or "")
+    assert "502094" in META["game_version_pinned"]
+    assert "502094" in (META["game_build"] or "")
     assert META["generated"].startswith("20")
 
 
