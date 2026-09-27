@@ -470,3 +470,104 @@ def test_the_conflict_bodies_reach_the_published_schema(client):
     ]
     assert len(ops) == 6
     json.dumps(schema)
+
+
+# ------------------------------------------------------------------ track (P4)
+
+
+def _headroom(value):
+    return {"op": "set", "field": "headroom_mw", "value": value}
+
+
+def test_track_is_one_solve_of_the_head_with_rows_and_stages(client):
+    key = _create(client)["key"]
+    pushed = _push(client, key, 1, _headroom(2000))
+    assert pushed.status_code == 200, pushed.text
+    assert pushed.json()["state"]["headroom_mw"] == 2000.0
+    assert pushed.json()["text"] == 'plan "rip 5" is now v2'
+    assert client.get(f"/api/plans/{key}").json()["headroom_mw"] == 2000.0
+    reply = client.get(f"/api/plan/track?key={key}")
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    assert body["key"] == key and body["rev"] == 2 and body["feasible"] is True
+    assert (
+        body["headroom_mw"] == 2000.0 and body["startup"]["headroom_source"] == "stored on the plan"
+    )
+    assert body["rows"] and body["stages"] and body["count"] == len(body["stages"])
+    assert body["rows"][0]["id"].startswith("job:")
+    old = client.get(f"/api/plan/track?key={key}&rev=1").json()
+    assert old["rev"] == 1 and old["headroom_mw"] is None
+    assert old["startup"]["headroom_source"] == "nameplate from the save"
+    assert client.get(f"/api/plan/track?key={key}&biomass=include").status_code == 200
+    assert client.get(f"/api/plan/track?key={key}&biomass=true").json()["power"]["biomass"] is True
+
+
+def test_track_refuses_unknown_plans_and_revs(client):
+    key = _create(client)["key"]
+    for query in ("key=0000beef", "key=..", f"key={key}&rev=4"):
+        assert client.get(f"/api/plan/track?{query}").status_code == 404, query
+
+
+def test_track_is_a_400_when_the_solve_refuses(client, monkeypatch):
+    from satisfactory_mcp.domain.planning import track
+
+    key = _create(client)["key"]
+
+    def refuse(*_a, **_k):
+        raise ValueError("no such item")
+
+    monkeypatch.setattr(track, "track_view", refuse)
+    reply = client.get(f"/api/plan/track?key={key}")
+    assert reply.status_code == 400 and reply.json() == {"error": "no such item"}
+
+
+def test_track_of_an_infeasible_plan_or_an_empty_scope_is_a_200(client):
+    key = _create(client, args={**HMF_ARGS, "export_minimums": {RIP: 1e7}})["key"]
+    body = client.get(f"/api/plan/track?key={key}").json()
+    assert body["feasible"] is False and body["cause"] and body["rows"] == []
+    other = _create(client, name="scoped")["key"]
+    _push(client, other, 1, {"op": "set", "field": "factory", "value": "nowhere"})
+    body = client.get(f"/api/plan/track?key={other}").json()
+    assert body["scope"] == "nowhere" and body["scope_error"] and body["rows"] == []
+
+
+def test_feeders_answer_on_demand(client):
+    reply = client.get("/api/plan/feeders")
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    assert isinstance(body["feeders"], list) and body["text"]
+
+
+def test_headroom_is_validated_merged_and_undone_like_any_scalar(client):
+    key = _create(client)["key"]
+    for bad in (0, -5, 2_000_000, "lots", True):
+        assert _push(client, key, 1, _headroom(bad)).status_code == 400, bad
+    assert _push(client, key, 1, _headroom(2000)).status_code == 200
+    PlanLog(WORLD).push(key, 2, [_headroom(1500)], actor=CHAT)
+    clash = _push(client, key, 2, _headroom(3000))
+    assert clash.status_code == 409
+    assert clash.json()["conflicts"][0]["key"] == "headroom_mw"
+    merged = _push(client, key, 2, _rate(15))
+    assert merged.status_code == 200 and merged.json()["state"]["headroom_mw"] == 1500.0
+    undo = client.post(f"/api/plans/{key}/undo", json={"base_rev": 4, "rev": 3}, headers=ORIGIN)
+    assert undo.status_code == 200, undo.text
+    assert undo.json()["state"]["headroom_mw"] == 2000.0
+    cleared = _push(client, key, 5, _headroom(None))
+    assert cleared.json()["state"]["headroom_mw"] is None
+    assert cleared.json()["state"]["text"] == "v6 page: startup headroom: nameplate"
+
+
+def test_the_track_and_ask_shapes_reach_the_published_schema(client):
+    schema = client.get("/openapi.json").json()
+    names = schema["components"]["schemas"]
+    for name in ("TrackResponse", "TrackRow", "TrackStage", "FeedersResponse", "AskRow"):
+        assert name in names, name
+    assert "headroom_mw" in names["PlanStateBody"]["properties"]
+    drop = schema["paths"]["/api/asks/{n}"]["delete"]
+    assert drop["responses"]["409"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AskStaleResponse"
+    }
+    ids = {
+        op["operationId"].split("_api_")[0] for p in schema["paths"].values() for op in p.values()
+    }
+    assert {"plan_track", "plan_feeders", "asks", "create_ask", "drop_ask"} <= ids
