@@ -137,3 +137,18 @@ def test_resolve_seeds_hands_back_machine_leaves_for_a_label(traced, game):
     assert subject == "factory 'rod line' (1 machines)"
     assert resolve_seeds(traced, game, "building:Constructor")[0] == [CONSTRUCTOR]
     assert resolve_seeds(traced, game, SMELTER)[0] == [SMELTER]
+
+
+def test_a_label_prefix_traces_the_label_even_when_it_shares_a_building_name(traced, game):
+    """The dashboard and side panel seed a factory by its name, and a bare name that is
+    also a building's display name matched every machine of that building instead."""
+    from satisfactory_mcp.domain.factories.select import SelectorError
+    from satisfactory_mcp.domain.factories.trace import resolve_seeds
+
+    traced.labels.put("Constructor", [SMELTER])
+    assert resolve_seeds(traced, game, "Constructor")[0] == [CONSTRUCTOR]
+    seeds, subject = resolve_seeds(traced, game, "label:Constructor")
+    assert seeds == [SMELTER]
+    assert subject == "factory 'Constructor' (1 machines)"
+    with pytest.raises(SelectorError):
+        resolve_seeds(traced, game, "label:no such factory")

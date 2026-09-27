@@ -171,7 +171,7 @@ function render(): void {
     return;
   }
   if (!data) {
-    line(box, "tracing " + view.seed + "…");
+    line(box, "tracing " + view.seed.replace(/^label:/, "") + "…");
     return;
   }
   var only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;

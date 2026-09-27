@@ -1016,7 +1016,7 @@ function renderFactory(body: HTMLElement, name: string): void {
   head.appendChild(
     actionButton("trace supply", "draw what feeds this factory on the map, with items and rates", function () {
       toMap(function () {
-        startTrace(row!.name, "up");
+        startTrace("label:" + row!.name, "up");
       });
     })
   );

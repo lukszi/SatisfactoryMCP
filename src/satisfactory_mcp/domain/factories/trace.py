@@ -152,12 +152,23 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
 def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
     """A seed as machine leaves plus a subject line: an instance, a building, else a factory.
 
+    ``label:<name>`` names only a factory, so a label that shares a building's name still
+    traces the label.
+
     Raises ``SelectorError`` when the text is none of the three.
     """
     from .resolve import resolve_factory
+    from .select import SelectorError
 
     records = {r["instance"].rsplit(".", 1)[-1]: r for r in state._all_records()}
     what = seed.strip()
+    if what.casefold().startswith("label:"):
+        wanted = what[len("label:") :].strip()
+        if state.labels.find(wanted) is None:
+            raise SelectorError(f"no label named {wanted!r}")
+        name, machines = resolve_factory(state, wanted)
+        seeds = [str(m) for m in machines]
+        return seeds, f"factory {name!r} ({len(seeds)} machines)"
     if what in records:
         return [what], f"{records[what].get('cls', '?')} {what}"
     by_class = [

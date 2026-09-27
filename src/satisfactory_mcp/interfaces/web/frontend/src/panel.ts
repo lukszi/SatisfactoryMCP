@@ -236,7 +236,7 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
     var trace = make("button", "panel-rename", "trace supply");
     trace.type = "button";
     trace.title = "draw what feeds this factory on the map";
-    trace.setAttribute(TRACE_ATTR, row.name);
+    trace.setAttribute(TRACE_ATTR, "label:" + row.name);
     trace.setAttribute(TRACE_DIR_ATTR, "up");
     tools.appendChild(trace);
     item.appendChild(tools);
