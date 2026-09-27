@@ -76,7 +76,8 @@ export interface PageState {
 /* The selection lives in the URL fragment so a reload, a bookmark or a pasted link lands on the
  * same world, save, layers and viewport. Read before `state` is built, because the boot values
  * below are half of it. */
-export var BOOT: Record<string, string> = parseHash(location.hash);
+export var BOOT_GARBLED: string[] = [];
+export var BOOT: Record<string, string> = parseHash(location.hash, BOOT_GARBLED);
 
 export var state: PageState = {
   world: "",
@@ -103,16 +104,36 @@ export var state: PageState = {
 /* A function and not just `BOOT`, because the fragment is read more than once: `BOOT` is the one
  * the page opened on, and fragment.ts re-reads it whenever the address bar changes under an open
  * tab. One parser, so a hand-typed fragment is read exactly the way a bookmarked one is. */
-export function parseHash(hash: string): Record<string, string> {
+export function parseHash(hash: string, garbled?: string[]): Record<string, string> {
   var out: Record<string, string> = {};
   hash
     .replace(/^#/, "")
     .split("&")
     .forEach(function (piece) {
       var eq = piece.indexOf("=");
-      if (eq > 0) out[piece.slice(0, eq)] = decodeURIComponent(piece.slice(eq + 1));
+      if (eq <= 0) return;
+      var key = piece.slice(0, eq);
+      var raw = piece.slice(eq + 1);
+      try {
+        out[key] = decodeURIComponent(raw);
+      } catch (ignored) {
+        out[key] = lenient(raw);
+        if (garbled) garbled.push(key);
+      }
     });
   return out;
+}
+
+function lenient(raw: string): string {
+  try {
+    return decodeURIComponent(raw.replace(/%(?![0-9a-fA-F]{2})/g, "%25"));
+  } catch (ignored) {
+    return raw;
+  }
+}
+
+export function garbledNote(keys: string[]): string {
+  return "the link has a broken % escape in “" + keys.join("”, “") + "”; it was read as best it could be";
 }
 
 export function dashOf(asked: Record<string, string>): string {

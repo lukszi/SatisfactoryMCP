@@ -70,6 +70,7 @@ export function listen() {
     }
     loadOne("/api/factories");
     loadOne("/api/factories/health");
+    loadOne("/api/power/circuits");
     loadOne("/api/plans");
     resyncPlanner();
   };
@@ -99,6 +100,7 @@ export function listen() {
     blink();
     loadOne("/api/factories");
     loadOne("/api/factories/health");
+    loadOne("/api/power/circuits");
     loadOne("/api/plans");
   });
   source.addEventListener("plans", function (event) {

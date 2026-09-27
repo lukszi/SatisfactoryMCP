@@ -53,6 +53,10 @@ Planned as 0.2.0.
 - Retired MAM nodes are not listed or counted; item and building ids read as names.
 - The Overview action list shows only machines needing action, counted across factories.
 - The map and chat name an unnamed cluster the way Detect does, not by its building class.
+- Map clicks work again after a trace is closed; trace run tooltips are escaped.
+- Leaving a factory rename unfinished no longer freezes the dashboard or side panel.
+- A malformed `%` escape in the address no longer stops the page from loading.
+- Power circuit names follow a factory rename without a reload.
 
 ## [0.1.0] - 2026-09-27
 
