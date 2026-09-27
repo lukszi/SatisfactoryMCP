@@ -1511,30 +1511,26 @@ def amend_factory(
         return f"! {exc}"
 
     alive = set(st.graph.machines())
-    before = list(label.anchors)
-    fresh = sorted(set(wanted) - set(before))
-    warn = _overlaps(store, fresh, label.name)
-    # Before the attach, since ``covers`` reads every label including this one.
-    if fresh and store.covers(fresh):
-        warn.append(
-            f"{len(fresh)} added machine(s) already have a name -- covers(), which the map "
-            "and propose_factories read for that same question"
-        )
-
-    going = set(unwanted) | ({m for m in before if m not in alive} if prune_missing else set())
+    going = set(unwanted) | (
+        {m for m in label.anchors if m not in alive} if prune_missing else set()
+    )
     try:
-        added = store.attach(label, wanted)
-        dropped = store.detach(label, going)
+        plan = edits.plan_amend(store, label, wanted, going, alive)
     except LabelError as exc:
-        label.anchors = before
         return _label_refused(exc)
+    warn = [f"overlaps {other!r} on {n} machine(s)" for other, n in plan.overlaps.items()]
+    if plan.named:
+        warn.append(
+            f"{len(plan.added)} added machine(s) already have a name -- covers(), which the "
+            "map and propose_factories read for that same question"
+        )
+    added, dropped, standing = plan.added, plan.dropped, plan.standing
 
     pruned = sum(1 for m in dropped if m not in alive)
-    standing = sorted(set(label.anchors) & alive)
     cand = identity.describe(standing, st.graph, st.game, st.projection, "label")
     head = (
         f"{'would amend' if dry_run else 'amended'} {label.name!r}: "
-        f"{len(before)} -> {len(label.anchors)} anchor(s), +{len(added)} -{len(dropped)}"
+        f"{len(plan.before)} -> {len(plan.after)} anchor(s), +{len(added)} -{len(dropped)}"
         + (f" ({pruned} of them already gone from this save)" if pruned else "")
     )
     if standing:
@@ -1544,14 +1540,12 @@ def amend_factory(
             f"(spread {cand.spread_m:.0f}m): {cand.name_hint()}"
         )
     if dry_run:
-        label.anchors = before
         return render.envelope(f"# {head}", "", warn + ["dry run: nothing written"])
     if not added and not dropped and not notes:
         return render.envelope(f"# {head}", "", warn + ["nothing changed, so nothing written"])
 
-    label.anchors = before
     try:
-        label = edits.amend(
+        label, _written = edits.amend(
             st.world_id,
             _session(st),
             label.name,

@@ -192,7 +192,7 @@ tool table.
 | `select_machines` | Name/amend dialog, live preview | selector text or map lasso, split, expand | highlighted machines + count | new |
 | `name_factory` | Dashboard > Factories > unnamed factories | name (prefilled), one proposal | new label; joins the table and panel | **built** `POST /api/labels`, W (§9); selector/lasso still open |
 | `rename_factory` | Factories table, factory detail, side panel: edit in place | text | renamed; plans follow | **built** `PATCH /api/labels/{name}`, W (§9.7) |
-| `amend_factory` | Factory detail > edit | add/drop via lasso or selector, prune missing, dry run | diff preview, then applied | new, W |
+| `amend_factory` | Factory detail > edit | add/drop via lasso or selector, prune missing, dry run | diff preview, then applied | **built** by lasso `POST /api/labels/amend`, W (§9.9); selector and prune still open |
 | `list_factories` | Factories list (step 0) | none | named factories, % still standing | exists `/api/factories` |
 | `forget_factory` | "undo" after naming in the dashboard | none | label gone | **built** `DELETE /api/labels/{name}`, W (§9); detail-view button still open |
 | `trace_upstream` | Machine popup, right-click inspector, factory detail, side panel > Trace | seed (selection), up/down | path drawn on the map; items, rates, flows in a card | **built** `/api/trace` (§13) |
@@ -349,7 +349,7 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 8 | **Planner (stateless):** solve, bill, compare, byproducts | 4 planning tools | 4 POST | no |
 | 9 | **Write guard + Plans:** save, rename, forget, site by dragging | 4 plan tools | CRUD | **yes** |
 | 10 | **Plan follow-through:** layout, diff, startup order | `plan_layout`, `diff_vs_save`, `commission_plan` | 3 | no |
-| 11 | **Labels:** propose, preview, name, amend by lasso | 6 label tools | 2 + CRUD | **yes** |
+| 11 | **Labels:** propose, preview, name, amend by lasso. **Built 2026-09-27** (§9, §9.9; selector text still open) | 6 label tools | 2 + CRUD | **yes** |
 | 12 | **Advisors (slow):** unlock value, hard drive pick | `rank_unlocks`, `advise_hard_drive_pick` | 2 | no |
 | 13+ | Domain gaps in §5.3, in an order still to be picked | — | — | — |
 
@@ -620,7 +620,7 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
   factory appears in the Factories table, the side panel and the map labels with no reload.
   The card lists what was named in this session, each with an **undo**. Undo is `DELETE /api/labels/{name}?version=`, which removes an exact name through
   the same `edits.forget` that `forget_factory` uses.
-- **Not built:** amend, lasso selection and a dry-run preview.
+- **Amend by lasso** with a dry-run preview came later the same day (§9.9).
 
 ### 9.2 The request guard
 
@@ -910,6 +910,37 @@ me that graph for a detected factory".
   can reuse it.
 - **Not yet.** Per-machine drill-down, belt tiers on edges, and a layout that keeps positions
   steady across saves.
+
+### 9.9 Amend by lasso, and a cluster's machines on the map
+
+- **Machines on the map.** `GET /api/factories/machines` takes `factory=<name>`, or
+  `candidate=proposal:N&token=` like the graph route, and lists each standing machine with its
+  building, `x_m`/`y_m` and the label that holds it. A Detect row's **map** button still flies
+  to the box and outlines it, and now also rings every machine of the cluster (`lasso.ts`),
+  with a card that counts them by building. Before, the page showed only the box.
+- **Amend.** The factory detail header has **amend on map**, and the side panel's selected
+  factory has **amend**. Both switch to the map, ring the factory's machines in the selection
+  colour, and turn map dragging off so that a drag draws a freehand area. **+ add** and
+  **− remove** pick what the area does. Wheel and buttons still zoom; Esc or × ends it.
+- **Preview, then apply.** On release the page sends `POST /api/labels/amend {name, area,
+  mode, as_of, version, dry_run: true}`. `area` is the drawn polygon in metres. The reply lists
+  the machines it would add (green rings) or remove (red rings), the anchor count before and
+  after, and any other label that already holds an added machine. **apply** sends the same body
+  with `dry_run: false`; **discard** or a new drag starts again. Switching add/remove re-checks
+  the same area.
+- **Same path as the tool.** The route picks the machines inside the area (`geo.inside`, an
+  even-odd test on the machine positions), then calls `edits.plan_amend`, the dry run that
+  `amend_factory` now uses too, and `edits.amend`, now under `LabelStore.editing` with
+  `expect`. `test_the_page_and_the_tool_amend_to_the_same_label` compares the stored label
+  after each path.
+- **Refusals.** As §9.7: `stale` (version), `pin` (a save written since `as_of`), 404 for a
+  missing label, 400 for a bad mode or an area under three corners. Removing every machine is
+  a 409 with no flag set, and the page shows its words: `forget` deletes a label. A stale or
+  moved refusal reloads the rings and asks for the area again.
+- **Choices left open.** One area per preview (no adding several strokes before applying); a
+  lasso only, with no separate box tool; added machines another label already holds stay in
+  both labels, as `amend_factory` does, with a warning in the preview. A trace started while
+  the amend card is open is not closed by it.
 
 ---
 

@@ -1061,6 +1061,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/factories/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Machines
+         * @description Where each standing machine of a named factory, or of a detected candidate, stands.
+         */
+        get: operations["factory_machines_api_factories_machines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/labels/amend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Amend Label
+         * @description Add the machines inside ``area`` (metres, map frame) to a label, or drop them from it.
+         *
+         *     The same ``plan_amend`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
+         */
+        post: operations["amend_label_api_labels_amend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plan/solve": {
         parameters: {
             query?: never;
@@ -1455,6 +1497,54 @@ export interface components {
             build_recipe: string | null;
             /** Recipes */
             recipes: components["schemas"]["MakerRow"][];
+        };
+        /**
+         * AmendBody
+         * @description ``area`` is a polygon of ``[x_m, y_m]`` corners; ``mode`` is ``add`` or ``drop``.
+         */
+        AmendBody: {
+            /** Name */
+            name: string;
+            /** Area */
+            area: [
+                number,
+                number
+            ][];
+            /** Mode */
+            mode: string;
+            /** As Of */
+            as_of: string;
+            /** Version */
+            version: number;
+            /** Dry Run */
+            dry_run?: boolean;
+        };
+        /**
+         * AmendedResponse
+         * @description ``added`` and ``dropped`` are what the area changes; ``written`` is false on a dry run
+         *     and when nothing changed. ``version`` is the store's, after any write.
+         */
+        AmendedResponse: {
+            /** Name */
+            name: string;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Written */
+            written: boolean;
+            /** Before */
+            before: number;
+            /** After */
+            after: number;
+            /** Added */
+            added: components["schemas"]["MachineSpot"][];
+            /** Dropped */
+            dropped: components["schemas"]["MachineSpot"][];
+            /** Overlaps */
+            overlaps: string[];
+            /** Token */
+            token: string;
+            /** Version */
+            version: number;
         };
         /** Amount */
         Amount: {
@@ -2096,6 +2186,15 @@ export interface components {
             /** Machines */
             machines: number;
         };
+        /** FactoryMachinesResponse */
+        FactoryMachinesResponse: {
+            /** Title */
+            title: string;
+            /** Token */
+            token: string;
+            /** Machines */
+            machines: components["schemas"]["MachineSpot"][];
+        };
         /**
          * FactoryRow
          * @description A factory the player named, and the extent of the machines it is anchored to.
@@ -2652,6 +2751,22 @@ export interface components {
             x_m: number | null;
             /** Y M */
             y_m: number | null;
+        };
+        /**
+         * MachineSpot
+         * @description One placed machine. ``factory`` is the label that holds it, if any.
+         */
+        MachineSpot: {
+            /** Id */
+            id: string;
+            /** Building */
+            building: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Factory */
+            factory: string | null;
         };
         /**
          * MachinesResponse
@@ -5924,6 +6039,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_machines_api_factories_machines_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                candidate?: string | null;
+                token?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryMachinesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    amend_label_api_labels_amend_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AmendBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmendedResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRefusedResponse"];
                 };
             };
             /** @description Validation Error */
