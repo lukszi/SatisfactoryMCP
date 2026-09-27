@@ -1,7 +1,7 @@
 /* The result panel: what the head solves to, redrawn after every new version. */
 
 import { count, make } from "./dom";
-import { mw } from "./format";
+import { mw, perMin } from "./format";
 import { drawGraph } from "./graph";
 import { vitals } from "./panel";
 import { bench, changed, gesture, undoRev } from "./planner-core";
@@ -16,9 +16,7 @@ interface PlanNode extends GraphNodeShape {
 
 var drawn: { data: SolveResponse | null; svg: SVGSVGElement | null } = { data: null, svg: null };
 
-export function perMin(value: number): string {
-  return count(Math.round(value * 10) / 10) + "/min";
-}
+export { perMin };
 
 function exact(value: number | null | undefined): string {
   return value === null || value === undefined ? "–" : count(Math.round(value * 10) / 10) + " MW";

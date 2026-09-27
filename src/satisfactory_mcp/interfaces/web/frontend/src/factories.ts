@@ -1,7 +1,7 @@
 /* The dashboard's Factories tab: the named factories, unnamed-cluster detection and the
  * production graph, addressed as `dash=factories[/<name>]`. */
 
-import { get, send } from "./api";
+import { get, latest, send } from "./api";
 import { cell, heading, link, note, tile } from "./dashkit";
 import { count, make } from "./dom";
 import { mw, pct, spoken } from "./format";
@@ -12,11 +12,13 @@ import { stateTone } from "./placements";
 import { refreshLabels, renamedTo } from "./rename";
 import { amount, choice, onSetting, setting } from "./settings";
 import { state } from "./state";
+import { tone, toneClass } from "./states";
 import { fail, friendly, note as said } from "./toast";
 import { startTrace } from "./trace";
 import { actionButton, factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, table, toMap } from "./dashboard";
-import { actionable, FINE, mixBar, mixOf, needsAction } from "./overview";
+import { actionable, mixBar, mixOf } from "./overview";
 
+import type { Ticket } from "./api";
 import type {
   CandidateRow,
   CandidatesResponse,
@@ -147,13 +149,18 @@ function detectPath(): `/api/factories/candidates?${string}` {
   ) as `/api/factories/candidates?${string}`;
 }
 
+var detectRun: Ticket | null = null;
+
 function runDetect(keep?: boolean): void {
+  var ticket = latest("detect");
+  detectRun = ticket;
   detect.busy = true;
   detect.error = "";
   detect.asked = detectAsked();
   render();
   get<CandidatesResponse>(detectPath())
     .then(function (data) {
+      if (!ticket.fresh()) return;
       detect.data = data;
       detect.world = state.world;
       if (!keep) {
@@ -162,10 +169,12 @@ function runDetect(keep?: boolean): void {
       }
     })
     .catch(function (error) {
+      if (!ticket.fresh()) return;
       detect.data = null;
       detect.error = friendly(error);
     })
     .then(function () {
+      if (detectRun !== ticket) return;
       detect.busy = false;
       render();
     });
@@ -611,13 +620,11 @@ export function renderFactory(body: HTMLElement, name: string): void {
   var tb = t.tBodies[0]!;
   row.states.forEach(function (s) {
     var tr = make("tr");
-    var bad = needsAction(s.state);
-    var ok = FINE.indexOf(s.state) >= 0;
-    var tone = stateTone(s.state, bad);
-    cell(tr, s.state, tone);
+    var shade = tone(s.state);
+    cell(tr, s.state, shade === "bad" || shade === "blocked" ? shade : "");
     cell(tr, s.count, "num");
     var bar = make("div", "dash-hbar");
-    var fill = make("span", "dash-mix-" + (tone || (ok ? "ok" : "mid")));
+    var fill = make("span", "dash-mix-" + toneClass(shade));
     fill.style.width = (s.count / biggest) * 100 + "%";
     bar.appendChild(fill);
     cell(tr, bar, "bar");

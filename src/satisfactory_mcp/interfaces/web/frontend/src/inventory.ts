@@ -4,6 +4,7 @@
 import { count, make } from "./dom";
 import { pct, regionLine } from "./format";
 import { hashFor, writeHash } from "./map";
+import { dashParts } from "./nav";
 import { showPoint } from "./panel";
 import { registerFetch } from "./registry";
 import { state } from "./state";
@@ -42,8 +43,7 @@ var view = { empty: false, kind: "all" };
 var CONTENTS_SHOWN = 3;
 
 function query(): string {
-  var cut = state.dash.indexOf("/");
-  return cut < 0 ? "" : state.dash.slice(cut + 1);
+  return dashParts().subject;
 }
 
 function address(q: string): string {

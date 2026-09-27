@@ -9,6 +9,7 @@ import { hashFor, map } from "./map";
 import { declareColours } from "./palette";
 import { stateTone } from "./placements";
 import { registerFetch } from "./registry";
+import { learnStates } from "./states";
 import { editName } from "./rename";
 
 import type {
@@ -549,6 +550,7 @@ registerFetch<FactoryHealthResponse>({
   clears: [],
   refilters: false,
   draw: function (data) {
+    learnStates(data);
     view.health = data;
     view.healthError = "";
     if (
