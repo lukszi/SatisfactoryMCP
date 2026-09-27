@@ -225,6 +225,64 @@ def state(game, projection) -> WorldState:
     return WorldState(projection=projection, game=game)
 
 
+#: The stored arguments of the planner's ``spire-coast-full``, the decoupled three-module plan.
+SPIRE_COAST_FULL = {
+    "objective": "max_mw",
+    "sources": ["region:Spire Coast"],
+    "exports": ["MW", "Plastic", "Rubber"],
+    "export_minimums": {"Plastic": 600.0, "Rubber": 250.0},
+    "only_free_nodes": False,
+    "allow_sinks": True,
+    "extractor_clocks": [1.0, 1.5, 2.0, 2.5],
+    "machine_cost_mw": 5.0,
+    "exclude_recipes": [
+        "Turbofuel",
+        "Alternate: Compacted Coal",
+        "Coal-Powered Generator",
+        "Alternate: Recycled Plastic",
+        "Alternate: Recycled Rubber",
+    ],
+    "water_extractors": 64,
+}
+
+
+@pytest.fixture
+def planned(monkeypatch, tmp_path, projection, game) -> WorldState:
+    """The fixture world with ``spire-coast-full`` saved in a private plan store.
+
+    The planning tools read it too, through a new state per call as the server builds one,
+    so a plan one call saves is seen by the next.
+    """
+    from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+    from satisfactory_mcp.interfaces.mcp.tools import planning
+
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path)
+    PlanLog(FIXTURE_WORLD).create("spire-coast-full", SPIRE_COAST_FULL, actor=Actor("chat"))
+
+    def fresh(save=None, world=None, as_of=None):
+        return WorldState(projection=projection, game=game)
+
+    monkeypatch.setattr(planning, "_state", fresh)
+    return fresh()
+
+
+@pytest.fixture
+def labelled(game, projection, tmp_path, monkeypatch) -> WorldState:
+    """The fixture world with its own factory names, read from a private label store.
+
+    ``tier 1&2`` and ``steel factory`` are the reference world's labels, so a test that names
+    them reads this copy rather than whatever the machine's label store holds. A fresh state,
+    because ``state`` is shared and caches the labels it saw first.
+    """
+    labels = tmp_path / "labels"
+    labels.mkdir()
+    (labels / f"{FIXTURE_WORLD}.json").write_bytes(
+        (FIXTURES / "labels_reference.json").read_bytes()
+    )
+    monkeypatch.setattr(config, "labels_dir", lambda: labels)
+    return WorldState(projection=projection, game=game)
+
+
 def _explode(save=None, world=None):
     """A loader that fails the way the real one fails when the sidecar produces nothing."""
     raise RuntimeError("sidecar produced no output")
@@ -247,6 +305,21 @@ def client(state, game):
 
     app = create_app(
         state_loader=lambda save=None, world=None: state,
+        game_loader=lambda: game,
+    )
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def labelled_client(labelled, game):
+    """The ``client`` app over ``labelled``, the fixture world with its factory names."""
+    from fastapi.testclient import TestClient
+
+    from satisfactory_mcp.interfaces.web.app import create_app
+
+    app = create_app(
+        state_loader=lambda save=None, world=None: labelled,
         game_loader=lambda: game,
     )
     with TestClient(app) as c:

@@ -146,7 +146,7 @@ def test_sources_are_recorded_with_licences(table):
     assert "first-party" in primary["licence"]
     assert "no external licence" in primary["licence"]
     assert "no attribution" in primary["licence"]
-    assert "495413" in primary["game_version_pinned"]
+    assert "502094" in primary["game_version_pinned"]
     # And the two retired sources stay on the record rather than being tidied away.
     assert "retired_mit_table" in sources["retired"]
     assert "GPL" in sources["retired"]
@@ -211,7 +211,7 @@ def test_position_deltas_are_recorded_against_both_builds(table):
     assert block["rows_only_in_the_installed_build"] == []
     assert block["rows_compared"] == len(table.nodes)
     assert block["measured"] and block["build"] and block["method"]
-    assert "495413" in block["build"]
+    assert "502094" in block["build"]
 
 
 # ------------------------------------------------------- defect 1: void class

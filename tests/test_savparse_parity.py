@@ -54,6 +54,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -69,6 +70,10 @@ SIDECAR = REPO / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract.py"
 #: Header keys that describe the FILE rather than the world, so they are excluded from the
 #: digest: a save copied to another path or re-read after a touch is the same world.
 VOLATILE = {"path", "filename", "mtime_ns", "size"}
+
+#: The game rewrites these three names in place, so one is the banked save only while its
+#: header still digests to the banked one; after that it is a later world under an old name.
+AUTOSAVE = re.compile(r"_autosave_\d+\.sav$")
 
 #: Everything every schema after 11 added, named one by one rather than detected. Guessing
 #: structurally -- "drop keys the bank has never seen", "drop record fields the bank cannot know
@@ -543,7 +548,10 @@ def test_this_parser_still_produces_what_the_two_agreed_on(banked, saves_root):
             pool, present, lambda item: _projection(item[2]), width=width
         ):
             assert "error" not in proj, (name, proj.get("detail"))
-            assert proj["schema_version"] == 20, (name, "unexpected schema for the filter")
+            assert proj["schema_version"] == 22, (name, "unexpected schema for the filter")
+            header = {k: v for k, v in proj["header"].items() if k not in VOLATILE}
+            if AUTOSAVE.search(name) and _digest(header) != entry["header"]:
+                continue
             proj = as_schema_11(proj)
             for key, want in entry.items():
                 if key == "n_objects_value":

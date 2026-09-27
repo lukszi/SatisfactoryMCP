@@ -125,13 +125,12 @@ def test_the_slack_is_far_below_anything_physical(game, live):
 # ------------------------------------------------------------ what it costs
 
 
-def test_three_loops_cost_a_little_optimality(game, live, rig):
+def test_three_loops_cost_a_little_optimality(game, planned, rig):
     """Each module optimises locally, so the chain cannot beat the joint solve. Measured
     at 0.35% on this plant -- small enough that building in modules is nearly free, and
     the number is what makes that a decision rather than a hunch."""
+    live = planned
     stored = live.plans.find("spire-coast-full")
-    if stored is None:
-        pytest.skip("the reference plan is not saved on this machine")
     fuel = rig.solution.exports["Desc_LiquidFuel_C"]
     resin = rig.solution.exports["Desc_PolymerResin_C"]
     hall = prepare(

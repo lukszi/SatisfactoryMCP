@@ -22,6 +22,7 @@ from conftest import REFERENCE_FIELD
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.planning.sites import partition
+from satisfactory_mcp.domain.world.state import WorldState
 
 pytestmark = pytest.mark.integration
 
@@ -31,12 +32,14 @@ RESIN = ["Residual Plastic", "Residual Rubber"]
 THREE = {"A-rig": RIG, "B-hall": HALL, "C-resin": RESIN}
 
 
+@pytest.fixture(autouse=True)
+def live(planned) -> WorldState:
+    return planned
+
+
 @pytest.fixture
 def decoupled(game, live):
-    stored = live.plans.find("spire-coast-full")
-    if stored is None:
-        pytest.skip("the reference plan is not saved on this machine")
-    kwargs = dict(stored.kwargs())
+    kwargs = dict(live.plans.find("spire-coast-full").kwargs())
     kwargs["sources"] = list(REFERENCE_FIELD)
     return prepare(game, live, kwargs)
 
@@ -115,8 +118,6 @@ def test_the_tool_says_when_the_table_is_complete(game):
     out = srv.plan_layout(
         plan="spire-coast-full", show="sites", sites=THREE, sources=list(REFERENCE_FIELD)
     )
-    if out.startswith("! "):
-        pytest.skip("the reference plan is not saved on this machine")
     assert "every process is assigned to exactly one site" in out
     assert "A-rig\t->\tB-hall\tFuel" in out
 
@@ -134,8 +135,6 @@ def test_a_shared_flow_is_split_by_share_and_says_so(game):
     """The LP gives net balances and never who fed whom, so an exact producer-consumer
     pairing would be invented -- the same reason a layout models a bus."""
     out = srv.plan_layout(plan="spire-coast-full", show="sites", sites=THREE)
-    if out.startswith("! "):
-        pytest.skip("the reference plan is not saved on this machine")
     assert "split between consumers by SHARE" in out
 
 
@@ -180,12 +179,10 @@ def test_a_site_can_be_keyed_on_the_power_it_produces(decoupled, game):
 
 
 def test_a_power_token_is_exact_not_a_substring(decoupled, game):
-    """"power" as a substring would also claim every "Fuel-Powered Generator" LABEL --
+    """ "power" as a substring would also claim every "Fuel-Powered Generator" LABEL --
     redundantly today, and wrongly the day a non-generator label contains the word. The
     token means "the generators", never "anything mentioning power"."""
-    sp = partition(
-        decoupled, game, {"hall": ["power"], "also-hall": ["Fuel-Powered Generator"]}
-    )
+    sp = partition(decoupled, game, {"hall": ["power"], "also-hall": ["Fuel-Powered Generator"]})
     # Every generator is CONTESTED between the two spellings -- proof the token matched
     # the same machines the label does, rather than a superset grown by substring.
     assert sp.contested
@@ -253,8 +250,6 @@ def test_the_tool_reports_per_site_stacks(game):
         order_floors_by="head",
         sources=list(REFERENCE_FIELD),
     )
-    if out.startswith("! "):
-        pytest.skip("the reference plan is not saved on this machine")
     # One height per building, never one summed tower.
     assert "stacks=A-rig" in out
     assert "stack_height=" not in out

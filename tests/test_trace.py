@@ -179,12 +179,10 @@ def test_an_unknown_direction_lists_the_choices(game):
     )
 
 
-def test_commissioning_flags_the_cutover_risk(game, live):
+def test_commissioning_flags_the_cutover_risk(planned):
     """A wave that repipes a live feeder takes that power out at the moment the plan has
     least headroom to spare, so the warning belongs beside the sequence rather than in a
     tool you have to remember to call."""
-    if live.plans.find("spire-coast-full") is None:
-        pytest.skip("the reference plan is not saved on this machine")
     out = srv.commission_plan(plan="spire-coast-full", limit=4)
     assert "CUTOVER RISK" in out
     assert "Oil Extractor" in out

@@ -8,8 +8,8 @@
     "licence": "first-party; read from the installed game's own packaged map data by tools/gen_world_resource_nodes.py -- no third-party table, no external licence, no attribution obligation",
     "derivation": "node exports of the installed build's Persistent_Level.umap, read out of the IoStore container: mResourceClass, mPurity, mCore and the composed root-component transform",
     "role": "authoritative node set, resource, purity, position, and the satellite -> fracking-core link",
-    "game_version_pinned": "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build",
-    "generated": "2026-07-30"
+    "game_version_pinned": "buildVersion 502094 (engine branch ++FactoryGame+rel-main-anniversary-2026), the installed build",
+    "generated": "2026-09-27"
    },
    "retired": "the MIT-licensed node table this file used to merge from, and the GPL SCIM grouping before it, are both gone; the retirement record and the parity that justified it are _meta.retired_mit_table in data/world_resource_nodes.json"
   },
@@ -29,8 +29,8 @@
    },
    "positions": {
     "against_the_installed_build": {
-     "measured": "2026-07-30",
-     "build": "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build",
+     "measured": "2026-09-27",
+     "build": "buildVersion 502094 (engine branch ++FactoryGame+rel-main-anniversary-2026), the installed build",
      "method": "every emitted row compared back to data/world_resource_nodes.json -- the installed build's own Persistent_Level.umap, read out of the IoStore container -- on identity, resource, purity and position, recomputed on every run of this generator",
      "rows_compared": 608,
      "rows_only_in_this_table": [],

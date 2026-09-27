@@ -252,6 +252,23 @@ def test_a_save_version_52_body_starts_at_the_grid_table(raw_v52):
     assert sorted({s.version for lv in save.levels for s in lv.objects}) == [36, 52]
 
 
+# ------------------------------------------------------------ the changelist check
+
+
+def test_records_from_an_older_build_are_ordinary(save, raw):
+    """The first save under a new build still carries every level it has not rewritten."""
+    changelist = save.preamble.changelist & 0x7FFFFFFF
+    assert read_body(raw, build_version=changelist).warnings == []
+    assert read_body(raw, build_version=changelist + 6681).warnings == []
+
+
+def test_a_record_from_a_newer_build_than_the_save_is_reported(save, raw):
+    changelist = save.preamble.changelist & 0x7FFFFFFF
+    (_at, what), *_ = read_body(raw, build_version=changelist - 1).warnings
+    assert f"changelist {changelist}" in what
+    assert "newer than the save" in what
+
+
 # ------------------------------------------------------------ failing loudly
 
 

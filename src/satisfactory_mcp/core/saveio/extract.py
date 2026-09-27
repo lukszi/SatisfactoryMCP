@@ -51,7 +51,7 @@ read_full_save = pioneersav.read_full_save
 #: that main()'s except clause names one thing.
 PARSE_ERROR: tuple[type[BaseException], ...] = (pioneersav.ParseError,)
 
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 #: The classes the game drops on the ground when items have nowhere else to go. Schema 18;
 #: see `_crates`.

@@ -335,15 +335,13 @@ def test_saving_over_a_plan_rewrites_its_record_with_the_arguments(tmp_path, mon
 
 
 @pytest.mark.integration
-def test_the_saved_reference_plan_degrades_rather_than_crashing(live):
+def test_the_saved_reference_plan_degrades_rather_than_crashing(planned):
     """The plan that found this gap. It predates the record, so the answer is "cannot be
     checked" plus the box its selector covers TODAY -- never a crash, and never a shrug."""
-    stored = live.plans.find("spire-coast-full")
-    if stored is None:
-        pytest.skip("the reference plan is not saved on this machine")
+    stored = planned.plans.find("spire-coast-full")
     assert not prov.recorded(stored)
 
-    notes = prov.notes(live.game, live, stored)
+    notes = prov.notes(planned.game, planned, stored)
     assert "records no resolved node set" in notes[0]
     assert any("resolves to" in n and "bbox:" in n for n in notes[1:])
 

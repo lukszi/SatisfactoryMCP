@@ -13,19 +13,20 @@ fastapi = pytest.importorskip("fastapi")
 from satisfactory_mcp.domain.factories.health import ACTIONABLE, OK, STATES, assess
 
 
-def test_every_named_factory_gets_a_health_row(client, state):
-    body = client.get("/api/factories/health").json()
+def test_every_named_factory_gets_a_health_row(labelled_client, labelled):
+    body = labelled_client.get("/api/factories/health").json()
     assert body["states"] == list(STATES)
     assert body["actionable_states"] == list(ACTIONABLE)
     assert body["ok_states"] == [s for s in STATES if s in OK]
     assert set(body["ok_states"]) == OK
-    assert {r["name"] for r in body["factories"]} == {x.name for x in state.labels.labels}
+    assert body["factories"]
+    assert {r["name"] for r in body["factories"]} == {x.name for x in labelled.labels.labels}
 
 
-def test_a_health_row_matches_what_assess_says_about_that_factory(client, state):
-    body = client.get("/api/factories/health").json()
-    if not body["factories"]:
-        pytest.skip("the fixture world has no named factories")
+def test_a_health_row_matches_what_assess_says_about_that_factory(labelled_client, labelled):
+    state = labelled
+    body = labelled_client.get("/api/factories/health").json()
+    assert body["factories"]
     alive = set(state.graph.machines())
     by_name = {x.name: x for x in state.labels.labels}
     for row in body["factories"]:
@@ -45,20 +46,22 @@ def test_a_health_row_matches_what_assess_says_about_that_factory(client, state)
                 assert abs(issue["x_m"]) < 5000, "metres, not centimetres"
 
 
-def test_factories_are_ordered_worst_first(client):
-    rows = client.get("/api/factories/health").json()["factories"]
+def test_factories_are_ordered_worst_first(labelled_client):
+    rows = labelled_client.get("/api/factories/health").json()["factories"]
+    assert len(rows) > 1
     todo = [r["actionable"] for r in rows]
     assert todo == sorted(todo, reverse=True)
 
 
-def test_the_sweep_counts_blocked_machines_as_todo_like_the_route(client, state, monkeypatch):
+def test_the_sweep_counts_blocked_machines_as_todo_like_the_route(
+    labelled_client, labelled, monkeypatch
+):
     """The MCP sweep's ``todo`` and the route's ``actionable`` are one number per factory."""
     from satisfactory_mcp.interfaces.mcp.tools import factories as tool
 
-    rows = client.get("/api/factories/health").json()["factories"]
-    if not rows:
-        pytest.skip("the fixture world has no named factories")
-    monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: state)
+    rows = labelled_client.get("/api/factories/health").json()["factories"]
+    assert rows
+    monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: labelled)
     out = tool.factory_health(factory="all", limit=500)
     todo = {}
     for line in out.splitlines():
@@ -142,10 +145,9 @@ def test_a_machine_ref_names_the_circuit_it_stands_on(client, state):
         assert c["factory_count"] == len(c["factories"])
 
 
-def test_worst_actionable_holds_only_machines_needing_action(client):
-    rows = client.get("/api/factories/health").json()["factories"]
-    if not rows:
-        pytest.skip("the fixture world has no named factories")
+def test_worst_actionable_holds_only_machines_needing_action(labelled_client):
+    rows = labelled_client.get("/api/factories/health").json()["factories"]
+    assert rows
     for row in rows:
         assert all(i["state"] in ACTIONABLE for i in row["worst_actionable"])
         assert len(row["worst_actionable"]) == min(8, row["actionable"])
@@ -181,7 +183,10 @@ def test_a_standing_biomass_burner_is_rated_from_game_data(game):
 
 BURNERS = [
     {"instance": "Build_GeneratorBiomass_C_1", "cls": "Build_GeneratorBiomass_C"},
-    {"instance": "Build_GeneratorIntegratedBiomass_C_1", "cls": "Build_GeneratorIntegratedBiomass_C"},
+    {
+        "instance": "Build_GeneratorIntegratedBiomass_C_1",
+        "cls": "Build_GeneratorIntegratedBiomass_C",
+    },
     {"instance": "Build_GeneratorCoal_C_1", "cls": "Build_GeneratorCoal_C"},
 ]
 
@@ -199,14 +204,19 @@ def test_biomass_burners_are_left_out_of_headroom_by_default(game):
         assert led["biomass_mw"] == pytest.approx(burner)
         assert led["biomass_generators"] == 1
     assert default["unmodellable"] == ["Build_GeneratorIntegratedBiomass_C"]
-    assert [g["name"] for g in default["generators"]] == [game.buildings["Build_GeneratorCoal_C"].name]
+    assert [g["name"] for g in default["generators"]] == [
+        game.buildings["Build_GeneratorCoal_C"].name
+    ]
 
 
 def test_the_hub_burners_read_the_same_in_both_modes(game):
     """The HUB's built-in burners have no rating, so they are unmodellable either way and
     never a biomass burner left out."""
     hub = [
-        {"instance": f"Build_GeneratorIntegratedBiomass_C_{i}", "cls": "Build_GeneratorIntegratedBiomass_C"}
+        {
+            "instance": f"Build_GeneratorIntegratedBiomass_C_{i}",
+            "cls": "Build_GeneratorIntegratedBiomass_C",
+        }
         for i in (1, 2)
     ]
     off = _one_circuit(game, hub, query="?biomass=exclude")
@@ -221,7 +231,9 @@ def test_no_biomass_line_at_zero_mw():
 
     assert biomass_note({"biomass_generators": 2, "biomass_mw": 0.0}) == ""
     assert biomass_note({"biomass_generators": 0, "biomass_mw": 0.0}) == ""
-    assert "+30 MW biomass not counted" in biomass_note({"biomass_generators": 1, "biomass_mw": 30.0})
+    assert "+30 MW biomass not counted" in biomass_note(
+        {"biomass_generators": 1, "biomass_mw": 30.0}
+    )
 
 
 def test_the_vanilla_save_counts_only_its_rated_burners(game):

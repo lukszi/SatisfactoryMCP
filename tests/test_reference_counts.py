@@ -262,4 +262,4 @@ def test_the_reference_projection_reports_no_losses(proj):
     file rather than just one line of it. See ``core/saveio/extract._drop_notes``.
     """
     assert proj["warnings"] == []
-    assert proj["schema_version"] == 21
+    assert proj["schema_version"] == 22
