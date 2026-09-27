@@ -1,9 +1,13 @@
 /* The dashboard's building blocks, shared by dashboard.ts and the sections split out of it. */
 
 import "./dashkit.css";
-import { make } from "./dom";
+import { count, make } from "./dom";
 import { hashFor } from "./map";
+import { tone } from "./states";
 import { friendly } from "./toast";
+import { W } from "./words";
+
+import type { MachineIssue } from "./api-shapes";
 
 export function link(dash: string, text: string, className?: string): HTMLAnchorElement {
   var a = make("a", className, text);
@@ -345,4 +349,104 @@ export function fieldError(field: HTMLElement, message: string): void {
   field.setAttribute("aria-invalid", "true");
   field.setAttribute("aria-describedby", hint.id);
   field.parentNode.insertBefore(hint, field.nextSibling);
+}
+
+export interface IssueGroup {
+  factory: string;
+  state: string;
+  what: string;
+  cause: string;
+  issues: MachineIssue[];
+}
+
+function because(issue: MachineIssue): string {
+  if (!issue.cause.length) return "";
+  var items = issue.cause.join(", ");
+  if (issue.state === W.blocked) return "can't output " + items;
+  if (issue.state === "starved") return "short of " + items;
+  return items;
+}
+
+export function issueGroups(rows: { name: string; worst_actionable: MachineIssue[] }[]): IssueGroup[] {
+  var found: IssueGroup[] = [];
+  rows.forEach(function (r) {
+    r.worst_actionable.forEach(function (issue) {
+      var cause = because(issue);
+      var same = found.filter(function (g) {
+        return g.factory === r.name && g.state === issue.state && g.what === issue.what && g.cause === cause;
+      })[0];
+      if (same) same.issues.push(issue);
+      else found.push({ factory: r.name, state: issue.state, what: issue.what, cause: cause, issues: [issue] });
+    });
+  });
+  return found;
+}
+
+export function issueCount(groups: IssueGroup[]): number {
+  var n = 0;
+  groups.forEach(function (g) {
+    n += g.issues.length;
+  });
+  return n;
+}
+
+export function issueTable(
+  groups: IssueGroup[],
+  place: (g: IssueGroup) => HTMLElement,
+  withFactory: boolean
+): HTMLElement {
+  var columns: Column<IssueGroup>[] = [
+    {
+      key: "state",
+      label: "state",
+      className: "dash-nowrap",
+      tone: function (g) {
+        return tone(g.state, true);
+      },
+      render: function (g) {
+        return g.state;
+      },
+    },
+    {
+      key: "n",
+      label: "machines",
+      align: "right",
+      render: function (g) {
+        return count(g.issues.length);
+      },
+    },
+    {
+      key: "what",
+      label: "machine",
+      className: "dash-wide",
+      render: function (g) {
+        if (!g.cause) return g.what;
+        var cell = make("span", "", g.what);
+        cell.appendChild(make("span", "dash-sub", g.cause));
+        return cell;
+      },
+    },
+  ];
+  if (withFactory) {
+    columns.push({
+      key: "factory",
+      label: W.factory,
+      render: function (g) {
+        var a = link("factories/" + g.factory, g.factory, "dash-trunc");
+        a.title = g.factory;
+        return a;
+      },
+    });
+  }
+  columns.push({ key: "map", label: "", align: "right", render: place });
+  return table<IssueGroup>(columns, groups, {
+    rowTitle: function (g) {
+      return g.issues
+        .map(function (i) {
+          return i.instance;
+        })
+        .join(", ");
+    },
+    caption: "machines that " + W.needAction,
+  });
 }

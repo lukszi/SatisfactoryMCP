@@ -980,6 +980,16 @@ select {
   overflow-wrap: anywhere;
 }
 
+.panel-note .bad {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.panel-note .blocked {
+  color: var(--blocked);
+  font-weight: 600;
+}
+
 .panel-h {
   margin: 10px 0 4px;
   color: var(--muted);
