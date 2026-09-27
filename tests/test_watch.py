@@ -159,6 +159,26 @@ def test_a_full_queue_drops_instead_of_raising(tmp_path):
     assert held == [f"save{n}.sav" for n in range(QUEUE_MAX)]
 
 
+def test_an_overflowed_subscriber_is_cut_so_its_stream_ends_and_the_page_resyncs(tmp_path):
+    async def go():
+        watcher = SaveWatcher(root=tmp_path, notes=())
+        q = watcher.subscribe()
+        for n in range(QUEUE_MAX):
+            watcher._publish(_event(n))
+        before = watcher.cut(q)
+        watcher._publish(_event(QUEUE_MAX))
+        _drain(q)
+        watcher._publish(_event(QUEUE_MAX + 1))
+        after = watcher.cut(q), q.qsize()
+        watcher.unsubscribe(q)
+        return before, after, watcher.cut(q)
+
+    before, after, forgotten = asyncio.run(go())
+    assert before is False
+    assert after == (True, 0), "a cut queue kept receiving events"
+    assert forgotten is False
+
+
 def test_one_stalled_subscriber_does_not_starve_the_others(tmp_path):
     """The point of per-subscriber bounds: the drop is local to the browser that caused it."""
 

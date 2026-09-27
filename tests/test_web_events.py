@@ -26,6 +26,7 @@ from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers import events as web_events
+from satisfactory_mcp.interfaces.web.watch import WatchEvent
 
 # --------------------------------------------------------------------- events
 
@@ -144,6 +145,27 @@ def test_a_named_factory_becomes_a_notes_event(game, tmp_path, monkeypatch):
         "filename": "coal power.json",
         "mtime": event.mtime,
     }
+
+
+def test_a_stream_whose_queue_overflowed_drains_and_then_ends(game, tmp_path, monkeypatch):
+    _empty_roots(monkeypatch, tmp_path)
+    monkeypatch.setattr(web_events, "PING_SECONDS", 5.0)
+    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
+    watcher = app.state.watcher
+    queue = asyncio.Queue(maxsize=2)
+    monkeypatch.setattr(watcher, "subscribe", lambda: watcher._subscribers.add(queue) or queue)
+    event = WatchEvent("notes", "a.json", 1.0)
+
+    async def pull() -> list[bytes]:
+        request = Request({"type": "http", "method": "GET", "path": "/api/events", "headers": [], "app": app})
+        response = await web_events.events(request)
+        for _ in range(3):
+            watcher._publish(event)
+        return [chunk async for chunk in response.body_iterator]
+
+    chunks = asyncio.run(asyncio.wait_for(pull(), timeout=3.0))
+    assert [c.startswith(b"event: notes") for c in chunks] == [True, True]
+    assert watcher.cut(queue) is False, "the closed stream did not unsubscribe"
 
 
 def test_a_plan_commit_becomes_a_plans_event_carrying_its_summary(game, tmp_path, monkeypatch):

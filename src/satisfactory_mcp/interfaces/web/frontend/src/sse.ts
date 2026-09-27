@@ -6,7 +6,7 @@
 
 import { el } from "./dom";
 import { loadLive, loadOne } from "./load";
-import { onActivityEvent, onPlansEvent, onSaveEvent } from "./planner";
+import { onActivityEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
 import { state } from "./state";
 import { fail } from "./toast";
 import { refreshWorlds } from "./worlds";
@@ -43,20 +43,35 @@ export function listen() {
   var source = new EventSource("/api/events");
   var dot = el("live");
   var wasOpen = false;
+  var missed = false;
   dot.title = "connecting to the save watcher…";
   source.onopen = function () {
+    if (missed) resync();
+    missed = false;
     wasOpen = true;
     dot.className = "dot on";
     dot.title = "live: watching for save writes";
   };
   source.onerror = function () {
     var lost = wasOpen;
+    missed = missed || lost;
     wasOpen = false;
     dot.className = "dot";
     dot.title = lost
       ? "live connection lost — is the server still running? Retrying…"
       : "connecting to the save watcher…";
     if (lost) fail("live updates lost — what is on screen may be stale");
+  };
+  var resync = function () {
+    refreshWorlds();
+    if (!state.save) {
+      loadLive();
+      onSaveEvent();
+    }
+    loadOne("/api/factories");
+    loadOne("/api/factories/health");
+    loadOne("/api/plans");
+    resyncPlanner();
   };
   var blink = function () {
     dot.className = "dot hit";

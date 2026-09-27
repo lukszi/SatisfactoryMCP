@@ -190,6 +190,7 @@ class SaveWatcher:
         self._offsets: dict[Path, int] | None = None
         self._warming: threading.Thread | None = None
         self._subscribers: set[asyncio.Queue] = set()
+        self._cut: set[asyncio.Queue] = set()
         self._task: asyncio.Task | None = None
         self._tail_task: asyncio.Task | None = None
         #: The newest event of each kind, replayed to every new subscriber.
@@ -207,13 +208,19 @@ class SaveWatcher:
 
     def unsubscribe(self, q: asyncio.Queue) -> None:
         self._subscribers.discard(q)
+        self._cut.discard(q)
+
+    def cut(self, q: asyncio.Queue) -> bool:
+        """Whether ``q`` overflowed and was dropped: its stream ends so the browser resyncs."""
+        return q in self._cut
 
     def _publish(self, event: WatchEvent) -> None:
-        for q in self._subscribers:
+        for q in list(self._subscribers):
             try:
                 q.put_nowait(event)
             except asyncio.QueueFull:
-                pass
+                self._subscribers.discard(q)
+                self._cut.add(q)
 
     # ---- the poll -------------------------------------------------------
 

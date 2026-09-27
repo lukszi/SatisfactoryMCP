@@ -1,17 +1,17 @@
 /* The Planner tab: mounting, following chat, and the focus heartbeat. See
  * docs/planner_slice_contract.md §12. */
 
-import { send } from "./api";
+import { get, send } from "./api";
 import { make } from "./dom";
 import { onVitals } from "./panel";
 import { go, renderBench } from "./planner-bench";
-import { bench, changed, followHead, forgetSolves, inbox, onBench, openPlan, redoLast, reset, sav, undoLast } from "./planner-core";
+import { bench, changed, followHead, forgetSolves, inbox, onBench, openPlan, redoLast, reset, resyncHead, sav, undoLast } from "./planner-core";
 import { loadList, renderList } from "./planner-list";
 import { choice, onSetting } from "./settings";
 import { state } from "./state";
 import { offer } from "./toast";
 
-import type { FocusResponse } from "./api-shapes";
+import type { ActivityResponse, FocusResponse } from "./api-shapes";
 import type { ActivityEvent, PlansEvent, Selection } from "./planner-core";
 
 var FOCUS_DEBOUNCE_MS = 1000;
@@ -22,6 +22,7 @@ var mounted: string | null = null;
 var held: Array<() => void> = [];
 var heldDraw = false;
 var seen: Record<string, boolean> = {};
+var heard = 0;
 var focusTimer = 0;
 var drawTimer = 0;
 var pressed = false;
@@ -155,6 +156,7 @@ function openFromChat(entry: ActivityEvent): void {
 export function onActivityEvent(entry: ActivityEvent): void {
   if (entry.world !== state.world || entry.actor.kind === "page" || seen[entry.id]) return;
   seen[entry.id] = true;
+  heard = Math.max(heard, entry.ts);
   if (!news(entry.ts)) return;
   var mode = choice("follow");
   if (mode === "off") return;
@@ -181,6 +183,19 @@ export function onActivityEvent(entry: ActivityEvent): void {
       });
     }
   }
+}
+
+export function resyncPlanner(): void {
+  if (subject() === "") loadList();
+  resyncHead();
+  var since = Math.max(heard, state.opened / 1000 - 2);
+  get<ActivityResponse>(`/api/activity?since=${since}`)
+    .then(function (body) {
+      body.entries.forEach(function (row) {
+        if (row.source === "journal") onActivityEvent({ ...row, world: state.world });
+      });
+    })
+    .catch(function () {});
 }
 
 export function onSaveEvent(): void {

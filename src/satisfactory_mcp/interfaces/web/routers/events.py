@@ -95,6 +95,8 @@ async def events(request: Request) -> StreamingResponse:
                 if held is not None:
                     yield _sse(kind, await _payload(held))
             while True:
+                if watcher.cut(queue) and queue.empty():
+                    return
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=PING_SECONDS)
                 except TimeoutError:
