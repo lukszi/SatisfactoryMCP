@@ -6,6 +6,7 @@ Every write lands in temporary labels and plans directories; the fixture world i
 from __future__ import annotations
 
 import json
+import shutil
 from collections import Counter
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.factories import fed, flowgraph, identity, naming
-from satisfactory_mcp.domain.planning.store import PlanStore
+from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web.app import create_app
 
@@ -310,10 +311,16 @@ def _rename(client, name, to, version):
 
 
 def _plan_for(factory: str) -> None:
-    store = PlanStore.load("X2faPVKjX06VaRzClNv5KQ")
-    store.put("north plan", {"target_item": "Steel Pipe"}, "p1", factory=factory)
-    store.put("other plan", {"target_item": "Wire"}, "p2", factory="elsewhere")
-    store.save()
+    log = PlanLog("X2faPVKjX06VaRzClNv5KQ")
+    chat = Actor("chat")
+    log.create(
+        "north plan", {"target_item": "Steel Pipe"}, plan_id="p1", factory=factory, actor=chat
+    )
+    log.create("other plan", {"target_item": "Wire"}, plan_id="p2", factory="elsewhere", actor=chat)
+
+
+def _plan_factories() -> dict[str, str]:
+    return {s.name: s.factory for s in PlanLog("X2faPVKjX06VaRzClNv5KQ").heads()}
 
 
 def test_rename_keeps_the_machines_and_moves_the_plans(empty, store_dir):
@@ -325,8 +332,7 @@ def test_rename_keeps_the_machines_and_moves_the_plans(empty, store_dir):
     assert reply.json()["name"] == "new name" and reply.json()["plans"] == ["north plan"]
     label = _stored(store_dir)["labels"][0]
     assert label["name"] == "new name" and len(label["anchors"]) == row["machines"]
-    plans = {p.name: p.factory for p in PlanStore.load("X2faPVKjX06VaRzClNv5KQ").plans}
-    assert plans == {"north plan": "new name", "other plan": "elsewhere"}
+    assert _plan_factories() == {"north plan": "new name", "other plan": "elsewhere"}
 
 
 def test_rename_refuses_a_taken_blank_or_missing_name(empty):
@@ -351,9 +357,9 @@ def test_the_page_and_the_tool_rename_to_the_same_files(
     _body, row = _first(empty)
     results = []
     for via in ("page", "tool"):
-        for d in (store_dir, store_dir.parent / "plans"):
-            for f in d.glob("*.json"):
-                f.unlink()
+        for f in store_dir.glob("*.json"):
+            f.unlink()
+        shutil.rmtree(PlanLog.dir_for("X2faPVKjX06VaRzClNv5KQ"), ignore_errors=True)
         tools.name_factory("old name", [row["selector"]])
         _plan_for("old name")
         if via == "page":
@@ -361,8 +367,7 @@ def test_the_page_and_the_tool_rename_to_the_same_files(
         else:
             assert "renamed factory" in tools.rename_factory("old name", "new name")
         labels = _stored(store_dir)
-        plans = json.loads(next((store_dir.parent / "plans").glob("*.json")).read_text())
-        results.append((labels, plans))
+        results.append((labels, _plan_factories()))
     assert results[0] == results[1]
 
 

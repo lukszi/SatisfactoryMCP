@@ -4,6 +4,7 @@ Also plan persistence, since a stored plan is a stored planning REQUEST."""
 
 from __future__ import annotations
 
+import os
 from typing import Annotated
 
 from pydantic import Field
@@ -18,13 +19,14 @@ from ....domain.planning.carrier import resolve_tiers
 from ....domain.planning.commission_service import build_commission_report
 from ....domain.planning.diff_service import build_diff_report
 from ....domain.planning.layout_service import LayoutReport, build_layout_report
+from ....domain.planning.planlog import Actor, PlanLog, PlanLogError
 from ....domain.planning.prepare import prepare
 from ....domain.planning.recall import PLAN_DEFAULTS
 from ....domain.planning.recall import recall_plan as _plan_kwargs
 from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
 from ....domain.planning.sensitivity import sweep_unlocks
-from ....domain.planning.store import PLAN_ARGS, PlanStore
+from ....domain.planning.store import PLAN_ARGS
 from ....presenters.text import byproducts as byproducts_text
 from ....presenters.text import primitives as render
 from ....presenters.text.bom import render_bom
@@ -224,9 +226,18 @@ def list_plans(
     )
 
 
-def _editing(st):
-    """The plan store for ``st``'s world, locked and re-read; see ``PlanStore.editing``."""
-    return PlanStore.editing(st.world_id, st.header.get("session_name") or "")
+def _log(st) -> PlanLog:
+    return PlanLog(st.world_id, st.header.get("session_name") or "")
+
+
+def _actor() -> Actor:
+    return Actor("chat", "", os.getpid())
+
+
+def _at_head(st, key: str, ops: list[dict]):
+    """Until the tools take ``base_rev``: write at the head, as the old store did."""
+    log = _log(st)
+    return log.push(key, log.head_rev(key), ops, actor=_actor())
 
 
 @mcp.tool(structured_output=False)
@@ -242,8 +253,10 @@ def forget_plan(
     if stored is None:
         known = ", ".join(x.name for x in st.plans.plans) or "(none)"
         return f"! no saved plan named {name!r}. Saved: {known}"
-    with _editing(st) as plans:
-        plans.remove(stored.name)
+    try:
+        _at_head(st, stored.key, [{"op": "forget"}])
+    except PlanLogError as exc:
+        return f"! {exc}; nothing forgotten"
     return f"forgot plan {stored.name!r}"
 
 
@@ -280,12 +293,11 @@ def rename_plan(
     was = stored.name
     if was == wanted:
         return f"plan {was!r} already has that name"
-    with _editing(st) as plans:
-        fresh = plans.find(was)
-        if fresh is None:
-            return f"! plan {was!r} was forgotten elsewhere a moment ago; nothing renamed"
-        fresh.name = wanted
-    path = PlanStore.path_for(st.world_id)
+    try:
+        _at_head(st, stored.key, [{"op": "rename", "name": wanted}])
+    except PlanLogError as exc:
+        return f"! {exc}; nothing renamed"
+    path = PlanLog.dir_for(st.world_id)
     return render.envelope(
         f"# renamed plan {was!r} to {wanted!r}\nstored in {path}",
         "",
@@ -352,10 +364,10 @@ def site_plan(
     if clear:
         if not stored.siting:
             return f"plan {stored.name!r} carries no siting; nothing to clear"
-        with _editing(st) as plans:
-            fresh = plans.find(stored.name)
-            if fresh is not None:
-                fresh.siting = {}
+        try:
+            _at_head(st, stored.key, [{"op": "site", "value": None}])
+        except PlanLogError as exc:
+            return f"! {exc}; nothing cleared"
         return f"cleared the siting of plan {stored.name!r}. The plan itself is untouched"
 
     existing = siting_mod.parse(stored)
@@ -402,12 +414,11 @@ def site_plan(
     except ValueError as exc:
         return f"! {exc}"
 
-    with _editing(st) as plans:
-        fresh = plans.find(stored.name)
-        if fresh is None:
-            return f"! plan {stored.name!r} was forgotten elsewhere a moment ago; not sited"
-        fresh.siting = sit.to_dict()
-    path = PlanStore.path_for(st.world_id)
+    try:
+        _at_head(st, stored.key, [{"op": "site", "value": sit.to_dict()}])
+    except PlanLogError as exc:
+        return f"! {exc}; not sited"
+    path = PlanLog.dir_for(st.world_id)
 
     from ....domain.spatial import maplink, regions
 
@@ -432,6 +443,38 @@ def site_plan(
             ),
         ],
     )
+
+
+def _save_request(st, name, kwargs, plan_id, notes, factory, when, field, sit) -> str:
+    """Create ``name``, or save over the live plan of that exact name at its head."""
+    log = _log(st)
+    wanted = name.strip().casefold()
+    existing = next((s for s in log.heads() if s.name.casefold() == wanted), None)
+    siting = sit.to_dict() if sit is not None else None
+    if existing is None:
+        return log.create(
+            name,
+            kwargs,
+            actor=_actor(),
+            notes=notes,
+            factory=factory,
+            siting=siting,
+            plan_id=plan_id,
+            provenance=field,
+            created=when,
+        ).state.name
+    extra = [{"op": "set", "field": "notes", "value": notes}] if notes else []
+    extra += [{"op": "set", "field": "factory", "value": factory}] if factory else []
+    extra += [{"op": "site", "value": siting}] if siting else []
+    log.push_args(
+        existing.key,
+        log.head_rev(existing.key),
+        kwargs,
+        actor=_actor(),
+        extra=extra,
+        stamp=lambda _state: {"plan_id": plan_id, "provenance": field},
+    )
+    return existing.name
 
 
 @mcp.tool(structured_output=False)
@@ -632,25 +675,18 @@ def plan_factory(
                 )
             except ValueError as exc:
                 return f"! {exc} -- nothing saved"
-        with _editing(st) as plans:
-            stored = plans.put(
-                save_as,
-                plan_kwargs,
-                plan_id,
-                notes=plan_notes_text,
-                factory=for_factory,
-                when=when,
-                provenance=field,
+        try:
+            saved_name = _save_request(
+                st, save_as, plan_kwargs, plan_id, plan_notes_text, for_factory, when, field, sit
             )
-            sited = ""
-            if sit is not None:
-                stored.siting = sit.to_dict()
-                sited = f". Sited: {sit.describe()}"
-        path = PlanStore.path_for(st.world_id)
+        except PlanLogError as exc:
+            return f"! {exc} -- nothing saved"
+        sited = f". Sited: {sit.describe()}" if sit is not None else ""
+        path = PlanLog.dir_for(st.world_id)
         pinned = "; ".join(f"{e['selector']}={e['count']} node(s)" for e in field["selectors"])
         save_as_note = (
-            f"saved as {stored.name!r} (plan_id {plan_id}) in {path}. "
-            f"Recall with plan={stored.name!r} on plan_factory, plan_layout or diff_vs_save"
+            f"saved as {saved_name!r} (plan_id {plan_id}) in {path}. "
+            f"Recall with plan={saved_name!r} on plan_factory, plan_layout or diff_vs_save"
             + (f". Field recorded: {pinned}" if pinned else "")
             + sited
         )

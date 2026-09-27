@@ -135,6 +135,8 @@ class PlanRequest:
     #: node is gone from the post-filter set precisely when it is the interesting one.
     scoped_nodes: list[dict] = field(default_factory=list)
     only_free_nodes: bool = False
+    #: Recipe ids ``required`` put in force, after the refusals (contract §6).
+    required: list[str] = field(default_factory=list)
     #: Where this plan STANDS, resolved. Deliberately absent from ``plan_id``: nothing here
     #: enters the LP, so hashing it would give one plan two ids depending only on whether
     #: the caller had said where it goes.
@@ -167,6 +169,7 @@ def build_scenario(
     sloops: int = 0,
     recycle_once: list[str] | None = None,
     supplied: dict[str, float] | None = None,
+    required: list[str] | None = None,
     #: Where the factory will stand, in any spelling ``spatial.origin`` takes. It buys the
     #: plan a MEASURED water assumption instead of an assumed one; it changes no number the
     #: LP sees, because how much water a site yields is placement geometry no data here has.
@@ -284,6 +287,14 @@ def build_scenario(
         banned = set(hits)
         recipes = [rid for rid in recipes if rid not in banned]
 
+    in_force = _required(game, required, all_recipes, exclude_recipes, recipe_errors)
+    if in_force:
+        makes = {_main_product(game, rid) for rid in in_force}
+        recipes = [
+            rid for rid in recipes if rid in in_force or _main_product(game, rid) not in makes
+        ]
+        recipes += [rid for rid in in_force if rid not in recipes]
+
     buildings = state.unlocked_building_ids
     sc = Scenario(
         game=game,
@@ -348,7 +359,7 @@ def build_scenario(
         scenario=sc,
         selection=sel,
         node_rows=rows,
-        plan_id=_plan_id(sc, only_free_nodes),
+        plan_id=_plan_id(sc, only_free_nodes, in_force),
         excluded=sorted(set(excluded)),
         recipe_errors=recipe_errors,
         export_errors=export_errors,
@@ -356,17 +367,56 @@ def build_scenario(
         only_free_nodes=only_free_nodes,
         site=site,
         site_errors=site_errors,
+        required=in_force,
     )
 
 
-def _plan_id(sc: Scenario, only_free_nodes: bool) -> str:
+def _main_product(game: GameData, rid: str) -> str | None:
+    products = game.recipes[rid].products
+    return products[0].item if products else None
+
+
+def _required(
+    game: GameData,
+    required: list[str] | None,
+    unlocked: list[str],
+    bans: list[str] | None,
+    errors: list[str],
+) -> list[str]:
+    """``required`` resolved to recipe ids, each refusal named in ``errors`` (contract §6)."""
+    out: list[str] = []
+    for entry in required or []:
+        rid = entry if entry in game.recipes else None
+        if rid is None:
+            wanted = entry.strip().casefold()
+            named = [r for r, rec in game.recipes.items() if rec.name.casefold() == wanted]
+            rid = named[0] if len(named) == 1 else None
+        if rid is None:
+            errors.append(f"required: {entry!r} is not a recipe")
+            continue
+        name = game.recipes[rid].name
+        if rid not in unlocked:
+            errors.append(f"required: {name!r} is not unlocked in this save")
+            continue
+        ban = next((b for b in bans or [] if rid in match_recipes(game, b, unlocked)), None)
+        if ban is not None:
+            errors.append(f"required {name!r} is banned by {ban!r}")
+            continue
+        if rid not in out:
+            out.append(rid)
+    return out
+
+
+def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = None) -> str:
     """Short hash over everything that can change the solve.
 
     The save's mtime is excluded: a rotating autosave that changed nothing relevant must
     yield the SAME id, or the id stops meaning "same plan" and starts meaning "same second".
     """
+    fields = {"required": sorted(required)} if required else {}
     payload = json.dumps(
         {
+            **fields,
             "objective": sc.objective,
             "target_item": sc.target_item,
             "exports": sorted(sc.exports),

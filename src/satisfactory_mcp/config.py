@@ -128,3 +128,19 @@ def labels_dir() -> Path:
     d = user_dir() / "labels"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+@lru_cache(maxsize=1)
+def activity_dir() -> Path:
+    """The activity journal, one file per writing process (docs/planner_slice_contract.md §8)."""
+    d = user_dir() / "activity"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+@lru_cache(maxsize=1)
+def ui_dir() -> Path:
+    """What the page has open, written by the web server alone (contract §9)."""
+    d = user_dir() / "ui"
+    d.mkdir(parents=True, exist_ok=True)
+    return d

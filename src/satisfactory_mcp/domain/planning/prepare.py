@@ -98,6 +98,9 @@ def prepare(
             notes += supply.describe(
                 supply.diagnose(request, game, state.unlocked_building_ids), game
             )
+        if request.required:
+            names = ", ".join(game.recipes[rid].name for rid in request.required)
+            notes.append(f"required in force: {names} -- removing one may make this feasible")
         label = objective_label or plan_kwargs.get("objective", "")
         prepared.failure = PlanFailure(f"INFEASIBLE ({label})", notes)
         return prepared

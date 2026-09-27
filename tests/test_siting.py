@@ -5,7 +5,7 @@ The design decisions worth pinning:
 * The siting is a defaulted dict on ``Plan``, exactly the discipline ``provenance``
   used -- so a plan file written before the feature loads unchanged, and "no siting"
   is an ordinary state every reader handles, not an error.
-* ``put`` never touches it: re-saving a plan's arguments re-states WHAT the plan is,
+* Re-saving a plan's arguments never touches it: that re-states WHAT the plan is,
   and where it stands is a separate statement with its own verb.
 * Containment is a genuinely rotated rectangle, matching the yaw convention the save
   stores machine facing with (degrees about world Z, +X towards +Y). An axis-aligned
@@ -19,9 +19,12 @@ import json
 import pytest
 
 from satisfactory_mcp.domain.planning import siting as siting_mod
+from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.recall import PLAN_DEFAULTS, recall_plan
 from satisfactory_mcp.domain.planning.siting import Siting
 from satisfactory_mcp.domain.planning.store import Plan, PlanStore
+
+ACTOR = Actor("chat")
 
 
 @pytest.fixture
@@ -29,7 +32,15 @@ def store(tmp_path, monkeypatch):
     from satisfactory_mcp.domain.planning import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
-    return PlanStore(world_id="TESTWORLD")
+    return PlanLog("TESTWORLD")
+
+
+def _held(**siting) -> PlanStore:
+    """One plan held in memory, the shape ``recall_plan`` reads through ``st.plans``."""
+    return PlanStore(
+        world_id="TESTWORLD",
+        plans=[Plan(name="p", args={"objective": "min_power"}, plan_id="x", siting=siting)],
+    )
 
 
 def _sited(**overrides) -> Siting:
@@ -84,11 +95,15 @@ def test_footprint_parses_wxd_and_squares():
 
 
 def test_a_siting_round_trips_through_disk(store):
-    store.put("north oil", {"objective": "max_mw"}, plan_id="abc")
-    store.plans[0].siting = _sited(yaw_deg=15.0, source="given").to_dict()
-    store.save()
+    store.create(
+        "north oil",
+        {"objective": "max_mw"},
+        plan_id="abc",
+        siting=_sited(yaw_deg=15.0, source="given").to_dict(),
+        actor=ACTOR,
+    )
 
-    again = PlanStore.load("TESTWORLD")
+    again = PlanLog("TESTWORLD").view()
     sit = siting_mod.parse(again.plans[0])
     assert sit is not None
     assert (sit.x_m, sit.y_m, sit.z_m) == (100.0, -200.0, 40.0)
@@ -129,12 +144,13 @@ def test_a_plan_file_from_before_the_feature_still_loads(store, tmp_path):
 
 
 def test_resaving_the_arguments_keeps_the_siting(store):
-    """``put`` rewrites args and provenance; the siting is a different statement and
+    """A re-save rewrites args and provenance; the siting is a different statement and
     survives a ``save_as`` over the same name."""
-    store.put("p", {"objective": "max_mw"}, plan_id="one")
-    store.plans[0].siting = _sited().to_dict()
-    store.put("p", {"objective": "min_power"}, plan_id="two")
-    assert siting_mod.parse(store.plans[0]) is not None
+    key = store.create(
+        "p", {"objective": "max_mw"}, plan_id="one", siting=_sited().to_dict(), actor=ACTOR
+    ).key
+    store.push_args(key, 1, {"objective": "min_power"}, actor=ACTOR)
+    assert siting_mod.parse(store.view().plans[0]) is not None
 
 
 def test_a_mangled_siting_reads_as_not_sited():
@@ -153,25 +169,23 @@ class _FakeState:
         self.plans = plans
 
 
-def test_recall_prints_the_siting(store):
-    store.put("p", {"objective": "min_power"}, plan_id="x")
-    store.plans[0].siting = _sited(yaw_deg=15.0, source="layout").to_dict()
+def test_recall_prints_the_siting():
+    store = _held(**_sited(yaw_deg=15.0, source="layout").to_dict())
     _, _, notes = recall_plan(_FakeState(store), "p", dict(PLAN_DEFAULTS))
     assert any(n.startswith("sited:") for n in notes)
     assert any("100,-200" in n for n in notes)
 
 
-def test_recall_of_an_unsited_plan_says_nothing_about_siting(store):
-    store.put("p", {"objective": "min_power"}, plan_id="x")
+def test_recall_of_an_unsited_plan_says_nothing_about_siting():
+    store = _held()
     _, _, notes = recall_plan(_FakeState(store), "p", dict(PLAN_DEFAULTS))
     assert not any("sited" in n for n in notes)
 
 
-def test_a_recalled_sited_plan_is_measured_at_its_own_site(store):
+def test_a_recalled_sited_plan_is_measured_at_its_own_site():
     """The pad and its footprint come back without being retyped, which is most of the
     point of having stored them: `plan_factory plan='x'` measures the ground it stands on."""
-    store.put("p", {"objective": "min_power"}, plan_id="x")
-    store.plans[0].siting = _sited(width_m=60.0, depth_m=40.0).to_dict()
+    store = _held(**_sited(width_m=60.0, depth_m=40.0).to_dict())
     assert siting_mod.plan_site_args(_FakeState(store), "p", "", "") == ("100,-200", "60x40")
     # An explicit argument wins: the caller is asking about somewhere else.
     assert siting_mod.plan_site_args(_FakeState(store), "p", "me", "") == ("me", "")

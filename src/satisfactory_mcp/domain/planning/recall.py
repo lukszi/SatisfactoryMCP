@@ -33,6 +33,7 @@ PLAN_DEFAULTS: dict = {
     "extractor_clocks": None,
     "machine_cost_mw": 5.0,
     "exclude_recipes": None,
+    "required": None,
     "only_recipes": None,
     "water_extractors": None,
     "sloops": 0,
@@ -60,7 +61,7 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
 
     overrides = {k: v for k, v in clean.items() if v != PLAN_DEFAULTS.get(k)}
     merged = {**PLAN_DEFAULTS, **stored.kwargs(), **overrides}
-    notes = []
+    notes = [f'recalled plan "{stored.name}" v{stored.rev}']
     if stored.notes:
         notes.append(f"{stored.name}: {stored.notes}")
     # The siting rides along on every recall, whichever tool recalled it -- this is the

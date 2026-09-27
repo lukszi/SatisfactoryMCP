@@ -2,7 +2,7 @@
 
 Opposite failures, one commit, because they are the same mistake about who owns a file.
 
-**The player's own words have to survive a crash.** ``PlanStore`` and ``LabelStore`` write
+**The player's own words have to survive a crash.** The plan log and ``LabelStore`` write
 JSON the reader typed -- factory names and saved plans -- and both used
 ``Path.write_text``, which truncates and then writes. Die in between and the file on disk is
 empty, which is not recoverable from the save, from the docs dump or from anywhere else on
@@ -33,7 +33,7 @@ from satisfactory_mcp.core import atomic
 from satisfactory_mcp.core.saveio import projection as projection_mod
 from satisfactory_mcp.domain.collectibles import table as collectibles_table
 from satisfactory_mcp.domain.factories.labels import LabelStore
-from satisfactory_mcp.domain.planning.store import PlanStore
+from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial import regions as regions_mod
 
@@ -212,10 +212,7 @@ def test_pruning_survives_a_file_another_pruner_already_deleted(tmp_path, monkey
 
 @pytest.mark.parametrize(
     ("store_dir", "make"),
-    [
-        ("plans_dir", lambda: PlanStore(world_id="W", session_name="s")),
-        ("labels_dir", lambda: LabelStore(world_id="W", session_name="s")),
-    ],
+    [("labels_dir", lambda: LabelStore(world_id="W", session_name="s"))],
 )
 def test_the_two_stores_survive_a_crash_mid_save(tmp_path, monkeypatch, store_dir, make):
     """Through the real ``save()``, not through the helper it calls.
@@ -236,6 +233,26 @@ def test_the_two_stores_survive_a_crash_mid_save(tmp_path, monkeypatch, store_di
         store.save()
     assert path.read_bytes() == first, "a crashed save must not cost what was already stored"
     assert [p.name for p in tmp_path.iterdir()] == [path.name, path.name + ".lock"]
+
+
+def test_the_plan_log_survives_a_crash_mid_snapshot(tmp_path, monkeypatch):
+    """The log line is the record and a snapshot only a shortcut, so a snapshot that dies
+    in the rename costs neither the commit nor the snapshot already on disk."""
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path)
+    log = PlanLog("W")
+    key = log.create("p", {}, actor=Actor("page")).key
+    first = (log.root / key / "snap" / "1.json").read_bytes()
+
+    monkeypatch.setattr(atomic.os, "replace", lambda src, dst: (_ for _ in ()).throw(OSError("no")))
+    for n in range(49):
+        log.push(
+            key, n + 1, [{"op": "set", "field": "sloops", "value": n + 1}], actor=Actor("page")
+        )
+    monkeypatch.undo()
+
+    assert log.head_rev(key) == 50 and log.state(key).args.sloops == 49
+    assert [p.name for p in (log.root / key / "snap").iterdir()] == ["1.json"]
+    assert (log.root / key / "snap" / "1.json").read_bytes() == first
 
 
 # --------------------------------------------------------------- table reloading
