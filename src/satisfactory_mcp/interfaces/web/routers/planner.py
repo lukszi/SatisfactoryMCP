@@ -2,7 +2,9 @@
 
 Solve re-solves a request or a stored version and stores nothing. Focus records what the
 page has open, for ``ui_context``. Activity is the plan logs and the journal merged by time.
-docs/planner_slice_contract.md §9 and §11 are the specification.
+Alternates is one item's recipes with what requiring each would change in a stored plan.
+docs/planner_slice_contract.md §9 and §11 and docs/planner-p3_contract.md §5 are the
+specification.
 
 WARNING: the function name is the operation_id -- renaming it churns the committed schema.
 
@@ -17,9 +19,10 @@ from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
 
-from ....domain.planning import focus, journal, manage, summary
+from ....domain.planning import focus, journal, manage, summary, swaps
 from ....domain.planning.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
-from ..serial import ActorBody, _actor_json, _fail, _state
+from ....domain.planning.scenario import resolve_item
+from ..serial import ActorBody, PlanOpBody, _actor_json, _fail, _state
 
 __all__ = ["router"]
 
@@ -34,8 +37,12 @@ class SolveRate(TypedDict):
 
 
 class SolveRow(TypedDict):
-    """One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws."""
+    """One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
 
+    ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth."""
+
+    id: str
+    depth: int
     building: str
     recipe: str
     recipe_id: str | None
@@ -46,6 +53,31 @@ class SolveRow(TypedDict):
     inputs: list[SolveRate]
     outputs: list[SolveRate]
     required: bool
+
+
+class PlanGraphNode(TypedDict):
+    """``kind`` is process, input or export; ``item`` is a class id, null for power."""
+
+    id: str
+    kind: str
+    label: str
+    detail: str
+    rank: int
+    row: str | None
+    item: str | None
+
+
+class PlanGraphEdge(TypedDict):
+    source: str
+    target: str
+    item: str
+    per_min: float
+    text: str | None
+
+
+class PlanGraph(TypedDict):
+    nodes: list[PlanGraphNode]
+    edges: list[PlanGraphEdge]
 
 
 class SolveResponse(TypedDict):
@@ -66,6 +98,7 @@ class SolveResponse(TypedDict):
     exports: list[SolveRate]
     inputs: list[SolveRate]
     rows: list[SolveRow]
+    graph: PlanGraph
     shards: int | None
     sloops_used: int
     blockers: list[str]
@@ -131,6 +164,31 @@ class DeltaRow(TypedDict):
     delta: float
 
 
+class RowChange(TypedDict):
+    """A process row joined on ``SolveRow.id``; ``change`` is added, removed or changed."""
+
+    id: str
+    label: str
+    change: str
+    machines_before: int
+    machines_after: int
+    clock_before: float
+    clock_after: float
+
+
+class ResultDelta(TypedDict):
+    """Two solves compared. ``comparable`` is false when either side is not solvable."""
+
+    comparable: bool
+    machines: int
+    mw_draw: float
+    mw_net: float
+    buildings: list[DeltaRow]
+    inputs: list[DeltaRow]
+    rows: list[RowChange]
+    text: str
+
+
 class DeltaResponse(TypedDict):
     """What re-solving ``from_rev`` and ``to_rev`` gives. ``comparable`` is false when either
     side is not solvable, and then only ``text`` says anything."""
@@ -144,6 +202,52 @@ class DeltaResponse(TypedDict):
     mw_net: float
     buildings: list[DeltaRow]
     inputs: list[DeltaRow]
+    rows: list[RowChange]
+    text: str
+
+
+class AlternatesBody(TypedDict):
+    key: str
+    rev: NotRequired[int | None]
+    item: str
+
+
+class SwapOption(TypedDict):
+    """One recipe for the item. ``status`` is in use, required, banned, available or locked;
+    ``delta`` is null when ``solved`` is false (locked, or banned by a pattern)."""
+
+    recipe_id: str
+    name: str
+    alternate: bool
+    machine: str | None
+    unlocked: bool | None
+    spoiler: bool
+    granted_by: list[str]
+    status: str
+    in_use: bool
+    required: bool
+    banned: bool
+    banned_by: str | None
+    solved: bool
+    delta: ResultDelta | None
+    require_ops: list[PlanOpBody]
+    ban_ops: list[PlanOpBody]
+    free_ops: list[PlanOpBody]
+
+
+class PlanAlternatesResponse(TypedDict):
+    """Every recipe for one item with what requiring it changes in the plan at ``rev``."""
+
+    key: str
+    rev: int
+    item: str
+    name: str
+    head_feasible: bool
+    head_machines: int
+    head_mw_draw: float | None
+    head_mw_net: float | None
+    options: list[SwapOption]
+    hidden: int
     text: str
 
 
@@ -295,3 +399,35 @@ def plan_delta(
     except ValueError as exc:
         return _fail(str(exc), 400)
     return {"key": key, "from_rev": from_rev, "to_rev": to, **delta}
+
+
+@router.post("/plan/alternates", response_model=PlanAlternatesResponse)
+def plan_alternates(
+    request: Request,
+    body: Annotated[AlternatesBody, Body()],
+    save: str | None = None,
+    world: str | None = None,
+    spoilers: bool | None = None,
+) -> Any:
+    """Every recipe making ``item``, each with what requiring it would change in the plan."""
+    key = body["key"]
+    if not _KEY.fullmatch(key):
+        return _fail(f"no plan “{key}” in this world", 404)
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+    g = st.game
+    item = resolve_item(g, body["item"]) if body["item"] else None
+    if item is None:
+        return _fail(f"no item named “{body['item']}”", 404)
+    try:
+        state = PlanLog(st.world_id).state(key, body.get("rev"))
+    except UnknownPlan:
+        return _fail(f"no plan “{key}” in this world", 404)
+    except InvalidOp as exc:
+        return _fail(str(exc), 404)
+    try:
+        return swaps.swap_deltas(g, st, state, item, spoilers is not False)
+    except ValueError as exc:
+        return _fail(str(exc), 400)

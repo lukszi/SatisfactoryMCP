@@ -1332,7 +1332,13 @@ def select_machines(
     clashes = {lbl.name for m in picked if (lbl := st.labels.label_for(m))}
     if clashes:
         parts.append("already named: " + ", ".join(sorted(clashes)))
-    return render.envelope(f"# {st.age_note}", "\n".join(parts))
+    return render.envelope(f"# {st.age_note}", "\n".join(parts), _pin_notes(select, st))
+
+
+def _pin_notes(select: list[str] | None, st) -> list[str]:
+    from ....domain.factories import select as gsel
+
+    return gsel.pin_notes(select, st)
 
 
 @mcp.tool(structured_output=False)
@@ -1379,7 +1385,7 @@ def name_factory(
         f"{int(cand.centroid[0] / 100)},{int(cand.centroid[1] / 100)} "
         f"(spread {cand.spread_m:.0f}m): {cand.name_hint()}"
     )
-    warn = _overlaps(store, picked, name)
+    warn = _pin_notes(select, st) + _overlaps(store, picked, name)
     if existing and not dry_run:
         kept = len(set(existing.anchors) & set(picked))
         warn.append(
@@ -1511,7 +1517,8 @@ def amend_factory(
         plan = edits.plan_amend(store, label, wanted, going, alive)
     except LabelError as exc:
         return _label_refused(exc)
-    warn = [f"overlaps {other!r} on {n} machine(s)" for other, n in plan.overlaps.items()]
+    warn = _pin_notes([*(add or ()), *(drop or ())], st)
+    warn += [f"overlaps {other!r} on {n} machine(s)" for other, n in plan.overlaps.items()]
     if plan.named:
         warn.append(
             f"{len(plan.added)} added machine(s) already have a name -- covers(), which the "

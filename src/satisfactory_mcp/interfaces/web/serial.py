@@ -23,6 +23,7 @@ from ...domain.world.state import WorldState
 __all__ = [
     "ActorBody",
     "Biomass",
+    "PlanOpBody",
     "Region",
     "_actor_json",
     "_fail",
@@ -50,6 +51,18 @@ class Region(TypedDict):
     accuracy_m: int
     certain: bool
     text: str
+
+
+class PlanOpBody(TypedDict, total=False):
+    """One op as the log holds it; which keys are present depends on ``op`` (contract §3)."""
+
+    op: str
+    field: str
+    value: Any
+    item: str
+    member: Any
+    name: str
+    was: Any
 
 
 class ActorBody(TypedDict):

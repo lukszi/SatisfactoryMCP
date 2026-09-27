@@ -54,6 +54,23 @@ def overrides_of(supplied: dict) -> dict:
     return {k: v for k, v in supplied.items() if k in PLAN_DEFAULTS and v != PLAN_DEFAULTS[k]}
 
 
+def plan_ref(st, plan: str | None) -> tuple[str | None, str]:
+    """``plan`` with a ``pin:N`` swapped for the plan key it pins, and the echo; else as given.
+
+    Raises ``KeyError`` with the refusal, as an unknown plan name does.
+    """
+    from . import pins
+
+    n = pins.parse(plan)
+    if n is None:
+        return plan, ""
+    try:
+        found, echo = pins.terms(st, n, "plan")
+    except pins.PinError as exc:
+        raise KeyError(str(exc)) from None
+    return found[0], echo
+
+
 def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[str]]:
     """Merge a stored plan's arguments with anything explicitly overridden this call.
 
@@ -62,6 +79,7 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
     clean = {k: v for k, v in supplied.items() if k in PLAN_DEFAULTS}
     if not plan:
         return clean, "", []
+    plan, echo = plan_ref(st, plan)
     stored = st.plans.find(plan)
     if stored is None:
         known = ", ".join(x.name for x in st.plans.plans) or "(none saved yet)"
@@ -70,6 +88,8 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
     overrides = overrides_of(clean)
     merged = {**PLAN_DEFAULTS, **stored.kwargs(), **overrides}
     notes = [f'recalled plan "{stored.name}" v{stored.rev}']
+    if echo:
+        notes.append(echo)
     if stored.notes:
         notes.append(f"{stored.name}: {stored.notes}")
     # The siting rides along on every recall, whichever tool recalled it -- this is the

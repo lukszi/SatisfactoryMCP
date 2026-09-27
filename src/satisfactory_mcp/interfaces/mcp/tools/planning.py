@@ -19,7 +19,7 @@ from ....core.filelock import LockTimeout
 from ....core.gamedata.unlocks import granted_by_label
 from ....domain.factories.select import SelectorError
 from ....domain.planning import bom as bom_mod
-from ....domain.planning import compare, journal, manage, summary
+from ....domain.planning import compare, journal, manage, pins, summary
 from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
 from ....domain.planning.carrier import resolve_tiers
@@ -42,7 +42,7 @@ from ....domain.planning.planlog import (
     describe_op,
 )
 from ....domain.planning.prepare import prepare
-from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of
+from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of, plan_ref
 from ....domain.planning.recall import recall_plan as _plan_kwargs
 from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
@@ -71,6 +71,8 @@ CONTEXT_COMMITS = 6
 CONTEXT_JOURNAL = 8
 FIRST_LOOK = 5
 CONTEXT_BUDGET = 3800
+CONTEXT_PINS = 8
+CONTEXT_PIN_WIDTH = 90
 
 BaseRev = Annotated[
     int | None,
@@ -506,6 +508,10 @@ def site_plan(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
+    try:
+        plan, _echo = _plan_pin(st, plan)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
     stored = st.plans.find(plan)
     if stored is None:
         return _unknown(st, plan)
@@ -606,6 +612,16 @@ def site_plan(
             ),
         ],
     )
+
+
+def _refusal(exc: Exception) -> str:
+    return exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
+
+
+def _plan_pin(st, plan: str | None) -> tuple[str | None, list[str]]:
+    """``plan`` with a plan pin swapped for its key, and the echo. Raises ``KeyError``."""
+    found, echo = plan_ref(st, plan)
+    return found, [echo] if echo else []
 
 
 def _live_named(st, name: str):
@@ -909,6 +925,18 @@ def plan_factory(
     except Exception as exc:
         return f"could not read save: {exc}"
 
+    try:
+        plan, pin_notes = _plan_pin(st, plan)
+        sources, said = pins.canonical(st, "sources", sources) if sources else (sources, [])
+        pin_notes += said
+        required, said = pins.canonical(st, "required", required) if required else (required, [])
+        pin_notes += said
+        if exclude_recipes:
+            exclude_recipes, said = pins.canonical(st, "exclude_recipes", exclude_recipes)
+            pin_notes += said
+    except (KeyError, pins.PinError) as exc:
+        return f"! {_refusal(exc)}; nothing solved"
+
     required_ids, refused = _resolve_required(required)
     if refused:
         return refused
@@ -945,6 +973,7 @@ def plan_factory(
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
     # Its own pair, never written back over the arguments: a recalled plan's site is
@@ -1200,9 +1229,11 @@ def plan_layout(
         pipe_m3min=tiers.pipe_m3min if tiers.asked_pipe else None,
     )
     try:
+        plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
     try:
@@ -1319,9 +1350,11 @@ def diff_vs_save(
         only_recipes=only_recipes,
     )
     try:
+        plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
     try:
@@ -1548,9 +1581,11 @@ def commission_plan(
         sloops=sloops,
     )
     try:
+        plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
     report = build_commission_report(
@@ -1636,9 +1671,11 @@ def rank_unlocks(
         sloops=sloops,
     )
     try:
+        plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
@@ -1866,6 +1903,33 @@ def _short(token: str) -> str:
     return token[:8] + "…" if len(token) > 8 else token
 
 
+def _pin_text(pin: dict) -> str:
+    text = f"{pin['id']} {pin['text']}"
+    if pin["label"]:
+        text += f" “{pin['label']}”"
+    if pin["gone"]:
+        text += " (gone)"
+    return _cut(text, CONTEXT_PIN_WIDTH)
+
+
+def _pins_line(rows: list[dict]) -> str:
+    if not rows:
+        return "pins: none"
+    shown = sorted(rows, key=lambda p: p["n"])[-CONTEXT_PINS:]
+    line = "pins: " + " · ".join(_pin_text(p) for p in shown)
+    if len(rows) > CONTEXT_PINS:
+        line += f" (+{len(rows) - CONTEXT_PINS} more)"
+    return line
+
+
+def _selected_pin(focus: dict, rows: list[dict]) -> str:
+    picked = focus.get("selection")
+    if not isinstance(picked, dict) or not picked.get("kind") or not picked.get("label"):
+        return ""
+    found = pins.match(rows, str(picked["kind"]), str(picked.get("ref") or ""), focus.get("plan"))
+    return f" ({found['id']})" if found else ""
+
+
 def _focus_line(focus: dict, log: PlanLog) -> str:
     parts = [str(focus.get("view") or "?")]
     if focus.get("plan"):
@@ -1977,10 +2041,16 @@ def ui_context(save: str | None = None, world: str | None = None) -> str:
             same = "= yours" if theirs == ours else f"≠ yours ({_short(ours)})"
             head += f" · page {_short(theirs)} {same}"
     lines = [head]
+    try:
+        pin_rows = pins.live(st)
+        pin_line = _pins_line(pin_rows)
+    except Exception as exc:
+        pin_rows, pin_line = [], f"pins: unreadable ({type(exc).__name__})"
     if focus is not None:
-        line = _focus_line(focus, log)
+        line = _focus_line(focus, log) + _selected_pin(focus, pin_rows)
         lines.append(line if is_open else "last " + line)
         lines.append(f"follow: {focus.get('follow') or 'follow'}")
+    lines.append(pin_line)
 
     cursor = _cursor.get(world_id)
     try:

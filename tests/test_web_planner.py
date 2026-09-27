@@ -356,6 +356,98 @@ def test_activity_merges_commits_and_journal_entries_by_time(client):
     assert len(client.get("/api/activity?limit=1").json()["entries"]) == 1
 
 
+# ------------------------------------------------------------------ graph, deltas, alternates
+
+
+def test_the_solve_carries_the_production_graph_with_ids_and_depths(client, game):
+    body = client.post("/api/plan/solve", json={"args": HMF_ARGS}, headers=ORIGIN).json()
+    rows, graph = body["rows"], body["graph"]
+    ids = [r["id"] for r in rows]
+    assert len(set(ids)) == len(ids)
+    assert all(r["id"] == (r["recipe_id"] or r["id"]) for r in rows)
+    assert all(r["id"].startswith("label:") for r in rows if r["recipe_id"] is None)
+    kinds = [n["kind"] for n in graph["nodes"]]
+    assert kinds == sorted(kinds, key=["input", "process", "export"].index)
+    procs = [n for n in graph["nodes"] if n["kind"] == "process"]
+    assert [n["id"] for n in procs] == ids and [n["row"] for n in procs] == ids
+    assert [n["rank"] for n in procs] == [r["depth"] + 1 for r in rows]
+    [export] = [n for n in graph["nodes"] if n["kind"] == "export"]
+    assert export["id"] == f"ex:{RIP}" and export["item"] == "Desc_IronPlateReinforced_C"
+    assert export["rank"] == max(n["rank"] for n in procs) + 1
+    assert export["detail"] == "exported 5/min"
+    top = next(n for n in procs if n["item"] == "Desc_IronPlateReinforced_C")
+    row = next(r for r in rows if r["id"] == top["id"])
+    assert top["detail"].startswith(f"{row['building']} ×{row['machines']} · ")
+    assert top["detail"].endswith("%") and " MW · " in top["detail"]
+    names = {n["id"] for n in graph["nodes"]}
+    assert all(e["source"] in names and e["target"] in names for e in graph["edges"])
+    into = sum(e["per_min"] for e in graph["edges"] if e["target"] == export["id"])
+    assert into == pytest.approx(5.0, abs=1e-3)
+    miners = [r for r in rows if r["id"].startswith("label:")]
+    assert miners and all(r["depth"] == 0 for r in miners)
+    assert len(json.dumps(graph)) < 8000
+
+
+def test_an_infeasible_solve_has_an_empty_graph(client):
+    args = {**HMF_ARGS, "export_minimums": {RIP: 10_000_000}}
+    body = client.post("/api/plan/solve", json={"args": args}, headers=ORIGIN).json()
+    assert body["feasible"] is False and body["graph"] == {"nodes": [], "edges": []}
+
+
+def test_the_delta_names_rows_added_changed_and_removed(client):
+    key = _create(client)["key"]
+    alt = "Recipe_Alternate_ReinforcedIronPlate_1_C"
+    _push(client, key, 1, {"op": "add", "field": "banned", "member": alt}, _rate(10))
+    body = client.get(f"/api/plan/delta?key={key}&from_rev=1").json()
+    changes = {r["id"]: r for r in body["rows"]}
+    assert changes[alt]["change"] == "removed" and changes[alt]["machines_after"] == 0
+    added = [r for r in body["rows"] if r["change"] == "added"]
+    assert added and all(r["machines_before"] == 0 for r in added)
+    order = [r["change"] for r in body["rows"]]
+    assert order == sorted(order, key=["added", "changed", "removed"].index)
+    same = client.get(f"/api/plan/delta?key={key}&from_rev=2&to_rev=2").json()
+    assert same["rows"] == []
+
+
+def test_alternates_for_a_stored_plan(client):
+    key = _create(client)["key"]
+    reply = client.post(
+        "/api/plan/alternates",
+        json={"key": key, "item": "Desc_IronPlateReinforced_C"},
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    assert body["key"] == key and body["rev"] == 1 and body["name"] == RIP
+    assert body["text"].startswith(f"recipes for {RIP} in “rip 5” v1: ")
+    assert {o["status"] for o in body["options"]} >= {"in use", "available"}
+    hidden = client.post(
+        "/api/plan/alternates?spoilers=0",
+        json={"key": key, "item": RIP},
+        headers=ORIGIN,
+    ).json()
+    assert all(o["status"] != "locked" for o in hidden["options"])
+    assert hidden["hidden"] == len(body["options"]) - len(hidden["options"])
+    by_rev = client.post(
+        "/api/plan/alternates", json={"key": key, "rev": 1, "item": RIP}, headers=ORIGIN
+    )
+    assert by_rev.status_code == 200
+
+
+def test_alternates_refuse_unknown_plans_revs_and_items(client):
+    key = _create(client)["key"]
+    for payload in (
+        {"key": "0000beef", "item": RIP},
+        {"key": "..", "item": RIP},
+        {"key": key, "rev": 9, "item": RIP},
+        {"key": key, "item": "Plait of nothing"},
+    ):
+        reply = client.post("/api/plan/alternates", json=payload, headers=ORIGIN)
+        assert reply.status_code == 404, payload
+    missing = client.post("/api/plan/alternates", json={"key": key}, headers=ORIGIN)
+    assert missing.status_code in (400, 422)
+
+
 # ------------------------------------------------------------------ the schema
 
 

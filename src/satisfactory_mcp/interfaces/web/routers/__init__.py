@@ -24,6 +24,7 @@ from . import (
     inspect,
     naming,
     nodes,
+    pins,
     placements,
     planlog,
     planner,
@@ -74,4 +75,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     search.router,
     trace.router,
     factory_detail.router,
+    pins.router,
 )
