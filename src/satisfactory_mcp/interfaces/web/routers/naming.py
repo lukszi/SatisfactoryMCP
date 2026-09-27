@@ -127,6 +127,13 @@ class RenamedResponse(TypedDict):
     stored_in: str
 
 
+class LabelErrorResponse(TypedDict):
+    """A label write refused before it reached the store: a bad name (400) or a save, proposal
+    or label that does not exist (404)."""
+
+    error: str
+
+
 class LabelRefusedResponse(TypedDict):
     """A label write that changed nothing. One flag names the cause: ``stale`` (the store
     moved since ``version``), ``name_taken`` (another label holds the name) or ``pin`` (the
@@ -138,7 +145,11 @@ class LabelRefusedResponse(TypedDict):
     pin: bool
 
 
-_REFUSALS: dict[int | str, dict[str, Any]] = {409: {"model": LabelRefusedResponse}}
+_REFUSALS: dict[int | str, dict[str, Any]] = {
+    400: {"model": LabelErrorResponse},
+    404: {"model": LabelErrorResponse},
+    409: {"model": LabelRefusedResponse},
+}
 
 
 def _flows(fg: flowgraph.FlowGraph, role: str) -> list[dict]:
@@ -169,7 +180,7 @@ def _refused(exc: Exception) -> Any:
     if isinstance(exc, UnknownLabel):
         return _fail(str(exc), 404)
     if isinstance(exc, LabelError):
-        return _fail(str(exc), 409)
+        return _conflict(exc)
     return _fail(f"factory labels are busy, nothing written: {exc}", 503)
 
 
@@ -197,7 +208,7 @@ def factory_candidates(
         rmap = None
 
     placed = fidentity.positions(st.projection)
-    taken = [label.name for label in st.labels.labels]
+    names = naming.proposal_names(st, st.proposals, style, rmap)
     hidden = {"small": 0, "not_fed": 0}
     rows = []
     for index, pr in enumerate(st.proposals):
@@ -213,10 +224,8 @@ def factory_candidates(
         cand = fidentity.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
         view, fg = _cluster(st, pr.machines, "proposal")
         extracted = {row[1] for row in view.nodes}
-        item, confident = naming.lead(fg, cand, st.game, extracted)
+        _item, confident = naming.lead(fg, cand, st.game, extracted)
         region = rmap.label_for(*cand.centroid).name if rmap else None
-        suggested = naming.suggest(item, region, taken, style)
-        taken.append(suggested)
         box = geo.bbox([placed[m][:2] for m in pr.machines if m in placed])
         rows.append(
             {
@@ -239,7 +248,7 @@ def factory_candidates(
                 "bbox_m": None if box is None else [_m(v) for v in box],
                 "spread_m": round(cand.spread_m, 1),
                 "score": round(pr.cohesion, 3),
-                "suggested_name": suggested,
+                "suggested_name": names[index],
                 "confident": confident,
             }
         )

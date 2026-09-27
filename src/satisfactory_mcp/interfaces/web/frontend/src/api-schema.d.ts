@@ -2543,6 +2543,15 @@ export interface components {
             items: components["schemas"]["ItemRow"][];
         };
         /**
+         * LabelErrorResponse
+         * @description A label write refused before it reached the store: a bad name (400) or a save, proposal
+         *     or label that does not exist (404).
+         */
+        LabelErrorResponse: {
+            /** Error */
+            error: string;
+        };
+        /**
          * LabelRefusedResponse
          * @description A label write that changed nothing. One flag names the cause: ``stale`` (the store
          *     moved since ``version``), ``name_taken`` (another label holds the name) or ``pin`` (the
@@ -5665,6 +5674,24 @@ export interface operations {
                     "application/json": components["schemas"]["NamedResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
             /** @description Conflict */
             409: {
                 headers: {
@@ -5707,6 +5734,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ForgotResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
                 };
             };
             /** @description Conflict */
@@ -5754,6 +5799,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenamedResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
                 };
             };
             /** @description Conflict */

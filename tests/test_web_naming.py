@@ -144,6 +144,34 @@ def test_no_product_falls_back_to_what_is_made_and_says_it_guessed(game):
     assert naming.lead(flowgraph.FlowGraph(), _cand(Build_SmelterMk1_C=2), game, set())[1] is False
 
 
+def test_a_guess_prefers_a_made_item_to_an_ore(game):
+    fg = flowgraph.FlowGraph(
+        produced={"Coal": 360.0, "Steel Ingot": 270.0},
+        roles={"Coal": "unrouted", "Steel Ingot": "unrouted"},
+    )
+    assert naming.lead(fg, _cand(), game, {"Coal"}) == ("Steel Ingot", False)
+    only_ore = flowgraph.FlowGraph(produced={"Water": 360.0}, roles={"Water": "unrouted"})
+    assert naming.lead(only_ore, _cand(), game, {"Water"}) == ("Water", False)
+
+
+def test_detect_numbers_like_the_map_when_the_filters_hide_clusters(empty, monkeypatch):
+    everything = {r["index"]: r["suggested_name"] for r in _detect(empty)["candidates"]}
+    filtered = _detect(empty, fed_only=True, min_machines=3)["candidates"]
+    assert filtered and len(filtered) < len(everything)
+    mapped = {p["index"]: p["label"] for p in empty.get("/api/factories").json()["proposals"]}
+    for row in filtered:
+        assert row["suggested_name"] == everything[row["index"]] == mapped[row["index"]]
+
+    one_answer = naming.proposal_names
+    monkeypatch.setattr(
+        naming,
+        "proposal_names",
+        lambda *a, **k: {i: f"shared {i}" for i in one_answer(*a, **k)},
+    )
+    for row in _detect(empty, fed_only=True, min_machines=3)["candidates"]:
+        assert row["suggested_name"] == f"shared {row['index']}"
+
+
 def test_a_made_product_outranks_an_extracted_one(game):
     fg = flowgraph.FlowGraph(
         produced={"Iron Ore": 480.0, "Computer": 6.0},
@@ -215,7 +243,7 @@ def test_a_suggestion_steps_past_a_taken_name_in_either_style():
     pr = "product, region"
     assert naming.suggest("Wire", "Spire Coast", [], pr) == "Wire, Spire Coast"
     assert naming.suggest("Wire", "Spire Coast", ["wire, spire coast"], pr) == (
-        "Wire, Spire Coast 2"
+        "Wire 2, Spire Coast"
     )
     assert naming.suggest("Wire", None, ["Wire", "Wire 2"], pr) == "Wire 3"
     assert naming.suggest("Iron Ingot", "Grass Fields", []) == "iron ingot factory"
@@ -297,6 +325,17 @@ def test_a_write_against_a_stale_version_is_refused(empty, store_dir):
 def test_an_unknown_proposal_is_a_404(empty):
     body, row = _first(empty)
     assert _name(empty, body, dict(row, index=999), name="x").status_code == 404
+
+
+def test_the_label_routes_declare_every_refusal_they_send(empty):
+    paths = empty.get("/openapi.json").json()["paths"]
+    for path, method in (
+        ("/api/labels", "post"),
+        ("/api/labels/{name}", "patch"),
+        ("/api/labels/{name}", "delete"),
+    ):
+        declared = paths[path][method]["responses"]
+        assert {"400", "404", "409"} <= set(declared), (method, path)
 
 
 def test_forget_deletes_one_label_by_its_exact_name(empty, store_dir):
