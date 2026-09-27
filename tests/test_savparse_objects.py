@@ -264,7 +264,7 @@ def test_records_from_an_older_build_are_ordinary(save, raw):
 
 def test_a_record_from_a_newer_build_than_the_save_is_reported(save, raw):
     changelist = save.preamble.changelist & 0x7FFFFFFF
-    (at, what), *_ = read_body(raw, build_version=changelist - 1).warnings
+    (_at, what), *_ = read_body(raw, build_version=changelist - 1).warnings
     assert f"changelist {changelist}" in what
     assert "newer than the save" in what
 
