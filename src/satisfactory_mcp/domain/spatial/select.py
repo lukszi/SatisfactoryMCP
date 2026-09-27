@@ -12,6 +12,7 @@ Supported selectors (prefix optional where unambiguous)::
     region:Northern Forest                          named region (advisory names)
     grid:X3Y4                                       exact 1.024 km biome grid cell
     node:BP_ResourceNode26_99                       one specific node, by instance
+    pin:3                                           a node or field pin's nodes
     near:<place>@<radius_m>                         circle around any place
     bbox:<x1>,<y1>,<x2>,<y2>                        rectangle, metres
     resource:Crude Oil                              filter: resource type
@@ -35,7 +36,7 @@ __all__ = ["SELECTOR_HELP", "Selection", "select_nodes", "split_spec"]
 
 SELECTOR_HELP = (
     "selectors: north|south|east|west|northeast|... , region:<name>, grid:X3Y4, "
-    "node:<instance>, near:<place>@<radius_m>, bbox:<x1>,<y1>,<x2>,<y2>, "
+    "node:<instance>, pin:<n>, near:<place>@<radius_m>, bbox:<x1>,<y1>,<x2>,<y2>, "
     "resource:<name>, purity:pure|normal|impure, kind:node|well_sat|geyser. Any "
     "filter takes all, which means no filter; all on its own is every node"
 )
@@ -156,6 +157,14 @@ def select_nodes(
             continue
 
         location_attempted = True
+
+        if prefix is None and low.startswith("pin:"):
+            hits, where = _pin_nodes(st, value, by_instance, short_index, sel)
+            if hits is not None:
+                location_seen = True
+                picked.update({n["instance"]: n for n in hits})
+                sel.described.append(f"{where} ({len(hits)} nodes)")
+            continue
 
         if prefix is None and low == "all":
             location_seen = True
@@ -293,6 +302,27 @@ def select_nodes(
 
     sel.nodes = result
     return sel
+
+
+def _pin_nodes(st, value: str, by_instance: dict, short_index: dict, sel: Selection):
+    from ..planning import pins
+
+    n = pins.parse(value)
+    if n is None:
+        sel.errors.append(f"{value!r} is not a pin: write pin:<n>. {SELECTOR_HELP}")
+        return None, ""
+    try:
+        wanted, echo = pins.terms(st, n, "nodes")
+    except pins.PinError as exc:
+        sel.errors.append(str(exc))
+        return None, ""
+    hits = []
+    for term in wanted:
+        key = term.removeprefix("node:")
+        hit = by_instance.get(key) or short_index.get(key)
+        if hit is not None:
+            hits.append(hit)
+    return hits, echo
 
 
 def _looks_like_grid(value: str) -> bool:

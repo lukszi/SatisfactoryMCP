@@ -7,6 +7,7 @@ stops enforcing its row cap, and a response that quietly grows.
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 from conftest import REFERENCE_FIELD
@@ -119,6 +120,15 @@ def test_tool_descriptions_stay_short():
     for tool in _run(srv.mcp.list_tools()):
         first = (tool.description or "").strip().splitlines()[0]
         assert len(first) <= 120, (tool.name, first)
+
+
+def test_alternates_for_item_takes_a_plan_without_a_second_tool():
+    tools = {t.name: t for t in _run(srv.mcp.list_tools())}
+    plan = tools["alternates_for_item"].inputSchema["properties"]["plan"]
+    assert "stored plan" in json.dumps(plan)
+    assert [n for n in tools if "alternate" in n or "swap" in n] == ["alternates_for_item"]
+    first = tools["alternates_for_item"].description.strip().splitlines()[0]
+    assert len(first) <= 120
 
 
 def test_describe_location_declares_one_way_to_say_where():

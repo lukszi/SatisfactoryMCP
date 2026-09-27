@@ -41,6 +41,7 @@ def ctx(tmp_path, monkeypatch):
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
+    monkeypatch.setattr(journal.config, "pins_dir", lambda: tmp_path / "pins")
     monkeypatch.setattr(journal, "_writer", "")
     monkeypatch.setattr(journal, "_seq", {})
     monkeypatch.setattr(planning, "_state", lambda *a, **k: _World())
@@ -211,6 +212,70 @@ def test_the_real_focus_file_is_read_when_the_web_module_exists(ctx, monkeypatch
     )
     found, is_open = planning._page_focus(WORLD)
     assert is_open and found["follow"] == "toasts"
+
+
+def _pins(ctx, rows: list[dict]) -> None:
+    (ctx / "pins").mkdir(exist_ok=True)
+    stored = [
+        {"rev": 1, "created": 0.0, "deleted": False, "label": "", "x_m": None, "y_m": None, **row}
+        for row in rows
+    ]
+    body = {"schema": 1, "version": len(rows), "next": len(rows) + 1, "pins": stored}
+    (ctx / "pins" / f"{WORLD}.json").write_text(json.dumps(body), encoding="utf-8")
+
+
+def test_no_pins_says_none(ctx):
+    assert "pins: none" in srv.ui_context().splitlines()
+
+
+def test_pins_are_listed_and_a_pinned_selection_names_its_pin(ctx, monkeypatch):
+    made = PlanLog(WORLD).create("north hmf", {}, actor=PAGE)
+    _pins(
+        ctx,
+        [
+            {"n": 1, "kind": "point", "ref": {"x_m": 1.0, "y_m": 2.0}, "x_m": 1.0, "y_m": 2.0},
+            {"n": 2, "kind": "process", "ref": {"plan": made.key, "recipe": "Recipe_X_C"}},
+            {"n": 3, "kind": "factory", "ref": {"factory": "gone factory"}, "label": "old"},
+        ],
+    )
+    _focus(
+        monkeypatch,
+        2,
+        True,
+        plan=made.key,
+        rev=1,
+        tab="graph",
+        selection={"kind": "process", "label": "Blender · Diluted Fuel", "ref": "Recipe_X_C"},
+    )
+    lines = srv.ui_context().splitlines()
+    assert lines[1].endswith('selected: process "Blender · Diluted Fuel" (pin:2)')
+    assert lines[3] == (
+        "pins: pin:1 point 1, 2 · pin:2 process Recipe_X_C in “north hmf” · "
+        "pin:3 factory “gone factory” “old” (gone)"
+    )
+
+
+def test_only_the_newest_eight_pins_show_and_the_reply_stays_in_budget(ctx):
+    _pins(
+        ctx,
+        [
+            {
+                "n": n,
+                "kind": "point",
+                "ref": {"x_m": float(n), "y_m": 2.0},
+                "x_m": float(n),
+                "y_m": 2.0,
+                "label": "a very long label " * 5,
+            }
+            for n in range(1, 21)
+        ],
+    )
+    out = srv.ui_context()
+    line = next(x for x in out.splitlines() if x.startswith("pins: "))
+    assert line.startswith("pins: pin:13 ") and line.endswith(" (+12 more)")
+    parts = line.removeprefix("pins: ").removesuffix(" (+12 more)").split(" · ")
+    assert len(parts) == 8 and all(len(part) <= 90 for part in parts)
+    assert len(out) < planning.CONTEXT_BUDGET
 
 
 def test_a_plan_created_since_the_last_look_reads_as_new(ctx):

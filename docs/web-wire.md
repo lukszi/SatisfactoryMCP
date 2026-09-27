@@ -52,3 +52,20 @@ stat-compared every 3 s.
   minus 2 s.
 - Only the served instance tails (`create_app(tail=True)`), and it is also what names the
   process the `web` journal writer. Test apps leave both off.
+- Pin writes (`/api/pins`, Planner P3) add no event name: each appends one journal entry,
+  `pin.add`, `pin.edit` or `pin.drop`, which reaches every page as `activity` within the 0.5 s
+  tail. `plan` is the plan key for plan and process pins, else null.
+
+## Pins
+
+`/api/pins` (`routers/pins.py`) follows the rules above: `?save=`/`?world=`, the guard on
+every method, `{error}` with a 4xx. A write carries the `rev` it read; a different `rev` is a
+409 `PinStaleResponse {error, stale: true, pin}` with the row as it stands, and nothing is
+written. A create of an object that already has a live pin is a **200** with `existing: true`
+rather than a 201. A pins file from a newer version is a 503 `{error, newer_schema: true}`
+naming the pins, not the path. Pin numbers are never reused.
+
+`PlanOpBody` lives in `serial.py` because two routers publish it (`planlog` for pushes,
+`planner` for the ops an alternates option would push). The alternates route's reply is
+named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes an
+`AlternatesResponse` and two models with one name would rename both in `api-schema.d.ts`.

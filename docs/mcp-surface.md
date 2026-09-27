@@ -626,6 +626,18 @@ journal entries past eight are counted as `(+N more)`, and the whole stays under
 characters. The server's `instructions` tell the client to call it when the user says "this",
 "here" or "what I have open".
 
+**Pins** (Planner P3, [planner_p3.md](planner_p3.md)). The page creates, renames and deletes
+pins; chat only reads them. `ui_context` prints a `pins:` line (the newest eight live pins,
+ascending, each cut to 90 characters, `(+N more)` past them, `pins: none` when empty, gone
+pins ending `(gone)`) and appends `(pin:N)` to a selection that a pin matches. Every tool that
+takes a place, a node source, a machine select, `plan=`, `required=` or `exclude_recipes=`
+accepts `pin:<n>` as [selectors.md](selectors.md) "Pins" lists, and echoes what it expanded
+to. `alternates_for_item(plan=)` adds the plan's view of each recipe: its status in the plan,
+Δ machines, Δ MW draw and the first two raw inputs that change if it were required, and a
+note naming the `plan_factory(... required=[...], base_rev=, save_as=)` call that would do it.
+It journals `plan.view` with `args {"view": "alternates", "item": <class id>}` and text
+`looked at recipes for <item>`. No tool was added.
+
 ### 10.2 Context budget
 
 The binding constraint. All 291 automatable recipes in optimal TSV = 25,313 chars (~7k tokens). **No tool

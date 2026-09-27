@@ -161,3 +161,9 @@ def ui_dir() -> Path:
     d = user_dir() / "ui"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+@lru_cache(maxsize=1)
+def pins_dir() -> Path:
+    """Pins the player placed from the page, one file per world (docs/planner-p3_contract.md §4)."""
+    return user_dir() / "pins"

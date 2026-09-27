@@ -24,6 +24,9 @@ NODE_PREFIX = "node"
 #: A stored plan's recorded site, by the plan's own name.
 PLAN_PREFIX = "plan"
 
+#: A located pin, by the number the pins card prints.
+PIN_PREFIX = "pin"
+
 #: The player, spelled the same wherever a place is taken.
 PLAYER_WORDS = ("me", "player", "here")
 
@@ -31,7 +34,7 @@ PLAYER_WORDS = ("me", "player", "here")
 #: wherever a place is taken rather than only where a tool remembered to list them.
 PLACE_GRAMMAR = (
     "A place is x,y in metres, 'me', a factory name, node:<id>, slab:<n>, "
-    "chain:<n>/pipe:<n>, or plan:<name>"
+    "chain:<n>/pipe:<n>, plan:<name>, or pin:<n>"
 )
 
 #: The one spelling of a circle, for node selectors and machine selectors alike. ``@``
@@ -178,6 +181,8 @@ def resolve_origin(st, near: str) -> tuple[tuple[float, float], str]:
             return _node_origin(text)
         if head == PLAN_PREFIX:
             return _plan_origin(st, text)
+        if head == PIN_PREFIX:
+            return _pin_origin(st, text)
     if "," in text:
         try:
             x_m, y_m = (float(v) for v in text.split(",", 1))
@@ -198,12 +203,30 @@ def resolve_origin(st, near: str) -> tuple[tuple[float, float], str]:
             f"{near!r} does not name a place. {PLACE_GRAMMAR}"
             + (f". Named factories: {known}" if known else "")
         )
+    centre = label_centre(st, label)
+    if centre is None:
+        raise ValueError(f"{label.name!r} has no machines left to centre on")
+    return centre, label.name
+
+
+def _pin_origin(st, text: str) -> tuple[tuple[float, float], str]:
+    from ..planning import pins
+
+    n = pins.parse(text)
+    if n is None:
+        raise ValueError(f"{text!r} is not a pin: write pin:<n>, as the pins card prints it")
+    try:
+        return pins.place(st, n)
+    except pins.PinError as exc:
+        raise ValueError(str(exc)) from None
+
+
+def label_centre(st, label) -> tuple[float, float] | None:
+    """The centroid of a label's standing machines in centimetres, or None when none stand."""
     pos = {}
     for key in ("machines", "extractors", "generators"):
         for record in st.projection.get(key, ()):
             if record.get("pos"):
                 pos[record["instance"].rsplit(".", 1)[-1]] = record["pos"]
     points = [pos[m][:2] for m in label.anchors if m in pos]
-    if not points:
-        raise ValueError(f"{label.name!r} has no machines left to centre on")
-    return geo.centroid(points), label.name
+    return geo.centroid(points) if points else None

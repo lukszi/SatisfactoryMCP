@@ -401,6 +401,14 @@ def test_multiple_node_ids_union(table):
     assert len(sel.nodes) == 3
 
 
+def test_a_pin_without_a_save_is_refused_not_read_as_a_region(table):
+    sel = select_nodes(["pin:1"], table.nodes)
+    assert sel.nodes == [] and not sel.whole_map
+    assert sel.errors == ["pin:1 needs a readable save to resolve"]
+    sel = select_nodes(["pin:x"], table.nodes)
+    assert sel.errors and sel.errors[0].startswith("'pin:x' is not a pin")
+
+
 def test_near_selector(table):
     sel = select_nodes(["near:0,0@1000"], table.nodes)
     for n in sel.nodes:
