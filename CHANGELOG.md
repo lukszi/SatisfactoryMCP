@@ -40,6 +40,10 @@ Planned as 0.2.0.
 - Search drops locked recipes on the server when spoilers are off.
 - Progress hides capability research in an unopened MAM tree.
 - Recipe icons are probed once instead of one 404 per item.
+- Map clicks work again after a trace is closed; trace run tooltips are escaped.
+- Leaving a factory rename unfinished no longer freezes the dashboard or side panel.
+- A malformed `%` escape in the address no longer stops the page from loading.
+- Power circuit names follow a factory rename without a reload.
 
 ## [0.1.0] - 2026-09-27
 
