@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api")
 PointM = tuple[float, float]
 
 
-class Rate(TypedDict):
+class TraceRate(TypedDict):
     item: str
     per_min: float
 
@@ -47,8 +47,8 @@ class TraceMachine(TypedDict):
     seed: bool
     hops: int
     recipe: str | None
-    makes: list[Rate]
-    uses: list[Rate]
+    makes: list[TraceRate]
+    uses: list[TraceRate]
     state: str
     actionable: bool
     x_m: float | None
@@ -72,7 +72,7 @@ class TraceGroup(TypedDict):
     running: int
     blocked: int
     stopped: int
-    makes: list[Rate]
+    makes: list[TraceRate]
 
 
 class TraceEdge(TypedDict):
@@ -98,7 +98,7 @@ class TraceResponse(TypedDict):
     truncated: bool
     seeds: int
     bbox_m: tuple[float, float, float, float] | None
-    items: list[Rate]
+    items: list[TraceRate]
     machines: list[TraceMachine]
     runs: list[TraceRun]
     groups: list[TraceGroup]

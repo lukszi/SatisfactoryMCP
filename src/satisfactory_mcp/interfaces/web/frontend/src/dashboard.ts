@@ -12,7 +12,6 @@ import { onVitals, showBox, showCircuit, showFactory, showPoint, vitals } from "
 import { stateTone } from "./placements";
 import { milestoneTile, onProgress, renderProgress } from "./progress";
 import { renderRecipes } from "./recipes";
-import { registerFetch } from "./registry";
 import { editName, refreshLabels, renamedTo } from "./rename";
 import { amount, choice, onSetting, setSetting, setting, SETTINGS } from "./settings";
 import { state } from "./state";
