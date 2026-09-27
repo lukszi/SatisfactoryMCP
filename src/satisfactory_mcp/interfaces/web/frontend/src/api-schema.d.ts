@@ -1277,6 +1277,8 @@ export interface paths {
         /**
          * Gamedata Recipe
          * @description ``recipe_detail``: one recipe by class id or display name.
+         *
+         *     With ``spoilers=0`` an ambiguous name counts only the unlocked candidates.
          */
         get: operations["gamedata_recipe_api_gamedata_recipe_get"];
         put?: never;
@@ -1336,7 +1338,7 @@ export interface paths {
         };
         /**
          * Search
-         * @description Items, part recipes and named factories whose names contain ``q``.
+         * @description Items, recipes of every kind and named factories whose names contain ``q``.
          *
          *     ``spoilers=0``, or its older alias ``only_unlocked``, drops locked recipes before the cut
          *     and the count, so neither the list nor ``recipes_total`` says what the save has not
@@ -1432,7 +1434,10 @@ export interface components {
             /** By */
             by: number;
         };
-        /** AlternatesResponse */
+        /**
+         * AlternatesResponse
+         * @description ``build_recipe`` is the build-gun recipe when the item is a building, else null.
+         */
         AlternatesResponse: {
             /** Item */
             item: string;
@@ -1446,6 +1451,8 @@ export interface components {
             sink_points: number;
             /** Save Note */
             save_note: string | null;
+            /** Build Recipe */
+            build_recipe: string | null;
             /** Recipes */
             recipes: components["schemas"]["MakerRow"][];
         };
@@ -3556,13 +3563,18 @@ export interface components {
         };
         /**
          * RecipeHit
-         * @description ``unlocked`` is null when no save could be read; ``spoiler`` means locked.
+         * @description ``unlocked`` is null when no save could be read; ``spoiler`` means locked. ``kind`` is
+         *     part, building or manual; ``machine`` names a part recipe's machine.
          */
         RecipeHit: {
             /** Cls */
             cls: string;
             /** Name */
             name: string;
+            /** Kind */
+            kind: string;
+            /** Machine */
+            machine: string | null;
             /** Alternate */
             alternate: boolean;
             /** Unlocked */
@@ -4441,10 +4453,17 @@ export interface components {
             /** Sav */
             sav?: string;
         };
-        /** UnlockedResponse */
+        /**
+         * UnlockedResponse
+         * @description ``save_kind`` is "autosave" or "manual save"; ``written_ago`` is null with no mtime.
+         */
         UnlockedResponse: {
             /** Age Note */
             age_note: string;
+            /** Save Kind */
+            save_kind: string;
+            /** Written Ago */
+            written_ago: string | null;
             /** Alternates Unlocked */
             alternates_unlocked: number;
             /** Alternates Total */
@@ -6319,6 +6338,7 @@ export interface operations {
                 recipe: string;
                 save?: string | null;
                 world?: string | null;
+                spoilers?: boolean | null;
             };
             header?: never;
             path?: never;

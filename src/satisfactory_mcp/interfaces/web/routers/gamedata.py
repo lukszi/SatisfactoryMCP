@@ -14,6 +14,7 @@ from fastapi import APIRouter, Request
 from ....core.gamedata import search
 from ....core.gamedata.model import GameData, Recipe
 from ....core.gamedata.unlocks import granted_by
+from ....core.text import ago
 from ....domain.planning.scenario import find_recipe, resolve_item
 from ..serial import _fail, _state
 
@@ -108,12 +109,15 @@ class MakerRow(TypedDict):
 
 
 class AlternatesResponse(TypedDict):
+    """``build_recipe`` is the build-gun recipe when the item is a building, else null."""
+
     item: str
     name: str
     fluid: bool
     energy_mj: float
     sink_points: int
     save_note: str | None
+    build_recipe: str | None
     recipes: list[MakerRow]
 
 
@@ -124,7 +128,11 @@ class UnlockedRow(TypedDict):
 
 
 class UnlockedResponse(TypedDict):
+    """``save_kind`` is "autosave" or "manual save"; ``written_ago`` is null with no mtime."""
+
     age_note: str
+    save_kind: str
+    written_ago: str | None
     alternates_unlocked: int
     alternates_total: int
     automatable_total: int
@@ -137,7 +145,7 @@ def _have(
     try:
         return _state(request, save, world).available_recipe_ids, None
     except Exception as exc:
-        return None, f"no save could be read ({exc}), so HAVE/LOCKED is unknown"
+        return None, f"no save could be read ({exc}), so have and locked are unknown"
 
 
 def _machine(g: GameData, r: Recipe) -> str | None:
@@ -262,17 +270,25 @@ def gamedata_recipes(
 
 @router.get("/gamedata/recipe", response_model=RecipeDetail)
 def gamedata_recipe(
-    request: Request, recipe: str, save: str | None = None, world: str | None = None
+    request: Request,
+    recipe: str,
+    save: str | None = None,
+    world: str | None = None,
+    spoilers: bool | None = None,
 ) -> Any:
-    """``recipe_detail``: one recipe by class id or display name."""
+    """``recipe_detail``: one recipe by class id or display name.
+
+    With ``spoilers=0`` an ambiguous name counts only the unlocked candidates.
+    """
     g = request.app.state.game()
     r, hits = find_recipe(g, recipe)
-    if r is None and hits:
-        shown = ", ".join(g.recipes[h].name for h in hits[:8])
-        return _fail(f"{recipe!r} matches {len(hits)} recipes: {shown}", 409)
-    if r is None:
-        return _fail(f"unknown recipe {recipe!r}", 404)
     have, note = _have(request, save, world)
+    if r is None and spoilers is False and have is not None:
+        hits = [h for h in hits if h in have]
+    if r is None and hits:
+        return _fail(f'"{recipe}" matches {len(hits)} recipes', 409)
+    if r is None:
+        return _fail(f'no recipe is called "{recipe}"', 404)
     unlocked = None if have is None else r.cls in have
     return {
         "cls": r.cls,
@@ -327,7 +343,21 @@ def gamedata_alternates(
                 "spoiler": unlocked is False,
             }
         )
-    return {**_item_row(g.items[iid]), "item": iid, "save_note": note, "recipes": rows}
+    built = next(
+        (
+            r.cls
+            for r in g.recipes.values()
+            if r.kind == "building" and any(f.item == iid for f in r.products)
+        ),
+        None,
+    )
+    return {
+        **_item_row(g.items[iid]),
+        "item": iid,
+        "save_note": note,
+        "build_recipe": built,
+        "recipes": rows,
+    }
 
 
 @router.get("/gamedata/unlocked", response_model=UnlockedResponse)
@@ -345,6 +375,8 @@ def gamedata_unlocked(
     picks = st.unlocked_alternates if only_alternates else st.unlocked_recipes("part")
     return {
         "age_note": st.age_note,
+        "save_kind": st.identity.save_kind,
+        "written_ago": ago(st.header.get("mtime_ns")),
         "alternates_unlocked": len(st.unlocked_alternates),
         "alternates_total": len(st.game.alternates()),
         "automatable_total": len(st.unlocked_recipes("part")),

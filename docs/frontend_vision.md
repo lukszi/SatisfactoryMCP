@@ -996,19 +996,30 @@ Phase 5 of §6. It is a read-only surface over the game data, marked against the
   The recipe detail takes a query parameter rather than a path segment, so the page's
   typed `get()` can check the URL against the schema.
 - **Recipes tab** (`dash=recipes`, `frontend/src/recipes.ts`). It has three modes: Items,
-  Recipes (kind picker, alternates only, census line) and Unlocked. Clicking an item opens
-  its card (`dash=recipes/item/<cls>`), with **made by** (alternates first, HAVE/LOCKED,
+  Recipes (kind picker, alternates only, census line) and Unlocked. The mode and the filters
+  live in the address (`dash=recipes/<mode>?q=…&kind=…&alt=1&all=1`), so Back restores
+  them, and the list's scroll position comes back with them. The census line leads with the
+  rows shown and names the event recipes it hides. Clicking an item opens
+  its card (`dash=recipes/item/<cls>`), with **made by** (alternates first, have or locked,
   granted by) and **used by** (every kind, per minute, per build or per craft). Clicking a
   recipe opens its card (`dash=recipes/recipe/<cls>`), with machine, cycle, power, grants,
-  and in and out rates that link to items. Item icons come from `/api/icons`. The codex
+  and in and out rates that link to items. A building recipe's product is a building, not
+  an item, so it is not linked; a building's own item card points at its build cost
+  (`build_recipe`). A recipe name that is unknown or ambiguous shows an error and the
+  recipes whose names contain it. Item icons come from `/api/icons`. The codex
   sends one HEAD probe first and draws no icons when it answers 204, so an install without
   the icon directory logs no 404 per item.
 - **Header search** (`frontend/src/search.ts`). One box, focused with `/`. Results are
-  grouped as factories, items and recipes, eight of each, with the totals said below. Arrow
-  keys and Enter pick a result. A factory opens its dashboard detail, and an item or recipe
-  opens its card.
+  grouped as factories, items and recipes of every kind, eight of each, with the totals said
+  below. A recipe hit names its machine, "building" or "crafted", so two recipes with one
+  name stay apart. Arrow keys and Enter pick a result; Enter pressed before the debounce
+  lands waits for the reply to the text typed, not the previous one. The first Escape closes
+  the list and keeps the text. A factory opens its dashboard detail, and an item or recipe
+  opens its card. The box is an ARIA combobox over the `listbox` of hits.
 - **Freshness.** `recipes.ts` registers `/api/gamedata/unlocked` in the live wave. Each save
-  event bumps a generation that empties the codex cache, so HAVE and LOCKED follow the game.
+  event bumps a generation that empties the codex cache, so have and locked follow the game.
+  The first reply after a load or a switch only primes the cache, so a cold load fetches
+  once.
 
 ### 12.2 Cost per keystroke
 
