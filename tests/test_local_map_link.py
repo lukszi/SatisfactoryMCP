@@ -56,6 +56,14 @@ def test_show_on_map_leads_with_the_local_map(monkeypatch):
     assert "z" in frag
 
 
+def test_the_echo_rounds_to_a_decimetre_rather_than_truncating(monkeypatch):
+    def no_save(*_a, **_k):
+        raise RuntimeError("no save in this test")
+
+    monkeypatch.setattr(spatial, "_state", no_save)
+    assert "at -7.9,-5.5 (metres)" in spatial.show_on_map("-7.9,-5.5").splitlines()[0]
+
+
 def test_a_show_selector_rides_in_the_fragment():
     frag = _fragment(maplink.local_map_url(1.0, 2.0, show="label:steel factory"))
     assert frag["show"] == "label:steel%20factory"

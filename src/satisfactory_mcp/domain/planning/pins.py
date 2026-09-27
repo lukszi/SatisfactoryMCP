@@ -464,7 +464,7 @@ def _describe(world: _World, pin: dict) -> dict:
         what = f"{resource} field · {len(members)} node{'s' if len(members) != 1 else ''}"
     else:
         selector = f"{x_m:g},{y_m:g}" if x_m is not None else ""
-        text = f"point {x_m:.0f}, {y_m:.0f}" if x_m is not None else "point"
+        text = f"point {x_m:g}, {y_m:g}" if x_m is not None else "point"
         what = "point"
     return {
         "selector": selector,

@@ -55,6 +55,11 @@ def test_every_located_kind_is_a_place(world):
     assert point["n"] == 1
 
 
+def test_a_point_is_spelt_like_its_selector(world):
+    point, _ = pins.create(world, "point", {"x_m": -7.9, "y_m": -5.5})
+    assert point["selector"] == "-7.9,-5.5" and point["text"] == "point -7.9, -5.5"
+
+
 def test_a_place_refuses_what_has_no_place(world):
     made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
     plan, _ = pins.create(world, "plan", {"plan": made.key})
