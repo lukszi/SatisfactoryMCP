@@ -309,3 +309,18 @@ def client(state, game):
     )
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def labelled_client(labelled, game):
+    """The ``client`` app over ``labelled``, the fixture world with its factory names."""
+    from fastapi.testclient import TestClient
+
+    from satisfactory_mcp.interfaces.web.app import create_app
+
+    app = create_app(
+        state_loader=lambda save=None, world=None: labelled,
+        game_loader=lambda: game,
+    )
+    with TestClient(app) as c:
+        yield c
