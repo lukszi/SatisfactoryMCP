@@ -7,7 +7,7 @@ import { code, esc, html, popup } from "./dom";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
 import { flyToPoint, map, xy } from "./map";
-import { go } from "./nav";
+import { onMap } from "./nav";
 import { registerFetch } from "./registry";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
@@ -223,28 +223,15 @@ export function dropPin(pin: PinRow): void {
 export function showPin(pin: PinRow): void {
   if (pin.x_m === null || pin.y_m === null) return;
   var at = xy({ x_m: pin.x_m, y_m: pin.y_m });
-  var fly = function () {
+  onMap(function () {
     var group = state.layers["pins"];
     if (group && !map.hasLayer(group)) group.addTo(map);
-    map.invalidateSize();
     map.once("moveend", function () {
       var tag = markers[pin.n];
       if (tag && map.hasLayer(tag)) tag.openPopup();
     });
     flyToPoint(at, Math.max(map.getZoom(), PIN_ZOOM));
-  };
-  if (!state.dash) {
-    fly();
-    return;
-  }
-  window.addEventListener(
-    "hashchange",
-    function () {
-      requestAnimationFrame(fly);
-    },
-    { once: true }
-  );
-  go("");
+  });
 }
 
 export function pinButtons(targets: PinTarget[]): Markup {

@@ -1,13 +1,14 @@
 /* The pins card on the plans list: every live pin, with map, rename, copy and delete.
  * See docs/planner-p3_contract.md §2 F4. */
 
+import { askButton } from "./asks";
 import { button, chip, copyButton, empty, error, fieldError, link, loading, table } from "./dashkit";
 import { make } from "./dom";
 import { dropPin, LABEL_MAX, pinStore, refetchPins, renamePin, showPin } from "./pins";
 import { counted, PIN_KIND } from "./words";
 
 import type { Column, SortState } from "./dashkit";
-import type { PinRow } from "./api-shapes";
+import type { AskAbout, PinRow } from "./api-shapes";
 
 var editing = { n: 0, fresh: false };
 var order: SortState = { key: "pin", desc: false };
@@ -111,6 +112,9 @@ function actions(p: PinRow, redraw: () => void): HTMLElement {
       { title: "delete " + p.id + "; its number is not reused", label: "delete " + p.id }
     )
   );
+  var about: AskAbout = { kind: "pin", label: p.label ? p.id + " “" + p.label + "”" : p.id + " " + p.text, ref: p.id };
+  if (p.ref.plan && !p.gone) about.plan = p.ref.plan;
+  box.appendChild(askButton(about, "pin:" + p.n));
   return box;
 }
 

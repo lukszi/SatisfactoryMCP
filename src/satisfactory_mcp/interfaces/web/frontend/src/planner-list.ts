@@ -1,6 +1,7 @@
 /* The plans list, and the item-at-rate form that starts a new plan. */
 
 import { get } from "./api";
+import { renderAsks } from "./asks-card";
 import { empty, error, link, loading, table } from "./dashkit";
 import { make } from "./dom";
 import { perMin } from "./format";
@@ -232,4 +233,5 @@ export function renderList(root: HTMLElement): void {
   form(root);
   renderActivity(root);
   renderPins(root, changed);
+  renderAsks(root, changed);
 }

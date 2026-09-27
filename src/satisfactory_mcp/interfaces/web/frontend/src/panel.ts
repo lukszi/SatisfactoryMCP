@@ -580,7 +580,8 @@ export function showPoint(x_m: number, y_m: number, options?: { label?: string; 
   pin(x_m, y_m, options && options.label);
 }
 
-export function showBox(bbox_m: [number, number, number, number]): void {
+export function showBox(bbox_m: [number, number, number, number], options?: { layers?: string[] }): void {
+  if (options && options.layers) reveal(options.layers);
   var bounds = flyToFactory(bbox_m);
   if (bounds) outline(bounds);
 }

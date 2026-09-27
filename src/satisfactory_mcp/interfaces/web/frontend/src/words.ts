@@ -34,7 +34,36 @@ export var W = {
   lockedHidden: function (n: number): string {
     return counted(n, "locked recipe") + " hidden";
   },
+  track: "track",
+  askChat: "ask chat",
+  countAsBuilt: "count as built",
+  wholeWorld: "whole world",
+  startupHeadroom: "startup headroom",
+  stage: function (n: number, of: number): string {
+    return "stage " + count(n) + " of " + count(of);
+  },
 } as const;
+
+export var VERB: Record<string, string> = {
+  ok: "–",
+  unpause: "unpause",
+  setrecipe: "set recipe",
+  build: "build",
+};
+
+export var ASK_STATE: Record<string, string> = {
+  open: "waiting for chat",
+  seen: "seen by chat",
+  answered: "answered",
+};
+
+export var ASK_KIND: Record<string, string> = {
+  plan: "plan",
+  process: "process",
+  stage: "stage",
+  item: "item",
+  pin: "pin",
+};
 
 export var PIN_KIND: Record<string, string> = {
   plan: "plan",

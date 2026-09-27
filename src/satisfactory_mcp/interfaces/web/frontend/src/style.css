@@ -3014,3 +3014,80 @@ path.lasso-area {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+.plan-track > .dash-card:first-child {
+  margin-top: 0;
+}
+
+.dash-table tr.track-stage.picked td {
+  box-shadow: inset 0 1px 0 var(--select), inset 0 -1px 0 var(--select);
+}
+
+.dash-table tr.track-stage.picked td:first-child {
+  box-shadow: inset 1px 1px 0 var(--select), inset 0 -1px 0 var(--select);
+}
+
+.dash-table tr.track-stage.picked td:last-child {
+  box-shadow: inset -1px 1px 0 var(--select), inset 0 -1px 0 var(--select);
+}
+
+.track-state .chip {
+  margin-left: var(--sp-1);
+}
+
+.track-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0 var(--sp-2);
+  color: var(--ink);
+}
+
+.track-feeders {
+  margin-top: var(--sp-2);
+}
+
+.track-caveats {
+  margin-top: var(--sp-2);
+}
+
+.ask-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--panel);
+  border: 1px solid var(--select);
+  border-radius: var(--r);
+  font-size: var(--fs-m);
+}
+
+.ask-what {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ask-what b {
+  color: var(--ink);
+}
+
+.ask-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.ask-text {
+  flex: 1 1 16em;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ask-question {
+  min-width: 14em;
+}
+.dash-table td.track-note {
+  min-width: 18em;
+}

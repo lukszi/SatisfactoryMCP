@@ -1,18 +1,21 @@
 /* The open plan as the page knows it, and every write it makes. See docs/planner_slice_contract.md §12. */
 
-import { get, missing, push, send } from "./api";
+import { get, latest, missing, push, send } from "./api";
+import { go } from "./nav";
 import { setting } from "./settings";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 import { W } from "./words";
 
-import type { ApiError, ApiPath, StatusError } from "./api";
+import type { ApiError, ApiPath, ApiUrl, StatusError } from "./api";
 import type {
   ActivityRow,
   ActorBody,
   AlreadyUndoneResponse,
   CommitBody,
   DeltaResponse,
+  FeedersResponse,
+  TrackResponse,
   FocusSelection,
   ItemsResponse,
   NameTakenResponse,
@@ -65,7 +68,36 @@ export interface Chip {
 
 type Refusal = Partial<OutdatedResponse & AlreadyUndoneResponse & NameTakenResponse>;
 
-export type ResultTab = "build list" | "graph";
+export type ResultTab = "build list" | "graph" | "track";
+
+export interface Partition {
+  partition_id: string;
+  current: number;
+  count: number;
+  rev: number;
+  save_id: string;
+  headroom_mw: number | null;
+}
+
+export interface FeedersView {
+  data: FeedersResponse | null;
+  error: string;
+  busy: boolean;
+}
+
+export interface TrackView {
+  data: TrackResponse | null;
+  error: string;
+  seq: number;
+  asked: number;
+  stage: number;
+  notice: string;
+  feeders: FeedersView | null;
+}
+
+function freshTrack(): TrackView {
+  return { data: null, error: "", seq: 0, asked: 0, stage: 0, notice: "", feeders: null };
+}
 
 export interface AltView {
   item: string;
@@ -112,6 +144,8 @@ export var bench = {
   viewError: "",
   viewDelta: null as DeltaResponse | null,
   stripDelta: null as DeltaResponse | null,
+  track: freshTrack(),
+  seen: {} as Record<string, Partition>,
 };
 
 export var inbox = { card: null as ActivityEvent | null };
@@ -248,6 +282,7 @@ export function reset(key: string): void {
   bench.viewError = "";
   bench.viewDelta = null;
   bench.stripDelta = null;
+  bench.track = freshTrack();
 }
 
 export function openPlan(key: string): void {
@@ -301,7 +336,130 @@ function adopt(plan: PlanStateBody): void {
     deltaForStrip();
     if (bench.view) deltaForView();
     if (bench.alt) loadAlternates();
+    loadTrack();
   }
+}
+
+var TRACK = "/api/plan/track" as ApiPath;
+var FEEDERS = "/api/plan/feeders" as ApiPath;
+
+function biomassFlag(): string {
+  return "biomass=" + (setting("biomass") ? "true" : "false");
+}
+
+export function trackDash(key: string, stage: number): string {
+  return "planner/" + key + "/track" + (stage ? "/" + stage : "");
+}
+
+function partition(data: TrackResponse): Partition {
+  return {
+    partition_id: data.partition_id,
+    current: data.current,
+    count: data.count,
+    rev: data.rev,
+    save_id: data.save_id,
+    headroom_mw: data.headroom_mw,
+  };
+}
+
+function wasWords(p: Partition): string {
+  if (!p.count) return "no startup order fitted";
+  if (!p.current) return "every stage of " + p.count + " was built";
+  return "you were in " + W.stage(p.current, p.count);
+}
+
+function nowWords(p: Partition): string {
+  if (!p.count) return "now no startup order fits the headroom";
+  if (!p.current) return "now every stage of " + p.count + " is built";
+  return "now " + W.stage(p.current, p.count);
+}
+
+function renumber(data: TrackResponse): void {
+  if (!data.feasible || data.scope_error) return;
+  var now = partition(data);
+  var was = bench.seen[data.key];
+  bench.seen[data.key] = now;
+  if (!was || was.partition_id === now.partition_id) return;
+  var cause =
+    was.rev !== now.rev
+      ? "v" + now.rev + " changed the stages"
+      : was.headroom_mw !== now.headroom_mw
+        ? "the new headroom changed the stages"
+        : was.save_id !== now.save_id
+          ? "the new save changed the stages"
+          : "the stages changed";
+  bench.track.notice = cause + ": " + wasWords(was) + ", " + nowWords(now);
+}
+
+export function loadTrack(): void {
+  var plan = bench.plan;
+  if (!plan || bench.tab !== "track" || bench.view) return;
+  var key = bench.key;
+  var view = bench.track;
+  var ticket = latest("planner-track");
+  view.seq++;
+  view.asked = plan.rev;
+  changed();
+  get<TrackResponse>(`${TRACK}?key=${encodeURIComponent(key)}&${biomassFlag()}` as ApiUrl)
+    .then(function (data) {
+      if (!ticket.fresh() || bench.key !== key || bench.track !== view) return;
+      renumber(data);
+      view.data = data;
+      view.error = "";
+      view.asked = 0;
+      if (view.stage > data.stages.length) view.stage = 0;
+      changed();
+    })
+    .catch(function (reason) {
+      if (!ticket.fresh() || bench.key !== key || bench.track !== view) return;
+      view.error = friendly(reason);
+      view.asked = 0;
+      changed();
+    });
+}
+
+export function dropFeeders(): void {
+  bench.track.feeders = null;
+}
+
+export function loadFeeders(): void {
+  var view = bench.track;
+  var key = bench.key;
+  var feeders: FeedersView = { data: null, error: "", busy: true };
+  view.feeders = feeders;
+  changed();
+  get<FeedersResponse>(`${FEEDERS}?${biomassFlag()}` as ApiUrl)
+    .then(function (data) {
+      if (bench.key !== key || view.feeders !== feeders) return;
+      feeders.data = data;
+      feeders.busy = false;
+      changed();
+    })
+    .catch(function (reason) {
+      if (bench.key !== key || view.feeders !== feeders) return;
+      feeders.error = friendly(reason);
+      feeders.busy = false;
+      changed();
+    });
+}
+
+export function pickStage(n: number): void {
+  var view = bench.track;
+  var total = view.data ? view.data.count : 0;
+  view.stage = view.stage === n ? 0 : n;
+  bench.selection = view.stage ? { kind: "stage", label: W.stage(view.stage, total), ref: String(view.stage) } : null;
+  go(trackDash(bench.key, view.stage), true);
+  changed();
+}
+
+export function pickTab(tab: ResultTab): void {
+  var was = bench.tab;
+  bench.tab = tab;
+  if (tab === "track") {
+    go(trackDash(bench.key, bench.track.stage), true);
+    loadTrack();
+  } else if (was === "track") go("planner/" + bench.key, true);
+  changed();
 }
 
 export function showAlternates(item: string, opener?: string): void {

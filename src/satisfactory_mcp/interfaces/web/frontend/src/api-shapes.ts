@@ -189,7 +189,7 @@ export type PlanOpBody = Schema["PlanOpBody"];
 export type ActorBody = Schema["ActorBody"];
 export type CommitBody = Schema["CommitBody"];
 export type PlanArgsBody = Schema["PlanArgsBody"];
-export type PlanStateBody = Body<"PlanStateBody">;
+export type PlanStateBody = Body<"PlanStateBody"> & { headroom_mw?: number | null };
 export type PlanOpsResponse = Body<"PlanOpsResponse">;
 export type PushedResponse = Body<"PushedResponse">;
 export type ConflictBody = Schema["ConflictBody"];
@@ -229,6 +229,196 @@ export type PinsResponse = Body<"PinsResponse">;
 export type PinCreated = Body<"PinCreated">;
 export type PinDropped = Body<"PinDropped">;
 export type PinStaleResponse = Body<"PinStaleResponse">;
+
+/* ------------------------------ planner P4: track and asks (docs/planner-p4_contract.md §5.2) */
+
+export interface TrackState {
+  state: string;
+  count: number;
+}
+export interface TrackMachine {
+  instance: string;
+  x_m: number | null;
+  y_m: number | null;
+}
+export interface TrackTarget {
+  node: string;
+  x_m: number | null;
+  y_m: number | null;
+  m: number | null;
+}
+export interface TrackRow {
+  id: string;
+  kind: string;
+  step: number;
+  stages: number[];
+  process: string;
+  building: string;
+  recipe_id: string | null;
+  item: string | null;
+  need: number;
+  have: number;
+  have_min: number | null;
+  build: number;
+  build_max: number | null;
+  verb: string;
+  count: number;
+  reuse: number;
+  running: number | null;
+  states: TrackState[];
+  new_building: boolean;
+  note: string;
+  delta_mw: number;
+  act: TrackMachine[];
+  targets: TrackTarget[];
+  bbox_m: number[] | null;
+  selectors: string;
+}
+export interface TrackStageRow {
+  row: string;
+  label: string;
+  building: string;
+  machines: number;
+  total: number;
+  built: number;
+  built_max: number;
+  running: number;
+  states: TrackState[];
+  draw_mw: number;
+  generation_mw: number;
+  to_build: number;
+}
+export interface TrackStage {
+  index: number;
+  machines: number;
+  built: number;
+  built_max: number;
+  running: number;
+  dark: number;
+  complete: boolean;
+  state: string;
+  draw_mw: number;
+  generation_mw: number;
+  available_before: number;
+  available_after: number;
+  fill_s: number;
+  waits_for_fill: boolean;
+  states: TrackState[];
+  rows: TrackStageRow[];
+  bbox_m: number[] | null;
+}
+export interface TrackStartup {
+  ok: boolean;
+  headroom_mw: number;
+  headroom_source: string;
+  plant_draw_mw: number;
+  plant_generation_mw: number;
+  minimum_slice_mw: number;
+  warnings: string[];
+}
+export interface TrackPower {
+  generation_mw: number;
+  draw_mw: number;
+  headroom_mw: number;
+  measured_headroom_mw: number;
+  biomass: boolean;
+}
+export interface TrackCost {
+  item: string;
+  name: string;
+  need: number;
+  stock: number;
+  short: number;
+  lines: number;
+}
+export interface TrackNeighbour {
+  label: string;
+  count: number;
+}
+export interface TrackSiteRow {
+  name: string;
+  planned: number;
+  standing: number;
+}
+export interface TrackSite {
+  text: string;
+  planned_total: number;
+  standing_total: number;
+  rows: TrackSiteRow[];
+}
+export type TrackResponse = ApiError & {
+  key: string;
+  rev: number;
+  name: string;
+  feasible: boolean;
+  empty: boolean;
+  headline: string;
+  cause: string;
+  save_id: string;
+  age_note: string;
+  plan_id: string;
+  scope: string;
+  scope_note: string;
+  scope_error: string;
+  drift_note: string;
+  headroom_mw: number | null;
+  current: number;
+  count: number;
+  partition_id: string;
+  stage_text: string;
+  to_build: number;
+  to_build_max: number;
+  actionable: number;
+  unpause: number;
+  setrecipe: number;
+  rows: TrackRow[];
+  stages: TrackStage[];
+  startup: TrackStartup;
+  power: TrackPower;
+  cost: TrackCost[];
+  neighbours: TrackNeighbour[];
+  site: TrackSite | null;
+  notes: string[];
+  caveats: string[];
+  monitored: number;
+};
+export interface Feeder {
+  name: string;
+  mw: number;
+}
+export type FeedersResponse = ApiError & { feeders: Feeder[]; text: string };
+export interface AskAbout {
+  kind: string;
+  label: string;
+  ref: string;
+  plan?: string | null;
+  rev?: number | null;
+}
+export interface AskRow {
+  n: number;
+  id: string;
+  text: string;
+  about: AskAbout;
+  state: string;
+  rev: number;
+  created: number;
+  seen: number | null;
+  seen_by: string;
+  answered: number | null;
+  answered_by: string;
+  plan_name: string | null;
+  copy: string;
+}
+export type AsksResponse = ApiError & { version: number; asks: AskRow[] };
+export interface AskCreateBody {
+  text: string;
+  about: AskAbout;
+}
+export interface AskDropBody {
+  rev: number;
+}
+export type AskDropped = ApiError & { ok: boolean; n: number };
+export type AskStaleResponse = ApiError & { error: string; stale: boolean; ask: AskRow };
 
 /* ---------------------------------------------------------- /api/collectibles */
 
