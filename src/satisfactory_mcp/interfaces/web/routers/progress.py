@@ -168,14 +168,7 @@ def progress_mam(request: Request, save: str | None = None, world: str | None = 
     for rung in ladder.rungs("EST_MAM"):
         s = rung.schematic
         running = research.ongoing.get(s.cls)
-        if rung.done:
-            status = "DONE"
-        elif running is not None:
-            status = "RUNNING"
-        elif research.tree_locked(s.cls):
-            status = "TREE SHUT"
-        else:
-            status = rung.status
+        status = research.status(rung)
         rows.append(
             {
                 "cls": s.cls,

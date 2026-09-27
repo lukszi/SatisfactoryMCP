@@ -14,8 +14,8 @@ from typing import Any, TypedDict
 from fastapi import APIRouter, Request
 
 from ....domain.factories import identity as fidentity
-from ....domain.factories.health import ACTIONABLE, OK, STATES, assess
-from ....domain.factories.query import build_view
+from ....domain.factories.health import ACTIONABLE, OK, STATES
+from ....domain.factories.sweep import sweep
 from ....domain.spatial import geo
 from ..serial import _fail, _m, _state
 
@@ -44,7 +44,9 @@ class MachineIssue(TypedDict):
 
 
 class FactoryHealthRow(TypedDict):
-    """``review`` is ``LabelStore.review``'s status, null when every anchor still stands."""
+    """``review`` is ``LabelStore.review``'s status, null when every anchor still stands.
+    ``worst`` is the machines not fine, paused included; ``worst_actionable`` only those in
+    an ``actionable_states`` state, of which there are ``actionable`` in all."""
 
     name: str
     centroid_m: tuple[float, float]
@@ -61,6 +63,7 @@ class FactoryHealthRow(TypedDict):
     unwired: int
     no_generator: int
     worst: list[MachineIssue]
+    worst_actionable: list[MachineIssue]
     attention: int
 
 
@@ -86,26 +89,22 @@ def factory_health(request: Request, save: str | None = None, world: str | None 
     placed = fidentity.positions(st.projection)
     review = {row["name"]: row["status"] for row in st.labels.review(alive_set)}
 
+    def issue(m) -> dict:
+        at = placed.get(m.instance)
+        return {
+            "instance": m.instance,
+            "state": m.state,
+            "uptime": None if m.uptime is None else round(m.uptime, 3),
+            "what": m.recipe or st.game.building_name(m.building) or m.building,
+            "cause": list(m.cause),
+            "x_m": _m(at[0]) if at else None,
+            "y_m": _m(at[1]) if at else None,
+        }
+
     rows = []
-    for label in st.labels.labels:
-        standing = [m for m in label.anchors if m in alive_set]
-        report = assess(label.name, standing, st.game, st.projection, st.graph)
-        view = build_view(label.name, standing, st.graph, st.game, st.projection, st.labels)
+    for swept in sweep(st):
+        label, standing, report, view = swept.label, swept.standing, swept.report, swept.view
         box = geo.bbox([placed[m][:2] for m in standing if m in placed])
-        worst = []
-        for m in report.worst(WORST_PER_FACTORY):
-            at = placed.get(m.instance)
-            worst.append(
-                {
-                    "instance": m.instance,
-                    "state": m.state,
-                    "uptime": None if m.uptime is None else round(m.uptime, 3),
-                    "what": m.recipe or st.game.building_name(m.building) or m.building,
-                    "cause": list(m.cause),
-                    "x_m": _m(at[0]) if at else None,
-                    "y_m": _m(at[1]) if at else None,
-                }
-            )
         mean = report.mean_uptime
         rows.append(
             {
@@ -125,11 +124,11 @@ def factory_health(request: Request, save: str | None = None, world: str | None 
                 "actionable": sum(report.by_state[s] for s in ACTIONABLE),
                 "unwired": len(report.unwired),
                 "no_generator": len(report.no_generator),
-                "worst": worst,
+                "worst": [issue(m) for m in report.worst(WORST_PER_FACTORY)],
+                "worst_actionable": [issue(m) for m in swept.worst_actionable(WORST_PER_FACTORY)],
                 "attention": sum(1 for m in report.machines if m.state not in OK),
             }
         )
-    rows.sort(key=lambda r: (-r["actionable"], r["uptime"] if r["uptime"] is not None else 2.0))
     return {
         "labels_version": st.labels.version,
         "states": list(STATES),

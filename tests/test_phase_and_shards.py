@@ -407,3 +407,17 @@ def test_a_projection_without_slot_data_reports_unmeasured_rather_than_zero(stat
     budget = st.shard_budget()
     assert budget["measured"] is False
     assert budget["committed"] == 0
+
+
+def test_with_no_live_phase_an_all_zero_row_is_not_complete(state):
+    """An old save carries the frozen per-phase record and no phase pointer. Its zeros are
+    not deliveries, so nothing may be called complete on them."""
+    projection = copy.deepcopy(state.projection)
+    progression = projection["progression"]
+    progression["game_phase"] = ""
+    progression["target_phase"] = ""
+    progression["phase_costs_remaining"] = {
+        egp: dict.fromkeys(costs, 0) for egp, costs in progression["phase_costs_remaining"].items()
+    }
+    st = WorldState(projection=projection, game=state.game)
+    assert all(r["stale"] != "complete" for r in st.phase_requirements()["phases"])

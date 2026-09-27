@@ -12,7 +12,7 @@ from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....core.saveio import ports
-from ....domain.factories import edits
+from ....domain.factories import edits, naming
 from ....domain.factories.labels import LabelError, stamp
 from ....domain.factories.query import ASPECTS as QUERY_ASPECTS
 from ....domain.factories.resolve import resolve_factory
@@ -122,7 +122,7 @@ def _overlaps(store, machines, name: str) -> list[str]:
     ]
 
 
-def _cand_row(c, store, labelled: set[str]) -> tuple:
+def _cand_row(st, c, store, labelled: set[str]) -> tuple:
     named = {store.label_for(m).name for m in c.machines if store.label_for(m)}
     covered = sum(1 for m in c.machines if m in labelled)
     return (
@@ -132,7 +132,7 @@ def _cand_row(c, store, labelled: set[str]) -> tuple:
         f"{c.spread_m:.0f}m",
         f"{covered}/{c.size}" if covered else "-",
         ", ".join(sorted(named))[:40] or "-",
-        c.name_hint()[:44],
+        naming.lead_of(st, c.machines, c)[0][:44],
     )
 
 
@@ -246,7 +246,7 @@ def factory_map(
                     f"{len(alive)}/{len(label.anchors)}",
                     f"{int(cand.centroid[0] / 100)},{int(cand.centroid[1] / 100)}",
                     f"{cand.spread_m:.0f}m",
-                    cand.name_hint()[:44],
+                    naming.lead_of(st, sorted(alive), cand)[0][:44],
                 )
             )
         chunks.append(
@@ -260,7 +260,7 @@ def factory_map(
             )
 
     if want in ("all", "candidates"):
-        rows = [_cand_row(c, store, labelled) for c in base_c[start:end]]
+        rows = [_cand_row(st, c, store, labelled) for c in base_c[start:end]]
         chunks.append(
             "## power islands (bases)\n"
             + render.table(
@@ -272,7 +272,7 @@ def factory_map(
             )
         )
         fresh = [c for c in line_c if not store.covers(c.machines)]
-        rows = [_cand_row(c, store, labelled) for c in fresh[start:end]]
+        rows = [_cand_row(st, c, store, labelled) for c in fresh[start:end]]
         chunks.append(
             "## belt components (lines), unnamed first\n"
             + render.table(
@@ -301,7 +301,7 @@ def factory_map(
                     f"{int(slab.extent[0] / 100)}x{int(slab.extent[1] / 100)}m",
                     *_slab_shape(slab),
                     ", ".join(names)[:34] or "-",
-                    cand.name_hint()[:38],
+                    naming.lead_of(st, group, cand)[0][:38],
                 )
             )
         census = sx.summary()
@@ -776,7 +776,6 @@ def factory_health(
     `offset` pages every table in the answer at once, worst first throughout.
     """
     from ....domain.factories.health import (
-        ACTIONABLE,
         FLOW_RATE,
         NOTHING,
         OPEN,
@@ -795,7 +794,6 @@ def factory_health(
     except Exception as exc:
         return f"could not read save: {exc}"
 
-    alive = set(st.graph.machines())
     n = render.clamp(limit)
     start = max(0, offset)
     end = start + n
@@ -803,17 +801,15 @@ def factory_health(
     if factory.strip().casefold() in ("all", "*"):
         if not st.labels.labels:
             return "! nothing named yet -- run propose_factories, then name_factory"
-        from ....domain.factories.query import build_view
+        from ....domain.factories.sweep import sweep
 
         rows, notes = [], []
         blocked_total = 0
         dark_total = 0
-        for label in sorted(st.labels.labels, key=lambda x: -len(x.anchors)):
-            standing = [m for m in label.anchors if m in alive]
-            report = assess(label.name, standing, st.game, st.projection, st.graph)
-            view = build_view(label.name, standing, st.graph, st.game, st.projection, st.labels)
+        for swept in sweep(st):
+            label, report, view = swept.label, swept.report, swept.view
             mean = report.mean_uptime
-            actionable = sum(report.by_state[s] for s in ACTIONABLE)
+            actionable = swept.actionable
             blocked_total += report.by_state["blocked"]
             dark_total += len(report.unwired) + len(report.no_generator)
             rows.append(
@@ -831,9 +827,6 @@ def factory_health(
                     actionable or "",
                 )
             )
-        # Sort on the accumulated values, not on a column position: inserting a column
-        # once silently reordered this table by the wrong field.
-        rows.sort(key=lambda r: (-(r[-1] or 0), r[2]))
         notes.append(
             "measured MW is each machine's rated draw weighted by its own 300s productivity "
             "window -- what the factory is actually taking off the grid, not what it could"
@@ -1225,6 +1218,7 @@ def propose_factories(
     start = max(0, offset)
     rows = []
     shown = 0
+    suggested = naming.proposal_names(st, proposals)
     for k, pr in enumerate(proposals):
         names = sorted({lbl.name for m in pr.machines if (lbl := store.label_for(m))})
         if unnamed_only and store.covers(pr.machines):
@@ -1242,7 +1236,7 @@ def propose_factories(
                 "+".join(str(x) for x in pr.parts) if len(pr.parts) > 1 else pr.size,
                 "+".join(n for n, _ in pr.evidence.most_common(3)),
                 ", ".join(names)[:26] or "-",
-                cand.name_hint()[:34],
+                (suggested.get(k) or naming.lead_of(st, pr.machines, cand)[0])[:34],
             )
         )
     total = shown
@@ -1251,7 +1245,7 @@ def propose_factories(
         f"# {st.age_note}\n# {len(proposals)} proposal(s) over "
         f"{len(st.graph.machines())} machines; {covered} already named",
         render.table(
-            ("#", "machines", "x,y(m)", "spread", "parts", "evidence", "labels", "makes"),
+            ("#", "machines", "x,y(m)", "spread", "parts", "evidence", "labels", "name or makes"),
             rows,
             total=total,
             offset=start,
@@ -1586,7 +1580,7 @@ def list_factories(save: str | None = None, world: str | None = None, as_of: AsO
                 f"{len(alive)}/{len(label.anchors)}",
                 f"{int(cand.centroid[0] / 100)},{int(cand.centroid[1] / 100)}",
                 f"{cand.spread_m:.0f}m",
-                cand.name_hint()[:40],
+                naming.lead_of(st, alive, cand)[0][:40],
                 label.notes[:40],
             )
         )

@@ -21,6 +21,9 @@ from . import siting as siting_mod
 #:
 #: The cost is one honest limitation: recalling a plan cannot explicitly reset a
 #: parameter back to its default. Edit the plan (save_as over the same name) for that.
+#: The tail of the override note; a caller that then saves swaps it for what happened.
+UNSAVED_OVERRIDE = "(not saved -- pass save_as to keep it)"
+
 PLAN_DEFAULTS: dict = {
     "objective": "max_mw",
     "target_item": None,
@@ -77,8 +80,7 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
     changed = sorted(k for k, v in overrides.items() if stored.kwargs().get(k) != v)
     if changed:
         notes.append(
-            f"plan {stored.name!r} overridden this call: {', '.join(changed)} "
-            "(not saved -- pass save_as to keep it)"
+            f"plan {stored.name!r} overridden this call: {', '.join(changed)} {UNSAVED_OVERRIDE}"
         )
     notes.extend(_field_notes(st, stored, merged))
     return merged, stored.name, notes

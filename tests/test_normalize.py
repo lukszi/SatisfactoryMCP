@@ -190,13 +190,11 @@ def test_one_class_gets_one_name_on_every_surface(game):
         game.building_name("Build_GeneratorFuel_C") == game.buildings["Build_GeneratorFuel_C"].name
     )
 
-    # Not in the dump -- the biomass burners and the map-placed actors, which is the whole
-    # reason a fallback exists. Words, in the same language the docs names are in.
+    # Not in the dump -- the HUB's burner and the map-placed actors, which is the whole reason
+    # a fallback exists. Words, in the same language the docs names are in, or a pinned name.
     for cls in ("Build_GeneratorIntegratedBiomass_C", "Build_HubTerminal_C", "BP_ResourceNode_C"):
         assert cls not in game.buildings, f"{cls} is in the dump now -- re-pick this example"
-    assert (
-        game.building_name("Build_GeneratorIntegratedBiomass_C") == "Generator Integrated Biomass"
-    )
+    assert game.building_name("Build_GeneratorIntegratedBiomass_C") == "HUB Biomass Burner"
     assert game.building_name("Build_HubTerminal_C") == "Hub Terminal"
     assert game.building_name("BP_ResourceNode_C") == "Resource Node"
 

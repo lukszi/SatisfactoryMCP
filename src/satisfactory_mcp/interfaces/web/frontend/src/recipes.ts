@@ -439,12 +439,15 @@ function renderRecipe(body: HTMLElement, cls: string): void {
   body.appendChild(head);
 
   var card = make("section", "dash-card");
-  var facts: [string, string][] = [
-    ["machine", r.machine || "–"],
-    ["cycle", num(r.duration_s) + " s"],
-    ["power", r.power_range_mw ? num(r.power_range_mw[0]) + "–" + num(r.power_range_mw[1]) + " MW, " + num(r.power_mw) + " MW average" : num(r.power_mw) + " MW"],
-    ["granted by", r.granted_by.join("; ") || "no known unlock"],
-  ];
+  var part = r.kind === "part";
+  var facts: [string, string][] = part
+    ? [
+        ["machine", r.machine || "–"],
+        ["cycle", num(r.duration_s) + " s"],
+        ["power", r.power_range_mw ? num(r.power_range_mw[0]) + "–" + num(r.power_range_mw[1]) + " MW, " + num(r.power_mw) + " MW average" : num(r.power_mw) + " MW"],
+      ]
+    : [];
+  facts.push(["granted by", r.granted_by.join("; ") || "no known unlock"]);
   var list = make("dl", "rx-facts");
   facts.forEach(function (f) {
     list.appendChild(make("dt", "", f[0]));
@@ -453,7 +456,7 @@ function renderRecipe(body: HTMLElement, cls: string): void {
   card.appendChild(list);
   body.appendChild(card);
 
-  var unit = r.kind === "part" ? "per min, one machine at 100%" : r.kind === "building" ? "per build" : "per craft";
+  var unit = part ? "per min, one machine at 100%" : r.kind === "building" ? "per build" : "per craft";
   [
     ["in", r.ingredients],
     ["out", r.products],
@@ -461,12 +464,12 @@ function renderRecipe(body: HTMLElement, cls: string): void {
     var rates = side[1] as Rate[];
     var box = make("section", "dash-card");
     box.appendChild(make("h2", "dash-h", side[0] + " (" + unit + ")"));
-    var t = table(["item", "rate"], [1]);
+    var t = table(["item", part ? "rate" : "amount"], [1]);
     rates.forEach(function (x) {
       var name = make("span", "rx-name");
       name.appendChild(icon(x.item));
       name.appendChild(itemLink(x.item, x.name));
-      row(t, [name, num(x.per_min)], [1]);
+      row(t, [name, num(part ? x.per_min : x.amount)], [1]);
     });
     scroll(box, t);
     body.appendChild(box);

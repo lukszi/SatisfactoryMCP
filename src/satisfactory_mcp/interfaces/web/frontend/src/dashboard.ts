@@ -257,7 +257,7 @@ function headroomTiles(ledger: Ledger, href?: string, counts?: boolean): HTMLEle
 }
 
 function circuitName(row: CircuitRow): string {
-  return row.factories.length ? row.factories.join(", ") : "circuit " + (row.index + 1);
+  return "circuit " + (row.index + 1) + (row.factories.length ? " · " + row.factories.slice(0, 3).join(", ") + (row.factory_count > 3 ? " +" + (row.factory_count - 3) : "") : "");
 }
 
 function circuitDark(row: CircuitRow): boolean {
@@ -417,9 +417,11 @@ function renderAttention(parent: HTMLElement): void {
     return;
   }
   var found: Attention[] = [];
+  var total = 0;
   v.health.factories.forEach(function (r) {
-    r.worst.forEach(function (issue) {
-      if (needsAction(issue.state)) found.push({ factory: r.name, issue: issue });
+    total += r.actionable;
+    r.worst_actionable.forEach(function (issue) {
+      found.push({ factory: r.name, issue: issue });
     });
   });
   var list = make("ul", "dash-list");
@@ -451,7 +453,7 @@ function renderAttention(parent: HTMLElement): void {
     li.appendChild(make("span", "dash-state", "starved generator"));
     li.appendChild(make("span", "dash-what", g.name));
     li.appendChild(pointButton(g));
-    li.appendChild(make("span", "dash-cause", "out of " + g.missing.join(", ")));
+    li.appendChild(make("span", "dash-cause", g.cause));
     list.appendChild(li);
   });
   if (!list.childNodes.length) {
@@ -459,14 +461,8 @@ function renderAttention(parent: HTMLElement): void {
     return;
   }
   parent.appendChild(list);
-  var hidden = Math.max(0, found.length - ATTENTION_SHOWN);
-  note(
-    parent,
-    "each factory sends its " +
-      "worst eight machines; " +
-      (hidden ? hidden + " more of those are not shown here; " : "") +
-      "the Factories tab has every factory"
-  );
+  var hidden = Math.max(0, total - Math.min(found.length, ATTENTION_SHOWN));
+  note(parent, (hidden ? hidden + " more need action; " : "") + "the Factories tab has every factory");
 }
 
 function factoryMapButton(row: FactoryHealthRow): HTMLElement {
@@ -1185,7 +1181,7 @@ function starvedList(parent: HTMLElement, rows: StarvedGenerator[]): void {
   rows.forEach(function (g) {
     var li = make("li", "dash-issue");
     li.appendChild(make("span", "dash-what", g.name));
-    li.appendChild(make("span", "dash-where", mw(g.mw) + " · out of " + g.missing.join(", ")));
+    li.appendChild(make("span", "dash-where", mw(g.mw) + " · " + g.cause));
     li.appendChild(pointButton(g));
     list.appendChild(li);
   });
@@ -1227,6 +1223,7 @@ function renderPower(body: HTMLElement): void {
   starvedList(split, data.starved);
   refList(split, "no power connection", data.unwired, "machines with no wire at all");
   refList(split, "no generator on its circuit", data.no_generator, "wired, but to a circuit no generator stands on");
+  refList(split, "generators on no wire", data.unwired_generators, "capacity no circuit can draw on");
   body.appendChild(split);
 }
 
@@ -1243,7 +1240,7 @@ function renderCircuit(body: HTMLElement, subject: string): void {
     return;
   }
   var head = make("div", "dash-title");
-  head.appendChild(make("h1", "", "circuit " + (row.index + 1) + (row.factories.length ? ": " + circuitName(row) : "")));
+  head.appendChild(make("h1", "", circuitName(row)));
   if (row.bbox_m) {
     head.appendChild(
       mapButton("fly the map to this circuit", function () {
@@ -1266,6 +1263,10 @@ function renderCircuit(body: HTMLElement, subject: string): void {
     );
   }
   starvedList(body, row.starved);
+  var stranded = v.circuits.no_generator.filter(function (m) {
+    return m.circuit === row!.index;
+  });
+  if (stranded.length) refList(body, "no generator on this circuit", stranded, "wired, but no generator stands on it");
   note(body, "circuit numbers follow size in this save and can change when the next save is read");
 }
 

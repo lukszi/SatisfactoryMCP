@@ -8,11 +8,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from ...core.gamedata.model import GameData
+from . import flowgraph
 from .flowgraph import FlowGraph
-from .identity import Candidate
+from .identity import Candidate, describe
 from .labels import slugify
+from .query import build_view
 
-__all__ = ["DEFAULT_STYLE", "STYLES", "lead", "suggest"]
+__all__ = ["DEFAULT_STYLE", "STYLES", "lead", "lead_of", "proposal_names", "suggest"]
 
 STYLES = ("short", "product, region")
 
@@ -68,3 +70,28 @@ def suggest(item: str, region: str | None, taken: Iterable[str], style: str = DE
     while name.casefold() in names or slugify(name) in slugs:
         name, n = f"{base} {n}", n + 1
     return name
+
+
+def lead_of(st, machines: list[str], cand: Candidate | None = None) -> tuple[str, bool]:
+    """``lead`` for a machine set of ``st``, building the view and flow graph it reads."""
+    if cand is None:
+        cand = describe(machines, st.graph, st.game, st.projection, "proposal")
+    view = build_view("proposal", machines, st.graph, st.game, st.projection)
+    extracted = {row[1] for row in view.nodes}
+    return lead(flowgraph.build(st, st.game, view), cand, st.game, extracted)
+
+
+def proposal_names(st, proposals, style: str = DEFAULT_STYLE, rmap=None) -> dict[int, str]:
+    """The suggested name of every proposal no label covers, by index, numbered in index
+    order past the names already taken -- one answer for the map, Detect and chat."""
+    taken = [label.name for label in st.labels.labels]
+    out: dict[int, str] = {}
+    for index, pr in enumerate(proposals):
+        if st.labels.covers(pr.machines):
+            continue
+        cand = describe(pr.machines, st.graph, st.game, st.projection, "proposal")
+        item, _confident = lead_of(st, pr.machines, cand)
+        region = rmap.label_for(*cand.centroid).name if rmap else None
+        out[index] = suggest(item, region, taken, style)
+        taken.append(out[index])
+    return out

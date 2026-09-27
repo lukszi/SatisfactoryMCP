@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
-from ...core.gamedata.model import GameData
+from ...core.gamedata.model import GameData, pretty_class
 from ..spatial import geo
 from .model import FactoryGraph
 
@@ -68,7 +68,7 @@ class Candidate:
             return " + ".join(n for n, _ in self.products.most_common(2))
         if self.buildings:
             top, count = self.buildings.most_common(1)[0]
-            hint = f"{count}x {top.replace('Build_', '').replace('_C', '')}"
+            hint = f"{count}x {pretty_class(top)}"
             if self.products:
                 hint += f" + {self.products.most_common(1)[0][0]}"
             return hint

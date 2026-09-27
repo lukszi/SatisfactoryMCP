@@ -55,8 +55,8 @@ def test_both_hard_drive_tools_name_the_drive_last_spent(tools):
     """mLastUsedHardDriveID had no consumer. It is continuity, not a selector: the drive
     it names is settled and gone from the pending list, and saying so is what stops a
     resuming reader from looking for it there."""
-    assert "drive 36 was the last one spent" in tools.list_pending_hard_drive_choices()
-    assert "drive 36 was the last one spent" in tools.advise_hard_drive_pick(hard_drive_id=34)
+    assert "drive 36 was the last one analysed" in tools.list_pending_hard_drive_choices()
+    assert "drive 36 was the last one analysed" in tools.advise_hard_drive_pick(hard_drive_id=34)
 
 
 def test_the_list_is_bounded_and_says_when_it_cut(tools):

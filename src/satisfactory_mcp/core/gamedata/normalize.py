@@ -106,6 +106,12 @@ def _build_items(dump: DocsDump) -> dict[str, Item]:
     kept because building recipes reference them as products.
     """
     items: dict[str, Item] = {}
+    shown = {
+        c["ClassName"]: str(c["mDisplayName"])
+        for classes in dump.by_native.values()
+        for c in classes
+        if c.get("ClassName") and c.get("mDisplayName")
+    }
     for native, classes in dump.by_native.items():
         for c in classes:
             if "mForm" not in c or "ClassName" not in c:
@@ -115,9 +121,10 @@ def _build_items(dump: DocsDump) -> dict[str, Item]:
             if form in _FLUID_FORMS:
                 energy *= 1000  # mEnergyValue is MJ per litre for fluids
             cls = c["ClassName"]
+            built = "Build_" + cls[len("Desc_") :] if cls.startswith("Desc_") else ""
             items[cls] = Item(
                 cls=cls,
-                name=str(c.get("mDisplayName") or cls),
+                name=str(c.get("mDisplayName") or shown.get(built) or cls),
                 native=native,
                 form=form,
                 energy_mj=energy,
@@ -184,11 +191,15 @@ def _stated_head_lift(desc: object) -> float:
     return float(m.group(1)) if m else 0.0
 
 
+#: Natives outside the FGBuildable* family whose classes are still placed buildings.
+_OTHER_BUILDABLES = ("FGCentralStorageContainer",)
+
+
 def _build_buildings(dump: DocsDump, items: dict[str, Item]) -> dict[str, Building]:
     descriptors = {k: v for k, v in items.items() if v.native == "FGBuildingDescriptor"}
     out: dict[str, Building] = {}
     for native, classes in dump.by_native.items():
-        if not native.startswith("FGBuildable"):
+        if not native.startswith("FGBuildable") and native not in _OTHER_BUILDABLES:
             continue
         for c in classes:
             cls = c.get("ClassName")

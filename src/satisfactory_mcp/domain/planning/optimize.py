@@ -895,7 +895,8 @@ def solve(sc: Scenario) -> Solution:
         )
     if grid_draw > _EPS:
         warnings.append(
-            f"plan draws {grid_draw:g} MW from the existing grid (it is not self-powered)"
+            "plan draws from the existing grid (it is not self-powered); grid_import_MW "
+            "says how much"
         )
     # Only warn about SPREADING, never about ratio clocks. A derived clock of 99.4%
     # just means 176 machines carry 175 machines' worth of throughput -- that is the

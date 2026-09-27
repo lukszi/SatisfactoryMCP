@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from .constants import BUILDING_CLASS_ALIASES, CLASS_NAMES
 from .footprint import Footprint
 
 __all__ = [
@@ -39,7 +40,7 @@ def pretty_class(cls: str | None) -> str | None:
     """
     if not cls:
         return None
-    leaf = re.sub(r"^(Build|Desc|Recipe|BP)_", "", str(cls))
+    leaf = re.sub(r"^(Build|Desc|Recipe|BP)_((Equipment|Item)Descriptor)?", "", str(cls))
     leaf = re.sub(r"_C$", "", leaf)
     words = _CAMEL.sub(" ", leaf.replace("_", " ")).strip()
     return words or str(cls)
@@ -272,6 +273,12 @@ class Schematic:
     def is_alternate(self) -> bool:
         return self.type == "EST_Alternate"
 
+    @property
+    def is_retired(self) -> bool:
+        """A node the game ships but no longer offers: named "Discontinued - ...", the
+        "SPWN" prototype, or carrying no name at all."""
+        return self.name in ("", self.cls, "SPWN") or self.name.startswith("Discontinued")
+
 
 @dataclass
 class GameData:
@@ -281,12 +288,32 @@ class GameData:
     schematics: dict[str, Schematic]
     docs_sha256: str
     warnings: list[str] = field(default_factory=list)
+    _events: frozenset[str] | None = field(default=None, init=False, repr=False, compare=False)
 
     # ---- lookups -------------------------------------------------------
 
     def item_name(self, cls: str) -> str:
+        """The item's display name; a building's for a building class; else the id in words."""
         it = self.items.get(cls)
-        return it.name if it else cls
+        if it is not None and it.name != cls:
+            return it.name
+        return self.building_name(cls) or cls
+
+    def event_items(self) -> frozenset[str]:
+        """Items that belong to a seasonal event: made only by event recipes, or named for
+        FICSMAS, which covers the Gift that no recipe makes."""
+        if self._events is None:
+            makers: dict[str, list[Recipe]] = {}
+            for r in self.recipes.values():
+                for f in r.products:
+                    makers.setdefault(f.item, []).append(r)
+            self._events = frozenset(
+                cls
+                for cls, item in self.items.items()
+                if "FICSMAS" in item.name
+                or (cls in makers and all(r.is_event for r in makers[cls]))
+            )
+        return self._events
 
     def building_name(self, cls: str | None) -> str | None:
         """The building's display name, or a readable rendering of its class id.
@@ -294,8 +321,15 @@ class GameData:
         ``None`` in, ``None`` out -- an occupant that is not there is not a building with an
         unknown name, and the callers that pass an optional id keep the difference.
         """
-        b = self.buildings.get(cls or "")
-        return b.name if b else pretty_class(cls)
+        b = self.buildings.get(cls or "") or self.buildings.get(
+            BUILDING_CLASS_ALIASES.get(cls or "", "")
+        )
+        if b is not None:
+            return b.name
+        it = self.items.get(cls or "")
+        if it is not None and it.name != cls:
+            return it.name
+        return CLASS_NAMES.get(cls or "") or pretty_class(cls)
 
     def clock_shards(self) -> dict[str, float]:
         """Item class -> max-clock added per unit slotted, for every shard that overclocks.

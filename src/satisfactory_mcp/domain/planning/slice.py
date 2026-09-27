@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from ...core.gamedata.constants import AWESOME_SINK_MW, shards_for_clock
 from ...core.gamedata.model import GameData
 
-__all__ = ["PlanSlice", "ShardRow", "SloopRow", "slice_of"]
+__all__ = ["PlanSlice", "ShardRow", "SloopRow", "grid_import_mw", "linear_gap_note", "slice_of"]
 
 
 @dataclass
@@ -196,3 +196,21 @@ def slice_of(
     out.sloop_rows.sort(key=lambda r: -r.total)
     out.sloop_used_rows.sort(key=lambda r: -r.total)
     return out
+
+
+def grid_import_mw(solution, bill: PlanSlice) -> float:
+    """What a plan takes from the existing grid at its exact draw: 0 unless the solve
+    imports at all, since a power plant exporting MW may not import."""
+    return max(0.0, -bill.net_mw) if solution.grid_import_mw > 0 else 0.0
+
+
+def linear_gap_note(solution, bill: PlanSlice) -> str:
+    """The solver's linear power figure beside the exact one, where they differ by 0.1 MW."""
+    gap = bill.net_mw - solution.net_mw
+    if abs(gap) < 0.1:
+        return ""
+    return (
+        f"net_MW is exact for whole machines at their derived clocks; the solver priced "
+        f"power linearly at {solution.net_mw:,.2f} MW, {abs(gap):,.2f} MW "
+        f"{'below' if gap > 0 else 'above'} it"
+    )

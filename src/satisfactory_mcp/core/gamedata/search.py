@@ -135,21 +135,27 @@ def search(
     if consumes or produces:
         # Biggest consumer first within a kind: the question is "what eats my
         # Rubber", and the answer is ordered by how much.
-        hits.sort(key=lambda h: (_KIND_RANK.get(h.recipe.kind, 9), -h.qty, h.recipe.name))
+        hits.sort(
+            key=lambda h: (_KIND_RANK.get(h.recipe.kind, 9), -h.qty, h.recipe.name.casefold())
+        )
     else:
-        hits.sort(key=lambda h: (not h.recipe.is_alternate, h.recipe.name))
+        hits.sort(key=lambda h: (not h.recipe.is_alternate, h.recipe.name.casefold()))
     return hits, census
 
 
 def find_items(game: GameData, query: str) -> list[Item]:
-    """Items whose name contains ``query``, names that start with it first."""
+    """Items whose name contains ``query``: names that start with it first, event items
+    last, alphabetical regardless of case within each."""
     q = query.casefold()
+    events = game.event_items()
     return sorted(
         (i for i in game.items.values() if q in i.name.casefold() and i.form != "RF_INVALID"),
-        key=lambda i: (not i.name.casefold().startswith(q), i.name),
+        key=lambda i: (not i.name.casefold().startswith(q), i.cls in events, i.name.casefold()),
     )
 
 
 def makers_of(game: GameData, item: str) -> list[Recipe]:
     """Every automatable recipe that makes ``item``, alternates first."""
-    return sorted(game.producers_of(item, "part"), key=lambda r: (not r.is_alternate, r.name))
+    return sorted(
+        game.producers_of(item, "part"), key=lambda r: (not r.is_alternate, r.name.casefold())
+    )

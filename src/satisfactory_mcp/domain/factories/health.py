@@ -171,6 +171,9 @@ class HealthReport:
     #: graph was supplied -- see `assess`, where absent evidence must not read as a finding.
     unwired: list[str] = field(default_factory=list)
     no_generator: list[str] = field(default_factory=list)
+    #: Generators on no wire: capacity nothing can draw, kept out of unwired, which
+    #: lists the machines nothing can power.
+    unwired_generators: list[str] = field(default_factory=list)
 
     @property
     def monitored(self) -> list[MachineHealth]:
@@ -549,7 +552,7 @@ def assess(
         report.machines.append(entry)
         report.by_state[state] += 1
         if dark == NO_WIRE:
-            report.unwired.append(short)
+            (report.unwired_generators if key == "generators" else report.unwired).append(short)
         elif dark == NO_GENERATOR:
             report.no_generator.append(short)
         if state == "blocked":

@@ -273,7 +273,7 @@ def list_buildings(
     gets every line count wrong by a factor and nothing says so, which is the worst
     failure mode a planner has.
 
-    Paged: ``all`` is 539 buildings and unpaged it ran to ~60k characters, which is not
+    Paged: ``all`` is 540 buildings and unpaged it ran to ~60k characters, which is not
     an answer, it is a context eviction. The envelope says how many more there are and
     which offset fetches them.
     """

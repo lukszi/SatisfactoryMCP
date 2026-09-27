@@ -42,7 +42,7 @@ from ....domain.planning.planlog import (
     describe_op,
 )
 from ....domain.planning.prepare import prepare
-from ....domain.planning.recall import PLAN_DEFAULTS, overrides_of
+from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of
 from ....domain.planning.recall import recall_plan as _plan_kwargs
 from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
@@ -968,6 +968,7 @@ def plan_factory(
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    objective = plan_kwargs.get("objective") or objective
 
     # Its own pair, never written back over the arguments: a recalled plan's site is
     # measured here, and re-saving that plan must not turn its stored yaw and z into the
@@ -1079,6 +1080,8 @@ def plan_factory(
             text=_solve_text(plan_kwargs, report.prepared.failure is None, recalled),
         )
 
+    if save_as_note.startswith("saved"):
+        plan_notes = [n.replace(UNSAVED_OVERRIDE, "(saved by this call)") for n in plan_notes]
     out = render_plan_factory(
         g,
         st,
@@ -1223,6 +1226,7 @@ def plan_layout(
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    objective = plan_kwargs.get("objective") or objective
 
     try:
         report = build_layout_report(
@@ -1340,6 +1344,7 @@ def diff_vs_save(
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    objective = plan_kwargs.get("objective") or objective
 
     try:
         report = build_diff_report(
@@ -1566,6 +1571,7 @@ def commission_plan(
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    objective = plan_kwargs.get("objective") or objective
 
     report = build_commission_report(g, st, plan_kwargs, headroom_mw, objective=objective)
     _journal_view(st, plan, "commission_plan", ctx)
@@ -1651,6 +1657,7 @@ def rank_unlocks(
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    objective = plan_kwargs.get("objective") or objective
 
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
     if prepared.failure:

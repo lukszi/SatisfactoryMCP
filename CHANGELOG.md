@@ -17,6 +17,10 @@ Planned as 0.2.0.
   changed after the upgrade, and anything it writes there is not carried back into the log.
   Do not run an older MCP server next to a newer web server.
 - Rebuild the web page (`npm ci && npm run build`) or unzip the release's `static.zip`.
+- `world_summary` reports `last_hard_drive_analysed` in place of `last_hard_drive_spent`: the
+  save's counter names the drive analysed last, which can still be pending.
+- The power ledger leaves out machines and generators on no wire, so `power_report` and the
+  header can read lower draw than before; `/api/power/circuits` reports them under `off_grid`.
 
 ### Added
 
@@ -40,6 +44,15 @@ Planned as 0.2.0.
 - Search drops locked recipes on the server when spoilers are off.
 - Progress hides capability research in an unopened MAM tree.
 - Recipe icons are probed once instead of one 404 per item.
+- The world power ledger is the sum of its circuits; unwired machines no longer eat headroom.
+- Standing Biomass Burners count their 30 MW; generators on no wire have their own list.
+- Fluid buffers count towards stock, so the piles add up to the containers holding them.
+- Building and hand-craft recipes show amounts per build, not a per-minute figure.
+- Chat and the planner quote one net power figure; a recalled plan keeps its objective.
+- An old save with no phase pointer no longer marks every Space Elevator phase complete.
+- Retired MAM nodes are not listed or counted; item and building ids read as names.
+- The Overview action list shows only machines needing action, counted across factories.
+- The map and chat name an unnamed cluster the way Detect does, not by its building class.
 
 ## [0.1.0] - 2026-09-27
 

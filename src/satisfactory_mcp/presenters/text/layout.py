@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from ...core.gamedata.model import GameData
 from ...domain.planning.layout_service import LayoutReport
+from ...domain.planning.slice import slice_of
 from ...domain.world.state import WorldState
 from . import primitives as render
 
@@ -38,7 +39,7 @@ def render_layout(
             "",
             [*prepared.failure.notes, "see plan_factory for why"],
         )
-    req, sol = prepared.request, prepared.solution
+    req = prepared.request
     sel = req.selection
     lay = report.lay
     plan_notes = [*(plan_notes or [])]
@@ -70,7 +71,7 @@ def render_layout(
             f"# {st.age_note}",
             render.kv(
                 [
-                    ("net_MW", render.num(sol.net_mw)),
+                    ("net_MW", render.num(slice_of(prepared, g).net_mw)),
                     ("machines", lay.machines),
                     ("blocks", len(lay.blocks)),
                     ("floors", f"{len(production)} production + {len(logistics)} logistics"),

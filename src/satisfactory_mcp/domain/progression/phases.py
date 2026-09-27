@@ -127,9 +127,9 @@ class PhaseLedger:
                 }
                 done = sorted(set(done) | (set(snapshot) - set(outstanding)))
                 stale = "derived"
-            elif not outstanding:
-                # All zeros. Frozen or not, "nothing outstanding" is what the live
-                # pointers say too for any phase at or below the current one.
+            elif not outstanding and current and phase <= current:
+                # All zeros, and the live pointer agrees for a phase at or below it. With no
+                # pointer, zeros are all an old save's frozen record holds, not deliveries.
                 stale = "complete"
             else:
                 stale = "stale"

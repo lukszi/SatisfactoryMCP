@@ -63,7 +63,8 @@ class SchematicLadder:
     inventory: Inventory
 
     def rungs(self, type: str) -> list[Rung]:
-        """Every schematic of ``type``, in name order -- tier ordering is the caller's.
+        """Every schematic of ``type`` still on offer, in name order -- tier ordering is
+        the caller's. Retired nodes are left out, so no list or count can offer one.
 
         MAM nodes sit at tier 0 and 3 with no progression meaning, so sorting by tier here
         would reorder the MAM view for nothing.
@@ -71,8 +72,8 @@ class SchematicLadder:
         done = self.unlocks.purchased_schematic_ids
         stock = self.inventory.stock()
         out = []
-        for s in sorted(self.game.schematics.values(), key=lambda s: s.name):
-            if s.type != type:
+        for s in sorted(self.game.schematics.values(), key=lambda s: s.name.casefold()):
+            if s.type != type or s.is_retired:
                 continue
             missing = tuple(
                 Missing(item=f.item, need=f.amount, have=stock.get(f.item, 0.0))
