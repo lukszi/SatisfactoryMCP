@@ -24,3 +24,36 @@ export function dashParts(dash?: string): DashParts {
 export function go(dash: string): void {
   location.hash = hashFor(dash);
 }
+
+export interface SubjectQuery {
+  head: string;
+  params: Record<string, string>;
+}
+
+function decoded(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch (_e) {
+    return text;
+  }
+}
+
+export function subjectQuery(subject: string): SubjectQuery {
+  var cut = subject.indexOf("?");
+  var params: Record<string, string> = {};
+  (cut < 0 ? "" : subject.slice(cut + 1)).split("&").forEach(function (pair) {
+    if (!pair) return;
+    var eq = pair.indexOf("=");
+    params[eq < 0 ? pair : pair.slice(0, eq)] = eq < 0 ? "" : decoded(pair.slice(eq + 1));
+  });
+  return { head: cut < 0 ? subject : subject.slice(0, cut), params: params };
+}
+
+export function withQuery(head: string, params: Record<string, string>): string {
+  var pairs: string[] = [];
+  Object.keys(params).forEach(function (key) {
+    var value = params[key];
+    if (value) pairs.push(key + "=" + encodeURIComponent(value));
+  });
+  return head + (pairs.length ? "?" + pairs.join("&") : "");
+}

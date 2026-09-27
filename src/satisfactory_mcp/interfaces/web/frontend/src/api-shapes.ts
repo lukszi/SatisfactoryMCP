@@ -22,14 +22,22 @@ type Body<K extends keyof Schema> = Schema[K] & ApiError;
 
 /* ----------------------------------------------------------------- /api/nodes */
 
-export type NodeRow = Schema["NodeRow"];
-export type NodesResponse = Body<"NodesResponse">;
+export type NodeRow = Schema["NodeRow"] & { spoiler: boolean };
+export type NodesResponse = Omit<Body<"NodesResponse">, "nodes"> & { nodes: NodeRow[] };
 
 /* --------------------------------------------------------------- /api/inspect */
 
 export type Elevation = Schema["Elevation"];
-export type NearestNode = Schema["NearestNode"];
-export type InspectResponse = Body<"InspectResponse">;
+export type NearestNode = Schema["NearestNode"] & { spoiler: boolean };
+export type InspectResponse = Omit<Body<"InspectResponse">, "nearest"> & {
+  nearest: NearestNode[];
+  grid: string;
+  direction: string;
+  conduits: ConduitCount | null;
+  fields: FoundField[];
+  pickups: NearPickup[];
+  stale: TableAge[];
+};
 
 /* --------------------------------------------------------------- /api/regions */
 
@@ -216,8 +224,248 @@ export type DeltaResponse = Body<"DeltaResponse">;
 
 /* ---------------------------------------------------------- /api/collectibles */
 
-export type CollectibleRow = Schema["CollectibleRow"];
-export type CollectiblesResponse = Body<"CollectiblesResponse">;
+export type CollectibleRow = Schema["CollectibleRow"] & { spoiler: boolean };
+export type CollectiblesResponse = Omit<Body<"CollectiblesResponse">, "rows"> & {
+  rows: CollectibleRow[];
+  census: CensusRow[];
+  found: string[];
+  hidden_spoilers: number;
+  stale: TableAge | null;
+};
+
+/* ------------------------------------------------------------------ /api/world/*
+ * Hand-written from docs/world-finders_contract.md §3.2 until the schema is regenerated.
+ * RankedSite(s) are the contract's SiteRow and SitesResponse; the factory sites own those names. */
+
+export interface TableAge {
+  table: "nodes" | "collectibles";
+  behind: boolean;
+  gap: string | null;
+  moved: number;
+  unjoinable: number;
+  observed_from: string | null;
+  observed_matches: boolean | null;
+  notes: string[];
+}
+
+export interface FoundNode {
+  id: string;
+  name: string;
+  resource: string;
+  resource_name: string;
+  purity: string;
+  kind: string;
+  x_m: number;
+  y_m: number;
+  z_m: number;
+  grid: string;
+  rate: number;
+  status: "free" | "tapped" | "locked";
+  occupant: string | null;
+  occupant_off: boolean | null;
+  region: Region | null;
+  distance_m: number | null;
+  moved: boolean;
+  spoiler: boolean;
+}
+
+export interface FoundField {
+  key: string;
+  selector: string;
+  members: string[];
+  region: string | null;
+  grid: string;
+  direction: string;
+  x_m: number;
+  y_m: number;
+  bbox_m: [number, number, number, number];
+  size: number;
+  purities: Record<string, number>;
+  resources: string[];
+  total: number;
+  free: number;
+  spread_m: number;
+  locked: boolean;
+  distance_m: number | null;
+  spoiler: boolean;
+}
+
+export interface WaterBlock {
+  bodies: Record<string, number>;
+  pumps: number;
+  per_pump_m3_min: number | null;
+  sea_level_m: number | null;
+}
+
+export interface NodeChoices {
+  resources: { id: string; name: string; nodes: number }[];
+  purities: string[];
+  kinds: string[];
+}
+
+export interface NodeFindResponse extends ApiError {
+  view: "nodes" | "fields" | "nearest";
+  description: string;
+  selectors: string[];
+  where: string;
+  nodes: FoundNode[];
+  fields: FoundField[];
+  count: number;
+  total: number;
+  free: number;
+  unit: string;
+  elevation: [number, number] | null;
+  water: WaterBlock | null;
+  choices: NodeChoices;
+  notes: string[];
+  hidden_spoilers: number;
+  stale: TableAge | null;
+  save_error: string | null;
+}
+
+export interface RankedSite {
+  rank: number;
+  score: number;
+  region: string | null;
+  grid: string;
+  x_m: number;
+  y_m: number;
+  selector: string;
+  nodes: number;
+  untapped: number;
+  spread_m: number;
+  to_infra_m: number | null;
+  purity: number;
+  alt_m: number | null;
+  rough_m: number | null;
+  slope_deg: number | null;
+  wet_pct: number | null;
+}
+
+export interface RankedSitesResponse extends ApiError {
+  resource: string;
+  resource_name: string;
+  description: string;
+  sites: RankedSite[];
+  count: number;
+  weights: Record<string, number>;
+  notes: string[];
+  stale: TableAge | null;
+}
+
+export interface RunEnd {
+  x_m: number;
+  y_m: number;
+  z_m: number;
+  plugs: string | null;
+}
+
+export interface RunRow {
+  id: string;
+  kind: "belt" | "lift" | "pipe";
+  label: string;
+  pieces: number;
+  length_m: number;
+  a: RunEnd;
+  b: RunEnd;
+  z_min_m: number;
+  z_max_m: number;
+  directed: boolean;
+  basis: string | null;
+  carries: string | null;
+  rate: number | null;
+  network: number | null;
+  via: string[];
+  distance_m: number;
+  lines_m: [number, number][][];
+}
+
+export interface NetworkRow {
+  network: number | null;
+  carries: string | null;
+  pieces: number;
+  length_m: number;
+  x_m: number;
+  y_m: number;
+  z_min_m: number;
+  z_max_m: number;
+  distance_m: number;
+  touches: string[];
+}
+
+export interface ConduitsResponse extends ApiError {
+  view: "runs" | "networks";
+  where: string;
+  where_to: string;
+  radius_m: number;
+  to_radius_m: number | null;
+  runs: RunRow[];
+  networks: NetworkRow[];
+  total: number;
+  offset: number;
+  belts: number;
+  pipes: number;
+  belt_m: number;
+  pipe_m: number;
+  fluids: string[];
+  bridged: string[];
+  notes: string[];
+  age_note: string;
+}
+
+export interface HereResponse extends ApiError {
+  age_note: string;
+  save_token: string;
+  player: { x_m: number; y_m: number; z_m: number } | null;
+  region: Region | null;
+  grid: string | null;
+  direction: string | null;
+  radius_m: number;
+  nodes: FoundNode[];
+  nodes_total: number;
+  nearest_building: { name: string; distance_m: number } | null;
+  pawns: number;
+  stale: TableAge[];
+}
+
+export interface RegionRow {
+  name: string;
+  direction: string;
+  grid: string;
+  anchor_m: [number, number];
+  area_km2: number;
+  nodes: number;
+}
+
+export interface RegionTableResponse extends ApiError {
+  resource: string | null;
+  resource_name: string | null;
+  rows: RegionRow[];
+  accuracy_m: number;
+  hidden_spoilers: number;
+}
+
+export interface ConduitCount {
+  belt: number;
+  pipe: number;
+  radius_m: number;
+}
+
+export type NearPickup = CollectibleRow & { label: string };
+
+export interface CensusRow {
+  category: string;
+  label: string;
+  placed: number;
+  collected: number;
+  remaining: number | null;
+  standing: number;
+  never_streamed: number;
+  looted_standing: number;
+  state_tracked: boolean;
+  pedestal_of: string | null;
+  spoiler: boolean;
+}
 
 /* ------------------------------------------------------------------ both, and shared */
 

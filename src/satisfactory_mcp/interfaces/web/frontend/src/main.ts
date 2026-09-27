@@ -20,6 +20,7 @@ import "./style.css";
 
 import { listenForCopies } from "./copy";
 import { el } from "./dom";
+import { listenForFinds } from "./finder";
 import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./floors";
 import { listenToFragment } from "./fragment";
 import { inspect } from "./inspector";
@@ -67,6 +68,7 @@ import "./power";
 import "./progress";
 import "./recipes";
 import "./routes";
+import "./world";
 
 /* ------------------------------------------------------------------- wiring */
 
@@ -133,6 +135,7 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
 listenForCopies();
 wireSearch();
 listenForTraces();
+listenForFinds();
 wireStatus();
 if (BOOT_GARBLED.length) fail(garbledNote(BOOT_GARBLED));
 el("world").addEventListener("change", fitWorld);
