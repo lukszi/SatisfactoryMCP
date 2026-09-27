@@ -199,9 +199,9 @@ export type NameTakenResponse = Body<"NameTakenResponse">;
 
 /* ------------------------------------------ /api/plan/solve, /api/ui/focus, /api/activity */
 
-export type SolveRow = Schema["SolveRow"];
 export type SolveRate = Schema["SolveRate"];
-export type SolveResponse = Body<"SolveResponse">;
+export type SolveRow = Schema["SolveRow"] & { id: string; depth: number };
+export type SolveResponse = Omit<Body<"SolveResponse">, "rows"> & { rows: SolveRow[]; graph: PlanGraph };
 export type FocusSelection = Schema["Selection"];
 export type FocusResponse = Body<"FocusResponse">;
 export type ActivityRow = Schema["ActivityRow"];
@@ -212,7 +212,102 @@ export type ActivityResponse = Body<"ActivityResponse">;
 export type VersionRow = Schema["VersionRow"];
 export type VersionsResponse = Body<"VersionsResponse">;
 export type DeltaRow = Schema["DeltaRow"];
-export type DeltaResponse = Body<"DeltaResponse">;
+export type DeltaResponse = Body<"DeltaResponse"> & { rows: RowChange[] };
+
+/* ------------------------------ planner P3: graph, alternates, pins (docs/planner-p3_contract.md §5.2) */
+
+export interface PlanGraphNode {
+  id: string;
+  kind: string;
+  label: string;
+  detail: string;
+  rank: number;
+  row: string | null;
+  item: string | null;
+}
+export interface PlanGraphEdge {
+  source: string;
+  target: string;
+  item: string;
+  per_min: number;
+  text: string | null;
+}
+export interface PlanGraph {
+  nodes: PlanGraphNode[];
+  edges: PlanGraphEdge[];
+}
+export interface RowChange {
+  id: string;
+  label: string;
+  change: string;
+  machines_before: number;
+  machines_after: number;
+  clock_before: number;
+  clock_after: number;
+}
+export type ResultDelta = Omit<Schema["DeltaResponse"], "key" | "from_rev" | "to_rev"> & { rows: RowChange[] };
+export interface SwapOption {
+  recipe_id: string;
+  name: string;
+  alternate: boolean;
+  machine: string | null;
+  unlocked: boolean | null;
+  spoiler: boolean;
+  granted_by: string[];
+  status: string;
+  in_use: boolean;
+  required: boolean;
+  banned: boolean;
+  banned_by: string | null;
+  solved: boolean;
+  delta: ResultDelta | null;
+  require_ops: PlanOpBody[];
+  ban_ops: PlanOpBody[];
+  free_ops: PlanOpBody[];
+}
+export type PlanAlternatesResponse = ApiError & {
+  key: string;
+  rev: number;
+  item: string;
+  name: string;
+  head_feasible: boolean;
+  head_machines: number;
+  head_mw_draw: number | null;
+  head_mw_net: number | null;
+  options: SwapOption[];
+  hidden: number;
+  text: string;
+};
+export interface PinRef {
+  plan?: string;
+  recipe?: string;
+  factory?: string;
+  machine?: string;
+  node?: string;
+  x_m?: number;
+  y_m?: number;
+  resource?: string;
+  nodes?: string[];
+}
+export interface PinRow {
+  n: number;
+  id: string;
+  kind: string;
+  ref: PinRef;
+  label: string;
+  text: string;
+  selector: string;
+  x_m: number | null;
+  y_m: number | null;
+  rev: number;
+  created: number;
+  gone: boolean;
+  gone_why: string;
+}
+export type PinsResponse = ApiError & { version: number; pins: PinRow[] };
+export type PinCreated = ApiError & PinRow & { existing: boolean };
+export type PinDropped = ApiError & { ok: boolean; n: number };
+export type PinStaleResponse = ApiError & { error: string; stale: boolean; pin: PinRow };
 
 /* ---------------------------------------------------------- /api/collectibles */
 

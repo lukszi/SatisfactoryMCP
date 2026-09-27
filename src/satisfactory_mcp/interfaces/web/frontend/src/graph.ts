@@ -19,6 +19,14 @@ export interface GraphNodeShape {
   blocked: number;
   stopped: number;
   states?: Record<string, number>;
+  rank?: number;
+  badges?: string[];
+}
+
+export interface DrawOptions<N> {
+  pickable?: (node: N) => boolean;
+  picked?: string;
+  flash?: string[];
 }
 
 export interface GraphEdgeShape {
@@ -144,7 +152,32 @@ function outline(n: GraphNodeShape): string {
   return worst && (worst.tone === "bad" || worst.tone === "blocked") ? " tone-" + worst.tone : "";
 }
 
+function given<N extends GraphNodeShape>(graph: GraphShape<N>): Record<string, number> | null {
+  var inner = graph.nodes.filter(function (n) {
+    return TERMINAL.indexOf(n.kind) < 0;
+  });
+  if (
+    !inner.length ||
+    inner.some(function (n) {
+      return typeof n.rank !== "number";
+    })
+  )
+    return null;
+  var rank: Record<string, number> = {};
+  var last = 0;
+  inner.forEach(function (n) {
+    rank[n.id] = n.rank!;
+    last = Math.max(last, n.rank!);
+  });
+  graph.nodes.forEach(function (n) {
+    if (rank[n.id] === undefined) rank[n.id] = typeof n.rank === "number" ? n.rank : last + 1;
+  });
+  return rank;
+}
+
 function ranks<N extends GraphNodeShape>(graph: GraphShape<N>): Record<string, number> {
+  var fixed = given(graph);
+  if (fixed) return fixed;
   var preds: Record<string, string[]> = {};
   graph.nodes.forEach(function (n) {
     preds[n.id] = [];
@@ -231,6 +264,20 @@ function bezier(p0: number, p1: number, p2: number, p3: number, t: number): numb
   return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
 }
 
+function badgeRoom(n: GraphNodeShape): number {
+  var room = 0;
+  (n.badges || []).forEach(function (word) {
+    room += measure(word, "11px") + 11;
+  });
+  return room;
+}
+
+export function setPicked(frame: HTMLElement, id: string): void {
+  Array.prototype.forEach.call(frame.querySelectorAll(".graph-node"), function (node: Element) {
+    node.classList.toggle("picked", node.getAttribute("data-node") === id);
+  });
+}
+
 function lines(n: GraphNodeShape): string[] {
   var detail = n.kind === "sink" ? "sunk: not a product" : n.detail;
   var out = detail ? [n.label, detail] : [n.label];
@@ -241,8 +288,15 @@ function lines(n: GraphNodeShape): string[] {
 export function drawGraph<N extends GraphNodeShape>(
   graph: GraphShape<N>,
   tip: (node: N) => string,
-  pick?: (node: N) => void
+  pick?: (node: N) => void,
+  options?: DrawOptions<N>
 ): HTMLElement {
+  var o = options || {};
+  var pickable =
+    o.pickable ||
+    function (n: N) {
+      return n.kind === "group";
+    };
   family = getComputedStyle(document.body).fontFamily || family;
   var rank = ranks(graph);
   var layers = order(graph, rank);
@@ -262,7 +316,7 @@ export function drawGraph<N extends GraphNodeShape>(
     layer.forEach(function (id) {
       var n = byId[id]!;
       lines(n).forEach(function (text, i) {
-        widest = Math.max(widest, measure(text, i ? "11px" : "600 12px") + 2 * NODE_PAD);
+        widest = Math.max(widest, measure(text, i ? "11px" : "600 12px") + 2 * NODE_PAD + (i ? 0 : badgeRoom(n)));
       });
     });
     return Math.min(NODE_MAX, Math.ceil(widest));
@@ -397,15 +451,29 @@ export function drawGraph<N extends GraphNodeShape>(
   graph.nodes.forEach(function (n) {
     var p = at[n.id];
     if (!p) return;
-    var live = !!pick && n.kind === "group";
-    var box = svg("g", { class: "graph-node kind-" + n.kind + outline(n) + (live ? " pickable" : ""), transform: "translate(" + p.x + "," + p.y + ")" });
+    var live = !!pick && pickable(n);
+    var marks = (live ? " pickable" : "") + (o.picked === n.id ? " picked" : "") + (o.flash && o.flash.indexOf(n.id) >= 0 ? " flash" : "");
+    var box = svg("g", { class: "graph-node kind-" + n.kind + outline(n) + marks, transform: "translate(" + p.x + "," + p.y + ")", "data-node": n.id });
     box.appendChild(svg("rect", { width: p.w, height: p.h, rx: 3 }));
     var text = lines(n);
     var inner = p.w - 2 * NODE_PAD;
+    var room = badgeRoom(n);
     text.forEach(function (words, i) {
       var t = svg("text", { x: NODE_PAD, y: NODE_PAD + (i + 1) * LINE - 2, class: i ? "graph-node-d" : "graph-node-k" });
-      t.textContent = clip(words, i ? "11px" : "600 12px", inner);
+      t.textContent = clip(words, i ? "11px" : "600 12px", inner - (i ? 0 : room));
       box.appendChild(t);
+    });
+    var right = p.w - 4;
+    (n.badges || []).forEach(function (word) {
+      var w = measure(word, "11px") + 8;
+      right -= w;
+      var tag = svg("g", { class: "graph-badge", transform: "translate(" + right + ",4)" });
+      tag.appendChild(svg("rect", { width: w, height: LINE, rx: 3 }));
+      var t = svg("text", { x: w / 2, y: LINE - 3 });
+      t.textContent = word;
+      tag.appendChild(t);
+      box.appendChild(tag);
+      right -= 3;
     });
     var title = svg("title", {});
     title.textContent = tip(n);
@@ -416,7 +484,7 @@ export function drawGraph<N extends GraphNodeShape>(
       };
       box.setAttribute("tabindex", "0");
       box.setAttribute("role", "button");
-      box.setAttribute("aria-label", text.join(", "));
+      box.setAttribute("aria-label", text.concat(n.badges || []).join(", "));
       box.addEventListener("click", go);
       box.addEventListener("keydown", function (event) {
         if (event.key !== "Enter" && event.key !== " ") return;

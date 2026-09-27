@@ -12,9 +12,12 @@ import { code, esc, html, popup, traceButtons } from "./dom";
 import { regionLine } from "./format";
 import { L } from "./leaflet";
 import { map } from "./map";
+import { pinButtons } from "./pins";
 import { friendly } from "./toast";
+import { W } from "./words";
 
 import type { Elevation, InspectResponse } from "./api-shapes";
+import type { PinTarget } from "./pins";
 import type { Row } from "./dom";
 import type { InspectedEvent } from "./leaflet-private";
 
@@ -87,12 +90,20 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
     rows.push(["machine", machine.name]);
     rows.push(["trace", traceButtons(machine.leaf)]);
   }
+  var targets: PinTarget[] = [{ kind: "point", ref: { x_m: d.at.x_m, y_m: d.at.y_m }, text: "point" }];
+  if (machine) targets.push({ kind: "machine", ref: { machine: machine.leaf }, text: "machine" });
+  var near = d.nearest[0];
+  if (near) {
+    targets.push({ kind: "node", ref: { node: near.name }, text: "node " + near.resource_name });
+    targets.push({ kind: "field", ref: { node: near.name }, text: "field" });
+  }
   rows.push(["region", regionLine(d.region)]);
   rows.push(["elevation", elevationLine(d.elevation)]);
   if (d.nearest.length) rows.push(["nearest", nearestText(d.nearest[0]!)]);
   // The one row built to be copied into an MCP tool call, so the unit -- the same " m"
   // every other coordinate row on the map ends with -- must ride along.
   rows.push(["at", html("<code>" + esc(d.at.x_m + ", " + d.at.y_m) + "</code> m")]);
+  rows.push([W.pin, pinButtons(targets)]);
   var more: Row[] = elevationRows(d.elevation);
   /* Each nearest node carries the same `node:` selector its own dot's popup prints, because
    * the answer's next step is an MCP tool call naming one of these nodes and a resource plus
