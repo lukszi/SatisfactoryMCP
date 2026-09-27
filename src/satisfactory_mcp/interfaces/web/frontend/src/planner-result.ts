@@ -2,7 +2,7 @@
 
 import { button, chip, error, loading, table } from "./dashkit";
 import { make } from "./dom";
-import { count, mw, num, perMin } from "./format";
+import { count, flow, mw, pct, perMin } from "./format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT } from "./graph";
 import { vitals } from "./panel";
 import { bench, changed, gesture, undoRev } from "./planner-core";
@@ -26,16 +26,16 @@ interface BudgetRow {
 var drawn: { data: SolveResponse | null; svg: HTMLElement | null } = { data: null, svg: null };
 var order: SortState = { key: "building", desc: false };
 
-function rate(r: SolveRate): string {
-  return r.item === "MW" ? mw(r.per_min) : r.item + " " + perMin(r.per_min);
-}
-
-function clock(fraction: number): string {
-  return num(fraction * 100) + "%";
-}
+var POWER = "MW";
 
 function rates(rows: SolveRate[]): string {
-  return rows.map(rate).join(", ") || "–";
+  return (
+    rows
+      .map(function (r) {
+        return r.item === POWER ? mw(r.per_min) : flow(r.item, r.per_min);
+      })
+      .join(", ") || "–"
+  );
 }
 
 export function recipeName(id: string): string {
@@ -236,7 +236,7 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
         return r.clock;
       },
       render: function (r) {
-        return clock(r.clock);
+        return pct(r.clock, 1);
       },
     },
     {
@@ -284,7 +284,6 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
   parent.appendChild(card);
 }
 
-var POWER = "MW";
 
 function items(rows: SolveRate[]): SolveRate[] {
   return rows.filter(function (r) {
@@ -300,7 +299,7 @@ function graphOf(data: SolveResponse): { nodes: PlanNode[]; edges: GraphEdgeShap
   data.rows.forEach(function (row, i) {
     var id = "p" + i;
     var power = row.mw ? " · " + mw(row.mw, { signed: true }) : "";
-    var at = " · " + clock(row.clock);
+    var at = " · " + pct(row.clock, 1);
     nodes.push({
       id: id,
       kind: "process",

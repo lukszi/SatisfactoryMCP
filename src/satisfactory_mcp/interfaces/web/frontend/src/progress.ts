@@ -3,7 +3,7 @@
 
 import { make } from "./dom";
 import { checkbox, error, heading, link, loading, note, table, tabs2, tile } from "./dashkit";
-import { num, phaseText } from "./format";
+import { flow, num, pct, phaseText } from "./format";
 import { loadOne } from "./load";
 import { hashFor } from "./map";
 import { go } from "./nav";
@@ -619,7 +619,7 @@ function grants(option: Option): string {
     .map(function (r) {
       var made = r.products
         .map(function (f) {
-          return num(f.amount, 2) + " " + f.name + "/min";
+          return flow(f.name, f.amount, 2);
         })
         .join(" + ");
       return (made || r.name) + (r.machine ? " · " + r.machine : "");
@@ -788,12 +788,11 @@ function renderShards(body: HTMLElement, point: PointButton): void {
   note(
     body,
     "a shard adds " +
-      Math.round(data.per_shard * 100) +
-      "% max clock and a building takes " +
+      pct(data.per_shard) +
+      " max clock and a building takes " +
       data.slots_per_building +
       ", so the ceiling is " +
-      Math.round(data.max_clock * 100) +
-      "%"
+      pct(data.max_clock)
   );
   data.by_place.forEach(function (p) {
     note(body, (PLACES[p.place] || p.place) + ": " + amounts(p.items));

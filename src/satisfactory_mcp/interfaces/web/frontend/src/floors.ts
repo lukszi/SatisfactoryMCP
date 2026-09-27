@@ -27,6 +27,7 @@
 
 import { get, latest } from "./api";
 import { code, popup } from "./dom";
+import { pct } from "./format";
 import { batch, hideFloors, onFloorExit, onFloorPick, showFloors } from "./layercontrol";
 import { L } from "./leaflet";
 import { flyPadded, map, writeHash } from "./map";
@@ -765,8 +766,8 @@ function choices(body: FloorsResponse, platform: FloorPlatform | null): FloorCho
       minor: band.minor,
       note: band.minor
         ? "a mezzanine: " +
-          Math.round(band.share * 100) +
-          "% of this platform's largest deck, so a ledge rather than a storey"
+          pct(band.share) +
+          " of this platform's largest deck, so a ledge rather than a storey"
         : band.area_m2 +
           " m² of deck, " +
           band.pieces +

@@ -4,7 +4,7 @@
 import { get, latest, send } from "./api";
 import { button, empty, error, fieldError, heading, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
-import { count, mw, num, pct, perMin, spoken } from "./format";
+import { count, flow, mw, pct, spoken } from "./format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, stateLine } from "./graph";
 import { loadOne } from "./load";
 import { hashFor } from "./map";
@@ -351,7 +351,7 @@ function forgetNamed(reply: NamedResponse): void {
 function flows(list: Flow[]): string {
   return list
     .map(function (f) {
-      return num(f.per_min) + " " + f.name + "/min";
+      return flow(f.name, f.per_min);
     })
     .join(" · ");
 }
@@ -681,7 +681,7 @@ function nodeTip(node: GraphNode): string {
   if (node.kind === "group") {
     lines.push(stateLine(node) + (node.clock !== null ? " · clock " + pct(node.clock) : ""));
     node.makes.forEach(function (f) {
-      lines.push("makes " + perMin(f.per_min, false) + " " + f.name + "/min" + (f.to.length ? " → " + f.to.join(", ") : ""));
+      lines.push("makes " + flow(f.name, f.per_min) + (f.to.length ? " → " + f.to.join(", ") : ""));
     });
     lines.push("click: show these machines on the map");
   }

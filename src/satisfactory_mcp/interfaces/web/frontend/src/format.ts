@@ -56,8 +56,13 @@ export function perMin(value: number, unit?: boolean): string {
   return num(value, 1) + (unit === false ? "" : "/min");
 }
 
-export function pct(value: number | null | undefined): string {
-  return value === null || value === undefined ? "–" : Math.round(value * 100) + "%";
+export function flow(item: string, value: number, dp?: number): string {
+  return num(value, dp) + " " + item + "/min";
+}
+
+export function pct(value: number | null | undefined, dp?: number): string {
+  if (value === null || value === undefined) return "–";
+  return (dp ? num(value * 100, dp) : String(Math.round(value * 100))) + "%";
 }
 
 export function spoken(names: string[], last: string): string {

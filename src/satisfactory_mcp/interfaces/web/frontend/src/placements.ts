@@ -12,6 +12,7 @@
 import { CONTENTS_POPUP_PX, code, contentsRows, count, esc, html, popup, traceButtons } from "./dom";
 import type { Row } from "./dom";
 import { refreshFloors } from "./floors";
+import { pct } from "./format";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
 import { footprintCorners, hashFor } from "./map";
@@ -128,10 +129,6 @@ export var BLOCKED = "blocked";
 export var BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
 export var STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" }).stopped;
 
-export function stateTone(state: string, actionable: boolean): string {
-  return state === BLOCKED ? "blocked" : actionable ? "bad" : "";
-}
-
 export function drawMachines(data: MachinesResponse): void {
   MACHINE_KINDS.forEach(function (kind) {
     var group = layer(kind, kind !== "machines", KIND_COLOUR[kind], [
@@ -162,7 +159,7 @@ export function drawMachines(data: MachinesResponse): void {
         popup([
           ["building", m.name],
           ["recipe", m.recipe_name || m.recipe],
-          ["clock", m.clock === null ? null : Math.round(m.clock * 100) + "%"],
+          ["clock", m.clock === null ? null : pct(m.clock)],
           // The state replaces the old "paused: yes" row rather than joining it: they would
           // be the same claim twice, and this one can also say why a machine nobody paused
           // is standing still.
@@ -179,7 +176,7 @@ export function drawMachines(data: MachinesResponse): void {
           // The only measured number in this whole project -- the fraction of the machine's
           // own ~300 s window it spent producing. Absent, not "0%", for a building that
           // carries no monitor: 46 of this world's 570 do not.
-          ["uptime", m.uptime === null ? null : Math.round(m.uptime * 100) + "%"],
+          ["uptime", m.uptime === null ? null : pct(m.uptime)],
           // All three sides of the clearance box: a Refinery being 15 m tall is why a floor
           // view can say it comes through the ceiling, and the reader looking at that ghost
           // should find the number here.
