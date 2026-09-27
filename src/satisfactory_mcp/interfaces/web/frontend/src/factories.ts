@@ -2,7 +2,7 @@
  * production graph, addressed as `dash=factories[/<name>]`. */
 
 import { get, send } from "./api";
-import { cell, heading, link, note, tile } from "./dashkit";
+import { button, cell, heading, link, note, table as kitTable, tile } from "./dashkit";
 import { count, make } from "./dom";
 import { mw, pct, spoken } from "./format";
 import { drawGraph } from "./graph";
@@ -574,11 +574,15 @@ export function renderFactory(body: HTMLElement, name: string): void {
     })
   );
   head.appendChild(
-    actionButton("trace supply", "draw what feeds this factory on the map, with items and rates", function () {
-      toMap(function () {
-        startTrace("label:" + row!.name, "up");
-      });
-    })
+    button(
+      "trace supply",
+      function () {
+        toMap(function () {
+          startTrace("label:" + row!.name, "up");
+        });
+      },
+      { title: "draw what feeds this factory on the map, with items and rates" }
+    )
   );
   body.appendChild(head);
   if (shown) graphCard(body);
@@ -600,30 +604,46 @@ export function renderFactory(body: HTMLElement, name: string): void {
   row.states.forEach(function (s) {
     biggest = Math.max(biggest, s.count);
   });
-  var t = table(
-    [
-      ["state", "name"],
-      ["machines", ""],
-      ["", ""],
-    ],
-    false
+  type StateRow = FactoryHealthRow["states"][number];
+  function toneOf(s: StateRow): string {
+    return stateTone(s.state, needsAction(s.state));
+  }
+  states.appendChild(
+    kitTable<StateRow>(
+      [
+        {
+          key: "state",
+          label: "state",
+          render: function (s) {
+            return s.state;
+          },
+        },
+        {
+          key: "machines",
+          label: "machines",
+          align: "right",
+          render: function (s) {
+            return count(s.count);
+          },
+        },
+        {
+          key: "bar",
+          label: "",
+          className: "bar",
+          render: function (s) {
+            var ok = FINE.indexOf(s.state) >= 0;
+            var bar = make("div", "dash-hbar");
+            var fill = make("span", "dash-mix-" + (toneOf(s) || (ok ? "ok" : "mid")));
+            fill.style.width = (s.count / biggest) * 100 + "%";
+            bar.appendChild(fill);
+            return bar;
+          },
+        },
+      ],
+      row.states,
+      { rowClass: toneOf, caption: "machines by state" }
+    )
   );
-  var tb = t.tBodies[0]!;
-  row.states.forEach(function (s) {
-    var tr = make("tr");
-    var bad = needsAction(s.state);
-    var ok = FINE.indexOf(s.state) >= 0;
-    var tone = stateTone(s.state, bad);
-    cell(tr, s.state, tone);
-    cell(tr, s.count, "num");
-    var bar = make("div", "dash-hbar");
-    var fill = make("span", "dash-mix-" + (tone || (ok ? "ok" : "mid")));
-    fill.style.width = (s.count / biggest) * 100 + "%";
-    bar.appendChild(fill);
-    cell(tr, bar, "bar");
-    tb.appendChild(tr);
-  });
-  states.appendChild(t);
   split.appendChild(states);
 
   var worst = make("section", "dash-card");
