@@ -17,12 +17,14 @@ from pydantic import Field
 
 from ....core.filelock import LockTimeout
 from ....core.gamedata.unlocks import granted_by_label
+from ....core.schema import NewerSchema
 from ....domain.factories.select import SelectorError
+from ....domain.planning import asks, compare, journal, manage, pins, summary
 from ....domain.planning import bom as bom_mod
-from ....domain.planning import compare, journal, manage, pins, summary
 from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
 from ....domain.planning.carrier import resolve_tiers
+from ....domain.planning.commission import partition_id
 from ....domain.planning.commission_service import build_commission_report
 from ....domain.planning.diff_service import build_diff_report
 from ....domain.planning.layout_service import LayoutReport, build_layout_report
@@ -73,6 +75,8 @@ FIRST_LOOK = 5
 CONTEXT_BUDGET = 3800
 CONTEXT_PINS = 8
 CONTEXT_PIN_WIDTH = 90
+CONTEXT_ASKS = 6
+CONTEXT_ASK_WIDTH = 200
 
 BaseRev = Annotated[
     int | None,
@@ -690,7 +694,7 @@ def _solve_text(plan_kwargs: dict, feasible: bool, recalled) -> str:
     return f"{'solved' if feasible else 'infeasible:'}{on} {what} ({objective})"
 
 
-def _journal_view(st, plan: str | None, tool: str, ctx) -> None:
+def _journal_view(st, plan: str | None, tool: str, ctx, args: dict | None = None) -> None:
     if not plan:
         return
     stored = st.plans.find(plan)
@@ -704,7 +708,50 @@ def _journal_view(st, plan: str | None, tool: str, ctx) -> None:
         tool=tool,
         plan=stored.key,
         rev=stored.rev,
+        args=args,
         text=f'{tool} on plan "{stored.name}" v{stored.rev}',
+    )
+
+
+_stages_seen: dict[tuple[str, str], tuple[str, int, int, int]] = {}
+
+
+def _recalled(st, plan: str | None):
+    """The stored version ``plan`` names, as the plan log holds it, or None."""
+    if not plan:
+        return None
+    found = st.plans.find(plan)
+    if found is None:
+        return None
+    try:
+        return _log(st).state(found.key)
+    except PlanLogError:
+        return None
+
+
+def _where(current: int, count: int) -> str:
+    if not count:
+        return "no startup order fits the headroom"
+    if not current:
+        return f"every stage of {count} built"
+    return f"stage {current} of {count}"
+
+
+def _renumbered(st, stored, tracking) -> str:
+    """The note that the stages moved since this process last read this plan, or ''."""
+    if stored is None or tracking is None:
+        return ""
+    count = len(tracking.stages) if tracking.ok else 0
+    now = (partition_id(tracking), tracking.current if count else 0, count, stored.rev)
+    seen = _stages_seen.get((st.world_id, stored.key))
+    _stages_seen[(st.world_id, stored.key)] = now
+    if seen is None or seen[0] == now[0]:
+        return ""
+    was = _where(seen[1], seen[2])
+    was = f"you were in {was}" if seen[2] and seen[1] else f"before, {was}"
+    return (
+        f"the stages changed since you last read this plan (v{seen[3]} -> v{now[3]}): "
+        f"{was}, now {_where(now[1], now[2])}"
     )
 
 
@@ -1368,6 +1415,7 @@ def diff_vs_save(
         return f"! {exc.args[0]}"
     plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
+    stored = _recalled(st, plan)
 
     try:
         report = build_diff_report(
@@ -1380,10 +1428,16 @@ def diff_vs_save(
             stage=stage,
             factory=factory,
             biomass=biomass,
+            headroom_mw=stored.headroom_mw if stored is not None else None,
+            stored=stored,
         )
     except SelectorError as exc:
         return f"! {exc}"
-    _journal_view(st, plan, "diff_vs_save", ctx)
+    view = {"view": "track", "stage": stage if stage and stage >= 1 else None, "section": "stages"}
+    _journal_view(st, plan, "diff_vs_save", ctx, view)
+    moved = _renumbered(st, stored, report.tracking)
+    if moved:
+        plan_notes = [moved, *plan_notes]
 
     return render_diff(
         g,
@@ -1600,10 +1654,15 @@ def commission_plan(
     plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
+    stored = _recalled(st, plan)
     report = build_commission_report(
-        g, st, plan_kwargs, headroom_mw, objective=objective, biomass=biomass
+        g, st, plan_kwargs, headroom_mw, objective=objective, biomass=biomass, stored=stored
     )
-    _journal_view(st, plan, "commission_plan", ctx)
+    view = {"view": "track", "stage": None, "section": "startup"}
+    _journal_view(st, plan, "commission_plan", ctx, view)
+    moved = _renumbered(st, stored, report.tracking) if headroom_mw is None else ""
+    if moved:
+        plan_notes = [moved, *plan_notes]
 
     return render_commission(
         g,
@@ -2001,6 +2060,88 @@ def _plan_news(log: PlanLog, cursor, names: dict[str, str], me: int) -> tuple[li
     return lines, {key: state.rev for key, state in heads.items()}
 
 
+def _ask_text(row: dict) -> str:
+    about = row["about"]
+    text = f'{row["id"]} "{row["text"]}" about {about["kind"]} "{about["label"]}"'
+    if row["plan_name"]:
+        text += f' in "{row["plan_name"]}"'
+    if about.get("rev"):
+        text += f" v{about['rev']}"
+    if row["state"] == "seen":
+        text += " (seen)"
+    return _cut(text, CONTEXT_ASK_WIDTH)
+
+
+def _asks_lines(world_id: str, who: str, me) -> list[str]:
+    """The ``asks`` line and its hint, marking every listed open ask seen."""
+    try:
+        waiting = [r for r in asks.live(world_id) if r["state"] in ("open", "seen")]
+    except (NewerSchema, OSError) as exc:
+        return [f"asks: unreadable ({type(exc).__name__})"]
+    if not waiting:
+        return ["asks: none waiting"]
+    shown = waiting[-CONTEXT_ASKS:]
+    line = f"asks ({len(waiting)} waiting): " + " · ".join(_ask_text(r) for r in shown)
+    if len(waiting) > CONTEXT_ASKS:
+        line += f" (+{len(waiting) - CONTEXT_ASKS} more)"
+    fresh = [r["n"] for r in shown if r["state"] == "open"]
+    try:
+        seen = asks.mark_seen(world_id, fresh, who) if fresh else []
+    except (LockTimeout, NewerSchema, OSError):
+        seen = []
+    if seen:
+        journal.append(
+            world_id,
+            "ask.seen",
+            actor=me,
+            args={"n": seen},
+            text="chat saw " + ", ".join(f"ask:{n}" for n in seen),
+        )
+    ids = ", ".join(f'"{r["id"]}"' for r in shown[:2])
+    more = ", …" if len(shown) > 2 else ""
+    return [
+        line,
+        f"answer them, then ui_context(answered=[{ids}{more}]) marks them done on the page",
+    ]
+
+
+def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
+    """Mark ``answered`` asks done; the ``marked answered`` line and one line per refusal."""
+    lines, wanted = [], []
+    try:
+        data = asks.read(world_id)
+    except NewerSchema as exc:
+        return [f"! asks were saved by a newer version (schema {exc.found}); nothing marked"]
+    top = data["next"] - 1
+    by_n = {a["n"]: a for a in data["asks"]}
+    for raw in answered:
+        n = asks.parse(raw)
+        if n is None:
+            lines.append(f"! {raw!r} is not an ask id (ask:N)")
+        elif n not in by_n:
+            lines.append(f"! {asks.AskMissing(n, top=top)}")
+        elif by_n[n].get("deleted"):
+            lines.append(f"! {asks.AskMissing(n, deleted=True)}")
+        else:
+            wanted.append(n)
+    try:
+        asks.mark_answered(world_id, wanted, who)
+    except asks.AskMissing as exc:
+        return [f"! {exc}; nothing marked", *lines]
+    except (LockTimeout, NewerSchema, OSError) as exc:
+        return [f"! asks are busy ({type(exc).__name__}); nothing marked", *lines]
+    if wanted:
+        journal.append(
+            world_id,
+            "ask.answered",
+            actor=me,
+            args={"n": wanted},
+            text="chat answered " + ", ".join(f"ask:{n}" for n in wanted),
+        )
+        lines.insert(0, "marked answered: " + ", ".join(f"ask:{n}" for n in wanted))
+    return lines
+
+
 def _journal_who(raw: dict | None) -> str:
     who = Actor.from_dict(raw)
     return f"{who.display()} (other session)" if who.kind == "chat" else who.display()
@@ -2025,12 +2166,22 @@ def _journal_news(world_id: str, cursor, me: int) -> tuple[list[str], float]:
 
 
 @mcp.tool(structured_output=False)
-def ui_context(save: str | None = None, world: str | None = None) -> str:
+def ui_context(
+    save: str | None = None,
+    world: str | None = None,
+    answered: Annotated[
+        list[str] | None,
+        Field(description="ask:N ids you have answered"),
+    ] = None,
+    ctx: Context | None = None,
+) -> str:
     """What the web page has open, and what changed in plans since this session last looked.
 
-    Call it first when the user says "this", "here" or "what I have open": it names the
-    page's view, plan and version, tab and selection, whether the page reads the same save
-    as you, and every plan version and chat solve by someone else since your last look.
+    Call it first when the user says "this", "here" or "what I have open", or quotes an
+    ask: or pin: id: it names the page's view, plan and version, tab and selection, whether
+    the page reads the same save as you, the asks queued for you, and every plan version
+    and chat solve by someone else since your last look. Asks it lists are marked seen on
+    the page; pass ``answered`` once you have answered them.
     """
     try:
         st = _state(save, world)
@@ -2057,6 +2208,9 @@ def ui_context(save: str | None = None, world: str | None = None) -> str:
             same = "= yours" if theirs == ours else f"≠ yours ({_short(ours)})"
             head += f" · page {_short(theirs)} {same}"
     lines = [head]
+    chat = actor(ctx)
+    if answered:
+        lines += _answer(world_id, list(answered), chat.display(), chat)
     try:
         pin_rows = pins.live(st)
         pin_line = _pins_line(pin_rows)
@@ -2067,6 +2221,7 @@ def ui_context(save: str | None = None, world: str | None = None) -> str:
         lines.append(line if is_open else "last " + line)
         lines.append(f"follow: {focus.get('follow') or 'follow'}")
     lines.append(pin_line)
+    lines += _asks_lines(world_id, chat.display(), chat)
 
     cursor = _cursor.get(world_id)
     try:

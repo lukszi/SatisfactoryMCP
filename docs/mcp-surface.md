@@ -638,6 +638,25 @@ note naming the `plan_factory(... required=[...], base_rev=, save_as=)` call tha
 It journals `plan.view` with `args {"view": "alternates", "item": <class id>}` and text
 `looked at recipes for <item>`. No tool was added.
 
+**Track and asks** (Planner P4, [planner_p4.md](planner_p4.md)). A stored plan carries a
+startup headroom, `headroom_mw` (a plan scalar the page sets; `null` is the save's nameplate).
+`diff_vs_save(plan=)` and `commission_plan(plan=)` both use it, so the stage numbers chat reads
+are the page's; `commission_plan(headroom_mw=)` still overrides it for one call (source `given
+by caller`). Both journal `plan.view` with `args {"view": "track", "stage": n|null, "section":
+"stages"|"startup"}`, which the page follows into its Track tab. Each process remembers the
+partition it last printed per plan; when a later read partitions differently, the first note is
+`the stages changed since you last read this plan (v14 -> v15): you were in stage 2 of 4, now
+stage 2 of 5`. A `commission_plan` with an explicit `headroom_mw` neither prints nor records it.
+`plan_factory save_as` never writes `headroom_mw`, so a chat save keeps the page's value.
+
+The page queues **asks** (`ask:N`, a question about a plan, process, stage, item or pin) and
+the player pastes one into chat. `ui_context` prints `asks (N waiting): ...`, the newest six open
+or seen asks with what each is about, then a hint line; every listed open ask is marked seen
+(`seen_by` the client name) and journalled as `ask.seen`. `ui_context(answered=["ask:7"])` marks
+asks answered first (journal `ask.answered`) and prints `marked answered: ask:7` as the line
+after the header; an unknown or deleted id is refused on its own line and the rest still apply.
+The server's `instructions` add "or quotes an ask: or pin: id". No tool was added.
+
 ### 10.2 Context budget
 
 The binding constraint. All 291 automatable recipes in optimal TSV = 25,313 chars (~7k tokens). **No tool

@@ -85,7 +85,8 @@ KINDS: dict[str, str] = {
     "logistics_items": "set",
 }
 FLOAT_SETS = frozenset({"clocks", "extractor_clocks"})
-PLAN_SCALARS = ("notes", "factory")
+PLAN_SCALARS = ("notes", "factory", "headroom_mw")
+HEADROOM_MAX_MW = 1_000_000.0
 KWARG_NAME = {"banned": "exclude_recipes"}
 
 
@@ -183,6 +184,13 @@ def _flag(name: str, value) -> bool:
     return value
 
 
+def _headroom(name: str, value) -> float | None:
+    number = _number(name, value, optional=True)
+    if number is not None and not 0 < number <= HEADROOM_MAX_MW:
+        raise _fail(f"{name} must be above 0 and at most {HEADROOM_MAX_MW:,.0f} MW, not {value!r}")
+    return number
+
+
 def _objective(name: str, value) -> str:
     if value not in OBJECTIVES:
         raise _fail(f"objective must be one of {', '.join(OBJECTIVES)}, not {value!r}")
@@ -201,6 +209,7 @@ _SCALAR_CHECK: dict[str, Callable] = {
     "pipe_m3min": lambda n, v: _number(n, v, optional=True),
     "notes": _text,
     "factory": _text,
+    "headroom_mw": _headroom,
 }
 
 
@@ -301,6 +310,13 @@ class PlanArgs:
         return out
 
 
+def _stored_headroom(value) -> float | None:
+    try:
+        return _headroom("headroom_mw", value)
+    except InvalidOp:
+        return None
+
+
 @dataclass
 class PlanState:
     key: str
@@ -314,6 +330,7 @@ class PlanState:
     provenance: dict = field(default_factory=dict)
     siting: dict = field(default_factory=dict)
     args: PlanArgs = field(default_factory=PlanArgs)
+    headroom_mw: float | None = None
 
     def kwargs(self) -> dict:
         return self.args.kwargs()
@@ -331,6 +348,7 @@ class PlanState:
             "provenance": copy.deepcopy(self.provenance),
             "siting": copy.deepcopy(self.siting),
             "args": self.args.to_dict(),
+            "headroom_mw": self.headroom_mw,
         }
 
     @classmethod
@@ -347,6 +365,7 @@ class PlanState:
             provenance=copy.deepcopy(raw.get("provenance") or {}),
             siting=copy.deepcopy(raw.get("siting") or {}),
             args=PlanArgs.from_dict(raw.get("args")),
+            headroom_mw=_stored_headroom(raw.get("headroom_mw")),
         )
 
     def body(self) -> dict:
@@ -414,6 +433,11 @@ def describe_op(op: dict) -> str:
     if kind == "set":
         if name == "notes":
             return "notes changed"
+        if name == "headroom_mw":
+            value = op.get("value")
+            if value is None:
+                return "startup headroom: nameplate"
+            return f"startup headroom {_fmt(float(value))} MW"
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
     if kind in ("put", "del"):
         word = "rate" if name == "export_minimums" else name

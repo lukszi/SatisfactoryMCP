@@ -11,6 +11,8 @@ merely reported. ``track`` then matches the partition back against the save.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from collections import Counter
 from dataclasses import dataclass, field
@@ -22,7 +24,10 @@ from .diff import DiffReport, group_key
 
 __all__ = [
     "DARK_STATES",
+    "ENERGISED_CAVEAT",
     "MONITORED_STATES",
+    "NO_MONITOR",
+    "RANGE_CAVEAT",
     "RUNNING_STATES",
     "Commissioning",
     "Energised",
@@ -32,6 +37,8 @@ __all__ = [
     "Wave",
     "commission",
     "live_feeders",
+    "machine_states",
+    "partition_id",
     "track",
 ]
 
@@ -49,6 +56,27 @@ DARK_STATES = frozenset({"stalled", "unmonitored"})
 #: land in one, the save carries no uptime evidence at all and the report has to say so
 #: instead of reading silence as "nothing is running".
 MONITORED_STATES = frozenset({"saturated", "intermittent", "blocked", "starved", "stalled"})
+
+ENERGISED_CAVEAT = (
+    "built and ENERGISED are different states and the save separates them only one way: "
+    "a machine that produced inside the last 300s window certainly had power, while a "
+    "machine that did not may be unpowered, starved, blocked or simply idle. mHasPower "
+    "and the circuit id are not SaveGame properties and the circuit subsystem stores "
+    "nothing, so grid membership is rebuilt at load and is NOT in the file. A fully "
+    "built, wholly dark block is a valid state here, not an anomaly"
+)
+
+RANGE_CAVEAT = (
+    "a built count is a RANGE wherever a machine cannot be attributed to this plan "
+    "(Water Extractors, OQ5): the low bound counts only the ones standing among the "
+    "plan's own. 'running' is measured over every MATCHED machine, so it can sit above "
+    "the low bound without contradicting it"
+)
+
+NO_MONITOR = (
+    "this save carries no productivity monitor for any matched machine, so "
+    "there is NO evidence either way about what is energised -- only what is built"
+)
 
 #: How many waves to attempt before giving up. A plant whose generation exceeds its draw
 #: converges geometrically, so a run that reaches this many is not converging.
@@ -332,11 +360,17 @@ class StageRow:
     verb: str = "OK"
     free: int = 0
     note: str = ""
+    key: tuple = ()
+    instances: list[str] = field(default_factory=list)
 
     @property
     def running(self) -> int:
         """Machines PROVEN to have had power: they produced inside the last window."""
         return sum(n for s, n in self.by_state.items() if s in RUNNING_STATES)
+
+    @property
+    def states(self) -> list[tuple[str, int]]:
+        return _counted(self.by_state)
 
     @property
     def to_build(self) -> int:
@@ -353,6 +387,8 @@ class Stage:
     generation_mw: float = 0.0
     available_before: float = 0.0
     available_after: float = 0.0
+    fill_s: float = 0.0
+    waits_for_fill: bool = False
 
     @property
     def machines(self) -> int:
@@ -361,6 +397,21 @@ class Stage:
     @property
     def built(self) -> int:
         return sum(r.built for r in self.rows)
+
+    def describe(self) -> str:
+        """One phrase per stage, saying only what the save supports."""
+        if self.built_max <= 0:
+            return "not built"
+        if not self.complete:
+            span = f"{self.fraction_built:.0%}"
+            if self.built_max != self.built and self.machines:
+                span = f"{span}-{self.built_max / self.machines:.0%}"
+            return f"{span} built"
+        if self.running >= self.machines:
+            return "built, all running"
+        if self.running:
+            return f"built, {self.running} running"
+        return "built, none running"
 
     @property
     def built_max(self) -> int:
@@ -428,8 +479,68 @@ class Tracking:
         """
         return sum(n for s in self.stages for st, n in s.by_state.items() if st in MONITORED_STATES)
 
+    def headline(self, brief: bool = False) -> str:
+        """Which stage the player is in; ``brief`` is the page's shorter wording."""
+        if not self.ok or not self.stages:
+            return ""
+        count = len(self.stages)
+        if self.current:
+            here = next(s for s in self.stages if s.index == self.current)
+            if brief:
+                return (
+                    f"you are in stage {self.current} of {count}: {here.fraction_built:.0%} "
+                    f"built ({here.built}/{here.machines}), {here.running} proven running"
+                )
+            done = self.current - 1
+            return (
+                f"you are in STAGE {self.current} of {count}: "
+                + (
+                    f"stages 1-{done} complete, "
+                    if done > 1
+                    else "stage 1 complete, "
+                    if done
+                    else ""
+                )
+                + f"stage {self.current} is {here.fraction_built:.0%} built "
+                f"({here.built}/{here.machines}) and {here.running} machine(s) in it are "
+                "proven running"
+            )
+        if brief:
+            return (
+                f"every stage is built ({self.built}/{self.machines}), "
+                f"{self.running} proven running"
+            )
+        return (
+            f"every stage is built ({self.built}/{self.machines} machines). "
+            f"{self.running} are proven running; the rest may be built-and-unpowered, "
+            "which is what this plan expects until you energise them"
+        )
 
-def _states_for(row, health: dict[str, str]) -> list[str]:
+
+def _counted(counter: Counter) -> list[tuple[str, int]]:
+    return sorted(((s, n) for s, n in counter.items() if n), key=lambda sn: (-sn[1], sn[0]))
+
+
+def partition_id(tracking: Tracking) -> str:
+    """A short hash of which build jobs each stage energises, and how many of each."""
+    if not tracking.ok or not tracking.stages:
+        return ""
+    shape = [
+        [stage.index, [[repr(row.key), row.machines] for row in stage.rows]]
+        for stage in tracking.stages
+    ]
+    return hashlib.sha1(json.dumps(shape).encode("utf-8")).hexdigest()[:10]
+
+
+def machine_states(report: DiffReport, game: GameData, state: WorldState) -> dict[str, str]:
+    """One health pass over every machine the diff matched: instance -> graph.health state."""
+    matched = [name for r in report.rows for name in r.have_instances]
+    if not matched:
+        return {}
+    return {m.instance: m.state for m in assess("plan", matched, game, state.projection).machines}
+
+
+def _states_for(row, health: dict[str, str]) -> list[tuple[str, str]]:
     """This build job's matched machines, running ones first.
 
     Identical machines are indistinguishable in the save -- nothing records which Refinery
@@ -437,8 +548,8 @@ def _states_for(row, health: dict[str, str]) -> list[str]:
     them and, within that, running ones first. Both halves assume progress was made in the
     order the startup sequence prescribes, which is the only rule the file supports.
     """
-    states = [health.get(name, "unmonitored") for name in row.have_instances]
-    return sorted(states, key=lambda s: (s not in RUNNING_STATES, s))
+    pairs = [(name, health.get(name, "unmonitored")) for name in row.have_instances]
+    return sorted(pairs, key=lambda p: (p[1] not in RUNNING_STATES, p[1]))
 
 
 def track(
@@ -448,6 +559,7 @@ def track(
     game: GameData,
     state: WorldState,
     plan_name: str = "",
+    health: dict[str, str] | None = None,
 ) -> Tracking:
     """Group a diff by startup wave: which stage is built, and which is proven running.
 
@@ -468,13 +580,13 @@ def track(
 
     # One health pass over every machine the diff matched, anywhere in the plan; split per
     # row it would rescan the whole projection once per build job.
-    matched = [name for r in report.rows for name in r.have_instances]
-    health = {m.instance: m.state for m in assess("plan", matched, game, state.projection).machines}
+    if health is None:
+        health = machine_states(report, game, state)
 
     # Remaining pool per build job, consumed wave by wave. `low` is the pessimistic count:
     # where machines cannot be attributed, only those standing among the plan's own are
     # certainly its own and the rest may belong to any plant.
-    pool: dict[tuple, list[str]] = {}
+    pool: dict[tuple, list[tuple[str, str]]] = {}
     low: dict[tuple, int] = {}
     for key, row in by_key.items():
         pool[key] = _states_for(row, health)
@@ -487,6 +599,8 @@ def track(
             generation_mw=wave.generation_mw,
             available_before=wave.available_before,
             available_after=wave.available_after,
+            fill_s=wave.fill_s(),
+            waits_for_fill=wave.waits_for_fill,
         )
         for energised in wave.rows:
             key = key_of_pid.get(energised.pid, ())
@@ -506,7 +620,9 @@ def track(
                     total=energised.total,
                     built=certain,
                     built_max=len(take),
-                    by_state=Counter(take),
+                    by_state=Counter(s for _, s in take),
+                    key=key,
+                    instances=[name for name, _ in take],
                     draw_mw=energised.draw_mw,
                     generation_mw=energised.generation_mw,
                     verb=diff_row.verb if diff_row else "OK",
@@ -519,10 +635,7 @@ def track(
     incomplete = [s.index for s in out.stages if not s.complete]
     out.current = incomplete[0] if incomplete else 0
     if not out.monitored:
-        out.warnings.append(
-            "this save carries no productivity monitor for any matched machine, so "
-            "there is NO evidence either way about what is energised -- only what is built"
-        )
+        out.warnings.append(NO_MONITOR)
     return out
 
 

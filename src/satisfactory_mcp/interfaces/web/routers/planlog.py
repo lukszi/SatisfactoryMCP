@@ -104,6 +104,7 @@ class PlanStateBody(TypedDict):
     plan_id: str
     siting: dict | None
     args: PlanArgsBody
+    headroom_mw: float | None
     names: dict[str, str]
     head: int
     text: str
