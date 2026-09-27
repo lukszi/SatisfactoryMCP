@@ -7,60 +7,27 @@ import { mw } from "./format";
 import { loadOne } from "./load";
 import { showCircuit, vitals } from "./panel";
 import { go, mapButton, pointButton, table } from "./dashboard";
+import { bar, circuitDark, circuitName, headroom } from "./powerview";
 
 import type { CircuitRow, Ledger, MachineRef, StarvedGenerator } from "./api-shapes";
-
-export function powerBar(ledger: Ledger): HTMLElement {
-  var track = make("div", "panel-bar dash-bar");
-  var cap = Math.max(ledger.generation_mw, ledger.draw_mw, 1);
-  var nameplate = make("span", "panel-bar-nameplate");
-  nameplate.style.width = Math.min(100, (ledger.draw_mw / cap) * 100) + "%";
-  var measured = make("span", "panel-bar-measured");
-  measured.style.width = Math.min(100, (ledger.measured_draw_mw / cap) * 100) + "%";
-  var generation = make("span", "panel-bar-cap");
-  generation.style.left = Math.min(100, (ledger.generation_mw / cap) * 100) + "%";
-  track.appendChild(nameplate);
-  track.appendChild(measured);
-  track.appendChild(generation);
-  track.title =
-    mw(ledger.measured_draw_mw) +
-    " measured draw, " +
-    mw(ledger.draw_mw) +
-    " nameplate, against " +
-    mw(ledger.generation_mw) +
-    " generation";
-  return track;
-}
-
-function signed(value: number): string {
-  return (value > 0 ? "+" : "") + mw(value);
-}
 
 export function headroomTiles(ledger: Ledger, href?: string, counts?: boolean): HTMLElement[] {
   return [
     tile(
       "headroom now",
-      signed(ledger.measured_headroom_mw),
+      headroom(ledger.measured_headroom_mw),
       mw(ledger.measured_draw_mw) + " measured draw" + (counts ? " · " + ledger.monitored + " machines measured" : ""),
       ledger.measured_headroom_mw < 0,
       href
     ),
     tile(
       "headroom at full rate",
-      signed(ledger.headroom_mw),
+      headroom(ledger.headroom_mw),
       mw(ledger.draw_mw) + " nameplate draw" + (counts ? " · " + ledger.unmonitored + " unmeasured, charged in full" : ""),
       ledger.headroom_mw < 0,
       href
     ),
   ];
-}
-
-function circuitName(row: CircuitRow): string {
-  return row.factories.length ? row.factories.join(", ") : "circuit " + (row.index + 1);
-}
-
-function circuitDark(row: CircuitRow): boolean {
-  return row.ledger.generation_mw <= 0 && row.consumers > 0;
 }
 
 export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
@@ -84,10 +51,10 @@ export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
     cell(tr, link("power/" + (r.index + 1), circuitName(r)));
     cell(tr, circuitDark(r) ? "no generator" : mw(led.generation_mw), "num" + (circuitDark(r) ? " bad" : ""));
     cell(tr, mw(led.measured_draw_mw), "num");
-    cell(tr, signed(led.measured_headroom_mw), "num" + (led.measured_headroom_mw < 0 ? " bad" : ""));
-    cell(tr, signed(led.headroom_mw), "num" + (led.headroom_mw < 0 ? " bad" : ""));
+    cell(tr, headroom(led.measured_headroom_mw), "num" + (led.measured_headroom_mw < 0 ? " bad" : ""));
+    cell(tr, headroom(led.headroom_mw), "num" + (led.headroom_mw < 0 ? " bad" : ""));
     cell(tr, r.consumers, "num");
-    cell(tr, powerBar(led), "bar");
+    cell(tr, bar(led), "bar");
     cell(
       tr,
       r.bbox_m
@@ -170,7 +137,7 @@ export function renderPower(body: HTMLElement): void {
   }
   heading(body, "whole world");
   body.appendChild(ledgerTiles(data.world));
-  body.appendChild(powerBar(data.world));
+  body.appendChild(bar(data.world, true));
   var facts: string[] = [];
   if (data.generators.length) {
     facts.push(
@@ -222,7 +189,7 @@ export function renderCircuit(body: HTMLElement, subject: string): void {
   body.appendChild(head);
   note(body, row.consumers + " consumers · " + row.poles + " poles and towers");
   body.appendChild(ledgerTiles(row.ledger));
-  body.appendChild(powerBar(row.ledger));
+  body.appendChild(bar(row.ledger));
   if (row.generators.length) {
     note(
       body,

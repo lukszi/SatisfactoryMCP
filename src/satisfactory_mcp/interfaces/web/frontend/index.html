@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Satisfactory &mdash; world map</title>
+    <title>Satisfactory</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2316181c'/%3E%3Cpath d='M3 12V7l5-3 5 3v5' fill='none' stroke='%236ea8d8' stroke-width='2'/%3E%3Ccircle cx='8' cy='10' r='1.6' fill='%23ffd000'/%3E%3C/svg%3E" />
     <!--
       Bundled, not CDN'd: this tool reads a local save directory and has no business needing
       the internet to draw. Leaflet is compiled into the bundle, so every build carries its
@@ -27,6 +28,7 @@
       <select id="save" title="which save of this world to read; 'newest save' follows the game as it writes"></select>
       <span id="summary" class="muted">loading&hellip;</span>
       <div id="search" role="search">
+        <button type="button" id="search-open" aria-label="search items, recipes and factories" title="search ( / )"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 10l4 4" stroke="currentColor" stroke-width="1.6"/></svg></button>
         <input id="search-q" type="search" autocomplete="off" placeholder="Search items, recipes, factories  ( / )" aria-label="search items, recipes and factories" />
         <div id="search-hits" role="listbox" hidden></div>
       </div>

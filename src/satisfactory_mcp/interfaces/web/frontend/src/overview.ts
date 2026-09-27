@@ -9,7 +9,8 @@ import { vitals } from "./panel";
 import { stateTone } from "./placements";
 import { milestoneTile } from "./progress";
 import { factoryMapButton, go, pointButton, table } from "./dashboard";
-import { circuitTable, headroomTiles, powerBar } from "./power-tab";
+import { circuitTable, headroomTiles } from "./power-tab";
+import { bar as powerBar } from "./powerview";
 
 import type { FactoryHealthRow, MachineIssue, MachineRef, StarvedGenerator } from "./api-shapes";
 
