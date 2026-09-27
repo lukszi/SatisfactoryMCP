@@ -4,6 +4,7 @@ This is the developer half of the README: how the code is laid out and tested, h
 data gets regenerated, and where every byte of data comes from. For what the project *does*,
 start at the [README](../README.md); for scope, decisions and architecture in full, read
 [DESIGN.md](../DESIGN.md), which indexes the deeper documents in this directory.
+Versions, branches and releases are in [releasing.md](releasing.md).
 
 ## Tests
 
