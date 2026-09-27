@@ -629,6 +629,19 @@ def test_describe_op_uses_the_contract_words():
     assert describe_op({"op": "record", "field": "plan_id", "value": "x"}) == ""
 
 
+def test_recipe_members_read_as_names_once_a_namer_is_set(monkeypatch):
+    op = {"op": "add", "field": "banned", "member": "Recipe_UnpackageOilResidue_C"}
+    assert describe_op(op) == "+banned Recipe_UnpackageOilResidue_C"
+    monkeypatch.setattr(
+        planlog, "_namer", [lambda: {"Recipe_UnpackageOilResidue_C": "Unpackage Heavy Oil Residue"}]
+    )
+    assert describe_op(op) == "+banned Unpackage Heavy Oil Residue"
+    assert describe_op({**op, "member": "Recycled"}) == "+banned Recycled"
+    assert describe_op({**op, "field": "sources", "member": "Recipe_UnpackageOilResidue_C"}) == (
+        "+sources Recipe_UnpackageOilResidue_C"
+    )
+
+
 def test_actor_words():
     assert CHAT.display() == "Claude Code"
     assert Actor("chat", "claude-ai").display() == "Claude Desktop"

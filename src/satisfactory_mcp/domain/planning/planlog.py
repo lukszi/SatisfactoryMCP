@@ -48,6 +48,7 @@ __all__ = [
     "inverse",
     "is_power",
     "merge_key",
+    "use_recipe_names",
 ]
 
 SNAPSHOT_EVERY = 50
@@ -392,6 +393,22 @@ def _fmt(value) -> str:
     return str(value)
 
 
+_namer: list[Callable[[], dict[str, str]]] = []
+
+
+def use_recipe_names(source: Callable[[], dict[str, str]] | None) -> None:
+    _namer[:] = [source] if source is not None else []
+
+
+def _member_name(field_name: str, member) -> str:
+    if not _namer or field_name not in ("banned", "required"):
+        return _fmt(member)
+    try:
+        return _namer[0]().get(member, _fmt(member))
+    except Exception:
+        return _fmt(member)
+
+
 def describe_op(op: dict) -> str:
     kind, name = op.get("op"), op.get("field", "")
     if kind == "set":
@@ -411,7 +428,7 @@ def describe_op(op: dict) -> str:
         )
     if kind in ("add", "remove"):
         sign = "+" if kind == "add" else MINUS
-        return f"{sign}{name} {_fmt(op.get('member'))}"
+        return f"{sign}{name} {_member_name(name, op.get('member'))}"
     if kind == "site":
         if not op.get("value"):
             return "site cleared"
