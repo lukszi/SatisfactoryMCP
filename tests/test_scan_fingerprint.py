@@ -40,7 +40,7 @@ def tree(tmp_path, monkeypatch):
     fingerprint, and the fingerprint reads no file contents at all.
     """
     proj._SCANS.clear()
-    account = tmp_path / "76561198012179453"
+    account = tmp_path / "76561190000000001"
     account.mkdir()
     write(account / "Han Solo_autosave_0.sav", b"x" * 100)
 

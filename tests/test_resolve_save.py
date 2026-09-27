@@ -39,7 +39,7 @@ def _save(
 ) -> dict:
     """A header row shaped exactly as the sidecar's ``header_info`` emits one."""
     return {
-        "path": path or f"C:/saves/76561198012179453/{filename}",
+        "path": path or f"C:/saves/76561190000000001/{filename}",
         "filename": filename,
         "session_name": session,
         "save_identifier": wid,
