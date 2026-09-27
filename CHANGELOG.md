@@ -12,15 +12,19 @@ Planned as 0.2.0.
 
 - **BREAKING: do not downgrade after running this version.** Plans move from
   `plans/<world>.json` to a versioned op log under `plans/<world>/`. The migration runs once,
-  on first access, and leaves the old file in place untouched; no separate backup copy is
-  made. An older version keeps reading that old file, so it will not see plans created or
-  changed after the upgrade, and anything it writes there is not carried back into the log.
+  on first access, leaves the old file in place untouched and first copies it to
+  `plans/<world>/backup-v<version>/`. An older version keeps reading that old file, so it
+  will not see plans created or changed after the upgrade, and anything it writes there is
+  not carried back into the log.
   Do not run an older MCP server next to a newer web server.
 - Rebuild the web page (`npm ci && npm run build`) or unzip the release's `static.zip`.
 - `world_summary` reports `last_hard_drive_analysed` in place of `last_hard_drive_spent`: the
   save's counter names the drive analysed last, which can still be pending.
 - The power ledger leaves out machines and generators on no wire, so `power_report` and the
   header can read lower draw than before; `/api/power/circuits` reports them under `off_grid`.
+- Label writes answer a bad name with 400 and an unknown label with 404 (both were 409); a
+  409 carries `stale`, `name_taken` and `pin` flags. Names with `/` or over 60 characters
+  are refused for new labels.
 
 ### Added
 
@@ -57,6 +61,11 @@ Planned as 0.2.0.
 - Leaving a factory rename unfinished no longer freezes the dashboard or side panel.
 - A malformed `%` escape in the address no longer stops the page from loading.
 - Power circuit names follow a factory rename without a reload.
+- A label holding `/` can be renamed or forgotten; a rename writes the label before
+  repointing plans and reports any plan it could not move.
+- Files written by a newer version are refused, not overwritten; a plan exporting power
+  under any spelling stores it as `MW`.
+- `npm run typegen` takes the server port as an argument or from `SATISFACTORY_WEB_PORT`.
 
 ## [0.1.0] - 2026-09-27
 
