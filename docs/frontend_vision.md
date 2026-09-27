@@ -147,7 +147,7 @@ tool table.
 |---|---|---|---|---|
 | `list_worlds` | Header world picker | none | dropdown, saves per world | exists `/api/worlds` |
 | `world_summary` | Status strip + World > Overview | none | vitals, last active schematic, problems | exists `/api/summary` (partial: add problems, warnings) |
-| `unlocked_recipes` | Recipes > Unlocked | alternates-only toggle | sortable table | new |
+| `unlocked_recipes` | Recipes > Unlocked | alternates-only toggle | sortable table | **built** `/api/gamedata/unlocked` (§12) |
 | `power_report` | Power (step 0) | none | capacity vs draw, nameplate + measured, per generator kind | new (step 0 may add it) |
 | `factory_sites` | Factories > Sites | none | cluster list; map clusters | new (or fold into `/api/factories`) |
 | `whereami` | Header "me" button; World > Here | radius slider | player marker + nearby list | exists (`/api/summary.player`) + new for the nearby list |
@@ -172,18 +172,18 @@ tool table.
 | `stock` | Inventory > Stock | item, "where" toggle | four piles as columns; where rows fly to box | **built** `/api/stock` (§10) |
 | `storage` | Inventory > Containers | item, near (click), radius, solid/fluid, show empty | container table with fill bar; map filter | **built** from `/api/stock` (§10); filters client-side |
 | `crates` | Inventory > Crates | none | list, sorted by distance to me | **built** from `/api/stock` (§10) |
-| `phase_requirements` | Progress > Elevator | none | have / short / deliverable | new |
-| `power_shards` | Power > Shards | plan machines, plan clock | held / committed / free; cost of an overclock plan | new |
-| `somersloops` | Power > Sloops | none | held / slotted / owned; where slotted | new |
-| `mam_research` | Progress > MAM | show todo/affordable/all, query | tree or table with cost, have, affordable | new |
-| `milestones` | Progress > Milestones | show, tier, query | per tier cost / have / short / grants | new |
+| `phase_requirements` | Progress > Elevator | none | have / short / deliverable | **built** `/api/progress/phase`, Progress > Space Elevator (§11) |
+| `power_shards` | Power > Shards | plan machines, plan clock | held / committed / free; cost of an overclock plan | **built** `/api/progress/shards`, Progress > Power shards (§11) |
+| `somersloops` | Power > Sloops | none | held / slotted / owned; where slotted | **built** `/api/progress/sloops`, Progress > Somersloops (§11) |
+| `mam_research` | Progress > MAM | show todo/affordable/all, query | tree or table with cost, have, affordable | **built** `/api/progress/mam` (§11) |
+| `milestones` | Progress > Milestones | show, tier, query | per tier cost / have / short / grants | **built** `/api/progress/milestones` (§8, §11) |
 | `collected_from_world` | World > Collectibles | group, show census/collected/remaining/nearest, near | census + list; pickups layer | exists `/api/collectibles` |
-| `list_pending_hard_drive_choices` | Progress > Hard drives | none | per drive: two options, rerolls, recipes granted | new |
+| `list_pending_hard_drive_choices` | Progress > Hard drives | none | per drive: two options, rerolls, recipes granted | **built** `/api/progress/harddrives` (§11) |
 | `advise_hard_drive_pick` | Progress > Hard drives > "rank options" | drive, sources | options by marginal value | new (slow: counterfactual LPs) |
-| `search_items` | Search box; Recipes > Items | query | list: form, energy, sink points | new |
-| `recipe_detail` | Recipes > recipe card | recipe | rates, machine, power, unlocked by | new |
-| `alternates_for_item` | Recipes > item card | item, include locked | recipes that make it, HAVE/LOCKED | new |
-| `search_recipes` | Recipes > Search | query, consumes, produces, part/building/manual/all, alternates only, events | census header + rows | new |
+| `search_items` | Search box; Recipes > Items | query | list: form, energy, sink points | **built** `/api/gamedata/items`, `/api/search` (§12) |
+| `recipe_detail` | Recipes > recipe card | recipe | rates, machine, power, unlocked by | **built** `/api/gamedata/recipe` (§12) |
+| `alternates_for_item` | Recipes > item card | item, include locked | recipes that make it, HAVE/LOCKED | **built** `/api/gamedata/alternates` (§12) |
+| `search_recipes` | Recipes > Search | query, consumes, produces, part/building/manual/all, alternates only, events | census header + rows | **built** `/api/gamedata/recipes` (§12) |
 | `list_buildings` | Recipes > Buildings | building kind | table | new |
 | `factory_map` | Factories > Candidates / Slabs / Unlabelled | show candidates/named/slabs/unlabelled/all | lists; slab outlines on the map | exists `/api/factories`, `/api/structures` (partial) |
 | `factory_query` | Factory detail tabs | factory, aspects (summary, machines, recipes, buildings, balance, inputs, outputs, internal, power, nodes, links, issues) | one sub-tab per aspect | new |
@@ -298,7 +298,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/progress/harddrives` | GET | `domain/progression/harddrives.py` | **built**, under `/api/progress/` |
 | `/api/harddrives/{id}/advice` | POST | `domain/planning/advisor.py` | slow |
 | `/api/progress/shards`, `/api/progress/sloops` | GET | `domain/progression/shards.py` | **built**, under `/api/progress/` |
-| `/api/gamedata/{items,recipes,recipe/{id},buildings,alternates}` | GET | `core/gamedata` | no save needed except HAVE/LOCKED |
+| `/api/gamedata/{items,recipes,recipe,alternates,unlocked}`, `/api/search` | GET | `core/gamedata` | **built** (§12); no save needed except HAVE/LOCKED; `buildings` still open |
 | `/api/nodes/fields`, `/api/sites/rank` | GET | `domain/spatial/select.py`, `ranking.py` | |
 | `/api/conduits` | GET | `domain/world/conduits.py` | |
 | `/api/select/nodes`, `/api/select/machines` | GET | the two selector modules | live preview counts |
@@ -954,8 +954,9 @@ Phase 5 of §6. It is a read-only surface over the game data, marked against the
   its card (`dash=recipes/item/<cls>`), with **made by** (alternates first, HAVE/LOCKED,
   granted by) and **used by** (every kind, per minute, per build or per craft). Clicking a
   recipe opens its card (`dash=recipes/recipe/<cls>`), with machine, cycle, power, grants,
-  and in and out rates that link to items. Item icons come from `/api/icons` and disappear
-  when the directory has none.
+  and in and out rates that link to items. Item icons come from `/api/icons`. The codex
+  sends one HEAD probe first and draws no icons when it answers 204, so an install without
+  the icon directory logs no 404 per item.
 - **Header search** (`frontend/src/search.ts`). One box, focused with `/`. Results are
   grouped as factories, items and recipes, eight of each, with the totals said below. Arrow
   keys and Enter pick a result. A factory opens its dashboard detail, and an item or recipe
