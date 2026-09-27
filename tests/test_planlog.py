@@ -735,6 +735,83 @@ def test_no_legacy_file_means_nothing_to_migrate(plans):
     assert plans.migrate() == {} and not (plans.root / "migrated.json").exists()
 
 
+def test_the_migration_backs_up_the_legacy_file_and_stamps_its_version(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+    monkeypatch.setattr(planlog.schema, "writer_version", lambda: "9.8.7")
+    legacy = _legacy(tmp_path)
+    before = legacy.read_bytes()
+    plans = PlanLog("W")
+    backup = plans.root / "backup-v9.8.7" / "W.json"
+    assert backup.read_bytes() == before
+    marker = json.loads((plans.root / "migrated.json").read_text(encoding="utf-8"))
+    assert marker["version"] == "9.8.7"
+
+
+def test_a_legacy_file_from_a_newer_schema_is_refused_and_nothing_is_written(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+    legacy = _legacy(tmp_path)
+    raw = json.loads(legacy.read_text(encoding="utf-8"))
+    legacy.write_text(json.dumps({**raw, "schema": planlog.SCHEMA + 1}), encoding="utf-8")
+    with pytest.raises(planlog.schema.NewerSchema, match="newer version"):
+        PlanLog("W")
+    root = PlanLog.dir_for("W")
+    assert not (root / "migrated.json").exists()
+    assert not list(root.glob("*/ops.jsonl")) and not list(root.glob("backup-*"))
+
+
+def test_a_log_migrated_by_a_newer_schema_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+    _legacy(tmp_path)
+    marker = PlanLog("W").root / "migrated.json"
+    raw = json.loads(marker.read_text(encoding="utf-8"))
+    marker.write_text(json.dumps({**raw, "schema": planlog.SCHEMA + 1}), encoding="utf-8")
+    with pytest.raises(planlog.schema.NewerSchema):
+        PlanLog("W")
+
+
+def test_every_spelling_of_power_is_stored_as_mw(tmp_path, monkeypatch):
+    """The migration once stored the solver's ``__MW__``, and the page's "+MW" then added
+    a second power export beside it."""
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+    legacy = _legacy(tmp_path)
+    raw = json.loads(legacy.read_text(encoding="utf-8"))
+    raw["plans"][0]["args"]["exports"] = ["__MW__", "Plastic"]
+    raw["plans"][0]["args"]["export_minimums"] = {"power": 50, "Plastic": 920}
+    legacy.write_text(json.dumps(raw), encoding="utf-8")
+    plans = PlanLog("W")
+    spire = plans.find("spire")
+    assert spire.args.exports == ["MW", "Plastic"]
+    assert spire.args.export_minimums == {"MW": 50.0, "Plastic": 920.0}
+    pushed = plans.push(
+        spire.key, 1, [{"op": "add", "field": "exports", "member": "MW"}], actor=PAGE
+    )
+    assert pushed.noop and plans.find("spire").args.exports == ["MW", "Plastic"]
+    plans.push(spire.key, 1, [{"op": "remove", "field": "exports", "member": "power"}], actor=PAGE)
+    assert plans.find("spire").args.exports == ["Plastic"]
+    assert all(planlog.is_power(x) for x in ("MW", "mw", " Power ", "__MW__"))
+    assert not planlog.is_power("Plastic")
+
+
+def test_an_older_log_that_stored_the_solver_spelling_replays_as_mw(plans):
+    key = plans.create("rig", {"exports": ["Plastic"]}, actor=CHAT).key
+    ops = plans._ops(key)
+    lines = ops.read_text(encoding="utf-8").splitlines()
+    first = json.loads(lines[0])
+    first["ops"][0]["state"]["args"]["exports"] = ["__MW__", "Plastic"]
+    ops.write_text(json.dumps(first) + "\n", encoding="utf-8")
+    shutil.rmtree(plans.root / key / "snap")
+    assert plans.state(key).args.exports == ["MW", "Plastic"]
+
+
+def test_free_name_is_the_one_check_for_a_plan_name(plans, plan):
+    assert plans.free_name("  coast  ") == "coast"
+    assert plans.free_name("NORTH HMF", plan) == "NORTH HMF"
+    with pytest.raises(NameTaken):
+        plans.free_name("NORTH HMF")
+    with pytest.raises(InvalidOp, match="cannot be blank"):
+        plans.free_name("   ")
+
+
 # ------------------------------------------------------------ two processes
 
 

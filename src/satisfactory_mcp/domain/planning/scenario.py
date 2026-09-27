@@ -21,6 +21,7 @@ from ..spatial import nodes as nodes_mod
 from ..spatial.select import Selection, select_nodes
 from . import siting as siting_mod
 from .optimize import MW, Scenario
+from .planlog import is_power
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ..world.state import WorldState
@@ -66,12 +67,12 @@ def resolve_item(game: GameData, query: str) -> str | None:
 def _export_token(game: GameData, name: str) -> tuple[str | None, str | None]:
     """Resolve one export token to an item id, or say why it cannot be.
 
-    Returns ``(id, None)`` or ``(None, error)``. MW, mw, power and Power all mean the grid
+    Returns ``(id, None)`` or ``(None, error)``. ``planlog.is_power`` spellings mean the grid
     pseudo-item. An unresolvable token is NAMED rather than passed through: as an item id
     no process produces it would enter the LP as an unsatisfiable balance row and come back
     as a bare INFEASIBLE with nothing pointing at the typo.
     """
-    if name == MW or str(name).strip().casefold() in ("mw", "power"):
+    if is_power(name):
         return MW, None
     resolved = resolve_item(game, name)
     if resolved is None:

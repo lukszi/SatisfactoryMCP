@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData
 from .carrier import carrier_for
+from .planlog import is_power
 from .slice import PlanSlice, slice_of
 
 __all__ = ["Interface", "Site", "SitePlan", "claim_processes", "partition"]
@@ -84,13 +85,6 @@ class SitePlan:
         return not (self.unassigned or self.contested or self.unsupplied or self.empty)
 
 
-#: The spellings ``exports`` already accepts for grid power, so a site can be keyed on the
-#: thing it exists to produce. A generator hall's product is MW -- the ``__MW__`` sentinel,
-#: which is no process label -- so without these a caller who writes ``{"hall": ["MW"]}``
-#: gets an empty site and every generator in `unassigned`.
-_POWER_TOKENS = frozenset({"mw", "power", "__mw__"})
-
-
 def _matches(proc: dict, pattern: str) -> bool:
     """Same widening match as ``exclude_recipes``: label, building name, building id, plus
     MW/power for every generator, since power is a product a site can be defined by.
@@ -101,7 +95,7 @@ def _matches(proc: dict, pattern: str) -> bool:
     needle = pattern.strip().casefold()
     if not needle:
         return False
-    if needle in _POWER_TOKENS:
+    if is_power(needle):
         # Exact token, not substring: "power" as a substring would also claim every
         # "Coal-Powered Generator" LABEL -- true but redundant -- and, worse, any future
         # process whose label merely contains the word.

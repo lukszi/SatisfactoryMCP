@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from ... import config
+from ...core import schema
 
 __all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore"]
 
@@ -91,6 +92,7 @@ class PlanStore:
         if not path.is_file():
             return cls(world_id=world_id, session_name=session_name)
         raw = json.loads(path.read_text(encoding="utf-8"))
+        schema.check(raw, SCHEMA, path)
         return cls(
             world_id=raw.get("world_id", world_id),
             session_name=raw.get("session_name", session_name),

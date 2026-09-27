@@ -442,14 +442,10 @@ def rename_plan(
     stored = st.plans.find(name)
     if stored is None:
         return _unknown(st, name)
-    wanted = to.strip()
-    if not wanted:
-        return "! a plan name cannot be blank"
-    # Case-insensitively, because `find` matches that way: two plans differing only in
-    # case would make every later recall ambiguous.
-    taken = wanted.casefold()
-    if any(p.key != stored.key and p.name.casefold() == taken for p in st.plans.plans):
-        return f"! this world already has a plan named {wanted!r}"
+    try:
+        wanted = _log(st).free_name(to, stored.key)
+    except PlanLogError as exc:
+        return f"! {exc}"
     was = stored.name
     if was == wanted:
         return f"plan {was!r} already has that name"
