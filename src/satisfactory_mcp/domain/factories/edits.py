@@ -6,30 +6,34 @@ docs/frontend_vision.md §9.6 has the concurrency rule.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..planning.planlog import Actor, PlanLog
-from .labels import Label, LabelError, LabelStore
+from ...core.filelock import LockTimeout
+from ..planning.planlog import Actor, PlanLog, PlanLogError
+from .labels import Label, LabelStore, UnknownLabel
 
 __all__ = ["Renamed", "amend", "forget", "name", "rename", "repoint_plans"]
 
 
 @dataclass(frozen=True)
 class Renamed:
+    """``plans`` followed the new name; ``stuck`` still name the old one, with why."""
+
     name: str
     was: str
     machines: int
     plans: list[str]
     version: int
     path: Path
+    stuck: list[str]
+    why: str
 
 
 def _pick(store: LabelStore, name: str, exact: bool) -> Label:
     label = next((x for x in store.labels if x.name == name), None) if exact else store.find(name)
     if label is None:
-        raise LabelError(f"no factory named {name!r}")
+        raise UnknownLabel(f"no factory named {name!r}")
     return label
 
 
@@ -63,27 +67,36 @@ def forget(
 
 
 def repoint_plans(
-    world_id: str, session: str, was: str, now: str, actor: Actor | None = None
-) -> list[str]:
-    """Point stored plans scoped to factory ``was`` at ``now``; returns their names.
+    world_id: str, session: str, was: str, now: str, actor: Actor
+) -> tuple[list[str], list[str], str]:
+    """Point stored plans scoped to factory ``was`` at ``now``.
 
-    ``Plan.factory`` is resolved by name whenever ``diff_vs_save`` or ``plan_layout``
-    scopes itself to one, so a rename that left it behind would orphan the plan. A
-    mechanical follow-up, so it lands at the head (``PlanLog.push_at_head``).
+    Returns the plans moved, the plans left behind and why the first of those failed. Each
+    plan is its own write, so one that is busy does not stop the rest. ``Plan.factory`` is
+    resolved by name whenever ``diff_vs_save`` or ``plan_layout`` scopes itself to one, so
+    a rename that left it behind would orphan the plan. A mechanical follow-up, so it lands
+    at the head (``PlanLog.push_at_head``).
     """
     log = PlanLog(world_id, session)
-    who = actor or Actor("system", "", os.getpid())
-    moved = []
+    moved: list[str] = []
+    stuck: list[str] = []
+    why = ""
     for state in log.heads():
-        if state.factory and state.factory.casefold() == was.casefold():
+        if not (state.factory and state.factory.casefold() == was.casefold()):
+            continue
+        try:
             log.push_at_head(
                 state.key,
                 [{"op": "set", "field": "factory", "value": now}],
-                actor=who,
+                actor=actor,
                 note=f"factory renamed {was!r} to {now!r}",
             )
-            moved.append(state.name)
-    return moved
+        except (PlanLogError, LockTimeout, OSError) as exc:
+            stuck.append(state.name)
+            why = why or str(exc)
+            continue
+        moved.append(state.name)
+    return moved, stuck, why
 
 
 def rename(
@@ -91,19 +104,34 @@ def rename(
     session: str,
     name: str,
     to: str,
+    *,
+    actor: Actor,
     exact: bool = False,
     expect: int | None = None,
-    actor: Actor | None = None,
 ) -> Renamed:
-    """Rename one label, keeping its machines, and move the stored plans scoped to it."""
+    """Rename one label, keeping its machines, then move the stored plans scoped to it.
+
+    The label is written first: a plan re-pointed at a name no label holds yet would be
+    orphaned by a label write that then failed. A plan that cannot follow is reported in
+    ``Renamed.stuck`` rather than undoing a rename that did land.
+    """
     with LabelStore.editing(world_id, session, expect) as store:
         label = _pick(store, name, exact)
         was = store.rename(label, to)
-        moved = (
-            repoint_plans(world_id, session, was, label.name, actor) if was != label.name else []
-        )
+    moved, stuck, why = (
+        repoint_plans(world_id, session, was, label.name, actor)
+        if was != label.name
+        else ([], [], "")
+    )
     return Renamed(
-        label.name, was, len(label.anchors), moved, store.version, LabelStore.path_for(world_id)
+        label.name,
+        was,
+        len(label.anchors),
+        moved,
+        store.version,
+        LabelStore.path_for(world_id),
+        stuck,
+        why,
     )
 
 

@@ -2508,6 +2508,22 @@ export interface components {
             /** Items */
             items: components["schemas"]["ItemRow"][];
         };
+        /**
+         * LabelRefusedResponse
+         * @description A label write that changed nothing. One flag names the cause: ``stale`` (the store
+         *     moved since ``version``), ``name_taken`` (another label holds the name) or ``pin`` (the
+         *     save moved since ``as_of``).
+         */
+        LabelRefusedResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            /** Name Taken */
+            name_taken: boolean;
+            /** Pin */
+            pin: boolean;
+        };
         /** Ledger */
         Ledger: {
             /** Generation Mw */
@@ -3583,7 +3599,11 @@ export interface components {
                 [key: string]: components["schemas"]["RegionExtent"];
             };
         };
-        /** RenamedResponse */
+        /**
+         * RenamedResponse
+         * @description ``plans`` followed the new name; ``plans_stuck`` could not and still name ``was``,
+         *     for the reason in ``stuck_reason``. The label itself is renamed either way.
+         */
         RenamedResponse: {
             /** Name */
             name: string;
@@ -3593,6 +3613,10 @@ export interface components {
             machines: number;
             /** Plans */
             plans: string[];
+            /** Plans Stuck */
+            plans_stuck: string[];
+            /** Stuck Reason */
+            stuck_reason: string;
             /** Version */
             version: number;
             /** Stored In */
@@ -5553,6 +5577,15 @@ export interface operations {
                     "application/json": components["schemas"]["NamedResponse"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRefusedResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5586,6 +5619,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ForgotResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRefusedResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5624,6 +5666,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenamedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRefusedResponse"];
                 };
             };
             /** @description Validation Error */

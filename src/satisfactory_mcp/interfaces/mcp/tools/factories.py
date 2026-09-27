@@ -11,6 +11,7 @@ from typing import Annotated
 from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from ....core.filelock import LockTimeout
 from ....core.saveio import ports
 from ....domain.factories import edits
 from ....domain.factories.labels import LabelError, stamp
@@ -41,6 +42,15 @@ FLOW_ASPECTS = frozenset({"summary", "balance", "outputs", "inputs", "internal"}
 #: so a list of eight is a list of eight things the reader can go and look at; a hundred of
 #: them is one unwired BLOCK, and its name is not in this note.
 UNWIRED_NAMED = 8
+
+#: What every label write catches, so each of them words a refusal the same way.
+LABEL_REFUSALS = (LabelError, LockTimeout)
+
+
+def _label_refused(exc: Exception) -> str:
+    if isinstance(exc, LockTimeout):
+        return "! factory labels are busy (another writer held the lock); nothing written"
+    return f"! {exc}; nothing written"
 
 
 def _named(instances: list[str]) -> str:
@@ -1393,7 +1403,10 @@ def name_factory(
     if dry_run:
         return render.envelope(f"# {head}", "", warn + ["dry run: nothing written"])
 
-    edits.name(st.world_id, _session(st), name, cand, notes=notes, when=stamp(st.header))
+    try:
+        edits.name(st.world_id, _session(st), name, cand, notes=notes, when=stamp(st.header))
+    except LABEL_REFUSALS as exc:
+        return _label_refused(exc)
     path = store.path_for(store.world_id)
     return render.envelope(f"# {head}", f"stored in {path}", warn)
 
@@ -1432,9 +1445,9 @@ def rename_factory(
     if label.name == to.strip():
         return f"factory {label.name!r} already has that name"
     try:
-        done = edits.rename(st.world_id, _session(st), label.name, to, exact=True, actor=actor(ctx))
-    except LabelError as exc:
-        return f"! {exc}"
+        done = edits.rename(st.world_id, _session(st), label.name, to, actor=actor(ctx), exact=True)
+    except LABEL_REFUSALS as exc:
+        return _label_refused(exc)
     notes = [
         (
             f"recall it as factory={done.name!r}; its {done.machines} anchor "
@@ -1443,6 +1456,12 @@ def rename_factory(
     ]
     if done.plans:
         notes.append(f"{len(done.plans)} stored plan(s) followed it: {', '.join(done.plans)}")
+    if done.stuck:
+        notes.append(
+            f"{len(done.stuck)} stored plan(s) still name {done.was!r} and did not follow "
+            f"({done.why}): {', '.join(done.stuck)}; save each again with "
+            f"factory={done.name!r} to re-point it"
+        )
     return render.envelope(
         f"# renamed factory {done.was!r} to {done.name!r}\nstored in {done.path}", "", notes
     )
@@ -1514,7 +1533,7 @@ def amend_factory(
         dropped = store.detach(label, going)
     except LabelError as exc:
         label.anchors = before
-        return f"! {exc}"
+        return _label_refused(exc)
 
     pruned = sum(1 for m in dropped if m not in alive)
     standing = sorted(set(label.anchors) & alive)
@@ -1548,8 +1567,8 @@ def amend_factory(
             notes=notes,
             when=stamp(st.header),
         )
-    except LabelError as exc:
-        return f"! {exc}"
+    except LABEL_REFUSALS as exc:
+        return _label_refused(exc)
     path = store.path_for(store.world_id)
     if left := len(set(label.anchors) - alive):
         warn.append(
@@ -1621,8 +1640,8 @@ def forget_factory(
         return f"! no label named {name!r}. Known: {known}"
     try:
         edits.forget(st.world_id, _session(st), label.name, exact=True)
-    except LabelError as exc:
-        return f"! {exc}"
+    except LABEL_REFUSALS as exc:
+        return _label_refused(exc)
     return f"forgot {label.name!r} ({len(label.anchors)} machine(s) released)"
 
 

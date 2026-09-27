@@ -315,7 +315,8 @@ def test_labels_round_trip_through_disk(tmp_path, monkeypatch):
     store = LabelStore(world_id="TEST_WORLD/1", session_name="Test")
     label = store.put("steel factory", STEEL, notes="ingots")
     label.centroid = (-100_000.0, -120_000.0)
-    store.save()
+    with LabelStore.editing(store.world_id) as fresh:
+        fresh.labels = store.labels
 
     again = LabelStore.load("TEST_WORLD/1")
     assert [x.name for x in again.labels] == ["steel factory"]
