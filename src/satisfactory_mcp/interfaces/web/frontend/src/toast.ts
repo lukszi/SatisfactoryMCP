@@ -57,7 +57,7 @@ export function offer(message: string, label: string, action: () => void): void 
 }
 
 export function fail(message: string): void {
-  toast(message, "fail", FAIL_MS);
+  toast(scrubbed(message) || message, "fail", FAIL_MS);
 }
 
 export function note(message: string): void {
