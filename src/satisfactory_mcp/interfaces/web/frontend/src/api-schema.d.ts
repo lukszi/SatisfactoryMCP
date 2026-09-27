@@ -127,10 +127,11 @@ export interface paths {
         };
         /**
          * Inspect
-         * @description What is at a coordinate: the region, the measured ground, and the nearest nodes.
+         * @description What is at a coordinate: region, measured ground, nodes, fields, conduits, pickups.
          *
-         *     Every answer comes straight out of ``domain.spatial``; this endpoint converts metres to
-         *     the save's centimetres, calls three functions, and rounds.
+         *     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
+         *     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
+         *     elevation and conduit reach; fields and pickups look 500 m out.
          *
          *     **A failed save is not a failed answer.** The node table is static, covers the whole map
          *     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -656,6 +657,11 @@ export interface paths {
          *     ``collect_view`` owns every refusal -- unknown mode, retired group, and the one that
          *     matters here: ``mode=remaining`` needs the generated placement table, and without it the
          *     honest answer is that refusal rather than a shorter list.
+         *
+         *     ``census`` rides along in every mode. ``spoilers=0`` drops every category this save has
+         *     never collected one of (pods and loot caches excepted) from the rows, the counts and the
+         *     census, and ``hidden_spoilers`` says how many categories went; absent, every row comes
+         *     with its ``spoiler`` flag.
          */
         get: operations["collectibles_api_collectibles_get"];
         put?: never;
@@ -1541,6 +1547,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/world/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Nodes
+         * @description Resource nodes as ``search_resource_nodes`` finds them: nodes, fields or nearest.
+         *
+         *     ``resource`` is a name or class id; ``purity`` and ``kind`` take ``all`` for no filter;
+         *     ``status`` is ``free`` (untapped), ``tapped`` or ``all``. ``source`` repeats and takes
+         *     the tool's selectors. ``spoilers=0`` drops locked nodes before anything is counted. A
+         *     save that will not load still answers from the node table, with ``save_error`` set.
+         */
+        get: operations["world_nodes_api_world_nodes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Sites
+         * @description Candidate fields for one resource, best first, as ``rank_build_sites`` ranks them.
+         */
+        get: operations["world_sites_api_world_sites_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/conduits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Conduits
+         * @description Belt and pipe runs near a place (and ``to`` a second one), or every fluid network.
+         *
+         *     The runs are ``search_conduits``'s, longest first. ``network`` lists every pipe of one
+         *     fluid network and ``run`` one run by id; both ignore the radii.
+         */
+        get: operations["world_conduits_api_world_conduits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/here": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Here
+         * @description Where the player stands and the nodes around them, as ``whereami`` answers it.
+         */
+        get: operations["world_here_api_world_here_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Regions
+         * @description Named regions with their node counts, as ``list_regions`` lists them.
+         *
+         *     ``spoilers=0`` counts only nodes some unlocked extractor can work; with no readable
+         *     save every node counts.
+         */
+        get: operations["world_regions_api_world_regions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1991,6 +2108,36 @@ export interface components {
             events: number;
         };
         /**
+         * CensusRow
+         * @description One category: the map's count, this save's collections, and what is left.
+         *
+         *     ``remaining`` is null where no save records a collection of the class at all.
+         */
+        CensusRow: {
+            /** Category */
+            category: string;
+            /** Label */
+            label: string;
+            /** Placed */
+            placed: number;
+            /** Collected */
+            collected: number;
+            /** Remaining */
+            remaining: number | null;
+            /** Standing */
+            standing: number;
+            /** Never Streamed */
+            never_streamed: number;
+            /** Looted Standing */
+            looted_standing: number;
+            /** State Tracked */
+            state_tracked: boolean;
+            /** Pedestal Of */
+            pedestal_of: string | null;
+            /** Spoiler */
+            spoiler: boolean;
+        };
+        /**
          * CircuitRow
          * @description ``bbox_m`` is null when no record on the circuit has a position. ``factories`` is
          *     every named factory on it, most machines first; ``unmodellable`` the generator classes
@@ -2056,18 +2203,20 @@ export interface components {
          * CollectibleRow
          * @description One map placement, and what this save says about it.
          *
-         *     The three coordinates are not nullable: they come off the generated placement table,
-         *     where a row without all three does not exist.
+         *     Here because ``/api/collectibles`` and ``/api/inspect`` both send placements. The three
+         *     coordinates come off the generated placement table and are never null.
          *
          *     ``observed`` is the placement table's scan of every save on disk rather than of the
          *     loaded one, and it is null both for a row this save has collected and for a state this
-         *     build does not know. ``distance_m`` is populated only by ``mode=nearest``, the one mode
-         *     that resolves an origin; elsewhere it is null rather than zero.
+         *     build does not know. ``distance_m`` is set only where an origin was resolved.
          *
          *     ``looted`` is a pod's own ``mHasBeenLooted``, and null means one thing: no loot flag was
          *     read for this placement. Only ``crashed_drop_pod`` writes one, and only a save that had
          *     the pod loaded records it, so ``looted`` is non-null exactly on a pod whose ``observed``
          *     is ``"standing"``. **Null is never "not looted"** -- that is ``false``.
+         *
+         *     ``spoiler`` is true for a category this save has never collected one of; pods and loot
+         *     caches never are.
          */
         CollectibleRow: {
             /** Category */
@@ -2088,6 +2237,8 @@ export interface components {
             looted: boolean | null;
             /** Distance M */
             distance_m: number | null;
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * CollectiblesResponse
@@ -2123,6 +2274,13 @@ export interface components {
             save_only: boolean;
             /** Where */
             where: string;
+            /** Census */
+            census: components["schemas"]["CensusRow"][];
+            /** Found */
+            found: string[];
+            /** Hidden Spoilers */
+            hidden_spoilers: number;
+            stale: components["schemas"]["TableAge"] | null;
         };
         /**
          * CommitBody
@@ -2148,6 +2306,61 @@ export interface components {
             note: string;
             /** Text */
             text: string;
+        };
+        /**
+         * ConduitCount
+         * @description Runs passing within ``radius_m`` of the point, lifts counted as belts.
+         */
+        ConduitCount: {
+            /** Belt */
+            belt: number;
+            /** Pipe */
+            pipe: number;
+            /** Radius M */
+            radius_m: number;
+        };
+        /**
+         * ConduitsResponse
+         * @description ``total`` counts every match; ``runs``/``networks`` hold one page of them.
+         */
+        ConduitsResponse: {
+            /**
+             * View
+             * @enum {string}
+             */
+            view: "runs" | "networks";
+            /** Where */
+            where: string;
+            /** Where To */
+            where_to: string;
+            /** Radius M */
+            radius_m: number;
+            /** To Radius M */
+            to_radius_m: number | null;
+            /** Runs */
+            runs: components["schemas"]["RunRow"][];
+            /** Networks */
+            networks: components["schemas"]["NetworkRow"][];
+            /** Total */
+            total: number;
+            /** Offset */
+            offset: number;
+            /** Belts */
+            belts: number;
+            /** Pipes */
+            pipes: number;
+            /** Belt M */
+            belt_m: number;
+            /** Pipe M */
+            pipe_m: number;
+            /** Fluids */
+            fluids: string[];
+            /** Bridged */
+            bridged: string[];
+            /** Notes */
+            notes: string[];
+            /** Age Note */
+            age_note: string;
         };
         /** ConflictBody */
         ConflictBody: {
@@ -2774,6 +2987,107 @@ export interface components {
             /** Stored In */
             stored_in: string;
         };
+        /**
+         * FoundField
+         * @description A cluster of nodes within 200 m of each other; ``key`` is stable across saves.
+         *
+         *     ``free`` is untapped and reachable capacity; ``locked`` says some member no unlocked
+         *     extractor can work, ``spoiler`` that none can. ``distance_m`` is to the nearest member
+         *     and is null where nothing was measured from.
+         */
+        FoundField: {
+            /** Key */
+            key: string;
+            /** Selector */
+            selector: string;
+            /** Members */
+            members: string[];
+            /** Region */
+            region: string | null;
+            /** Grid */
+            grid: string;
+            /** Direction */
+            direction: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ];
+            /** Size */
+            size: number;
+            /** Purities */
+            purities: {
+                [key: string]: number;
+            };
+            /** Resources */
+            resources: string[];
+            /** Total */
+            total: number;
+            /** Free */
+            free: number;
+            /** Spread M */
+            spread_m: number;
+            /** Locked */
+            locked: boolean;
+            /** Distance M */
+            distance_m: number | null;
+            /** Spoiler */
+            spoiler: boolean;
+        };
+        /**
+         * FoundNode
+         * @description One node, its status in this save, and the extractor on it.
+         *
+         *     ``status`` is ``locked`` for an untapped node no unlocked extractor can work, which is
+         *     also ``spoiler``. ``rate`` is at 100% clock with the best extractor. ``moved`` marks a
+         *     row a later game build moved or renamed (see ``stale``).
+         */
+        FoundNode: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Resource */
+            resource: string;
+            /** Resource Name */
+            resource_name: string;
+            /** Purity */
+            purity: string;
+            /** Kind */
+            kind: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+            /** Grid */
+            grid: string;
+            /** Rate */
+            rate: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "free" | "tapped" | "locked";
+            /** Occupant */
+            occupant: string | null;
+            /** Occupant Off */
+            occupant_off: boolean | null;
+            region: components["schemas"]["Region"] | null;
+            /** Distance M */
+            distance_m: number | null;
+            /** Moved */
+            moved: boolean;
+            /** Spoiler */
+            spoiler: boolean;
+        };
         /** GeneratorGroup */
         GeneratorGroup: {
             /** Name */
@@ -2889,6 +3203,33 @@ export interface components {
             /** Short */
             short: number;
         };
+        /**
+         * HereResponse
+         * @description ``player`` is null for a save with no pawn; the rest of World still answers.
+         */
+        HereResponse: {
+            /** Age Note */
+            age_note: string;
+            /** Save Token */
+            save_token: string;
+            player: components["schemas"]["PlayerAt"] | null;
+            region: components["schemas"]["Region"] | null;
+            /** Grid */
+            grid: string | null;
+            /** Direction */
+            direction: string | null;
+            /** Radius M */
+            radius_m: number;
+            /** Nodes */
+            nodes: components["schemas"]["FoundNode"][];
+            /** Nodes Total */
+            nodes_total: number;
+            nearest_building: components["schemas"]["NearestBuilding"] | null;
+            /** Pawns */
+            pawns: number;
+            /** Stale */
+            stale: components["schemas"]["TableAge"][];
+        };
         /** Hidden */
         Hidden: {
             /** Small */
@@ -2923,6 +3264,17 @@ export interface components {
             elevation: components["schemas"]["Elevation"];
             /** Nearest */
             nearest: components["schemas"]["NearestNode"][];
+            /** Grid */
+            grid: string;
+            /** Direction */
+            direction: string;
+            conduits: components["schemas"]["ConduitCount"] | null;
+            /** Fields */
+            fields: components["schemas"]["FoundField"][];
+            /** Pickups */
+            pickups: components["schemas"]["NearPickup"][];
+            /** Stale */
+            stale: components["schemas"]["TableAge"][];
             /** Save Error */
             save_error: string | null;
         };
@@ -3220,6 +3572,41 @@ export interface components {
             stored_in: string;
         };
         /**
+         * NearPickup
+         * @description A remaining placement within 500 m, with the category's one word.
+         */
+        NearPickup: {
+            /** Category */
+            category: string;
+            /** Name */
+            name: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+            /** Collected */
+            collected: boolean;
+            /** Observed */
+            observed: string | null;
+            /** Looted */
+            looted: boolean | null;
+            /** Distance M */
+            distance_m: number | null;
+            /** Spoiler */
+            spoiler: boolean;
+            /** Label */
+            label: string;
+        };
+        /** NearestBuilding */
+        NearestBuilding: {
+            /** Name */
+            name: string;
+            /** Distance M */
+            distance_m: number;
+        };
+        /**
          * NearestNode
          * @description One of the five nodes nearest a right-clicked point.
          *
@@ -3256,6 +3643,83 @@ export interface components {
             occupant_cls: string | null;
             /** Distance M */
             distance_m: number;
+            /** Spoiler */
+            spoiler: boolean;
+        };
+        /** NetworkRow */
+        NetworkRow: {
+            /** Network */
+            network: number | null;
+            /** Carries */
+            carries: string | null;
+            /** Pieces */
+            pieces: number;
+            /** Length M */
+            length_m: number;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z Min M */
+            z_min_m: number;
+            /** Z Max M */
+            z_max_m: number;
+            /** Distance M */
+            distance_m: number;
+            /** Touches */
+            touches: string[];
+        };
+        /** NodeChoices */
+        NodeChoices: {
+            /** Resources */
+            resources: components["schemas"]["ResourceChoice"][];
+            /** Purities */
+            purities: string[];
+            /** Kinds */
+            kinds: string[];
+        };
+        /**
+         * NodeFindResponse
+         * @description ``count``/``total``/``free`` are the tool's header figures over the rows returned.
+         */
+        NodeFindResponse: {
+            /**
+             * View
+             * @enum {string}
+             */
+            view: "nodes" | "fields" | "nearest";
+            /** Description */
+            description: string;
+            /** Selectors */
+            selectors: string[];
+            /** Where */
+            where: string;
+            /** Nodes */
+            nodes: components["schemas"]["FoundNode"][];
+            /** Fields */
+            fields: components["schemas"]["FoundField"][];
+            /** Count */
+            count: number;
+            /** Total */
+            total: number;
+            /** Free */
+            free: number;
+            /** Unit */
+            unit: string;
+            /** Elevation */
+            elevation: [
+                number,
+                number
+            ] | null;
+            water: components["schemas"]["WaterBlock"] | null;
+            choices: components["schemas"]["NodeChoices"];
+            /** Notes */
+            notes: string[];
+            /** Hidden Spoilers */
+            hidden_spoilers: number;
+            stale: components["schemas"]["TableAge"] | null;
+            /** Save Error */
+            save_error: string | null;
         };
         /**
          * NodeRow
@@ -3276,6 +3740,9 @@ export interface components {
          *     surface prints as ``LOCKED`` and excludes from free capacity. It is null, never true, when
          *     the save could not be read: reachability is a fact about what this world has researched,
          *     and with no world there is nothing to have researched it.
+         *
+         *     ``spoiler`` is an unoccupied node with ``reachable`` false, the rows the text surface
+         *     marks ``LOCKED``: the page hides those dots while spoilers are off.
          */
         NodeRow: {
             /** Id */
@@ -3305,6 +3772,8 @@ export interface components {
             /** Reachable */
             reachable: boolean | null;
             region: components["schemas"]["Region"] | null;
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * NodesResponse
@@ -3745,6 +4214,15 @@ export interface components {
             /** Index */
             index: components["schemas"]["PlanIndexRow"][];
         };
+        /** PlayerAt */
+        PlayerAt: {
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+        };
         /**
          * PlayerPosition
          * @description Where the player last stood, or three nulls -- never a missing branch.
@@ -4118,6 +4596,37 @@ export interface components {
                 number
             ];
         };
+        /** RegionRow */
+        RegionRow: {
+            /** Name */
+            name: string;
+            /** Direction */
+            direction: string;
+            /** Grid */
+            grid: string;
+            /** Anchor M */
+            anchor_m: [
+                number,
+                number
+            ];
+            /** Area Km2 */
+            area_km2: number;
+            /** Nodes */
+            nodes: number;
+        };
+        /** RegionTableResponse */
+        RegionTableResponse: {
+            /** Resource */
+            resource: string | null;
+            /** Resource Name */
+            resource_name: string | null;
+            /** Rows */
+            rows: components["schemas"]["RegionRow"][];
+            /** Accuracy M */
+            accuracy_m: number;
+            /** Hidden Spoilers */
+            hidden_spoilers: number;
+        };
         /**
          * RegionsResponse
          * @description What ``/api/regions`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
@@ -4168,6 +4677,15 @@ export interface components {
             /** Stored In */
             stored_in: string;
         };
+        /** ResourceChoice */
+        ResourceChoice: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Nodes */
+            nodes: number;
+        };
         /** RestoreBody */
         RestoreBody: {
             /** Base Rev */
@@ -4176,6 +4694,61 @@ export interface components {
             rev: number;
             /** Sav */
             sav?: string;
+        };
+        /** RunEnd */
+        RunEnd: {
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+            /** Plugs */
+            plugs: string | null;
+        };
+        /**
+         * RunRow
+         * @description One belt chain or pipe piece; ``lines_m`` are the drawn polylines, as trace sends.
+         */
+        RunRow: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "belt" | "lift" | "pipe";
+            /** Label */
+            label: string;
+            /** Pieces */
+            pieces: number;
+            /** Length M */
+            length_m: number;
+            a: components["schemas"]["RunEnd"];
+            b: components["schemas"]["RunEnd"];
+            /** Z Min M */
+            z_min_m: number;
+            /** Z Max M */
+            z_max_m: number;
+            /** Directed */
+            directed: boolean;
+            /** Basis */
+            basis: string | null;
+            /** Carries */
+            carries: string | null;
+            /** Rate */
+            rate: number | null;
+            /** Network */
+            network: number | null;
+            /** Via */
+            via: string[];
+            /** Distance M */
+            distance_m: number;
+            /** Lines M */
+            lines_m: [
+                number,
+                number
+            ][][];
         };
         /**
          * SaveRow
@@ -4282,6 +4855,61 @@ export interface components {
             by_place: components["schemas"]["PlaceRow"][];
             /** Holders */
             holders: components["schemas"]["ShardHolder"][];
+        };
+        /** SiteRankResponse */
+        SiteRankResponse: {
+            /** Resource */
+            resource: string;
+            /** Resource Name */
+            resource_name: string;
+            /** Description */
+            description: string;
+            /** Sites */
+            sites: components["schemas"]["SiteRankRow"][];
+            /** Count */
+            count: number;
+            /** Weights */
+            weights: {
+                [key: string]: number;
+            };
+            /** Notes */
+            notes: string[];
+            stale: components["schemas"]["TableAge"] | null;
+        };
+        /** SiteRankRow */
+        SiteRankRow: {
+            /** Rank */
+            rank: number;
+            /** Score */
+            score: number;
+            /** Region */
+            region: string | null;
+            /** Grid */
+            grid: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Selector */
+            selector: string;
+            /** Nodes */
+            nodes: number;
+            /** Untapped */
+            untapped: number;
+            /** Spread M */
+            spread_m: number;
+            /** To Infra M */
+            to_infra_m: number | null;
+            /** Purity */
+            purity: number;
+            /** Alt M */
+            alt_m: number | null;
+            /** Rough M */
+            rough_m: number | null;
+            /** Slope Deg */
+            slope_deg: number | null;
+            /** Wet Pct */
+            wet_pct: number | null;
         };
         /**
          * SiteRow
@@ -4799,6 +5427,34 @@ export interface components {
             progression: components["schemas"]["ProgressionSummary"];
             player: components["schemas"]["PlayerPosition"];
         };
+        /**
+         * TableAge
+         * @description Whether a shipped map table is older than the save; built by the domain's ``table_age``.
+         *
+         *     ``moved`` and ``unjoinable`` count rows in the reply they travel with (nodes only);
+         *     ``observed_from``/``observed_matches`` are the collectible table's (null for nodes).
+         */
+        TableAge: {
+            /**
+             * Table
+             * @enum {string}
+             */
+            table: "nodes" | "collectibles";
+            /** Behind */
+            behind: boolean;
+            /** Gap */
+            gap: string | null;
+            /** Moved */
+            moved: number;
+            /** Unjoinable */
+            unjoinable: number;
+            /** Observed From */
+            observed_from: string | null;
+            /** Observed Matches */
+            observed_matches: boolean | null;
+            /** Notes */
+            notes: string[];
+        };
         /** TierRow */
         TierRow: {
             /** Tier */
@@ -5064,6 +5720,19 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["VersionRow"][];
         };
+        /** WaterBlock */
+        WaterBlock: {
+            /** Bodies */
+            bodies: {
+                [key: string]: number;
+            };
+            /** Pumps */
+            pumps: number;
+            /** Per Pump M3 Min */
+            per_pump_m3_min: number | null;
+            /** Sea Level M */
+            sea_level_m: number | null;
+        };
         /** WireRow */
         WireRow: {
             /** A M */
@@ -5224,6 +5893,7 @@ export interface operations {
             query: {
                 x_m: number;
                 y_m: number;
+                radius_m?: number;
                 save?: string | null;
                 world?: string | null;
             };
@@ -5712,6 +6382,7 @@ export interface operations {
                 group?: string | null;
                 mode?: string;
                 near?: string | null;
+                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };
@@ -7358,6 +8029,191 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SitesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_nodes_api_world_nodes_get: {
+        parameters: {
+            query?: {
+                view?: string;
+                resource?: string | null;
+                purity?: string | null;
+                kind?: string | null;
+                status?: string;
+                source?: string[] | null;
+                near?: string | null;
+                spoilers?: number | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeFindResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_sites_api_world_sites_get: {
+        parameters: {
+            query: {
+                resource: string;
+                source?: string[] | null;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteRankResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_conduits_api_world_conduits_get: {
+        parameters: {
+            query?: {
+                near?: string;
+                radius_m?: number;
+                to?: string | null;
+                to_radius_m?: number | null;
+                conduit_kind?: string;
+                view?: string;
+                network?: number | null;
+                run?: string | null;
+                offset?: number;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConduitsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_here_api_world_here_get: {
+        parameters: {
+            query?: {
+                radius_m?: number;
+                spoilers?: number | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HereResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_regions_api_world_regions_get: {
+        parameters: {
+            query?: {
+                resource?: string | null;
+                spoilers?: number | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegionTableResponse"];
                 };
             };
             /** @description Validation Error */

@@ -19,7 +19,7 @@ import { nodeTable, renderNodes } from "./world-nodes";
 import { renderPickups } from "./world-pickups";
 import { counted, W } from "./words";
 
-import type { ApiError, ApiUrl } from "./api";
+import type { ApiError, ApiPath, ApiUrl } from "./api";
 import type { Column, SortState } from "./dashkit";
 import type { HereResponse, Region, RegionRow, RegionTableResponse, TableAge } from "./api-shapes";
 
@@ -32,7 +32,7 @@ var VIEWS: [string, string][] = [
   ["regions", "regions"],
 ];
 
-var HERE_PATH = "/api/world/here" as ApiUrl;
+var HERE_PATH: ApiPath = "/api/world/here";
 
 var HERE_RADIUS_M = 500;
 
