@@ -288,7 +288,7 @@ export function hiddenPickups(): string[] {
 
 var HIDDEN_TITLE = "not found yet: turn spoilers on in Settings";
 
-function markHiddenRows(): void {
+export function markHiddenRows(): void {
   var box = control.getContainer();
   if (!box) return;
   var inputs = box.querySelectorAll<LayerInput>("input.leaflet-control-layers-selector");

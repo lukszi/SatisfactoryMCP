@@ -369,8 +369,8 @@ function filters(card: HTMLElement, view: string, params: Record<string, string>
 function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
   var line = make("div", "world-census");
   var n = view === "fields" ? counted(d.fields.length, W.field) : counted(d.count, W.node);
-  line.appendChild(make("span", "", n + " · " + rate(d.total, d.unit) + " · " + rate(d.free, d.unit) + " free and reachable"));
   var rows = view === "fields" ? d.fields.length : d.nodes.length;
+  line.appendChild(make("span", "", rows ? n + " · " + rate(d.total, d.unit) + " · " + rate(d.free, d.unit) + " free and reachable" : n));
   if (rows) {
     line.appendChild(
       button("show all on map", function () {

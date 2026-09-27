@@ -18,7 +18,7 @@ import { state } from "./state";
 import { friendly } from "./toast";
 import { W } from "./words";
 
-import type { ApiUrl } from "./api";
+import type { ApiPath, ApiUrl } from "./api";
 import type { Column } from "./dashkit";
 import type {
   CollectibleRow,
@@ -73,14 +73,16 @@ var view = {
   epoch: 0,
   filter: { resource: "", free: false, conduitKind: "all", radius: "250", group: "" },
   groups: [] as string[],
+  beyond: 0,
 };
 
 function card(): HTMLElement {
   return mapCard("finder", "finder", closeFinder);
 }
 
-export function worldUrl(path: string, params: Record<string, string>): ApiUrl {
-  return withQuery(path, params) as ApiUrl;
+export function worldUrl(path: ApiPath, params: Record<string, string>): ApiUrl {
+  var query = withQuery("", params).slice(1);
+  return query ? `${path}?${query}` : path;
 }
 
 export function spoilerParam(): string {
@@ -275,6 +277,7 @@ function column(key: string, label: string, render: (i: number) => string | HTML
     key: key,
     label: label,
     align: right ? "right" : undefined,
+    className: right ? "dash-nowrap" : undefined,
     render: function (r) {
       return render(r.i);
     },
@@ -375,7 +378,8 @@ function listed(box: HTMLElement, set: Shown): void {
       },
     })
   );
-  if (total > SHOWN) cardLine(box, total - SHOWN + " more");
+  var more = Math.max(0, total - SHOWN) + view.beyond;
+  if (more) cardLine(box, more + " more");
 }
 
 function filterRow(box: HTMLElement): void {
@@ -505,6 +509,7 @@ function begin(title: string, dash: string): void {
   view.note = "";
   view.error = "";
   view.seed = -1;
+  view.beyond = 0;
   view.world = state.world;
   view.epoch = state.epoch;
 }
@@ -519,6 +524,7 @@ function pointQuery(): { url: ApiUrl; dash: string } {
   if (view.kind === "nodes") {
     return {
       url: worldUrl("/api/world/nodes", {
+        view: "nearest",
         source: "near:" + here + "@" + NEAR_M,
         near: here,
         resource: f.resource,
@@ -541,6 +547,7 @@ function pointQuery(): { url: ApiUrl; dash: string } {
 }
 
 function landed(kind: FindKind, data: NodeFindResponse | ConduitsResponse | CollectiblesResponse): Shown {
+  view.beyond = 0;
   if (kind === "nodes") return { kind: "nodes", rows: (data as NodeFindResponse).nodes };
   if (kind === "conduits") {
     view.note = (data as ConduitsResponse).age_note;
@@ -554,7 +561,8 @@ function landed(kind: FindKind, data: NodeFindResponse | ConduitsResponse | Coll
     .map(function (c) {
       return c.category;
     });
-  return { kind: "pickups", rows: pickups.rows };
+  view.beyond = Math.max(0, pickups.rows.length - SHOWN);
+  return { kind: "pickups", rows: pickups.rows.slice(0, SHOWN) };
 }
 
 function fetchPoint(): void {

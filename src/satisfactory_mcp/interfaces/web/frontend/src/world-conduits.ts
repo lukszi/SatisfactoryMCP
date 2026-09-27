@@ -21,8 +21,8 @@ var PAGE = 200;
 var box = loaded<ConduitsResponse>();
 
 var sorts: Record<string, SortState> = {
-  runs: { key: "distance", desc: false },
-  networks: { key: "distance", desc: false },
+  runs: { key: "length", desc: true },
+  networks: { key: "length", desc: true },
 };
 
 var RADII: [string, string][] = ["100", "250", "500", "1000", "2000"].map(function (r): [string, string] {
@@ -38,7 +38,7 @@ var KINDS: [string, string][] = [
 var KIND_WORD: Record<string, string> = { belt: "belt", lift: "lift", pipe: "pipe" };
 
 function endText(e: RunEnd): string {
-  return coords(e.x_m, e.y_m) + (e.plugs ? " · " + e.plugs : "");
+  return coords(e.x_m, e.y_m);
 }
 
 function zSpan(lo: number, hi: number): string {
@@ -49,18 +49,22 @@ function recentre(params: Record<string, string>, to: string): void {
   edit(changed(params, { near: to, offset: "", network: "" }));
 }
 
+function plug(cell: HTMLElement, v: string | null, params: Record<string, string>): void {
+  if (v && /^(chain|pipe):/.test(v)) {
+    cell.appendChild(
+      button(v, function () {
+        recentre(params, v);
+      }, { title: "search again near " + v })
+    );
+  } else cell.appendChild(make("span", "", v || "–"));
+}
+
 function connects(r: RunRow, params: Record<string, string>): HTMLElement {
   var cell = make("span", "world-via");
-  if (!r.via.length) cell.textContent = "–";
-  r.via.forEach(function (v) {
-    if (/^(chain|pipe):/.test(v)) {
-      cell.appendChild(
-        button(v, function () {
-          recentre(params, v);
-        }, { title: "search again near " + v })
-      );
-    } else cell.appendChild(make("span", "", v));
-  });
+  plug(cell, r.a.plugs, params);
+  cell.appendChild(make("span", "", r.directed ? " → " : " · "));
+  plug(cell, r.b.plugs, params);
+  if (r.via.length) cell.appendChild(make("span", "dash-sub", "via " + r.via.join(", ")));
   return cell;
 }
 
