@@ -2,7 +2,7 @@
 
 A design note, not a plan of record. Nothing here is built unless it says so.
 
-Lukas, 2026-09-27:
+The request, 2026-09-27:
 
 > *"I want to be able to interact with the factory planning in my UI. Envision that in depth."*
 >
@@ -14,9 +14,9 @@ So there are two pillars, with equal weight:
 1. **The page plans on its own.** Goal, recipes, power, layout, site and tracking all work
    without typing a word.
 2. **The page and the chat work on one plan together.** What the agent does shows up on the
-   page. What Lukas does on the page, the agent can see on its next turn.
+   page. What the player does on the page, the agent can see on its next turn.
 
-The page stays **local only**. The chat runs in Lukas's Claude client, never in the page. §2.8
+The page stays **local only**. The chat runs in the player's Claude client, never in the page. §2.8
 keeps the two apart.
 
 This builds on [frontend_vision.md](frontend_vision.md) (Planner wireframe §2.5, flow §4.1,
@@ -94,7 +94,7 @@ page state the agent can read, who changed what, and conflict handling.
 
 ### 2.2 Shared state: one source of truth
 
-Lukas's model (L5, 2026-09-27): **one plan state, shared by the page and chat, versioned like
+The model (L5, 2026-09-27): **one plan state, shared by the page and chat, versioned like
 git.** There are no page drafts. The page autosaves every move as a versioned change. A writer
 on either side knows the version it started from; when it pushes onto a newer one, the server
 merges or tells it to merge.
@@ -148,7 +148,7 @@ according to the **follow setting**.
 | any read tool | nothing | – | – |
 
 **Follow setting** (Settings, per browser): *follow* (**the default, L2**), *toasts only*, *off*.
-While Lukas is dragging or typing, "follow" waits until the gesture ends and then moves. The
+While the player is dragging or typing, "follow" waits until the gesture ends and then moves. The
 page never takes the screen away mid-gesture. An edit chat makes to the plan already on screen
 needs no following: it simply shows up (§2.7).
 
@@ -167,7 +167,7 @@ Each MCP process picks the newest save on its own, so this happens around an aut
 ### 2.4 Page → chat
 
 **The agent cannot be prompted by the page.** Nothing in MCP lets a server start a turn. The
-agent sees page state only when it calls a tool or reads a resource on Lukas's next message.
+agent sees page state only when it calls a tool or reads a resource on the player's next message.
 Everything below is designed around that.
 
 | Mechanism | What it gives the agent | Works in |
@@ -175,8 +175,8 @@ Everything below is designed around that.
 | **`ui_context` tool** (new, read only) | One compact block: is the page open (heartbeat), world and `sav` on both sides, focus (view, plan **and its head rev**, tab, selection with `pin:` ids), pins, unread asks, and **plan ops and activity since this session last looked** | Any client with tools |
 | **Plan versions in every answer** | Every plan-reading tool prints `plan "north hmf" v14`. Every plan-writing tool takes `base_rev` (§2.6). The page's edits are ordinary versions, so the agent just reads the plan | Same |
 | **`satisfactory://ui/context` resource** | The same text as `ui_context`, for clients that attach resources | Claude Code `@`-mentions resources (documented behaviour, not tested here). Claude Desktop: unverified |
-| **Pins** `pin:N` | Accepted wherever a selector is: `sources` (a field or node), machine selectors, `site_at`, `show_on_map at=`. Lukas says "why is pin:4 short?" | Any |
-| **Asks** `ask:N` | The page's **Ask chat** button saves a question plus the objects it is about, and copies `ask:7 why does this need a Blender?` to the clipboard. Lukas pastes it into chat. `ui_context` lists unread asks, and marks them read once the agent has fetched them. The page shows *"seen by chat ✓"* | Any |
+| **Pins** `pin:N` | Accepted wherever a selector is: `sources` (a field or node), machine selectors, `site_at`, `show_on_map at=`. The player says "why is pin:4 short?" | Any |
+| **Asks** `ask:N` | The page's **Ask chat** button saves a question plus the objects it is about, and copies `ask:7 why does this need a Blender?` to the clipboard. The player pastes it into chat. `ui_context` lists unread asks, and marks them read once the agent has fetched them. The page shows *"seen by chat ✓"* | Any |
 | Server `instructions` | One line: *"When the user refers to 'this', 'here', 'what I selected' or an ask:/pin: id, call ui_context first."* `FastMCP(name, instructions=…)` sends it at initialize | Whether each client shows instructions to the model is **unverified** |
 
 `ui_context` output sketch (text, budgeted like the other tools):
@@ -202,7 +202,7 @@ the last few entries and says so.
 | Resources (read) | yes | `@`-mention (documented, untested here) | attach (unverified) | n/a | mirror only |
 | Resource **subscriptions** / `resources/updated` | `get_capabilities` hard-codes **`subscribe=False`**; `send_resource_updated` exists but can only be sent inside a session | unverified | unverified | n/a | **no**. Even if honoured, a notification does not start a model turn |
 | `listChanged` | off by default (`NotificationOptions`) | unverified | unverified | n/a | no |
-| **Elicitation** (server asks the user mid-call) | `ctx.elicit()` in FastMCP | unverified | unverified | n/a | optional: could ask Lukas to settle a chat-side conflict (§2.6). Always with a plain-text fallback |
+| **Elicitation** (server asks the user mid-call) | `ctx.elicit()` in FastMCP | unverified | unverified | n/a | optional: could ask the player to settle a chat-side conflict (§2.6). Always with a plain-text fallback |
 | Sampling | `create_message` exists | unverified | unverified | n/a | **no**. It would put a model call behind the page |
 | Server instructions | `FastMCP(instructions=)` | unverified | unverified | n/a | yes, one line |
 | Transport | stdio, SSE, streamable HTTP | stdio (configured) | stdio (configured) | **cannot reach a local stdio server** | stdio stays |
@@ -212,7 +212,7 @@ it, test it against the actual client.
 
 ### 2.6 Versions, merging and undo: the plan log
 
-Lukas: *"the agent knows the version of the plan he's working on, but like git, when he wants to
+The requirement: *"the agent knows the version of the plan he's working on, but like git, when he wants to
 push he gets notified a new version exists, and he may merge his changes in there."*
 
 **Why not the old store.** Today every writer loads the whole plan file, changes it and saves
@@ -241,7 +241,7 @@ Chat does not send ops. Its tools take whole arguments as they do today, plus `b
 server **diffs those arguments against the base snapshot** to get the ops, then merges them like
 any other write. The page sends ops directly.
 
-#### The merge rule (proposed; for Lukas to confirm)
+#### The merge rule (proposed; see §9 M1)
 
 A write is *(ops, base_rev)*. Under the plan lock the server takes *theirs* = every op since
 `base_rev`, and checks each of *mine* against them:
@@ -273,7 +273,7 @@ A write is *(ops, base_rev)*. Under the plan lock the server takes *theirs* = ev
   `forget_plan`, `site_plan`) takes **`base_rev`**. Writing an existing plan without it is refused
   with the head rev ("read it first"). Creating a new name needs none.
 - An *outdated* answer lists the other side's ops in words, so the agent can re-plan and push.
-  Where the client supports elicitation, the agent may instead ask Lukas which value to keep
+  Where the client supports elicitation, the agent may instead ask the player which value to keep
   (unverified, §2.5).
 
 #### Page side (autosave)
@@ -308,7 +308,7 @@ A write is *(ops, base_rev)*. Under the plan lock the server takes *theirs* = ev
   `remove`, the previous `site`. It is never a rewind, so it merges like any edit, and it can
   conflict like any edit. Undoing something chat has since changed again is a conflict, which is
   exactly right.
-- **Page Ctrl+Z** undoes **Lukas's own** last op on this plan. Ctrl+Shift+Z undoes that undo.
+- **Page Ctrl+Z** undoes **the player's own** last op on this plan. Ctrl+Shift+Z undoes that undo.
   Chat's edits are undone from the Activity panel (**Undo** on any op) or by asking chat.
 - **Chat undo:** `plan_log(name, undo=<rev>)`. `restore=<rev>` emits the ops that turn the head
   back into that version, as one new rev.
@@ -340,7 +340,7 @@ partition follows the arguments, §8.5e of planning.md), Track says so beside th
 
 - The page holds **no model key** and makes **no network call**. It talks only to
   `127.0.0.1:8712`.
-- The conversation happens in Lukas's Claude client. The page and the client meet only through
+- The conversation happens in the player's Claude client. The page and the client meet only through
   the **local disk**, via the MCP server process that the client itself launched.
 - The rejected option, a chat pane inside the page, stays rejected. Nothing here needs it, and
   it would need a key and the network.
@@ -395,7 +395,7 @@ siting). There is no draft, no Save button and no discard.
 |---|---|---|---|
 | **Item at rate** | Goal bar; Recipes "Plan this"; search | `min_machines`, `exports=[item]`, `export_minimums={item: rate}` (`design_factory` preset) | yes |
 | **Max power** | Goal bar; Power "plan a plant" | `max_mw`, sources from the map (`plan_power_plant` preset) | yes |
-| **A factory's shortfall** | Factory detail › Balance: "plan this input" per deficit row | item = the deficit item, rate = the deficit (nameplate or measured; **Lukas picks**, both shown), `for_factory`, site suggested at the factory centroid | yes (`FactoryView.inputs()`) |
+| **A factory's shortfall** | Factory detail › Balance: "plan this input" per deficit row | item = the deficit item, rate = the deficit (nameplate or measured; **the player picks**, both shown), `for_factory`, site suggested at the factory centroid | yes (`FactoryView.inputs()`) |
 | **A plan's shortfall** | Track: "short: 8,800 Rubber, nothing makes it" | item and rate from the diff cost table | yes |
 | **A milestone or elevator shortfall** | Progress | from `phase_requirements` | yes |
 | **A proposal or factory, "again, bigger"** | Proposals; factory detail | `only_recipes` it runs, target = its top output × N, `node:` ids it taps | **no**, G8, ask first |
@@ -484,7 +484,7 @@ input) is **named** in the result, never silently dropped.
 | Need | How |
 |---|---|
 | Persist | Every gesture pushes ops (§2.6). There is no Save button and no dirty marker. The header shows `v14 · saved` or `pushing…` |
-| Undo / redo | Ctrl+Z pushes the inverse of Lukas's last op; Ctrl+Shift+Z undoes that undo. The page caches results by request JSON, so the redraw is instant |
+| Undo / redo | Ctrl+Z pushes the inverse of the player's last op; Ctrl+Shift+Z undoes that undo. The page caches results by request JSON, so the redraw is instant |
 | Copy | **Duplicate** creates a new plan at v1 from the head (`create` + snapshot) |
 | Rename, notes, factory link | `rename` / `set` ops. Names stay case-insensitively unique |
 | Forget | A `forget` op, after confirmation. It can be restored while the log is kept |
@@ -613,7 +613,7 @@ figures are the dashboard's; neither leads, and each is red when negative. Facts
 
 Data: a `site` op on drop (`POST /api/plans/{key}/ops`), `GET /api/site/survey` (throttled while
 dragging, no push), `GET /api/sites/rank`. When chat runs `site_plan`, the page (following)
-flies here, and the pad shows "sited by chat" with Undo. A pad chat moved during Lukas's drag is
+flies here, and the pad shows "sited by chat" with Undo. A pad chat moved during the player's drag is
 a `site` conflict: the chip offers *keep chat's pad* or *use mine*.
 
 ### 4.8 Commission and tracking (key screen 4)
@@ -665,7 +665,7 @@ Status comes from the `list_plans` logic (moved to the domain, G2): `build_scena
 | Trunks | Node-chain polylines, rate/capacity, `UP 40 m (1× Pump Mk2)` | `plan_layout show=trunks` | `run` is a straight-line lower bound |
 | Inputs | Dashed lines from source fields, supplier factories, water | trunks, `site_water` | Distance, not a route |
 | Source picking | Circle → `near:`; region click → `region:`; node → `node:`; pin → `pin:` | `GET /api/select/nodes` | The selector text is always shown |
-| **Chat focus** | Journal `focus` / `label.*`, plan-log `site` ops → fly, outline, pulse (when following) | `activity` / `plans` SSE | Waits until Lukas's drag ends |
+| **Chat focus** | Journal `focus` / `label.*`, plan-log `site` ops → fly, outline, pulse (when following) | `activity` / `plans` SSE | Waits until the player's drag ends |
 | **Pins** | Numbered tags on pinned points, fields, machines, factories | pins store | – |
 
 ---
@@ -809,11 +809,11 @@ each, because they are resident in every session's schema.
 | P7: byproducts | G6, recycle once. Modules and `supplied` stay later (Q2: one factory per plan) but are not designed out | – | – |
 | P8: entry points | From deficit, plan shortfall, milestone; proposal if Q10 (G8) | – | – |
 | P9: unlock value; labels on the log | Unlock sweep against the head; G10; an elicitation trial for chat-side conflicts | – | – |
-| P10+ | G7, G9, per-row clocks, a faster channel: in the order Lukas picks | – | – |
+| P10+ | G7, G9, per-row clocks, a faster channel: in an order still to be picked | – | – |
 
 ---
 
-## 9. Questions: Lukas's call
+## 9. Questions: decisions needed
 
 Nothing still open below is assumed above. Memory `verify-play-patterns`: ask, don't encode.
 
@@ -837,9 +837,9 @@ Nothing still open below is assumed above. Memory `verify-play-patterns`: ask, d
   means "this recipe makes this item"; a required entry that blocks the solve is named (§3.5).
 - **Old Q14** (should the page write plans at all): answered by L5, yes.
 
-### 9.2 Proposed, needs your yes
+### 9.2 Proposed, needs a decision
 
-- **M1. Confirmed by Lukas 2026-09-27.** The merge rule in §2.6: auto-merge when edits touch different keys; *outdated* only on
+- **M1. Confirmed 2026-09-27.** The merge rule in §2.6: auto-merge when edits touch different keys; *outdated* only on
   a real conflict (same scalar, same map entry, add vs remove of one member, required vs banned
   of one recipe, site vs site, anything vs forget). Nothing is applied partially.
 
@@ -852,7 +852,7 @@ Nothing still open below is assumed above. Memory `verify-play-patterns`: ask, d
   plan can be restored.
 - **N3. What counts as a list conflict.** Beyond M1:
   - Two **required** recipes for the same item: allowed (both may run), or a conflict?
-  - Chat **bans** a recipe the plan currently **uses** while Lukas edits the rate: clean by keys,
+  - Chat **bans** a recipe the plan currently **uses** while the player edits the rate: clean by keys,
     but it changes what the rate edit means. Clean (proposed), or flag it?
   - A clean merge that turns the plan **infeasible**: accept and show it (proposed), or refuse?
 - **N4. Exploration.** Should every starting point create a named plan, or go into a reusable
@@ -914,7 +914,7 @@ Nothing still open below is assumed above. Memory `verify-play-patterns`: ask, d
 | # | frontend_vision says | This note says | Why |
 |---|---|---|---|
 | D1 | Planner is a 340 px rail panel (§2.1, §2.5) | A whole-page view like the dashboard, with a map split for Site | §8.3's width argument applies harder to a graph plus a process table |
-| D2 | Title: "every tool, no chat needed". Q2 asks whether chat stays the main way in | The page and chat are **co-equal partners on shared state** (§2) | Lukas, 2026-09-27: "interactive with chat too" |
+| D2 | Title: "every tool, no chat needed". Q2 asks whether chat stays the main way in | The page and chat are **co-equal partners on shared state** (§2) | Request, 2026-09-27: "interactive with chat too" |
 | D3 | The browser holds no planning state; `notes` SSE refetches | Plans are an **op log** shared by both sides, with autosave and no drafts. Focus, pins and asks are server-side, and a journal carries provenance | L5; the agent can only see what the server can read |
 | D4 | Phase 9: guard + plan CRUD (save, rename, forget) | Git-like versions with `base_rev` and auto-merge (G1), in the **first** slice | Autosave makes the first page edit a shared write. Several MCP processes plus the web server write the same plans; lost updates are silent today |
 | D5 | "Measure solve latency before choosing sync or async" (§5.2) | Measured: sync everywhere | ~15 ms per solve, 0.6 s worst case |

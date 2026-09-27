@@ -14,9 +14,9 @@ from .labels import slugify
 
 __all__ = ["DEFAULT_STYLE", "STYLES", "lead", "suggest"]
 
-STYLES = ("mine", "product, region")
+STYLES = ("short", "product, region")
 
-DEFAULT_STYLE = "mine"
+DEFAULT_STYLE = "short"
 
 
 def lead(
@@ -51,7 +51,7 @@ def lead(
 
 
 def _base(item: str, region: str | None, style: str) -> str:
-    if style == "mine":
+    if style == "short":
         return f"{item.lower()} factory"
     if style == "product, region":
         return item + (f", {region}" if region else "")

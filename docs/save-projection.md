@@ -407,7 +407,7 @@ Iron Rod 200 = `SS_BIG`.
 
 **Blocked needs action.** 319 of 563 machines on the reference save are blocked: a base
 whose output nobody consumes fills its buffers and stops. That once read as a factory at
-rest, and the overview's `todo` column left it out. Lukas decided on 2026-09-26 that a
+rest, and the overview's `todo` column left it out. Decided 2026-09-26: a
 blocked machine is a problem, because nothing is taking what it makes, so `todo` counts
 `health.ACTIONABLE`: `dead node`, `no recipe`, `blocked`, `starved` and `stalled`. The web
 dashboard counts the same tuple (docs/frontend_vision.md §8.6), and so does the map:
@@ -424,7 +424,7 @@ amber, generators red); the outline carries the state:
 | hollow box, thick **red** outline | stopped, needs action: `dead node`, `no recipe`, `starved`, `stalled` |
 | solid box, thick **yellow** outline | `blocked`: output full, runs again once emptied |
 
-Lukas decided the colours on 2026-09-26: red means broken, and blocked is not red. A blocked
+Colours decided 2026-09-26: red means broken, and blocked is not red. A blocked
 machine runs again as soon as its output is emptied, so it is waiting on downstream rather
 than broken. It still counts as `actionable`.
 

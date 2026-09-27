@@ -164,9 +164,9 @@ Two are defused. Four are live, and their ordering is unchanged.
 4. **Both invariant channels unread.** p = whenever a patch breaks normalisation; damage =
    publishing a smaller world and calling it the world, silently. See §3.
 5. **`/api/worlds` publishes the Windows username and SteamID64, and the server accepts any Host
-   header.** **DEFERRED by Lukas, 2026-08-09**, on his own environment: the machine sits behind
-   NAT on a household network with two people on it, so the exposure he cares about is not
-   there. Recorded rather than closed, and with one honest asterisk — **that reasoning is his
+   header.** **DEFERRED 2026-08-09**, on the maintainer's own environment: the machine sits behind
+   NAT on a household network with two people on it, so the exposure that matters there is not
+   present. Recorded rather than closed, and with one honest asterisk — **that reasoning is one
    network's, not the code's.** The repo is public, and a stranger who clones it inherits the
    same behaviour without inheriting the NAT, so this stays on the list for the stranger-facing
    cluster in §5 and should be revisited before the project is advertised anywhere.
@@ -218,10 +218,10 @@ Unchanged, and the section most worth reading before proposing anything.
   nobody built.
 - **Viewport paging.** Weeks across every router and the frontend, for a page that is 0.54 s warm
   at 581 machines.
-- **CI.** Changes no answer he gets. Contributor infrastructure for a repo with one contributor.
+- **CI.** Changes no answer the player gets. Contributor infrastructure for a repo with one contributor.
   (Counter, recorded: it is the only thing that makes a stranger's PR mean anything, and 44 of
   111 test files are integration-marked. Revisit only if the repo gets contributors.)
-- **The wiki/MCP directory listing.** On the player-value axis this is negative: it spends his
+- **The wiki/MCP directory listing.** On the player-value axis this is negative: it spends the maintainer's
   evenings on other people's modded and Linux installs. If ever done, it must come after the
   modded-save note and a README install step, per its own risk section.
 - **Co-op / dedicated-server support**, **the README transcript**, **the README's `data/local`

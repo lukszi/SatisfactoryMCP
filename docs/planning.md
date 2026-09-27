@@ -260,7 +260,7 @@ over open water. Quoting both and calling it balanced did not help — one of th
 was answering a question nobody had, and it was the one that made large water plans look
 impossible.
 
-**A length is still given, just not that one.** Lukas lays platform modules, so "how long
+**A length is still given, just not that one.** The player lays platform modules, so "how long
 is this" is a real question — it is the *pier extent*, 1,386 m for 77 pumps, not a stretch
 of coast. Both shapes are printed because they answer different halves: the block is the
 cheapest way to buy the area, the pier is what you measure modules against.
@@ -737,7 +737,7 @@ so a drawn route would be invented -- the same line § 8.5 draws around the sche
 
 ### 8.5d Commissioning: a startup order, not a build order
 
-The re-frame that removed most of this problem came from Lukas: *"Can't we just build an
+The re-frame that removed most of this problem came from a question: *"Can't we just build an
 unpowered factory, and just power it after the build is done?"*
 
 Building costs materials, not power -- a machine draws only when it runs. So the whole
@@ -811,7 +811,7 @@ plain free-first rule would have ranked them all equal-worst.
 
 ### 8.5e Which stage am I in — detected from the save, never stored
 
-Lukas: *"I feel like the mcp should have fundamental capacity to identify stages."* So a stage is a
+The requirement: *"I feel like the mcp should have fundamental capacity to identify stages."* So a stage is a
 domain concept, not a printout — and usefully, one that needs **no new persistence layer at all**.
 A stage is a partition of a stored plan (§ 8.5d), and `diff_vs_save` already matches built machines
 against a plan by identity, so *grouping that output by stage* is the whole feature. Nothing is
@@ -1149,13 +1149,13 @@ now says so and names the saved plans it might be ignoring.
 
 ### 8.5k Sites: accounting, not optimisation
 
-A planner asked for a joint multi-site solver, then talked himself out of it while
+A planner asked for a joint multi-site solver, then talked themselves out of it while
 answering what the sites were:
 
 > The thing that actually bit me wasn't optimisation across sites — it was accounting
 > across sites.
 
-His three-module oil plant (rig / generator hall / resin plant) turned out to be
+The planner's three-module oil plant (rig / generator hall / resin plant) turned out to be
 **preference-driven**. Only the rig's siting is forced, by water being drawable at sea
 level; the hall has no siting constraint at all and the resin plant only wants a shoreline
 of its own. A joint LP with no per-site cap would collapse all three into one — and that
@@ -1172,12 +1172,12 @@ B-hall   460       115,000       A-rig ->  C-resin   Polymer Resin  2300   3x be
 C-resin  43        -1,270.29     A-rig ->  C-resin   Water          1100   2x pipe
 ```
 
-That reproduces his hand-built interface table exactly, and the coupled variant reproduces
+That reproduces the hand-built interface table exactly, and the coupled variant reproduces
 the other one: A→B drops to 14 pipes and a new A→C Fuel link appears at 1,150 m³/min on 2.
 **One interface going from zero to nonzero is the whole difference between the two
 architectures** — 99,729.62 MW against 83,470.97, both pinned as regression tests.
 
-**The error it exists to catch.** Reconciling by hand, he computed generator count from the
+**The error it exists to catch.** Reconciling by hand, the planner computed generator count from the
 rig's total fuel output, assuming all 9,200 m³/min reached the hall. The resin plant's
 plastic cycle was drinking some. A partition cannot make that mistake — the plan it cuts is
 already mass-balanced by the LP's equality rows — but an *incomplete* partition can hide

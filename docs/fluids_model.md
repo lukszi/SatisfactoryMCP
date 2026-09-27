@@ -449,7 +449,7 @@ derivation** — a 6×6×8 m box is 288 m³ of space holding a stated 400 m³.
   manual]`. It does not merely reduce it.
 - **Gas has no head lift at all** `[ASSUMED, manual]`. Pumps do not work on it and buffers
   cannot compensate its flow. Gas networks are excluded entirely, never modelled with a zero.
-  **Verification DEFERRED by Lukas, 2026-08-09** — he has not reached gases in his world, so
+  **Verification DEFERRED 2026-08-09** — the reference world has not reached gases, so
   there is nothing to measure and no answer to get wrong. The exclusion is the safe default
   either way: excluding a network cannot invent a fault, whereas modelling gas as a zero-lift
   fluid would. Revisit when nitrogen appears in a save.
@@ -654,8 +654,8 @@ Two rules both fit every reading:
   reach`.
 
 The data cannot separate them. The Mk2 here draws from at least **7.34 m** below its inlet
-against a declared 55 m of reach, and 7.34 ≪ 55.56 sits deep inside both. **No save the owner
-has can separate them either**: network 99 is the only network in his world where a fluid
+against a declared 55 m of reach, and 7.34 ≪ 55.56 sits deep inside both. **No save on hand
+can separate them either**: network 99 is the only network in the reference world where a fluid
 surface stands below a pump inlet at all.
 
 **(a) is what ships.** The tie-breaker is which error the project can live with. (a) can never

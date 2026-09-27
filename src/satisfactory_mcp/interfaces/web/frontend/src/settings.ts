@@ -40,10 +40,10 @@ export var SETTINGS: Setting[] = [
     label: "Factory name suggestions",
     hint: "How Detect factories words the name it offers. Every suggestion stays editable.",
     options: [
-      ["mine", "like yours: “steel pipe factory”"],
+      ["short", "short: “steel pipe factory”"],
       ["product, region", "product and region: “Steel Pipe, Rocky Desert”"],
     ],
-    fallback: "mine",
+    fallback: "short",
   },
   {
     kind: "switch",
@@ -56,7 +56,7 @@ export var SETTINGS: Setting[] = [
     kind: "number",
     key: "minMachines",
     label: "Minimum machines",
-    hint: "Hide smaller clusters from Detect factories. Your smallest named factory has 2.",
+    hint: "Hide smaller clusters from Detect factories.",
     min: 1,
     fallback: 2,
   },

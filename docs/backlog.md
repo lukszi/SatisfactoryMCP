@@ -25,7 +25,7 @@ them is a judgement about the surface and not a defect.
 **Two sections were added on 2026-08-10 and are deliberately not counted above.**
 
 **P6, items 37–42** — in-game measurements the fluid model is waiting on. Not code defects at
-all: each is a rig to build in the owner's world, and every one of them needs him in the game.
+all: each is a rig to build in the reference world, and every one of them needs someone in the game.
 They are here because the alternative is that they are remembered rather than findable.
 
 **P7, items 43–55** — thirteen items that lived only in [roadmap.md](roadmap.md), in the parked
@@ -128,7 +128,7 @@ taken for the last three rows turned up a fourth family nobody had named.
 three of these rows read "deliberately left alone" and "narrowed". **Nobody ever decided that.**
 The words were written on 2026-08-08 by the pass that closed the rows around them, in this
 file's voice, and a reader — including the assistant, later, out loud to the owner — took them
-for his ruling. They were open and unexamined the whole time.
+for a ruling. They were open and unexamined the whole time.
 
 - **Two radius grammars — CLOSED** (`538f08f`). `@` won on an argument rather than a
   preference: `save-projection.md` states that **commas inside one term are ORed**, so a radius
@@ -242,7 +242,7 @@ for his ruling. They were open and unexamined the whole time.
 
 ## P5 — capability already built, not yet reachable: WIRE IT UP
 
-Lukas's decision, 2026-08-02: **wire these up, do not delete them.** All closed but item 36,
+Decided 2026-08-02: **wire these up, do not delete them.** All closed but item 36,
 which was misfiled from the start.
 
 | # | What was unreachable | Closed by |
@@ -332,7 +332,7 @@ has capacity 14.87 m³, safely above the knee, and the two hypotheses predict es
 **42 — The free control: dismantle two pumps on one coal network. OPEN, not yet in the model
 document, and it costs about thirty seconds in-game.** Thirty-two Coal Generators in the owner's
 base sit **8.150 m above their extractors** at 100% uptime and 96% supply utilisation, which is
-the most flow-sensitive load he has — but every one of those networks has pumps on it, so none of
+the most flow-sensitive load it has — but every one of those networks has pumps on it, so none of
 them is currently evidence about machine head lift. Two of the networks carry only **two pumps
 each** (numbered components 0 and 18 by the walk that found them, so re-derive the numbering
 rather than trusting the index). Dismantling both pumps on **one** of them leaves 8 generators

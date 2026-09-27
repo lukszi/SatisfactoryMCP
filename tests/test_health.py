@@ -269,7 +269,7 @@ def test_states_are_ordered_worst_first_and_ok_is_a_subset(game):
 
 
 def test_a_blocked_machine_needs_action_and_a_paused_one_does_not():
-    """Lukas, 2026-09-26: a full output box is a problem, not a factory at rest."""
+    """Decided 2026-09-26: a full output box is a problem, not a factory at rest."""
     assert "blocked" in ACTIONABLE
     assert not OK & set(ACTIONABLE)
     assert "paused" not in ACTIONABLE and "intermittent" not in ACTIONABLE

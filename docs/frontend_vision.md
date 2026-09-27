@@ -324,8 +324,8 @@ job queue.
 | Siting by the whole bill (roadmap §2.1) | not built | "Where to build" for a multi-resource plan |
 | Byproduct remedies (roadmap §3b) | not built | Byproducts chip that says what players do |
 | Pipe build review (roadmap §3b) | needs head-lift model | A "check my plumbing" action |
-| Transport networks (trains, drones, trucks) | absent; **deferred by Lukas** | Logistics screen |
-| Awesome Sink / Dimensional Depot | unraised with Lukas | Sink points, depot uploads |
+| Transport networks (trains, drones, trucks) | absent; **deferred** | Logistics screen |
+| Awesome Sink / Dimensional Depot | unraised | Sink points, depot uploads |
 | Belt arrows | `ROUTE_CHEVRONS.belts = false`; **held** | Map only |
 | Fog of war | raster unverified; **held** | Map only |
 | Forecasts / ETAs | forbidden until the timeline exists (roadmap §2.3) | Any "N hours to" line |
@@ -351,13 +351,13 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 10 | **Plan follow-through:** layout, diff, startup order | `plan_layout`, `diff_vs_save`, `commission_plan` | 3 | no |
 | 11 | **Labels:** propose, preview, name, amend by lasso | 6 label tools | 2 + CRUD | **yes** |
 | 12 | **Advisors (slow):** unlock value, hard drive pick | `rank_unlocks`, `advise_hard_drive_pick` | 2 | no |
-| 13+ | Domain gaps in §5.3, in the order Lukas picks | — | — | — |
+| 13+ | Domain gaps in §5.3, in an order still to be picked | — | — | — |
 
 After phase 12 every tool, resource and prompt has a surface.
 
 ---
 
-## 7. Open questions for Lukas
+## 7. Open questions
 
 None of these are assumed above. Each changes the design.
 
@@ -406,10 +406,10 @@ None of these are assumed above. Each changes the design.
 
 ## 8. Dashboard: the case (2026-09-26)
 
-Lukas asked for "a first-class UI dashboard", with a justification. This section is that
+The request was "a first-class UI dashboard", with a justification. This section is that
 justification, then the record of what was built. The code carries no prose; this is its home.
 
-### 8.1 What Lukas has already decided
+### 8.1 What is already decided
 
 Evidence only: each row cites where the decision is written down.
 
@@ -428,26 +428,26 @@ Evidence only: each row cites where the decision is written down.
 | Host allowlist deferred (household NAT, two people) | roadmap §5 risk 5 | Only reads were added, so there is no new exposure |
 | Wording | commit subjects: plain sentences that name the thing ("Say which pods still hold a drive") | Labels are plain words. `–` means unknown, never 0 |
 
-### 8.2 The §7 questions his record already answers
+### 8.2 The §7 questions the record already answers
 
 - **Q10 (suggest a next step?)**: the record points to facts only (`deadb0b`, the ETA rule).
-  The dashboard shows facts. It is still his call.
+  The dashboard shows facts. It is still open.
 - **Q16 (held items)**: belt arrows and fog of war are held. Transport is deferred. Both are
   explicit. **Sink/Depot is still unraised.**
 - **Q5 (writes)**: partly. §16's "read-only" was about the plan picture only. The dashboard is
   read-only either way. Label and plan writes stay open.
-- **Q14 (timeline)**: he picked §22 as a next feature on 2026-08-02, so he wants history.
+- **Q14 (timeline)**: §22 was picked as a next feature on 2026-08-02, so history is wanted.
   The default window is still open.
-- **Q17 (`<pre>` fallback)**: the typed-wire commits lean "no". It is still his call.
-- **Q3 (other devices)**: the server binds 127.0.0.1 and he deferred the Host rule. That
+- **Q17 (`<pre>` fallback)**: the typed-wire commits lean "no". It is still open.
+- **Q3 (other devices)**: the server binds 127.0.0.1 and the Host rule is deferred. That
   counts against LAN use today, but it does not settle it.
 - Still open: Q1, Q2, Q6–Q9, Q12, Q13, Q15. Q4 and Q11 are answered in §8.6.
 
 ### 8.3 For, against, verdict
 
 **For.**
-1. He asked. Principle 2 ("never a page that hides the map") was this note's own rule. It
-   was drafted without him and is not one of his decisions.
+1. It was requested. Principle 2 ("never a page that hides the map") was this note's own rule. It
+   was drafted without review and is not a project decision.
 2. **Width.** The panel is 340 px floating over the map. Fifteen factories across nine
    states, uptime, two MW figures and two power faults make a table. Principle 5 promises
    real sorting, and 340 px holds about two columns.
@@ -510,7 +510,7 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   circuit after a rebuild.
 - ~~**Headline headroom is measured.**~~ **Answered in §8.6: two tiles, neither the lead.**
 
-### 8.6 Decided by Lukas, 2026-09-26
+### 8.6 Decided 2026-09-26
 
 - **A blocked machine is a problem.** "Need action" is `health.ACTIONABLE`: dead node, no
   recipe, **blocked**, starved and stalled. It is one tuple in the domain, used by the
@@ -545,11 +545,11 @@ fragment key reuses all of that, and a bookmark still lands on the view.
 
 ## 9. Naming factories from the page (2026-09-27)
 
-Lukas asked: "Extend the factories UI by adding a feature that runs detection on the factories,
-and help me name them." Later the same day he added "I like my style more, maybe make it a
+The request: "Extend the factories UI by adding a feature that runs detection on the factories,
+and help me name them." Later the same day came "I like my style more, maybe make it a
 setting", a filter for trivial clusters ("is it connected to a source other than just a
 storage box"), and "renaming a factory is kinda elemental". This **reverses parked.md §16's
-"read-only" for factory labels**, at his request, on 2026-09-27. Plans stay read-only on the page.
+"read-only" for factory labels**, on request, on 2026-09-27. Plans stay read-only on the page.
 
 ### 9.1 What was built
 
@@ -623,7 +623,7 @@ carries nameplate `makes` and `uses`, meaning recipe rate × clock. Measured fig
 a backed-up factory reads as producing nothing (the steel cluster has 97 of 108 machines
 blocked), and a name is about what the factory is built to make.
 
-**Classes come from topology, not from rates** (Lukas, 2026-09-27: "If it outputs them into a
+**Classes come from topology, not from rates** (decided 2026-09-27: "If it outputs them into a
 box somewhere, that is a product. If it just outputs them into a sink, it's not an output.").
 `flowgraph.ends` walks each producing machine's outputs downstream over `st.physical`, the
 contracted belt and pipe runs. It passes through splitters, mergers, junctions, pumps and
@@ -650,7 +650,7 @@ kind it reached, in `to`. An item consumed inside and made nowhere inside is an 
   pipe is storage. Pipe runs whose direction the save does not state are walked both ways,
   which can only over-report.
 - **Dead ends** are `nowhere`, and an item that reaches only those is unrouted, not a product.
-  On his save that is the FICSMAS line's outputs (3 open runs), several oil and water
+  On the reference save that is the FICSMAS line's outputs (3 open runs), several oil and water
   extractors whose pipes end open, and the 15-machine refinery cluster's Heavy Oil Residue.
 - **Generators** burn fuel as a recipe input. Water reaching a generator counts as consumed
   inside, although `build_view` does not rate it.
@@ -662,7 +662,7 @@ becomes an input edge. What a producer has left after that is split evenly acros
 terminal kinds it reaches. A terminal it reaches with nothing left over gets an edge with no
 rate. Product rates in the Detect list are what the cluster makes; the graph shows the split.
 
-**On Lukas's save:**
+**On the reference save:**
 
 - The 78-machine cluster: products Wire 810, Cable 120, Copper Sheet 80, **Rotor 25, Stator
   25**, Motor 10 /min, all to storage. Intermediates: Copper Ingot, Water, Steel Pipe. So the
@@ -689,14 +689,15 @@ its ore.
 
 **Wording** is `naming.suggest(item, region, taken, style)`, with a style from `STYLES`:
 
-- **`mine`** (the default) is `<lead item, lowercase> factory`, for example "steel pipe
-  factory". This is his style: his names are lowercase, short and product-led ("steel
-  factory", "speedwire factory", "tor factory"), with no region.
-  He also writes "setup" ("oil setup", "aluminium setup", "biofuel setup", "concrete setup").
-  That choice is **not decidable from the data**. His setups range from 2 to 50 machines and
-  his factories from 11 to 110, so size does not separate them. Oil, aluminium and biofuel all
+- **`short`** (the default) is `<lead item, lowercase> factory`, for example "steel pipe
+  factory". The setting reads "short", not "like yours": other people use the tool too
+  (renamed from `mine` on 2026-09-27). It follows the reference save's labels: lowercase, short
+  and product-led ("steel factory", "speedwire factory", "tor factory"), with no region.
+  That save also uses "setup" ("oil setup", "aluminium setup", "biofuel setup", "concrete setup").
+  That choice is **not decidable from the data**. Its setups range from 2 to 50 machines and
+  its factories from 11 to 110, so size does not separate them. Oil, aluminium and biofuel all
   have a "setup", while blackpowder and steel have "factory". So the suggestion always says
-  "factory", and he edits the rest.
+  "factory", and the player edits the rest.
 - **`product, region`** is `<Lead Item>, <region>`, for example "Steel Pipe, Rocky Desert".
   The region is `RegionMap.label_for` at the centroid, and is left out in the sea or off the
   map.
@@ -720,8 +721,8 @@ directions read from connector roles). The verdict is one of three:
   only when something real feeds it. A box with nothing inbound ends the walk.
 - **transport:** the walk reached a train, drone or truck station (`model.kind_of`, plus
   freight platforms by `DockingStation`). What arrives there cannot be seen, so the source is
-  **unknown**. It is never hidden by the filter. Lukas has no transport yet, so this branch is
-  untested on his save.
+  **unknown**. It is never hidden by the filter. The reference save has no transport yet, so this branch is
+  untested there.
 
 **What the walk cannot see:**
 
@@ -739,15 +740,15 @@ sends the **Only suggest fed clusters** switch (default on) and the **Minimum ma
 number (default **2**). The list says what was hidden and why, for example "10 hidden: 2 not
 fed, 8 below 2 machines". **show all** re-asks with both filters off for that list only.
 
-Why 2: the unnamed cluster sizes on his save are 110, 108, 78, 50, 47, 30, 28, 18, 15, 15,
-15, 15, 11, 10, 7, 7, 4, 3, 3, 2, 2, and eight clusters of 1. His smallest named factory,
+Why 2: the unnamed cluster sizes on the reference save are 110, 108, 78, 50, 47, 30, 28, 18, 15, 15,
+15, 15, 11, 10, 7, 7, 4, 3, 3, 2, 2, and eight clusters of 1. Its smallest named factory,
 "concrete setup", is 2 machines. So 2 hides exactly the singletons: six lone miners and
-extractors, one Manufacturer and one Smelter. It hides nothing he has shown he would name.
+extractors, one Manufacturer and one Smelter. It hides nothing of the kind that save names.
 
 On that save, 4 clusters are not fed (30, 7, 1 and 1 machines) and none reach a station. The
-30 is his FICSMAS line and the 7 is a FICSMAS and SAM crafting corner, both filled from boxes.
-**He named the 30-machine one ("christmas factory")**, so the fed filter hides a factory he
-did name. That is why "show all" is one click.
+30 is a FICSMAS line and the 7 is a FICSMAS and SAM crafting corner, both filled from boxes.
+**The 30-machine one is named ("christmas factory")**, so the fed filter hides a named
+factory. That is why "show all" is one click.
 
 ### 9.6 Concurrent writers
 
@@ -795,7 +796,7 @@ forgotten since this link was made": the store keeps no history of former names.
 
 ### 9.8 Production graph
 
-Lukas asked for "a function that shows me the product graph in the factory view, and can show
+The request was "a function that shows me the product graph in the factory view, and can show
 me that graph for a detected factory".
 
 - **Route.** `GET /api/factories/graph` takes either `factory=<exact name>` or

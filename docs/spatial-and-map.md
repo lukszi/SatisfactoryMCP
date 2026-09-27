@@ -582,7 +582,7 @@ with one answer, so it is radios in its own folded section above the modes, draw
 a floor is a word plus a measurement, and a mezzanine has to read as subordinate to the storey
 it is a ledge on. The section exists only while the page is slicing something, and
 `floor=<platform>/<band>` joins the fragment between `save` and `mode` — subject, then how much
-of the subject, then picture, then viewport. See [§16b](parked.md#16b-built-floor-wise-factory-view-lukas-2026-07-31--only-think-about-that-idea)
+of the subject, then picture, then viewport. See [§16b](parked.md#16b-built-floor-wise-factory-view-2026-07-31--only-think-about-that-idea)
 for what a floor is and how it is recovered.
 
 ---

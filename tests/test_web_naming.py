@@ -189,9 +189,9 @@ def test_the_graph_route_refuses_what_it_cannot_answer(empty):
 # ------------------------------------------------------------------ styles
 
 
-def test_mine_is_the_default_and_is_lowercase_with_no_region(empty):
+def test_short_is_the_default_and_is_lowercase_with_no_region(empty):
     body = empty.get("/api/factories/candidates").json()
-    assert body["style"] == naming.DEFAULT_STYLE == "mine"
+    assert body["style"] == naming.DEFAULT_STYLE == "short"
     for row in body["candidates"]:
         name = row["suggested_name"]
         assert name == name.lower() and " factory" in name

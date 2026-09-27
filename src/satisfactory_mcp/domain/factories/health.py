@@ -71,7 +71,7 @@ STATES = (
 OK = frozenset({"saturated", "unmonitored"})
 
 #: States that need the player to act, in report order: every one but ``OK``, ``paused``
-#: and ``intermittent``. ``blocked`` is here by Lukas's decision -- docs/frontend_vision.md §8.6.
+#: and ``intermittent``. ``blocked`` is here by decision -- docs/frontend_vision.md §8.6.
 ACTIONABLE = ("dead node", "no recipe", "blocked", "starved", "stalled")
 
 #: What a starved input's supply came to. ``NOTHING`` and ``UNFED`` are FINDINGS: no run of

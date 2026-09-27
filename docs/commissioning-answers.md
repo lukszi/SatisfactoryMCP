@@ -2,7 +2,7 @@
 
 Answers to `commissioning-questions.md`, settled in conversation. Written from the Spire
 Coast oil plant session (world `Han Solo`, 2026-07-27), where a commissioning sequence was
-worked out by hand against a real save, then re-framed by Lukas. Evidence cited is from
+worked out by hand against a real save, then re-framed in review. Evidence cited is from
 that session.
 
 All seven questions are answered. The re-frame in Q1 changes what the tool is, so read
@@ -12,7 +12,7 @@ that first.
 
 ## Q1 — **It is not a build-order problem. It is a startup-order problem.**
 
-Lukas: *"Can't we just build an unpowered factory, and just power it after the build is
+The re-frame: *"Can't we just build an unpowered factory, and just power it after the build is
 done?"* — and that dissolves most of the question.
 
 Building costs materials, not power. A machine draws only when it runs. So the whole
@@ -62,7 +62,7 @@ The E1 numbers are unchanged, only their meaning is. As a startup order:
 
 ## Q2 — Resolved by Q1: bootstrap, not buildout. No babysitting.
 
-Lukas: *"This is not a buildout question, this is a bootstrap question... I need a way to
+The constraint: *"This is not a buildout question, this is a bootstrap question... I need a way to
 start up one block after the other. I won't be babysitting it."*
 
 So: read `power_report` headroom, allow a stage to consume it, and do **not** model
@@ -97,7 +97,7 @@ of headroom against a 2,465 MW plant. It is not in the questions doc's options l
 filed under Q2 as a constraint. For a power plant it *is* the axis, and `slice_of` already
 totals it.
 
-Lukas has also asked for the materials bill ("Sure, why not, let's have it. We could even
+The materials bill was also requested ("Sure, why not, let's have it. We could even
 build out a more architecturally principled calculator"). The Q1 re-frame makes these two
 genuinely orthogonal outputs rather than competing budget axes:
 
@@ -126,7 +126,7 @@ criteria agreed, because trunk topology is itself geographic.
 
 ## Q6 — **Stages are a first-class concept the MCP should detect from the save**
 
-Lukas: *"I feel like the mcp should have fundamental capacity to identify stages."*
+The requirement: *"I feel like the mcp should have fundamental capacity to identify stages."*
 
 So this is not a printout. It is a domain concept, and — usefully — one that needs no new
 persistence layer. If a stage is a partition of a stored plan (Q3), then which stage you

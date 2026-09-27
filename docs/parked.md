@@ -58,7 +58,7 @@ that means fluid flows downhill and needs no pipeline pumps.
 
 **Decided in principle, not built.** Every artifact under `data/` that describes map placements is a
 pinned snapshot with a shelf life, and the shelf life is a game update: *"in updates, resource nodes
-tend to move if the map gets changed"* (Lukas, 2026-07-30). That is not an anomaly to document once,
+tend to move if the map gets changed"* (2026-07-30). That is not an anomaly to document once,
 it is the normal lifecycle, and it is already visible in the tree.
 
 **The node table half is BUILT (2026-07-30).** `data/world_resource_nodes.json` is now generated
@@ -127,7 +127,7 @@ non-obvious and would be expensive to redo.
 where a factory floor actually has room -- an outline you declare, against which a plan can be
 fit-checked. Read-only; no editing.
 
-> **2026-09-27, Lukas:** the read-only rule no longer covers factory **labels**. At his
+> **2026-09-27:** the read-only rule no longer covers factory **labels**. On
 > request, the web page now detects unnamed factories and writes their names
 > (frontend_vision.md §9). Plans and site outlines stay read-only on the page.
 
@@ -171,7 +171,7 @@ a user data directory, not the repo.
 **Still not derivable, and would be invention:** world placement, belt routing, terrain
 fitting, foundation alignment to the world grid.
 
-## 16b. Built: floor-wise factory view (Lukas, 2026-07-31 — "only think about that idea")
+## 16b. Built: floor-wise factory view (2026-07-31 — "only think about that idea")
 
 **Kept as a record, not as a plan.** What follows is the idea as it was parked, then the four
 stages that built it, in the order they ran — the kill-switch measurement first, because every
@@ -245,8 +245,8 @@ on-terrain; (3) lift consistency — endpoints land on two distinct bands.
 
 **Stage 0 is the kill-switch:** run the Z-histogram against the reference world's 8
 platforms from raw projection data in a scratch script, before any schema work. Either clean
-bands emerge or the idea dies for the cost of an afternoon. Open input from Lukas before
-stage 2: are his multi-floor factories uniform-height stacks or mixed heights (4 m logistics
+bands emerge or the idea dies for the cost of an afternoon. Open input needed before
+stage 2: are the reference world's multi-floor factories uniform-height stacks or mixed heights (4 m logistics
 under 8 m machine floors)? That decides how clever band-height inference must be.
 
 ### Stage 0 ran, 2026-07-30: GO, with corrections
