@@ -66,22 +66,17 @@ export function factoryDash(name: string, aspect: string): string {
   return "factories/" + name + (aspect ? "/" + aspect : "");
 }
 
-export function aspectTabs(name: string, aspect: string): HTMLElement {
-  var row = make("div", "dash-tabs-row");
-  row.appendChild(sectionTabs(name, aspect));
-  row.appendChild(
-    button(
-      W.pin,
-      function () {
-        pinThis("factory", { factory: name });
-      },
-      { title: "pin this factory and copy its pin:N for chat", label: "pin " + name }
-    )
+export function factoryPinButton(name: string): HTMLButtonElement {
+  return button(
+    W.pin,
+    function () {
+      pinThis("factory", { factory: name });
+    },
+    { title: "pin this factory and copy its pin:N for chat", label: "pin " + name }
   );
-  return row;
 }
 
-function sectionTabs(name: string, aspect: string): HTMLElement {
+export function aspectTabs(name: string, aspect: string): HTMLElement {
   return tabs2(
     ASPECTS.map(function (a) {
       return { id: a[0], label: a[1], href: hashFor(factoryDash(name, a[0])) };

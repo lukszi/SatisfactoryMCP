@@ -297,7 +297,10 @@ def _normalise(world: _World, kind: str, ref: dict) -> tuple[dict, tuple[float, 
         label = world.label(name)
         if label is None:
             raise ObjectMissing(f"no factory named “{name}” in this save")
-        return {"factory": label.name}, None
+        from ..spatial import origin as origin_mod
+
+        centre = origin_mod.label_centre(world.st, label)
+        return {"factory": label.name}, _metres(centre) if centre is not None else None
     if kind == "machine":
         inst = _short(_text_ref(ref, "machine"))
         record = world.machines().get(inst)
@@ -429,12 +432,12 @@ def _describe(world: _World, pin: dict) -> dict:
         name = ref.get("factory", "")
         label = world.label(name)
         selector, text, what = f"label:{name}", f"factory “{name}”", f"factory “{name}”"
-        x_m = y_m = None
         if label is None:
             gone_why = f"no factory named “{name}” in this save"
         else:
             from ..spatial import origin as origin_mod
 
+            x_m = y_m = None
             centre = origin_mod.label_centre(world.st, label)
             if centre is not None:
                 x_m, y_m = _metres(centre)

@@ -2,6 +2,7 @@
  * See docs/planner-p3_contract.md §4, §8 and §9. */
 
 import { get, send } from "./api";
+import { copyText } from "./copy";
 import { code, esc, html, popup } from "./dom";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
@@ -12,7 +13,7 @@ import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 import { PIN_KIND } from "./words";
 
-import type { ApiError, ApiPath, ApiUrl, StatusError } from "./api";
+import type { ApiError, ApiPath, StatusError } from "./api";
 import type { Markup, Row } from "./dom";
 import type { PinCreated, PinDropped, PinRef, PinRow, PinsResponse, PinStaleResponse } from "./api-shapes";
 
@@ -24,8 +25,8 @@ export interface PinTarget {
 
 export var LABEL_MAX = 80;
 
-var PINS = "/api/pins" as ApiPath;
-var PIN_ONE = "/api/pins/{n}" as ApiPath;
+var PINS: ApiPath = "/api/pins";
+var PIN_ONE: ApiPath = "/api/pins/{n}";
 var KIND_ATTR = "data-pin-kind";
 var REF_ATTR = "data-pin-ref";
 var PIN_ZOOM = 1;
@@ -113,7 +114,7 @@ function draw(data: PinsResponse): void {
 registerFetch<PinsResponse>({
   wave: "live",
   rank: 90,
-  path: PINS as string as ApiUrl,
+  path: PINS,
   label: "pins",
   clears: ["pins"],
   refilters: false,
@@ -134,7 +135,7 @@ export function refetchPins(): void {
       refetchPins();
     }
   };
-  get<PinsResponse>(PINS as string as ApiUrl)
+  get<PinsResponse>(PINS)
     .then(function (data) {
       if (epoch === state.epoch) draw(data);
     })
@@ -145,11 +146,6 @@ export function refetchPins(): void {
       notify();
     })
     .then(done, done);
-}
-
-function copyText(text: string): Promise<void> {
-  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
-  return Promise.reject(new Error("the browser refused to copy"));
 }
 
 export function pinThis(kind: string, ref: PinRef): void {

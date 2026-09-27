@@ -52,7 +52,11 @@ function labelCell(p: PinRow, redraw: () => void): HTMLElement | string {
       stop();
     }
   };
-  box.onblur = commit;
+  box.onblur = function () {
+    setTimeout(function () {
+      if (box.isConnected) commit();
+    }, 0);
+  };
   if (editing.fresh) {
     editing.fresh = false;
     setTimeout(function () {

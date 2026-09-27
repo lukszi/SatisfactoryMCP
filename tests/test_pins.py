@@ -177,6 +177,7 @@ def test_machine_and_factory_pins_resolve_and_go_gone(
     assert rows["machine"]["gone"] and rows["machine"]["gone_why"] == "machine not in this save"
     assert rows["factory"]["gone"]
     assert rows["factory"]["gone_why"] == f"no factory named “{label.name}” in this save"
+    assert (rows["factory"]["x_m"], rows["factory"]["y_m"]) == (factory["x_m"], factory["y_m"])
 
 
 def test_plan_and_process_pins_go_gone_when_the_plan_is_forgotten(world):

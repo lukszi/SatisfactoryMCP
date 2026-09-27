@@ -19,7 +19,7 @@ import { startTrace } from "./trace";
 import { counted, W } from "./words";
 import { factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, toMap } from "./dashboard";
 import { actionable, mixBar, mixOf } from "./overview";
-import { aspectTabs, factoryAddress, factoryDash, renderAspect } from "./factory-detail";
+import { aspectTabs, factoryAddress, factoryDash, factoryPinButton, renderAspect } from "./factory-detail";
 
 import type { Column } from "./dashkit";
 import type {
@@ -876,6 +876,7 @@ export function renderFactory(body: HTMLElement, subject: string): void {
       { title: "draw around machines on the map to add them to this factory or remove them" }
     )
   );
+  head.appendChild(factoryPinButton(row.name));
   body.appendChild(head);
   if (shown) graphCard(body);
   body.appendChild(aspectTabs(row.name, aspect));

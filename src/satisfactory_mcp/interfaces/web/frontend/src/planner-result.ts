@@ -555,7 +555,7 @@ export function renderResult(parent: HTMLElement, select: (s: Selection) => void
       "result view"
     )
   );
-  var split = make("div", "plan-result" + (bench.alt ? " with-drawer" : ""));
+  var split = make("div", "plan-result" + (bench.alt && bench.tab === "graph" ? " beside" : ""));
   var main = make("div", "plan-main" + (bench.solving && bench.solving !== bench.resultRev ? " plan-stale" : ""));
   split.appendChild(main);
   if (bench.alt) renderAlternates(split, close);

@@ -2909,28 +2909,23 @@ path.lasso-area {
   flex-wrap: wrap;
 }
 
+.plan-result > .plan-drawer {
+  order: -1;
+  margin-bottom: var(--sp-2);
+}
+
 @media (min-width: 1280px) {
-  .plan-result.with-drawer {
+  .plan-result.beside {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 56%);
     gap: var(--sp-2);
     align-items: start;
   }
-}
 
-@media (max-width: 1279px) {
-  .plan-result > .plan-drawer {
-    order: -1;
-    margin-bottom: var(--sp-2);
+  .plan-result.beside > .plan-drawer {
+    order: 0;
+    margin-bottom: 0;
   }
-}
-
-.dash-tabs-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-2);
 }
 
 .pin-rename {
