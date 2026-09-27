@@ -246,12 +246,24 @@ SPIRE_COAST_FULL = {
 }
 
 
-def store_spire_coast_full(monkeypatch, plans: Path) -> None:
-    """Save the planner's decoupled Spire Coast plan into ``plans``, a private store."""
-    from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+@pytest.fixture
+def planned(monkeypatch, tmp_path, projection, game) -> WorldState:
+    """The fixture world with ``spire-coast-full`` saved in a private plan store.
 
-    monkeypatch.setattr(config, "plans_dir", lambda: plans)
+    The planning tools read it too, through a new state per call as the server builds one,
+    so a plan one call saves is seen by the next.
+    """
+    from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+    from satisfactory_mcp.interfaces.mcp.tools import planning
+
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path)
     PlanLog(FIXTURE_WORLD).create("spire-coast-full", SPIRE_COAST_FULL, actor=Actor("chat"))
+
+    def fresh(save=None, world=None, as_of=None):
+        return WorldState(projection=projection, game=game)
+
+    monkeypatch.setattr(planning, "_state", fresh)
+    return fresh()
 
 
 @pytest.fixture

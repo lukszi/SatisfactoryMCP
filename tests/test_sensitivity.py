@@ -11,14 +11,13 @@ and "you are not missing anything here" is the decision the hand-walk was produc
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD, store_spire_coast_full
+from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.gamedata.unlocks import SOURCE_OF_TYPE
 from satisfactory_mcp.domain.planning.scenario import build_scenario
 from satisfactory_mcp.domain.planning.sensitivity import sweep_unlocks
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.mcp.tools import planning
 
 pytestmark = pytest.mark.integration
 
@@ -31,16 +30,10 @@ SPIRE = dict(
 
 
 @pytest.fixture(autouse=True)
-def live(monkeypatch, tmp_path, projection, game) -> WorldState:
-    """The reference world with its saved plan, for the sweep and the tool alike: the
-    measured answer below names the Blender it still lacked, and the newest save has one."""
-    store_spire_coast_full(monkeypatch, tmp_path)
-
-    def fresh(save=None, world=None, as_of=None):
-        return WorldState(projection=projection, game=game)
-
-    monkeypatch.setattr(planning, "_state", fresh)
-    return fresh()
+def live(planned) -> WorldState:
+    """The reference world: the measured answer below names the Blender it still lacked,
+    and the newest save has one."""
+    return planned
 
 
 @pytest.fixture

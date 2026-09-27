@@ -17,13 +17,12 @@ fail loudly when it is incomplete -- which is the exact error the hand reconcili
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD, store_spire_coast_full
+from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.planning.sites import partition
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.mcp.tools import planning
 
 pytestmark = pytest.mark.integration
 
@@ -34,15 +33,8 @@ THREE = {"A-rig": RIG, "B-hall": HALL, "C-resin": RESIN}
 
 
 @pytest.fixture(autouse=True)
-def live(monkeypatch, tmp_path, projection, game) -> WorldState:
-    """The reference world with the plan saved in a private store, read as the tools read it."""
-    store_spire_coast_full(monkeypatch, tmp_path)
-
-    def fresh(save=None, world=None, as_of=None):
-        return WorldState(projection=projection, game=game)
-
-    monkeypatch.setattr(planning, "_state", fresh)
-    return fresh()
+def live(planned) -> WorldState:
+    return planned
 
 
 @pytest.fixture
