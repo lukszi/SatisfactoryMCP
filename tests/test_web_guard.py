@@ -1,4 +1,4 @@
-"""The write guard: only this server's own page may write, and reads are never refused."""
+"""The request guard: every request must name this server, and only its own page may write."""
 
 from __future__ import annotations
 
@@ -12,12 +12,19 @@ BOUND = ("127.0.0.1", 8713)
 PAGE = {"host": "127.0.0.1:8713", "origin": "http://127.0.0.1:8713"}
 
 
-def test_reads_pass_whatever_they_carry():
+def test_reads_from_this_server_pass_whatever_origin_they_carry():
     for method in ("GET", "HEAD", "OPTIONS"):
         assert (
-            refusal(method, {"host": "evil.example", "origin": "http://evil.example"}, BOUND)
-            is None
+            refusal(method, {"host": PAGE["host"], "origin": "http://evil.example"}, BOUND) is None
         )
+        assert refusal(method, {"host": "localhost:8713"}, BOUND) is None
+
+
+def test_a_read_through_a_rebound_host_is_refused():
+    for method in ("GET", "HEAD", "OPTIONS"):
+        said = refusal(method, {"host": "evil.example:8713"}, BOUND)
+        assert said and "Host" in said
+    assert refusal("GET", {}, BOUND)
 
 
 def test_the_page_itself_may_write():
@@ -69,3 +76,10 @@ def test_the_app_refuses_a_cross_origin_post_before_the_handler_runs(client):
     assert (
         client.get("/api/factories", headers={"origin": "http://evil.example"}).status_code == 200
     )
+
+
+def test_the_app_refuses_a_get_for_a_foreign_host_and_serves_its_own(client):
+    refused = client.get("/api/factories", headers={"host": "evil.example"})
+    assert refused.status_code == 403
+    assert "evil.example" in refused.json()["error"]
+    assert client.get("/api/factories", headers={"host": "testserver"}).status_code == 200
