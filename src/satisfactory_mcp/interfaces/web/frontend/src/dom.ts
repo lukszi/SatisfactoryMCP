@@ -68,6 +68,8 @@ export function code(text: unknown): Markup {
 export var TRACE_ATTR = "data-trace";
 export var TRACE_DIR_ATTR = "data-trace-dir";
 export var LASSO_ATTR = "data-lasso";
+export var FIND_ATTR = "data-find";
+export var FIND_AT_ATTR = "data-find-at";
 
 export function traceButtons(seed: string): Markup {
   var value = esc(seed);

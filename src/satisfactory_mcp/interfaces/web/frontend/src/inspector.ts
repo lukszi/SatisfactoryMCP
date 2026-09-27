@@ -8,13 +8,16 @@
  */
 
 import { get } from "./api";
-import { code, esc, html, popup, traceButtons } from "./dom";
-import { regionLine } from "./format";
+import { code, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "./dom";
+import { count, num, perMin, regionLine } from "./format";
 import { L } from "./leaflet";
-import { map } from "./map";
+import { hashFor, map } from "./map";
+import { withQuery } from "./nav";
+import { setting } from "./settings";
 import { friendly } from "./toast";
+import { counted, W } from "./words";
 
-import type { Elevation, InspectResponse } from "./api-shapes";
+import type { ConduitCount, Elevation, FoundField, InspectResponse, NearPickup } from "./api-shapes";
 import type { Row } from "./dom";
 import type { InspectedEvent } from "./leaflet-private";
 
@@ -81,24 +84,91 @@ function nearestText(n: InspectResponse["nearest"][number]): string {
   return n.resource_name + " " + n.purity + " · " + n.distance_m + " m" + (n.occupied ? " (occupied)" : "");
 }
 
+var PICKUPS_NEAR_M = 500;
+
+function shown<T extends { spoiler: boolean }>(rows: T[]): T[] {
+  var all = setting("spoilers");
+  return rows.filter(function (r) {
+    return all || !r.spoiler;
+  });
+}
+
+function findButton(kind: string, spot: string, text: string, title: string): string {
+  return (
+    '<button type="button" class="btn" ' +
+    FIND_ATTR +
+    '="' +
+    kind +
+    '" ' +
+    FIND_AT_ATTR +
+    '="' +
+    esc(spot) +
+    '" title="' +
+    title +
+    '">' +
+    text +
+    "</button>"
+  );
+}
+
+function actions(x: number, y: number): string {
+  var spot = x + "," + y;
+  return [
+    findButton("point", spot, "select point", "make this point the selection"),
+    findButton("nodes", spot, "nodes near here", "ring the resource nodes near this point"),
+    findButton("conduits", spot, "conduits here", "draw the belts and pipes near this point"),
+    findButton("pickups", spot, "pickups near here", "ring the nearest pickups"),
+    '<a href="' + esc(hashFor(withQuery("world/nodes", { near: spot }))) + '">open in World</a>',
+  ].join(" ");
+}
+
+function conduitLine(c: ConduitCount): string {
+  return counted(c.belt, "belt") + ", " + counted(c.pipe, "pipe") + " within " + num(c.radius_m, 0) + " m";
+}
+
+function fieldText(f: FoundField): string {
+  return f.resources.join(" + ") + " " + W.field + " · " + counted(f.size, "node") + " · " + perMin(f.free) + " " + W.free;
+}
+
+function pickupText(p: NearPickup): string {
+  return p.label + (p.distance_m === null ? "" : " · " + num(p.distance_m, 0) + " m");
+}
+
 function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string }): string {
   var rows: Row[] = [];
   if (machine) {
     rows.push(["machine", machine.name]);
     rows.push(["trace", traceButtons(machine.leaf)]);
   }
+  var nearest = shown(d.nearest);
+  var pickups = shown(d.pickups);
+  var fields = shown(d.fields);
   rows.push(["region", regionLine(d.region)]);
   rows.push(["elevation", elevationLine(d.elevation)]);
-  if (d.nearest.length) rows.push(["nearest", nearestText(d.nearest[0]!)]);
+  rows.push(["grid", d.grid ? d.grid + (d.direction ? " · " + d.direction : "") : null]);
+  if (nearest.length) rows.push(["nearest", nearestText(nearest[0]!)]);
+  rows.push(["conduits", d.conduits ? conduitLine(d.conduits) : null]);
+  rows.push(["pickups", (pickups.length >= 5 ? "5 or more" : count(pickups.length)) + " " + W.remaining + " within " + PICKUPS_NEAR_M + " m"]);
   // The one row built to be copied into an MCP tool call, so the unit -- the same " m"
   // every other coordinate row on the map ends with -- must ride along.
-  rows.push(["at", html("<code>" + esc(d.at.x_m + ", " + d.at.y_m) + "</code> m")]);
+  rows.push(["at", html(code(d.at.x_m + "," + d.at.y_m).html + " m")]);
+  rows.push(["", html('<span class="popup-acts">' + actions(d.at.x_m, d.at.y_m) + "</span>")]);
   var more: Row[] = elevationRows(d.elevation);
   /* Each nearest node carries the same `node:` selector its own dot's popup prints, because
    * the answer's next step is an MCP tool call naming one of these nodes and a resource plus
    * a distance cannot say WHICH one -- a world has dozens of impure copper nodes. */
-  d.nearest.forEach(function (n, i) {
+  nearest.slice(0, 5).forEach(function (n, i) {
     more.push([i ? "" : "nodes", html(esc(nearestText(n)) + "<br>" + code("node:" + n.name).html)]);
+  });
+  fields.slice(0, 3).forEach(function (f, i) {
+    more.push([i ? "" : "fields", html(esc(fieldText(f)) + "<br>" + code(f.selector).html)]);
+  });
+  pickups.slice(0, 5).forEach(function (p, i) {
+    more.push([i ? "" : "pickups", html(esc(pickupText(p)) + "<br>" + code(p.name).html)]);
+  });
+  d.stale.forEach(function (t) {
+    if (!t.behind && !t.moved && !t.unjoinable) return;
+    more.push(["map data", t.notes.length ? t.notes.join(" ") : W.mapDataBehind + (t.gap ? " (" + t.gap + ")" : "")]);
   });
   // Said out loud rather than left to be inferred: with no save there is no built
   // population and no occupancy, so every node above reads as free whether it is or not.
