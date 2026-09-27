@@ -15,23 +15,27 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from ... import config
+
 __all__ = [
     "BASE",
     "COLLECTIBLES",
     "LAYERS",
-    "LOCAL_BASE",
     "LOCAL_WORLD_ZOOM",
     "collectible_layers",
     "layers_for",
+    "local_base",
     "local_map_url",
     "map_url",
 ]
 
 BASE = "https://satisfactory-calculator.com/en/interactive-map"
 
-#: This project's own web map. The port duplicates the one pinned in
-#: ``interfaces.web.__main__``, because domain may not import from interfaces.
-LOCAL_BASE = "http://127.0.0.1:8712/"
+
+def local_base() -> str:
+    """This project's own web map, on the host and port ``config`` gives the web server."""
+    return config.web_url()
+
 
 #: The local page's own whole-world framing (``HOME_VIEW`` in ``map.ts``). A link whose point
 #: is a layer has to open far enough out for the layer to be the picture.
@@ -152,4 +156,4 @@ def local_map_url(
         parts.append("pickups=" + quote(",".join(pickups), safe=","))
     parts.append(f"z={zoom:g}")
     parts.append(f"c={round(x_m, 1):g},{round(y_m, 1):g}")
-    return LOCAL_BASE + "#" + "&".join(parts)
+    return local_base() + "#" + "&".join(parts)

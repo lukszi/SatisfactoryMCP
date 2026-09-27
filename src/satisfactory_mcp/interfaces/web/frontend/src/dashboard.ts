@@ -13,6 +13,7 @@ import { editName, refreshLabels, renamedTo } from "./rename";
 import { amount, choice, onSetting, setSetting, setting, SETTINGS } from "./settings";
 import { state } from "./state";
 import { fail, friendly, note as said } from "./toast";
+import { startTrace } from "./trace";
 
 import type {
   CandidateRow,
@@ -1061,6 +1062,13 @@ function renderFactory(body: HTMLElement, name: string): void {
     actionButton(shown ? "hide graph" : "graph", "draw this factory's production graph", function () {
       if (shown) closeGraph();
       else openGraph("factory", row!.name);
+    })
+  );
+  head.appendChild(
+    actionButton("trace supply", "draw what feeds this factory on the map, with items and rates", function () {
+      toMap(function () {
+        startTrace(row!.name, "up");
+      });
     })
   );
   body.appendChild(head);

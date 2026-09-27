@@ -124,3 +124,16 @@ def test_a_walk_cut_short_says_it_is_a_floor(traced, monkeypatch):
     out = ftools.trace_upstream(CONSTRUCTOR)
     assert "FLOOR" in out
     assert "Smelter" not in out, "the fixture must actually be cut short for this to mean it"
+
+
+def test_resolve_seeds_hands_back_machine_leaves_for_a_label(traced, game):
+    """The shared resolver the tool and ``/api/trace`` both call; a label once raised
+    ``TypeError`` here because its ids were indexed as records."""
+    from satisfactory_mcp.domain.factories.trace import resolve_seeds
+
+    traced.labels.put("rod line", [CONSTRUCTOR])
+    seeds, subject = resolve_seeds(traced, game, "rod line")
+    assert seeds == [CONSTRUCTOR]
+    assert subject == "factory 'rod line' (1 machines)"
+    assert resolve_seeds(traced, game, "building:Constructor")[0] == [CONSTRUCTOR]
+    assert resolve_seeds(traced, game, SMELTER)[0] == [SMELTER]

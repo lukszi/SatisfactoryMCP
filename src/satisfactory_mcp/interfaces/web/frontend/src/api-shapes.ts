@@ -158,3 +158,8 @@ export type CollectiblesResponse = Body<"CollectiblesResponse">;
 /** A region lookup, hung on a node row and answered for an inspected point. Declared once
  *  on the server too -- in `serial.py`, for the same reason it is one name here. */
 export type Region = Schema["Region"];
+
+/* ------------------------------------------------------------------ /api/trace */
+
+export type TraceMachine = Schema["TraceMachine"];
+export type TraceResponse = Body<"TraceResponse">;

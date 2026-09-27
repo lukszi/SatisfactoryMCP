@@ -24,12 +24,13 @@ from . import (
     nodes,
     placements,
     plans,
-    progress,
     power,
+    progress,
     regions,
     routes_layer,
     storage,
     tiles,
+    trace,
     world,
 )
 
@@ -60,4 +61,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     grid.router,
     progress.router,
     naming.router,
+    trace.router,
 )

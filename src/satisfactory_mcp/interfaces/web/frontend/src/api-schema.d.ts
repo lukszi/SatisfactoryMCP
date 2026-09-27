@@ -946,6 +946,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trace Path
+         * @description What feeds a machine, a building type or a factory (``up``), or what it feeds (``down``).
+         */
+        get: operations["trace_path_api_trace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2385,6 +2405,13 @@ export interface components {
             /** Spread M */
             spread_m: number;
         };
+        /** Rate */
+        Rate: {
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number;
+        };
         /**
          * Region
          * @description What ``_label_json`` sends: a region lookup that never arrives without its doubt.
@@ -2729,6 +2756,136 @@ export interface components {
             done: number;
             /** Total */
             total: number;
+        };
+        /**
+         * TraceEdge
+         * @description Group to group, ``in:<item>`` for supply from outside the traced set, or a terminal
+         *     (``storage``, ``export``, ``sink``, ``nowhere``). ``per_min`` null: nothing to share.
+         */
+        TraceEdge: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number | null;
+        };
+        /** TraceGroup */
+        TraceGroup: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /** Machines */
+            machines: number;
+            /** Running */
+            running: number;
+            /** Blocked */
+            blocked: number;
+            /** Stopped */
+            stopped: number;
+            /** Makes */
+            makes: components["schemas"]["Rate"][];
+        };
+        /**
+         * TraceMachine
+         * @description ``kind`` is ``extractor``, ``generator`` or ``production``; ``hops`` is 0 on a seed.
+         *     Rates are nameplate at the machine's clock. ``x_m``/``y_m`` are null for an unplaced
+         *     record.
+         */
+        TraceMachine: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Seed */
+            seed: boolean;
+            /** Hops */
+            hops: number;
+            /** Recipe */
+            recipe: string | null;
+            /** Makes */
+            makes: components["schemas"]["Rate"][];
+            /** Uses */
+            uses: components["schemas"]["Rate"][];
+            /** State */
+            state: string;
+            /** Actionable */
+            actionable: boolean;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /**
+         * TraceResponse
+         * @description ``items`` is what the reached machines make (up) or use (down), seeds excluded.
+         */
+        TraceResponse: {
+            /** Seed */
+            seed: string;
+            /** Subject */
+            subject: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "up" | "down";
+            /** Token */
+            token: string;
+            /** Visited */
+            visited: number;
+            /** Deepest */
+            deepest: number;
+            /** Ambiguous */
+            ambiguous: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Seeds */
+            seeds: number;
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Items */
+            items: components["schemas"]["Rate"][];
+            /** Machines */
+            machines: components["schemas"]["TraceMachine"][];
+            /** Runs */
+            runs: components["schemas"]["TraceRun"][];
+            /** Groups */
+            groups: components["schemas"]["TraceGroup"][];
+            /** Edges */
+            edges: components["schemas"]["TraceEdge"][];
+        };
+        /**
+         * TraceRun
+         * @description One conduit run the walk crossed; ``ident`` is empty where the run carries no id.
+         */
+        TraceRun: {
+            /** Ident */
+            ident: string;
+            /**
+             * Medium
+             * @enum {string}
+             */
+            medium: "belt" | "pipe";
+            /** Pieces */
+            pieces: number;
+            /** Lines M */
+            lines_m: [
+                number,
+                number
+            ][][];
         };
         /**
          * UnsupportedFile
@@ -3839,6 +3996,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trace_path_api_trace_get: {
+        parameters: {
+            query: {
+                seed: string;
+                direction?: string;
+                as_of?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceResponse"];
                 };
             };
             /** @description Validation Error */

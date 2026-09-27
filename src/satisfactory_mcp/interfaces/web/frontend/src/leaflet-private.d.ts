@@ -150,4 +150,5 @@ export interface SectionPart extends HTMLElement {
 /** A DOM mouse event that has already opened an inspector card. See inspect(). */
 export interface InspectedEvent extends MouseEvent {
   _inspected?: boolean;
+  _machine?: { leaf: string; name: string };
 }

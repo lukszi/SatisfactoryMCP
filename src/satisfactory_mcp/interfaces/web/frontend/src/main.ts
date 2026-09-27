@@ -32,6 +32,7 @@ import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
 import { listen } from "./sse";
 import { BOOT, state } from "./state";
 import { loadBaseMap } from "./tiles";
+import { listenForTraces } from "./trace";
 import { loadWorlds } from "./worlds";
 
 /* ---------------------------------------------------------------- features */
@@ -120,6 +121,7 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
 /* ...and the third: one delegated click for every selector on the page, which is why it is
  * here and not in whatever module last built a popup. */
 listenForCopies();
+listenForTraces();
 
 /* -------------------------------------------------------------------- boot */
 
