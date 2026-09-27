@@ -1,4 +1,4 @@
-"""``/api/search``: the header's one box, over items, part recipes and named factories.
+"""``/api/search``: the header's one box, over items, recipes of every kind and named factories.
 
 Called per keystroke (debounced), so it reads the cached state and scans in memory only.
 docs/frontend_vision.md §10. Wire rules: docs/web-wire.md.
@@ -28,10 +28,13 @@ class ItemHit(TypedDict):
 
 
 class RecipeHit(TypedDict):
-    """``unlocked`` is null when no save could be read; ``spoiler`` means locked."""
+    """``unlocked`` is null when no save could be read; ``spoiler`` means locked. ``kind`` is
+    part, building or manual; ``machine`` names a part recipe's machine."""
 
     cls: str
     name: str
+    kind: str
+    machine: str | None
     alternate: bool
     unlocked: bool | None
     spoiler: bool
@@ -54,6 +57,11 @@ class SearchResponse(TypedDict):
     save_note: str | None
 
 
+def _machine(g, recipe) -> str | None:
+    b = g.machine(recipe)
+    return b.name if b else None
+
+
 def _first(name: str, q: str) -> tuple[bool, str]:
     return (not name.casefold().startswith(q), name)
 
@@ -67,7 +75,7 @@ def search(
     world: str | None = None,
     spoilers: bool | None = None,
 ) -> Any:
-    """Items, part recipes and named factories whose names contain ``q``.
+    """Items, recipes of every kind and named factories whose names contain ``q``.
 
     ``spoilers=0``, or its older alias ``only_unlocked``, drops locked recipes before the cut
     and the count, so neither the list nor ``recipes_total`` says what the save has not
@@ -95,8 +103,8 @@ def search(
         have = st.available_recipe_ids
         labels = [lb for lb in st.labels.labels if key in lb.name.casefold()]
     except Exception as exc:
-        note = f"no save could be read ({exc}): factories are missing and HAVE/LOCKED is unknown"
-    hits, _census = gsearch.search(g, query=text, recipe_kind="part", unlocked=have)
+        note = f"no save could be read ({exc}): factories are missing and unlocks are unknown"
+    hits, _census = gsearch.search(g, query=text, recipe_kind="all", unlocked=have)
     if only_unlocked or spoilers is False:
         hits = [h for h in hits if h.unlocked is not False]
     hits.sort(key=lambda h: _first(h.recipe.name, key))
@@ -108,6 +116,8 @@ def search(
             {
                 "cls": h.recipe.cls,
                 "name": h.recipe.name,
+                "kind": h.recipe.kind,
+                "machine": _machine(g, h.recipe),
                 "alternate": h.recipe.is_alternate,
                 "unlocked": h.unlocked,
                 "spoiler": h.unlocked is False,

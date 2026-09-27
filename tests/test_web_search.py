@@ -27,7 +27,7 @@ def test_an_empty_query_finds_nothing(client):
 def test_items_and_recipes_match_the_codex(client, game, state):
     body = client.get("/api/search", params={"q": "plate"}).json()
     items = search.find_items(game, "plate")
-    hits, _ = search.search(game, query="plate", recipe_kind="part")
+    hits, _ = search.search(game, query="plate", recipe_kind="all")
     assert body["items_total"] == len(items)
     assert body["recipes_total"] == len(hits)
     assert len(body["items"]) <= 8 and len(body["recipes"]) <= 8
@@ -42,7 +42,7 @@ def test_only_unlocked_drops_locked_recipes_before_the_cut_and_the_count(client,
     first and hiding locked ones after left most unlocked matches unseen, and the total
     still counted the locked ones."""
     have = state.available_recipe_ids
-    hits, _ = search.search(game, query="ingot", recipe_kind="part", unlocked=have)
+    hits, _ = search.search(game, query="ingot", recipe_kind="all", unlocked=have)
     unlocked = [h for h in hits if h.unlocked]
     assert len(hits) > len(unlocked) > 0, "the fixture must mix locked and unlocked hits"
     body = client.get("/api/search", params={"q": "ingot", "only_unlocked": True}).json()
@@ -110,3 +110,11 @@ def test_recipe_hits_carry_the_spoiler_flag_and_spoilers_0_is_only_unlocked(clie
     assert hidden == alias
     assert hidden["recipes_total"] < full["recipes_total"]
     assert not any(r["spoiler"] for r in hidden["recipes"])
+
+
+def test_buildings_and_crafted_recipes_are_found_and_carry_their_kind(client):
+    hub = client.get("/api/search", params={"q": "hub"}).json()["recipes"]
+    assert [(r["name"], r["kind"], r["machine"]) for r in hub] == [("The HUB", "building", None)]
+    rifle = client.get("/api/search", params={"q": "turbo rifle"}).json()["recipes"]
+    machines = [r["machine"] for r in rifle if r["name"] == "Turbo Rifle Ammo"]
+    assert len(machines) == 2 and len(set(machines)) == 2 and None not in machines

@@ -77,7 +77,21 @@ def test_an_ambiguous_recipe_lists_the_candidates_and_unknown_is_404(client):
     ambiguous = client.get("/api/gamedata/recipe", params={"recipe": "Iron"})
     assert ambiguous.status_code == 409
     assert "matches" in ambiguous.json()["error"]
-    assert client.get("/api/gamedata/recipe", params={"recipe": "zzzz-no-such"}).status_code == 404
+    unknown = client.get("/api/gamedata/recipe", params={"recipe": "zzzz-no-such"})
+    assert unknown.status_code == 404
+    assert unknown.json()["error"] == 'no recipe is called "zzzz-no-such"'
+
+
+def test_an_ambiguous_name_counts_only_unlocked_candidates_with_spoilers_0(client, game, state):
+    _, hits = find_recipe(game, "Iron")
+    have = state.available_recipe_ids
+    unlocked = [h for h in hits if h in have]
+    assert len(hits) > len(unlocked) > 1, "the fixture must mix locked and unlocked candidates"
+    full = client.get("/api/gamedata/recipe", params={"recipe": "Iron"}).json()["error"]
+    hidden = client.get("/api/gamedata/recipe", params={"recipe": "Iron", "spoilers": 0})
+    assert f"matches {len(hits)} recipes" in full
+    assert hidden.status_code == 409
+    assert f"matches {len(unlocked)} recipes" in hidden.json()["error"]
 
 
 def test_alternates_list_every_maker_alternates_first(client, game, state):
@@ -99,6 +113,8 @@ def test_unlocked_counts_agree_with_the_state(client, state):
         (r.cls for r in state.unlocked_alternates),
         key=lambda c: state.game.recipes[c].name,
     )
+    assert body["save_kind"] in ("autosave", "manual save")
+    assert "saveVersion" not in (body["written_ago"] or "")
     every = client.get("/api/gamedata/unlocked", params={"only_alternates": False}).json()
     assert (
         len(every["recipes"]) == every["automatable_total"] == len(state.unlocked_recipes("part"))
@@ -168,3 +184,10 @@ def test_makers_and_the_recipe_card_carry_the_spoiler_flag(client, game, state):
     assert client.get("/api/gamedata/recipe", params={"recipe": r.cls}).json()["spoiler"] is (
         r.cls not in state.available_recipe_ids
     )
+
+
+def test_a_building_descriptor_points_at_its_build_recipe(client):
+    body = client.get("/api/gamedata/alternates", params={"item": "Desc_AssemblerMk1_C"}).json()
+    assert body["build_recipe"] == "Recipe_AssemblerMk1_C"
+    plate = client.get("/api/gamedata/alternates", params={"item": "Iron Plate"}).json()
+    assert plate["build_recipe"] is None

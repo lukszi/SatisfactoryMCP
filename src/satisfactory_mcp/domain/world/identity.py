@@ -78,6 +78,11 @@ class SaveIdentity:
         return save_token(self.header)
 
     @property
+    def save_kind(self) -> str:
+        name = self.header.get("filename", "").lower()
+        return "autosave" if "autosave" in name else "manual save"
+
+    @property
     def age_note(self) -> str:
         """Human-readable provenance. Always shown: autosaves rotate every ~5 min
         and can catch the factory mid-restructure.
@@ -94,8 +99,8 @@ class SaveIdentity:
         the file has ever held.
         """
         h = self.header
-        is_autosave = "autosave" in h.get("filename", "").lower()
-        kind = "autosave" if is_autosave else "manual save"
+        kind = self.save_kind
+        is_autosave = kind == "autosave"
         hours = (h.get("play_duration_s") or 0) / 3600
         written = stamp(h.get("mtime_ns"))
         when = f", written {written} ({ago(h.get('mtime_ns'))})" if written else ""
