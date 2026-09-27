@@ -10,24 +10,29 @@ import { L } from "./leaflet";
 import { loadOne } from "./load";
 import { flyPadded, flyToPoint, map, NARROW } from "./map";
 import { declareColours } from "./palette";
-import { bar, circuitDark, circuitName, headroom, LEDGER } from "./powerview";
-import { regionAt } from "./regions";
+import {
+  bar,
+  biomassLine,
+  biomassQuery,
+  circuitName,
+  LEDGER,
+  onBiomass,
+  ratedCircuit,
+  ratedWorld,
+  readFull,
+  readGeneration,
+  readMeasured,
+  readNow,
+  whereOf,
+} from "./powerview";
 import { registerFetch } from "./registry";
 import { editName, renamingIn } from "./rename";
 import { state } from "./state";
 import { learnStates, tone } from "./states";
 import { counted, W } from "./words";
 
-import type {
-  CircuitRow,
-  CircuitsResponse,
-  FactoryHealthResponse,
-  FactoryHealthRow,
-  Ledger,
-  MachineIssue,
-  MachineRef,
-  StarvedGenerator,
-} from "./api-shapes";
+import type { CircuitRow, CircuitsResponse, FactoryHealthResponse, FactoryHealthRow, MachineIssue, MachineRef, StarvedGenerator } from "./api-shapes";
+import type { Rated, Reading } from "./powerview";
 
 type Tab = "factories" | "power";
 
@@ -339,25 +344,27 @@ function renderFactories(body: HTMLElement): void {
   body.appendChild(list);
 }
 
-function ledgerBlock(ledger: Ledger): HTMLElement {
+function ledgerBlock(r: Rated, starved: number): HTMLElement {
   var box = make("div", "panel-ledger");
   var grid = make("div", "panel-kv");
-  var pairs: [string, string, boolean][] = [
-    [LEDGER.generation, mw(ledger.generation_mw), false],
-    [LEDGER.measuredDraw, mw(ledger.measured_draw_mw), false],
-    [LEDGER.nameplateDraw, mw(ledger.draw_mw), false],
-    [LEDGER.headroomNow, headroom(ledger.measured_headroom_mw), ledger.measured_headroom_mw < 0],
-    [LEDGER.headroomFull, headroom(ledger.headroom_mw), ledger.headroom_mw < 0],
+  var pairs: [string, Reading][] = [
+    [LEDGER.generation, readGeneration(r)],
+    [LEDGER.measuredDraw, readMeasured(r)],
+    [LEDGER.nameplateDraw, { value: mw(r.ledger.draw_mw), bad: false, why: "" }],
+    [LEDGER.headroomNow, readNow(r)],
+    [LEDGER.headroomFull, readFull(r)],
   ];
-  if (ledger.starved_generation_mw) {
-    pairs.splice(1, 0, ["of it starved", mw(ledger.starved_generation_mw), true]);
-  }
+  if (starved) pairs.splice(1, 0, ["of it starved", { value: mw(starved), bad: true, why: "" }]);
   pairs.forEach(function (p) {
     grid.appendChild(make("span", "panel-k", p[0]));
-    grid.appendChild(make("span", "panel-v" + (p[2] ? " bad" : ""), p[1]));
+    var v = make("span", "panel-v" + (p[1].bad ? " bad" : ""), p[1].value);
+    if (p[1].why) v.title = p[1].why;
+    grid.appendChild(v);
   });
-  box.appendChild(bar(ledger));
+  box.appendChild(bar(r.ledger));
   box.appendChild(grid);
+  var extra = biomassLine(r.ledger);
+  if (extra) box.appendChild(make("p", "panel-note", extra));
   return box;
 }
 
@@ -375,9 +382,7 @@ function refList(title: string, rows: Ref[], hint: string): HTMLElement {
     var line = make("li", "panel-issue");
     var text = make("span", "panel-issue-text");
     text.appendChild(make("span", "panel-issue-what", r.name));
-    var where = located(r) ? regionAt(r.x_m, r.y_m) : null;
-    var why = "missing" in r ? mw(r.mw) + " · " + r.cause : "";
-    var sub = [where, why].filter(Boolean).join(" · ");
+    var sub = "missing" in r ? mw(r.mw) + " · " + r.cause : whereOf(r).where;
     if (sub) text.appendChild(make("span", "panel-issue-cause", sub));
     line.appendChild(text);
     var go = pinButton(r, r.name);
@@ -393,6 +398,7 @@ function refList(title: string, rows: Ref[], hint: string): HTMLElement {
 function circuitRow(row: CircuitRow): HTMLElement {
   var selected = row.index === view.circuit;
   var led = row.ledger;
+  var r = ratedCircuit(row);
   var item = make("li", "panel-row" + (selected ? " on" : "") + (row.bbox_m ? " go" : ""));
   var head = make("div", "panel-row-head");
   head.appendChild(
@@ -400,19 +406,19 @@ function circuitRow(row: CircuitRow): HTMLElement {
       selectCircuit(row);
     })
   );
-  var dark = circuitDark(row);
-  var short = led.measured_headroom_mw < 0 || led.starved_generation_mw > 0;
-  head.appendChild(
-    make("span", "panel-badge" + (dark || short ? " bad" : " ok"), dark ? W.noGenerator : headroom(led.measured_headroom_mw))
-  );
+  var now = r.dark ? readGeneration(r) : readNow(r);
+  var tone = now.bad || led.starved_generation_mw > 0 ? " bad" : now.why ? "" : " ok";
+  var badge = make("span", "panel-badge" + tone, now.value);
+  badge.title = now.why || LEDGER.headroomNow;
+  head.appendChild(badge);
   item.appendChild(head);
   item.appendChild(
     make(
       "div",
       "panel-row-sub",
-      mw(led.measured_draw_mw) +
+      readMeasured(r).value +
         " of " +
-        mw(led.generation_mw) +
+        (r.dark ? mw(led.generation_mw) : readGeneration(r).value) +
         " · " +
         counted(row.consumers, "consumer") +
         " · " +
@@ -422,7 +428,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
   if (led.generation_mw > 0 || led.draw_mw > 0) item.appendChild(bar(led));
   if (selected) {
     item.appendChild(link("power/" + (row.index + 1), "open in dashboard", "panel-dash"));
-    item.appendChild(ledgerBlock(led));
+    item.appendChild(ledgerBlock(r, led.starved_generation_mw));
     if (row.generators.length) {
       item.appendChild(
         make(
@@ -453,7 +459,7 @@ function renderPower(body: HTMLElement): void {
     return;
   }
   body.appendChild(make("h3", "panel-h", "whole world"));
-  body.appendChild(ledgerBlock(data.world));
+  body.appendChild(ledgerBlock(ratedWorld(data), data.world.starved_generation_mw));
   if (data.generators.length) {
     var kinds = data.generators.map(function (g) {
       return g.count + "× " + g.name + " " + mw(g.mw);
@@ -623,10 +629,15 @@ registerFetch<FactoryHealthResponse>({
   },
 });
 
+onBiomass(function () {
+  loadOne(CIRCUITS_PATH);
+});
+
 registerFetch<CircuitsResponse>({
   wave: "live",
   rank: 50,
   path: CIRCUITS_PATH,
+  query: biomassQuery,
   label: "power circuits",
   clears: [],
   refilters: false,

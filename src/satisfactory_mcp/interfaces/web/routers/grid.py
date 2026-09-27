@@ -19,7 +19,7 @@ from ....domain.factories.health import assess
 from ....domain.power.report import PowerLedger, starved_cause
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
-from ..serial import Region, _fail, _label_json, _m, _state
+from ..serial import Biomass, Region, _fail, _label_json, _m, _state
 
 __all__ = ["router"]
 
@@ -29,6 +29,9 @@ RECORD_LISTS = ("generators", "machines", "extractors")
 
 
 class Ledger(TypedDict):
+    """``biomass_mw`` and ``biomass_generators`` are the wired burners left out of every
+    figure here under ``?biomass=exclude``; both are 0 under ``include``."""
+
     generation_mw: float
     starved_generation_mw: float
     draw_mw: float
@@ -39,6 +42,8 @@ class Ledger(TypedDict):
     monitored: int
     unmonitored: int
     paused: int
+    biomass_mw: float
+    biomass_generators: int
 
 
 class GeneratorGroup(TypedDict):
@@ -130,6 +135,8 @@ def _ledger(report: dict) -> dict:
         "monitored": report["monitored"],
         "unmonitored": report["unmonitored"],
         "paused": report["paused_consumers"],
+        "biomass_mw": round(report["biomass_mw"], 1),
+        "biomass_generators": report["biomass_generators"],
     }
 
 
@@ -164,7 +171,12 @@ def _starved(report: dict, placed: dict) -> list[dict]:
 
 
 @router.get("/power/circuits", response_model=CircuitsResponse)
-def power_circuits(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def power_circuits(
+    request: Request,
+    save: str | None = None,
+    world: str | None = None,
+    biomass: Biomass = "exclude",
+) -> Any:
     """Generation against draw, nameplate and measured, for the world and for each circuit.
 
     ``unwired`` and ``no_generator`` are ``assess``'s two lists over every machine in the
@@ -176,6 +188,7 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
 
+    counted = biomass == "include"
     graph = st.graph
     placed = fidentity.positions(st.projection)
     records = {
@@ -191,7 +204,7 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
         sub = {key: [r for s, r in records[key].items() if s in members] for key in RECORD_LISTS}
         if not any(sub.values()):
             continue
-        report = PowerLedger(projection=sub, game=st.game).power_report()
+        report = PowerLedger(projection=sub, game=st.game).power_report(biomass=counted)
         standing = [s for s in component if s in placed]
         pts = [placed[s][:2] for s in standing]
         box = geo.bbox(pts)
@@ -249,7 +262,7 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
             )
         return out
 
-    world_report = st.power_report()
+    world_report = st.power_report(biomass=counted)
     return {
         "world": _ledger(world_report),
         "paused": world_report["paused_count"],

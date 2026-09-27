@@ -12,7 +12,9 @@
 
 import { el } from "./dom";
 import { mw, phaseText } from "./format";
+import { loadOne } from "./load";
 import { drawPlayer } from "./markers";
+import { biomassLine, biomassQuery, onBiomass, ratedSummary, readGeneration, readMeasured } from "./powerview";
 import { registerFetch } from "./registry";
 import { W } from "./words";
 
@@ -20,38 +22,18 @@ import type { SummaryResponse } from "./api-shapes";
 
 function drawHeader(s: SummaryResponse): void {
   drawPlayer(s.player);
-  var power = s.power;
-  // No fallback to the nameplate: `PowerReport` starts the measured figure at 0.0 and charges
-  // an unmonitored machine in full, so it is always a number -- and a nameplate total printed
-  // under the words "measured draw" is the opposite of what the split exists to say.
-  var measured = power.measured_draw_mw;
+  var r = ratedSummary(s);
+  var measured = readMeasured(r);
+  var generation = readGeneration(r);
   var parts = [s.header.session_name];
   var phase = phaseText(s.progression.game_phase);
   if (phase) parts.push(phase);
-  // The measured figure, labelled: the nameplate total alone reads as "one factory
-  // from a brown-out" on a base that is mostly idle. Both live in the tooltip.
-  parts.push(mw(measured) + " " + W.measuredDraw + " / " + mw(power.generation_mw) + " " + W.generation);
+  parts.push(measured.value + " " + W.measuredDraw + " / " + generation.value + " " + W.generation);
   var span = el("summary");
   span.textContent = parts.join(" · ");
-  // Set in the same breath as the text, and so is the failure branch below: a branch that
-  // only touches `textContent` leaves the PREVIOUS world's tooltip -- three specific power
-  // figures -- hanging off the new world's header. worlds.ts and reload() do the pair too.
-  span.title =
-    parts.join(" · ") +
-    "\n" +
-    s.age_note +
-    "\npower: " +
-    mw(measured) +
-    " " +
-    W.measuredDraw +
-    "; " +
-    mw(power.draw_mw) +
-    " " +
-    W.nameplateDraw +
-    "; " +
-    mw(power.generation_mw) +
-    " " +
-    W.generation;
+  var power = [measured.why || measured.value + " " + W.measuredDraw, mw(s.power.draw_mw) + " " + W.nameplateDraw, generation.value + " " + W.generation];
+  if (biomassLine(s.power)) power.push(biomassLine(s.power));
+  span.title = parts.join(" · ") + "\n" + s.age_note + "\npower: " + power.join("; ");
 }
 
 function wireSearchToggle(): void {
@@ -69,6 +51,7 @@ registerFetch<SummaryResponse>({
   wave: "live",
   rank: 30,
   path: "/api/summary",
+  query: biomassQuery,
   label: "summary",
   // The player dot and nothing else: everything else this draws is text, and text is
   // replaced by `failed` below rather than emptied.
@@ -84,3 +67,7 @@ registerFetch<SummaryResponse>({
 });
 
 wireSearchToggle();
+
+onBiomass(function () {
+  loadOne("/api/summary");
+});

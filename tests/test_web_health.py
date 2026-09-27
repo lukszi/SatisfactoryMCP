@@ -151,7 +151,7 @@ def test_worst_actionable_holds_only_machines_needing_action(client):
         assert len(row["worst_actionable"]) == min(8, row["actionable"])
 
 
-def _one_circuit(game, generators, machines=()):
+def _one_circuit(game, generators, machines=(), query=""):
     """A hand-built world: every record wired to one pole."""
     from fastapi.testclient import TestClient
 
@@ -167,16 +167,96 @@ def _one_circuit(game, generators, machines=()):
     }
     st = WorldState(projection=projection, game=game)
     app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
-    return TestClient(app).get("/api/power/circuits").json()
+    return TestClient(app).get("/api/power/circuits" + query).json()
 
 
 def test_a_standing_biomass_burner_is_rated_from_game_data(game):
     """The save calls it Build_GeneratorBiomass_C; the dump rates it under another class."""
     burner = {"instance": "Build_GeneratorBiomass_C_1", "cls": "Build_GeneratorBiomass_C"}
-    body = _one_circuit(game, [burner])
+    body = _one_circuit(game, [burner], query="?biomass=include")
     rated = game.buildings["Build_GeneratorBiomass_Automated_C"].power_production_mw
     assert body["circuits"][0]["ledger"]["generation_mw"] == pytest.approx(rated)
     assert body["unmodellable"] == []
+
+
+BURNERS = [
+    {"instance": "Build_GeneratorBiomass_C_1", "cls": "Build_GeneratorBiomass_C"},
+    {"instance": "Build_GeneratorIntegratedBiomass_C_1", "cls": "Build_GeneratorIntegratedBiomass_C"},
+    {"instance": "Build_GeneratorCoal_C_1", "cls": "Build_GeneratorCoal_C"},
+]
+
+
+def test_biomass_burners_are_left_out_of_headroom_by_default(game):
+    """Decided 2026-09-27: hand-fed burners are not a power plant. Absent means exclude."""
+    burner = game.buildings["Build_GeneratorBiomass_Automated_C"].power_production_mw
+    coal = game.buildings["Build_GeneratorCoal_C"].power_production_mw
+    default = _one_circuit(game, BURNERS)
+    assert _one_circuit(game, BURNERS, query="?biomass=exclude") == default
+    for led in (default["world"], default["circuits"][0]["ledger"]):
+        assert led["generation_mw"] == pytest.approx(coal)
+        assert led["headroom_mw"] == pytest.approx(coal)
+        assert led["measured_headroom_mw"] == pytest.approx(coal)
+        assert led["biomass_mw"] == pytest.approx(burner)
+        assert led["biomass_generators"] == 2
+    assert default["unmodellable"] == []
+    assert [g["name"] for g in default["generators"]] == [game.buildings["Build_GeneratorCoal_C"].name]
+
+
+def test_biomass_include_counts_every_burner_and_reports_nothing_left_out(game):
+    burner = game.buildings["Build_GeneratorBiomass_Automated_C"].power_production_mw
+    coal = game.buildings["Build_GeneratorCoal_C"].power_production_mw
+    body = _one_circuit(game, BURNERS, query="?biomass=include")
+    led = body["world"]
+    assert led["generation_mw"] == pytest.approx(coal + burner)
+    assert led["headroom_mw"] == pytest.approx(coal + burner)
+    assert (led["biomass_mw"], led["biomass_generators"]) == (0, 0)
+    assert body["unmodellable"] == ["Build_GeneratorIntegratedBiomass_C"]
+
+
+def test_an_unknown_biomass_value_is_refused(game):
+    from fastapi.testclient import TestClient
+
+    from satisfactory_mcp.domain.world.state import WorldState
+    from satisfactory_mcp.interfaces.web.app import create_app
+
+    st = WorldState(projection={}, game=game)
+    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
+    assert TestClient(app).get("/api/power/circuits?biomass=maybe").status_code == 422
+
+
+@pytest.mark.parametrize("counted", [False, True])
+def test_the_page_and_chat_agree_on_headroom_either_way(client, state, counted, monkeypatch):
+    """Same save, same setting: /api/power/circuits, /api/summary and power_report print
+    one set of figures, with biomass left out or counted."""
+    from satisfactory_mcp.interfaces.mcp.tools import world as tool
+    from satisfactory_mcp.presenters.text import primitives as render
+
+    monkeypatch.setattr(tool, "_state", lambda *a, **k: state)
+
+    query = "?biomass=" + ("include" if counted else "exclude")
+    report = state.power_report(biomass=counted)
+    led = client.get("/api/power/circuits" + query).json()["world"]
+    summary = client.get("/api/summary" + query).json()["power"]
+    text = tool.power_report(biomass=counted)
+    for key, label in (
+        ("generation_mw", "generation_MW"),
+        ("headroom_mw", "headroom_MW_nameplate"),
+        ("measured_headroom_mw", "headroom_MW_measured"),
+    ):
+        assert led[key] == pytest.approx(report[key], abs=0.1)
+        assert summary[key] == pytest.approx(report[key], abs=1e-6)
+        assert f"{label}={render.num(report[key])}" in text
+    assert led["biomass_mw"] == pytest.approx(report["biomass_mw"], abs=0.1)
+    assert ("biomass not counted" in text) == bool(report["biomass_generators"])
+
+
+def test_the_reference_save_reads_differently_with_and_without_biomass(state):
+    without = state.power_report()
+    with_ = state.power_report(biomass=True)
+    assert without == state.power_report(biomass=False)
+    assert with_["generation_mw"] == pytest.approx(without["generation_mw"] + without["biomass_mw"])
+    assert with_["headroom_mw"] - without["headroom_mw"] == pytest.approx(without["biomass_mw"])
+    assert with_["draw_mw"] == pytest.approx(without["draw_mw"])
 
 
 def test_a_generator_on_no_wire_is_not_a_machine_on_no_wire(game):

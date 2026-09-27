@@ -18,7 +18,7 @@ from fastapi import APIRouter, Request
 
 from ....core.saveio import projection as proj
 from ....domain.world import pin
-from ..serial import _fail, _state, _xyz
+from ..serial import Biomass, _fail, _state, _xyz
 
 __all__ = ["router"]
 
@@ -133,7 +133,7 @@ class GeneratorTotal(TypedDict):
 
 
 class PowerSummary(TypedDict):
-    """The eleven scalar fields of ``WorldState.power_report()``, though the page reads three.
+    """The scalar fields of ``WorldState.power_report()`` the page can use.
 
     Declaration order is the order ``domain/power/report.py`` returns them in. The domain
     also returns the starved-generator list, which rule 3 drops here: it is a text-surface
@@ -156,6 +156,9 @@ class PowerSummary(TypedDict):
     #: none, which is a measurement rather than a gap.
     unmodellable: list[str]
     paused_count: int
+    #: What ``?biomass=exclude`` left out: wired, unpaused biomass burners and their MW.
+    biomass_generators: int
+    biomass_mw: float
 
 
 class ProgressionSummary(TypedDict):
@@ -200,7 +203,12 @@ class SummaryResponse(TypedDict):
 
 
 @router.get("/summary", response_model=SummaryResponse)
-def summary(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def summary(
+    request: Request,
+    save: str | None = None,
+    world: str | None = None,
+    biomass: Biomass = "exclude",
+) -> Any:
     try:
         st = _state(request, save, world)
     except Exception as exc:
@@ -212,7 +220,7 @@ def summary(request: Request, save: str | None = None, world: str | None = None)
         # stale" from "you invented it". See domain/world/pin.py.
         "save_token": pin.remember(st.header),
         "age_note": st.age_note,
-        "power": st.power_report(),
+        "power": st.power_report(biomass=biomass == "include"),
         "progression": st.progression(),
         "player": _xyz(st.player_position()),
     }

@@ -19,9 +19,8 @@ import {
   headroomTiles,
   problemTable,
   retryCircuits,
-  world,
 } from "./power-tab";
-import { bar as powerBar } from "./powerview";
+import { bar as powerBar, ratedWorld } from "./powerview";
 import { counted, W } from "./words";
 
 import type { FactoryHealthRow, MachineIssue } from "./api-shapes";
@@ -147,10 +146,10 @@ function tiles(body: HTMLElement): void {
     v.circuits.generators.forEach(function (g) {
       gens += g.count;
     });
-    var gen = generationTile(world(v.circuits), counted(gens, "generator"), power);
+    var gen = generationTile(ratedWorld(v.circuits), counted(gens, "generator"), v.circuits.world.starved_generation_mw > 0, power);
     gen.appendChild(powerBar(v.circuits.world));
     row.appendChild(gen);
-    headroomTiles(world(v.circuits), power).forEach(function (t) {
+    headroomTiles(ratedWorld(v.circuits), power).forEach(function (t) {
       row.appendChild(t);
     });
     var faults = faultsOf(v.circuits);

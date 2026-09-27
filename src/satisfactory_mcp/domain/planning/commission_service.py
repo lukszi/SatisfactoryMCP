@@ -41,6 +41,7 @@ def build_commission_report(
     headroom_mw: float | None,
     *,
     objective: str = "",
+    biomass: bool = False,
 ) -> CommissionReport:
     """Solve ``plan_kwargs``, order it into waves, and read what the waves stand on."""
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
@@ -51,7 +52,7 @@ def build_commission_report(
     # Headroom is an INPUT and is printed as one. A sequence computed against a save
     # that has since moved is then visibly stale rather than quietly wrong -- the same
     # reason phase_requirements labels its rows instead of filtering them.
-    report.power = power = st.power_report()
+    report.power = power = st.power_report(biomass=biomass)
     if headroom_mw is None:
         # Nameplate on purpose. Measured headroom is usually much larger -- 6,034 MW
         # against 711 on the reference save, because most of that factory is idle -- but

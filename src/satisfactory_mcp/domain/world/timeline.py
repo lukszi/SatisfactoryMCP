@@ -57,7 +57,7 @@ def build_row(state) -> dict:
     """The index row for one ``WorldState``. Costs ~40 ms once the save is parsed."""
     header = state.projection.get("header") or {}
     d = state.projection
-    power = state.power_report()
+    power = state.power_report(biomass=True)
     prog = state.progression()
     stock = state.stock()
     return {

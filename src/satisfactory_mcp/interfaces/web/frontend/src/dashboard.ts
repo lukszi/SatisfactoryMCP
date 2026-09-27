@@ -200,7 +200,7 @@ function renderSettings(body: HTMLElement): void {
     render();
   }, { title: "put every setting back to its default" }));
   card.appendChild(bar);
-  note(card, "kept in this browser only; nothing is sent to the server");
+  note(card, "kept in this browser only");
   var group = "";
   SETTINGS.forEach(function (s) {
     if (s.group !== group) {

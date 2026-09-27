@@ -543,6 +543,38 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   generation tile. Power and the circuit detail use the same two tiles, and the circuits
   table uses the same two names.
 
+### 8.7 Decided 2026-09-27: biomass burners are not generation
+
+Biomass burners are hand-fed capacity, not a power plant. Biofuel is hand-fed too, and the game
+has no automated way to supply either, so their MW lasts as long as someone keeps filling them.
+
+- **Left out by default.** Every wired, unpaused biomass burner, the HUB's built-in one
+  included (`BIOMASS_BURNERS` in `domain/power/report.py`), is left out of generation, headroom
+  now, headroom at full rate and the starved list, for the world and for each circuit. What was
+  left out is reported as `biomass_mw` and `biomass_generators`.
+- **One rule on both surfaces.** `/api/power/circuits` and `/api/summary` take
+  `?biomass=exclude|include`; absent means exclude. The MCP tools that print headroom
+  (`power_report`, `world_summary`, `commission_plan`, `diff_vs_save`) take `biomass=`, default
+  false. The same save and the same choice give the same figures in chat and on the page.
+- **One setting.** Settings > power > "count biomass burners in headroom", off by default. It
+  refetches both routes. Overview, Power, the circuit detail and the map panel show the
+  left-out MW as one line, "+N MW biomass not counted"; the header shows it in its tooltip.
+- **The timeline keeps installed capacity.** Its `installed_mw` counts burners, as it always
+  has, so the rows cached before this decision stay comparable with the new ones.
+- **A circuit with only burners on it is not "no generator".** A burner stands there, so
+  `assess` does not list its machines, and the page shows 0 MW generation with the biomass line
+  under it.
+
+### 8.8 One reading of a ledger
+
+`powerview.ts` is the only place a ledger figure turns into text. The Overview, Power, the
+circuit detail, the map panel and the header all go through it. A figure that cannot be read
+shows "–" and the reason: "generation not modelled" when game data cannot rate a generator on
+the circuit, and "no machine measured" when no machine on it carries a productivity monitor.
+That second case blanks the measured draw and headroom now. Headroom at full rate stays, because
+it needs no measurement. A machine's location is resolved by `whereOf` in the same module:
+factory, then circuit, then region.
+
 ---
 
 ## 9. Naming factories from the page (2026-09-27)

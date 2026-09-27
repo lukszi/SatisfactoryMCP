@@ -642,6 +642,7 @@ def build_diff(
     sol: Solution,
     request: PlanRequest,
     scope: set[str] | None = None,
+    biomass: bool = False,
 ) -> DiffReport:
     """Match a solved plan against the save and derive the actions to reach it.
 
@@ -680,7 +681,7 @@ def build_diff(
         for g in sorted(groups, key=lambda g: (g["depth"], -g["machines"]))
     ]
 
-    power = state.power_report()
+    power = state.power_report(biomass=biomass)
     headroom = power["headroom_mw"]
     # Cumulative INCREMENTAL power while building in stage order. Charging the plan's
     # own total would double-count every machine that already exists and already draws.

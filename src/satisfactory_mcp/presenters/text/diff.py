@@ -12,6 +12,7 @@ from ...core.gamedata.model import GameData
 from ...domain.planning.commission import Tracking
 from ...domain.planning.diff import NEIGHBOUR_RADIUS_M as DIFF_NEIGHBOUR_M
 from ...domain.planning.diff_service import DiffVsSaveReport
+from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render
 
@@ -325,6 +326,8 @@ def render_diff(
     )
 
     notes = [*rep.notes]
+    if biomass_note(pw):
+        notes.append(biomass_note(pw))
     for r in [r for r in rep.rows if r.build_max is not None and r.build_max != r.build][:2]:
         notes.append(
             f"{r.building}s cannot be matched to a job, so {r.need} needed vs {r.have} "

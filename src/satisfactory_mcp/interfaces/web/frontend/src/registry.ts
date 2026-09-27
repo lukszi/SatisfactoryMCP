@@ -32,6 +32,9 @@ export interface Fetcher<T extends ApiError> {
   /** The path, compile-checked against the server's own OpenAPI document; see ApiUrl. */
   path: ApiUrl;
 
+  /** A query string the path takes from a setting, read at each request. */
+  query?: () => string;
+
   /** What the toast calls this on failure: "belts: …", "summary: …". */
   label: string;
 
