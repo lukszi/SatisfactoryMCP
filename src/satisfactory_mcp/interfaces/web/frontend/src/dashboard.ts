@@ -1,7 +1,7 @@
 /* The dashboard shell: the tabs, the routing on the fragment's `dash=` key and the pieces the
  * tab modules share. See docs/frontend_vision.md §8. */
 
-import { heading, link, note } from "./dashkit";
+import { button, empty, heading, link, note } from "./dashkit";
 import { el, make } from "./dom";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
@@ -16,7 +16,8 @@ import { renderFactories, renderFactory, wireDetect } from "./factories";
 import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
 import { circuitName } from "./powerview";
-import { dashParts, empty, W } from "./standins";
+import { dashParts } from "./nav";
+import { W } from "./words";
 
 import type { FactoryHealthRow } from "./api-shapes";
 
@@ -60,9 +61,7 @@ function address(): { tab: Tab; subject: string } {
   return { tab: tab, subject: parts.subject };
 }
 
-export function go(dash: string): void {
-  location.hash = hashFor(dash);
-}
+export { go } from "./nav";
 
 export function toMap(action: () => void): void {
   state.dash = "";
@@ -73,14 +72,13 @@ export function toMap(action: () => void): void {
 }
 
 export function mapButton(title: string, action: () => void): HTMLButtonElement {
-  var button = make("button", "dash-map", "map");
-  button.type = "button";
-  button.title = title;
-  button.onclick = function (event) {
-    event.stopPropagation();
-    toMap(action);
-  };
-  return button;
+  return button(
+    "map",
+    function () {
+      toMap(action);
+    },
+    { title: title, map: true }
+  );
 }
 
 interface Placed {
@@ -100,40 +98,6 @@ export function pointButton(row: { x_m: number | null; y_m: number | null }): HT
   });
 }
 
-export function table(headers: [string, string][], sortable: boolean, onSort?: () => void): HTMLTableElement {
-  var t = make("table", "dash-table");
-  var head = make("thead");
-  var tr = make("tr");
-  headers.forEach(function (h) {
-    var th = make("th", h[1] === "name" ? "" : "num", h[0]);
-    if (sortable && h[1]) {
-      th.className += " sort" + (sort.key === h[1] ? (sort.desc ? " desc" : " asc") : "");
-      th.setAttribute("aria-sort", sort.key === h[1] ? (sort.desc ? "descending" : "ascending") : "none");
-      th.tabIndex = 0;
-      var pick = function () {
-        if (sort.key === h[1]) sort.desc = !sort.desc;
-        else {
-          sort.key = h[1];
-          sort.desc = h[1] !== "name";
-        }
-        if (onSort) onSort();
-      };
-      th.onclick = pick;
-      th.onkeydown = function (event) {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          pick();
-        }
-      };
-    }
-    tr.appendChild(th);
-  });
-  head.appendChild(tr);
-  t.appendChild(head);
-  t.appendChild(make("tbody"));
-  return t;
-}
-
 export function factoryMapButton(row: FactoryHealthRow): HTMLElement {
   if (!row.bbox_m) return make("span", "dash-muted", "–");
   return mapButton("fly the map to this factory", function () {
@@ -142,15 +106,7 @@ export function factoryMapButton(row: FactoryHealthRow): HTMLElement {
 }
 
 export function actionButton(text: string, title: string, action: () => void, disabled?: boolean): HTMLButtonElement {
-  var button = make("button", "dash-map", text);
-  button.type = "button";
-  button.title = title;
-  button.disabled = !!disabled;
-  button.onclick = function (event) {
-    event.stopPropagation();
-    action();
-  };
-  return button;
+  return button(text, action, { title: title, disabled: disabled });
 }
 
 export function renameButton(name: string, host: HTMLElement, onRenamed: (to: string) => void): HTMLButtonElement {

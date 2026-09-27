@@ -1,12 +1,12 @@
 /* The dashboard's Power tab: the world ledger, every circuit and the machines without power,
  * addressed as `dash=power[/<circuit>]`. */
 
-import { cell, error, heading, link, loading, note, tile } from "./dashkit";
+import { error, heading, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
 import { mw } from "./format";
 import { loadOne } from "./load";
 import { showCircuit, vitals } from "./panel";
-import { go, mapButton, pointButton, table } from "./dashboard";
+import { go, mapButton, pointButton } from "./dashboard";
 import { bar, circuitDark, circuitName, headroom } from "./powerview";
 
 import type { CircuitRow, Ledger, MachineRef, StarvedGenerator } from "./api-shapes";
@@ -31,47 +31,98 @@ export function headroomTiles(ledger: Ledger, href?: string, counts?: boolean): 
 }
 
 export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
-  var t = table(
-    [
-      ["circuit", "name"],
-      ["generation", ""],
-      ["draw, measured", ""],
-      ["headroom now", ""],
-      ["headroom at full rate", ""],
-      ["consumers", ""],
-      ["", ""],
-      ["", ""],
-    ],
-    false
-  );
-  var tb = t.tBodies[0]!;
-  rows.forEach(function (r) {
-    var led = r.ledger;
-    var tr = make("tr", "go");
-    cell(tr, link("power/" + (r.index + 1), circuitName(r)));
-    cell(tr, circuitDark(r) ? "no generator" : mw(led.generation_mw), "num" + (circuitDark(r) ? " bad" : ""));
-    cell(tr, mw(led.measured_draw_mw), "num");
-    cell(tr, headroom(led.measured_headroom_mw), "num" + (led.measured_headroom_mw < 0 ? " bad" : ""));
-    cell(tr, headroom(led.headroom_mw), "num" + (led.headroom_mw < 0 ? " bad" : ""));
-    cell(tr, r.consumers, "num");
-    cell(tr, bar(led), "bar");
-    cell(
-      tr,
-      r.bbox_m
-        ? mapButton("fly the map to this circuit", function () {
-            showCircuit(r.index);
-          })
-        : make("span", "dash-muted", "–"),
-      "num"
-    );
-    tr.onclick = function () {
-      go("power/" + (r.index + 1));
+  function short(value: (r: CircuitRow) => boolean): (r: CircuitRow) => string {
+    return function (r) {
+      return value(r) ? "bad" : "";
     };
-    tb.appendChild(tr);
-  });
-  var wrap = make("div", "dash-scroll");
-  wrap.appendChild(t);
-  parent.appendChild(wrap);
+  }
+  parent.appendChild(
+    table<CircuitRow>(
+      [
+        {
+          key: "circuit",
+          label: "circuit",
+          render: function (r) {
+            return link("power/" + (r.index + 1), circuitName(r));
+          },
+        },
+        {
+          key: "generation",
+          label: "generation",
+          align: "right",
+          tone: short(circuitDark),
+          render: function (r) {
+            return circuitDark(r) ? "no generator" : mw(r.ledger.generation_mw);
+          },
+        },
+        {
+          key: "draw",
+          label: "draw, measured",
+          align: "right",
+          render: function (r) {
+            return mw(r.ledger.measured_draw_mw);
+          },
+        },
+        {
+          key: "now",
+          label: "headroom now",
+          align: "right",
+          tone: short(function (r) {
+            return r.ledger.measured_headroom_mw < 0;
+          }),
+          render: function (r) {
+            return headroom(r.ledger.measured_headroom_mw);
+          },
+        },
+        {
+          key: "full",
+          label: "headroom at full rate",
+          align: "right",
+          tone: short(function (r) {
+            return r.ledger.headroom_mw < 0;
+          }),
+          render: function (r) {
+            return headroom(r.ledger.headroom_mw);
+          },
+        },
+        {
+          key: "consumers",
+          label: "consumers",
+          align: "right",
+          render: function (r) {
+            return r.consumers;
+          },
+        },
+        {
+          key: "bar",
+          label: "",
+          className: "bar",
+          render: function (r) {
+            return bar(r.ledger);
+          },
+        },
+        {
+          key: "map",
+          label: "",
+          align: "right",
+          render: function (r) {
+            return r.bbox_m
+              ? mapButton("fly the map to this circuit", function () {
+                  showCircuit(r.index);
+                })
+              : make("span", "dash-muted", "–");
+          },
+        },
+      ],
+      rows,
+      {
+        onRow: function (r) {
+          go("power/" + (r.index + 1));
+        },
+        caption: "power per circuit",
+      }
+    )
+  );
 }
 
 function ledgerTiles(ledger: Ledger): HTMLElement {

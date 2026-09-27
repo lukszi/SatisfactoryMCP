@@ -45,7 +45,7 @@ export function offer(message: string, label: string, action: () => void): void 
   if (!row) return;
   var button = document.createElement("button");
   button.type = "button";
-  button.className = "err-act";
+  button.className = "btn";
   button.textContent = label;
   button.onclick = function (event) {
     event.stopPropagation();

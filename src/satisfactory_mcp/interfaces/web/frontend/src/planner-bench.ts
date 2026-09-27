@@ -405,7 +405,7 @@ function header(parent: HTMLElement): void {
   head.appendChild(make("span", "plan-status" + (st === "conflict" ? " bad" : ""), "v" + plan.rev + " · " + st));
   if (bench.last) head.appendChild(make("span", "dash-where", "last: " + bench.last.who + " " + age(bench.last.ts) + " ago"));
   var call = 'plan_factory(plan="' + plan.name + '")  # base_rev=' + plan.rev;
-  var copy = make("button", "dash-map " + COPY_CLASS, "copy as tool call");
+  var copy = make("button", "btn " + COPY_CLASS, "copy as tool call");
   copy.type = "button";
   copy.title = call;
   copy.setAttribute(COPY_ATTR, call);

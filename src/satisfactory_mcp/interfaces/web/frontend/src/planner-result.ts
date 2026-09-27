@@ -1,5 +1,6 @@
 /* The result panel: what the head solves to, redrawn after every new version. */
 
+import { button as kitButton } from "./dashkit";
 import { count, make } from "./dom";
 import { mw, perMin } from "./format";
 import { drawGraph } from "./graph";
@@ -33,13 +34,8 @@ function rates(rows: SolveRate[]): string {
 }
 
 export function button(text: string, title: string, action: () => void, className?: string): HTMLButtonElement {
-  var b = make("button", "dash-map" + (className ? " " + className : ""), text);
-  b.type = "button";
-  b.title = title;
-  b.onclick = function (event) {
-    event.stopPropagation();
-    action();
-  };
+  var b = kitButton(text, action, { title: title });
+  if (className) b.classList.add(className);
   return b;
 }
 

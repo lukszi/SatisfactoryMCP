@@ -2,7 +2,7 @@
  * production graph, addressed as `dash=factories[/<name>]`. */
 
 import { get, latest, send } from "./api";
-import { button, cell, heading, link, note, table as kitTable, tile } from "./dashkit";
+import { button, heading, link, note, table, tile } from "./dashkit";
 import { count, make } from "./dom";
 import { mw, pct, spoken } from "./format";
 import { drawGraph } from "./graph";
@@ -15,10 +15,11 @@ import { state } from "./state";
 import { tone, toneClass } from "./states";
 import { fail, friendly, note as said } from "./toast";
 import { startTrace } from "./trace";
-import { actionButton, factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, table, toMap } from "./dashboard";
+import { actionButton, factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, toMap } from "./dashboard";
 import { actionable, mixBar, mixOf } from "./overview";
 
 import type { Ticket } from "./api";
+import type { Column } from "./dashkit";
 import type {
   CandidateRow,
   CandidatesResponse,
@@ -60,6 +61,104 @@ function sortValue(row: FactoryHealthRow, key: string): number | string {
   return typeof value === "number" ? value : 0;
 }
 
+function counted(key: keyof FactoryHealthRow, label: string, flag: boolean): Column<FactoryHealthRow> {
+  return {
+    key: key,
+    label: label,
+    align: "right",
+    sort: function (row) {
+      return sortValue(row, key);
+    },
+    tone: flag
+      ? function (row) {
+          return row[key] ? "bad" : "";
+        }
+      : undefined,
+    render: function (row) {
+      return row[key] as number;
+    },
+  };
+}
+
+function factoryColumns(): Column<FactoryHealthRow>[] {
+  return [
+    {
+      key: "name",
+      label: "factory",
+      sort: function (row) {
+        return sortValue(row, "name");
+      },
+      render: function (r) {
+        var named = make("span", "dash-named");
+        named.appendChild(link("factories/" + r.name, r.name));
+        named.appendChild(
+          renameButton(r.name, named, function () {
+            render();
+          })
+        );
+        return named;
+      },
+    },
+    {
+      key: "alive",
+      label: "machines",
+      align: "right",
+      sort: function (row) {
+        return sortValue(row, "alive");
+      },
+      render: function (r) {
+        return r.alive + (r.alive === r.anchors ? "" : " of " + r.anchors);
+      },
+    },
+    {
+      key: "uptime",
+      label: "uptime",
+      align: "right",
+      sort: function (row) {
+        return sortValue(row, "uptime");
+      },
+      render: function (r) {
+        return pct(r.uptime);
+      },
+    },
+    counted("actionable", "need action", true),
+    counted("attention", "not fine", false),
+    counted("unwired", "no wire", true),
+    counted("no_generator", "no generator", true),
+    {
+      key: "measured_mw",
+      label: "MW measured",
+      align: "right",
+      sort: function (row) {
+        return sortValue(row, "measured_mw");
+      },
+      render: function (r) {
+        return count(Math.round(r.measured_mw));
+      },
+    },
+    {
+      key: "nameplate_mw",
+      label: "MW nameplate",
+      align: "right",
+      sort: function (row) {
+        return sortValue(row, "nameplate_mw");
+      },
+      render: function (r) {
+        return count(Math.round(r.nameplate_mw));
+      },
+    },
+    {
+      key: "mix",
+      label: "state mix",
+      className: "mix",
+      render: function (r) {
+        return mixBar(mixOf([r]));
+      },
+    },
+    { key: "map", label: "", align: "right", render: factoryMapButton },
+  ];
+}
+
 export function renderFactories(body: HTMLElement): void {
   var v = vitals();
   if (!v.health) {
@@ -72,59 +171,17 @@ export function renderFactories(body: HTMLElement): void {
     note(body, "no factories named yet — detect them above, or name one with the name_factory tool");
     return;
   }
-  rows.sort(function (a, b) {
-    var x = sortValue(a, sort.key);
-    var y = sortValue(b, sort.key);
-    var order = x < y ? -1 : x > y ? 1 : 0;
-    return sort.desc ? -order : order;
-  });
   note(body, rows.length + " named factories. Click a heading to sort, a row for its detail.");
-  var t = table(
-    [
-      ["factory", "name"],
-      ["machines", "alive"],
-      ["uptime", "uptime"],
-      ["need action", "actionable"],
-      ["not fine", "attention"],
-      ["no wire", "unwired"],
-      ["no generator", "no_generator"],
-      ["MW measured", "measured_mw"],
-      ["MW nameplate", "nameplate_mw"],
-      ["state mix", ""],
-      ["", ""],
-    ],
-    true,
-    render
+  body.appendChild(
+    table<FactoryHealthRow>(factoryColumns(), rows, {
+      sort: sort,
+      onSort: render,
+      onRow: function (r) {
+        go("factories/" + r.name);
+      },
+      caption: "named factories",
+    })
   );
-  var tb = t.tBodies[0]!;
-  rows.forEach(function (r) {
-    var tr = make("tr", "go");
-    var named = make("span", "dash-named");
-    named.appendChild(link("factories/" + r.name, r.name));
-    named.appendChild(
-      renameButton(r.name, named, function () {
-        render();
-      })
-    );
-    cell(tr, named);
-    cell(tr, r.alive + (r.alive === r.anchors ? "" : " of " + r.anchors), "num");
-    cell(tr, pct(r.uptime), "num");
-    cell(tr, r.actionable, "num" + (r.actionable ? " bad" : ""));
-    cell(tr, r.attention, "num");
-    cell(tr, r.unwired, "num" + (r.unwired ? " bad" : ""));
-    cell(tr, r.no_generator, "num" + (r.no_generator ? " bad" : ""));
-    cell(tr, count(Math.round(r.measured_mw)), "num");
-    cell(tr, count(Math.round(r.nameplate_mw)), "num");
-    cell(tr, mixBar(mixOf([r])), "mix");
-    cell(tr, factoryMapButton(r), "num");
-    tr.onclick = function () {
-      go("factories/" + r.name);
-    };
-    tb.appendChild(tr);
-  });
-  var wrap = make("div", "dash-scroll");
-  wrap.appendChild(t);
-  body.appendChild(wrap);
   note(
     body,
     "uptime is each machine's last 300 s window, averaged; " +
@@ -298,15 +355,56 @@ function nameInput(row: CandidateRow): HTMLInputElement {
   return input;
 }
 
-function candidateRow(tb: HTMLElement, row: CandidateRow): void {
-  var tr = make("tr");
+function candidateTable(rows: CandidateRow[]): HTMLElement {
+  return table<CandidateRow>(
+    [
+      {
+        key: "machines",
+        label: "machines",
+        align: "right",
+        render: function (row) {
+          return row.machines;
+        },
+      },
+      { key: "makes", label: "makes", render: makes },
+      {
+        key: "source",
+        label: "source",
+        tone: function (row) {
+          return row.fed === "not fed" ? "dash-muted" : "";
+        },
+        render: function (row) {
+          return row.fed;
+        },
+      },
+      {
+        key: "region",
+        label: "region",
+        tone: function (row) {
+          return row.region ? "" : "dash-muted";
+        },
+        render: function (row) {
+          return row.region || "–";
+        },
+      },
+      { key: "name", label: "name", className: "name", render: nameInput },
+      { key: "acts", label: "", align: "right", render: candidateActs },
+    ],
+    rows,
+    {
+      rowClass: function (row) {
+        return detect.skipped[row.index] ? "dash-skipped" : "";
+      },
+      rowTitle: function (row) {
+        return row.selector + " · spread " + row.spread_m + " m";
+      },
+      caption: "unnamed clusters",
+    }
+  );
+}
+
+function candidateActs(row: CandidateRow): HTMLElement {
   var skipped = !!detect.skipped[row.index];
-  if (skipped) tr.className = "dash-skipped";
-  cell(tr, row.machines, "num");
-  cell(tr, makes(row));
-  cell(tr, row.fed, row.fed === "not fed" ? "dash-muted" : "");
-  cell(tr, row.region || "–", row.region ? "" : "dash-muted");
-  cell(tr, nameInput(row), "name");
   var acts = make("span", "dash-acts");
   var box = row.bbox_m;
   acts.appendChild(
@@ -339,9 +437,7 @@ function candidateRow(tb: HTMLElement, row: CandidateRow): void {
       render();
     })
   );
-  cell(tr, acts, "num");
-  tr.title = row.selector + " · spread " + row.spread_m + " m";
-  tb.appendChild(tr);
+  return acts;
 }
 
 function namedList(card: HTMLElement): void {
@@ -439,24 +535,7 @@ function renderDetect(body: HTMLElement): void {
         (open.length === 1 ? " unnamed cluster" : " unnamed clusters") +
         ", largest first. Makes: products (what reaches a box or leaves the cluster) per minute at nameplate, then what they are made via; sunk is what goes to the AWESOME Sink. Enter names it, Esc restores the suggestion; a dashed name is a guess."
     );
-    var t = table(
-      [
-        ["machines", ""],
-        ["makes", "name"],
-        ["source", "name"],
-        ["region", "name"],
-        ["name", "name"],
-        ["", ""],
-      ],
-      false
-    );
-    var tb = t.tBodies[0]!;
-    (detect.showSkipped ? data.candidates : open).forEach(function (row) {
-      candidateRow(tb, row);
-    });
-    var wrap = make("div", "dash-scroll");
-    wrap.appendChild(t);
-    card.appendChild(wrap);
+    card.appendChild(candidateTable(detect.showSkipped ? data.candidates : open));
   }
   hiddenNote(card, data);
   skippedToggle(card, data.candidates.length - open.length);
@@ -619,7 +698,7 @@ export function renderFactory(body: HTMLElement, name: string): void {
     return shade === "bad" || shade === "blocked" ? shade : "";
   }
   states.appendChild(
-    kitTable<StateRow>(
+    table<StateRow>(
       [
         {
           key: "state",

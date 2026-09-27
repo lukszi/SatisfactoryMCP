@@ -1,6 +1,5 @@
 /* The dashboard's building blocks, shared by dashboard.ts and the sections split out of it. */
 
-import "./dashkit-tokens.css";
 import "./dashkit.css";
 import { make } from "./dom";
 import { hashFor } from "./map";
@@ -82,6 +81,7 @@ export interface Column<R> {
   render: (row: R) => string | number | HTMLElement;
   title?: string;
   className?: string;
+  tone?: (row: R) => string;
 }
 
 export interface SortState {
@@ -94,6 +94,7 @@ export interface TableOptions<R> {
   onSort?: () => void;
   onRow?: (row: R) => void;
   rowClass?: (row: R) => string;
+  rowTitle?: (row: R) => string;
   caption?: string;
 }
 
@@ -129,6 +130,7 @@ function body<R>(tbody: HTMLElement, columns: Column<R>[], rows: R[], options: T
     var tr = make("tr");
     var extra = options.rowClass ? options.rowClass(row) : "";
     if (extra) tr.className = extra;
+    if (options.rowTitle) tr.title = options.rowTitle(row);
     if (options.onRow) {
       var pick = options.onRow;
       tr.classList.add("go");
@@ -144,7 +146,8 @@ function body<R>(tbody: HTMLElement, columns: Column<R>[], rows: R[], options: T
       };
     }
     columns.forEach(function (c, i) {
-      cell(tr, c.render(row), aligned(c.align, (i === 0 ? "dk-lead " : "") + (c.className || "")).trim());
+      var extras = [i === 0 ? "dk-lead" : "", c.className || "", c.tone ? c.tone(row) : ""].filter(Boolean).join(" ");
+      cell(tr, c.render(row), aligned(c.align, extras));
     });
     tbody.appendChild(tr);
   });

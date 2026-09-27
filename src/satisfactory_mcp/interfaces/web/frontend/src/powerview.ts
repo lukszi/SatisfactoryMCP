@@ -3,7 +3,7 @@
 
 import { make } from "./dom";
 import { mw } from "./format";
-import { W } from "./standins";
+import { W } from "./words";
 
 import type { CircuitRow, Ledger } from "./api-shapes";
 
@@ -68,5 +68,5 @@ export function circuitDark(row: CircuitRow): boolean {
 }
 
 export function headroom(value: number): string {
-  return (value > 0 ? "+" : "") + mw(value);
+  return mw(value, { signed: true });
 }

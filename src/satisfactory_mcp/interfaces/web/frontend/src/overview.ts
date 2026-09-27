@@ -1,20 +1,19 @@
 /* The dashboard's Overview tab: headline tiles, the factories and machines that need action,
  * and power per circuit, addressed as `dash=overview`. */
 
-import { cell, heading, link, note, tile } from "./dashkit";
+import { heading, link, note, table, tile } from "./dashkit";
 import { count, make } from "./dom";
 import { mw, pct, spoken } from "./format";
 import { hashFor } from "./map";
 import { vitals } from "./panel";
 import { stateTone } from "./placements";
 import { milestoneTile } from "./progress";
-import { factoryMapButton, go, pointButton, table } from "./dashboard";
+import { isFine, needsAction, stateSets } from "./states";
+import { factoryMapButton, go, pointButton } from "./dashboard";
 import { circuitTable, headroomTiles } from "./power-tab";
 import { bar as powerBar } from "./powerview";
 
 import type { FactoryHealthRow, MachineIssue, MachineRef, StarvedGenerator } from "./api-shapes";
-
-export var FINE = ["saturated", "unmonitored"];
 
 var ATTENTION_SHOWN = 12;
 
@@ -25,18 +24,13 @@ interface Mix {
 }
 
 export function actionable(): string[] {
-  var h = vitals().health;
-  return h ? h.actionable_states : [];
-}
-
-export function needsAction(name: string): boolean {
-  return actionable().indexOf(name) >= 0;
+  return stateSets().actionable;
 }
 
 function middling(): string[] {
   var h = vitals().health;
   return (h ? h.states : []).filter(function (s) {
-    return !needsAction(s) && FINE.indexOf(s) < 0;
+    return !needsAction(s) && !isFine(s);
   });
 }
 
@@ -45,7 +39,7 @@ export function mixOf(rows: FactoryHealthRow[]): Mix {
   rows.forEach(function (row) {
     row.states.forEach(function (s) {
       if (needsAction(s.state)) mix.bad += s.count;
-      else if (FINE.indexOf(s.state) >= 0) mix.ok += s.count;
+      else if (isFine(s.state)) mix.ok += s.count;
       else mix.mid += s.count;
     });
   });
@@ -160,28 +154,44 @@ export function renderOverview(body: HTMLElement): void {
   if (!v.health) note(left, v.healthError || "loading…");
   else if (!worst.length) note(left, "no named factory has a machine in a state that needs action");
   else {
-    var t = table(
-      [
-        ["factory", "name"],
-        ["need action", ""],
-        ["uptime", ""],
-        ["", ""],
-      ],
-      false
+    left.appendChild(
+      table<FactoryHealthRow>(
+        [
+          {
+            key: "name",
+            label: "factory",
+            render: function (r) {
+              return link("factories/" + r.name, r.name);
+            },
+          },
+          {
+            key: "actionable",
+            label: "need action",
+            align: "right",
+            className: "bad",
+            render: function (r) {
+              return r.actionable;
+            },
+          },
+          {
+            key: "uptime",
+            label: "uptime",
+            align: "right",
+            render: function (r) {
+              return pct(r.uptime);
+            },
+          },
+          { key: "map", label: "", align: "right", render: factoryMapButton },
+        ],
+        worst,
+        {
+          onRow: function (r) {
+            go("factories/" + r.name);
+          },
+          caption: "factories needing action",
+        }
+      )
     );
-    var tb = t.tBodies[0]!;
-    worst.forEach(function (r) {
-      var tr = make("tr", "go");
-      cell(tr, link("factories/" + r.name, r.name));
-      cell(tr, r.actionable, "num bad");
-      cell(tr, pct(r.uptime), "num");
-      cell(tr, factoryMapButton(r), "num");
-      tr.onclick = function () {
-        go("factories/" + r.name);
-      };
-      tb.appendChild(tr);
-    });
-    left.appendChild(t);
   }
   split.appendChild(left);
 

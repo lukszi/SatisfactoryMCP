@@ -72,7 +72,7 @@ export function traceButtons(seed: string): Markup {
   var value = esc(seed);
   function button(dir: string, text: string, title: string): string {
     return (
-      '<button type="button" class="trace-go" ' +
+      '<button type="button" class="btn" ' +
       TRACE_ATTR +
       '="' +
       value +

@@ -11,7 +11,7 @@ import { render } from "./dashboard";
 import { el } from "./dom";
 import { loadOne, reload } from "./load";
 import { writeHash } from "./map";
-import { W } from "./standins";
+import { W } from "./words";
 import { BOOT, currentWorld, pinnedPath, state } from "./state";
 import { fail, friendly } from "./toast";
 

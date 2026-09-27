@@ -100,10 +100,6 @@ textarea {
   letter-spacing: 0.03em;
 }
 
-#views {
-  flex: none;
-}
-
 .muted {
   color: var(--muted);
   overflow: hidden;
@@ -1124,6 +1120,7 @@ select {
 
 #views {
   display: flex;
+  flex: none;
   gap: 2px;
 }
 
@@ -1542,21 +1539,6 @@ a.dash-tile:hover {
   text-decoration: underline;
 }
 
-.dash-map {
-  padding: 0 var(--sp-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-size: var(--fs-s);
-  cursor: pointer;
-}
-
-.dash-map:hover {
-  border-color: var(--accent);
-}
-
 .dash-list {
   list-style: none;
   margin: 0;
@@ -1720,11 +1702,6 @@ a.dash-where:hover {
   display: inline-flex;
   gap: var(--sp-1);
   white-space: nowrap;
-}
-
-.dash-map:disabled {
-  color: var(--dim);
-  cursor: default;
 }
 
 .dash-table tr.dash-skipped td {
@@ -2063,26 +2040,6 @@ a.dash-where:hover {
   font-size: var(--fs-s);
 }
 
-.rx-bar {
-  gap: var(--sp-1);
-  margin-bottom: 8px;
-}
-
-.rx-mode {
-  padding: var(--sp-1) var(--sp-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  cursor: pointer;
-}
-
-.rx-mode.on {
-  border-color: var(--accent);
-  color: var(--ink);
-}
-
 .rx-q {
   max-width: 420px;
   margin-bottom: 4px;
@@ -2155,12 +2112,6 @@ a.dash-where:hover {
   margin: 0;
 }
 
-@media (max-width: 700px) {
-  #search {
-    flex-basis: 160px;
-  }
-}
-
 #trace {
   position: fixed;
   left: 410px;
@@ -2194,8 +2145,7 @@ body.dash-on #trace {
   text-transform: uppercase;
 }
 
-.trace-btn,
-.trace-go {
+.trace-btn {
   padding: 1px var(--sp-2);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -2211,8 +2161,7 @@ body.dash-on #trace {
   color: var(--ink);
 }
 
-.trace-btn:hover,
-.trace-go:hover {
+.trace-btn:hover {
   color: var(--ink-hi);
 }
 
@@ -2271,21 +2220,6 @@ body.dash-on #trace {
 .trace-more {
   color: var(--muted);
   font-size: var(--fs-s);
-}
-
-.err-act {
-  margin-left: 6px;
-  padding: 0 var(--sp-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-}
-
-.err-act:hover {
-  border-color: var(--accent);
 }
 
 .plan-bench {
@@ -2359,7 +2293,7 @@ body.dash-on #trace {
   color: var(--bad);
 }
 
-.dash-map.on {
+.btn.on {
   border-color: var(--accent);
   color: var(--ink);
 }
