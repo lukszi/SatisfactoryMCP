@@ -1,5 +1,6 @@
-/* Per-browser preferences, kept in localStorage and never sent to the server. The page
- * works without storage: a setting then lasts until reload. See docs/frontend_vision.md §8.6. */
+/* Per-browser preferences, kept in localStorage; a route whose answer depends on one takes it
+ * as a query. The page works without storage: a setting then lasts until reload. See
+ * docs/frontend_vision.md §8.6. */
 
 import { W } from "./words";
 
@@ -68,6 +69,14 @@ export var SETTINGS: Setting[] = [
     min: 1,
     max: 500,
     fallback: 2,
+  },
+  {
+    kind: "switch",
+    key: "biomass",
+    group: "power",
+    label: "count biomass burners in headroom",
+    hint: "hand-fed, so left out of generation and headroom by default",
+    fallback: false,
   },
   {
     kind: "choice",

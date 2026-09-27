@@ -22,6 +22,7 @@ export var W = {
   nameplateDraw: "nameplate draw",
   headroomNow: "headroom now",
   headroomFull: "headroom at full rate",
+  biomassNotCounted: "biomass not counted",
   polesAndTowers: "poles and towers",
   plan: "plan",
   actorYou: "you",

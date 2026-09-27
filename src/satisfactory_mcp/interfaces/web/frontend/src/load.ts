@@ -54,7 +54,7 @@ function run(fetcher: Registered): void {
   var live = function () {
     return epoch === state.epoch;
   };
-  get<ApiError>(fetcher.path)
+  get<ApiError>(fetcher.query ? (`${fetcher.path}?${fetcher.query()}` as ApiUrl) : fetcher.path)
     .then(function (body) {
       if (!live()) return;
       if (fetcher.settles) busy(false);

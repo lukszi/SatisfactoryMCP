@@ -3,97 +3,76 @@
 
 import { error, heading, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
-import { count, mw, regionLine } from "./format";
+import { count, mw } from "./format";
 import { loadOne } from "./load";
 import { showCircuit, vitals } from "./panel";
 import { go, mapButton, pointButton } from "./dashboard";
-import { bar, circuitDark, circuitName, headroom, LEDGER } from "./powerview";
+import {
+  bar,
+  biomassLine,
+  circuitDark,
+  circuitName,
+  LEDGER,
+  NONE,
+  ratedCircuit as rated,
+  ratedWorld,
+  readFull,
+  readGeneration,
+  readMeasured,
+  readNow,
+  unrated,
+  unratedTitle,
+  whereOf,
+} from "./powerview";
 import { counted, W } from "./words";
 
 import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, StarvedGenerator } from "./api-shapes";
+import type { Rated } from "./powerview";
 
 type GeneratorGroup = CircuitsResponse["generators"][number];
-
-var NONE = "–";
-
-var UNRATED = "generation not modelled";
-
-var UNMEASURED = "no machine measured";
-
-interface Rated {
-  ledger: Ledger;
-  unmodellable: string[];
-  dark: boolean;
-}
-
-function unrated(r: Rated): boolean {
-  return r.unmodellable.length > 0;
-}
-
-function unmeasured(r: Rated): boolean {
-  return r.ledger.monitored === 0;
-}
-
-function rated(row: CircuitRow): Rated {
-  return { ledger: row.ledger, unmodellable: row.unmodellable, dark: circuitDark(row) };
-}
-
-export function world(data: CircuitsResponse): Rated {
-  return { ledger: data.world, unmodellable: [], dark: false };
-}
 
 export function retryCircuits(): void {
   loadOne("/api/power/circuits");
 }
 
-function unratedTitle(r: Rated): string {
-  return "game data cannot rate " + r.unmodellable.join(", ") + ", so this circuit's output is unknown";
-}
-
 export function headroomTiles(r: Rated, href?: string, counts?: boolean): HTMLElement[] {
   var led = r.ledger;
-  var now: HTMLElement;
-  if (unrated(r)) now = tile(LEDGER.headroomNow, NONE, UNRATED, false, href);
-  else if (unmeasured(r)) now = tile(LEDGER.headroomNow, NONE, UNMEASURED + "; see " + LEDGER.headroomFull, false, href);
-  else {
-    now = tile(
-      LEDGER.headroomNow,
-      headroom(led.measured_headroom_mw),
-      mw(led.measured_draw_mw) + " " + LEDGER.measuredDraw + (counts ? " · " + counted(led.monitored, "machine") + " measured" : ""),
-      led.measured_headroom_mw < 0,
-      href
-    );
-  }
-  var full = unrated(r)
-    ? tile(LEDGER.headroomFull, NONE, UNRATED, false, href)
-    : tile(
-        LEDGER.headroomFull,
-        headroom(led.headroom_mw),
-        mw(led.draw_mw) + " " + LEDGER.nameplateDraw + (counts && led.unmonitored ? " · " + count(led.unmonitored) + " unmeasured, charged in full" : ""),
-        led.headroom_mw < 0,
-        href
-      );
+  var n = readNow(r);
+  var f = readFull(r);
+  var now = tile(
+    LEDGER.headroomNow,
+    n.value,
+    n.why || mw(led.measured_draw_mw) + " " + LEDGER.measuredDraw + (counts ? " · " + counted(led.monitored, "machine") + " measured" : ""),
+    n.bad,
+    href
+  );
+  var full = tile(
+    LEDGER.headroomFull,
+    f.value,
+    f.why || mw(led.draw_mw) + " " + LEDGER.nameplateDraw + (counts && led.unmonitored ? " · " + count(led.unmonitored) + " unmeasured, charged in full" : ""),
+    f.bad,
+    href
+  );
   if (unrated(r)) now.title = full.title = unratedTitle(r);
   return [now, full];
 }
 
-export function generationTile(r: Rated, sub: string, href?: string): HTMLElement {
-  if (unrated(r)) {
-    var box = tile(LEDGER.generation, NONE, UNRATED, false, href);
-    box.title = unratedTitle(r);
-    return box;
-  }
-  if (r.dark) return tile(LEDGER.generation, W.noGenerator, sub, true, href);
-  return tile(LEDGER.generation, mw(r.ledger.generation_mw), sub, r.ledger.starved_generation_mw > 0, href);
+export function generationTile(r: Rated, sub: string, starved: boolean, href?: string): HTMLElement {
+  var g = readGeneration(r);
+  var extra = g.why ? "" : biomassLine(r.ledger);
+  var box = tile(LEDGER.generation, g.value, g.why || (extra ? sub + " · " + extra : sub), g.bad || (!g.why && starved), href);
+  if (unrated(r)) box.title = unratedTitle(r);
+  else if (extra) box.title = extra + ": " + counted(r.ledger.biomass_generators, "burner") + ", hand-fed; Settings can count them";
+  return box;
 }
 
 function starvedSub(led: Ledger): string {
   return led.starved_generation_mw ? mw(led.starved_generation_mw) + " of it starved" : "none of it starved";
 }
 
-function ledgerTiles(r: Rated, sub: string): HTMLElement {
+function ledgerTiles(r: Rated, led: Ledger, sub: string): HTMLElement {
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(generationTile(r, sub));
+  tiles.appendChild(generationTile(r, sub, led.starved_generation_mw > 0));
   headroomTiles(r, undefined, true).forEach(function (t) {
     tiles.appendChild(t);
   });
@@ -108,10 +87,6 @@ function toned(bad: (r: CircuitRow) => boolean): (r: CircuitRow) => string {
   return function (r) {
     return bad(r) ? "bad" : "";
   };
-}
-
-function nowUnknown(r: CircuitRow): boolean {
-  return unrated(rated(r)) || unmeasured(rated(r));
 }
 
 export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
@@ -133,8 +108,7 @@ export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
           align: "right",
           tone: toned(circuitDark),
           render: function (r) {
-            if (unrated(rated(r))) return NONE;
-            return circuitDark(r) ? W.noGenerator : mw(r.ledger.generation_mw);
+            return readGeneration(rated(r)).value;
           },
         },
         {
@@ -142,7 +116,7 @@ export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
           label: LEDGER.measuredDraw,
           align: "right",
           render: function (r) {
-            return unmeasured(rated(r)) ? NONE : mw(r.ledger.measured_draw_mw);
+            return readMeasured(rated(r)).value;
           },
         },
         {
@@ -150,10 +124,10 @@ export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
           label: LEDGER.headroomNow,
           align: "right",
           tone: toned(function (r) {
-            return !nowUnknown(r) && r.ledger.measured_headroom_mw < 0;
+            return readNow(rated(r)).bad;
           }),
           render: function (r) {
-            return nowUnknown(r) ? NONE : headroom(r.ledger.measured_headroom_mw);
+            return readNow(rated(r)).value;
           },
         },
         {
@@ -161,10 +135,10 @@ export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
           label: LEDGER.headroomFull,
           align: "right",
           tone: toned(function (r) {
-            return !unrated(rated(r)) && r.ledger.headroom_mw < 0;
+            return readFull(rated(r)).bad;
           }),
           render: function (r) {
-            return unrated(rated(r)) ? NONE : headroom(r.ledger.headroom_mw);
+            return readFull(rated(r)).value;
           },
         },
         {
@@ -208,8 +182,10 @@ export function circuitTable(parent: HTMLElement, rows: CircuitRow[]): void {
         },
         rowTitle: function (r) {
           if (unrated(rated(r))) return unratedTitle(rated(r));
-          if (unmeasured(rated(r))) return UNMEASURED + " on this circuit";
-          return r.ledger.paused ? consumers(r) : "";
+          var why = readMeasured(rated(r)).why;
+          return [why ? why + " on this circuit" : "", r.ledger.paused ? consumers(r) : "", biomassLine(r.ledger)]
+            .filter(Boolean)
+            .join(" · ");
         },
         caption: "power per circuit",
       }
@@ -224,12 +200,6 @@ interface Problem {
   whereDash: string;
   cause: string;
   refs: { instance: string; x_m: number | null; y_m: number | null }[];
-}
-
-function whereOf(m: MachineRef): { where: string; dash: string } {
-  if (m.factory) return { where: m.factory, dash: "factories/" + m.factory };
-  if (m.circuit !== null) return { where: "circuit " + (m.circuit + 1), dash: "power/" + (m.circuit + 1) };
-  return { where: m.region ? regionLine(m.region) : "", dash: "" };
 }
 
 function whereCell(p: { where: string; whereDash: string }): string | HTMLElement {
@@ -444,7 +414,7 @@ export function renderPower(body: HTMLElement): void {
     circuitsMissing(body);
     return;
   }
-  body.appendChild(ledgerTiles(world(data), starvedSub(data.world)));
+  body.appendChild(ledgerTiles(ratedWorld(data), data.world, starvedSub(data.world)));
   var whole = make("section", "dash-card");
   heading(whole, "whole world");
   whole.appendChild(bar(data.world, true));
@@ -498,7 +468,7 @@ export function renderCircuit(body: HTMLElement, subject: string): void {
   var stranded = data.no_generator.filter(function (m) {
     return m.circuit === index;
   });
-  body.appendChild(ledgerTiles(r, r.dark ? counted(stranded.length, "machine") + " wired here draw from nothing" : starvedSub(row.ledger)));
+  body.appendChild(ledgerTiles(r, row.ledger, r.dark ? counted(stranded.length, "machine") + " wired here draw from nothing" : starvedSub(row.ledger)));
   body.appendChild(bar(row.ledger));
   if (row.generators.length) note(body, generatorLine(row.generators));
   if (row.unmodellable.length) note(body, unratedLine(row.unmodellable));
