@@ -11,6 +11,7 @@ import type {
   ActorBody,
   AlreadyUndoneResponse,
   CommitBody,
+  DeltaResponse,
   FocusSelection,
   ItemsResponse,
   NameTakenResponse,
@@ -20,6 +21,7 @@ import type {
   PlanStateBody,
   PushedResponse,
   SolveResponse,
+  VersionsResponse,
 } from "./api-shapes";
 
 export type Op = PlanOpBody & { op: string };
@@ -81,17 +83,18 @@ export var bench = {
   own: {} as Record<number, boolean>,
   selection: null as Selection | null,
   graph: false,
+  versions: null as VersionsResponse | null,
+  versionsOpen: false,
+  versionsError: "",
+  view: 0,
+  viewPlan: null as PlanStateBody | null,
+  viewResult: null as SolveResponse | null,
+  viewError: "",
+  viewDelta: null as DeltaResponse | null,
+  stripDelta: null as DeltaResponse | null,
 };
 
 export var inbox = { card: null as ActivityEvent | null };
-
-export var OBJECTIVES: Record<string, string> = {
-  max_mw: "max MW",
-  max_item: "max item",
-  min_raw: "min raw",
-  min_machines: "min machines",
-  min_power: "min power",
-};
 
 export var NAME_MAX = 80;
 export var NOTES_MAX = 2000;
@@ -209,6 +212,14 @@ export function reset(key: string): void {
   bench.redo = [];
   bench.own = {};
   bench.selection = null;
+  bench.versions = null;
+  bench.versionsError = "";
+  bench.view = 0;
+  bench.viewPlan = null;
+  bench.viewResult = null;
+  bench.viewError = "";
+  bench.viewDelta = null;
+  bench.stripDelta = null;
 }
 
 export function openPlan(key: string): void {
@@ -252,10 +263,16 @@ function history(key: string): Promise<void> {
 
 function adopt(plan: PlanStateBody): void {
   if (bench.plan && plan.rev < bench.plan.rev) return;
+  var moved = !bench.plan || bench.plan.rev !== plan.rev;
   bench.plan = plan;
   bench.gone = plan.forgotten;
   changed();
   solveHead();
+  if (moved) {
+    if (bench.versionsOpen) loadVersions();
+    deltaForStrip();
+    if (bench.view) deltaForView();
+  }
 }
 
 function strip(commit: CommitBody): void {
@@ -266,13 +283,113 @@ function strip(commit: CommitBody): void {
   if (seen) return;
   bench.strip.push({ rev: commit.rev, text: commitWords(commit.text), who: actorWord(commit.actor), undone: false });
   bench.last = { who: actorWord(commit.actor), ts: commit.ts };
+  deltaForStrip();
 }
 
 export function dismissStrip(rev: number | null): void {
   bench.strip = bench.strip.filter(function (row) {
     return rev !== null && row.rev !== rev;
   });
+  if (!bench.strip.length) bench.stripDelta = null;
+  else deltaForStrip();
   changed();
+}
+
+function delta(key: string, from: number, to: number): Promise<DeltaResponse> {
+  return get<DeltaResponse>(`/api/plan/delta?key=${encodeURIComponent(key)}&from_rev=${from}&to_rev=${to}`);
+}
+
+function deltaForStrip(): void {
+  var plan = bench.plan;
+  if (!plan || !bench.strip.length) return;
+  var from =
+    Math.min.apply(
+      null,
+      bench.strip.map(function (row) {
+        return row.rev;
+      })
+    ) - 1;
+  var to = plan.rev;
+  var have = bench.stripDelta;
+  if (from < 1 || (have && have.from_rev === from && have.to_rev === to)) return;
+  var key = bench.key;
+  delta(key, from, to)
+    .then(function (d) {
+      if (bench.key !== key || !bench.plan || bench.plan.rev !== to) return;
+      bench.stripDelta = d;
+      changed();
+    })
+    .catch(function () {});
+}
+
+export function loadVersions(): void {
+  var key = bench.key;
+  if (!key) return;
+  get<VersionsResponse>("/api/plans/{key}/versions", key)
+    .then(function (body) {
+      if (bench.key !== key) return;
+      bench.versions = body;
+      bench.versionsError = "";
+      changed();
+    })
+    .catch(function (reason) {
+      if (bench.key !== key) return;
+      bench.versionsError = friendly(reason);
+      changed();
+    });
+}
+
+export function toggleVersions(): void {
+  bench.versionsOpen = !bench.versionsOpen;
+  if (bench.versionsOpen) loadVersions();
+  changed();
+}
+
+function deltaForView(): void {
+  var plan = bench.plan;
+  var rev = bench.view;
+  if (!plan || !rev || rev === plan.rev) {
+    bench.viewDelta = null;
+    return;
+  }
+  var key = bench.key;
+  delta(key, rev, plan.rev)
+    .then(function (d) {
+      if (bench.key !== key || bench.view !== rev) return;
+      bench.viewDelta = d;
+      changed();
+    })
+    .catch(function () {});
+}
+
+export function viewRev(rev: number): void {
+  if (bench.view === rev) return;
+  bench.view = rev;
+  bench.viewPlan = null;
+  bench.viewResult = null;
+  bench.viewError = "";
+  bench.viewDelta = null;
+  changed();
+  if (!rev) return;
+  var key = bench.key;
+  get<PlanStateBody>(`/api/plans/{key}?rev=${rev}`, key)
+    .then(function (plan) {
+      if (bench.key !== key || bench.view !== rev) return;
+      bench.viewPlan = plan;
+      changed();
+      return solveAt(key, rev);
+    })
+    .then(function (data) {
+      if (!data || bench.key !== key || bench.view !== rev) return;
+      bench.viewResult = data;
+      changed();
+    })
+    .catch(function (reason) {
+      if (bench.key !== key || bench.view !== rev) return;
+      bench.viewError = friendly(reason);
+      changed();
+    });
+  deltaForView();
 }
 
 function solveAt(key: string, rev: number): Promise<SolveResponse> {
@@ -404,7 +521,7 @@ function onlyOwn(body: Refusal, base: number): boolean {
 }
 
 function write(
-  path: "/api/plans/{key}/ops" | "/api/plans/{key}/args" | "/api/plans/{key}/undo",
+  path: "/api/plans/{key}/ops" | "/api/plans/{key}/args" | "/api/plans/{key}/undo" | "/api/plans/{key}/restore",
   extra: Record<string, unknown>,
   settle: (reply: PushedResponse) => void,
   conflict: (body: Refusal) => void,
@@ -621,6 +738,54 @@ function pull(): void {
       .then(function (plan) {
         if (plan && bench.key === key) adopt(plan);
       });
+  });
+}
+
+export function restoreRev(rev: number, done?: () => void): void {
+  if (!bench.plan) return;
+  bench.redo = [];
+  write(
+    "/api/plans/{key}/restore",
+    { rev: rev },
+    function (reply) {
+      landed(reply, "done");
+      if (reply.noop) note("nothing changed: the plan already equals v" + rev);
+      if (done) done();
+    },
+    function (body) {
+      if (body.name_taken) {
+        fail("v" + rev + " cannot be restored: " + (body.error || "its name is taken"));
+        changed();
+        return;
+      }
+      outdated(body, function () {
+        restoreRev(rev, done);
+      });
+    }
+  );
+}
+
+export function duplicatePlan(rev?: number): Promise<string> {
+  var body: Record<string, unknown> = {};
+  if (rev) body.rev = rev;
+  return push<PushedResponse, Refusal & ApiError>("/api/plans/{key}/duplicate", body, bench.key).then(function (answer) {
+    if (answer.conflict) throw new Error(answer.body.error || "the copy could not be named");
+    return answer.body.key;
+  });
+}
+
+export function undoIn(key: string, rev: number): Promise<string> {
+  return get<PlanStateBody>("/api/plans/{key}", key).then(function (head) {
+    return push<PushedResponse, Refusal & ApiError>("/api/plans/{key}/undo", { base_rev: head.rev, rev: rev }, key).then(function (answer) {
+      if (!answer.conflict) return answer.body.noop ? "nothing to undo in v" + rev : "undid v" + rev + " of “" + head.name + "”";
+      if (answer.body.already_undone) return "v" + rev + " is already undone";
+      var why = (answer.body.conflicts || [])
+        .map(function (c) {
+          return c.text;
+        })
+        .join("; ");
+      throw new Error("v" + rev + " cannot be undone: it was changed again since" + (why ? " (" + why + ")" : ""));
+    });
   });
 }
 

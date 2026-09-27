@@ -15,6 +15,7 @@ from . import (
     crates,
     events,
     factories,
+    factory_detail,
     floors,
     gamedata,
     grid,
@@ -72,4 +73,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     gamedata.router,
     search.router,
     trace.router,
+    factory_detail.router,
 )

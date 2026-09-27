@@ -1061,6 +1061,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/factories/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Machines
+         * @description Where each standing machine of a named factory, or of a detected candidate, stands.
+         */
+        get: operations["factory_machines_api_factories_machines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/labels/amend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Amend Label
+         * @description Add the machines inside ``area`` (metres, map frame) to a label, or drop them from it.
+         *
+         *     The same ``plan_amend`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
+         */
+        post: operations["amend_label_api_labels_amend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plan/solve": {
         parameters: {
             query?: never;
@@ -1113,6 +1155,26 @@ export interface paths {
          * @description Plan commits and journal entries after ``since``, oldest first, the newest ``limit``.
          */
         get: operations["activity_api_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/delta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Delta
+         * @description The result deltas between two versions of one plan, both re-solved against this save.
+         */
+        get: operations["plan_delta_api_plan_delta_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1199,6 +1261,66 @@ export interface paths {
          * @description The inverse of commit ``rev`` as a new commit; redo is the undo of that undo.
          */
         post: operations["undo_rev_api_plans__key__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Rev
+         * @description A new commit that makes the head equal ``rev`` again: never a rewind.
+         */
+        post: operations["restore_rev_api_plans__key__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Plan
+         * @description A new plan at v1 equal to this one at ``rev`` (the head when omitted).
+         */
+        post: operations["duplicate_plan_api_plans__key__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Versions
+         * @description Every version of one plan, newest first, with what undid or restored what.
+         */
+        get: operations["plan_versions_api_plans__key__versions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1373,6 +1495,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/factories/aspects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Aspects
+         * @description What one named factory makes, needs, draws, holds and touches.
+         *
+         *     Rates are items/min at the saved clocks, nameplate and measured, never blended.
+         */
+        get: operations["factory_aspects_api_factories_aspects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/factories/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Sites
+         * @description Built production buildings clustered into sites, largest first.
+         *
+         *     With ``?factory=``, only the sites holding any of that factory's machines, each with
+         *     the count it holds: a factory that is a small part of a big site is a grown-together
+         *     base, and one spread over several sites is not one place.
+         */
+        get: operations["factory_sites_api_factories_sites_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1456,12 +1624,151 @@ export interface components {
             /** Recipes */
             recipes: components["schemas"]["MakerRow"][];
         };
+        /**
+         * AmendBody
+         * @description ``area`` is a polygon of ``[x_m, y_m]`` corners; ``mode`` is ``add`` or ``drop``.
+         */
+        AmendBody: {
+            /** Name */
+            name: string;
+            /** Area */
+            area: [
+                number,
+                number
+            ][];
+            /** Mode */
+            mode: string;
+            /** As Of */
+            as_of: string;
+            /** Version */
+            version: number;
+            /** Dry Run */
+            dry_run?: boolean;
+        };
+        /**
+         * AmendedResponse
+         * @description ``added`` and ``dropped`` are what the area changes; ``written`` is false on a dry run
+         *     and when nothing changed. ``version`` is the store's, after any write.
+         */
+        AmendedResponse: {
+            /** Name */
+            name: string;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Written */
+            written: boolean;
+            /** Before */
+            before: number;
+            /** After */
+            after: number;
+            /** Added */
+            added: components["schemas"]["MachineSpot"][];
+            /** Dropped */
+            dropped: components["schemas"]["MachineSpot"][];
+            /** Overlaps */
+            overlaps: string[];
+            /** Token */
+            token: string;
+            /** Version */
+            version: number;
+        };
         /** Amount */
         Amount: {
             /** Name */
             name: string;
             /** Count */
             count: number;
+        };
+        /**
+         * AspectBalance
+         * @description ``measured_net`` is null where every machine touching the item keeps no monitor.
+         */
+        AspectBalance: {
+            /** Item */
+            item: string;
+            /** Made */
+            made: number;
+            /** Used */
+            used: number;
+            /** Net */
+            net: number;
+            /** Measured Net */
+            measured_net: number | null;
+            /** Verdict */
+            verdict: string;
+            /** Unmonitored Made */
+            unmonitored_made: number;
+            /** Unmonitored Used */
+            unmonitored_used: number;
+        };
+        /** AspectCount */
+        AspectCount: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
+        /**
+         * AspectLink
+         * @description ``factory`` is null for machines no label covers.
+         */
+        AspectLink: {
+            /** Factory */
+            factory: string | null;
+            /** Machines */
+            machines: number;
+        };
+        /** AspectMachine */
+        AspectMachine: {
+            /** Instance */
+            instance: string;
+            /** Building */
+            building: string;
+            /** Recipe */
+            recipe: string | null;
+            /** Clock */
+            clock: number;
+            /** Paused */
+            paused: boolean;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+        };
+        /**
+         * AspectNode
+         * @description ``left`` is the save's ``mResourcesLeft``, null on an infinite node.
+         */
+        AspectNode: {
+            /** Node */
+            node: string;
+            /** Resource */
+            resource: string;
+            /** Purity */
+            purity: string;
+            /** Extractor */
+            extractor: string;
+            /** Clock */
+            clock: number;
+            /** Left */
+            left: number | null;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /** AspectPower */
+        AspectPower: {
+            /** Draw Mw */
+            draw_mw: number;
+            /** Measured Draw Mw */
+            measured_draw_mw: number;
+            /** Generation Mw */
+            generation_mw: number;
+            /** Unmonitored */
+            unmonitored: number;
         };
         /**
          * AttachmentRow
@@ -1932,6 +2239,47 @@ export interface components {
             from_entry?: string;
         };
         /**
+         * DeltaResponse
+         * @description What re-solving ``from_rev`` and ``to_rev`` gives. ``comparable`` is false when either
+         *     side is not solvable, and then only ``text`` says anything.
+         */
+        DeltaResponse: {
+            /** Key */
+            key: string;
+            /** From Rev */
+            from_rev: number;
+            /** To Rev */
+            to_rev: number;
+            /** Comparable */
+            comparable: boolean;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number;
+            /** Mw Net */
+            mw_net: number;
+            /** Buildings */
+            buildings: components["schemas"]["DeltaRow"][];
+            /** Inputs */
+            inputs: components["schemas"]["DeltaRow"][];
+            /** Text */
+            text: string;
+        };
+        /**
+         * DeltaRow
+         * @description One building's machine count or one raw input's rate, before and after.
+         */
+        DeltaRow: {
+            /** Name */
+            name: string;
+            /** Before */
+            before: number;
+            /** After */
+            after: number;
+            /** Delta */
+            delta: number;
+        };
+        /**
          * DriveOption
          * @description ``slots`` is the inventory slots an option grants instead of recipes; 0 for most.
          */
@@ -1953,6 +2301,13 @@ export interface components {
             rerolls_left: number;
             /** Options */
             options: components["schemas"]["DriveOption"][];
+        };
+        /** DuplicateBody */
+        DuplicateBody: {
+            /** Rev */
+            rev?: number | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * Elevation
@@ -2007,6 +2362,48 @@ export interface components {
             labels: components["schemas"]["FactoryRow"][];
             /** Proposals */
             proposals: components["schemas"]["ProposalRow"][];
+        };
+        /** FactoryAspectsResponse */
+        FactoryAspectsResponse: {
+            /** Name */
+            name: string;
+            /** Size */
+            size: number;
+            /** Centroid M */
+            centroid_m: [
+                number,
+                number
+            ];
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Spread M */
+            spread_m: number;
+            /** Producers */
+            producers: number;
+            /** Unmonitored Producers */
+            unmonitored_producers: number;
+            /** Producing Now */
+            producing_now: number;
+            power: components["schemas"]["AspectPower"];
+            /** Balance */
+            balance: components["schemas"]["AspectBalance"][];
+            /** Machines */
+            machines: components["schemas"]["AspectMachine"][];
+            /** Recipes */
+            recipes: components["schemas"]["AspectCount"][];
+            /** Buildings */
+            buildings: components["schemas"]["AspectCount"][];
+            /** Nodes */
+            nodes: components["schemas"]["AspectNode"][];
+            /** Links */
+            links: components["schemas"]["AspectLink"][];
+            /** Issues */
+            issues: string[];
         };
         /** FactoryGraphResponse */
         FactoryGraphResponse: {
@@ -2095,6 +2492,15 @@ export interface components {
             name: string;
             /** Machines */
             machines: number;
+        };
+        /** FactoryMachinesResponse */
+        FactoryMachinesResponse: {
+            /** Title */
+            title: string;
+            /** Token */
+            token: string;
+            /** Machines */
+            machines: components["schemas"]["MachineSpot"][];
         };
         /**
          * FactoryRow
@@ -2654,6 +3060,22 @@ export interface components {
             y_m: number | null;
         };
         /**
+         * MachineSpot
+         * @description One placed machine. ``factory`` is the label that holds it, if any.
+         */
+        MachineSpot: {
+            /** Id */
+            id: string;
+            /** Building */
+            building: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Factory */
+            factory: string | null;
+        };
+        /**
          * MachinesResponse
          * @description What ``/api/machines`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
          */
@@ -3164,6 +3586,9 @@ export interface components {
         /**
          * PlanIndexRow
          * @description One live plan at its head. ``rates`` is ``export_minimums``, item name to per minute.
+         *
+         *     ``status`` is what moved under it (``manage.plan_status``): "world moved", "field N->M",
+         *     "broken: ..."; empty with ``recorded`` false means the field was never checked.
          */
         PlanIndexRow: {
             /** Key */
@@ -3189,6 +3614,10 @@ export interface components {
             /** Plan Id */
             plan_id: string;
             last: components["schemas"]["PlanLast"];
+            /** Status */
+            status: string[];
+            /** Recorded */
+            recorded: boolean;
         };
         /**
          * PlanLast
@@ -3739,6 +4168,15 @@ export interface components {
             /** Stored In */
             stored_in: string;
         };
+        /** RestoreBody */
+        RestoreBody: {
+            /** Base Rev */
+            base_rev: number;
+            /** Rev */
+            rev: number;
+            /** Sav */
+            sav?: string;
+        };
         /**
          * SaveRow
          * @description One save file, cut to the five keys the picker reads -- of the header's thirteen.
@@ -3844,6 +4282,46 @@ export interface components {
             by_place: components["schemas"]["PlaceRow"][];
             /** Holders */
             holders: components["schemas"]["ShardHolder"][];
+        };
+        /**
+         * SiteRow
+         * @description ``mine`` is how many of the asked factory's machines stand in this site; 0 without
+         *     ``?factory=``.
+         */
+        SiteRow: {
+            /** Index */
+            index: number;
+            /** Direction */
+            direction: string;
+            /** Grid */
+            grid: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+            /** Count */
+            count: number;
+            /** Diameter M */
+            diameter_m: number;
+            /** Selector */
+            selector: string;
+            /** Buildings */
+            buildings: components["schemas"]["AspectCount"][];
+            /** Mine */
+            mine: number;
+        };
+        /** SitesResponse */
+        SitesResponse: {
+            /** Total */
+            total: number;
+            /** Factory */
+            factory: string | null;
+            /** Factory Machines */
+            factory_machines: number;
+            /** Sites */
+            sites: components["schemas"]["SiteRow"][];
         };
         /**
          * SloopHolder
@@ -3963,6 +4441,8 @@ export interface components {
             grid_import: boolean;
             /** Exports */
             exports: components["schemas"]["SolveRate"][];
+            /** Inputs */
+            inputs: components["schemas"]["SolveRate"][];
             /** Rows */
             rows: components["schemas"]["SolveRow"][];
             /** Shards */
@@ -4547,6 +5027,42 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VersionRow
+         * @description One commit in the Versions list. ``restores`` is the rev a restore brought back.
+         */
+        VersionRow: {
+            /** Rev */
+            rev: number;
+            /** Ts */
+            ts: number;
+            actor: components["schemas"]["ActorBody"];
+            /** Text */
+            text: string;
+            /** Undoes */
+            undoes: number | null;
+            /** Undone By */
+            undone_by: number | null;
+            /** Restores */
+            restores: number | null;
+            /** Merged Over */
+            merged_over: number[];
+            /** Note */
+            note: string;
+        };
+        /** VersionsResponse */
+        VersionsResponse: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Head */
+            head: number;
+            /** Forgotten */
+            forgotten: boolean;
+            /** Versions */
+            versions: components["schemas"]["VersionRow"][];
         };
         /** WireRow */
         WireRow: {
@@ -5937,6 +6453,104 @@ export interface operations {
             };
         };
     };
+    factory_machines_api_factories_machines_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                candidate?: string | null;
+                token?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryMachinesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    amend_label_api_labels_amend_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AmendBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmendedResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     solve_plan_api_plan_solve_post: {
         parameters: {
             query?: {
@@ -6030,6 +6644,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_delta_api_plan_delta_get: {
+        parameters: {
+            query: {
+                key: string;
+                from_rev: number;
+                to_rev?: number | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeltaResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6241,6 +6890,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutdatedResponse"] | components["schemas"]["AlreadyUndoneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_rev_api_plans__key__restore_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutdatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_plan_api_plans__key__duplicate_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameTakenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_versions_api_plans__key__versions_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6515,6 +7292,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TraceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_aspects_api_factories_aspects_get: {
+        parameters: {
+            query: {
+                factory: string;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryAspectsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_sites_api_factories_sites_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SitesResponse"];
                 };
             };
             /** @description Validation Error */

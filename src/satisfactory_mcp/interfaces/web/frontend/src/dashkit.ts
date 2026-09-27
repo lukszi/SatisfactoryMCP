@@ -257,6 +257,12 @@ export function button(text: string, action: () => void, options?: ButtonOptions
   return b;
 }
 
+export function pressed(text: string, on: boolean, action: () => void, options?: ButtonOptions): HTMLButtonElement {
+  var b = button(text, action, options);
+  b.setAttribute("aria-pressed", String(on));
+  return b;
+}
+
 export interface Tab2 {
   id: string;
   label: string;

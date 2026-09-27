@@ -24,6 +24,11 @@
   cursor: default;
 }
 
+.btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-hi);
+}
+
 .btn-map {
   color: var(--ink-soft);
 }

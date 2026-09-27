@@ -1,10 +1,10 @@
 {
  "_meta": {
   "purpose": "ADVISORY region names only. Layer 1 (grid cells, cones, radii, clustering) is exact and is what every calculation uses. A name from this file must never feed a computation.",
-  "generated": "2026-07-30",
+  "generated": "2026-09-27",
   "generator": "tools/gen_region_names.py",
-  "game_version_pinned": "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build",
-  "game_build": "++FactoryGame+rel-main-1.2.0-CL-495413",
+  "game_version_pinned": "buildVersion 502094 (engine branch ++FactoryGame+rel-main-anniversary-2026), the installed build",
+  "game_build": "++FactoryGame+rel-main-anniversary-2026-CL-502094",
   "units": "centimetres; north is -Y, east is +X, up is +Z",
   "accuracy_m": 64,
   "source": {

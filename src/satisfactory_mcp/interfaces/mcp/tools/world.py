@@ -288,13 +288,7 @@ def factory_sites(
                 f"{x_m},{y_m},{z_m}",
                 s["count"],
                 f"{s['diameter_m']}m",
-                # A site is a cluster, not a stored thing, so it has no id of its own to
-                # print. The selector every machine-taking tool already accepts is one:
-                # the centroid, with a radius of 0.6x the spread. Jung's bound says a set
-                # of diameter d fits in a circle of radius d/0.577; half the spread is the
-                # tempting number and it measurably clips members (432 of 461 on the
-                # reference world's main site, against 438 at 0.6).
-                f"near:{x_m},{y_m}@{max(50, round(s['diameter_m'] * 0.6))}",
+                s["selector"],
                 ", ".join(f"{n}x {g.buildings[c].name if c in g.buildings else c}" for c, n in top),
             )
         )

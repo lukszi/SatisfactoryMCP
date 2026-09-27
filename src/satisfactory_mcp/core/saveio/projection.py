@@ -56,7 +56,9 @@ from ..text import ago, stamp
 #: on the first beam; and a conveyor chain stamped `_RepSizeNoCull`, a class the anniversary
 #: build added, is decoded instead of dropped. Every pickle written before this describes less
 #: world than the save holds -- fewer structures, and a missing belt run -- so they must miss.
-SCHEMA_VERSION = 21
+#: 22 CORRECTS a false problem: a save whose older levels still carry the previous build's
+#: changelist had reported every read as possibly incomplete. Nothing in the world changes.
+SCHEMA_VERSION = 22
 
 #: The in-process projection memo, and the single-flight around its misses. An autosave is a
 #: new cache key for a file every reader resolves to at once, so without the flight the map

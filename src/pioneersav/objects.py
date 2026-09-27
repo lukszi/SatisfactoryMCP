@@ -299,12 +299,13 @@ def _read_archive_header(
 
     The engine version is three uint16s of major/minor/patch; the bytes carry no label, and it
     is constant on this disk, so that reading is an interpretation of one value.
-    ``changelist & CHANGELIST_MASK`` equals the header's ``buildVersion`` on every archive
-    header measured, which is the only cross-check the format offers between body and header.
-    It **warns rather than refuses**, because every one of those observations comes from a
-    single build: raising would make a save from the first build where the relation differs
-    unreadable rather than merely odd. It runs only when the caller supplies ``build_version``,
-    since a value invented here would only ever match itself.
+    ``changelist & CHANGELIST_MASK`` is the build that wrote THIS record, not the save: the
+    first save of the reference world under build 502094 carries 279 headers on 502094 and
+    1,628 still on 495413, the levels the new build had not rewritten yet. So a changelist at
+    or below the header's ``buildVersion`` is ordinary, and only one ABOVE it -- a record from
+    a build newer than the one that wrote the file -- is a finding. It **warns rather than
+    refuses**, and runs only when the caller supplies ``build_version``, since a value
+    invented here would only ever match itself.
     """
     start = r.pos
     fields = (r.i32(), r.i32(), r.i32(), r.i32())
@@ -323,16 +324,13 @@ def _read_archive_header(
     )
     changelist_at = r.pos
     changelist = r.u32()
-    if build_version is not None and changelist & CHANGELIST_MASK != build_version:
+    if build_version is not None and changelist & CHANGELIST_MASK > build_version:
         what = (
             f"the body says changelist {changelist & CHANGELIST_MASK} "
             f"(from {changelist:#010x}) and the header says buildVersion {build_version}; "
-            "the low 31 bits agree on all 11,292 archive headers measured, but every one of "
-            "those is the same build, so a mismatch is reported rather than refused"
+            "a record written by a build newer than the save itself is reported rather "
+            "than refused"
         )
-        # Once per DISTINCT mismatch, not once per archive header: a body whose build disagrees
-        # with its header disagrees at all ~1,900 of them. A body assembled from two builds'
-        # level records still produces one line per pair, which is the case worth seeing.
         if what not in [w for _at, w in warnings]:
             warnings.append((changelist_at, what))
     branch_at = r.pos

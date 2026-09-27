@@ -90,8 +90,15 @@ def test_commissioning_defaults_to_the_safe_bound_but_names_the_other(game, live
         assert "headroom_mw=" in out
 
 
-def test_a_bigger_headroom_really_does_mean_fewer_waves(game, live):
-    """The reason the note is worth printing at all."""
+def test_a_bigger_headroom_really_does_mean_fewer_waves(monkeypatch, state):
+    """The reason the note is worth printing at all.
+
+    On the reference world, where the nameplate headroom clears the minimum slice: below it
+    there is no order at all, and zero waves is not fewer.
+    """
+    from satisfactory_mcp.interfaces.mcp.tools import planning
+
+    monkeypatch.setattr(planning, "_state", lambda save=None, world=None, as_of=None: state)
     kw = dict(
         objective="max_mw",
         sources=list(REFERENCE_FIELD),
@@ -100,12 +107,12 @@ def test_a_bigger_headroom_really_does_mean_fewer_waves(game, live):
         limit=4,
     )
     safe = srv.commission_plan(**kw)
-    real = srv.commission_plan(headroom_mw=live.power_report()["measured_headroom_mw"], **kw)
+    real = srv.commission_plan(headroom_mw=state.power_report()["measured_headroom_mw"], **kw)
 
     def waves(out: str) -> int:
         return int(out.split(" wave(s)")[0].rsplit(", ", 1)[1])
 
-    assert waves(real) <= waves(safe)
+    assert 0 < waves(real) < waves(safe)
 
 
 # ------------------------------------------------------------ starved generators

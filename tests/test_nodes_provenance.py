@@ -139,7 +139,7 @@ def test_the_licence_line_states_first_party_derivation():
 
 
 def test_the_build_is_pinned_so_a_consumer_can_tell_it_predates_theirs():
-    assert "495413" in META["game_version_pinned"]
+    assert "502094" in META["game_version_pinned"]
     assert META["generated"].startswith("20")
     assert META["source"]["package"].endswith("Persistent_Level.umap")
     assert "gameassets" in META["source"]["read_by"]

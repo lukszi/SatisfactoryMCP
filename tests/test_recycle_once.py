@@ -122,7 +122,7 @@ def test_naming_the_loop_is_the_design(game, state, coupled):
 # ------------------------------------------------------------ the tool
 
 
-def test_the_tool_takes_a_pattern(game, live):
+def test_the_tool_takes_a_pattern(planned):
     """The skip is decided by looking for the plan, not by reading the tool's answer.
 
     ``if free.startswith("! ") or once.startswith("! ")`` skipped on ANY refusal, and
@@ -133,8 +133,6 @@ def test_the_tool_takes_a_pattern(game, live):
     one now asks the machine, the same way ``test_modules.py`` does, and the refusals are
     asserted against instead of tolerated.
     """
-    if live.plans.find(REFERENCE_PLAN) is None:
-        pytest.skip(f"the {REFERENCE_PLAN} plan is not saved on this machine")
     kw = dict(
         plan=REFERENCE_PLAN,
         sources=list(REFERENCE_FIELD),

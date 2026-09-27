@@ -6,14 +6,23 @@ docs/frontend_vision.md §9.6 has the concurrency rule.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ...core.filelock import LockTimeout
 from ..planning.planlog import Actor, PlanLog, PlanLogError
 from .labels import Label, LabelStore, UnknownLabel
 
-__all__ = ["Renamed", "amend", "forget", "name", "rename", "repoint_plans"]
+__all__ = [
+    "Amendment",
+    "Renamed",
+    "amend",
+    "forget",
+    "name",
+    "plan_amend",
+    "rename",
+    "repoint_plans",
+]
 
 
 @dataclass(frozen=True)
@@ -135,6 +144,46 @@ def rename(
     )
 
 
+@dataclass(frozen=True)
+class Amendment:
+    """What ``amend`` would do to one label, worked out without touching it.
+
+    ``named`` is true when the machines being added are already a named set (``covers``);
+    ``overlaps`` counts them per other label.
+    """
+
+    before: list[str]
+    after: list[str]
+    added: list[str]
+    dropped: list[str]
+    standing: list[str]
+    overlaps: dict[str, int]
+    named: bool
+
+
+def plan_amend(
+    store: LabelStore, label: Label, add: list[str], drop: set[str], alive: set[str]
+) -> Amendment:
+    """The dry run of ``amend``: ``add`` first, then ``drop``, on a copy of ``label``.
+
+    Raises ``LabelError`` where ``amend`` would, when the label would be left empty.
+    """
+    before = list(label.anchors)
+    fresh = sorted(set(add) - set(before))
+    trial = replace(label, anchors=list(before))
+    added = store.attach(trial, add)
+    dropped = store.detach(trial, drop)
+    return Amendment(
+        before,
+        list(trial.anchors),
+        added,
+        dropped,
+        sorted(set(trial.anchors) & alive),
+        store.overlaps(fresh, label.name),
+        bool(fresh) and store.covers(fresh),
+    )
+
+
 def amend(
     world_id: str,
     session: str,
@@ -144,9 +193,13 @@ def amend(
     cand=None,
     notes: str = "",
     when: str = "",
-) -> Label:
-    """Attach ``add`` and detach ``drop`` on one label; ``cand`` refreshes its geometry."""
-    with LabelStore.editing(world_id, session) as store:
+    expect: int | None = None,
+) -> tuple[Label, int]:
+    """Attach ``add`` and detach ``drop`` on one label; ``cand`` refreshes its geometry.
+
+    Returns the label and the version written.
+    """
+    with LabelStore.editing(world_id, session, expect) as store:
         label = _pick(store, name, exact=True)
         store.attach(label, add)
         store.detach(label, drop)
@@ -156,4 +209,4 @@ def amend(
         if notes:
             label.notes = notes
         label.last_matched = when
-    return label
+    return label, store.version

@@ -14,10 +14,13 @@ import { amount, choice, resetSettings, setSetting, setting, SETTINGS } from "./
 import type { Setting } from "./settings";
 import { state } from "./state";
 import { renderFactories, renderFactory, wireDetect } from "./factories";
+import { factoryAddress } from "./factory-detail";
 import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
 import { circuitName } from "./powerview";
 import { dashParts } from "./nav";
+import { drawRail } from "./rail";
+import { select } from "./selection";
 import { W } from "./words";
 
 import type { FactoryHealthRow } from "./api-shapes";
@@ -32,7 +35,7 @@ type Tab =
   | "planner"
   | "settings";
 
-var TABS: [Tab, string][] = [
+export var TABS: [Tab, string][] = [
   ["overview", "Overview"],
   ["factories", "Factories"],
   ["power", "Power"],
@@ -220,8 +223,15 @@ function tabLabel(tab: Tab): string {
   return label;
 }
 
+function knownFactory(name: string): boolean {
+  var health = vitals().health;
+  return !!health && health.factories.some(function (r) {
+    return r.name === name;
+  });
+}
+
 function subjectName(tab: Tab, subject: string): string {
-  if (tab === "factories") return subject;
+  if (tab === "factories") return factoryAddress(subject, knownFactory).name;
   if (tab !== "power" || !subject) return "";
   var circuits = vitals().circuits;
   var row = circuits ? circuits.circuits[+subject - 1] : undefined;
@@ -250,6 +260,18 @@ function forgetVitals(): void {
   v.circuitsError = "";
 }
 
+function follow(tab: Tab, subject: string): void {
+  if (!subject) return;
+  var v = vitals();
+  if (tab === "factories" && v.health) {
+    var name = factoryAddress(subject, knownFactory).name;
+    if (knownFactory(name)) select({ kind: "factory", key: name, label: name });
+  } else if (tab === "power" && v.circuits) {
+    var row = v.circuits.circuits[+subject - 1];
+    if (row) select({ kind: "circuit", key: String(row.index), label: circuitName(row) });
+  }
+}
+
 function renderNav(tab: Tab): void {
   var nav = el("dash-nav");
   nav.textContent = "";
@@ -271,6 +293,7 @@ export function render(): void {
   }
   missed = false;
   var at = address();
+  follow(at.tab, at.subject);
   renderNav(at.tab);
   var body = el("dash-body");
   if (state.noSaves && SAVELESS.indexOf(at.tab) < 0) {
@@ -304,6 +327,7 @@ export function render(): void {
 function relink(): void {
   var on = !!state.dash;
   if (on) lastDash = state.dash;
+  drawRail(TABS, on ? address().tab : "");
   var views = el("views").querySelectorAll<HTMLAnchorElement>("[data-view]");
   Array.prototype.forEach.call(views, function (a: HTMLAnchorElement) {
     var dash = a.getAttribute("data-view") === "dash";

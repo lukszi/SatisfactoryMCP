@@ -149,7 +149,7 @@ tool table.
 | `world_summary` | Status strip + World > Overview | none | vitals, last active schematic, problems | exists `/api/summary` (partial: add problems, warnings) |
 | `unlocked_recipes` | Recipes > Unlocked | alternates-only toggle | sortable table | **built** `/api/gamedata/unlocked` (§12) |
 | `power_report` | Power (step 0) | none | capacity vs draw, nameplate + measured, per generator kind | new (step 0 may add it) |
-| `factory_sites` | Factories > Sites | none | cluster list; map clusters | new (or fold into `/api/factories`) |
+| `factory_sites` | Factory detail > Sites (world list: open) | none | cluster list; map clusters | **built** `/api/factories/sites` (§17) |
 | `whereami` | Header "me" button; World > Here | radius slider | player marker + nearby list | exists (`/api/summary.player`) + new for the nearby list |
 | `list_regions` | World > Regions; region picker in every sources form | resource filter | list; region layer highlights | exists `/api/regions` (add resource filter) |
 | `describe_location` | Map click inspector | click point, radius | popup: region, elevation, nodes, conduits, buildings | exists `/api/inspect` (same default radius); add conduits/buildings counts |
@@ -186,17 +186,17 @@ tool table.
 | `search_recipes` | Recipes > Search | query, consumes, produces, part/building/manual/all, alternates only, events | census header + rows | **built** `/api/gamedata/recipes` (§12) |
 | `list_buildings` | Recipes > Buildings | building kind | table | new |
 | `factory_map` | Factories > Candidates / Slabs / Unlabelled | show candidates/named/slabs/unlabelled/all | lists; slab outlines on the map | exists `/api/factories`, `/api/structures` (partial) |
-| `factory_query` | Factory detail tabs | factory, aspects (summary, machines, recipes, buildings, balance, inputs, outputs, internal, power, nodes, links, issues) | one sub-tab per aspect | new |
+| `factory_query` | Factory detail tabs | factory, aspects (summary, machines, recipes, buildings, balance, inputs, outputs, internal, power, nodes, links, issues) | one sub-tab per aspect | **built** `/api/factories/aspects` (§17) |
 | `factory_health` | Factory detail > Health; Factories list colour | factory or all | per state counts, why stopped, evidence line | new (map colours exist via `/api/machines`) |
 | `propose_factories` | Dashboard > Factories > unnamed factories | none (default span, unnamed only) | candidates with products, region, suggested name; map outline | **built** `/api/factories/candidates` (§9) |
 | `select_machines` | Name/amend dialog, live preview | selector text or map lasso, split, expand | highlighted machines + count | new |
 | `name_factory` | Dashboard > Factories > unnamed factories | name (prefilled), one proposal | new label; joins the table and panel | **built** `POST /api/labels`, W (§9); selector/lasso still open |
 | `rename_factory` | Factories table, factory detail, side panel: edit in place | text | renamed; plans follow | **built** `PATCH /api/labels/{name}`, W (§9.7) |
-| `amend_factory` | Factory detail > edit | add/drop via lasso or selector, prune missing, dry run | diff preview, then applied | new, W |
+| `amend_factory` | Factory detail > edit | add/drop via lasso or selector, prune missing, dry run | diff preview, then applied | **built** by lasso `POST /api/labels/amend`, W (§9.9); selector and prune still open |
 | `list_factories` | Factories list (step 0) | none | named factories, % still standing | exists `/api/factories` |
 | `forget_factory` | "undo" after naming in the dashboard | none | label gone | **built** `DELETE /api/labels/{name}`, W (§9); detail-view button still open |
 | `trace_upstream` | Machine popup, right-click inspector, factory detail, side panel > Trace | seed (selection), up/down | path drawn on the map; items, rates, flows in a card | **built** `/api/trace` (§13) |
-| `factory_floors` | Factory detail > Floors; floor picker | factory or platform | decks with machines; floor picker jumps | exists `/api/floors` |
+| `factory_floors` | Factory detail > Floors; floor picker | factory or platform | decks with machines; floor picker jumps | exists `/api/floors`; detail tab **built** (§17) |
 
 ### 3.2 Resources (4)
 
@@ -290,7 +290,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | Route (proposed) | Method | Domain source | Notes |
 |---|---|---|---|
 | `/api/power/report` | GET | `domain/power/report.py` | step 0 may already add it |
-| `/api/factories/{id}` + `?aspect=` | GET | `domain/factories/query.py` | one aspect per call |
+| `/api/factories/aspects?factory=` | GET | `domain/factories/query.py` | **built** (§17); every aspect in one call |
 | `/api/factories/{id}/health` | GET | `domain/factories/health.py` | `all` for the list colours |
 | `/api/trace` | GET | `domain/factories/trace.py` | seed, direction; **built** (§13) |
 | `/api/stock` | GET | `domain/world/inventory.py` | four piles and every place; **built** (§10) |
@@ -339,8 +339,8 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | Phase | Slice | Tools covered | New routes | Writes |
 |---|---|---|---|---|
 | 0 | Factories + Power panel (in progress) | `list_factories`, `power_report`, parts of `factory_map` | per step 0 | no |
-| 1 | **Shell:** rail, selection model, status strip, `as_of` on fetches | `world_summary`, `list_worlds` | none | no |
-| 2 | **Factory detail:** aspects, health, floors | `factory_query`, `factory_health`, `factory_floors`, `factory_sites` | 2–3 | no |
+| 1 | **Shell:** rail, selection model, status strip, `as_of` on fetches. **Built 2026-09-27** (§16) | `world_summary`, `list_worlds` | none | no |
+| 2 | **Factory detail:** aspects, health, floors. **Built 2026-09-27** (§17) | `factory_query`, `factory_health`, `factory_floors`, `factory_sites` | 2 | no |
 | 3 | **Inventory:** stock, containers, crates. **Built 2026-09-27** (§10) | `stock`, `storage`, `crates` | 1 | no |
 | 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
 | 5 | **Recipes codex + search box**. **Built 2026-09-27** (§12; `list_buildings` still open) | 5 game-data tools, `unlocked_recipes` | 6 | no |
@@ -349,7 +349,7 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 8 | **Planner (stateless):** solve, bill, compare, byproducts | 4 planning tools | 4 POST | no |
 | 9 | **Write guard + Plans:** save, rename, forget, site by dragging | 4 plan tools | CRUD | **yes** |
 | 10 | **Plan follow-through:** layout, diff, startup order | `plan_layout`, `diff_vs_save`, `commission_plan` | 3 | no |
-| 11 | **Labels:** propose, preview, name, amend by lasso | 6 label tools | 2 + CRUD | **yes** |
+| 11 | **Labels:** propose, preview, name, amend by lasso. **Built 2026-09-27** (§9, §9.9; selector text still open) | 6 label tools | 2 + CRUD | **yes** |
 | 12 | **Advisors (slow):** unlock value, hard drive pick | `rank_unlocks`, `advise_hard_drive_pick` | 2 | no |
 | 13+ | Domain gaps in §5.3, in an order still to be picked | — | — | — |
 
@@ -468,7 +468,7 @@ Evidence only: each row cites where the decision is written down.
    viewport stays in the fragment.
 3. More TypeScript, with only `tsc` over it. The Python tests pin the payloads, not the view.
 4. Principle 3's `as_of=` is not implemented, here or in the panel. The dashboard has the
-   same gap.
+   same gap. **Closed 2026-09-27** (§16).
 
 **Verdict: the case holds, as a view of the same page rather than a second page.** A
 `/dashboard` path would need a second Vite entry. That renames `app.js`, which
@@ -620,7 +620,7 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
   factory appears in the Factories table, the side panel and the map labels with no reload.
   The card lists what was named in this session, each with an **undo**. Undo is `DELETE /api/labels/{name}?version=`, which removes an exact name through
   the same `edits.forget` that `forget_factory` uses.
-- **Not built:** amend, lasso selection and a dry-run preview.
+- **Amend by lasso** with a dry-run preview came later the same day (§9.9).
 
 ### 9.2 The request guard
 
@@ -910,6 +910,37 @@ me that graph for a detected factory".
   can reuse it.
 - **Not yet.** Per-machine drill-down, belt tiers on edges, and a layout that keeps positions
   steady across saves.
+
+### 9.9 Amend by lasso, and a cluster's machines on the map
+
+- **Machines on the map.** `GET /api/factories/machines` takes `factory=<name>`, or
+  `candidate=proposal:N&token=` like the graph route, and lists each standing machine with its
+  building, `x_m`/`y_m` and the label that holds it. A Detect row's **map** button still flies
+  to the box and outlines it, and now also rings every machine of the cluster (`lasso.ts`),
+  with a card that counts them by building. Before, the page showed only the box.
+- **Amend.** The factory detail header has **amend on map**, and the side panel's selected
+  factory has **amend**. Both switch to the map, ring the factory's machines in the selection
+  colour, and turn map dragging off so that a drag draws a freehand area. **+ add** and
+  **− remove** pick what the area does. Wheel and buttons still zoom; Esc or × ends it.
+- **Preview, then apply.** On release the page sends `POST /api/labels/amend {name, area,
+  mode, as_of, version, dry_run: true}`. `area` is the drawn polygon in metres. The reply lists
+  the machines it would add (green rings) or remove (red rings), the anchor count before and
+  after, and any other label that already holds an added machine. **apply** sends the same body
+  with `dry_run: false`; **discard** or a new drag starts again. Switching add/remove re-checks
+  the same area.
+- **Same path as the tool.** The route picks the machines inside the area (`geo.inside`, an
+  even-odd test on the machine positions), then calls `edits.plan_amend`, the dry run that
+  `amend_factory` now uses too, and `edits.amend`, now under `LabelStore.editing` with
+  `expect`. `test_the_page_and_the_tool_amend_to_the_same_label` compares the stored label
+  after each path.
+- **Refusals.** As §9.7: `stale` (version), `pin` (a save written since `as_of`), 404 for a
+  missing label, 400 for a bad mode or an area under three corners. Removing every machine is
+  a 409 with no flag set, and the page shows its words: `forget` deletes a label. A stale or
+  moved refusal reloads the rings and asks for the area again.
+- **Choices left open.** One area per preview (no adding several strokes before applying); a
+  lasso only, with no separate box tool; added machines another label already holds stay in
+  both labels, as `amend_factory` does, with a warning in the preview. A trace started while
+  the amend card is open is not closed by it.
 
 ---
 
@@ -1272,3 +1303,106 @@ What holds at every width from 390 px up, and how the page keeps a keyboard user
   key and cancels a rename. A copyable selector in a popup takes Enter.
 - **Check:** every view at 390, 768 and 1440 px asserts `scrollWidth === innerWidth`, and a
   Tab walk through every view finds no stop without a visible ring.
+
+---
+
+## 16. Shell: rail, selection, status strip, `as_of` (2026-09-27)
+
+Roadmap phase 1. §2.1 drew the shell before the dashboard existed (§8); this is the shell as
+built on top of it.
+
+### 16.1 What was built
+
+- **Rail** (`rail.ts`, `#rail`): Map and every dashboard section in one vertical list, left of
+  both views from 900 px up. The current entry carries `aria-current="page"`. Each entry is a
+  `dashkit.link`, so its address is rebuilt on click and never carries a stale viewport.
+  The rail replaces the dashboard's own tab row at that width; the header's **Map | Dashboard**
+  stays as it was.
+- **Narrow widths (T6):** below 900 px the rail is hidden and the header's **Map |
+  Dashboard** plus the dashboard's tab row are the navigation, as before. Nothing scrolls
+  sideways at 390 px.
+- **Selection** (`selection.ts`): one selected thing, a factory, a circuit or a point. The
+  map sets it (a factory label click, a panel row, a map fly-to), the side panel follows it
+  (row highlight and the dashed outline, without flying), and the dashboard sets it when a
+  factory or circuit detail opens. A factory that disappears from the health reply clears it.
+- **Status strip** (`status.ts`, `#status`): one line under the header. It shows the
+  selection with **map** and **clear**, then the vitals, each a link into its section: need
+  action (toned as on the Overview), power problems, headroom now and affordable milestones.
+  It reads the same replies the Overview reads (`vitals()`, `readyMilestones()`), so it makes
+  no request of its own. Below 600 px it scrolls inside itself and drops the "selected" word.
+- **`as_of`:** every `/api/` GET accepts `?as_of=<token>` (`interfaces/web/pinning.py`, a
+  middleware in front of every route, using `domain/world/pin.py` as the MCP tools do). A
+  mismatch is a 409 with `{"error", "stale": true, "pin"}`: `error` is the page sentence,
+  `pin` the MCP refusal. The page holds the token `/api/summary` returns and sends it on
+  every `get()` except `/api/summary` and `/api/worlds`. It drops the token when a wave
+  refetches (a save event or a switch), because that wave is reading a new save. A 409 for
+  the token still held puts **save changed · refresh** in the status strip; refresh
+  re-reads the save.
+
+### 16.2 Decided here, smallest option
+
+- The strip sits under the header, not at the bottom as §2.1 drew it: the bottom already
+  holds the toasts, the trace card and, on phones, the panel's bottom sheet.
+- The selection is not written into the fragment. Links are built with the fragment of the
+  moment, so a stale `sel=` in an older link would undo a newer selection; the dashboard
+  address (`factories/<name>`, `power/<n>`) already deep-links the two kinds that matter.
+- A machine clicked on the map opens its popup and does not become the selection.
+- Writes keep their own checks: `as_of` in a request body (naming) and 409 conflicts are
+  untouched by the middleware, which only reads GET, HEAD and OPTIONS.
+
+### 16.3 Open
+
+- Should the selection chip offer more than **map**: trace supply, plan here, open in
+  dashboard as buttons (§2.3)?
+- Should a point or a machine be selectable from the map by a plain click, and should the
+  selection survive a reload through the fragment?
+- Should the rail open as a drawer on phones rather than hand over to the header and the tab
+  row?
+- The panel beside the map still shows only Factories and Power; §2.1's panel with every
+  rail section is not built. The rail sends the other sections to the dashboard.
+
+---
+
+## 17. Factory detail (2026-09-27)
+
+Phase 2 of §6. The factory page gains level-2 tabs past its overview.
+
+### 17.1 What was built
+
+- **Address.** `factories/<name>/<aspect>`, one `dashkit.tabs2` strip under the title:
+  overview, flows, machines, power, nodes, links, floors, sites. A name may itself hold a
+  `/`, so the last segment counts as an aspect only when it is one of those ids and the whole
+  subject is not a factory name (`factoryAddress` in `factory-detail.ts`). Renaming keeps the
+  open tab.
+- **`GET /api/factories/aspects?factory=`** (`routers/factory_detail.py`). One
+  `query.build_view` pass, the one `factory_query` makes, sent as rows: summary numbers,
+  power, balance, machines, recipes, buildings, nodes, links and issues. The doc's earlier
+  `/api/factories/{id}?aspect=` became one call with every aspect, because the view computes
+  all of them together and a path parameter cannot carry a name holding `/`. The balance
+  rows come from `FactoryView.balance()`, which `factory_query` now renders too, so the two
+  agree on the verdict. Named factories only, like `/api/factories/graph`; other selectors
+  are refused with a 404.
+- **`GET /api/factories/sites?factory=`.** `factory_sites` as rows. Each site now carries its
+  members' instance leaves and its `near:` selector from `domain/world/sites.py`, so the tool
+  and the route build the selector in one place. With `?factory=` only the sites holding that
+  factory's machines are sent, each with `mine`, the count it holds.
+- **Floors** reuse `/api/floors?factory=label:<name>`. A 404 there (no platform under the
+  factory) is shown as an empty state, not an error.
+- **Map links.** Machines and nodes fly to a point (`pointButton`); a floor row opens floor
+  mode on that platform and band, the same address the map's floor picker writes; a site row
+  flies to and outlines a box of its spread; a link row opens the other factory's page.
+
+### 17.2 Limits and open questions
+
+- **Nameplate and measured, never blended**, as in `factory_query`. The flows tab has no
+  per-item "no monitor" column; the route sends `unmonitored_made` and `unmonitored_used` for
+  it.
+- **A floor's machine count is everything on that deck**, this factory's or another's on the
+  same slab.
+- **Open: a world-wide Sites list.** §3.1 placed `factory_sites` under Factories > Sites. The
+  route answers without `?factory=`, but no page lists every site yet.
+- **Open: proposals.** The tabs exist for named factories only. An unnamed cluster has the
+  graph and nothing else.
+- **Open: long machine lists.** A factory of several hundred machines renders every row;
+  there is no paging or grouping by recipe yet.
+

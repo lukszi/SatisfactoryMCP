@@ -6,9 +6,11 @@ import { make } from "./dom";
 import { perMin } from "./format";
 import { go } from "./nav";
 import { renderCard } from "./planner-bench";
-import { actorWord, age, changed, commitWords, createPlan, itemList, knownItem, loadItems, OBJECTIVES } from "./planner-core";
+import { actorWord, age, changed, commitWords, createPlan, itemList, knownItem, loadItems } from "./planner-core";
+import { renderActivity } from "./planner-history";
 import { state } from "./state";
 import { friendly } from "./toast";
+import { OBJECTIVES } from "./words";
 
 import type { Column, SortState } from "./dashkit";
 import type { PlanIndexRow, PlansResponse } from "./api-shapes";
@@ -67,6 +69,11 @@ function lastChange(row: PlanIndexRow): string {
   return commitWords(row.last.text) + " · " + actorWord(row.last.actor) + ", " + age(row.last.ts) + " ago";
 }
 
+function statusWords(row: PlanIndexRow): string {
+  if (row.status.length) return row.status.join("; ");
+  return row.recorded ? "" : "field not recorded";
+}
+
 function plans(parent: HTMLElement, rows: PlanIndexRow[]): void {
   var columns: Column<PlanIndexRow>[] = [
     {
@@ -104,6 +111,16 @@ function plans(parent: HTMLElement, rows: PlanIndexRow[]): void {
       render: function (r) {
         return "v" + r.rev;
       },
+    },
+    {
+      key: "status",
+      label: "status",
+      className: "dash-sub",
+      title: "what moved under the plan since it was saved: an unlock, a freed node, a new building, or a field re-cut",
+      sort: function (r) {
+        return statusWords(r);
+      },
+      render: statusWords,
     },
     {
       key: "last",
@@ -212,4 +229,5 @@ export function renderList(root: HTMLElement): void {
   else plans(card, list.data.index);
   root.appendChild(card);
   form(root);
+  renderActivity(root);
 }
