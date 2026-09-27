@@ -31,12 +31,26 @@ import type {
 /* Raised explicitly after either draw, because otherwise whichever of /api/nodes and
  * /api/machines resolved last decides who takes the click on an occupied node. The dot wins;
  * the extractor keeps the rest of its rectangle. */
+function raise(layerOf: L.Layer, when: (dot: L.Path & OnMap) => boolean): void {
+  var path = layerOf as L.Path & OnMap;
+  if (path.bringToFront && path._map && when(path)) path.bringToFront();
+}
+
 export function raiseNodeDots() {
+  var extractors = state.layers["extractors"];
+  if (extractors) {
+    extractors.eachLayer(function (piece) {
+      raise(piece, function () {
+        return true;
+      });
+    });
+  }
   Object.keys(state.layers).forEach(function (name) {
     if (name.indexOf("node: ") !== 0) return;
     state.layers[name]!.eachLayer(function (dot) {
-      var path = dot as L.Path & OnMap;
-      if (path.bringToFront && path._map) path.bringToFront();
+      raise(dot, function (path) {
+        return !path._occupied;
+      });
     });
   });
 }
@@ -90,11 +104,11 @@ export function drawNodes(data: NodesResponse): void {
       // DATA -- one per resource this world has -- and there is no editorial order to give
       // fourteen of them that a reader could predict. Alphabetical is predictable.
       var name = "node: " + short;
-      var group = layer(name, true, colour, [BAND.node, 0, name]);
+      var group = layer(name, true, colour, [BAND.node, 0, name], byResource[resource]![0]!.resource_name);
       byResource[resource]!.forEach(function (n) {
         // Null is "no save read", which is not a claim either way; only false is LOCKED.
         var locked = n.reachable === false;
-        L.circleMarker(xy(n), {
+        var dot = L.circleMarker(xy(n), {
           radius: PURITY_RADIUS[n.purity] || 4,
           color: colour,
           weight: n.occupied ? 2 : 1,
@@ -105,8 +119,7 @@ export function drawNodes(data: NodesResponse): void {
           opacity: locked ? 0.35 : 1,
           fillOpacity: locked ? 0 : n.occupied ? 0.15 : 0.75,
           dashArray: locked ? "2 3" : undefined,
-        })
-          .bindPopup(
+        }).bindPopup(
             popup([
               // The server's word, not the class id the layer key is cut from: the popup is
               // read next to an assistant that says "Iron Ore".
@@ -133,12 +146,13 @@ export function drawNodes(data: NodesResponse): void {
               ["selector", code("node:" + n.name)],
               ["at", n.x_m + ", " + n.y_m + " m"],
             ])
-          )
-          .addTo(group);
+          );
+        dot._occupied = n.occupied;
+        dot.addTo(group);
       });
     });
   raiseNodeDots();
-  if (data.save_error) {
+  if (data.save_error && !state.noSaves) {
     fail("nodes: " + data.save_error + " — nodes drawn, occupancy unknown");
   }
 }
@@ -246,6 +260,24 @@ var PICKUP_FALLBACK = declareColours("markers", { "pickup fallback": "#7fd1b9" }
  * two drift apart. The trailing space is load-bearing; see Section.prefix. */
 var PICKUP_PREFIX = "pickup: ";
 
+var PICKUP_NAME: Record<string, string> = {
+  crashed_drop_pod: "drop pods",
+  hard_drive: "hard drives",
+  loot_cache: "loot caches",
+  mercer_sphere: "mercer spheres",
+  mushroom: "mushrooms",
+  power_slug_blue: "blue power slugs",
+  power_slug_yellow: "yellow power slugs",
+  power_slug_purple: "purple power slugs",
+  somersloop: "somersloops",
+  tape_pickup: "tapes",
+  customization_unlock_pickup: "customisation unlocks",
+};
+
+function pickupName(category: string): string {
+  return PICKUP_NAME[category] || category.replace(/_/g, " ");
+}
+
 /** The category a layer name is about, or "" for a layer that is not a pickup row. */
 function pickupCategory(name: string): string {
   return name.indexOf(PICKUP_PREFIX) === 0 ? name.slice(PICKUP_PREFIX.length) : "";
@@ -309,7 +341,7 @@ export function drawCollectibles(data: CollectiblesResponse): void {
       // right: the fragment decides what a fresh row opens as, and after that the checkbox
       // the reader clicked survives every refetch.
       var wanted = state.pickups.indexOf(category) >= 0;
-      var group = layer(name, wanted, colour, [BAND.pickup, 0, name]);
+      var group = layer(name, wanted, colour, [BAND.pickup, 0, name], pickupName(category));
       byCategory[category]!.forEach(function (r) {
         var here = xy(r);
         var mark: L.Path = r.collected
@@ -330,7 +362,7 @@ export function drawCollectibles(data: CollectiblesResponse): void {
         mark
           .bindPopup(
             popup([
-              ["pickup", category],
+              ["pickup", pickupName(category)],
               ["name", code(r.name)],
               ["state", r.collected ? "collected" : r.observed || "unknown"],
               ["holds", lootLine(r)],

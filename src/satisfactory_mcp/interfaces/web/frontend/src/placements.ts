@@ -9,15 +9,16 @@
  * the point of drawing it.
  */
 
-import { CONTENTS_POPUP_PX, code, contentsRows, count, popup, traceButtons } from "./dom";
+import { CONTENTS_POPUP_PX, code, contentsRows, count, esc, html, popup, traceButtons } from "./dom";
 import type { Row } from "./dom";
 import { refreshFloors } from "./floors";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
-import { footprintCorners } from "./map";
+import { footprintCorners, hashFor } from "./map";
 import { raiseNodeDots } from "./markers";
 import { declareColours } from "./palette";
 import { registerFetch } from "./registry";
+import { W } from "./words";
 
 import type { InspectedEvent } from "./leaflet-private";
 import type {
@@ -165,8 +166,16 @@ export function drawMachines(data: MachinesResponse): void {
           // The state replaces the old "paused: yes" row rather than joining it: they would
           // be the same claim twice, and this one can also say why a machine nobody paused
           // is standing still.
-          ["state", blocked ? "blocked — output full, runs again once emptied" : m.state],
-          ["needs action", m.actionable ? "yes" : null],
+          [
+            "state",
+            (blocked ? "blocked — output full" : m.state) + (m.actionable ? " · " + W.needAction : ""),
+          ],
+          [
+            W.factory,
+            m.factory
+              ? html('<a href="' + esc(hashFor("factories/" + m.factory)) + '">' + esc(m.factory) + "</a>")
+              : null,
+          ],
           // The only measured number in this whole project -- the fraction of the machine's
           // own ~300 s window it spent producing. Absent, not "0%", for a building that
           // carries no monitor: 46 of this world's 570 do not.
@@ -180,7 +189,7 @@ export function drawMachines(data: MachinesResponse): void {
           // projection carries no facing at all.
           ["facing", m.yaw === null || m.yaw === undefined ? null : Math.round(m.yaw) + "°"],
           ["at", m.x_m + ", " + m.y_m + " m"],
-          ["instance", code(m.instance_leaf)],
+          ["id", code(m.instance_leaf)],
           ["trace", traceButtons(m.instance_leaf)],
         ])
       );
@@ -292,11 +301,11 @@ function storagePopup(s: StorageRow): Row[] {
   });
   // The guard is the discriminator: `slots` exists on the solid row and not on the fluid one,
   // so asking without it says "a tank with no slots" rather than "a tank has no slots".
-  rows.push(["slots", s.kind === "solid" && s.slots ? s.slots + " slots" : null]);
+  rows.push(["slots", s.kind === "solid" && s.slots ? s.slots : null]);
   rows.push(["footprint", s.w_m && s.l_m ? s.w_m + " x " + s.l_m + " m" : null]);
   rows.push(["facing", s.yaw === null || s.yaw === undefined ? null : Math.round(s.yaw) + "°"]);
   rows.push(["at", s.x_m + ", " + s.y_m + " m"]);
-  rows.push(["instance", code(s.instance_leaf)]);
+  rows.push(["id", code(s.instance_leaf)]);
   return rows;
 }
 

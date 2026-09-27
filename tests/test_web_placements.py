@@ -51,9 +51,25 @@ def test_machines_split_by_kind_and_name_their_buildings(client, state):
         "w_m",
         "l_m",
         "h_m",
+        "factory",
     }
     assert row["name"] != row["cls"], "the class id was not joined to a building name"
     assert "." not in row["instance_leaf"]
+
+
+def test_a_machine_names_the_factory_whose_label_holds_it(game, projection):
+    from satisfactory_mcp.domain.factories.labels import LabelStore
+
+    st = WorldState(projection=projection, game=game)
+    leaf = str(projection["machines"][0]["instance"]).rsplit(".", 1)[-1]
+    store = LabelStore(world_id="TESTWORLD")
+    store.put("steel factory", [leaf])
+    st.__dict__["labels"] = store
+    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
+    rows = TestClient(app).get("/api/machines").json()["machines"]
+    owned = {r["instance_leaf"]: r["factory"] for r in rows}
+    assert owned[leaf] == "steel factory"
+    assert sum(1 for name in owned.values() if name) == 1, "only anchored machines name one"
 
 
 def test_a_machine_carries_the_height_a_top_down_map_cannot_draw(client):

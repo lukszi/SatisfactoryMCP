@@ -439,8 +439,8 @@ loot cache 46.7. A darker ochre landed within 16–19 of the extractor amber, an
 yellow within 10–15 of gold and sulfur.
 
 Every `actionable` machine gets the thick outline, red unless it is blocked, so a state added
-to `ACTIONABLE` needs no frontend change. The popup says "blocked — output full, runs again
-once emptied" and adds a "needs action" row. The marker key lists both outlines.
+to `ACTIONABLE` needs no frontend change. The popup's state row says "blocked — output full"
+and appends "need action" for every actionable state. The marker key lists both outlines.
 
 The side panel and the dashboard use the same yellow for anything that names `blocked`: the
 state chips, the machine-row labels, the per-state table cell and its bar. `placements.ts`

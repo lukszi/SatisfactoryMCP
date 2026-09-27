@@ -24,8 +24,81 @@ export function xy(row: { x_m: number; y_m: number }): L.LatLngTuple {
 
 export function flyToBox(box: [number, number, number, number], options?: { maxZoom?: number; padLeft?: number }): void {
   var bounds = L.latLngBounds([xy({ x_m: box[0], y_m: box[1] }), xy({ x_m: box[2], y_m: box[3] })]);
-  var padLeft = options && options.padLeft !== undefined ? options.padLeft : 0;
-  map.flyToBounds(bounds, { maxZoom: options ? options.maxZoom : undefined, paddingTopLeft: [padLeft, 0] });
+  var pad = overlayPad();
+  if (options && options.padLeft !== undefined) pad.topLeft.x = options.padLeft;
+  map.flyToBounds(bounds, {
+    maxZoom: options ? options.maxZoom : undefined,
+    paddingTopLeft: pad.topLeft,
+    paddingBottomRight: pad.bottomRight,
+  });
+}
+
+export var NARROW = window.matchMedia("(max-width: 699px)");
+
+var GAP_PX = 12;
+
+var SHEET_SHARE = 0.9;
+
+function shown(id: string): DOMRect | null {
+  var node = document.getElementById(id);
+  if (!node || node.hidden || !node.getClientRects().length) return null;
+  return node.getBoundingClientRect();
+}
+
+export function overlayPad(): { topLeft: L.Point; bottomRight: L.Point } {
+  var frame = map.getContainer().getBoundingClientRect();
+  var topLeft = L.point(GAP_PX, GAP_PX);
+  var bottomRight = L.point(GAP_PX, GAP_PX);
+  ["panel", "trace"].forEach(function (id) {
+    var r = shown(id);
+    if (!r) return;
+    if (id === "trace" || r.width >= frame.width * SHEET_SHARE) {
+      bottomRight.y = Math.max(bottomRight.y, frame.bottom - r.top + GAP_PX);
+    } else topLeft.x = Math.max(topLeft.x, r.right - frame.left + GAP_PX);
+  });
+  var layers = map.getContainer().querySelector<HTMLElement>(".leaflet-control-layers");
+  if (layers && layers.offsetHeight > 60) {
+    bottomRight.x = Math.max(bottomRight.x, frame.right - layers.getBoundingClientRect().left + GAP_PX);
+  }
+  return { topLeft: topLeft, bottomRight: bottomRight };
+}
+
+var POPUP_TOP_LEFT = L.point(GAP_PX, GAP_PX);
+var POPUP_BOTTOM_RIGHT = L.point(GAP_PX, GAP_PX);
+
+L.Popup.mergeOptions({ autoPanPaddingTopLeft: POPUP_TOP_LEFT, autoPanPaddingBottomRight: POPUP_BOTTOM_RIGHT });
+
+export function padPopups(): void {
+  var pad = overlayPad();
+  POPUP_TOP_LEFT.x = pad.topLeft.x;
+  POPUP_TOP_LEFT.y = pad.topLeft.y;
+  POPUP_BOTTOM_RIGHT.x = pad.bottomRight.x;
+  POPUP_BOTTOM_RIGHT.y = pad.bottomRight.y;
+}
+
+export function flyPadded(bounds: L.LatLngBounds, maxZoom: number): void {
+  var pad = overlayPad();
+  map.flyToBounds(bounds, { maxZoom: maxZoom, paddingTopLeft: pad.topLeft, paddingBottomRight: pad.bottomRight });
+}
+
+export function flyToPoint(at: L.LatLngTuple, zoom: number): void {
+  flyPadded(L.latLngBounds([at, at]), zoom);
+}
+
+var FIT_SNAP = 0.25;
+
+export function fitWorld(): void {
+  var pad = overlayPad();
+  var snap = map.options.zoomSnap;
+  map.options.zoomSnap = FIT_SNAP;
+  map.fitBounds(
+    L.latLngBounds(
+      [-MAP_SQUARE_M.y_max, MAP_SQUARE_M.x_min],
+      [-MAP_SQUARE_M.y_min, MAP_SQUARE_M.x_max]
+    ),
+    { paddingTopLeft: pad.topLeft, paddingBottomRight: pad.bottomRight }
+  );
+  map.options.zoomSnap = snap;
 }
 
 /* The in-game map square, in metres, and the sheet the generator cuts from it. These two
@@ -101,7 +174,7 @@ export function pixelsPerMetre(zoom?: number): number {
 // The prefix is the one piece of always-visible chrome, so it carries the one gesture the
 // map has that nothing on screen hints at.
 map.attributionControl
-  .setPrefix("right-click: inspect a point")
+  .setPrefix(window.matchMedia("(pointer: coarse)").matches ? "" : "right-click: inspect a point")
   .addAttribution("map data from your save &middot; Leaflet");
 
 /* The optional map render -- tile pyramid or single overlay -- gets the bottom pane of the

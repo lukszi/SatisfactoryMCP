@@ -847,3 +847,18 @@ the split is the only addition, and it has three limits worth knowing before tru
   `Build_GeneratorBiomass_C` in the save and `Build_GeneratorBiomass_Automated_C` in the dump,
   joined by `BUILDING_CLASS_ALIASES`. The HUB's built-in burner has no entry at all, so it is
   listed in `unmodellable`, on the world and on its circuit, and its output is not counted.
+
+**Around the panel (2026-09-27).** Popups and flights keep clear of the overlays: every
+auto-pan and every fly-to is padded by what the side panel, the layer control and the trace
+card cover (`overlayPad` in `map.ts`), and the whole-world view fits the map sheet into what
+is left. Below 700 px the panel is a bottom sheet, the panel and the layer control start
+folded, and opening one of the panel, the layer control or a trace folds the others.
+
+- **`show=label:<name>`** in the fragment selects that factory once factory health has loaded:
+  the panel row, the outline, the flight and the machines, belts and pipes layers.
+  `show_on_map` writes it when its place is a factory label.
+- **Layer ticks persist** per browser, except the pickup rows (the fragment owns those) and
+  the region tint (the base-map mode decides it).
+- **Machine rows name their factory.** `/api/machines` sends `factory`, the label whose
+  anchors hold the machine, so a machine popup can link to that factory's dashboard page.
+- **The marker key** lives at the bottom of the layer control and folds with it.

@@ -54,3 +54,9 @@ def test_show_on_map_leads_with_the_local_map(monkeypatch):
     frag = _fragment(first.split(": ", 1)[1])
     assert frag["c"] == "120,-340"
     assert "z" in frag
+
+
+def test_a_show_selector_rides_in_the_fragment():
+    frag = _fragment(maplink.local_map_url(1.0, 2.0, show="label:steel factory"))
+    assert frag["show"] == "label:steel%20factory"
+    assert "show" not in _fragment(maplink.local_map_url(1.0, 2.0))

@@ -137,6 +137,7 @@ def local_map_url(
     zoom: float = 1,
     world: str = "",
     pickups: list[str] | None = None,
+    show: str = "",
 ) -> str:
     """A deep link into this project's own web map, centred on a coordinate in METRES.
 
@@ -148,12 +149,17 @@ def local_map_url(
     ``pickups`` names collectible categories, which the page turns on as its own
     ``pickup: <category>`` rows. Those rows are off by default, so a link about a collectible
     that omits this opens the map with nothing of what it is about drawn on it.
+
+    ``show`` is a selector the page opens once it has loaded -- ``label:<name>`` selects that
+    factory in the side panel, outlines it and turns its layers on.
     """
     parts = []
     if world:
         parts.append("world=" + quote(world, safe=""))
     if pickups:
         parts.append("pickups=" + quote(",".join(pickups), safe=","))
+    if show:
+        parts.append("show=" + quote(show, safe=":"))
     parts.append(f"z={zoom:g}")
     parts.append(f"c={round(x_m, 1):g},{round(y_m, 1):g}")
     return local_base() + "#" + "&".join(parts)

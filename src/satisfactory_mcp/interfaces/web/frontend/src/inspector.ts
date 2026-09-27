@@ -71,37 +71,39 @@ function elevationRows(e: Elevation): Row[] {
   return rows;
 }
 
+function elevationLine(e: Elevation): string {
+  if (e.terrain_m !== null && e.terrain_m !== undefined) return e.terrain_m + " m";
+  if (e.ground_count) return "about " + e.ground_m + " m, from nearby ground";
+  return e.terrain_note || "not known here";
+}
+
+function nearestText(n: InspectResponse["nearest"][number]): string {
+  return n.resource_name + " " + n.purity + " · " + n.distance_m + " m" + (n.occupied ? " (occupied)" : "");
+}
+
 function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string }): string {
   var rows: Row[] = [];
   if (machine) {
     rows.push(["machine", machine.name]);
     rows.push(["trace", traceButtons(machine.leaf)]);
   }
-  rows = rows.concat([["region", regionLine(d.region)]] as Row[], elevationRows(d.elevation));
-  /* Each nearest node carries the same `node:` selector its own dot's popup prints, because
-   * the answer's next step is an MCP tool call naming one of these nodes and a resource plus
-   * a distance cannot say WHICH one -- a world has dozens of impure copper nodes. On the same
-   * line rather than a row of its own: five nodes are five rows already. */
-  d.nearest.forEach(function (n, i) {
-    rows.push([
-      i ? "" : "nearest",
-      html(
-        esc(n.resource_name + " " + n.purity) +
-          " &middot; " +
-          esc(n.distance_m + " m") +
-          (n.occupied ? " (occupied)" : "") +
-          " &middot; " +
-          code("node:" + n.name).html
-      ),
-    ]);
-  });
-  // Said out loud rather than left to be inferred: with no save there is no built
-  // population and no occupancy, so every node above reads as free whether it is or not.
-  if (d.save_error) rows.push(["save", d.save_error + " — nodes only, occupancy unknown"]);
+  rows.push(["region", regionLine(d.region)]);
+  rows.push(["elevation", elevationLine(d.elevation)]);
+  if (d.nearest.length) rows.push(["nearest", nearestText(d.nearest[0]!)]);
   // The one row built to be copied into an MCP tool call, so the unit -- the same " m"
   // every other coordinate row on the map ends with -- must ride along.
   rows.push(["at", html("<code>" + esc(d.at.x_m + ", " + d.at.y_m) + "</code> m")]);
-  return popup(rows);
+  var more: Row[] = elevationRows(d.elevation);
+  /* Each nearest node carries the same `node:` selector its own dot's popup prints, because
+   * the answer's next step is an MCP tool call naming one of these nodes and a resource plus
+   * a distance cannot say WHICH one -- a world has dozens of impure copper nodes. */
+  d.nearest.forEach(function (n, i) {
+    more.push([i ? "" : "nodes", html(esc(nearestText(n)) + "<br>" + code("node:" + n.name).html)]);
+  });
+  // Said out loud rather than left to be inferred: with no save there is no built
+  // population and no occupancy, so every node above reads as free whether it is or not.
+  if (d.save_error) more.push(["save", d.save_error + " — nodes only, occupancy unknown"]);
+  return popup(rows) + '<details class="popup-more"><summary>details</summary>' + popup(more) + "</details>";
 }
 
 /** The right-click handler, named rather than registered here: main.ts wires every map
@@ -128,7 +130,13 @@ export function inspect(e: L.LeafletMouseEvent): void {
     .openOn(map);
   get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y) as `/api/inspect?${string}`)
     .then(function (d) {
-      if (map.hasLayer(card)) card.setContent(inspectHtml(d, machine));
+      if (!map.hasLayer(card)) return;
+      var body = document.createElement("div");
+      body.innerHTML = inspectHtml(d, machine);
+      body.querySelector("details")!.addEventListener("toggle", function () {
+        card.update();
+      });
+      card.setContent(body);
     })
     .catch(function (err) {
       if (map.hasLayer(card)) card.setContent(popup([["inspect failed", friendly(err)]]));

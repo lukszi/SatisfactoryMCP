@@ -16,7 +16,7 @@
 
 import { esc } from "./dom";
 import { L } from "./leaflet";
-import { HOME_VIEW, map } from "./map";
+import { fitWorld, map, NARROW } from "./map";
 import { state } from "./state";
 
 import type { LayerInput, SectionPart } from "./leaflet-private";
@@ -122,7 +122,7 @@ var MODE_GROUP = "basemap-mode";
  * page is slicing a factory, and arriving there is a gesture that should show it. `modes` is
  * four rows that never grow and answers "why is the map dark?", so it starts open too. */
 state.panel = {
-  open: true,
+  open: !NARROW.matches,
   sections: { floors: true, modes: true },
 };
 
@@ -333,8 +333,10 @@ function panelHead(rows: HTMLElement[]): HTMLElement {
   if (!head) {
     head = L.DomUtil.create("div", "layers-head");
     onActivate(head, function () {
-      state.panel.open = !state.panel.open;
-      decorateControl();
+      setLayersOpen(!state.panel.open);
+      toggled.forEach(function (listener) {
+        listener(state.panel.open);
+      });
     });
     // First child, ahead of Leaflet's own (permanently hidden) toggle anchor: the head is
     // what stays on screen when the list folds, so it has to be the top of the box.
@@ -346,6 +348,30 @@ function panelHead(rows: HTMLElement[]): HTMLElement {
   if (state.panel.open) L.DomUtil.removeClass(head, "shut");
   else L.DomUtil.addClass(head, "shut");
   return head;
+}
+
+var toggled: Array<(open: boolean) => void> = [];
+
+export function onLayersToggle(listener: (open: boolean) => void): void {
+  toggled.push(listener);
+}
+
+export function setLayersOpen(open: boolean): void {
+  state.panel.open = open;
+  decorateControl();
+}
+
+function dockLegend(list: HTMLElement): void {
+  var legend = document.getElementById("legend") as HTMLDetailsElement | null;
+  if (!legend || legend.parentNode === list) return;
+  list.appendChild(legend);
+  var key = legend;
+  L.DomEvent.on(key, "keydown", function (event) {
+    if ((event as KeyboardEvent).key !== "Escape" || !key.open) return;
+    L.DomEvent.stop(event);
+    key.open = false;
+    key.querySelector("summary")!.focus();
+  });
 }
 
 /* ------------------------------------------------------------------- the modes */
@@ -725,7 +751,9 @@ function decorateControl(): void {
   panelHead(rows);
   renderFloors();
   renderModes();
-  fold(container.querySelector<HTMLElement>(".leaflet-control-layers-list"), !state.panel.open);
+  var whole = container.querySelector<HTMLElement>(".leaflet-control-layers-list");
+  if (whole) dockLegend(whole);
+  fold(whole, !state.panel.open);
 }
 
 (function () {
@@ -752,10 +780,11 @@ function decorateControl(): void {
     a.href = "#";
     a.innerHTML = "&#8962;";
     a.title = "whole world";
+    a.setAttribute("aria-label", "whole world");
     a.setAttribute("role", "button");
     L.DomEvent.on(a, "click", function (event) {
       L.DomEvent.preventDefault(event);
-      map.setView(HOME_VIEW.centre, HOME_VIEW.zoom);
+      fitWorld();
     });
     return bar;
   };

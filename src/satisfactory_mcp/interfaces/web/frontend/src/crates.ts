@@ -106,7 +106,7 @@ function cratePopup(c: CrateRow): Row[] {
   rows.push(["slots", c.slots ? c.slots + " slots" : null]);
   rows.push(["at", c.x_m === null ? null : c.x_m + ", " + c.y_m + " m"]);
   rows.push(["elevation", c.z_m === null ? null : c.z_m + " m"]);
-  rows.push(["instance", code(c.instance_leaf)]);
+  rows.push(["id", code(c.instance_leaf)]);
   return rows;
 }
 

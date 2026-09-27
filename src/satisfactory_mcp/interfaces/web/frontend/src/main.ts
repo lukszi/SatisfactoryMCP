@@ -19,14 +19,17 @@ import "leaflet/dist/leaflet.css";
 import "./style.css";
 
 import { listenForCopies } from "./copy";
+import { el } from "./dom";
 import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./floors";
 import { listenToFragment } from "./fragment";
 import { inspect } from "./inspector";
 import { declutter } from "./labels";
 import { isBatching, onSettled } from "./layercontrol";
 import { loadLive, loadRegions, loadStatic } from "./load";
-import { map, writeHash } from "./map";
+import { rememberTick } from "./layers";
+import { fitWorld, map, padPopups, writeHash } from "./map";
 import { notePickupChoice } from "./markers";
+import { render as renderPanel, showSelector } from "./panel";
 import { noteRegionChoice, updateRegionBlend } from "./regions";
 import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
 import { wireSearch } from "./search";
@@ -113,7 +116,9 @@ map.on("zoomend overlayadd overlayremove", function () {
 });
 onSettled(declutter);
 
+map.on("preclick contextmenu", padPopups);
 map.on("contextmenu", inspect);
+map.on("overlayadd overlayremove", rememberTick);
 
 /* The listeners that are not the map's: the address bar, the one key this page binds, and the
  * click that copies a selector. The fragment one is registered BEFORE the loaders below, so a
@@ -128,12 +133,15 @@ listenForCopies();
 wireSearch();
 listenForTraces();
 if (BOOT_GARBLED.length) fail(garbledNote(BOOT_GARBLED));
+el("world").addEventListener("change", fitWorld);
 
 /* -------------------------------------------------------------------- boot */
 
 /* In this order and not in parallel: the base map's mode decides whether the region tint
  * starts on, so the group it decides about has to exist by then. */
 loadRegions().then(loadBaseMap);
+
+if (!("z" in BOOT)) fitWorld();
 
 loadWorlds().then(function () {
   // With no world there is nothing to fetch: firing the loaders anyway would bury the
@@ -145,6 +153,7 @@ loadWorlds().then(function () {
      * apply it to. Fired here rather than waiting for the two waves: `/api/floors` is its own
      * request and the view owes a flight until the concrete arrives. */
     applyFloorFragment(BOOT.floor);
-  }
+    if (BOOT.show) showSelector(BOOT.show);
+  } else renderPanel();
   listen();
 });

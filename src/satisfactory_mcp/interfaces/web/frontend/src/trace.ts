@@ -1,21 +1,33 @@
 /* Trace on the map: what feeds a machine or a factory, or what it feeds, drawn as a path.
  * See docs/frontend_vision.md §10. */
 
-import { get } from "./api";
+import { get, latest } from "./api";
+import { button, chip, table } from "./dashkit";
 import { code, count, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "./dom";
+import { perMin } from "./format";
 import { L } from "./leaflet";
-import { map } from "./map";
-import { HIGHLIGHT, onVitals } from "./panel";
-import { BLOCKED, BLOCKED_COLOUR, STOPPED_COLOUR } from "./placements";
+import { flyPadded, map } from "./map";
+import { HIGHLIGHT, makeRoom, onVitals } from "./panel";
+import { BLOCKED_COLOUR, STOPPED_COLOUR } from "./placements";
 import { state } from "./state";
+import { tone } from "./states";
 import { fail, friendly } from "./toast";
+import { counted, W } from "./words";
 
 import type { Row } from "./dom";
 import type { TraceMachine, TraceResponse } from "./api-shapes";
 
 type Direction = "up" | "down";
 
+type TraceItem = TraceResponse["items"][number];
+
+type TraceEdge = TraceResponse["edges"][number];
+
 var SHOWN = 10;
+
+var TRACE_MAX_ZOOM = 2;
+
+var RATE_TITLE = "nameplate rate at each machine's clock";
 
 var pane = map.createPane("trace");
 pane.style.zIndex = "450";
@@ -27,10 +39,10 @@ var view = {
   seed: "",
   direction: "up" as Direction,
   world: "",
+  epoch: 0,
   busy: false,
   data: null as TraceResponse | null,
   error: "",
-  ask: 0,
 };
 
 function card(): HTMLElement {
@@ -39,19 +51,20 @@ function card(): HTMLElement {
   box = make("aside");
   box.id = "trace";
   box.hidden = true;
+  box.setAttribute("aria-label", "trace");
   document.body.appendChild(box);
   return box;
 }
 
 function colour(m: TraceMachine): string {
-  if (m.state === BLOCKED) return BLOCKED_COLOUR;
-  return m.actionable ? STOPPED_COLOUR || HIGHLIGHT : HIGHLIGHT;
+  var t = tone(m.state, m.actionable);
+  return t === "blocked" ? BLOCKED_COLOUR : t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
 }
 
 function rateText(rows: { item: string; per_min: number }[]): string {
   return rows
     .map(function (r) {
-      return r.item + " " + count(r.per_min) + "/min";
+      return r.item + " " + perMin(r.per_min);
     })
     .join(", ");
 }
@@ -62,9 +75,9 @@ function machinePopup(m: TraceMachine): string {
     ["recipe", m.recipe],
     ["makes", m.makes.length ? rateText(m.makes) : null],
     ["uses", m.uses.length ? rateText(m.uses) : null],
-    ["state", m.state === BLOCKED ? "blocked — output full, runs again once emptied" : m.state],
-    ["on path", m.seed ? "traced from here" : m.hops + " hops away"],
-    ["instance", code(m.instance)],
+    ["state", m.state + (m.actionable ? " · " + W.needAction : "")],
+    ["on path", m.seed ? "traced from here" : counted(m.hops, "hop") + " away"],
+    ["id", code(m.instance)],
     ["trace", traceButtons(m.instance)],
   ];
   return popup(rows);
@@ -81,7 +94,7 @@ function draw(data: TraceResponse): void {
       }),
       { color: HIGHLIGHT, weight: 4, opacity: 0.8, renderer: renderer, pane: "trace" }
     );
-    line.bindTooltip(esc(run.medium + " · " + count(run.pieces) + (run.pieces === 1 ? " piece" : " pieces")), { sticky: true });
+    line.bindTooltip(esc(run.medium + " · " + counted(run.pieces, "piece")), { sticky: true });
     line.addTo(group);
   });
   data.machines.forEach(function (m) {
@@ -104,18 +117,12 @@ function draw(data: TraceResponse): void {
 function fly(data: TraceResponse): void {
   var b = data.bbox_m;
   if (!b) return;
-  var bounds = L.latLngBounds([-b[1], b[0]], [-b[3], b[2]]).pad(0.15);
-  map.flyToBounds(bounds, { maxZoom: 3 });
+  flyPadded(L.latLngBounds([-b[1], b[0]], [-b[3], b[2]]).pad(0.15), TRACE_MAX_ZOOM);
 }
 
-function button(text: string, title: string, on: boolean, action: () => void): HTMLButtonElement {
-  var b = make("button", "trace-btn" + (on ? " on" : ""), text);
-  b.type = "button";
-  b.title = title;
-  b.onclick = function (event) {
-    event.stopPropagation();
-    action();
-  };
+function toggle(text: string, title: string, on: boolean, action: () => void): HTMLButtonElement {
+  var b = button(text, action, { title: title });
+  b.setAttribute("aria-pressed", String(on));
   return b;
 }
 
@@ -125,13 +132,13 @@ function line(parent: HTMLElement, text: string, className?: string): HTMLElemen
   return p;
 }
 
-function stateCounts(data: TraceResponse): { stopped: number; blocked: number; running: number } {
-  var out = { stopped: 0, blocked: 0, running: 0 };
+function stateCounts(data: TraceResponse): { stopped: number; blocked: number } {
+  var out = { stopped: 0, blocked: 0 };
   data.machines.forEach(function (m) {
     if (m.seed) return;
-    if (m.state === BLOCKED) out.blocked += 1;
-    else if (m.actionable) out.stopped += 1;
-    else out.running += 1;
+    var t = tone(m.state, m.actionable);
+    if (t === "blocked") out.blocked += 1;
+    else if (t === "bad") out.stopped += 1;
   });
   return out;
 }
@@ -142,6 +149,61 @@ function groupName(data: TraceResponse, id: string): string {
     return g.id === id;
   })[0];
   return found ? found.label + " (" + found.detail + ")" : id;
+}
+
+function itemTable(rows: TraceItem[]): HTMLElement {
+  return table<TraceItem>(
+    [
+      {
+        key: "item",
+        label: "item",
+        render: function (r) {
+          return r.item;
+        },
+      },
+      {
+        key: "rate",
+        label: "per min",
+        align: "right",
+        title: RATE_TITLE,
+        render: function (r) {
+          return perMin(r.per_min, false);
+        },
+      },
+    ],
+    rows.slice(0, SHOWN)
+  );
+}
+
+function flowTable(data: TraceResponse, rows: TraceEdge[]): HTMLElement {
+  return table<TraceEdge>(
+    [
+      {
+        key: "item",
+        label: "item",
+        render: function (e) {
+          return e.item;
+        },
+      },
+      {
+        key: "rate",
+        label: "per min",
+        align: "right",
+        title: RATE_TITLE,
+        render: function (e) {
+          return perMin(e.per_min || 0, false);
+        },
+      },
+      {
+        key: "path",
+        label: "from → to",
+        render: function (e) {
+          return groupName(data, e.source) + " → " + groupName(data, e.target);
+        },
+      },
+    ],
+    rows.slice(0, SHOWN)
+  );
 }
 
 function render(): void {
@@ -155,16 +217,16 @@ function render(): void {
   var head = make("div", "trace-head");
   head.appendChild(make("strong", "", view.direction === "up" ? "Supply" : "Output"));
   head.appendChild(
-    button("↑ supply", "what feeds it", view.direction === "up", function () {
+    toggle("↑ supply", "what feeds it", view.direction === "up", function () {
       startTrace(view.seed, "up");
     })
   );
   head.appendChild(
-    button("↓ output", "what it feeds", view.direction === "down", function () {
+    toggle("↓ output", "what it feeds", view.direction === "down", function () {
       startTrace(view.seed, "down");
     })
   );
-  head.appendChild(button("×", "clear the trace", false, clearTrace));
+  head.appendChild(button("×", clearTrace, { title: "clear the trace", label: "clear the trace" }));
   box.appendChild(head);
   var data = view.data;
   if (view.error) {
@@ -181,21 +243,18 @@ function render(): void {
     line(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "bad");
   }
   if (data.ambiguous) {
-    line(
-      box,
+    line(box, "may over-report a feeder").title =
       "the save has " +
-        count(data.ambiguous) +
-        " belt or pipe joins that state no direction; the walk takes them both ways, so this can over-report a feeder but never miss one",
-      "warn"
-    );
+      count(data.ambiguous) +
+      " belt or pipe joins that state no direction; the walk takes them both ways, so it can over-report a feeder but never miss one";
   }
   var others = data.machines.length - data.seeds;
   var states = stateCounts(data);
   var chips = make("div", "panel-chips");
-  chips.appendChild(make("span", "panel-chip", count(others) + " machines " + (view.direction === "up" ? "upstream" : "downstream")));
-  if (states.stopped) chips.appendChild(make("span", "panel-chip bad", states.stopped + " stopped"));
-  if (states.blocked) chips.appendChild(make("span", "panel-chip blocked", states.blocked + " blocked"));
-  chips.appendChild(make("span", "panel-chip", count(data.runs.length) + " runs · depth " + data.deepest));
+  chips.appendChild(chip(counted(others, "machine") + " " + (view.direction === "up" ? "upstream" : "downstream"), "muted"));
+  if (states.stopped) chips.appendChild(chip(states.stopped + " " + W.needAction, "bad"));
+  if (states.blocked) chips.appendChild(chip(states.blocked + " " + W.blocked, "blocked"));
+  chips.appendChild(chip(counted(data.runs.length, "run") + " · depth " + data.deepest, "muted"));
   box.appendChild(chips);
   if (!others) {
     line(
@@ -209,15 +268,8 @@ function render(): void {
   }
   if (data.items.length) {
     box.appendChild(make("h4", "trace-h", view.direction === "up" ? "made along the path" : "used along the path"));
-    var items = make("ul", "trace-list");
-    data.items.slice(0, SHOWN).forEach(function (r) {
-      var li = make("li");
-      li.appendChild(make("span", "trace-item", r.item));
-      li.appendChild(make("span", "trace-rate", count(r.per_min) + "/min"));
-      items.appendChild(li);
-    });
-    if (data.items.length > SHOWN) items.appendChild(make("li", "trace-more", data.items.length - SHOWN + " more"));
-    box.appendChild(items);
+    box.appendChild(itemTable(data.items));
+    if (data.items.length > SHOWN) line(box, data.items.length - SHOWN + " more");
   }
   var groupIds = new Set(
     data.groups.map(function (g) {
@@ -231,36 +283,29 @@ function render(): void {
     return (b.per_min || 0) - (a.per_min || 0);
   });
   if (flows.length) {
-    box.appendChild(make("h4", "trace-h", "flows, nameplate"));
-    var list = make("ul", "trace-list");
-    flows.slice(0, SHOWN).forEach(function (e) {
-      var li = make("li");
-      li.appendChild(make("span", "trace-item", e.item + " " + count(e.per_min || 0) + "/min"));
-      li.appendChild(make("span", "trace-flow", groupName(data!, e.source) + " → " + groupName(data!, e.target)));
-      list.appendChild(li);
-    });
-    if (flows.length > SHOWN) list.appendChild(make("li", "trace-more", flows.length - SHOWN + " more"));
-    box.appendChild(list);
+    box.appendChild(make("h4", "trace-h", "flows between groups"));
+    box.appendChild(flowTable(data, flows));
+    if (flows.length > SHOWN) line(box, flows.length - SHOWN + " more");
   }
-  line(box, "rates are nameplate at each machine's clock; ring colour is the machine's state");
 }
 
 export function clearTrace(): void {
   view.seed = "";
   view.data = null;
   view.error = "";
-  view.ask += 1;
+  view.busy = false;
+  latest("trace");
   group.clearLayers();
   render();
 }
 
 function fetchTrace(flyAfter: boolean): void {
-  var ask = ++view.ask;
+  var ticket = latest("trace");
   view.busy = true;
   var path = ("/api/trace?seed=" + encodeURIComponent(view.seed) + "&direction=" + view.direction) as `/api/trace?${string}`;
   get<TraceResponse>(path)
     .then(function (data) {
-      if (ask !== view.ask) return;
+      if (!ticket.fresh()) return;
       view.busy = false;
       view.data = data;
       view.error = "";
@@ -269,7 +314,7 @@ function fetchTrace(flyAfter: boolean): void {
       if (flyAfter) fly(data);
     })
     .catch(function (err) {
-      if (ask !== view.ask) return;
+      if (!ticket.fresh()) return;
       view.busy = false;
       view.data = null;
       view.error = friendly(err);
@@ -283,8 +328,10 @@ export function startTrace(seed: string, direction: Direction): void {
   view.seed = seed;
   view.direction = direction;
   view.world = state.world;
+  view.epoch = state.epoch;
   view.data = null;
   view.error = "";
+  makeRoom("trace");
   render();
   fetchTrace(true);
 }
@@ -292,11 +339,12 @@ export function startTrace(seed: string, direction: Direction): void {
 var pending = 0;
 
 function refresh(): void {
-  if (!view.seed || view.busy) return;
-  if (view.world !== state.world) {
+  if (!view.seed) return;
+  if (view.world !== state.world || view.epoch !== state.epoch) {
     clearTrace();
     return;
   }
+  if (view.busy) return;
   clearTimeout(pending);
   pending = window.setTimeout(function () {
     fetchTrace(false);
