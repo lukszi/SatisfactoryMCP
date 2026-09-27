@@ -23,8 +23,8 @@ what the backend and the page do, where they depart, and what was measured.
 |---|---|---|
 | Result tabs | `planner-result.ts` | **build list · graph** (`tabs2`); the choice lasts the page session and is not in the address (C9). A plan whose head does not solve shows the last solvable version with no tabs |
 | Graph | `planner-result.ts`, `graph.ts` | Drawn from `SolveResponse.graph`; columns from the server `rank`. Picking a node (click or Enter) outlines it and fills the node card below; with nothing picked the note says `click a process for its recipes`. Chat-changed nodes get the text badge **chat** and a 4 s outline pulse (none under reduced motion); process pins of the plan show as a `pin:N` badge |
-| Drawer | `planner-alternates.ts` | `#dash=planner/<key>/alt/<item>`; Back, × or Escape close it and focus returns to the opener. Beside the result only on the graph tab from 1280 px; above the result otherwise. Δ raw shows the two largest input changes, then `+N more inputs`, with the full list in the title. Re-requested on every new head and on `save` |
-| Pins | `pins.ts`, `pins-card.ts` | Layer **pins** (chrome band, on by default) of focusable numbered tags, gone pins muted and dashed. Refetched on the live wave, on any `pin.*` activity and on SSE reconnect. The card sits on the plans list below Activity. A rename in progress survives another tab's write; committing it on the old `rev` gets the 409 toast and the current row |
+| Drawer | `planner-alternates.ts` | `#dash=planner/<key>/alt/<item>`; Back, × or Escape close it and focus returns to the opener. Beside the result only on the graph tab from 1280 px; above the result otherwise. Δ raw shows the two largest input changes, then `+N more inputs`, with the full list in the title. Re-requested on every new head and on `save`. After require, ban or let the solver choose, focus stays on the same recipe's row. Extractor and generator rows (no recipe) offer no **recipes** button |
+| Pins | `pins.ts`, `pins-card.ts` | Layer **pins** (chrome band, on by default) of focusable numbered tags, gone pins muted and dashed. Refetched on the live wave, on any `pin.*` activity, on a factory label change (`notes`) and on SSE reconnect. Tags sit above-right of their place so the node dot under them stays clickable; tags at one place stack upwards. Delete is one request per row until it lands The card sits on the plans list below Activity. A rename in progress survives another tab's write; committing it on the old `rev` gets the 409 toast and the current row |
 | Pin buttons | node card, build-list rows, workbench header, factory detail header, map right-click popup, node dot popup | Kinds and refs as contract F4 |
 
 ## Departures from the contract
@@ -54,13 +54,13 @@ what the backend and the page do, where they depart, and what was measured.
 | chat `plan_factory save_as` → **chat** badges on the page | 0.1 s after the tool returned | ~1 s |
 | graph tab redraw incl. `drawGraph`, largest stored plan (13 nodes) | 3–14 ms | ≤ 50 ms |
 
-The graph size budget cannot hold with the contract's field set: recipe class ids are the
-node ids and appear as `id`, `row` and on every edge. Gzip on the web app, or a larger
-budget, are the two ways out; neither is taken here.
+The graph size budget of 8 kB at 40 rows could not hold with the contract's field set: recipe
+class ids are the node ids and appear as `id`, `row` and on every edge (6.1 kB at 11 rows,
+25.0 kB at 50 rows). The contract now states about 0.5 kB per row; gzip or trimmed fields stay
+available if a remote client ever appears.
 
 ## Open
 
-- The 8 kB graph budget (above).
 - `alternates_for_item(plan=)` rows follow the drawer's order (status), not the plain
   tool's alternates-first order.
 - Pins created by chat stay out (contract C1, L6).

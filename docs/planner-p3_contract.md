@@ -126,7 +126,9 @@ edges (`planner-result.ts graphOf` is deleted).
 | | `item` | str \| null | item **class id** of the process's main product / the input / the export; null for power |
 | `PlanGraphEdge` | `source`, `target`, `item`, `per_min`, `text` | str, str, str, float, str \| null | Same split as today: each consumer's need shared over producers by share of output. Power edges from generators to `ex:MW` carry `text` = MW words |
 
-Budget: `graph` adds ≤ 1 ms and ≤ 8 kB for a 40-row plan.
+Budget: `graph` adds ≤ 1 ms and about 0.5 kB per row (≈ 20 kB for a 40-row plan). The first
+figure, ≤ 8 kB, did not hold with class ids as node ids (25 kB measured at 50 rows); the page is
+local, so the budget was restated rather than the fields trimmed.
 
 ---
 
@@ -278,8 +280,10 @@ class PinStaleResponse(TypedDict): error: str; stale: bool; pin: PinRow
   already equal to the head (`require_ops` all no-ops) still reports its delta (zero).
 - **Option order**: in use, required, available (alternates after the standard recipe, then
   name), banned, locked. Never by delta.
-- `status`: required beats in use; `banned_by` names the first `banned` member (literal or
-  pattern) that matches R; a pattern match sets `solved: false`.
+- `status`: required beats in use; `banned_by` names the `banned` member that matches R,
+  each member resolved against the save's unlocked recipes the way the solver resolves it (so
+  an exact display name such as `Rubber` bans only that recipe, never the ones whose names
+  contain it); a pattern match wins over a literal one and sets `solved: false`.
 - `spoilers=0` drops locked options and counts them in `hidden`; without it every option comes
   with `spoiler` set, as `/api/gamedata/alternates` does.
 - `text` = `recipes for Steel Beam in “north hmf” v14: 4 (1 in use, 1 locked)`.
@@ -459,7 +463,7 @@ process, median of 5.
 
 | Call | Measured | Budget |
 |---|---|---|
-| `solve_summary` | 10.1–12.6 ms (6–15 rows); payload 2.6–4.3 kB | + graph ≤ 1 ms, ≤ 8 kB at 40 rows |
+| `solve_summary` | 10.1–12.6 ms (6–15 rows); payload 2.6–4.3 kB | + graph ≤ 1 ms, ≈ 0.5 kB per row (§3) |
 | `chain_depth` on 6–15 rows | 0.01–0.02 ms | – |
 | one swap option (solve + `result_delta`) | ≈ 10–13 ms | – |
 | drawer, one item (3–5 options + head) | 30–64 ms (worst: Heavy Oil Residue, 5 options) | p95 ≤ 250 ms up to 8 options; one request per open and per new head |
