@@ -7,7 +7,7 @@ This file says exactly what gets built, so four people can build it at once with
 Where this file and the vision note disagree, this file wins for the slice. Every departure is
 listed in §14.
 
-**Binding decisions** (Lukas, 2026-09-27, vision §9.1–9.2): one shared plan state, no drafts,
+**Decided 2026-09-27** (binding, vision §9.1–9.2): one shared plan state, no drafts,
 autosave per gesture; git-like versions on both sides (`base_rev` on writes, version in reads);
 merge rule M1; op log + snapshots, where undo is a new inverse op; `required`/`banned` recipe
 sets; the page follows the agent by default; one factory per plan; local stdio clients only;
