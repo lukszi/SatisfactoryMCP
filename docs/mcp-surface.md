@@ -22,7 +22,8 @@ testing contract. Section numbers are continuous with the rest of the spec;
 **Factories:** `factory_map`, `propose_factories`, `factory_query`, `factory_health`, `select_machines`, `name_factory`, `rename_factory`, `amend_factory`, `list_factories`, `forget_factory`, `factory_floors`, `trace_upstream`
 **Inventory:** `stock`, `storage`, `crates`
 **Spatial:** `list_regions`, `describe_location`, `search_resource_nodes`, `search_conduits`, `rank_build_sites`, `show_on_map`
-**Planning:** `plan_factory`, `plan_layout`, `commission_plan`, `diff_vs_save`, `bom`, `rank_unlocks`, `list_plans`, `site_plan`, `rename_plan`, `forget_plan`, `explain_byproducts`, `compare_recipe_options`
+**Planning:** `plan_factory`, `plan_layout`, `commission_plan`, `diff_vs_save`, `bom`, `rank_unlocks`, `list_plans`, `plan_log`, `site_plan`, `rename_plan`, `forget_plan`, `explain_byproducts`, `compare_recipe_options`
+**The page:** `ui_context`
 **Hard drives:** `list_pending_hard_drive_choices`, `advise_hard_drive_pick`
 
 ```
@@ -76,8 +77,11 @@ plan_factory(..., save_as="north oil", plan_notes_text="...", for_factory="oil s
 plan_factory(plan="north oil")            # recall and re-solve
 diff_vs_save(plan="north oil")            # diff without retyping
 plan_layout(plan="north oil")
-list_plans() / forget_plan(name)
+list_plans() / forget_plan(name, base_rev=14)
 ```
+
+Every stored plan is versioned and every change to one takes `base_rev`; see
+[§10.1k](#101k-plan-versions-and-the-activity-journal).
 
 **The request is stored, never the solution.** A solve depends on the unlocked recipe
 set, which nodes are free and which buildings exist — all of which move as the game is
@@ -122,8 +126,9 @@ filtered to those that shape the solve — not `limit` (presentation) or `save`/
 reads as the request that was made. `Plan.kwargs()` filters unknown keys so a plan saved
 by an older build cannot break a newer `build_scenario`.
 
-Stored per world under `saveIdentifier` in `user_data_dir/plans/`, beside the labels and
-for the same reason.
+Stored per world under `saveIdentifier` in `user_data_dir/plans/<world>/`, beside the labels
+and for the same reason, as one append-only op log per plan
+([planner_slice_contract.md](planner_slice_contract.md) §5).
 
 **Siting.** A stored plan may also record **where it stands**: origin (the footprint's
 centre, metres, optional z), yaw (degrees about world Z, +X towards +Y — the same
@@ -551,6 +556,75 @@ would have given one tool two spellings of one filter.
 node|well_sat|geyser, got 'all'` for the word its four siblings read as "no filter"; one
 member of a family rejecting the family's own wildcard is a bug whatever the family is
 called.
+
+### 10.1k Plan versions and the activity journal
+
+The web page and any number of chat sessions edit the **same** stored plans, so a plan is a
+history of versions rather than a file that is overwritten. The store, the merge rule and the
+wording are in [planner_slice_contract.md](planner_slice_contract.md) §3–§4 and §10; this is
+what the tools do with them.
+
+**Reads print the version.** `list_plans` has `ver` and `last change` columns
+(`page 2h: sloops 0→4`, cut to 36); `list_plans name=` heads with
+`# plan "north hmf" v14 (key a1b2c3d4)`; every tool that recalls a plan with `plan=` prints
+`recalled plan "north hmf" v14` as its first note.
+
+**Writes take `base_rev`**, the version the caller read: `plan_factory save_as=<existing>`,
+`rename_plan`, `forget_plan`, `site_plan` and `plan_log undo=/restore=`. Without it an existing
+plan is refused before anything is solved or written:
+
+```
+! plan "north hmf" exists at v14: read it (list_plans name="north hmf") and pass base_rev=14; nothing saved
+```
+
+With it, edits to different settings since `base_rev` merge (`merged onto v14 (you were on
+v11) -> now v15; others changed: ...`), and the same setting changed by someone else is
+refused whole as `! outdated: ...`, listing the conflicts and every version since. Nothing is
+ever applied partially. `save_as` over a plan sends the *whole* request, diffed against the
+`base_rev` state rather than the head, which is what makes the merge three-way. A new name
+ignores `base_rev` and says so. A write that finds the plan lock held for 10 s answers
+`! plans are busy (another writer held the lock 10 s); nothing written`.
+
+The store stamps each landing version with the new head's `plan_id` and resolved field
+(`_stamp` in `tools/planning.py`), so `world moved` stays honest after merged edits and page
+edits alike.
+
+**`required`** on `plan_factory` takes recipe names or class ids. The tool resolves each to a
+class id among *all* recipes, exact id first, then exact display name (case-insensitive); an
+unknown or ambiguous one is refused by name before solving. A locked one passes through and the
+solve refuses it (contract §6).
+
+**`plan_log name=`** lists versions newest first with who, what, age, `merged over` and
+`undone in`; `since=` and `limit=` narrow it. `undo=<v>` writes the inverse of that version,
+`restore=<v>` writes the ops that make the head equal it; both merge like any write. A
+forgotten plan is found here too, so `undo=<the forget>` brings it back.
+
+**Who wrote it.** A chat write carries `Actor("chat", clientInfo.name, pid)`: the client name
+is what the MCP client sent at `initialize` (`claude-code` reads as "Claude Code", `claude-ai`
+as "Claude Desktop"), read through the `ctx: Context` FastMCP injects and never shows in a
+schema. Called as a plain function (tests, scripts) the client is blank and reads as "chat".
+
+**The activity journal** (`domain/planning/journal.py`, contract §8) holds what is not a plan
+edit: `plan.solve` for a `plan_factory` without `save_as` (the page offers it as a from-chat
+card), `plan.view` for `plan_layout`, `diff_vs_save` and `commission_plan` with `plan=`, and
+`plan.rejected` from the web. One file per process under `activity/<world>/`, `chat-<pid>.jsonl`
+or `web-<pid>.jsonl`, so a single writer needs no lock. Nothing is written until the process
+names itself: `server.main` calls `journal.set_writer("chat")` and the web lifespan
+`set_writer("web")`. Importing the tools, as the test suite does, journals nothing, so a test
+run cannot leak solves into the page's activity feed. A failed journal write is swallowed. An
+entry over 1 kB drops its `args`. `read` returns the newest `limit` entries after `since_ts`,
+oldest first.
+
+**`ui_context`** reads the page's focus file (the web group's `focus.read`, contract §9) and the
+logs, and answers in one block: open or closed by heartbeat age, world, whether the page reads
+the same save token as this session, the focused view, plan and version (with the head when
+the page is behind), tab and selection, the follow setting, then *since you last looked*: every
+plan version and journal entry by someone else since this process's last call. The cursor is
+per process and in memory. The first call shows the last five of each; the process's own
+commits and entries are left out by pid. Plans past eight, versions past six per plan and
+journal entries past eight are counted as `(+N more)`, and the whole stays under 3,800
+characters. The server's `instructions` tell the client to call it when the user says "this",
+"here" or "what I have open".
 
 ### 10.2 Context budget
 

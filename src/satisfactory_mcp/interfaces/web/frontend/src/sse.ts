@@ -6,9 +6,12 @@
 
 import { el } from "./dom";
 import { loadLive, loadOne } from "./load";
+import { onActivityEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
 import { state } from "./state";
 import { fail } from "./toast";
 import { refreshWorlds } from "./worlds";
+
+import type { ActivityEvent, PlansEvent } from "./planner-core";
 
 /* The stream replays the newest event of every kind to each new subscriber, so the first one
  * usually describes a write that happened BEFORE this page opened: not news, and refetching
@@ -21,7 +24,16 @@ function isNews(event: MessageEvent): boolean {
   } catch (ignored) {
     /* a malformed event is treated as news, the safe direction */
   }
-  return !(payload && payload.mtime && payload.mtime * 1000 < state.opened - 2000);
+  var at = payload && (payload.mtime || payload.ts);
+  return !(at && at * 1000 < state.opened - 2000);
+}
+
+function parsed<T>(event: MessageEvent): T | null {
+  try {
+    return JSON.parse(event.data) as T;
+  } catch (ignored) {
+    return null;
+  }
 }
 
 /* One EventSource for the process; a write is an edge trigger and the response is a refetch
@@ -31,20 +43,35 @@ export function listen() {
   var source = new EventSource("/api/events");
   var dot = el("live");
   var wasOpen = false;
+  var missed = false;
   dot.title = "connecting to the save watcher…";
   source.onopen = function () {
+    if (missed) resync();
+    missed = false;
     wasOpen = true;
     dot.className = "dot on";
     dot.title = "live: watching for save writes";
   };
   source.onerror = function () {
     var lost = wasOpen;
+    missed = missed || lost;
     wasOpen = false;
     dot.className = "dot";
     dot.title = lost
       ? "live connection lost — is the server still running? Retrying…"
       : "connecting to the save watcher…";
     if (lost) fail("live updates lost — what is on screen may be stale");
+  };
+  var resync = function () {
+    refreshWorlds();
+    if (!state.save) {
+      loadLive();
+      onSaveEvent();
+    }
+    loadOne("/api/factories");
+    loadOne("/api/factories/health");
+    loadOne("/api/plans");
+    resyncPlanner();
   };
   var blink = function () {
     dot.className = "dot hit";
@@ -58,7 +85,10 @@ export function listen() {
     refreshWorlds();
     // A pinned save is pinned: the point of the picker is to hold a view while the game
     // autosaves over the newest. The dot still blinks so the write is not invisible.
-    if (!state.save) loadLive();
+    if (!state.save) {
+      loadLive();
+      onSaveEvent();
+    }
   });
   /* The other write: a factory label or a stored plan, which the MCP tools put on disk while
    * the page is open and no autosave goes near. These two paths are the payloads built from
@@ -70,5 +100,16 @@ export function listen() {
     loadOne("/api/factories");
     loadOne("/api/factories/health");
     loadOne("/api/plans");
+  });
+  source.addEventListener("plans", function (event) {
+    var data = parsed<PlansEvent>(event);
+    if (!data || !isNews(event)) return;
+    blink();
+    loadOne("/api/plans");
+    onPlansEvent(data);
+  });
+  source.addEventListener("activity", function (event) {
+    var data = parsed<ActivityEvent>(event);
+    if (data && isNews(event)) onActivityEvent(data);
   });
 }

@@ -313,9 +313,10 @@ def test_the_registered_surface_survives_the_split():
     48: +stock, +storage, +crates, +factory_floors -- the projection keys the map read and
     no tool did. 49: +rename_plan. 50: +milestones, the HUB half of the ladder mam_research
     already walked for the MAM. 52: +rename_factory, +amend_factory -- a label could be
-    written and deleted and nothing in between."""
+    written and deleted and nothing in between. 54: +plan_log, +ui_context -- plan versions
+    and what the page has open."""
     tools = _run(srv.mcp.list_tools())
-    assert len(tools) == 52
+    assert len(tools) == 54
     assert {
         "amend_factory",
         "collected_from_world",
@@ -324,6 +325,7 @@ def test_the_registered_surface_survives_the_split():
         "factory_floors",
         "mam_research",
         "milestones",
+        "plan_log",
         "rank_unlocks",
         "rename_factory",
         "rename_plan",
@@ -333,6 +335,7 @@ def test_the_registered_surface_survives_the_split():
         "stock",
         "storage",
         "trace_upstream",
+        "ui_context",
     } <= {t.name for t in tools}
     assert len(_run(srv.mcp.list_resources())) == 4
     assert len(_run(srv.mcp.list_prompts())) == 3

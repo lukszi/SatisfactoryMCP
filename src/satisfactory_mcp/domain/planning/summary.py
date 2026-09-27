@@ -1,0 +1,173 @@
+"""A solved plan as plain data for the workbench, and the stamp the web passes to a push.
+
+The shape is ``SolveResponse`` in docs/planner_slice_contract.md §11.2. Facts only: MW are
+the exact figures ``slice_of`` bills, an unknown is ``None`` and never 0, and nothing is
+ranked. ``plan_factory`` renders the same report as text.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from ...core.gamedata.model import GameData
+from ..world import pin
+from ..world.state import WorldState
+from . import provenance
+from .optimize import MW
+from .report import build_plan_report
+from .scenario import build_scenario
+
+__all__ = ["solve_summary", "stamp_for"]
+
+_EPS = 1e-6
+
+
+def _name(g: GameData, item: str) -> str:
+    return "MW" if item == MW else g.item_name(item)
+
+
+def _rates(g: GameData, rates: dict, sign: int) -> list[dict]:
+    rows = [
+        {"item": _name(g, item), "per_min": round(abs(rate), 4)}
+        for item, rate in rates.items()
+        if rate * sign > _EPS
+    ]
+    return sorted(rows, key=lambda r: -r["per_min"])
+
+
+def _main_item(g: GameData, row: dict) -> str | None:
+    recipe = g.recipes.get(row.get("recipe") or "")
+    if recipe is not None and recipe.products:
+        return g.item_name(recipe.products[0].item)
+    made = [(rate, item) for item, rate in row["rates"].items() if rate > _EPS and item != MW]
+    return g.item_name(max(made)[1]) if made else None
+
+
+def _row(g: GameData, row: dict, required: set[str]) -> dict:
+    recipe = g.recipes.get(row.get("recipe") or "")
+    return {
+        "building": row["building"] or "",
+        "recipe": recipe.name if recipe is not None else row["label"],
+        "recipe_id": row.get("recipe"),
+        "item": _main_item(g, row),
+        "machines": int(row["machines"]),
+        "clock": float(row["clock"]),
+        "mw": float(row["mw"]),
+        "inputs": _rates(g, row["rates"], -1),
+        "outputs": _rates(g, row["rates"], 1),
+        "required": row.get("recipe") in required,
+    }
+
+
+def _blockers(errors: list[str], failure_notes: list[str]) -> list[str]:
+    named = [e for e in errors if e.startswith(("required", "exclude_recipes"))]
+    return named + [n for n in failure_notes if n.startswith("required in force")]
+
+
+def _warnings(g: GameData, st: WorldState, report, objective: str) -> list[str]:
+    sol, bill = report.prepared.solution, report.bill
+    out = [
+        f"export at zero: {z['name']} is named in exports but 0/min leaves this plan"
+        for z in report.zero_exports
+    ]
+    if report.water_binding and not report.water_cap_given:
+        out.append(f"water extractors capped at {report.water_cap} by an assumption, and binding")
+    if bill.shard_rows and report.shard_budget and bill.shards > report.shard_budget["potential"]:
+        short = bill.shards - report.shard_budget["potential"]
+        out.append(f"power shards: {bill.shards} needed, short by {short:.0f}")
+    if report.sloop_gate is not None:
+        out.append("sloops asked for, but Production Amplifier is not researched")
+    if (
+        objective in ("max_item", "min_raw", "min_machines")
+        and report.overclocked
+        and sol.net_mw < 0
+    ):
+        out.append(f"objective {objective} does not price power; clocks are pushed up")
+    if not report.prepared.audit_ok:
+        out.append(f"free-lunch audit returned {report.prepared.audit_value} MW, not 0")
+    if report.needed_buildings:
+        names = sorted(g.buildings[c].name for c in report.needed_buildings if c in g.buildings)
+        out.append("must build first: " + ", ".join(names))
+    return out
+
+
+def solve_summary(
+    g: GameData, st: WorldState, kwargs: dict, required: list[str] | None = None
+) -> dict:
+    kwargs = dict(kwargs)
+    if required and not kwargs.get("required"):
+        kwargs["required"] = list(required)
+    objective = kwargs.get("objective", "max_mw")
+    report = build_plan_report(g, st, kwargs, objective=objective)
+    prepared = report.prepared
+    req = prepared.request
+    try:
+        token = pin.check(st.header, None)
+    except Exception:
+        token = ""
+    base = {
+        "plan_id": req.plan_id if req is not None else "",
+        "machines": 0,
+        "processes": 0,
+        "mw_draw": None,
+        "mw_generated": None,
+        "mw_net": None,
+        "grid_import": False,
+        "exports": [],
+        "rows": [],
+        "shards": None,
+        "sloops_used": 0,
+        "token": token,
+    }
+    errors = [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
+    if prepared.failure is not None:
+        return {
+            "feasible": False,
+            "headline": prepared.failure.headline,
+            "notes": list(prepared.failure.notes),
+            "warnings": [],
+            "blockers": _blockers(errors, prepared.failure.notes),
+            **base,
+        }
+    sol, bill = prepared.solution, report.bill
+    in_force = set(req.required)
+    rows = sorted(
+        (_row(g, p, in_force) for p in sol.processes),
+        key=lambda r: (r["building"], r["recipe"]),
+    )
+    notes = [*errors, *prepared.notes]
+    if req.excluded:
+        notes.append("excluded by request: " + ", ".join(req.excluded))
+    return {
+        "feasible": True,
+        "headline": f"{objective} over {req.selection.description}",
+        "notes": notes,
+        "warnings": _warnings(g, st, report, objective),
+        "blockers": _blockers(errors, []),
+        **base,
+        "machines": round(sol.machines_total),
+        "processes": len(sol.processes),
+        "mw_draw": round(bill.draw_mw + bill.sink_mw, 2),
+        "mw_generated": round(bill.generation_mw, 2),
+        "mw_net": round(bill.net_mw, 2),
+        "grid_import": sol.grid_import_mw > _EPS,
+        "exports": [
+            {"item": _name(g, item), "per_min": round(rate, 4)}
+            for item, rate in sol.exports.items()
+        ],
+        "rows": rows,
+        "shards": bill.shards,
+        "sloops_used": bill.sloops_used,
+    }
+
+
+def stamp_for(g: GameData, st: WorldState) -> Callable:
+    """The ``planlog.Stamp`` for pushes read against ``st``: plan_id and selector provenance."""
+
+    def stamp(state) -> dict:
+        return {
+            "plan_id": build_scenario(g, st, **state.kwargs()).plan_id,
+            "provenance": provenance.record(g, st, list(state.args.sources) or None),
+        }
+
+    return stamp

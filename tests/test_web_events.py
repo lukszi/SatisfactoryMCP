@@ -23,8 +23,10 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi import Request
 
 from satisfactory_mcp import config
+from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers import events as web_events
+from satisfactory_mcp.interfaces.web.watch import WatchEvent
 
 # --------------------------------------------------------------------- events
 
@@ -63,13 +65,13 @@ def _first_sse_chunk(app) -> bytes:
 
 
 def _empty_roots(monkeypatch, tmp_path) -> None:
-    """Point all three watched trees at empty temporary directories.
+    """Point every watched and tailed tree at empty temporary directories.
 
-    All three, not just the save root: the labels and plans directories live in the reader's
-    own app-data folder, and any file in either would make the watcher publish before the
-    test had written anything.
+    All of them, not just the save root: the labels, plans and activity directories live in
+    the reader's own app-data folder, and any file in one would make the watcher publish
+    before the test had written anything.
     """
-    for name in ("saves_root", "labels_dir", "plans_dir"):
+    for name in ("saves_root", "labels_dir", "plans_dir", "activity_dir"):
         root = tmp_path / name
         root.mkdir()
         monkeypatch.setattr(config, name, lambda root=root: root)
@@ -143,3 +145,45 @@ def test_a_named_factory_becomes_a_notes_event(game, tmp_path, monkeypatch):
         "filename": "coal power.json",
         "mtime": event.mtime,
     }
+
+
+def test_a_stream_whose_queue_overflowed_drains_and_then_ends(game, tmp_path, monkeypatch):
+    _empty_roots(monkeypatch, tmp_path)
+    monkeypatch.setattr(web_events, "PING_SECONDS", 5.0)
+    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
+    watcher = app.state.watcher
+    queue = asyncio.Queue(maxsize=2)
+    monkeypatch.setattr(watcher, "subscribe", lambda: watcher._subscribers.add(queue) or queue)
+    event = WatchEvent("notes", "a.json", 1.0)
+
+    async def pull() -> list[bytes]:
+        request = Request({"type": "http", "method": "GET", "path": "/api/events", "headers": [], "app": app})
+        response = await web_events.events(request)
+        for _ in range(3):
+            watcher._publish(event)
+        return [chunk async for chunk in response.body_iterator]
+
+    chunks = asyncio.run(asyncio.wait_for(pull(), timeout=3.0))
+    assert [c.startswith(b"event: notes") for c in chunks] == [True, True]
+    assert watcher.cut(queue) is False, "the closed stream did not unsubscribe"
+
+
+def test_a_plan_commit_becomes_a_plans_event_carrying_its_summary(game, tmp_path, monkeypatch):
+    """The chat-to-page direction: a commit any process appends reaches the browser with the
+    words the page shows, so the page need not fetch just to say what happened."""
+    _empty_roots(monkeypatch, tmp_path)
+    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
+    log = PlanLog("W")
+    key = log.create("north hmf", {}, actor=Actor("page")).key
+    asyncio.run(app.state.watcher.tail_once())
+    chat = Actor("chat", "claude-code", 1)
+    log.push(key, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=chat)
+    asyncio.run(app.state.watcher.tail_once())
+
+    chunk = _first_sse_chunk(app).decode()
+    assert chunk.startswith("event: plans\ndata: ")
+    data = json.loads(chunk.split("data: ", 1)[1])
+    assert data["key"] == key and data["name"] == "north hmf"
+    assert (data["from_rev"], data["rev"]) == (1, 2)
+    assert data["text"] == "v2 Claude Code: sloops 0→4"
+    assert data["actors"] == [{**chat.to_dict(), "display": "Claude Code"}]

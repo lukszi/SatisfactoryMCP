@@ -16,11 +16,14 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from ...core.gamedata.model import GameData, pretty_class
+from ...domain.planning.planlog import Actor
 from ...domain.spatial import regions as spatial_regions
 from ...domain.world.state import WorldState
 
 __all__ = [
+    "ActorBody",
     "Region",
+    "_actor_json",
     "_fail",
     "_label_json",
     "_m",
@@ -46,6 +49,22 @@ class Region(TypedDict):
     accuracy_m: int
     certain: bool
     text: str
+
+
+class ActorBody(TypedDict):
+    """Who wrote a plan commit or a journal entry; ``display`` is the word the page shows."""
+
+    kind: str
+    client: str
+    pid: int
+    display: str
+
+
+def _actor_json(raw: Any) -> ActorBody:
+    actor = (
+        raw if isinstance(raw, Actor) else Actor.from_dict(raw if isinstance(raw, dict) else None)
+    )
+    return {**actor.to_dict(), "display": actor.display()}
 
 
 def _m(value: float | None) -> float | None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Annotated
 
+from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....core.saveio import ports
@@ -21,7 +22,7 @@ from ....domain.factories.select import SelectorError
 from ....domain.factories.trace import power_at_risk, trace
 from ....domain.spatial import nodes as nodes_mod
 from ....presenters.text import primitives as render
-from ..app import AsOf, Limit, _state, game, mcp, retired
+from ..app import AsOf, Limit, _state, actor, game, mcp, retired
 
 #: Bare (machine-less) slabs at or above this many tiles are listed individually by
 #: factory_map; smaller ones are one summary line. 12 tiles is a 3x4 pour of 8 m
@@ -1408,6 +1409,7 @@ def rename_factory(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
+    ctx: Context | None = None,
 ) -> str:
     """Rename a factory label. The machines it holds are not touched and nothing re-anchors.
 
@@ -1430,7 +1432,7 @@ def rename_factory(
     if label.name == to.strip():
         return f"factory {label.name!r} already has that name"
     try:
-        done = edits.rename(st.world_id, _session(st), label.name, to, exact=True)
+        done = edits.rename(st.world_id, _session(st), label.name, to, exact=True, actor=actor(ctx))
     except LabelError as exc:
         return f"! {exc}"
     notes = [

@@ -20,3 +20,34 @@ routers point at this file instead of re-telling them.
 6. **Regenerate, never hand-edit** `api-schema.d.ts`: throwaway server on a port in
    8920–8999, `openapi-typescript` against it, then `scripts/stamp-schema.mjs` (the
    `npm run typegen` recipe, with the URL pointed at the throwaway server).
+7. **A write says what it refuses, in the schema.** A request body is a `TypedDict` taken as
+   `Annotated[Body, Body()]` (routers may not import pydantic), and every non-2xx body the page
+   branches on is declared with `responses={409: {"model": ...}}`, so it reaches
+   `api-schema.d.ts` like a 200 does. The planner routes (`routers/planlog.py`) answer a
+   conflict with `OutdatedResponse` and never apply part of a push. The server stamps the
+   actor (`page`, its own pid); the page never sends one.
+
+## The event stream
+
+`/api/events` sends four event names. `save` and `notes` are triggers: they say a file moved
+and the page decides what to refetch. `plans` and `activity` carry data, because they are
+tailed line by line from the plan logs and the activity journal every 0.5 s rather than
+stat-compared every 3 s.
+
+| Event | Source | Data |
+|---|---|---|
+| `save` | newest `*.sav` under the save root | `{filename, mtime, save_token}` |
+| `notes` | newest `labels/**/*.json`, or the legacy top-level `plans/<world>.json` | `{filename, mtime}` |
+| `plans` | new commits in one `plans/<world>/<key>/ops.jsonl`, one event per plan per tick | `{world, key, name, rev, from_rev, actors, text, ts, forgotten}` |
+| `activity` | each new line of `activity/<world>/<writer>.jsonl` | `{world, id, ts, actor, kind, plan, rev, text, args}` |
+
+- `actors` and `actor` are `ActorBody` (`kind`, `client`, `pid`, `display`). `text` is the
+  newest commit's `describe_commit` words; `from_rev` is the rev before the first new commit.
+- The tail's first pass only records where each file ends, so a server start announces
+  nothing old. A file that appears later is read from its start, which is how a new plan's
+  `create` arrives. A line without its newline yet waits for the next tick.
+- A new stream is replayed the newest event of each kind, in the order above. The page treats
+  a replayed `plans`/`activity` event as news only when its `ts` is newer than page open
+  minus 2 s.
+- Only the served instance tails (`create_app(tail=True)`), and it is also what names the
+  process the `web` journal writer. Test apps leave both off.

@@ -147,6 +147,31 @@ export type MilestonesResponse = Body<"MilestonesResponse">;
  *  player typed, not a save reading -- so nothing on either side divides by 100. */
 export type PlanSiting = Schema["PlanSiting"];
 export type PlansResponse = Body<"PlansResponse">;
+export type PlanIndexRow = Schema["PlanIndexRow"];
+
+/* ------------------------------------------ /api/plans/{key}, /ops, /undo, /args */
+
+export type PlanOpBody = Schema["PlanOpBody"];
+export type ActorBody = Schema["ActorBody"];
+export type CommitBody = Schema["CommitBody"];
+export type PlanArgsBody = Schema["PlanArgsBody"];
+export type PlanStateBody = Body<"PlanStateBody">;
+export type PlanOpsResponse = Body<"PlanOpsResponse">;
+export type PushedResponse = Body<"PushedResponse">;
+export type ConflictBody = Schema["ConflictBody"];
+export type OutdatedResponse = Body<"OutdatedResponse">;
+export type AlreadyUndoneResponse = Body<"AlreadyUndoneResponse">;
+export type NameTakenResponse = Body<"NameTakenResponse">;
+
+/* ------------------------------------------ /api/plan/solve, /api/ui/focus, /api/activity */
+
+export type SolveRow = Schema["SolveRow"];
+export type SolveRate = Schema["Rate"];
+export type SolveResponse = Body<"SolveResponse">;
+export type FocusSelection = Schema["Selection"];
+export type FocusResponse = Body<"FocusResponse">;
+export type ActivityRow = Schema["ActivityRow"];
+export type ActivityResponse = Body<"ActivityResponse">;
 
 /* ---------------------------------------------------------- /api/collectibles */
 

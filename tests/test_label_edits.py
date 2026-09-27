@@ -170,14 +170,14 @@ def test_a_stored_plan_scoped_to_the_factory_follows_the_rename(live):
     """``Plan.factory`` is resolved by name every time a diff or a layout scopes itself to
     one, so a rename that left it behind would point both at nothing."""
     st, _picked = live
-    st.plans.put("steel expansion", {"objective": "max_mw"}, plan_id="x", factory="north steel")
-    st.plans.save()
+    from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+
+    log = PlanLog(st.plans.world_id)
+    log.create("steel expansion", {}, plan_id="x", factory="north steel", actor=Actor("chat"))
     assert "1 stored plan(s) followed it" in srv.rename_factory(
         name="north steel", to="coast steel"
     )
-    from satisfactory_mcp.domain.planning.store import PlanStore
-
-    assert PlanStore.load(st.plans.world_id).find("steel expansion").factory == "coast steel"
+    assert log.find("steel expansion").factory == "coast steel"
 
 
 @pytest.mark.integration

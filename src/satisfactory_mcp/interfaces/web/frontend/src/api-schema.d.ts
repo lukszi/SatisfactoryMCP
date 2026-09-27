@@ -677,13 +677,13 @@ export interface paths {
          * Events
          * @description Server-sent events: one event per observed write, plus keepalives.
          *
-         *     Two event names, because two trees move under a player using both halves at once.
-         *     ``save`` is the game writing a ``.sav``; ``notes`` is this project writing a factory
-         *     label or a stored plan. A browser listens for the one it can act on.
+         *     ``save`` is the game writing a ``.sav``; ``notes`` is a factory label (or the legacy
+         *     plan file); ``plans`` is new commits in one plan's log; ``activity`` is one journal
+         *     entry. A browser listens for the ones it can act on.
          *
-         *     The stream carries the trigger, never the payload. An event says which file moved and
-         *     when; the page decides what to refetch, so a browser that missed one is a refetch
-         *     behind rather than a resync behind.
+         *     ``save`` and ``notes`` carry the trigger, never the payload: the page decides what to
+         *     refetch. ``plans`` and ``activity`` carry the commit summary or the entry itself, as
+         *     docs/web-wire.md lists.
          */
         get: operations["events_api_events_get"];
         put?: never;
@@ -789,7 +789,11 @@ export interface paths {
          */
         get: operations["plans_api_plans_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Plan
+         * @description A new plan at v1, stamped against the save this request read.
+         */
+        post: operations["create_plan_api_plans_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -946,10 +950,211 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan/solve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Solve Plan
+         * @description Solve a request or a stored version against this save; nothing is written.
+         */
+        post: operations["solve_plan_api_plan_solve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/focus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Focus
+         * @description Record what the page has open, stamped with a heartbeat. The page's only focus write.
+         */
+        put: operations["put_focus_api_ui_focus_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity
+         * @description Plan commits and journal entries after ``since``, oldest first, the newest ``limit``.
+         */
+        get: operations["activity_api_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan State
+         * @description A plan at ``rev`` (the head when omitted), forgotten plans included.
+         */
+        get: operations["plan_state_api_plans__key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Ops
+         * @description Every commit after ``since``, oldest first.
+         */
+        get: operations["plan_ops_api_plans__key__ops_get"];
+        put?: never;
+        /**
+         * Push Ops
+         * @description One gesture as one commit, merged onto the head by rule M1 or refused whole.
+         */
+        post: operations["push_ops_api_plans__key__ops_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/args": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Args
+         * @description A whole request, diffed against ``base_rev`` and merged: how a chat solve is applied.
+         */
+        post: operations["push_args_api_plans__key__args_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Rev
+         * @description The inverse of commit ``rev`` as a new commit; redo is the undo of that undo.
+         */
+        post: operations["undo_rev_api_plans__key__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivityResponse */
+        ActivityResponse: {
+            /** Now */
+            now: number;
+            /** Entries */
+            entries: components["schemas"]["ActivityRow"][];
+        };
+        /**
+         * ActivityRow
+         * @description A plan commit (``source`` "plan", ``kind`` "commit") or a journal entry.
+         */
+        ActivityRow: {
+            /** Id */
+            id: string;
+            /** Ts */
+            ts: number;
+            /** Source */
+            source: string;
+            actor: components["schemas"]["ActorBody"];
+            /** Kind */
+            kind: string;
+            /** Plan */
+            plan: string | null;
+            /** Name */
+            name: string | null;
+            /** Rev */
+            rev: number | null;
+            /** Text */
+            text: string;
+            /** Args */
+            args: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * ActorBody
+         * @description Who wrote a plan commit or a journal entry; ``display`` is the word the page shows.
+         */
+        ActorBody: {
+            /** Kind */
+            kind: string;
+            /** Client */
+            client: string;
+            /** Pid */
+            pid: number;
+            /** Display */
+            display: string;
+        };
+        /** AlreadyUndoneResponse */
+        AlreadyUndoneResponse: {
+            /** Error */
+            error: string;
+            /** Already Undone */
+            already_undone: boolean;
+            /** By */
+            by: number;
+        };
         /** Amount */
         Amount: {
             /** Name */
@@ -1264,6 +1469,43 @@ export interface components {
             where: string;
         };
         /**
+         * CommitBody
+         * @description One version. ``text`` is ``describe_commit``: the page never words an op itself.
+         */
+        CommitBody: {
+            /** Rev */
+            rev: number;
+            /** Base Rev */
+            base_rev: number;
+            /** Ts */
+            ts: number;
+            actor: components["schemas"]["ActorBody"];
+            /** Sav */
+            sav: string;
+            /** Ops */
+            ops: components["schemas"]["PlanOpBody"][];
+            /** Merged Over */
+            merged_over: number[];
+            /** Undoes */
+            undoes: number | null;
+            /** Note */
+            note: string;
+            /** Text */
+            text: string;
+        };
+        /** ConflictBody */
+        ConflictBody: {
+            /** Key */
+            key: string;
+            mine: components["schemas"]["PlanOpBody"];
+            theirs: components["schemas"]["PlanOpBody"];
+            /** Theirs Rev */
+            theirs_rev: number;
+            theirs_actor: components["schemas"]["ActorBody"];
+            /** Text */
+            text: string;
+        };
+        /**
          * CrateItem
          * @description One kind of thing in a crate, resolved to a display name by the server.
          */
@@ -1328,6 +1570,17 @@ export interface components {
             deaths: number;
             /** Items Total */
             items_total: number;
+        };
+        /** CreatePlanBody */
+        CreatePlanBody: {
+            /** Name */
+            name: string;
+            /** Args */
+            args: {
+                [key: string]: unknown;
+            };
+            /** From Entry */
+            from_entry?: string;
         };
         /**
          * Elevation
@@ -1693,6 +1946,31 @@ export interface components {
             /** To */
             to: string[];
         };
+        /** FocusBody */
+        FocusBody: {
+            /** View */
+            view: string;
+            /** Dash */
+            dash?: string;
+            /** Plan */
+            plan?: string | null;
+            /** Rev */
+            rev?: number | null;
+            /** Tab */
+            tab?: string;
+            selection?: components["schemas"]["Selection"] | null;
+            /** Follow */
+            follow?: string;
+            /** Sav */
+            sav?: string;
+        };
+        /** FocusResponse */
+        FocusResponse: {
+            /** Ok */
+            ok: boolean;
+            /** Heartbeat */
+            heartbeat: number;
+        };
         /** ForgotResponse */
         ForgotResponse: {
             /** Name */
@@ -1924,6 +2202,13 @@ export interface components {
             /** Milestones */
             milestones: components["schemas"]["MilestoneRow"][];
         };
+        /** NameTakenResponse */
+        NameTakenResponse: {
+            /** Error */
+            error: string;
+            /** Name Taken */
+            name_taken: boolean;
+        };
         /** NamedResponse */
         NamedResponse: {
             /** Name */
@@ -2041,6 +2326,25 @@ export interface components {
             occupied: number | null;
             /** Save Error */
             save_error: string | null;
+        };
+        /**
+         * OutdatedResponse
+         * @description The 409 of a push: nothing was applied; ``state`` is the head to re-read from.
+         */
+        OutdatedResponse: {
+            /** Error */
+            error: string;
+            /** Outdated */
+            outdated: boolean;
+            /** Head */
+            head: number;
+            /** Base Rev */
+            base_rev: number;
+            /** Since */
+            since: components["schemas"]["CommitBody"][];
+            /** Conflicts */
+            conflicts: components["schemas"]["ConflictBody"][];
+            state: components["schemas"]["PlanStateBody"];
         };
         /**
          * PipeRow
@@ -2177,6 +2481,127 @@ export interface components {
             h_m: number | null;
         };
         /**
+         * PlanArgsBody
+         * @description The whole solve request, every field present at its default when unset (contract §2).
+         */
+        PlanArgsBody: {
+            /** Objective */
+            objective: string;
+            /** Target Item */
+            target_item: string | null;
+            /** Sources */
+            sources: string[];
+            /** Exports */
+            exports: string[];
+            /** Export Minimums */
+            export_minimums: {
+                [key: string]: number;
+            };
+            /** Only Free Nodes */
+            only_free_nodes: boolean;
+            /** Allow Sinks */
+            allow_sinks: boolean;
+            /** Clocks */
+            clocks: number[];
+            /** Extractor Clocks */
+            extractor_clocks: number[];
+            /** Machine Cost Mw */
+            machine_cost_mw: number;
+            /** Banned */
+            banned: string[];
+            /** Required */
+            required: string[];
+            /** Only Recipes */
+            only_recipes: string[];
+            /** Water Extractors */
+            water_extractors: number | null;
+            /** Sloops */
+            sloops: number;
+            /** Belt Ipm */
+            belt_ipm: number | null;
+            /** Pipe M3Min */
+            pipe_m3min: number | null;
+            /** Recycle Once */
+            recycle_once: string[];
+            /** Supplied */
+            supplied: {
+                [key: string]: number;
+            };
+            /** Logistics Items */
+            logistics_items: string[];
+        };
+        /**
+         * PlanIndexRow
+         * @description One live plan at its head. ``rates`` is ``export_minimums``, item name to per minute.
+         */
+        PlanIndexRow: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Rev */
+            rev: number;
+            /** Objective */
+            objective: string;
+            /** Target Item */
+            target_item: string | null;
+            /** Exports */
+            exports: string[];
+            /** Rates */
+            rates: {
+                [key: string]: number;
+            };
+            /** Sited */
+            sited: boolean;
+            /** Factory */
+            factory: string;
+            /** Plan Id */
+            plan_id: string;
+            last: components["schemas"]["PlanLast"];
+        };
+        /**
+         * PlanLast
+         * @description The plan's newest commit: who, when, and the words ``describe_commit`` gives it.
+         */
+        PlanLast: {
+            /** Rev */
+            rev: number;
+            /** Ts */
+            ts: number;
+            actor: components["schemas"]["ActorBody"];
+            /** Text */
+            text: string;
+        };
+        /**
+         * PlanOpBody
+         * @description One op as the log holds it; which keys are present depends on ``op`` (contract §3).
+         */
+        PlanOpBody: {
+            /** Op */
+            op?: string;
+            /** Field */
+            field?: string;
+            /** Value */
+            value?: unknown;
+            /** Item */
+            item?: string;
+            /** Member */
+            member?: unknown;
+            /** Name */
+            name?: string;
+            /** Was */
+            was?: unknown;
+        };
+        /** PlanOpsResponse */
+        PlanOpsResponse: {
+            /** Key */
+            key: string;
+            /** Head */
+            head: number;
+            /** Commits */
+            commits: components["schemas"]["CommitBody"][];
+        };
+        /**
          * PlanSiting
          * @description One stored plan's pad: centre, facing and extent, all in metres on save axes.
          *
@@ -2190,6 +2615,8 @@ export interface components {
          *     ``plan_layout`` budgeted, which is the difference between a pad and an estimate.
          */
         PlanSiting: {
+            /** Key */
+            key: string;
             /** Name */
             name: string;
             /** X M */
@@ -2212,6 +2639,37 @@ export interface components {
             factory: string;
         };
         /**
+         * PlanStateBody
+         * @description A plan at ``rev``. ``head`` is the newest rev and ``text`` the head commit's words.
+         */
+        PlanStateBody: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Name */
+            name: string;
+            /** Forgotten */
+            forgotten: boolean;
+            /** Notes */
+            notes: string;
+            /** Factory */
+            factory: string;
+            /** Created */
+            created: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Siting */
+            siting: {
+                [key: string]: unknown;
+            } | null;
+            args: components["schemas"]["PlanArgsBody"];
+            /** Head */
+            head: number;
+            /** Text */
+            text: string;
+        };
+        /**
          * PlansResponse
          * @description What ``/api/plans`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
          */
@@ -2220,6 +2678,8 @@ export interface components {
             plans: components["schemas"]["PlanSiting"][];
             /** Stored */
             stored: number;
+            /** Index */
+            index: components["schemas"]["PlanIndexRow"][];
         };
         /**
          * PlayerPosition
@@ -2385,6 +2845,62 @@ export interface components {
             /** Spread M */
             spread_m: number;
         };
+        /** PushArgsBody */
+        PushArgsBody: {
+            /** Base Rev */
+            base_rev: number;
+            /** Args */
+            args: {
+                [key: string]: unknown;
+            };
+            /** Sav */
+            sav?: string;
+            /** From Entry */
+            from_entry?: string;
+        };
+        /** PushBody */
+        PushBody: {
+            /** Base Rev */
+            base_rev: number;
+            /** Ops */
+            ops: {
+                [key: string]: unknown;
+            }[];
+            /** Sav */
+            sav?: string;
+        };
+        /**
+         * PushedResponse
+         * @description A write that landed, or ``noop`` when every op was already true at the head.
+         */
+        PushedResponse: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Base Rev */
+            base_rev: number;
+            /** Noop */
+            noop: boolean;
+            /** Merged Over */
+            merged_over: number[];
+            /** Applied */
+            applied: components["schemas"]["PlanOpBody"][];
+            /** Dropped */
+            dropped: components["schemas"]["PlanOpBody"][];
+            /** Others */
+            others: components["schemas"]["CommitBody"][];
+            /** Text */
+            text: string;
+            state: components["schemas"]["PlanStateBody"];
+        };
+        /** Rate */
+        Rate: {
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number;
+        };
         /**
          * Region
          * @description What ``_label_json`` sends: a region lookup that never arrives without its doubt.
@@ -2504,6 +3020,95 @@ export interface components {
             play_duration_s: number;
             /** Mtime Ns */
             mtime_ns: number;
+        };
+        /** Selection */
+        Selection: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Ref */
+            ref: string;
+        };
+        /**
+         * SolveBody
+         * @description Exactly one of ``args`` (a request) and ``key`` (a stored plan, at ``rev`` or its head).
+         */
+        SolveBody: {
+            /** Args */
+            args?: {
+                [key: string]: unknown;
+            } | null;
+            /** Key */
+            key?: string | null;
+            /** Rev */
+            rev?: number | null;
+        };
+        /**
+         * SolveResponse
+         * @description A solve's facts. Infeasible is a 200 with ``feasible: false``; unknown MW are null.
+         */
+        SolveResponse: {
+            /** Feasible */
+            feasible: boolean;
+            /** Headline */
+            headline: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Notes */
+            notes: string[];
+            /** Warnings */
+            warnings: string[];
+            /** Machines */
+            machines: number;
+            /** Processes */
+            processes: number;
+            /** Mw Draw */
+            mw_draw: number | null;
+            /** Mw Generated */
+            mw_generated: number | null;
+            /** Mw Net */
+            mw_net: number | null;
+            /** Grid Import */
+            grid_import: boolean;
+            /** Exports */
+            exports: components["schemas"]["Rate"][];
+            /** Rows */
+            rows: components["schemas"]["SolveRow"][];
+            /** Shards */
+            shards: number | null;
+            /** Sloops Used */
+            sloops_used: number;
+            /** Blockers */
+            blockers: string[];
+            /** Token */
+            token: string;
+        };
+        /**
+         * SolveRow
+         * @description One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
+         */
+        SolveRow: {
+            /** Building */
+            building: string;
+            /** Recipe */
+            recipe: string;
+            /** Recipe Id */
+            recipe_id: string | null;
+            /** Item */
+            item: string | null;
+            /** Machines */
+            machines: number;
+            /** Clock */
+            clock: number;
+            /** Mw */
+            mw: number;
+            /** Inputs */
+            inputs: components["schemas"]["Rate"][];
+            /** Outputs */
+            outputs: components["schemas"]["Rate"][];
+            /** Required */
+            required: boolean;
         };
         /** StarvedGenerator */
         StarvedGenerator: {
@@ -2729,6 +3334,15 @@ export interface components {
             done: number;
             /** Total */
             total: number;
+        };
+        /** UndoBody */
+        UndoBody: {
+            /** Base Rev */
+            base_rev: number;
+            /** Rev */
+            rev: number;
+            /** Sav */
+            sav?: string;
         };
         /**
          * UnsupportedFile
@@ -3577,6 +4191,51 @@ export interface operations {
             };
         };
     };
+    create_plan_api_plans_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlanBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameTakenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     factory_health_api_factories_health_get: {
         parameters: {
             query?: {
@@ -3839,6 +4498,323 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    solve_plan_api_plan_solve_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolveBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_focus_api_ui_focus_put: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FocusBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FocusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_api_activity_get: {
+        parameters: {
+            query?: {
+                since?: number;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_state_api_plans__key__get: {
+        parameters: {
+            query?: {
+                rev?: number | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanStateBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_ops_api_plans__key__ops_get: {
+        parameters: {
+            query?: {
+                since?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOpsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_ops_api_plans__key__ops_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutdatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_args_api_plans__key__args_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushArgsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutdatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_rev_api_plans__key__undo_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UndoBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutdatedResponse"] | components["schemas"]["AlreadyUndoneResponse"];
                 };
             };
             /** @description Validation Error */

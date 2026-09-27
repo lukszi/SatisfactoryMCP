@@ -20,6 +20,7 @@ import json
 import pytest
 
 from satisfactory_mcp.domain.planning import provenance as prov
+from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.recall import PLAN_DEFAULTS, recall_plan
 from satisfactory_mcp.domain.planning.store import Plan, PlanStore
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
@@ -245,7 +246,7 @@ def test_a_state_that_cannot_resolve_selectors_claims_nothing(table):
         plans = _Plans(_saved_plan())
 
     _kwargs, _name, notes = recall_plan(_NoGame(), "spire", dict(PLAN_DEFAULTS))
-    assert notes == []
+    assert notes == ['recalled plan "spire" v0'], "only the version, no field verdict"
 
 
 # ----------------------------------------------------------------- persistence
@@ -255,12 +256,16 @@ def test_the_record_round_trips_through_disk(tmp_path, monkeypatch, table):
     from satisfactory_mcp.domain.planning import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
-    store = PlanStore(world_id="TESTWORLD")
     world = _World()
-    store.put("p", {"sources": [BOX]}, "id1", provenance=prov.record(world.game, world, [BOX]))
-    store.save()
+    PlanLog("TESTWORLD").create(
+        "p",
+        {"sources": [BOX]},
+        plan_id="id1",
+        provenance=prov.record(world.game, world, [BOX]),
+        actor=Actor("chat"),
+    )
 
-    again = PlanStore.load("TESTWORLD").plans[0]
+    again = PlanLog("TESTWORLD").view().plans[0]
     assert prov.recorded(again)
     assert again.provenance["selectors"][0]["count"] == 3
     assert prov.compare(world.game, world, again) == []
@@ -303,13 +308,25 @@ def test_saving_over_a_plan_rewrites_its_record_with_the_arguments(tmp_path, mon
     from satisfactory_mcp.domain.planning import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
-    store = PlanStore(world_id="TESTWORLD")
+    log = PlanLog("TESTWORLD")
     world = _World()
-    store.put("p", {"sources": [BOX]}, "id1", provenance=prov.record(world.game, world, [BOX]))
+    key = log.create(
+        "p",
+        {"sources": [BOX]},
+        plan_id="id1",
+        provenance=prov.record(world.game, world, [BOX]),
+        actor=Actor("chat"),
+    ).key
     wide = ["bbox:-10,-10,2000,2000"]
-    store.put("p", {"sources": wide}, "id2", provenance=prov.record(world.game, world, wide))
+    log.push_args(
+        key,
+        1,
+        {"sources": wide},
+        actor=Actor("chat"),
+        stamp=lambda _s: {"plan_id": "id2", "provenance": prov.record(world.game, world, wide)},
+    )
 
-    (plan,) = store.plans
+    (plan,) = log.view().plans
     assert [e["selector"] for e in plan.provenance["selectors"]] == wide
     assert prov.compare(world.game, world, plan) == []
 
@@ -342,6 +359,6 @@ def test_a_plan_saved_now_records_its_field_and_recalls_silently(tmp_path, monke
     )
     assert "Field recorded: near:1475,-2098@300=" in out
 
-    stored = PlanStore.load(live.plans.world_id).find("probe")
+    stored = PlanLog(live.plans.world_id).view().find("probe")
     assert prov.recorded(stored)
     assert prov.notes(live.game, live, stored) == [], "an unmoved field is silent"

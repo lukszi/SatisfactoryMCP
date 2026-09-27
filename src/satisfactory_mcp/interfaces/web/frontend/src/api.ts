@@ -77,27 +77,62 @@ function answer<T extends ApiError>(path: string, r: Response): Promise<T> {
   });
 }
 
-export function get<T extends ApiError>(path: ApiUrl): Promise<T> {
-  return fetch(pinned(path)).then(function (r) {
-    return answer<T>(path, r);
-  });
+function filled(path: string, subject?: string): string {
+  return subject === undefined ? path : path.replace(/\{[^}]+\}/, encodeURIComponent(subject));
 }
 
-export function send<T extends ApiError>(
-  method: "POST" | "PATCH" | "DELETE",
-  path: ApiPath,
-  body?: object,
-  subject?: string,
-  query?: string
-): Promise<T> {
-  var url = subject === undefined ? path : path.replace(/\{[^}]+\}/, encodeURIComponent(subject));
-  if (query) url += "?" + query;
+function request(method: string, body?: object): RequestInit {
   var init: RequestInit = { method: method };
   if (body) {
     init.headers = { "Content-Type": "application/json" };
     init.body = JSON.stringify(body);
   }
-  return fetch(pinned(url), init).then(function (r) {
+  return init;
+}
+
+export function get<T extends ApiError>(path: ApiUrl, subject?: string): Promise<T> {
+  var url = filled(path, subject);
+  return fetch(pinned(url)).then(function (r) {
     return answer<T>(url, r);
+  });
+}
+
+export function send<T extends ApiError>(
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  path: ApiPath,
+  body?: object,
+  subject?: string,
+  query?: string
+): Promise<T> {
+  var url = filled(path, subject);
+  if (query) url += "?" + query;
+  return fetch(pinned(url), request(method, body)).then(function (r) {
+    return answer<T>(url, r);
+  });
+}
+
+export interface StatusError extends Error {
+  status?: number;
+}
+
+export type Pushed<T, C> = { conflict: false; body: T } | { conflict: true; body: C };
+
+export function push<T extends ApiError, C extends ApiError>(path: ApiPath, body: object, subject?: string): Promise<Pushed<T, C>> {
+  var url = filled(path, subject);
+  return fetch(pinned(url), request("POST", body)).then(function (r) {
+    return r
+      .json()
+      .catch(function () {
+        return {};
+      })
+      .then(function (payload: ApiError): Pushed<T, C> {
+        if (r.status === 409) return { conflict: true, body: payload as C };
+        if (!r.ok || payload.error) {
+          var error: StatusError = new Error(payload.error || r.status + " " + url);
+          error.status = r.status;
+          throw error;
+        }
+        return { conflict: false, body: payload as T };
+      });
   });
 }

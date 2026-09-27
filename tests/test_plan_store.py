@@ -11,9 +11,12 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp import server as srv
+from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.store import PLAN_ARGS, Plan, PlanStore
 
 pytestmark = pytest.mark.integration
+
+CHAT = Actor("chat")
 
 
 @pytest.fixture
@@ -21,7 +24,7 @@ def store(tmp_path, monkeypatch):
     from satisfactory_mcp.domain.planning import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
-    return PlanStore(world_id="TESTWORLD")
+    return PlanLog("TESTWORLD")
 
 
 class _FakeState:
@@ -29,20 +32,32 @@ class _FakeState:
         self.plans = plans
 
 
+def _held(*plans: Plan) -> _FakeState:
+    """Plans held in memory, the shape ``recall_plan`` reads through ``st.plans``."""
+    return _FakeState(PlanStore(world_id="TESTWORLD", plans=list(plans)))
+
+
+class _World:
+    world_id = "TESTWORLD"
+
+    def __init__(self) -> None:
+        self.header: dict = {}
+
+
 # ---------------------------------------------------------------- storage
 
 
 def test_a_plan_round_trips_through_disk(store):
-    store.put(
+    store.create(
         "north oil",
         {"objective": "max_mw", "sources": ["north"], "limit": 25, "save": "x.sav"},
         plan_id="abc123",
         notes="the coast",
         factory="oil setup",
+        actor=CHAT,
     )
-    store.save()
 
-    again = PlanStore.load("TESTWORLD")
+    again = PlanLog("TESTWORLD").view()
     assert [p.name for p in again.plans] == ["north oil"]
     plan = again.plans[0]
     assert plan.plan_id == "abc123"
@@ -53,11 +68,13 @@ def test_a_plan_round_trips_through_disk(store):
 def test_only_solve_shaping_arguments_are_stored(store):
     """`limit` is presentation and `save`/`world` say which file was read, not what was
     asked for. Storing them would make two identical requests compare unequal."""
-    plan = store.put(
+    store.create(
         "p",
         {"objective": "max_item", "limit": 25, "save": "x.sav", "world": "W", "sources": ["north"]},
         plan_id="x",
+        actor=CHAT,
     )
+    plan = store.view().find("p")
     assert set(plan.args) <= set(PLAN_ARGS)
     assert "limit" not in plan.args
     assert "save" not in plan.args
@@ -65,16 +82,10 @@ def test_only_solve_shaping_arguments_are_stored(store):
 
 def test_defaults_are_not_stored(store):
     """A stored plan should read as the request that was made, not a dump of every knob."""
-    plan = store.put("p", {"objective": "max_mw", "sources": None, "exports": []}, plan_id="x")
-    assert plan.args == {"objective": "max_mw"}
-
-
-def test_saving_the_same_name_twice_updates_rather_than_duplicates(store):
-    store.put("p", {"objective": "max_mw"}, plan_id="one")
-    store.put("p", {"objective": "min_power"}, plan_id="two")
-    assert len(store.plans) == 1
-    assert store.plans[0].plan_id == "two"
-    assert store.plans[0].args["objective"] == "min_power"
+    store.create(
+        "p", {"objective": "max_mw", "sources": None, "exports": []}, plan_id="x", actor=CHAT
+    )
+    assert store.view().find("p").args == {"objective": "max_mw"}
 
 
 def test_plans_do_not_live_in_the_cache():
@@ -136,14 +147,14 @@ def live_plans(tmp_path, monkeypatch):
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     st = srv._state()
-    st.plans.put(
+    PlanLog(st.world_id).create(
         "north oil",
         {"objective": "max_mw", "sources": ["north"]},
         plan_id="abc123",
         notes="the coast",
         factory="oil setup",
+        actor=CHAT,
     )
-    st.plans.save()
     return st
 
 
@@ -151,10 +162,10 @@ def test_a_plan_can_be_renamed_and_keeps_everything_else(live_plans):
     """A name was the one thing a player picked and the one thing they could not correct:
     the workaround was to save the plan again under a second name and forget the first,
     which pays an LP solve and drops the siting and the field record on the floor."""
-    out = srv.rename_plan(name="north oil", to="coast oil")
+    out = srv.rename_plan(name="north oil", to="coast oil", base_rev=1)
     assert "renamed plan 'north oil' to 'coast oil'" in out
 
-    again = PlanStore.load(live_plans.plans.world_id)
+    again = PlanLog(live_plans.world_id).view()
     assert [p.name for p in again.plans] == ["coast oil"]
     assert again.plans[0].plan_id == "abc123"
     assert again.plans[0].notes == "the coast"
@@ -164,10 +175,9 @@ def test_a_plan_can_be_renamed_and_keeps_everything_else(live_plans):
 def test_a_rename_onto_an_existing_name_is_refused(live_plans):
     """`find` matches case-insensitively, so two plans differing only in case would make
     every later recall ambiguous."""
-    live_plans.plans.put("coast oil", {"objective": "max_mw"}, plan_id="x")
-    live_plans.plans.save()
+    PlanLog(live_plans.world_id).create("coast oil", {}, plan_id="x", actor=CHAT)
     assert "already has a plan named" in srv.rename_plan(name="north oil", to="COAST OIL")
-    assert PlanStore.load(live_plans.plans.world_id).find("north oil") is not None
+    assert PlanLog(live_plans.world_id).find("north oil") is not None
 
 
 def test_a_rename_of_an_unknown_plan_lists_what_exists(live_plans):
@@ -188,7 +198,7 @@ def test_one_plan_reads_back_as_the_request_that_was_stored(live_plans):
     pays a full LP solve and then prints what the request RESOLVED to. The question
     "what did I ask for" is answerable from the file alone."""
     out = srv.list_plans(name="north oil")
-    assert "# plan 'north oil'" in out
+    assert '# plan "north oil" v1' in out
     assert "plan_id=abc123" in out
     assert "objective\tmax_mw" in out
     assert "sources\tnorth" in out
@@ -202,12 +212,12 @@ def test_an_unknown_plan_name_lists_what_exists(live_plans):
 def test_the_list_marks_a_cell_it_had_to_cut(live_plans):
     """A silently clipped source list reads as the whole list, and a plan's sources are
     the argument that decides what it plans over."""
-    live_plans.plans.put(
+    PlanLog(live_plans.world_id).create(
         "wide",
         {"objective": "max_mw", "sources": [f"node:BP_ResourceNode{i}" for i in range(9)]},
         plan_id="y",
+        actor=CHAT,
     )
-    live_plans.plans.save()
     row = next(line for line in srv.list_plans().splitlines() if line.startswith("wide\t"))
     assert "~" in row
 
@@ -215,43 +225,49 @@ def test_the_list_marks_a_cell_it_had_to_cut(live_plans):
 # ----------------------------------------------------------------- recall
 
 
-def test_recall_returns_the_stored_arguments(store):
-    store.put("p", {"objective": "min_power", "sources": ["north"]}, plan_id="x")
-    kwargs, name, _ = srv._plan_kwargs(_FakeState(store), "p", dict(srv.PLAN_DEFAULTS))
+def test_recall_returns_the_stored_arguments():
+    st = _held(Plan("p", {"objective": "min_power", "sources": ["north"]}, plan_id="x"))
+    kwargs, name, _ = srv._plan_kwargs(st, "p", dict(srv.PLAN_DEFAULTS))
     assert name == "p"
     assert kwargs["objective"] == "min_power"
     assert kwargs["sources"] == ["north"]
 
 
-def test_a_default_valued_argument_does_not_clobber_the_plan(store):
+def test_a_default_valued_argument_does_not_clobber_the_plan():
     """THE trap. MCP fills defaults in before the tool sees them, so `objective` always
     arrives as "max_mw"; a naive merge would overwrite every recalled plan with it."""
-    store.put("p", {"objective": "min_power"}, plan_id="x")
+    st = _held(Plan("p", {"objective": "min_power"}, plan_id="x"))
     supplied = dict(srv.PLAN_DEFAULTS)  # exactly what an untouched call looks like
-    kwargs, _, notes = srv._plan_kwargs(_FakeState(store), "p", supplied)
+    kwargs, _, notes = srv._plan_kwargs(st, "p", supplied)
     assert kwargs["objective"] == "min_power"
     assert not any("overridden" in n for n in notes)
 
 
-def test_an_explicit_override_wins_and_says_it_was_not_saved(store):
-    store.put("p", {"objective": "min_power", "sources": ["north"]}, plan_id="x")
+def test_an_explicit_override_wins_and_says_it_was_not_saved():
+    st = _held(Plan("p", {"objective": "min_power", "sources": ["north"]}, plan_id="x"))
     supplied = {**srv.PLAN_DEFAULTS, "sources": ["south"]}
-    kwargs, _, notes = srv._plan_kwargs(_FakeState(store), "p", supplied)
+    kwargs, _, notes = srv._plan_kwargs(st, "p", supplied)
     assert kwargs["sources"] == ["south"]
     assert kwargs["objective"] == "min_power", "untouched arguments still come from the plan"
     assert any("overridden" in n and "sources" in n for n in notes)
     assert any("not saved" in n for n in notes)
 
 
-def test_recalling_an_unknown_plan_lists_what_exists(store):
-    store.put("north oil", {}, plan_id="x")
+def test_recalling_an_unknown_plan_lists_what_exists():
+    st = _held(Plan("north oil", plan_id="x"))
     with pytest.raises(KeyError, match="north oil"):
-        srv._plan_kwargs(_FakeState(store), "nope", dict(srv.PLAN_DEFAULTS))
+        srv._plan_kwargs(st, "nope", dict(srv.PLAN_DEFAULTS))
 
 
-def test_no_plan_name_passes_arguments_straight_through(store):
+def test_recall_names_the_version_first():
+    st = _held(Plan("p", {"objective": "min_power"}, plan_id="x", rev=14))
+    _, _, notes = srv._plan_kwargs(st, "p", dict(srv.PLAN_DEFAULTS))
+    assert notes[0] == 'recalled plan "p" v14'
+
+
+def test_no_plan_name_passes_arguments_straight_through():
     supplied = {**srv.PLAN_DEFAULTS, "objective": "max_item"}
-    kwargs, name, notes = srv._plan_kwargs(_FakeState(store), None, supplied)
+    kwargs, name, notes = srv._plan_kwargs(_held(), None, supplied)
     assert name == "" and notes == []
     assert kwargs["objective"] == "max_item"
 

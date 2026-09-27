@@ -22,6 +22,7 @@ from ... import config
 from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
+from ...domain.planning import journal
 from ...domain.world.state import WorldState, load_state
 from .guard import guard
 from .routers import ALL_ROUTERS
@@ -53,19 +54,24 @@ def create_app(
     state_loader: Callable[..., WorldState] | None = None,
     game_loader: Callable[[], GameData] | None = None,
     prewarm: bool = False,
+    tail: bool = False,
 ) -> FastAPI:
     """Build the ASGI app.
 
     ``state_loader(save, world)`` returns the world a request asked for; ``game_loader()``
     returns the normalized docs. Both default to the real thing and are replaced wholesale
-    in tests, never half-injected. ``prewarm`` is off by default because only the served
-    instance below is pointed at a real save directory -- see ``SaveWatcher.prewarm``.
+    in tests, never half-injected. ``prewarm`` and ``tail`` are off by default because only
+    the served instance below is pointed at a real save and plan directory -- see
+    ``SaveWatcher``. ``tail`` also names this process the ``web`` journal writer, which is
+    process-wide and so must not leak out of a test into the tool tests that follow it.
     """
     load_game = game_loader or _game
     load = state_loader or (lambda save=None, world=None: load_state(load_game(), save, world))
 
     @asynccontextmanager
     async def lifespan(instance: FastAPI):
+        if tail:
+            journal.set_writer("web")
         await instance.state.watcher.start()
         try:
             yield
@@ -79,7 +85,7 @@ def create_app(
     )
     instance.state.load_state = load
     instance.state.game = load_game
-    instance.state.watcher = SaveWatcher(prewarm=prewarm)
+    instance.state.watcher = SaveWatcher(prewarm=prewarm, tail=tail)
     instance.middleware("http")(guard)
     # The whole JSON surface, in one loop over one tuple: there is no second include, so
     # ``ALL_ROUTERS`` alone decides registration order. See its declaration.
@@ -104,4 +110,4 @@ def create_app(
 
 #: The instance ``uvicorn`` is pointed at. Built on import; nothing here reads a save until
 #: a request arrives or the watcher sees the game write one.
-app = create_app(prewarm=True)
+app = create_app(prewarm=True, tail=True)

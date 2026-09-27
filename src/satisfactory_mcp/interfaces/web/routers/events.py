@@ -74,13 +74,13 @@ async def _payload(event: WatchEvent) -> str:
 async def events(request: Request) -> StreamingResponse:
     """Server-sent events: one event per observed write, plus keepalives.
 
-    Two event names, because two trees move under a player using both halves at once.
-    ``save`` is the game writing a ``.sav``; ``notes`` is this project writing a factory
-    label or a stored plan. A browser listens for the one it can act on.
+    ``save`` is the game writing a ``.sav``; ``notes`` is a factory label (or the legacy
+    plan file); ``plans`` is new commits in one plan's log; ``activity`` is one journal
+    entry. A browser listens for the ones it can act on.
 
-    The stream carries the trigger, never the payload. An event says which file moved and
-    when; the page decides what to refetch, so a browser that missed one is a refetch
-    behind rather than a resync behind.
+    ``save`` and ``notes`` carry the trigger, never the payload: the page decides what to
+    refetch. ``plans`` and ``activity`` carry the commit summary or the entry itself, as
+    docs/web-wire.md lists.
     """
     watcher = request.app.state.watcher
     queue = watcher.subscribe()
@@ -95,6 +95,8 @@ async def events(request: Request) -> StreamingResponse:
                 if held is not None:
                     yield _sse(kind, await _payload(held))
             while True:
+                if watcher.cut(queue) and queue.empty():
+                    return
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=PING_SECONDS)
                 except TimeoutError:

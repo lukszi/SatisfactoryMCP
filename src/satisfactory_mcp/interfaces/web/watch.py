@@ -1,4 +1,4 @@
-"""Notice that a save -- or a note written about one -- changed, tell every browser, parse it.
+"""Notice that a save, a note or a plan changed, tell every browser, parse the save.
 
 Two trees, because two things move under a player who is using both halves at once: the game
 writes ``.sav`` files, and this project writes factory labels and stored plans beside them.
@@ -11,6 +11,10 @@ Fan-out is one ``asyncio.Queue`` per subscriber, because a shared queue means th
 browser to read an event is the only one that sees it. The queues are bounded and drop
 rather than block: a browser that has stopped reading has gone away, and these are edge
 triggers.
+
+The plan logs and the activity journal are TAILED rather than stat-compared: every new commit
+or entry becomes an event carrying its data (docs/planner_slice_contract.md §11.3; the event
+shapes are in docs/web-wire.md).
 """
 
 from __future__ import annotations
@@ -19,13 +23,26 @@ import asyncio
 import logging
 import threading
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ... import config
 from ...core.saveio.projection import load_projection
+from ...domain.planning import journal
+from ...domain.planning.planlog import Commit, PlanLog, PlanLogError
+from .serial import _actor_json
 
-__all__ = ["KINDS", "KIND_NOTES", "KIND_SAVE", "POLL_SECONDS", "SaveWatcher", "WatchEvent"]
+__all__ = [
+    "KINDS",
+    "KIND_ACTIVITY",
+    "KIND_NOTES",
+    "KIND_PLANS",
+    "KIND_SAVE",
+    "POLL_SECONDS",
+    "TAIL_SECONDS",
+    "SaveWatcher",
+    "WatchEvent",
+]
 
 log = logging.getLogger(__name__)
 
@@ -33,19 +50,27 @@ log = logging.getLogger(__name__)
 #: has alt-tabbed back to the browser.
 POLL_SECONDS = 3.0
 
-#: Per-subscriber backlog. Deep enough not to matter: two pending triggers ask the page for
-#: the same refetch twice.
-QUEUE_MAX = 4
+#: The plan-log and journal tail: a stat per file, for ~1 s from a tool returning to the page.
+TAIL_SECONDS = 0.5
+
+#: Per-subscriber backlog. Plan and activity events carry data rather than a trigger, so a
+#: burst of commits has to fit.
+QUEUE_MAX = 32
 
 #: The game wrote a save.
 KIND_SAVE = "save"
 
-#: This project wrote a note about one -- a factory label, or a stored plan. The one
-#: collaborative moment (name it, then look at the map) writes here and never to a ``.sav``.
+#: This project wrote a factory label, or the legacy top-level plan file.
 KIND_NOTES = "notes"
 
+#: New commits in one plan's log: one event per plan per tail tick.
+KIND_PLANS = "plans"
+
+#: One new activity-journal entry.
+KIND_ACTIVITY = "activity"
+
 #: Every kind, in the order a newly connected browser is told about them.
-KINDS = (KIND_SAVE, KIND_NOTES)
+KINDS = (KIND_SAVE, KIND_NOTES, KIND_PLANS, KIND_ACTIVITY)
 
 
 @dataclass(frozen=True)
@@ -59,9 +84,67 @@ class WatchEvent:
     kind: str
     filename: str
     mtime: float
+    data: dict | None = field(default=None, compare=False)
 
     def as_dict(self) -> dict:
+        if self.data is not None:
+            return dict(self.data)
         return {"filename": self.filename, "mtime": self.mtime}
+
+
+def _complete(path: Path) -> int:
+    try:
+        return path.read_bytes().rfind(b"\n") + 1
+    except OSError:
+        return 0
+
+
+def _plan_event(world: str, key: str, rows: list[dict]) -> WatchEvent | None:
+    try:
+        commits = [Commit.from_dict(r) for r in rows]
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not commits:
+        return None
+    newest = commits[-1]
+    try:
+        state = PlanLog(world).state(key, newest.rev)
+        name, forgotten = state.name, state.forgotten
+    except (PlanLogError, OSError, ValueError):
+        name, forgotten = "", False
+    actors: list[dict] = []
+    for commit in commits:
+        body = _actor_json(commit.actor)
+        if body not in actors:
+            actors.append(body)
+    data = {
+        "world": world,
+        "key": key,
+        "name": name,
+        "rev": newest.rev,
+        "from_rev": commits[0].rev - 1,
+        "actors": actors,
+        "text": newest.text(),
+        "ts": newest.ts,
+        "forgotten": forgotten,
+    }
+    return WatchEvent(KIND_PLANS, f"{key}/ops.jsonl", newest.ts, data)
+
+
+def _activity_event(world: str, row: dict) -> WatchEvent:
+    ts = float(row.get("ts") or 0.0)
+    data = {
+        "world": world,
+        "id": str(row.get("id") or ""),
+        "ts": ts,
+        "actor": _actor_json(row.get("actor")),
+        "kind": str(row.get("kind") or ""),
+        "plan": row.get("plan"),
+        "rev": row.get("rev"),
+        "text": str(row.get("text") or ""),
+        "args": row.get("args"),
+    }
+    return WatchEvent(KIND_ACTIVITY, data["id"], ts, data)
 
 
 def _warm_newest() -> None:
@@ -87,6 +170,8 @@ class SaveWatcher:
         notes: Iterable[Path] | None = None,
         interval: float = POLL_SECONDS,
         prewarm: bool = False,
+        tail: bool = False,
+        tail_interval: float = TAIL_SECONDS,
     ) -> None:
         #: ``None`` means "ask config every scan", so a test that repoints
         #: ``config.saves_root`` is obeyed without rebuilding the watcher.
@@ -98,9 +183,16 @@ class SaveWatcher:
         #: ``.sav`` files -- which is every watcher in the suite -- would spawn a parser
         #: subprocess for one on its first poll.
         self.prewarm = prewarm
+        #: Off unless asked for, as ``prewarm`` is: only the served instance tails the
+        #: reader's own plan and activity directories.
+        self.tail = tail
+        self.tail_interval = tail_interval
+        self._offsets: dict[Path, int] | None = None
         self._warming: threading.Thread | None = None
         self._subscribers: set[asyncio.Queue] = set()
+        self._cut: set[asyncio.Queue] = set()
         self._task: asyncio.Task | None = None
+        self._tail_task: asyncio.Task | None = None
         #: The newest event of each kind, replayed to every new subscriber.
         self.latest: dict[str, WatchEvent] = {}
         #: Polls that raised in a row, zeroed by any poll that gets through: "the watcher is
@@ -116,30 +208,36 @@ class SaveWatcher:
 
     def unsubscribe(self, q: asyncio.Queue) -> None:
         self._subscribers.discard(q)
+        self._cut.discard(q)
+
+    def cut(self, q: asyncio.Queue) -> bool:
+        """Whether ``q`` overflowed and was dropped: its stream ends so the browser resyncs."""
+        return q in self._cut
 
     def _publish(self, event: WatchEvent) -> None:
-        for q in self._subscribers:
+        for q in list(self._subscribers):
             try:
                 q.put_nowait(event)
             except asyncio.QueueFull:
-                pass
+                self._subscribers.discard(q)
+                self._cut.add(q)
 
     # ---- the poll -------------------------------------------------------
 
     def root(self) -> Path:
         return self._root if self._root is not None else config.saves_root()
 
-    def notes_roots(self) -> tuple[Path, ...]:
-        """Where this project writes about a save: factory labels, and stored plans."""
+    def notes_roots(self) -> tuple[tuple[Path, str], ...]:
+        """Labels anywhere in their tree; plans only as the legacy top-level file."""
         if self._notes is not None:
-            return self._notes
-        return (config.labels_dir(), config.plans_dir())
+            return tuple((root, "**/*.json") for root in self._notes)
+        return ((config.labels_dir(), "**/*.json"), (config.plans_dir(), "*.json"))
 
-    def _newest(self, kind: str, roots: Iterable[Path], pattern: str) -> WatchEvent | None:
+    def _newest(self, kind: str, roots: Iterable[tuple[Path, str]]) -> WatchEvent | None:
         newest: tuple[float, str] | None = None
-        for root in roots:
+        for root, pattern in roots:
             try:
-                for path in root.rglob(pattern):
+                for path in root.glob(pattern):
                     try:
                         mtime = path.stat().st_mtime
                     except OSError:
@@ -162,8 +260,8 @@ class SaveWatcher:
         noticed only when it was the newest file in its tree.
         """
         found = [
-            self._newest(KIND_SAVE, (self.root(),), "*.sav"),
-            self._newest(KIND_NOTES, self.notes_roots(), "*.json"),
+            self._newest(KIND_SAVE, ((self.root(), "**/*.sav"),)),
+            self._newest(KIND_NOTES, self.notes_roots()),
         ]
         return [event for event in found if event is not None]
 
@@ -200,6 +298,76 @@ class SaveWatcher:
                 self._warm()
         return news
 
+    # ---- the tail -------------------------------------------------------
+
+    def _tailed(self) -> list[tuple[str, str, Path]]:
+        """``(kind, world, path)`` for every plan log and journal file on disk now."""
+        found = []
+        for kind, root, pattern in (
+            (KIND_PLANS, config.plans_dir(), "*/ops.jsonl"),
+            (KIND_ACTIVITY, config.activity_dir(), "*.jsonl"),
+        ):
+            try:
+                worlds = sorted(d for d in root.iterdir() if d.is_dir())
+            except OSError:
+                continue
+            for world in worlds:
+                found += [(kind, world.name, path) for path in sorted(world.glob(pattern))]
+        return found
+
+    def tail_scan(self) -> list[WatchEvent]:
+        """New commits and entries since the last call; the first call only takes offsets.
+
+        Blocking, so it runs through ``asyncio.to_thread``. A file first seen after that
+        baseline is read from its start, which is how a new plan's ``create`` is announced.
+        """
+        files = self._tailed()
+        if self._offsets is None:
+            self._offsets = {path: _complete(path) for _kind, _world, path in files}
+            return []
+        events: list[WatchEvent] = []
+        for kind, world, path in files:
+            offset = self._offsets.get(path, 0)
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            if size < offset:
+                self._offsets[path] = _complete(path)
+                continue
+            if size == offset:
+                continue
+            rows, self._offsets[path] = journal.tail(path, offset)
+            if not rows:
+                continue
+            if kind == KIND_PLANS:
+                event = _plan_event(world, path.parent.name, rows)
+                events += [] if event is None else [event]
+            else:
+                events += [_activity_event(world, row) for row in rows]
+        return events
+
+    async def tail_once(self) -> list[WatchEvent]:
+        news = await asyncio.to_thread(self.tail_scan)
+        for event in news:
+            self.latest[event.kind] = event
+            self._publish(event)
+        return news
+
+    async def _tail_run(self) -> None:
+        failures = 0
+        while True:
+            try:
+                await self.tail_once()
+                failures = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                failures += 1
+                if failures == 1 or failures % 100 == 0:
+                    log.warning("plan tail failed (%d in a row)", failures, exc_info=True)
+            await asyncio.sleep(self.tail_interval)
+
     async def _run(self) -> None:
         # The first scan establishes the baseline and publishes, which is what gives a
         # browser that connected before the first poll something to draw.
@@ -232,13 +400,15 @@ class SaveWatcher:
     async def start(self) -> None:
         if self._task is None:
             self._task = asyncio.create_task(self._run(), name="save-watcher")
+        if self.tail and self._tail_task is None:
+            self._tail_task = asyncio.create_task(self._tail_run(), name="plan-tail")
 
     async def stop(self) -> None:
-        task, self._task = self._task, None
-        if task is None:
-            return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        tasks = [t for t in (self._task, self._tail_task) if t is not None]
+        self._task = self._tail_task = None
+        for task in tasks:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass

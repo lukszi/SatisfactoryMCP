@@ -1,24 +1,22 @@
-"""Named, persisted plans.
+"""The legacy plan file and the ``Plan`` shape the rest of the code reads plans through.
 
 **The request is stored, never the solution.** A solve depends on unlocked recipes, free
-nodes and built buildings, so a stored solution would keep answering about a world that no
-longer exists; re-solving on recall answers about the world as it is now, and a saved
-``plan_id`` that no longer matches says the world moved rather than the plan. Stored per
-world under ``saveIdentifier``: a plan for one world is meaningless in another.
+nodes and built buildings, so re-solving on recall answers about the world as it is now,
+and a saved ``plan_id`` that no longer matches says the world moved rather than the plan.
+
+Plans are written through ``planlog`` now. ``PlanStore.load`` survives only so the
+migration can read ``plans/<world>.json``; docs/plan_log.md has the layout.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from ... import config
-from ...core import atomic, filelock
 
-__all__ = ["SCHEMA", "Plan", "PlanStore"]
+__all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore"]
 
 SCHEMA = 1
 
@@ -36,6 +34,7 @@ PLAN_ARGS = (
     "extractor_clocks",
     "machine_cost_mw",
     "exclude_recipes",
+    "required",
     "only_recipes",
     "water_extractors",
     "sloops",
@@ -60,12 +59,17 @@ class Plan:
     #: Empty means "not recorded", which a recall reports as such and not as "unchanged".
     provenance: dict = field(default_factory=dict)
     #: Where this plan is to STAND; ``planning.siting`` owns the shape and empty means "not
-    #: sited". Untouched by ``put``: where a plan goes has its own verb.
+    #: sited". Untouched by a re-save: where a plan goes has its own verb.
     siting: dict = field(default_factory=dict)
+    key: str = ""
+    rev: int = 0
 
     def kwargs(self) -> dict:
         """Stored arguments, filtered to those a planning call still accepts."""
         return {k: v for k, v in self.args.items() if k in PLAN_ARGS}
+
+
+_FIELDS = frozenset(f.name for f in fields(Plan))
 
 
 @dataclass
@@ -73,11 +77,11 @@ class PlanStore:
     world_id: str
     session_name: str = ""
     plans: list[Plan] = field(default_factory=list)
-    #: Bumped by every write, as ``LabelStore.version`` is.
     version: int = 0
 
     @staticmethod
     def path_for(world_id: str) -> Path:
+        """The legacy file; ``planlog.PlanLog.dir_for`` is the same path without ``.json``."""
         safe = "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"
         return config.plans_dir() / f"{safe}.json"
 
@@ -90,42 +94,10 @@ class PlanStore:
         return cls(
             world_id=raw.get("world_id", world_id),
             session_name=raw.get("session_name", session_name),
-            plans=[Plan(**p) for p in raw.get("plans", ())],
+            plans=[
+                Plan(**{k: v for k, v in p.items() if k in _FIELDS}) for p in raw.get("plans", ())
+            ],
             version=int(raw.get("version", 0)),
-        )
-
-    @classmethod
-    @contextmanager
-    def editing(cls, world_id: str, session_name: str = "") -> Iterator[PlanStore]:
-        """Locked read-modify-write, as ``LabelStore.editing``; written on a clean exit."""
-        with filelock.held(cls.path_for(world_id)):
-            store = cls.load(world_id, session_name)
-            yield store
-            store._write()
-
-    def save(self) -> Path:
-        """Overwrite the file with this store, whole, under the lock; ``editing`` merges."""
-        with filelock.held(self.path_for(self.world_id)):
-            return self._write()
-
-    def _write(self) -> Path:
-        """Atomically: a plan is a request the reader typed and nothing can reconstruct it."""
-        path = self.path_for(self.world_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self.version += 1
-        return atomic.write_text(
-            path,
-            json.dumps(
-                {
-                    "schema": SCHEMA,
-                    "version": self.version,
-                    "world_id": self.world_id,
-                    "session_name": self.session_name,
-                    "plans": [asdict(p) for p in self.plans],
-                },
-                indent=1,
-            ),
-            encoding="utf-8",
         )
 
     def find(self, name: str) -> Plan | None:
@@ -135,39 +107,3 @@ class PlanStore:
                 return plan
         hits = [p for p in self.plans if needle in p.name.casefold()]
         return hits[0] if len(hits) == 1 else None
-
-    def put(
-        self,
-        name: str,
-        args: dict,
-        plan_id: str,
-        notes: str = "",
-        factory: str = "",
-        when: str = "",
-        provenance: dict | None = None,
-    ) -> Plan:
-        existing = self.find(name)
-        if existing is None:
-            existing = Plan(name=name.strip(), created=when)
-            self.plans.append(existing)
-        # Only non-defaults, so a stored plan reads as the request that was made.
-        existing.args = {
-            k: v for k, v in args.items() if k in PLAN_ARGS and v not in (None, [], {})
-        }
-        existing.plan_id = plan_id
-        # Rewritten WITH the arguments: a record describing the previous `sources` would
-        # report drift that is really an edit. None means the caller has none to offer.
-        if provenance is not None:
-            existing.provenance = provenance
-        if notes:
-            existing.notes = notes
-        if factory:
-            existing.factory = factory
-        return existing
-
-    def remove(self, name: str) -> bool:
-        plan = self.find(name)
-        if plan is None:
-            return False
-        self.plans.remove(plan)
-        return True

@@ -10,10 +10,11 @@ resolving for the tool modules that spell them.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Annotated
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from pydantic import Field
 
 from ... import config
@@ -22,13 +23,20 @@ from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...domain.factories.resolve import resolve_factory as _resolve_factory
+from ...domain.planning.planlog import Actor
 from ...domain.planning.scenario import resolve_item
 from ...domain.spatial.origin import player_xy as _player_xy
 from ...domain.spatial.origin import resolve_origin as _origin_for
 from ...domain.world import pin
 from ...domain.world.state import WorldState, load_state
 
-mcp = FastMCP("satisfactory")
+INSTRUCTIONS = (
+    "Plans are versioned: read one (list_plans name=) and pass its version as base_rev when "
+    "you change it. When the user says 'this', 'here' or 'what I have open', call ui_context "
+    "first."
+)
+
+mcp = FastMCP("satisfactory", instructions=INSTRUCTIONS)
 
 Limit = Annotated[int, Field(default=10, ge=1, le=25, description="max rows (hard cap 25)")]
 
@@ -60,6 +68,15 @@ def _state(
     st = load_state(game(), path=save, world=world)
     pin.check(st.header, as_of)
     return st
+
+
+def actor(ctx: Context | None) -> Actor:
+    """Who is writing: this process, as the client named itself at ``initialize``."""
+    try:
+        client = ctx.session.client_params.clientInfo.name or ""
+    except (AttributeError, ValueError):
+        client = ""
+    return Actor("chat", client, os.getpid())
 
 
 def _item_id(query: str) -> str | None:

@@ -61,9 +61,8 @@ class WorldState:
         Only for views that are pure functions of that pair and that no caller mutates: two
         requests hold the same object, so an in-place edit by one is an answer change for the
         other. ``plans`` and ``labels`` are the counter-example and are deliberately not here
-        -- they are disk-backed stores the MCP tools write THROUGH (``st.plans.put(...)``
-        then ``st.plans.save()``), so sharing them would hide one process's rename from the
-        other until the next autosave.
+        -- they are disk-backed stores other processes write to, so sharing them would
+        hide one process's rename from the other until the next autosave.
 
         The stored entry holds the projection and the game data, and must keep doing so:
         the key is their ``id()``, and a freed object's address is reused.
@@ -206,10 +205,10 @@ class WorldState:
 
     @cached_property
     def plans(self):
-        """Named plans saved for this world."""
-        from ..planning.store import PlanStore
+        """Live plans saved for this world, read-only; ``planlog.PlanLog`` writes them."""
+        from ..planning.planlog import PlanLog
 
-        return PlanStore.load(self.world_id, self.header.get("session_name") or "")
+        return PlanLog(self.world_id, self.header.get("session_name") or "").view()
 
     @cached_property
     def labels(self):

@@ -6,10 +6,11 @@ docs/frontend_vision.md §9.6 has the concurrency rule.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..planning.store import PlanStore
+from ..planning.planlog import Actor, PlanLog
 from .labels import Label, LabelError, LabelStore
 
 __all__ = ["Renamed", "amend", "forget", "name", "rename", "repoint_plans"]
@@ -61,23 +62,27 @@ def forget(
     return label, store.version
 
 
-def repoint_plans(world_id: str, session: str, was: str, now: str) -> list[str]:
+def repoint_plans(
+    world_id: str, session: str, was: str, now: str, actor: Actor | None = None
+) -> list[str]:
     """Point stored plans scoped to factory ``was`` at ``now``; returns their names.
 
     ``Plan.factory`` is resolved by name whenever ``diff_vs_save`` or ``plan_layout``
-    scopes itself to one, so a rename that left it behind would orphan the plan.
+    scopes itself to one, so a rename that left it behind would orphan the plan. A
+    mechanical follow-up, so it lands at the head (``PlanLog.push_at_head``).
     """
-    if not any(
-        p.factory and p.factory.casefold() == was.casefold()
-        for p in PlanStore.load(world_id, session).plans
-    ):
-        return []
+    log = PlanLog(world_id, session)
+    who = actor or Actor("system", "", os.getpid())
     moved = []
-    with PlanStore.editing(world_id, session) as plans:
-        for plan in plans.plans:
-            if plan.factory and plan.factory.casefold() == was.casefold():
-                plan.factory = now
-                moved.append(plan.name)
+    for state in log.heads():
+        if state.factory and state.factory.casefold() == was.casefold():
+            log.push_at_head(
+                state.key,
+                [{"op": "set", "field": "factory", "value": now}],
+                actor=who,
+                note=f"factory renamed {was!r} to {now!r}",
+            )
+            moved.append(state.name)
     return moved
 
 
@@ -88,12 +93,15 @@ def rename(
     to: str,
     exact: bool = False,
     expect: int | None = None,
+    actor: Actor | None = None,
 ) -> Renamed:
     """Rename one label, keeping its machines, and move the stored plans scoped to it."""
     with LabelStore.editing(world_id, session, expect) as store:
         label = _pick(store, name, exact)
         was = store.rename(label, to)
-        moved = repoint_plans(world_id, session, was, label.name) if was != label.name else []
+        moved = (
+            repoint_plans(world_id, session, was, label.name, actor) if was != label.name else []
+        )
     return Renamed(
         label.name, was, len(label.anchors), moved, store.version, LabelStore.path_for(world_id)
     )
