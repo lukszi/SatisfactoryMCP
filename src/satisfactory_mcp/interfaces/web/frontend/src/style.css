@@ -1786,8 +1786,71 @@ a.dash-where:hover {
   white-space: nowrap;
 }
 
-.dash-table tr.dash-skipped td {
+.dash-table tr.dash-skipped td:not(.dt-acts) {
   opacity: 0.5;
+}
+
+.dash-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-2);
+}
+
+.dash-detect .dt-unit {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .dash-detect table,
+  .dash-detect tbody {
+    display: block;
+  }
+
+  .dash-detect thead {
+    display: none;
+  }
+
+  .dash-detect tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1) var(--sp-2);
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .dash-detect td {
+    display: block;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .dash-detect td.dt-makes,
+  .dash-detect td.name,
+  .dash-detect td.dt-acts {
+    flex-basis: 100%;
+  }
+
+  .dash-detect td.dt-makes {
+    order: 1;
+  }
+
+  .dash-detect td.name {
+    order: 2;
+  }
+
+  .dash-detect td.dt-acts {
+    order: 3;
+  }
+
+  .dash-detect .dt-unit {
+    display: inline;
+  }
+
+  .dash-detect .dash-name {
+    min-width: 0;
+  }
 }
 
 .dash-name.guess {

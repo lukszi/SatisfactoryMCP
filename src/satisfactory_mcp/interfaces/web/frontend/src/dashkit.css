@@ -181,3 +181,15 @@
 .chip-muted {
   color: var(--muted);
 }
+
+.dk-field-error {
+  display: block;
+  margin-top: 2px;
+  color: var(--bad);
+  font-size: var(--fs-s);
+  font-weight: normal;
+}
+
+.dk-table tr.mid > td.dk-lead {
+  color: var(--mid);
+}

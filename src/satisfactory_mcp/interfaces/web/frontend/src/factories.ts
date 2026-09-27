@@ -2,23 +2,23 @@
  * production graph, addressed as `dash=factories[/<name>]`. */
 
 import { get, latest, send } from "./api";
-import { button, heading, link, note, table, tile } from "./dashkit";
-import { count, make } from "./dom";
-import { mw, pct, spoken } from "./format";
+import { button, empty, error, fieldError, heading, link, loading, note, table, tile } from "./dashkit";
+import { make } from "./dom";
+import { count, mw, num, pct, spoken } from "./format";
 import { drawGraph } from "./graph";
+import { loadOne } from "./load";
 import { hashFor } from "./map";
 import { showBox, vitals } from "./panel";
-import { stateTone } from "./placements";
-import { refreshLabels, renamedTo } from "./rename";
+import { blankOrLong, NAME_MAX, newest, refreshLabels, refusal, renamedTo, wrote } from "./rename";
 import { amount, choice, onSetting, setting } from "./settings";
 import { state } from "./state";
-import { tone, toneClass } from "./states";
+import { stateSets, tone, toneClass } from "./states";
 import { fail, friendly, note as said } from "./toast";
 import { startTrace } from "./trace";
-import { actionButton, factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, toMap } from "./dashboard";
+import { counted, W } from "./words";
+import { factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, toMap } from "./dashboard";
 import { actionable, mixBar, mixOf } from "./overview";
 
-import type { Ticket } from "./api";
 import type { Column } from "./dashkit";
 import type {
   CandidateRow,
@@ -28,15 +28,18 @@ import type {
   Flow,
   ForgotResponse,
   GraphNode,
+  MachineIssue,
   NamedResponse,
 } from "./api-shapes";
 
 var detect = {
   busy: false,
-  error: "",
+  failure: null as unknown,
   data: null as CandidatesResponse | null,
   world: "",
+  epoch: -1,
   edits: {} as Record<number, string>,
+  invalid: {} as Record<number, string>,
   skipped: {} as Record<number, boolean>,
   showSkipped: false,
   saving: -1,
@@ -48,11 +51,28 @@ var detect = {
 var graphView = {
   source: "",
   subject: "",
+  title: "",
+  epoch: -1,
   busy: false,
-  error: "",
+  failure: null as unknown,
   data: null as FactoryGraphResponse | null,
   drawn: null as SVGSVGElement | null,
 };
+
+function settle(): void {
+  if (graphView.source && graphView.epoch !== state.epoch) resetGraph();
+  if (detect.epoch === state.epoch) return;
+  var again = detect.busy || !!detect.data;
+  detect.epoch = state.epoch;
+  detect.data = null;
+  detect.busy = false;
+  detect.failure = null;
+  detect.edits = {};
+  detect.invalid = {};
+  detect.skipped = {};
+  if (detect.world !== state.world) detect.named = [];
+  if (again) startDetect(false);
+}
 
 function sortValue(row: FactoryHealthRow, key: string): number | string {
   if (key === "name") return row.name.toLowerCase();
@@ -61,11 +81,12 @@ function sortValue(row: FactoryHealthRow, key: string): number | string {
   return typeof value === "number" ? value : 0;
 }
 
-function counted(key: keyof FactoryHealthRow, label: string, flag: boolean): Column<FactoryHealthRow> {
+function counter(key: keyof FactoryHealthRow, label: string, flag: boolean, title: string): Column<FactoryHealthRow> {
   return {
     key: key,
     label: label,
     align: "right",
+    title: title,
     sort: function (row) {
       return sortValue(row, key);
     },
@@ -75,7 +96,7 @@ function counted(key: keyof FactoryHealthRow, label: string, flag: boolean): Col
         }
       : undefined,
     render: function (row) {
-      return row[key] as number;
+      return count(row[key] as number);
     },
   };
 }
@@ -103,17 +124,19 @@ function factoryColumns(): Column<FactoryHealthRow>[] {
       key: "alive",
       label: "machines",
       align: "right",
+      title: "machines standing, of the anchors the label holds",
       sort: function (row) {
         return sortValue(row, "alive");
       },
       render: function (r) {
-        return r.alive + (r.alive === r.anchors ? "" : " of " + r.anchors);
+        return count(r.alive) + (r.alive === r.anchors ? "" : " of " + count(r.anchors));
       },
     },
     {
       key: "uptime",
       label: "uptime",
       align: "right",
+      title: "each machine's last 300 s, averaged; a blocked machine makes nothing, so a blocked factory reads near 0%",
       sort: function (row) {
         return sortValue(row, "uptime");
       },
@@ -121,30 +144,30 @@ function factoryColumns(): Column<FactoryHealthRow>[] {
         return pct(r.uptime);
       },
     },
-    counted("actionable", "need action", true),
-    counted("attention", "not fine", false),
-    counted("unwired", "no wire", true),
-    counted("no_generator", "no generator", true),
+    counter("actionable", W.needAction, true, W.needAction + ": " + spoken(actionable(), "or")),
+    counter("attention", W.notRunning, false, "every machine that is not " + spoken(stateSets().ok, "or")),
+    counter("unwired", W.noWire, true, "machines with no power connection"),
+    counter("no_generator", W.noGenerator, true, "machines on a circuit with no generator"),
     {
       key: "measured_mw",
-      label: "MW measured",
+      label: W.measuredDraw,
       align: "right",
       sort: function (row) {
         return sortValue(row, "measured_mw");
       },
       render: function (r) {
-        return count(Math.round(r.measured_mw));
+        return mw(r.measured_mw);
       },
     },
     {
       key: "nameplate_mw",
-      label: "MW nameplate",
+      label: W.nameplateDraw,
       align: "right",
       sort: function (row) {
         return sortValue(row, "nameplate_mw");
       },
       render: function (r) {
-        return count(Math.round(r.nameplate_mw));
+        return mw(r.nameplate_mw);
       },
     },
     {
@@ -159,19 +182,27 @@ function factoryColumns(): Column<FactoryHealthRow>[] {
   ];
 }
 
-export function renderFactories(body: HTMLElement): void {
+function healthState(body: HTMLElement): boolean {
   var v = vitals();
-  if (!v.health) {
-    note(body, v.healthError || "loading…");
-    return;
-  }
+  if (v.health) return true;
+  if (v.healthError) {
+    error(body, "factory health", v.healthError, function () {
+      loadOne("/api/factories/health");
+    });
+  } else loading(body, "factory health");
+  return false;
+}
+
+export function renderFactories(body: HTMLElement): void {
+  settle();
+  if (!healthState(body)) return;
   renderDetect(body);
-  var rows = v.health.factories.slice();
+  var rows = vitals().health!.factories.slice();
   if (!rows.length) {
-    note(body, "no factories named yet — detect them above, or name one with the name_factory tool");
+    empty(body, "no factories named yet", "Detect them above, or ask chat to name one.");
     return;
   }
-  note(body, rows.length + " named factories. Click a heading to sort, a row for its detail.");
+  heading(body, counted(rows.length, "named factory", "named factories"));
   body.appendChild(
     table<FactoryHealthRow>(factoryColumns(), rows, {
       sort: sort,
@@ -181,15 +212,6 @@ export function renderFactories(body: HTMLElement): void {
       },
       caption: "named factories",
     })
-  );
-  note(
-    body,
-    "uptime is each machine's last 300 s window, averaged; " +
-      "a blocked machine produces nothing, so a backed-up factory reads near 0%; " +
-      "need action is " +
-      spoken(actionable(), "or") +
-      "; " +
-      "not fine is everything but running and unmonitored"
   );
 }
 
@@ -206,39 +228,41 @@ function detectPath(): `/api/factories/candidates?${string}` {
   ) as `/api/factories/candidates?${string}`;
 }
 
-var detectRun: Ticket | null = null;
-
-function runDetect(keep?: boolean): void {
+function startDetect(keep: boolean): void {
   var ticket = latest("detect");
-  detectRun = ticket;
+  var world = state.world;
+  var epoch = state.epoch;
   detect.busy = true;
-  detect.error = "";
+  detect.failure = null;
   detect.asked = detectAsked();
-  render();
+  detect.epoch = epoch;
   get<CandidatesResponse>(detectPath())
     .then(function (data) {
       if (!ticket.fresh()) return;
+      data.version = newest(data.version);
       detect.data = data;
-      detect.world = state.world;
+      detect.world = world;
       if (!keep) {
         detect.edits = {};
         detect.skipped = {};
       }
+      detect.invalid = {};
     })
-    .catch(function (error) {
+    .catch(function (failure) {
       if (!ticket.fresh()) return;
       detect.data = null;
-      detect.error = friendly(error);
+      detect.failure = failure;
     })
     .then(function () {
-      if (detectRun !== ticket) return;
+      if (!ticket.fresh()) return;
       detect.busy = false;
       render();
     });
 }
 
-function stale(error: unknown): boolean {
-  return /changed elsewhere/.test(String(error));
+function runDetect(keep?: boolean): void {
+  startDetect(!!keep);
+  render();
 }
 
 function chosenName(row: CandidateRow): string {
@@ -246,19 +270,32 @@ function chosenName(row: CandidateRow): string {
   return (edited === undefined ? row.suggested_name : edited).trim();
 }
 
+function invalid(row: CandidateRow, message: string): void {
+  if (message) detect.invalid[row.index] = message;
+  else delete detect.invalid[row.index];
+  render();
+}
+
 function nameCandidate(row: CandidateRow): void {
   var data = detect.data;
+  if (!data || detect.saving >= 0) return;
   var name = chosenName(row);
-  if (!data || !name || detect.saving >= 0) return;
+  var problem = blankOrLong(name);
+  if (problem) {
+    invalid(row, problem);
+    return;
+  }
+  delete detect.invalid[row.index];
   detect.saving = row.index;
   render();
   send<NamedResponse>("POST", "/api/labels", {
     name: name,
     proposal: row.index,
     as_of: data.token,
-    version: data.version,
+    version: newest(data.version),
   })
     .then(function (reply) {
+      wrote(reply.version);
       if (detect.data) {
         detect.data.version = reply.version;
         detect.data.candidates = detect.data.candidates.filter(function (c) {
@@ -266,16 +303,22 @@ function nameCandidate(row: CandidateRow): void {
         });
       }
       detect.named.unshift(reply);
-      said("named “" + reply.name + "”, " + reply.machines + " machines");
+      said("named “" + reply.name + "”, " + counted(reply.machines, "machine"));
       reply.overlaps.forEach(fail);
       refreshLabels();
     })
-    .catch(function (error) {
-      fail("naming “" + name + "”: " + friendly(error));
-      if (stale(error)) {
+    .catch(function (failure) {
+      var why = refusal(failure);
+      if (why === "name_taken") detect.invalid[row.index] = "“" + name + "” is already a factory name";
+      else if (why === "bad") detect.invalid[row.index] = friendly(failure);
+      else if (why === "stale" || why === "pin") {
+        fail(
+          (why === "pin" ? "a newer save was written" : "factory names changed elsewhere") +
+            ", so “" + name + "” was not written; the list is fresh now, name it again"
+        );
         refreshLabels();
-        runDetect(true);
-      }
+        runDetect(why === "stale");
+      } else fail("naming “" + name + "”: " + friendly(failure));
     })
     .then(function () {
       detect.saving = -1;
@@ -284,16 +327,19 @@ function nameCandidate(row: CandidateRow): void {
 }
 
 function forgetNamed(reply: NamedResponse): void {
-  var version = detect.data ? detect.data.version : reply.version;
+  var version = newest(detect.data ? detect.data.version : reply.version);
   send<ForgotResponse>("DELETE", "/api/labels/{name}", undefined, reply.name, "version=" + version)
-    .then(function () {
+    .then(function (gone) {
+      wrote(gone.version);
       detect.named = detect.named.filter(function (n) {
         return n !== reply;
       });
       said("forgot “" + reply.name + "”");
     })
-    .catch(function (error) {
-      fail("forgetting “" + reply.name + "”: " + friendly(error));
+    .catch(function (failure) {
+      if (refusal(failure) === "stale") {
+        fail("factory names changed elsewhere, so “" + reply.name + "” was kept; they are reloaded now, undo again");
+      } else fail("forgetting “" + reply.name + "”: " + friendly(failure));
     })
     .then(function () {
       refreshLabels();
@@ -301,85 +347,100 @@ function forgetNamed(reply: NamedResponse): void {
     });
 }
 
-function rates(flows: Flow[]): string {
-  return flows
+function flows(list: Flow[]): string {
+  return list
     .map(function (f) {
-      return count(Math.round(f.per_min * 10) / 10) + " " + f.name;
+      return num(f.per_min) + " " + f.name + "/min";
     })
     .join(" · ");
 }
 
-function makes(row: CandidateRow): HTMLElement {
-  var box = make("div", "dash-makes");
-  var head = row.products.length
-    ? rates(row.products) + " /min"
-    : row.buildings
-        .map(function (b) {
-          return b.count + "× " + b.name;
-        })
-        .join(" · ") || "–";
-  box.appendChild(make("span", "", head));
-  if (row.intermediates.length) {
-    box.appendChild(make("span", "dash-sub", "via " + rates(row.intermediates)));
-  }
-  if (row.sunk.length) box.appendChild(make("span", "dash-sub dash-sunk", "sunk " + rates(row.sunk)));
-  if (row.unrouted.length) box.appendChild(make("span", "dash-sub", "goes nowhere " + rates(row.unrouted)));
-  if (row.inputs.length) box.appendChild(make("span", "dash-sub", "in " + rates(row.inputs)));
-  box.title = row.buildings
+function buildings(row: CandidateRow, joiner: string): string {
+  return row.buildings
     .map(function (b) {
       return b.count + "× " + b.name;
     })
-    .join(", ");
+    .join(joiner);
+}
+
+function makes(row: CandidateRow): HTMLElement {
+  var box = make("div", "dash-makes");
+  box.appendChild(make("span", "", row.products.length ? flows(row.products) : buildings(row, " · ") || "–"));
+  if (row.intermediates.length) box.appendChild(make("span", "dash-sub", "via " + flows(row.intermediates)));
+  if (row.sunk.length) box.appendChild(make("span", "dash-sub dash-sunk", "sunk " + flows(row.sunk)));
+  if (row.unrouted.length) box.appendChild(make("span", "dash-sub", "goes nowhere " + flows(row.unrouted)));
+  if (row.inputs.length) box.appendChild(make("span", "dash-sub", "in " + flows(row.inputs)));
+  box.title = buildings(row, ", ");
   return box;
 }
 
-function nameInput(row: CandidateRow): HTMLInputElement {
+var SOURCE: Record<string, string> = { fed: "fed", "not fed": "not fed", transport: "via station" };
+
+function nameField(row: CandidateRow): HTMLElement {
+  var cell = make("div", "dash-field");
   var input = make("input", "dash-name" + (row.confident ? "" : " guess"));
   input.type = "text";
+  input.maxLength = NAME_MAX;
   var edited = detect.edits[row.index];
   input.value = edited === undefined ? row.suggested_name : edited;
   input.setAttribute("data-candidate", String(row.index));
-  input.setAttribute("aria-label", "name for " + row.selector);
+  input.setAttribute("aria-label", "name for the unnamed cluster of " + counted(row.machines, "machine"));
   if (!row.confident) input.title = "no clear end product, so this name is a guess";
   input.spellcheck = false;
   input.oninput = function () {
     detect.edits[row.index] = input.value;
+    if (detect.invalid[row.index]) {
+      delete detect.invalid[row.index];
+      fieldError(input, "");
+    }
   };
   input.onkeydown = function (event) {
     if (event.key === "Enter") nameCandidate(row);
     if (event.key === "Escape") {
       delete detect.edits[row.index];
+      delete detect.invalid[row.index];
       input.value = row.suggested_name;
+      fieldError(input, "");
     }
   };
-  return input;
+  cell.appendChild(input);
+  if (detect.invalid[row.index]) fieldError(input, detect.invalid[row.index]!);
+  return cell;
+}
+
+function machinesCell(row: CandidateRow): HTMLElement {
+  var span = make("span", "", count(row.machines));
+  span.appendChild(make("span", "dt-unit", row.machines === 1 ? " machine" : " machines"));
+  return span;
 }
 
 function candidateTable(rows: CandidateRow[]): HTMLElement {
-  return table<CandidateRow>(
+  var wrap = table<CandidateRow>(
     [
+      { key: "machines", label: "machines", align: "right", className: "dt-n", render: machinesCell },
       {
-        key: "machines",
-        label: "machines",
-        align: "right",
-        render: function (row) {
-          return row.machines;
-        },
+        key: "makes",
+        label: "makes",
+        className: "dt-makes",
+        title:
+          "items/min at nameplate: products reach a box or leave the cluster; via is made and used inside; sunk goes to the AWESOME Sink; goes nowhere ends on an open belt or pipe; in is brought in",
+        render: makes,
       },
-      { key: "makes", label: "makes", render: makes },
       {
         key: "source",
         label: "source",
+        className: "dt-src",
         tone: function (row) {
           return row.fed === "not fed" ? "dash-muted" : "";
         },
         render: function (row) {
-          return row.fed;
+          return SOURCE[row.fed] || row.fed;
         },
       },
       {
         key: "region",
         label: "region",
+        className: "dt-reg",
         tone: function (row) {
           return row.region ? "" : "dash-muted";
         },
@@ -387,20 +448,25 @@ function candidateTable(rows: CandidateRow[]): HTMLElement {
           return row.region || "–";
         },
       },
-      { key: "name", label: "name", className: "name", render: nameInput },
-      { key: "acts", label: "", align: "right", render: candidateActs },
+      {
+        key: "name",
+        label: "name",
+        className: "name",
+        title: "Enter names it, Esc restores the suggestion; a dashed border marks a guess",
+        render: nameField,
+      },
+      { key: "acts", label: "", align: "right", className: "dt-acts", render: candidateActs },
     ],
     rows,
     {
       rowClass: function (row) {
         return detect.skipped[row.index] ? "dash-skipped" : "";
       },
-      rowTitle: function (row) {
-        return row.selector + " · spread " + row.spread_m + " m";
-      },
-      caption: "unnamed clusters",
+      caption: W.unnamedClusters,
     }
   );
+  wrap.classList.add("dash-detect");
+  return wrap;
 }
 
 function candidateActs(row: CandidateRow): HTMLElement {
@@ -415,149 +481,173 @@ function candidateActs(row: CandidateRow): HTMLElement {
       : make("span", "dash-muted", "–")
   );
   acts.appendChild(
-    actionButton("graph", "draw this cluster's production graph", function () {
-      var data = detect.data;
-      if (data) openGraph("candidate", row.selector, data.token);
-    })
-  );
-  acts.appendChild(
-    actionButton(
-      detect.saving === row.index ? "naming…" : "name",
-      "write this name to the label file",
+    button(
+      "graph",
       function () {
-        nameCandidate(row);
+        var data = detect.data;
+        if (data) openGraph("candidate", String(row.index), chosenName(row) + " (" + W.unnamedCluster + ")", data.token);
       },
-      detect.saving >= 0
+      { title: "draw this cluster's production graph" }
     )
   );
   acts.appendChild(
-    actionButton(skipped ? "unskip" : "skip", skipped ? "offer it again" : "leave it unnamed for now", function () {
-      if (skipped) delete detect.skipped[row.index];
-      else detect.skipped[row.index] = true;
-      render();
-    })
+    button(
+      detect.saving === row.index ? "naming…" : "name",
+      function () {
+        nameCandidate(row);
+      },
+      { title: "write this name to the label file", disabled: detect.saving >= 0 }
+    )
+  );
+  acts.appendChild(
+    button(
+      skipped ? "unskip" : "skip",
+      function () {
+        if (skipped) delete detect.skipped[row.index];
+        else detect.skipped[row.index] = true;
+        render();
+      },
+      { title: skipped ? "offer it again" : "leave it unnamed for now" }
+    )
   );
   return acts;
 }
 
 function namedList(card: HTMLElement): void {
-  if (!detect.named.length) return;
-  var done = make("ul", "dash-list");
   detect.named.forEach(function (reply) {
-    var li = make("li", "dash-issue");
-    li.appendChild(make("span", "dash-what", "named “" + reply.name + "”, " + reply.machines + " machines"));
-    li.appendChild(
-      actionButton("undo", "forget this label again", function () {
-        forgetNamed(reply);
-      })
-    );
-    li.appendChild(make("span", "dash-cause", "written to " + reply.stored_in));
-    done.appendChild(li);
-  });
-  card.appendChild(done);
-}
-
-function skippedToggle(card: HTMLElement, hidden: number): void {
-  if (!hidden) return;
-  var toggle = make("label", "dash-toggle");
-  var box = make("input");
-  box.type = "checkbox";
-  box.checked = detect.showSkipped;
-  box.onchange = function () {
-    detect.showSkipped = box.checked;
-    render();
-  };
-  toggle.appendChild(box);
-  toggle.appendChild(document.createTextNode(" show " + hidden + " skipped"));
-  card.appendChild(toggle);
-}
-
-function hiddenNote(card: HTMLElement, data: CandidatesResponse): void {
-  var parts: string[] = [];
-  if (data.hidden.not_fed) parts.push(data.hidden.not_fed + " not fed");
-  if (data.hidden.small) parts.push(data.hidden.small + " below " + data.min_machines + " machines");
-  var line = make("p", "dash-note");
-  if (detect.showAll) {
-    line.appendChild(document.createTextNode("Showing every cluster. "));
+    var line = make("p", "dash-note dash-filters");
+    line.appendChild(make("span", "", "named “" + reply.name + "”, " + counted(reply.machines, "machine")));
     line.appendChild(
-      actionButton("apply my filters", "hide what Settings says to hide", function () {
-        detect.showAll = false;
-        runDetect(true);
-      })
+      button(
+        "undo",
+        function () {
+          forgetNamed(reply);
+        },
+        { title: "forget this label again", label: "undo naming " + reply.name }
+      )
+    );
+    card.appendChild(line);
+  });
+}
+
+function filterLine(card: HTMLElement, data: CandidatesResponse, skipped: number): void {
+  var line = make("p", "dash-note dash-filters");
+  var parts: string[] = [];
+  if (detect.showAll) line.appendChild(document.createTextNode("every cluster, filters off "));
+  else {
+    if (data.hidden.not_fed) parts.push(count(data.hidden.not_fed) + " not fed");
+    if (data.hidden.small) parts.push(count(data.hidden.small) + " below " + counted(data.min_machines, "machine"));
+    if (parts.length) {
+      var hidden = data.hidden.not_fed + data.hidden.small;
+      line.appendChild(document.createTextNode(count(hidden) + " hidden: " + parts.join(", ") + " "));
+    }
+  }
+  if (detect.showAll) {
+    line.appendChild(
+      button(
+        "use filters",
+        function () {
+          detect.showAll = false;
+          runDetect(true);
+        },
+        { title: "hide what Settings says to hide" }
+      )
     );
   } else if (parts.length) {
-    var total = data.hidden.not_fed + data.hidden.small;
-    line.appendChild(document.createTextNode(total + " hidden: " + parts.join(", ") + ". "));
     line.appendChild(
-      actionButton("show all", "list every unnamed cluster, filters off", function () {
-        detect.showAll = true;
-        runDetect(true);
+      button(
+        "show all",
+        function () {
+          detect.showAll = true;
+          runDetect(true);
+        },
+        { title: "list every unnamed cluster, filters off" }
+      )
+    );
+  }
+  if (skipped) {
+    line.appendChild(
+      button(detect.showSkipped ? "hide skipped" : "show " + count(skipped) + " skipped", function () {
+        detect.showSkipped = !detect.showSkipped;
+        render();
       })
     );
-    line.appendChild(document.createTextNode(" "));
-    line.appendChild(link("settings", "filters"));
-  } else return;
+  }
+  if (!line.childNodes.length) return;
+  line.appendChild(link("settings", "filters"));
   card.appendChild(line);
 }
 
 function renderDetect(body: HTMLElement): void {
-  if (detect.data && detect.world !== state.world) {
-    detect.data = null;
-    detect.named = [];
-  }
   var data = detect.data;
   var card = make("section", "dash-card");
   var bar = make("div", "dash-title");
-  bar.appendChild(make("h2", "dash-h", "unnamed factories"));
-  var label = detect.busy ? "detecting…" : data ? "detect again" : "Detect factories";
+  bar.appendChild(make("h2", "dash-h", W.unnamedClusters));
   bar.appendChild(
-    actionButton(label, "find the machine clusters no label covers", function () {
-      runDetect();
-    }, detect.busy)
+    button(
+      detect.busy ? "detecting…" : data ? "detect again" : "detect",
+      function () {
+        runDetect();
+      },
+      { title: "find the machine clusters no factory covers", disabled: detect.busy }
+    )
   );
   card.appendChild(bar);
-  if (detect.error) note(card, "detection failed: " + detect.error);
+  if (detect.failure) error(card, W.unnamedClusters, detect.failure, runDetect);
   namedList(card);
   if (graphView.source === "candidate") graphCard(card);
   if (!data) {
-    note(card, "Finds the machine clusters no factory label covers yet, and suggests a name for each from what it makes.");
+    if (!detect.failure) note(card, "Finds the machine clusters no factory covers yet and suggests a name for each.");
     body.appendChild(card);
     return;
   }
   var open = data.candidates.filter(function (c) {
     return !detect.skipped[c.index];
   });
-  if (!data.candidates.length) note(card, "no unnamed cluster left to show");
-  else {
-    note(
-      card,
-      open.length +
-        (open.length === 1 ? " unnamed cluster" : " unnamed clusters") +
-        ", largest first. Makes: products (what reaches a box or leaves the cluster) per minute at nameplate, then what they are made via; sunk is what goes to the AWESOME Sink. Enter names it, Esc restores the suggestion; a dashed name is a guess."
-    );
-    card.appendChild(candidateTable(detect.showSkipped ? data.candidates : open));
+  var rows = detect.showSkipped ? data.candidates : open;
+  if (!rows.length) {
+    empty(card, data.candidates.length ? "every " + W.unnamedCluster + " here is skipped" : "no " + W.unnamedCluster + " left to show");
+  } else {
+    note(card, counted(open.length, W.unnamedCluster) + ", largest first");
+    card.appendChild(candidateTable(rows));
   }
-  hiddenNote(card, data);
-  skippedToggle(card, data.candidates.length - open.length);
-  note(card, "the clusters propose_factories finds, as of " + data.token + "; a name for a save written since then is refused, so detect again");
+  filterLine(card, data, data.candidates.length - open.length);
   body.appendChild(card);
 }
 
 function graphPath(source: string, subject: string, token?: string): `/api/factories/graph?${string}` {
-  var q = source === "factory" ? "factory=" + encodeURIComponent(subject) : "candidate=" + encodeURIComponent(subject) + "&token=" + encodeURIComponent(token || "");
+  var q =
+    source === "factory"
+      ? "factory=" + encodeURIComponent(subject)
+      : "candidate=" + encodeURIComponent("proposal:" + subject) + "&token=" + encodeURIComponent(token || "");
   return ("/api/factories/graph?" + q) as `/api/factories/graph?${string}`;
 }
 
-function openGraph(source: string, subject: string, token?: string): void {
+function resetGraph(): void {
+  latest("graph");
+  graphView.source = "";
+  graphView.subject = "";
+  graphView.title = "";
+  graphView.busy = false;
+  graphView.failure = null;
+  graphView.data = null;
+  graphView.drawn = null;
+}
+
+function openGraph(source: string, subject: string, title: string, token?: string): void {
+  var ticket = latest("graph");
   graphView.source = source;
   graphView.subject = subject;
+  graphView.title = title;
+  graphView.epoch = state.epoch;
   graphView.busy = true;
-  graphView.error = "";
+  graphView.failure = null;
   graphView.data = null;
   graphView.drawn = null;
   render();
   get<FactoryGraphResponse>(graphPath(source, subject, token))
     .then(function (data) {
+      if (!ticket.fresh()) return;
       graphView.data = data;
       graphView.drawn = drawGraph(data, nodeTip, function (node) {
         var box = node.bbox_m;
@@ -568,28 +658,28 @@ function openGraph(source: string, subject: string, token?: string): void {
         }
       });
     })
-    .catch(function (error) {
-      graphView.error = friendly(error);
+    .catch(function (failure) {
+      if (!ticket.fresh()) return;
+      graphView.failure = failure;
     })
     .then(function () {
+      if (!ticket.fresh()) return;
       graphView.busy = false;
       render();
     });
 }
 
 function closeGraph(): void {
-  graphView.source = "";
-  graphView.data = null;
-  graphView.drawn = null;
+  resetGraph();
   render();
 }
 
 function nodeTip(node: GraphNode): string {
   var lines = [node.label + (node.detail ? " · " + node.detail : "")];
   if (node.kind === "group") {
-    lines.push(statusLine(node) + (node.clock !== null ? " · clock " + Math.round(node.clock * 100) + "%" : ""));
+    lines.push(statusLine(node) + (node.clock !== null ? " · clock " + pct(node.clock) : ""));
     node.makes.forEach(function (f) {
-      lines.push("makes " + count(Math.round(f.per_min * 10) / 10) + " " + f.name + "/min" + (f.to.length ? " → " + f.to.join(", ") : ""));
+      lines.push("makes " + num(f.per_min) + " " + f.name + "/min" + (f.to.length ? " → " + f.to.join(", ") : ""));
     });
     lines.push("click: show these machines on the map");
   }
@@ -604,104 +694,87 @@ function statusLine(node: GraphNode): string {
 function graphCard(parent: HTMLElement): void {
   var card = make("section", "dash-card dash-graph");
   var bar = make("div", "dash-title");
-  var data = graphView.data;
-  bar.appendChild(make("h2", "dash-h", "production graph" + (data ? " · " + data.title : "")));
-  bar.appendChild(actionButton("close", "close the graph", closeGraph));
+  bar.appendChild(make("h2", "dash-h", "production graph · " + graphView.title));
+  bar.appendChild(button("close", closeGraph, { title: "close the graph" }));
   card.appendChild(bar);
-  if (graphView.busy) note(card, "drawing…");
-  else if (graphView.error) note(card, "the graph could not be drawn: " + graphView.error);
-  else if (graphView.drawn && data) {
+  if (graphView.busy) loading(card, "the graph");
+  else if (graphView.failure) error(card, "the graph", graphView.failure);
+  else if (graphView.drawn) {
     card.appendChild(graphView.drawn);
-    note(
-      card,
-      "Recipe groups left to right, nameplate items/min apportioned by each producer's share. Red outline: a machine stopped; yellow: blocked. " +
-        (data.buffers ? data.buffers + " box(es) sit between machines and are walked through. " : "") +
-        "Scroll to zoom, drag to pan, double-click to reset, click a group to see it on the map."
-    );
+    note(card, "Nameplate items/min. Red outline: a machine stopped; yellow: blocked. Scroll to zoom, drag to pan, click a group for the map.");
   }
   parent.appendChild(card);
 }
 
-export function renderFactory(body: HTMLElement, name: string): void {
-  var v = vitals();
-  if (!v.health) {
-    note(body, v.healthError || "loading…");
+function worstList(parent: HTMLElement, row: FactoryHealthRow): void {
+  var section = make("section", "dash-card");
+  heading(section, W.needAction);
+  var shown = row.worst_actionable;
+  if (!shown.length) {
+    empty(
+      section,
+      "nothing needs action",
+      row.attention ? counted(row.attention, "machine") + " " + W.notRunning : ""
+    );
+    parent.appendChild(section);
     return;
   }
-  var row = v.health.factories.filter(function (r) {
-    return r.name === name;
-  })[0];
-  body.appendChild(link("factories", "‹ all factories", "dash-back"));
-  if (!row) {
-    var now = renamedTo(name);
-    if (now) {
-      history.replaceState(null, "", hashFor("factories/" + now));
-      state.dash = "factories/" + now;
-      renderFactory(body, now);
-      return;
-    }
-    note(body, "no factory named “" + name + "” in this save: it may have been renamed or forgotten since this link was made");
-    return;
-  }
-  var head = make("div", "dash-title");
-  var title = make("h1", "", row.name);
-  head.appendChild(title);
-  head.appendChild(
-    renameButton(row.name, title, function (to) {
-      if (state.dash !== "factories/" + row!.name) {
-        render();
-        return;
-      }
-      history.replaceState(null, "", hashFor("factories/" + to));
-      state.dash = "factories/" + to;
-      render();
-    })
-  );
-  head.appendChild(factoryMapButton(row));
-  var shown = graphView.source === "factory" && graphView.subject === row.name;
-  head.appendChild(
-    actionButton(shown ? "hide graph" : "graph", "draw this factory's production graph", function () {
-      if (shown) closeGraph();
-      else openGraph("factory", row!.name);
-    })
-  );
-  head.appendChild(
-    button(
-      "trace supply",
-      function () {
-        toMap(function () {
-          startTrace("label:" + row!.name, "up");
-        });
-      },
-      { title: "draw what feeds this factory on the map, with items and rates" }
+  section.appendChild(
+    table<MachineIssue>(
+      [
+        {
+          key: "what",
+          label: "machine",
+          render: function (issue) {
+            return issue.what;
+          },
+        },
+        {
+          key: "state",
+          label: "state",
+          tone: function (issue) {
+            return toneClass(tone(issue.state));
+          },
+          render: function (issue) {
+            return issue.state;
+          },
+        },
+        {
+          key: "cause",
+          label: "cause",
+          className: "dash-muted",
+          render: function (issue) {
+            return issue.cause.join(", ") || "–";
+          },
+        },
+        {
+          key: "uptime",
+          label: "uptime",
+          align: "right",
+          render: function (issue) {
+            return pct(issue.uptime);
+          },
+        },
+        { key: "map", label: "", align: "right", render: pointButton },
+      ],
+      shown,
+      { caption: "machines that need action" }
     )
   );
-  body.appendChild(head);
-  if (shown) graphCard(body);
-  if (row.review) note(body, "label " + row.review + ": " + row.alive + " of " + row.anchors + " anchors still stand");
-  var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("machines", count(row.machines), row.alive + " of " + row.anchors + " anchors standing"));
-  tiles.appendChild(tile("uptime", pct(row.uptime), "mean over each machine's last 300 s"));
-  tiles.appendChild(tile("need action", count(row.actionable), row.attention + " not fine in all", row.actionable > 0));
-  tiles.appendChild(tile("draw, measured", mw(row.measured_mw), mw(row.nameplate_mw) + " nameplate"));
-  tiles.appendChild(
-    tile("power", count(row.unwired + row.no_generator), row.unwired + " no wire · " + row.no_generator + " no generator", row.unwired + row.no_generator > 0)
-  );
-  body.appendChild(tiles);
+  var rest = row.actionable - shown.length;
+  if (rest > 0) note(section, "showing " + count(shown.length) + " of " + count(row.actionable));
+  parent.appendChild(section);
+}
 
-  var split = make("div", "dash-split");
-  var states = make("section", "dash-card");
-  heading(states, "machines by state");
+function statesTable(parent: HTMLElement, row: FactoryHealthRow): void {
+  var section = make("section", "dash-card");
+  heading(section, "machines by state");
   var biggest = 1;
   row.states.forEach(function (s) {
     biggest = Math.max(biggest, s.count);
   });
   type StateRow = FactoryHealthRow["states"][number];
-  function toneOf(s: StateRow): string {
-    var shade = tone(s.state);
-    return shade === "bad" || shade === "blocked" ? shade : "";
-  }
-  states.appendChild(
+  section.appendChild(
     table<StateRow>(
       [
         {
@@ -733,45 +806,112 @@ export function renderFactory(body: HTMLElement, name: string): void {
         },
       ],
       row.states,
-      { rowClass: toneOf, caption: "machines by state" }
+      {
+        rowClass: function (s) {
+          var shade = tone(s.state);
+          return shade === "ok" ? "" : toneClass(shade);
+        },
+        caption: "machines by state",
+      }
     )
   );
-  split.appendChild(states);
+  parent.appendChild(section);
+}
 
-  var worst = make("section", "dash-card");
-  heading(worst, "worst machines");
-  if (!row.worst.length) note(worst, "every machine is running or unmonitored");
-  else {
-    var list = make("ul", "dash-list");
-    row.worst.forEach(function (issue) {
-      var li = make("li", "dash-issue");
-      li.appendChild(make("span", "dash-state " + stateTone(issue.state, true), issue.state));
-      li.appendChild(make("span", "dash-what", issue.what));
-      li.appendChild(make("span", "dash-where", pct(issue.uptime) + " up"));
-      li.appendChild(pointButton(issue));
-      if (issue.cause.length) li.appendChild(make("span", "dash-cause", issue.cause.join(", ")));
-      li.title = issue.instance;
-      list.appendChild(li);
-    });
-    worst.appendChild(list);
-    var rest = row.attention - row.worst.length;
-    if (rest > 0) note(worst, rest + " more are not fine; factory_health lists them all");
+export function renderFactory(body: HTMLElement, name: string): void {
+  settle();
+  var v = vitals();
+  var row = v.health
+    ? v.health.factories.filter(function (r) {
+        return r.name === name;
+      })[0]
+    : undefined;
+  if (v.health && !row) {
+    var now = renamedTo(name);
+    if (now) {
+      history.replaceState(null, "", hashFor("factories/" + now));
+      state.dash = "factories/" + now;
+      renderFactory(body, now);
+      return;
+    }
   }
-  split.appendChild(worst);
+  body.appendChild(link("factories", "‹ all factories", "dash-back"));
+  if (!healthState(body)) return;
+  if (!row) {
+    empty(body, "no factory named “" + name + "” in this world", "It may have been renamed or forgotten since this link was made.");
+    return;
+  }
+  var head = make("div", "dash-title");
+  var title = make("h1", "", row.name);
+  head.appendChild(title);
+  head.appendChild(
+    renameButton(row.name, title, function (to) {
+      if (state.dash !== "factories/" + row!.name) {
+        render();
+        return;
+      }
+      history.replaceState(null, "", hashFor("factories/" + to));
+      state.dash = "factories/" + to;
+      render();
+    })
+  );
+  head.appendChild(factoryMapButton(row));
+  var shown = graphView.source === "factory" && graphView.subject === row.name;
+  head.appendChild(
+    button(
+      shown ? "hide graph" : "graph",
+      function () {
+        if (shown) closeGraph();
+        else openGraph("factory", row!.name, row!.name);
+      },
+      { title: "draw this factory's production graph" }
+    )
+  );
+  head.appendChild(
+    button(
+      "trace supply",
+      function () {
+        toMap(function () {
+          startTrace("label:" + row!.name, "up");
+        });
+      },
+      { title: "draw what feeds this factory on the map, with items and rates" }
+    )
+  );
+  body.appendChild(head);
+  if (shown) graphCard(body);
+  if (row.review) note(body, "label " + row.review + ": " + row.alive + " of " + row.anchors + " anchors still stand");
+  var power = row.unwired + row.no_generator;
+  var tiles = make("div", "dash-tiles");
+  tiles.appendChild(tile("machines", count(row.machines), count(row.alive) + " of " + count(row.anchors) + " anchors standing"));
+  tiles.appendChild(tile("uptime", pct(row.uptime), "mean of each machine's last 300 s"));
+  tiles.appendChild(
+    tile(W.needAction, count(row.actionable), count(row.attention) + " " + W.notRunning, row.actionable > 0)
+  );
+  tiles.appendChild(tile(W.measuredDraw, mw(row.measured_mw), mw(row.nameplate_mw) + " nameplate"));
+  tiles.appendChild(
+    tile(
+      W.powerProblems,
+      count(power),
+      power ? count(row.unwired) + " " + W.noWire + " · " + count(row.no_generator) + " " + W.noGenerator : "none",
+      power > 0
+    )
+  );
+  body.appendChild(tiles);
+
+  var split = make("div", "dash-split");
+  statesTable(split, row);
+  worstList(split, row);
   body.appendChild(split);
 }
 
 function detectAsked(): string {
-  return choice("naming") + "|" + setting("fedOnly") + "|" + amount("minMachines");
+  return choice("naming") + "|" + setting("fedOnly") + "|" + amount("minMachines") + "|" + detect.showAll;
 }
 
 function settingChanged(): void {
-  var asked = detectAsked();
-  if (detect.data && !detect.busy && asked !== detect.asked) {
-    detect.asked = asked;
-    runDetect(true);
-  }
-  render();
+  if ((detect.data || detect.busy) && detectAsked() !== detect.asked) runDetect(true);
+  else render();
 }
 
 export function wireDetect(): void {

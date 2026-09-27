@@ -28,7 +28,7 @@ def lead(
 
     In order: the top product a recipe makes, by rate; the commonest generator, for a set
     that makes power; the top extracted product; the top item made at all; the commonest
-    building. Only the last two are guesses.
+    building. Only the last two are guesses, and the guess prefers a made item to an ore.
     """
     products = flows.listed("product")
     made = [row for row in products if row[0] not in extracted]
@@ -44,31 +44,35 @@ def lead(
         return game.building_name(cls) or cls, True
     if products:
         return products[0][0], True
-    if flows.produced:
-        return max(flows.produced.items(), key=lambda kv: (kv[1], kv[0]))[0], False
+    made_at_all = [kv for kv in flows.produced.items() if kv[0] not in extracted]
+    for pool in (made_at_all, list(flows.produced.items())):
+        if pool:
+            return max(pool, key=lambda kv: (kv[1], kv[0]))[0], False
     if cand.buildings:
         cls = cand.buildings.most_common(1)[0][0]
         return game.building_name(cls) or cls, False
     return "factory", False
 
 
-def _base(item: str, region: str | None, style: str) -> str:
+def _worded(item: str, region: str | None, style: str, n: int) -> str:
+    number = f" {n}" if n > 1 else ""
     if style == "short":
-        return f"{item.lower()} factory"
+        return f"{item.lower()} factory{number}"
     if style == "product, region":
-        return item + (f", {region}" if region else "")
+        return item + number + (f", {region}" if region else "")
     raise ValueError(f"unknown naming style {style!r}; known: {', '.join(STYLES)}")
 
 
 def suggest(item: str, region: str | None, taken: Iterable[str], style: str = DEFAULT_STYLE) -> str:
     """``item`` worded in ``style``, numbered past any name in ``taken`` or its slug."""
-    base = _base(item, region, style)
     held = list(taken)
     names = {t.strip().casefold() for t in held}
     slugs = {slugify(t) for t in held}
-    name, n = base, 2
+    n = 1
+    name = _worded(item, region, style, n)
     while name.casefold() in names or slugify(name) in slugs:
-        name, n = f"{base} {n}", n + 1
+        n += 1
+        name = _worded(item, region, style, n)
     return name
 
 
