@@ -421,3 +421,11 @@ def test_with_no_live_phase_an_all_zero_row_is_not_complete(state):
     }
     st = WorldState(projection=projection, game=state.game)
     assert all(r["stale"] != "complete" for r in st.phase_requirements()["phases"])
+
+
+def test_each_delivered_phase_opens_two_hub_tiers_and_phase_4_the_last():
+    from satisfactory_mcp.domain.progression.phases import opened_tier, opening_phase
+
+    assert [opened_tier(f"GP_Project_Assembly_Phase_{n}") for n in range(6)] == [2, 4, 6, 8, 9, 9]
+    assert opened_tier(None) is None and opened_tier("") is None
+    assert [opening_phase(t) for t in range(1, 10)] == [0, 0, 1, 1, 2, 2, 3, 3, 4]

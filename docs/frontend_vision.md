@@ -522,11 +522,12 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   the two agree. The map follows the same tuple: `/api/machines` sends `actionable`. A stopped
   machine gets a red outline, and a blocked one a yellow outline, because blocked is waiting on
   downstream, not broken (docs/save-projection.md §6.2d).
-- **Spoilers are a setting, on by default.** Settings (`dash=settings`) holds a "Show
-  upcoming milestones" switch. Off, Progress shows only tiers with at least one milestone done
-  (done and not done), plus tier 1 before anything is done; the tier strip, the tallies and
-  the Overview's "affordable" count follow the same filter. Nothing in the docs or memory
-  decided the default, so it is **on**, which was the behaviour before. `settings.ts` keeps
+- **Spoilers are a setting, off by default** (T3, §14). Settings (`dash=settings`) holds a
+  "Show upcoming milestones" switch. Off, Progress shows only the tiers the HUB has open (the
+  delivered Space Elevator phases open them, §12.3), plus any tier with a milestone done; the
+  tier strip, the tallies and the Overview's "affordable" count follow the same filter. The
+  default was on until 2026-09-27. A browser that never set the switch gets a one-time notice
+  saying locked content is now hidden, with a button that shows it. `settings.ts` keeps
   the values in `localStorage` under `settings`, wrapped in try/catch, so the page still works
   without storage. Settings have no write route (labels have had one since 2026-09-27, §9). A
   new setting is one more entry in `SETTINGS`.
@@ -906,14 +907,15 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
 - **Page.** `frontend/src/progress.ts` holds the section. It was moved out of
   `dashboard.ts` with the milestone view unchanged. The shared building blocks (tile,
   note, link, table cell) now sit in `frontend/src/dashkit.ts`, which both modules import.
-- **Layout.** Six "next up" tiles sit at the top of every Progress page. They give facts
-  only: parts short for the elevator, affordable milestones and MAM nodes, pending drives,
-  free shards and free somersloops. Below them, a sub-nav reaches one page per tool:
-  - Milestones: as before.
-  - MAM: tree tallies and a table with the tool's statuses (DONE, RUNNING, TREE SHUT,
-    BLOCKED, short, READY).
-  - Space Elevator: the target phase joined to stock, plus every phase record with its
-    trust label.
+- **Layout.** A segmented control (`dashkit.tabs2`) reaches one page per tool. The
+  Milestones landing opens with a one-line "next up" strip (T4): parts short for the
+  elevator, affordable MAM nodes, pending drives, free shards and free somersloops, each a
+  link to its page. Statuses read in lowercase words: done, affordable, short, blocked by…,
+  running, and "locked (phase N)" for a milestone whose tier the next phase opens.
+  - Milestones: tiles, the tier strip and the table.
+  - MAM: tree tallies and a table with the tool's statuses ("tree not open" for TREE SHUT).
+  - Space Elevator: the target phase joined to stock, plus every phase as delivered, next
+    or not started.
   - Hard drives: each pending drive with both options and what they grant.
   - Power shards: free, craftable, slotted and idle, the slugs, and the overclocked buildings.
   - Somersloops: free, slotted and Mercer Spheres, and the amplified machines with both
@@ -931,7 +933,7 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
   locked recipes". When it is off, the page hides three things:
   - MAM nodes in trees not opened yet (TREE SHUT);
   - elevator phase records past the target phase;
-  - milestone tiers not yet started, as before.
+  - milestone tiers the HUB has not opened yet.
 
   Hard drive options stay visible, because the game shows them once a drive is analysed.
   This answers §7 Q11 for MAM nodes. Alternates in the codex follow the same switch (§12.3).
@@ -1008,15 +1010,18 @@ recipes". When it is off:
 Items are never hidden. An item carries no unlock of its own.
 
 **The rule lives on the server.** Every row the switch can hide carries `spoiler: bool`:
-milestones and tiers above the highest tier with a finished milestone, MAM nodes and
-capabilities in a tree not opened yet, Space Elevator phases numbered past the target
-phase, and recipes the save has not unlocked (codex rows, makers, the recipe card and
+milestones and tiers above both the highest tier with a finished milestone and the highest
+tier the delivered Space Elevator phases open (phase N delivered opens tiers up to 2, 4, 6, 8
+and 9 for N = 0 to 4; `domain/progression/phases.py`), MAM nodes and capabilities in a tree
+not opened yet, Space Elevator phases numbered past the target phase (every phase, on a save
+with no target phase), and recipes the save has not unlocked (codex rows, makers, the recipe card and
 search hits). `/api/progress/sloops` sends `amplifier_spoiler` for the one non-row case.
 Each of those routes also takes `?spoilers=0|1`. Without it the reply is every row plus the
 flag. With `spoilers=0` the spoiler rows are dropped and each count in the reply counts
 only what is returned, the recipe census included. `/api/search` keeps `only_unlocked` as
-an alias of `spoilers=0`. The page still applies its own copy of the rule until the
-Progress and Recipes tabs move to the flag.
+an alias of `spoilers=0`. The Progress tab fetches every row and hides by the flag, so the
+switch needs no refetch. A milestone row also carries `opens_at`, the phase that opens a
+tier not open yet, which the tab shows as "locked (phase N)" instead of counting it short.
 
 ### 12.4 Not yet
 

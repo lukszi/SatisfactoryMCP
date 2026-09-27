@@ -855,7 +855,8 @@ export interface paths {
          * Progress Milestones
          * @description Every HUB milestone with its bill, what stock is short of it, and what it unlocks.
          *
-         *     A tier above the highest one with a finished milestone is a spoiler.
+         *     A tier above both the highest one with a finished milestone and the highest one the
+         *     delivered Space Elevator phases open is a spoiler.
          */
         get: operations["progress_milestones_api_progress_milestones_get"];
         put?: never;
@@ -899,7 +900,8 @@ export interface paths {
          * Progress Phase
          * @description The Space Elevator record ``phase_requirements`` reads, joined to spendable stock.
          *
-         *     A phase numbered past the target phase is a spoiler.
+         *     A phase numbered past the target phase is a spoiler, and every phase is one on a save
+         *     with no target phase.
          */
         get: operations["progress_phase_api_progress_phase_get"];
         put?: never;
@@ -2446,7 +2448,7 @@ export interface components {
         };
         /**
          * HardDrivesResponse
-         * @description ``spare`` is unanalysed drives on hand; ``last_used`` the drive settled most recently.
+         * @description ``spare`` is unanalysed drives on hand; ``last_used`` the drive analysed most recently.
          */
         HardDrivesResponse: {
             /** Spare */
@@ -2693,6 +2695,8 @@ export interface components {
         /**
          * MilestoneRow
          * @description ``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
+         *
+         *     ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet.
          */
         MilestoneRow: {
             /** Cls */
@@ -2711,6 +2715,8 @@ export interface components {
             unlocks: number;
             /** Blocked By */
             blocked_by: string[];
+            /** Opens At */
+            opens_at: number | null;
             /** Spoiler */
             spoiler: boolean;
         };

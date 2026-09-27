@@ -1616,32 +1616,6 @@ a.dash-where:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.dash-subnav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-  margin: 10px 0 8px;
-}
-
-.dash-subnav a {
-  padding: var(--sp-1) var(--sp-3);
-  color: var(--muted);
-  font-size: var(--fs-m);
-  text-decoration: none;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-}
-
-.dash-subnav a:hover {
-  border-color: var(--accent);
-}
-
-#dash .dash-subnav a.on {
-  color: var(--ink);
-  border-color: var(--accent);
-  background: var(--panel);
-}
-
 .dash-table tr.dash-lead td {
   border-bottom-color: transparent;
 }

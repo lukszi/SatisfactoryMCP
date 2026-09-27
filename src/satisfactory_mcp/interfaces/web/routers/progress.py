@@ -20,6 +20,7 @@ from fastapi import APIRouter, Request
 
 from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock
 from ....domain.progression.ladder import SchematicLadder
+from ....domain.progression.phases import opened_tier, opening_phase, phase_number
 from ....domain.world.state import WorldState
 from ..serial import _fail, _state, _xyz
 
@@ -35,7 +36,10 @@ class ItemAmount(TypedDict):
 
 
 class MilestoneRow(TypedDict):
-    """``status`` is ``Rung.status``: DONE, BLOCKED, short or READY."""
+    """``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
+
+    ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet.
+    """
 
     cls: str
     tier: int
@@ -45,6 +49,7 @@ class MilestoneRow(TypedDict):
     short: list[ItemAmount]
     unlocks: int
     blocked_by: list[str]
+    opens_at: int | None
     spoiler: bool
 
 
@@ -71,11 +76,6 @@ def _reach(rows: list[dict[str, Any]]) -> int:
     return min((r["tier"] for r in rows), default=0)
 
 
-def _phase_number(phase: str | None) -> float:
-    match = re.search(r"_(\d+)$", phase or "")
-    return int(match.group(1)) if match else float("inf")
-
-
 @router.get("/progress/milestones", response_model=MilestonesResponse)
 def progress_milestones(
     request: Request,
@@ -85,7 +85,8 @@ def progress_milestones(
 ) -> Any:
     """Every HUB milestone with its bill, what stock is short of it, and what it unlocks.
 
-    A tier above the highest one with a finished milestone is a spoiler.
+    A tier above both the highest one with a finished milestone and the highest one the
+    delivered Space Elevator phases open is a spoiler.
     """
     try:
         st = _state(request, save, world)
@@ -124,8 +125,12 @@ def progress_milestones(
             }
         )
 
-    top = _reach(rows)
+    prog = st.progression()
+    opened = opened_tier(prog["game_phase"])
+    top = _reach(rows) if opened is None else max(_reach(rows), opened)
     for row in rows:
+        shut = opened is not None and row["tier"] > opened and row["status"] != "DONE"
+        row["opens_at"] = opening_phase(row["tier"]) if shut else None
         row["spoiler"] = row["tier"] > top
     tier_rows = [
         {"tier": t, "done": d, "total": n, "spoiler": t > top}
@@ -134,7 +139,6 @@ def progress_milestones(
     if spoilers is False:
         rows = [r for r in rows if not r["spoiler"]]
         tier_rows = [t for t in tier_rows if not t["spoiler"]]
-    prog = st.progression()
     return {
         "game_phase": prog["game_phase"],
         "highest_complete_tier": prog["highest_complete_tier"],
@@ -285,7 +289,8 @@ def progress_phase(
 ) -> Any:
     """The Space Elevator record ``phase_requirements`` reads, joined to spendable stock.
 
-    A phase numbered past the target phase is a spoiler.
+    A phase numbered past the target phase is a spoiler, and every phase is one on a save
+    with no target phase.
     """
     try:
         st = _state(request, save, world)
@@ -294,7 +299,7 @@ def progress_phase(
 
     req = st.phase_requirements()
     stock = st.stock()
-    target = _phase_number(req["target_phase"])
+    target = phase_number(req["target_phase"])
     phases = []
     deliverable = None
     for row in req["phases"]:
@@ -319,7 +324,7 @@ def progress_phase(
                 "trust": row["stale"],
                 "outstanding": items,
                 "complete": [st.game.item_name(i) for i in row["complete"]],
-                "spoiler": _phase_number(row["phase"]) > target,
+                "spoiler": target is None or (phase_number(row["phase"]) or 0) > target,
             }
         )
     if spoilers is False:
@@ -557,7 +562,7 @@ class DriveRow(TypedDict):
 
 
 class HardDrivesResponse(TypedDict):
-    """``spare`` is unanalysed drives on hand; ``last_used`` the drive settled most recently."""
+    """``spare`` is unanalysed drives on hand; ``last_used`` the drive analysed most recently."""
 
     spare: int
     last_used: int | None

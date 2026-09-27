@@ -31,8 +31,8 @@ export var SETTINGS: Setting[] = [
     kind: "switch",
     key: "spoilers",
     label: "Show upcoming milestones, research and locked recipes",
-    hint: "Off: Progress shows the tiers you have started, the MAM trees you have opened and the Space Elevator phases up to the current target, and hides what lies beyond them; Recipes and search hide recipes this save has not unlocked.",
-    fallback: true,
+    hint: "Off: Progress shows the tiers the HUB has open, the MAM trees you have opened and the Space Elevator phases up to the current target, and hides what lies beyond them; Recipes and search hide recipes this save has not unlocked.",
+    fallback: false,
   },
   {
     kind: "choice",
@@ -75,6 +75,8 @@ export var SETTINGS: Setting[] = [
 ];
 
 var STORE_KEY = "settings";
+
+var NOTICE_KEY = "spoilers-off-notice";
 
 var values: Record<string, boolean | string | number> = {};
 
@@ -143,6 +145,17 @@ export function setSetting(key: string, value: boolean | string | number): void 
   listeners.forEach(function (listener) {
     listener();
   });
+}
+
+export function spoilerNotice(): boolean {
+  if ("spoilers" in values) return false;
+  try {
+    if (localStorage.getItem(NOTICE_KEY)) return false;
+    localStorage.setItem(NOTICE_KEY, "1");
+  } catch (ignored) {
+    return false;
+  }
+  return true;
 }
 
 export function onSetting(listener: () => void): void {

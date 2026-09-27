@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
@@ -10,7 +11,29 @@ from ...core.gamedata.model import GameData
 if TYPE_CHECKING:
     from .unlocks import UnlockSet
 
-__all__ = ["PhaseLedger"]
+__all__ = ["PhaseLedger", "opened_tier", "opening_phase", "phase_number"]
+
+#: The highest HUB tier open once Project Assembly phase N is delivered (game 1.0).
+TIERS_OPENED: dict[int, int] = {0: 2, 1: 4, 2: 6, 3: 8, 4: 9}
+
+
+def phase_number(phase: str | None) -> int | None:
+    """GP_Project_Assembly_Phase_3 -> 3; None for a save with no phase."""
+    match = re.search(r"_(\d+)$", phase or "")
+    return int(match.group(1)) if match else None
+
+
+def opened_tier(current_phase: str | None) -> int | None:
+    """The highest HUB tier the delivered phases open; None when the save has no phase."""
+    n = phase_number(current_phase)
+    if n is None:
+        return None
+    return TIERS_OPENED[min(max(n, 0), max(TIERS_OPENED))]
+
+
+def opening_phase(tier: int) -> int:
+    """The Project Assembly phase whose delivery opens this HUB tier."""
+    return min((n for n, top in TIERS_OPENED.items() if top >= tier), default=max(TIERS_OPENED))
 
 
 @dataclass
