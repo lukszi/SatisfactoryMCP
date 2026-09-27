@@ -2834,7 +2834,7 @@ a.status-name:hover,
 #lasso {
   --surface: var(--panel);
   position: fixed;
-  left: 410px;
+  left: calc(410px + var(--rail-w));
   bottom: 2.2rem;
   width: 340px;
   max-height: 50vh;
