@@ -65,12 +65,14 @@ class FactoryHealthRow(TypedDict):
 
 
 class FactoryHealthResponse(TypedDict):
-    """``actionable_states`` is the subset of ``states`` that ``actionable`` counts;
-    ``labels_version`` is what a rename or forget sends back as ``version``."""
+    """``actionable_states`` is the subset of ``states`` that ``actionable`` counts, and
+    ``ok_states`` the subset that ``attention`` leaves out; ``labels_version`` is what a
+    rename or forget sends back as ``version``."""
 
     labels_version: int
     states: list[str]
     actionable_states: list[str]
+    ok_states: list[str]
     factories: list[FactoryHealthRow]
 
 
@@ -134,5 +136,6 @@ def factory_health(request: Request, save: str | None = None, world: str | None 
         "labels_version": st.labels.version,
         "states": list(STATES),
         "actionable_states": list(ACTIONABLE),
+        "ok_states": [s for s in STATES if s in OK],
         "factories": rows,
     }

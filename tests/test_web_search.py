@@ -98,3 +98,15 @@ def test_a_keystroke_stays_cheap(client):
     for q in ("i", "ir", "iro", "iron", "iron p", "iron pl", "iron pla", "iron plat"):
         assert client.get("/api/search", params={"q": q}).status_code == 200
     assert (time.perf_counter() - start) / 8 < 0.25
+
+
+def test_recipe_hits_carry_the_spoiler_flag_and_spoilers_0_is_only_unlocked(client):
+    full = client.get("/api/search", params={"q": "ingot"}).json()
+    for row in full["recipes"]:
+        assert row["spoiler"] == (row["unlocked"] is False)
+    assert client.get("/api/search", params={"q": "ingot", "spoilers": 1}).json() == full
+    hidden = client.get("/api/search", params={"q": "ingot", "spoilers": 0}).json()
+    alias = client.get("/api/search", params={"q": "ingot", "only_unlocked": True}).json()
+    assert hidden == alias
+    assert hidden["recipes_total"] < full["recipes_total"]
+    assert not any(r["spoiler"] for r in hidden["recipes"])

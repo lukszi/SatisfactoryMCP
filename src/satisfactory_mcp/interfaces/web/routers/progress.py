@@ -5,7 +5,8 @@ the same spendable stock, so READY means the bill is covered and nothing about w
 tier is open. ``phase``, ``shards``, ``sloops`` and ``harddrives`` read the same ``WorldState``
 records as ``phase_requirements``, ``power_shards``, ``somersloops`` and
 ``list_pending_hard_drive_choices``. The dashboard they feed: docs/frontend_vision.md §8 and
-"Phase 4: Progress". Wire rules: docs/web-wire.md.
+"Phase 4: Progress". Wire rules: docs/web-wire.md. ``spoiler`` on a row and ``?spoilers=``:
+docs/frontend_vision.md §12.3.
 
 WARNING: the function name is the operation_id -- renaming it churns the committed schema.
 """
@@ -44,12 +45,14 @@ class MilestoneRow(TypedDict):
     short: list[ItemAmount]
     unlocks: int
     blocked_by: list[str]
+    spoiler: bool
 
 
 class TierRow(TypedDict):
     tier: int
     done: int
     total: int
+    spoiler: bool
 
 
 class MilestonesResponse(TypedDict):
@@ -61,9 +64,29 @@ class MilestonesResponse(TypedDict):
     milestones: list[MilestoneRow]
 
 
+def _reach(rows: list[dict[str, Any]]) -> int:
+    done = [r["tier"] for r in rows if r["status"] == "DONE"]
+    if done:
+        return max(done)
+    return min((r["tier"] for r in rows), default=0)
+
+
+def _phase_number(phase: str | None) -> float:
+    match = re.search(r"_(\d+)$", phase or "")
+    return int(match.group(1)) if match else float("inf")
+
+
 @router.get("/progress/milestones", response_model=MilestonesResponse)
-def progress_milestones(request: Request, save: str | None = None, world: str | None = None) -> Any:
-    """Every HUB milestone with its bill, what stock is short of it, and what it unlocks."""
+def progress_milestones(
+    request: Request,
+    save: str | None = None,
+    world: str | None = None,
+    spoilers: bool | None = None,
+) -> Any:
+    """Every HUB milestone with its bill, what stock is short of it, and what it unlocks.
+
+    A tier above the highest one with a finished milestone is a spoiler.
+    """
     try:
         st = _state(request, save, world)
     except Exception as exc:
@@ -101,11 +124,21 @@ def progress_milestones(request: Request, save: str | None = None, world: str | 
             }
         )
 
+    top = _reach(rows)
+    for row in rows:
+        row["spoiler"] = row["tier"] > top
+    tier_rows = [
+        {"tier": t, "done": d, "total": n, "spoiler": t > top}
+        for t, (d, n) in sorted(tiers.items())
+    ]
+    if spoilers is False:
+        rows = [r for r in rows if not r["spoiler"]]
+        tier_rows = [t for t in tier_rows if not t["spoiler"]]
     prog = st.progression()
     return {
         "game_phase": prog["game_phase"],
         "highest_complete_tier": prog["highest_complete_tier"],
-        "tiers": [{"tier": t, "done": d, "total": n} for t, (d, n) in sorted(tiers.items())],
+        "tiers": tier_rows,
         "milestones": rows,
     }
 
@@ -123,6 +156,7 @@ class MamRow(TypedDict):
     short: list[ItemAmount]
     unlocks: int
     blocked_by: list[str]
+    spoiler: bool
 
 
 class CapabilityRow(TypedDict):
@@ -132,6 +166,7 @@ class CapabilityRow(TypedDict):
     researched: bool
     schematic_name: str | None
     tree_shut: bool
+    spoiler: bool
 
 
 class MamResponse(TypedDict):
@@ -154,8 +189,16 @@ def _amounts(st: WorldState, pairs: Any) -> list[ItemAmount]:
 
 
 @router.get("/progress/mam", response_model=MamResponse)
-def progress_mam(request: Request, save: str | None = None, world: str | None = None) -> Any:
-    """Every MAM node with the ``mam_research`` status, bill and shortfall."""
+def progress_mam(
+    request: Request,
+    save: str | None = None,
+    world: str | None = None,
+    spoilers: bool | None = None,
+) -> Any:
+    """Every MAM node with the ``mam_research`` status, bill and shortfall.
+
+    A node or capability in a tree not opened yet is a spoiler.
+    """
     try:
         st = _state(request, save, world)
     except Exception as exc:
@@ -188,20 +231,26 @@ def progress_mam(request: Request, save: str | None = None, world: str | None = 
                 "short": _amounts(st, ((m.item, round(m.short_by, 1)) for m in rung.missing)),
                 "unlocks": len(st.unlocks.schematic_recipes(s)),
                 "blocked_by": list(rung.blocked_by),
+                "spoiler": status == "TREE SHUT",
             }
         )
 
     capabilities = []
     for name, cls in CAPABILITY_SCHEMATICS.items():
         schematic = st.game.schematics.get(cls)
+        shut = research.tree_locked(cls)
         capabilities.append(
             {
                 "capability": name,
                 "researched": st.has_capability(name),
                 "schematic_name": schematic.name if schematic else None,
-                "tree_shut": research.tree_locked(cls),
+                "tree_shut": shut,
+                "spoiler": shut,
             }
         )
+    if spoilers is False:
+        rows = [r for r in rows if not r["spoiler"]]
+        capabilities = [c for c in capabilities if not c["spoiler"]]
     return {"knows_trees": research.knows_trees, "capabilities": capabilities, "research": rows}
 
 
@@ -221,6 +270,7 @@ class PhaseRow(TypedDict):
     trust: str
     outstanding: list[HaveRow]
     complete: list[str]
+    spoiler: bool
 
 
 class PhaseResponse(TypedDict):
@@ -234,8 +284,16 @@ class PhaseResponse(TypedDict):
 
 
 @router.get("/progress/phase", response_model=PhaseResponse)
-def progress_phase(request: Request, save: str | None = None, world: str | None = None) -> Any:
-    """The Space Elevator record ``phase_requirements`` reads, joined to spendable stock."""
+def progress_phase(
+    request: Request,
+    save: str | None = None,
+    world: str | None = None,
+    spoilers: bool | None = None,
+) -> Any:
+    """The Space Elevator record ``phase_requirements`` reads, joined to spendable stock.
+
+    A phase numbered past the target phase is a spoiler.
+    """
     try:
         st = _state(request, save, world)
     except Exception as exc:
@@ -243,6 +301,7 @@ def progress_phase(request: Request, save: str | None = None, world: str | None 
 
     req = st.phase_requirements()
     stock = st.stock()
+    target = _phase_number(req["target_phase"])
     phases = []
     deliverable = None
     for row in req["phases"]:
@@ -267,8 +326,11 @@ def progress_phase(request: Request, save: str | None = None, world: str | None 
                 "trust": row["stale"],
                 "outstanding": items,
                 "complete": [st.game.item_name(i) for i in row["complete"]],
+                "spoiler": _phase_number(row["phase"]) > target,
             }
         )
+    if spoilers is False:
+        phases = [p for p in phases if not p["spoiler"]]
     return {
         "current_phase": req["current_phase"] or None,
         "target_phase": req["target_phase"] or None,
@@ -411,7 +473,8 @@ class SloopHolder(TypedDict):
 class SloopsResponse(TypedDict):
     """``amplifier_researched`` false means no sloop can go into a machine yet.
 
-    ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet.
+    ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet, and
+    ``amplifier_spoiler`` while it is both unresearched and in that shut tree.
     """
 
     measured: bool
@@ -423,13 +486,22 @@ class SloopsResponse(TypedDict):
     amplifier_researched: bool
     amplifier_research: str | None
     amplifier_tree_shut: bool
+    amplifier_spoiler: bool
     amplifier_cost: list[ItemAmount]
     holders: list[SloopHolder]
 
 
 @router.get("/progress/sloops", response_model=SloopsResponse)
-def progress_sloops(request: Request, save: str | None = None, world: str | None = None) -> Any:
-    """The ``somersloops`` budget: free, slotted and owned, and which machines hold them."""
+def progress_sloops(
+    request: Request,
+    save: str | None = None,
+    world: str | None = None,
+    spoilers: bool | None = None,
+) -> Any:
+    """The ``somersloops`` budget: free, slotted and owned, and which machines hold them.
+
+    With ``spoilers=0`` a spoiler amplifier research loses its name and bill.
+    """
     try:
         st = _state(request, save, world)
     except Exception as exc:
@@ -437,6 +509,9 @@ def progress_sloops(request: Request, save: str | None = None, world: str | None
 
     budget = st.sloop_budget()
     gate = st.research_gate("production_boost")
+    shut = st.research.tree_locked(CAPABILITY_SCHEMATICS["production_boost"])
+    spoiler = gate is not None and shut
+    hide = spoiler and spoilers is False
     at = _positions(st)
     return {
         "measured": budget["committed_measured"],
@@ -446,10 +521,11 @@ def progress_sloops(request: Request, save: str | None = None, world: str | None
         "mercer_spheres": float(budget["mercer_spheres"]),
         "by_place": [{"name": k, "amount": float(v)} for k, v in budget["by_place"].items()],
         "amplifier_researched": gate is None,
-        "amplifier_research": gate["schematic_name"] if gate else None,
-        "amplifier_tree_shut": st.research.tree_locked(CAPABILITY_SCHEMATICS["production_boost"]),
+        "amplifier_research": gate["schematic_name"] if gate and not hide else None,
+        "amplifier_tree_shut": shut,
+        "amplifier_spoiler": spoiler,
         "amplifier_cost": _amounts(st, ((r["item"], r["need"]) for r in gate["cost"]))
-        if gate
+        if gate and not hide
         else [],
         "holders": [
             {
