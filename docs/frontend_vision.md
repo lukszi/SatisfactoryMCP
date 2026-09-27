@@ -339,7 +339,7 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | Phase | Slice | Tools covered | New routes | Writes |
 |---|---|---|---|---|
 | 0 | Factories + Power panel (in progress) | `list_factories`, `power_report`, parts of `factory_map` | per step 0 | no |
-| 1 | **Shell:** rail, selection model, status strip, `as_of` on fetches | `world_summary`, `list_worlds` | none | no |
+| 1 | **Shell:** rail, selection model, status strip, `as_of` on fetches. **Built 2026-09-27** (§16) | `world_summary`, `list_worlds` | none | no |
 | 2 | **Factory detail:** aspects, health, floors | `factory_query`, `factory_health`, `factory_floors`, `factory_sites` | 2–3 | no |
 | 3 | **Inventory:** stock, containers, crates. **Built 2026-09-27** (§10) | `stock`, `storage`, `crates` | 1 | no |
 | 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
@@ -468,7 +468,7 @@ Evidence only: each row cites where the decision is written down.
    viewport stays in the fragment.
 3. More TypeScript, with only `tsc` over it. The Python tests pin the payloads, not the view.
 4. Principle 3's `as_of=` is not implemented, here or in the panel. The dashboard has the
-   same gap.
+   same gap. **Closed 2026-09-27** (§16).
 
 **Verdict: the case holds, as a view of the same page rather than a second page.** A
 `/dashboard` path would need a second Vite entry. That renames `app.js`, which
@@ -1272,3 +1272,60 @@ What holds at every width from 390 px up, and how the page keeps a keyboard user
   key and cancels a rename. A copyable selector in a popup takes Enter.
 - **Check:** every view at 390, 768 and 1440 px asserts `scrollWidth === innerWidth`, and a
   Tab walk through every view finds no stop without a visible ring.
+
+---
+
+## 16. Shell: rail, selection, status strip, `as_of` (2026-09-27)
+
+Roadmap phase 1. §2.1 drew the shell before the dashboard existed (§8); this is the shell as
+built on top of it.
+
+### 16.1 What was built
+
+- **Rail** (`rail.ts`, `#rail`): Map and every dashboard section in one vertical list, left of
+  both views from 900 px up. The current entry carries `aria-current="page"`. Each entry is a
+  `dashkit.link`, so its address is rebuilt on click and never carries a stale viewport.
+  The rail replaces the dashboard's own tab row at that width; the header's **Map | Dashboard**
+  stays as it was.
+- **Narrow widths (T6):** below 900 px the rail is hidden and the header's **Map |
+  Dashboard** plus the dashboard's tab row are the navigation, as before. Nothing scrolls
+  sideways at 390 px.
+- **Selection** (`selection.ts`): one selected thing, a factory, a circuit or a point. The
+  map sets it (a factory label click, a panel row, a map fly-to), the side panel follows it
+  (row highlight and the dashed outline, without flying), and the dashboard sets it when a
+  factory or circuit detail opens. A factory that disappears from the health reply clears it.
+- **Status strip** (`status.ts`, `#status`): one line under the header. It shows the
+  selection with **map** and **clear**, then the vitals, each a link into its section: need
+  action (toned as on the Overview), power problems, headroom now and affordable milestones.
+  It reads the same replies the Overview reads (`vitals()`, `readyMilestones()`), so it makes
+  no request of its own. Below 600 px it scrolls inside itself and drops the "selected" word.
+- **`as_of`:** every `/api/` GET accepts `?as_of=<token>` (`interfaces/web/pinning.py`, a
+  middleware in front of every route, using `domain/world/pin.py` as the MCP tools do). A
+  mismatch is a 409 with `{"error", "stale": true, "pin"}`: `error` is the page sentence,
+  `pin` the MCP refusal. The page holds the token `/api/summary` returns and sends it on
+  every `get()` except `/api/summary` and `/api/worlds`. It drops the token when a wave
+  refetches (a save event or a switch), because that wave is reading a new save. A 409 for
+  the token still held puts **save changed · refresh** in the status strip; refresh
+  re-reads the save.
+
+### 16.2 Decided here, smallest option
+
+- The strip sits under the header, not at the bottom as §2.1 drew it: the bottom already
+  holds the toasts, the trace card and, on phones, the panel's bottom sheet.
+- The selection is not written into the fragment. Links are built with the fragment of the
+  moment, so a stale `sel=` in an older link would undo a newer selection; the dashboard
+  address (`factories/<name>`, `power/<n>`) already deep-links the two kinds that matter.
+- A machine clicked on the map opens its popup and does not become the selection.
+- Writes keep their own checks: `as_of` in a request body (naming) and 409 conflicts are
+  untouched by the middleware, which only reads GET, HEAD and OPTIONS.
+
+### 16.3 Open
+
+- Should the selection chip offer more than **map**: trace supply, plan here, open in
+  dashboard as buttons (§2.3)?
+- Should a point or a machine be selectable from the map by a plain click, and should the
+  selection survive a reload through the fragment?
+- Should the rail open as a drawer on phones rather than hand over to the header and the tab
+  row?
+- The panel beside the map still shows only Factories and Power; §2.1's panel with every
+  rail section is not built. The rail sends the other sections to the dashboard.

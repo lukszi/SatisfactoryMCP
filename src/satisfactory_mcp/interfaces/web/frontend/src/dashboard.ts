@@ -18,6 +18,8 @@ import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
 import { circuitName } from "./powerview";
 import { dashParts } from "./nav";
+import { drawRail } from "./rail";
+import { select } from "./selection";
 import { W } from "./words";
 
 import type { FactoryHealthRow } from "./api-shapes";
@@ -32,7 +34,7 @@ type Tab =
   | "planner"
   | "settings";
 
-var TABS: [Tab, string][] = [
+export var TABS: [Tab, string][] = [
   ["overview", "Overview"],
   ["factories", "Factories"],
   ["power", "Power"],
@@ -250,6 +252,20 @@ function forgetVitals(): void {
   v.circuitsError = "";
 }
 
+function follow(tab: Tab, subject: string): void {
+  if (!subject) return;
+  var v = vitals();
+  if (tab === "factories" && v.health) {
+    var known = v.health.factories.some(function (r) {
+      return r.name === subject;
+    });
+    if (known) select({ kind: "factory", key: subject, label: subject });
+  } else if (tab === "power" && v.circuits) {
+    var row = v.circuits.circuits[+subject - 1];
+    if (row) select({ kind: "circuit", key: String(row.index), label: circuitName(row) });
+  }
+}
+
 function renderNav(tab: Tab): void {
   var nav = el("dash-nav");
   nav.textContent = "";
@@ -271,6 +287,7 @@ export function render(): void {
   }
   missed = false;
   var at = address();
+  follow(at.tab, at.subject);
   renderNav(at.tab);
   var body = el("dash-body");
   if (state.noSaves && SAVELESS.indexOf(at.tab) < 0) {
@@ -304,6 +321,7 @@ export function render(): void {
 function relink(): void {
   var on = !!state.dash;
   if (on) lastDash = state.dash;
+  drawRail(TABS, on ? address().tab : "");
   var views = el("views").querySelectorAll<HTMLAnchorElement>("[data-view]");
   Array.prototype.forEach.call(views, function (a: HTMLAnchorElement) {
     var dash = a.getAttribute("data-view") === "dash";

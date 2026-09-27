@@ -10,7 +10,7 @@
  * `regions.ts` is named below because /api/regions is the one fetch outside both waves.
  */
 
-import { get } from "./api";
+import { dropToken, get } from "./api";
 import { el } from "./dom";
 import { inFloorMode, leaveFloors, refilterFloors } from "./floors";
 import { clearPrefixed } from "./layers";
@@ -76,6 +76,7 @@ export function loadStatic(): void {
 }
 
 export function loadLive(): void {
+  dropToken();
   fetchersOf("live").forEach(run);
 }
 
@@ -98,6 +99,7 @@ function busy(on: boolean): void {
 
 export function reload(note?: string): void {
   state.epoch += 1;
+  dropToken();
   map.closePopup(); // an open card is a claim about the previous world/save
   // ...and so is an open floor view: a platform index is what ONE decomposition handed out,
   // and the ids on its bands name machines in the save being left.

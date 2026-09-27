@@ -35,6 +35,7 @@ import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
 import { wireSearch } from "./search";
 import { listen } from "./sse";
 import { BOOT, BOOT_GARBLED, garbledNote, state } from "./state";
+import { wireStatus } from "./status";
 import { loadBaseMap } from "./tiles";
 import { fail } from "./toast";
 import { listenForTraces } from "./trace";
@@ -132,6 +133,7 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
 listenForCopies();
 wireSearch();
 listenForTraces();
+wireStatus();
 if (BOOT_GARBLED.length) fail(garbledNote(BOOT_GARBLED));
 el("world").addEventListener("change", fitWorld);
 

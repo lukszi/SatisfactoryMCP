@@ -10,6 +10,7 @@
  * either way, because this is the reply that replaces the words the switch put there.
  */
 
+import { holdToken } from "./api";
 import { el } from "./dom";
 import { mw, phaseText } from "./format";
 import { loadOne } from "./load";
@@ -21,6 +22,7 @@ import { W } from "./words";
 import type { SummaryResponse } from "./api-shapes";
 
 function drawHeader(s: SummaryResponse): void {
+  holdToken(s.save_token);
   drawPlayer(s.player);
   var r = ratedSummary(s);
   var measured = readMeasured(r);
