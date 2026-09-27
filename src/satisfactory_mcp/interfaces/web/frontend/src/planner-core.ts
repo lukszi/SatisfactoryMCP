@@ -294,35 +294,77 @@ export function dropChip(id: number, retry: boolean): void {
   if (retry) chip.retry();
 }
 
+function baseFor(seen: number): number {
+  var head = bench.plan ? bench.plan.rev : seen;
+  for (var rev = seen + 1; rev <= head; rev++) {
+    if (!bench.own[rev]) return seen;
+  }
+  return head;
+}
+
+function onlyOwn(body: Refusal, base: number): boolean {
+  var conflicts = body.conflicts || [];
+  return (
+    !!body.outdated &&
+    !!body.state &&
+    conflicts.length > 0 &&
+    conflicts.every(function (c) {
+      return c.theirs_rev > base && !!bench.own[c.theirs_rev];
+    })
+  );
+}
+
 function write(
   path: "/api/plans/{key}/ops" | "/api/plans/{key}/args" | "/api/plans/{key}/undo",
   extra: Record<string, unknown>,
   settle: (reply: PushedResponse) => void,
-  conflict: (body: Refusal) => void
+  conflict: (body: Refusal) => void,
+  pinned?: number
 ): void {
+  var plan = bench.plan;
+  if (!plan) return;
   var key = bench.key;
-  inflight++;
-  changed();
-  queue(function () {
-    if (bench.key !== key || !bench.plan) return;
-    var body: Record<string, unknown> = { base_rev: bench.plan.rev, sav: sav() };
+  var name = plan.name;
+  var seen = pinned === undefined ? plan.rev : pinned;
+  var lost = function (why: string) {
+    fail("your change to “" + name + "” was not saved: " + why);
+  };
+  var attempt = function (base: number): Promise<void> {
+    var here = bench.key === key;
+    var body: Record<string, unknown> = { base_rev: base, sav: here ? sav() : "" };
     Object.keys(extra).forEach(function (k) {
       body[k] = extra[k];
     });
-    return push<PushedResponse, Refusal>(path, body, key)
-      .then(function (answer) {
-        if (bench.key !== key) return;
-        if (answer.conflict) conflict(answer.body);
-        else settle(answer.body);
-      })
+    return push<PushedResponse, Refusal>(path, body, key).then(function (answer) {
+      if (bench.key !== key) {
+        if (answer.conflict) lost(answer.body.error || "the server refused it");
+        return;
+      }
+      if (!answer.conflict) {
+        settle(answer.body);
+        return;
+      }
+      if (pinned === undefined && onlyOwn(answer.body, base)) {
+        adopt(answer.body.state!);
+        return attempt(answer.body.head!);
+      }
+      conflict(answer.body);
+    });
+  };
+  inflight++;
+  changed();
+  queue(function () {
+    var done = function () {
+      inflight--;
+      changed();
+    };
+    var start = bench.key === key && pinned === undefined ? baseFor(seen) : seen;
+    return attempt(start)
       .catch(function (error) {
-        refused(error);
-        changed();
+        if (bench.key === key) refused(error);
+        else lost(friendly(error));
       })
-      .then(function () {
-        inflight--;
-        changed();
-      });
+      .then(done, done);
   });
 }
 
@@ -344,7 +386,7 @@ export function gesture(ops: Op[]): void {
   );
 }
 
-export function applyArgs(args: Record<string, unknown>, fromEntry: string): void {
+export function applyArgs(args: Record<string, unknown>, fromEntry: string, base?: number): void {
   if (!bench.plan) return;
   bench.redo = [];
   var again = function () {
@@ -359,23 +401,26 @@ export function applyArgs(args: Record<string, unknown>, fromEntry: string): voi
     },
     function (body) {
       outdated(body, again);
-    }
+    },
+    base
   );
 }
 
-function undo(rev: number, ok: (by: number) => void, already: () => void): void {
+function undo(rev: number, ok: (by: number) => void, already: () => void, drop: () => void): void {
   write(
     "/api/plans/{key}/undo",
     { rev: rev },
     function (reply) {
       var by = landed(reply, "none");
       if (by) ok(by);
+      else drop();
     },
     function (body) {
       if (body.already_undone) {
         already();
         return;
       }
+      drop();
       if (body.outdated && body.state) {
         (body.since || []).forEach(strip);
         var why = (body.conflicts || [])
@@ -392,33 +437,54 @@ function undo(rev: number, ok: (by: number) => void, already: () => void): void 
   );
 }
 
+function without<T>(list: T[], item: T): void {
+  var at = list.lastIndexOf(item);
+  if (at >= 0) list.splice(at, 1);
+}
+
 export function undoLast(): void {
-  var target = bench.done.pop();
+  var target = bench.done[bench.done.length - 1];
   if (target === undefined) {
     note("nothing of yours to undo on this plan");
     return;
   }
+  var take = function () {
+    without(bench.done, target!);
+  };
   undo(
     target,
     function (by) {
+      take();
       bench.redo.push({ target: target!, by: by });
     },
-    undoLast
+    function () {
+      take();
+      undoLast();
+    },
+    take
   );
 }
 
 export function redoLast(): void {
-  var entry = bench.redo.pop();
+  var entry = bench.redo[bench.redo.length - 1];
   if (!entry) {
     note("nothing to redo");
     return;
   }
+  var take = function () {
+    without(bench.redo, entry!);
+  };
   undo(
     entry.by,
     function (by) {
+      take();
       bench.done.push(by);
     },
-    redoLast
+    function () {
+      take();
+      redoLast();
+    },
+    take
   );
 }
 
@@ -439,12 +505,21 @@ export function undoRev(rev: number): void {
       markUndone(rev);
       note("v" + rev + " is already undone");
       changed();
-    }
+    },
+    function () {}
   );
 }
 
 export function followHead(event: PlansEvent): void {
   if (event.key !== bench.key || !bench.plan || event.rev <= bench.plan.rev) return;
+  pull();
+}
+
+export function resyncHead(): void {
+  if (bench.plan) pull();
+}
+
+function pull(): void {
   var key = bench.key;
   queue(function () {
     if (bench.key !== key || !bench.plan) return;

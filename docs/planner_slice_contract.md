@@ -564,7 +564,7 @@ falling back to `client=""` on any `AttributeError`.
 | Tool | Rule |
 |---|---|
 | `plan_factory save_as=<new name>` | `create`. `base_rev` is ignored, with a note. The journal is not written (the `plans` event covers it) |
-| `plan_factory save_as=<existing>` | `base_rev` missing: refuse, `! plan "x" exists at v14: read it (list_plans name="x") and pass base_rev=14; nothing saved`. Present: `push_args` with `partial=False` of the merged request. Notes, factory, and a site from `site_at` go in as `extra` ops in the same commit. A stamp is passed. The reply ends with the merged note or the outdated text |
+| `plan_factory save_as=<existing>` | `base_rev` missing: refuse, `! plan "x" exists at v14: read it (list_plans name="x") and pass base_rev=14; nothing saved`. Present: `push_args` with `partial=False` of the merged request. When `plan=` recalls the same plan, that request is the plan at `base_rev` plus this call's overrides, never the head, so edits made since stay theirs. `<existing>` is the live name, else (with `base_rev`) the plan that had that name at `base_rev` or has it as key, so a rename since merges instead of creating a second plan; two such plans refuse and ask for the key. Notes, factory, and a site from `site_at` go in as `extra` ops in the same commit. A stamp is passed. The reply ends with the merged note or the outdated text |
 | `plan_factory` without `save_as` | journal `plan.solve` |
 | `rename_plan`, `forget_plan`, `site_plan` | `base_rev` required on the same refusal pattern. Ops: `rename` / `forget` / `site`. `site_plan clear=True` → `site value=null` |
 | `plan_log` | Without `undo`/`restore`: commits newest first, `limit` rows, `since` filter, as `describe_commit` lines plus the key and head. `undo=R` → `PlanLog.undo`. `restore=R` → `restore_to`. Both need `base_rev`. Finds forgotten plans too, so a forget can be undone |
@@ -697,7 +697,13 @@ class ActivityResponse(TypedDict): now: float; entries: list[ActivityRow]
 `watch.py` gains a **plan/journal tailer** polling every **0.5 s**. It stats each
 `plans/<world>/*/ops.jsonl` and `activity/<world>/*.jsonl` and reads only the new bytes
 (offsets kept in memory; at startup the offsets are the current sizes). The 3 s save poll is
-unchanged. `QUEUE_MAX` rises to 32.
+unchanged. `QUEUE_MAX` rises to 32. A subscriber whose queue overflows is cut: it gets
+nothing more, its stream ends once it has drained, and the browser reconnects. On any
+reconnect after a lost connection the page resyncs: it refetches what every event kind would
+have refetched, pulls the open plan's commits since its rev and adopts the head, and reads
+`GET /api/activity?since=<newest entry it heard>` through the same handler as the `activity`
+event (deduplicated by id). The replay of `latest` alone is one event per kind across all
+plans, so it cannot stand in for this.
 
 | Event | When | Data |
 |---|---|---|
@@ -774,7 +780,14 @@ palette tokens.
     and measured), before/after, red when negative, neither leading.
   - An infeasible head shows the headline and notes, with the last feasible result greyed
     and labelled `vN`, plus **[undo last change]**.
-- **Push flow:** `POST /api/plans/{key}/ops {base_rev: page rev, ops}`.
+- **Push flow:** `POST /api/plans/{key}/ops {base_rev, ops}`. `base_rev` is the rev the
+  user SAW when making the gesture, not the rev when the queued write runs. It is advanced to
+  the current rev only when every rev in between is this tab's own commit; otherwise the
+  commits in between go through M1. When a 409 lists only conflicts against this tab's own
+  commits after that base, the write is re-sent against the head it returned (the other
+  commits in between were already checked and do not clash). A queued write whose plan was
+  left is still sent, to that plan; if it is refused the toast names the plan. Every exit of a
+  write, including those, ends its "pushing…".
   - 200 → adopt `state`, set the rev, re-solve. If `others` is non-empty, show the chat strip
     for them.
   - 409 → adopt `state` (the head), re-solve, and put a **conflict chip** on each collided
@@ -787,8 +800,10 @@ palette tokens.
   throwing.
 - **Undo/redo:** Ctrl+Z (not while typing in a field) → `POST …/undo {base_rev, rev}` for
   this tab's newest own commit not yet undone. Ctrl+Shift+Z undoes that undo commit. The
-  [undo]/[redo] buttons do the same. The stack is in memory, per tab and per plan. On
-  `already_undone`, skip to the next.
+  [undo]/[redo] buttons do the same. The stack is in memory, per tab and per plan. An entry
+  leaves the stack only when the server answers: on success, on `already_undone` (then skip to
+  the next), on a no-op, or on an outdated 409 (the toast says why it cannot be undone). A 503
+  or a network failure leaves the stack as it was.
 - **Chat strip:** when commits by other actors land on the open plan, one line per commit
   (`v13 Claude Code: +banned Bolted Frame`) with **[undo]** each. It stays until dismissed or
   the plan is left.
@@ -807,7 +822,7 @@ palette tokens.
 
 | entry | follow | toasts | off |
 |---|---|---|---|
-| `plan.solve` | go to `dash=planner` (or stay on the open plan) and show the **from-chat card**: text, args summary, **[apply to this plan]** (only when a plan is open → `POST …/args {base_rev, args, from_entry: id}`), **[new plan from it]** (`POST /api/plans {name auto, args, from_entry}`), **[dismiss]** | toast with [open] | nothing |
+| `plan.solve` | go to `dash=planner` (or stay on the open plan) and show the **from-chat card**: text, args summary, **[apply to this plan]** (only when a plan is open → `POST …/args {base_rev, args, from_entry: id}`; `base_rev` is the entry's `rev` when chat solved from this plan, so edits made since merge or conflict under M1; otherwise the head, and the card says the apply replaces the whole request), **[new plan from it]** (`POST /api/plans {name auto, args, from_entry}`), **[dismiss]** | toast with [open] | nothing |
 | `plan.view` | open `dash=planner/<key>` | toast | nothing |
 
 - Following never moves the screen mid-gesture. It waits for the gesture to end.

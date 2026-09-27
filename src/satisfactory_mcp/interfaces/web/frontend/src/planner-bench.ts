@@ -356,11 +356,21 @@ export function renderCard(parent: HTMLElement): void {
   if (args) card.appendChild(make("p", "dash-note", summaryOf(args)));
   var acts = make("div", "dash-acts");
   if (bench.plan && args && !bench.gone) {
+    var from = entry.plan === bench.key && typeof entry.rev === "number" ? entry.rev : undefined;
+    if (from === undefined) {
+      card.appendChild(make("p", "dash-note", "chat did not solve from this plan: applying replaces its whole request"));
+    }
     acts.appendChild(
-      button("apply to this plan", "make this plan's arguments equal chat's request, as one new version", function () {
-        inbox.card = null;
-        applyArgs(args!, entry!.id);
-      })
+      button(
+        "apply to this plan",
+        from === undefined
+          ? "replace this plan's arguments with chat's request, as one new version"
+          : "apply what chat changed from v" + from + ", merged with edits made since",
+        function () {
+          inbox.card = null;
+          applyArgs(args!, entry!.id, from);
+        }
+      )
     );
   }
   if (args) {
