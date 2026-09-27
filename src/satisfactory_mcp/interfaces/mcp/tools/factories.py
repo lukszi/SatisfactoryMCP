@@ -540,24 +540,17 @@ def factory_query(
             keeps = brief(view.internal()[:5], "produced")
             chunks.append(f"## summary\n{head}\nmakes: {makes}\nneeds: {needs}\nkeeps: {keeps}")
         elif aspect == "balance":
-            rows = []
-            for item in sorted(view.flows, key=lambda k: -abs(view.net(k))):
-                f = view.flows[item]
-                net = view.net(item)
-                verdict = (
-                    "surplus" if net > 1e-6 else "needs feeding" if net < -1e-6 else "internal"
+            rows = [
+                (
+                    r["item"],
+                    render.num(r["made"]),
+                    render.num(r["used"]),
+                    f"{r['net']:+.1f}",
+                    "?" if r["measured_net"] is None else f"{r['measured_net']:+.1f}",
+                    r["verdict"],
                 )
-                readable = view.measurable(item, "produced") or view.measurable(item, "consumed")
-                rows.append(
-                    (
-                        item,
-                        render.num(f["produced"]),
-                        render.num(f["consumed"]),
-                        f"{net:+.1f}",
-                        f"{view.measured_net(item):+.1f}" if readable else "?",
-                        verdict,
-                    )
-                )
+                for r in view.balance()
+            ]
             chunks.append(
                 "## balance (items/min at saved clocks)\n"
                 + render.table(

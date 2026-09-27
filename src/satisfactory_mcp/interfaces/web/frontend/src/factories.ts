@@ -18,6 +18,7 @@ import { startTrace } from "./trace";
 import { counted, W } from "./words";
 import { factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, toMap } from "./dashboard";
 import { actionable, mixBar, mixOf } from "./overview";
+import { aspectTabs, factoryAddress, factoryDash, renderAspect } from "./factory-detail";
 
 import type { Column } from "./dashkit";
 import type {
@@ -794,9 +795,16 @@ function statesTable(parent: HTMLElement, row: FactoryHealthRow): void {
   parent.appendChild(section);
 }
 
-export function renderFactory(body: HTMLElement, name: string): void {
+export function renderFactory(body: HTMLElement, subject: string): void {
   settle();
   var v = vitals();
+  var at = factoryAddress(subject, function (whole) {
+    return !!v.health && v.health.factories.some(function (r) {
+      return r.name === whole;
+    });
+  });
+  var name = at.name;
+  var aspect = at.aspect;
   var row = v.health
     ? v.health.factories.filter(function (r) {
         return r.name === name;
@@ -805,9 +813,9 @@ export function renderFactory(body: HTMLElement, name: string): void {
   if (v.health && !row) {
     var now = renamedTo(name);
     if (now) {
-      history.replaceState(null, "", hashFor("factories/" + now));
-      state.dash = "factories/" + now;
-      renderFactory(body, now);
+      history.replaceState(null, "", hashFor(factoryDash(now, aspect)));
+      state.dash = factoryDash(now, aspect);
+      renderFactory(body, factoryDash(now, aspect).slice("factories/".length));
       return;
     }
   }
@@ -822,12 +830,12 @@ export function renderFactory(body: HTMLElement, name: string): void {
   head.appendChild(title);
   head.appendChild(
     renameButton(row.name, title, function (to) {
-      if (state.dash !== "factories/" + row!.name) {
+      if (state.dash !== factoryDash(row!.name, aspect)) {
         render();
         return;
       }
-      history.replaceState(null, "", hashFor("factories/" + to));
-      state.dash = "factories/" + to;
+      history.replaceState(null, "", hashFor(factoryDash(to, aspect)));
+      state.dash = factoryDash(to, aspect);
       render();
     })
   );
@@ -857,6 +865,11 @@ export function renderFactory(body: HTMLElement, name: string): void {
   );
   body.appendChild(head);
   if (shown) graphCard(body);
+  body.appendChild(aspectTabs(row.name, aspect));
+  if (aspect) {
+    renderAspect(body, row.name, aspect);
+    return;
+  }
   if (row.review) note(body, "label " + row.review + ": " + row.alive + " of " + row.anchors + " anchors still stand");
   var power = row.unwired + row.no_generator;
   var tiles = make("div", "dash-tiles");

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..spatial import geo
 
-__all__ = ["consumer_z", "infra_points", "sites"]
+__all__ = ["consumer_z", "infra_points", "selector", "sites"]
 
 
 def infra_points(records: list[dict]) -> list[tuple[float, float]]:
@@ -27,8 +27,22 @@ def consumer_z(
     return sum(zs) / len(zs) if zs else None
 
 
+def selector(centroid_cm: tuple[float, ...], diameter_m: float) -> str:
+    """The ``near:`` circle that covers a site: 0.6x its spread, never under 50 m.
+
+    Half the spread measurably clips members (432 of 461 on the reference world's main
+    site, against 438 at 0.6), since a set of diameter d needs a radius up to d/sqrt(3).
+    """
+    x_m, y_m = int(centroid_cm[0] / 100), int(centroid_cm[1] / 100)
+    return f"near:{x_m},{y_m}@{max(50, round(diameter_m * 0.6))}"
+
+
 def sites(records: list[dict], link_m: float = 300.0) -> list[dict]:
-    """Cluster built production buildings into named-by-content sites."""
+    """Cluster built production buildings into named-by-content sites.
+
+    ``instances`` holds each member's instance leaf, so a caller can say which sites a
+    given machine set stands in.
+    """
     placed = [r for r in records if r.get("pos")]
     points = [
         {"x": r["pos"][0], "y": r["pos"][1], "z": r["pos"][2], "kind": r["cls"], "rec": r}
@@ -48,6 +62,10 @@ def sites(records: list[dict], link_m: float = 300.0) -> list[dict]:
                 "buildings": counts,
                 "count": c.size,
                 "diameter_m": round(c.diameter_m),
+                "selector": selector((round(cx), round(cy)), round(c.diameter_m)),
+                "instances": [
+                    str(m["rec"].get("instance", "")).rsplit(".", 1)[-1] for m in c.members
+                ],
             }
         )
     out.sort(key=lambda s: -s["count"])

@@ -149,7 +149,7 @@ tool table.
 | `world_summary` | Status strip + World > Overview | none | vitals, last active schematic, problems | exists `/api/summary` (partial: add problems, warnings) |
 | `unlocked_recipes` | Recipes > Unlocked | alternates-only toggle | sortable table | **built** `/api/gamedata/unlocked` (§12) |
 | `power_report` | Power (step 0) | none | capacity vs draw, nameplate + measured, per generator kind | new (step 0 may add it) |
-| `factory_sites` | Factories > Sites | none | cluster list; map clusters | new (or fold into `/api/factories`) |
+| `factory_sites` | Factory detail > Sites (world list: open) | none | cluster list; map clusters | **built** `/api/factories/sites` (§17) |
 | `whereami` | Header "me" button; World > Here | radius slider | player marker + nearby list | exists (`/api/summary.player`) + new for the nearby list |
 | `list_regions` | World > Regions; region picker in every sources form | resource filter | list; region layer highlights | exists `/api/regions` (add resource filter) |
 | `describe_location` | Map click inspector | click point, radius | popup: region, elevation, nodes, conduits, buildings | exists `/api/inspect` (same default radius); add conduits/buildings counts |
@@ -186,7 +186,7 @@ tool table.
 | `search_recipes` | Recipes > Search | query, consumes, produces, part/building/manual/all, alternates only, events | census header + rows | **built** `/api/gamedata/recipes` (§12) |
 | `list_buildings` | Recipes > Buildings | building kind | table | new |
 | `factory_map` | Factories > Candidates / Slabs / Unlabelled | show candidates/named/slabs/unlabelled/all | lists; slab outlines on the map | exists `/api/factories`, `/api/structures` (partial) |
-| `factory_query` | Factory detail tabs | factory, aspects (summary, machines, recipes, buildings, balance, inputs, outputs, internal, power, nodes, links, issues) | one sub-tab per aspect | new |
+| `factory_query` | Factory detail tabs | factory, aspects (summary, machines, recipes, buildings, balance, inputs, outputs, internal, power, nodes, links, issues) | one sub-tab per aspect | **built** `/api/factories/aspects` (§17) |
 | `factory_health` | Factory detail > Health; Factories list colour | factory or all | per state counts, why stopped, evidence line | new (map colours exist via `/api/machines`) |
 | `propose_factories` | Dashboard > Factories > unnamed factories | none (default span, unnamed only) | candidates with products, region, suggested name; map outline | **built** `/api/factories/candidates` (§9) |
 | `select_machines` | Name/amend dialog, live preview | selector text or map lasso, split, expand | highlighted machines + count | new |
@@ -196,7 +196,7 @@ tool table.
 | `list_factories` | Factories list (step 0) | none | named factories, % still standing | exists `/api/factories` |
 | `forget_factory` | "undo" after naming in the dashboard | none | label gone | **built** `DELETE /api/labels/{name}`, W (§9); detail-view button still open |
 | `trace_upstream` | Machine popup, right-click inspector, factory detail, side panel > Trace | seed (selection), up/down | path drawn on the map; items, rates, flows in a card | **built** `/api/trace` (§13) |
-| `factory_floors` | Factory detail > Floors; floor picker | factory or platform | decks with machines; floor picker jumps | exists `/api/floors` |
+| `factory_floors` | Factory detail > Floors; floor picker | factory or platform | decks with machines; floor picker jumps | exists `/api/floors`; detail tab **built** (§17) |
 
 ### 3.2 Resources (4)
 
@@ -290,7 +290,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | Route (proposed) | Method | Domain source | Notes |
 |---|---|---|---|
 | `/api/power/report` | GET | `domain/power/report.py` | step 0 may already add it |
-| `/api/factories/{id}` + `?aspect=` | GET | `domain/factories/query.py` | one aspect per call |
+| `/api/factories/aspects?factory=` | GET | `domain/factories/query.py` | **built** (§17); every aspect in one call |
 | `/api/factories/{id}/health` | GET | `domain/factories/health.py` | `all` for the list colours |
 | `/api/trace` | GET | `domain/factories/trace.py` | seed, direction; **built** (§13) |
 | `/api/stock` | GET | `domain/world/inventory.py` | four piles and every place; **built** (§10) |
@@ -340,7 +340,7 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 |---|---|---|---|---|
 | 0 | Factories + Power panel (in progress) | `list_factories`, `power_report`, parts of `factory_map` | per step 0 | no |
 | 1 | **Shell:** rail, selection model, status strip, `as_of` on fetches. **Built 2026-09-27** (§16) | `world_summary`, `list_worlds` | none | no |
-| 2 | **Factory detail:** aspects, health, floors | `factory_query`, `factory_health`, `factory_floors`, `factory_sites` | 2–3 | no |
+| 2 | **Factory detail:** aspects, health, floors. **Built 2026-09-27** (§17) | `factory_query`, `factory_health`, `factory_floors`, `factory_sites` | 2 | no |
 | 3 | **Inventory:** stock, containers, crates. **Built 2026-09-27** (§10) | `stock`, `storage`, `crates` | 1 | no |
 | 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
 | 5 | **Recipes codex + search box**. **Built 2026-09-27** (§12; `list_buildings` still open) | 5 game-data tools, `unlocked_recipes` | 6 | no |
@@ -1329,3 +1329,49 @@ built on top of it.
   row?
 - The panel beside the map still shows only Factories and Power; §2.1's panel with every
   rail section is not built. The rail sends the other sections to the dashboard.
+
+---
+
+## 17. Factory detail (2026-09-27)
+
+Phase 2 of §6. The factory page gains level-2 tabs past its overview.
+
+### 17.1 What was built
+
+- **Address.** `factories/<name>/<aspect>`, one `dashkit.tabs2` strip under the title:
+  overview, flows, machines, power, nodes, links, floors, sites. A name may itself hold a
+  `/`, so the last segment counts as an aspect only when it is one of those ids and the whole
+  subject is not a factory name (`factoryAddress` in `factory-detail.ts`). Renaming keeps the
+  open tab.
+- **`GET /api/factories/aspects?factory=`** (`routers/factory_detail.py`). One
+  `query.build_view` pass, the one `factory_query` makes, sent as rows: summary numbers,
+  power, balance, machines, recipes, buildings, nodes, links and issues. The doc's earlier
+  `/api/factories/{id}?aspect=` became one call with every aspect, because the view computes
+  all of them together and a path parameter cannot carry a name holding `/`. The balance
+  rows come from `FactoryView.balance()`, which `factory_query` now renders too, so the two
+  agree on the verdict. Named factories only, like `/api/factories/graph`; other selectors
+  are refused with a 404.
+- **`GET /api/factories/sites?factory=`.** `factory_sites` as rows. Each site now carries its
+  members' instance leaves and its `near:` selector from `domain/world/sites.py`, so the tool
+  and the route build the selector in one place. With `?factory=` only the sites holding that
+  factory's machines are sent, each with `mine`, the count it holds.
+- **Floors** reuse `/api/floors?factory=label:<name>`. A 404 there (no platform under the
+  factory) is shown as an empty state, not an error.
+- **Map links.** Machines and nodes fly to a point (`pointButton`); a floor row opens floor
+  mode on that platform and band, the same address the map's floor picker writes; a site row
+  flies to and outlines a box of its spread; a link row opens the other factory's page.
+
+### 17.2 Limits and open questions
+
+- **Nameplate and measured, never blended**, as in `factory_query`. The flows tab has no
+  per-item "no monitor" column; the route sends `unmonitored_made` and `unmonitored_used` for
+  it.
+- **A floor's machine count is everything on that deck**, this factory's or another's on the
+  same slab.
+- **Open: a world-wide Sites list.** §3.1 placed `factory_sites` under Factories > Sites. The
+  route answers without `?factory=`, but no page lists every site yet.
+- **Open: proposals.** The tabs exist for named factories only. An unnamed cluster has the
+  graph and nothing else.
+- **Open: long machine lists.** A factory of several hundred machines renders every row;
+  there is no paging or grouping by recipe yet.
+

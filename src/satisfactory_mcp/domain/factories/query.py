@@ -140,6 +140,31 @@ class FactoryView:
         out = [(k, -self.net(k)) for k in self.flows]
         return sorted([(k, v) for k, v in out if v > tol], key=lambda kv: -kv[1])
 
+    def balance(self, tol: float = 1e-6) -> list[dict]:
+        """Every item, largest net first: made, used, both nets and the verdict.
+
+        ``measured_net`` is None where nothing readable touches the item, which is unknown
+        and not zero.
+        """
+        rows = []
+        for item in sorted(self.flows, key=lambda k: -abs(self.net(k))):
+            f = self.flows[item]
+            net = self.net(item)
+            readable = self.measurable(item, "produced") or self.measurable(item, "consumed")
+            rows.append(
+                {
+                    "item": item,
+                    "made": f["produced"],
+                    "used": f["consumed"],
+                    "net": net,
+                    "measured_net": self.measured_net(item) if readable else None,
+                    "verdict": (
+                        "surplus" if net > tol else "needs feeding" if net < -tol else "internal"
+                    ),
+                }
+            )
+        return rows
+
     def internal(self, tol: float = 1e-6) -> list[tuple[str, float]]:
         """Made and consumed within the set -- the mark of a self-contained line."""
         out = []
