@@ -363,6 +363,16 @@ def test_a_bare_solve_is_journalled_with_its_request(scratch, game):
 
 
 @pytest.mark.integration
+def test_a_recalled_solve_journals_the_plans_pinned_logistics_and_its_rev(scratch, game):
+    srv.plan_factory(save_as="probe", logistics_items=["Water"], **PROBE)
+    journal.set_writer("chat")
+    srv.plan_factory(plan="probe", sloops=1, limit=2)
+    (entry,) = journal.read(srv._state().world_id)
+    assert (entry["kind"], entry["rev"]) == ("plan.solve", 1)
+    assert entry["args"]["logistics_items"] == ["Water"] and entry["args"]["sloops"] == 1
+
+
+@pytest.mark.integration
 def test_a_recalled_plan_prints_its_version_and_journals_a_view(scratch, game):
     srv.plan_factory(save_as="probe", **PROBE)
     journal.set_writer("chat")

@@ -1064,6 +1064,9 @@ def plan_factory(
         )
     if not save_as:
         recalled = st.plans.find(plan) if plan else None
+        kept = logistics_items
+        if kept is None and recalled is not None:
+            kept = list(_log(st).state(recalled.key, recalled.rev).args.logistics_items)
         journal.append(
             st.world_id,
             "plan.solve",
@@ -1072,7 +1075,7 @@ def plan_factory(
             tool="plan_factory",
             plan=recalled.key if recalled is not None else None,
             rev=recalled.rev if recalled is not None else None,
-            args=_journal_args(plan_kwargs, logistics_items),
+            args=_journal_args(plan_kwargs, kept),
             text=_solve_text(plan_kwargs, report.prepared.failure is None, recalled),
         )
 
