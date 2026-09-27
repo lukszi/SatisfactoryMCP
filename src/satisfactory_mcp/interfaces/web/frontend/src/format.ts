@@ -39,7 +39,7 @@ export function phaseText(raw: string | null | undefined): string | null {
 }
 
 export function mw(value: number, options?: { signed?: boolean }): string {
-  var whole = Math.round(value) + 0;
+  var whole = (value < 0 ? -Math.round(-value) : Math.round(value)) + 0;
   return (options && options.signed && whole > 0 ? "+" : "") + count(whole) + " MW";
 }
 
