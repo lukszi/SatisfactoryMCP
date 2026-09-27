@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from ... import config
 from . import geo
 
-__all__ = ["OFF_MAP", "Label", "RegionMap", "load_regions"]
+__all__ = ["OFF_MAP", "Label", "RegionMap", "load_regions", "region_rows"]
 
 VOID = "."
 
@@ -208,6 +208,37 @@ class RegionMap:
                 if best is None or d < best[0]:
                     best = (d, px, py)
         return (cx, cy) if best is None else (best[1], best[2])
+
+
+def region_rows(table, rid: str | None, rows: list[dict] | None = None) -> list[dict]:
+    """One row per named region, busiest first: anchor (cm), direction, grid, area, nodes.
+
+    ``rows`` is the node pool counted, the whole table by default; with ``rid`` only that
+    resource counts and a region holding none of it is left out.
+    """
+    rm = load_regions()
+    pool = rows if rows is not None else table.nodes
+    if rid:
+        pool = [n for n in pool if n["resource"] == rid]
+    out = []
+    for name in rm.names():
+        info = rm.summary(name)
+        hits = rm.filter_nodes(pool, name)
+        if rid and not hits:
+            continue
+        ax, ay = info["anchor"] or info["centroid"]
+        out.append(
+            {
+                "name": name,
+                "direction": geo.direction_of(ax, ay),
+                "grid": geo.grid_cell(ax, ay),
+                "anchor": (ax, ay),
+                "area_km2": info["area_km2"],
+                "nodes": len(hits),
+            }
+        )
+    out.sort(key=lambda r: -r["nodes"])
+    return out
 
 
 #: Keyed by the file and its mtime, so a regenerated raster is picked up without a restart.

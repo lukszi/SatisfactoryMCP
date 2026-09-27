@@ -10,13 +10,26 @@ that renders is not always the caller that decides.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from ..spatial.origin import resolve_origin
 from ..world.state import WorldState
 from .table import CollectiblesUnreadable, CollectibleTable, load_collectibles
 
-__all__ = ["GENERATOR_COMMAND", "RETIRED_GROUPS", "CollectiblesView", "collect_view"]
+__all__ = [
+    "GENERATOR_COMMAND",
+    "LABELS",
+    "NEVER_SPOILER",
+    "RETIRED_GROUPS",
+    "CollectiblesView",
+    "census_rows",
+    "collect_view",
+    "found",
+    "is_spoiler",
+    "label",
+    "table_age",
+]
 
 #: What to run when the table is not there. Said in full, because "regenerate it" is not a
 #: command and the reader is an assistant relaying it to somebody at a prompt.
@@ -204,3 +217,89 @@ def collect_view(
     view.origin = origin
     view.where = where
     return view
+
+
+#: The page's and the tools' one word for each category.
+LABELS: dict[str, str] = {
+    "crashed_drop_pod": "drop pods",
+    "hard_drive": "hard drives",
+    "loot_cache": "loot caches",
+    "mercer_sphere": "mercer spheres",
+    "mercer_shrine": "mercer shrines",
+    "mushroom": "mushrooms",
+    "power_slug_blue": "blue power slugs",
+    "power_slug_yellow": "yellow power slugs",
+    "power_slug_purple": "purple power slugs",
+    "somersloop": "somersloops",
+    "tape_pickup": "tapes",
+    "customization_unlock_pickup": "customisation unlocks",
+}
+
+#: Categories that stand in plain sight, so seeing one spoils nothing.
+NEVER_SPOILER = frozenset({"crashed_drop_pod", "loot_cache"})
+
+
+def label(category: str) -> str:
+    return LABELS.get(category) or category.replace("_", " ")
+
+
+def is_spoiler(category: str, found_categories) -> bool:
+    return category not in NEVER_SPOILER and category not in found_categories
+
+
+def found(st, census: list[dict] | None = None) -> list[str]:
+    """Categories this save has collected at least one of."""
+    if census is not None:
+        return sorted(r["category"] for r in census if r["collected"])
+    table = st.collectibles
+    if table is None:
+        return []
+    return sorted({table.by_key[k]["category"] for k in st.destroyed_keys if k in table.by_key})
+
+
+def census_rows(st) -> list[dict]:
+    """The per-category census, each row carrying its label and its spoiler flag."""
+    rows = st.collectible_census()
+    have = set(found(st, rows))
+    return [
+        {**r, "label": label(r["category"]), "spoiler": is_spoiler(r["category"], have)}
+        for r in rows
+    ]
+
+
+_CL = re.compile(r"CL-(\d+)")
+
+
+def table_age(st) -> dict | None:
+    """The collectible table's age against this save; ``None`` without a table."""
+    table = st.collectibles
+    if table is None:
+        return None
+    match = _CL.search(table.build)
+    cut = int(match.group(1)) if match else None
+    build = st.header.get("build_version")
+    behind = isinstance(build, int) and cut is not None and build > cut
+    session = ((table.meta.get("source") or {}).get("status") or {}).get("session")
+    name = st.header.get("session_name")
+    matches = None if not session or not name else session == name
+    notes = []
+    if behind:
+        notes.append(
+            f"the map's placement table was cut from game build CL {cut} and this save is "
+            f"buildVersion {build}: a placement a later update moved or added is not in it"
+        )
+    if matches is False:
+        notes.append(
+            f"never streamed comes from the saves of {session!r}, not of this world, so it "
+            "says nothing about what this world has loaded"
+        )
+    return {
+        "table": "collectibles",
+        "behind": behind,
+        "gap": f"buildVersion {cut} -> {build}" if behind else None,
+        "moved": 0,
+        "unjoinable": 0,
+        "observed_from": session or None,
+        "observed_matches": matches,
+        "notes": notes,
+    }
