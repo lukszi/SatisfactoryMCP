@@ -7,7 +7,7 @@ with their hazards, and the degraded save-only answer is a name-prefix guess.
 
 from __future__ import annotations
 
-from ...domain.collectibles.service import GENERATOR_COMMAND, CollectiblesView
+from ...domain.collectibles.service import GENERATOR_COMMAND, CollectiblesView, census_rows
 from ...domain.spatial import geo, maplink
 from . import primitives as render
 
@@ -185,7 +185,7 @@ def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
     stays whole-world.
     """
     removed, table, group = view.removed, view.table, view.group
-    census = [r for r in removed["census"] if group is None or r["category"] == group]
+    census = [r for r in census_rows(st) if group is None or r["category"] == group]
     extra = [(key, head) for key, head in _CONDITIONAL_COLUMNS if any(r[key] for r in census)]
     rows = [
         (

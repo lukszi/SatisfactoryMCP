@@ -23,11 +23,16 @@ from ...domain.world.state import WorldState
 __all__ = [
     "ActorBody",
     "Biomass",
+    "CollectibleRow",
+    "FoundField",
     "Region",
+    "TableAge",
     "_actor_json",
     "_fail",
+    "_field_json",
     "_label_json",
     "_m",
+    "_pickup_json",
     "_resource_name",
     "_state",
     "_xyz",
@@ -50,6 +55,119 @@ class Region(TypedDict):
     accuracy_m: int
     certain: bool
     text: str
+
+
+class TableAge(TypedDict):
+    """Whether a shipped map table is older than the save; built by the domain's ``table_age``.
+
+    ``moved`` and ``unjoinable`` count rows in the reply they travel with (nodes only);
+    ``observed_from``/``observed_matches`` are the collectible table's (null for nodes).
+    """
+
+    table: Literal["nodes", "collectibles"]
+    behind: bool
+    gap: str | None
+    moved: int
+    unjoinable: int
+    observed_from: str | None
+    observed_matches: bool | None
+    notes: list[str]
+
+
+class CollectibleRow(TypedDict):
+    """One map placement, and what this save says about it.
+
+    Here because ``/api/collectibles`` and ``/api/inspect`` both send placements. The three
+    coordinates come off the generated placement table and are never null.
+
+    ``observed`` is the placement table's scan of every save on disk rather than of the
+    loaded one, and it is null both for a row this save has collected and for a state this
+    build does not know. ``distance_m`` is set only where an origin was resolved.
+
+    ``looted`` is a pod's own ``mHasBeenLooted``, and null means one thing: no loot flag was
+    read for this placement. Only ``crashed_drop_pod`` writes one, and only a save that had
+    the pod loaded records it, so ``looted`` is non-null exactly on a pod whose ``observed``
+    is ``"standing"``. **Null is never "not looted"** -- that is ``false``.
+
+    ``spoiler`` is true for a category this save has never collected one of; pods and loot
+    caches never are.
+    """
+
+    category: str
+    name: str
+    x_m: float
+    y_m: float
+    z_m: float
+    collected: bool
+    observed: str | None
+    looted: bool | None
+    distance_m: float | None
+    spoiler: bool
+
+
+def _pickup_json(row: dict, spoiler: bool) -> dict:
+    return {
+        "category": row["category"],
+        "name": row["name"],
+        **_xyz(row["pos"]),
+        "collected": row["collected"],
+        "observed": row["observed"],
+        "looted": row["looted"],
+        "distance_m": round(row["distance_m"], 1) if row.get("distance_m") is not None else None,
+        "spoiler": spoiler,
+    }
+
+
+class FoundField(TypedDict):
+    """A cluster of nodes within 200 m of each other; ``key`` is stable across saves.
+
+    ``free`` is untapped and reachable capacity; ``locked`` says some member no unlocked
+    extractor can work, ``spoiler`` that none can. ``distance_m`` is to the nearest member
+    and is null where nothing was measured from.
+    """
+
+    key: str
+    selector: str
+    members: list[str]
+    region: str | None
+    grid: str
+    direction: str
+    x_m: float
+    y_m: float
+    bbox_m: tuple[float, float, float, float]
+    size: int
+    purities: dict[str, int]
+    resources: list[str]
+    total: float
+    free: float
+    spread_m: float
+    locked: bool
+    distance_m: float | None
+    spoiler: bool
+
+
+def _field_json(f: Any, game: GameData | None) -> FoundField:
+    x0, y0, x1, y1 = f.bbox
+    return {
+        "key": f.key,
+        "selector": f.selector,
+        "members": [str(m["instance"]).rsplit(".", 1)[-1] for m in f.members],
+        "region": f.region,
+        "grid": f.grid,
+        "direction": f.direction,
+        "x_m": _m(f.centroid[0]),
+        "y_m": _m(f.centroid[1]),
+        "bbox_m": (_m(x0), _m(y0), _m(x1), _m(y1)),
+        "size": f.size,
+        "purities": dict(f.purities),
+        "resources": [_resource_name(game, r) for r in f.resources],
+        "total": round(f.total, 2),
+        "free": round(f.free, 2),
+        "spread_m": round(f.diameter_m, 1),
+        "locked": f.locked,
+        "distance_m": None if f.distance_m is None else round(f.distance_m, 1),
+        "spoiler": f.spoiler,
+    }
 
 
 class ActorBody(TypedDict):

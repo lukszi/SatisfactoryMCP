@@ -16,6 +16,7 @@ __all__ = [
     "NodeTable",
     "TableSkew",
     "blocking_buildings",
+    "drifted",
     "identity_notes",
     "load_nodes",
     "occupancy",
@@ -23,6 +24,7 @@ __all__ = [
     "skew_for_save",
     "skew_from_meta",
     "skew_notes",
+    "table_age",
 ]
 
 #: Extractor class -> what it can tap. A well satellite needs a Well Extractor AND
@@ -314,7 +316,7 @@ def skew_from_meta(meta: dict, header: dict | None) -> TableSkew | None:
 
 def skew_for_save(header: dict | None, table: NodeTable | None = None) -> TableSkew | None:
     """``skew_from_meta`` against the shipped table. ``None`` when there is nothing to say."""
-    return skew_from_meta((table or load_nodes()).meta, header)
+    return skew_from_meta((table if table is not None else load_nodes()).meta, header)
 
 
 def position_notes(
@@ -405,6 +407,34 @@ def skew_notes(
     return position_notes(skew, instances, name_limit=name_limit) + identity_notes(skew, instances)
 
 
+def drifted(skew: TableSkew | None, instances: Iterable[str] | None = None) -> set[str]:
+    """Leaf names of the rows in ``instances`` whose position or name the newer build moved."""
+    if skew is None:
+        return set()
+    s = skew.scope(instances)
+    return {_short(i) for i in s.moved_cm} | {_short(i) for i in s.unjoinable}
+
+
+def table_age(
+    header: dict | None, table: NodeTable | None = None, instances: Iterable[str] | None = None
+) -> dict | None:
+    """The node table's age against this save, scoped to ``instances``; ``None`` when current."""
+    skew = skew_for_save(header, table)
+    if skew is None:
+        return None
+    s = skew.scope(instances)
+    return {
+        "table": "nodes",
+        "behind": True,
+        "gap": skew.gap,
+        "moved": len(s.moved_cm),
+        "unjoinable": len(s.unjoinable),
+        "observed_from": None,
+        "observed_matches": None,
+        "notes": skew_notes(skew, instances),
+    }
+
+
 def node_rate(node: dict, game: GameData, extractor_cls: str | None = None) -> float:
     """Extraction rate for one node at 100% clock, in items/min or m3/min.
 
@@ -412,7 +442,7 @@ def node_rate(node: dict, game: GameData, extractor_cls: str | None = None) -> f
     no extractor -- they are consumed by a Geothermal Generator instead.
     """
     kind = node["kind"]
-    if kind == "geyser":
+    if kind == "geyser" or game is None:
         return 0.0
     candidates = (extractor_cls,) if extractor_cls else EXTRACTOR_FOR_KIND.get(kind, ())
     best = 0.0

@@ -36,8 +36,8 @@ plan_factory(objective="max_mw", target_item=None, sources=[...],
      + a logistics table of `limit` flows, plus any logistics_items pinned
 
 search_resource_nodes(sources=[...], resource=None, purity=None, kind=None,
-                      only_free=False, show="fields"|"nodes"|"nearest", near=None,
-                      limit=25, offset=0)
+                      only_free=False, status="free"|"tapped"|"all"|None,
+                      show="fields"|"nodes"|"nearest", near=None, limit=25, offset=0)
   -> per-field clusters (region, grid, centre, purity mix, total/free, spread)
      or per-node rows whose ids feed straight back in as node: selectors
 
@@ -344,11 +344,14 @@ must report a bad request identically. There is also a test that `prepare` works
 MCP layer at all, which is the point of the extraction — a script or a batch planner gets
 the same guards.
 
-**Not everything was extracted, deliberately.** `search_resource_nodes` (177 lines) and
-`factory_query` (185) are long but their length is filtering and table-building against a
-domain call that already exists; there is no second copy to drift from. Extracting those
-would add indirection and remove nothing. The rule applied was: extract where logic is
-*duplicated* or *unreachable without the MCP layer*, not wherever a function is long.
+**Not everything was extracted, deliberately.** `factory_query` (185 lines) is long but its
+length is filtering and table-building against a domain call that already exists; there is
+no second copy to drift from. The rule applied was: extract where logic is *duplicated* or
+*unreachable without the MCP layer*, not wherever a function is long. `search_resource_nodes`
+met the second half of that rule once the World page needed the same answer: its selection,
+status, totals and fields are `domain/spatial/finder.py` now, beside `rank`, `place.here`,
+`place.describe`, `conduits.search` and `regions.region_rows`, and each spatial tool is that
+call plus its text (frontend_vision.md §18).
 
 ### 10.1f `search_conduits` — belts and pipes become queryable text
 
@@ -360,9 +363,12 @@ could not look.
 
 ```
 search_conduits(near="x,y"|"me"|<factory>, radius_m=250, to=None, to_radius_m=None,
-                conduit_kind="belt"|"pipe"|"all"|None, limit=12, offset=0)
+                conduit_kind="belt"|"pipe"|"all"|None, show="runs"|"networks",
+                network=None, limit=12, offset=0)
   -> per-run rows: id (chain:<n> / pipe:<row>), kind+tier, drawn length, both ends
      (position + what stands there where known), elevation span, carries, connects
+     network=<id> lists every pipe of one fluid network (ids from show="networks"),
+     whatever the radius
 ```
 
 Decisions that took measurement:
@@ -618,7 +624,9 @@ oldest first.
 **`ui_context`** reads the page's focus file (the web group's `focus.read`, contract §9) and the
 logs, and answers in one block: open or closed by heartbeat age, world, whether the page reads
 the same save token as this session, the focused view, plan and version (with the head when
-the page is behind), tab and selection, the follow setting, then *since you last looked*: every
+the page is behind), tab and selection -- with the selection's selector after its label,
+`selected: node "Iron Ore, pure" (node:BP_...)`, so chat can resolve "the selected node" --,
+the follow setting, then *since you last looked*: every
 plan version and journal entry by someone else since this process's last call. The cursor is
 per process and in memory. The first call shows the last five of each; the process's own
 commits and entries are left out by pid. Plans past eight, versions past six per plan and

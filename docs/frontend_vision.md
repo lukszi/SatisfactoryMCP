@@ -150,13 +150,13 @@ tool table.
 | `unlocked_recipes` | Recipes > Unlocked | alternates-only toggle | sortable table | **built** `/api/gamedata/unlocked` (§12) |
 | `power_report` | Power (step 0) | none | capacity vs draw, nameplate + measured, per generator kind | new (step 0 may add it) |
 | `factory_sites` | Factory detail > Sites (world list: open) | none | cluster list; map clusters | **built** `/api/factories/sites` (§17) |
-| `whereami` | Header "me" button; World > Here | radius slider | player marker + nearby list | exists (`/api/summary.player`) + new for the nearby list |
-| `list_regions` | World > Regions; region picker in every sources form | resource filter | list; region layer highlights | exists `/api/regions` (add resource filter) |
-| `describe_location` | Map click inspector | click point, radius | popup: region, elevation, nodes, conduits, buildings | exists `/api/inspect` (same default radius); add conduits/buildings counts |
-| `search_conduits` | World > Conduits; context menu "conduits here" | near (click), radius, to (second click), belt/pipe, runs/networks | run list; runs highlighted on the map | new (geometry exists in `/api/belts`, `/api/pipes`) |
-| `search_resource_nodes` | World > Nodes | sources builder, resource, purity, kind, free only, view fields/nodes/nearest, near | field clusters or node rows; map filters to the result | partial `/api/nodes`; new for fields and nearest |
-| `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick | exists (fragment); the tool's local link follows the configured port (§13) |
-| `rank_build_sites` | Planner > Site > "where to mine X"; World > Nodes | resource, sources | ranked fields with raw components; numbered pins on map | new |
+| `whereami` | World > Here (§18) | radius | position, region, grid, save age, nodes within the radius | **built** `/api/world/here` (§18) |
+| `list_regions` | World > Regions; region picker in every sources form | resource filter | list; region layer highlights | **built** `/api/world/regions` (§18); `/api/regions` stays the painted grid |
+| `describe_location` | Map click inspector | click point, radius | popup: region, elevation, grid, nearest node, fields, conduits, pickups | **built** `/api/inspect` (`place.describe`, §18) |
+| `search_conduits` | World > Conduits; inspector "conduits here" | near, radius, to, belt/pipe, runs/networks, network | run list; runs drawn in the finder pane | **built** `/api/world/conduits` (§18) |
+| `search_resource_nodes` | World > Nodes and Fields | sources, resource, purity, kind, status free/tapped/all, view fields/nodes/nearest, near | field clusters or node rows; finder pane | **built** `/api/world/nodes` (§18); `/api/nodes` stays the layer |
+| `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick; `show=node:`/`chain:`/`pipe:` ring the place | exists (fragment); the tool's local link follows the configured port (§13) and carries `show=` (§18) |
+| `rank_build_sites` | World > Fields, **rank** toggle | resource, sources | ranked fields with raw components | **built** `/api/world/sites` (§18) |
 | `list_plans` | Planner > Plans list | name filter | table: sited, world moved, field moved | exists `/api/plans` (siting only) + new for status |
 | `forget_plan` | Plans list row menu | confirm | row gone | new, W |
 | `rename_plan` | Plans list row menu | text | row renamed | new, W |
@@ -177,7 +177,7 @@ tool table.
 | `somersloops` | Power > Sloops | none | held / slotted / owned; where slotted | **built** `/api/progress/sloops`, Progress > Somersloops (§11) |
 | `mam_research` | Progress > MAM | show todo/affordable/all, query | tree or table with cost, have, affordable | **built** `/api/progress/mam` (§11) |
 | `milestones` | Progress > Milestones | show, tier, query | per tier cost / have / short / grants | **built** `/api/progress/milestones` (§8, §11) |
-| `collected_from_world` | World > Collectibles | group, show census/collected/remaining/nearest, near | census + list; pickups layer | exists `/api/collectibles` |
+| `collected_from_world` | World > Pickups | group, show census/collected/remaining/nearest, near | census + list; pickups layer | **built** `/api/collectibles` + census, spoiler flags (§18) |
 | `list_pending_hard_drive_choices` | Progress > Hard drives | none | per drive: two options, rerolls, recipes granted | **built** `/api/progress/harddrives` (§11) |
 | `advise_hard_drive_pick` | Progress > Hard drives > "rank options" | drive, sources | options by marginal value | new (slow: counterfactual LPs) |
 | `search_items` | Search box; Recipes > Items | query | list: form, energy, sink points | **built** `/api/gamedata/items`, `/api/search` (§12) |
@@ -344,7 +344,7 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 3 | **Inventory:** stock, containers, crates. **Built 2026-09-27** (§10) | `stock`, `storage`, `crates` | 1 | no |
 | 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
 | 5 | **Recipes codex + search box**. **Built 2026-09-27** (§12; `list_buildings` still open) | 5 game-data tools, `unlocked_recipes` | 6 | no |
-| 6 | **World finders:** nodes, fields, conduits, collectibles, whereami, inspector upgrade | 7 spatial tools, `collected_from_world` | 3 | no |
+| 6 | **World finders:** nodes, fields, conduits, collectibles, whereami, inspector upgrade. **Backend built 2026-09-27** (§18) | 7 spatial tools, `collected_from_world` | 5 + 3 changed | no |
 | 7 | **Trace:** upstream/downstream drawn on the map — **built** (§13) | `trace_upstream` | 1 | no |
 | 8 | **Planner (stateless):** solve, bill, compare, byproducts | 4 planning tools | 4 POST | no |
 | 9 | **Write guard + Plans:** save, rename, forget, site by dragging | 4 plan tools | CRUD | **yes** |
@@ -1405,4 +1405,67 @@ Phase 2 of §6. The factory page gains level-2 tabs past its overview.
   graph and nothing else.
 - **Open: long machine lists.** A factory of several hundred machines renders every row;
   there is no paging or grouping by recipe yet.
+
+---
+
+## 18. World finders (2026-09-27)
+
+Phase 6 of §6. The contract is [world-finders_contract.md](world-finders_contract.md); this
+section records what the backend built and what it decided on the way.
+
+### 18.1 What was built
+
+- **One domain function per question** (§5.1). `domain/spatial/finder.py` holds the node
+  search (`find_nodes`: selection, status, distance, totals, notes, water block), the fields
+  (`fields`) and the site ranking (`rank`, `site_view`). `domain/spatial/place.py` holds
+  `here` and `describe`. `domain/world/conduits.py` gained `search` and `networks`,
+  `domain/spatial/regions.py` `region_rows`, `domain/spatial/nodes.py` `table_age` and
+  `drifted`, and `domain/collectibles/service.py` `census_rows`, `found`, `is_spoiler`,
+  `label`/`LABELS` and `table_age`. Each tool body is now that call plus its text; the tool
+  text is byte-identical to before on the fixture world except where the contract adds a
+  line (§18.2).
+- **Routes** under `/api/world/` in `routers/finders.py`: `here`, `nodes`, `sites`,
+  `conduits`, `regions`. `/api/inspect` gained `radius_m`, `grid`, `direction`, `conduits`,
+  `fields`, `pickups` and `stale`; `/api/nodes` gained `spoiler`; `/api/collectibles`
+  gained `spoilers`, `spoiler` per row, `census`, `found`, `hidden_spoilers` and `stale`.
+  `tests/test_world_parity.py` holds each route against its tool.
+- **Tool changes.** `search_resource_nodes` takes `status` (free, tapped, all);
+  `search_conduits` takes `network`; `describe_location` prints `nearest_node`, `fields` and
+  `pickups`; `show_on_map` writes `show=node:<leaf>`, `chain:<n>` or `pipe:<n>` into the
+  local link; `ui_context` prints the selection's `ref` after its label.
+
+### 18.2 Decided here, smallest option
+
+- **Spoilers are applied before counting.** `spoilers=0` on `/api/world/nodes` drops locked
+  nodes before the totals, the notes and the fields are made, so a field is clustered from
+  the nodes on screen and the "excluded from free" note does not name locked capacity.
+  `hidden_spoilers` counts nodes there and on `/api/world/regions`, and counts categories on
+  `/api/collectibles` (the page's line is "N kinds not found yet are hidden").
+- **A node is a spoiler when it is locked**: untapped and unworkable with what this world
+  has unlocked. `/api/nodes` uses the same rule, so a node an extractor already stands on is
+  never hidden. With no readable save nothing is a spoiler.
+- **A field's `distance_m` is to its nearest member**, not its centre, so "fields within
+  500 m" in the inspector means a member within 500 m.
+- **`network=` ignores the radii** and lists every pipe of that network, longest first, with
+  distances still measured from `near`. `run=` does the same for one run.
+- **The collectible table's age** compares the save's `build_version` with the `CL-<n>` of
+  the table's `game_build`; `observed_from` is the session the generator read.
+- **Schema names.** `SiteRow` and `SitesResponse` were taken by `/api/factories/sites`, so
+  the ranking's shapes are `SiteRankRow` and `SiteRankResponse`. `CollectibleRow` and
+  `FoundField` moved to `serial.py`, since `/api/inspect` sends them too.
+- **A geyser search no longer raises.** `show=nodes kind=geyser` hit a `KeyError` on the
+  geyser's missing item; the unit now falls back to `/min`.
+
+### 18.3 Measured
+
+On the reference save (Han Solo), in-process, warm, median of 7: `/api/world/here` 3 ms,
+`/api/world/nodes` 8 ms and 281 kB for every node, fields view 57 ms, `/api/world/sites`
+107 ms, `/api/world/conduits` 6 ms, `/api/world/regions` 10 ms, `/api/inspect` 29 ms,
+`/api/nodes` 6 ms and 258 kB (+4%), `/api/collectibles?mode=remaining` 23-32 ms and 637 kB
+(+10%). No cache was added.
+
+### 18.4 Open
+
+The contract's §17 questions stand. The page (World section, finder card, inspector
+actions) is the frontend half of this phase.
 
