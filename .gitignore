@@ -3,7 +3,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
-uv.lock
 
 # Agent worktrees: git repos of their own, never part of this one.
 .claude/worktrees/
