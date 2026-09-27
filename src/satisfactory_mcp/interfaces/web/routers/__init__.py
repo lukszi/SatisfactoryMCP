@@ -28,6 +28,7 @@ from . import (
     power,
     regions,
     routes_layer,
+    stock,
     storage,
     tiles,
     world,
@@ -60,4 +61,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     grid.router,
     progress.router,
     naming.router,
+    stock.router,
 )

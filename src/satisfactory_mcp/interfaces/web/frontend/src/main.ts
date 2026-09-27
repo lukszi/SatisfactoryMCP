@@ -51,6 +51,7 @@ import { loadWorlds } from "./worlds";
 import "./crates";
 import "./dashboard";
 import "./header";
+import "./inventory";
 import "./labels";
 import "./markers";
 import "./panel";

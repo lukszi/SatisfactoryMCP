@@ -1703,3 +1703,34 @@ a.dash-where:hover {
   font-size: 10px;
   text-anchor: middle;
 }
+
+.inv-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+}
+
+.inv-fill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inv-fill .dash-hbar {
+  flex: 1;
+}
+
+.inv-pct {
+  min-width: 34px;
+  text-align: right;
+}
+
+.inv-kind {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.inv-kind + .dash-toggle {
+  margin-left: 10px;
+}

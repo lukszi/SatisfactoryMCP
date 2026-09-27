@@ -946,6 +946,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock
+         * @description Every item held, split into piles, and every place holding something, biggest first.
+         */
+        get: operations["stock_api_stock_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2117,6 +2137,15 @@ export interface components {
             /** Directed */
             directed: number;
         };
+        /** PlaceItem */
+        PlaceItem: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: number;
+        };
         /**
          * PlacementRow
          * @description A machine, an extractor or a generator: one row shape, three layers.
@@ -2526,6 +2555,104 @@ export interface components {
             state: string;
             /** Count */
             count: number;
+        };
+        /** StockCensus */
+        StockCensus: {
+            /** Containers */
+            containers: number;
+            /** Solid */
+            solid: number;
+            /** Fluid */
+            fluid: number;
+            /** Filled */
+            filled: number;
+            /** Crates */
+            crates: number;
+            /** Deaths */
+            deaths: number;
+        };
+        /**
+         * StockPile
+         * @description One item's piles. ``spendable`` is carried + storage + depot; fluids are m3.
+         */
+        StockPile: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Fluid */
+            fluid: boolean;
+            /** Spendable */
+            spendable: number;
+            /** Carried */
+            carried: number;
+            /** Storage */
+            storage: number;
+            /** Depot */
+            depot: number;
+            /** Buffers */
+            buffers: number;
+            /** Crates */
+            crates: number;
+        };
+        /**
+         * StockPlace
+         * @description A container, fluid buffer or crate. ``source`` is ``storage`` or ``crate``.
+         */
+        StockPlace: {
+            /** Source */
+            source: string;
+            /** Kind */
+            kind: string;
+            /** Instance Leaf */
+            instance_leaf: string;
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+            region: components["schemas"]["Region"] | null;
+            /** Distance M */
+            distance_m: number | null;
+            /** Items */
+            items: components["schemas"]["PlaceItem"][];
+            /** Total */
+            total: number;
+            /** Slots */
+            slots: number | null;
+            /** Slots Used */
+            slots_used: number | null;
+            /** Fill */
+            fill: number | null;
+            /** Capacity M3 */
+            capacity_m3: number | null;
+            /** Crate Kind */
+            crate_kind: string | null;
+            /** Crate Kind Text */
+            crate_kind_text: string | null;
+        };
+        /** StockPlayer */
+        StockPlayer: {
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+        };
+        /** StockResponse */
+        StockResponse: {
+            /** Items */
+            items: components["schemas"]["StockPile"][];
+            /** Places */
+            places: components["schemas"]["StockPlace"][];
+            census: components["schemas"]["StockCensus"];
+            player: components["schemas"]["StockPlayer"];
         };
         /**
          * StorageFluid
@@ -3839,6 +3966,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_api_stock_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockResponse"];
                 };
             };
             /** @description Validation Error */
