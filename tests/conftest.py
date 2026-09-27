@@ -10,6 +10,7 @@ from satisfactory_mcp import config
 from satisfactory_mcp.core.gamedata.loader import load_docs
 from satisfactory_mcp.core.gamedata.normalize import normalize
 from satisfactory_mcp.core.saveio.projection import SaveError
+from satisfactory_mcp.domain.planning import journal
 from satisfactory_mcp.domain.world.state import WorldState
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -124,6 +125,12 @@ def _docs_available() -> bool:
 requires_docs = pytest.mark.skipif(
     not _docs_available(), reason="needs the game install (set SATISFACTORY_DOCS)"
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_journal_writer(monkeypatch):
+    monkeypatch.setattr(journal, "_writer", "")
+    monkeypatch.setattr(journal, "_seq", {})
 
 
 @pytest.fixture(scope="session")

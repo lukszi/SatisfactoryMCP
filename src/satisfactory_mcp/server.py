@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from .domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from .domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
+from .domain.planning import journal
 from .interfaces.mcp import tools as _tools
 from .interfaces.mcp.app import (
     Limit,
@@ -68,9 +69,11 @@ from .interfaces.mcp.tools.planning import (
     list_plans,
     plan_factory,
     plan_layout,
+    plan_log,
     rank_unlocks,
     rename_plan,
     site_plan,
+    ui_context,
 )
 from .interfaces.mcp.tools.progression import (
     collected_from_world,
@@ -143,6 +146,7 @@ __all__ = [
     "pick_hard_drive",
     "plan_factory",
     "plan_layout",
+    "plan_log",
     "plan_power_plant",
     "power_report",
     "power_shards",
@@ -163,6 +167,7 @@ __all__ = [
     "stock",
     "storage",
     "trace_upstream",
+    "ui_context",
     "unlocked_recipes",
     "whereami",
     "world_summary",
@@ -173,6 +178,7 @@ _ = (_state, _item_id, _player_xy, _cand_row, _resolve_factory, _plan_kwargs, _o
 
 
 def main() -> None:
+    journal.set_writer("chat")
     mcp.run()
 
 

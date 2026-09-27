@@ -88,16 +88,6 @@ def test_defaults_are_not_stored(store):
     assert store.view().find("p").args == {"objective": "max_mw"}
 
 
-def test_saving_the_same_name_twice_updates_rather_than_duplicates(store):
-    from satisfactory_mcp.interfaces.mcp.tools.planning import _save_request
-
-    _save_request(_World(), "p", {"objective": "max_mw"}, "one", "", "", "", {}, None)
-    _save_request(_World(), "P", {"objective": "min_power"}, "two", "", "", "", {}, None)
-    (plan,) = store.view().plans
-    assert plan.plan_id == "two" and plan.rev == 2
-    assert plan.args["objective"] == "min_power"
-
-
 def test_plans_do_not_live_in_the_cache():
     """cache_prune wipes the cache tree, and a plan the player named is not
     regenerable."""
@@ -172,7 +162,7 @@ def test_a_plan_can_be_renamed_and_keeps_everything_else(live_plans):
     """A name was the one thing a player picked and the one thing they could not correct:
     the workaround was to save the plan again under a second name and forget the first,
     which pays an LP solve and drops the siting and the field record on the floor."""
-    out = srv.rename_plan(name="north oil", to="coast oil")
+    out = srv.rename_plan(name="north oil", to="coast oil", base_rev=1)
     assert "renamed plan 'north oil' to 'coast oil'" in out
 
     again = PlanLog(live_plans.world_id).view()
@@ -208,7 +198,7 @@ def test_one_plan_reads_back_as_the_request_that_was_stored(live_plans):
     pays a full LP solve and then prints what the request RESOLVED to. The question
     "what did I ask for" is answerable from the file alone."""
     out = srv.list_plans(name="north oil")
-    assert "# plan 'north oil'" in out
+    assert '# plan "north oil" v1' in out
     assert "plan_id=abc123" in out
     assert "objective\tmax_mw" in out
     assert "sources\tnorth" in out

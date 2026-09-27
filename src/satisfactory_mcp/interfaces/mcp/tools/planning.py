@@ -1,25 +1,46 @@
 """The optimiser surface: plans, layouts, diffs, bills of materials.
 
-Also plan persistence, since a stored plan is a stored planning REQUEST."""
+Also plan persistence, since a stored plan is a stored planning REQUEST. Plans are
+versioned: docs/mcp-surface.md §10.1k."""
 
 from __future__ import annotations
 
+import copy
 import os
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Annotated
 
+from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from ....core.filelock import LockTimeout
 from ....core.gamedata.unlocks import granted_by_label
 from ....domain.factories.select import SelectorError
 from ....domain.planning import bom as bom_mod
-from ....domain.planning import compare
+from ....domain.planning import compare, journal
 from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
 from ....domain.planning.carrier import resolve_tiers
 from ....domain.planning.commission_service import build_commission_report
 from ....domain.planning.diff_service import build_diff_report
 from ....domain.planning.layout_service import LayoutReport, build_layout_report
-from ....domain.planning.planlog import Actor, PlanLog, PlanLogError
+from ....domain.planning.planlog import (
+    Actor,
+    AlreadyUndone,
+    BaseRevRequired,
+    Commit,
+    Forgotten,
+    InvalidOp,
+    Outdated,
+    PlanArgs,
+    PlanLog,
+    PlanLogError,
+    Pushed,
+    describe_commit,
+    describe_op,
+)
 from ....domain.planning.prepare import prepare
 from ....domain.planning.recall import PLAN_DEFAULTS
 from ....domain.planning.recall import recall_plan as _plan_kwargs
@@ -27,6 +48,7 @@ from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
 from ....domain.planning.sensitivity import sweep_unlocks
 from ....domain.planning.store import PLAN_ARGS
+from ....domain.world import pin
 from ....presenters.text import byproducts as byproducts_text
 from ....presenters.text import primitives as render
 from ....presenters.text.bom import render_bom
@@ -35,12 +57,25 @@ from ....presenters.text.compare import render_comparison
 from ....presenters.text.diff import ENERGISED_CAVEAT, RANGE_CAVEAT, render_diff
 from ....presenters.text.layout import render_layout
 from ....presenters.text.plan_factory import render_plan_factory
-from ..app import AsOf, Limit, _item_id, _state, game, mcp, retired
+from ..app import AsOf, Limit, _item_id, _state, actor, game, mcp, retired
 
 #: The stored-argument defaults, re-exported under their old home for ``server``. The
 #: two stage caveats keep their old home too: they were read from here before they had
 #: a presenter to live in.
 _ = (PLAN_DEFAULTS, ENERGISED_CAVEAT, RANGE_CAVEAT)
+
+BUSY = "! plans are busy (another writer held the lock 10 s); nothing written"
+LAST_WIDTH = 36
+CONTEXT_PLANS = 8
+CONTEXT_COMMITS = 6
+CONTEXT_JOURNAL = 8
+FIRST_LOOK = 5
+CONTEXT_BUDGET = 3800
+
+BaseRev = Annotated[
+    int | None,
+    Field(description="the plan version you read; needed to change an existing plan"),
+]
 
 
 def _arg_text(value) -> str:
@@ -59,6 +94,110 @@ def _cut(text: str, width: int) -> str:
     return text if len(text) <= width else text[: width - 1] + "~"
 
 
+def _age(seconds: float) -> str:
+    s = max(0, int(seconds))
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m"
+    if s < 86400:
+        return f"{s // 3600}h"
+    return f"{s // 86400}d"
+
+
+def _log(st) -> PlanLog:
+    return PlanLog(st.world_id, st.header.get("session_name") or "")
+
+
+def _sav(st) -> str:
+    try:
+        return pin.check(st.header, None)
+    except Exception:
+        return ""
+
+
+def _recipe_names() -> dict[str, str]:
+    try:
+        return {cls: r.name for cls, r in game().recipes.items()}
+    except Exception:
+        return {}
+
+
+def _named(ops: list[dict], names: dict[str, str]) -> list[dict]:
+    out = []
+    for op in ops:
+        if op.get("field") in ("banned", "required") and op.get("member") in names:
+            op = {**op, "member": names[op["member"]]}
+        out.append(op)
+    return out
+
+
+def _ops_text(ops: list[dict], names: dict[str, str]) -> str:
+    return " · ".join(t for t in (describe_op(o) for o in _named(ops, names)) if t)
+
+
+def _commit_text(commit: Commit, names: dict[str, str]) -> str:
+    shown = copy.copy(commit)
+    shown.ops = _named(commit.ops, names)
+    return describe_commit(shown)
+
+
+def _last_change(log: PlanLog, key: str, names: dict[str, str], now: float) -> str:
+    for commit in reversed(log.commits(key)):
+        text = _ops_text(commit.ops, names)
+        if text:
+            return _cut(f"{commit.actor.display()} {_age(now - commit.ts)}: {text}", LAST_WIDTH)
+    return "-"
+
+
+def _needs_base(name: str, head: int, nothing: str) -> str:
+    return (
+        f'! plan "{name}" exists at v{head}: read it (list_plans name="{name}") and pass '
+        f"base_rev={head}; {nothing}"
+    )
+
+
+def _write(name: str, nothing: str, push: Callable[[], Pushed]) -> tuple[Pushed | None, str]:
+    """Run one plan write and word its outcome: the merged note, or why nothing landed."""
+    try:
+        pushed = push()
+    except Outdated as exc:
+        return None, exc.text(name)
+    except BaseRevRequired as exc:
+        return None, _needs_base(name, exc.head, nothing)
+    except Forgotten as exc:
+        return None, (
+            f'! plan "{name}" was forgotten in v{exc.rev}; plan_log name="{name}" '
+            f"undo={exc.rev} brings it back; {nothing}"
+        )
+    except AlreadyUndone as exc:
+        return None, f"! v{exc.rev} was already undone by v{exc.by}; {nothing}"
+    except LockTimeout:
+        return None, BUSY
+    except PlanLogError as exc:
+        return None, f"! {exc}; {nothing}"
+    return pushed, pushed.text(pushed.state.name or name)
+
+
+def _stamp(st) -> Callable:
+    """What the store records on the new head: its solve-input hash and resolved field."""
+
+    def run(state) -> dict:
+        g = game()
+        kwargs = state.kwargs()
+        return {
+            "plan_id": build_scenario(g, st, **kwargs).plan_id,
+            "provenance": prov.record(g, st, kwargs.get("sources")),
+        }
+
+    return run
+
+
+def _unknown(st, name: str) -> str:
+    known = ", ".join(x.name for x in st.plans.plans) or "(none)"
+    return f"! no saved plan named {name!r}. Saved: {known}"
+
+
 def _plan_detail(st, stored) -> str:
     """One stored plan in full, without solving it.
 
@@ -67,7 +206,7 @@ def _plan_detail(st, stored) -> str:
     """
     sit = siting_mod.parse(stored)
     head = [
-        f"# plan {stored.name!r}",
+        f'# plan "{stored.name}" v{stored.rev} (key {stored.key})',
         f"# {st.age_note}",
         render.kv(
             [
@@ -104,7 +243,10 @@ def _plan_detail(st, stored) -> str:
             )
         )
 
-    notes = ["nothing was solved here: pass plan=<name> to plan_factory for today's answer"]
+    notes = [
+        "nothing was solved here: pass plan=<name> to plan_factory for today's answer",
+        f"change it with base_rev={stored.rev}; plan_log name={stored.name!r} lists its versions",
+    ]
     try:
         if build_scenario(st.game, st, **stored.kwargs()).plan_id != stored.plan_id:
             notes.append(
@@ -127,12 +269,15 @@ def list_plans(
     world: str | None = None,
     as_of: AsOf = None,
 ) -> str:
-    """Plans saved for this world, and whether the world has moved under them.
+    """Plans saved for this world, their versions, and whether the world has moved under them.
 
     ``name`` prints one plan in full instead: the arguments as they were stored, what its
     source selectors resolved to when saved, and its whole siting. Nothing is solved, so
     this answers "what did I ask for" -- ``plan_factory plan=<name>`` answers the other
     question, what those arguments resolve to today, and pays an LP solve for it.
+
+    Every plan carries a version (``v14``). Pass it as ``base_rev`` to any tool that
+    changes the plan; ``plan_log`` lists the versions and undoes them.
     """
     try:
         st = _state(save, world, as_of)
@@ -141,14 +286,16 @@ def list_plans(
     if name:
         stored = st.plans.find(name)
         if stored is None:
-            known = ", ".join(x.name for x in st.plans.plans) or "(none)"
-            return f"! no saved plan named {name!r}. Saved: {known}"
+            return _unknown(st, name)
         return _plan_detail(st, stored)
     if not st.plans.plans:
         return render.envelope(
             f"# no plans saved for world {st.plans.world_id!r}",
             "Pass save_as=<name> to plan_factory to store one.",
         )
+    log = _log(st)
+    names = _recipe_names()
+    now = time.time()
     rows = []
     unrecorded = []
     drifted = False
@@ -160,8 +307,7 @@ def list_plans(
                 status.append("world moved")
             # Eager, not lazy, because it was measured rather than guessed: re-resolving
             # one selector over the 608-row node table is 0.7 ms, against the full
-            # build_scenario this loop already pays per plan. A "check it yourself" marker
-            # would have cost the reader a round trip to save nothing.
+            # build_scenario this loop already pays per plan.
             for drift in prov.compare(st.game, st, stored):
                 status.append(f"field {drift.then}->{drift.now}")
                 drifted = True
@@ -173,14 +319,18 @@ def list_plans(
         sit = siting_mod.parse(stored)
         sited = "-"
         if sit is not None:
-            # Origin, orientation and box in one cell: yaw and footprint used to need a
-            # second call, and a plan's site is not a point.
             sited = f"{sit.x_m:.0f},{sit.y_m:.0f}"
             sited += f" y{sit.yaw_deg:g}" if sit.yaw_deg else ""
             sited += f" {sit.width_m:g}x{sit.depth_m:g}" if sit.has_footprint else ""
+        try:
+            last = _last_change(log, stored.key, names, now)
+        except PlanLogError:
+            last = "-"
         rows.append(
             (
                 stored.name,
+                f"v{stored.rev}",
+                last,
                 args.get("objective", "max_mw"),
                 args.get("target_item") or "-",
                 _cut(",".join(args.get("sources") or []), 36) or "whole map",
@@ -197,7 +347,7 @@ def list_plans(
         ),
         (
             "pass name=<plan> for one plan's stored arguments, its recorded field and its "
-            "full siting, without solving anything"
+            "full siting, without solving anything; plan_log name=<plan> for its versions"
         ),
     ]
     if any("~" in str(cell) for row in rows for cell in row):
@@ -209,8 +359,6 @@ def list_plans(
             "plans over a different part of the world. Recall it for which nodes moved"
         )
     if unrecorded:
-        # Named rather than counted: "2 plans" is a statistic, and the reader needs to
-        # know WHICH ones are unchecked before trusting a blank status column.
         notes.append(
             f"no recorded field, so the check above cannot run: {', '.join(unrecorded)} "
             "-- these predate it. A blank status is 'not checked', not 'unchanged'; "
@@ -219,58 +367,71 @@ def list_plans(
     return render.envelope(
         f"# {st.age_note}\n# {len(rows)} saved plan(s)",
         render.table(
-            ("name", "objective", "target", "sources", "factory", "sited(m)", "status", "notes"),
+            (
+                "name",
+                "ver",
+                "last change",
+                "objective",
+                "target",
+                "sources",
+                "factory",
+                "sited(m)",
+                "status",
+                "notes",
+            ),
             rows,
         ),
         notes,
     )
 
 
-def _log(st) -> PlanLog:
-    return PlanLog(st.world_id, st.header.get("session_name") or "")
-
-
-def _actor() -> Actor:
-    return Actor("chat", "", os.getpid())
-
-
-def _at_head(st, key: str, ops: list[dict]):
-    """Until the tools take ``base_rev``: write at the head, as the old store did."""
-    log = _log(st)
-    return log.push(key, log.head_rev(key), ops, actor=_actor())
-
-
 @mcp.tool(structured_output=False)
 def forget_plan(
-    name: str, save: str | None = None, world: str | None = None, as_of: AsOf = None
+    name: str,
+    base_rev: BaseRev = None,
+    save: str | None = None,
+    world: str | None = None,
+    as_of: AsOf = None,
+    ctx: Context | None = None,
 ) -> str:
-    """Delete a saved plan. Nothing in the world is touched."""
+    """Delete a saved plan. Nothing in the world is touched, and plan_log can undo it."""
     try:
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
     stored = st.plans.find(name)
     if stored is None:
-        known = ", ".join(x.name for x in st.plans.plans) or "(none)"
-        return f"! no saved plan named {name!r}. Saved: {known}"
-    try:
-        _at_head(st, stored.key, [{"op": "forget"}])
-    except PlanLogError as exc:
-        return f"! {exc}; nothing forgotten"
-    return f"forgot plan {stored.name!r}"
+        return _unknown(st, name)
+    if base_rev is None:
+        return _needs_base(stored.name, stored.rev, "nothing forgotten")
+    pushed, text = _write(
+        stored.name,
+        "nothing forgotten",
+        lambda: _log(st).push(
+            stored.key, base_rev, [{"op": "forget"}], actor=actor(ctx), sav=_sav(st)
+        ),
+    )
+    if pushed is None:
+        return text
+    return (
+        f"forgot plan {stored.name!r} in v{pushed.rev}; plan_log name={stored.name!r} "
+        f"undo={pushed.rev} base_rev={pushed.rev} brings it back\n{text}"
+    )
 
 
 @mcp.tool(structured_output=False)
 def rename_plan(
     name: str,
     to: Annotated[str, Field(description="the new name")],
+    base_rev: BaseRev = None,
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
+    ctx: Context | None = None,
 ) -> str:
     """Rename a saved plan. Nothing is re-solved and nothing else about it changes.
 
-    The plan keeps its id, its recorded field, its siting and its notes -- a name is the
+    The plan keeps its key, its recorded field, its siting and its notes -- a name is the
     only thing here a player picked, and it was the only thing they could not correct
     without saving the plan again under a second name and forgetting the first.
     """
@@ -280,26 +441,36 @@ def rename_plan(
         return f"could not read save: {exc}"
     stored = st.plans.find(name)
     if stored is None:
-        known = ", ".join(x.name for x in st.plans.plans) or "(none)"
-        return f"! no saved plan named {name!r}. Saved: {known}"
+        return _unknown(st, name)
     wanted = to.strip()
     if not wanted:
         return "! a plan name cannot be blank"
     # Case-insensitively, because `find` matches that way: two plans differing only in
     # case would make every later recall ambiguous.
     taken = wanted.casefold()
-    if any(p is not stored and p.name.casefold() == taken for p in st.plans.plans):
+    if any(p.key != stored.key and p.name.casefold() == taken for p in st.plans.plans):
         return f"! this world already has a plan named {wanted!r}"
     was = stored.name
     if was == wanted:
         return f"plan {was!r} already has that name"
-    try:
-        _at_head(st, stored.key, [{"op": "rename", "name": wanted}])
-    except PlanLogError as exc:
-        return f"! {exc}; nothing renamed"
+    if base_rev is None:
+        return _needs_base(was, stored.rev, "nothing renamed")
+    pushed, text = _write(
+        was,
+        "nothing renamed",
+        lambda: _log(st).push(
+            stored.key,
+            base_rev,
+            [{"op": "rename", "name": wanted}],
+            actor=actor(ctx),
+            sav=_sav(st),
+        ),
+    )
+    if pushed is None:
+        return text
     path = PlanLog.dir_for(st.world_id)
     return render.envelope(
-        f"# renamed plan {was!r} to {wanted!r}\nstored in {path}",
+        f"# renamed plan {was!r} to {wanted!r}\nstored in {path}\n{text}",
         "",
         [
             (
@@ -332,9 +503,11 @@ def site_plan(
         ),
     ] = "",
     clear: bool = False,
+    base_rev: BaseRev = None,
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
+    ctx: Context | None = None,
 ) -> str:
     """Record, update or clear WHERE a stored plan stands. Nothing is re-solved.
 
@@ -358,17 +531,30 @@ def site_plan(
         return f"could not read save: {exc}"
     stored = st.plans.find(plan)
     if stored is None:
-        known = ", ".join(x.name for x in st.plans.plans) or "(none)"
-        return f"! no saved plan named {plan!r}. Saved: {known}"
+        return _unknown(st, plan)
+
+    def push(value: dict | None, nothing: str) -> tuple[Pushed | None, str]:
+        return _write(
+            stored.name,
+            nothing,
+            lambda: _log(st).push(
+                stored.key,
+                base_rev,
+                [{"op": "site", "value": value}],
+                actor=actor(ctx),
+                sav=_sav(st),
+            ),
+        )
 
     if clear:
         if not stored.siting:
             return f"plan {stored.name!r} carries no siting; nothing to clear"
-        try:
-            _at_head(st, stored.key, [{"op": "site", "value": None}])
-        except PlanLogError as exc:
-            return f"! {exc}; nothing cleared"
-        return f"cleared the siting of plan {stored.name!r}. The plan itself is untouched"
+        if base_rev is None:
+            return _needs_base(stored.name, stored.rev, "nothing cleared")
+        pushed, text = push(None, "nothing cleared")
+        if pushed is None:
+            return text
+        return f"cleared the siting of plan {stored.name!r}. The plan itself is untouched\n{text}"
 
     existing = siting_mod.parse(stored)
     if not at and existing is None:
@@ -376,6 +562,8 @@ def site_plan(
             f"! plan {stored.name!r} has no siting yet, so there is no origin to keep -- "
             "pass at='x,y[,z]' in metres, 'me', a factory name, 'slab:<n>' or a run id"
         )
+    if base_rev is None:
+        return _needs_base(stored.name, stored.rev, "not sited")
 
     when = str(st.header.get("save_datetime") or st.header.get("filename") or "")
     try:
@@ -395,7 +583,6 @@ def site_plan(
                 when=when,
             )
         else:
-            # Origin kept, yaw and/or footprint updated in place.
             width, depth, source = existing.width_m, existing.depth_m, existing.source
             if footprint:
                 width, depth = siting_mod.parse_footprint(footprint)
@@ -414,10 +601,9 @@ def site_plan(
     except ValueError as exc:
         return f"! {exc}"
 
-    try:
-        _at_head(st, stored.key, [{"op": "site", "value": sit.to_dict()}])
-    except PlanLogError as exc:
-        return f"! {exc}; not sited"
+    pushed, text = push(sit.to_dict(), "not sited")
+    if pushed is None:
+        return text
     path = PlanLog.dir_for(st.world_id)
 
     from ....domain.spatial import maplink, regions
@@ -427,7 +613,7 @@ def site_plan(
     return render.envelope(
         f"# {verb} plan {stored.name!r}: {sit.describe()}\n"
         f"# region: {label.describe()}\n"
-        f"stored in {path}",
+        f"stored in {path}\n{text}",
         "map: "
         + maplink.local_map_url(sit.x_m, sit.y_m, world=st.plans.world_id)
         + "\n"
@@ -445,36 +631,121 @@ def site_plan(
     )
 
 
-def _save_request(st, name, kwargs, plan_id, notes, factory, when, field, sit) -> str:
-    """Create ``name``, or save over the live plan of that exact name at its head."""
-    log = _log(st)
+def _live_named(st, name: str):
     wanted = name.strip().casefold()
-    existing = next((s for s in log.heads() if s.name.casefold() == wanted), None)
-    siting = sit.to_dict() if sit is not None else None
-    if existing is None:
-        return log.create(
-            name,
-            kwargs,
-            actor=_actor(),
-            notes=notes,
-            factory=factory,
-            siting=siting,
-            plan_id=plan_id,
-            provenance=field,
-            created=when,
-        ).state.name
-    extra = [{"op": "set", "field": "notes", "value": notes}] if notes else []
-    extra += [{"op": "set", "field": "factory", "value": factory}] if factory else []
-    extra += [{"op": "site", "value": siting}] if siting else []
-    log.push_args(
-        existing.key,
-        log.head_rev(existing.key),
-        kwargs,
-        actor=_actor(),
-        extra=extra,
-        stamp=lambda _state: {"plan_id": plan_id, "provenance": field},
+    return next((p for p in st.plans.plans if p.name.casefold() == wanted), None)
+
+
+def _resolve_required(entries: list[str] | None) -> tuple[list[str] | None, str]:
+    """Recipe class ids for ``required``, by exact id or exact display name, or a refusal."""
+    if not entries:
+        return None, ""
+    recipes = game().recipes
+    out = []
+    for raw in entries:
+        text = str(raw).strip()
+        if text in recipes:
+            out.append(text)
+            continue
+        hits = sorted(r.cls for r in recipes.values() if r.name.casefold() == text.casefold())
+        if not hits:
+            return None, (
+                f"! required: no recipe is called {raw!r} -- pass its exact name or class id "
+                "(search_recipes shows both); nothing solved"
+            )
+        if len(hits) > 1:
+            return None, (
+                f"! required: {raw!r} names {len(hits)} recipes ({', '.join(hits[:4])}) -- "
+                "pass the class id; nothing solved"
+            )
+        out.append(hits[0])
+    return out, ""
+
+
+def _journal_args(plan_kwargs: dict, logistics_items: list[str] | None) -> dict | None:
+    raw = {k: v for k, v in plan_kwargs.items() if v is not None}
+    if logistics_items:
+        raw["logistics_items"] = list(logistics_items)
+    try:
+        args = PlanArgs.from_dict(raw)
+    except InvalidOp:
+        return None
+    blank = PlanArgs().to_dict()
+    return {k: v for k, v in args.to_dict().items() if v != blank[k]}
+
+
+def _solve_text(plan_kwargs: dict, feasible: bool, recalled) -> str:
+    rates = plan_kwargs.get("export_minimums") or {}
+    if rates:
+        what = ", ".join(f"{k} {v:g}/min" for k, v in rates.items())
+    else:
+        what = plan_kwargs.get("target_item") or ", ".join(plan_kwargs.get("exports") or ["MW"])
+    objective = plan_kwargs.get("objective") or "max_mw"
+    on = f' plan "{recalled.name}" v{recalled.rev}:' if recalled is not None else ""
+    return f"{'solved' if feasible else 'infeasible:'}{on} {what} ({objective})"
+
+
+def _journal_view(st, plan: str | None, tool: str, ctx) -> None:
+    if not plan:
+        return
+    stored = st.plans.find(plan)
+    if stored is None:
+        return
+    journal.append(
+        st.world_id,
+        "plan.view",
+        actor=actor(ctx),
+        sav=_sav(st),
+        tool=tool,
+        plan=stored.key,
+        rev=stored.rev,
+        text=f'{tool} on plan "{stored.name}" v{stored.rev}',
     )
-    return existing.name
+
+
+def _save_new(st, name, plan_kwargs, logistics, labels, field, plan_id, sit, ctx) -> Pushed:
+    notes, factory, when = labels
+    args = dict(plan_kwargs)
+    if logistics:
+        args["logistics_items"] = list(logistics)
+    return _log(st).create(
+        name,
+        args,
+        actor=actor(ctx),
+        sav=_sav(st),
+        notes=notes,
+        factory=factory,
+        siting=sit.to_dict() if sit is not None else None,
+        plan_id=plan_id,
+        provenance=field,
+        created=when,
+    )
+
+
+def _save_over(st, existing, base_rev, plan_kwargs, logistics, labels, sit, ctx):
+    notes, factory = labels
+    log = _log(st)
+
+    def push() -> Pushed:
+        base = log.state(existing.key, base_rev)
+        args = dict(plan_kwargs)
+        args["logistics_items"] = (
+            list(logistics) if logistics is not None else list(base.args.logistics_items)
+        )
+        extra = [{"op": "set", "field": "notes", "value": notes}] if notes else []
+        extra += [{"op": "set", "field": "factory", "value": factory}] if factory else []
+        extra += [{"op": "site", "value": sit.to_dict()}] if sit is not None else []
+        return log.push_args(
+            existing.key,
+            base_rev,
+            args,
+            actor=actor(ctx),
+            sav=_sav(st),
+            extra=extra,
+            stamp=_stamp(st),
+        )
+
+    return _write(existing.name, "nothing saved", push)
 
 
 @mcp.tool(structured_output=False)
@@ -515,8 +786,16 @@ def plan_factory(
         dict[str, float] | None,
         Field(description="items another plan hands this one, {item: per-minute}"),
     ] = None,
+    required: Annotated[
+        list[str] | None,
+        Field(description="recipes that must make their item; others for it are excluded"),
+    ] = None,
     plan: Annotated[str | None, Field(description="recall a saved plan by name")] = None,
     save_as: Annotated[str | None, Field(description="store this request under a name")] = None,
+    base_rev: Annotated[
+        int | None,
+        Field(description="the plan version you read; needed to save over an existing plan"),
+    ] = None,
     plan_notes_text: Annotated[str, Field(description="note stored with save_as")] = "",
     for_factory: Annotated[str, Field(description="factory label this plan is for")] = "",
     site_at: Annotated[
@@ -534,6 +813,7 @@ def plan_factory(
         str,
         Field(description="site footprint 'WxD' in metres; blank = the layout's own square"),
     ] = "",
+    ctx: Context | None = None,
 ) -> str:
     """Optimise a factory with an LP over this world's unlocked recipes.
 
@@ -589,9 +869,17 @@ def plan_factory(
     its machine, so they are placed one at a time across many machines rather than
     filling one -- output is linear in sloops and power is quadratic, so spreading wins.
 
+    ``required`` names recipes (exact name or class id) that must make their item: every
+    other recipe whose main product is that item is excluded. A locked or banned one is
+    refused by name.
+
     ``logistics_items`` pins named items into the belt/pipe table however small their
     flow, as rows ADDED to the ``limit`` biggest by volume. Without it, a two-item
     question can fall off the bottom of a big plan's flow table.
+
+    ``save_as`` stores the request. Over an existing plan it needs ``base_rev``, the
+    version you read (list_plans name=): edits to different settings since then merge,
+    the same setting changed by someone else is refused as outdated and nothing is saved.
 
     ``site_at`` says where the plan will STAND. On its own it makes the plan's water
     assumption MEASURED rather than assumed: the terrain at that pad is read and the note
@@ -609,6 +897,14 @@ def plan_factory(
     except Exception as exc:
         return f"could not read save: {exc}"
 
+    required_ids, refused = _resolve_required(required)
+    if refused:
+        return refused
+
+    existing = _live_named(st, save_as) if save_as else None
+    if existing is not None and base_rev is None:
+        return _needs_base(existing.name, existing.rev, "nothing saved")
+
     supplied = dict(
         objective=objective,
         target_item=target_item,
@@ -621,6 +917,7 @@ def plan_factory(
         extractor_clocks=extractor_clocks,
         machine_cost_mw=machine_cost_mw,
         exclude_recipes=exclude_recipes,
+        required=required_ids,
         only_recipes=only_recipes,
         water_extractors=water_extractors,
         sloops=sloops,
@@ -649,19 +946,18 @@ def plan_factory(
     # Persistence is an interface side effect, not part of the answer: the plan is stored
     # here and the resulting sentence handed to the presenter like any other note.
     save_as_note = ""
+    tail = ""
     if save_as and report.prepared.failure is None:
         plan_id = report.prepared.request.plan_id
         # What the selectors resolved to, stored WITH the request. plan_id hashes the
         # extractor census, so it moves when the world does -- it cannot move when a
-        # selector starts meaning a different part of the map, which is a different
-        # staleness and the one that re-planned this world's reference plan in silence.
+        # selector starts meaning a different part of the map.
         field = prov.record(g, st, plan_kwargs.get("sources"))
         when = str(st.header.get("save_datetime") or st.header.get("filename") or "")
         sit = None
         if site_at:
             # Resolved BEFORE the store is touched, so a bad coordinate refuses the whole
-            # save rather than leaving a half-written plan behind. The footprint falls
-            # back to the square the layout budgets, off the solution this call paid for.
+            # save rather than leaving a half-written plan behind.
             try:
                 sit = siting_mod.build_siting(
                     g,
@@ -675,28 +971,69 @@ def plan_factory(
                 )
             except ValueError as exc:
                 return f"! {exc} -- nothing saved"
-        try:
-            saved_name = _save_request(
-                st, save_as, plan_kwargs, plan_id, plan_notes_text, for_factory, when, field, sit
-            )
-        except PlanLogError as exc:
-            return f"! {exc} -- nothing saved"
-        sited = f". Sited: {sit.describe()}" if sit is not None else ""
         path = PlanLog.dir_for(st.world_id)
         pinned = "; ".join(f"{e['selector']}={e['count']} node(s)" for e in field["selectors"])
-        save_as_note = (
-            f"saved as {saved_name!r} (plan_id {plan_id}) in {path}. "
-            f"Recall with plan={saved_name!r} on plan_factory, plan_layout or diff_vs_save"
+        recall = (
+            f"Recall with plan={save_as.strip()!r} on plan_factory, plan_layout or diff_vs_save"
             + (f". Field recorded: {pinned}" if pinned else "")
-            + sited
+            + (f". Sited: {sit.describe()}" if sit is not None else "")
         )
+        if existing is None:
+            try:
+                made = _save_new(
+                    st,
+                    save_as,
+                    plan_kwargs,
+                    logistics_items,
+                    (plan_notes_text, for_factory, when),
+                    field,
+                    plan_id,
+                    sit,
+                    ctx,
+                )
+            except LockTimeout:
+                return BUSY
+            except PlanLogError as exc:
+                return f"! {exc} -- nothing saved"
+            save_as_note = (
+                f'saved as "{made.state.name}" v1 (key {made.key}, plan_id {plan_id}) in '
+                f"{path}. {recall}"
+            )
+            if base_rev is not None:
+                save_as_note += f". base_rev={base_rev} was ignored: this is a new plan"
+        else:
+            pushed, tail = _save_over(
+                st,
+                existing,
+                base_rev,
+                plan_kwargs,
+                logistics_items,
+                (plan_notes_text, for_factory),
+                sit,
+                ctx,
+            )
+            if pushed is not None:
+                save_as_note = f'saved over "{pushed.state.name}" in {path}. {recall}'
     elif site_at:
         save_as_note = (
             "site_at was measured but not RECORDED: a siting lives on a STORED plan. Pass "
             "save_as=<name> here, or site an existing plan with site_plan"
         )
+    if not save_as:
+        recalled = st.plans.find(plan) if plan else None
+        journal.append(
+            st.world_id,
+            "plan.solve",
+            actor=actor(ctx),
+            sav=_sav(st),
+            tool="plan_factory",
+            plan=recalled.key if recalled is not None else None,
+            rev=recalled.rev if recalled is not None else None,
+            args=_journal_args(plan_kwargs, logistics_items),
+            text=_solve_text(plan_kwargs, report.prepared.failure is None, recalled),
+        )
 
-    return render_plan_factory(
+    out = render_plan_factory(
         g,
         st,
         report,
@@ -707,6 +1044,7 @@ def plan_factory(
         plan_notes=plan_notes,
         save_as_note=save_as_note,
     )
+    return f"{out}\n{tail}" if tail else out
 
 
 @mcp.tool(structured_output=False)
@@ -769,6 +1107,7 @@ def plan_layout(
         str | None,
         Field(description="fit the layout against this factory's existing platform"),
     ] = None,
+    ctx: Context | None = None,
 ) -> str:
     """Turn a plan into a buildable schematic: blocks, buses and floors.
 
@@ -855,6 +1194,7 @@ def plan_layout(
         )
     except SelectorError as exc:
         return f"! {exc}"
+    _journal_view(st, plan, "plan_layout", ctx)
 
     return render_layout(
         g,
@@ -896,6 +1236,7 @@ def diff_vs_save(
         str | None,
         Field(description="only count this factory's machines as already built"),
     ] = None,
+    ctx: Context | None = None,
 ) -> str:
     """What to change to get from the factory you have to the one plan_factory plans.
 
@@ -967,6 +1308,7 @@ def diff_vs_save(
         )
     except SelectorError as exc:
         return f"! {exc}"
+    _journal_view(st, plan, "diff_vs_save", ctx)
 
     return render_diff(
         g,
@@ -1133,6 +1475,7 @@ def commission_plan(
     limit: Limit = 25,
     offset: int = 0,
     plan: Annotated[str | None, Field(description="recall a saved plan by name")] = None,
+    ctx: Context | None = None,
 ) -> str:
     """In what order to switch a built plant on, without blowing the fuse.
 
@@ -1179,6 +1522,7 @@ def commission_plan(
         return f"! {exc.args[0]}"
 
     report = build_commission_report(g, st, plan_kwargs, headroom_mw, objective=objective)
+    _journal_view(st, plan, "commission_plan", ctx)
 
     return render_commission(
         g,
@@ -1309,8 +1653,6 @@ def rank_unlocks(
     ]
     # A ranking, so no offset: what falls off the bottom is what changed this plan least.
     notes = [*plan_notes]
-    if plan_name:
-        notes.insert(0, f"recalled saved plan {plan_name!r}")
     notes.append(
         f"{sweep.tried} locked alternate(s) tested, {len(movers)} changed this plan. "
         "The rest are worth nothing HERE -- which is a result, not a gap: it is the "
@@ -1383,3 +1725,253 @@ def rank_unlocks(
         ),
         notes,
     )
+
+
+def _undone_by(commits: list[Commit]) -> dict[int, int]:
+    out: dict[int, int] = {}
+    for commit in commits:
+        if commit.undoes is not None and commit.rev not in out:
+            out[commit.undoes] = commit.rev
+    return out
+
+
+def _history(log: PlanLog, found, since: int | None, limit: int) -> str:
+    names = _recipe_names()
+    now = time.time()
+    commits = log.commits(found.key)
+    undone = _undone_by(commits)
+    shown = [c for c in reversed(commits) if c.rev > (since or 0)]
+    lines = []
+    for commit in shown[:limit]:
+        flags = [f"{_age(now - commit.ts)} ago"]
+        if commit.merged_over:
+            flags.append("merged over " + ",".join(f"v{r}" for r in commit.merged_over))
+        if commit.rev in undone:
+            flags.append(f"undone in v{undone[commit.rev]}")
+        lines.append(f"{_commit_text(commit, names)}  ({'; '.join(flags)})")
+    if len(shown) > limit:
+        lines.append(f"(+{len(shown) - limit} more: raise limit, or pass since=)")
+    head = f'# plan "{found.name}" v{found.rev} (key {found.key})'
+    if found.forgotten:
+        head += " -- FORGOTTEN; undo its forget to bring it back"
+    notes = [
+        (
+            f'undo one version: plan_log name="{found.name}" undo=<v> base_rev={found.rev}; '
+            "restore=<v> makes the head equal that version again. Both are new versions"
+        )
+    ]
+    return render.envelope(head, "\n".join(lines) or "(no versions after that one)", notes)
+
+
+@mcp.tool(structured_output=False)
+def plan_log(
+    name: str,
+    since: Annotated[int | None, Field(description="list versions after this one")] = None,
+    undo: Annotated[int | None, Field(description="undo this version (needs base_rev)")] = None,
+    restore: Annotated[
+        int | None,
+        Field(description="make the head equal this version (needs base_rev)"),
+    ] = None,
+    base_rev: BaseRev = None,
+    limit: Limit = 15,
+    save: str | None = None,
+    world: str | None = None,
+    as_of: AsOf = None,
+    ctx: Context | None = None,
+) -> str:
+    """One plan's versions, newest first: who changed what, from chat or from the page.
+
+    ``undo=<v>`` writes a new version that reverses that one; ``restore=<v>`` writes a new
+    version equal to that one. Both take ``base_rev`` and merge like any other edit. A
+    forgotten plan is found too, so its forget can be undone.
+    """
+    try:
+        st = _state(save, world, as_of)
+    except Exception as exc:
+        return f"could not read save: {exc}"
+    log = _log(st)
+    found = log.find(name, include_forgotten=True)
+    if found is None:
+        return _unknown(st, name)
+    if undo is None and restore is None:
+        try:
+            return _history(log, found, since, render.clamp(limit, default=15))
+        except PlanLogError as exc:
+            return f"! {exc}"
+    if undo is not None and restore is not None:
+        return "! pass undo= or restore=, not both; nothing changed"
+    verb = "undone" if undo is not None else "restored"
+    if base_rev is None:
+        return _needs_base(found.name, found.rev, f"nothing {verb}")
+    who, sav, stamp = actor(ctx), _sav(st), _stamp(st)
+    if undo is not None:
+        pushed, text = _write(
+            found.name,
+            "nothing undone",
+            lambda: log.undo(found.key, base_rev, undo, actor=who, sav=sav, stamp=stamp),
+        )
+        done = f"undid v{undo}"
+    else:
+        pushed, text = _write(
+            found.name,
+            "nothing restored",
+            lambda: log.restore_to(found.key, base_rev, restore, actor=who, sav=sav, stamp=stamp),
+        )
+        done = f"restored v{restore}"
+    if pushed is None:
+        return text
+    changes = _ops_text(pushed.applied, _recipe_names()) or "no change"
+    return f'# {done} of plan "{pushed.state.name}": {changes}\n{text}'
+
+
+_cursor: dict[str, tuple[float, dict[str, int]]] = {}
+
+
+def _page_focus(world_id: str) -> tuple[dict | None, bool]:
+    """What the page last said it had open, and whether its heartbeat is fresh."""
+    from ....domain.planning import focus
+
+    found = focus.read(world_id)
+    return found, focus.is_open(found)
+
+
+def _short(token: str) -> str:
+    return token[:8] + "…" if len(token) > 8 else token
+
+
+def _focus_line(focus: dict, log: PlanLog) -> str:
+    parts = [str(focus.get("view") or "?")]
+    if focus.get("plan"):
+        try:
+            state = log.find(str(focus["plan"]), include_forgotten=True)
+        except PlanLogError:
+            state = None
+        rev = focus.get("rev")
+        label = f'"{state.name}"' if state is not None else f"plan {focus['plan']}"
+        label += f" v{rev}" if rev else ""
+        if state is not None and rev and rev != state.rev:
+            label += f" (head v{state.rev})"
+        parts.append(label)
+    elif focus.get("dash"):
+        parts.append(str(focus["dash"]))
+    if focus.get("tab"):
+        parts.append(str(focus["tab"]))
+    line = "focus: " + " › ".join(parts)
+    picked = focus.get("selection")
+    if isinstance(picked, dict) and picked.get("label"):
+        line += f'   selected: {picked.get("kind") or "item"} "{picked["label"]}"'
+    return line
+
+
+def _plan_news(log: PlanLog, cursor, names: dict[str, str], me: int) -> tuple[list[str], dict]:
+    heads = {s.key: s for s in log.heads(include_forgotten=True)}
+    fresh: list[tuple[str, Commit]] = []
+    for key in heads:
+        after = cursor[1].get(key, 0) if cursor else 0
+        fresh += [(key, c) for c in log.commits(key, since=after) if c.actor.pid != me]
+    if cursor is None:
+        fresh = sorted(fresh, key=lambda kc: kc[1].ts)[-FIRST_LOOK:]
+    by_plan: dict[str, list[Commit]] = {}
+    for key, commit in fresh:
+        by_plan.setdefault(key, []).append(commit)
+    lines = []
+    order = sorted(by_plan, key=lambda k: by_plan[k][-1].ts, reverse=True)
+    for key in order[:CONTEXT_PLANS]:
+        commits = sorted(by_plan[key], key=lambda c: c.rev)
+        who = ", ".join(dict.fromkeys(c.actor.display() for c in commits))
+        items = [
+            f"v{c.rev} " + (_ops_text(c.ops, names) or c.note or "recorded")
+            for c in commits[-CONTEXT_COMMITS:]
+        ]
+        if len(commits) > CONTEXT_COMMITS:
+            items.insert(0, f"(+{len(commits) - CONTEXT_COMMITS} more)")
+        state = heads[key]
+        gone = " (forgotten)" if state.forgotten else ""
+        start = f"v{commits[0].rev - 1}" if commits[0].rev > 1 else "new"
+        lines.append(f'"{state.name}"{gone} {start} -> v{state.rev} by {who}: ' + " · ".join(items))
+    if len(order) > CONTEXT_PLANS:
+        lines.append(f"(+{len(order) - CONTEXT_PLANS} more plans: plan_log name=<plan>)")
+    return lines, {key: state.rev for key, state in heads.items()}
+
+
+def _journal_who(raw: dict | None) -> str:
+    who = Actor.from_dict(raw)
+    return f"{who.display()} (other session)" if who.kind == "chat" else who.display()
+
+
+def _journal_news(world_id: str, cursor, me: int) -> tuple[list[str], float]:
+    since = cursor[0] if cursor else 0.0
+    entries = journal.read(world_id, since_ts=since, limit=500)
+    last = max([since, *(float(e.get("ts") or 0) for e in entries)])
+    theirs = [e for e in entries if int((e.get("actor") or {}).get("pid") or 0) != me]
+    if cursor is None:
+        theirs = theirs[-FIRST_LOOK:]
+    lines = []
+    if len(theirs) > CONTEXT_JOURNAL:
+        lines.append(f"  · journal: (+{len(theirs) - CONTEXT_JOURNAL} earlier)")
+    for entry in theirs[-CONTEXT_JOURNAL:]:
+        when = datetime.fromtimestamp(float(entry.get("ts") or 0), UTC).astimezone()
+        when = when.strftime("%H:%M")
+        text = _cut(str(entry.get("text") or ""), 160)
+        lines.append(f"  · journal: {when} {_journal_who(entry.get('actor'))} {text}")
+    return lines, last
+
+
+@mcp.tool(structured_output=False)
+def ui_context(save: str | None = None, world: str | None = None) -> str:
+    """What the web page has open, and what changed in plans since this session last looked.
+
+    Call it first when the user says "this", "here" or "what I have open": it names the
+    page's view, plan and version, tab and selection, whether the page reads the same save
+    as you, and every plan version and chat solve by someone else since your last look.
+    """
+    try:
+        st = _state(save, world)
+    except Exception as exc:
+        return f"could not read save: {exc}"
+    world_id = st.world_id
+    log = _log(st)
+    me = os.getpid()
+    shown_world = st.header.get("session_name") or world_id
+    focus, is_open = _page_focus(world_id)
+
+    ours = _sav(st)
+    if focus is None:
+        head = f'# page never opened for this world · world "{shown_world}"'
+    else:
+        beat = _age(time.time() - float(focus.get("heartbeat") or 0))
+        if is_open:
+            head = f"# page open (heartbeat {beat} ago)"
+        else:
+            head = f"# page closed (last heartbeat {beat} ago)"
+        head += f' · world "{shown_world}"'
+        theirs = str(focus.get("sav") or "")
+        if theirs:
+            same = "= yours" if theirs == ours else f"≠ yours ({_short(ours)})"
+            head += f" · page {_short(theirs)} {same}"
+    lines = [head]
+    if focus is not None:
+        line = _focus_line(focus, log)
+        lines.append(line if is_open else "last " + line)
+        lines.append(f"follow: {focus.get('follow') or 'follow'}")
+
+    cursor = _cursor.get(world_id)
+    try:
+        plan_lines, revs = _plan_news(log, cursor, _recipe_names(), me)
+    except PlanLogError as exc:
+        plan_lines, revs = [f"! plans could not be read: {exc}"], dict(cursor[1] if cursor else {})
+    journal_lines, journal_ts = _journal_news(world_id, cursor, me)
+    _cursor[world_id] = (journal_ts, revs)
+
+    label = "since you last looked"
+    if cursor is None:
+        label += f" (first look this session: last {FIRST_LOOK})"
+    if not plan_lines and not journal_lines:
+        lines.append(f"{label}: nothing new")
+    else:
+        lines.append(f"{label}: " + (plan_lines[0] if plan_lines else ""))
+        lines += [f"  {line}" for line in plan_lines[1:]] + journal_lines
+    out = "\n".join(lines)
+    if len(out) > CONTEXT_BUDGET:
+        out = out[: CONTEXT_BUDGET - 40].rsplit("\n", 1)[0] + "\n(+more: plan_log name=<plan>)"
+    return out
