@@ -91,3 +91,18 @@ def test_a_clone_without_a_build_is_told_how_to_get_one(tmp_path, monkeypatch, s
 
         api = c.get("/api/summary")
         assert api.status_code == 200
+
+
+def test_an_unrouted_api_path_answers_with_the_error_body(client):
+    for path in ("/api/nope", "/api/plans/0000beef/nope"):
+        r = client.get(path)
+        assert r.status_code == 404
+        assert r.json() == {"error": "nothing here"}
+    wrong = client.delete("/api/summary", headers={"origin": "http://testserver"})
+    assert wrong.status_code == 405 and wrong.json() == {"error": "method not allowed"}
+
+
+@_built
+def test_a_missing_page_file_keeps_the_default_404(client):
+    r = client.get("/no-such-file.png")
+    assert r.status_code == 404 and "error" not in r.json()

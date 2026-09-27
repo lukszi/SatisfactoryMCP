@@ -1,6 +1,6 @@
 /* The workbench: one plan at its head, every control a versioned gesture. */
 
-import { button, chip, error, link, loading } from "./dashkit";
+import { button, chip, empty, error, link, loading } from "./dashkit";
 import { COPY_ATTR, COPY_CLASS, make } from "./dom";
 import { perMin } from "./format";
 import { go } from "./nav";
@@ -673,6 +673,10 @@ export function renderBench(root: HTMLElement, select: (s: Selection) => void): 
     renaming.on = false;
   }
   root.appendChild(link("planner", "‹ all plans", "dash-back"));
+  if (bench.missing) {
+    empty(root, bench.error, "it may belong to another world; pick one from the list");
+    return;
+  }
   if (bench.error) {
     var key = bench.key;
     error(root, "this plan", bench.error, function () {

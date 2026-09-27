@@ -1192,6 +1192,19 @@ What the hints leave out:
   moves while a field has the cursor.
 - **reset to defaults** clears every stored value, so each setting reads its default again.
 
+States and actions follow two rules:
+
+- **Not found is empty, not an error.** A deep link to a factory, circuit, item, recipe or plan
+  that does not exist keeps its "‹ all …" link and shows `dashkit.empty()` with what is
+  missing and what to do instead; an ambiguous recipe name does the same over its candidates.
+  `dashkit.error()` with a retry is only for a read that failed. The server answers every
+  missing subject with 404 and `{"error"}`, and so does any `/api/` path or method no route
+  serves; `api.missing()` is the one test the page makes.
+- **Actions are buttons, navigation is a link.** `dashkit.button()` does something here
+  (rename, trace, detect, show all); a text link goes somewhere else ("open in dashboard",
+  the Settings filters). A link never sits in a row of buttons as their peer: it gets its own
+  line, or it is a word in the sentence the buttons follow.
+
 ---
 
 ## 15. Narrow widths and the keyboard (2026-09-27)

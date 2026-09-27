@@ -273,7 +273,7 @@ def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
     if isinstance(exc, Forgotten):
         return _fail(str(exc), 410)
     if isinstance(exc, UnknownPlan):
-        return _fail(str(exc), 404)
+        return _no_plan(exc.what)
     if isinstance(exc, LockTimeout):
         return _fail(f"plans are busy, nothing written: {exc}", 503)
     return _fail(str(exc), 400)
@@ -295,10 +295,14 @@ def _reject(st, key: str, sav: str, exc: Exception) -> None:
         )
 
 
+def _no_plan(key: str) -> JSONResponse:
+    return _fail(f"no plan “{key}” in this world", 404)
+
+
 def _opened(request: Request, key: str, save: str | None, world: str | None):
     """``(state, log)`` for a plan route, or the 404 that stops it."""
     if not _KEY.fullmatch(key):
-        return None, _fail(f"no plan “{key}” in this world", 404)
+        return None, _no_plan(key)
     try:
         st = _state(request, save, world)
     except Exception as exc:
@@ -364,7 +368,9 @@ def plan_state(
         return log
     try:
         return _state_body(log, log.state(key, rev), st.game)
-    except (UnknownPlan, InvalidOp) as exc:
+    except UnknownPlan:
+        return _no_plan(key)
+    except InvalidOp as exc:
         return _fail(str(exc), 404)
 
 
@@ -383,8 +389,8 @@ def plan_ops(
     try:
         commits = log.commits(key, since=since)
         head = log.head_rev(key)
-    except UnknownPlan as exc:
-        return _fail(str(exc), 404)
+    except UnknownPlan:
+        return _no_plan(key)
     return {"key": key, "head": head, "commits": [_commit(c) for c in commits]}
 
 
