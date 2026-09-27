@@ -94,16 +94,15 @@ registerFetch<StructuresResponse>({
  * Constructor (8x10 m). */
 var MACHINE_FALLBACK_M = 6;
 
-/* Blue, amber, red -- the page's oldest three colours, and the ones every measured warrant
- * since has had to get out of the way of. Not themselves measured against anything; the
- * audit's one finding against them, the water node dot at dE 8.6 from this blue, is DISCHARGED
- * in palette.ts because the only machine that ever stands in the dot's square metre is a water
- * extractor, drawn in this table's amber at dE 101.3, under a dot raiseNodeDots() keeps on
- * top. */
+/* Blue, amber, tan. The water node dot at dE 8.6 from this blue is DISCHARGED in palette.ts:
+ * the only machine in the dot's square metre is a water extractor, drawn in this table's amber
+ * at dE 101.3, under a dot raiseNodeDots() keeps on top. Generators left the stopped red for a
+ * warm neutral so a generator no longer reads as a fault; nearest cross-owner colour is the loot
+ * cache dot at dE 17.2. */
 var KIND_COLOUR: Record<string, string> = declareColours("placements", {
   machines: "#4aa3df",
   extractors: "#e0a33f",
-  generators: "#d9534f",
+  generators: "#b89a70",
 });
 
 /* The three layers /api/machines answers with, and the one row shape all three carry.
@@ -121,12 +120,12 @@ const MACHINE_SLOT: Record<(typeof MACHINE_KINDS)[number], number> = {
   generators: 60,
 };
 
-/* Thick outline = the server's `actionable`: generator red when stopped, signal yellow when
- * blocked. Grammar and the yellow's measured distances: docs/save-projection.md §6.2d. */
+/* Thick outline = the server's `actionable`: red when stopped, signal yellow when blocked.
+ * Grammar and the yellow's measured distances: docs/save-projection.md §6.2d. The CSS twin of
+ * the yellow is `--blocked` in style.css. */
 export var BLOCKED = "blocked";
 export var BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
-export var STOPPED_COLOUR = KIND_COLOUR.generators;
-document.documentElement.style.setProperty("--blocked", BLOCKED_COLOUR);
+export var STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" }).stopped;
 
 export function stateTone(state: string, actionable: boolean): string {
   return state === BLOCKED ? "blocked" : actionable ? "bad" : "";
@@ -230,28 +229,15 @@ registerFetch<MachinesResponse>({
  */
 
 /* Storage, measured. A container is drawn as a filled footprint box, so what it has to
- * separate from is the other filled boxes -- the three machine kinds, the belt attachments and
- * the concrete it stands on -- and magenta is what the page has left, blue, amber, red, steel
- * and rust all being spent.
- *
- * In CIE Lab it is dE 42.4 from its nearest filled box (the concrete; the generator red is
- * 51.8) and 48.5 from the nearest biome ground, which are the two comparisons that decide
- * whether a box reads. Its nearest neighbour ANYWHERE is the raw-quartz node dot at dE 27.4 --
- * a small disc on open terrain rather than a rectangle inside a factory, so the two are never
- * asked to be told apart in the same square metre, which is the axis the DISCHARGED warrants in
- * palette.ts turn on. The alternatives measured beside it were worse on one of the two: a
- * lighter magenta (#c76bb0) lands dE 17.7 from that same quartz dot, a violet (#8c72c4) dE 19.1
- * from the crude-oil dot and only 37.3 from the machine blue, and a sea green dE 10.5 from the
- * pickup teal.
- *
- * The fluid buffers are one value step down the same hue, at the house step of dE 16.7 against
- * the belts' 15.6 and the pipes' 15.1. It moves AWAY from everything, ending dE 33.7 from its
- * nearest colour on the page (the wire casing, with the crude-oil dot and the concrete both at
- * 34.0) and 37.6 from the nearest ground.
+ * separate from is the other filled boxes and the selection pink, which the old magenta sat
+ * too close to. A cool blue-violet: dE 18.0 from its nearest cross-owner colour (the hard-drive
+ * dot), 20.4 from the water dot, 27.4 from the machine blue, and 64.1 from the selection pink
+ * (the magenta was 37.5). The fluid buffers are one value step down the same hue at dE 15.8,
+ * near the house step; nearest cross-owner colour dE 25.4 (crude oil and the hard drive).
  */
 var STORAGE = declareColours("placements", {
-  storage: "#ad4f96",
-  "storage fluid": "#7f3169",
+  storage: "#6a78c8",
+  "storage fluid": "#4a5596",
 });
 var STORAGE_COLOUR = STORAGE.storage;
 var STORAGE_FLUID_COLOUR = STORAGE["storage fluid"];
