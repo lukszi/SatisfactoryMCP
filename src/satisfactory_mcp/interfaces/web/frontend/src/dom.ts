@@ -59,7 +59,7 @@ export function code(text: unknown): Markup {
       COPY_ATTR +
       '="' +
       value +
-      '" title="click to copy">' +
+      '" title="click to copy" tabindex="0" role="button">' +
       value +
       "</code>"
   );
@@ -173,6 +173,37 @@ export function make<K extends keyof HTMLElementTagNameMap>(
   if (className) node.className = className;
   if (text !== undefined) node.textContent = String(text);
   return node;
+}
+
+var FOCUSABLE = "a[href],button,input,select,textarea,summary,[tabindex]";
+
+function focusKey(node: Element): string {
+  var named = node.getAttribute("data-candidate") || node.getAttribute("data-ctl") || node.getAttribute("aria-label") || node.textContent || "";
+  return node.tagName + "|" + named.replace(/[▲▼]/g, "").trim();
+}
+
+function focusables(container: HTMLElement, key: string): HTMLElement[] {
+  return Array.prototype.filter.call(container.querySelectorAll<HTMLElement>(FOCUSABLE), function (node: Element) {
+    return focusKey(node) === key;
+  }) as HTMLElement[];
+}
+
+export function keepFocus(container: HTMLElement, rebuild: () => void): void {
+  var was = document.activeElement as HTMLElement | null;
+  if (!was || was === container || !container.contains(was)) {
+    rebuild();
+    return;
+  }
+  var key = focusKey(was);
+  var nth = focusables(container, key).indexOf(was);
+  rebuild();
+  var now = document.activeElement;
+  if (was.isConnected || (now && now !== document.body && container.contains(now))) return;
+  var same = focusables(container, key);
+  var again = same[nth] || same[0] || container.querySelector<HTMLElement>("h1");
+  if (!again) return;
+  if (again.tagName === "H1") again.tabIndex = -1;
+  again.focus({ preventScroll: true });
 }
 
 /* One tile: the picture, the quantity over its bottom-right corner, and the name underneath

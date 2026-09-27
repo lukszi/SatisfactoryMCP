@@ -18,11 +18,6 @@
   color: var(--accent-hi);
 }
 
-.btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 .btn:disabled {
   border-color: var(--line);
   color: var(--dim);
@@ -136,6 +131,11 @@
   margin: var(--sp-1) 0 var(--sp-2);
   color: var(--muted);
   font-size: var(--fs-m);
+}
+
+.dk-state .dk-what,
+.dk-state .dk-how {
+  overflow-wrap: anywhere;
 }
 
 .dk-state .dk-how {

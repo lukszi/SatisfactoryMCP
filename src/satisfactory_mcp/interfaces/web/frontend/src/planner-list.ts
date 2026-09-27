@@ -201,6 +201,7 @@ export function renderList(root: HTMLElement): void {
     loadList();
   }
   loadItems();
+  root.appendChild(make("h1", "dk-hidden", "Planner"));
   root.appendChild(itemList());
   renderCard(root);
   var card = make("section", "dash-card");

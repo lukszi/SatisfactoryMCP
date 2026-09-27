@@ -3,7 +3,7 @@
 
 import { get, send } from "./api";
 import { loading } from "./dashkit";
-import { make } from "./dom";
+import { keepFocus, make } from "./dom";
 import { go } from "./nav";
 import { onVitals } from "./panel";
 import { renderBench } from "./planner-bench";
@@ -84,15 +84,11 @@ function draw(): void {
     return;
   }
   heldDraw = false;
-  var active = document.activeElement;
-  var ctl = active && root.contains(active) ? active.getAttribute("data-ctl") : null;
-  root.textContent = "";
-  if (mounted) renderBench(root, select);
-  else renderList(root);
-  if (ctl) {
-    var again = root.querySelector<HTMLElement>('[data-ctl="' + ctl + '"]');
-    if (again) again.focus();
-  }
+  keepFocus(root, function () {
+    root.textContent = "";
+    if (mounted) renderBench(root, select);
+    else renderList(root);
+  });
   if (held.length && !typing()) flush();
 }
 

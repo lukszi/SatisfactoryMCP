@@ -134,7 +134,6 @@ function body<R>(tbody: HTMLElement, columns: Column<R>[], rows: R[], options: T
     if (options.onRow) {
       var pick = options.onRow;
       tr.classList.add("go");
-      tr.tabIndex = 0;
       tr.onclick = function () {
         pick(row);
       };
@@ -149,6 +148,7 @@ function body<R>(tbody: HTMLElement, columns: Column<R>[], rows: R[], options: T
       var extras = [i === 0 ? "dk-lead" : "", c.className || "", c.tone ? c.tone(row) : ""].filter(Boolean).join(" ");
       cell(tr, c.render(row), aligned(c.align, extras));
     });
+    if (options.onRow && !tr.querySelector("a[href]")) tr.tabIndex = 0;
     tbody.appendChild(tr);
   });
 }

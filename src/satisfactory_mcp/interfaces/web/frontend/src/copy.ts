@@ -38,21 +38,29 @@ function write(text: string): Promise<void> {
   return Promise.reject(new Error("the browser refused to copy"));
 }
 
+function copyFrom(event: Event): void {
+  var target = event.target as Element | null;
+  var span = target && target.closest ? target.closest("." + COPY_CLASS) : null;
+  if (!span) return;
+  var text = span.getAttribute(COPY_ATTR) || span.textContent || "";
+  // Said out loud both ways: a copy that silently did nothing is worse than no affordance,
+  // because the reader pastes whatever was in the clipboard before.
+  write(text).then(
+    function () {
+      note("copied " + text);
+    },
+    function (error) {
+      fail("could not copy " + text + " — " + String((error && error.message) || error));
+    }
+  );
+}
+
 export function listenForCopies(): void {
-  document.addEventListener("click", function (event) {
+  document.addEventListener("click", copyFrom);
+  document.addEventListener("keydown", function (event) {
     var target = event.target as Element | null;
-    var span = target && target.closest ? target.closest("." + COPY_CLASS) : null;
-    if (!span) return;
-    var text = span.getAttribute(COPY_ATTR) || span.textContent || "";
-    // Said out loud both ways: a copy that silently did nothing is worse than no affordance,
-    // because the reader pastes whatever was in the clipboard before.
-    write(text).then(
-      function () {
-        note("copied " + text);
-      },
-      function (error) {
-        fail("could not copy " + text + " — " + String((error && error.message) || error));
-      }
-    );
+    if (event.key !== "Enter" || !target || target.tagName === "BUTTON" || !target.classList.contains(COPY_CLASS)) return;
+    event.preventDefault();
+    copyFrom(event);
   });
 }

@@ -626,7 +626,7 @@ function titleLine(head: HTMLElement): void {
 
 function header(parent: HTMLElement): void {
   var plan = bench.plan!;
-  var head = make("div", "dash-title plan-head");
+  var head = make("div", "dash-title");
   titleLine(head);
   var st = status();
   head.appendChild(make("span", "plan-status" + (st === "conflict" ? " bad" : ""), "v" + plan.rev + " · " + st));

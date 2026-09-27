@@ -1159,3 +1159,37 @@ Decided 2026-09-27, binding for the design-system work and the page batches afte
 - **T8** The Host check applies to every method (§9.2).
 - **T9 Explanations.** One line at most on the page; longer definitions go to the docs. The
   marker key stays.
+
+---
+
+## 15. Narrow widths and the keyboard (2026-09-27)
+
+What holds at every width from 390 px up, and how the page keeps a keyboard user's place:
+
+- **No sideways page scroll.** A wide table scrolls inside its `.dash-scroll` box; its first
+  column is sticky, painted with `--surface` (the page background, or `--panel` inside a
+  card, the side panel and the trace card), so the row name stays in view while the numbers
+  scroll. Table cells wrap at spaces only; notes, empty and error lines and detail titles
+  also break a long unspaced token.
+- **Tiles** go two per row below 600 px, with tighter padding and an 18 px value.
+- **Settings** is a two-column grid, label and hint on the left and the control on the
+  right; it stacks below 600 px.
+- **Detail titles** wrap: a long name takes its own line and the actions move under it.
+- **The live indicator** is a `role="status"` region. Connected, it shows only the dot and
+  says "live" to a screen reader; while connecting or after a dropped stream it also shows
+  "connecting…" or "offline" as text, so the state is not carried by colour alone.
+- **One focus ring**: 2 px accent, set once for links, buttons, fields, `summary` and
+  anything with a `tabindex`. Components only change its offset.
+- **Focus survives a re-render.** The dashboard, the side panel and the planner rebuild
+  their DOM on every data change; `keepFocus` in dom.ts finds the focused control again by
+  its `data-candidate`, `data-ctl`, `aria-label` or text, and falls back to the view's `h1`
+  when the control is gone (a navigation). Every view has one `h1`, visually hidden on the
+  list pages. A cancelled rename returns focus to its button; a jump from the dashboard to
+  the map focuses the map.
+- **Rows.** A clickable table row is a tab stop only when it has no link of its own;
+  otherwise the link is the stop and the row click stays a mouse convenience. Enter opens
+  it either way. Sortable headers take Enter and Space; the side-panel tabs take the arrow
+  keys; Escape closes the search hits first and clears the query second, closes the marker
+  key and cancels a rename. A copyable selector in a popup takes Enter.
+- **Check:** every view at 390, 768 and 1440 px asserts `scrollWidth === innerWidth`, and a
+  Tab walk through every view finds no stop without a visible ring.

@@ -2,7 +2,7 @@
  * docs/spatial-and-map.md §21. */
 
 import { button, chip, empty, error, link, loading } from "./dashkit";
-import { el, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
+import { el, keepFocus, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
 import { mw, pct } from "./format";
 import { chooseLabel, FACTORY_PICKED, flyToFactory, paddedBounds, reveal } from "./labels";
 import { onLayersToggle, setLayersOpen } from "./layercontrol";
@@ -503,10 +503,12 @@ export function render(): void {
   fold.title = fold.getAttribute("aria-label")!;
   var body = el("panel-body");
   var scroll = body.scrollTop;
-  body.textContent = "";
-  if (!view.open) return;
-  if (view.tab === "factories") renderFactories(body);
-  else renderPower(body);
+  keepFocus(body, function () {
+    body.textContent = "";
+    if (!view.open) return;
+    if (view.tab === "factories") renderFactories(body);
+    else renderPower(body);
+  });
   body.scrollTop = scroll;
 }
 

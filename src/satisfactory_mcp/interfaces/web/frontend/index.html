@@ -20,7 +20,7 @@
   <body>
     <header id="bar">
       <strong>Satisfactory</strong>
-      <nav id="views">
+      <nav id="views" aria-label="views">
         <a href="#" data-view="map" class="view-link">Map</a>
         <a href="#" data-view="dash" class="view-link">Dashboard</a>
       </nav>
@@ -32,7 +32,7 @@
         <input id="search-q" type="search" autocomplete="off" placeholder="Search items, recipes, factories  ( / )" aria-label="search items, recipes and factories" />
         <div id="search-hits" role="listbox" hidden></div>
       </div>
-      <span id="live" class="dot" title="connecting to the save watcher&hellip;"></span>
+      <span id="live" class="live" role="status"><span class="dot" aria-hidden="true"></span><span class="live-text">connecting&hellip;</span></span>
     </header>
     <aside id="panel" aria-label="factories and power">
       <div class="panel-tabs">
@@ -46,7 +46,7 @@
     </aside>
     <div id="map"></div>
     <main id="dash" hidden>
-      <nav id="dash-nav"></nav>
+      <nav id="dash-nav" aria-label="dashboard sections"></nav>
       <div id="dash-body"></div>
     </main>
     <!-- The encodings no checkbox can explain, because they are inside a layer rather than a

@@ -78,6 +78,7 @@ export function editName(
   done: (reply: RenamedResponse | null) => void
 ): void {
   cancelRename();
+  var trigger = document.activeElement as HTMLElement | null;
   var kept = Array.prototype.slice.call(host.childNodes) as Node[];
   var input = make("input", "dash-name");
   input.type = "text";
@@ -99,7 +100,11 @@ export function editName(
         host.appendChild(node);
       });
     }
+    var lost = !document.activeElement || document.activeElement === document.body;
     done(reply);
+    if (lost && trigger && trigger.isConnected && (!document.activeElement || document.activeElement === document.body)) {
+      trigger.focus({ preventScroll: true });
+    }
   };
   var cancel = function () {
     if (!saving) finish(null);

@@ -857,16 +857,17 @@ export function renderFactory(body: HTMLElement, name: string): void {
   );
   head.appendChild(factoryMapButton(row));
   var shown = graphView.source === "factory" && graphView.subject === row.name;
-  head.appendChild(
-    button(
-      shown ? "hide graph" : "graph",
-      function () {
-        if (shown) closeGraph();
-        else openGraph("factory", row!.name, row!.name);
-      },
-      { title: "draw this factory's production graph" }
-    )
+  var toggle = button(
+    shown ? "hide graph" : "graph",
+    function () {
+      if (shown) closeGraph();
+      else openGraph("factory", row!.name, row!.name);
+    },
+    { title: "draw this factory's production graph" }
   );
+  toggle.setAttribute("data-ctl", "graph");
+  toggle.setAttribute("aria-expanded", String(shown));
+  head.appendChild(toggle);
   head.appendChild(
     button(
       "trace supply",

@@ -377,7 +377,6 @@ function circuitsCard(parent: HTMLElement): void {
 }
 
 export function renderOverview(body: HTMLElement): void {
-  body.appendChild(make("h1", "dk-hidden", "Overview"));
   tiles(body);
   var split = make("div", "dash-split");
   var h = vitals().health;

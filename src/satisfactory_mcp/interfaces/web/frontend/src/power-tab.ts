@@ -439,7 +439,6 @@ function circuitsMissing(body: HTMLElement): void {
 }
 
 export function renderPower(body: HTMLElement): void {
-  body.appendChild(make("h1", "dk-hidden", "Power"));
   var data = vitals().circuits;
   if (!data) {
     circuitsMissing(body);

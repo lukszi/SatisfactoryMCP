@@ -580,7 +580,6 @@ function renderBrowse(body: HTMLElement, subject: string, arrived: boolean): voi
   var b = parseBrowse(subject);
   if (arrived) restoring = { dash: state.dash, top: scrolled[state.dash] || 0 };
   lastBrowse = state.dash;
-  body.appendChild(make("h1", "dk-hidden", "Recipe book"));
   var card = make("section", "dash-card");
   modeBar(card, b);
   input.placeholder = b.mode === "items" ? "filter items by name" : b.mode === "recipes" ? "filter recipes by name" : "filter unlocked recipes";

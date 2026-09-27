@@ -36,31 +36,37 @@ function parsed<T>(event: MessageEvent): T | null {
   }
 }
 
+function showLive(kind: string, text: string, title: string): void {
+  var live = el("live");
+  live.className = "live" + (kind ? " " + kind : "");
+  live.title = title;
+  var words = live.querySelector(".live-text");
+  if (!words) return;
+  if (words.textContent !== text) words.textContent = text;
+  words.classList.toggle("dk-hidden", kind === "on");
+}
+
 /* One EventSource for the process; a write is an edge trigger and the response is a refetch
  * of what that kind of write can change. The grey dot means connecting, retrying or dead, so
- * its title says which, and losing an ESTABLISHED connection also says so in a toast. */
+ * its text says which, and losing an ESTABLISHED connection also says so in a toast. */
 export function listen() {
   var source = new EventSource("/api/events");
-  var dot = el("live");
   var wasOpen = false;
   var missed = false;
-  dot.title = "connecting to the save watcher…";
+  showLive("", "connecting…", "connecting to the save watcher…");
   source.onopen = function () {
     if (missed) resync();
     missed = false;
     wasOpen = true;
-    dot.className = "dot on";
-    dot.title = "live: watching for save writes";
+    showLive("on", "live", "live: watching for save writes");
   };
   source.onerror = function () {
-    var lost = wasOpen;
-    missed = missed || lost;
+    var dropped = wasOpen;
+    missed = missed || dropped;
     wasOpen = false;
-    dot.className = "dot";
-    dot.title = lost
-      ? "live connection lost — is the server still running? Retrying…"
-      : "connecting to the save watcher…";
-    if (lost) fail("live updates lost — what is on screen may be stale");
+    if (missed) showLive("lost", "offline", "live connection lost — is the server still running? Retrying…");
+    else showLive("", "connecting…", "connecting to the save watcher…");
+    if (dropped) fail("live updates lost — what is on screen may be stale");
   };
   var resync = function () {
     refreshWorlds();
@@ -75,9 +81,10 @@ export function listen() {
     resyncPlanner();
   };
   var blink = function () {
-    dot.className = "dot hit";
+    var live = el("live");
+    live.classList.add("hit");
     setTimeout(function () {
-      dot.className = "dot on";
+      live.classList.remove("hit");
     }, 800);
   };
   source.addEventListener("save", function (event) {

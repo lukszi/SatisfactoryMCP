@@ -359,6 +359,7 @@ function glyphMarker(at: Point3M, up: boolean): L.Marker {
       iconSize: [GLYPH_PX, GLYPH_PX],
       iconAnchor: [GLYPH_PX / 2, GLYPH_PX / 2],
     }),
+    title: up ? "leads up a floor" : "leads down a floor",
   });
 }
 

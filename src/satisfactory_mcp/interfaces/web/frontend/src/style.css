@@ -62,6 +62,8 @@
   --z-toast: 1300;
 
   --content-max: 1280px;
+
+  --surface: var(--bg);
 }
 
 * {
@@ -82,6 +84,17 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 #bar {
@@ -128,21 +141,34 @@ select {
   max-width: 220px;
 }
 
-.dot {
+.live {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-1);
   margin-left: auto;
+  color: var(--muted);
+  font-size: var(--fs-s);
+  white-space: nowrap;
+}
+
+.live .dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   background: var(--off);
-  flex: none;
 }
 
-.dot.on {
+.live.on .dot {
   background: var(--ok);
 }
 
-.dot.hit {
+.live.hit .dot {
   background: var(--flash);
+}
+
+.live.lost {
+  color: var(--bad);
 }
 
 @media (max-width: 899px) {
@@ -951,6 +977,7 @@ select {
   margin: 2px 0 6px;
   color: var(--muted);
   font-size: var(--fs-s);
+  overflow-wrap: anywhere;
 }
 
 .panel-h {
@@ -1358,6 +1385,7 @@ body.dash-on #panel {
   margin: 4px 0 8px;
   color: var(--muted);
   font-size: var(--fs-s);
+  overflow-wrap: anywhere;
 }
 
 .dash-muted {
@@ -1366,14 +1394,17 @@ body.dash-on #panel {
 
 .dash-title {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 0 var(--sp-2);
 }
 
 .dash-title h1 {
+  min-width: 0;
   margin: 6px 0;
   font-size: var(--fs-h1);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .dash-back {
@@ -1515,6 +1546,19 @@ a.dash-tile:hover {
   overflow-x: auto;
 }
 
+.dash-card,
+#panel,
+#trace {
+  --surface: var(--panel);
+}
+
+:where(.dash-scroll > .dash-table > * > tr) > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
 .dash-table {
   width: 100%;
   border-collapse: collapse;
@@ -1569,7 +1613,7 @@ a.dash-tile:hover {
 }
 
 .dash-table tr.go:hover td {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--ink-hi) 4%, var(--surface));
 }
 
 .dash-table td a {
@@ -1598,10 +1642,8 @@ a.dash-tile:hover {
   min-width: 16ch;
 }
 
-.dash-table .dash-sub {
+.dash-table td .dash-sub {
   display: block;
-  color: var(--muted);
-  font-size: var(--fs-s);
 }
 
 .dash-list {
@@ -1693,17 +1735,29 @@ a.dash-where:hover {
 }
 
 .dash-setting {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-2);
-  max-width: 640px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  align-items: start;
+  gap: var(--sp-1) var(--sp-3);
+  max-width: 800px;
   padding: var(--sp-2) 0;
   border-top: 1px solid var(--line);
   cursor: pointer;
 }
 
-.dash-setting input {
+.dash-setting > :last-child {
+  justify-self: start;
+  max-width: 100%;
+}
+
+.dash-setting input[type="checkbox"] {
   margin: 2px 0 0;
+}
+
+@media (max-width: 599px) {
+  .dash-setting {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .dash-setting-text {
@@ -1734,7 +1788,6 @@ a.dash-where:hover {
 
 .dash-name:focus {
   border-color: var(--accent);
-  outline: none;
 }
 
 .dash-acts {
@@ -1860,6 +1913,15 @@ a.dash-where:hover {
 
   .dash-tiles {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-1);
+  }
+
+  .dash-tile {
+    padding: var(--sp-1) var(--sp-2);
+  }
+
+  .dash-tile-v {
+    font-size: var(--fs-h1);
   }
 }
 
@@ -2008,13 +2070,7 @@ a.dash-where:hover {
   margin-left: 10px;
 }
 
-.inv-search .dash-name:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
-.inv-also,
-.inv-results .dk-state {
+.inv-also {
   overflow-wrap: anywhere;
 }
 
@@ -2068,7 +2124,7 @@ a.dash-where:hover {
   min-width: 140px;
 }
 
-#search + .dot {
+#search + .live {
   margin-left: 0;
 }
 
@@ -2088,7 +2144,6 @@ a.dash-where:hover {
 
 #search-q:focus {
   border-color: var(--accent);
-  outline: none;
 }
 
 @media (max-width: 899px) {
@@ -2514,13 +2569,6 @@ body.dash-on #trace {
   color: var(--ink-hi);
 }
 
-.plan-head {
-  flex-wrap: wrap;
-}
-
-.plan-head h1 {
-  overflow-wrap: anywhere;
-}
 
 .plan-acts {
   flex-wrap: wrap;
@@ -2590,7 +2638,7 @@ body.dash-on #trace {
 }
 
 .dash-table tr.plan-picked td {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 
 @media (max-width: 599px) {

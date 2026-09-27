@@ -2,7 +2,7 @@
  * tab modules share. See docs/frontend_vision.md §8. */
 
 import { button, empty, heading, link, note } from "./dashkit";
-import { el, make } from "./dom";
+import { el, keepFocus, make } from "./dom";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
 import { onVitals, showFactory, showPoint, vitals } from "./panel";
@@ -64,11 +64,14 @@ function address(): { tab: Tab; subject: string } {
 export { go } from "./nav";
 
 export function toMap(action: () => void): void {
+  var from = document.activeElement;
+  var keyed = !!from && el("dash").contains(from);
   state.dash = "";
   history.pushState(null, "", hashFor(""));
   show();
   action();
   writeHash();
+  if (keyed) el("map").focus({ preventScroll: true });
 }
 
 export function mapButton(title: string, action: () => void, label?: string): HTMLButtonElement {
@@ -108,7 +111,7 @@ export function pointButton(
     function () {
       showPoint(at.x_m, at.y_m, shown);
     },
-    label
+    label || (shown.label ? "show " + shown.label + " on the map" : undefined)
   );
 }
 
@@ -144,6 +147,10 @@ function renderSettings(body: HTMLElement): void {
   note(card, "Kept in this browser only. Nothing is sent to the server.");
   SETTINGS.forEach(function (s) {
     var row = make("label", "dash-setting");
+    var words = make("span", "dash-setting-text");
+    words.appendChild(make("span", "dash-setting-k", s.label));
+    words.appendChild(make("span", "dash-setting-hint", s.hint));
+    row.appendChild(words);
     if (s.kind === "switch") {
       var box = make("input");
       box.type = "checkbox";
@@ -178,10 +185,6 @@ function renderSettings(body: HTMLElement): void {
       };
       row.appendChild(num);
     }
-    var words = make("span", "dash-setting-text");
-    words.appendChild(make("span", "dash-setting-k", s.label));
-    words.appendChild(make("span", "dash-setting-hint", s.hint));
-    row.appendChild(words);
     card.appendChild(row);
   });
   body.appendChild(card);
@@ -258,25 +261,22 @@ export function render(): void {
     return;
   }
   var scroll = el("dash").scrollTop;
-  var focused = document.activeElement;
-  var typing = focused && body.contains(focused) ? focused.getAttribute("data-candidate") : null;
-  body.textContent = "";
-  if (at.tab === "overview") renderOverview(body);
-  else if (at.tab === "factories") {
-    if (at.subject) renderFactory(body, at.subject);
-    else renderFactories(body);
-  } else if (at.tab === "power") {
-    if (at.subject) renderCircuit(body, at.subject);
-    else renderPower(body);
-  } else if (at.tab === "progress") renderProgress(body, at.subject, pointButton);
-  else if (at.tab === "inventory") renderInventory(body, { toMap: toMap, render: render });
-  else if (at.tab === "recipes") renderRecipes(body, at.subject, render);
-  else renderSettings(body);
+  keepFocus(body, function () {
+    body.textContent = "";
+    if (at.tab === "overview") renderOverview(body);
+    else if (at.tab === "factories") {
+      if (at.subject) renderFactory(body, at.subject);
+      else renderFactories(body);
+    } else if (at.tab === "power") {
+      if (at.subject) renderCircuit(body, at.subject);
+      else renderPower(body);
+    } else if (at.tab === "progress") renderProgress(body, at.subject, pointButton);
+    else if (at.tab === "inventory") renderInventory(body, { toMap: toMap, render: render });
+    else if (at.tab === "recipes") renderRecipes(body, at.subject, render);
+    else renderSettings(body);
+    if (!body.querySelector("h1")) body.insertBefore(make("h1", "dk-hidden", tabLabel(at.tab)), body.firstChild);
+  });
   el("dash").scrollTop = scroll;
-  if (typing !== null) {
-    var again = body.querySelector<HTMLInputElement>('[data-candidate="' + typing + '"]');
-    if (again) again.focus();
-  }
 }
 
 function relink(): void {
