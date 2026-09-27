@@ -201,3 +201,31 @@ def test_canonical_rewrites_what_a_stored_plan_would_hold(world):
     assert ops[-2] == {"op": "remove", "field": "sources", "member": "pin:77"}
     args, _ = pins.canonical_args(world, {"sources": [point and field["id"]], "banned": []})
     assert all(not s.startswith("pin:") for s in args["sources"])
+
+
+def test_plan_management_tools_take_a_plan_pin(world, tmp_path, monkeypatch):
+    from satisfactory_mcp.domain.planning import journal
+    from satisfactory_mcp.interfaces.mcp.tools import planning
+
+    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
+    monkeypatch.setattr(planning, "_state", lambda *a, **k: world)
+    monkeypatch.setattr(planning, "_sav", lambda st: "sav:test")
+    made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
+    plan, _ = pins.create(world, "plan", {"plan": made.key})
+    point, _ = pins.create(world, "point", {"x_m": 1.0, "y_m": 2.0})
+    assert "no saved plan" not in planning.list_plans(name=plan["id"])
+    assert "no saved plan" not in planning.plan_log(name=plan["id"])
+    out = planning.rename_plan(name=plan["id"], to="rip two", base_rev=1)
+    assert "renamed plan 'rip' to 'rip two'" in out
+    refused = planning.forget_plan(name=point["id"], base_rev=2)
+    assert refused == f"! {point['id']} is a point: it cannot stand for a plan"
+    assert planning.forget_plan(name=plan["id"], base_rev=2).startswith("forgot plan ")
+
+
+def test_a_site_at_a_pin_stores_the_place_not_the_pin(world):
+    from satisfactory_mcp.domain.planning.siting import resolve_plan_site
+
+    point, _ = pins.create(world, "point", {"x_m": -7.9, "y_m": -5.5})
+    site = resolve_plan_site(world, point["id"])
+    assert site.describe().startswith(f"origin -7.9,-5.5m (from {point['id']} = -7.9,-5.5 (point))")
+    assert site.to_dict()["origin_label"] == "-7.9,-5.5 (point)"

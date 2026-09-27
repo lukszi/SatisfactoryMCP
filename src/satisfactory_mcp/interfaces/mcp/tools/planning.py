@@ -277,6 +277,10 @@ def list_plans(
     except Exception as exc:
         return f"could not read save: {exc}"
     if name:
+        try:
+            name, _echo = _plan_pin(st, name)
+        except KeyError as exc:
+            return f"! {exc.args[0]}"
         stored = st.plans.find(name)
         if stored is None:
             return _unknown(st, name)
@@ -382,6 +386,10 @@ def forget_plan(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
+    try:
+        name, _echo = _plan_pin(st, name)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
     stored = st.plans.find(name)
     if stored is None:
         return _unknown(st, name)
@@ -422,6 +430,10 @@ def rename_plan(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
+    try:
+        name, _echo = _plan_pin(st, name)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
     stored = st.plans.find(name)
     if stored is None:
         return _unknown(st, name)
@@ -1853,6 +1865,10 @@ def plan_log(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
+    try:
+        name, _echo = _plan_pin(st, name)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
     log = _log(st)
     found = log.find(name, include_forgotten=True)
     if found is None:
