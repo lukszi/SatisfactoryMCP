@@ -1,14 +1,18 @@
 /* The dashboard's Progress section: milestones, MAM, Space Elevator, hard drives, shards and
  * somersloops, facts only. See docs/frontend_vision.md, "Phase 4: Progress". */
 
-import { count, make } from "./dom";
-import { checkbox, cell, grid, heading, link, note, scroll, tile } from "./dashkit";
+import { make } from "./dom";
+import { checkbox, error, heading, link, loading, note, table, tabs2, tile } from "./dashkit";
 import { num, phaseText } from "./format";
+import { loadOne } from "./load";
 import { hashFor } from "./map";
+import { go } from "./nav";
 import { registerFetch } from "./registry";
-import { setting } from "./settings";
+import { onSetting, setSetting, setting, spoilerNotice } from "./settings";
+import { offer } from "./toast";
 
 import type { ApiError, ApiUrl } from "./api";
+import type { Column, SortState } from "./dashkit";
 import type { Fetcher } from "./registry";
 import type {
   DriveRow,
@@ -25,7 +29,9 @@ import type {
 
 interface Slot<T> {
   data: T | null;
-  error: string;
+  failed: boolean;
+  path: ApiUrl;
+  label: string;
 }
 
 interface Placed {
@@ -44,11 +50,23 @@ var SUBS: [string, string][] = [
   ["sloops", "Somersloops"],
 ];
 
+var PLACES: Record<string, string> = {
+  carried: "carried",
+  storage: "in storage containers",
+  depot: "in the Dimensional Depot",
+};
+
+var STOCK = "checked against spendable stock: carried, storage containers and the Dimensional Depot";
+
 var listeners: Array<() => void> = [];
 
 var showDone = false;
 
 var showMamDone = false;
+
+var milestoneSort: SortState = { key: "tier", desc: false };
+var mamSort: SortState = { key: "tree", desc: false };
+var shardSort: SortState = { key: "clock", desc: true };
 
 function changed(): void {
   listeners.forEach(function (listener) {
@@ -60,53 +78,84 @@ export function onProgress(listener: () => void): void {
   listeners.push(listener);
 }
 
-function empty<T>(): Slot<T> {
-  return { data: null, error: "" };
+function slot<T>(path: ApiUrl, label: string): Slot<T> {
+  return { data: null, failed: false, path: path, label: label };
 }
 
-function fetcher<T extends ApiError>(held: Slot<T>, path: ApiUrl, label: string, rank: number): Fetcher<T> {
+function fetcher<T extends ApiError>(held: Slot<T>, rank: number): Fetcher<T> {
   return {
     wave: "live",
     rank: rank,
-    path: path,
-    label: label,
+    path: held.path,
+    label: held.label,
     clears: [],
     refilters: false,
     draw: function (data) {
       held.data = data;
-      held.error = "";
+      held.failed = false;
       changed();
     },
     failed: function () {
       held.data = null;
-      held.error = label + " could not be read for this save";
+      held.failed = true;
       changed();
     },
   };
 }
 
-var milestones = empty<MilestonesResponse>();
-var mam = empty<MamResponse>();
-var phase = empty<PhaseResponse>();
-var drives = empty<HardDrivesResponse>();
-var shards = empty<ShardsResponse>();
-var sloops = empty<SloopsResponse>();
+var milestones = slot<MilestonesResponse>("/api/progress/milestones", "milestones");
+var mam = slot<MamResponse>("/api/progress/mam", "MAM research");
+var phase = slot<PhaseResponse>("/api/progress/phase", "space elevator");
+var drives = slot<HardDrivesResponse>("/api/progress/harddrives", "hard drives");
+var shards = slot<ShardsResponse>("/api/progress/shards", "power shards");
+var sloops = slot<SloopsResponse>("/api/progress/sloops", "somersloops");
 
-registerFetch(fetcher(milestones, "/api/progress/milestones", "milestones", 60));
-registerFetch(fetcher(mam, "/api/progress/mam", "MAM research", 61));
-registerFetch(fetcher(phase, "/api/progress/phase", "space elevator", 62));
-registerFetch(fetcher(drives, "/api/progress/harddrives", "hard drives", 63));
-registerFetch(fetcher(shards, "/api/progress/shards", "power shards", 64));
-registerFetch(fetcher(sloops, "/api/progress/sloops", "somersloops", 65));
+registerFetch(fetcher(milestones, 60));
+registerFetch(fetcher(mam, 61));
+registerFetch(fetcher(phase, 62));
+registerFetch(fetcher(drives, 63));
+registerFetch(fetcher(shards, 64));
+registerFetch(fetcher(sloops, 65));
+
+onSetting(changed);
+
+if (spoilerNotice()) {
+  offer("Upcoming milestones, research and locked recipes are now hidden until the save reaches them.", "show them", function () {
+    setSetting("spoilers", true);
+  });
+}
+
+function waiting<T>(body: HTMLElement, held: Slot<T>): void {
+  if (held.failed) {
+    error(body, held.label, null, function () {
+      loadOne(held.path);
+    });
+  } else loading(body, held.label);
+}
+
+function visible<T extends { spoiler: boolean }>(rows: T[]): T[] {
+  if (setting("spoilers")) return rows;
+  return rows.filter(function (r) {
+    return !r.spoiler;
+  });
+}
 
 function amounts(rows: { name: string; amount: number }[]): string {
   return (
     rows
       .map(function (r) {
-        return count(r.amount) + " " + r.name;
+        return num(r.amount) + " " + r.name;
       })
       .join(", ") || "–"
   );
+}
+
+function placed(rows: { name: string; amount: number }[]): string {
+  return rows
+    .map(function (r) {
+      return num(r.amount) + " " + (PLACES[r.name] || r.name);
+    })
+    .join(", ");
 }
 
 function spoilerNote(body: HTMLElement, text: string): void {
@@ -116,35 +165,25 @@ function spoilerNote(body: HTMLElement, text: string): void {
   body.appendChild(hid);
 }
 
-function reach(data: MilestonesResponse): number {
-  var top = 0;
-  data.milestones.forEach(function (m) {
-    if (m.status === "DONE") top = Math.max(top, m.tier);
-  });
-  if (!top && data.tiers.length) top = data.tiers[0]!.tier;
-  return top;
+function milestoneStatus(m: MilestoneRow): string {
+  if (m.opens_at !== null && m.status !== "DONE") return "locked (phase " + m.opens_at + ")";
+  if (m.status === "DONE") return "done";
+  if (m.status === "READY") return "affordable";
+  if (m.status === "BLOCKED") return "blocked by " + m.blocked_by.join(", ");
+  return m.status;
 }
 
-function shown(data: MilestonesResponse): MilestonesResponse {
-  if (setting("spoilers")) return data;
-  var top = reach(data);
-  return {
-    game_phase: data.game_phase,
-    highest_complete_tier: data.highest_complete_tier,
-    tiers: data.tiers.filter(function (t) {
-      return t.tier <= top;
-    }),
-    milestones: data.milestones.filter(function (m) {
-      return m.tier <= top;
-    }),
-  };
+function affordable(rows: MilestoneRow[]): number {
+  return rows.filter(function (m) {
+    return milestoneStatus(m) === "affordable";
+  }).length;
 }
 
 export function milestoneTile(): HTMLElement {
-  if (!milestones.data) return tile("milestones", "–", milestones.error || "loading…", false, hashFor("progress"));
-  var ready = shown(milestones.data).milestones.filter(function (m) {
-    return m.status === "READY";
-  }).length;
+  if (!milestones.data) {
+    return tile("milestones", "–", milestones.failed ? "could not be read" : "loading…", false, hashFor("progress"));
+  }
+  var ready = affordable(visible(milestones.data.milestones));
   var top = milestones.data.highest_complete_tier;
   return tile(
     "milestones",
@@ -155,35 +194,103 @@ export function milestoneTile(): HTMLElement {
   );
 }
 
+var MILESTONE_COLUMNS: Column<MilestoneRow>[] = [
+  {
+    key: "name",
+    label: "milestone",
+    sort: function (m) {
+      return m.name;
+    },
+    render: function (m) {
+      return m.name;
+    },
+  },
+  {
+    key: "tier",
+    label: "tier",
+    align: "right",
+    sort: function (m) {
+      return m.tier * 1000 + (m.status === "DONE" ? 0 : 1);
+    },
+    render: function (m) {
+      return m.tier;
+    },
+  },
+  {
+    key: "status",
+    label: "status",
+    sort: milestoneStatus,
+    render: milestoneStatus,
+    tone: function (m) {
+      var s = milestoneStatus(m);
+      return s === "affordable" ? "ok" : s.indexOf("locked") === 0 ? "dash-muted" : "";
+    },
+  },
+  {
+    key: "cost",
+    label: "cost",
+    title: "cost is " + STOCK,
+    render: function (m) {
+      return amounts(m.cost);
+    },
+  },
+  {
+    key: "short",
+    label: "short by",
+    render: function (m) {
+      return m.status === "DONE" ? "" : amounts(m.short);
+    },
+    tone: function (m) {
+      return m.short.length && m.status !== "DONE" && m.opens_at === null ? "bad" : "";
+    },
+  },
+  {
+    key: "recipes",
+    label: "recipes",
+    align: "right",
+    title: "recipes the milestone newly grants",
+    sort: function (m) {
+      return m.unlocks;
+    },
+    render: function (m) {
+      return m.unlocks || "";
+    },
+  },
+];
+
 function renderMilestones(body: HTMLElement): void {
-  if (!milestones.data) {
-    note(body, milestones.error || "loading…");
+  var full = milestones.data;
+  if (!full) {
+    waiting(body, milestones);
     return;
   }
-  var data = shown(milestones.data);
+  var rows = visible(full.milestones);
+  var tiers = visible(full.tiers);
+  var counts: Record<string, number> = { affordable: 0, short: 0, done: 0, locked: 0 };
+  rows.forEach(function (m) {
+    var s = milestoneStatus(m);
+    var key = s.indexOf("locked") === 0 ? "locked" : s.indexOf("blocked") === 0 ? "short" : s;
+    counts[key] = (counts[key] || 0) + 1;
+  });
   var tiles = make("div", "dash-tiles");
   tiles.appendChild(
     tile(
       "highest complete tier",
-      data.highest_complete_tier === null ? "none" : String(data.highest_complete_tier),
-      phaseText(data.game_phase) || "no phase in this save"
+      full.highest_complete_tier === null ? "none" : String(full.highest_complete_tier),
+      phaseText(full.game_phase) || "no phase in this save"
     )
   );
-  var counts: Record<string, number> = { READY: 0, short: 0, BLOCKED: 0, DONE: 0 };
-  data.milestones.forEach(function (m) {
-    counts[m.status] = (counts[m.status] || 0) + 1;
-  });
-  tiles.appendChild(tile("affordable now", count(counts.READY!), "bill covered by spendable stock"));
-  tiles.appendChild(tile("short", count(counts.short!), "stock does not cover the bill"));
-  tiles.appendChild(tile("done", count(counts.DONE!), "of " + data.milestones.length + " milestones" + (setting("spoilers") ? "" : " so far")));
+  tiles.appendChild(tile("affordable now", num(counts.affordable!), "bill covered by spendable stock"));
+  tiles.appendChild(tile("short", num(counts.short!), counts.locked ? counts.locked + " more locked behind a phase" : "stock does not cover the bill"));
+  tiles.appendChild(tile("done", num(counts.done!), "of " + rows.length + " milestones"));
   body.appendChild(tiles);
 
   var strip = make("div", "dash-tiers");
-  data.tiers.forEach(function (t) {
+  tiers.forEach(function (t) {
     strip.appendChild(tally("tier " + t.tier, t.done, t.total));
   });
   body.appendChild(strip);
-  if (!setting("spoilers")) spoilerNote(body, "Tiers you have not started are hidden.");
+  if (tiers.length < full.tiers.length) spoilerNote(body, "Tiers the HUB has not opened yet are hidden.");
 
   var card = make("section", "dash-card");
   var bar = make("div", "dash-title");
@@ -195,43 +302,16 @@ function renderMilestones(body: HTMLElement): void {
     })
   );
   card.appendChild(bar);
-  var rows = data.milestones.filter(function (m: MilestoneRow) {
+  var listed = rows.filter(function (m) {
     return showDone || m.status !== "DONE";
   });
-  if (!rows.length) note(card, "every milestone is done");
-  else {
-    var t = grid([
-      ["tier", true],
-      ["milestone", false],
-      ["status", false],
-      ["cost", false],
-      ["short by", false],
-      ["recipes", true],
-    ]);
-    var tb = t.tBodies[0]!;
-    rows.forEach(function (m) {
-      var tr = make("tr");
-      cell(tr, m.tier, "num");
-      cell(tr, m.name);
-      cell(tr, m.status + (m.blocked_by.length ? " (" + m.blocked_by.join(", ") + ")" : ""), m.status === "READY" ? "ok" : "");
-      cell(tr, amounts(m.cost));
-      cell(tr, m.status === "DONE" ? "" : amounts(m.short), m.short.length && m.status !== "DONE" ? "bad" : "");
-      cell(tr, m.unlocks || "", "num");
-      tb.appendChild(tr);
-    });
-    scroll(card, t);
-  }
-  note(
-    card,
-    "cost is checked against spendable stock: carried, storage containers and the Dimensional Depot. " +
-      "READY is about the bill, not about access: a HUB tier opens with Space Elevator deliveries, " +
-      "which no milestone in the game data records. recipes counts what a milestone newly grants."
-  );
+  if (!listed.length) note(card, "every milestone shown here is done");
+  else card.appendChild(table(MILESTONE_COLUMNS, listed, { sort: milestoneSort, caption: "milestones" }));
   body.appendChild(card);
 }
 
 function tally(label: string, done: number, total: number): HTMLElement {
-  var box = make("div", "dash-tier" + (done === total ? " full" : ""));
+  var box = make("div", "dash-tier");
   box.appendChild(make("span", "dash-tier-k", label));
   var bar = make("div", "dash-hbar");
   var fill = make("span", "dash-mix-ok");
@@ -242,39 +322,100 @@ function tally(label: string, done: number, total: number): HTMLElement {
   return box;
 }
 
-function visibleMam(data: MamResponse): MamRow[] {
-  if (setting("spoilers")) return data.research;
-  return data.research.filter(function (r) {
-    return r.status !== "TREE SHUT";
-  });
-}
-
 function duration(seconds: number): string {
   var minutes = Math.round(seconds / 60);
   return minutes < 60 ? minutes + " min" : Math.floor(minutes / 60) + " h " + (minutes % 60) + " min";
 }
 
 function mamStatus(r: MamRow): string {
-  if (r.status === "RUNNING") return "RUNNING, " + duration(r.running_s || 0) + " left at save";
-  if (r.status === "BLOCKED") return "BLOCKED (" + r.blocked_by.join(", ") + ")";
+  if (r.status === "RUNNING") return "running, " + duration(r.running_s || 0) + " left at save";
+  if (r.status === "BLOCKED") return "blocked by " + r.blocked_by.join(", ");
+  if (r.status === "TREE SHUT") return "tree not open";
+  if (r.status === "READY") return "affordable";
+  if (r.status === "DONE") return "done";
   return r.status;
 }
+
+function owes(r: MamRow): boolean {
+  return r.status !== "DONE" && r.status !== "RUNNING";
+}
+
+var MAM_COLUMNS: Column<MamRow>[] = [
+  {
+    key: "name",
+    label: "research",
+    sort: function (r) {
+      return r.name;
+    },
+    render: function (r) {
+      return r.name;
+    },
+  },
+  {
+    key: "tree",
+    label: "tree",
+    sort: function (r) {
+      return (r.tree || "~") + "\u0000" + r.name;
+    },
+    render: function (r) {
+      return r.tree || "–";
+    },
+  },
+  {
+    key: "status",
+    label: "status",
+    title: "running: paid for and under way; the time left is what the save recorded and does not run down while the game is closed",
+    sort: mamStatus,
+    render: mamStatus,
+    tone: function (r) {
+      return r.status === "READY" ? "ok" : r.status === "TREE SHUT" ? "dash-muted" : "";
+    },
+  },
+  {
+    key: "cost",
+    label: "cost",
+    title: "cost is " + STOCK,
+    render: function (r) {
+      return amounts(r.cost);
+    },
+  },
+  {
+    key: "short",
+    label: "short by",
+    render: function (r) {
+      return owes(r) ? amounts(r.short) : "";
+    },
+    tone: function (r) {
+      return r.short.length && owes(r) ? "bad" : "";
+    },
+  },
+  {
+    key: "recipes",
+    label: "recipes",
+    align: "right",
+    title: "recipes the node newly grants",
+    sort: function (r) {
+      return r.unlocks;
+    },
+    render: function (r) {
+      return r.unlocks || "";
+    },
+  },
+];
 
 function renderMam(body: HTMLElement): void {
   var data = mam.data;
   if (!data) {
-    note(body, mam.error || "loading…");
+    waiting(body, mam);
     return;
   }
-  var rows = visibleMam(data);
+  var rows = visible(data.research);
   var hidden = data.research.length - rows.length;
-  var shown = data.capabilities.filter(function (c) {
-    return setting("spoilers") || !c.tree_shut;
-  });
-  if (shown.length) {
+  var caps = visible(data.capabilities);
+  if (caps.length) {
     note(
       body,
-      shown
+      caps
         .map(function (c) {
           return (c.schematic_name || c.capability) + ": " + (c.researched ? "researched" : "not researched");
         })
@@ -308,60 +449,27 @@ function renderMam(body: HTMLElement): void {
     })
   );
   card.appendChild(bar);
-  var listed = rows
-    .filter(function (r) {
-      return showMamDone || r.status !== "DONE";
-    })
-    .sort(function (a, b) {
-      var x = (a.tree || "~") + "\u0000" + a.name;
-      var y = (b.tree || "~") + "\u0000" + b.name;
-      return x < y ? -1 : x > y ? 1 : 0;
-    });
+  var listed = rows.filter(function (r) {
+    return showMamDone || r.status !== "DONE";
+  });
   if (!listed.length) note(card, "every research node shown here is done");
-  else {
-    var t = grid([
-      ["tree", false],
-      ["research", false],
-      ["status", false],
-      ["cost", false],
-      ["short by", false],
-      ["recipes", true],
-    ]);
-    var tb = t.tBodies[0]!;
-    listed.forEach(function (r) {
-      var tr = make("tr");
-      cell(tr, r.tree || "–", r.tree ? "" : "dash-muted");
-      var name = make("span", "", r.name);
-      if (r.capability) name.appendChild(make("span", "dash-sub", " unlocks " + r.capability.replace(/_/g, " ")));
-      cell(tr, name);
-      cell(tr, mamStatus(r), r.status === "READY" ? "ok" : "");
-      cell(tr, amounts(r.cost));
-      cell(tr, r.status === "DONE" || r.status === "RUNNING" ? "" : amounts(r.short), r.short.length && r.status !== "DONE" && r.status !== "RUNNING" ? "bad" : "");
-      cell(tr, r.unlocks || "", "num");
-      tb.appendChild(tr);
-    });
-    scroll(card, t);
-  }
-  note(
-    card,
-    "cost is checked against spendable stock: carried, storage containers and the Dimensional Depot. " +
-      "RUNNING is paid for and under way; the time left is what the save recorded and does not run down while the game is closed. " +
-      "TREE SHUT: the tree that node lives in is not open yet, read off its class id. recipes counts what a node newly grants."
-  );
+  else card.appendChild(table(MAM_COLUMNS, listed, { sort: mamSort, caption: "MAM research" }));
   body.appendChild(card);
 }
 
-function phaseNumber(p: string | null): number {
+function phaseNumber(p: string | null): number | null {
   var match = /_(\d+)$/.exec(p || "");
-  return match ? +match[1]! : Infinity;
+  return match ? +match[1]! : null;
 }
 
-function visiblePhases(data: PhaseResponse): PhaseRow[] {
-  if (setting("spoilers")) return data.phases;
+function phaseStatus(row: PhaseRow, data: PhaseResponse): string {
+  var n = phaseNumber(row.phase);
+  var current = phaseNumber(data.current_phase);
   var target = phaseNumber(data.target_phase);
-  return data.phases.filter(function (p) {
-    return phaseNumber(p.phase) <= target;
-  });
+  if (n === null || (current === null && target === null)) return "–";
+  if (current !== null && n <= current) return "delivered";
+  if (target !== null && n === target) return "next";
+  return "not started";
 }
 
 function targetRow(data: PhaseResponse): PhaseRow | null {
@@ -378,24 +486,56 @@ function shortParts(row: PhaseRow): number {
   }).length;
 }
 
-var TRUST: Record<string, string> = {
-  usable: "full cost, never delivered into",
-  derived: "frozen record minus deliveries, a lower bound",
-  complete: "nothing outstanding",
-  stale: "frozen record, not believed",
-  unmapped: "legacy key with no phase",
-};
+type Part = PhaseRow["outstanding"][number];
+
+var PART_COLUMNS: Column<Part>[] = [
+  {
+    key: "name",
+    label: "part",
+    render: function (i) {
+      return i.name;
+    },
+  },
+  {
+    key: "amount",
+    label: "needed",
+    align: "right",
+    render: function (i) {
+      return num(i.amount);
+    },
+  },
+  {
+    key: "have",
+    label: "have",
+    align: "right",
+    title: "spendable stock: carried, storage containers and the Dimensional Depot; parts in machines and on belts are not counted",
+    render: function (i) {
+      return num(i.have);
+    },
+  },
+  {
+    key: "short",
+    label: "short by",
+    align: "right",
+    render: function (i) {
+      return i.short > 0 ? num(i.short) : "";
+    },
+    tone: function (i) {
+      return i.short > 0 ? "bad" : "";
+    },
+  },
+];
 
 function renderElevator(body: HTMLElement): void {
   var data = phase.data;
   if (!data) {
-    note(body, phase.error || "loading…");
+    waiting(body, phase);
     return;
   }
   var target = targetRow(data);
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("current phase", phaseText(data.current_phase) || "–", "what the save says is done"));
-  tiles.appendChild(tile("target phase", phaseText(data.target_phase) || "–", "where deliveries go"));
+  tiles.appendChild(tile("current phase", phaseText(data.current_phase) || "–", data.current_phase ? "the last phase delivered" : "no phase in this save"));
+  tiles.appendChild(tile("target phase", phaseText(data.target_phase) || "–", data.target_phase ? "where deliveries go" : "no phase in this save"));
   var short = target ? shortParts(target) : 0;
   tiles.appendChild(
     tile(
@@ -406,80 +546,125 @@ function renderElevator(body: HTMLElement): void {
   );
   body.appendChild(tiles);
 
-  var card = make("section", "dash-card");
-  heading(card, "target: " + (phaseText(data.target_phase) || "none"));
-  if (!target) note(card, "the save has no per-phase record for the target phase");
-  else if (!target.outstanding.length) note(card, "nothing outstanding on the target phase");
-  else {
-    var t = grid([
-      ["part", false],
-      ["needed", true],
-      ["have", true],
-      ["short by", true],
-    ]);
-    var tb = t.tBodies[0]!;
-    target.outstanding.forEach(function (i) {
-      var tr = make("tr");
-      cell(tr, i.name);
-      cell(tr, count(i.amount), "num");
-      cell(tr, count(i.have), "num");
-      cell(tr, i.short > 0 ? count(i.short) : "", "num" + (i.short > 0 ? " bad" : ""));
-      tb.appendChild(tr);
-    });
-    scroll(card, t);
-    note(card, "record: " + (TRUST[target.trust] || target.trust));
+  if (data.target_phase) {
+    var card = make("section", "dash-card");
+    heading(card, "target: " + phaseText(data.target_phase));
+    if (!target) note(card, "the save has no per-phase record for the target phase");
+    else if (!target.outstanding.length) note(card, "nothing outstanding on the target phase");
+    else card.appendChild(table(PART_COLUMNS, target.outstanding, { caption: "parts owed to the target phase" }));
+    var paid = "delivered so far: " + (data.delivered.length ? amounts(data.delivered) : "nothing");
+    note(card, target && target.trust === "derived" ? paid + "; the amounts owed are a lower bound" : paid);
+    body.appendChild(card);
   }
-  note(card, "delivered to the target so far: " + (data.delivered.length ? amounts(data.delivered) : "nothing"));
-  note(card, "have counts spendable stock: carried, storage containers and the Dimensional Depot. Parts in machines and on belts are not counted.");
-  body.appendChild(card);
 
-  var rows = visiblePhases(data);
-  var all = make("section", "dash-card");
-  heading(all, "every phase record");
-  var p = grid([
-    ["phase", false],
-    ["record", false],
-    ["outstanding", false],
-    ["parts done", false],
-  ]);
-  var pb = p.tBodies[0]!;
-  rows.forEach(function (r) {
-    var tr = make("tr");
-    cell(tr, phaseText(r.phase) || r.legacy_key);
-    cell(tr, r.trust + ": " + (TRUST[r.trust] || ""), r.trust === "stale" ? "dash-muted" : "");
-    cell(tr, amounts(r.outstanding), r.trust === "stale" ? "dash-muted" : "");
-    cell(tr, r.complete.join(", ") || "–");
-    pb.appendChild(tr);
+  var named = data.phases.filter(function (p) {
+    return !!p.phase;
   });
-  scroll(all, p);
-  note(
-    all,
-    "The per-phase amounts come from a record the game marks deprecated and no longer updates. " +
-      "Only the target phase row is read as a cost; a stale row is shown for completeness and not believed."
-  );
-  if (rows.length < data.phases.length) spoilerNote(all, data.phases.length - rows.length + " phases past the target are hidden.");
+  var rows = visible(named);
+  var all = make("section", "dash-card");
+  heading(all, "phases");
+  if (rows.length) {
+    all.appendChild(
+      table(
+        [
+          {
+            key: "phase",
+            label: "phase",
+            render: function (r: PhaseRow) {
+              return phaseText(r.phase) || "–";
+            },
+          },
+          {
+            key: "status",
+            label: "status",
+            render: function (r: PhaseRow) {
+              return phaseStatus(r, data!);
+            },
+            tone: function (r: PhaseRow) {
+              return phaseStatus(r, data!) === "not started" ? "dash-muted" : "";
+            },
+          },
+          {
+            key: "owed",
+            label: "parts still owed",
+            render: function (r: PhaseRow) {
+              var s = phaseStatus(r, data!);
+              return s === "next" || (s === "not started" && r.trust === "usable") ? amounts(r.outstanding) : "–";
+            },
+          },
+        ],
+        rows,
+        { caption: "Space Elevator phases" }
+      )
+    );
+  } else if (rows.length === named.length) note(all, "this save records no Space Elevator phase");
+  var hidden = named.length - rows.length;
+  if (hidden) spoilerNote(all, data.target_phase ? hidden + " phases past the target are hidden." : "The save names no target phase, so its " + hidden + " phase records are hidden.");
   body.appendChild(all);
 }
 
-function grants(option: DriveRow["options"][number]): string {
+type Option = DriveRow["options"][number];
+
+interface OptionRow {
+  drive: DriveRow;
+  option: Option;
+  first: boolean;
+  last: boolean;
+}
+
+function grants(option: Option): string {
   if (option.slots) return "+" + option.slots + " inventory slots";
-  if (!option.recipes.length) return "nothing new";
+  if (!option.recipes.length) return "nothing new: its recipes are already unlocked";
   return option.recipes
     .map(function (r) {
       var made = r.products
         .map(function (f) {
-          return num(f.amount) + " " + f.name + "/min";
+          return num(f.amount, 2) + " " + f.name + "/min";
         })
         .join(" + ");
-      return (made || r.name) + (r.machine ? " in a " + r.machine : "");
+      return (made || r.name) + (r.machine ? " · " + r.machine : "");
     })
     .join("; ");
 }
 
+var DRIVE_COLUMNS: Column<OptionRow>[] = [
+  {
+    key: "drive",
+    label: "drive",
+    align: "right",
+    render: function (o) {
+      return o.first ? (o.drive.hard_drive_id === null ? "?" : o.drive.hard_drive_id) : "";
+    },
+  },
+  {
+    key: "rerolls",
+    label: "rerolls",
+    align: "right",
+    render: function (o) {
+      return o.first ? o.drive.rerolls_left : "";
+    },
+  },
+  {
+    key: "option",
+    label: "option",
+    render: function (o) {
+      return o.option.name;
+    },
+  },
+  {
+    key: "grants",
+    label: "grants",
+    title: "rates are per machine at 100%",
+    render: function (o) {
+      return grants(o.option);
+    },
+  },
+];
+
 function renderDrives(body: HTMLElement): void {
   var data = drives.data;
   if (!data) {
-    note(body, drives.error || "loading…");
+    waiting(body, drives);
     return;
   }
   var rerolls = 0;
@@ -487,53 +672,117 @@ function renderDrives(body: HTMLElement): void {
     rerolls += d.rerolls_left;
   });
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("pending choices", count(data.drives.length), "analysed drives waiting for a pick"));
-  tiles.appendChild(tile("rerolls left", count(rerolls), "across the pending drives"));
-  tiles.appendChild(tile("unanalysed", count(data.spare), "hard drives on hand"));
-  if (data.last_used !== null) tiles.appendChild(tile("last settled", "drive " + data.last_used, "the choice made most recently"));
+  tiles.appendChild(tile("pending choices", num(data.drives.length), "analysed drives waiting for a pick"));
+  tiles.appendChild(tile("rerolls left", num(rerolls), "across the pending drives"));
+  tiles.appendChild(tile("unanalysed", num(data.spare), "hard drives on hand"));
+  if (data.last_used !== null) tiles.appendChild(tile("last drive analysed", "drive " + data.last_used, "the newest drive the MAM has analysed"));
   body.appendChild(tiles);
 
   var card = make("section", "dash-card");
   heading(card, "pending hard drives");
   if (!data.drives.length) note(card, "no hard drive is waiting for a pick");
   else {
-    var t = grid([
-      ["drive", true],
-      ["rerolls", true],
-      ["option", false],
-      ["grants", false],
-    ]);
-    var tb = t.tBodies[0]!;
+    var rows: OptionRow[] = [];
     data.drives.forEach(function (d) {
       d.options.forEach(function (o, i) {
-        var tr = make("tr", i < d.options.length - 1 ? "dash-lead" : "");
-        cell(tr, i ? "" : d.hard_drive_id === null ? "?" : d.hard_drive_id, "num");
-        cell(tr, i ? "" : d.rerolls_left, "num");
-        cell(tr, o.name);
-        cell(tr, grants(o));
-        tb.appendChild(tr);
+        rows.push({ drive: d, option: o, first: i === 0, last: i === d.options.length - 1 });
       });
     });
-    scroll(card, t);
+    card.appendChild(
+      table(DRIVE_COLUMNS, rows, {
+        caption: "pending hard drives",
+        rowClass: function (o) {
+          return o.last ? "" : "dash-lead";
+        },
+      })
+    );
+    note(card, "The option not picked returns to the pool and a later drive can offer it again; only the drive is spent.");
   }
-  note(
-    card,
-    "The option not picked returns to the pool and a later drive can offer it again; only the drive is spent. " +
-      "Rates are per machine at 100%. Ranking the options is advise_hard_drive_pick, not this page."
-  );
   body.appendChild(card);
+}
+
+type Holder = ShardsResponse["holders"][number];
+
+function shardColumns(point: PointButton): Column<Holder>[] {
+  return [
+    {
+      key: "name",
+      label: "building",
+      sort: function (h) {
+        return h.name || "";
+      },
+      render: function (h) {
+        return h.name || "–";
+      },
+    },
+    {
+      key: "clock",
+      label: "clock",
+      align: "right",
+      sort: function (h) {
+        return h.clock;
+      },
+      render: function (h) {
+        return num(h.clock * 100) + "%";
+      },
+    },
+    {
+      key: "slotted",
+      label: "slotted",
+      align: "right",
+      title: "read from the building's shard slots",
+      sort: function (h) {
+        return h.slotted;
+      },
+      render: function (h) {
+        return h.slotted;
+      },
+    },
+    {
+      key: "needed",
+      label: "needed",
+      align: "right",
+      title: "what its clock requires",
+      sort: function (h) {
+        return h.needed;
+      },
+      render: function (h) {
+        return h.needed;
+      },
+    },
+    {
+      key: "idle",
+      label: "idle",
+      align: "right",
+      title: "slotted above what the clock needs",
+      sort: function (h) {
+        return h.idle;
+      },
+      render: function (h) {
+        return h.idle || "";
+      },
+    },
+    {
+      key: "map",
+      label: "",
+      align: "right",
+      render: function (h) {
+        return point(h);
+      },
+    },
+  ];
 }
 
 function renderShards(body: HTMLElement, point: PointButton): void {
   var data = shards.data;
   if (!data) {
-    note(body, shards.error || "loading…");
+    waiting(body, shards);
     return;
   }
   var tiles = make("div", "dash-tiles");
   tiles.appendChild(tile("free", num(data.free), "crafted shards in stock"));
   tiles.appendChild(tile("craftable", num(data.craftable), "from slugs on hand, once crafted"));
-  tiles.appendChild(tile("slotted", data.measured ? count(data.committed) : "–", data.measured ? data.idle + " of them above what the clock needs" : "this save does not record slots"));
+  tiles.appendChild(tile("slotted", data.measured ? num(data.committed) : "–", data.measured ? data.idle + " of them above what the clock needs" : "this save does not record slots"));
   tiles.appendChild(tile("owned", num(data.owned), "free plus slotted"));
   body.appendChild(tiles);
   note(
@@ -547,76 +796,80 @@ function renderShards(body: HTMLElement, point: PointButton): void {
       "%"
   );
   data.by_place.forEach(function (p) {
-    note(body, p.place + ": " + amounts(p.items));
+    note(body, (PLACES[p.place] || p.place) + ": " + amounts(p.items));
   });
 
-  var split = make("div", "dash-split");
   if (data.slugs.length) {
     var slugCard = make("section", "dash-card");
     heading(slugCard, "power slugs");
-    var s = grid([
-      ["slug", false],
-      ["held", true],
-      ["shards each", true],
-      ["shards", true],
-    ]);
-    var sb = s.tBodies[0]!;
-    data.slugs.forEach(function (slug) {
-      var tr = make("tr");
-      cell(tr, slug.name);
-      cell(tr, num(slug.held), "num");
-      cell(tr, num(slug.each), "num");
-      cell(tr, num(slug.shards), "num");
-      sb.appendChild(tr);
-    });
-    scroll(slugCard, s);
-    note(slugCard, "craftable is potential, not free: crafting is a manual step");
-    split.appendChild(slugCard);
+    slugCard.appendChild(
+      table(
+        [
+          {
+            key: "name",
+            label: "slug",
+            render: function (s: ShardsResponse["slugs"][number]) {
+              return s.name;
+            },
+          },
+          {
+            key: "held",
+            label: "held",
+            align: "right",
+            render: function (s: ShardsResponse["slugs"][number]) {
+              return num(s.held);
+            },
+          },
+          {
+            key: "each",
+            label: "shards each",
+            align: "right",
+            render: function (s: ShardsResponse["slugs"][number]) {
+              return num(s.each);
+            },
+          },
+          {
+            key: "shards",
+            label: "shards",
+            align: "right",
+            title: "craftable is potential, not free: crafting is a manual step",
+            render: function (s: ShardsResponse["slugs"][number]) {
+              return num(s.shards);
+            },
+          },
+        ],
+        data.slugs,
+        { caption: "power slugs" }
+      )
+    );
+    body.appendChild(slugCard);
   }
   var card = make("section", "dash-card");
   heading(card, "overclocked buildings (" + data.holders.length + ")");
   if (!data.holders.length) note(card, "no building holds a shard or runs above 100%");
-  else {
-    var t = grid([
-      ["building", false],
-      ["clock", true],
-      ["slotted", true],
-      ["needed", true],
-      ["idle", true],
-      ["", true],
-    ]);
-    var tb = t.tBodies[0]!;
-    data.holders.forEach(function (h) {
-      var tr = make("tr");
-      cell(tr, h.name || "–");
-      cell(tr, Math.round(h.clock * 1000) / 10 + "%", "num");
-      cell(tr, h.slotted, "num");
-      cell(tr, h.needed, "num");
-      cell(tr, h.idle || "", "num");
-      cell(tr, point(h), "num");
-      tr.title = h.instance;
-      tb.appendChild(tr);
-    });
-    scroll(card, t);
-    note(card, "slotted is read from each building's shard slots; needed is what its clock requires; idle is the difference");
-  }
-  split.appendChild(card);
-  body.appendChild(split);
+  else card.appendChild(table(shardColumns(point), data.holders, { sort: shardSort, caption: "overclocked buildings" }));
+  body.appendChild(card);
+}
+
+type Amplified = SloopsResponse["holders"][number];
+
+function disagrees(h: Amplified): boolean {
+  return h.boost !== null && h.boost_in_save !== null && Math.abs(h.boost - h.boost_in_save) > 1e-6;
 }
 
 function renderSloops(body: HTMLElement, point: PointButton): void {
   var data = sloops.data;
   if (!data) {
-    note(body, sloops.error || "loading…");
+    waiting(body, sloops);
     return;
   }
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("free", num(data.free), data.by_place.length ? amounts(data.by_place) : "none in stock"));
+  tiles.appendChild(tile("free", num(data.free), data.by_place.length ? placed(data.by_place) : "none in stock"));
   tiles.appendChild(tile("slotted", data.measured ? num(data.committed) : "–", data.measured ? "in production machines" : "this save does not record slots"));
   tiles.appendChild(tile("owned", num(data.owned), "free plus slotted"));
-  tiles.appendChild(tile("Mercer Spheres", num(data.mercer_spheres), "counted apart, never added in"));
+  if (data.mercer_spheres || setting("spoilers")) tiles.appendChild(tile("Mercer Spheres", num(data.mercer_spheres), "counted apart, never added in"));
   body.appendChild(tiles);
-  if (!data.amplifier_researched && data.amplifier_tree_shut && !setting("spoilers")) {
+  if (!data.amplifier_researched && data.amplifier_spoiler && !setting("spoilers")) {
     note(body, "no somersloop can go into a machine yet: the research for it is still locked");
   } else if (!data.amplifier_researched) {
     note(
@@ -630,120 +883,99 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
   heading(card, "amplified machines (" + data.holders.length + ")");
   if (!data.holders.length) note(card, "no machine holds a somersloop");
   else {
-    var t = grid([
-      ["building", false],
-      ["somersloops", true],
-      ["boost", true],
-      ["boost in save", true],
-      ["", true],
-    ]);
-    var tb = t.tBodies[0]!;
-    var disagree = 0;
-    data.holders.forEach(function (h) {
-      var tr = make("tr");
-      var off = h.boost !== null && h.boost_in_save !== null && Math.abs(h.boost - h.boost_in_save) > 1e-6;
-      if (off) disagree += 1;
-      cell(tr, h.name);
-      cell(tr, num(h.sloops), "num");
-      cell(tr, h.boost === null ? "–" : h.boost + "×", "num");
-      cell(tr, h.boost_in_save === null ? "–" : h.boost_in_save + "×", "num" + (off ? " bad" : ""));
-      cell(tr, point(h), "num");
-      tr.title = h.instance;
-      tb.appendChild(tr);
-    });
-    scroll(card, t);
-    note(
-      card,
-      "boost is what the plan model says the slots are worth; boost in save is the multiplier the save carries" +
-        (disagree ? "; they disagree on " + disagree + " machines" : "; they agree")
+    card.appendChild(
+      table(
+        [
+          {
+            key: "name",
+            label: "building",
+            render: function (h: Amplified) {
+              return h.name;
+            },
+          },
+          {
+            key: "sloops",
+            label: "somersloops",
+            align: "right",
+            render: function (h: Amplified) {
+              return num(h.sloops);
+            },
+          },
+          {
+            key: "boost",
+            label: "boost",
+            align: "right",
+            title: "what the plan model says the slots are worth",
+            render: function (h: Amplified) {
+              return h.boost === null ? "–" : num(h.boost, 2) + "×";
+            },
+          },
+          {
+            key: "saved",
+            label: "boost in save",
+            align: "right",
+            title: "the multiplier the save carries",
+            render: function (h: Amplified) {
+              return h.boost_in_save === null ? "–" : num(h.boost_in_save, 2) + "×";
+            },
+            tone: function (h: Amplified) {
+              return disagrees(h) ? "bad" : "";
+            },
+          },
+          {
+            key: "map",
+            label: "",
+            align: "right",
+            render: function (h: Amplified) {
+              return point(h);
+            },
+          },
+        ],
+        data.holders,
+        { caption: "amplified machines" }
+      )
     );
+    var off = data.holders.filter(disagrees).length;
+    if (off) note(card, "boost and boost in save disagree on " + off + " machines");
   }
   body.appendChild(card);
 }
 
 function nextUp(body: HTMLElement): void {
-  var tiles = make("div", "dash-tiles");
+  var line = make("p", "dash-note");
+  var parts: HTMLElement[] = [];
+  var add = function (dash: string, label: string, text: string | null): void {
+    if (text === null) return;
+    var span = make("span", "", label + ": ");
+    span.appendChild(link(dash, text));
+    parts.push(span);
+  };
   var p = phase.data;
   var target = p ? targetRow(p) : null;
-  tiles.appendChild(
-    p
-      ? tile(
-          "space elevator",
-          p.deliverable === null ? "–" : p.deliverable ? "deliverable" : count(target ? shortParts(target) : 0) + " parts short",
-          "target " + (phaseText(p.target_phase) || "none"),
-          false,
-          hashFor("progress/elevator")
-        )
-      : tile("space elevator", "–", phase.error || "loading…")
-  );
-  var m = milestones.data;
-  tiles.appendChild(
-    m
-      ? tile(
-          "milestones",
-          count(
-            shown(m).milestones.filter(function (r) {
-              return r.status === "READY";
-            }).length
-          ) + " affordable",
-          m.highest_complete_tier === null ? "no tier complete" : "tier " + m.highest_complete_tier + " complete",
-          false,
-          hashFor("progress")
-        )
-      : tile("milestones", "–", milestones.error || "loading…")
-  );
+  add("progress/elevator", "space elevator", p ? (p.deliverable === null ? "no target" : p.deliverable ? "deliverable" : shortParts(target!) + " parts short") : null);
   var r = mam.data;
   if (r) {
-    var rows = visibleMam(r);
+    var rows = visible(r.research);
+    var ready = rows.filter(function (x) {
+      return x.status === "READY";
+    }).length;
     var running = rows.filter(function (x) {
       return x.status === "RUNNING";
     }).length;
-    var left = rows.filter(function (x) {
-      return x.status !== "DONE";
-    }).length;
-    tiles.appendChild(
-      tile(
-        "MAM research",
-        count(
-          rows.filter(function (x) {
-            return x.status === "READY";
-          }).length
-        ) + " affordable",
-        running + " running · " + left + " not done",
-        false,
-        hashFor("progress/mam")
-      )
-    );
-  } else tiles.appendChild(tile("MAM research", "–", mam.error || "loading…"));
+    add("progress/mam", "MAM", ready + " affordable" + (running ? ", " + running + " running" : ""));
+  }
   var d = drives.data;
-  tiles.appendChild(
-    d
-      ? tile("hard drives", count(d.drives.length) + " pending", d.spare + " unanalysed on hand", false, hashFor("progress/drives"))
-      : tile("hard drives", "–", drives.error || "loading…")
-  );
+  add("progress/drives", "hard drives", d ? d.drives.length + " pending" : null);
   var s = shards.data;
-  tiles.appendChild(
-    s
-      ? tile("power shards", num(s.free) + " free", num(s.craftable) + " craftable · " + (s.measured ? count(s.committed) : "–") + " slotted", false, hashFor("progress/shards"))
-      : tile("power shards", "–", shards.error || "loading…")
-  );
+  add("progress/shards", "power shards", s ? num(s.free) + " free" : null);
   var l = sloops.data;
-  tiles.appendChild(
-    l
-      ? tile("somersloops", num(l.free) + " free", (l.measured ? num(l.committed) : "–") + " slotted · " + num(l.owned) + " owned", false, hashFor("progress/sloops"))
-      : tile("somersloops", "–", sloops.error || "loading…")
-  );
-  body.appendChild(tiles);
-}
-
-function subnav(body: HTMLElement, sub: string): void {
-  var nav = make("nav", "dash-subnav");
-  SUBS.forEach(function (s) {
-    var a = link(s[0] ? "progress/" + s[0] : "progress", s[1], s[0] === sub ? "on" : "");
-    if (s[0] === sub) a.setAttribute("aria-current", "page");
-    nav.appendChild(a);
+  add("progress/sloops", "somersloops", l ? num(l.free) + " free" : null);
+  if (!parts.length) return;
+  parts.forEach(function (part, i) {
+    if (i) line.appendChild(document.createTextNode(" · "));
+    line.appendChild(part);
   });
-  body.appendChild(nav);
+  body.appendChild(line);
 }
 
 export function renderProgress(body: HTMLElement, subject: string, point: PointButton): void {
@@ -752,12 +984,25 @@ export function renderProgress(body: HTMLElement, subject: string, point: PointB
   })
     ? subject
     : "";
-  nextUp(body);
-  subnav(body, sub);
+  body.appendChild(
+    tabs2(
+      SUBS.map(function (s) {
+        return { id: s[0], label: s[1], href: hashFor(s[0] ? "progress/" + s[0] : "progress") };
+      }),
+      sub,
+      function (id) {
+        go(id ? "progress/" + id : "progress");
+      },
+      "Progress sections"
+    )
+  );
   if (sub === "mam") renderMam(body);
   else if (sub === "elevator") renderElevator(body);
   else if (sub === "drives") renderDrives(body);
   else if (sub === "shards") renderShards(body, point);
   else if (sub === "sloops") renderSloops(body, point);
-  else renderMilestones(body);
+  else {
+    nextUp(body);
+    renderMilestones(body);
+  }
 }

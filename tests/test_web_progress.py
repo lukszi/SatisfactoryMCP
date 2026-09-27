@@ -183,7 +183,15 @@ def _closed_trees(projection, game):
     return TestClient(app)
 
 
-def test_milestones_past_the_reached_tier_are_spoilers_and_spoilers_0_drops_them(client):
+def _phase(state, monkeypatch, phase):
+    prog = state.progression()
+    monkeypatch.setattr(state, "progression", lambda: {**prog, "game_phase": phase})
+
+
+def test_milestones_past_the_reached_tier_are_spoilers_and_spoilers_0_drops_them(
+    client, state, monkeypatch
+):
+    _phase(state, monkeypatch, None)
     full = client.get("/api/progress/milestones").json()
     top = max(m["tier"] for m in full["milestones"] if m["status"] == "DONE")
     assert any(m["spoiler"] for m in full["milestones"]), "the fixture must reach past a tier"
@@ -241,3 +249,26 @@ def test_phases_past_the_target_are_spoilers(client, state, monkeypatch):
     hidden = client.get("/api/progress/phase", params={"spoilers": 0}).json()
     assert hidden["phases"] == full["phases"][:-1]
     assert hidden["deliverable"] == full["deliverable"]
+
+
+def test_tiers_the_delivered_phase_opens_are_not_spoilers(client, state, monkeypatch):
+    _phase(state, monkeypatch, "GP_Project_Assembly_Phase_3")
+    body = client.get("/api/progress/milestones").json()
+    for m in body["milestones"]:
+        assert m["spoiler"] == (m["tier"] > 8)
+        assert m["opens_at"] == (4 if m["tier"] > 8 and m["status"] != "DONE" else None)
+    assert not any(t["spoiler"] for t in body["tiers"] if t["tier"] <= 8)
+
+
+def test_a_save_with_no_phase_locks_no_tier(client, state, monkeypatch):
+    _phase(state, monkeypatch, None)
+    body = client.get("/api/progress/milestones").json()
+    assert all(m["opens_at"] is None for m in body["milestones"])
+
+
+def test_a_save_with_no_target_phase_hides_every_phase(client, state, monkeypatch):
+    req = state.phase_requirements()
+    monkeypatch.setattr(state, "phase_requirements", lambda: {**req, "target_phase": ""})
+    full = client.get("/api/progress/phase").json()
+    assert full["phases"] and all(p["spoiler"] for p in full["phases"])
+    assert client.get("/api/progress/phase", params={"spoilers": 0}).json()["phases"] == []
