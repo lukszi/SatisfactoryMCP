@@ -71,6 +71,7 @@ export interface PageState {
   pickups: string[];
   /** The dashboard address, `tab` or `tab/subject`; "" while the map is the view. */
   dash: string;
+  noSaves: boolean;
 }
 
 /* The selection lives in the URL fragment so a reload, a bookmark or a pasted link lands on the
@@ -98,6 +99,7 @@ export var state: PageState = {
   floor: null,
   pickups: parseList(BOOT.pickups),
   dash: dashOf(BOOT),
+  noSaves: false,
 };
 
 /* A function and not just `BOOT`, because the fragment is read more than once: `BOOT` is the one

@@ -15,6 +15,8 @@ import { state } from "./state";
 import { renderFactories, renderFactory, wireDetect } from "./factories";
 import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
+import { circuitName } from "./powerview";
+import { dashParts, empty, W } from "./standins";
 
 import type { FactoryHealthRow } from "./api-shapes";
 
@@ -43,15 +45,19 @@ export var sort = { key: "actionable", desc: true };
 
 var renaming = "";
 
+var SAVELESS: Tab[] = ["recipes", "settings"];
+
+var lastDash = "overview";
+
+var shownEpoch = 0;
+
 function address(): { tab: Tab; subject: string } {
-  var raw = state.dash;
-  var cut = raw.indexOf("/");
-  var head = cut < 0 ? raw : raw.slice(0, cut);
+  var parts = dashParts();
   var tab: Tab = "overview";
   TABS.forEach(function (t) {
-    if (t[0] === head) tab = t[0];
+    if (t[0] === parts.tab) tab = t[0];
   });
-  return { tab: tab, subject: cut < 0 ? "" : raw.slice(cut + 1) };
+  return { tab: tab, subject: parts.subject };
 }
 
 export function go(dash: string): void {
@@ -209,6 +215,44 @@ function renderSettings(body: HTMLElement): void {
   body.appendChild(card);
 }
 
+function tabLabel(tab: Tab): string {
+  var label = "";
+  TABS.forEach(function (t) {
+    if (t[0] === tab) label = t[1];
+  });
+  return label;
+}
+
+function subjectName(tab: Tab, subject: string): string {
+  if (tab === "factories") return subject;
+  if (tab !== "power" || !subject) return "";
+  var circuits = vitals().circuits;
+  var row = circuits ? circuits.circuits[+subject - 1] : undefined;
+  return row ? circuitName(row) : "circuit " + subject;
+}
+
+function retitle(): void {
+  var parts = ["Satisfactory"];
+  if (!state.dash) parts.unshift("Map");
+  else {
+    var at = address();
+    parts.unshift(tabLabel(at.tab));
+    var name = subjectName(at.tab, at.subject);
+    if (name) parts.unshift(name);
+  }
+  document.title = parts.join(" · ");
+}
+
+function forgetVitals(): void {
+  if (state.epoch === shownEpoch) return;
+  shownEpoch = state.epoch;
+  var v = vitals();
+  v.health = null;
+  v.healthError = "";
+  v.circuits = null;
+  v.circuitsError = "";
+}
+
 function renderNav(tab: Tab): void {
   var nav = el("dash-nav");
   nav.textContent = "";
@@ -220,10 +264,18 @@ function renderNav(tab: Tab): void {
 }
 
 export function render(): void {
+  forgetVitals();
+  relink();
+  retitle();
   if (!state.dash || renaming) return;
   var at = address();
   renderNav(at.tab);
   var body = el("dash-body");
+  if (state.noSaves && SAVELESS.indexOf(at.tab) < 0) {
+    body.textContent = "";
+    empty(body, W.noSaves, "Save a game, or set SATISFACTORY_SAVES if the saves live elsewhere. Recipes and Settings still work.");
+    return;
+  }
   if (at.tab === "planner") {
     renderPlanner(body, at.subject);
     return;
@@ -250,15 +302,34 @@ export function render(): void {
   }
 }
 
+function relink(): void {
+  var on = !!state.dash;
+  if (on) lastDash = state.dash;
+  var views = el("views").querySelectorAll<HTMLAnchorElement>("[data-view]");
+  Array.prototype.forEach.call(views, function (a: HTMLAnchorElement) {
+    var dash = a.getAttribute("data-view") === "dash";
+    var mine = dash === on;
+    a.className = "view-link" + (mine ? " on" : "");
+    a.setAttribute("href", hashFor(dash ? lastDash : ""));
+    if (mine) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+}
+
 function show(): void {
   var on = !!state.dash;
   document.body.classList.toggle("dash-on", on);
   el("dash").hidden = !on;
-  var views = el("views").querySelectorAll<HTMLAnchorElement>("[data-view]");
-  Array.prototype.forEach.call(views, function (a: HTMLAnchorElement) {
-    var mine = (a.getAttribute("data-view") === "dash") === on;
-    a.className = "view-link" + (mine ? " on" : "");
-  });
+  render();
+}
+
+function mirrorBusy(): void {
+  var on = el("map").classList.contains("busy");
+  var dash = el("dash");
+  if (dash.classList.contains("busy") === on) return;
+  dash.classList.toggle("busy", on);
+  if (on) dash.setAttribute("aria-busy", "true");
+  else dash.removeAttribute("aria-busy");
   render();
 }
 
@@ -276,13 +347,14 @@ function wire(): void {
     var dash = a.getAttribute("data-view") === "dash";
     a.onclick = function (event) {
       if (dash) {
-        a.setAttribute("href", hashFor(state.dash || "overview"));
+        a.setAttribute("href", hashFor(state.dash || lastDash));
         return;
       }
       event.preventDefault();
       if (state.dash) toMap(function () {});
     };
   });
+  new MutationObserver(mirrorBusy).observe(el("map"), { attributes: true, attributeFilter: ["class"] });
   onVitals(render);
   onProgress(render);
   wireDetect();

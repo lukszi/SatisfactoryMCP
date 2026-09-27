@@ -17,6 +17,7 @@
 
 import "leaflet/dist/leaflet.css";
 import "./style.css";
+import "./standins.css";
 
 import { listenForCopies } from "./copy";
 import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./floors";

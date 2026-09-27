@@ -1,0 +1,16 @@
+/* Temporary stand-in for the tokens the TOKENS branch adds to :root in style.css.
+   Delete this file and its import in main.ts when that branch merges. */
+
+:root {
+  --ink-hi: #fff;
+  --muted: #9aa0a8;
+  --off: #555;
+  --accent: #6ea8d8;
+  --flash: #f0ad4e;
+  --fs-s: 11px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --r: 3px;
+  --z-dash: 1150;
+}
