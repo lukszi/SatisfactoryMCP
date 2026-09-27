@@ -111,7 +111,21 @@ function recipeLink(cls: string, name: string): HTMLAnchorElement {
   return link("recipes/recipe/" + cls, name);
 }
 
-function icon(cls: string): HTMLImageElement {
+var iconsHere: boolean | null = null;
+
+function probeIcons(): void {
+  if (iconsHere !== null) return;
+  iconsHere = false;
+  fetch("/api/icons/Desc_IronPlate_C", { method: "HEAD" })
+    .then(function (r) {
+      iconsHere = r.status === 200;
+      if (iconsHere) redraw();
+    })
+    .catch(function () {});
+}
+
+function icon(cls: string): Node {
+  if (!iconsHere) return document.createTextNode("");
   var img = make("img", "rx-icon");
   img.src = "/api/icons/" + encodeURIComponent(cls);
   img.alt = "";
@@ -461,6 +475,7 @@ function renderRecipe(body: HTMLElement, cls: string): void {
 
 export function renderRecipes(body: HTMLElement, subject: string, rerender: () => void): void {
   redraw = rerender;
+  probeIcons();
   var cut = subject.indexOf("/");
   var kind = cut < 0 ? subject : subject.slice(0, cut);
   var id = cut < 0 ? "" : subject.slice(cut + 1);
