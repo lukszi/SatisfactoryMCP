@@ -17,7 +17,15 @@ from .planlog import Actor
 
 __all__ = ["KINDS", "append", "files", "read", "set_writer", "tail", "writer_name"]
 
-KINDS = ("plan.solve", "plan.view", "plan.rejected")
+KINDS = (
+    "plan.solve",
+    "plan.view",
+    "plan.rejected",
+    "ask.add",
+    "ask.drop",
+    "ask.seen",
+    "ask.answered",
+)
 MAX_LINE = 1000
 MAX_TEXT = 200
 

@@ -126,7 +126,9 @@ def test_a_busy_lock_writes_nothing_and_says_so(log, monkeypatch):
 
 def _over(log, key, base_rev, overrides, whole=None):
     head = log.state(key)
-    kwargs = whole if whole is not None else {**planning.PLAN_DEFAULTS, **head.kwargs(), **overrides}
+    kwargs = (
+        whole if whole is not None else {**planning.PLAN_DEFAULTS, **head.kwargs(), **overrides}
+    )
     return planning._save_over(
         _World(), head, base_rev, kwargs, None, ("", ""), None, None, overrides
     )
@@ -138,9 +140,7 @@ def test_a_recalled_save_diffs_only_what_chat_overrode_against_its_base(log):
     log.push(key, 2, [{"op": "set", "field": "sloops", "value": 3}], actor=PAGE)
     head = log.state(key)
     stale = {**planning.PLAN_DEFAULTS, **head.kwargs(), "water_extractors": 5}
-    pushed, tail = planning._save_over(
-        _World(), head, 1, stale, None, ("", ""), None, None, None
-    )
+    pushed, tail = planning._save_over(_World(), head, 1, stale, None, ("", ""), None, None, None)
     assert pushed is None and "sloops: you 3, page set 2 in v2" in tail
 
     pushed, tail = _over(log, key, 1, {"water_extractors": 5})
@@ -336,7 +336,10 @@ def test_save_as_stores_what_source_and_required_pins_stand_for(pinned):
     refused = srv.plan_factory(plan="pin:99", limit=2)
     assert refused.startswith("! pin:99 does not exist")
     wrong = srv.plan_factory(sources=[process["id"]], limit=2, **wanted)
-    assert wrong == f"! {process['id']} is a process: it cannot stand for resource nodes; nothing solved"
+    assert (
+        wrong
+        == f"! {process['id']} is a process: it cannot stand for resource nodes; nothing solved"
+    )
 
 
 def test_alternates_for_a_plan_add_deltas_and_journal_a_view(pinned):
@@ -355,6 +358,77 @@ def test_alternates_for_a_plan_add_deltas_and_journal_a_view(pinned):
     plain = srv.alternates_for_item(item=RIP)
     assert "Δmach" not in plain
     assert srv.alternates_for_item(item=RIP, plan="nope").startswith("! no saved plan named 'nope'")
+
+
+# ------------------------------------------------------------------ track from chat (P4)
+
+RIP5 = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
+
+
+def _rip(monkeypatch, headroom=None):
+    monkeypatch.setattr(planning, "_stages_seen", {})
+    srv.plan_factory(save_as="rip", limit=2, **RIP5)
+    log = PlanLog(FIXTURE_WORLD)
+    key = log.find("rip").key
+    if headroom is not None:
+        log.push(key, 1, [{"op": "set", "field": "headroom_mw", "value": headroom}], actor=PAGE)
+    return key
+
+
+def test_diff_and_commission_journal_a_track_view(pinned, monkeypatch):
+    key = _rip(monkeypatch)
+    journal.set_writer("chat")
+    srv.diff_vs_save(plan="rip", limit=2)
+    srv.diff_vs_save(plan="rip", stage=1, limit=2)
+    srv.commission_plan(plan="rip", limit=2)
+    srv.diff_vs_save(limit=2, **RIP5)
+    entries = journal.read(FIXTURE_WORLD)
+    assert [(e["tool"], e["plan"]) for e in entries] == [
+        ("diff_vs_save", key),
+        ("diff_vs_save", key),
+        ("commission_plan", key),
+    ]
+    assert [e["args"] for e in entries] == [
+        {"view": "track", "stage": None, "section": "stages"},
+        {"view": "track", "stage": 1, "section": "stages"},
+        {"view": "track", "stage": None, "section": "startup"},
+    ]
+
+
+def test_both_tools_use_the_stored_headroom(pinned, monkeypatch):
+    _rip(monkeypatch, headroom=2000)
+    out = srv.commission_plan(plan="rip", limit=2)
+    assert "headroom_MW=2,000 (source: stored on the plan)" in out
+    given = srv.commission_plan(plan="rip", headroom_mw=1500, limit=2)
+    assert "headroom_MW=1,500 (source: given by caller)" in given
+    assert "# STAGES" in srv.diff_vs_save(plan="rip", limit=2)
+
+
+def test_a_second_read_notes_that_the_stages_moved(pinned, monkeypatch):
+    key = _rip(monkeypatch, headroom=2000)
+    first = srv.diff_vs_save(plan="rip", limit=2)
+    assert "the stages changed" not in first
+    assert "the stages changed" not in srv.diff_vs_save(plan="rip", limit=2)
+    PlanLog(FIXTURE_WORLD).push(
+        key, 2, [{"op": "set", "field": "headroom_mw", "value": 1}], actor=PAGE
+    )
+    moved = srv.commission_plan(plan="rip", limit=2)
+    assert (
+        "the stages changed since you last read this plan (v2 -> v3): you were in stage 1 of 1, "
+        "now no startup order fits the headroom"
+    ) in moved
+    assert "the stages changed" not in srv.diff_vs_save(plan="rip", limit=2)
+
+
+def test_a_chat_save_never_touches_the_stored_headroom(pinned, monkeypatch):
+    key = _rip(monkeypatch, headroom=2000)
+    out = srv.plan_factory(plan="rip", save_as="rip", base_rev=2, sloops=1, limit=2)
+    assert "is now v3" in out, out
+    head = PlanLog(FIXTURE_WORLD).state(key)
+    assert head.headroom_mw == 2000.0 and head.args.sloops == 1
+    assert not any(
+        op.get("field") == "headroom_mw" for op in PlanLog(FIXTURE_WORLD).commits(key)[-1].ops
+    )
 
 
 # ------------------------------------------------------------------ integration

@@ -13,7 +13,7 @@ import time
 import pytest
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning import journal
+from satisfactory_mcp.domain.planning import asks, journal
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.mcp.tools import planning
 
@@ -42,6 +42,7 @@ def ctx(tmp_path, monkeypatch):
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
     monkeypatch.setattr(journal.config, "pins_dir", lambda: tmp_path / "pins")
+    monkeypatch.setattr(journal.config, "asks_dir", lambda: tmp_path / "asks")
     monkeypatch.setattr(journal, "_writer", "")
     monkeypatch.setattr(journal, "_seq", {})
     monkeypatch.setattr(planning, "_state", lambda *a, **k: _World())
@@ -282,3 +283,90 @@ def test_a_plan_created_since_the_last_look_reads_as_new(ctx):
     srv.ui_context()
     PlanLog(WORLD).create("fresh", {}, actor=PAGE)
     assert '"fresh" new -> v1 by page: v1 created' in srv.ui_context()
+
+
+# ------------------------------------------------------------------ asks (P4)
+
+ABOUT = {"kind": "stage", "label": "stage 1", "ref": "1"}
+
+
+def _asks_line(out: str) -> str:
+    return next(line for line in out.splitlines() if line.startswith("asks"))
+
+
+def test_no_asks_says_none_waiting_and_prints_no_hint(ctx):
+    out = srv.ui_context()
+    assert "asks: none waiting" in out.splitlines()
+    assert "ui_context(answered=" not in out
+
+
+def test_asks_are_listed_with_what_they_are_about_and_marked_seen(ctx):
+    journal.set_writer("chat")
+    made = PlanLog(WORLD).create("north hmf", {}, actor=PAGE)
+    about = {
+        "kind": "process",
+        "label": "Blender · Diluted Fuel",
+        "ref": "job:recipe|B|R",
+        "plan": made.key,
+        "rev": 1,
+    }
+    asks.create(WORLD, "why does this need a Blender?", about)
+    asks.create(WORLD, "is stage 1 safe to switch on?", ABOUT)
+    lines = srv.ui_context().splitlines()
+    line = next(x for x in lines if x.startswith("asks"))
+    assert line == (
+        'asks (2 waiting): ask:1 "why does this need a Blender?" about process '
+        '"Blender · Diluted Fuel" in "north hmf" v1 · ask:2 "is stage 1 safe to switch on?" '
+        'about stage "stage 1"'
+    )
+    hint = lines[lines.index(line) + 1]
+    assert (
+        hint
+        == 'answer them, then ui_context(answered=["ask:1", "ask:2"]) marks them done on the page'
+    )
+    rows = asks.live(WORLD)
+    assert [r["state"] for r in rows] == ["seen", "seen"]
+    assert rows[0]["seen_by"] == "chat"
+    [entry] = [e for e in journal.read(WORLD) if e["kind"] == "ask.seen"]
+    assert entry["args"] == {"n": [1, 2]} and entry["text"] == "chat saw ask:1, ask:2"
+    again = srv.ui_context()
+    assert _asks_line(again).endswith('about stage "stage 1" (seen)')
+    assert len([e for e in journal.read(WORLD) if e["kind"] == "ask.seen"]) == 1
+
+
+def test_only_the_newest_six_asks_show(ctx):
+    for n in range(9):
+        asks.create(WORLD, f"question {n}", ABOUT)
+    line = _asks_line(srv.ui_context())
+    assert line.startswith("asks (9 waiting): ask:4 ")
+    assert line.endswith("(+3 more)") and "ask:3 " not in line
+    assert [r["state"] for r in asks.live(WORLD)] == ["open"] * 3 + ["seen"] * 6
+
+
+def test_answered_marks_them_done_and_says_so_first(ctx):
+    journal.set_writer("chat")
+    for text in ("a", "b", "c"):
+        asks.create(WORLD, text, ABOUT)
+    asks.drop(WORLD, 3, 1)
+    lines = srv.ui_context(answered=["ask:1", "ASK:9", "ask:3", "nonsense"]).splitlines()
+    assert lines[1] == "marked answered: ask:1"
+    assert lines[2:5] == [
+        "! ask:9 does not exist (asks run to ask:3)",
+        "! ask:3 was deleted",
+        "! 'nonsense' is not an ask id (ask:N)",
+    ]
+    assert [r["state"] for r in asks.live(WORLD)] == ["answered", "seen"]
+    [entry] = [e for e in journal.read(WORLD) if e["kind"] == "ask.answered"]
+    assert entry["args"] == {"n": [1]} and entry["text"] == "chat answered ask:1"
+    assert next(x for x in lines if x.startswith("asks")).startswith("asks (1 waiting): ask:2 ")
+
+
+def test_many_long_asks_stay_inside_the_budget(ctx):
+    for n in range(200):
+        asks.create(WORLD, f"{n} " + "y" * 190, {**ABOUT, "label": "l" * 120})
+    out = srv.ui_context()
+    assert len(out) < planning.CONTEXT_BUDGET
+    line = _asks_line(out)
+    assert line.startswith("asks (200 waiting): ") and line.endswith(" (+194 more)")
+    parts = line.removeprefix("asks (200 waiting): ").removesuffix(" (+194 more)").split(" · ")
+    assert len(parts) == 6 and all(len(p) <= planning.CONTEXT_ASK_WIDTH for p in parts)

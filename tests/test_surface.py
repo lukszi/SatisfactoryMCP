@@ -122,6 +122,16 @@ def test_tool_descriptions_stay_short():
         assert len(first) <= 120, (tool.name, first)
 
 
+def test_ui_context_takes_answered_asks_without_a_new_tool():
+    tools = {t.name: t for t in _run(srv.mcp.list_tools())}
+    props = tools["ui_context"].inputSchema["properties"]
+    assert set(props) == {"save", "world", "answered"}
+    assert props["answered"]["description"] == "ask:N ids you have answered"
+    assert "ask:" in srv.mcp.instructions and "pin:" in srv.mcp.instructions
+    first = tools["ui_context"].description.strip().splitlines()[0]
+    assert len(first) <= 120
+
+
 def test_alternates_for_item_takes_a_plan_without_a_second_tool():
     tools = {t.name: t for t in _run(srv.mcp.list_tools())}
     plan = tools["alternates_for_item"].inputSchema["properties"]["plan"]
