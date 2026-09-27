@@ -231,6 +231,7 @@ LABELS: dict[str, str] = {
     "power_slug_yellow": "yellow power slugs",
     "power_slug_purple": "purple power slugs",
     "somersloop": "somersloops",
+    "somersloop_shrine": "somersloop shrines",
     "tape_pickup": "tapes",
     "customization_unlock_pickup": "customisation unlocks",
 }

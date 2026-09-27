@@ -99,7 +99,8 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 ### 2.6 Where am I
 
 1. `dash=world` (here) reads `/api/world/here`. It is registered in the live wave, so it
-   follows each save. It shows "as of the save written 12 min ago" from `age_note`.
+   follows each save. It shows "as of the save written 12 min ago" from `written_ago`,
+   with the full `age_note` as the line's title.
 2. **map** flies to the player and selects the point. **nodes near me**, **conduits near me**
    and **pickups near me** open those tabs with `near=me`.
 3. No pawn in the save (a dedicated server): one `dashkit.empty` line; the rest of World works.
@@ -250,6 +251,7 @@ class ConduitsResponse(TypedDict):
 
 class HereResponse(TypedDict):
     age_note: str; save_token: str
+    written_ago: str | None           # "42 days ago", the subtitle; age_note is its title
     player: PlayerAt | None           # {x_m, y_m, z_m}; null with no pawn
     region: Region | None; grid: str | None; direction: str | None
     radius_m: float
@@ -269,6 +271,8 @@ class RegionRow(TypedDict):           # RegionTableResponse = {resource, resourc
     conduits: ConduitCount | None     # {belt, pipe, radius_m}; null without a save
     fields: list[FoundField]          # up to 3: per-resource fields with a member within 500 m
     pickups: list[NearPickup]         # up to 5 remaining within 500 m, nearest first
+    pickups_within: int | None        # how many remain within 500 m; null with no save
+    pickups_within_spoilers: int      # of those, how many the spoiler switch hides
     stale: list[TableAge]
 # NearPickup = CollectibleRow + {label: str, spoiler: bool}
 
@@ -441,8 +445,8 @@ in-process, warm, median of 7; cold is the first call after start.
 | `collect_view` remaining / census | 7.8 / 4.0 ms | — | |
 | `rank_build_sites` iron | 86 ms warm, 423 ms cold | — | terrain field load |
 | elevation probe | 11 ms | — | |
-| `/api/nodes` | 5.4 ms, 249 kB | +5% size | spoiler flag |
-| `/api/collectibles?mode=remaining` | 18 ms, 580 kB | +10% size | spoiler flag, census |
+| `/api/nodes` | 5.4 ms, 249 kB | +7% size | spoiler flag; measured 264 kB (+6%) on the branch |
+| `/api/collectibles?mode=remaining` | 18 ms, 580 kB | +13% size | spoiler flag, census; measured 652 kB (+12%) on the branch |
 | `/api/inspect` | 14–15 ms, 764 ms cold | ≤ 50 ms, ≤ 1 s cold | + per-resource fields, pickups |
 | `/api/world/here` | tool 1.0 ms | ≤ 15 ms | live wave |
 | `/api/world/nodes` view=nodes | tool 1.6 ms | ≤ 25 ms, ≤ 300 kB | every row sent; no paging |
@@ -451,7 +455,7 @@ in-process, warm, median of 7; cold is the first call after start.
 | `/api/world/conduits` | tool 3.2 ms | ≤ 30 ms, ≤ 400 kB | limit 200, radius ≤ 2000 m |
 | `/api/world/regions` | tool 6.5 ms | ≤ 15 ms | |
 
-Page: filter inputs debounce 200 ms; each view holds one `latest()` slot (`world-here`,
+Page: place inputs (`near`, `to`) query on Enter or when they lose focus, never per keystroke; each view holds one `latest()` slot (`world-here`,
 `world-nodes`, `world-sites`, `world-conduits`, `world-pickups`, `world-regions`, `finder`);
 the last rows stay on screen while the next query loads. Tables over 50 rows render 50 and a
 **show all** button (the inventory pattern). No cache is added anywhere; measure again before

@@ -152,6 +152,7 @@ class Description:
     fields_total: int
     pickups: list[dict]
     pickups_total: int | None
+    pickups_spoilers: int
     skew: nodes_mod.TableSkew | None
     notes: list[str]
 
@@ -183,6 +184,7 @@ def describe(
         fields_total=len(fields),
         pickups=pickups[:PICKUPS],
         pickups_total=len(pickups) if st is not None and st.collectibles is not None else None,
+        pickups_spoilers=sum(1 for p in pickups if p["spoiler"]),
         skew=skew,
         notes=nodes_mod.position_notes(
             skew, [n["instance"] for n in table.filter(center=(x, y), radius_m=radius_m)]

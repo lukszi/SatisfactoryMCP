@@ -1,13 +1,12 @@
 /* World > nodes and fields: the node finder as tables, and the fields view's rank toggle.
  * See docs/world-finders_contract.md §2.1 and §2.2. */
 
-import { button, chip, empty, note, pressed, table } from "./dashkit";
+import { button, chip, empty, note, pressed, statusChip, table } from "./dashkit";
 import { mapButton, render, toMap } from "./dashboard";
 import { make } from "./dom";
 import {
   fieldLabel,
   fieldSelection,
-  metres,
   nodeLabel,
   nodeSelection,
   resourceOptions,
@@ -16,7 +15,7 @@ import {
   spoilerParam,
   worldUrl,
 } from "./finder";
-import { count, num, perMin } from "./format";
+import { count, measured, metres, num, perMin } from "./format";
 import { isSelected, select } from "./selection";
 import { state } from "./state";
 import {
@@ -32,7 +31,6 @@ import {
   selectField,
   staleLine,
   staleText,
-  statusChip,
   textField,
   waiting,
   want,
@@ -271,10 +269,6 @@ function fieldTable(rows: FoundField[], near: boolean): HTMLElement {
   });
 }
 
-function metresOrDash(value: number | null, dp?: number, unit?: string): string {
-  return value === null ? "–" : num(value, dp === undefined ? 0 : dp) + (unit === undefined ? " m" : unit);
-}
-
 function siteTable(rows: RankedSite[]): HTMLElement {
   var from = state.dash;
   function n(key: string, label: string, pick: (s: RankedSite) => number | null, show: (s: RankedSite) => string, title?: string): Column<RankedSite> {
@@ -306,12 +300,12 @@ function siteTable(rows: RankedSite[]): HTMLElement {
     n("nodes", "nodes", function (s) { return s.nodes; }, function (s) { return count(s.nodes); }),
     n("untapped", "untapped", function (s) { return s.untapped; }, function (s) { return perMin(s.untapped, false); }, "per min on nodes with no extractor"),
     n("spread", "spread", function (s) { return s.spread_m; }, function (s) { return metres(s.spread_m); }),
-    n("infra", "to power", function (s) { return s.to_infra_m; }, function (s) { return metresOrDash(s.to_infra_m); }, "to the nearest thing already built"),
+    n("infra", "to built", function (s) { return s.to_infra_m; }, function (s) { return metres(s.to_infra_m); }, "to the nearest thing already built"),
     n("purity", "purity", function (s) { return s.purity; }, function (s) { return num(s.purity, 2); }),
-    n("alt", "height", function (s) { return s.alt_m; }, function (s) { return metresOrDash(s.alt_m); }),
-    n("rough", "rough", function (s) { return s.rough_m; }, function (s) { return metresOrDash(s.rough_m, 1); }, "how uneven the ground is"),
-    n("slope", "slope", function (s) { return s.slope_deg; }, function (s) { return metresOrDash(s.slope_deg, 0, "°"); }),
-    n("wet", "water", function (s) { return s.wet_pct; }, function (s) { return metresOrDash(s.wet_pct, 0, "%"); }, "share of the site under water"),
+    n("alt", "height", function (s) { return s.alt_m; }, function (s) { return metres(s.alt_m); }),
+    n("rough", "rough", function (s) { return s.rough_m; }, function (s) { return metres(s.rough_m, 1); }, "how uneven the ground is"),
+    n("slope", "slope", function (s) { return s.slope_deg; }, function (s) { return measured(s.slope_deg, 0, "°"); }),
+    n("wet", "water", function (s) { return s.wet_pct; }, function (s) { return measured(s.wet_pct, 0, "%"); }, "share of the site under water"),
     { key: "selector", label: "selector", render: function (s) { return copyCell(s.selector); } },
     {
       key: "map",
@@ -348,7 +342,7 @@ function filters(card: HTMLElement, view: string, params: Record<string, string>
     };
   }
   bar.appendChild(
-    selectField("resource", "world-resource", params.resource || "", [["", "any resource"] as [string, string]].concat(resourceOptions()), set("resource"))
+    selectField("resource", "world-resource", params.resource || "", resourceOptions("any resource", params.resource || ""), set("resource"))
   );
   bar.appendChild(selectField("purity", "world-purity", params.purity || "", PURITIES, set("purity")));
   bar.appendChild(selectField("kind", "world-kind", params.kind || "", kinds(), set("kind")));

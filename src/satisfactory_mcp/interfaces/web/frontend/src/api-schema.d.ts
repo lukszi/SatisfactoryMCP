@@ -3210,6 +3210,8 @@ export interface components {
         HereResponse: {
             /** Age Note */
             age_note: string;
+            /** Written Ago */
+            written_ago: string | null;
             /** Save Token */
             save_token: string;
             player: components["schemas"]["PlayerAt"] | null;
@@ -3273,6 +3275,10 @@ export interface components {
             fields: components["schemas"]["FoundField"][];
             /** Pickups */
             pickups: components["schemas"]["NearPickup"][];
+            /** Pickups Within */
+            pickups_within: number | null;
+            /** Pickups Within Spoilers */
+            pickups_within_spoilers: number;
             /** Stale */
             stale: components["schemas"]["TableAge"][];
             /** Save Error */

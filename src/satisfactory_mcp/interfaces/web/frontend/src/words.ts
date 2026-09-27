@@ -32,6 +32,7 @@ export var W = {
   tapped: "tapped",
   locked: "locked",
   field: "field",
+  hiddenBySpoilers: "hidden while spoilers are off",
   node: "node",
   run: "run",
   network: "network",

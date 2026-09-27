@@ -2110,13 +2110,6 @@ a.dash-where:hover {
   display: none;
 }
 
-.inv-capped tbody tr:nth-child(n + 26) {
-  display: none;
-}
-
-.inv-more {
-  margin-top: var(--sp-2);
-}
 
 @media (max-width: 600px) {
   .inv-results .dash-table td.bar {
@@ -2934,9 +2927,6 @@ path.lasso-area {
   gap: var(--sp-1);
 }
 
-.world-capped tbody tr:nth-child(n + 51) {
-  display: none;
-}
 
 .dk-table tr.on > td {
   background: color-mix(in srgb, var(--select) 12%, var(--surface));

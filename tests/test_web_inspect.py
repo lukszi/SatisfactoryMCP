@@ -194,7 +194,19 @@ def test_inspect_adds_grid_fields_conduits_and_pickups(client):
         p["distance_m"] for p in body["pickups"]
     )
     assert all(isinstance(n["spoiler"], bool) for n in body["nearest"])
+    assert body["pickups_within"] >= len(body["pickups"])
+    assert 0 <= body["pickups_within_spoilers"] <= body["pickups_within"]
     assert body["stale"] == []
+
+
+def test_inspect_counts_every_pickup_within_reach_not_just_the_five_it_lists(client, state):
+    from satisfactory_mcp.domain.spatial import place
+
+    x_m, y_m = IN_THE_FIELD
+    found = place._pickups_near(state, x_m * 100, y_m * 100)
+    body = client.get("/api/inspect", params={"x_m": x_m, "y_m": y_m}).json()
+    assert body["pickups_within"] == len(found)
+    assert body["pickups_within_spoilers"] == sum(1 for p in found if p["spoiler"])
 
 
 def test_inspect_radius_widens_the_elevation_and_conduit_reach(client):
@@ -212,3 +224,4 @@ def test_inspect_without_a_save_keeps_nodes_and_nulls_conduits(game):
         body = c.get("/api/inspect", params={"x_m": IN_THE_FIELD[0], "y_m": IN_THE_FIELD[1]}).json()
     assert body["nearest"] and body["fields"]
     assert body["conduits"] is None and body["pickups"] == [] and body["stale"] == []
+    assert body["pickups_within"] is None

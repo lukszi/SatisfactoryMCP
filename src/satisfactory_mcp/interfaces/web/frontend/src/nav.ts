@@ -30,7 +30,7 @@ export interface SubjectQuery {
   params: Record<string, string>;
 }
 
-function decoded(text: string): string {
+export function decoded(text: string): string {
   try {
     return decodeURIComponent(text);
   } catch (_e) {

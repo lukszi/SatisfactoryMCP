@@ -19,8 +19,10 @@ export function link(dash: string, text: string, className?: string): HTMLAnchor
   return a;
 }
 
-export function note(parent: HTMLElement, text: string): void {
-  parent.appendChild(make("p", "dash-note", text));
+export function note(parent: HTMLElement, text: string): HTMLElement {
+  var line = make("p", "dash-note", text);
+  parent.appendChild(line);
+  return line;
 }
 
 export function heading(parent: HTMLElement, text: string): void {
@@ -332,6 +334,25 @@ export function error(parent: HTMLElement, thing: string, reason: unknown, retry
     box.appendChild(b);
   }
   parent.appendChild(box);
+}
+
+export function statusChip(status: "free" | "tapped" | "locked"): HTMLElement {
+  return chip(W[status], status === "free" ? "ok" : "muted");
+}
+
+export function showAll(card: HTMLElement, grid: HTMLElement, rows: number, shown: 25 | 50, label: string, open: boolean, onOpen: () => void): void {
+  if (rows <= shown || open) return;
+  var cls = "dk-capped-" + shown;
+  grid.classList.add(cls);
+  var more = make("div", "dk-more");
+  more.appendChild(
+    button(label, function () {
+      onOpen();
+      grid.classList.remove(cls);
+      more.remove();
+    })
+  );
+  card.appendChild(more);
 }
 
 export function chip(text: string, tone?: "ok" | "bad" | "blocked" | "mid" | "muted", title?: string): HTMLElement {

@@ -134,6 +134,12 @@ function pickupText(p: NearPickup): string {
   return p.label + (p.distance_m === null ? "" : " · " + num(p.distance_m, 0) + " m");
 }
 
+function pickupsWithin(d: InspectResponse): string | null {
+  if (d.pickups_within === null) return null;
+  var n = d.pickups_within - (setting("spoilers") ? 0 : d.pickups_within_spoilers);
+  return count(n) + " " + W.remaining + " within " + PICKUPS_NEAR_M + " m";
+}
+
 function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string }): string {
   var rows: Row[] = [];
   if (machine) {
@@ -148,7 +154,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   rows.push(["grid", d.grid ? d.grid + (d.direction ? " · " + d.direction : "") : null]);
   if (nearest.length) rows.push(["nearest", nearestText(nearest[0]!)]);
   rows.push(["conduits", d.conduits ? conduitLine(d.conduits) : null]);
-  rows.push(["pickups", (pickups.length >= 5 ? "5 or more" : count(pickups.length)) + " " + W.remaining + " within " + PICKUPS_NEAR_M + " m"]);
+  rows.push(["pickups", pickupsWithin(d)]);
   // The one row built to be copied into an MCP tool call, so the unit -- the same " m"
   // every other coordinate row on the map ends with -- must ride along.
   rows.push(["at", html(code(d.at.x_m + "," + d.at.y_m).html + " m")]);

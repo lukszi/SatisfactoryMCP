@@ -2,9 +2,9 @@
  * and listed in the one map card. See docs/world-finders_contract.md §2.5 and §8. */
 
 import { get, latest } from "./api";
-import { button, chip, link, pressed, table, tabs2 } from "./dashkit";
+import { button, link, pressed, statusChip, table, tabs2 } from "./dashkit";
 import { FIND_AT_ATTR, FIND_ATTR, make } from "./dom";
-import { num, perMin } from "./format";
+import { coords, metres, num, perMin } from "./format";
 import { reveal } from "./labels";
 import { L } from "./leaflet";
 import { flyPadded, flyToBox, flyToPoint, map, xy } from "./map";
@@ -89,27 +89,24 @@ export function spoilerParam(): string {
   return setting("spoilers") ? "" : "0";
 }
 
-export function metres(value: number | null | undefined): string {
-  return value === null || value === undefined ? "–" : num(value, 0) + " m";
-}
-
-export function coords(x: number, y: number): string {
-  return Math.round(x) + ", " + Math.round(y) + " m";
-}
-
-export function resourceOptions(): [string, string][] {
+export function resourceOptions(any: string, current: string): [string, string][] {
   var names: Record<string, string> = {};
+  var every: Record<string, string> = {};
   var all = setting("spoilers");
   knownNodes().forEach(function (n) {
+    if (n.kind === "geyser") return;
+    every[n.resource] = n.resource_name;
     if (all || !n.spoiler) names[n.resource] = n.resource_name;
   });
-  return Object.keys(names)
+  var options = Object.keys(names)
     .map(function (id): [string, string] {
       return [id, names[id]!];
     })
     .sort(function (a, b) {
       return a[1].localeCompare(b[1]);
     });
+  if (current && !names[current]) options.unshift([current, (every[current] || current) + " (" + W.hiddenBySpoilers + ")"]);
+  return [["", any] as [string, string]].concat(options);
 }
 
 export function nodeLabel(n: { resource_name: string; purity: string }): string {
@@ -117,11 +114,11 @@ export function nodeLabel(n: { resource_name: string; purity: string }): string 
 }
 
 export function fieldLabel(f: FoundField): string {
-  return f.resources.join(" + ") + " " + W.field;
+  return f.resources.join(" + ") + " " + W.field + " · " + (f.region || f.grid);
 }
 
 export function runLabel(r: RunRow): string {
-  return r.label || r.id;
+  return r.label && r.label !== r.id ? r.id + " · " + r.label : r.id;
 }
 
 export function nodeSelection(n: FoundNode): Selection {
@@ -140,8 +137,12 @@ export function runSelection(r: RunRow): Selection {
   return { kind: "conduit", key: r.id, label: runLabel(r), x_m: r.a.x_m, y_m: r.a.y_m, ref: r.id };
 }
 
+export function pickupPlace(p: { x_m: number; y_m: number }): string {
+  return Math.round(p.x_m) + "," + Math.round(p.y_m);
+}
+
 export function pickupSelection(p: CollectibleRow): Selection {
-  return { kind: "pickup", key: p.name, label: pickupName(p.category), x_m: p.x_m, y_m: p.y_m, ref: p.name };
+  return { kind: "pickup", key: p.name, label: pickupName(p.category), x_m: p.x_m, y_m: p.y_m, ref: pickupPlace(p) };
 }
 
 function ring(at: { x_m: number; y_m: number }, seed: boolean): void {
@@ -262,10 +263,10 @@ function pick(i: number): void {
   if (!view.set) return;
   view.seed = i;
   var bounds = draw(view.set, i);
+  render();
   flyTo(view.set, i, bounds);
   if (view.set.kind === "pickups") reveal(["pickup: " + view.set.rows[i]!.category]);
   select(selectionOf(view.set, i));
-  render();
 }
 
 interface Listed {
@@ -292,8 +293,7 @@ function columns(set: Shown): Column<Listed>[] {
         return nodeLabel(nodes[i]!);
       }),
       column("status", "status", function (i) {
-        var s = nodes[i]!.status;
-        return chip(W[s], s === "free" ? "ok" : "muted");
+        return statusChip(nodes[i]!.status);
       }),
       column("rate", "per min", function (i) {
         return perMin(nodes[i]!.rate, false);
@@ -367,8 +367,14 @@ function listed(box: HTMLElement, set: Shown): void {
   }
   var rows: Listed[] = [];
   for (var i = 0; i < Math.min(total, SHOWN); i++) rows.push({ i: i });
+  var measured = (set.rows as { distance_m?: number | null }[]).some(function (r) {
+    return r.distance_m !== null && r.distance_m !== undefined;
+  });
+  var shownColumns = columns(set).filter(function (c) {
+    return measured || c.key !== "distance";
+  });
   box.appendChild(
-    table<Listed>(columns(set), rows, {
+    table<Listed>(shownColumns, rows, {
       caption: view.title,
       onRow: function (r) {
         pick(r.i);
@@ -388,7 +394,7 @@ function filterRow(box: HTMLElement): void {
   var f = view.filter;
   if (view.kind === "nodes") {
     row.appendChild(
-      choose("resource", "finder-resource", f.resource, [["", "any resource"] as string[]].concat(resourceOptions()), function (v) {
+      choose("resource", "finder-resource", f.resource, resourceOptions("any resource", f.resource), function (v) {
         f.resource = v;
       })
     );
@@ -608,10 +614,10 @@ export function showRows(set: Shown, title: string, dash: string, seed?: number)
   view.set = set;
   view.seed = seed === undefined ? -1 : seed;
   var bounds = draw(set, view.seed);
+  render();
   flyTo(set, view.seed, bounds);
   if (set.kind === "pickups" && view.seed >= 0) reveal(["pickup: " + set.rows[view.seed]!.category]);
   if (view.seed >= 0) select(selectionOf(set, view.seed));
-  render();
 }
 
 function parsePoint(text: string): { x: number; y: number; r: number } | null {
@@ -671,8 +677,8 @@ export function showRef(ref: string, spot?: { x_m?: number; y_m?: number; label:
   group.clearLayers();
   ring({ x_m: x, y_m: y }, true);
   if (!map.hasLayer(group)) group.addTo(map);
-  flyToPoint(xy({ x_m: x, y_m: y }), Math.max(map.getZoom(), POINT_ZOOM));
   render();
+  flyToPoint(xy({ x_m: x, y_m: y }), Math.max(map.getZoom(), POINT_ZOOM));
 }
 
 var pending = 0;
@@ -710,7 +716,7 @@ function finding(event: Event): void {
 export function listenForFinds(): void {
   document.addEventListener("click", finding, true);
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && view.open && !(event.target as Element).closest("input, textarea, select")) closeFinder();
+    if (event.key === "Escape" && view.open && !(event.target as Element).closest("input[type=text], input[type=search], textarea")) closeFinder();
   });
   onVitals(refresh);
 }

@@ -2,11 +2,11 @@
  * conduits, pickups and regions. See docs/world-finders_contract.md §2 and §7. */
 
 import { get, latest } from "./api";
-import { button, chip, empty, error, heading, link, loading, note, table, tabs2 } from "./dashkit";
+import { empty, error, heading, link, loading, note, showAll, table, tabs2 } from "./dashkit";
 import { mapButton, render } from "./dashboard";
 import { code, make } from "./dom";
-import { coords, metres, resourceOptions, spoilerParam, worldUrl } from "./finder";
-import { count, num, regionLine } from "./format";
+import { resourceOptions, spoilerParam, worldUrl } from "./finder";
+import { coords, count, metres, num, regionLine } from "./format";
 import { loadOne } from "./load";
 import { hashFor, writeHash } from "./map";
 import { dashParts, subjectQuery, withQuery } from "./nav";
@@ -38,7 +38,7 @@ var HERE_RADIUS_M = 500;
 
 var DEBOUNCE_MS = 200;
 
-var SHOWN = 50;
+var SHOWN: 50 = 50;
 
 var herePart = {
   data: null as HereResponse | null,
@@ -108,7 +108,7 @@ export function onHere(listener: () => void): void {
 
 export interface Loaded<T> {
   key: string;
-  epoch: number;
+  scope: string;
   data: T | null;
   failed: boolean;
   reason: unknown;
@@ -116,15 +116,16 @@ export interface Loaded<T> {
 }
 
 export function loaded<T>(): Loaded<T> {
-  return { key: "", epoch: -1, data: null, failed: false, reason: null, busy: false };
+  return { key: "", scope: "", data: null, failed: false, reason: null, busy: false };
 }
 
 export function want<T extends ApiError>(slot: string, box: Loaded<T>, url: ApiUrl): void {
-  var key = state.epoch + "|" + herePart.wave + "|" + url;
+  var scope = JSON.stringify([state.epoch, state.world, state.save]);
+  var key = JSON.stringify([scope, herePart.wave, state.token, url]);
   if (box.key === key) return;
-  if (box.epoch !== state.epoch) box.data = null;
+  if (box.scope !== scope) box.data = null;
   box.key = key;
-  box.epoch = state.epoch;
+  box.scope = scope;
   box.busy = true;
   box.failed = false;
   var ticket = latest(slot);
@@ -211,10 +212,14 @@ export function textField(
   var input = make("input", "dash-name world-text");
   input.type = "search";
   input.placeholder = placeholder;
+  input.title = "press Enter to search";
   input.value = value;
   input.setAttribute("data-candidate", candidate);
-  input.oninput = function () {
+  input.onchange = function () {
     change(input.value.trim());
+  };
+  input.oninput = function () {
+    if (!input.value.trim() && value) change("");
   };
   input.onfocus = function () {
     var end = input.value.length;
@@ -224,17 +229,9 @@ export function textField(
 }
 
 export function capped(card: HTMLElement, grid: HTMLElement, rows: number, key: string, noun: string): void {
-  if (rows <= SHOWN || uncapped[key]) return;
-  grid.classList.add("world-capped");
-  var more = make("div", "world-more");
-  more.appendChild(
-    button("show all " + counted(rows, noun), function () {
-      uncapped[key] = true;
-      grid.classList.remove("world-capped");
-      more.remove();
-    })
-  );
-  card.appendChild(more);
+  showAll(card, grid, rows, SHOWN, "show all " + counted(rows, noun), !!uncapped[key], function () {
+    uncapped[key] = true;
+  });
 }
 
 export function staleText(t: TableAge): string {
@@ -250,7 +247,7 @@ export function staleLine(parent: HTMLElement, t: TableAge | null): void {
 export function hiddenLine(parent: HTMLElement, n: number, one: string, many?: string): void {
   if (!n) return;
   var line = make("p", "dash-note");
-  line.appendChild(document.createTextNode(counted(n, one, many) + " hidden while spoilers are off · "));
+  line.appendChild(document.createTextNode(counted(n, one, many) + " " + W.hiddenBySpoilers + " · "));
   line.appendChild(link("settings", "Settings"));
   parent.appendChild(line);
 }
@@ -290,7 +287,7 @@ function renderHere(body: HTMLElement): void {
     else loading(card, "the player's position");
     return;
   }
-  note(card, "as of " + data.age_note);
+  note(card, data.written_ago ? "as of the save written " + data.written_ago : "as of the save shown in the header").title = data.age_note;
   var player = data.player;
   if (!player) {
     empty(card, "no player position in this save", "a dedicated-server save holds no pawn; nodes, fields, conduits, pickups and regions still work");
@@ -329,7 +326,7 @@ function renderHere(body: HTMLElement): void {
   acts.appendChild(link(viewDash("pickups", { view: "nearest" }), "pickups near me"));
   card.appendChild(acts);
   data.stale.forEach(function (t) {
-    staleLine(card, t);
+    if (t.table === "nodes") staleLine(card, t);
   });
   var near = make("section", "dash-card");
   heading(near, counted(data.nodes_total, "node") + " within " + num(data.radius_m, 0) + " m");
@@ -352,7 +349,7 @@ function renderRegions(body: HTMLElement, params: Record<string, string>): void 
   body.appendChild(card);
   var bar = filterBar(card);
   bar.appendChild(
-    selectField("resource", "world-regions-resource", params.resource || "", [["", "every resource"] as [string, string]].concat(resourceOptions()), function (v) {
+    selectField("resource", "world-regions-resource", params.resource || "", resourceOptions("every resource", params.resource || ""), function (v) {
       edit({ resource: v });
     })
   );
@@ -425,10 +422,6 @@ function carried(view: string, params: Record<string, string>): Record<string, s
   if (view === "nodes" || view === "fields" || view === "regions") kept.resource = params.resource || "";
   if (view === "nodes" || view === "fields") kept.near = params.near || "";
   return kept;
-}
-
-export function statusChip(status: "free" | "tapped" | "locked"): HTMLElement {
-  return chip(W[status], status === "free" ? "ok" : "muted");
 }
 
 registerFetch<HereResponse>({

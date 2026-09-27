@@ -5,7 +5,7 @@ import { empty, error, link, loading, note, table, tabs2 } from "./dashkit";
 import { el, make } from "./dom";
 import { count, num, perMin } from "./format";
 import { hashFor, writeHash } from "./map";
-import { go, subjectQuery, withQuery } from "./nav";
+import { decoded, go, subjectQuery, withQuery } from "./nav";
 import { registerFetch } from "./registry";
 import { setting } from "./settings";
 import { state } from "./state";
@@ -97,14 +97,6 @@ input.oninput = function () {
 function subjectOf(dash: string): string {
   var cut = dash.indexOf("/");
   return cut < 0 ? "" : dash.slice(cut + 1);
-}
-
-function decoded(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch (_e) {
-    return text;
-  }
 }
 
 function parseBrowse(subject: string): Browse {

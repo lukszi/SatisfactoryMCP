@@ -4,7 +4,7 @@
 import { button, empty, heading, table, tabs2 } from "./dashkit";
 import { mapButton, render, toMap } from "./dashboard";
 import { make } from "./dom";
-import { coords, pickupSelection, showRows, spoilerParam, worldUrl } from "./finder";
+import { pickupPlace, pickupSelection, showRows, spoilerParam, worldUrl } from "./finder";
 import { count } from "./format";
 import { hashFor } from "./map";
 import { lootLine, pickupName } from "./markers";
@@ -135,13 +135,13 @@ function listTable(rows: CollectibleRow[], list: string): HTMLElement {
   if (list === "nearest") columns.push(distanceColumn<CollectibleRow>());
   columns.push({
     key: "at",
-    label: "at",
+    label: "selector",
     className: "dash-nowrap",
+    title: "the place, as every near= takes it",
     render: function (r) {
-      return coords(r.x_m, r.y_m);
+      return copyCell(pickupPlace(r));
     },
   });
-  columns.push({ key: "name", label: "selector", render: function (r) { return copyCell(r.name); } });
   columns.push({
     key: "map",
     label: "",

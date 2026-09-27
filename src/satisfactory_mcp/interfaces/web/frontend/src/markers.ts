@@ -282,6 +282,10 @@ export function pickupName(category: string): string {
   return labels[category] || category.replace(/_/g, " ");
 }
 
+export function layerWord(name: string): string {
+  return name.indexOf(PICKUP_PREFIX) === 0 ? pickupName(name.slice(PICKUP_PREFIX.length)) : name;
+}
+
 export function hiddenPickups(): string[] {
   return hiddenKinds;
 }

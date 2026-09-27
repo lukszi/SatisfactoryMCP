@@ -4,13 +4,14 @@
 import { button, empty, note, table, tabs2 } from "./dashkit";
 import { mapButton, render, toMap } from "./dashboard";
 import { make } from "./dom";
-import { coords, metres, runLabel, runSelection, showRows, worldUrl } from "./finder";
-import { count, num, perMin } from "./format";
+import { runLabel, runSelection, showRows, worldUrl } from "./finder";
+import { coords, count, metres, num, perMin } from "./format";
 import { hashFor } from "./map";
 import { go } from "./nav";
 import { isSelected, select } from "./selection";
 import { state } from "./state";
 import { capped, changed, copyCell, distanceColumn, edit, filterBar, loaded, selectField, textField, viewDash, waiting, want } from "./world";
+import { untooled } from "./toast";
 import { counted, W } from "./words";
 
 import type { Column, SortState } from "./dashkit";
@@ -263,7 +264,7 @@ function census(card: HTMLElement, d: ConduitsResponse, params: Record<string, s
   if (params.network) where += " · " + W.network + " #" + params.network;
   note(card, where);
   d.bridged.forEach(function (t) {
-    note(card, t);
+    note(card, untooled(t));
   });
   d.notes.forEach(function (t) {
     note(card, t);

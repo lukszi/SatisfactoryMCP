@@ -151,6 +151,8 @@ class InspectResponse(TypedDict):
     conduits: ConduitCount | None
     fields: list[FoundField]
     pickups: list[NearPickup]
+    pickups_within: int | None
+    pickups_within_spoilers: int
     stale: list[TableAge]
     save_error: str | None
 
@@ -323,6 +325,8 @@ def inspect(
         "conduits": None if counted is None else {**counted, "radius_m": radius_m},
         "fields": [_field_json(f, game) for f in found.fields],
         "pickups": [{**_pickup_json(p, p["spoiler"]), "label": p["label"]} for p in found.pickups],
+        "pickups_within": found.pickups_total,
+        "pickups_within_spoilers": found.pickups_spoilers,
         "stale": stale,
         "save_error": save_error,
     }

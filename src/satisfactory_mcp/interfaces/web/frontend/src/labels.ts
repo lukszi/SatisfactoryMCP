@@ -12,6 +12,7 @@ import { cardWithFloors } from "./floors";
 import { batch } from "./layercontrol";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
+import { layerWord } from "./markers";
 import { flyPadded, map } from "./map";
 import { regionLabels } from "./regions";
 import { registerFetch } from "./registry";
@@ -41,7 +42,7 @@ export function reveal(names: string[]): void {
       var group = state.layers[name];
       if (!group || map.hasLayer(group)) return;
       group.addTo(map);
-      turned.push(name);
+      turned.push(layerWord(name));
     });
   });
   if (!turned.length) return;

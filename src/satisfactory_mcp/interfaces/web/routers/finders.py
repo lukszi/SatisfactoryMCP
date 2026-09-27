@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
+from ....core.text import ago
 from ....domain.collectibles import service as collectibles_service
 from ....domain.planning.scenario import resolve_item
 from ....domain.spatial import finder, geo, place, ranking
@@ -220,6 +221,7 @@ class HereResponse(TypedDict):
     """``player`` is null for a save with no pawn; the rest of World still answers."""
 
     age_note: str
+    written_ago: str | None
     save_token: str
     player: PlayerAt | None
     region: Region | None
@@ -321,8 +323,11 @@ def world_nodes(
     )
     if refusal:
         return _fail(refusal)
-    if resource and resource.strip().casefold() != "all" and resolve_item(game, resource) is None:
-        return _fail(f"unknown resource {resource!r}")
+    if resource and resource.strip().casefold() != "all":
+        rid = resolve_item(game, resource)
+        if rid is None:
+            return _fail(f"unknown resource {resource!r}")
+        resource = _resource_name(game, rid)
     if view == "nearest" and not near:
         return _fail("view=nearest needs near=<x,y | me | factory name> to measure from")
     try:
@@ -611,6 +616,7 @@ def world_here(
     building = found.nearest_building
     return {
         "age_note": st.age_note,
+        "written_ago": ago(st.header.get("mtime_ns")),
         "save_token": st.token,
         "player": None if player is None else _xyz(player),
         "region": _label_json(found.label) if found.label else None,

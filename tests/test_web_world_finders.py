@@ -38,6 +38,7 @@ def test_here_names_the_players_place_and_the_nodes_around_it(client, state):
     body = client.get("/api/world/here").json()
     assert body["save_token"] == state.token
     assert body["age_note"] == state.age_note
+    assert body["written_ago"] and body["written_ago"] in state.age_note
     x, _y, _z = state.player_position()
     assert body["player"]["x_m"] == pytest.approx(x / 100, abs=0.1)
     assert body["region"]["name"] and body["grid"] and body["direction"]
@@ -87,7 +88,9 @@ def test_nodes_filters_become_selectors_and_near_adds_distance(client):
         "/api/world/nodes",
         params={"resource": "Desc_OreIron_C", "status": "free", "near": "me"},
     ).json()
-    assert body["selectors"] == ["resource:Desc_OreIron_C"]
+    assert body["selectors"] == ["resource:Iron Ore"]
+    by_name = client.get("/api/world/nodes", params={"source": body["selectors"]}).json()
+    assert by_name["count"] >= body["count"]
     assert body["where"] == "you"
     assert {r["resource"] for r in body["nodes"]} == {"Desc_OreIron_C"}
     assert all(r["status"] != "tapped" and r["distance_m"] is not None for r in body["nodes"])

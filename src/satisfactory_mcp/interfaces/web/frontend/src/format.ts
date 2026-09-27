@@ -38,6 +38,18 @@ export function phaseText(raw: string | null | undefined): string | null {
   return raw;
 }
 
+export function measured(value: number | null | undefined, dp: number, unit: string): string {
+  return value === null || value === undefined ? "–" : num(value, dp) + unit;
+}
+
+export function metres(value: number | null | undefined, dp?: number): string {
+  return measured(value, dp || 0, " m");
+}
+
+export function coords(x: number, y: number): string {
+  return Math.round(x) + ", " + Math.round(y) + " m";
+}
+
 export function mw(value: number, options?: { signed?: boolean }): string {
   var whole = (value < 0 ? -Math.round(-value) : Math.round(value)) + 0;
   return (options && options.signed && whole > 0 ? "+" : "") + count(whole) + " MW";
