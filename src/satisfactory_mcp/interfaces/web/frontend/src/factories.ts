@@ -7,6 +7,7 @@ import { make } from "./dom";
 import { count, flow, mw, pct, spoken } from "./format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, stateLine } from "./graph";
 import { loadOne } from "./load";
+import { ringCandidate, startLasso } from "./lasso";
 import { hashFor } from "./map";
 import { showBox, vitals } from "./panel";
 import { blankOrLong, NAME_MAX, newest, refreshLabels, refusal, renamedTo, wrote } from "./rename";
@@ -484,8 +485,9 @@ function candidateActs(row: CandidateRow): HTMLElement {
   var box = row.bbox_m;
   acts.appendChild(
     box
-      ? mapButton("fly the map to this " + W.unnamedCluster + " and outline it", function () {
+      ? mapButton("fly the map to this " + W.unnamedCluster + ", outline it and ring its machines", function () {
           showBox(box!);
+          if (detect.data) ringCandidate(row.selector, detect.data.token, chosenName(row));
         })
       : make("span", "dash-muted", "–")
   );
@@ -861,6 +863,17 @@ export function renderFactory(body: HTMLElement, subject: string): void {
         });
       },
       { title: "draw what feeds this factory on the map, with items and rates" }
+    )
+  );
+  head.appendChild(
+    button(
+      "amend on map",
+      function () {
+        toMap(function () {
+          startLasso(row!.name);
+        });
+      },
+      { title: "draw around machines on the map to add them to this factory or remove them" }
     )
   );
   body.appendChild(head);

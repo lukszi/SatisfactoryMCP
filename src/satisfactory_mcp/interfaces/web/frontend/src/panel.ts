@@ -2,7 +2,7 @@
  * docs/spatial-and-map.md §21. */
 
 import { button, chip, empty, error, issueCount, issueGroups, link, loading } from "./dashkit";
-import { el, keepFocus, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
+import { el, keepFocus, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
 import { count, mw, pct } from "./format";
 import { chooseLabel, FACTORY_PICKED, flyToFactory, paddedBounds, reveal } from "./labels";
 import { onLayersToggle, setLayersOpen } from "./layercontrol";
@@ -311,6 +311,10 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
     trace.setAttribute(TRACE_ATTR, "label:" + row.name);
     trace.setAttribute(TRACE_DIR_ATTR, "up");
     tools.appendChild(trace);
+    var amend = button("amend", function () {}, { title: "draw around machines on the map to add them or remove them" });
+    amend.onclick = null;
+    amend.setAttribute(LASSO_ATTR, row.name);
+    tools.appendChild(amend);
     item.appendChild(tools);
   }
   var groups = selected ? issueGroups([row]) : [];

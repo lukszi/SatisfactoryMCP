@@ -124,6 +124,9 @@ export type RenamedResponse = Body<"RenamedResponse">;
 export type LabelRefused = Body<"LabelRefusedResponse">;
 export type GraphNode = Schema["GraphNode"];
 export type FactoryGraphResponse = Body<"FactoryGraphResponse">;
+export type MachineSpot = Schema["MachineSpot"];
+export type FactoryMachinesResponse = Body<"FactoryMachinesResponse">;
+export type AmendedResponse = Body<"AmendedResponse">;
 
 /* ------------------------------------- /api/factories/health and /api/power/circuits */
 

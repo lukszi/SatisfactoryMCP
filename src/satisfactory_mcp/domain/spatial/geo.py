@@ -29,6 +29,7 @@ __all__ = [
     "distance_m",
     "grid_cell",
     "in_direction",
+    "inside",
 ]
 
 CM_PER_M = 100.0
@@ -165,6 +166,19 @@ def bbox(points: Sequence[tuple[float, float]]) -> tuple[float, float, float, fl
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
     return (min(xs), min(ys), max(xs), max(ys))
+
+
+def inside(point: tuple[float, float], polygon: Sequence[tuple[float, float]]) -> bool:
+    """Even-odd test: whether ``point`` falls within ``polygon``, both in the same units."""
+    x, y = point
+    hit = False
+    n = len(polygon)
+    for i in range(n):
+        ax, ay = polygon[i]
+        bx, by = polygon[i - 1]
+        if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+            hit = not hit
+    return hit
 
 
 def diameter_m(points: Sequence[tuple[float, float]]) -> float:

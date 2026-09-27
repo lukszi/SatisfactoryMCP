@@ -1,4 +1,5 @@
-"""``/api/factories/candidates``, ``/graph`` and ``/api/labels``: detect, draw, name, rename, forget.
+"""``/api/factories/candidates``, ``/graph``, ``/machines`` and ``/api/labels``: detect, draw,
+name, rename, amend, forget.
 
 Every write goes through ``domain/factories/edits.py``, as the MCP tools do, past the write
 guard (``guard.py``), and carries the label-store version it was read at. A name is the rest
@@ -11,7 +12,7 @@ WARNING: the function name is the operation_id -- renaming it churns the committ
 from __future__ import annotations
 
 import os
-from typing import Any, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
@@ -442,6 +443,40 @@ def _bare(key: str, kind: str, label: str, detail: str) -> dict:
     }
 
 
+def _subject(
+    request: Request,
+    factory: str | None,
+    candidate: str | None,
+    token: str | None,
+    save: str | None,
+    world: str | None,
+) -> Any:
+    """The standing machines of a named factory, or of a candidate detected at ``token``:
+    ``(state, machines, title)``, or the refusal to send."""
+    if bool(factory) == bool(candidate):
+        return _fail("pass exactly one of factory= or candidate=", 400)
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+    if factory:
+        label = next((x for x in st.labels.labels if x.name == factory), None)
+        if label is None:
+            return _fail(f"no factory named “{factory}” in this world", 404)
+        alive = set(st.graph.machines())
+        return st, [m for m in label.anchors if m in alive], label.name
+    if not token:
+        return _fail("candidate= needs the token= it was detected at", 400)
+    try:
+        pin.check(st.header, token)
+    except pin.PinRefused:
+        return _fail("a newer save was written since this was detected; detect again", 409)
+    try:
+        return st, select_machines([candidate], st), candidate
+    except SelectorError as exc:
+        return _fail(str(exc), 404)
+
+
 @router.get("/factories/graph", response_model=FactoryGraphResponse)
 def factory_graph(
     request: Request,
@@ -456,30 +491,10 @@ def factory_graph(
     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
     written since then is refused (409), since the index may now name another cluster.
     """
-    if bool(factory) == bool(candidate):
-        return _fail("pass exactly one of factory= or candidate=", 400)
-    try:
-        st = _state(request, save, world)
-    except Exception as exc:
-        return _fail(f"could not read save: {exc}", 404)
-    if factory:
-        label = next((x for x in st.labels.labels if x.name == factory), None)
-        if label is None:
-            return _fail(f"no factory named “{factory}” in this world", 404)
-        alive = set(st.graph.machines())
-        machines, title = [m for m in label.anchors if m in alive], label.name
-    else:
-        if not token:
-            return _fail("candidate= needs the token= it was detected at", 400)
-        try:
-            pin.check(st.header, token)
-        except pin.PinRefused:
-            return _fail("a newer save was written since this was detected; detect again", 409)
-        try:
-            machines = select_machines([candidate], st)
-        except SelectorError as exc:
-            return _fail(str(exc), 404)
-        title = candidate
+    picked = _subject(request, factory, candidate, token, save, world)
+    if not isinstance(picked, tuple):
+        return picked
+    st, machines, title = picked
     _view, fg = _cluster(st, machines, title)
     whole = "factory" if factory else "cluster"
     placed = fidentity.positions(st.projection)
@@ -510,7 +525,9 @@ def factory_graph(
         nodes.append(_bare(key, "input", key[3:], f"enters the {whole}"))
     for kind, text in TERMINAL_LABELS.items():
         if kind in used:
-            nodes.append(_bare(kind, kind, text.format(whole), f"{fg.terminals.get(kind, 0)} reached"))
+            nodes.append(
+                _bare(kind, kind, text.format(whole), f"{fg.terminals.get(kind, 0)} reached")
+            )
     return {
         "title": title,
         "token": pin.check(st.header, None),
@@ -521,3 +538,154 @@ def factory_graph(
             for e in fg.edges
         ],
     }
+
+
+class MachineSpot(TypedDict):
+    """One placed machine. ``factory`` is the label that holds it, if any."""
+
+    id: str
+    building: str
+    x_m: float
+    y_m: float
+    factory: str | None
+
+
+class FactoryMachinesResponse(TypedDict):
+    title: str
+    token: str
+    machines: list[MachineSpot]
+
+
+def _spots(st, machines) -> list[dict]:
+    placed = fidentity.positions(st.projection)
+    out = []
+    for m in sorted(machines):
+        if m not in placed:
+            continue
+        held = st.labels.label_for(m)
+        cls = st.graph.cls.get(m, "")
+        out.append(
+            {
+                "id": m,
+                "building": st.game.building_name(cls) or cls,
+                "x_m": _m(placed[m][0]),
+                "y_m": _m(placed[m][1]),
+                "factory": held.name if held else None,
+            }
+        )
+    return out
+
+
+@router.get("/factories/machines", response_model=FactoryMachinesResponse)
+def factory_machines(
+    request: Request,
+    factory: str | None = None,
+    candidate: str | None = None,
+    token: str | None = None,
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """Where each standing machine of a named factory, or of a detected candidate, stands."""
+    picked = _subject(request, factory, candidate, token, save, world)
+    if not isinstance(picked, tuple):
+        return picked
+    st, machines, title = picked
+    return {"title": title, "token": pin.check(st.header, None), "machines": _spots(st, machines)}
+
+
+class AmendedResponse(TypedDict):
+    """``added`` and ``dropped`` are what the area changes; ``written`` is false on a dry run
+    and when nothing changed. ``version`` is the store's, after any write."""
+
+    name: str
+    dry_run: bool
+    written: bool
+    before: int
+    after: int
+    added: list[MachineSpot]
+    dropped: list[MachineSpot]
+    overlaps: list[str]
+    token: str
+    version: int
+
+
+AMEND_MODES = ("add", "drop")
+
+
+class AmendBody(TypedDict):
+    """``area`` is a polygon of ``[x_m, y_m]`` corners; ``mode`` is ``add`` or ``drop``."""
+
+    name: str
+    area: list[tuple[float, float]]
+    mode: str
+    as_of: str
+    version: int
+    dry_run: NotRequired[bool]
+
+
+@router.post("/labels/amend", response_model=AmendedResponse, responses=_REFUSALS)
+def amend_label(
+    request: Request,
+    body: Annotated[AmendBody, Body()],
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """Add the machines inside ``area`` (metres, map frame) to a label, or drop them from it.
+
+    The same ``plan_amend`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
+    """
+    name, dry_run = body["name"], body.get("dry_run", False)
+    if body["mode"] not in AMEND_MODES:
+        return _fail(f"mode is one of {', '.join(AMEND_MODES)}", 400)
+    if len(body["area"]) < 3:
+        return _fail("an area needs at least three corners", 400)
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+    try:
+        pin.check(st.header, body["as_of"])
+    except pin.PinRefused as exc:
+        return _conflict(exc, pin=True)
+    label = next((x for x in st.labels.labels if x.name == name), None)
+    if label is None:
+        return _fail(f"no factory named “{name}” in this world", 404)
+    alive = set(st.graph.machines())
+    placed = fidentity.positions(st.projection)
+    corners = [(x * geo.CM_PER_M, y * geo.CM_PER_M) for x, y in body["area"]]
+    within = sorted(m for m in alive if m in placed and geo.inside(placed[m][:2], corners))
+    wanted, going = (within, set()) if body["mode"] == "add" else ([], set(within))
+    try:
+        plan = edits.plan_amend(st.labels, label, wanted, going, alive)
+    except LabelError as exc:
+        return _refused(exc)
+    reply = {
+        "name": label.name,
+        "dry_run": dry_run,
+        "written": False,
+        "before": len(plan.before),
+        "after": len(plan.after),
+        "added": _spots(st, plan.added),
+        "dropped": _spots(st, plan.dropped),
+        "overlaps": [f"overlaps {k!r} on {n} machine(s)" for k, n in plan.overlaps.items()],
+        "token": pin.check(st.header, None),
+        "version": st.labels.version,
+    }
+    if dry_run or not (plan.added or plan.dropped):
+        return reply
+    cand = fidentity.describe(plan.standing, st.graph, st.game, st.projection, "label")
+    try:
+        _label, written = edits.amend(
+            st.world_id,
+            _session(st),
+            label.name,
+            wanted,
+            going,
+            cand=cand if plan.standing else None,
+            when=stamp(st.header),
+            expect=body["version"],
+        )
+    except (StaleStore, LabelError, LockTimeout) as exc:
+        return _refused(exc)
+    reply.update(written=True, version=written)
+    return reply

@@ -2830,3 +2830,82 @@ a.status-name:hover,
     display: none;
   }
 }
+
+#lasso {
+  --surface: var(--panel);
+  position: fixed;
+  left: 410px;
+  bottom: 2.2rem;
+  width: 340px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: var(--sp-2);
+  background: color-mix(in srgb, var(--panel) 95%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  font-size: var(--fs-m);
+  z-index: var(--z-overlay);
+}
+
+#lasso [aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-hi);
+}
+
+body.dash-on #lasso {
+  display: none;
+}
+
+body.lasso-on #map {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+path.lasso-member {
+  stroke: var(--select);
+  stroke-width: 2;
+  fill: none;
+}
+
+path.lasso-add {
+  stroke: var(--ok);
+  stroke-width: 3;
+  fill: var(--ok);
+  fill-opacity: 0.35;
+}
+
+path.lasso-drop {
+  stroke: var(--bad);
+  stroke-width: 3;
+  fill: var(--bad);
+  fill-opacity: 0.35;
+}
+
+path.lasso-ink {
+  stroke: var(--accent-hi);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  fill: none;
+}
+
+path.lasso-area {
+  stroke: var(--accent-hi);
+  stroke-width: 2;
+  fill: var(--accent);
+  fill-opacity: 0.12;
+}
+
+@media (max-width: 699px) {
+  #lasso {
+    right: 0;
+    bottom: 30px;
+    left: 0;
+    width: auto;
+    border-radius: var(--r) var(--r) 0 0;
+  }
+
+  body[data-sheet="panel"] #lasso,
+  body[data-sheet="layers"] #lasso {
+    display: none;
+  }
+}
