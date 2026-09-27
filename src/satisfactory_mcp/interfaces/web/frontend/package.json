@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "check": "tsc --noEmit",
-    "typegen": "openapi-typescript http://127.0.0.1:8712/openapi.json -o src/api-schema.d.ts && node scripts/stamp-schema.mjs"
+    "typegen": "node scripts/typegen.mjs"
   },
   "dependencies": {
     "leaflet": "1.9.4"
