@@ -1377,6 +1377,20 @@ body.dash-on #panel {
   color: inherit;
 }
 
+#dash a.btn {
+  color: var(--accent);
+  font-weight: normal;
+  text-decoration: none;
+}
+
+#dash a.btn-map {
+  color: var(--ink-soft);
+}
+
+#dash a.btn:hover {
+  color: var(--accent-hi);
+}
+
 .dash-h {
   margin: 14px 0 6px;
   color: var(--muted);

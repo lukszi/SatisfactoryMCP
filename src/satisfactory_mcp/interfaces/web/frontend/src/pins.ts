@@ -91,11 +91,15 @@ function draw(data: PinsResponse): void {
   store.world = state.world;
   var group = layer("pins", true, undefined, [BAND.chrome, 60, "pins"]);
   markers = {};
+  var stacked: Record<string, number> = {};
   data.pins.forEach(function (p) {
     if (p.x_m === null || p.y_m === null) return;
     var name = pinName(p) + (p.gone ? " (gone)" : "");
+    var spot = Math.round(p.x_m) + "," + Math.round(p.y_m);
+    var below = stacked[spot] || 0;
+    stacked[spot] = below + 1;
     var tag = L.marker(xy({ x_m: p.x_m, y_m: p.y_m }), {
-      icon: L.divIcon({ className: "pin-tag" + (p.gone ? " gone" : ""), html: esc(p.n), iconSize: [28, 18], iconAnchor: [14, 9] }),
+      icon: L.divIcon({ className: "pin-tag" + (p.gone ? " gone" : ""), html: esc(p.n), iconSize: [28, 18], iconAnchor: [-4, 22 + below * 20] }),
       title: name,
       alt: name,
       keyboard: true,
@@ -200,13 +204,20 @@ export function renamePin(pin: PinRow, label: string): Promise<boolean> {
     });
 }
 
+var dropping: Record<number, boolean> = {};
+
 export function dropPin(pin: PinRow): void {
+  if (dropping[pin.n]) return;
+  dropping[pin.n] = true;
   send<PinDropped>("DELETE", PIN_ONE, { rev: pin.rev }, String(pin.n))
     .then(function () {
       note("deleted " + pin.id);
       refetchPins();
     })
-    .catch(refused);
+    .catch(refused)
+    .then(function () {
+      delete dropping[pin.n];
+    });
 }
 
 export function showPin(pin: PinRow): void {

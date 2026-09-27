@@ -13,6 +13,11 @@
   cursor: pointer;
 }
 
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
 .btn:hover {
   border-color: var(--accent);
   color: var(--accent-hi);

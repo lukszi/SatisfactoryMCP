@@ -106,6 +106,9 @@ function acts(o: SwapOption): HTMLElement {
       )
     );
   }
+  box.querySelectorAll("button").forEach(function (b) {
+    b.setAttribute("data-ctl", "alt:" + o.recipe_id);
+  });
   return box;
 }
 

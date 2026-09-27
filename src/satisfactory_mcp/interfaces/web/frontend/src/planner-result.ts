@@ -1,8 +1,8 @@
 /* The result panel: what the head solves to, as a build list or a graph, redrawn after every
  * new version. See docs/planner-p3_contract.md §9. */
 
-import { button, chip, error, loading, table, tabs2 } from "./dashkit";
-import { COPY_ATTR, COPY_CLASS, make } from "./dom";
+import { button, chip, copyButton, error, loading, table, tabs2 } from "./dashkit";
+import { make } from "./dom";
 import { count, flow, mw, pct } from "./format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "./graph";
 import { go } from "./nav";
@@ -220,19 +220,14 @@ function pinButton(row: SolveRow): HTMLButtonElement | null {
   );
 }
 
-function copyButton(text: string, what: string): HTMLButtonElement {
-  var b = make("button", "btn " + COPY_CLASS, "copy");
-  b.type = "button";
-  b.title = "copy " + text + " for a tool call";
-  b.setAttribute("aria-label", "copy " + what);
-  b.setAttribute(COPY_ATTR, text);
-  return b;
+function copyFor(text: string, what: string): HTMLButtonElement {
+  return copyButton(text, "copy", { title: "copy " + text + " for a tool call", label: "copy " + what });
 }
 
 function rowActions(data: SolveResponse, row: SolveRow): HTMLElement {
   var box = make("span", "dash-acts");
   var item = mainItem(data, row);
-  if (item) box.appendChild(recipesButton(item, row.item || row.recipe, "row"));
+  if (item && row.recipe_id) box.appendChild(recipesButton(item, row.item || row.recipe, "row"));
   box.appendChild(banButton(row));
   var pin = pinButton(row);
   if (pin) box.appendChild(pin);
@@ -484,12 +479,12 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
     card.appendChild(make("p", "dash-sub", "in: " + rates(items(row.inputs))));
     card.appendChild(make("p", "dash-sub", "out: " + rates(items(row.outputs))));
     if (!bench.gone) {
-      if (node.item) acts.appendChild(recipesButton(node.item, row.item || row.recipe, "node"));
+      if (node.item && row.recipe_id) acts.appendChild(recipesButton(node.item, row.item || row.recipe, "node"));
       acts.appendChild(banButton(row));
       var pin = pinButton(row);
       if (pin) acts.appendChild(pin);
     }
-    if (row.recipe_id) acts.appendChild(copyButton(row.recipe_id, row.recipe));
+    if (row.recipe_id) acts.appendChild(copyFor(row.recipe_id, row.recipe));
   } else {
     card.appendChild(title);
     card.appendChild(make("p", "plan-facts", node.detail));

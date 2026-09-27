@@ -1,8 +1,8 @@
 /* The pins card on the plans list: every live pin, with map, rename, copy and delete.
  * See docs/planner-p3_contract.md §2 F4. */
 
-import { button, chip, empty, error, fieldError, link, loading, table } from "./dashkit";
-import { COPY_ATTR, COPY_CLASS, make } from "./dom";
+import { button, chip, copyButton, empty, error, fieldError, link, loading, table } from "./dashkit";
+import { make } from "./dom";
 import { dropPin, LABEL_MAX, pinStore, refetchPins, renamePin, showPin } from "./pins";
 import { counted, PIN_KIND } from "./words";
 
@@ -78,7 +78,7 @@ function place(p: PinRow): HTMLElement | string {
       { map: true, title: "fly the map to " + p.id + " and open it", label: "show " + p.id + " on the map" }
     );
   }
-  if (p.ref.plan) return link("planner/" + p.ref.plan, "open plan");
+  if (p.ref.plan) return link("planner/" + p.ref.plan, "open plan", "btn btn-map");
   return "";
 }
 
@@ -97,16 +97,14 @@ function actions(p: PinRow, redraw: () => void): HTMLElement {
       { label: "rename " + p.id, disabled: editing.n === p.n }
     )
   );
-  var copy = make("button", "btn " + COPY_CLASS, "copy");
-  copy.type = "button";
-  copy.title = "copy " + p.id + " for chat";
-  copy.setAttribute("aria-label", "copy " + p.id);
-  copy.setAttribute(COPY_ATTR, p.id);
-  box.appendChild(copy);
+  box.appendChild(copyButton(p.id, "copy", { title: "copy " + p.id + " for chat", label: "copy " + p.id }));
   box.appendChild(
     button(
       "delete",
       function () {
+        box.querySelectorAll("button").forEach(function (b) {
+          b.disabled = true;
+        });
         dropPin(p);
       },
       { title: "delete " + p.id + "; its number is not reused", label: "delete " + p.id }

@@ -1,7 +1,7 @@
 /* The dashboard's building blocks, shared by dashboard.ts and the sections split out of it. */
 
 import "./dashkit.css";
-import { count, make } from "./dom";
+import { COPY_ATTR, COPY_CLASS, count, make } from "./dom";
 import { hashFor } from "./map";
 import { tone } from "./states";
 import { friendly } from "./toast";
@@ -254,6 +254,15 @@ export function button(text: string, action: () => void, options?: ButtonOptions
     event.stopPropagation();
     action();
   };
+  return b;
+}
+
+export function copyButton(value: string, text: string, options: ButtonOptions): HTMLButtonElement {
+  var b = make("button", "btn " + COPY_CLASS, text);
+  b.type = "button";
+  b.title = options.title || "copy " + value;
+  if (options.label) b.setAttribute("aria-label", options.label);
+  b.setAttribute(COPY_ATTR, value);
   return b;
 }
 

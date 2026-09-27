@@ -1,7 +1,7 @@
 /* The workbench: one plan at its head, every control a versioned gesture. */
 
-import { button, chip, empty, error, link, loading, pressed } from "./dashkit";
-import { COPY_ATTR, COPY_CLASS, make } from "./dom";
+import { button, chip, copyButton, empty, error, link, loading, pressed } from "./dashkit";
+import { make } from "./dom";
 import { perMin } from "./format";
 import { go } from "./nav";
 import {
@@ -665,11 +665,7 @@ function header(parent: HTMLElement): void {
     )
   );
   var call = "plan_factory(plan=" + JSON.stringify(plan.name) + ")  # base_rev=" + plan.rev;
-  var copy = make("button", "btn " + COPY_CLASS, "copy as tool call");
-  copy.type = "button";
-  copy.title = call;
-  copy.setAttribute(COPY_ATTR, call);
-  acts.appendChild(copy);
+  acts.appendChild(copyButton(call, "copy as tool call", { title: call }));
   parent.appendChild(acts);
 }
 

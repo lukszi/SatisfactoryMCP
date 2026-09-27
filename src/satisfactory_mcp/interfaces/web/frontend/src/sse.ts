@@ -111,6 +111,7 @@ export function listen() {
     loadOne("/api/factories/health");
     loadOne("/api/power/circuits");
     loadOne("/api/plans");
+    refetchPins();
   });
   source.addEventListener("plans", function (event) {
     var data = parsed<PlansEvent>(event);
