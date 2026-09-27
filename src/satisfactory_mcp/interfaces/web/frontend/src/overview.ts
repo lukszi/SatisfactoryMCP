@@ -1,24 +1,36 @@
 /* The dashboard's Overview tab: headline tiles, the factories and machines that need action,
- * and power per circuit, addressed as `dash=overview`. */
+ * power problems and power per circuit, addressed as `dash=overview`. */
 
-import { heading, link, note, table, tile } from "./dashkit";
-import { count, make } from "./dom";
-import { mw, pct, spoken } from "./format";
+import { empty, error, heading, link, loading, note, table, tile } from "./dashkit";
+import { make } from "./dom";
+import { count, pct, spoken } from "./format";
+import { loadOne } from "./load";
 import { hashFor } from "./map";
 import { vitals } from "./panel";
-import { stateTone } from "./placements";
 import { milestoneTile } from "./progress";
-import { isFine, needsAction, stateSets } from "./states";
+import { isFine, needsAction, stateSets, tone } from "./states";
 import { factoryMapButton, go, pointButton } from "./dashboard";
-import { circuitTable, headroomTiles } from "./power-tab";
+import {
+  circuitTable,
+  faultCount,
+  faultsOf,
+  faultWords,
+  generationTile,
+  headroomTiles,
+  problemTable,
+  retryCircuits,
+  world,
+} from "./power-tab";
 import { bar as powerBar } from "./powerview";
+import { counted, W } from "./words";
 
-import type { FactoryHealthRow, MachineIssue, MachineRef, StarvedGenerator } from "./api-shapes";
+import type { FactoryHealthRow, MachineIssue } from "./api-shapes";
 
-var ATTENTION_SHOWN = 12;
+var ROWS_SHOWN = 12;
 
 interface Mix {
   bad: number;
+  blocked: number;
   mid: number;
   ok: number;
 }
@@ -35,30 +47,40 @@ function middling(): string[] {
 }
 
 export function mixOf(rows: FactoryHealthRow[]): Mix {
-  var mix = { bad: 0, mid: 0, ok: 0 };
+  var mix = { bad: 0, blocked: 0, mid: 0, ok: 0 };
   rows.forEach(function (row) {
     row.states.forEach(function (s) {
-      if (needsAction(s.state)) mix.bad += s.count;
-      else if (isFine(s.state)) mix.ok += s.count;
-      else mix.mid += s.count;
+      mix[tone(s.state)] += s.count;
     });
   });
   return mix;
 }
 
-export function mixBar(mix: Mix): HTMLElement {
-  var total = mix.bad + mix.mid + mix.ok;
-  var bar = make("div", "dash-mix");
-  bar.setAttribute("role", "img");
-  var parts: [keyof Mix, string][] = [
-    ["bad", "need action"],
+function mixWords(): [keyof Mix, string][] {
+  return [
+    [
+      "bad",
+      spoken(
+        actionable().filter(function (s) {
+          return s !== W.blocked;
+        }),
+        "or"
+      ),
+    ],
+    ["blocked", W.blocked],
     ["mid", spoken(middling(), "or")],
     ["ok", "running or unmonitored"],
   ];
+}
+
+export function mixBar(mix: Mix): HTMLElement {
+  var total = mix.bad + mix.blocked + mix.mid + mix.ok;
+  var bar = make("div", "dash-mix");
+  bar.setAttribute("role", "img");
   var words: string[] = [];
-  parts.forEach(function (p) {
+  mixWords().forEach(function (p) {
     var n = mix[p[0]];
-    words.push(n + " " + p[1]);
+    words.push(count(n) + " " + p[1]);
     if (!n || !total) return;
     var seg = make("span", "dash-mix-" + p[0]);
     seg.style.width = (n / total) * 100 + "%";
@@ -71,12 +93,8 @@ export function mixBar(mix: Mix): HTMLElement {
 
 function mixLegend(mix: Mix): HTMLElement {
   var legend = make("div", "dash-mix-legend");
-  var parts: [keyof Mix, string][] = [
-    ["bad", "need action"],
-    ["mid", middling().join(", ")],
-    ["ok", "running or unmonitored"],
-  ];
-  parts.forEach(function (p) {
+  legend.setAttribute("aria-hidden", "true");
+  mixWords().forEach(function (p) {
     var item = make("span", "dash-key");
     item.appendChild(make("i", "dash-swatch dash-mix-" + p[0]));
     item.appendChild(document.createTextNode(count(mix[p[0]]) + " " + p[1]));
@@ -85,185 +103,287 @@ function mixLegend(mix: Mix): HTMLElement {
   return legend;
 }
 
-function powerProblems(): { total: number; sub: string } | null {
-  var c = vitals().circuits;
-  if (!c) return null;
-  return {
-    total: c.unwired.length + c.no_generator.length + c.starved.length,
-    sub: c.unwired.length + " no wire · " + c.no_generator.length + " no generator · " + c.starved.length + " starved generators",
-  };
+function retryHealth(): void {
+  loadOne("/api/factories/health");
 }
 
-export function renderOverview(body: HTMLElement): void {
+function detectLink(): HTMLElement {
+  return link("factories", "detect factories on the Factories tab");
+}
+
+function actionTile(rows: FactoryHealthRow[]): HTMLElement {
   var v = vitals();
-  var tiles = make("div", "dash-tiles");
-  var rows = v.health ? v.health.factories : [];
-  if (v.health) {
-    var todo = rows.filter(function (r) {
-      return r.actionable > 0;
-    }).length;
-    var box = tile(
-      "factories",
-      count(rows.length) + " named",
-      todo + " with machines that need action",
-      false,
-      hashFor("factories")
-    );
-    box.appendChild(mixBar(mixOf(rows)));
-    box.appendChild(mixLegend(mixOf(rows)));
-    tiles.appendChild(box);
-  } else {
-    tiles.appendChild(tile("factories", "–", v.healthError || "loading…"));
+  if (!v.health) return tile(W.needAction, "–", v.healthError ? "factory health could not be read" : "loading…");
+  if (!rows.length) {
+    var none = tile(W.needAction, "–", "no factories named yet", false);
+    none.appendChild(detectLink());
+    return none;
   }
+  var mix = mixOf(rows);
+  var todo = rows.filter(function (r) {
+    return r.actionable > 0;
+  }).length;
+  var box = tile(
+    W.needAction,
+    count(mix.bad + mix.blocked),
+    "machines, in " + count(todo) + " of " + counted(rows.length, "named factory", "named factories"),
+    mix.bad > 0,
+    hashFor("factories")
+  );
+  if (!mix.bad && mix.blocked) box.classList.add("blocked");
+  box.appendChild(mixBar(mix));
+  box.appendChild(mixLegend(mix));
+  return box;
+}
+
+function tiles(body: HTMLElement): void {
+  var v = vitals();
+  var row = make("div", "dash-tiles");
+  var rows = v.health ? v.health.factories : [];
+  row.appendChild(actionTile(rows));
+  var power = hashFor("power");
   if (v.circuits) {
-    var w = v.circuits.world;
     var gens = 0;
     v.circuits.generators.forEach(function (g) {
       gens += g.count;
     });
-    var gen = tile("generation", mw(w.generation_mw), gens + " generators", false, hashFor("power"));
-    gen.appendChild(powerBar(w));
-    tiles.appendChild(gen);
-    headroomTiles(w, hashFor("power")).forEach(function (t) {
-      tiles.appendChild(t);
+    var gen = generationTile(world(v.circuits), counted(gens, "generator"), power);
+    gen.appendChild(powerBar(v.circuits.world));
+    row.appendChild(gen);
+    headroomTiles(world(v.circuits), power).forEach(function (t) {
+      row.appendChild(t);
     });
+    var faults = faultsOf(v.circuits);
+    row.appendChild(tile(W.powerProblems, count(faultCount(faults)), faultWords(faults), faultCount(faults) > 0, power));
   } else {
-    tiles.appendChild(tile("power", "–", v.circuitsError || "loading…"));
+    var why = v.circuitsError ? "power circuits could not be read" : "loading…";
+    row.appendChild(tile(W.generation, "–", why));
+    row.appendChild(tile(W.powerProblems, "–", why));
   }
-  if (v.health) {
-    var action = 0;
-    rows.forEach(function (r) {
-      action += r.actionable;
-    });
-    tiles.appendChild(
-      tile("machines needing action", count(action), spoken(actionable(), "or") + ", in named factories", action > 0, hashFor("factories"))
-    );
-  }
-  var dark = powerProblems();
-  if (dark) tiles.appendChild(tile("power problems", count(dark.total), dark.sub, dark.total > 0, hashFor("power")));
-  var milestones = milestoneTile();
-  if (milestones) tiles.appendChild(milestones);
-  body.appendChild(tiles);
+  row.appendChild(milestoneTile());
+  body.appendChild(row);
+}
 
-  var split = make("div", "dash-split");
-  var left = make("section", "dash-card");
-  heading(left, "factories needing action");
+function healthMissing(parent: HTMLElement): boolean {
+  var v = vitals();
+  if (v.health) return false;
+  if (v.healthError) error(parent, "factory health", "", retryHealth);
+  else loading(parent, "factory health");
+  return true;
+}
+
+function factoriesCard(parent: HTMLElement): void {
+  var card = make("section", "dash-card");
+  heading(card, "factories that " + W.needAction);
+  parent.appendChild(card);
+  if (healthMissing(card)) return;
+  var rows = vitals().health!.factories;
+  if (!rows.length) {
+    empty(card, "no factories named yet", detectLink());
+    return;
+  }
   var worst = rows.filter(function (r) {
     return r.actionable > 0;
   });
-  if (!v.health) note(left, v.healthError || "loading…");
-  else if (!worst.length) note(left, "no named factory has a machine in a state that needs action");
-  else {
-    left.appendChild(
-      table<FactoryHealthRow>(
-        [
-          {
-            key: "name",
-            label: "factory",
-            render: function (r) {
-              return link("factories/" + r.name, r.name);
-            },
-          },
-          {
-            key: "actionable",
-            label: "need action",
-            align: "right",
-            className: "bad",
-            render: function (r) {
-              return r.actionable;
-            },
-          },
-          {
-            key: "uptime",
-            label: "uptime",
-            align: "right",
-            render: function (r) {
-              return pct(r.uptime);
-            },
-          },
-          { key: "map", label: "", align: "right", render: factoryMapButton },
-        ],
-        worst,
-        {
-          onRow: function (r) {
-            go("factories/" + r.name);
-          },
-          caption: "factories needing action",
-        }
-      )
-    );
-  }
-  split.appendChild(left);
-
-  var right = make("section", "dash-card");
-  heading(right, "machines needing action");
-  renderAttention(right);
-  split.appendChild(right);
-  body.appendChild(split);
-
-  var circuits = make("section", "dash-card");
-  heading(circuits, "power per circuit");
-  if (v.circuits) circuitTable(circuits, v.circuits.circuits);
-  else note(circuits, v.circuitsError || "loading…");
-  body.appendChild(circuits);
-}
-
-interface Attention {
-  factory: string;
-  issue: MachineIssue;
-}
-
-function renderAttention(parent: HTMLElement): void {
-  var v = vitals();
-  if (!v.health || !v.circuits) {
-    note(parent, v.healthError || v.circuitsError || "loading…");
+  if (!worst.length) {
+    empty(card, "no named factory has a machine that needs action");
     return;
   }
-  var found: Attention[] = [];
+  card.appendChild(
+    table<FactoryHealthRow>(
+      [
+        {
+          key: "name",
+          label: W.factory,
+          render: function (r) {
+            var a = link("factories/" + r.name, r.name, "dash-trunc");
+            a.title = r.name;
+            return a;
+          },
+        },
+        {
+          key: "actionable",
+          label: W.needAction,
+          align: "right",
+          className: "bad",
+          render: function (r) {
+            return count(r.actionable);
+          },
+        },
+        {
+          key: "uptime",
+          label: "uptime",
+          align: "right",
+          render: function (r) {
+            return pct(r.uptime);
+          },
+        },
+        { key: "map", label: "", align: "right", render: factoryMapButton },
+      ],
+      worst,
+      {
+        onRow: function (r) {
+          go("factories/" + r.name);
+        },
+        caption: "factories that " + W.needAction,
+      }
+    )
+  );
+}
+
+interface Group {
+  factory: string;
+  state: string;
+  what: string;
+  cause: string;
+  issues: MachineIssue[];
+}
+
+function because(issue: MachineIssue): string {
+  if (!issue.cause.length) return "";
+  var items = issue.cause.join(", ");
+  if (issue.state === W.blocked) return "can't output " + items;
+  if (issue.state === "starved") return "short of " + items;
+  return items;
+}
+
+function groups(): { rows: Group[]; listed: number; total: number } {
+  var found: Group[] = [];
+  var listed = 0;
   var total = 0;
-  v.health.factories.forEach(function (r) {
+  vitals().health!.factories.forEach(function (r) {
     total += r.actionable;
     r.worst_actionable.forEach(function (issue) {
-      found.push({ factory: r.name, issue: issue });
+      listed += 1;
+      var cause = because(issue);
+      var same = found.filter(function (g) {
+        return g.factory === r.name && g.state === issue.state && g.what === issue.what && g.cause === cause;
+      })[0];
+      if (same) same.issues.push(issue);
+      else found.push({ factory: r.name, state: issue.state, what: issue.what, cause: cause, issues: [issue] });
     });
   });
-  var list = make("ul", "dash-list");
-  found.slice(0, ATTENTION_SHOWN).forEach(function (a) {
-    var li = make("li", "dash-issue");
-    li.appendChild(make("span", "dash-state " + stateTone(a.issue.state, true), a.issue.state));
-    li.appendChild(make("span", "dash-what", a.issue.what));
-    li.appendChild(link("factories/" + a.factory, a.factory, "dash-where"));
-    li.appendChild(pointButton(a.issue));
-    if (a.issue.cause.length) li.appendChild(make("span", "dash-cause", a.issue.cause.join(", ")));
-    list.appendChild(li);
-  });
-  var dark: [string, MachineRef[]][] = [
-    ["no wire", v.circuits.unwired],
-    ["no generator", v.circuits.no_generator],
-  ];
-  dark.forEach(function (d) {
-    d[1].slice(0, ATTENTION_SHOWN).forEach(function (m) {
-      var li = make("li", "dash-issue");
-      li.appendChild(make("span", "dash-state", d[0]));
-      li.appendChild(make("span", "dash-what", m.name));
-      li.appendChild(pointButton(m));
-      li.title = m.instance;
-      list.appendChild(li);
-    });
-  });
-  v.circuits.starved.slice(0, ATTENTION_SHOWN).forEach(function (g: StarvedGenerator) {
-    var li = make("li", "dash-issue");
-    li.appendChild(make("span", "dash-state", "starved generator"));
-    li.appendChild(make("span", "dash-what", g.name));
-    li.appendChild(pointButton(g));
-    li.appendChild(make("span", "dash-cause", g.cause));
-    list.appendChild(li);
-  });
-  if (!list.childNodes.length) {
-    note(parent, "no machine is " + spoken(actionable(), "or") + ", and none is dark");
+  return { rows: found, listed: listed, total: total };
+}
+
+function machinesCard(parent: HTMLElement): void {
+  var card = make("section", "dash-card");
+  heading(card, "machines that " + W.needAction);
+  parent.appendChild(card);
+  if (healthMissing(card)) return;
+  var found = groups();
+  if (!found.rows.length) {
+    empty(card, "no machine in a named factory is " + spoken(actionable(), "or"));
     return;
   }
-  parent.appendChild(list);
-  var hidden = Math.max(0, total - Math.min(found.length, ATTENTION_SHOWN));
-  note(parent, (hidden ? hidden + " more need action; " : "") + "the Factories tab has every factory");
+  var shown = found.rows.slice(0, ROWS_SHOWN);
+  card.appendChild(
+    table<Group>(
+      [
+        {
+          key: "state",
+          label: "state",
+          className: "dash-nowrap",
+          tone: function (g) {
+            return tone(g.state, true);
+          },
+          render: function (g) {
+            return g.state;
+          },
+        },
+        {
+          key: "n",
+          label: "machines",
+          align: "right",
+          render: function (g) {
+            return count(g.issues.length);
+          },
+        },
+        {
+          key: "what",
+          label: "machine",
+          className: "dash-wide",
+          render: function (g) {
+            if (!g.cause) return g.what;
+            var cell = make("span", "", g.what);
+            cell.appendChild(make("span", "dash-sub", g.cause));
+            return cell;
+          },
+        },
+        {
+          key: "factory",
+          label: W.factory,
+          render: function (g) {
+            var a = link("factories/" + g.factory, g.factory, "dash-trunc");
+            a.title = g.factory;
+            return a;
+          },
+        },
+        {
+          key: "map",
+          label: "",
+          align: "right",
+          render: function (g) {
+            return pointButton(g.issues[0]!, "show " + g.what + " in " + g.factory + " on the map");
+          },
+        },
+      ],
+      shown,
+      {
+        rowTitle: function (g) {
+          return g.issues
+            .map(function (i) {
+              return i.instance;
+            })
+            .join(", ");
+        },
+        caption: "machines that " + W.needAction,
+      }
+    )
+  );
+  var listed = 0;
+  shown.forEach(function (g) {
+    listed += g.issues.length;
+  });
+  if (listed < found.total) note(card, "showing " + count(listed) + " of " + count(found.total) + "; Factories lists all");
+}
+
+function problemsCard(parent: HTMLElement): void {
+  var v = vitals();
+  var card = make("section", "dash-card");
+  heading(card, W.powerProblems);
+  parent.appendChild(card);
+  if (!v.circuits) {
+    if (v.circuitsError) error(card, "power circuits", "", retryCircuits);
+    else loading(card, "power circuits");
+    return;
+  }
+  var faults = faultsOf(v.circuits);
+  if (!faultCount(faults)) {
+    empty(card, "no " + W.powerProblems);
+    return;
+  }
+  problemTable(card, faults, ROWS_SHOWN);
+}
+
+function circuitsCard(parent: HTMLElement): void {
+  var v = vitals();
+  var card = make("section", "dash-card");
+  heading(card, "power per circuit");
+  parent.appendChild(card);
+  if (v.circuits) circuitTable(card, v.circuits.circuits);
+  else if (v.circuitsError) error(card, "power circuits", "", retryCircuits);
+  else loading(card, "power circuits");
+}
+
+export function renderOverview(body: HTMLElement): void {
+  body.appendChild(make("h1", "dk-hidden", "Overview"));
+  tiles(body);
+  var split = make("div", "dash-split");
+  var h = vitals().health;
+  factoriesCard(split);
+  if (!h || h.factories.length) machinesCard(split);
+  body.appendChild(split);
+  problemsCard(body);
+  circuitsCard(body);
 }
