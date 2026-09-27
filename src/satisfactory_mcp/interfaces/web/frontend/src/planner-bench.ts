@@ -25,9 +25,11 @@ import {
   renamePlan,
   restorePlan,
   status,
+  toggleVersions,
   undoLast,
   undoRev,
 } from "./planner-core";
+import { duplicateButton, renderVersions, renderView } from "./planner-history";
 import { loadList, planTitle } from "./planner-list";
 import { banOps, recipeName, renderResult } from "./planner-result";
 import { fail, friendly } from "./toast";
@@ -448,10 +450,12 @@ function stripRows(parent: HTMLElement): void {
     }
     box.appendChild(line);
   });
+  var d = bench.stripDelta;
+  if (d) box.appendChild(make("p", "dash-note", "result since v" + d.from_rev + ": " + d.text));
   parent.appendChild(box);
 }
 
-function argsWords(args: Record<string, unknown>): string {
+export function argsWords(args: Record<string, unknown>): string {
   var parts: string[] = [];
   var objective = args.objective as string | undefined;
   if (objective) parts.push("goal " + (OBJECTIVES[objective] || objective) + (args.target_item ? " of " + args.target_item : ""));
@@ -649,6 +653,11 @@ function header(parent: HTMLElement): void {
     )
   );
   if (!bench.gone) acts.appendChild(button("forget", forgetPlan, { title: "hide this plan from the list; its history is kept and restore brings it back" }));
+  var versions = button("versions", toggleVersions, { title: "every version of this plan: view one, or restore it as a new version" });
+  versions.setAttribute("aria-pressed", String(bench.versionsOpen));
+  versions.classList.add("plan-toggle");
+  acts.appendChild(versions);
+  acts.appendChild(duplicateButton());
   var call = "plan_factory(plan=" + JSON.stringify(plan.name) + ")  # base_rev=" + plan.rev;
   var copy = make("button", "btn " + COPY_CLASS, "copy as tool call");
   copy.type = "button";
@@ -691,6 +700,11 @@ export function renderBench(root: HTMLElement, select: (s: Selection) => void): 
   root.appendChild(itemList());
   header(root);
   if (bench.gone) gone(root);
+  renderVersions(root);
+  if (bench.view) {
+    renderView(root, select);
+    return;
+  }
   renderCard(root);
   stripRows(root);
   bench.chips.forEach(function (c) {

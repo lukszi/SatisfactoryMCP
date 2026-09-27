@@ -207,6 +207,13 @@ export type FocusResponse = Body<"FocusResponse">;
 export type ActivityRow = Schema["ActivityRow"];
 export type ActivityResponse = Body<"ActivityResponse">;
 
+/* ------------------------------------ /api/plans/{key}/versions, /restore, /duplicate, /api/plan/delta */
+
+export type VersionRow = Schema["VersionRow"];
+export type VersionsResponse = Body<"VersionsResponse">;
+export type DeltaRow = Schema["DeltaRow"];
+export type DeltaResponse = Body<"DeltaResponse">;
+
 /* ---------------------------------------------------------- /api/collectibles */
 
 export type CollectibleRow = Schema["CollectibleRow"];

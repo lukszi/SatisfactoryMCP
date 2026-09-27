@@ -19,7 +19,7 @@ from ....core.filelock import LockTimeout
 from ....core.gamedata.unlocks import granted_by_label
 from ....domain.factories.select import SelectorError
 from ....domain.planning import bom as bom_mod
-from ....domain.planning import compare, journal
+from ....domain.planning import compare, journal, manage, summary
 from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
 from ....domain.planning.carrier import resolve_tiers
@@ -181,16 +181,7 @@ def _write(name: str, nothing: str, push: Callable[[], Pushed]) -> tuple[Pushed 
 
 def _stamp(st) -> Callable:
     """What the store records on the new head: its solve-input hash and resolved field."""
-
-    def run(state) -> dict:
-        g = game()
-        kwargs = state.kwargs()
-        return {
-            "plan_id": build_scenario(g, st, **kwargs).plan_id,
-            "provenance": prov.record(g, st, kwargs.get("sources")),
-        }
-
-    return run
+    return summary.stamp_for(game(), st)
 
 
 def _unknown(st, name: str) -> str:
@@ -300,21 +291,11 @@ def list_plans(
     unrecorded = []
     drifted = False
     for stored in st.plans.plans:
-        status = []
-        try:
-            req = build_scenario(st.game, st, **stored.kwargs())
-            if req.plan_id != stored.plan_id:
-                status.append("world moved")
-            # Eager, not lazy, because it was measured rather than guessed: re-resolving
-            # one selector over the 608-row node table is 0.7 ms, against the full
-            # build_scenario this loop already pays per plan.
-            for drift in prov.compare(st.game, st, stored):
-                status.append(f"field {drift.then}->{drift.now}")
-                drifted = True
-            if not prov.recorded(stored):
-                unrecorded.append(stored.name)
-        except Exception as exc:  # a stored plan can outlive the thing it referenced
-            status.append(f"broken: {type(exc).__name__}")
+        checked = manage.plan_status(st, stored)
+        status = checked.flags
+        drifted = drifted or checked.drift
+        if not checked.broken and not checked.recorded:
+            unrecorded.append(stored.name)
         args = stored.args
         sit = siting_mod.parse(stored)
         sited = "-"
@@ -1781,19 +1762,11 @@ def rank_unlocks(
     )
 
 
-def _undone_by(commits: list[Commit]) -> dict[int, int]:
-    out: dict[int, int] = {}
-    for commit in commits:
-        if commit.undoes is not None and commit.rev not in out:
-            out[commit.undoes] = commit.rev
-    return out
-
-
 def _history(log: PlanLog, found, since: int | None, limit: int) -> str:
     names = _recipe_names()
     now = time.time()
     commits = log.commits(found.key)
-    undone = _undone_by(commits)
+    undone = manage.undone_by(commits)
     shown = [c for c in reversed(commits) if c.rev > (since or 0)]
     lines = []
     for commit in shown[:limit]:

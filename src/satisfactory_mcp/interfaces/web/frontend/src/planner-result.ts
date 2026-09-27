@@ -367,6 +367,11 @@ function graphCard(parent: HTMLElement, data: SolveResponse): void {
   parent.appendChild(card);
 }
 
+export function renderVersionResult(parent: HTMLElement, data: SolveResponse, rev: number, select: (s: Selection) => void): void {
+  summary(parent, data, rev, false);
+  if (data.feasible) buildList(parent, data, select, false);
+}
+
 export function renderResult(parent: HTMLElement, select: (s: Selection) => void): void {
   if (bench.solveError) error(parent, "the result", bench.solveError);
   var data = bench.result;

@@ -60,6 +60,19 @@ def _row(g: GameData, row: dict, required: set[str]) -> dict:
     }
 
 
+def _raw(g: GameData, sol) -> list[dict]:
+    """What the plan takes from the world: extractor output plus raw drawn from outside."""
+    raw = dict(sol.raw_used)
+    for row in sol.processes:
+        rates = row["rates"]
+        if any(rate < -_EPS and item != MW for item, rate in rates.items()):
+            continue
+        for item, rate in rates.items():
+            if rate > _EPS and item != MW:
+                raw[item] = raw.get(item, 0.0) + rate
+    return _rates(g, raw, 1)
+
+
 def _blockers(errors: list[str], failure_notes: list[str]) -> list[str]:
     named = [e for e in errors if e.startswith(("required", "exclude_recipes"))]
     return named + [n for n in failure_notes if n.startswith("required in force")]
@@ -168,6 +181,7 @@ def solve_summary(
         "mw_net": None,
         "grid_import": False,
         "exports": [],
+        "inputs": [],
         "rows": [],
         "shards": None,
         "sloops_used": 0,
@@ -217,6 +231,7 @@ def solve_summary(
             {"item": _name(g, item), "per_min": round(rate, 4)}
             for item, rate in sol.exports.items()
         ],
+        "inputs": _raw(g, sol),
         "rows": rows,
         "shards": bill.shards,
         "sloops_used": bill.sloops_used,

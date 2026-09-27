@@ -1163,6 +1163,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan/delta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Delta
+         * @description The result deltas between two versions of one plan, both re-solved against this save.
+         */
+        get: operations["plan_delta_api_plan_delta_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plans/{key}": {
         parameters: {
             query?: never;
@@ -1241,6 +1261,66 @@ export interface paths {
          * @description The inverse of commit ``rev`` as a new commit; redo is the undo of that undo.
          */
         post: operations["undo_rev_api_plans__key__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Rev
+         * @description A new commit that makes the head equal ``rev`` again: never a rewind.
+         */
+        post: operations["restore_rev_api_plans__key__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Plan
+         * @description A new plan at v1 equal to this one at ``rev`` (the head when omitted).
+         */
+        post: operations["duplicate_plan_api_plans__key__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{key}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Versions
+         * @description Every version of one plan, newest first, with what undid or restored what.
+         */
+        get: operations["plan_versions_api_plans__key__versions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2159,6 +2239,47 @@ export interface components {
             from_entry?: string;
         };
         /**
+         * DeltaResponse
+         * @description What re-solving ``from_rev`` and ``to_rev`` gives. ``comparable`` is false when either
+         *     side is not solvable, and then only ``text`` says anything.
+         */
+        DeltaResponse: {
+            /** Key */
+            key: string;
+            /** From Rev */
+            from_rev: number;
+            /** To Rev */
+            to_rev: number;
+            /** Comparable */
+            comparable: boolean;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number;
+            /** Mw Net */
+            mw_net: number;
+            /** Buildings */
+            buildings: components["schemas"]["DeltaRow"][];
+            /** Inputs */
+            inputs: components["schemas"]["DeltaRow"][];
+            /** Text */
+            text: string;
+        };
+        /**
+         * DeltaRow
+         * @description One building's machine count or one raw input's rate, before and after.
+         */
+        DeltaRow: {
+            /** Name */
+            name: string;
+            /** Before */
+            before: number;
+            /** After */
+            after: number;
+            /** Delta */
+            delta: number;
+        };
+        /**
          * DriveOption
          * @description ``slots`` is the inventory slots an option grants instead of recipes; 0 for most.
          */
@@ -2180,6 +2301,13 @@ export interface components {
             rerolls_left: number;
             /** Options */
             options: components["schemas"]["DriveOption"][];
+        };
+        /** DuplicateBody */
+        DuplicateBody: {
+            /** Rev */
+            rev?: number | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * Elevation
@@ -3458,6 +3586,9 @@ export interface components {
         /**
          * PlanIndexRow
          * @description One live plan at its head. ``rates`` is ``export_minimums``, item name to per minute.
+         *
+         *     ``status`` is what moved under it (``manage.plan_status``): "world moved", "field N->M",
+         *     "broken: ..."; empty with ``recorded`` false means the field was never checked.
          */
         PlanIndexRow: {
             /** Key */
@@ -3483,6 +3614,10 @@ export interface components {
             /** Plan Id */
             plan_id: string;
             last: components["schemas"]["PlanLast"];
+            /** Status */
+            status: string[];
+            /** Recorded */
+            recorded: boolean;
         };
         /**
          * PlanLast
@@ -4033,6 +4168,15 @@ export interface components {
             /** Stored In */
             stored_in: string;
         };
+        /** RestoreBody */
+        RestoreBody: {
+            /** Base Rev */
+            base_rev: number;
+            /** Rev */
+            rev: number;
+            /** Sav */
+            sav?: string;
+        };
         /**
          * SaveRow
          * @description One save file, cut to the five keys the picker reads -- of the header's thirteen.
@@ -4297,6 +4441,8 @@ export interface components {
             grid_import: boolean;
             /** Exports */
             exports: components["schemas"]["SolveRate"][];
+            /** Inputs */
+            inputs: components["schemas"]["SolveRate"][];
             /** Rows */
             rows: components["schemas"]["SolveRow"][];
             /** Shards */
@@ -4881,6 +5027,42 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VersionRow
+         * @description One commit in the Versions list. ``restores`` is the rev a restore brought back.
+         */
+        VersionRow: {
+            /** Rev */
+            rev: number;
+            /** Ts */
+            ts: number;
+            actor: components["schemas"]["ActorBody"];
+            /** Text */
+            text: string;
+            /** Undoes */
+            undoes: number | null;
+            /** Undone By */
+            undone_by: number | null;
+            /** Restores */
+            restores: number | null;
+            /** Merged Over */
+            merged_over: number[];
+            /** Note */
+            note: string;
+        };
+        /** VersionsResponse */
+        VersionsResponse: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Head */
+            head: number;
+            /** Forgotten */
+            forgotten: boolean;
+            /** Versions */
+            versions: components["schemas"]["VersionRow"][];
         };
         /** WireRow */
         WireRow: {
@@ -6475,6 +6657,41 @@ export interface operations {
             };
         };
     };
+    plan_delta_api_plan_delta_get: {
+        parameters: {
+            query: {
+                key: string;
+                from_rev: number;
+                to_rev?: number | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeltaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     plan_state_api_plans__key__get: {
         parameters: {
             query?: {
@@ -6673,6 +6890,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutdatedResponse"] | components["schemas"]["AlreadyUndoneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_rev_api_plans__key__restore_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutdatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_plan_api_plans__key__duplicate_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameTakenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_versions_api_plans__key__versions_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionsResponse"];
                 };
             };
             /** @description Validation Error */

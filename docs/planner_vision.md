@@ -801,7 +801,7 @@ each, because they are resident in every session's schema.
 | Phase | Slice | Page → chat | Chat → page |
 |---|---|---|---|
 | **P1: log + loop + workbench** | G1 plan op log (store, merge, snapshots, migration, `base_rev` + versions in the MCP tools, `plan_log`); G0 journal; `plans`/`activity` SSE; follow on by default; workbench with live solve and autosave for goal, rate, sources, exports, bans, required (G4), water, sloops, extractor clocks; summary, build list, power budget; undo (inverse ops); conflict chip; `ui_context`; Ask chat | **yes**: the agent reads the plan at its version, the focus and the asks | **yes**: chat edits land as versions; chat solves open as cards |
-| P2: history and plan management | Versions list, view/restore, duplicate, rename/forget from the page, changed-by-chat diff with result deltas, Activity panel; G2 | "since you last looked" | same |
+| P2: history and plan management **(built 2026-09-27; [plan_management.md](plan_management.md) lists what is left open)** | Versions list, view/restore, duplicate, rename/forget from the page, changed-by-chat diff with result deltas, Activity panel; G2 | "since you last looked" | same |
 | P3: graph, alternates, pins | Production graph, alternates drawer (G5), pins + `pin:` in selectors (G11) | pins | chat badges on nodes |
 | P4: track | Diff with stages, actions, ranges, startup waves, drift live on save; editable while half-built, with stage renumbering announced | ask from any row | `diff_vs_save`/`commission_plan` open Track |
 | P5: site | Draggable pad (`site` ops), survey, candidate fields, trunks, inputs | pinned fields and points | `site_plan` flies the map |

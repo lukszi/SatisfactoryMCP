@@ -15,6 +15,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
+from ....domain.planning import manage
 from ....domain.planning import siting as planning_siting
 from ....domain.planning.planlog import PlanLog
 from ..serial import ActorBody, _actor_json, _fail, _state
@@ -63,7 +64,11 @@ class PlanLast(TypedDict):
 
 
 class PlanIndexRow(TypedDict):
-    """One live plan at its head. ``rates`` is ``export_minimums``, item name to per minute."""
+    """One live plan at its head. ``rates`` is ``export_minimums``, item name to per minute.
+
+    ``status`` is what moved under it (``manage.plan_status``): "world moved", "field N->M",
+    "broken: ..."; empty with ``recorded`` false means the field was never checked.
+    """
 
     key: str
     name: str
@@ -76,6 +81,8 @@ class PlanIndexRow(TypedDict):
     factory: str
     plan_id: str
     last: PlanLast
+    status: list[str]
+    recorded: bool
 
 
 class PlansResponse(TypedDict):
@@ -86,9 +93,10 @@ class PlansResponse(TypedDict):
     index: list[PlanIndexRow]
 
 
-def _index(log: PlanLog) -> list[PlanIndexRow]:
+def _index(log: PlanLog, st) -> list[PlanIndexRow]:
     rows: list[PlanIndexRow] = []
     for state in log.heads():
+        status = manage.plan_status(st, state)
         newest = log.commits(state.key, since=state.rev - 1)[-1]
         rows.append(
             {
@@ -108,6 +116,8 @@ def _index(log: PlanLog) -> list[PlanIndexRow]:
                     "actor": _actor_json(newest.actor),
                     "text": newest.text(),
                 },
+                "status": status.flags,
+                "recorded": status.recorded,
             }
         )
     return rows
@@ -151,4 +161,4 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
             }
         )
     log = PlanLog(st.world_id, st.header.get("session_name") or "")
-    return {"plans": rows, "stored": len(st.plans.plans), "index": _index(log)}
+    return {"plans": rows, "stored": len(st.plans.plans), "index": _index(log, st)}
