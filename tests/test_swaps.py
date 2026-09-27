@@ -77,6 +77,26 @@ def test_a_pattern_ban_is_not_solved_and_offers_no_ban_or_free(state, game, plan
     assert option["ban_ops"] == [] and option["free_ops"] == []
 
 
+def test_an_exact_name_ban_does_not_ban_recipes_whose_names_contain_it(state, game, plans):
+    head = _state(plans, {**HMF, "banned": ["Rubber"]})
+    options = _by_id(swaps.swap_deltas(game, state, head, "Desc_Rubber_C"))
+    assert options["Recipe_Rubber_C"]["banned_by"] == "Rubber"
+    for rid in ("Recipe_ResidualRubber_C", "Recipe_Alternate_RecycledRubber_C"):
+        assert options[rid]["banned"] is False and options[rid]["solved"] is True
+        assert options[rid]["delta"] is not None and options[rid]["ban_ops"]
+    made = plans.create("plate", {**HMF, "banned": ["Iron Plate"]}, actor=CHAT)
+    plate = _by_id(swaps.swap_deltas(game, state, plans.state(made.key), "Desc_IronPlate_C"))
+    assert plate["Recipe_Alternate_CoatedIronPlate_C"]["banned"] is False
+
+
+def test_a_pattern_wins_over_a_literal_ban_of_the_same_recipe(state, game, plans):
+    recycled = "Recipe_Alternate_RecycledRubber_C"
+    head = _state(plans, {**HMF, "banned": [recycled, "Recycled"]})
+    option = _by_id(swaps.swap_deltas(game, state, head, "Desc_Rubber_C"))[recycled]
+    assert option["banned_by"] == "Recycled" and option["solved"] is False
+    assert option["ban_ops"] == [] and option["free_ops"] == []
+
+
 def test_locked_recipes_are_listed_as_spoilers_or_hidden(state, game, plans):
     head = _state(plans, HMF)
     shown = swaps.swap_deltas(game, state, head, ITEM)

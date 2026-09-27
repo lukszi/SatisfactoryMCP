@@ -30,13 +30,18 @@ def _literal(g: GameData, member: str, recipe: Recipe) -> bool:
     return member == recipe.cls or member.strip().casefold() == recipe.name.casefold()
 
 
-def _banned_by(g: GameData, banned: list[str], recipe: Recipe) -> tuple[str | None, bool]:
+def _banned_by(
+    g: GameData, banned: list[str], recipe: Recipe, pool: list[str]
+) -> tuple[str | None, bool]:
+    scope = pool if recipe.cls in pool else [*pool, recipe.cls]
+    literal = None
     for member in banned:
-        if _literal(g, member, recipe):
-            return member, False
-        if recipe.cls in match_recipes(g, member, [recipe.cls]):
+        if recipe.cls not in match_recipes(g, member, scope):
+            continue
+        if not _literal(g, member, recipe):
             return member, True
-    return None, False
+        literal = literal or member
+    return literal, False
 
 
 def _first(g: GameData, rid: str) -> str | None:
@@ -104,6 +109,7 @@ def swap_deltas(
     in_use = {r.get("recipe_id") for r in head.get("rows") or ()}
     have = st.available_recipe_ids
     args = state.args
+    pool = [r.cls for r in st.unlocked_recipes("part")]
     options, hidden = [], 0
     for recipe in makers(g, item_id):
         unlocked = recipe.cls in have
@@ -111,7 +117,7 @@ def swap_deltas(
             hidden += 1
             continue
         required = any(_literal(g, m, recipe) for m in args.required)
-        banned_by, by_pattern = _banned_by(g, list(args.banned), recipe)
+        banned_by, by_pattern = _banned_by(g, list(args.banned), recipe, pool)
         require, ban, free = _ops(g, args, recipe, item_id)
         solved = unlocked and not by_pattern
         delta = None
