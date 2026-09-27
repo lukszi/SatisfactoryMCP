@@ -12,16 +12,18 @@ import logging
 import math
 import os
 import secrets
+import shutil
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from ...core import atomic, filelock
+from ...core import atomic, filelock, schema
 from .store import PLAN_ARGS, Plan, PlanStore
 
 __all__ = [
     "OBJECTIVES",
+    "POWER",
     "SNAPSHOT_EVERY",
     "Actor",
     "AlreadyUndone",
@@ -44,6 +46,7 @@ __all__ = [
     "describe_op",
     "diff_args",
     "inverse",
+    "is_power",
     "merge_key",
 ]
 
@@ -52,6 +55,9 @@ SCHEMA = 1
 OBJECTIVES = ("max_mw", "max_item", "min_raw", "min_machines", "min_power")
 MINUS = "−"
 ARROW = "→"
+POWER = "MW"
+_POWER_SPELLINGS = frozenset({"mw", "power", "__mw__"})
+_POWER_FIELDS = frozenset({"exports", "export_minimums"})
 
 _log = logging.getLogger(__name__)
 
@@ -130,6 +136,16 @@ def _fail(message: str) -> InvalidOp:
     return InvalidOp(message)
 
 
+def is_power(name) -> bool:
+    """Whether ``name`` means grid power: ``MW``, ``mw``, ``power`` or the solver's ``__MW__``."""
+    return isinstance(name, str) and name.strip().casefold() in _POWER_SPELLINGS
+
+
+def _canon(fieldname: str, name):
+    """``POWER`` for any spelling of power in the fields that take it, else ``name``."""
+    return POWER if fieldname in _POWER_FIELDS and is_power(name) else name
+
+
 def _number(name: str, value, optional: bool = False) -> float | None:
     if value is None and optional:
         return None
@@ -193,17 +209,17 @@ def _member(fieldname: str, value):
     text = _text(f"{fieldname} member", value)
     if not text:
         raise _fail(f"{fieldname} member cannot be blank")
-    return text
+    return _canon(fieldname, text)
 
 
 def _ident(fieldname: str, member) -> str:
-    return f"{member:g}" if fieldname in FLOAT_SETS else member
+    return f"{member:g}" if fieldname in FLOAT_SETS else _canon(fieldname, member)
 
 
 def _item(fieldname: str, value) -> str:
     if not isinstance(value, str) or not value.strip():
         raise _fail(f"{fieldname} needs an item name, not {value!r}")
-    return value
+    return _canon(fieldname, value)
 
 
 def _check_field(name: str, value):
@@ -465,7 +481,7 @@ def merge_key(op: dict) -> str | None:
     if kind == "set":
         return name
     if kind in ("put", "del"):
-        return f"{name}[{op.get('item')}]"
+        return f"{name}[{_canon(name, op.get('item'))}]"
     if kind in ("add", "remove"):
         return f"{name}{{{_ident(name, op.get('member'))}}}"
     if kind == "site":
@@ -560,7 +576,7 @@ def _current(state: PlanState, op: dict):
     if kind == "set":
         return getattr(state, name) if name in PLAN_SCALARS else getattr(state.args, name)
     if kind in ("put", "del"):
-        return getattr(state.args, name).get(op["item"])
+        return getattr(state.args, name).get(_canon(name, op["item"]))
     if kind in ("add", "remove"):
         return any(_ident(name, m) == _ident(name, op["member"]) for m in getattr(state.args, name))
     if kind == "site":
@@ -596,12 +612,12 @@ def _apply(state: PlanState, op: dict) -> None:
     if kind == "set":
         setattr(state if name in PLAN_SCALARS else state.args, name, copy.deepcopy(op["value"]))
     elif kind == "put":
-        getattr(state.args, name)[op["item"]] = op["value"]
+        getattr(state.args, name)[_canon(name, op["item"])] = op["value"]
     elif kind == "del":
-        getattr(state.args, name).pop(op["item"], None)
+        getattr(state.args, name).pop(_canon(name, op["item"]), None)
     elif kind == "add":
         if not _current(state, op):
-            getattr(state.args, name).append(op["member"])
+            getattr(state.args, name).append(_canon(name, op["member"]))
     elif kind == "remove":
         wanted = _ident(name, op["member"])
         setattr(
@@ -979,6 +995,7 @@ class PlanLog:
         for snap in (r for r in revs if r <= rev):
             try:
                 raw = json.loads((snaps / f"{snap}.json").read_text(encoding="utf-8"))
+                schema.check(raw, SCHEMA, snaps / f"{snap}.json")
                 if raw.get("rev") != snap or raw.get("key") != key:
                     continue
                 base = PlanState.from_dict(raw["state"], key=key, rev=snap)
@@ -1023,6 +1040,16 @@ class PlanLog:
         wanted = name.strip().casefold()
         return any(s.key != key and s.name.casefold() == wanted for s in self.heads())
 
+    def free_name(self, name: str, key: str | None = None) -> str:
+        """``name`` stripped, or ``InvalidOp`` / ``NameTaken`` saying why a plan other than
+        ``key`` cannot take it. Case-insensitive, as ``find`` is. Unlocked: a write re-checks."""
+        wanted = _text("name", name).strip()
+        if not wanted:
+            raise _fail("a plan name cannot be blank")
+        if self._taken(wanted, key):
+            raise NameTaken(wanted)
+        return wanted
+
     def _snapshot(self, state: PlanState) -> None:
         snaps = self.root / state.key / "snap"
         payload = {
@@ -1053,9 +1080,7 @@ class PlanLog:
         created: str = "",
         note: str = "",
     ) -> Pushed:
-        wanted = _text("name", name).strip()
-        if not wanted:
-            raise _fail("a plan name cannot be blank")
+        wanted = self.free_name(name)
         state = PlanState(
             key="",
             rev=1,
@@ -1295,6 +1320,7 @@ class PlanLog:
         try:
             got = stamp(copy.deepcopy(work)) or {}
         except Exception:
+            _log.warning("could not stamp plan %s; its plan_id is cleared", work.key, exc_info=True)
             got = {"plan_id": ""}
         out = []
         for name in ("plan_id", "provenance"):
@@ -1308,9 +1334,31 @@ class PlanLog:
     def _legacy(self) -> Path:
         return PlanStore.path_for(self.world_id)
 
+    def _backup(self, legacy: Path, version: str) -> Path:
+        """Copy the legacy file to ``backup-v<version>/`` beside the log, once."""
+        into = self.root / f"backup-v{version}"
+        into.mkdir(parents=True, exist_ok=True)
+        copy_to = into / legacy.name
+        if not copy_to.is_file():
+            shutil.copy2(legacy, copy_to)
+        return copy_to
+
+    def _check_marker(self, marker: Path) -> None:
+        try:
+            raw = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        schema.check(raw, SCHEMA, marker)
+
     def migrate(self) -> dict[str, str]:
-        """Each legacy plan becomes a ``create`` commit; the legacy file is left untouched."""
+        """Each legacy plan becomes a ``create`` commit; the legacy file is left untouched.
+
+        The legacy file is backed up first, a legacy file or a log from a newer version is
+        refused (``schema.NewerSchema``), and the marker records the version that migrated.
+        """
         legacy, marker = self._legacy(), self.root / "migrated.json"
+        if marker.is_file():
+            self._check_marker(marker)
         if not legacy.is_file():
             return {}
         if marker.is_file():
@@ -1321,6 +1369,8 @@ class PlanLog:
             if marker.is_file():
                 return {}
             old = PlanStore.load(self.world_id, self.session_name)
+            version = schema.writer_version()
+            self._backup(legacy, version)
             done = {
                 s.name: s.key
                 for s in self.heads()
@@ -1364,7 +1414,13 @@ class PlanLog:
             atomic.write_text(
                 marker,
                 json.dumps(
-                    {"schema": SCHEMA, "from": legacy.name, "at": time.time(), "keys": keys}
+                    {
+                        "schema": SCHEMA,
+                        "version": version,
+                        "from": legacy.name,
+                        "at": time.time(),
+                        "keys": keys,
+                    }
                 ),
             )
         return keys

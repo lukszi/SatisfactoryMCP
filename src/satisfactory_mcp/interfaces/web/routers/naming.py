@@ -1,7 +1,9 @@
 """``/api/factories/candidates``, ``/graph`` and ``/api/labels``: detect, draw, name, rename, forget.
 
 Every write goes through ``domain/factories/edits.py``, as the MCP tools do, past the write
-guard (``guard.py``), and carries the label-store version it was read at.
+guard (``guard.py``), and carries the label-store version it was read at. A name is the rest
+of the path (``{name:path}``), so a name holding a ``/`` from before that was refused can
+still be renamed or forgotten. A refused write says why in flags, not only in words.
 
 WARNING: the function name is the operation_id -- renaming it churns the committed schema.
 """
@@ -12,11 +14,19 @@ import os
 from typing import Any, TypedDict
 
 from fastapi import APIRouter, Body, Request
+from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....domain.factories import edits, fed, flowgraph, naming
 from ....domain.factories import identity as fidentity
-from ....domain.factories.labels import LabelError, StaleStore, stamp
+from ....domain.factories.labels import (
+    BadName,
+    LabelError,
+    NameClash,
+    StaleStore,
+    UnknownLabel,
+    stamp,
+)
 from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
 from ....domain.planning.planlog import Actor
@@ -104,12 +114,31 @@ class ForgotResponse(TypedDict):
 
 
 class RenamedResponse(TypedDict):
+    """``plans`` followed the new name; ``plans_stuck`` could not and still name ``was``,
+    for the reason in ``stuck_reason``. The label itself is renamed either way."""
+
     name: str
     was: str
     machines: int
     plans: list[str]
+    plans_stuck: list[str]
+    stuck_reason: str
     version: int
     stored_in: str
+
+
+class LabelRefusedResponse(TypedDict):
+    """A label write that changed nothing. One flag names the cause: ``stale`` (the store
+    moved since ``version``), ``name_taken`` (another label holds the name) or ``pin`` (the
+    save moved since ``as_of``)."""
+
+    error: str
+    stale: bool
+    name_taken: bool
+    pin: bool
+
+
+_REFUSALS: dict[int | str, dict[str, Any]] = {409: {"model": LabelRefusedResponse}}
 
 
 def _flows(fg: flowgraph.FlowGraph, role: str) -> list[dict]:
@@ -124,10 +153,24 @@ def _cluster(st, machines: list[str], name: str):
     return view, flowgraph.build(st, st.game, view)
 
 
+def _conflict(exc: Exception, **flag: bool) -> JSONResponse:
+    body = {"error": str(exc), "stale": False, "name_taken": False, "pin": False}
+    body.update(flag)
+    return JSONResponse(body, status_code=409)
+
+
 def _refused(exc: Exception) -> Any:
-    if isinstance(exc, StaleStore | LabelError):
+    if isinstance(exc, StaleStore):
+        return _conflict(exc, stale=True)
+    if isinstance(exc, NameClash):
+        return _conflict(exc, name_taken=True)
+    if isinstance(exc, BadName):
+        return _fail(str(exc), 400)
+    if isinstance(exc, UnknownLabel):
+        return _fail(str(exc), 404)
+    if isinstance(exc, LabelError):
         return _fail(str(exc), 409)
-    return _fail(str(exc), 503)
+    return _fail(f"factory labels are busy, nothing written: {exc}", 503)
 
 
 @router.get("/factories/candidates", response_model=CandidatesResponse)
@@ -216,7 +259,7 @@ def _session(st) -> str:
     return st.header.get("session_name") or ""
 
 
-@router.post("/labels", response_model=NamedResponse)
+@router.post("/labels", response_model=NamedResponse, responses=_REFUSALS)
 def name_candidate(
     request: Request,
     name: str = Body(),
@@ -235,7 +278,7 @@ def name_candidate(
     try:
         pin.check(st.header, as_of)
     except pin.PinRefused as exc:
-        return _fail(str(exc), 409)
+        return _conflict(exc, pin=True)
     try:
         picked = select_machines([f"proposal:{proposal}"], st)
     except SelectorError as exc:
@@ -266,7 +309,7 @@ def name_candidate(
     }
 
 
-@router.patch("/labels/{name}", response_model=RenamedResponse)
+@router.patch("/labels/{name:path}", response_model=RenamedResponse, responses=_REFUSALS)
 def rename_label(
     request: Request,
     name: str,
@@ -286,9 +329,9 @@ def rename_label(
             _session(st),
             name,
             to,
+            actor=Actor("page", "", os.getpid()),
             exact=True,
             expect=version,
-            actor=Actor("page", "", os.getpid()),
         )
     except (StaleStore, LabelError, LockTimeout) as exc:
         return _refused(exc)
@@ -297,12 +340,14 @@ def rename_label(
         "was": done.was,
         "machines": done.machines,
         "plans": done.plans,
+        "plans_stuck": done.stuck,
+        "stuck_reason": done.why,
         "version": done.version,
         "stored_in": str(done.path),
     }
 
 
-@router.delete("/labels/{name}", response_model=ForgotResponse)
+@router.delete("/labels/{name:path}", response_model=ForgotResponse, responses=_REFUSALS)
 def forget_label(
     request: Request,
     name: str,

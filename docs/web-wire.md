@@ -18,8 +18,9 @@ routers point at this file instead of re-telling them.
    one function builds them for more than one router; two shapes that merely look alike stay
    separate. Enforced by `tests/test_architecture.py`.
 6. **Regenerate, never hand-edit** `api-schema.d.ts`: throwaway server on a port in
-   8920–8999, `openapi-typescript` against it, then `scripts/stamp-schema.mjs` (the
-   `npm run typegen` recipe, with the URL pointed at the throwaway server).
+   8920–8999, then `npm run typegen -- <port>` (`scripts/typegen.mjs`: `openapi-typescript`
+   against that port, then `scripts/stamp-schema.mjs`). Without an argument it reads
+   `SATISFACTORY_WEB_PORT`, then falls back to 8712.
 7. **A write says what it refuses, in the schema.** A request body is a `TypedDict` taken as
    `Annotated[Body, Body()]` (routers may not import pydantic), and every non-2xx body the page
    branches on is declared with `responses={409: {"model": ...}}`, so it reaches

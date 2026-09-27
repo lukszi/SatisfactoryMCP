@@ -12,6 +12,7 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Annotated, Any, NotRequired, TypedDict
@@ -42,6 +43,8 @@ from ..serial import ActorBody, _actor_json, _fail, _state
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
+
+_logger = logging.getLogger(__name__)
 
 _KEY = re.compile(r"[0-9a-f]{8}")
 
@@ -324,6 +327,9 @@ def create_plan(
         try:
             stamped = summary.stamp_for(st.game, st)(draft)
         except Exception:
+            _logger.warning(
+                "could not stamp new plan %r; saved unstamped", body["name"], exc_info=True
+            )
             stamped = {"plan_id": "", "provenance": {}}
         pushed = log.create(
             body["name"],
@@ -460,15 +466,17 @@ def undo_rev(
     st, log = _opened(request, key, save, world)
     if st is None:
         return log
+    sav = _token(st, body.get("sav"))
     try:
         pushed = log.undo(
             key,
             body["base_rev"],
             body["rev"],
             actor=_page(),
-            sav=_token(st, body.get("sav")),
+            sav=sav,
             stamp=summary.stamp_for(st.game, st),
         )
     except _ERRORS as exc:
+        _reject(st, key, sav, exc)
         return _refused(log, exc)
     return _pushed(log, pushed)

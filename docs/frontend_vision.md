@@ -765,15 +765,15 @@ dropped one change. Now:
   inside the lock, hand it to the block, and write it on a clean exit (atomic temp-file plus
   `os.replace`, `core/atomic.py`). Every production write goes through them:
   `domain/factories/edits.py` for labels (name, rename, amend, forget, and the plan repoint a
-  rename carries), and `_editing` in the planning tools for plans. `save()` still exists; it
-  overwrites whole under the lock and is kept for setup in tests.
+  rename carries), and `_editing` in the planning tools for plans.
 - **Version.** Both files carry a `version` that every write bumps. `/api/factories/health`
   (`labels_version`) and the candidates route send it. The web writes send it back, and a
   mismatch is 409 "the factory labels changed elsewhere (chat, or another tab) since this page
-  loaded them". The page shows that, refetches, and the next attempt works. The MCP tools do
+  loaded them", with `stale: true` in the body. The page shows that, refetches, and the next
+  attempt works. The MCP tools do
   not pass a version: last writer wins under the lock, and an unrelated label is never lost.
-- **Lock order** is labels, then plans, because only a rename holds both. Nothing takes them
-  the other way round.
+- **No write holds both locks.** A rename writes the label and releases its lock, then
+  repoints each plan under that plan's own lock.
 
 `test_label_store_lock.py` runs two processes naming 12 factories each at once. All 24
 survive, and version reads 24.
@@ -784,9 +784,24 @@ survive, and version reads 24.
 now calls too. It keeps the label's machines, notes and dates, moves its slug, and repoints
 stored plans whose `factory` is the old name. That repoint moved out of the tool body into
 the shared domain code. The new name is free text (the naming style does not apply); it is
-trimmed, and a blank or taken name is refused. A missing old name, a taken or blank new name,
-or a stale version is 409. `test_the_page_and_the_tool_rename_to_the_same_files` compares
-both label and plan files after each path.
+trimmed. `test_the_page_and_the_tool_rename_to_the_same_files` compares both label and plan
+files after each path.
+
+**Names.** `LabelStore._free` refuses a blank name, a name with `/` in it, and a name over 60
+characters (`NAME_MAX`), for `POST` and `PATCH` alike. The `PATCH` and `DELETE` routes take
+the name as the rest of the path (`{name:path}`), so a label named with a `/` before the rule
+existed can still be renamed or forgotten.
+
+**Refusals.** A 409 body is `LabelRefusedResponse`: `error` plus three flags, one of them
+true. `stale` means the store moved since `version`, `name_taken` means another label holds
+the name or its slug, and `pin` means a save was written since `as_of`. A bad name is 400 and
+a missing label is 404. The page branches on the flags, never on the wording.
+
+**Order.** The label is written first, then each stored plan is repointed on its own. A plan
+that cannot follow (its lock timed out) is listed in `plans_stuck` with `stuck_reason`, and
+the rename still stands; the tool says the same and how to repoint the plan by hand. Before,
+the repoint ran inside the label lock, so a failure part-way left a plan pointing at a name no
+label held while the reply said nothing was written.
 
 The UI edits in place (Enter saves, Esc cancels) in three places: the Factories table row, the
 factory detail header, and the side panel's selected row (`rename.ts`). After a rename, the

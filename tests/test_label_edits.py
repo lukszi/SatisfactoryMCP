@@ -8,13 +8,28 @@ to fix one machine is what these tools exist to replace.
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass, field
+
 import pytest
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.factories.labels import LabelError, LabelStore
+from satisfactory_mcp.domain.factories.labels import NAME_MAX, BadName, LabelError, LabelStore
 
 STEEL = [f"Build_FoundryMk1_C_{100 + i}" for i in range(4)]
 STRAY = "Build_ConstructorMk1_C_300"
+
+
+@dataclass
+class _Cand:
+    machines: list = field(default_factory=lambda: [STRAY])
+    centroid: tuple = (0.0, 0.0)
+    buildings: dict = field(default_factory=dict)
+
+
+def _persist(store: LabelStore) -> None:
+    with LabelStore.editing(store.world_id, store.session_name) as fresh:
+        fresh.labels = store.labels
 
 
 @pytest.fixture
@@ -70,6 +85,28 @@ def test_a_blank_new_name_is_refused(store):
         store.rename(store.find("steel site"), "   ")
 
 
+def test_a_slash_or_an_overlong_name_is_refused_for_a_new_label_and_a_rename(store):
+    label = store.put("steel site", STEEL)
+    for bad in ("steel/iron", "x" * (NAME_MAX + 1)):
+        with pytest.raises(BadName):
+            store.rename(label, bad)
+        with pytest.raises(BadName):
+            store.name(bad, _Cand(), create=True)
+        with pytest.raises(BadName):
+            store.name(bad, _Cand())
+    assert [x.name for x in store.labels] == ["steel site"]
+
+
+def test_a_label_file_from_a_newer_schema_is_refused(store):
+    from satisfactory_mcp.core.schema import NewerSchema
+    from satisfactory_mcp.domain.factories import labels as labels_mod
+
+    path = LabelStore.path_for("TESTWORLD")
+    path.write_text(json.dumps({"schema": labels_mod.SCHEMA + 1, "labels": []}), encoding="utf-8")
+    with pytest.raises(NewerSchema, match="newer version"):
+        LabelStore.load("TESTWORLD")
+
+
 # --------------------------------------------------------------- membership
 
 
@@ -100,7 +137,7 @@ def test_an_edited_label_round_trips_through_the_file(store):
     store.attach(label, [STRAY])
     store.detach(label, [STEEL[0]])
     store.rename(label, "North Steel")
-    store.save()
+    _persist(store)
 
     again = LabelStore.load("TESTWORLD")
     assert [x.name for x in again.labels] == ["North Steel"]
@@ -127,7 +164,7 @@ def live(tmp_path, monkeypatch):
     st = srv._state()
     picked = sorted(st.graph.machines())[:5]
     st.labels.put("north steel", picked[:3], notes="the first three")
-    st.labels.save()
+    _persist(st.labels)
     return st, picked
 
 
@@ -151,7 +188,7 @@ def test_rename_factory_keeps_the_membership(live):
 def test_rename_factory_refuses_a_name_this_world_already_uses(live):
     st, picked = live
     st.labels.put("coast steel", picked[3:])
-    st.labels.save()
+    _persist(st.labels)
     assert "already has a factory named 'coast steel'" in srv.rename_factory(
         name="north steel", to="COAST STEEL"
     )
@@ -200,7 +237,7 @@ def test_amend_factory_drops_one_machine_and_keeps_the_rest(live):
 def test_amend_factory_refuses_to_drop_the_last_machine(live):
     st, picked = live
     st.labels.put("lone", [picked[4]])
-    st.labels.save()
+    _persist(st.labels)
     out = srv.amend_factory(name="lone", drop=[f"machine:{picked[4]}"])
     assert out.startswith("! that would leave 'lone' with no machines at all")
     assert "forget_factory" in out
@@ -213,7 +250,7 @@ def test_amend_factory_says_when_the_machines_added_are_already_named(live):
     per-label counts beside it are attribution, not a second filter."""
     st, picked = live
     st.labels.put("neighbour", picked[3:])
-    st.labels.save()
+    _persist(st.labels)
     out = srv.amend_factory(name="north steel", add=[f"machine:{picked[3]},{picked[4]}"])
     assert "overlaps 'neighbour' on 2 machine(s)" in out
     assert "2 added machine(s) already have a name -- covers()" in out
@@ -226,7 +263,7 @@ def test_a_dead_anchor_survives_an_amend_and_goes_only_when_pruning_is_asked_for
     the save is merely missing until it is asked to."""
     st, picked = live
     st.labels.put("north steel", [*picked[:3], "Build_SmelterMk1_C_999999"])
-    st.labels.save()
+    _persist(st.labels)
 
     srv.amend_factory(name="north steel", add=[f"machine:{picked[3]}"])
     assert "Build_SmelterMk1_C_999999" in _reload(st).find("north steel").anchors

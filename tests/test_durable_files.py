@@ -215,7 +215,7 @@ def test_pruning_survives_a_file_another_pruner_already_deleted(tmp_path, monkey
     [("labels_dir", lambda: LabelStore(world_id="W", session_name="s"))],
 )
 def test_the_two_stores_survive_a_crash_mid_save(tmp_path, monkeypatch, store_dir, make):
-    """Through the real ``save()``, not through the helper it calls.
+    """Through the real ``editing()``, not through the helper it calls.
 
     Both stores are tested the same way and in one test, because the property is the same
     property and stating it twice by hand invites the second copy to be forgotten when a
@@ -223,14 +223,15 @@ def test_the_two_stores_survive_a_crash_mid_save(tmp_path, monkeypatch, store_di
     """
     monkeypatch.setattr(config, store_dir, lambda: tmp_path)
     store = make()
-    path = store.save()
+    with type(store).editing(store.world_id, store.session_name):
+        pass
+    path = store.path_for(store.world_id)
     first = path.read_bytes()
     assert json.loads(path.read_text(encoding="utf-8"))["world_id"] == "W"
 
     monkeypatch.setattr(atomic.os, "replace", lambda src, dst: (_ for _ in ()).throw(OSError("no")))
-    store.session_name = "changed"
-    with pytest.raises(OSError):
-        store.save()
+    with pytest.raises(OSError), type(store).editing(store.world_id, "changed") as again:
+        again.session_name = "changed"
     assert path.read_bytes() == first, "a crashed save must not cost what was already stored"
     assert [p.name for p in tmp_path.iterdir()] == [path.name, path.name + ".lock"]
 

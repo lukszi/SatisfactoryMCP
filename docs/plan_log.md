@@ -11,7 +11,8 @@ plans/
   <world>.json            legacy file: read once by the migration, never written again
   <world>/
     world.lock            create, rename, restore and the migration hold this first
-    migrated.json         {"schema":1, "from", "at", "keys": {name: key}}
+    migrated.json         {"schema":1, "version", "from", "at", "keys": {name: key}}
+    backup-v<version>/    the legacy file as it was, copied before the migration
     <key>/
       ops.jsonl           one commit per line, append-only
       ops.jsonl.lock      the plan lock
@@ -82,6 +83,14 @@ selector never blocks an edit.
 
 `PlanLog(world)` migrates when the legacy file exists and `migrated.json` does not:
 
+- the legacy file is copied to `backup-v<version>/` first, and `migrated.json` records the
+  package version that migrated (docs/releasing.md, "Data formats");
+- a legacy file, `migrated.json` or snapshot with a `schema` above the one this version
+  knows is refused with `core.schema.NewerSchema` ("written by a newer version"), and
+  nothing is written;
+- every spelling of grid power in `exports` and `export_minimums` (`MW`, `mw`, `power`, the
+  solver's `__MW__`) is stored as `MW`; `planlog.is_power` is the one test for it, and
+  replaying an older log normalises the same way;
 - one `create` commit per legacy plan, actor `migration`, snapshot at v1;
 - a blank legacy name becomes `plan`; a name another live plan already holds gets ` (2)`,
   ` (3)` …;

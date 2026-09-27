@@ -64,6 +64,11 @@ def _name(client, body, row, name=None, version=None):
     return client.post("/api/labels", json=payload, headers=ORIGIN)
 
 
+def _flags(reply) -> dict:
+    body = reply.json()
+    return {k: body[k] for k in ("stale", "name_taken", "pin")}
+
+
 def _stored(store_dir) -> dict:
     return json.loads(next(store_dir.glob("*.json")).read_text())
 
@@ -266,7 +271,8 @@ def test_a_taken_name_is_refused_rather_than_re_anchored(empty, store_dir):
     reply = _name(empty, body, second, name="steel", version=1)
     assert reply.status_code == 409
     assert "already has a factory" in reply.json()["error"]
-    assert _name(empty, body, second, name="   ", version=1).status_code == 409
+    assert _flags(reply) == {"stale": False, "name_taken": True, "pin": False}
+    assert _name(empty, body, second, name="   ", version=1).status_code == 400
     stored = _stored(store_dir)["labels"]
     assert len(stored) == 1 and len(stored[0]["anchors"]) == row["machines"]
 
@@ -275,6 +281,7 @@ def test_a_name_for_another_save_is_refused(empty, store_dir):
     body, row = _first(empty)
     reply = _name(empty, dict(body, token="sav:000000000000"), row)
     assert reply.status_code == 409
+    assert _flags(reply) == {"stale": False, "name_taken": False, "pin": True}
     assert not list(store_dir.glob("*.json"))
 
 
@@ -283,7 +290,7 @@ def test_a_write_against_a_stale_version_is_refused(empty, store_dir):
     assert _name(empty, body, row, name="first").status_code == 200
     reply = _name(empty, body, body["candidates"][1], name="second")
     assert reply.status_code == 409
-    assert "changed elsewhere" in reply.json()["error"]
+    assert _flags(reply) == {"stale": True, "name_taken": False, "pin": False}
     assert [x["name"] for x in _stored(store_dir)["labels"]] == ["first"]
 
 
@@ -296,7 +303,7 @@ def test_forget_deletes_one_label_by_its_exact_name(empty, store_dir):
     body, row = _first(empty)
     _name(empty, body, row, name="Iron Works")
     version = _version(empty)
-    assert empty.delete(f"/api/labels/Iron?version={version}", headers=ORIGIN).status_code == 409
+    assert empty.delete(f"/api/labels/Iron?version={version}", headers=ORIGIN).status_code == 404
     reply = empty.delete(f"/api/labels/Iron Works?version={version}", headers=ORIGIN)
     assert reply.status_code == 200
     assert reply.json()["machines"] == row["machines"]
@@ -343,10 +350,72 @@ def test_rename_refuses_a_taken_blank_or_missing_name(empty):
     _name(empty, body, row, name="alpha")
     _name(empty, body, body["candidates"][1], name="beta", version=1)
     version = _version(empty)
-    assert _rename(empty, "alpha", "BETA", version).status_code == 409
-    assert _rename(empty, "alpha", "  ", version).status_code == 409
-    assert _rename(empty, "gamma", "delta", version).status_code == 409
-    assert _rename(empty, "alpha", "delta", version - 1).status_code == 409
+    taken = _rename(empty, "alpha", "BETA", version)
+    assert taken.status_code == 409 and _flags(taken)["name_taken"]
+    assert _rename(empty, "alpha", "  ", version).status_code == 400
+    assert _rename(empty, "gamma", "delta", version).status_code == 404
+    stale = _rename(empty, "alpha", "delta", version - 1)
+    assert stale.status_code == 409 and _flags(stale)["stale"]
+
+
+def test_a_name_with_a_slash_or_over_sixty_characters_is_refused(empty, store_dir):
+    body, row = _first(empty)
+    for bad in ("iron/steel", "x" * 61):
+        reply = _name(empty, body, row, name=bad)
+        assert reply.status_code == 400, bad
+    assert not list(store_dir.glob("*.json"))
+    assert _name(empty, body, row, name="x" * 60).status_code == 200
+    version = _version(empty)
+    assert _rename(empty, "x" * 60, "a/b", version).status_code == 400
+    assert _rename(empty, "x" * 60, "y" * 61, version).status_code == 400
+
+
+def test_a_stored_name_with_a_slash_can_still_be_renamed_and_forgotten(empty, store_dir):
+    """A label named before '/' was refused is still addressable: the name is the rest of the
+    path, so its encoded slash no longer splits it into a route that does not exist."""
+    from satisfactory_mcp.domain.factories.labels import LabelStore
+
+    body, row = _first(empty)
+    _name(empty, body, row, name="plain")
+    with LabelStore.editing("X2faPVKjX06VaRzClNv5KQ") as store:
+        store.labels[0].name = "iron/steel"
+    renamed = _rename(empty, "iron%2Fsteel", "iron and steel", _version(empty))
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["was"] == "iron/steel"
+    with LabelStore.editing("X2faPVKjX06VaRzClNv5KQ") as store:
+        store.labels[0].name = "a/b/c"
+    gone = empty.delete(f"/api/labels/a%2Fb%2Fc?version={_version(empty)}", headers=ORIGIN)
+    assert gone.status_code == 200, gone.text
+    assert _stored(store_dir)["labels"] == []
+
+
+def test_a_plan_that_cannot_follow_a_rename_is_reported_and_the_rename_stands(
+    empty, store_dir, monkeypatch
+):
+    from satisfactory_mcp.core.filelock import LockTimeout
+
+    body, row = _first(empty)
+    _name(empty, body, row, name="old name")
+    log = PlanLog("X2faPVKjX06VaRzClNv5KQ")
+    for plan in ("first plan", "second plan"):
+        log.create(plan, {"target_item": "Wire"}, factory="old name", actor=Actor("chat"))
+    real = PlanLog.push_at_head
+    calls = []
+
+    def flaky(self, key, ops, **kw):
+        calls.append(key)
+        if len(calls) == 2:
+            raise LockTimeout("plans held elsewhere")
+        return real(self, key, ops, **kw)
+
+    monkeypatch.setattr(PlanLog, "push_at_head", flaky)
+    reply = _rename(empty, "old name", "new name", _version(empty))
+    assert reply.status_code == 200, reply.text
+    out = reply.json()
+    assert out["plans"] == ["first plan"] and out["plans_stuck"] == ["second plan"]
+    assert "held elsewhere" in out["stuck_reason"]
+    assert _stored(store_dir)["labels"][0]["name"] == "new name"
+    assert _plan_factories() == {"first plan": "new name", "second plan": "old name"}
 
 
 def test_the_page_and_the_tool_rename_to_the_same_files(

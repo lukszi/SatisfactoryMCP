@@ -34,16 +34,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ... import config
-from ...core import atomic, filelock
+from ...core import atomic, filelock, schema
 
 __all__ = [
     "MATCH_THRESHOLD",
     "NAMED_SHARE",
+    "NAME_MAX",
     "REANCHOR_THRESHOLD",
+    "BadName",
     "Label",
     "LabelError",
     "LabelStore",
+    "NameClash",
     "StaleStore",
+    "UnknownLabel",
     "stamp",
 ]
 
@@ -64,9 +68,24 @@ REANCHOR_THRESHOLD = 0.8
 
 SCHEMA = 1
 
+#: The longest factory name a write accepts, in characters.
+NAME_MAX = 60
+
 
 class LabelError(ValueError):
     """An edit a label cannot take, with the thing that refused it named."""
+
+
+class BadName(LabelError):
+    """A name no label may carry: blank, too long, or with a ``/`` in it."""
+
+
+class NameClash(LabelError):
+    """Another label in this world already holds the name, or its slug."""
+
+
+class UnknownLabel(LabelError):
+    """No label in this world has the name asked for."""
 
 
 class StaleStore(RuntimeError):
@@ -162,6 +181,7 @@ class LabelStore:
         if not path.is_file():
             return cls(world_id=world_id, session_name=session_name)
         raw = json.loads(path.read_text(encoding="utf-8"))
+        schema.check(raw, SCHEMA, path)
         return cls(
             world_id=raw.get("world_id", world_id),
             session_name=raw.get("session_name", session_name),
@@ -185,15 +205,6 @@ class LabelStore:
                 raise StaleStore(expect, store.version)
             yield store
             store._write()
-
-    def save(self) -> Path:
-        """Overwrite the file with this store, whole, under the lock.
-
-        Every other process's edits since this store was loaded are lost; ``editing`` is
-        the read-modify-write.
-        """
-        with filelock.held(self.path_for(self.world_id)):
-            return self._write()
 
     def _write(self) -> Path:
         path = self.path_for(self.world_id)
@@ -257,18 +268,22 @@ class LabelStore:
         return was
 
     def _free(self, name: str, besides: Label | None = None) -> str:
-        """``name`` stripped, or ``LabelError`` when it is blank or another label holds it."""
+        """``name`` stripped, or ``BadName`` / ``NameClash`` saying why it cannot be used."""
         wanted = name.strip()
         if not wanted:
-            raise LabelError("a factory name cannot be blank")
+            raise BadName("a factory name cannot be blank")
+        if "/" in wanted:
+            raise BadName("a factory name cannot contain '/'")
+        if len(wanted) > NAME_MAX:
+            raise BadName(f"a factory name is at most {NAME_MAX} characters, not {len(wanted)}")
         slug = slugify(wanted)
         for other in self.labels:
             if other is besides:
                 continue
             if other.name.casefold() == wanted.casefold():
-                raise LabelError(f"this world already has a factory named {other.name!r}")
+                raise NameClash(f"this world already has a factory named {other.name!r}")
             if other.id == slug:
-                raise LabelError(
+                raise NameClash(
                     f"{wanted!r} and the existing {other.name!r} both slug to {slug!r}, "
                     "which find() cannot tell apart"
                 )
@@ -277,9 +292,10 @@ class LabelStore:
     def name(self, name: str, cand, notes: str = "", when: str = "", create: bool = False) -> Label:
         """What naming a factory writes: ``put`` plus the candidate's centroid and signature.
 
-        ``create`` refuses a name this world already holds instead of re-anchoring it.
+        ``create`` refuses a name this world already holds instead of re-anchoring it. A name
+        no label answers to is checked as a new one either way.
         """
-        if create:
+        if create or self.find(name) is None:
             name = self._free(name)
         label = self.put(name, cand.machines, notes=notes, when=when, create=create)
         label.centroid = cand.centroid
