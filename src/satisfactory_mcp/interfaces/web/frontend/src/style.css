@@ -2025,7 +2025,6 @@ a.dash-where:hover {
   white-space: nowrap;
 }
 
-.search-sub.locked,
 .rx-locked {
   color: var(--muted);
 }
@@ -2062,6 +2061,10 @@ a.dash-where:hover {
   gap: var(--sp-2);
 }
 
+.dash-table .rx-plain {
+  font-weight: 400;
+}
+
 .rx-icon {
   width: 20px;
   height: 20px;
@@ -2089,8 +2092,15 @@ a.dash-where:hover {
   letter-spacing: 0.05em;
 }
 
-.rx-flows a {
+.dash-table .rx-flows a {
   font-weight: 400;
+  text-decoration: underline;
+  text-decoration-color: var(--dim);
+  text-underline-offset: 2px;
+}
+
+.dash-table .rx-flows a:hover {
+  text-decoration-color: currentColor;
 }
 
 .rx-status {

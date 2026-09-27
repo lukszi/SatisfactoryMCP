@@ -29,6 +29,8 @@ export var W = {
   noSaves: "no readable saves",
 } as const;
 
+export var RECIPE_KIND: Record<string, string> = { part: "machine", building: "building", manual: "crafted" };
+
 export function version(n: number): string {
   return "version v" + n;
 }

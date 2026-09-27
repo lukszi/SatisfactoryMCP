@@ -1,16 +1,22 @@
 /* The Recipes codex: the dashboard's `dash=recipes…` section. See docs/frontend_vision.md §10. */
 
-import { get } from "./api";
-import { tabs2 } from "./dashkit";
-import { count, make } from "./dom";
-import { hashFor } from "./map";
+import { get, latest } from "./api";
+import { empty, error, link, loading, note, table, tabs2 } from "./dashkit";
+import { el, make } from "./dom";
+import { count, num, perMin } from "./format";
+import { hashFor, writeHash } from "./map";
+import { go } from "./nav";
 import { registerFetch } from "./registry";
 import { setting } from "./settings";
 import { state } from "./state";
+import { friendly } from "./toast";
+import { counted, RECIPE_KIND as KIND_WORD } from "./words";
 
 import type { ApiError, ApiUrl } from "./api";
+import type { Column, SortState } from "./dashkit";
 import type {
   AlternatesResponse,
+  ItemRow,
   ItemsResponse,
   MakerRow,
   Rate,
@@ -21,6 +27,20 @@ import type {
 } from "./api-shapes";
 
 type Mode = "items" | "recipes" | "unlocked";
+
+interface Browse {
+  mode: Mode;
+  q: string;
+  kind: string;
+  alt: boolean;
+  all: boolean;
+}
+
+interface Got<T> {
+  data: T | null;
+  failure: unknown;
+  retry: () => void;
+}
 
 var MODES: [Mode, string][] = [
   ["items", "Items"],
@@ -35,73 +55,148 @@ var KINDS: [string, string][] = [
   ["all", "every kind"],
 ];
 
+var PER: Record<string, string> = { building: "/build", manual: "/craft" };
+
+var PRIMED_PATH: ApiUrl = "/api/gamedata/unlocked?only_alternates=true";
+
 var DEBOUNCE_MS = 180;
 
-var browse = {
-  mode: "items" as Mode,
-  query: "",
-  kind: "part",
-  alternatesOnly: false,
-  unlockedAll: false,
-};
-
 var cache: Record<string, unknown> = {};
-var last: Record<string, unknown> = {};
+var failed: Record<string, unknown> = {};
 var pending: Record<string, boolean> = {};
-var failures: Record<string, string> = {};
+var shown: Record<string, unknown> = {};
+var shownEpoch = -1;
 var generation = 0;
+var primed = -1;
 var redraw: () => void = function () {};
 var timer = 0;
+var lastBrowse = "recipes";
+var rendered = "";
+var scrolled: Record<string, number> = {};
+var restoring: { dash: string; top: number } | null = null;
+var sorts: Record<string, SortState> = {
+  items: { key: "item", desc: false },
+  recipes: { key: "", desc: false },
+  unlocked: { key: "recipe", desc: false },
+};
 
 var input = make("input", "dash-name rx-q");
 input.type = "search";
 input.setAttribute("data-candidate", "recipes-q");
 input.oninput = function () {
-  browse.query = input.value;
   window.clearTimeout(timer);
-  timer = window.setTimeout(redraw, DEBOUNCE_MS);
+  timer = window.setTimeout(function () {
+    var b = parseBrowse(subjectOf(state.dash));
+    b.q = input.value.trim();
+    state.dash = browseDash(b);
+    writeHash();
+    redraw();
+  }, DEBOUNCE_MS);
 };
 
-function keyOf(path: ApiUrl): string {
-  return generation + "|" + state.world + "|" + state.save + "|" + path;
+function subjectOf(dash: string): string {
+  var cut = dash.indexOf("/");
+  return cut < 0 ? "" : dash.slice(cut + 1);
 }
 
-function load<T extends ApiError>(path: ApiUrl, slot?: string): { data: T | null; error: string } {
-  var key = keyOf(path);
-  if (key in cache) {
-    if (slot) last[slot] = cache[key];
-    return { data: cache[key] as T, error: "" };
+function decoded(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch (_e) {
+    return text;
   }
-  if (key in failures) return { data: null, error: failures[key]! };
-  if (!pending[key]) {
-    pending[key] = true;
-    get<T>(path)
-      .then(function (body) {
-        cache[key] = body;
-      })
-      .catch(function (error: unknown) {
-        failures[key] = error instanceof Error ? error.message : String(error);
-      })
-      .then(function () {
-        delete pending[key];
-        if (key.indexOf(generation + "|") === 0) redraw();
-      });
-  }
-  return { data: slot && last[slot] ? (last[slot] as T) : null, error: "" };
+}
+
+function parseBrowse(subject: string): Browse {
+  var cut = subject.indexOf("?");
+  var head = cut < 0 ? subject : subject.slice(0, cut);
+  var b: Browse = { mode: "items", q: "", kind: "part", alt: false, all: false };
+  MODES.forEach(function (m) {
+    if (m[0] === head) b.mode = m[0];
+  });
+  (cut < 0 ? "" : subject.slice(cut + 1)).split("&").forEach(function (pair) {
+    var eq = pair.indexOf("=");
+    var key = eq < 0 ? pair : pair.slice(0, eq);
+    var value = eq < 0 ? "" : decoded(pair.slice(eq + 1));
+    if (key === "q") b.q = value;
+    else if (key === "kind" && KINDS.some(function (k) { return k[0] === value; })) b.kind = value;
+    else if (key === "alt") b.alt = value === "1";
+    else if (key === "all") b.all = value === "1";
+  });
+  return b;
+}
+
+function browseDash(b: Browse): string {
+  var params: string[] = [];
+  if (b.q) params.push("q=" + encodeURIComponent(b.q));
+  if (b.mode === "recipes" && b.kind !== "part") params.push("kind=" + b.kind);
+  if (b.mode === "recipes" && b.alt) params.push("alt=1");
+  if (b.mode === "unlocked" && b.all) params.push("all=1");
+  return "recipes/" + b.mode + (params.length ? "?" + params.join("&") : "");
 }
 
 function hidesLocked(): boolean {
   return !setting("spoilers");
 }
 
-function go(dash: string): string {
-  return hashFor(dash);
+function spoilers(): string {
+  return hidesLocked() ? "&spoilers=0" : "";
 }
 
-function link(dash: string, text: string): HTMLAnchorElement {
-  var a = make("a", "", text);
-  a.setAttribute("href", go(dash));
-  return a;
+function keyOf(path: ApiUrl): string {
+  return state.epoch + "|" + generation + "|" + path;
+}
+
+function load<T extends ApiError>(slot: string, path: ApiUrl, keep?: boolean): Got<T> {
+  if (shownEpoch !== state.epoch) {
+    shownEpoch = state.epoch;
+    shown = {};
+  }
+  var key = keyOf(path);
+  var got: Got<T> = {
+    data: null,
+    failure: null,
+    retry: function () {
+      delete failed[key];
+      redraw();
+    },
+  };
+  if (key in cache) {
+    shown[slot] = cache[key];
+    got.data = cache[key] as T;
+    return got;
+  }
+  if (key in failed) {
+    got.failure = failed[key];
+    return got;
+  }
+  if (keep && shown[slot]) got.data = shown[slot] as T;
+  if (path === PRIMED_PATH && primed !== state.epoch) return got;
+  if (!pending[key]) {
+    pending[key] = true;
+    var ticket = latest(slot);
+    get<T>(path)
+      .then(
+        function (body) {
+          cache[key] = body;
+        },
+        function (reason: unknown) {
+          failed[key] = reason;
+        }
+      )
+      .then(function () {
+        delete pending[key];
+        if (ticket.fresh()) redraw();
+      });
+  }
+  return got;
+}
+
+function waiting<T>(parent: HTMLElement, got: Got<T>, thing: string): boolean {
+  if (got.data) return false;
+  if (got.failure) error(parent, thing, got.failure, got.retry);
+  else loading(parent, thing);
+  return true;
 }
 
 function itemLink(cls: string, name: string): HTMLAnchorElement {
@@ -137,59 +232,40 @@ function icon(cls: string): Node {
   return img;
 }
 
-function num(value: number): string {
-  return (Math.round(value * 100) / 100).toLocaleString("en-GB");
-}
-
-function note(parent: HTMLElement, text: string): void {
-  parent.appendChild(make("p", "dash-note", text));
-}
-
-function hiddenNote(parent: HTMLElement, hidden: number): void {
-  if (!hidden) return;
-  var p = make("p", "dash-note", count(hidden) + " locked recipe" + (hidden === 1 ? " is" : "s are") + " hidden. ");
-  p.appendChild(link("settings", "Settings"));
-  p.appendChild(document.createTextNode(" can show them."));
-  parent.appendChild(p);
-}
-
-function waiting(parent: HTMLElement, error: string): void {
-  note(parent, error || "loading…");
+function named(cls: string, name: string, linked: boolean): HTMLElement {
+  var box = make("span", "rx-name");
+  box.appendChild(icon(cls));
+  box.appendChild(linked ? itemLink(cls, name) : make("span", "rx-plain", name));
+  return box;
 }
 
 function status(unlocked: boolean | null): HTMLElement {
   if (unlocked === null) return make("span", "dash-muted", "–");
-  return make("span", unlocked ? "rx-have" : "rx-locked", unlocked ? "HAVE" : "LOCKED");
+  return make("span", unlocked ? "rx-have" : "rx-locked", unlocked ? "have" : "locked");
 }
 
-function table(headers: string[], numeric: number[]): HTMLTableElement {
-  var t = make("table", "dash-table");
-  var tr = make("tr");
-  headers.forEach(function (h, i) {
-    tr.appendChild(make("th", numeric.indexOf(i) >= 0 ? "num" : "", h));
+function statusRank(unlocked: boolean | null): number {
+  return unlocked === null ? 2 : unlocked ? 0 : 1;
+}
+
+function statusColumn<R extends { unlocked: boolean | null }>(): Column<R> {
+  return {
+    key: "status",
+    label: "status",
+    title: "have: unlocked on this save; locked: not yet",
+    sort: function (r) {
+      return statusRank(r.unlocked);
+    },
+    render: function (r) {
+      return status(r.unlocked);
+    },
+  };
+}
+
+function showsStatus(rows: { unlocked: boolean | null }[]): boolean {
+  return !hidesLocked() && rows.some(function (r) {
+    return r.unlocked !== null;
   });
-  var head = make("thead");
-  head.appendChild(tr);
-  t.appendChild(head);
-  t.appendChild(make("tbody"));
-  return t;
-}
-
-function row(t: HTMLTableElement, cells: (string | HTMLElement)[], numeric: number[]): void {
-  var tr = make("tr");
-  cells.forEach(function (c, i) {
-    var td = make("td", numeric.indexOf(i) >= 0 ? "num" : "");
-    if (typeof c === "string") td.textContent = c;
-    else td.appendChild(c);
-    tr.appendChild(td);
-  });
-  t.tBodies[0]!.appendChild(tr);
-}
-
-function scroll(parent: HTMLElement, t: HTMLTableElement): void {
-  var wrap = make("div", "dash-scroll");
-  wrap.appendChild(t);
-  parent.appendChild(wrap);
 }
 
 function flows(rates: Rate[]): HTMLElement {
@@ -202,178 +278,328 @@ function flows(rates: Rate[]): HTMLElement {
   return span;
 }
 
-function recipeName(r: { cls: string; name: string; alternate: boolean }): HTMLElement {
-  var box = make("span", "rx-name");
-  box.appendChild(recipeLink(r.cls, r.name));
-  if (r.alternate) box.appendChild(make("span", "rx-tag", "alt"));
-  return box;
+function settingsLink(text: string): HTMLElement {
+  var p = make("span");
+  p.appendChild(link("settings", "Settings"));
+  p.appendChild(document.createTextNode(" " + text));
+  return p;
 }
 
-function query(params: [string, string | boolean][]): string {
-  return params
-    .filter(function (p) {
-      return p[1] !== "" && p[1] !== false;
-    })
-    .map(function (p) {
-      return p[0] + "=" + encodeURIComponent(String(p[1]));
-    })
-    .join("&");
+function countLine(parent: HTMLElement, text: string, readable: boolean): void {
+  var p = make("p", "dash-note", text);
+  if (hidesLocked() && readable) {
+    p.appendChild(document.createTextNode((text ? " · " : "") + "locked recipes hidden; "));
+    p.appendChild(link("settings", "Settings"));
+    p.appendChild(document.createTextNode(" shows them"));
+  }
+  if (p.childNodes.length) parent.appendChild(p);
 }
 
-function modeBar(card: HTMLElement): void {
-  var items = MODES.map(function (m) {
-    return { id: m[0], label: m[1] };
-  });
-  card.appendChild(
-    tabs2(
-      items,
-      browse.mode,
-      function (id) {
-        browse.mode = id as Mode;
-        redraw();
+function saveNote(parent: HTMLElement, text: string | null): void {
+  if (text) note(parent, friendly(text));
+}
+
+function sortFor(name: string): SortState {
+  if (!sorts[name]) sorts[name] = { key: "", desc: false };
+  return sorts[name]!;
+}
+
+function amount(r: RecipeRow): string {
+  return r.kind === "part" ? perMin(r.qty) : num(r.qty) + (PER[r.kind] || "");
+}
+
+function recipeTable(parent: HTMLElement, rows: RecipeRow[], options: { kinds: boolean; qty: string; sort: string }): void {
+  var columns: Column<RecipeRow>[] = [
+    {
+      key: "recipe",
+      label: "recipe",
+      sort: function (r) {
+        return r.name;
       },
-      "recipe book view"
-    )
-  );
+      render: function (r) {
+        return recipeLink(r.cls, r.name);
+      },
+    },
+  ];
+  var mixed = rows.some(function (r) {
+    return r.kind !== rows[0]!.kind;
+  });
+  if (options.kinds && mixed) {
+    columns.push({
+      key: "kind",
+      label: "kind",
+      sort: function (r) {
+        return KIND_WORD[r.kind] || r.kind;
+      },
+      render: function (r) {
+        return KIND_WORD[r.kind] || r.kind;
+      },
+    });
+  }
+  columns.push({
+    key: "machine",
+    label: "machine",
+    sort: function (r) {
+      return r.machine || "";
+    },
+    render: function (r) {
+      return r.machine || "–";
+    },
+  });
+  if (options.qty) {
+    columns.push({
+      key: "qty",
+      label: options.qty,
+      align: "right",
+      title: "per minute in a machine at 100%; per build or per craft otherwise",
+      render: amount,
+    });
+  }
+  if (showsStatus(rows)) columns.push(statusColumn<RecipeRow>());
+  parent.appendChild(table(columns, rows, { sort: sortFor(options.sort), onSort: redraw, caption: "recipes" }));
 }
 
-function checkbox(label: string, on: boolean, change: (on: boolean) => void): HTMLElement {
+function censusLine(data: RecipesResponse, kind: string): string {
+  var rows = data.recipes;
+  var have = rows.filter(function (r) {
+    return r.unlocked === true;
+  }).length;
+  var locked = rows.filter(function (r) {
+    return r.unlocked === false;
+  }).length;
+  var c = data.census;
+  var asked = kind === "all" ? c.total : c.by_kind[kind] || 0;
+  var parts = [counted(rows.length, kind === "all" || kind === "part" ? "recipe" : KIND_WORD[kind] + " recipe")];
+  if (kind === "all") {
+    var split = ["part", "building", "manual"]
+      .filter(function (k) {
+        return rows.some(function (r) {
+          return r.kind === k;
+        });
+      })
+      .map(function (k) {
+        var n = rows.filter(function (r) {
+          return r.kind === k;
+        }).length;
+        return count(n) + " " + KIND_WORD[k];
+      });
+    if (split.length > 1) parts[0] += " (" + split.join(", ") + ")";
+  }
+  if (locked) parts.push(count(have) + " have" + (locked ? ", " + count(locked) + " locked" : ""));
+  if (asked > rows.length) parts.push(counted(asked - rows.length, "event recipe") + " hidden");
+  return parts.join(" · ");
+}
+
+function modeBar(card: HTMLElement, b: Browse): void {
+  var items = MODES.map(function (m) {
+    var to: Browse = { mode: m[0], q: b.q, kind: b.kind, alt: b.alt, all: b.all };
+    return { id: m[0], label: m[1], href: hashFor(browseDash(to)) };
+  });
+  card.appendChild(tabs2(items, b.mode, undefined, "recipe book view"));
+}
+
+function checkbox(label: string, on: boolean, candidate: string, change: (on: boolean) => void): HTMLElement {
   var wrap = make("label", "dash-toggle rx-check");
   var box = make("input");
   box.type = "checkbox";
   box.checked = on;
+  box.setAttribute("data-candidate", candidate);
   box.onchange = function () {
     change(box.checked);
-    redraw();
   };
   wrap.appendChild(box);
   wrap.appendChild(document.createTextNode(" " + label));
   return wrap;
 }
 
-function renderItems(card: HTMLElement): void {
-  var got = load<ItemsResponse>(`/api/gamedata/items?${query([["q", browse.query.trim()]])}`, "items");
-  if (!got.data) return waiting(card, got.error);
-  var data = got.data;
-  note(card, count(data.total) + " item" + (data.total === 1 ? "" : "s") + (data.items.length < data.total ? ", first " + data.items.length + " shown" : ""));
-  if (!data.items.length) return;
-  var t = table(["item", "form", "energy MJ", "sink points"], [2, 3]);
-  data.items.forEach(function (i) {
-    var name = make("span", "rx-name");
-    name.appendChild(icon(i.cls));
-    name.appendChild(itemLink(i.cls, i.name));
-    row(t, [name, i.fluid ? "fluid" : "solid", i.energy_mj ? num(i.energy_mj) : "–", i.sink_points ? count(i.sink_points) : "–"], [2, 3]);
-  });
-  scroll(card, t);
+function itemColumns(): Column<ItemRow>[] {
+  return [
+    {
+      key: "item",
+      label: "item",
+      sort: function (i) {
+        return i.name;
+      },
+      render: function (i) {
+        return named(i.cls, i.name, true);
+      },
+    },
+    {
+      key: "form",
+      label: "form",
+      sort: function (i) {
+        return i.fluid ? 1 : 0;
+      },
+      render: function (i) {
+        return i.fluid ? "fluid" : "solid";
+      },
+    },
+    {
+      key: "energy",
+      label: "energy MJ",
+      align: "right",
+      sort: function (i) {
+        return i.energy_mj;
+      },
+      render: function (i) {
+        return i.energy_mj ? num(i.energy_mj) : "–";
+      },
+    },
+    {
+      key: "sink",
+      label: "sink points",
+      align: "right",
+      sort: function (i) {
+        return i.sink_points;
+      },
+      render: function (i) {
+        return i.sink_points ? count(i.sink_points) : "–";
+      },
+    },
+  ];
 }
 
-function censusLine(data: RecipesResponse): string {
-  var c = data.census;
-  var parts = ["part", "building", "manual"]
-    .filter(function (k) {
-      return c.by_kind[k];
-    })
-    .map(function (k) {
-      var gate = c.have[k] || c.locked[k] ? " (" + (c.have[k] || 0) + " have" + (hidesLocked() ? "" : ", " + (c.locked[k] || 0) + " locked") + ")" : "";
-      return c.by_kind[k] + " " + k + gate;
-    });
-  return c.total ? count(c.total) + " recipes match: " + parts.join(", ") : "no recipe matches";
+function renderItems(card: HTMLElement, b: Browse): boolean {
+  var got = load<ItemsResponse>("recipes", `/api/gamedata/items?q=${encodeURIComponent(b.q)}`, true);
+  if (waiting(card, got, "the item list")) return false;
+  var data = got.data!;
+  if (!data.items.length) {
+    empty(card, b.q ? "no item matches “" + b.q + "”" : "no items", b.q ? "clear the filter to see every item" : undefined);
+    return true;
+  }
+  note(card, counted(data.total, "item") + (data.items.length < data.total ? ", the first " + count(data.items.length) + " shown" : ""));
+  card.appendChild(table(itemColumns(), data.items, { sort: sorts.items, onSort: redraw, caption: "items" }));
+  return true;
 }
 
-function recipeRows(card: HTMLElement, rows: RecipeRow[], qty: string): void {
-  var shown = hidesLocked()
-    ? rows.filter(function (r) {
-        return r.unlocked !== false;
-      })
-    : rows;
-  var numeric = qty ? [3] : [];
-  var t = table(qty ? ["recipe", "kind", "machine", qty, "status"] : ["recipe", "kind", "machine", "status"], numeric);
-  shown.forEach(function (r) {
-    var cells: (string | HTMLElement)[] = [recipeName(r), r.kind, r.machine || "–"];
-    if (qty) cells.push(num(r.qty) + (r.kind === "part" ? "/min" : r.kind === "building" ? "/build" : "/craft"));
-    cells.push(status(r.unlocked));
-    row(t, cells, numeric);
-  });
-  if (shown.length) scroll(card, t);
-  hiddenNote(card, rows.length - shown.length);
-}
-
-function renderRecipeSearch(card: HTMLElement): void {
+function renderRecipeSearch(card: HTMLElement, b: Browse): boolean {
   var controls = make("div", "rx-controls");
   var kind = make("select", "dash-select");
+  kind.setAttribute("aria-label", "recipe kind");
+  kind.setAttribute("data-candidate", "recipes-kind");
   KINDS.forEach(function (k) {
     var option = make("option", "", k[1]);
     option.value = k[0];
     kind.appendChild(option);
   });
-  kind.value = browse.kind;
+  kind.value = b.kind;
   kind.onchange = function () {
-    browse.kind = kind.value;
-    redraw();
+    go(browseDash({ mode: b.mode, q: b.q, kind: kind.value, alt: b.alt, all: b.all }));
   };
   controls.appendChild(kind);
   controls.appendChild(
-    checkbox("alternates only", browse.alternatesOnly, function (on) {
-      browse.alternatesOnly = on;
+    checkbox("alternates only", b.alt, "recipes-alt", function (on) {
+      go(browseDash({ mode: b.mode, q: b.q, kind: b.kind, alt: on, all: b.all }));
     })
   );
   card.appendChild(controls);
-  var got = load<RecipesResponse>(
-    `/api/gamedata/recipes?${query([
-      ["q", browse.query.trim()],
-      ["recipe_kind", browse.kind],
-      ["only_alternates", browse.alternatesOnly],
-    ])}`,
-    "recipes"
-  );
-  if (!got.data) return waiting(card, got.error);
-  note(card, censusLine(got.data));
-  if (got.data.save_note) note(card, got.data.save_note);
-  recipeRows(card, got.data.recipes, "");
+  var path: ApiUrl = `/api/gamedata/recipes?q=${encodeURIComponent(b.q)}&recipe_kind=${b.kind}${b.alt ? "&only_alternates=true" : ""}${spoilers()}`;
+  var got = load<RecipesResponse>("recipes", path, true);
+  if (waiting(card, got, "the recipe list")) return false;
+  var data = got.data!;
+  saveNote(card, data.save_note);
+  if (!data.recipes.length) {
+    var what = b.alt ? "alternate recipe" : "recipe";
+    empty(card, b.q ? "no " + what + " matches “" + b.q + "”" : "no " + what + " of this kind", b.q ? "clear the filter or pick another kind" : undefined);
+    countLine(card, "", data.save_note === null);
+    return true;
+  }
+  countLine(card, censusLine(data, b.kind), data.save_note === null);
+  recipeTable(card, data.recipes, { kinds: b.kind === "all", qty: "", sort: "recipes" });
+  return true;
 }
 
-function renderUnlocked(card: HTMLElement): void {
+function savedFrom(data: UnlockedResponse): string {
+  return "from the " + data.save_kind + (data.written_ago ? ", written " + data.written_ago : "");
+}
+
+function renderUnlocked(card: HTMLElement, b: Browse): boolean {
   card.appendChild(
-    checkbox("every automatable recipe, not only alternates", browse.unlockedAll, function (on) {
-      browse.unlockedAll = on;
+    checkbox("every automatable recipe, not only alternates", b.all, "recipes-all", function (on) {
+      go(browseDash({ mode: b.mode, q: b.q, kind: b.kind, alt: b.alt, all: on }));
     })
   );
-  var got = load<UnlockedResponse>(`/api/gamedata/unlocked?only_alternates=${!browse.unlockedAll}`);
-  if (!got.data) return waiting(card, got.error);
-  var data = got.data;
-  note(
-    card,
-    data.alternates_unlocked + " of " + data.alternates_total + " alternates unlocked; " + count(data.automatable_total) + " automatable recipes in all. " + data.age_note
-  );
-  var q = browse.query.trim().toLowerCase();
+  var got = load<UnlockedResponse>("recipes", b.all ? "/api/gamedata/unlocked?only_alternates=false" : PRIMED_PATH, true);
+  if (waiting(card, got, "the unlocked recipes")) return false;
+  var data = got.data!;
+  var alternates = count(data.alternates_unlocked) + (hidesLocked() ? "" : " of " + count(data.alternates_total)) + " alternates unlocked";
+  note(card, [alternates, counted(data.automatable_total, "automatable recipe") + " in all", savedFrom(data)].join(" · "));
+  var q = b.q.toLowerCase();
   var rows = data.recipes.filter(function (r) {
     return !q || r.name.toLowerCase().indexOf(q) >= 0;
   });
-  if (!rows.length) return note(card, q ? "none of them match" : "nothing unlocked yet");
-  var t = table(["recipe", "machine"], []);
-  rows.forEach(function (r) {
-    row(t, [recipeLink(r.cls, r.name), r.machine || "–"], []);
+  if (!rows.length) {
+    var what = b.all ? "unlocked recipe" : "unlocked alternate";
+    empty(card, q ? "no " + what + " matches “" + b.q + "”" : "no " + what + " yet", q ? "clear the filter to see all " + count(data.recipes.length) : undefined);
+    return true;
+  }
+  var columns: Column<UnlockedResponse["recipes"][number]>[] = [
+    {
+      key: "recipe",
+      label: "recipe",
+      sort: function (r) {
+        return r.name;
+      },
+      render: function (r) {
+        return recipeLink(r.cls, r.name);
+      },
+    },
+    {
+      key: "machine",
+      label: "machine",
+      sort: function (r) {
+        return r.machine || "";
+      },
+      render: function (r) {
+        return r.machine || "–";
+      },
+    },
+  ];
+  card.appendChild(table(columns, rows, { sort: sorts.unlocked, onSort: redraw, caption: "unlocked recipes" }));
+  return true;
+}
+
+function remember(): void {
+  var dash = el("dash");
+  dash.addEventListener("scroll", function () {
+    if (state.dash.indexOf("recipes") === 0 && !detailOf(subjectOf(state.dash))) scrolled[state.dash] = dash.scrollTop;
   });
-  scroll(card, t);
 }
 
-function renderBrowse(body: HTMLElement): void {
+function restore(): void {
+  if (!restoring || restoring.dash !== state.dash) return;
+  var top = restoring.top;
+  restoring = null;
+  if (!top) return;
+  window.requestAnimationFrame(function () {
+    el("dash").scrollTop = top;
+  });
+}
+
+function renderBrowse(body: HTMLElement, subject: string, arrived: boolean): void {
+  var b = parseBrowse(subject);
+  if (arrived) restoring = { dash: state.dash, top: scrolled[state.dash] || 0 };
+  lastBrowse = state.dash;
+  body.appendChild(make("h1", "dk-hidden", "Recipe book"));
   var card = make("section", "dash-card");
-  modeBar(card);
-  input.placeholder =
-    browse.mode === "items" ? "filter items by name" : browse.mode === "recipes" ? "filter recipes by name" : "filter unlocked recipes";
-  if (input.value !== browse.query) input.value = browse.query;
+  modeBar(card, b);
+  input.placeholder = b.mode === "items" ? "filter items by name" : b.mode === "recipes" ? "filter recipes by name" : "filter unlocked recipes";
+  input.setAttribute("aria-label", input.placeholder);
+  if (document.activeElement !== input && input.value !== b.q) input.value = b.q;
   card.appendChild(input);
-  if (browse.mode === "items") renderItems(card);
-  else if (browse.mode === "recipes") renderRecipeSearch(card);
-  else renderUnlocked(card);
   body.appendChild(card);
+  var drawn = b.mode === "items" ? renderItems(card, b) : b.mode === "recipes" ? renderRecipeSearch(card, b) : renderUnlocked(card, b);
+  if (drawn) restore();
 }
 
-function title(body: HTMLElement, text: string, cls: string, tag: string): void {
+function backTo(mode: Mode): string {
+  var b = parseBrowse(subjectOf(lastBrowse));
+  return b.mode === mode ? lastBrowse : browseDash({ mode: mode, q: "", kind: "part", alt: false, all: false });
+}
+
+function title(body: HTMLElement, back: Mode, text: string, cls: string, tag: string): void {
+  body.appendChild(link(backTo(back), "‹ all " + back, "dash-back"));
   var bar = make("div", "dash-title");
-  bar.appendChild(link("recipes", "‹ codex"));
-  bar.lastElementChild!.className = "dash-back";
   var h = make("h1", "rx-title");
   if (cls) h.appendChild(icon(cls));
   h.appendChild(document.createTextNode(text));
@@ -382,71 +608,155 @@ function title(body: HTMLElement, text: string, cls: string, tag: string): void 
   body.appendChild(bar);
 }
 
+function unread<T>(body: HTMLElement, got: Got<T>, back: Mode, heading: string, thing: string): void {
+  if (!got.failure) {
+    body.appendChild(link(backTo(back), "‹ all " + back, "dash-back"));
+    loading(body, thing);
+    return;
+  }
+  title(body, back, heading, "", "");
+  error(body, thing, got.failure, got.retry);
+}
+
+function candidates(body: HTMLElement, name: string): void {
+  var got = load<RecipesResponse>("recipes:candidates", `/api/gamedata/recipes?q=${encodeURIComponent(name)}&recipe_kind=all${spoilers()}`);
+  if (!got.data || !got.data.recipes.length) return;
+  var card = make("section", "dash-card");
+  card.appendChild(make("h2", "dash-h", "recipes with “" + name + "” in the name"));
+  recipeTable(card, got.data.recipes, { kinds: true, qty: "", sort: "candidates" });
+  body.appendChild(card);
+}
+
 function makerTable(card: HTMLElement, rows: MakerRow[]): void {
-  var shown = hidesLocked()
-    ? rows.filter(function (r) {
-        return r.unlocked !== false;
-      })
-    : rows;
-  if (shown.length) {
-    var t = table(["recipe", "machine", "in /min", "out /min", "status", "granted by"], []);
-    shown.forEach(function (r) {
-      row(t, [recipeName(r), r.machine ? r.machine + " · " + num(r.power_mw) + " MW" : "–", flows(r.ingredients), flows(r.products), status(r.unlocked), r.granted_by.join("; ")], []);
-    });
-    scroll(card, t);
-  } else if (!rows.length) note(card, "nothing makes this in a machine");
-  hiddenNote(card, rows.length - shown.length);
+  var columns: Column<MakerRow>[] = [
+    {
+      key: "recipe",
+      label: "recipe",
+      render: function (r) {
+        return recipeLink(r.cls, r.name);
+      },
+    },
+    {
+      key: "machine",
+      label: "machine",
+      render: function (r) {
+        return r.machine ? r.machine + " · " + num(r.power_mw) + " MW" : "–";
+      },
+    },
+    {
+      key: "in",
+      label: "in /min",
+      render: function (r) {
+        return flows(r.ingredients);
+      },
+    },
+    {
+      key: "out",
+      label: "out /min",
+      render: function (r) {
+        return flows(r.products);
+      },
+    },
+  ];
+  if (showsStatus(rows)) columns.push(statusColumn<MakerRow>());
+  columns.push({
+    key: "granted",
+    label: "granted by",
+    render: function (r) {
+      return r.granted_by.join("; ") || "–";
+    },
+  });
+  card.appendChild(table(columns, rows, { caption: "recipes that make this item" }));
 }
 
 function renderItem(body: HTMLElement, cls: string): void {
-  var got = load<AlternatesResponse>(`/api/gamedata/alternates?item=${encodeURIComponent(cls)}`);
-  if (!got.data) return waiting(body, got.error);
+  var got = load<AlternatesResponse>("recipes", `/api/gamedata/alternates?item=${encodeURIComponent(cls)}${spoilers()}`);
+  if (!got.data) {
+    unread(body, got, "items", "Item", "the item");
+    return;
+  }
   var data = got.data;
-  title(body, data.name, data.item, data.fluid ? "fluid" : "solid");
+  if (data.build_recipe && !data.recipes.length) {
+    title(body, "items", data.name, data.item, "building");
+    var built = make("p", "dash-note", "Placed with the build gun, not made in a machine: see ");
+    built.appendChild(recipeLink(data.build_recipe, "its build cost"));
+    body.appendChild(built);
+    return;
+  }
+  title(body, "items", data.name, data.item, data.fluid ? "fluid" : "solid");
   var facts = [data.energy_mj ? num(data.energy_mj) + " MJ" + (data.fluid ? " per m³" : " each") : "", data.sink_points ? count(data.sink_points) + " sink points" : ""].filter(Boolean);
   if (facts.length) note(body, facts.join(" · "));
-  if (data.save_note) note(body, data.save_note);
+  saveNote(body, data.save_note);
+  countLine(body, "", data.save_note === null);
 
   var made = make("section", "dash-card");
   made.appendChild(make("h2", "dash-h", "made by"));
-  makerTable(made, data.recipes);
+  if (data.recipes.length) makerTable(made, data.recipes);
+  else empty(made, hidesLocked() ? "no unlocked recipe makes this in a machine" : "nothing makes this in a machine");
   body.appendChild(made);
 
   var used = make("section", "dash-card");
   used.appendChild(make("h2", "dash-h", "used by"));
-  var uses = load<RecipesResponse>(`/api/gamedata/recipes?consumes=${encodeURIComponent(cls)}&recipe_kind=all`);
-  if (!uses.data) waiting(used, uses.error);
-  else {
-    note(used, censusLine(uses.data));
-    if (uses.data.recipes.length) recipeRows(used, uses.data.recipes, "uses");
+  var uses = load<RecipesResponse>("recipes:used", `/api/gamedata/recipes?consumes=${encodeURIComponent(cls)}&recipe_kind=all${spoilers()}`);
+  if (!waiting(used, uses, "the recipes that use it")) {
+    var rows = uses.data!.recipes;
+    if (!rows.length) empty(used, hidesLocked() ? "no unlocked recipe uses this" : "no recipe uses this");
+    else {
+      note(used, censusLine(uses.data!, "all"));
+      recipeTable(used, rows, { kinds: true, qty: "uses", sort: "used" });
+    }
   }
   body.appendChild(used);
 }
 
+function rateTable(box: HTMLElement, rates: Rate[], part: boolean, linked: boolean): void {
+  var columns: Column<Rate>[] = [
+    {
+      key: "item",
+      label: "item",
+      render: function (x) {
+        return named(x.item, x.name, linked);
+      },
+    },
+    {
+      key: "rate",
+      label: part ? "per min" : "amount",
+      align: "right",
+      render: function (x) {
+        return part ? perMin(x.per_min, false) : num(x.amount);
+      },
+    },
+  ];
+  box.appendChild(table(columns, rates));
+}
+
 function renderRecipe(body: HTMLElement, cls: string): void {
-  var got = load<RecipeDetail>(`/api/gamedata/recipe?recipe=${encodeURIComponent(cls)}`);
-  if (!got.data) return waiting(body, got.error);
-  var r = got.data;
-  if (r.unlocked === false && hidesLocked()) {
-    title(body, "Locked recipe", "", "");
-    var p = make("p", "dash-note", "This recipe is not unlocked on this save. ");
-    p.appendChild(link("settings", "Settings"));
-    p.appendChild(document.createTextNode(" can show locked recipes."));
-    body.appendChild(p);
+  var got = load<RecipeDetail>("recipes", `/api/gamedata/recipe?recipe=${encodeURIComponent(cls)}${spoilers()}`);
+  if (!got.data) {
+    unread(body, got, "recipes", "Recipe", "the recipe");
+    if (got.failure) candidates(body, decoded(cls));
     return;
   }
-  title(body, r.name, "", r.alternate ? "alternate" : r.kind);
-  var head = make("p", "rx-status");
-  head.appendChild(status(r.unlocked));
-  if (r.save_note) head.appendChild(make("span", "dash-note", " " + r.save_note));
-  body.appendChild(head);
+  var r = got.data;
+  if (r.unlocked === false && hidesLocked()) {
+    title(body, "recipes", "Locked recipe", "", "");
+    empty(body, "this recipe is not unlocked on this save", settingsLink("can show locked recipes."));
+    return;
+  }
+  var part = r.kind === "part";
+  title(body, "recipes", r.name, "", part ? "" : KIND_WORD[r.kind] || r.kind);
+  if (r.unlocked !== null && !hidesLocked()) {
+    var head = make("p", "rx-status");
+    head.appendChild(status(r.unlocked));
+    body.appendChild(head);
+  }
+  saveNote(body, r.save_note);
 
   var card = make("section", "dash-card");
-  var part = r.kind === "part";
   var facts: [string, string][] = part
     ? [
         ["machine", r.machine || "–"],
-        ["cycle", num(r.duration_s) + " s"],
+        ["cycle", num(r.duration_s, 2) + " s"],
         ["power", r.power_range_mw ? num(r.power_range_mw[0]) + "–" + num(r.power_range_mw[1]) + " MW, " + num(r.power_mw) + " MW average" : num(r.power_mw) + " MW"],
       ]
     : [];
@@ -461,53 +771,53 @@ function renderRecipe(body: HTMLElement, cls: string): void {
 
   var unit = part ? "per min, one machine at 100%" : r.kind === "building" ? "per build" : "per craft";
   [
-    ["in", r.ingredients],
-    ["out", r.products],
+    { label: "in", rates: r.ingredients, linked: true },
+    { label: "out", rates: r.products, linked: r.kind !== "building" },
   ].forEach(function (side) {
-    var rates = side[1] as Rate[];
     var box = make("section", "dash-card");
-    box.appendChild(make("h2", "dash-h", side[0] + " (" + unit + ")"));
-    var t = table(["item", part ? "rate" : "amount"], [1]);
-    rates.forEach(function (x) {
-      var name = make("span", "rx-name");
-      name.appendChild(icon(x.item));
-      name.appendChild(itemLink(x.item, x.name));
-      row(t, [name, num(part ? x.per_min : x.amount)], [1]);
-    });
-    scroll(box, t);
+    box.appendChild(make("h2", "dash-h", side.label + " (" + unit + ")"));
+    rateTable(box, side.rates, part, side.linked);
     body.appendChild(box);
   });
+}
+
+function detailOf(subject: string): { kind: string; id: string } | null {
+  var cut = subject.indexOf("/");
+  if (cut < 0) return null;
+  var kind = subject.slice(0, cut);
+  var id = subject.slice(cut + 1);
+  return id && (kind === "item" || kind === "recipe") ? { kind: kind, id: id } : null;
 }
 
 export function renderRecipes(body: HTMLElement, subject: string, rerender: () => void): void {
   redraw = rerender;
   probeIcons();
-  var cut = subject.indexOf("/");
-  var kind = cut < 0 ? subject : subject.slice(0, cut);
-  var id = cut < 0 ? "" : subject.slice(cut + 1);
-  if (kind === "item" && id) renderItem(body, id);
-  else if (kind === "recipe" && id) renderRecipe(body, id);
-  else renderBrowse(body);
+  var arrived = rendered !== state.dash;
+  rendered = state.dash;
+  var detail = detailOf(subject);
+  if (detail && detail.kind === "item") renderItem(body, detail.id);
+  else if (detail) renderRecipe(body, detail.id);
+  else renderBrowse(body, subject, arrived);
 }
 
 registerFetch<UnlockedResponse>({
   wave: "live",
   rank: 70,
-  path: "/api/gamedata/unlocked?only_alternates=true",
+  path: PRIMED_PATH,
   label: "unlocked recipes",
   clears: [],
   refilters: false,
   draw: function (data) {
-    generation += 1;
-    cache = {};
-    failures = {};
-    cache[keyOf("/api/gamedata/unlocked?only_alternates=true")] = data;
+    if (primed === state.epoch) generation += 1;
+    primed = state.epoch;
+    cache[keyOf(PRIMED_PATH)] = data;
     redraw();
   },
   failed: function () {
-    generation += 1;
-    cache = {};
-    failures = {};
+    if (primed === state.epoch) generation += 1;
+    primed = state.epoch;
     redraw();
   },
 });
+
+remember();
