@@ -78,7 +78,8 @@ export function toMap(action: () => void): void {
   show();
   action();
   writeHash();
-  if (keyed) el("map").focus({ preventScroll: true });
+  var now = document.activeElement;
+  if (keyed && (!now || now === document.body || el("dash").contains(now))) el("map").focus({ preventScroll: true });
 }
 
 export function mapButton(title: string, action: () => void, label?: string): HTMLButtonElement {

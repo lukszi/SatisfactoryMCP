@@ -34,12 +34,13 @@ register(pathToFileURL(process.env.FORMAT_HOOK).href);
 
 RUN = """import { pathToFileURL } from "node:url";
 const m = await import(pathToFileURL(process.argv[2]).href);
-const cases = JSON.parse(process.argv[3]);
-console.log(JSON.stringify(cases.map(([v, signed]) => m.mw(v, { signed }))));
+const fn = process.argv[3];
+const cases = JSON.parse(process.argv[4]);
+console.log(JSON.stringify(cases.map((args) => m[fn](...args))));
 """
 
 
-def _mw(tmp_path: Path, cases: list[tuple[float, bool]]) -> list[str]:
+def _run(tmp_path: Path, fn: str, cases: list[list]) -> list:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -53,6 +54,7 @@ def _mw(tmp_path: Path, cases: list[tuple[float, bool]]) -> list[str]:
             (tmp_path / "register.mjs").as_uri(),
             str(tmp_path / "run.mjs"),
             str(FORMAT_TS),
+            fn,
             json.dumps(cases),
         ],
         capture_output=True,
@@ -65,6 +67,37 @@ def _mw(tmp_path: Path, cases: list[tuple[float, bool]]) -> list[str]:
         pytest.skip("this node cannot strip TypeScript types")
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
+
+
+def _mw(tmp_path: Path, cases: list[tuple[float, bool]]) -> list[str]:
+    return _run(tmp_path, "mw", [[v, {"signed": signed}] for v, signed in cases])
+
+
+def test_num_rounds_a_half_to_even_as_the_tools_format_does(tmp_path):
+    cases = [
+        (472.5, 0),
+        (473.5, 0),
+        (-17.5, 0),
+        (22.5, 0),
+        (52.5, 0),
+        (1234.5, 0),
+        (0.25, 1),
+        (0.35, 1),
+        (2.675, 2),
+        (0.125, 2),
+        (60.0, 1),
+        (-0.4, 0),
+    ]
+    got = _run(tmp_path, "num", [list(c) for c in cases])
+    assert got == [
+        f"{v:,.{dp}f}".rstrip("0").rstrip(".") if dp else f"{v:,.0f}".replace("-0", "0")
+        for v, dp in cases
+    ]
+
+
+def test_coords_and_metres_round_like_the_tools(tmp_path):
+    assert _run(tmp_path, "coords", [[472.5, -961.5]]) == [f"{472.5:.0f}, {-961.5:.0f} m"]
+    assert _run(tmp_path, "metres", [[696.5], [None]]) == [f"{696.5:.0f} m", "–"]
 
 
 def test_mw_rounds_a_half_away_from_zero_on_both_signs(tmp_path):

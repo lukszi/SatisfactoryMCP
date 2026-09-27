@@ -577,6 +577,13 @@ read-only for both.
 - The finder card lists at most 25 rows; the dashboard holds the rest.
 - Selection kinds grow by four; the strip still offers only **map** and **clear** (§16.3 Q1
   stays open).
+- **rank** scores every field of the one resource over the whole map, as `rank_build_sites`
+  does with no source. While it is on, the purity, kind, status and near filters are disabled
+  rather than silently ignored, and the census reads "top 10 of N".
+- The page rounds a half to even, as the tools' Python formatting does, so a distance or a
+  height reads the same number on the page and in chat. MW keeps its own rule.
+- `/api/world/nodes` sends its notes in the page's words; the tool keeps its own sentences.
+  Table age travels only as `stale`.
 
 ---
 
@@ -591,3 +598,5 @@ read-only for both.
    be dropped rather than greyed?
 6. Should the inspector offer "plan a factory here" once the planner takes a point source?
 7. Should a world-wide Sites list (factory_sites) join World, or stay under Factories (§17.2)?
+8. Should **rank** honour the near filter (as a `near:<place>@r` source) or purity, instead of
+   disabling them?

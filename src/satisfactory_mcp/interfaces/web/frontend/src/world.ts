@@ -2,11 +2,11 @@
  * conduits, pickups and regions. See docs/world-finders_contract.md §2 and §7. */
 
 import { get, latest } from "./api";
-import { empty, error, heading, link, loading, note, showAll, table, tabs2 } from "./dashkit";
+import { choice, empty, error, heading, link, loading, note, showAll, table, tabs2 } from "./dashkit";
 import { mapButton, render } from "./dashboard";
-import { code, make } from "./dom";
+import { code, make, rebuilding } from "./dom";
 import { resourceOptions, spoilerParam, worldUrl } from "./finder";
-import { coords, count, metres, num, regionLine } from "./format";
+import { coords, count, metres, num, regionLine, rounded } from "./format";
 import { loadOne } from "./load";
 import { hashFor, writeHash } from "./map";
 import { dashParts, subjectQuery, withQuery } from "./nav";
@@ -52,6 +52,8 @@ var hereListeners: Array<() => void> = [];
 var editTimer = 0;
 
 var uncapped: Record<string, boolean> = {};
+
+var drafts: Record<string, { base: string; text: string }> = {};
 
 interface Address {
   view: string;
@@ -121,7 +123,7 @@ export function loaded<T>(): Loaded<T> {
 
 export function want<T extends ApiError>(slot: string, box: Loaded<T>, url: ApiUrl): void {
   var scope = JSON.stringify([state.epoch, state.world, state.save]);
-  var key = JSON.stringify([scope, herePart.wave, state.token, url]);
+  var key = JSON.stringify([scope, state.token || "wave " + herePart.wave, url]);
   if (box.key === key) return;
   if (box.scope !== scope) box.data = null;
   box.key = key;
@@ -181,25 +183,21 @@ function labelled(label: string, control: HTMLElement): HTMLElement {
   return box;
 }
 
+export interface FieldOptions {
+  disabled?: boolean;
+  title?: string;
+}
+
 export function selectField(
   label: string,
   candidate: string,
   value: string,
   options: [string, string][],
-  change: (value: string) => void
+  change: (value: string) => void,
+  o?: FieldOptions
 ): HTMLElement {
-  var pick = make("select", "dash-select");
-  pick.setAttribute("data-candidate", candidate);
-  options.forEach(function (o) {
-    var option = make("option", "", o[1]);
-    option.value = o[0];
-    pick.appendChild(option);
-  });
-  pick.value = value;
-  pick.onchange = function () {
-    change(pick.value);
-  };
-  return labelled(label, pick);
+  var opts = o || {};
+  return labelled(label, choice(options, value, change, { candidate: candidate, disabled: opts.disabled, title: opts.title }));
 }
 
 export function textField(
@@ -207,19 +205,29 @@ export function textField(
   candidate: string,
   value: string,
   placeholder: string,
-  change: (value: string) => void
+  change: (value: string) => void,
+  o?: FieldOptions
 ): HTMLElement {
+  var opts = o || {};
   var input = make("input", "dash-name world-text");
   input.type = "search";
   input.placeholder = placeholder;
-  input.title = "press Enter to search";
-  input.value = value;
+  input.title = opts.title || "press Enter to search";
+  input.disabled = !!opts.disabled;
+  var draft = drafts[candidate];
+  input.value = draft && draft.base === value ? draft.text : value;
   input.setAttribute("data-candidate", candidate);
+  function commit(text: string): void {
+    if (rebuilding()) return;
+    delete drafts[candidate];
+    change(text);
+  }
   input.onchange = function () {
-    change(input.value.trim());
+    commit(input.value.trim());
   };
   input.oninput = function () {
-    if (!input.value.trim() && value) change("");
+    drafts[candidate] = { base: value, text: input.value };
+    if (!input.value.trim() && value) commit("");
   };
   input.onfocus = function () {
     var end = input.value.length;
@@ -295,11 +303,11 @@ function renderHere(body: HTMLElement): void {
   }
   var at = player;
   var facts: [string, string | HTMLElement][] = [
-    ["position", coords(at.x_m, at.y_m) + ", " + Math.round(at.z_m) + " m up"],
+    ["position", coords(at.x_m, at.y_m) + ", " + num(at.z_m, 0) + " m up"],
     ["region", regionCell(data.region, true)],
     ["grid", data.grid ? data.grid + (data.direction ? " · " + data.direction : "") : "–"],
     ["nearest building", data.nearest_building ? data.nearest_building.name + ", " + metres(data.nearest_building.distance_m) : "none"],
-    ["selector", copyCell(Math.round(at.x_m) + "," + Math.round(at.y_m))],
+    ["selector", copyCell(rounded(at.x_m) + "," + rounded(at.y_m))],
   ];
   if (data.pawns > 1) facts.push(["players", count(data.pawns) + " in this save; the position is the host's"]);
   var list = make("dl", "world-facts");

@@ -2,9 +2,9 @@
  * and listed in the one map card. See docs/world-finders_contract.md §2.5 and §8. */
 
 import { get, latest } from "./api";
-import { button, link, pressed, statusChip, table, tabs2 } from "./dashkit";
-import { FIND_AT_ATTR, FIND_ATTR, make } from "./dom";
-import { coords, metres, num, perMin } from "./format";
+import { button, choice, link, pressed, statusChip, table, tabs2 } from "./dashkit";
+import { FIND_AT_ATTR, FIND_ATTR, keepFocus } from "./dom";
+import { coords, count, metres, num, perMin, rounded } from "./format";
 import { reveal } from "./labels";
 import { L } from "./leaflet";
 import { flyPadded, flyToBox, flyToPoint, map, xy } from "./map";
@@ -45,7 +45,7 @@ var SHOWN = 25;
 
 var NEAR_M = 500;
 
-var POINT_ZOOM = 2;
+var POINT_ZOOM = 1;
 
 var ALL_ZOOM = 1;
 
@@ -74,6 +74,8 @@ var view = {
   filter: { resource: "", free: false, conduitKind: "all", radius: "250", group: "" },
   groups: [] as string[],
   beyond: 0,
+  focus: false,
+  back: null as HTMLElement | null,
 };
 
 function card(): HTMLElement {
@@ -117,6 +119,18 @@ export function fieldLabel(f: FoundField): string {
   return f.resources.join(" + ") + " " + W.field + " · " + (f.region || f.grid);
 }
 
+export function nodeRate(n: FoundNode): string {
+  return n.kind === "geyser" ? "–" : perMin(n.rate, false);
+}
+
+export function carriesText(r: RunRow): string {
+  var parts: string[] = [];
+  if (r.carries) parts.push(r.carries);
+  else if (r.kind === "pipe") parts.push("nothing known");
+  if (r.rate !== null) parts.push((r.kind === "pipe" ? num(r.rate, 0) + " m³/min" : perMin(r.rate)) + " max");
+  return parts.length ? parts.join(" · ") : "–";
+}
+
 export function runLabel(r: RunRow): string {
   return r.label && r.label !== r.id ? r.id + " · " + r.label : r.id;
 }
@@ -138,7 +152,7 @@ export function runSelection(r: RunRow): Selection {
 }
 
 export function pickupPlace(p: { x_m: number; y_m: number }): string {
-  return Math.round(p.x_m) + "," + Math.round(p.y_m);
+  return rounded(p.x_m) + "," + rounded(p.y_m);
 }
 
 export function pickupSelection(p: CollectibleRow): Selection {
@@ -296,7 +310,7 @@ function columns(set: Shown): Column<Listed>[] {
         return statusChip(nodes[i]!.status);
       }),
       column("rate", "per min", function (i) {
-        return perMin(nodes[i]!.rate, false);
+        return nodeRate(nodes[i]!);
       }, true),
       column("distance", "away", function (i) {
         return metres(nodes[i]!.distance_m);
@@ -338,7 +352,7 @@ function columns(set: Shown): Column<Listed>[] {
         return runLabel(runs[i]!);
       }),
       column("carries", "carries", function (i) {
-        return runs[i]!.carries || runs[i]!.kind;
+        return carriesText(runs[i]!);
       }),
       column("length", "length", function (i) {
         return metres(runs[i]!.length_m);
@@ -353,6 +367,9 @@ function columns(set: Shown): Column<Listed>[] {
     column("pickup", "pickup", function (i) {
       return pickupName(pickups[i]!.category);
     }),
+    column("place", "at", function (i) {
+      return coords(pickups[i]!.x_m, pickups[i]!.y_m);
+    }, true),
     column("distance", "away", function (i) {
       return metres(pickups[i]!.distance_m);
     }, true),
@@ -385,7 +402,7 @@ function listed(box: HTMLElement, set: Shown): void {
     })
   );
   var more = Math.max(0, total - SHOWN) + view.beyond;
-  if (more) cardLine(box, more + " more");
+  if (more) cardLine(box, count(more) + " more");
 }
 
 function filterRow(box: HTMLElement): void {
@@ -401,7 +418,7 @@ function filterRow(box: HTMLElement): void {
     row.appendChild(
       pressed(W.free, f.free, function () {
         f.free = !f.free;
-        fetchPoint();
+        fetchPoint(true);
       }, { title: "only nodes with no extractor on them" })
     );
   } else if (view.kind === "conduits") {
@@ -411,7 +428,7 @@ function filterRow(box: HTMLElement): void {
       })
     );
     row.appendChild(
-      choose("radius", "finder-radius", f.radius, RADII.map(function (r) { return [r, "within " + r + " m"]; }), function (v) {
+      choose("radius", "finder-radius", f.radius, RADII.map(function (r): [string, string] { return [r, "within " + r + " m"]; }), function (v) {
         f.radius = v;
       })
     );
@@ -421,8 +438,8 @@ function filterRow(box: HTMLElement): void {
         "pickup kind",
         "finder-group",
         f.group,
-        [["", "every kind"]].concat(
-          view.groups.map(function (g) {
+        [["", "every kind"] as [string, string]].concat(
+          view.groups.map(function (g): [string, string] {
             return [g, pickupName(g)];
           })
         ),
@@ -435,25 +452,26 @@ function filterRow(box: HTMLElement): void {
   box.appendChild(row);
 }
 
-function choose(label: string, candidate: string, value: string, options: string[][], change: (v: string) => void): HTMLSelectElement {
-  var s = make("select", "dash-select");
-  s.setAttribute("aria-label", label);
-  s.setAttribute("data-candidate", candidate);
-  options.forEach(function (o) {
-    var option = make("option", "", o[1]);
-    option.value = o[0]!;
-    s.appendChild(option);
-  });
-  s.value = value;
-  s.onchange = function () {
-    change(s.value);
-    fetchPoint();
-  };
-  return s;
+function choose(label: string, candidate: string, value: string, options: [string, string][], change: (v: string) => void): HTMLSelectElement {
+  return choice(options, value, function (v) {
+    change(v);
+    fetchPoint(true);
+  }, { label: label, candidate: candidate });
 }
 
 function render(): void {
   var el = card();
+  keepFocus(el, function () {
+    fill(el);
+  });
+  if (view.open && view.focus) {
+    view.focus = false;
+    var first = el.querySelector<HTMLElement>(".tabs2-item.on") || el.querySelector<HTMLElement>("tbody tr.on[tabindex]") || el.querySelector<HTMLElement>("tbody tr[tabindex]") || el.querySelector<HTMLElement>(".mapcard-head button");
+    if (first) first.focus({ preventScroll: true });
+  }
+}
+
+function fill(el: HTMLElement): void {
   el.textContent = "";
   if (!view.open) {
     el.hidden = true;
@@ -476,7 +494,7 @@ function render(): void {
         view.kind,
         function (id) {
           view.kind = id as FindKind;
-          fetchPoint();
+          fetchPoint(true);
         },
         "what to find near this point"
       )
@@ -494,6 +512,9 @@ function render(): void {
 }
 
 export function closeFinder(): void {
+  var inside = card().contains(document.activeElement);
+  var back = view.back;
+  view.back = null;
   latest("finder");
   view.open = false;
   view.set = null;
@@ -504,9 +525,15 @@ export function closeFinder(): void {
   view.busy = false;
   group.clearLayers();
   render();
+  if (!inside) return;
+  if (back && back.isConnected && back.getClientRects().length) back.focus({ preventScroll: true });
+  else map.getContainer().focus({ preventScroll: true });
 }
 
 function begin(title: string, dash: string): void {
+  var from = document.activeElement as HTMLElement | null;
+  if (!view.open) view.back = from && from !== document.body && !card().contains(from) ? from : null;
+  view.focus = true;
   claim("finder");
   makeRoom("trace");
   view.open = true;
@@ -571,7 +598,7 @@ function landed(kind: FindKind, data: NodeFindResponse | ConduitsResponse | Coll
   return { kind: "pickups", rows: pickups.rows.slice(0, SHOWN) };
 }
 
-function fetchPoint(): void {
+function fetchPoint(fit: boolean): void {
   var kind = view.kind;
   var q = pointQuery();
   var ticket = latest("finder");
@@ -585,8 +612,9 @@ function fetchPoint(): void {
       view.busy = false;
       view.set = landed(kind, data);
       view.seed = -1;
-      draw(view.set, -1);
+      var bounds = draw(view.set, -1);
       render();
+      if (fit && bounds) flyPadded(bounds.pad(0.15), map.getZoom());
     })
     .catch(function (err) {
       if (!ticket.fresh()) return;
@@ -604,7 +632,7 @@ export function startAt(kind: FindKind, x: number, y: number): void {
   view.kind = kind;
   view.ref = "";
   view.set = null;
-  fetchPoint();
+  fetchPoint(true);
 }
 
 export function showRows(set: Shown, title: string, dash: string, seed?: number): void {
@@ -692,7 +720,7 @@ function refresh(): void {
   if (view.busy || (!view.at && !view.ref)) return;
   clearTimeout(pending);
   pending = window.setTimeout(function () {
-    if (view.at) fetchPoint();
+    if (view.at) fetchPoint(false);
     else if (view.ref) fetchRef(view.ref);
   }, 50);
 }

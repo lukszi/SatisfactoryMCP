@@ -197,6 +197,31 @@ WATER_BODY_NOTE = (
 )
 
 
+def page_notes(found: NodeFind, st) -> list[str]:
+    """The tool's notes in the page's words; table age travels as ``stale`` instead."""
+    notes = list(found.selection.errors)
+    if WATER in found.resources:
+        notes.append(
+            "open water is not a node: a water extractor on a shoreline draws a flat rate, "
+            "so it is never counted as free; the water rows here are fracking satellites"
+        )
+    if st is None:
+        notes.append("no save read, so every node shows as free")
+        return notes
+    if found.locked_rate:
+        notes.append(
+            f"{found.locked_rate:,.0f} per min left out of free: "
+            "it needs an extractor not unlocked yet"
+        )
+    unmatched = len(nodes_mod.unresolved_extractors(st.projection))
+    if unmatched:
+        notes.append(
+            f"{unmatched:,} extractors are not matched to a node (mostly water pumps), "
+            "so free may read high"
+        )
+    return notes
+
+
 def find_nodes(
     st,
     game,

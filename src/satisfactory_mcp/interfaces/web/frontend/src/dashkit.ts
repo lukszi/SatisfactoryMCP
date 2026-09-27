@@ -77,6 +77,32 @@ export function checkbox(label: string, checked: boolean, change: (on: boolean) 
   return toggle;
 }
 
+export interface ChoiceOptions {
+  candidate?: string;
+  label?: string;
+  title?: string;
+  disabled?: boolean;
+}
+
+export function choice(options: [string, string][], value: string, change: (value: string) => void, o?: ChoiceOptions): HTMLSelectElement {
+  var opts = o || {};
+  var pick = make("select", "dash-select");
+  if (opts.candidate) pick.setAttribute("data-candidate", opts.candidate);
+  if (opts.label) pick.setAttribute("aria-label", opts.label);
+  if (opts.title) pick.title = opts.title;
+  pick.disabled = !!opts.disabled;
+  options.forEach(function (item) {
+    var option = make("option", "", item[1]);
+    option.value = item[0];
+    pick.appendChild(option);
+  });
+  pick.value = value;
+  pick.onchange = function () {
+    change(pick.value);
+  };
+  return pick;
+}
+
 export type Align = "left" | "right" | "center";
 
 export interface Column<R> {

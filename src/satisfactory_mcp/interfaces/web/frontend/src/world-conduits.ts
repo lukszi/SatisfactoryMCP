@@ -4,8 +4,8 @@
 import { button, empty, note, table, tabs2 } from "./dashkit";
 import { mapButton, render, toMap } from "./dashboard";
 import { make } from "./dom";
-import { runLabel, runSelection, showRows, worldUrl } from "./finder";
-import { coords, count, metres, num, perMin } from "./format";
+import { carriesText, runLabel, runSelection, showRows, worldUrl } from "./finder";
+import { coords, count, metres, num, rounded } from "./format";
 import { hashFor } from "./map";
 import { go } from "./nav";
 import { isSelected, select } from "./selection";
@@ -43,7 +43,7 @@ function endText(e: RunEnd): string {
 }
 
 function zSpan(lo: number, hi: number): string {
-  return Math.round(lo) === Math.round(hi) ? num(lo, 0) + " m" : num(lo, 0) + " to " + num(hi, 0) + " m";
+  return rounded(lo) === rounded(hi) ? num(lo, 0) + " m" : num(lo, 0) + " to " + num(hi, 0) + " m";
 }
 
 function recentre(params: Record<string, string>, to: string): void {
@@ -130,13 +130,7 @@ function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
     {
       key: "carries",
       label: "carries",
-      render: function (r) {
-        var parts: string[] = [];
-        if (r.carries) parts.push(r.carries);
-        else if (r.kind === "pipe") parts.push("nothing known");
-        if (r.rate !== null) parts.push((r.kind === "pipe" ? num(r.rate, 0) + " m³/min" : perMin(r.rate)) + " max");
-        return parts.length ? parts.join(" · ") : "–";
-      },
+      render: carriesText,
     },
     {
       key: "basis",

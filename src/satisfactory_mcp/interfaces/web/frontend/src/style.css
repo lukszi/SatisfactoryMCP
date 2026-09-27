@@ -2879,6 +2879,12 @@ path.lasso-area {
   font-size: var(--fs-s);
 }
 
+.world-field :disabled {
+  color: var(--dim);
+  border-color: var(--line);
+  cursor: default;
+}
+
 .world-text {
   width: 220px;
   min-width: 0;

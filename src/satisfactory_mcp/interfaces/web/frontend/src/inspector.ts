@@ -9,9 +9,10 @@
 
 import { get } from "./api";
 import { code, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "./dom";
+import { pickupPlace } from "./finder";
 import { count, num, perMin, regionLine } from "./format";
 import { L } from "./leaflet";
-import { hashFor, map } from "./map";
+import { hashFor, map, NARROW } from "./map";
 import { withQuery } from "./nav";
 import { setting } from "./settings";
 import { friendly } from "./toast";
@@ -170,7 +171,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
     more.push([i ? "" : "fields", html(esc(fieldText(f)) + "<br>" + code(f.selector).html)]);
   });
   pickups.slice(0, 5).forEach(function (p, i) {
-    more.push([i ? "" : "pickups", html(esc(pickupText(p)) + "<br>" + code(p.name).html)]);
+    more.push([i ? "" : "pickups", html(esc(pickupText(p)) + "<br>" + code(pickupPlace(p)).html)]);
   });
   d.stale.forEach(function (t) {
     if (!t.behind && !t.moved && !t.unjoinable) return;
@@ -180,6 +181,17 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   // population and no occupancy, so every node above reads as free whether it is or not.
   if (d.save_error) more.push(["save", d.save_error + "; nodes only, occupancy unknown"]);
   return popup(rows) + '<details class="popup-more"><summary>details</summary>' + popup(more) + "</details>";
+}
+
+function clearOfControls(): L.Point {
+  var gap = 8;
+  if (!NARROW.matches) return L.point(gap, gap);
+  var frame = map.getContainer().getBoundingClientRect();
+  var below = gap;
+  map.getContainer().querySelectorAll(".leaflet-top.leaflet-right > *").forEach(function (control) {
+    below = Math.max(below, control.getBoundingClientRect().bottom - frame.top + gap);
+  });
+  return L.point(gap, below);
 }
 
 /** The right-click handler, named rather than registered here: main.ts wires every map
@@ -200,7 +212,7 @@ export function inspect(e: L.LeafletMouseEvent): void {
   var y = Math.round(-e.latlng.lat * 10) / 10;
   // Opened before the fetch, so the click has a visible effect on a slow answer and the
   // popup lands exactly where the pointer was rather than where the map has drifted to.
-  var card = L.popup({ maxWidth: 340 })
+  var card = L.popup({ maxWidth: 340, autoPanPaddingTopLeft: clearOfControls() })
     .setLatLng(e.latlng)
     .setContent("inspecting " + x + ", " + y + " m&hellip;")
     .openOn(map);

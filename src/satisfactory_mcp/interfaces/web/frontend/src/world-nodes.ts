@@ -8,6 +8,7 @@ import {
   fieldLabel,
   fieldSelection,
   nodeLabel,
+  nodeRate,
   nodeSelection,
   resourceOptions,
   showRows,
@@ -40,6 +41,7 @@ import { counted, NODE_KIND, W } from "./words";
 import type { Column, SortState } from "./dashkit";
 import type { FoundField, FoundNode, NodeFindResponse, RankedSite, RankedSitesResponse, TableAge } from "./api-shapes";
 import type { Shown } from "./finder";
+import type { FieldOptions } from "./world";
 
 var SITES_LIMIT = "10";
 
@@ -80,6 +82,13 @@ function rate(value: number, unit: string): string {
   if (unit === "/min") return perMin(value);
   if (unit === "m3/min") return num(value, 1) + " m³/min";
   return perMin(value) + "*";
+}
+
+function byDistance<R extends { distance_m: number | null }>(rows: R[], near: boolean): R[] {
+  if (!near) return rows;
+  return rows.slice().sort(function (a, b) {
+    return (a.distance_m === null ? Infinity : a.distance_m) - (b.distance_m === null ? Infinity : b.distance_m);
+  });
 }
 
 function openRows(set: Shown, title: string, seed?: number): void {
@@ -131,9 +140,7 @@ export function nodeTable(rows: FoundNode[], near: boolean, stale?: TableAge | n
       sort: function (n) {
         return n.rate;
       },
-      render: function (n) {
-        return perMin(n.rate, false);
-      },
+      render: nodeRate,
     },
     {
       key: "occupant",
@@ -344,15 +351,16 @@ function filters(card: HTMLElement, view: string, params: Record<string, string>
   bar.appendChild(
     selectField("resource", "world-resource", params.resource || "", resourceOptions("any resource", params.resource || ""), set("resource"))
   );
-  bar.appendChild(selectField("purity", "world-purity", params.purity || "", PURITIES, set("purity")));
-  bar.appendChild(selectField("kind", "world-kind", params.kind || "", kinds(), set("kind")));
-  bar.appendChild(selectField("status", "world-status", params.status || "", STATUSES, set("status")));
-  bar.appendChild(textField("near", "world-near", params.near || "", "me, x,y, a factory or node:…", set("near", true)));
+  var on = view === "fields" && params.rank === "1" && !!params.resource;
+  var off: FieldOptions = on ? { disabled: true, title: "rank scores every field of the resource; turn rank off to filter" } : {};
+  bar.appendChild(selectField("purity", "world-purity", params.purity || "", PURITIES, set("purity"), off));
+  bar.appendChild(selectField("kind", "world-kind", params.kind || "", kinds(), set("kind"), off));
+  bar.appendChild(selectField("status", "world-status", params.status || "", STATUSES, set("status"), off));
+  bar.appendChild(textField("near", "world-near", params.near || "", "me, x,y, a factory or node:…", set("near", true), off));
   if (view !== "fields") return;
-  var on = params.rank === "1";
   bar.appendChild(
     pressed("rank", on, function () {
-      set("rank")(on ? "" : "1");
+      set("rank")(params.rank === "1" ? "" : "1");
     }, {
       disabled: !params.resource,
       title: params.resource ? "score build sites for this resource" : "choose one resource to rank its build sites",
@@ -368,8 +376,8 @@ function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
   if (rows) {
     line.appendChild(
       button("show all on map", function () {
-        var set: Shown = view === "fields" ? { kind: "fields", rows: d.fields } : { kind: "nodes", rows: d.nodes };
-        openRows(set, d.description || (view === "fields" ? "fields" : "nodes"));
+        var set: Shown = view === "fields" ? { kind: "fields", rows: byDistance(d.fields, !!d.where) } : { kind: "nodes", rows: byDistance(d.nodes, !!d.where) };
+        openRows(set, (view === "fields" ? W.field + "s" : W.node + "s") + (d.where ? " near " + d.where : " · " + d.description));
       }, { map: true, title: "ring every row on the map and list them beside it" })
     );
   }
@@ -407,7 +415,8 @@ function renderSites(card: HTMLElement, params: Record<string, string>): void {
   if (waiting(card, sitesBox, "ranked sites")) return;
   var d = sitesBox.data!;
   var line = make("div", "world-census");
-  line.appendChild(make("span", "", counted(d.sites.length, "site") + " for " + d.resource_name));
+  var top = d.sites.length < d.count ? "top " + count(d.sites.length) + " of " + count(d.count) : counted(d.sites.length, "site");
+  line.appendChild(make("span", "", top + " candidate " + W.field + "s for " + d.resource_name + (d.description ? " · " + d.description : "")));
   if (d.sites.length) {
     line.appendChild(
       button("show all on map", function () {

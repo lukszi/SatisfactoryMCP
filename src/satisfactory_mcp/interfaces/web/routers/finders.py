@@ -381,7 +381,7 @@ def world_nodes(
         if water is None
         else {k: water[k] for k in ("bodies", "pumps", "per_pump_m3_min", "sea_level_m")},
         "choices": finder.choices(game),
-        "notes": found.notes,
+        "notes": finder.page_notes(found, st),
         "hidden_spoilers": found.hidden,
         "stale": spatial_nodes.table_age(
             st.header if st else None, None, [r["instance"] for r in found.rows]

@@ -177,7 +177,7 @@ def describe_location(
         for what, values in (("ground", near.ground), ("built", near.built)):
             if not values:
                 continue
-            mid = values[len(values) // 2]
+            mid = near.middle(values)
             fields.append(
                 (
                     f"{what}_elevation_m",

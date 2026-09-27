@@ -27,7 +27,7 @@
 
 import { get, latest } from "./api";
 import { code, popup } from "./dom";
-import { pct } from "./format";
+import { metres, pct } from "./format";
 import { batch, hideFloors, onFloorExit, onFloorPick, showFloors } from "./layercontrol";
 import { L } from "./leaflet";
 import { flyPadded, map, writeHash } from "./map";
@@ -326,7 +326,7 @@ function ghostRows(platform: FloorPlatform, band: FloorBand, mark: FloorMark): R
   var through = (mark.z_m || 0) + (mark.h_m || 0) - (band.top_m || 0);
   return [
     ["ghost", "not on this floor: it comes up through it"],
-    ["stands on", stands ? floorName(stands) + ", " + metres(stands.top_m) : null],
+    ["stands on", stands ? floorName(stands) + ", " + height(stands.top_m) : null],
     ["height", mark.h_m + " m above its own deck"],
     ["through this floor", Math.round(through * 10) / 10 + " m"],
     ["id", code(mark.id)],
@@ -373,7 +373,7 @@ function connectorGlyph(run: FloorRun, platform: number, band: FloorBand, at: Po
         run.lift ? "conveyor lift" : run.kind === "pipe" ? "pipe riser" : "belt riser",
         up ? "goes up from this floor" : "goes down from this floor",
       ],
-      ["to", away ? floorName(away) + ", " + metres(away.top_m) : "no deck: the ground"],
+      ["to", away ? floorName(away) + ", " + height(away.top_m) : "no deck: the ground"],
       ["rise", run.rise_m === null ? null : run.rise_m + " m"],
       // Which of the two claims this is. A lift is a class the docs dump names; a riser is a
       // run that climbs six metres or more -- and stage 0 measured that a quarter of lifts
@@ -440,7 +440,7 @@ function wireGlyph(
   marker.bindPopup(
     popup([
       ["power line", up ? "goes up from this floor" : "goes down from this floor"],
-      ["to", lands ? floorName(lands) + ", " + metres(lands.top_m) : "no deck: the ground"],
+      ["to", lands ? floorName(lands) + ", " + height(lands.top_m) : "no deck: the ground"],
       ["rise", Math.round(Math.abs(away[2] - here[2]) * 10) / 10 + " m"],
       // Where the other end actually is, because a wire can leave a floor sideways as well as
       // vertically and "up" alone would not say which cable this is.
@@ -706,9 +706,9 @@ export function refreshFloors(): void {
 
 /* -------------------------------------------------------------------- the picker */
 
-function metres(value: number | null): string {
+function height(value: number | null): string {
   if (value === null) return "height not recorded";
-  return (value >= 0 ? "+" : "") + value + " m";
+  return (value >= 0 ? "+" : "") + metres(value, 1);
 }
 
 function floorName(band: { ordinal: number }): string {
@@ -763,7 +763,7 @@ function choices(body: FloorsResponse, platform: FloorPlatform | null): FloorCho
     rows.push({
       key: String(band.ordinal),
       label: floorName(band),
-      detail: metres(band.top_m) + " · " + band.cells + " cells · " + band.machine_count + " machines",
+      detail: height(band.top_m) + " · " + band.cells + " cells · " + band.machine_count + " machines",
       minor: band.minor,
       note: band.minor
         ? "a mezzanine: " +

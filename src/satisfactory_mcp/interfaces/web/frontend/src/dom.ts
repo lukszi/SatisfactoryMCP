@@ -191,6 +191,21 @@ function focusables(container: HTMLElement, key: string): HTMLElement[] {
   }) as HTMLElement[];
 }
 
+var rebuilds = 0;
+
+export function rebuilding(): boolean {
+  return rebuilds > 0;
+}
+
+function quietly(rebuild: () => void): void {
+  rebuilds += 1;
+  try {
+    rebuild();
+  } finally {
+    rebuilds -= 1;
+  }
+}
+
 export function keepFocus(container: HTMLElement, rebuild: () => void): void {
   var was = document.activeElement as HTMLElement | null;
   if (!was || was === container || !container.contains(was)) {
@@ -199,7 +214,7 @@ export function keepFocus(container: HTMLElement, rebuild: () => void): void {
   }
   var key = focusKey(was);
   var nth = focusables(container, key).indexOf(was);
-  rebuild();
+  quietly(rebuild);
   var now = document.activeElement;
   if (was.isConnected || (now && now !== document.body && container.contains(now))) return;
   var same = focusables(container, key);

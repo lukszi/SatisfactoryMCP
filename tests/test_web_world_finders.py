@@ -141,6 +141,18 @@ def test_nodes_refuse_bad_values_with_400(client, params, needle):
     assert needle in reply.json()["error"]
 
 
+def test_node_notes_are_page_words_not_engine_names(client):
+    body = client.get("/api/world/nodes", params={"resource": "Water"}).json()
+    text = " ".join(body["notes"])
+    assert body["notes"] and "open water is not a node" in text
+    for raw in ("FGWaterVolume", "mExtractableResource", "NO NODE", "LOCKED", "BP_", "Build_"):
+        assert raw not in text
+    for n in [n for n in body["notes"] if "left out of free" in n]:
+        figure = n.split(" per min")[0]
+        assert figure.replace(",", "").isdigit()
+        assert len(figure) < 4 or "," in figure
+
+
 def test_nodes_survive_a_save_that_cannot_be_read(game):
     with _broken(game) as c:
         reply = c.get("/api/world/nodes", params={"resource": "Iron Ore"})
