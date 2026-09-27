@@ -105,19 +105,19 @@ export function factoryMapButton(row: FactoryHealthRow): HTMLElement {
   });
 }
 
-export function actionButton(text: string, title: string, action: () => void, disabled?: boolean): HTMLButtonElement {
-  return button(text, action, { title: title, disabled: disabled });
-}
-
 export function renameButton(name: string, host: HTMLElement, onRenamed: (to: string) => void): HTMLButtonElement {
-  return actionButton("rename", "rename this factory", function () {
-    var h = vitals().health;
-    if (!h) return;
-    editName(host, name, h.labels_version, function (reply) {
-      if (reply) onRenamed(reply.name);
-      else if (missed) render();
-    });
-  });
+  return button(
+    "rename",
+    function () {
+      var h = vitals().health;
+      if (!h) return;
+      editName(host, name, h.labels_version, function (reply) {
+        if (reply) onRenamed(reply.name);
+        else if (missed) render();
+      });
+    },
+    { title: "rename this factory", label: "rename " + name }
+  );
 }
 
 function renderSettings(body: HTMLElement): void {

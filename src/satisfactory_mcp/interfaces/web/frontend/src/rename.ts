@@ -2,15 +2,50 @@
  * and the side panel share it. See docs/frontend_vision.md §9.7. */
 
 import { send } from "./api";
+import { fieldError } from "./dashkit";
 import { make } from "./dom";
 import { loadOne } from "./load";
+import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 
-import type { RenamedResponse } from "./api-shapes";
+import type { StatusError } from "./api";
+import type { LabelRefused, RenamedResponse } from "./api-shapes";
+
+export var NAME_MAX = 60;
 
 var formerly: Record<string, string> = {};
 
+var written: Record<string, number> = {};
+
 var open: { input: HTMLInputElement; cancel: () => void } | null = null;
+
+export type Refusal = "stale" | "name_taken" | "pin" | "bad" | "";
+
+export function refusal(error: unknown): Refusal {
+  var e = error as StatusError | null;
+  if (!e || !e.status) return "";
+  if (e.status === 400) return "bad";
+  if (e.status !== 409) return "";
+  var body = (e.body || {}) as Partial<LabelRefused>;
+  if (body.name_taken) return "name_taken";
+  if (body.stale) return "stale";
+  if (body.pin) return "pin";
+  return "";
+}
+
+export function wrote(version: number): void {
+  written[state.world] = Math.max(written[state.world] || 0, version);
+}
+
+export function newest(version: number): number {
+  return Math.max(version, written[state.world] || 0);
+}
+
+export function blankOrLong(name: string): string {
+  if (!name) return "a factory name cannot be blank";
+  if (name.length > NAME_MAX) return "at most " + NAME_MAX + " characters";
+  return "";
+}
 
 export function renamedTo(name: string): string | undefined {
   var seen: Record<string, boolean> = {};
@@ -47,6 +82,7 @@ export function editName(
   var input = make("input", "dash-name");
   input.type = "text";
   input.value = name;
+  input.maxLength = NAME_MAX;
   input.spellcheck = false;
   input.setAttribute("aria-label", "new name for " + name);
   input.setAttribute("data-renaming", name);
@@ -74,13 +110,17 @@ export function editName(
   input.onblur = function () {
     if (document.hasFocus()) cancel();
   };
+  input.oninput = function () {
+    fieldError(input, "");
+  };
   input.onkeydown = function (event) {
     event.stopPropagation();
     if (event.key === "Escape") cancel();
     if (event.key !== "Enter" || saving) return;
     var to = input.value.trim();
-    if (!to) {
-      fail("a factory name cannot be blank");
+    var invalid = blankOrLong(to);
+    if (invalid) {
+      fieldError(input, invalid);
       return;
     }
     if (to === name) {
@@ -89,24 +129,38 @@ export function editName(
     }
     saving = true;
     input.disabled = true;
-    send<RenamedResponse>("PATCH", "/api/labels/{name}", { to: to, version: version }, name)
+    send<RenamedResponse>("PATCH", "/api/labels/{name}", { to: to, version: newest(version) }, name)
       .then(function (reply) {
+        wrote(reply.version);
         formerly[reply.was] = reply.name;
         note(
           "renamed “" + reply.was + "” to “" + reply.name + "”" +
             (reply.plans.length ? "; " + reply.plans.length + " stored plan(s) followed it" : "")
         );
+        if (reply.plans_stuck.length) {
+          fail(reply.plans_stuck.length + " stored plan(s) still name “" + reply.was + "”: " + reply.stuck_reason);
+        }
         refreshLabels();
         finish(reply);
       })
       .catch(function (error) {
-        fail("renaming “" + name + "”: " + friendly(error));
         saving = false;
         input.disabled = false;
-        if (/changed elsewhere/.test(String(error))) {
+        var why = refusal(error);
+        if (why === "name_taken") {
+          fieldError(input, "“" + to + "” is already a factory name");
+          input.focus();
+        } else if (why === "bad") {
+          fieldError(input, friendly(error));
+          input.focus();
+        } else if (why === "stale") {
+          fail("factory names changed elsewhere, so “" + name + "” was not renamed; they are reloaded now, try again");
           refreshLabels();
           finish(null);
-        } else input.focus();
+        } else {
+          fail("renaming “" + name + "”: " + friendly(error));
+          input.focus();
+        }
       });
   };
   open = { input: input, cancel: cancel };

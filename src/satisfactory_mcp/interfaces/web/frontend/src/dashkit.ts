@@ -329,3 +329,20 @@ export function chip(text: string, tone?: "ok" | "bad" | "blocked" | "mid" | "mu
   if (title) c.title = title;
   return c;
 }
+
+var fieldSerial = 0;
+
+export function fieldError(field: HTMLElement, message: string): void {
+  var id = field.getAttribute("aria-describedby");
+  var old = id ? document.getElementById(id) : null;
+  if (old) old.remove();
+  field.removeAttribute("aria-describedby");
+  field.removeAttribute("aria-invalid");
+  if (!message || !field.parentNode) return;
+  var hint = make("span", "dk-field-error", message);
+  hint.id = "dk-field-error-" + ++fieldSerial;
+  hint.setAttribute("role", "alert");
+  field.setAttribute("aria-invalid", "true");
+  field.setAttribute("aria-describedby", hint.id);
+  field.parentNode.insertBefore(hint, field.nextSibling);
+}

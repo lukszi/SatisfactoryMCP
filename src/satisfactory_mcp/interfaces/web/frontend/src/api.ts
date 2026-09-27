@@ -72,7 +72,12 @@ function pinned(path: string): string {
 
 function answer<T extends ApiError>(path: string, r: Response): Promise<T> {
   return r.json().then(function (body: T) {
-    if (!r.ok || body.error) throw new Error(body.error || r.status + " " + path);
+    if (!r.ok || body.error) {
+      var error: StatusError = new Error(body.error || r.status + " " + path);
+      error.status = r.status;
+      error.body = body;
+      throw error;
+    }
     return body;
   });
 }
@@ -130,6 +135,7 @@ export function latest(slot: string): Ticket {
 
 export interface StatusError extends Error {
   status?: number;
+  body?: ApiError;
 }
 
 export type Pushed<T, C> = { conflict: false; body: T } | { conflict: true; body: C };

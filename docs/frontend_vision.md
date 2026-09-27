@@ -554,7 +554,7 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
 
 ### 9.1 What was built
 
-- **Detect.** Dashboard > Factories has an "unnamed factories" card with **Detect factories**.
+- **Detect.** Dashboard > Factories has an "unnamed clusters" card with a **detect** button.
   It calls `GET /api/factories/candidates` (`routers/naming.py`). The reply lists every
   `st.proposals` entry that `LabelStore.covers` does not claim: the same proposal list and the
   same "already named" test that `propose_factories unnamed_only=true` and `/api/factories`
@@ -583,8 +583,7 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
   refused (409, `pin.check`) rather than naming whatever cluster now holds that index.
 - **After naming.** The page refetches `/api/factories` and `/api/factories/health`, so the
   factory appears in the Factories table, the side panel and the map labels with no reload.
-  The card lists what was named in this session, with the file it was written to and an
-  **undo**. Undo is `DELETE /api/labels/{name}?version=`, which removes an exact name through
+  The card lists what was named in this session, each with an **undo**. Undo is `DELETE /api/labels/{name}?version=`, which removes an exact name through
   the same `edits.forget` that `forget_factory` uses.
 - **Not built:** amend, lasso selection and a dry-run preview.
 
@@ -687,11 +686,12 @@ rate. Product rates in the Detect list are what the cluster makes; the graph sho
 1. the top product a recipe makes, by rate;
 2. the commonest generator, for a set that makes power;
 3. the top extracted product (a mining outpost);
-4. the top item made at all, marked as a guess;
+4. the top item made at all, marked as a guess, preferring a recipe's output to an ore;
 5. the commonest building, marked as a guess.
 
 Extracted items rank below made ones because a miner inside a cluster otherwise leads with
-its ore.
+its ore. So a steel line whose outputs all end open is guessed "steel ingot factory", not
+"coal factory".
 
 **Wording** is `naming.suggest(item, region, taken, style)`, with a style from `STYLES`:
 
@@ -709,7 +709,12 @@ its ore.
   map.
 
 In both styles, a name already held by a label, or by an earlier suggestion in the same reply,
-gets " 2", " 3" and so on. The comparison ignores case and compares slugs.
+gets " 2", " 3" and so on, after the item: "crude oil factory 2", "Crude Oil 2, Rocky Desert".
+The comparison ignores case and compares slugs.
+
+`naming.proposal_names` numbers every unnamed cluster in index order, hidden or not, and both
+Detect and the map's cluster layer take their names from it. So a filter that hides a cluster
+never renumbers the ones it shows.
 
 The route validates `style` against `STYLES` (400 names them). The **Factory name
 suggestions** setting picks it, and changing the setting re-asks the open Detect list while
@@ -800,7 +805,10 @@ existed can still be renamed or forgotten.
 **Refusals.** A 409 body is `LabelRefusedResponse`: `error` plus three flags, one of them
 true. `stale` means the store moved since `version`, `name_taken` means another label holds
 the name or its slug, and `pin` means a save was written since `as_of`. A bad name is 400 and
-a missing label is 404. The page branches on the flags, never on the wording.
+a missing label is 404. The page branches on the flags, never on the wording: a taken or
+bad name shows under the field, and a stale store or a moved save reloads what the page shows
+and asks for the write again. The page remembers the version its own writes returned, so a
+rename followed by a Detect name in the same tab is not refused as stale.
 
 **Order.** The label is written first, then each stored plan is repointed on its own. A plan
 that cannot follow (its lock timed out) is listed in `plans_stuck` with `stuck_reason`, and
