@@ -50,6 +50,7 @@ import { loadWorlds } from "./worlds";
  * is a rule nobody can check at a glance. */
 import "./crates";
 import "./header";
+import "./inventory";
 import "./labels";
 import "./markers";
 import "./panel";

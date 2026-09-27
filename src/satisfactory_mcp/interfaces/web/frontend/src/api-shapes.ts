@@ -152,6 +152,12 @@ export type SloopsResponse = Body<"SloopsResponse">;
 export type DriveRow = Schema["DriveRow"];
 export type HardDrivesResponse = Body<"HardDrivesResponse">;
 
+/* ------------------------------------------------------------------ /api/stock */
+
+export type StockPile = Schema["StockPile"];
+export type StockPlace = Schema["StockPlace"];
+export type StockResponse = Body<"StockResponse">;
+
 /* ------------------------------------------------------------------ /api/plans */
 
 /** A stored plan's pad. Its coordinates are METRES already -- the siting is a statement the

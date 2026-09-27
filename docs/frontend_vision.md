@@ -169,9 +169,9 @@ tool table.
 | `bom` | Planner > Bill; Recipes > item "bill" | item, qty, outlets, include/exclude | raw totals + per-item rows, loop note | new |
 | `commission_plan` | Planner > Startup order | plan, headroom MW | waves: energise these, MW before/after | new |
 | `rank_unlocks` | Progress > Unlock value; Planner result chip | plan (or current form), query | alternates by gain, granted by, INFEASIBLE marked | new (slow: many solves; measure) |
-| `stock` | Inventory > Stock | item, "where" toggle | four piles as columns; where rows fly to box | new (data in `/api/storage`) |
-| `storage` | Inventory > Containers | item, near (click), radius, solid/fluid, show empty | container table with fill bar; map filter | exists `/api/storage` (add filters server-side) |
-| `crates` | Inventory > Crates | none | list, sorted by distance to me | exists `/api/crates` |
+| `stock` | Inventory > Stock | item, "where" toggle | four piles as columns; where rows fly to box | **built** `/api/stock` (§10) |
+| `storage` | Inventory > Containers | item, near (click), radius, solid/fluid, show empty | container table with fill bar; map filter | **built** from `/api/stock` (§10); filters client-side |
+| `crates` | Inventory > Crates | none | list, sorted by distance to me | **built** from `/api/stock` (§10) |
 | `phase_requirements` | Progress > Elevator | none | have / short / deliverable | new |
 | `power_shards` | Power > Shards | plan machines, plan clock | held / committed / free; cost of an overclock plan | new |
 | `somersloops` | Power > Sloops | none | held / slotted / owned; where slotted | new |
@@ -293,7 +293,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/factories/{id}` + `?aspect=` | GET | `domain/factories/query.py` | one aspect per call |
 | `/api/factories/{id}/health` | GET | `domain/factories/health.py` | `all` for the list colours |
 | `/api/trace` | GET | `domain/factories/trace.py` | seed, direction |
-| `/api/stock` | GET | `domain/world/inventory.py` | four piles, `where` |
+| `/api/stock` | GET | `domain/world/inventory.py` | four piles and every place; **built** (§10) |
 | `/api/progress/{milestones,mam,phase}` | GET | `domain/progression/ladder.py`, `phases.py` | **built**; one ladder, three views |
 | `/api/progress/harddrives` | GET | `domain/progression/harddrives.py` | **built**, under `/api/progress/` |
 | `/api/harddrives/{id}/advice` | POST | `domain/planning/advisor.py` | slow |
@@ -341,8 +341,8 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 0 | Factories + Power panel (in progress) | `list_factories`, `power_report`, parts of `factory_map` | per step 0 | no |
 | 1 | **Shell:** rail, selection model, status strip, `as_of` on fetches | `world_summary`, `list_worlds` | none | no |
 | 2 | **Factory detail:** aspects, health, floors | `factory_query`, `factory_health`, `factory_floors`, `factory_sites` | 2–3 | no |
-| 3 | **Inventory:** stock, containers, crates | `stock`, `storage`, `crates` | 1 | no |
-| 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** ("Phase 4: Progress" below) | 6 tools | 5 | no |
+| 3 | **Inventory:** stock, containers, crates. **Built 2026-09-27** (§10) | `stock`, `storage`, `crates` | 1 | no |
+| 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
 | 5 | **Recipes codex + search box** | 5 game-data tools, `unlocked_recipes` | 5 | no |
 | 6 | **World finders:** nodes, fields, conduits, collectibles, whereami, inspector upgrade | 7 spatial tools, `collected_from_world` | 3 | no |
 | 7 | **Trace:** upstream/downstream drawn on the map | `trace_upstream` | 1 | no |
@@ -833,12 +833,49 @@ me that graph for a detected factory".
 - **Not yet.** Per-machine drill-down, belt tiers on edges, and a layout that keeps positions
   steady across saves.
 
-## Phase 4: Progress (2026-09-27)
+---
+
+## 10. Inventory (2026-09-27)
+
+Roadmap phase 3: the `stock`, `storage` and `crates` tools as one dashboard section.
+
+- **Address:** `dash=inventory[/<item>]`. The subject is the item filter, so a link such as
+  `dash=inventory/Quartz Crystal` opens the section filtered. Typing in the filter rewrites the
+  fragment in place (no history entry per keystroke).
+- **Route:** `GET /api/stock` (`routers/stock.py`), live wave, rank 70. It sends
+  `Inventory.breakdown()` as `items` (the `stock` tool's piles: spendable, carried, storage,
+  depot, machine buffers, crates) and `Inventory.holdings()` as `places` (the rows the `storage`
+  and `crates` tools print), plus a census and the player position. Each place carries its
+  region (`_label_json`), fill, slots used and its ground distance from the player. Warm on the
+  reference save: 4 ms, 100 kB.
+- **One route, not three.** `/api/storage` and `/api/crates` build their rows from the
+  projection and feed the map layers. The containers and crates tables here read `places`
+  instead, so they come from the same `holdings()` the tools call, fill included. The map
+  layers are unchanged.
+- **Section:** three tiles (item kinds, containers, crates), a sortable stock table, a
+  containers table (kind select, "show empty", fill bar in the existing neutral grey), and a
+  crates table sorted by distance from the player. A stock row sets the filter to that item.
+  A container or crate row with a position has **map**, which returns to the map, flies there
+  and draws the panel's highlight ring (`showPoint`).
+- **Filter:** case-insensitive. A query that names an item exactly shows only that item, and
+  a note lists the other names containing it; otherwise it matches substrings. The tiles
+  count the whole world, and the filter changes rows only (principle 6).
+- **Spoilers:** the section lists only what the save holds, so the spoiler setting has
+  nothing to hide here.
+- **Code:** `frontend/src/inventory.ts`. `dashboard.ts` only registers the tab and routes to
+  `renderInventory`, passing its `toMap` and `render`.
+- **Not yet:** a "storage near here" point filter, `as_of=`, and turning the storage layer
+  on when a container row flies to the map (the ring marks the spot, but the box itself is
+  hidden while that layer is off).
+
+---
+
+## 11. Progress (2026-09-27)
 
 The dashboard's Progress tab now covers all six read tools of roadmap phase 4. The slow
 advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
 
-### What was built
+### 11.1 What was built
 
 - **Routes.** Five GET routes join `/api/progress/milestones` in `routers/progress.py`:
   `mam`, `phase`, `shards`, `sloops` and `harddrives`. Each reads the same domain objects
@@ -865,7 +902,7 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
 - **Addresses.** `#dash=progress/mam`, `progress/elevator`, `progress/drives`,
   `progress/shards` and `progress/sloops`. A bare `progress` opens the milestones.
 
-### Decided 2026-09-27
+### 11.2 Decided 2026-09-27
 
 - Routes live under `/api/progress/` rather than at `/api/harddrives`, `/api/shards` and
   `/api/sloops` as §5.2 first proposed. One module and one prefix for one tab.
@@ -881,7 +918,7 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
   cost. Only the target phase row is joined to stock, the same rule `phase_requirements`
   states.
 
-### Not yet
+### 11.3 Not yet
 
 - Filters and search inside the MAM and milestone tables (the tools' `query=`).
 - A drop-pod map layer tied to the hard drive page (§2.2).

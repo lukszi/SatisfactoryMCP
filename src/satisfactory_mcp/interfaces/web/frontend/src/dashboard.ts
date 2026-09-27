@@ -6,6 +6,7 @@ import { cell, heading, link, note, tile } from "./dashkit";
 import { count, el, make } from "./dom";
 import { mw, pct, spoken } from "./format";
 import { drawGraph } from "./graph";
+import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
 import { onVitals, showBox, showCircuit, showFactory, showPoint, vitals } from "./panel";
 import { stateTone } from "./placements";
@@ -31,13 +32,14 @@ import type {
   StarvedGenerator,
 } from "./api-shapes";
 
-type Tab = "overview" | "factories" | "power" | "progress" | "settings";
+type Tab = "overview" | "factories" | "power" | "progress" | "inventory" | "settings";
 
 var TABS: [Tab, string][] = [
   ["overview", "Overview"],
   ["factories", "Factories"],
   ["power", "Power"],
   ["progress", "Progress"],
+  ["inventory", "Inventory"],
   ["settings", "Settings"],
 ];
 
@@ -1336,6 +1338,7 @@ function render(): void {
     if (at.subject) renderCircuit(body, at.subject);
     else renderPower(body);
   } else if (at.tab === "progress") renderProgress(body, at.subject, pointButton);
+  else if (at.tab === "inventory") renderInventory(body, { toMap: toMap, render: render });
   else renderSettings(body);
   el("dash").scrollTop = scroll;
   if (typing !== null) {
