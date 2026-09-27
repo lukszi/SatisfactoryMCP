@@ -1,6 +1,6 @@
 /* The workbench: one plan at its head, every control a versioned gesture. */
 
-import { button, chip, empty, error, link, loading } from "./dashkit";
+import { button, chip, empty, error, link, loading, pressed } from "./dashkit";
 import { COPY_ATTR, COPY_CLASS, make } from "./dom";
 import { perMin } from "./format";
 import { go } from "./nav";
@@ -19,7 +19,6 @@ import {
   knownItem,
   NAME_MAX,
   NOTES_MAX,
-  OBJECTIVES,
   openPlan,
   redoLast,
   renamePlan,
@@ -33,7 +32,7 @@ import { duplicateButton, renderVersions, renderView } from "./planner-history";
 import { loadList, planTitle } from "./planner-list";
 import { banOps, recipeName, renderResult } from "./planner-result";
 import { fail, friendly } from "./toast";
-import { counted } from "./words";
+import { counted, OBJECTIVES, objectiveText } from "./words";
 
 import type { Op, Selection } from "./planner-core";
 
@@ -267,15 +266,14 @@ function exportsRow(parent: HTMLElement): void {
   if (!args.exports.length) tail.appendChild(make("span", "dash-muted", "power only (the default)"));
   else {
     var power = args.exports.indexOf("MW") >= 0;
-    var toggle = button(
+    var toggle = pressed(
       "export MW",
+      power,
       function () {
         gesture([{ op: power ? "remove" : "add", field: "exports", member: "MW" }]);
       },
       { title: power ? "stop exporting power; the plan may then draw from the grid" : "export power too; the plan then may not draw from the grid" }
     );
-    toggle.classList.add("plan-toggle");
-    toggle.setAttribute("aria-pressed", String(power));
     tail.appendChild(toggle);
   }
   adder(
@@ -342,23 +340,22 @@ function clocks(body: HTMLElement): void {
   var chosen = bench.plan!.args.extractor_clocks;
   var on = chosen.length ? chosen : [1];
   CLOCKS.forEach(function (c) {
-    var pressed = on.indexOf(c) >= 0;
-    var only = pressed && on.length === 1;
+    var picked = on.indexOf(c) >= 0;
+    var only = picked && on.length === 1;
     var ops: Op[] = [];
-    if (!chosen.length && !pressed) ops.push({ op: "add", field: "extractor_clocks", member: 1 });
-    ops.push({ op: pressed ? "remove" : "add", field: "extractor_clocks", member: c });
-    var b = button(
+    if (!chosen.length && !picked) ops.push({ op: "add", field: "extractor_clocks", member: 1 });
+    ops.push({ op: picked ? "remove" : "add", field: "extractor_clocks", member: c });
+    var b = pressed(
       c * 100 + "%",
+      picked,
       function () {
         gesture(ops);
       },
       {
-        title: only ? "extractors need at least one clock" : pressed ? "stop offering extractors at this clock" : "offer extractors at this clock (above 100% needs power shards)",
+        title: only ? "extractors need at least one clock" : picked ? "stop offering extractors at this clock" : "offer extractors at this clock (above 100% needs power shards)",
         disabled: only,
       }
     );
-    b.classList.add("plan-toggle");
-    b.setAttribute("aria-pressed", String(pressed));
     body.appendChild(b);
   });
 }
@@ -508,9 +505,7 @@ export function renderCard(parent: HTMLElement): void {
     make(
       "p",
       "",
-      entry.text.replace(/\((\w+)\)$/, function (all, objective: string) {
-        return OBJECTIVES[objective] ? "(" + OBJECTIVES[objective] + ")" : all;
-      })
+      objectiveText(entry.text)
     )
   );
   var args = entry.args;
@@ -653,10 +648,7 @@ function header(parent: HTMLElement): void {
     )
   );
   if (!bench.gone) acts.appendChild(button("forget", forgetPlan, { title: "hide this plan from the list; its history is kept and restore brings it back" }));
-  var versions = button("versions", toggleVersions, { title: "every version of this plan: view one, or restore it as a new version" });
-  versions.setAttribute("aria-pressed", String(bench.versionsOpen));
-  versions.classList.add("plan-toggle");
-  acts.appendChild(versions);
+  acts.appendChild(pressed("versions", bench.versionsOpen, toggleVersions, { title: "every version of this plan: view one, or restore it as a new version" }));
   acts.appendChild(duplicateButton());
   var call = "plan_factory(plan=" + JSON.stringify(plan.name) + ")  # base_rev=" + plan.rev;
   var copy = make("button", "btn " + COPY_CLASS, "copy as tool call");

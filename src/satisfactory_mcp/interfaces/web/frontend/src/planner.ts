@@ -124,6 +124,7 @@ export function renderPlanner(body: HTMLElement, at: string): void {
     else {
       reset("");
       loadList();
+      loadActivity();
     }
     scheduleFocus();
   }

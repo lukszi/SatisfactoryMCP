@@ -96,14 +96,6 @@ export var bench = {
 
 export var inbox = { card: null as ActivityEvent | null };
 
-export var OBJECTIVES: Record<string, string> = {
-  max_mw: "max MW",
-  max_item: "max item",
-  min_raw: "min raw",
-  min_machines: "min machines",
-  min_power: "min power",
-};
-
 export var NAME_MAX = 80;
 export var NOTES_MAX = 2000;
 

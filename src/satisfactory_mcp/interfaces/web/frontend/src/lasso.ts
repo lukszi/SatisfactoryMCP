@@ -2,15 +2,15 @@
  * drawing around machines. See docs/frontend_vision.md §9.9. */
 
 import { get, latest, send } from "./api";
-import { button, chip } from "./dashkit";
+import { button, chip, pressed } from "./dashkit";
 import { LASSO_ATTR, make } from "./dom";
 import { L } from "./leaflet";
 import { flyPadded, map } from "./map";
+import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "./mapcard";
 import { makeRoom, onVitals } from "./panel";
 import { newest, refreshLabels, refusal, wrote } from "./rename";
 import { state } from "./state";
 import { fail, friendly, note as said } from "./toast";
-import { clearTrace } from "./trace";
 import { counted, W } from "./words";
 
 import type { AmendedResponse, FactoryMachinesResponse, MachineSpot } from "./api-shapes";
@@ -50,14 +50,7 @@ var stroke: { points: L.LatLng[]; line: L.Polyline; last: L.Point } | null = nul
 var drew = false;
 
 function card(): HTMLElement {
-  var box = document.getElementById("lasso");
-  if (box) return box;
-  box = make("aside");
-  box.id = "lasso";
-  box.hidden = true;
-  box.setAttribute("aria-label", "machines on the map");
-  document.body.appendChild(box);
-  return box;
+  return mapCard("lasso", "machines on the map", closeLasso);
 }
 
 function ring(spot: MachineSpot, className: string, radius: number): void {
@@ -113,13 +106,10 @@ function buildings(spots: MachineSpot[]): string {
     .join(", ");
 }
 
-function line(parent: HTMLElement, text: string, className?: string): void {
-  parent.appendChild(make("p", "trace-note" + (className ? " " + className : ""), text));
-}
-
 function toggle(text: string, title: string, mode: Mode): HTMLButtonElement {
-  var b = button(
+  return pressed(
     text,
+    view.mode === mode,
     function () {
       if (view.mode === mode) return;
       view.mode = mode;
@@ -128,8 +118,6 @@ function toggle(text: string, title: string, mode: Mode): HTMLButtonElement {
     },
     { title: title }
   );
-  b.setAttribute("aria-pressed", String(view.mode === mode));
-  return b;
 }
 
 function previewBlock(box: HTMLElement, p: AmendedResponse): void {
@@ -141,7 +129,7 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
   chips.appendChild(chip(p.before + " → " + counted(p.after, "anchor"), "muted"));
   box.appendChild(chips);
   var moved = p.added.length ? p.added : p.dropped;
-  if (moved.length) line(box, buildings(moved));
+  if (moved.length) cardLine(box, buildings(moved));
   var named = p.added.filter(function (s) {
     return s.factory !== null;
   });
@@ -150,7 +138,7 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
     named.forEach(function (s) {
       held[s.factory!] = (held[s.factory!] || 0) + 1;
     });
-    line(
+    cardLine(
       box,
       Object.keys(held)
         .map(function (k) {
@@ -160,7 +148,7 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
       "bad"
     );
   }
-  var acts = make("div", "trace-head");
+  var acts = cardRow();
   acts.appendChild(button(view.busy ? "applying…" : "apply", apply, { title: "write this change to the factory", disabled: view.busy || !changes }));
   acts.appendChild(button("discard", discard, { title: "draw again" }));
   box.appendChild(acts);
@@ -175,28 +163,27 @@ function render(): void {
     return;
   }
   box.hidden = false;
-  var head = make("div", "trace-head");
-  head.appendChild(make("strong", "", view.factory ? "Amend" : view.kind));
+  var head = cardHead(view.factory ? "Amend" : view.kind);
   if (view.factory) {
     head.appendChild(toggle("+ add", "draw around machines to add them", "add"));
     head.appendChild(toggle("− remove", "draw around machines to remove them", "drop"));
   }
   head.appendChild(button("×", closeLasso, { title: "stop", label: "clear the machines from the map" }));
   box.appendChild(head);
-  box.appendChild(make("div", "trace-subject", view.title));
+  cardSubject(box, view.title);
   if (view.error) {
-    line(box, view.error, "bad");
+    cardLine(box, view.error, "bad");
     return;
   }
   if (!view.members) {
-    line(box, "finding its machines…");
+    cardLine(box, "finding its machines…");
     return;
   }
-  line(box, counted(view.members.length, "machine") + " ringed" + (view.members.length ? ": " + buildings(view.members) : ""));
+  cardLine(box, counted(view.members.length, "machine") + " ringed" + (view.members.length ? ": " + buildings(view.members) : ""));
   if (!view.factory) return;
   if (view.preview) previewBlock(box, view.preview);
-  else if (view.busy) line(box, "checking what that area holds…");
-  else line(box, "drag around machines on the map to " + (view.mode === "add" ? "add them to" : "remove them from") + " this " + W.factory);
+  else if (view.busy) cardLine(box, "checking what that area holds…");
+  else cardLine(box, "drag around machines on the map to " + (view.mode === "add" ? "add them to" : "remove them from") + " this " + W.factory);
 }
 
 var candidate = "";
@@ -230,7 +217,7 @@ function fetchMembers(flyAfter: boolean): void {
 }
 
 function begin(title: string, kind: string, factory: string): void {
-  clearTrace();
+  claim("lasso");
   stopStroke();
   ink.clearLayers();
   view.title = title;

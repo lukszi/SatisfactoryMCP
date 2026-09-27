@@ -2,11 +2,12 @@
  * See docs/frontend_vision.md §10. */
 
 import { get, latest } from "./api";
-import { button, chip, table } from "./dashkit";
+import { button, chip, pressed, table } from "./dashkit";
 import { code, count, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "./dom";
 import { perMin } from "./format";
 import { L } from "./leaflet";
 import { flyPadded, map } from "./map";
+import { cardHead, cardHeading, cardLine, cardSubject, claim, mapCard } from "./mapcard";
 import { HIGHLIGHT, makeRoom, onVitals } from "./panel";
 import { BLOCKED_COLOUR, STOPPED_COLOUR } from "./placements";
 import { state } from "./state";
@@ -46,14 +47,7 @@ var view = {
 };
 
 function card(): HTMLElement {
-  var box = document.getElementById("trace");
-  if (box) return box;
-  box = make("aside");
-  box.id = "trace";
-  box.hidden = true;
-  box.setAttribute("aria-label", "trace");
-  document.body.appendChild(box);
-  return box;
+  return mapCard("trace", "trace", clearTrace);
 }
 
 function colour(m: TraceMachine): string {
@@ -118,18 +112,6 @@ function fly(data: TraceResponse): void {
   var b = data.bbox_m;
   if (!b) return;
   flyPadded(L.latLngBounds([-b[1], b[0]], [-b[3], b[2]]).pad(0.15), TRACE_MAX_ZOOM);
-}
-
-function toggle(text: string, title: string, on: boolean, action: () => void): HTMLButtonElement {
-  var b = button(text, action, { title: title });
-  b.setAttribute("aria-pressed", String(on));
-  return b;
-}
-
-function line(parent: HTMLElement, text: string, className?: string): HTMLElement {
-  var p = make("p", "trace-note" + (className ? " " + className : ""), text);
-  parent.appendChild(p);
-  return p;
 }
 
 function stateCounts(data: TraceResponse): { stopped: number; blocked: number } {
@@ -214,36 +196,35 @@ function render(): void {
     return;
   }
   box.hidden = false;
-  var head = make("div", "trace-head");
-  head.appendChild(make("strong", "", view.direction === "up" ? "Supply" : "Output"));
+  var head = cardHead(view.direction === "up" ? "Supply" : "Output");
   head.appendChild(
-    toggle("↑ supply", "what feeds it", view.direction === "up", function () {
+    pressed("↑ supply", view.direction === "up", function () {
       startTrace(view.seed, "up");
-    })
+    }, { title: "what feeds it" })
   );
   head.appendChild(
-    toggle("↓ output", "what it feeds", view.direction === "down", function () {
+    pressed("↓ output", view.direction === "down", function () {
       startTrace(view.seed, "down");
-    })
+    }, { title: "what it feeds" })
   );
   head.appendChild(button("×", clearTrace, { title: "clear the trace", label: "clear the trace" }));
   box.appendChild(head);
   var data = view.data;
   if (view.error) {
-    line(box, view.error, "bad");
+    cardLine(box, view.error, "bad");
     return;
   }
   if (!data) {
-    line(box, "tracing " + view.seed.replace(/^label:/, "") + "…");
+    cardLine(box, "tracing " + view.seed.replace(/^label:/, "") + "…");
     return;
   }
   var only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;
-  box.appendChild(make("div", "trace-subject", only ? only.name + (only.recipe ? " · " + only.recipe : "") : data.subject));
+  cardSubject(box, only ? only.name + (only.recipe ? " · " + only.recipe : "") : data.subject);
   if (data.truncated) {
-    line(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "bad");
+    cardLine(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "bad");
   }
   if (data.ambiguous) {
-    line(box, "may over-report a feeder").title =
+    cardLine(box, "may over-report a feeder").title =
       "the save has " +
       count(data.ambiguous) +
       " belt or pipe joins that state no direction; the walk takes them both ways, so it can over-report a feeder but never miss one";
@@ -257,7 +238,7 @@ function render(): void {
   chips.appendChild(chip(counted(data.runs.length, "run") + " · depth " + data.deepest, "muted"));
   box.appendChild(chips);
   if (!others) {
-    line(
+    cardLine(
       box,
       "nothing outside this selection " +
         (view.direction === "up" ? "feeds it" : "is fed by it") +
@@ -267,9 +248,9 @@ function render(): void {
     );
   }
   if (data.items.length) {
-    box.appendChild(make("h4", "trace-h", view.direction === "up" ? "made along the path" : "used along the path"));
+    cardHeading(box, view.direction === "up" ? "made along the path" : "used along the path");
     box.appendChild(itemTable(data.items));
-    if (data.items.length > SHOWN) line(box, data.items.length - SHOWN + " more");
+    if (data.items.length > SHOWN) cardLine(box, data.items.length - SHOWN + " more");
   }
   var groupIds = new Set(
     data.groups.map(function (g) {
@@ -283,9 +264,9 @@ function render(): void {
     return (b.per_min || 0) - (a.per_min || 0);
   });
   if (flows.length) {
-    box.appendChild(make("h4", "trace-h", "flows between groups"));
+    cardHeading(box, "flows between groups");
     box.appendChild(flowTable(data, flows));
-    if (flows.length > SHOWN) line(box, flows.length - SHOWN + " more");
+    if (flows.length > SHOWN) cardLine(box, flows.length - SHOWN + " more");
   }
 }
 
@@ -331,6 +312,7 @@ export function startTrace(seed: string, direction: Direction): void {
   view.epoch = state.epoch;
   view.data = null;
   view.error = "";
+  claim("trace");
   makeRoom("trace");
   render();
   fetchTrace(true);

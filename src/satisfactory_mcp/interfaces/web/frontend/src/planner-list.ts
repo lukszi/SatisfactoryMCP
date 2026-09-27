@@ -6,10 +6,11 @@ import { make } from "./dom";
 import { perMin } from "./format";
 import { go } from "./nav";
 import { renderCard } from "./planner-bench";
-import { actorWord, age, changed, commitWords, createPlan, itemList, knownItem, loadItems, OBJECTIVES } from "./planner-core";
+import { actorWord, age, changed, commitWords, createPlan, itemList, knownItem, loadItems } from "./planner-core";
 import { renderActivity } from "./planner-history";
 import { state } from "./state";
 import { friendly } from "./toast";
+import { OBJECTIVES } from "./words";
 
 import type { Column, SortState } from "./dashkit";
 import type { PlanIndexRow, PlansResponse } from "./api-shapes";

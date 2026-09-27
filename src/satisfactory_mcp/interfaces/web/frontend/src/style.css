@@ -1558,7 +1558,7 @@ a.dash-tile:hover {
 
 .dash-card,
 #panel,
-#trace {
+.mapcard {
   --surface: var(--panel);
 }
 
@@ -2366,7 +2366,7 @@ a.dash-where:hover {
   margin: 0;
 }
 
-#trace {
+.mapcard {
   position: fixed;
   left: 410px;
   bottom: 2.2rem;
@@ -2381,46 +2381,46 @@ a.dash-where:hover {
   z-index: var(--z-overlay);
 }
 
-body.dash-on #trace {
+body.dash-on .mapcard {
   display: none;
 }
 
-.trace-head {
+.mapcard-head {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
   margin-bottom: 4px;
 }
 
-.trace-head strong {
+.mapcard-head strong {
   margin-right: auto;
   font-size: var(--fs-s);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-#trace .dash-scroll {
+.mapcard .dash-scroll {
   margin-bottom: var(--sp-1);
 }
 
-.trace-subject {
+.mapcard-subject {
   margin-bottom: 4px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.trace-note {
+.mapcard-note {
   margin: 2px 0 6px;
   color: var(--muted);
   font-size: var(--fs-s);
 }
 
-.trace-note.bad {
+.mapcard-note.bad {
   color: var(--bad);
 }
 
 
-.trace-h {
+.mapcard-h {
   margin: 8px 0 2px;
   color: var(--muted);
   font-size: var(--fs-s);
@@ -2450,7 +2450,7 @@ body.dash-on #trace {
     transform: rotate(180deg);
   }
 
-  #trace {
+  .mapcard {
     right: 0;
     bottom: 30px;
     left: 0;
@@ -2458,8 +2458,8 @@ body.dash-on #trace {
     border-radius: var(--r) var(--r) 0 0;
   }
 
-  body[data-sheet="panel"] #trace,
-  body[data-sheet="layers"] #trace {
+  body[data-sheet="panel"] .mapcard,
+  body[data-sheet="layers"] .mapcard {
     display: none;
   }
 
@@ -2584,12 +2584,6 @@ body.dash-on #trace {
 .plan-chip-x:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-}
-
-.plan-toggle[aria-pressed="true"] {
-  border-color: var(--line);
-  background: var(--line);
-  color: var(--ink-hi);
 }
 
 
@@ -2816,7 +2810,7 @@ a.status-name:hover,
     left: calc(54px + var(--rail-w));
   }
 
-  #trace {
+  .mapcard {
     left: calc(410px + var(--rail-w));
   }
 
@@ -2829,31 +2823,6 @@ a.status-name:hover,
   .status-k {
     display: none;
   }
-}
-
-#lasso {
-  --surface: var(--panel);
-  position: fixed;
-  left: calc(410px + var(--rail-w));
-  bottom: 2.2rem;
-  width: 340px;
-  max-height: 50vh;
-  overflow-y: auto;
-  padding: var(--sp-2);
-  background: color-mix(in srgb, var(--panel) 95%, transparent);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  font-size: var(--fs-m);
-  z-index: var(--z-overlay);
-}
-
-#lasso [aria-pressed="true"] {
-  border-color: var(--accent);
-  color: var(--accent-hi);
-}
-
-body.dash-on #lasso {
-  display: none;
 }
 
 body.lasso-on #map {
@@ -2895,17 +2864,3 @@ path.lasso-area {
   fill-opacity: 0.12;
 }
 
-@media (max-width: 699px) {
-  #lasso {
-    right: 0;
-    bottom: 30px;
-    left: 0;
-    width: auto;
-    border-radius: var(--r) var(--r) 0 0;
-  }
-
-  body[data-sheet="panel"] #lasso,
-  body[data-sheet="layers"] #lasso {
-    display: none;
-  }
-}

@@ -10,7 +10,7 @@ import { actorWord, age, bench, changed, commitWords, duplicatePlan, inbox, rest
 import { renderVersionResult } from "./planner-result";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
-import { W } from "./words";
+import { objectiveText, W } from "./words";
 
 import type { Column } from "./dashkit";
 import type { ActivityResponse, ActivityRow, VersionRow } from "./api-shapes";
@@ -96,6 +96,7 @@ export function renderVersions(parent: HTMLElement): void {
   else {
     var head = data.head;
     var columns: Column<VersionRow>[] = [
+      { key: "acts", label: "", render: function (r) { return versionActs(r, head); } },
       {
         key: "rev",
         label: "version",
@@ -134,7 +135,6 @@ export function renderVersions(parent: HTMLElement): void {
           return stateWords(r, head);
         },
       },
-      { key: "acts", label: "", render: function (r) { return versionActs(r, head); } },
     ];
     card.appendChild(
       table(columns, data.versions, {
@@ -205,6 +205,7 @@ export function loadActivity(): void {
     })
     .catch(function (reason) {
       if (mine !== activitySeq) return;
+      activity.world = world;
       activity.error = friendly(reason);
       changed();
     });
@@ -218,7 +219,7 @@ function kept(row: ActivityRow): boolean {
 
 function what(row: ActivityRow): string {
   if (row.source === "plan") return "v" + row.rev + " " + commitWords(row.text);
-  return row.text;
+  return objectiveText(row.text);
 }
 
 function activityActs(row: ActivityRow): HTMLElement {
@@ -259,11 +260,7 @@ function activityActs(row: ActivityRow): HTMLElement {
 }
 
 export function renderActivity(parent: HTMLElement): void {
-  if (activity.world !== state.world && activity.data) {
-    activity.data = null;
-    loadActivity();
-  }
-  if (!activity.data && !activity.error && activitySeq === 0) loadActivity();
+  var data = activity.world === state.world ? activity.data : null;
   var card = make("section", "dash-card");
   var title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "activity"));
@@ -283,10 +280,10 @@ export function renderActivity(parent: HTMLElement): void {
     )
   );
   card.appendChild(title);
-  if (activity.error) error(card, "the activity", activity.error, loadActivity);
-  else if (!activity.data) loading(card, "activity");
+  if (activity.error && activity.world === state.world) error(card, "the activity", activity.error, loadActivity);
+  else if (!data) loading(card, "activity");
   else {
-    var rows = activity.data.entries.filter(kept).reverse();
+    var rows = data.entries.filter(kept).reverse();
     if (!rows.length) empty(card, "nothing yet", "plan edits from the page and from chat, and chat's solves, show here");
     else {
       var columns: Column<ActivityRow>[] = [

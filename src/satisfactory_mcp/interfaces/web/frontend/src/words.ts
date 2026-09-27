@@ -30,6 +30,20 @@ export var W = {
   noSaves: "no readable saves",
 } as const;
 
+export var OBJECTIVES: Record<string, string> = {
+  max_mw: "max MW",
+  max_item: "max item",
+  min_raw: "min raw",
+  min_machines: "min machines",
+  min_power: "min power",
+};
+
+export function objectiveText(text: string): string {
+  return text.replace(/\((\w+)\)$/, function (all, objective: string) {
+    return OBJECTIVES[objective] ? "(" + OBJECTIVES[objective] + ")" : all;
+  });
+}
+
 export var RECIPE_KIND: Record<string, string> = { part: "machine", building: "building", manual: "crafted" };
 
 export function version(n: number): string {
