@@ -26,6 +26,10 @@
       <select id="world" title="which world to read"></select>
       <select id="save" title="which save of this world to read; 'newest save' follows the game as it writes"></select>
       <span id="summary" class="muted">loading&hellip;</span>
+      <div id="search" role="search">
+        <input id="search-q" type="search" autocomplete="off" placeholder="Search items, recipes, factories  ( / )" aria-label="search items, recipes and factories" />
+        <div id="search-hits" role="listbox" hidden></div>
+      </div>
       <span id="live" class="dot" title="connecting to the save watcher&hellip;"></span>
     </header>
     <div id="map"></div>

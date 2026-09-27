@@ -30,8 +30,8 @@ export var SETTINGS: Setting[] = [
   {
     kind: "switch",
     key: "spoilers",
-    label: "Show upcoming milestones and research",
-    hint: "Off: Progress shows the tiers you have started, the MAM trees you have opened and the Space Elevator phases up to the current target, and hides what lies beyond them.",
+    label: "Show upcoming milestones, research and locked recipes",
+    hint: "Off: Progress shows the tiers you have started, the MAM trees you have opened and the Space Elevator phases up to the current target, and hides what lies beyond them; Recipes and search hide recipes this save has not unlocked.",
     fallback: true,
   },
   {

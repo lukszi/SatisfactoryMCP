@@ -343,7 +343,7 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 2 | **Factory detail:** aspects, health, floors | `factory_query`, `factory_health`, `factory_floors`, `factory_sites` | 2–3 | no |
 | 3 | **Inventory:** stock, containers, crates. **Built 2026-09-27** (§10) | `stock`, `storage`, `crates` | 1 | no |
 | 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
-| 5 | **Recipes codex + search box** | 5 game-data tools, `unlocked_recipes` | 5 | no |
+| 5 | **Recipes codex + search box**. **Built 2026-09-27** (§12; `list_buildings` still open) | 5 game-data tools, `unlocked_recipes` | 6 | no |
 | 6 | **World finders:** nodes, fields, conduits, collectibles, whereami, inspector upgrade | 7 spatial tools, `collected_from_world` | 3 | no |
 | 7 | **Trace:** upstream/downstream drawn on the map | `trace_upstream` | 1 | no |
 | 8 | **Planner (stateless):** solve, bill, compare, byproducts | 4 planning tools | 4 POST | no |
@@ -385,8 +385,8 @@ None of these are assumed above. Each changes the design.
 10. Should the UI suggest a "next" step at all, or only show facts and let you decide?
 11. Spoilers: show locked milestones, MAM nodes and alternates in full, or only what the game
     shows you at this point? **Answered 2026-09-26 for milestones: a per-browser setting**
-    (§8.6). **Extended 2026-09-27 to MAM nodes and elevator phases** ("Phase 4:
-    Progress"). Alternates are not covered yet.
+    (§8.6). **Extended 2026-09-27 to MAM nodes and elevator phases** (§11) **and to recipes
+    and alternates** (§12.3), all under the same setting.
 12. Hard drives: do you pick at once, or hoard? (Affects whether "pending" is an alert.)
 
 **World and history**
@@ -906,14 +906,15 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
 
 - Routes live under `/api/progress/` rather than at `/api/harddrives`, `/api/shards` and
   `/api/sloops` as §5.2 first proposed. One module and one prefix for one tab.
-- The spoiler switch covers the whole tab, and its label now reads "Show upcoming
-  milestones and research". When it is off, the page hides three things:
+- The spoiler switch covers the whole tab. Its label read "Show upcoming milestones and
+  research"; with recipes added (§12.3) it now reads "Show upcoming milestones, research and
+  locked recipes". When it is off, the page hides three things:
   - MAM nodes in trees not opened yet (TREE SHUT);
   - elevator phase records past the target phase;
   - milestone tiers not yet started, as before.
 
   Hard drive options stay visible, because the game shows them once a drive is analysed.
-  This answers §7 Q11 for MAM nodes. Alternates in the codex are still open.
+  This answers §7 Q11 for MAM nodes. Alternates in the codex follow the same switch (§12.3).
 - A stale elevator record is shown greyed and labelled, never hidden and never used as a
   cost. Only the target phase row is joined to stock, the same rule `phase_requirements`
   states.
@@ -924,3 +925,72 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
 - A drop-pod map layer tied to the hard drive page (§2.2).
 - The MAM costs show the class id `Desc_HardDrive_C` where a node asks for a hard drive,
   because `item_name` has no entry for it. The MCP tool prints the same id.
+
+---
+
+## 12. Recipes codex and search box (2026-09-27)
+
+Phase 5 of §6. It is a read-only surface over the game data, marked against the save.
+
+### 12.1 What was built
+
+- **Routes.** Each calls the function its MCP tool calls. `find_items` and `makers_of` in
+  `core/gamedata/search.py` and `find_recipe` in `domain/planning/scenario.py` moved out of
+  the tool bodies so both surfaces share them.
+
+  | Route | Tool | Needs a save |
+  |---|---|---|
+  | `GET /api/gamedata/items?q=` | `search_items` | no; capped at 200 rows, `total` counts all |
+  | `GET /api/gamedata/recipes?q=&consumes=&produces=&recipe_kind=&only_alternates=` | `search_recipes` | no; `unlocked` is null and `save_note` says why |
+  | `GET /api/gamedata/recipe?recipe=` | `recipe_detail` | no; id or name, 409 lists an ambiguous name's matches |
+  | `GET /api/gamedata/alternates?item=` | `alternates_for_item` | no; `granted_by` only on locked rows |
+  | `GET /api/gamedata/unlocked?only_alternates=` | `unlocked_recipes` | yes; 404 without one |
+  | `GET /api/search?q=` | the header box | no; factories need one |
+
+  The recipe detail takes a query parameter rather than a path segment, so the page's
+  typed `get()` can check the URL against the schema.
+- **Recipes tab** (`dash=recipes`, `frontend/src/recipes.ts`). It has three modes: Items,
+  Recipes (kind picker, alternates only, census line) and Unlocked. Clicking an item opens
+  its card (`dash=recipes/item/<cls>`), with **made by** (alternates first, HAVE/LOCKED,
+  granted by) and **used by** (every kind, per minute, per build or per craft). Clicking a
+  recipe opens its card (`dash=recipes/recipe/<cls>`), with machine, cycle, power, grants,
+  and in and out rates that link to items. Item icons come from `/api/icons` and disappear
+  when the directory has none.
+- **Header search** (`frontend/src/search.ts`). One box, focused with `/`. Results are
+  grouped as factories, items and recipes, eight of each, with the totals said below. Arrow
+  keys and Enter pick a result. A factory opens its dashboard detail, and an item or recipe
+  opens its card.
+- **Freshness.** `recipes.ts` registers `/api/gamedata/unlocked` in the live wave. Each save
+  event bumps a generation that empties the codex cache, so HAVE and LOCKED follow the game.
+
+### 12.2 Cost per keystroke
+
+Both inputs debounce: 150 ms in the header and 180 ms in the codex. A newer query drops an
+older reply. The codex keeps the last rows on screen while the next query loads.
+
+Measured on the reference fixture in-process (median of 30): `/api/search` 0.7–1.0 ms,
+`/api/gamedata/items` unfiltered 0.7 ms (20 KB), `/api/gamedata/recipes` unfiltered 1.1 ms
+(42 KB). Over HTTP on a live server with a real save: 3 ms warm. The first call after start
+took 230 ms, which is the state load and not the search. No index or cache was added.
+
+### 12.3 Spoilers
+
+Decided 2026-09-27: the one spoiler switch covers recipes too. Merged with the Progress
+wording (§11.2), it is now labelled "Show upcoming milestones, research and locked
+recipes". When it is off:
+
+- The codex, the item card and the header box drop recipes this save has not unlocked, and
+  say how many were hidden.
+- A locked recipe's own card shows only that it is locked.
+- Census lines keep their totals but drop the locked counts.
+
+Items are never hidden. An item carries no unlock of its own.
+
+### 12.4 Not yet
+
+- `list_buildings` (Recipes > Buildings).
+- "Where is this made": highlighting the factories that run a recipe.
+- The **compare routes** and **bill** buttons on an item card (phase 8).
+- Plans, regions, node ids, `x,y` and `chain:<n>` in the search box (§2.1).
+- Whether items should follow the spoiler switch, and whether the census should hide its
+  totals too, are left for a decision.

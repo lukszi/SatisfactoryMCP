@@ -158,6 +158,19 @@ export type StockPile = Schema["StockPile"];
 export type StockPlace = Schema["StockPlace"];
 export type StockResponse = Body<"StockResponse">;
 
+/* ------------------------------------------------------ /api/gamedata and /api/search */
+
+export type ItemRow = Schema["ItemRow"];
+export type ItemsResponse = Body<"ItemsResponse">;
+export type RecipeRow = Schema["RecipeRow"];
+export type RecipesResponse = Body<"RecipesResponse">;
+export type Rate = Schema["Rate"];
+export type RecipeDetail = Body<"RecipeDetail">;
+export type MakerRow = Schema["MakerRow"];
+export type AlternatesResponse = Body<"AlternatesResponse">;
+export type UnlockedResponse = Body<"UnlockedResponse">;
+export type SearchResponse = Body<"SearchResponse">;
+
 /* ------------------------------------------------------------------ /api/plans */
 
 /** A stored plan's pad. Its coordinates are METRES already -- the siting is a statement the

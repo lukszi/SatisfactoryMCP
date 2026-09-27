@@ -35,12 +35,7 @@ def _no_save_note(reason: str | None) -> str:
 @mcp.tool(structured_output=False)
 def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     """Find items by name. Returns form, energy and sink points."""
-    g = game()
-    q = query.casefold()
-    hits = sorted(
-        (i for i in g.items.values() if q in i.name.casefold() and i.form != "RF_INVALID"),
-        key=lambda i: (not i.name.casefold().startswith(q), i.name),
-    )
+    hits = search.find_items(game(), query)
     page = hits[offset : offset + render.clamp(limit)]
     rows = [
         (i.name, "fluid" if i.is_fluid else "solid", render.num(i.energy_mj), i.sink_points)
@@ -62,19 +57,15 @@ def recipe_detail(recipe_id: str) -> str:
     that buys nothing -- `match_recipes` already does exactly this resolution for
     `exclude_recipes`.
     """
-    from ....domain.planning.scenario import match_recipes
+    from ....domain.planning.scenario import find_recipe
 
     g = game()
-    r = g.recipes.get(recipe_id)
-    if r is None:
-        hits = match_recipes(g, recipe_id, list(g.recipes))
-        if len(hits) == 1:
-            r = g.recipes[hits[0]]
-        elif hits:
-            # Ambiguous is not the same as unknown, and listing the candidates is the
-            # answer rather than an invitation to search again.
-            shown = ", ".join(g.recipes[h].name for h in hits[:8])
-            return f"{recipe_id!r} matches {len(hits)} recipes: {shown}"
+    r, hits = find_recipe(g, recipe_id)
+    if r is None and hits:
+        # Ambiguous is not the same as unknown, and listing the candidates is the
+        # answer rather than an invitation to search again.
+        shown = ", ".join(g.recipes[h].name for h in hits[:8])
+        return f"{recipe_id!r} matches {len(hits)} recipes: {shown}"
     if r is None:
         return f"unknown recipe {recipe_id!r} -- use search_recipes to find the id"
     b = g.machine(r)
@@ -118,7 +109,7 @@ def alternates_for_item(
     iid = _item_id(item)
     if iid is None:
         return f"no item matching {item!r}"
-    producers = g.producers_of(iid, "part")
+    producers = search.makers_of(g, iid)
     # ``None``, not an empty set. The status column blanks for both "no save" and "a save
     # whose recipe list is empty", and only one of those is a fact about the world -- so
     # the reason is carried rather than collapsed, and said out loud in the notes below.
@@ -128,7 +119,6 @@ def alternates_for_item(
         have = _state(save, world, as_of).available_recipe_ids
     except Exception as exc:
         save_error = str(exc)
-    producers.sort(key=lambda r: (not r.is_alternate, r.name))
     shown = [r for r in producers if include_locked or have is None or r.cls in have]
     # Only when something is locked: on a page where everything is HAVE the column would
     # be a row of blanks.

@@ -16,6 +16,7 @@ from . import (
     events,
     factories,
     floors,
+    gamedata,
     grid,
     health,
     icons,
@@ -28,6 +29,7 @@ from . import (
     power,
     regions,
     routes_layer,
+    search,
     stock,
     storage,
     tiles,
@@ -62,4 +64,6 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     progress.router,
     naming.router,
     stock.router,
+    gamedata.router,
+    search.router,
 )

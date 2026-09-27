@@ -16,7 +16,7 @@ from dataclasses import replace as replace_scenario
 from typing import TYPE_CHECKING
 
 from ...core.gamedata.constants import WATER_EXTRACTOR_CAP_ASSUMED
-from ...core.gamedata.model import GameData
+from ...core.gamedata.model import GameData, Recipe
 from ..spatial import nodes as nodes_mod
 from ..spatial.select import Selection, select_nodes
 from . import siting as siting_mod
@@ -29,6 +29,7 @@ __all__ = [
     "EXPORT_HELP",
     "PlanRequest",
     "build_scenario",
+    "find_recipe",
     "match_recipes",
     "resolve_item",
     "select_for",
@@ -92,6 +93,16 @@ def match_recipes(game: GameData, pattern: str, pool: list[str]) -> list[str]:
     if exact:
         return exact
     return [rid for rid in pool if q in game.recipes[rid].name.casefold()]
+
+
+def find_recipe(game: GameData, text: str) -> tuple[Recipe | None, list[str]]:
+    """One recipe by class id or display name, and every id the text matched.
+
+    The recipe is ``None`` when the text matched nothing or more than one recipe."""
+    if text in game.recipes:
+        return game.recipes[text], [text]
+    hits = match_recipes(game, text, list(game.recipes))
+    return (game.recipes[hits[0]] if len(hits) == 1 else None), hits
 
 
 def select_for(game: GameData, state: WorldState, sources: list[str] | None) -> Selection:

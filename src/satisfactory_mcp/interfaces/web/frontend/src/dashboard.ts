@@ -11,6 +11,8 @@ import { hashFor, writeHash } from "./map";
 import { onVitals, showBox, showCircuit, showFactory, showPoint, vitals } from "./panel";
 import { stateTone } from "./placements";
 import { milestoneTile, onProgress, renderProgress } from "./progress";
+import { renderRecipes } from "./recipes";
+import { registerFetch } from "./registry";
 import { editName, refreshLabels, renamedTo } from "./rename";
 import { amount, choice, onSetting, setSetting, setting, SETTINGS } from "./settings";
 import { state } from "./state";
@@ -32,7 +34,7 @@ import type {
   StarvedGenerator,
 } from "./api-shapes";
 
-type Tab = "overview" | "factories" | "power" | "progress" | "inventory" | "settings";
+type Tab = "overview" | "factories" | "power" | "progress" | "inventory" | "recipes" | "settings";
 
 var TABS: [Tab, string][] = [
   ["overview", "Overview"],
@@ -40,6 +42,7 @@ var TABS: [Tab, string][] = [
   ["power", "Power"],
   ["progress", "Progress"],
   ["inventory", "Inventory"],
+  ["recipes", "Recipes"],
   ["settings", "Settings"],
 ];
 
@@ -1339,6 +1342,7 @@ function render(): void {
     else renderPower(body);
   } else if (at.tab === "progress") renderProgress(body, at.subject, pointButton);
   else if (at.tab === "inventory") renderInventory(body, { toMap: toMap, render: render });
+  else if (at.tab === "recipes") renderRecipes(body, at.subject, render);
   else renderSettings(body);
   el("dash").scrollTop = scroll;
   if (typing !== null) {
