@@ -75,7 +75,7 @@ function crateGlyph(kind: string): string {
  * the save is not unreadable and the crate is not a mystery, it simply predates the property
  * that would have said, and the sentence under the title -- the server's own -- explains why
  * there is nothing more to call it. */
-function crateTitle(kind: string): string {
+export function crateLabel(kind: string): string {
   if (kind === "death") return "death crate";
   if (kind === "dismantle") return "dismantle crate";
   return "crate";
@@ -88,7 +88,7 @@ function crateTitle(kind: string): string {
  * no cause -- so in a co-op world nothing here can say whose death this was, and a row that
  * guessed would arrive looking exactly like a row that knew. */
 function cratePopup(c: CrateRow): Row[] {
-  var rows: Row[] = [[crateTitle(c.kind), c.kind_text || c.kind]];
+  var rows: Row[] = [[crateLabel(c.kind), c.kind_text || c.kind]];
   /* The same inventory grid a storage box gets, out of the same helper: "what is in it" is
    * one question wherever it is asked. Whole crates, every kind -- the grid was measured
    * holding all 38 kinds of the fullest crate on this machine at 381x568 px without
@@ -143,8 +143,8 @@ export function drawCrates(data: CratesResponse): void {
       }),
       // What the mark says before it is clicked: a reader hovering one is finding out whether
       // it is the death one.
-      title: crateTitle(c.kind),
-      alt: crateTitle(c.kind),
+      title: crateLabel(c.kind),
+      alt: crateLabel(c.kind),
     })
       // The wider card the storage popup takes; see CONTENTS_POPUP_PX in dom.ts.
       .bindPopup(popup(cratePopup(c)), { maxWidth: CONTENTS_POPUP_PX })

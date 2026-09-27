@@ -1478,23 +1478,6 @@ a.dash-tile:hover {
   text-align: right;
 }
 
-.dash-table th.sort {
-  cursor: pointer;
-  user-select: none;
-}
-
-.dash-table th.sort:hover {
-  color: var(--ink-hi);
-}
-
-.dash-table th.asc::after {
-  content: " ▲";
-}
-
-.dash-table th.desc::after {
-  content: " ▼";
-}
-
 .dash-table td {
   padding: var(--sp-1) var(--sp-2);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
@@ -1893,6 +1876,59 @@ a.dash-where:hover {
 
 .inv-kind + .dash-toggle {
   margin-left: 10px;
+}
+
+.inv-search .dash-name:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.inv-also,
+.inv-results .dk-state {
+  overflow-wrap: anywhere;
+}
+
+.inv-results .dash-toggle.off {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.inv-contents {
+  min-width: 160px;
+}
+
+.inv-narrow {
+  display: none;
+}
+
+.inv-capped tbody tr:nth-child(n + 26) {
+  display: none;
+}
+
+.inv-more {
+  margin-top: var(--sp-2);
+}
+
+@media (max-width: 600px) {
+  .inv-results .dash-table td.bar {
+    width: auto;
+    min-width: 0;
+  }
+
+  .inv-fill .dash-hbar {
+    display: none;
+  }
+
+  .inv-crates th:nth-child(4),
+  .inv-crates td:nth-child(4) {
+    display: none;
+  }
+
+  .inv-crates .inv-narrow {
+    display: block;
+    margin-top: var(--sp-1);
+    font-weight: 400;
+  }
 }
 
 #search {

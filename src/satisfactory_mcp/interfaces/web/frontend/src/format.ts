@@ -48,6 +48,10 @@ export function num(value: number, dp?: number): string {
   return count(Math.round(value * scale) / scale + 0);
 }
 
+export function amount(value: number, fluid?: boolean): string {
+  return fluid ? num(value, 1) + " m³" : num(value, 0);
+}
+
 export function perMin(value: number, unit?: boolean): string {
   return num(value, 1) + (unit === false ? "" : "/min");
 }
