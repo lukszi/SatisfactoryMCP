@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -22,6 +22,7 @@ from ...domain.world.state import WorldState
 
 __all__ = [
     "ActorBody",
+    "Biomass",
     "Region",
     "_actor_json",
     "_fail",
@@ -96,6 +97,11 @@ def _yaw(value: Any) -> float | None:
         return round(float(value), 1)
     except (TypeError, ValueError):
         return None
+
+
+#: ``?biomass=`` on every route that returns a power ledger: whether hand-fed biomass burners
+#: count as generation. Absent means exclude; see ``PowerLedger.power_report``.
+Biomass = Literal["exclude", "include"]
 
 
 def _fail(message: str, status: int = 400) -> JSONResponse:

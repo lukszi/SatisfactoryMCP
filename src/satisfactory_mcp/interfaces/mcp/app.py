@@ -47,6 +47,12 @@ AsOf = Annotated[
     Field(default=None, description="pin to one world state: a sav:… token from an earlier answer"),
 ]
 
+#: The web page's "count biomass burners in headroom" setting, default off on both surfaces.
+Biomass = Annotated[
+    bool,
+    Field(default=False, description="count hand-fed biomass burners as generation"),
+]
+
 
 @lru_cache(maxsize=1)
 def game() -> GameData:

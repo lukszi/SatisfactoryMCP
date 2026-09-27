@@ -8,8 +8,10 @@ from ...core.gamedata.constants import BUILDING_CLASS_ALIASES
 from ...core.gamedata.model import Building, GameData
 
 __all__ = [
+    "BIOMASS_BURNERS",
     "NO_FUEL",
     "PowerLedger",
+    "biomass_note",
     "dry_input_classes",
     "dry_inputs",
     "generator_building",
@@ -21,6 +23,17 @@ __all__ = [
 #: Stands in for a fuel class where the save records none -- a hand-fed burner sitting
 #: empty. Not an item name; it is printed as it reads.
 NO_FUEL = "(no fuel)"
+
+#: Hand-fed burners, the HUB's own included. Left out of generation unless asked for: no
+#: automated supply of biomass or biofuel exists, so their MW is a player's arm, not a plant.
+#: See docs/frontend_vision.md, "Decided 2026-09-27".
+BIOMASS_BURNERS = frozenset(
+    {
+        "Build_GeneratorBiomass_C",
+        "Build_GeneratorBiomass_Automated_C",
+        "Build_GeneratorIntegratedBiomass_C",
+    }
+)
 
 
 def wired_actors(projection: dict) -> frozenset[str] | None:
@@ -42,6 +55,17 @@ def starved_cause(missing: list[str] | tuple[str, ...]) -> str:
     """What a starved generator lacks, in one phrase."""
     named = [m for m in missing if m != NO_FUEL]
     return "out of " + ", ".join(named) if named else "no fuel loaded"
+
+
+def biomass_note(report: dict) -> str:
+    """The one line naming what ``biomass=False`` left out, or "" when nothing was."""
+    n = report.get("biomass_generators") or 0
+    if not n:
+        return ""
+    return (
+        f"+{report['biomass_mw']:,.0f} MW biomass not counted: {n} hand-fed burner(s) left "
+        "out of generation and headroom; pass biomass=true to count them"
+    )
 
 
 def measured_share(record: dict) -> float | None:
@@ -113,7 +137,7 @@ class PowerLedger:
     def _is_wired(self, record: dict) -> bool:
         return self.wired is None or record["instance"].rsplit(".", 1)[-1] in self.wired
 
-    def power_report(self) -> dict:
+    def power_report(self, *, biomass: bool = False) -> dict:
         """Generation capacity, and draw both nameplate and measured.
 
         Uptime is the projection's 300 s productivity monitor, carried by **524 of 570**
@@ -143,6 +167,10 @@ class PowerLedger:
         under ``unwired_*`` instead, so the ledger is the sum of the circuits. The wire is
         tested first: a paused record on no wire is still counted there, at no MW, which is
         the rule ``assess`` lists its unwired machines by.
+
+        Wired ``BIOMASS_BURNERS`` count only with ``biomass`` set. Otherwise they are left
+        out of generation, both headrooms and the starved list, and summed under
+        ``biomass_*`` instead, so a surface can say what it left out.
         """
         gen: dict[str, dict] = {}
         total_mw = 0.0
@@ -150,6 +178,8 @@ class PowerLedger:
         starved: list[dict] = []
         starved_mw = 0.0
         loose = {"generators": 0, "generation_mw": 0.0, "consumers": 0, "draw_mw": 0.0, "paused": 0}
+        burners = 0
+        burner_mw = 0.0
         for g in self.projection.get("generators", ()):
             b = generator_building(self.game, g["cls"])
             mw = 0.0
@@ -163,6 +193,10 @@ class PowerLedger:
                 loose["generation_mw"] += 0.0 if g.get("paused") else mw
                 continue
             if g.get("paused"):
+                continue
+            if not biomass and g["cls"] in BIOMASS_BURNERS:
+                burners += 1
+                burner_mw += mw
                 continue
             if b is None:
                 variable.append(g["cls"])  # the HUB's built-in burner, absent from Docs
@@ -249,4 +283,7 @@ class PowerLedger:
             "unwired_consumers": loose["consumers"],
             "unwired_draw_mw": loose["draw_mw"],
             "unwired_paused": loose["paused"],
+            "biomass_counted": biomass,
+            "biomass_generators": burners,
+            "biomass_mw": burner_mw,
         }

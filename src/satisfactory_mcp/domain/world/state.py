@@ -290,8 +290,8 @@ class WorldState:
 
     # ---- power ---------------------------------------------------------
 
-    def power_report(self) -> dict:
-        return self.power.power_report()
+    def power_report(self, *, biomass: bool = False) -> dict:
+        return self.power.power_report(biomass=biomass)
 
     # ---- carriers, and the water they are drawn from --------------------
 

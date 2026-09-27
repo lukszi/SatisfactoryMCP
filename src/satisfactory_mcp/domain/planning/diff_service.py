@@ -55,6 +55,7 @@ def build_diff_report(
     plan_name: str = "",
     stage: int | None = None,
     factory: str | None = None,
+    biomass: bool = False,
 ) -> DiffVsSaveReport:
     """Solve ``plan_kwargs`` and match it against the save under an optional scope.
 
@@ -92,8 +93,8 @@ def build_diff_report(
             "counts as not built, and nodes tapped by other factories are unavailable"
         )
 
-    report.rep = rep = build_diff(g, st, sol, req, scope=scope)
-    report.power = pw = st.power_report()
+    report.rep = rep = build_diff(g, st, sol, req, scope=scope, biomass=biomass)
+    report.power = pw = st.power_report(biomass=biomass)
 
     # A sited plan gets the census over its own pad. Beside the identity-matched diff,
     # not instead of it: the diff says whether the machines exist, the survey says

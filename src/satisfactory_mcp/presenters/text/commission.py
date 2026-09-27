@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from ...core.gamedata.model import GameData
 from ...domain.planning.commission_service import CommissionReport
+from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render
 
@@ -95,6 +96,8 @@ def render_commission(
     )
 
     notes = [*plan_notes, *plan_run.warnings]
+    if source == "power_report, nameplate" and biomass_note(power):
+        notes.append(biomass_note(power))
     if source == "power_report, nameplate" and power["measured_headroom_mw"] > head * 1.2:
         notes.append(
             f"your grid is only {power['utilisation']:.0%} utilised, so measured headroom "

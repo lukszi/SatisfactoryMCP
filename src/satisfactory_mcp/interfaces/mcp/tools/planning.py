@@ -57,7 +57,7 @@ from ....presenters.text.compare import render_comparison
 from ....presenters.text.diff import ENERGISED_CAVEAT, RANGE_CAVEAT, render_diff
 from ....presenters.text.layout import render_layout
 from ....presenters.text.plan_factory import render_plan_factory
-from ..app import AsOf, Limit, _item_id, _state, actor, game, mcp, retired
+from ..app import AsOf, Biomass, Limit, _item_id, _state, actor, game, mcp, retired
 
 #: The stored-argument defaults, re-exported under their old home for ``server``. The
 #: two stage caveats keep their old home too: they were read from here before they had
@@ -1282,6 +1282,7 @@ def diff_vs_save(
         str | None,
         Field(description="only count this factory's machines as already built"),
     ] = None,
+    biomass: Biomass = False,
     ctx: Context | None = None,
 ) -> str:
     """What to change to get from the factory you have to the one plan_factory plans.
@@ -1352,6 +1353,7 @@ def diff_vs_save(
             plan_name=plan_name,
             stage=stage,
             factory=factory,
+            biomass=biomass,
         )
     except SelectorError as exc:
         return f"! {exc}"
@@ -1522,6 +1524,7 @@ def commission_plan(
     limit: Limit = 25,
     offset: int = 0,
     plan: Annotated[str | None, Field(description="recall a saved plan by name")] = None,
+    biomass: Biomass = False,
     ctx: Context | None = None,
 ) -> str:
     """In what order to switch a built plant on, without blowing the fuse.
@@ -1569,7 +1572,9 @@ def commission_plan(
         return f"! {exc.args[0]}"
     objective = plan_kwargs.get("objective") or objective
 
-    report = build_commission_report(g, st, plan_kwargs, headroom_mw, objective=objective)
+    report = build_commission_report(
+        g, st, plan_kwargs, headroom_mw, objective=objective, biomass=biomass
+    )
     _journal_view(st, plan, "commission_plan", ctx)
 
     return render_commission(

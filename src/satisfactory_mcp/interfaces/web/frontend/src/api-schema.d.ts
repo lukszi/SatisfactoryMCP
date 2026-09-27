@@ -2581,7 +2581,11 @@ export interface components {
             /** Pin */
             pin: boolean;
         };
-        /** Ledger */
+        /**
+         * Ledger
+         * @description ``biomass_mw`` and ``biomass_generators`` are the wired burners left out of every
+         *     figure here under ``?biomass=exclude``; both are 0 under ``include``.
+         */
         Ledger: {
             /** Generation Mw */
             generation_mw: number;
@@ -2603,6 +2607,10 @@ export interface components {
             unmonitored: number;
             /** Paused */
             paused: number;
+            /** Biomass Mw */
+            biomass_mw: number;
+            /** Biomass Generators */
+            biomass_generators: number;
         };
         /**
          * MachineIssue
@@ -3373,7 +3381,7 @@ export interface components {
         };
         /**
          * PowerSummary
-         * @description The eleven scalar fields of ``WorldState.power_report()``, though the page reads three.
+         * @description The scalar fields of ``WorldState.power_report()`` the page can use.
          *
          *     Declaration order is the order ``domain/power/report.py`` returns them in. The domain
          *     also returns the starved-generator list, which rule 3 drops here: it is a text-surface
@@ -3407,6 +3415,10 @@ export interface components {
             unmodellable: string[];
             /** Paused Count */
             paused_count: number;
+            /** Biomass Generators */
+            biomass_generators: number;
+            /** Biomass Mw */
+            biomass_mw: number;
         };
         /**
          * ProgressionSummary
@@ -4630,6 +4642,7 @@ export interface operations {
             query?: {
                 save?: string | null;
                 world?: string | null;
+                biomass?: "exclude" | "include";
             };
             header?: never;
             path?: never;
@@ -5440,6 +5453,7 @@ export interface operations {
             query?: {
                 save?: string | null;
                 world?: string | null;
+                biomass?: "exclude" | "include";
             };
             header?: never;
             path?: never;

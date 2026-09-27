@@ -7,9 +7,9 @@ from __future__ import annotations
 from .... import config
 from ....core.saveio import projection as proj
 from ....core.text import ago, stamp
-from ....domain.power.report import starved_cause
+from ....domain.power.report import biomass_note, starved_cause
 from ....presenters.text import primitives as render
-from ..app import AsOf, Limit, _state, integrity_notes, mcp, stale_artifact_notes
+from ..app import AsOf, Biomass, Limit, _state, integrity_notes, mcp, stale_artifact_notes
 
 
 @mcp.tool(structured_output=False)
@@ -65,7 +65,9 @@ def list_worlds() -> str:
 
 
 @mcp.tool(structured_output=False)
-def world_summary(save: str | None = None, world: str | None = None, as_of: AsOf = None) -> str:
+def world_summary(
+    save: str | None = None, world: str | None = None, as_of: AsOf = None, biomass: Biomass = False
+) -> str:
     """Progress, power and problems for one world."""
     try:
         st = _state(save, world, as_of)
@@ -73,8 +75,8 @@ def world_summary(save: str | None = None, world: str | None = None, as_of: AsOf
         return f"could not read save: {exc}"
     g = st.game
     p = st.progression()
-    pw = st.power_report()
-    notes = []
+    pw = st.power_report(biomass=biomass)
+    notes = [n for n in [biomass_note(pw)] if n]
     unbuilt = st.unlocked_but_unbuilt()
     if unbuilt:
         notes.append("unlocked but never built: " + ", ".join(g.buildings[c].name for c in unbuilt))
@@ -170,7 +172,9 @@ def unlocked_recipes(
 
 
 @mcp.tool(structured_output=False)
-def power_report(save: str | None = None, world: str | None = None, as_of: AsOf = None) -> str:
+def power_report(
+    save: str | None = None, world: str | None = None, as_of: AsOf = None, biomass: Biomass = False
+) -> str:
     """Generation capacity vs machine draw, nameplate AND measured.
 
     Nameplate is what everything built would draw running at once. Measured weights each
@@ -186,7 +190,7 @@ def power_report(save: str | None = None, world: str | None = None, as_of: AsOf 
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
-    pw = st.power_report()
+    pw = st.power_report(biomass=biomass)
     rows = [
         (v["name"], v["count"], render.num(v["mw"]))
         for v in sorted(pw["by_generator"].values(), key=lambda v: -v["mw"])
@@ -209,6 +213,8 @@ def power_report(save: str | None = None, world: str | None = None, as_of: AsOf 
             "rather than at a rate of their own"
         ),
     ]
+    if biomass_note(pw):
+        notes.append(biomass_note(pw))
     if pw["unmodellable"]:
         notes.append(f"not in game data, excluded: {', '.join(pw['unmodellable'])}")
     if pw["unwired_consumers"] or pw["unwired_generators"]:
