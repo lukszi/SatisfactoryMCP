@@ -225,6 +225,22 @@ def state(game, projection) -> WorldState:
     return WorldState(projection=projection, game=game)
 
 
+@pytest.fixture
+def reference_labels(tmp_path, monkeypatch) -> Path:
+    """The reference world's factory names, in a private label store.
+
+    ``tier 1&2`` and ``steel factory`` are the reference world's own labels, so a test that
+    names them reads this copy rather than whatever the machine's label store holds.
+    """
+    labels = tmp_path / "labels"
+    labels.mkdir()
+    (labels / f"{FIXTURE_WORLD}.json").write_bytes(
+        (FIXTURES / "labels_reference.json").read_bytes()
+    )
+    monkeypatch.setattr(config, "labels_dir", lambda: labels)
+    return labels
+
+
 def _explode(save=None, world=None):
     """A loader that fails the way the real one fails when the sidecar produces nothing."""
     raise RuntimeError("sidecar produced no output")

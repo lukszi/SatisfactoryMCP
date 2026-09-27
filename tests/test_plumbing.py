@@ -129,7 +129,9 @@ def test_the_reference_world_has_three_throttled_buffers_and_seven_dark_pumps(ga
     assert unseen == 0, "every pump in the census is coupled to a pipe and so was checked"
 
 
-def test_the_sweep_over_every_factory_reports_both_and_calls_them_world_wide(monkeypatch, state):
+def test_the_sweep_over_every_factory_reports_both_and_calls_them_world_wide(
+    monkeypatch, state, reference_labels
+):
     """The sweep is the only view either finding can honestly appear in: a buffer and a
     pump belong to no machine set, so nothing scopes them to one factory."""
     monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: state)
@@ -184,7 +186,9 @@ def _crested(consumers, fluid="Desc_Water_C"):
     )
 
 
-def test_the_sweep_names_the_machines_on_a_pipe_network_no_source_reaches(monkeypatch, state):
+def test_the_sweep_names_the_machines_on_a_pipe_network_no_source_reaches(
+    monkeypatch, state, reference_labels
+):
     """Rung (1), world-wide, and the only rung that fires on this author's saves."""
     monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: state)
     monkeypatch.setattr(
