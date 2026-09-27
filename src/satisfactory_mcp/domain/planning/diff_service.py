@@ -15,11 +15,21 @@ from ..factories.resolve import resolve_factory
 from ..factories.select import SelectorError
 from ..world.state import WorldState
 from . import siting as siting_mod
-from .commission import Tracking, commission, track
+from .commission import Commissioning, Tracking, commission, machine_states, track
 from .diff import DiffReport, build_diff
+from .planlog import PlanState
 from .prepare import PreparedPlan, prepare
 
-__all__ = ["DiffVsSaveReport", "build_diff_report"]
+__all__ = [
+    "NAMEPLATE_SOURCE",
+    "STORED_SOURCE",
+    "DiffVsSaveReport",
+    "build_diff_report",
+    "match_scope",
+]
+
+NAMEPLATE_SOURCE = "nameplate from the save"
+STORED_SOURCE = "stored on the plan"
 
 
 @dataclass
@@ -32,6 +42,10 @@ class DiffVsSaveReport:
     power: dict = field(default_factory=dict)
     #: The startup partition matched against the save, only when a stage was asked for.
     tracking: Tracking | None = None
+    #: The startup order the partition came from, beside ``tracking``.
+    run: Commissioning | None = None
+    #: graph.health state per matched machine, from the one pass ``tracking`` also read.
+    health: dict[str, str] = field(default_factory=dict)
     #: What the scope costs the reader, when a factory narrowed what counts as built.
     scope_note: str = ""
     #: Said when a stored plan re-solves to a different plan_id than it was saved with.
@@ -45,6 +59,31 @@ class DiffVsSaveReport:
     site_survey: siting_mod.SiteSurvey | None = None
 
 
+def match_scope(
+    g: GameData, st: WorldState, prepared: PreparedPlan, scope_name: str | None, biomass: bool
+) -> tuple[DiffReport, str]:
+    """The diff of a solved plan under an optional factory scope, and the scope's note.
+
+    A ``SelectorError`` propagates when the named factory has no machines left: an empty
+    scope is the caller's mistake, not a diff saying the plan is unbuilt.
+    """
+    scope = None
+    note = ""
+    if scope_name:
+        resolved_name, machines = resolve_factory(st, scope_name)
+        if not machines:
+            raise SelectorError(
+                f"{scope_name!r} resolved to no machines that still exist in this save"
+            )
+        scope = set(machines)
+        note = (
+            f"scoped to {resolved_name!r} ({len(scope)} machines): everything outside it "
+            "counts as not built, and nodes tapped by other factories are unavailable"
+        )
+    rep = build_diff(g, st, prepared.solution, prepared.request, scope=scope, biomass=biomass)
+    return rep, note
+
+
 def build_diff_report(
     g: GameData,
     st: WorldState,
@@ -56,12 +95,14 @@ def build_diff_report(
     stage: int | None = None,
     factory: str | None = None,
     biomass: bool = False,
+    headroom_mw: float | None = None,
+    stored: PlanState | None = None,
 ) -> DiffVsSaveReport:
     """Solve ``plan_kwargs`` and match it against the save under an optional scope.
 
-    A ``SelectorError`` from a named factory propagates, including the case where the
-    selector resolves but every machine it named has since been dismantled: an empty
-    scope is the caller's mistake, not a diff saying the plan is unbuilt.
+    ``stored`` is the recalled plan version: scope, siting and plan_id come from it rather
+    than from ``st.plans``. ``headroom_mw`` replaces the save's nameplate headroom for the
+    startup partition.
     """
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
     report = DiffVsSaveReport(prepared=prepared)
@@ -73,53 +114,44 @@ def build_diff_report(
         report.empty = True
         return report
 
-    # A plan saved with for_factory carries its own scope, so `diff_vs_save(plan=...)`
-    # already answers "how far along is THAT factory" without naming it again.
+    recalled = stored if stored is not None else (st.plans.find(plan) if plan else None)
     scope_name = factory
-    if scope_name is None and plan:
-        stored = st.plans.find(plan)
-        scope_name = (stored.factory or None) if stored else None
+    if scope_name is None and recalled is not None:
+        scope_name = recalled.factory or None
 
-    scope = None
-    if scope_name:
-        resolved_name, machines = resolve_factory(st, scope_name)
-        if not machines:
-            raise SelectorError(
-                f"{scope_name!r} resolved to no machines that still exist in this save"
-            )
-        scope = set(machines)
-        report.scope_note = (
-            f"scoped to {resolved_name!r} ({len(scope)} machines): everything outside it "
-            "counts as not built, and nodes tapped by other factories are unavailable"
-        )
-
-    report.rep = rep = build_diff(g, st, sol, req, scope=scope, biomass=biomass)
+    rep, report.scope_note = match_scope(g, st, prepared, scope_name, biomass)
+    report.rep = rep
     report.power = pw = st.power_report(biomass=biomass)
 
     # A sited plan gets the census over its own pad. Beside the identity-matched diff,
     # not instead of it: the diff says whether the machines exist, the survey says
     # whether they stand where the plan was sited.
-    if plan and (stored := st.plans.find(plan)) is not None:
-        sit = siting_mod.parse(stored)
+    if recalled is not None:
+        sit = siting_mod.parse(recalled)
         if sit is not None:
             report.site = sit
             report.site_survey = siting_mod.survey(g, st, sit, sol.processes)
 
     # Off unless asked for: the stage numbering is only stable for a STORED plan.
-    if plan or stage is not None:
+    if plan or stored is not None or stage is not None:
+        if headroom_mw is None:
+            head, source = pw["headroom_mw"], NAMEPLATE_SOURCE
+        else:
+            head, source = float(headroom_mw), STORED_SOURCE
+        report.run = run = commission(prepared, g, head, source)
+        report.health = machine_states(rep, g, st)
         report.tracking = track(
-            prepared,
-            commission(prepared, g, pw["headroom_mw"], "power_report, nameplate"),
-            rep,
-            g,
-            st,
-            plan_name=plan_name,
+            prepared, run, rep, g, st, plan_name=plan_name, health=report.health
         )
-        if plan_name and (stored := st.plans.find(plan_name)) and stored.plan_id != req.plan_id:
+        if stored is not None:
+            then = stored
+        else:
+            then = st.plans.find(plan_name) if plan_name else None
+        if plan_name and then is not None and then.plan_id and then.plan_id != req.plan_id:
             # A stage number is a milestone the player remembers, and a re-solve against a
             # moved world can renumber the whole partition under them.
             report.drift_note = (
-                f"plan {plan_name!r} was saved against plan_id {stored.plan_id} and "
+                f"plan {plan_name!r} was saved against plan_id {then.plan_id} and "
                 f"re-solves to {req.plan_id} -- the WORLD moved, so these stage numbers "
                 "may not be the ones you were given before"
             )

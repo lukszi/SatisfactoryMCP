@@ -84,7 +84,9 @@ def test_a_created_plan_is_v1_with_every_field_present(plans, plan):
         "provenance",
         "siting",
         "args",
+        "headroom_mw",
     }
+    assert state.headroom_mw is None
     assert (plans.root / plan / "snap" / "1.json").is_file()
 
 
@@ -869,3 +871,65 @@ def test_a_large_rate_reads_as_a_number_not_an_exponent():
         "was": 2.5,
     }
     assert planlog.describe_op(op) == "rate Plastic 2.5→9,201,000/min"
+
+
+# ------------------------------------------------------------------ startup headroom (P4)
+
+
+def _headroom(value):
+    return {"op": "set", "field": "headroom_mw", "value": value}
+
+
+@pytest.mark.parametrize("value", [0, -1, 1_000_001, "2000", True, float("inf")])
+def test_headroom_must_be_a_positive_number_up_to_a_million(plans, plan, value):
+    with pytest.raises(InvalidOp, match="headroom_mw"):
+        plans.push(plan, 1, [_headroom(value)], actor=PAGE)
+    assert plans.head_rev(plan) == 1
+
+
+def test_headroom_is_a_plan_scalar_outside_plan_id(plans, plan):
+    before = plans.state(plan)
+    pushed = plans.push(plan, 1, [_headroom(2000)], actor=PAGE, stamp=lambda s: {"plan_id": "x"})
+    assert pushed.state.headroom_mw == 2000.0 and pushed.state.args == before.args
+    assert pushed.applied[0] == {**_headroom(2000.0), "was": None}
+    assert plans.push(plan, 2, [_headroom(1_000_000)], actor=PAGE).state.headroom_mw == 1e6
+    cleared = plans.push(plan, 3, [_headroom(None)], actor=PAGE)
+    assert cleared.state.headroom_mw is None
+    assert "headroom_mw" not in plans.state(plan).kwargs()
+
+
+def test_headroom_conflicts_only_with_itself(plans, plan):
+    plans.push(plan, 1, [_headroom(2000)], actor=CHAT)
+    with pytest.raises(Outdated) as caught:
+        plans.push(plan, 1, [_headroom(3000)], actor=PAGE)
+    assert caught.value.conflicts[0].key == "headroom_mw"
+    assert plans.push(plan, 1, [_headroom(2000)], actor=PAGE).noop
+    merged = plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
+    assert merged.state.headroom_mw == 2000.0 and merged.state.args.sloops == 2
+
+
+def test_headroom_undoes_to_its_previous_value(plans, plan):
+    plans.push(plan, 1, [_headroom(2000)], actor=PAGE)
+    plans.push(plan, 2, [_headroom(500)], actor=PAGE)
+    assert inverse(plans.commits(plan)[2].ops) == [_headroom(2000.0)]
+    assert plans.undo(plan, 3, 3, actor=PAGE).state.headroom_mw == 2000.0
+    restored = plans.restore_to(plan, 4, 1, actor=PAGE)
+    assert restored.state.headroom_mw is None
+    assert plans.restore_to(plan, 5, 3, actor=PAGE).state.headroom_mw == 500.0
+
+
+def test_headroom_in_words():
+    assert describe_op({**_headroom(2000.0), "was": None}) == "startup headroom 2,000 MW"
+    assert describe_op({**_headroom(None), "was": 2000.0}) == "startup headroom: nameplate"
+    assert describe_op({**_headroom(1234.5), "was": None}) == "startup headroom 1,234.5 MW"
+
+
+def test_an_older_snapshot_without_headroom_reads_none(plans, plan):
+    snap = plans.root / plan / "snap" / "1.json"
+    raw = json.loads(snap.read_text(encoding="utf-8"))
+    del raw["state"]["headroom_mw"]
+    snap.write_text(json.dumps(raw), encoding="utf-8")
+    assert plans.state(plan).headroom_mw is None
+    raw["state"]["headroom_mw"] = "junk"
+    snap.write_text(json.dumps(raw), encoding="utf-8")
+    assert plans.state(plan, 1).headroom_mw is None

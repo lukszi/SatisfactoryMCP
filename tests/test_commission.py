@@ -645,3 +645,73 @@ def test_the_tool_prints_the_wait_and_calls_it_a_floor(game):
     assert "wait >=" in out
     assert "LOWER bound" in out
     assert "does NOT include pipe transit" in out
+
+
+# ------------------------------------------------------------------ shared words (P4)
+
+
+def _stage(index, *rows):
+    from collections import Counter
+
+    from satisfactory_mcp.domain.planning.commission import Stage, StageRow
+
+    stage = Stage(index=index)
+    for key, machines, built, built_max, states in rows:
+        stage.rows.append(
+            StageRow(
+                stage=index,
+                label=str(key),
+                kind="recipe",
+                building="B",
+                machines=machines,
+                total=machines,
+                built=built,
+                built_max=built_max,
+                by_state=Counter(states),
+                key=key,
+            )
+        )
+    return stage
+
+
+def test_a_stage_describes_itself_in_the_words_the_text_used():
+    assert _stage(1, (("a",), 4, 0, 0, {})).describe() == "not built"
+    assert _stage(1, (("a",), 4, 1, 1, {})).describe() == "25% built"
+    assert _stage(1, (("a",), 4, 1, 3, {})).describe() == "25%-75% built"
+    assert _stage(1, (("a",), 2, 2, 2, {"saturated": 2})).describe() == "built, all running"
+    assert _stage(1, (("a",), 2, 2, 2, {"saturated": 1})).describe() == "built, 1 running"
+    assert _stage(1, (("a",), 2, 2, 2, {"stalled": 2})).describe() == "built, none running"
+
+
+def test_the_headline_and_the_partition_come_from_the_tracking():
+    from satisfactory_mcp.domain.planning.commission import Tracking, partition_id
+
+    tracking = Tracking(
+        stages=[
+            _stage(1, (("a",), 2, 2, 2, {"saturated": 2})),
+            _stage(2, (("a",), 1, 0, 0, {}), (("b",), 3, 3, 3, {"saturated": 1})),
+        ],
+        current=2,
+    )
+    assert tracking.headline() == (
+        "you are in STAGE 2 of 2: stage 1 complete, stage 2 is 75% built (3/4) and 1 "
+        "machine(s) in it are proven running"
+    )
+    assert (
+        tracking.headline(brief=True)
+        == "you are in stage 2 of 2: 75% built (3/4), 1 proven running"
+    )
+    pid = partition_id(tracking)
+    assert len(pid) == 10 and pid == partition_id(tracking)
+    tracking.stages[1].rows[1].machines = 4
+    assert partition_id(tracking) != pid
+    assert partition_id(Tracking(ok=False)) == "" and Tracking(ok=False).headline() == ""
+
+
+def test_the_presenter_speaks_the_domain_caveats():
+    from satisfactory_mcp.domain.planning import commission as domain
+    from satisfactory_mcp.presenters.text import diff as text
+
+    assert text.ENERGISED_CAVEAT is domain.ENERGISED_CAVEAT
+    assert text.RANGE_CAVEAT is domain.RANGE_CAVEAT
+    assert planning.ENERGISED_CAVEAT is domain.ENERGISED_CAVEAT
