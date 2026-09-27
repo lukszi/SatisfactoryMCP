@@ -17,11 +17,9 @@ fail loudly when it is incomplete -- which is the exact error the hand reconcili
 from __future__ import annotations
 
 import pytest
-from conftest import FIXTURE_WORLD, REFERENCE_FIELD
+from conftest import REFERENCE_FIELD, store_spire_coast_full
 
-from satisfactory_mcp import config
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.planning.sites import partition
 from satisfactory_mcp.domain.world.state import WorldState
@@ -34,32 +32,11 @@ HALL = ["Fuel-Powered Generator"]
 RESIN = ["Residual Plastic", "Residual Rubber"]
 THREE = {"A-rig": RIG, "B-hall": HALL, "C-resin": RESIN}
 
-#: The stored arguments of the planner's ``spire-coast-full``, the decoupled three-module plan.
-SPIRE_COAST_FULL = {
-    "objective": "max_mw",
-    "sources": ["region:Spire Coast"],
-    "exports": ["MW", "Plastic", "Rubber"],
-    "export_minimums": {"Plastic": 600.0, "Rubber": 250.0},
-    "only_free_nodes": False,
-    "allow_sinks": True,
-    "extractor_clocks": [1.0, 1.5, 2.0, 2.5],
-    "machine_cost_mw": 5.0,
-    "exclude_recipes": [
-        "Turbofuel",
-        "Alternate: Compacted Coal",
-        "Coal-Powered Generator",
-        "Alternate: Recycled Plastic",
-        "Alternate: Recycled Rubber",
-    ],
-    "water_extractors": 64,
-}
-
 
 @pytest.fixture(autouse=True)
 def live(monkeypatch, tmp_path, projection, game) -> WorldState:
     """The reference world with the plan saved in a private store, read as the tools read it."""
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path)
-    PlanLog(FIXTURE_WORLD).create("spire-coast-full", SPIRE_COAST_FULL, actor=Actor("chat"))
+    store_spire_coast_full(monkeypatch, tmp_path)
 
     def fresh(save=None, world=None, as_of=None):
         return WorldState(projection=projection, game=game)

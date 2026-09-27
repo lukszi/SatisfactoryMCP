@@ -225,6 +225,35 @@ def state(game, projection) -> WorldState:
     return WorldState(projection=projection, game=game)
 
 
+#: The stored arguments of the planner's ``spire-coast-full``, the decoupled three-module plan.
+SPIRE_COAST_FULL = {
+    "objective": "max_mw",
+    "sources": ["region:Spire Coast"],
+    "exports": ["MW", "Plastic", "Rubber"],
+    "export_minimums": {"Plastic": 600.0, "Rubber": 250.0},
+    "only_free_nodes": False,
+    "allow_sinks": True,
+    "extractor_clocks": [1.0, 1.5, 2.0, 2.5],
+    "machine_cost_mw": 5.0,
+    "exclude_recipes": [
+        "Turbofuel",
+        "Alternate: Compacted Coal",
+        "Coal-Powered Generator",
+        "Alternate: Recycled Plastic",
+        "Alternate: Recycled Rubber",
+    ],
+    "water_extractors": 64,
+}
+
+
+def store_spire_coast_full(monkeypatch, plans: Path) -> None:
+    """Save the planner's decoupled Spire Coast plan into ``plans``, a private store."""
+    from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+
+    monkeypatch.setattr(config, "plans_dir", lambda: plans)
+    PlanLog(FIXTURE_WORLD).create("spire-coast-full", SPIRE_COAST_FULL, actor=Actor("chat"))
+
+
 @pytest.fixture
 def labelled(game, projection, tmp_path, monkeypatch) -> WorldState:
     """The fixture world with its own factory names, read from a private label store.
