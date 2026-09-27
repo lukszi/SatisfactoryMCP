@@ -197,9 +197,46 @@ def test_biomass_burners_are_left_out_of_headroom_by_default(game):
         assert led["headroom_mw"] == pytest.approx(coal)
         assert led["measured_headroom_mw"] == pytest.approx(coal)
         assert led["biomass_mw"] == pytest.approx(burner)
-        assert led["biomass_generators"] == 2
-    assert default["unmodellable"] == []
+        assert led["biomass_generators"] == 1
+    assert default["unmodellable"] == ["Build_GeneratorIntegratedBiomass_C"]
     assert [g["name"] for g in default["generators"]] == [game.buildings["Build_GeneratorCoal_C"].name]
+
+
+def test_the_hub_burners_read_the_same_in_both_modes(game):
+    """The HUB's built-in burners have no rating, so they are unmodellable either way and
+    never a biomass burner left out."""
+    hub = [
+        {"instance": f"Build_GeneratorIntegratedBiomass_C_{i}", "cls": "Build_GeneratorIntegratedBiomass_C"}
+        for i in (1, 2)
+    ]
+    off = _one_circuit(game, hub, query="?biomass=exclude")
+    on = _one_circuit(game, hub, query="?biomass=include")
+    assert off == on
+    assert off["circuits"][0]["unmodellable"] == ["Build_GeneratorIntegratedBiomass_C"]
+    assert (off["world"]["biomass_mw"], off["world"]["biomass_generators"]) == (0, 0)
+
+
+def test_no_biomass_line_at_zero_mw():
+    from satisfactory_mcp.domain.power.report import biomass_note
+
+    assert biomass_note({"biomass_generators": 2, "biomass_mw": 0.0}) == ""
+    assert biomass_note({"biomass_generators": 0, "biomass_mw": 0.0}) == ""
+    assert "+30 MW biomass not counted" in biomass_note({"biomass_generators": 1, "biomass_mw": 30.0})
+
+
+def test_the_vanilla_save_counts_only_its_rated_burners(game):
+    """Vanilla: 11 wired Biomass Burners at 330 MW, plus the HUB's two unrated ones."""
+    from satisfactory_mcp.core.saveio.projection import SaveError
+    from satisfactory_mcp.domain.world.state import load_state
+
+    try:
+        st = load_state(game, world="Vanilla")
+    except SaveError as exc:
+        pytest.skip(f"the Vanilla save is not on this machine: {exc}")
+    off = st.power_report(biomass=False)
+    on = st.power_report(biomass=True)
+    assert (off["biomass_generators"], off["biomass_mw"]) == (11, pytest.approx(330.0))
+    assert off["unmodellable"] == on["unmodellable"] == ["Build_GeneratorIntegratedBiomass_C"]
 
 
 def test_biomass_include_counts_every_burner_and_reports_nothing_left_out(game):

@@ -24,14 +24,14 @@ __all__ = [
 #: empty. Not an item name; it is printed as it reads.
 NO_FUEL = "(no fuel)"
 
-#: Hand-fed burners, the HUB's own included. Left out of generation unless asked for: no
-#: automated supply of biomass or biofuel exists, so their MW is a player's arm, not a plant.
+#: Rated hand-fed burners. Left out of generation unless asked for: no automated supply of
+#: biomass or biofuel exists, so their MW is a player's arm, not a plant. The HUB's built-in
+#: burner has no rating and stays under ``unmodellable`` in both modes.
 #: See docs/frontend_vision.md, "Decided 2026-09-27".
 BIOMASS_BURNERS = frozenset(
     {
         "Build_GeneratorBiomass_C",
         "Build_GeneratorBiomass_Automated_C",
-        "Build_GeneratorIntegratedBiomass_C",
     }
 )
 
@@ -60,7 +60,7 @@ def starved_cause(missing: list[str] | tuple[str, ...]) -> str:
 def biomass_note(report: dict) -> str:
     """The one line naming what ``biomass=False`` left out, or "" when nothing was."""
     n = report.get("biomass_generators") or 0
-    if not n:
+    if not n or (report.get("biomass_mw") or 0) <= 0:
         return ""
     return (
         f"+{report['biomass_mw']:,.0f} MW biomass not counted: {n} hand-fed burner(s) left "
