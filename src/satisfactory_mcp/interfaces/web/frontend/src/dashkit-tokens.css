@@ -1,0 +1,20 @@
+/* Stand-in for the design tokens style.css :root will define; delete with its import in dashkit.ts. */
+
+:root {
+  --bg-deep: #12161a;
+  --ink-hi: #fff;
+  --ink-soft: #b8bec6;
+  --muted: #9aa0a8;
+  --dim: #7b828c;
+  --accent: #6ea8d8;
+  --accent-hi: #9ecbf0;
+  --bad: #f08c89;
+  --mid: #9aa0a8;
+  --fs-s: 11px;
+  --fs-m: 12px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --r: 3px;
+  --r-chip: 8px;
+}

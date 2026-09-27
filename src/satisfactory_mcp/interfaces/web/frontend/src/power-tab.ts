@@ -1,9 +1,10 @@
 /* The dashboard's Power tab: the world ledger, every circuit and the machines without power,
  * addressed as `dash=power[/<circuit>]`. */
 
-import { cell, heading, link, note, tile } from "./dashkit";
+import { cell, error, heading, link, loading, note, tile } from "./dashkit";
 import { make } from "./dom";
 import { mw } from "./format";
+import { loadOne } from "./load";
 import { showCircuit, vitals } from "./panel";
 import { go, mapButton, pointButton, table } from "./dashboard";
 
@@ -160,7 +161,11 @@ export function renderPower(body: HTMLElement): void {
   var v = vitals();
   var data = v.circuits;
   if (!data) {
-    note(body, v.circuitsError || "loading…");
+    if (v.circuitsError) {
+      error(body, "power circuits", null, function () {
+        loadOne("/api/power/circuits");
+      });
+    } else loading(body, "power circuits");
     return;
   }
   heading(body, "whole world");
