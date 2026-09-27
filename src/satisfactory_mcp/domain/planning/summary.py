@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ...core.gamedata.model import GameData
+from ..spatial import nodes as nodes_mod
 from ..world import pin
 from ..world.state import WorldState
 from . import provenance
@@ -17,7 +18,7 @@ from .optimize import MW
 from .report import build_plan_report
 from .scenario import build_scenario
 
-__all__ = ["solve_summary", "stamp_for"]
+__all__ = ["names_for", "solve_summary", "stamp_for"]
 
 _EPS = 1e-6
 
@@ -62,6 +63,59 @@ def _row(g: GameData, row: dict, required: set[str]) -> dict:
 def _blockers(errors: list[str], failure_notes: list[str]) -> list[str]:
     named = [e for e in errors if e.startswith(("required", "exclude_recipes"))]
     return named + [n for n in failure_notes if n.startswith("required in force")]
+
+
+def names_for(g: GameData, args) -> dict[str, str]:
+    """Display names for the ids a request can hold: recipes, node instances and items."""
+    out: dict[str, str] = {}
+    for member in [*args.required, *args.banned, *args.only_recipes]:
+        recipe = g.recipes.get(member)
+        if recipe is not None:
+            out[member] = recipe.name
+    wanted = [m for m in args.sources if isinstance(m, str) and m.startswith("node:")]
+    if wanted:
+        table = nodes_mod.load_nodes().by_instance()
+        table.update({k.rsplit(".", 1)[-1]: n for k, n in table.items()})
+        for member in wanted:
+            node = table.get(member[len("node:") :])
+            if node is not None:
+                out[member] = g.item_name(node["resource"])
+    for member in [*args.exports, *args.export_minimums]:
+        if member in g.items:
+            out[member] = g.item_name(member)
+    return out
+
+
+def _clip(text: str) -> str:
+    for cut in ("; known:", ". "):
+        text = text.split(cut)[0]
+    for prefix in ("exports: ", "export_minimums: ", "supplied: "):
+        text = text.removeprefix(prefix)
+    return text
+
+
+def _cause(headline: str, notes: list[str], errors: list[str], required: list[str]) -> str:
+    if headline == "no sources selected":
+        return "the sources match no resource nodes: " + "; ".join(_clip(e) for e in errors[:3])
+    if headline == "unusable exports":
+        wrong = [_clip(n) for n in notes if n.startswith(("exports:", "export_minimums:"))]
+        return "an export is not an item: " + "; ".join(dict.fromkeys(wrong))
+    missing = [
+        n.removeprefix("missing raw: ").split(" (")[0]
+        for n in notes
+        if n.startswith("missing raw: ")
+    ]
+    if missing:
+        return "these sources have no " + ", ".join(missing) + "; add sources that do"
+    dead = [n for n in notes if n.startswith(("nothing produces", "nothing in scope makes"))]
+    if dead:
+        return dead[0]
+    named = [_clip(e) for e in errors if e.startswith(("required", "exclude_recipes"))]
+    if named:
+        return "a recipe setting names nothing usable: " + "; ".join(named)
+    if required:
+        return "the required recipes rule out every answer; remove one, or lower a rate"
+    return "these sources and recipes cannot meet every export minimum; lower a rate or add sources"
 
 
 def _warnings(g: GameData, st: WorldState, report, objective: str) -> list[str]:
@@ -121,10 +175,17 @@ def solve_summary(
     }
     errors = [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
     if prepared.failure is not None:
+        failure = prepared.failure
         return {
             "feasible": False,
-            "headline": prepared.failure.headline,
-            "notes": list(prepared.failure.notes),
+            "headline": failure.headline,
+            "cause": _cause(
+                failure.headline,
+                failure.notes,
+                errors or list(failure.notes),
+                list(req.required) if req is not None else [],
+            ),
+            "notes": list(failure.notes),
             "warnings": [],
             "blockers": _blockers(errors, prepared.failure.notes),
             **base,
@@ -141,6 +202,7 @@ def solve_summary(
     return {
         "feasible": True,
         "headline": f"{objective} over {req.selection.description}",
+        "cause": "",
         "notes": notes,
         "warnings": _warnings(g, st, report, objective),
         "blockers": _blockers(errors, []),

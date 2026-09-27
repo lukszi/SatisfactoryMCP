@@ -2,14 +2,16 @@
  * docs/planner_slice_contract.md §12. */
 
 import { get, send } from "./api";
+import { loading } from "./dashkit";
 import { make } from "./dom";
+import { go } from "./nav";
 import { onVitals } from "./panel";
-import { go, renderBench } from "./planner-bench";
-import { bench, changed, followHead, forgetSolves, inbox, onBench, openPlan, redoLast, reset, resyncHead, sav, undoLast } from "./planner-core";
-import { loadList, renderList } from "./planner-list";
+import { renderBench } from "./planner-bench";
+import { actorWord, bench, changed, followHead, forgetSolves, inbox, loadItems, onBench, openPlan, redoLast, reset, resyncHead, sav, undoLast } from "./planner-core";
+import { loadList, planTitle, renderList } from "./planner-list";
 import { choice, onSetting } from "./settings";
 import { state } from "./state";
-import { offer } from "./toast";
+import { note, offer } from "./toast";
 
 import type { ActivityResponse, FocusResponse } from "./api-shapes";
 import type { ActivityEvent, PlansEvent, Selection } from "./planner-core";
@@ -41,9 +43,16 @@ function typing(): boolean {
   return active.tagName !== "SELECT" && active.value !== active.defaultValue;
 }
 
+function hint(): void {
+  var line = root.querySelector(".plan-held");
+  if (line) line.textContent = held.length || heldDraw ? "an update is waiting: finish the edit to see it" : "";
+}
+
 function whenIdle(action: () => void): void {
-  if (typing()) held.push(action);
-  else action();
+  if (typing()) {
+    held.push(action);
+    hint();
+  } else action();
 }
 
 function flush(): void {
@@ -71,6 +80,7 @@ function draw(): void {
   if (!root.isConnected) return;
   if (pressed || (typing() && root.contains(document.activeElement))) {
     heldDraw = true;
+    if (!pressed) hint();
     return;
   }
   heldDraw = false;
@@ -87,11 +97,17 @@ function draw(): void {
 }
 
 export function renderPlanner(body: HTMLElement, key: string): void {
+  if (!state.world) {
+    body.textContent = "";
+    loading(body, "the world");
+    return;
+  }
   if (root.parentNode !== body) {
     body.textContent = "";
     body.appendChild(root);
     mounted = null;
   }
+  loadItems();
   if (bench.world !== state.world) {
     reset(bench.key);
     mounted = null;
@@ -148,6 +164,7 @@ export function onPlansEvent(event: PlansEvent): void {
 
 function openFromChat(entry: ActivityEvent): void {
   inbox.card = entry;
+  if (entry.plan && !planTitle(entry.plan)) loadList();
   var at = subject();
   if (at) changed();
   else go("planner");
@@ -160,7 +177,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
   if (!news(entry.ts)) return;
   var mode = choice("follow");
   if (mode === "off") return;
-  var who = entry.actor.display;
+  var who = actorWord(entry.actor);
   if (entry.kind === "plan.solve") {
     if (mode === "toasts") {
       offer(who + " solved: " + entry.text, "open", function () {
@@ -179,6 +196,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
       });
     } else if (subject() !== key) {
       whenIdle(function () {
+        note(who + " opened “" + (entry.name || planTitle(key) || "a plan") + "” (Settings, Follow chat)");
         go("planner/" + key);
       });
     }

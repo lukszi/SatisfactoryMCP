@@ -654,7 +654,8 @@ class CommitBody(TypedDict):
 class PlanArgsBody(TypedDict): ...            # every §2 PlanArgs field, in §2 order, exact types
 class PlanStateBody(TypedDict):
     key: str; rev: int; name: str; forgotten: bool; notes: str; factory: str; created: str
-    plan_id: str; siting: dict | None; args: PlanArgsBody; head: int; text: str   # text = head commit's describe
+    plan_id: str; siting: dict | None; args: PlanArgsBody; names: dict[str, str]
+    head: int; text: str   # text = head commit's describe
 class PushedResponse(TypedDict):
     key: str; rev: int; base_rev: int; noop: bool; merged_over: list[int]
     applied: list[PlanOpBody]; dropped: list[PlanOpBody]; others: list[CommitBody]
@@ -674,7 +675,7 @@ class SolveRow(TypedDict):
     inputs: list[Rate]; outputs: list[Rate]; required: bool
 class Rate(TypedDict): item: str; per_min: float
 class SolveResponse(TypedDict):
-    feasible: bool; headline: str; plan_id: str; notes: list[str]; warnings: list[str]
+    feasible: bool; headline: str; cause: str; plan_id: str; notes: list[str]; warnings: list[str]
     machines: int; processes: int; mw_draw: float; mw_generated: float; mw_net: float
     grid_import: bool; exports: list[Rate]; rows: list[SolveRow]
     shards: int | None; sloops_used: int; blockers: list[str]; token: str
@@ -689,6 +690,15 @@ class ActivityResponse(TypedDict): now: float; entries: list[ActivityRow]
   `domain/planning/summary.py: solve_summary(g, st, kwargs: dict, required: list[str]) -> dict`
   (web-owned), from `build_plan_report`.
 - `blockers` names required/banned entries from the §6 refusals.
+- `cause` is one player sentence saying why an infeasible request has no answer (a source
+  that matches nothing, an export that is not an item, a raw input the sources lack, or the
+  rates asked for); it is empty when feasible. `headline` and `notes` keep the tool wording.
+- `names` gives display words for the ids a plan holds: recipe class ids in
+  `required`/`banned`/`only_recipes`, `node:` selectors (their resource), and item class ids
+  in the exports. Patterns and names typed as words are not keyed.
+- A plans or labels file with a `schema` newer than this version reads is a **503** on every
+  route that touches it: `{"error": ..., "newer_schema": true}`. The error names what cannot
+  be read and never the file's path; nothing is written.
 - `rows` are sorted building, then recipe.
 - `mw_*` are exact MW. `–`-style unknowns are null, never 0.
 
@@ -774,12 +784,18 @@ palette tokens.
 
 - **Result panel:** after every new head, re-solve with `POST /api/plan/solve {key, rev}`, and
   drop stale replies by sequence number. It shows:
-  - a summary card: headline, warnings, machines/processes, MW draw/net, exports, blockers;
+  - a result card: one key/value line (machines/processes, MW draw/generation/net, exports,
+    shards), the warnings, and the power budget below it; while a newer version solves, the
+    card says "solving vN…" and the shown result is dimmed;
   - a build list (`rows`, each with [require]/[ban]);
   - a power budget: plan draw against the dashboard's existing headroom figures (nameplate
     and measured), before/after, red when negative, neither leading.
-  - An infeasible head shows the headline and notes, with the last feasible result greyed
-    and labelled `vN`, plus **[undo last change]**.
+  - An infeasible head shows "not solvable: <cause>" and **[undo vN]** in the result card,
+    with the last solvable version greyed below it. On open, that version is found by solving
+    earlier revs (at most 20 back), so a reopened plan keeps it.
+- **Undo** starts from the ops log: the page's own commits that nothing has undone. The
+  buttons are disabled when there is nothing to undo or redo, and while the plan is
+  forgotten (the controls are disabled too, with a **[restore]** button).
 - **Push flow:** `POST /api/plans/{key}/ops {base_rev, ops}`. `base_rev` is the rev the
   user SAW when making the gesture, not the rev when the queued write runs. It is advanced to
   the current rev only when every rev in between is this tab's own commit; otherwise the
@@ -791,7 +807,7 @@ palette tokens.
   - 200 → adopt `state`, set the rev, re-solve. If `others` is non-empty, show the chat strip
     for them.
   - 409 → adopt `state` (the head), re-solve, and put a **conflict chip** on each collided
-    control: *"<theirs_actor> set <text> while you set <mine>: [keep theirs] [use mine]"*.
+    control: *"<conflict text>: [keep chat's] [use yours]"*.
     **Use mine** re-pushes the mine op with `base_rev = head`. Chips never block other
     editing.
   - 410 → toast plus a back-to-list link.

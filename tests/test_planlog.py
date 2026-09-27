@@ -845,3 +845,14 @@ def test_two_processes_writing_at_once_lose_nothing(tmp_path, monkeypatch):
     assert sorted(log.state(key).args.sources) == sorted(
         [f"a-{i}" for i in range(25)] + [f"b-{i}" for i in range(25)]
     )
+
+
+def test_a_large_rate_reads_as_a_number_not_an_exponent():
+    op = {
+        "op": "put",
+        "field": "export_minimums",
+        "item": "Plastic",
+        "value": 9201000.0,
+        "was": 2.5,
+    }
+    assert planlog.describe_op(op) == "rate Plastic 2.5→9,201,000/min"

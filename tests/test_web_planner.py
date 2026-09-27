@@ -266,6 +266,49 @@ def test_solve_takes_exactly_one_of_args_and_key(client):
     assert bad.status_code == 400
 
 
+def test_a_plan_carries_display_names_for_the_ids_it_holds(client, game):
+    args = {
+        **HMF_ARGS,
+        "banned": ["Recipe_Alternate_Screw_C", "Recycled"],
+        "sources": ["node:BP_ResourceNode26_99", "region:Spire Coast"],
+    }
+    names = _create(client, args=args)["state"]["names"]
+    assert names == {
+        "Recipe_Alternate_Screw_C": game.recipes["Recipe_Alternate_Screw_C"].name,
+        "node:BP_ResourceNode26_99": "Crude Oil",
+    }
+
+
+def test_an_infeasible_solve_names_its_cause_in_player_words(client):
+    args = {**HMF_ARGS, "export_minimums": {RIP: 10_000_000}}
+    body = client.post("/api/plan/solve", json={"args": args}, headers=ORIGIN).json()
+    assert body["feasible"] is False and body["cause"]
+    assert "HiGHS" not in body["cause"] and "INFEASIBLE" not in body["cause"]
+    typo = client.post(
+        "/api/plan/solve", json={"args": {**HMF_ARGS, "exports": ["Plait"]}}, headers=ORIGIN
+    ).json()
+    assert typo["cause"] == "an export is not an item: no item matches 'Plait'"
+
+
+def test_plans_from_a_newer_schema_are_a_503_that_names_no_path(client, dirs):
+    key = _create(client)["key"]
+    marker = PlanLog.dir_for(WORLD) / "migrated.json"
+    marker.write_text(json.dumps({"schema": 99}), encoding="utf-8")
+    for reply in (client.get("/api/plans"), client.get(f"/api/plans/{key}")):
+        assert reply.status_code == 503, reply.text
+        body = reply.json()
+        assert body["newer_schema"] is True and "newer version" in body["error"]
+        assert str(dirs) not in body["error"] and "migrated.json" not in body["error"]
+
+
+def test_labels_from_a_newer_schema_are_a_503_that_says_so(client):
+    path = config.labels_dir() / f"{WORLD}.json"
+    path.write_text(json.dumps({"schema": 99, "labels": []}), encoding="utf-8")
+    reply = client.get("/api/factories")
+    assert reply.status_code == 503, reply.text
+    assert reply.json()["error"].startswith("the factory names were saved by a newer version")
+
+
 # ------------------------------------------------------------------ focus and activity
 
 

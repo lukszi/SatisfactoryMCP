@@ -21,6 +21,7 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
+from ....core.gamedata.model import GameData
 from ....domain.planning import journal, summary
 from ....domain.planning.planlog import (
     Actor,
@@ -114,6 +115,7 @@ class PlanStateBody(TypedDict):
     plan_id: str
     siting: dict | None
     args: PlanArgsBody
+    names: dict[str, str]
     head: int
     text: str
 
@@ -221,17 +223,18 @@ def _commit(commit: Commit) -> CommitBody:
     return {**commit.to_dict(), "actor": _actor_json(commit.actor), "text": commit.text()}
 
 
-def _state_body(log: PlanLog, state: PlanState) -> PlanStateBody:
+def _state_body(log: PlanLog, state: PlanState, game: GameData) -> PlanStateBody:
     head = log.commits(state.key)[-1]
     return {
         **state.to_dict(),
         "siting": state.siting or None,
+        "names": summary.names_for(game, state.args),
         "head": head.rev,
         "text": head.text(),
     }
 
 
-def _pushed(log: PlanLog, pushed: Pushed) -> PushedResponse:
+def _pushed(log: PlanLog, pushed: Pushed, game: GameData) -> PushedResponse:
     return {
         "key": pushed.key,
         "rev": pushed.rev,
@@ -242,11 +245,11 @@ def _pushed(log: PlanLog, pushed: Pushed) -> PushedResponse:
         "dropped": pushed.dropped,
         "others": [_commit(c) for c in pushed.others],
         "text": pushed.text(pushed.state.name),
-        "state": _state_body(log, pushed.state),
+        "state": _state_body(log, pushed.state, game),
     }
 
 
-def _outdated(log: PlanLog, exc: Outdated) -> JSONResponse:
+def _outdated(log: PlanLog, exc: Outdated, game: GameData) -> JSONResponse:
     body: OutdatedResponse = {
         "error": exc.text(exc.state.name),
         "outdated": True,
@@ -256,14 +259,14 @@ def _outdated(log: PlanLog, exc: Outdated) -> JSONResponse:
         "conflicts": [
             {**c.to_dict(), "theirs_actor": _actor_json(c.theirs_actor)} for c in exc.conflicts
         ],
-        "state": _state_body(log, exc.state),
+        "state": _state_body(log, exc.state, game),
     }
     return JSONResponse(body, status_code=409)
 
 
-def _refused(log: PlanLog, exc: Exception) -> JSONResponse:
+def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
     if isinstance(exc, Outdated):
-        return _outdated(log, exc)
+        return _outdated(log, exc, game)
     if isinstance(exc, AlreadyUndone):
         body = {"error": str(exc), "already_undone": True, "by": exc.by}
         return JSONResponse(body, status_code=409)
@@ -343,8 +346,8 @@ def create_plan(
     except NameTaken as exc:
         return JSONResponse({"error": str(exc), "name_taken": True}, status_code=409)
     except _ERRORS as exc:
-        return _refused(log, exc)
-    return _pushed(log, pushed)
+        return _refused(log, exc, st.game)
+    return _pushed(log, pushed, st.game)
 
 
 @router.get("/plans/{key}", response_model=PlanStateBody)
@@ -360,7 +363,7 @@ def plan_state(
     if st is None:
         return log
     try:
-        return _state_body(log, log.state(key, rev))
+        return _state_body(log, log.state(key, rev), st.game)
     except (UnknownPlan, InvalidOp) as exc:
         return _fail(str(exc), 404)
 
@@ -413,8 +416,8 @@ def push_ops(
         )
     except _ERRORS as exc:
         _reject(st, key, sav, exc)
-        return _refused(log, exc)
-    return _pushed(log, pushed)
+        return _refused(log, exc, st.game)
+    return _pushed(log, pushed, st.game)
 
 
 @router.post(
@@ -446,8 +449,8 @@ def push_args(
         )
     except _ERRORS as exc:
         _reject(st, key, sav, exc)
-        return _refused(log, exc)
-    return _pushed(log, pushed)
+        return _refused(log, exc, st.game)
+    return _pushed(log, pushed, st.game)
 
 
 @router.post(
@@ -478,5 +481,5 @@ def undo_rev(
         )
     except _ERRORS as exc:
         _reject(st, key, sav, exc)
-        return _refused(log, exc)
-    return _pushed(log, pushed)
+        return _refused(log, exc, st.game)
+    return _pushed(log, pushed, st.game)

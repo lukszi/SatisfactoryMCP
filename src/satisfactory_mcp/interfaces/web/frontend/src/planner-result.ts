@@ -1,12 +1,14 @@
 /* The result panel: what the head solves to, redrawn after every new version. */
 
-import { button as kitButton } from "./dashkit";
-import { count, make } from "./dom";
-import { mw, perMin } from "./format";
+import { button, chip, error, loading, table } from "./dashkit";
+import { make } from "./dom";
+import { count, mw, num, perMin } from "./format";
 import { drawGraph } from "./graph";
 import { vitals } from "./panel";
 import { bench, changed, gesture, undoRev } from "./planner-core";
+import { headroom, LEDGER } from "./powerview";
 
+import type { Column, SortState } from "./dashkit";
 import type { GraphEdgeShape, GraphNodeShape } from "./graph";
 import type { Ledger, SolveRate, SolveResponse, SolveRow } from "./api-shapes";
 import type { Op, Selection } from "./planner-core";
@@ -15,46 +17,29 @@ interface PlanNode extends GraphNodeShape {
   tip: string;
 }
 
+interface BudgetRow {
+  label: string;
+  now: number;
+  after: number | null;
+}
+
 var drawn: { data: SolveResponse | null; svg: SVGSVGElement | null } = { data: null, svg: null };
+var order: SortState = { key: "building", desc: false };
 
-export { perMin };
+function rate(r: SolveRate): string {
+  return r.item === "MW" ? mw(r.per_min) : r.item + " " + perMin(r.per_min);
+}
 
-function exact(value: number | null | undefined): string {
-  return value === null || value === undefined ? "–" : count(Math.round(value * 10) / 10) + " MW";
+function clock(fraction: number): string {
+  return num(fraction * 100) + "%";
 }
 
 function rates(rows: SolveRate[]): string {
-  return (
-    rows
-      .map(function (r) {
-        return r.item + " " + perMin(r.per_min);
-      })
-      .join(", ") || "–"
-  );
-}
-
-export function button(text: string, title: string, action: () => void, className?: string): HTMLButtonElement {
-  var b = kitButton(text, action, { title: title });
-  if (className) b.classList.add(className);
-  return b;
-}
-
-function tile(label: string, value: string, sub: string, bad?: boolean): HTMLElement {
-  var box = make("div", "dash-tile" + (bad ? " bad" : ""));
-  box.appendChild(make("span", "dash-tile-k", label));
-  box.appendChild(make("span", "dash-tile-v", value));
-  if (sub) box.appendChild(make("span", "dash-tile-sub", sub));
-  return box;
+  return rows.map(rate).join(", ") || "–";
 }
 
 export function recipeName(id: string): string {
-  var data = bench.result || (bench.feasible && bench.feasible.data);
-  var found = data
-    ? data.rows.filter(function (r) {
-        return r.recipe_id === id;
-      })[0]
-    : undefined;
-  return found ? found.recipe : id;
+  return (bench.plan && bench.plan.names[id]) || id;
 }
 
 function listed(field: "required" | "banned", member: string): boolean {
@@ -73,72 +58,103 @@ export function banOps(member: string): Op[] {
   return ops;
 }
 
-function summary(parent: HTMLElement, data: SolveResponse, rev: number): void {
-  var card = make("section", "dash-card");
-  var title = make("div", "dash-title");
-  title.appendChild(make("h2", "dash-h", "result · v" + rev));
-  card.appendChild(title);
-  card.appendChild(make("p", "plan-headline" + (data.feasible ? "" : " bad"), data.headline));
-  data.warnings.forEach(function (w) {
-    card.appendChild(make("p", "plan-warning", "! " + w));
-  });
-  if (data.blockers.length) {
-    card.appendChild(make("p", "plan-warning", "blocked by: " + data.blockers.join(" · ")));
-  }
-  if (data.feasible) {
-    var tiles = make("div", "dash-tiles");
-    tiles.appendChild(tile("machines", count(data.machines), data.processes + " processes"));
-    tiles.appendChild(tile("draw", exact(data.mw_draw), "generation " + exact(data.mw_generated)));
-    tiles.appendChild(tile("net", exact(data.mw_net), data.grid_import ? "draws from the grid" : "self-powered", data.mw_net !== null && data.mw_net < 0));
-    tiles.appendChild(tile("exports", String(data.exports.length), rates(data.exports)));
-    card.appendChild(tiles);
-    var facts: string[] = [];
-    if (data.shards !== null) facts.push(data.shards + " power shards");
-    if (data.sloops_used) facts.push(data.sloops_used + " somersloops");
-    if (data.plan_id) facts.push("plan " + data.plan_id);
-    if (facts.length) card.appendChild(make("p", "dash-note", facts.join(" · ")));
-  } else {
-    data.notes.forEach(function (n) {
-      card.appendChild(make("p", "dash-note", n));
-    });
-  }
-  parent.appendChild(card);
-}
-
-function signed(value: number | null): string {
-  return value === null ? "–" : (value > 0 ? "+" : "") + mw(value);
-}
-
-function budgetRow(t: HTMLTableElement, label: string, before: number, net: number | null): void {
-  var tr = make("tr");
-  var after = net === null ? null : before + net;
-  tr.appendChild(make("td", "", label));
-  tr.appendChild(make("td", "num" + (before < 0 ? " bad" : ""), signed(before)));
-  tr.appendChild(make("td", "num" + (after !== null && after < 0 ? " bad" : ""), signed(after)));
-  t.tBodies[0]!.appendChild(tr);
+function facts(data: SolveResponse): string {
+  var net = data.mw_net;
+  var parts = [
+    count(data.machines) + " machines in " + count(data.processes) + " processes",
+    "draw " + (data.mw_draw === null ? "–" : mw(data.mw_draw)),
+    "generation " + (data.mw_generated === null ? "–" : mw(data.mw_generated)),
+    "net " + (net === null ? "–" : headroom(net)) + (data.grid_import ? ", from the grid" : ", self-powered"),
+    "exports " + rates(data.exports),
+  ];
+  if (data.shards) parts.push(count(data.shards) + " power shards");
+  if (data.sloops_used) parts.push(count(data.sloops_used) + " somersloops");
+  return parts.join(" · ");
 }
 
 function budget(parent: HTMLElement, data: SolveResponse): void {
-  var card = make("section", "dash-card");
-  card.appendChild(make("h2", "dash-h", "power budget"));
   var ledger: Ledger | null = vitals().circuits ? vitals().circuits!.world : null;
-  card.appendChild(make("p", "dash-note", "plan: draw " + exact(data.mw_draw) + " · generation " + exact(data.mw_generated) + " · net " + exact(data.mw_net)));
   if (!ledger) {
-    card.appendChild(make("p", "dash-note", vitals().circuitsError || "grid figures loading…"));
-  } else {
-    var t = make("table", "dash-table");
-    var head = make("tr");
-    ["grid", "headroom now", "after this plan"].forEach(function (h, i) {
-      head.appendChild(make("th", i ? "num" : "", h));
-    });
-    t.appendChild(make("thead")).appendChild(head);
-    t.appendChild(make("tbody"));
-    budgetRow(t, "measured", ledger.measured_headroom_mw, data.mw_net);
-    budgetRow(t, "nameplate", ledger.headroom_mw, data.mw_net);
-    if (data.mw_net === null) card.appendChild(make("p", "dash-note", "the plan's net power is unknown, so the after column is left blank"));
-    card.appendChild(t);
-    card.appendChild(make("p", "dash-note", "the dashboard's two headroom figures; neither is the answer on its own"));
+    if (vitals().circuitsError) error(parent, "the grid figures", vitals().circuitsError);
+    else loading(parent, "grid figures");
+    return;
   }
+  var net = data.mw_net;
+  var rows: BudgetRow[] = [
+    { label: LEDGER.headroomNow, now: ledger.measured_headroom_mw, after: net === null ? null : ledger.measured_headroom_mw + net },
+    { label: LEDGER.headroomFull, now: ledger.headroom_mw, after: net === null ? null : ledger.headroom_mw + net },
+  ];
+  var columns: Column<BudgetRow>[] = [
+    {
+      key: "grid",
+      label: "grid",
+      render: function (r) {
+        return r.label;
+      },
+    },
+    {
+      key: "now",
+      label: "today",
+      align: "right",
+      render: function (r) {
+        return headroom(r.now);
+      },
+      tone: function (r) {
+        return r.now < 0 ? "bad" : "";
+      },
+    },
+    {
+      key: "after",
+      label: "with this plan",
+      align: "right",
+      render: function (r) {
+        return r.after === null ? "–" : headroom(r.after);
+      },
+      tone: function (r) {
+        return r.after !== null && r.after < 0 ? "bad" : "";
+      },
+    },
+  ];
+  var box = make("div", "plan-budget");
+  box.appendChild(table(columns, rows, { caption: "power budget" }));
+  parent.appendChild(box);
+}
+
+function undoButton(parent: HTMLElement): void {
+  var plan = bench.plan;
+  if (!plan || plan.rev <= 1 || bench.gone) return;
+  var head = plan.rev;
+  parent.appendChild(
+    button(
+      "undo v" + head,
+      function () {
+        undoRev(head);
+      },
+      { title: "undo the change that made this plan unsolvable, as a new version" }
+    )
+  );
+}
+
+function summary(parent: HTMLElement, data: SolveResponse, rev: number, live: boolean): void {
+  var card = make("section", "dash-card");
+  var title = make("div", "dash-title");
+  title.appendChild(make("h2", "dash-h", "result · v" + rev));
+  var waiting = live && bench.solving && bench.solving !== rev;
+  if (waiting) title.appendChild(make("span", "plan-status", "solving v" + bench.solving + "…"));
+  card.appendChild(title);
+  var body = make("div", waiting ? "plan-stale" : "");
+  card.appendChild(body);
+  if (!data.feasible) {
+    var head = make("p", "plan-headline bad", "not solvable: " + data.cause);
+    body.appendChild(head);
+    if (live) undoButton(body);
+  } else {
+    body.appendChild(make("p", "plan-facts", facts(data)));
+  }
+  data.warnings.forEach(function (w) {
+    body.appendChild(make("p", "plan-warning", w));
+  });
+  if (data.feasible && live) budget(body, data);
   parent.appendChild(card);
 }
 
@@ -146,53 +162,125 @@ function pick(row: SolveRow, select: (s: Selection) => void): void {
   select({ kind: "process", label: row.building + " · " + row.recipe, ref: row.recipe_id || row.recipe });
 }
 
-function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selection) => void): void {
-  var card = make("section", "dash-card");
-  card.appendChild(make("h2", "dash-h", "build list · " + data.rows.length + " processes"));
-  var t = make("table", "dash-table");
-  var head = make("tr");
-  ["building", "recipe", "machines", "clock", "MW", "in", "out", ""].forEach(function (h, i) {
-    head.appendChild(make("th", i >= 2 && i <= 4 ? "num" : "", h));
-  });
-  t.appendChild(make("thead")).appendChild(head);
-  var tb = t.appendChild(make("tbody"));
-  var picked = bench.selection ? bench.selection.ref : "";
-  data.rows.forEach(function (row) {
-    var tr = make("tr", "go" + (picked && picked === (row.recipe_id || row.recipe) ? " plan-picked" : ""));
-    tr.onclick = function () {
-      pick(row, select);
-    };
-    tr.appendChild(make("td", "", row.building));
-    var recipe = make("td", "", row.recipe);
-    if (row.required) recipe.appendChild(make("span", "plan-tag", "required"));
-    tr.appendChild(recipe);
-    tr.appendChild(make("td", "num", count(row.machines)));
-    tr.appendChild(make("td", "num", Math.round(row.clock * 1000) / 10 + "%"));
-    tr.appendChild(make("td", "num", exact(row.mw)));
-    tr.appendChild(make("td", "dash-sub", rates(row.inputs)));
-    tr.appendChild(make("td", "dash-sub", rates(row.outputs)));
-    var acts = make("td");
-    var box = make("span", "dash-acts");
-    var id = row.recipe_id;
-    if (id && !row.required) {
-      box.appendChild(
-        button("require", "this recipe makes its item; every other recipe for it is excluded", function () {
-          gesture(requireOps(id!));
-        })
-      );
-    }
+function actions(row: SolveRow): HTMLElement {
+  var box = make("span", "dash-acts");
+  var id = row.recipe_id;
+  if (id && !row.required) {
     box.appendChild(
-      button("ban", "exclude this recipe from the plan", function () {
-        gesture(banOps(id || row.recipe));
-      })
+      button(
+        "require",
+        function () {
+          gesture(requireOps(id!));
+        },
+        { title: "make every " + (row.item || "output") + " with this recipe", label: "require " + row.recipe }
+      )
     );
-    acts.appendChild(box);
-    tr.appendChild(acts);
-    tb.appendChild(tr);
-  });
-  var wrap = make("div", "dash-scroll");
-  wrap.appendChild(t);
-  card.appendChild(wrap);
+  }
+  box.appendChild(
+    button(
+      "ban",
+      function () {
+        gesture(banOps(id || row.recipe));
+      },
+      { title: "exclude this recipe from the plan", label: "ban " + row.recipe }
+    )
+  );
+  return box;
+}
+
+function recipeCell(row: SolveRow): HTMLElement {
+  var cell = make("span", "", row.recipe);
+  if (row.required) cell.appendChild(chip("required", "muted"));
+  return cell;
+}
+
+function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selection) => void, live: boolean): void {
+  var card = make("section", "dash-card");
+  card.appendChild(make("h2", "dash-h", "build list · " + count(data.rows.length) + " processes"));
+  var picked = bench.selection ? bench.selection.ref : "";
+  var columns: Column<SolveRow>[] = [
+    {
+      key: "building",
+      label: "building",
+      sort: function (r) {
+        return r.building + " " + r.recipe;
+      },
+      render: function (r) {
+        return r.building;
+      },
+    },
+    {
+      key: "recipe",
+      label: "recipe",
+      sort: function (r) {
+        return r.recipe;
+      },
+      render: recipeCell,
+    },
+    {
+      key: "machines",
+      label: "machines",
+      align: "right",
+      sort: function (r) {
+        return r.machines;
+      },
+      render: function (r) {
+        return count(r.machines);
+      },
+    },
+    {
+      key: "clock",
+      label: "clock",
+      align: "right",
+      sort: function (r) {
+        return r.clock;
+      },
+      render: function (r) {
+        return clock(r.clock);
+      },
+    },
+    {
+      key: "mw",
+      label: "power",
+      align: "right",
+      sort: function (r) {
+        return r.mw;
+      },
+      render: function (r) {
+        return mw(r.mw, { signed: true });
+      },
+    },
+    {
+      key: "in",
+      label: "in",
+      className: "dash-sub",
+      render: function (r) {
+        return rates(r.inputs);
+      },
+    },
+    {
+      key: "out",
+      label: "out",
+      className: "dash-sub",
+      render: function (r) {
+        return rates(r.outputs);
+      },
+    },
+  ];
+  if (live && !bench.gone) columns.push({ key: "acts", label: "", render: actions });
+  card.appendChild(
+    table(columns, data.rows, {
+      sort: order,
+      onSort: changed,
+      onRow: function (row) {
+        pick(row, select);
+      },
+      rowClass: function (row) {
+        return picked && picked === (row.recipe_id || row.recipe) ? "plan-picked" : "";
+      },
+      caption: "build list",
+    })
+  );
   parent.appendChild(card);
 }
 
@@ -207,7 +295,7 @@ function graphOf(data: SolveResponse): { nodes: PlanNode[]; edges: GraphEdgeShap
       id: id,
       kind: "process",
       label: row.recipe,
-      detail: row.building + " ×" + row.machines + " · " + Math.round(row.clock * 100) + "%",
+      detail: row.building + " ×" + count(row.machines) + " · " + clock(row.clock),
       machines: 0,
       running: 0,
       blocked: 0,
@@ -241,7 +329,7 @@ function graphOf(data: SolveResponse): { nodes: PlanNode[]; edges: GraphEdgeShap
   });
   data.exports.forEach(function (e) {
     var id = "ex:" + e.item;
-    nodes.push({ id: id, kind: "export", label: e.item, detail: "export " + perMin(e.per_min), machines: 0, running: 0, blocked: 0, stopped: 0, tip: "exported " + perMin(e.per_min) });
+    nodes.push({ id: id, kind: "export", label: e.item, detail: "export " + rate(e), machines: 0, running: 0, blocked: 0, stopped: 0, tip: "exported " + rate(e) });
     feed(e.item, id, e.per_min);
   });
   return { nodes: nodes, edges: edges };
@@ -251,12 +339,16 @@ function graphCard(parent: HTMLElement, data: SolveResponse): void {
   var card = make("section", "dash-card dash-graph");
   var title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "production graph"));
-  title.appendChild(
-    button(bench.graph ? "hide graph" : "graph", "draw this plan's production graph", function () {
+  var toggle = button(
+    bench.graph ? "hide graph" : "show graph",
+    function () {
       bench.graph = !bench.graph;
       changed();
-    })
+    },
+    { title: "draw this plan's production graph" }
   );
+  toggle.setAttribute("aria-expanded", String(bench.graph));
+  title.appendChild(toggle);
   card.appendChild(title);
   if (bench.graph && data.rows.length) {
     if (drawn.data !== data) {
@@ -270,42 +362,31 @@ function graphCard(parent: HTMLElement, data: SolveResponse): void {
       );
     }
     card.appendChild(drawn.svg!);
-    card.appendChild(make("p", "dash-note", "each consumer's need is split over the processes making that item, by their share. Scroll to zoom, drag to pan, double-click to reset."));
+    card.appendChild(make("p", "dash-note", "scroll to zoom, drag to pan, double-click to reset"));
   }
   parent.appendChild(card);
 }
 
 export function renderResult(parent: HTMLElement, select: (s: Selection) => void): void {
-  if (bench.solveError) parent.appendChild(make("p", "dash-note", "the plan could not be solved: " + bench.solveError));
+  if (bench.solveError) error(parent, "the result", bench.solveError);
   var data = bench.result;
   if (!data) {
-    parent.appendChild(make("p", "dash-note", bench.solving || bench.plan ? "solving…" : ""));
+    if (!bench.solveError) loading(parent, "the result");
     return;
   }
+  summary(parent, data, bench.resultRev, true);
   if (!data.feasible) {
-    summary(parent, data, bench.resultRev);
-    var plan = bench.plan;
-    if (plan && plan.rev > 1) {
-      var head = plan.rev;
-      parent.appendChild(
-        button("undo last change", "undo v" + head + ", the change that made this plan infeasible", function () {
-          undoRev(head);
-        })
-      );
-    }
     var last = bench.feasible;
     if (!last) return;
     var grey = make("div", "plan-stale");
-    grey.appendChild(make("p", "dash-note", "last feasible result, v" + last.rev + ":"));
-    summary(grey, last.data, last.rev);
-    buildList(grey, last.data, select);
+    grey.appendChild(make("p", "dash-note", "last solvable version, v" + last.rev + ":"));
+    summary(grey, last.data, last.rev, false);
+    buildList(grey, last.data, select, false);
     parent.appendChild(grey);
     return;
   }
-  var split = make("div", "dash-split");
-  summary(split, data, bench.resultRev);
-  budget(split, data);
-  parent.appendChild(split);
-  graphCard(parent, data);
-  buildList(parent, data, select);
+  var rest = make("div", bench.solving && bench.solving !== bench.resultRev ? "plan-stale" : "");
+  graphCard(rest, data);
+  buildList(rest, data, select, true);
+  parent.appendChild(rest);
 }

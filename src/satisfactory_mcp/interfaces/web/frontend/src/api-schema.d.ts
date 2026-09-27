@@ -3282,6 +3282,10 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             args: components["schemas"]["PlanArgsBody"];
+            /** Names */
+            names: {
+                [key: string]: string;
+            };
             /** Head */
             head: number;
             /** Text */
@@ -3913,13 +3917,15 @@ export interface components {
         };
         /**
          * SolveResponse
-         * @description A solve's facts. Infeasible is a 200 with ``feasible: false``; unknown MW are null.
+         * @description A solve's facts. Infeasible is a 200 with ``feasible: false`` and a player ``cause``.
          */
         SolveResponse: {
             /** Feasible */
             feasible: boolean;
             /** Headline */
             headline: string;
+            /** Cause */
+            cause: string;
             /** Plan Id */
             plan_id: string;
             /** Notes */

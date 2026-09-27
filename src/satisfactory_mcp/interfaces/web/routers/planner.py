@@ -49,10 +49,11 @@ class SolveRow(TypedDict):
 
 
 class SolveResponse(TypedDict):
-    """A solve's facts. Infeasible is a 200 with ``feasible: false``; unknown MW are null."""
+    """A solve's facts. Infeasible is a 200 with ``feasible: false`` and a player ``cause``."""
 
     feasible: bool
     headline: str
+    cause: str
     plan_id: str
     notes: list[str]
     warnings: list[str]
