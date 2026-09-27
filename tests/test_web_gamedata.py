@@ -112,3 +112,44 @@ def test_unlocked_needs_a_save(client, monkeypatch):
     r = client.get("/api/gamedata/unlocked")
     assert r.status_code == 404
     assert "could not read save" in r.json()["error"]
+
+
+def test_a_locked_recipe_is_a_spoiler_and_spoilers_0_drops_it_from_rows_and_census(client):
+    full = client.get("/api/gamedata/recipes", params={"q": "ingot"}).json()
+    assert any(r["spoiler"] for r in full["recipes"]) and not all(
+        r["spoiler"] for r in full["recipes"]
+    ), "the fixture must mix locked and unlocked recipes"
+    for row in full["recipes"]:
+        assert row["spoiler"] == (row["unlocked"] is False)
+    assert client.get("/api/gamedata/recipes", params={"q": "ingot", "spoilers": 1}).json() == full
+    hidden = client.get("/api/gamedata/recipes", params={"q": "ingot", "spoilers": 0}).json()
+    assert hidden["recipes"] == [r for r in full["recipes"] if not r["spoiler"]]
+    census = hidden["census"]
+    assert census["locked"] == {}
+    assert census["have"] == full["census"]["have"]
+    assert census["total"] == full["census"]["total"] - sum(full["census"]["locked"].values())
+    assert census["total"] == len(hidden["recipes"])
+
+
+def test_without_a_save_nothing_is_a_spoiler(client, monkeypatch):
+    monkeypatch.setattr(client.app.state, "load_state", _boom)
+    body = client.get("/api/gamedata/recipes", params={"q": "plate", "spoilers": 0}).json()
+    assert body["recipes"] and not any(r["spoiler"] for r in body["recipes"])
+
+
+def test_makers_and_the_recipe_card_carry_the_spoiler_flag(client, game, state):
+    full = client.get("/api/gamedata/alternates", params={"item": "Iron Ingot"}).json()
+    assert any(r["spoiler"] for r in full["recipes"])
+    for row in full["recipes"]:
+        assert row["spoiler"] == (row["unlocked"] is False)
+    hidden = client.get(
+        "/api/gamedata/alternates", params={"item": "Iron Ingot", "spoilers": 0}
+    ).json()
+    assert hidden["recipes"] == [r for r in full["recipes"] if not r["spoiler"]]
+    locked = next(r["cls"] for r in full["recipes"] if r["spoiler"])
+    card = client.get("/api/gamedata/recipe", params={"recipe": locked}).json()
+    assert card["spoiler"] is True and card["unlocked"] is False
+    r, _ = find_recipe(game, "Iron Plate")
+    assert client.get("/api/gamedata/recipe", params={"recipe": r.cls}).json()["spoiler"] is (
+        r.cls not in state.available_recipe_ids
+    )
