@@ -2,7 +2,7 @@
  * See docs/frontend_vision.md §10. */
 
 import { get } from "./api";
-import { code, count, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "./dom";
+import { code, count, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "./dom";
 import { L } from "./leaflet";
 import { map } from "./map";
 import { HIGHLIGHT, onVitals } from "./panel";
@@ -19,7 +19,8 @@ var SHOWN = 10;
 
 var pane = map.createPane("trace");
 pane.style.zIndex = "450";
-var renderer = L.canvas({ pane: "trace", padding: 0.5 });
+pane.style.pointerEvents = "none";
+var renderer = L.svg({ pane: "trace", padding: 0.5 });
 var group = L.layerGroup();
 
 var view = {
@@ -80,7 +81,7 @@ function draw(data: TraceResponse): void {
       }),
       { color: HIGHLIGHT, weight: 4, opacity: 0.8, renderer: renderer, pane: "trace" }
     );
-    line.bindTooltip((run.ident || run.medium) + " · " + run.pieces + " pieces", { sticky: true });
+    line.bindTooltip(esc(run.medium + " · " + count(run.pieces) + (run.pieces === 1 ? " piece" : " pieces")), { sticky: true });
     line.addTo(group);
   });
   data.machines.forEach(function (m) {
