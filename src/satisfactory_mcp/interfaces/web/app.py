@@ -28,6 +28,7 @@ from ...core.schema import NewerSchema
 from ...domain.planning import journal
 from ...domain.world.state import WorldState, load_state
 from .guard import guard
+from .pinning import pinning
 from .routers import ALL_ROUTERS
 from .watch import SaveWatcher
 
@@ -107,6 +108,7 @@ def create_app(
     instance.state.load_state = load
     instance.state.game = load_game
     instance.state.watcher = SaveWatcher(prewarm=prewarm, tail=tail)
+    instance.middleware("http")(pinning)
     instance.middleware("http")(guard)
     instance.add_exception_handler(NewerSchema, _newer)
     instance.add_exception_handler(HTTPException, _http)

@@ -179,6 +179,10 @@ function affordable(rows: MilestoneRow[]): number {
   }).length;
 }
 
+export function readyMilestones(): number | null {
+  return milestones.data ? affordable(visible(milestones.data.milestones)) : null;
+}
+
 export function milestoneTile(): HTMLElement {
   if (!milestones.data) {
     return tile("milestones", "–", milestones.failed ? "could not be read" : "loading…", false, hashFor("progress"));

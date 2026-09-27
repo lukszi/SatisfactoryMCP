@@ -26,6 +26,7 @@ import {
   whereOf,
 } from "./powerview";
 import { registerFetch } from "./registry";
+import { onSelect, select, selected } from "./selection";
 import { editName, renamingIn } from "./rename";
 import { state } from "./state";
 import { actionTone, learnStates, statesOf, tone } from "./states";
@@ -140,6 +141,7 @@ function outline(bounds: L.LatLngBounds): void {
 }
 
 function pin(x_m: number, y_m: number, label?: string): void {
+  select({ kind: "point", key: x_m + "," + y_m, label: label || "a point", x_m: x_m, y_m: y_m });
   mark.clearLayers();
   var ring = L.circleMarker([-y_m, x_m], {
     radius: 14,
@@ -174,6 +176,7 @@ function selectFactory(row: FactoryHealthRow, fly: boolean): void {
   if (bounds) outline(bounds);
   else mark.clearLayers();
   render();
+  select({ kind: "factory", key: row.name, label: row.name });
 }
 
 function selectCircuit(row: CircuitRow): void {
@@ -185,6 +188,23 @@ function selectCircuit(row: CircuitRow): void {
   } else {
     mark.clearLayers();
   }
+  render();
+  select(view.circuit >= 0 ? { kind: "circuit", key: String(row.index), label: circuitName(row) } : null);
+}
+
+function follow(): void {
+  var s = selected();
+  var factory = s && s.kind === "factory" && factoryNamed(s.key) ? s.key : "";
+  var circuitRow = s && s.kind === "circuit" && view.circuits ? view.circuits.circuits[+s.key] : undefined;
+  var circuit = circuitRow ? circuitRow.index : -1;
+  if (s && !factory && !circuitRow && s.kind !== "point") return;
+  if (factory === view.factory && circuit === view.circuit) return;
+  view.factory = factory;
+  view.circuit = circuit;
+  var box = factory ? factoryNamed(factory)!.bbox_m : circuitRow ? circuitRow.bbox_m : null;
+  var bounds = box ? paddedBounds(box) : null;
+  if (bounds) outline(bounds);
+  else if (!s || s.kind !== "point") mark.clearLayers();
   render();
 }
 
@@ -607,6 +627,7 @@ function wire(): void {
 recall();
 wire();
 render();
+onSelect(follow);
 
 registerFetch<FactoryHealthResponse>({
   wave: "live",
@@ -622,7 +643,9 @@ registerFetch<FactoryHealthResponse>({
     if (view.factory && !factoryNamed(view.factory)) {
       view.factory = "";
       mark.clearLayers();
+      select(null);
     }
+    follow();
     changed();
     if (view.pending) showFactory(view.pending);
   },
@@ -649,6 +672,7 @@ registerFetch<CircuitsResponse>({
     view.circuits = data;
     view.circuitsError = "";
     if (view.circuit >= data.circuits.length) view.circuit = -1;
+    follow();
     changed();
   },
   failed: function () {

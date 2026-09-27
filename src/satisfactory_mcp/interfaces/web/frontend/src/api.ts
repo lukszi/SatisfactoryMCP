@@ -70,8 +70,41 @@ function pinned(path: string): string {
   return path + q;
 }
 
-function answer<T extends ApiError>(path: string, r: Response): Promise<T> {
-  return r.json().then(function (body: T) {
+var UNPINNED = ["/api/summary", "/api/worlds"];
+
+var staleListeners: Array<() => void> = [];
+
+function tokened(url: string): string {
+  var bare = url.split("?")[0]!;
+  if (!state.token || UNPINNED.indexOf(bare) >= 0) return url;
+  return url + (url.indexOf("?") < 0 ? "?" : "&") + "as_of=" + encodeURIComponent(state.token);
+}
+
+function stale(on: boolean): void {
+  if (state.stale === on) return;
+  state.stale = on;
+  staleListeners.forEach(function (listener) {
+    listener();
+  });
+}
+
+export function onStale(listener: () => void): void {
+  staleListeners.push(listener);
+}
+
+export function holdToken(token: string): void {
+  state.token = token;
+  stale(false);
+}
+
+export function dropToken(): void {
+  state.token = "";
+  stale(false);
+}
+
+function answer<T extends ApiError>(path: string, r: Response, sent?: string): Promise<T> {
+  return r.json().then(function (body: T & { stale?: boolean }) {
+    if (r.status === 409 && body.stale && sent && sent === state.token) stale(true);
     if (!r.ok || body.error) {
       var error: StatusError = new Error(body.error || r.status + " " + path);
       error.status = r.status;
@@ -97,8 +130,9 @@ function request(method: string, body?: object): RequestInit {
 
 export function get<T extends ApiError>(path: ApiUrl, subject?: string): Promise<T> {
   var url = filled(path, subject);
-  return fetch(pinned(url)).then(function (r) {
-    return answer<T>(url, r);
+  var sent = state.token;
+  return fetch(tokened(pinned(url))).then(function (r) {
+    return answer<T>(url, r, sent);
   });
 }
 

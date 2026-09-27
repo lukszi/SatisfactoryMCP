@@ -2678,3 +2678,155 @@ body.dash-on #trace {
     min-width: 6em;
   }
 }
+
+body {
+  --strip-h: 26px;
+  --rail-w: 0px;
+}
+
+#status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: var(--strip-h);
+  padding: 0 var(--sp-3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  white-space: nowrap;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+
+#status > * {
+  flex: none;
+}
+
+.status-sel,
+.status-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.status-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.status-item {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+a.status-name:hover,
+.status-item:hover {
+  color: var(--ink-hi);
+  text-decoration: underline;
+}
+
+#status .bad {
+  color: var(--bad);
+}
+
+#status .blocked {
+  color: var(--blocked);
+}
+
+#map {
+  height: calc(100% - 40px - var(--strip-h));
+}
+
+#dash {
+  top: calc(40px + var(--strip-h));
+}
+
+#rail {
+  display: none;
+}
+
+.rail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rail-link {
+  display: block;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-s);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.rail-link:hover {
+  color: var(--ink-hi);
+}
+
+.rail-link[aria-current="page"] {
+  color: var(--ink);
+  background: var(--bg);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+@media (min-width: 700px) {
+  #panel {
+    top: calc(50px + var(--strip-h));
+    max-height: calc(100% - 50px - var(--strip-h) - 3.6rem);
+  }
+}
+
+@media (min-width: 900px) {
+  body {
+    --rail-w: 104px;
+  }
+
+  #rail {
+    display: block;
+    position: fixed;
+    top: calc(40px + var(--strip-h));
+    bottom: 0;
+    left: 0;
+    width: var(--rail-w);
+    overflow-y: auto;
+    padding: var(--sp-2) 0;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    z-index: var(--z-dash);
+  }
+
+  #map {
+    margin-left: var(--rail-w);
+  }
+
+  #dash {
+    left: var(--rail-w);
+  }
+
+  #panel {
+    left: calc(54px + var(--rail-w));
+  }
+
+  #trace {
+    left: calc(410px + var(--rail-w));
+  }
+
+  #dash-nav {
+    display: none;
+  }
+}
+
+@media (max-width: 599px) {
+  .status-k {
+    display: none;
+  }
+}
