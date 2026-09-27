@@ -2,13 +2,14 @@
  * addressed by the fragment's `dash=` key. See docs/frontend_vision.md §8. */
 
 import { get, send } from "./api";
+import { cell, heading, link, note, tile } from "./dashkit";
 import { count, el, make } from "./dom";
-import { mw, pct, phaseText, spoken } from "./format";
+import { mw, pct, spoken } from "./format";
 import { drawGraph } from "./graph";
 import { hashFor, writeHash } from "./map";
 import { onVitals, showBox, showCircuit, showFactory, showPoint, vitals } from "./panel";
 import { stateTone } from "./placements";
-import { registerFetch } from "./registry";
+import { milestoneTile, onProgress, renderProgress } from "./progress";
 import { editName, refreshLabels, renamedTo } from "./rename";
 import { amount, choice, onSetting, setSetting, setting, SETTINGS } from "./settings";
 import { state } from "./state";
@@ -26,8 +27,6 @@ import type {
   Ledger,
   MachineIssue,
   MachineRef,
-  MilestoneRow,
-  MilestonesResponse,
   NamedResponse,
   StarvedGenerator,
 } from "./api-shapes";
@@ -46,14 +45,7 @@ var FINE = ["saturated", "unmonitored"];
 
 var ATTENTION_SHOWN = 12;
 
-var progress = {
-  data: null as MilestonesResponse | null,
-  error: "",
-};
-
 var sort = { key: "actionable", desc: true };
-
-var showDone = false;
 
 var detect = {
   busy: false,
@@ -95,16 +87,6 @@ function go(dash: string): void {
   location.hash = hashFor(dash);
 }
 
-function link(dash: string, text: string, className?: string): HTMLAnchorElement {
-  var a = make("a", className, text);
-  a.setAttribute("href", hashFor(dash));
-  a.onclick = function (event) {
-    event.stopPropagation();
-    a.setAttribute("href", hashFor(dash));
-  };
-  return a;
-}
-
 function toMap(action: () => void): void {
   state.dash = "";
   history.pushState(null, "", hashFor(""));
@@ -139,23 +121,6 @@ function pointButton(row: { x_m: number | null; y_m: number | null }): HTMLEleme
   return mapButton("fly the map to it", function () {
     showPoint(at.x_m, at.y_m);
   });
-}
-
-function note(parent: HTMLElement, text: string): void {
-  parent.appendChild(make("p", "dash-note", text));
-}
-
-function heading(parent: HTMLElement, text: string): void {
-  parent.appendChild(make("h2", "dash-h", text));
-}
-
-function tile(label: string, value: string, sub: string, bad?: boolean, href?: string): HTMLElement {
-  var box = make(href ? "a" : "div", "dash-tile" + (bad ? " bad" : ""));
-  if (href) box.setAttribute("href", href);
-  box.appendChild(make("span", "dash-tile-k", label));
-  box.appendChild(make("span", "dash-tile-v", value));
-  if (sub) box.appendChild(make("span", "dash-tile-sub", sub));
-  return box;
 }
 
 interface Mix {
@@ -318,13 +283,6 @@ function table(headers: [string, string][], sortable: boolean, onSort?: () => vo
   return t;
 }
 
-function cell(tr: HTMLElement, content: string | number | HTMLElement, className?: string): void {
-  var td = make("td", className);
-  if (content instanceof HTMLElement) td.appendChild(content);
-  else td.textContent = String(content);
-  tr.appendChild(td);
-}
-
 function powerProblems(): { total: number; sub: string } | null {
   var c = vitals().circuits;
   if (!c) return null;
@@ -381,21 +339,8 @@ function renderOverview(body: HTMLElement): void {
   }
   var dark = powerProblems();
   if (dark) tiles.appendChild(tile("power problems", count(dark.total), dark.sub, dark.total > 0, hashFor("power")));
-  if (progress.data) {
-    var ready = shown(progress.data).milestones.filter(function (m) {
-      return m.status === "READY";
-    }).length;
-    var top = progress.data.highest_complete_tier;
-    tiles.appendChild(
-      tile(
-        "milestones",
-        top === null ? "no tier complete" : "tier " + top + " complete",
-        (phaseText(progress.data.game_phase) || "no phase in this save") + " · " + ready + " affordable",
-        false,
-        hashFor("progress")
-      )
-    );
-  }
+  var milestones = milestoneTile();
+  if (milestones) tiles.appendChild(milestones);
   body.appendChild(tiles);
 
   var split = make("div", "dash-split");
@@ -1302,138 +1247,6 @@ function renderCircuit(body: HTMLElement, subject: string): void {
   note(body, "circuit numbers follow size in this save and can change when the next save is read");
 }
 
-function amounts(rows: { name: string; amount: number }[]): string {
-  return (
-    rows
-      .map(function (r) {
-        return count(r.amount) + " " + r.name;
-      })
-      .join(", ") || "–"
-  );
-}
-
-function reach(data: MilestonesResponse): number {
-  var top = 0;
-  data.milestones.forEach(function (m) {
-    if (m.status === "DONE") top = Math.max(top, m.tier);
-  });
-  if (!top && data.tiers.length) top = data.tiers[0]!.tier;
-  return top;
-}
-
-function shown(data: MilestonesResponse): MilestonesResponse {
-  if (setting("spoilers")) return data;
-  var top = reach(data);
-  return {
-    game_phase: data.game_phase,
-    highest_complete_tier: data.highest_complete_tier,
-    tiers: data.tiers.filter(function (t) {
-      return t.tier <= top;
-    }),
-    milestones: data.milestones.filter(function (m) {
-      return m.tier <= top;
-    }),
-  };
-}
-
-function renderProgress(body: HTMLElement): void {
-  if (!progress.data) {
-    note(body, progress.error || "loading…");
-    return;
-  }
-  var data = shown(progress.data);
-  var tiles = make("div", "dash-tiles");
-  tiles.appendChild(
-    tile(
-      "highest complete tier",
-      data.highest_complete_tier === null ? "none" : String(data.highest_complete_tier),
-      phaseText(data.game_phase) || "no phase in this save"
-    )
-  );
-  var counts: Record<string, number> = { READY: 0, short: 0, BLOCKED: 0, DONE: 0 };
-  data.milestones.forEach(function (m) {
-    counts[m.status] = (counts[m.status] || 0) + 1;
-  });
-  tiles.appendChild(tile("affordable now", count(counts.READY!), "bill covered by spendable stock"));
-  tiles.appendChild(tile("short", count(counts.short!), "stock does not cover the bill"));
-  tiles.appendChild(tile("done", count(counts.DONE!), "of " + data.milestones.length + " milestones" + (setting("spoilers") ? "" : " so far")));
-  body.appendChild(tiles);
-
-  var strip = make("div", "dash-tiers");
-  data.tiers.forEach(function (t) {
-    var box = make("div", "dash-tier" + (t.done === t.total ? " full" : ""));
-    box.appendChild(make("span", "dash-tier-k", "tier " + t.tier));
-    var bar = make("div", "dash-hbar");
-    var fill = make("span", "dash-mix-ok");
-    fill.style.width = (t.total ? (t.done / t.total) * 100 : 0) + "%";
-    bar.appendChild(fill);
-    box.appendChild(bar);
-    box.appendChild(make("span", "dash-tier-v", t.done + "/" + t.total));
-    strip.appendChild(box);
-  });
-  body.appendChild(strip);
-  if (!setting("spoilers")) {
-    var hid = make("p", "dash-note", "Tiers you have not started are hidden. ");
-    hid.appendChild(link("settings", "Settings"));
-    hid.appendChild(document.createTextNode(" can show them."));
-    body.appendChild(hid);
-  }
-
-  var card = make("section", "dash-card");
-  var bar2 = make("div", "dash-title");
-  bar2.appendChild(make("h2", "dash-h", "milestones"));
-  var toggle = make("label", "dash-toggle");
-  var box2 = make("input");
-  box2.type = "checkbox";
-  box2.checked = showDone;
-  box2.onchange = function () {
-    showDone = box2.checked;
-    render();
-  };
-  toggle.appendChild(box2);
-  toggle.appendChild(document.createTextNode(" show done"));
-  bar2.appendChild(toggle);
-  card.appendChild(bar2);
-  var rows = data.milestones.filter(function (m: MilestoneRow) {
-    return showDone || m.status !== "DONE";
-  });
-  if (!rows.length) note(card, "every milestone is done");
-  else {
-    var t = table(
-      [
-        ["tier", ""],
-        ["milestone", "name"],
-        ["status", "name"],
-        ["cost", "name"],
-        ["short by", "name"],
-        ["recipes", ""],
-      ],
-      false
-    );
-    var tb = t.tBodies[0]!;
-    rows.forEach(function (m) {
-      var tr = make("tr");
-      cell(tr, m.tier, "num");
-      cell(tr, m.name);
-      cell(tr, m.status + (m.blocked_by.length ? " (" + m.blocked_by.join(", ") + ")" : ""), m.status === "READY" ? "ok" : "");
-      cell(tr, amounts(m.cost));
-      cell(tr, m.status === "DONE" ? "" : amounts(m.short), m.short.length && m.status !== "DONE" ? "bad" : "");
-      cell(tr, m.unlocks || "", "num");
-      tb.appendChild(tr);
-    });
-    var wrap = make("div", "dash-scroll");
-    wrap.appendChild(t);
-    card.appendChild(wrap);
-  }
-  note(
-    card,
-    "cost is checked against spendable stock: carried, storage containers and the Dimensional Depot. " +
-      "READY is about the bill, not about access: a HUB tier opens with Space Elevator deliveries, " +
-      "which no milestone in the game data records. recipes counts what a milestone newly grants."
-  );
-  body.appendChild(card);
-}
-
 function renderSettings(body: HTMLElement): void {
   var card = make("section", "dash-card");
   heading(card, "settings");
@@ -1522,7 +1335,7 @@ function render(): void {
   } else if (at.tab === "power") {
     if (at.subject) renderCircuit(body, at.subject);
     else renderPower(body);
-  } else if (at.tab === "progress") renderProgress(body);
+  } else if (at.tab === "progress") renderProgress(body, at.subject, pointButton);
   else renderSettings(body);
   el("dash").scrollTop = scroll;
   if (typing !== null) {
@@ -1565,28 +1378,10 @@ function wire(): void {
     };
   });
   onVitals(render);
+  onProgress(render);
   detect.asked = detectAsked();
   onSetting(settingChanged);
 }
 
 wire();
 show();
-
-registerFetch<MilestonesResponse>({
-  wave: "live",
-  rank: 60,
-  path: "/api/progress/milestones",
-  label: "milestones",
-  clears: [],
-  refilters: false,
-  draw: function (data) {
-    progress.data = data;
-    progress.error = "";
-    render();
-  },
-  failed: function () {
-    progress.data = null;
-    progress.error = "milestones could not be read for this save";
-    render();
-  },
-});

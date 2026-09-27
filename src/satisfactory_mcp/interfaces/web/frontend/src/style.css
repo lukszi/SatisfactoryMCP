@@ -1485,6 +1485,36 @@ a.dash-where:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.dash-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 10px 0 8px;
+}
+
+.dash-subnav a {
+  padding: 3px 10px;
+  color: #9aa0a8;
+  font-size: 12px;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.dash-subnav a:hover {
+  border-color: #6ea8d8;
+}
+
+#dash .dash-subnav a.on {
+  color: var(--ink);
+  border-color: #6ea8d8;
+  background: var(--panel);
+}
+
+.dash-table tr.dash-lead td {
+  border-bottom-color: transparent;
+}
+
 .dash-toggle {
   margin-left: auto;
   color: #9aa0a8;
