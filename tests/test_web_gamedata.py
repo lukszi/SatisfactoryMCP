@@ -79,7 +79,7 @@ def test_an_ambiguous_recipe_lists_the_candidates_and_unknown_is_404(client):
     assert "matches" in ambiguous.json()["error"]
     unknown = client.get("/api/gamedata/recipe", params={"recipe": "zzzz-no-such"})
     assert unknown.status_code == 404
-    assert unknown.json()["error"] == "no recipe is called “zzzz-no-such”"
+    assert unknown.json()["error"] == "no recipe named “zzzz-no-such”"
 
 
 def test_an_ambiguous_name_counts_only_unlocked_candidates_with_spoilers_0(client, game, state):
@@ -103,7 +103,8 @@ def test_alternates_list_every_maker_alternates_first(client, game, state):
     for row in body["recipes"]:
         assert row["unlocked"] == (row["cls"] in state.available_recipe_ids)
         assert row["granted_by"] == granted_by(game, game.recipes[row["cls"]])
-    assert client.get("/api/gamedata/alternates", params={"item": "zzzz"}).status_code == 404
+    gone = client.get("/api/gamedata/alternates", params={"item": "zzzz"})
+    assert gone.status_code == 404 and gone.json() == {"error": "no item named “zzzz”"}
 
 
 def test_unlocked_counts_agree_with_the_state(client, state):

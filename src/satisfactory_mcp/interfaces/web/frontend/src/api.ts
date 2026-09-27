@@ -138,6 +138,10 @@ export interface StatusError extends Error {
   body?: ApiError;
 }
 
+export function missing(reason: unknown): boolean {
+  return (reason as StatusError | null | undefined)?.status === 404;
+}
+
 export type Pushed<T, C> = { conflict: false; body: T } | { conflict: true; body: C };
 
 export function push<T extends ApiError, C extends ApiError>(path: ApiPath, body: object, subject?: string): Promise<Pushed<T, C>> {

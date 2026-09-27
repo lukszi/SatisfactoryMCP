@@ -1,7 +1,7 @@
 /* The dashboard's Power tab: the world ledger, every circuit and the machines without power,
  * addressed as `dash=power[/<circuit>]`. */
 
-import { error, heading, link, loading, note, table, tile } from "./dashkit";
+import { empty, error, heading, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
 import { count, mw } from "./format";
 import { loadOne } from "./load";
@@ -445,7 +445,7 @@ export function renderCircuit(body: HTMLElement, subject: string): void {
   }
   var row = data.circuits[+subject - 1];
   if (!row) {
-    note(body, "no circuit " + subject + " in this world");
+    empty(body, "no circuit " + subject + " in this world", "circuit numbers can change between saves; pick one from the list");
     return;
   }
   var index = row.index;

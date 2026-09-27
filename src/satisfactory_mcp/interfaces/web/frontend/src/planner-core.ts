@@ -1,6 +1,6 @@
 /* The open plan as the page knows it, and every write it makes. See docs/planner_slice_contract.md §12. */
 
-import { get, push, send } from "./api";
+import { get, missing, push, send } from "./api";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 import { W } from "./words";
@@ -66,6 +66,7 @@ export var bench = {
   key: "",
   plan: null as PlanStateBody | null,
   error: "",
+  missing: false,
   gone: false,
   last: null as { who: string; ts: number } | null,
   result: null as SolveResponse | null,
@@ -194,6 +195,7 @@ export function reset(key: string): void {
   bench.key = key;
   bench.plan = null;
   bench.error = "";
+  bench.missing = false;
   bench.gone = false;
   bench.last = null;
   bench.result = null;
@@ -222,6 +224,7 @@ export function openPlan(key: string): void {
       .catch(function (error) {
         if (bench.key !== key) return;
         bench.error = friendly(error);
+        bench.missing = missing(error);
         changed();
       });
   });

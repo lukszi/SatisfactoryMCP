@@ -270,8 +270,8 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
   );
   item.appendChild(stateChips(row));
   if (selected) {
+    item.appendChild(link("factories/" + row.name, "open in dashboard", "panel-dash"));
     var tools = make("div", "panel-row-tools");
-    tools.appendChild(link("factories/" + row.name, "open in dashboard", "panel-dash"));
     tools.appendChild(
       button(
         "rename",

@@ -141,7 +141,9 @@ def solve_plan(
             return _fail(f"no plan “{key}” in this world", 404)
         try:
             kwargs = PlanLog(st.world_id).state(key, body.get("rev")).kwargs()
-        except (UnknownPlan, InvalidOp) as exc:
+        except UnknownPlan:
+            return _fail(f"no plan “{key}” in this world", 404)
+        except InvalidOp as exc:
             return _fail(str(exc), 404)
     else:
         try:

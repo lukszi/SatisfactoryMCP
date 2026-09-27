@@ -1,6 +1,6 @@
 /* The Recipes codex: the dashboard's `dash=recipes…` section. See docs/frontend_vision.md §10. */
 
-import { get, latest } from "./api";
+import { get, latest, missing } from "./api";
 import { empty, error, link, loading, note, table, tabs2 } from "./dashkit";
 import { el, make } from "./dom";
 import { count, num, perMin } from "./format";
@@ -12,7 +12,7 @@ import { state } from "./state";
 import { friendly } from "./toast";
 import { counted, RECIPE_KIND as KIND_WORD } from "./words";
 
-import type { ApiError, ApiUrl } from "./api";
+import type { ApiError, ApiUrl, StatusError } from "./api";
 import type { Column, SortState } from "./dashkit";
 import type {
   AlternatesResponse,
@@ -606,14 +606,15 @@ function title(body: HTMLElement, back: Mode, text: string, cls: string, tag: st
   body.appendChild(bar);
 }
 
-function unread<T>(body: HTMLElement, got: Got<T>, back: Mode, heading: string, thing: string): void {
-  if (!got.failure) {
-    body.appendChild(link(backTo(back), "‹ all " + back, "dash-back"));
-    loading(body, thing);
-    return;
-  }
-  title(body, back, heading, "", "");
-  error(body, thing, got.failure, got.retry);
+function unread<T>(body: HTMLElement, got: Got<T>, back: Mode, thing: string, how: string): void {
+  body.appendChild(link(backTo(back), "‹ all " + back, "dash-back"));
+  if (!got.failure) loading(body, thing);
+  else if (missing(got.failure) || ambiguous(got.failure)) empty(body, friendly(got.failure), how);
+  else error(body, thing, got.failure, got.retry);
+}
+
+function ambiguous(reason: unknown): boolean {
+  return (reason as StatusError | null)?.status === 409;
 }
 
 function candidates(body: HTMLElement, name: string): void {
@@ -670,7 +671,7 @@ function makerTable(card: HTMLElement, rows: MakerRow[]): void {
 function renderItem(body: HTMLElement, cls: string): void {
   var got = load<AlternatesResponse>("recipes", `/api/gamedata/alternates?item=${encodeURIComponent(cls)}${spoilers()}`);
   if (!got.data) {
-    unread(body, got, "items", "Item", "the item");
+    unread(body, got, "items", "the item", "search for it by name in the header");
     return;
   }
   var data = got.data;
@@ -731,7 +732,7 @@ function rateTable(box: HTMLElement, rates: Rate[], part: boolean, linked: boole
 function renderRecipe(body: HTMLElement, cls: string): void {
   var got = load<RecipeDetail>("recipes", `/api/gamedata/recipe?recipe=${encodeURIComponent(cls)}${spoilers()}`);
   if (!got.data) {
-    unread(body, got, "recipes", "Recipe", "the recipe");
+    unread(body, got, "recipes", "the recipe", ambiguous(got.failure) ? "pick one below" : "search for it by name in the header");
     if (got.failure) candidates(body, decoded(cls));
     return;
   }

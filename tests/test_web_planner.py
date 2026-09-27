@@ -105,8 +105,12 @@ def test_a_plan_reads_at_any_version_and_404s_past_its_head(client):
     assert head["args"]["export_minimums"] == {RIP: 15.0} and head["rev"] == 2
     assert head["text"] == f"v2 page: rate {RIP} 5→15/min"
     assert client.get(f"/api/plans/{key}?rev=3").status_code == 404
-    assert client.get("/api/plans/0000beef").status_code == 404
+    missing = client.get("/api/plans/0000beef")
+    assert missing.status_code == 404
+    assert missing.json() == {"error": "no plan “0000beef” in this world"}
     assert client.get("/api/plans/..").status_code == 404
+    ops = client.get("/api/plans/0000beef/ops")
+    assert ops.status_code == 404 and ops.json() == {"error": "no plan “0000beef” in this world"}
 
 
 def test_the_ops_route_lists_commits_after_since(client):
@@ -259,9 +263,8 @@ def test_a_required_recipe_in_force_is_flagged_on_its_row(client, game):
 def test_solve_takes_exactly_one_of_args_and_key(client):
     for payload in ({}, {"args": HMF_ARGS, "key": "0000beef"}):
         assert client.post("/api/plan/solve", json=payload, headers=ORIGIN).status_code == 400
-    assert (
-        client.post("/api/plan/solve", json={"key": "0000beef"}, headers=ORIGIN).status_code == 404
-    )
+    gone = client.post("/api/plan/solve", json={"key": "0000beef"}, headers=ORIGIN)
+    assert gone.status_code == 404 and gone.json() == {"error": "no plan “0000beef” in this world"}
     bad = client.post("/api/plan/solve", json={"args": {"sloops": "x"}}, headers=ORIGIN)
     assert bad.status_code == 400
 

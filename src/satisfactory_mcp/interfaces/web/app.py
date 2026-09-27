@@ -15,8 +15,10 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
 
 from ... import config
 from ...core.gamedata.loader import load_docs
@@ -53,6 +55,14 @@ def _newer(request: Request, exc: NewerSchema) -> JSONResponse:
         f"one reads up to {exc.known}). Upgrade to read them; nothing was changed"
     )
     return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
+
+
+async def _http(request: Request, exc: HTTPException):
+    """The API's ``{"error"}`` body for a path or method no route serves; the page keeps its own."""
+    if not request.url.path.startswith("/api/"):
+        return await http_exception_handler(request, exc)
+    text = "nothing here" if exc.status_code == 404 else str(exc.detail).lower()
+    return JSONResponse({"error": text}, status_code=exc.status_code, headers=exc.headers)
 
 
 @lru_cache(maxsize=1)
@@ -99,6 +109,7 @@ def create_app(
     instance.state.watcher = SaveWatcher(prewarm=prewarm, tail=tail)
     instance.middleware("http")(guard)
     instance.add_exception_handler(NewerSchema, _newer)
+    instance.add_exception_handler(HTTPException, _http)
     # The whole JSON surface, in one loop over one tuple: there is no second include, so
     # ``ALL_ROUTERS`` alone decides registration order. See its declaration.
     for extracted in ALL_ROUTERS:
