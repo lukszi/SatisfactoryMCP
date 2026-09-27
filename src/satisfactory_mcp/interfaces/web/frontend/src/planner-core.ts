@@ -3,6 +3,7 @@
 import { get, push, send } from "./api";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
+import { W } from "./words";
 
 import type { ApiError, StatusError } from "./api";
 import type {
@@ -11,6 +12,7 @@ import type {
   AlreadyUndoneResponse,
   CommitBody,
   FocusSelection,
+  ItemsResponse,
   NameTakenResponse,
   OutdatedResponse,
   PlanOpBody,
@@ -38,12 +40,13 @@ export interface PlansEvent {
 
 export type ActivityEvent = Pick<ActivityRow, "id" | "ts" | "actor" | "kind" | "plan" | "rev" | "text" | "args"> & {
   world: string;
+  name?: string | null;
 };
 
 export interface StripRow {
   rev: number;
   text: string;
-  chat: boolean;
+  who: string;
   undone: boolean;
 }
 
@@ -51,6 +54,7 @@ export interface Chip {
   id: number;
   gesture: number;
   field: string;
+  who: string;
   text: string;
   retry: () => void;
 }
@@ -67,7 +71,7 @@ export var bench = {
   result: null as SolveResponse | null,
   resultRev: 0,
   feasible: null as { rev: number; data: SolveResponse } | null,
-  solving: false,
+  solving: 0,
   solveError: "",
   strip: [] as StripRow[],
   chips: [] as Chip[],
@@ -79,6 +83,20 @@ export var bench = {
 };
 
 export var inbox = { card: null as ActivityEvent | null };
+
+export var OBJECTIVES: Record<string, string> = {
+  max_mw: "max MW",
+  max_item: "max item",
+  min_raw: "min raw",
+  min_machines: "min machines",
+  min_power: "min power",
+};
+
+export var NAME_MAX = 80;
+export var NOTES_MAX = 2000;
+
+var itemNames: string[] = [];
+var itemsAsked = false;
 
 var inflight = 0;
 var gestures = 0;
@@ -102,6 +120,51 @@ function queue(task: () => Promise<void> | void): void {
   chain = chain.then(task).catch(function (error) {
     fail(friendly(error));
   });
+}
+
+export function actorWord(actor: ActorBody): string {
+  if (actor.kind === "page") return W.actorYou;
+  if (actor.kind === "chat") return W.actorChat;
+  return actor.display;
+}
+
+export function commitWords(text: string): string {
+  return text.replace(/^v\d+ [^:]*: /, "");
+}
+
+export function loadItems(): void {
+  if (itemsAsked) return;
+  itemsAsked = true;
+  get<ItemsResponse>("/api/gamedata/items?limit=1000")
+    .then(function (data) {
+      itemNames = data.items.map(function (i) {
+        return i.name;
+      });
+      changed();
+    })
+    .catch(function () {
+      itemsAsked = false;
+    });
+}
+
+export function itemList(): HTMLDataListElement {
+  var list = document.createElement("datalist");
+  list.id = "plan-items";
+  itemNames.forEach(function (name) {
+    var option = document.createElement("option");
+    option.value = name;
+    list.appendChild(option);
+  });
+  return list;
+}
+
+export function knownItem(text: string): string | null {
+  if (!itemNames.length) return text;
+  var want = text.trim().toLowerCase();
+  var hit = itemNames.filter(function (name) {
+    return name.toLowerCase() === want;
+  })[0];
+  return hit || null;
 }
 
 export function status(): string {
@@ -136,7 +199,7 @@ export function reset(key: string): void {
   bench.result = null;
   bench.resultRev = 0;
   bench.feasible = null;
-  bench.solving = false;
+  bench.solving = 0;
   bench.solveError = "";
   bench.strip = [];
   bench.chips = [];
@@ -154,7 +217,7 @@ export function openPlan(key: string): void {
       .then(function (plan) {
         if (bench.key !== key) return;
         adopt(plan);
-        return lastCommit(key, plan.rev);
+        return history(key);
       })
       .catch(function (error) {
         if (bench.key !== key) return;
@@ -164,20 +227,30 @@ export function openPlan(key: string): void {
   });
 }
 
-function lastCommit(key: string, rev: number): Promise<void> {
-  return get<PlanOpsResponse>(`/api/plans/{key}/ops?since=${Math.max(0, rev - 1)}`, key).then(function (ops) {
+function history(key: string): Promise<void> {
+  return get<PlanOpsResponse>("/api/plans/{key}/ops?since=0", key).then(function (ops) {
+    if (bench.key !== key) return;
+    var undone: Record<number, boolean> = {};
+    ops.commits.forEach(function (c) {
+      if (c.undoes) undone[c.undoes] = true;
+    });
+    bench.done = ops.commits
+      .filter(function (c) {
+        return c.rev > 1 && c.actor.kind === "page" && !c.undoes && !undone[c.rev];
+      })
+      .map(function (c) {
+        return c.rev;
+      });
     var last = ops.commits[ops.commits.length - 1];
-    if (bench.key === key && last) {
-      bench.last = { who: last.actor.display, ts: last.ts };
-      changed();
-    }
+    if (last) bench.last = { who: actorWord(last.actor), ts: last.ts };
+    changed();
   });
 }
 
 function adopt(plan: PlanStateBody): void {
   if (bench.plan && plan.rev < bench.plan.rev) return;
   bench.plan = plan;
-  if (plan.forgotten) bench.gone = true;
+  bench.gone = plan.forgotten;
   changed();
   solveHead();
 }
@@ -188,8 +261,8 @@ function strip(commit: CommitBody): void {
     return row.rev === commit.rev;
   });
   if (seen) return;
-  bench.strip.push({ rev: commit.rev, text: commit.text, chat: commit.actor.kind === "chat", undone: false });
-  bench.last = { who: commit.actor.display, ts: commit.ts };
+  bench.strip.push({ rev: commit.rev, text: commitWords(commit.text), who: actorWord(commit.actor), undone: false });
+  bench.last = { who: actorWord(commit.actor), ts: commit.ts };
 }
 
 export function dismissStrip(rev: number | null): void {
@@ -199,36 +272,50 @@ export function dismissStrip(rev: number | null): void {
   changed();
 }
 
+function solveAt(key: string, rev: number): Promise<SolveResponse> {
+  var id = key + ":" + rev;
+  var cached = solved[id];
+  if (cached) return Promise.resolve(cached);
+  return send<SolveResponse>("POST", "/api/plan/solve", { key: key, rev: rev }).then(function (data) {
+    solved[id] = data;
+    return data;
+  });
+}
+
+function lookBack(key: string, rev: number, seq: number, floor: number): void {
+  if (rev < Math.max(1, floor)) return;
+  solveAt(key, rev)
+    .then(function (data) {
+      if (seq !== solveSeq || bench.key !== key || bench.feasible) return;
+      if (data.feasible) {
+        bench.feasible = { rev: rev, data: data };
+        changed();
+      } else lookBack(key, rev - 1, seq, floor);
+    })
+    .catch(function () {});
+}
+
 export function solveHead(): void {
   var plan = bench.plan;
   if (!plan) return;
   var key = bench.key;
   var rev = plan.rev;
-  var id = key + ":" + rev;
   var seq = ++solveSeq;
-  var take = function (data: SolveResponse) {
-    if (seq !== solveSeq || bench.key !== key) return;
-    bench.result = data;
-    bench.resultRev = rev;
-    if (data.feasible) bench.feasible = { rev: rev, data: data };
-    bench.solving = false;
-    bench.solveError = "";
-    changed();
-  };
-  var cached = solved[id];
-  if (cached) {
-    take(cached);
-    return;
-  }
-  bench.solving = true;
-  send<SolveResponse>("POST", "/api/plan/solve", { key: key, rev: rev })
+  bench.solving = rev;
+  solveAt(key, rev)
     .then(function (data) {
-      solved[id] = data;
-      take(data);
+      if (seq !== solveSeq || bench.key !== key) return;
+      bench.result = data;
+      bench.resultRev = rev;
+      if (data.feasible) bench.feasible = { rev: rev, data: data };
+      else if (!bench.feasible) lookBack(key, rev - 1, seq, rev - 20);
+      bench.solving = 0;
+      bench.solveError = "";
+      changed();
     })
     .catch(function (error) {
       if (seq !== solveSeq) return;
-      bench.solving = false;
+      bench.solving = 0;
       bench.solveError = friendly(error);
       changed();
     });
@@ -243,8 +330,6 @@ function refused(error: StatusError): void {
   if (error.status === 410) {
     bench.gone = true;
     fail("this plan was forgotten; nothing was written");
-  } else if (error.status === 503) {
-    fail("plans are busy (another writer held the lock); nothing was written");
   } else {
     fail(friendly(error));
   }
@@ -254,7 +339,7 @@ function landed(reply: PushedResponse, record: "done" | "none"): number {
   if (!reply.noop) {
     bench.own[reply.rev] = true;
     if (record === "done") bench.done.push(reply.rev);
-    bench.last = { who: "page", ts: now() };
+    bench.last = { who: W.actorYou, ts: now() };
   }
   reply.others.forEach(strip);
   adopt(reply.state);
@@ -274,7 +359,8 @@ function outdated(body: Refusal, retry: () => void): void {
       id: ++chipIds,
       gesture: gesture,
       field: c.mine.field || c.key.replace(/[[{].*$/, ""),
-      text: c.theirs_actor.display + " changed this in v" + c.theirs_rev + ": " + c.text,
+      who: actorWord(c.theirs_actor),
+      text: c.text,
       retry: retry,
     });
   });
@@ -535,6 +621,18 @@ function pull(): void {
   });
 }
 
+export function renamePlan(name: string): void {
+  gesture([{ op: "rename", name: name }]);
+}
+
+export function forgetPlan(): void {
+  gesture([{ op: "forget" }]);
+}
+
+export function restorePlan(): void {
+  gesture([{ op: "restore" }]);
+}
+
 export function createPlan(base: string, args: Record<string, unknown>, fromEntry: string, n?: number): Promise<string> {
   var tries = n || 1;
   var name = tries === 1 ? base : base + " (" + tries + ")";
@@ -543,8 +641,4 @@ export function createPlan(base: string, args: Record<string, unknown>, fromEntr
     if (answer.body.name_taken && tries < 20) return createPlan(base, args, fromEntry, tries + 1);
     throw new Error(answer.body.error || "a plan named “" + name + "” already exists");
   });
-}
-
-export function rateName(item: string, rate: number): string {
-  return item + " " + (Math.round(rate * 100) / 100) + "/min";
 }

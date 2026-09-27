@@ -2226,13 +2226,23 @@ body.dash-on #trace {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  margin-inline: 0;
+}
+
+.plan-bench:disabled {
+  opacity: 0.6;
 }
 
 .plan-row {
   display: grid;
-  grid-template-columns: 80px 1fr;
+  grid-template-columns: 80px minmax(0, 1fr);
   gap: var(--sp-1) var(--sp-2);
   align-items: baseline;
+}
+
+.plan-row > .plan-invalid,
+.plan-row > .plan-line {
+  grid-column: 2;
 }
 
 .plan-label {
@@ -2248,21 +2258,49 @@ body.dash-on #trace {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
+  min-width: 0;
 }
 
-.plan-row > .plan-conflict {
-  grid-column: 2;
+.plan-stack {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.plan-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.plan-export-name {
+  min-width: 10em;
+  font-weight: 600;
 }
 
 .plan-text {
-  width: 260px;
+  width: 16em;
+  max-width: 100%;
   min-width: 0;
 }
 
 .plan-add {
-  width: 220px;
+  width: 14em;
+  max-width: 100%;
   min-width: 0;
   border-style: dashed;
+}
+
+.plan-notes {
+  width: 32em;
+  max-width: 100%;
+  resize: vertical;
+}
+
+.plan-rename {
+  width: 20em;
+  max-width: 100%;
+  font-size: var(--fs-h1);
 }
 
 .plan-sub {
@@ -2293,25 +2331,56 @@ body.dash-on #trace {
   color: var(--bad);
 }
 
-.btn.on {
-  border-color: var(--accent);
-  color: var(--ink);
+.plan-chip-x:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
-.plan-status {
+.plan-toggle[aria-pressed="true"] {
+  border-color: var(--line);
+  background: var(--line);
+  color: var(--ink-hi);
+}
+
+.plan-head {
+  flex-wrap: wrap;
+}
+
+.plan-head h1 {
+  overflow-wrap: anywhere;
+}
+
+.plan-acts {
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-1);
+}
+
+.plan-status,
+.plan-held {
   color: var(--muted);
   font-size: var(--fs-m);
   font-variant-numeric: tabular-nums;
 }
 
 .plan-status.bad,
-.plan-headline.bad {
+.plan-headline.bad,
+.plan-invalid {
   color: var(--bad);
 }
 
 .plan-headline {
-  margin: 4px 0;
+  margin: var(--sp-1) 0;
   font-weight: 600;
+}
+
+.plan-facts {
+  margin: var(--sp-1) 0 var(--sp-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-invalid {
+  margin: 0;
+  font-size: var(--fs-m);
 }
 
 .plan-warning {
@@ -2320,32 +2389,20 @@ body.dash-on #trace {
   font-size: var(--fs-m);
 }
 
-.plan-conflict {
+.plan-gone {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--sp-2);
-  padding: var(--sp-1) var(--sp-2);
-  border-left: 2px solid var(--bad);
+  margin: var(--sp-2) 0;
+}
+
+.plan-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
   font-size: var(--fs-m);
-}
-
-.plan-tag {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 var(--sp-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  color: var(--accent);
-  font-size: var(--fs-s);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.dash-issue > .plan-tag:first-child,
-.dash-title > .plan-tag:first-child {
-  margin-left: 0;
 }
 
 .plan-strip {
@@ -2356,8 +2413,27 @@ body.dash-on #trace {
   opacity: 0.5;
 }
 
+.plan-budget {
+  max-width: 520px;
+}
+
 .dash-table tr.plan-picked td {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+@media (max-width: 599px) {
+  .plan-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plan-row > .plan-invalid,
+  .plan-row > .plan-line {
+    grid-column: 1;
+  }
+
+  .plan-export-name {
+    min-width: 6em;
+  }
 }
 
 .graph-node.kind-process rect {
