@@ -57,6 +57,8 @@ route needs it.
   The badges and pulse are the page's half.
 - A list of forgotten plans. Today a forgotten plan is reached through Activity, or chat's
   `plan_log`; after 50 newer entries it drops out of Activity.
-- The Asks column of the §2.10 wireframe waits for asks (P1 deferred them, contract S7).
+- The Asks column of the §2.10 wireframe: asks are built in P4 (store, routes, `ui_context`
+  listing and marking; [planner_p4.md](planner_p4.md)). The page shows them as an asks card on
+  the plans list and at the end of Track rather than as a column.
 - Undo from Activity uses the plan's current head as `base_rev`, so it conflicts only on
   what changed after the undone version, as `plan_log undo=` does.

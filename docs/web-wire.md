@@ -55,6 +55,10 @@ stat-compared every 3 s.
 - Pin writes (`/api/pins`, Planner P3) add no event name: each appends one journal entry,
   `pin.add`, `pin.edit` or `pin.drop`, which reaches every page as `activity` within the 0.5 s
   tail. `plan` is the plan key for plan and process pins, else null.
+- Ask writes (`/api/asks`, Planner P4) add no event name either: the web appends `ask.add` and
+  `ask.drop`, and chat's `ui_context` appends `ask.seen` and `ask.answered` to its own journal
+  file, so every change reaches every page as `activity`. `diff_vs_save(plan=)` and
+  `commission_plan(plan=)` journal `plan.view` with `args.view = "track"`.
 
 ## Pins
 
@@ -69,3 +73,20 @@ naming the pins, not the path. Pin numbers are never reused.
 `planner` for the ops an alternates option would push). The alternates route's reply is
 named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes an
 `AlternatesResponse` and two models with one name would rename both in `api-schema.d.ts`.
+
+## Track and asks
+
+`GET /api/plan/track?key=&rev=&biomass=` (`routers/planner.py`) builds its whole reply from one
+solve (`domain/planning/track.py`). Not feasible, empty, and a count-as-built factory with no
+machines left are all 200s that say so (`feasible`, `empty`, `scope_error`) with empty lists;
+a 400 is only a solve that refuses its arguments. `biomass` takes `true`/`false` or the
+`include`/`exclude` spelling the power routes use. `GET /api/plan/feeders` is the ~0.7 s
+extractor walk, never run per save.
+
+`/api/asks` (`routers/asks.py`) follows the pins rules: the guard on every method, a delete
+carries the `rev` it read and a different one is a 409 `AskStaleResponse {error, stale: true,
+ask}`, a newer asks file is a 503 `{error, newer_schema: true}`. `about.plan` must be a live plan
+key (404 otherwise). Ask numbers are never reused. Unlike pins, the store has writers in every
+MCP process (seen, answered), so every write holds the file lock.
+
+`PlanStateBody.headroom_mw` is the stored startup headroom, `null` for the nameplate.
