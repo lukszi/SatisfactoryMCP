@@ -1,9 +1,11 @@
 /* The dashboard's Inventory section: stock per item, containers and crates, filtered by item,
  * addressed as `dash=inventory[/<item>]`. See docs/frontend_vision.md §10. */
 
+import { button as kitButton } from "./dashkit";
 import { count, make } from "./dom";
 import { pct, regionLine } from "./format";
 import { hashFor, writeHash } from "./map";
+import { dashParts } from "./nav";
 import { showPoint } from "./panel";
 import { registerFetch } from "./registry";
 import { state } from "./state";
@@ -42,8 +44,7 @@ var view = { empty: false, kind: "all" };
 var CONTENTS_SHOWN = 3;
 
 function query(): string {
-  var cut = state.dash.indexOf("/");
-  return cut < 0 ? "" : state.dash.slice(cut + 1);
+  return dashParts().subject;
 }
 
 function address(q: string): string {
@@ -109,14 +110,13 @@ function pile(value: number, fluid: boolean): string {
 
 function toMapButton(place: StockPlace): HTMLElement {
   if (place.x_m === null || place.y_m === null) return make("span", "dash-muted", "–");
-  var button = make("button", "dash-map", "map");
-  button.type = "button";
-  button.title = "fly the map to it";
-  button.onclick = function (event) {
-    event.stopPropagation();
-    fly(place);
-  };
-  return button;
+  return kitButton(
+    "map",
+    function () {
+      fly(place);
+    },
+    { title: "fly the map to it", map: true }
+  );
 }
 
 function fly(place: StockPlace): void {
@@ -269,7 +269,7 @@ function search(parent: HTMLElement, data: StockResponse | null): void {
   };
   row.appendChild(input);
   if (query()) {
-    var clear = make("button", "dash-map", "clear");
+    var clear = make("button", "btn", "clear");
     clear.type = "button";
     clear.onclick = function () {
       location.hash = hashFor(address(""));

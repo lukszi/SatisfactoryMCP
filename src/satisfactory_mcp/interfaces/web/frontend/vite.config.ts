@@ -138,7 +138,7 @@ export default defineConfig({
        * against. */
       "/api": {
         target: process.env.SATISFACTORY_MCP_WEB || "http://127.0.0.1:8712",
-        changeOrigin: false,
+        changeOrigin: true,
         ws: false,
       },
     },

@@ -165,3 +165,79 @@ def test_capabilities_say_when_their_tree_is_still_shut(client, state, projectio
         sloops = c.get("/api/progress/sloops").json()
     assert caps and all(cap["tree_shut"] for cap in caps)
     assert sloops["amplifier_tree_shut"] is True
+
+
+def _closed_trees(projection, game):
+    import copy
+
+    from fastapi.testclient import TestClient
+
+    from satisfactory_mcp.domain.world.state import WorldState
+    from satisfactory_mcp.interfaces.web.app import create_app
+
+    shut = copy.deepcopy(projection)
+    trees = shut["research"]["unlocked_trees"]
+    shut["research"]["unlocked_trees"] = [t for t in trees if t != "BPD_ResearchTree_AlienTech_C"]
+    closed = WorldState(projection=shut, game=game)
+    app = create_app(state_loader=lambda save=None, world=None: closed, game_loader=lambda: game)
+    return TestClient(app)
+
+
+def test_milestones_past_the_reached_tier_are_spoilers_and_spoilers_0_drops_them(client):
+    full = client.get("/api/progress/milestones").json()
+    top = max(m["tier"] for m in full["milestones"] if m["status"] == "DONE")
+    assert any(m["spoiler"] for m in full["milestones"]), "the fixture must reach past a tier"
+    for m in full["milestones"]:
+        assert m["spoiler"] == (m["tier"] > top)
+    for t in full["tiers"]:
+        assert t["spoiler"] == (t["tier"] > top)
+    assert client.get("/api/progress/milestones", params={"spoilers": 1}).json() == full
+    hidden = client.get("/api/progress/milestones", params={"spoilers": 0}).json()
+    assert hidden["milestones"] == [m for m in full["milestones"] if not m["spoiler"]]
+    assert hidden["tiers"] == [t for t in full["tiers"] if not t["spoiler"]]
+    assert hidden["highest_complete_tier"] == full["highest_complete_tier"]
+
+
+def test_mam_nodes_and_capabilities_in_a_shut_tree_are_spoilers(client, projection, game):
+    opened = client.get("/api/progress/mam").json()
+    assert not any(r["spoiler"] for r in opened["research"])
+    with _closed_trees(projection, game) as c:
+        full = c.get("/api/progress/mam").json()
+        hidden = c.get("/api/progress/mam", params={"spoilers": 0}).json()
+        sloops = c.get("/api/progress/sloops").json()
+    assert any(r["spoiler"] for r in full["research"])
+    for r in full["research"]:
+        assert r["spoiler"] == (r["status"] == "TREE SHUT")
+    for cap in full["capabilities"]:
+        assert cap["spoiler"] == cap["tree_shut"]
+    assert hidden["research"] == [r for r in full["research"] if not r["spoiler"]]
+    assert hidden["capabilities"] == [x for x in full["capabilities"] if not x["spoiler"]]
+    assert sloops["amplifier_tree_shut"] is True
+    assert sloops["amplifier_spoiler"] == (not sloops["amplifier_researched"])
+
+
+def test_an_unresearched_amplifier_in_a_shut_tree_loses_its_name_with_spoilers_0(
+    projection, game, monkeypatch
+):
+    with _closed_trees(projection, game) as c:
+        closed = c.app.state.load_state()
+        gate = {"schematic_name": "Production Amplifier", "cost": []}
+        monkeypatch.setattr(closed, "research_gate", lambda name: gate)
+        full = c.get("/api/progress/sloops").json()
+        quiet = c.get("/api/progress/sloops", params={"spoilers": 0}).json()
+    assert full["amplifier_spoiler"] is True
+    assert full["amplifier_research"] == "Production Amplifier"
+    assert quiet["amplifier_research"] is None and quiet["amplifier_cost"] == []
+
+
+def test_phases_past_the_target_are_spoilers(client, state, monkeypatch):
+    req = state.phase_requirements()
+    later = dict(req["phases"][-1], phase="GP_Project_Assembly_Phase_9")
+    monkeypatch.setattr(
+        state, "phase_requirements", lambda: {**req, "phases": [*req["phases"], later]}
+    )
+    full = client.get("/api/progress/phase").json()
+    assert [p["spoiler"] for p in full["phases"]] == [False] * len(req["phases"]) + [True]
+    hidden = client.get("/api/progress/phase", params={"spoilers": 0}).json()
+    assert hidden["phases"] == full["phases"][:-1]
+    assert hidden["deliverable"] == full["deliverable"]

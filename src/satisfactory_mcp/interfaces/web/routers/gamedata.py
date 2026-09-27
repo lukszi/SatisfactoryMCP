@@ -1,5 +1,6 @@
 """``/api/gamedata/…``: the Recipes codex -- items, recipes, one recipe, an item's makers, and
 what this save has unlocked. docs/frontend_vision.md §10. Wire rules: docs/web-wire.md.
+A recipe the save has not unlocked is a spoiler (``spoiler``, ``?spoilers=``): §12.3 there.
 
 WARNING: the function name is the operation_id -- renaming it churns the committed schema.
 """
@@ -47,6 +48,7 @@ class RecipeRow(TypedDict):
     machine: str | None
     qty: float
     unlocked: bool | None
+    spoiler: bool
 
 
 class Census(TypedDict):
@@ -88,6 +90,7 @@ class RecipeDetail(TypedDict):
     products: list[Rate]
     granted_by: list[str]
     unlocked: bool | None
+    spoiler: bool
     save_note: str | None
 
 
@@ -101,6 +104,7 @@ class MakerRow(TypedDict):
     products: list[Rate]
     unlocked: bool | None
     granted_by: list[str]
+    spoiler: bool
 
 
 class AlternatesResponse(TypedDict):
@@ -153,6 +157,25 @@ def _rates(g: GameData, flows) -> list[Rate]:
     ]
 
 
+def _census(census: search.Census) -> Census:
+    return {
+        "total": census.total,
+        "by_kind": census.by_kind,
+        "have": census.have,
+        "locked": census.locked,
+        "events": census.events,
+    }
+
+
+def _open_census(g: GameData, have: set[str] | None, **question: Any) -> Census:
+    every, _ = search.search(g, recipe_kind="all", include_events=True, unlocked=have, **question)
+    tally = search.Census(scanned=len(g.recipes))
+    for h in every:
+        if h.unlocked is not False:
+            tally.add(h.recipe, h.unlocked)
+    return _census(tally)
+
+
 def _item_row(i) -> ItemRow:
     return {
         "cls": i.cls,
@@ -184,8 +207,12 @@ def gamedata_recipes(
     include_events: bool = False,
     save: str | None = None,
     world: str | None = None,
+    spoilers: bool | None = None,
 ) -> Any:
-    """``search_recipes``: by name, or by what a recipe eats or makes, marked HAVE or LOCKED."""
+    """``search_recipes``: by name, or by what a recipe eats or makes, marked HAVE or LOCKED.
+
+    With ``spoilers=0`` locked recipes leave the rows and the census alike.
+    """
     g = request.app.state.game()
     ids = {}
     for key, text in (("consumes", consumes), ("produces", produces)):
@@ -194,27 +221,28 @@ def gamedata_recipes(
             if ids[key] is None:
                 return _fail(f"no item matching {text!r}", 404)
     have, note = _have(request, save, world)
+    question = {
+        "query": q,
+        "consumes": ids.get("consumes"),
+        "produces": ids.get("produces"),
+        "only_alternates": only_alternates,
+    }
     try:
         hits, census = search.search(
             g,
-            query=q,
-            consumes=ids.get("consumes"),
-            produces=ids.get("produces"),
             recipe_kind=recipe_kind,
-            only_alternates=only_alternates,
             include_events=include_events,
             unlocked=have,
+            **question,
         )
     except ValueError as exc:
         return _fail(str(exc))
+    counted = _census(census)
+    if spoilers is False:
+        hits = [h for h in hits if h.unlocked is not False]
+        counted = _open_census(g, have, **question)
     return {
-        "census": {
-            "total": census.total,
-            "by_kind": census.by_kind,
-            "have": census.have,
-            "locked": census.locked,
-            "events": census.events,
-        },
+        "census": counted,
         "save_note": note,
         "recipes": [
             {
@@ -225,6 +253,7 @@ def gamedata_recipes(
                 "machine": _machine(g, h.recipe),
                 "qty": float(h.qty),
                 "unlocked": h.unlocked,
+                "spoiler": h.unlocked is False,
             }
             for h in hits
         ],
@@ -244,6 +273,7 @@ def gamedata_recipe(
     if r is None:
         return _fail(f"unknown recipe {recipe!r}", 404)
     have, note = _have(request, save, world)
+    unlocked = None if have is None else r.cls in have
     return {
         "cls": r.cls,
         "name": r.name,
@@ -258,14 +288,19 @@ def gamedata_recipe(
         "ingredients": _rates(g, r.ingredients),
         "products": _rates(g, r.products),
         "granted_by": granted_by(g, r),
-        "unlocked": None if have is None else r.cls in have,
+        "unlocked": unlocked,
+        "spoiler": unlocked is False,
         "save_note": note,
     }
 
 
 @router.get("/gamedata/alternates", response_model=AlternatesResponse)
 def gamedata_alternates(
-    request: Request, item: str, save: str | None = None, world: str | None = None
+    request: Request,
+    item: str,
+    save: str | None = None,
+    world: str | None = None,
+    spoilers: bool | None = None,
 ) -> Any:
     """``alternates_for_item``: every automatable recipe that makes an item, alternates first."""
     g = request.app.state.game()
@@ -276,6 +311,8 @@ def gamedata_alternates(
     rows = []
     for r in search.makers_of(g, iid):
         unlocked = None if have is None else r.cls in have
+        if spoilers is False and unlocked is False:
+            continue
         rows.append(
             {
                 "cls": r.cls,
@@ -287,6 +324,7 @@ def gamedata_alternates(
                 "products": _rates(g, r.products),
                 "unlocked": unlocked,
                 "granted_by": granted_by(g, r),
+                "spoiler": unlocked is False,
             }
         )
     return {**_item_row(g.items[iid]), "item": iid, "save_note": note, "recipes": rows}

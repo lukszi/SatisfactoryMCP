@@ -11,7 +11,7 @@
  */
 
 import { el } from "./dom";
-import { phaseText } from "./format";
+import { mw, phaseText } from "./format";
 import { drawPlayer } from "./markers";
 import { registerFetch } from "./registry";
 
@@ -29,21 +29,29 @@ function drawHeader(s: SummaryResponse): void {
   if (phase) parts.push(phase);
   // The measured figure, labelled: the nameplate total alone reads as "one factory
   // from a brown-out" on a base that is mostly idle. Both live in the tooltip.
-  parts.push(Math.round(measured) + " MW drawn / " + Math.round(power.generation_mw) + " MW capacity");
-  parts.push(s.age_note);
+  parts.push(mw(measured) + " drawn / " + mw(power.generation_mw) + " generation");
   var span = el("summary");
-  span.textContent = parts.join(" — ");
+  span.textContent = parts.join(" · ");
   // Set in the same breath as the text, and so is the failure branch below: a branch that
   // only touches `textContent` leaves the PREVIOUS world's tooltip -- three specific power
   // figures -- hanging off the new world's header. worlds.ts and reload() do the pair too.
   span.title =
-    "power: " +
-    Math.round(measured) +
-    " MW measured draw; " +
-    Math.round(power.draw_mw) +
-    " MW nameplate if every machine ran at once; " +
-    Math.round(power.generation_mw) +
-    " MW generation capacity";
+    parts.join(" · ") +
+    "\n" +
+    s.age_note +
+    "\npower: " +
+    mw(measured) +
+    " measured draw; " +
+    mw(power.draw_mw) +
+    " nameplate if every machine ran at once; " +
+    mw(power.generation_mw) +
+    " generation";
+}
+
+function wireSearchToggle(): void {
+  el("search-open").onclick = function () {
+    el<HTMLInputElement>("search-q").focus();
+  };
 }
 
 /* A failure leaves a statement, not a blank that reads as "everything is fine, there is just
@@ -68,3 +76,5 @@ registerFetch<SummaryResponse>({
     el("summary").title = UNREADABLE;
   },
 });
+
+wireSearchToggle();

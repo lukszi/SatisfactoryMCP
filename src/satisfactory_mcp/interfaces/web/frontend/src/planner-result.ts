@@ -1,7 +1,8 @@
 /* The result panel: what the head solves to, redrawn after every new version. */
 
+import { button as kitButton } from "./dashkit";
 import { count, make } from "./dom";
-import { mw } from "./format";
+import { mw, perMin } from "./format";
 import { drawGraph } from "./graph";
 import { vitals } from "./panel";
 import { bench, changed, gesture, undoRev } from "./planner-core";
@@ -16,9 +17,7 @@ interface PlanNode extends GraphNodeShape {
 
 var drawn: { data: SolveResponse | null; svg: SVGSVGElement | null } = { data: null, svg: null };
 
-export function perMin(value: number): string {
-  return count(Math.round(value * 10) / 10) + "/min";
-}
+export { perMin };
 
 function exact(value: number | null | undefined): string {
   return value === null || value === undefined ? "–" : count(Math.round(value * 10) / 10) + " MW";
@@ -35,13 +34,8 @@ function rates(rows: SolveRate[]): string {
 }
 
 export function button(text: string, title: string, action: () => void, className?: string): HTMLButtonElement {
-  var b = make("button", "dash-map" + (className ? " " + className : ""), text);
-  b.type = "button";
-  b.title = title;
-  b.onclick = function (event) {
-    event.stopPropagation();
-    action();
-  };
+  var b = kitButton(text, action, { title: title });
+  if (className) b.classList.add(className);
   return b;
 }
 

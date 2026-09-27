@@ -1,6 +1,7 @@
 /* The Recipes codex: the dashboard's `dash=recipes…` section. See docs/frontend_vision.md §10. */
 
 import { get } from "./api";
+import { tabs2 } from "./dashkit";
 import { count, make } from "./dom";
 import { hashFor } from "./map";
 import { registerFetch } from "./registry";
@@ -220,18 +221,20 @@ function query(params: [string, string | boolean][]): string {
 }
 
 function modeBar(card: HTMLElement): void {
-  var bar = make("div", "dash-title rx-bar");
-  MODES.forEach(function (m) {
-    var b = make("button", "rx-mode" + (browse.mode === m[0] ? " on" : ""), m[1]);
-    b.type = "button";
-    b.setAttribute("aria-pressed", String(browse.mode === m[0]));
-    b.onclick = function () {
-      browse.mode = m[0];
-      redraw();
-    };
-    bar.appendChild(b);
+  var items = MODES.map(function (m) {
+    return { id: m[0], label: m[1] };
   });
-  card.appendChild(bar);
+  card.appendChild(
+    tabs2(
+      items,
+      browse.mode,
+      function (id) {
+        browse.mode = id as Mode;
+        redraw();
+      },
+      "recipe book view"
+    )
+  );
 }
 
 function checkbox(label: string, on: boolean, change: (on: boolean) => void): HTMLElement {

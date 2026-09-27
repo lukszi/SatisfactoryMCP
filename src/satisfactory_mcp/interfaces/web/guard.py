@@ -1,6 +1,7 @@
-"""The write guard: a request that can change a file must come from this server's own page.
+"""The request guard: every request must name this server as its Host, and a request that can
+change a file must also come from this server's own page.
 
-Reads pass untouched. docs/frontend_vision.md §9.2 has the threat and the rule.
+docs/frontend_vision.md §9.2 has the threat and the rule.
 """
 
 from __future__ import annotations
@@ -41,15 +42,15 @@ def _origin(headers: Mapping[str, str]) -> str | None:
 
 
 def refusal(method: str, headers: Mapping[str, str], server: tuple[str, int] | None) -> str | None:
-    """Why this request may not write, or ``None`` when it may."""
-    if method.upper() in READS:
-        return None
+    """Why this request is refused, or ``None`` when it may go ahead."""
     host = (headers.get("host") or "").lower()
     allowed = _hosts(server)
     if host not in allowed:
         return (
             f"refused: Host {host or '(none)'!r} is not this server ({', '.join(sorted(allowed))})"
         )
+    if method.upper() in READS:
+        return None
     origin = _origin(headers)
     if origin != f"http://{host}":
         return (

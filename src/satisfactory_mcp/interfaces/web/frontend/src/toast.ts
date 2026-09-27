@@ -15,6 +15,8 @@ var FAIL_MS = 12000;
  * worse than no note. */
 var NOTE_MS = 6000;
 
+var MAX_ROWS = 4;
+
 export function toast(message: string, kind: "fail" | "note", ms: number): void {
   var box = el("err");
   var rows: Element[] = Array.prototype.slice.call(box.children);
@@ -30,6 +32,7 @@ export function toast(message: string, kind: "fail" | "note", ms: number): void 
     row.remove();
   };
   box.appendChild(row);
+  while (box.children.length > MAX_ROWS && box.firstElementChild) box.firstElementChild.remove();
   setTimeout(function () {
     row.remove();
   }, ms);
@@ -42,7 +45,7 @@ export function offer(message: string, label: string, action: () => void): void 
   if (!row) return;
   var button = document.createElement("button");
   button.type = "button";
-  button.className = "err-act";
+  button.className = "btn";
   button.textContent = label;
   button.onclick = function (event) {
     event.stopPropagation();
@@ -54,7 +57,7 @@ export function offer(message: string, label: string, action: () => void): void 
 }
 
 export function fail(message: string): void {
-  toast(message, "fail", FAIL_MS);
+  toast(scrubbed(message) || message, "fail", FAIL_MS);
 }
 
 export function note(message: string): void {
@@ -75,5 +78,28 @@ export function friendly(error: unknown): string {
   if (/Unexpected token|not valid JSON/i.test(text)) {
     return "the server answered with something that is not JSON";
   }
-  return text;
+  if (/^\d{3} \/api\//.test(text)) return "the server hit an error";
+  return scrubbed(text) || "the server hit an error";
+}
+
+function leaf(path: string): string {
+  var parts = path.split(/[\\/]+/).filter(function (p) {
+    return p !== "";
+  });
+  return parts.length ? parts[parts.length - 1]! : "";
+}
+
+function scrubbed(text: string): string {
+  return text
+    .replace(/(['"])((?:[A-Za-z]:[\\/]|\\\\|\/(?!api\/))[^'"]*)\1/g, function (_all, quote: string, path: string) {
+      return quote + leaf(path) + quote;
+    })
+    .replace(/\/api\/[^\s'",;)]*/g, "")
+    .replace(/(?:[A-Za-z]:[\\/]|\\\\)[^\s'",;)]*/g, leaf)
+    .replace(/(^|[\s(=:])(\/(?:[^\s'",;:)\/]+\/)+[^\s'",;:)\/]*)/g, function (_all, lead: string, path: string) {
+      return lead + leaf(path);
+    })
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([:,.;)])/g, "$1")
+    .trim();
 }

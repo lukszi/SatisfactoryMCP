@@ -588,16 +588,21 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
   the same `edits.forget` that `forget_factory` uses.
 - **Not built:** amend, lasso selection and a dry-run preview.
 
-### 9.2 The write guard
+### 9.2 The request guard
 
-`interfaces/web/guard.py` is installed as HTTP middleware in `create_app`. GET, HEAD and
-OPTIONS pass untouched. Any other method is refused with 403 `{"error": …}` unless both of
-these hold:
+`interfaces/web/guard.py` is installed as HTTP middleware in `create_app`. Every request is
+refused with 403 `{"error": …}` unless its **Host** is the server's bound address and port
+(`scope["server"]`). When the server is bound to loopback, the aliases `127.0.0.1`,
+`localhost` and `[::1]` are all accepted, on that port only. A server bound anywhere else
+accepts only its own name. This check defeats DNS rebinding, which would otherwise let a
+page on another site read every GET, absolute paths included.
 
-1. **Host** is the server's bound address and port (`scope["server"]`). When the server is
-   bound to loopback, the aliases `127.0.0.1`, `localhost` and `[::1]` are all accepted, on
-   that port only. A server bound anywhere else accepts only its own name. This check defeats
-   DNS rebinding.
+Decided 2026-09-27: the Host check applies to every method. It used to cover writes only,
+and reads passed untouched.
+
+GET, HEAD and OPTIONS need nothing more. Any other method must also pass the Origin check:
+
+1. **Host**, as above.
 2. **Origin** is exactly `http://<that Host>`. When there is no Origin, the Referer's origin
    stands in. When neither is present, or Origin is `null`, the request is refused. So a bare
    `curl` cannot write; the MCP tools remain the non-browser path.
@@ -1002,14 +1007,25 @@ recipes". When it is off:
 
 Items are never hidden. An item carries no unlock of its own.
 
+**The rule lives on the server.** Every row the switch can hide carries `spoiler: bool`:
+milestones and tiers above the highest tier with a finished milestone, MAM nodes and
+capabilities in a tree not opened yet, Space Elevator phases numbered past the target
+phase, and recipes the save has not unlocked (codex rows, makers, the recipe card and
+search hits). `/api/progress/sloops` sends `amplifier_spoiler` for the one non-row case.
+Each of those routes also takes `?spoilers=0|1`. Without it the reply is every row plus the
+flag. With `spoilers=0` the spoiler rows are dropped and each count in the reply counts
+only what is returned, the recipe census included. `/api/search` keeps `only_unlocked` as
+an alias of `spoilers=0`. The page still applies its own copy of the rule until the
+Progress and Recipes tabs move to the flag.
+
 ### 12.4 Not yet
 
 - `list_buildings` (Recipes > Buildings).
 - "Where is this made": highlighting the factories that run a recipe.
 - The **compare routes** and **bill** buttons on an item card (phase 8).
 - Plans, regions, node ids, `x,y` and `chain:<n>` in the search box (§2.1).
-- Whether items should follow the spoiler switch, and whether the census should hide its
-  totals too, are left for a decision.
+- Items following the spoiler switch (decided in §14, T3) needs a rule for when an item is
+  a spoiler; no row carries one yet.
 
 ---
 
@@ -1063,3 +1079,28 @@ Phase 7 of §6. What feeds a machine or a factory, or what it feeds, drawn on th
   would need `state.ts` and `fragment.ts`.
 - **Right-click on a machine under a trace ring** opens the ring's popup rather than the
   machine's; the ring's popup has the same trace buttons.
+
+---
+
+## 14. UI audit decisions (2026-09-27)
+
+Decided 2026-09-27, binding for the design-system work and the page batches after it:
+
+- **T1 "Need action"** covers the five health states, blocked included. Blocked stays in the
+  count but is drawn yellow. Power faults are separate, as "power problems": no wire is red
+  but counted there, and the map outline for no wire uses the power-problem style.
+- **T2 Palette.** Map generators move off the stopped red to a warm neutral, storage moves
+  off the selection pink to a teal-violet, LOCKED is muted instead of amber, and uptime
+  badges carry no colour.
+- **T3 Spoilers** default to off, with a one-time notice. When off, counts and search
+  results follow the rows, and the item list follows too (§12.3).
+- **T4 Tiles.** At most one row of tiles per view. Progress keeps its next-up strip on the
+  landing only, as one line; the planner result becomes a key/value line.
+- **T5 Level-2 tabs** are one segmented control with a 3 px radius, as on Recipes.
+- **T6 Phones.** The page is readable at phone width with no sideways scroll, and the map
+  panel becomes a bottom sheet.
+- **T7** An unnamed group of machines is an "unnamed cluster" everywhere: Detect, the map
+  layer and Settings.
+- **T8** The Host check applies to every method (§9.2).
+- **T9 Explanations.** One line at most on the page; longer definitions go to the docs. The
+  marker key stays.

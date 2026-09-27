@@ -3,7 +3,7 @@
 
 import { count, make } from "./dom";
 import { checkbox, cell, grid, heading, link, note, scroll, tile } from "./dashkit";
-import { phaseText } from "./format";
+import { num, phaseText } from "./format";
 import { hashFor } from "./map";
 import { registerFetch } from "./registry";
 import { setting } from "./settings";
@@ -107,10 +107,6 @@ function amounts(rows: { name: string; amount: number }[]): string {
       })
       .join(", ") || "–"
   );
-}
-
-function num(value: number): string {
-  return count(Math.round(value * 10) / 10);
 }
 
 function spoilerNote(body: HTMLElement, text: string): void {

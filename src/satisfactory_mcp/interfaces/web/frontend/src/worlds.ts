@@ -7,9 +7,11 @@
  * selected.
  */
 
+import { render } from "./dashboard";
 import { el } from "./dom";
 import { loadOne, reload } from "./load";
 import { writeHash } from "./map";
+import { W } from "./words";
 import { BOOT, currentWorld, pinnedPath, state } from "./state";
 import { fail, friendly } from "./toast";
 
@@ -128,8 +130,10 @@ export function loadWorlds(): Promise<void> {
           "no readable saves found" +
           (reasons ? " — " + reasons : "") +
           " (set SATISFACTORY_SAVES if they live elsewhere)";
-        el("summary").textContent = text;
-        el("summary").title = text; // the span ellipsises; the full diagnosis survives hover
+        el("summary").textContent = W.noSaves;
+        el("summary").title = text;
+        state.noSaves = true;
+        render();
         // Geography needs no save, so the node table still draws -- the same table the
         // right-click inspector reads, so the two surfaces agree even with no world.
         //
@@ -176,6 +180,7 @@ export function refreshWorlds(): void {
       if (!state.world) {
         // The page opened with no world at all and one has appeared: adopt it.
         state.world = state.worlds[0]!.world_id;
+        state.noSaves = false;
         el<HTMLSelectElement>("world").value = state.world;
         fillSavePicker();
         reload("world found — loading…");

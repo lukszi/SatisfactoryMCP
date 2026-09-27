@@ -854,6 +854,8 @@ export interface paths {
         /**
          * Progress Milestones
          * @description Every HUB milestone with its bill, what stock is short of it, and what it unlocks.
+         *
+         *     A tier above the highest one with a finished milestone is a spoiler.
          */
         get: operations["progress_milestones_api_progress_milestones_get"];
         put?: never;
@@ -874,6 +876,8 @@ export interface paths {
         /**
          * Progress Mam
          * @description Every MAM node with the ``mam_research`` status, bill and shortfall.
+         *
+         *     A node or capability in a tree not opened yet is a spoiler.
          */
         get: operations["progress_mam_api_progress_mam_get"];
         put?: never;
@@ -894,6 +898,8 @@ export interface paths {
         /**
          * Progress Phase
          * @description The Space Elevator record ``phase_requirements`` reads, joined to spendable stock.
+         *
+         *     A phase numbered past the target phase is a spoiler.
          */
         get: operations["progress_phase_api_progress_phase_get"];
         put?: never;
@@ -934,6 +940,8 @@ export interface paths {
         /**
          * Progress Sloops
          * @description The ``somersloops`` budget: free, slotted and owned, and which machines hold them.
+         *
+         *     With ``spoilers=0`` a spoiler amplifier research loses its name and bill.
          */
         get: operations["progress_sloops_api_progress_sloops_get"];
         put?: never;
@@ -1245,6 +1253,8 @@ export interface paths {
         /**
          * Gamedata Recipes
          * @description ``search_recipes``: by name, or by what a recipe eats or makes, marked HAVE or LOCKED.
+         *
+         *     With ``spoilers=0`` locked recipes leave the rows and the census alike.
          */
         get: operations["gamedata_recipes_api_gamedata_recipes_get"];
         put?: never;
@@ -1326,8 +1336,9 @@ export interface paths {
          * Search
          * @description Items, part recipes and named factories whose names contain ``q``.
          *
-         *     ``only_unlocked`` drops locked recipes before the cut and the count, so neither the
-         *     list nor ``recipes_total`` says what the save has not reached.
+         *     ``spoilers=0``, or its older alias ``only_unlocked``, drops locked recipes before the cut
+         *     and the count, so neither the list nor ``recipes_total`` says what the save has not
+         *     reached.
          */
         get: operations["search_api_search_get"];
         put?: never;
@@ -1641,6 +1652,8 @@ export interface components {
             schematic_name: string | null;
             /** Tree Shut */
             tree_shut: boolean;
+            /** Spoiler */
+            spoiler: boolean;
         };
         /** Census */
         Census: {
@@ -2001,8 +2014,9 @@ export interface components {
         };
         /**
          * FactoryHealthResponse
-         * @description ``actionable_states`` is the subset of ``states`` that ``actionable`` counts;
-         *     ``labels_version`` is what a rename or forget sends back as ``version``.
+         * @description ``actionable_states`` is the subset of ``states`` that ``actionable`` counts, and
+         *     ``ok_states`` the subset that ``attention`` leaves out; ``labels_version`` is what a
+         *     rename or forget sends back as ``version``.
          */
         FactoryHealthResponse: {
             /** Labels Version */
@@ -2011,6 +2025,8 @@ export interface components {
             states: string[];
             /** Actionable States */
             actionable_states: string[];
+            /** Ok States */
+            ok_states: string[];
             /** Factories */
             factories: components["schemas"]["FactoryHealthRow"][];
         };
@@ -2631,6 +2647,8 @@ export interface components {
             unlocked: boolean | null;
             /** Granted By */
             granted_by: string[];
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * MamResponse
@@ -2669,6 +2687,8 @@ export interface components {
             unlocks: number;
             /** Blocked By */
             blocked_by: string[];
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * MilestoneRow
@@ -2691,6 +2711,8 @@ export interface components {
             unlocks: number;
             /** Blocked By */
             blocked_by: string[];
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * MilestonesResponse
@@ -2888,6 +2910,8 @@ export interface components {
             outstanding: components["schemas"]["HaveRow"][];
             /** Complete */
             complete: string[];
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * PipeRow
@@ -3500,12 +3524,14 @@ export interface components {
             granted_by: string[];
             /** Unlocked */
             unlocked: boolean | null;
+            /** Spoiler */
+            spoiler: boolean;
             /** Save Note */
             save_note: string | null;
         };
         /**
          * RecipeHit
-         * @description ``unlocked`` is null when no save could be read.
+         * @description ``unlocked`` is null when no save could be read; ``spoiler`` means locked.
          */
         RecipeHit: {
             /** Cls */
@@ -3516,6 +3542,8 @@ export interface components {
             alternate: boolean;
             /** Unlocked */
             unlocked: boolean | null;
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * RecipeRow
@@ -3537,6 +3565,8 @@ export interface components {
             qty: number;
             /** Unlocked */
             unlocked: boolean | null;
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * RecipesResponse
@@ -3781,7 +3811,8 @@ export interface components {
          * SloopsResponse
          * @description ``amplifier_researched`` false means no sloop can go into a machine yet.
          *
-         *     ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet.
+         *     ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet, and
+         *     ``amplifier_spoiler`` while it is both unresearched and in that shut tree.
          */
         SloopsResponse: {
             /** Measured */
@@ -3802,6 +3833,8 @@ export interface components {
             amplifier_research: string | null;
             /** Amplifier Tree Shut */
             amplifier_tree_shut: boolean;
+            /** Amplifier Spoiler */
+            amplifier_spoiler: boolean;
             /** Amplifier Cost */
             amplifier_cost: components["schemas"]["ItemAmount"][];
             /** Holders */
@@ -4234,6 +4267,8 @@ export interface components {
             done: number;
             /** Total */
             total: number;
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * TraceEdge
@@ -5379,6 +5414,7 @@ export interface operations {
             query?: {
                 save?: string | null;
                 world?: string | null;
+                spoilers?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -5411,6 +5447,7 @@ export interface operations {
             query?: {
                 save?: string | null;
                 world?: string | null;
+                spoilers?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -5443,6 +5480,7 @@ export interface operations {
             query?: {
                 save?: string | null;
                 world?: string | null;
+                spoilers?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -5507,6 +5545,7 @@ export interface operations {
             query?: {
                 save?: string | null;
                 world?: string | null;
+                spoilers?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -6164,6 +6203,7 @@ export interface operations {
                 include_events?: boolean;
                 save?: string | null;
                 world?: string | null;
+                spoilers?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -6230,6 +6270,7 @@ export interface operations {
                 item: string;
                 save?: string | null;
                 world?: string | null;
+                spoilers?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -6297,6 +6338,7 @@ export interface operations {
                 only_unlocked?: boolean;
                 save?: string | null;
                 world?: string | null;
+                spoilers?: boolean | null;
             };
             header?: never;
             path?: never;

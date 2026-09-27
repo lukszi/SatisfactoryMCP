@@ -28,12 +28,13 @@ class ItemHit(TypedDict):
 
 
 class RecipeHit(TypedDict):
-    """``unlocked`` is null when no save could be read."""
+    """``unlocked`` is null when no save could be read; ``spoiler`` means locked."""
 
     cls: str
     name: str
     alternate: bool
     unlocked: bool | None
+    spoiler: bool
 
 
 class FactoryHit(TypedDict):
@@ -64,11 +65,13 @@ def search(
     only_unlocked: bool = False,
     save: str | None = None,
     world: str | None = None,
+    spoilers: bool | None = None,
 ) -> Any:
     """Items, part recipes and named factories whose names contain ``q``.
 
-    ``only_unlocked`` drops locked recipes before the cut and the count, so neither the
-    list nor ``recipes_total`` says what the save has not reached.
+    ``spoilers=0``, or its older alias ``only_unlocked``, drops locked recipes before the cut
+    and the count, so neither the list nor ``recipes_total`` says what the save has not
+    reached.
     """
     text = q.strip()
     if not text:
@@ -94,7 +97,7 @@ def search(
     except Exception as exc:
         note = f"no save could be read ({exc}): factories are missing and HAVE/LOCKED is unknown"
     hits, _census = gsearch.search(g, query=text, recipe_kind="part", unlocked=have)
-    if only_unlocked:
+    if only_unlocked or spoilers is False:
         hits = [h for h in hits if h.unlocked is not False]
     hits.sort(key=lambda h: _first(h.recipe.name, key))
     labels.sort(key=lambda lb: _first(lb.name, key))
@@ -107,6 +110,7 @@ def search(
                 "name": h.recipe.name,
                 "alternate": h.recipe.is_alternate,
                 "unlocked": h.unlocked,
+                "spoiler": h.unlocked is False,
             }
             for h in hits[:SHOWN]
         ],

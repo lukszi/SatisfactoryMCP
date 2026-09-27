@@ -45,7 +45,7 @@ var audited = false;
  * `owner` is the drawing MODULE, not the layer, because that is the line the check needs.
  * Colours are compared across owners and never within one: a step inside a single family is
  * deliberate and small -- the belts' 15.6 between slowest and fastest, the pipes' 15.1 between
- * Mk1 and Mk2, the storage pair's 16.7, the poles' 16.0, the grounds' 17.1 where No Man's Land
+ * Mk1 and Mk2, the storage pair's 15.8, the poles' 16.0, the grounds' 17.1 where No Man's Land
  * borders the Rocky Desert -- and a rule that flagged those is a rule everybody switches off.
  * Sharing an owner is what says "these two are meant to look related". Not sharing one is what
  * says "these two must never be confused".
@@ -132,7 +132,7 @@ function deltaE(a: string, b: string): number {
 /* dE 15, and it is the house step read off the page rather than a number from a standard.
  *
  * The four ramps this page draws inside one family -- the belts' 15.6, the pipes' 15.1, the
- * storage pair's 16.7, the poles' 16.0 -- are the smallest steps anyone here has looked at and
+ * storage pair's 15.8, the poles' 16.0 -- are the smallest steps anyone here has looked at and
  * accepted, and the smallest ground step accepted is 17.1. All five are same-owner and none of
  * them reaches this test. Fifteen sits just under the lot, so that two colours from different
  * modules landing as close as a deliberate ramp is exactly the thing that gets called out.

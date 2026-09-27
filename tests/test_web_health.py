@@ -10,13 +10,15 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from satisfactory_mcp.domain.factories.health import ACTIONABLE, STATES, assess
+from satisfactory_mcp.domain.factories.health import ACTIONABLE, OK, STATES, assess
 
 
 def test_every_named_factory_gets_a_health_row(client, state):
     body = client.get("/api/factories/health").json()
     assert body["states"] == list(STATES)
     assert body["actionable_states"] == list(ACTIONABLE)
+    assert body["ok_states"] == [s for s in STATES if s in OK]
+    assert set(body["ok_states"]) == OK
     assert {r["name"] for r in body["factories"]} == {x.name for x in state.labels.labels}
 
 

@@ -73,7 +73,7 @@ function table(parent: HTMLElement, rows: PlanIndexRow[]): void {
     tr.appendChild(make("td", "num", "v" + row.rev));
     tr.appendChild(make("td", "dash-sub", row.last.actor.display + " · " + age(row.last.ts) + " · " + row.last.text));
     var open = make("td");
-    open.appendChild(make("span", "dash-map", "open"));
+    open.appendChild(make("span", "btn", "open"));
     tr.appendChild(open);
     tb.appendChild(tr);
   });
@@ -97,7 +97,7 @@ function form(parent: HTMLElement): void {
   rate.placeholder = "rate";
   rate.setAttribute("data-ctl", "new-rate");
   rate.value = rate.defaultValue = list.draft[1]!;
-  var submit = make("button", "dash-map", list.creating ? "creating…" : "create");
+  var submit = make("button", "btn", list.creating ? "creating…" : "create");
   submit.type = "submit";
   submit.disabled = list.creating;
   row.onsubmit = function (event) {

@@ -111,6 +111,23 @@ export function send<T extends ApiError>(
   });
 }
 
+export interface Ticket {
+  fresh(): boolean;
+}
+
+var issued: Record<string, number> = {};
+
+export function latest(slot: string): Ticket {
+  var serial = (issued[slot] || 0) + 1;
+  var epoch = state.epoch;
+  issued[slot] = serial;
+  return {
+    fresh: function () {
+      return issued[slot] === serial && state.epoch === epoch;
+    },
+  };
+}
+
 export interface StatusError extends Error {
   status?: number;
 }
