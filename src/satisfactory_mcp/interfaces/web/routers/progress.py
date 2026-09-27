@@ -126,9 +126,12 @@ class MamRow(TypedDict):
 
 
 class CapabilityRow(TypedDict):
+    """``tree_shut`` is true while the research sits in a MAM tree not opened yet."""
+
     capability: str
     researched: bool
     schematic_name: str | None
+    tree_shut: bool
 
 
 class MamResponse(TypedDict):
@@ -196,6 +199,7 @@ def progress_mam(request: Request, save: str | None = None, world: str | None = 
                 "capability": name,
                 "researched": st.has_capability(name),
                 "schematic_name": schematic.name if schematic else None,
+                "tree_shut": research.tree_locked(cls),
             }
         )
     return {"knows_trees": research.knows_trees, "capabilities": capabilities, "research": rows}
@@ -405,7 +409,10 @@ class SloopHolder(TypedDict):
 
 
 class SloopsResponse(TypedDict):
-    """``amplifier_researched`` false means no sloop can go into a machine yet."""
+    """``amplifier_researched`` false means no sloop can go into a machine yet.
+
+    ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet.
+    """
 
     measured: bool
     free: float
@@ -415,6 +422,7 @@ class SloopsResponse(TypedDict):
     by_place: list[NamedAmount]
     amplifier_researched: bool
     amplifier_research: str | None
+    amplifier_tree_shut: bool
     amplifier_cost: list[ItemAmount]
     holders: list[SloopHolder]
 
@@ -439,6 +447,7 @@ def progress_sloops(request: Request, save: str | None = None, world: str | None
         "by_place": [{"name": k, "amount": float(v)} for k, v in budget["by_place"].items()],
         "amplifier_researched": gate is None,
         "amplifier_research": gate["schematic_name"] if gate else None,
+        "amplifier_tree_shut": st.research.tree_locked(CAPABILITY_SCHEMATICS["production_boost"]),
         "amplifier_cost": _amounts(st, ((r["item"], r["need"]) for r in gate["cost"]))
         if gate
         else [],

@@ -272,14 +272,19 @@ function renderMam(body: HTMLElement): void {
   }
   var rows = visibleMam(data);
   var hidden = data.research.length - rows.length;
-  note(
-    body,
-    data.capabilities
-      .map(function (c) {
-        return (c.schematic_name || c.capability) + ": " + (c.researched ? "researched" : "not researched");
-      })
-      .join(" · ")
-  );
+  var shown = data.capabilities.filter(function (c) {
+    return setting("spoilers") || !c.tree_shut;
+  });
+  if (shown.length) {
+    note(
+      body,
+      shown
+        .map(function (c) {
+          return (c.schematic_name || c.capability) + ": " + (c.researched ? "researched" : "not researched");
+        })
+        .join(" · ")
+    );
+  }
   var trees: Record<string, number[]> = {};
   rows.forEach(function (r) {
     var name = r.tree || "other";
@@ -615,7 +620,9 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
   tiles.appendChild(tile("owned", num(data.owned), "free plus slotted"));
   tiles.appendChild(tile("Mercer Spheres", num(data.mercer_spheres), "counted apart, never added in"));
   body.appendChild(tiles);
-  if (!data.amplifier_researched) {
+  if (!data.amplifier_researched && data.amplifier_tree_shut && !setting("spoilers")) {
+    note(body, "no somersloop can go into a machine yet: the research for it is still locked");
+  } else if (!data.amplifier_researched) {
     note(
       body,
       (data.amplifier_research || "Production Amplifier") +

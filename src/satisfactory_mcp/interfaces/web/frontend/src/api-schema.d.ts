@@ -1422,7 +1422,10 @@ export interface components {
             /** Candidates */
             candidates: components["schemas"]["CandidateRow"][];
         };
-        /** CapabilityRow */
+        /**
+         * CapabilityRow
+         * @description ``tree_shut`` is true while the research sits in a MAM tree not opened yet.
+         */
         CapabilityRow: {
             /** Capability */
             capability: string;
@@ -1430,6 +1433,8 @@ export interface components {
             researched: boolean;
             /** Schematic Name */
             schematic_name: string | null;
+            /** Tree Shut */
+            tree_shut: boolean;
         };
         /** Census */
         Census: {
@@ -3204,6 +3209,8 @@ export interface components {
         /**
          * SloopsResponse
          * @description ``amplifier_researched`` false means no sloop can go into a machine yet.
+         *
+         *     ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet.
          */
         SloopsResponse: {
             /** Measured */
@@ -3222,6 +3229,8 @@ export interface components {
             amplifier_researched: boolean;
             /** Amplifier Research */
             amplifier_research: string | null;
+            /** Amplifier Tree Shut */
+            amplifier_tree_shut: boolean;
             /** Amplifier Cost */
             amplifier_cost: components["schemas"]["ItemAmount"][];
             /** Holders */
