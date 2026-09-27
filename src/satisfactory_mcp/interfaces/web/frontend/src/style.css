@@ -2979,6 +2979,17 @@ path.lasso-area {
   }
 }
 
+.pin-place {
+  display: inline-flex;
+  min-width: 7.5em;
+}
+
+.pin-place > .btn {
+  flex: 1;
+  justify-content: center;
+  text-align: center;
+}
+
 .pin-tag {
   display: flex;
   align-items: center;

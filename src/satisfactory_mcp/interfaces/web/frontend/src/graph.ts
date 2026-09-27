@@ -278,9 +278,21 @@ export function setPicked(frame: HTMLElement, id: string): void {
   });
 }
 
+function wrapped(detail: string): string[] {
+  var room = NODE_MAX - 2 * NODE_PAD;
+  if (measure(detail, "11px") <= room) return [detail];
+  var out: string[] = [];
+  detail.split(" · ").forEach(function (part) {
+    var last = out.length - 1;
+    if (last >= 0 && measure(out[last] + " · " + part, "11px") <= room) out[last] += " · " + part;
+    else out.push(part);
+  });
+  return out;
+}
+
 function lines(n: GraphNodeShape): string[] {
   var detail = n.kind === "sink" ? "sunk: not a product" : n.detail;
-  var out = detail ? [n.label, detail] : [n.label];
+  var out = detail ? [n.label].concat(wrapped(detail)) : [n.label];
   if (n.kind === "group" && n.machines) out.push(stateLine(n));
   return out;
 }

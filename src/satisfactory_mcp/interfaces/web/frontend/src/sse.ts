@@ -51,79 +51,99 @@ function showLive(kind: string, text: string, title: string): void {
  * of what that kind of write can change. The grey dot means connecting, retrying or dead, so
  * its text says which, and losing an ESTABLISHED connection also says so in a toast. */
 export function listen() {
-  var source = new EventSource("/api/events");
+  var source: EventSource | null = null;
   var wasOpen = false;
   var missed = false;
-  showLive("", "connecting…", "connecting to the save watcher…");
-  source.onopen = function () {
-    if (missed) resync();
-    missed = false;
-    wasOpen = true;
-    showLive("on", "live", "live: watching for save writes");
-  };
-  source.onerror = function () {
-    var dropped = wasOpen;
-    missed = missed || dropped;
+  window.addEventListener("pagehide", function () {
+    if (!source) return;
+    source.close();
+    source = null;
     wasOpen = false;
-    if (missed) showLive("lost", "offline", "live connection lost; retrying (is the server still running?)");
-    else showLive("", "connecting…", "connecting to the save watcher…");
-    if (dropped) fail("live updates lost; what is on screen may be stale");
-  };
-  var resync = function () {
-    refreshWorlds();
-    if (!state.save) {
-      loadLive();
-      onSaveEvent();
-    }
-    loadOne("/api/factories");
-    loadOne("/api/factories/health");
-    loadOne("/api/power/circuits");
-    loadOne("/api/plans");
-    refetchPins();
-    resyncPlanner();
-  };
-  var blink = function () {
-    var live = el("live");
-    live.classList.add("hit");
-    setTimeout(function () {
-      live.classList.remove("hit");
-    }, 800);
-  };
-  source.addEventListener("save", function (event) {
-    if (!isNews(event)) return;
-    blink();
-    refreshWorlds();
-    // A pinned save is pinned: the point of the picker is to hold a view while the game
-    // autosaves over the newest. The dot still blinks so the write is not invisible.
-    if (!state.save) {
-      loadLive();
-      onSaveEvent();
-    }
   });
-  /* The other write: a factory label or a stored plan, which the MCP tools put on disk while
-   * the page is open and no autosave goes near. These two paths are the payloads built from
-   * those files and no others -- and a pinned save does not pin either, because a label and
-   * a siting belong to the world rather than to one file in it. */
-  source.addEventListener("notes", function (event) {
-    if (!isNews(event)) return;
-    blink();
-    loadOne("/api/factories");
-    loadOne("/api/factories/health");
-    loadOne("/api/power/circuits");
-    loadOne("/api/plans");
-    refetchPins();
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted || source) return;
+    missed = true;
+    connect();
   });
-  source.addEventListener("plans", function (event) {
-    var data = parsed<PlansEvent>(event);
-    if (!data || !isNews(event)) return;
-    blink();
-    loadOne("/api/plans");
-    onPlansEvent(data);
-  });
-  source.addEventListener("activity", function (event) {
-    var data = parsed<ActivityEvent>(event);
-    if (!data || !isNews(event)) return;
-    onPinActivity(data);
-    onActivityEvent(data);
-  });
+  connect();
+
+  function connect() {
+    showLive("", "connecting…", "connecting to the save watcher…");
+    source = new EventSource("/api/events");
+    wire(source);
+  }
+
+  function wire(es: EventSource) {
+    es.onopen = function () {
+      if (missed) resync();
+      missed = false;
+      wasOpen = true;
+      showLive("on", "live", "live: watching for save writes");
+    };
+    es.onerror = function () {
+      var dropped = wasOpen;
+      missed = missed || dropped;
+      wasOpen = false;
+      if (missed) showLive("lost", "offline", "live connection lost; retrying (is the server still running?)");
+      else showLive("", "connecting…", "connecting to the save watcher…");
+      if (dropped) fail("live updates lost; what is on screen may be stale");
+    };
+    var resync = function () {
+      refreshWorlds();
+      if (!state.save) {
+        loadLive();
+        onSaveEvent();
+      }
+      loadOne("/api/factories");
+      loadOne("/api/factories/health");
+      loadOne("/api/power/circuits");
+      loadOne("/api/plans");
+      refetchPins();
+      resyncPlanner();
+    };
+    var blink = function () {
+      var live = el("live");
+      live.classList.add("hit");
+      setTimeout(function () {
+        live.classList.remove("hit");
+      }, 800);
+    };
+    es.addEventListener("save", function (event) {
+      if (!isNews(event)) return;
+      blink();
+      refreshWorlds();
+      // A pinned save is pinned: the point of the picker is to hold a view while the game
+      // autosaves over the newest. The dot still blinks so the write is not invisible.
+      if (!state.save) {
+        loadLive();
+        onSaveEvent();
+      }
+    });
+    /* The other write: a factory label or a stored plan, which the MCP tools put on disk while
+     * the page is open and no autosave goes near. These two paths are the payloads built from
+     * those files and no others -- and a pinned save does not pin either, because a label and
+     * a siting belong to the world rather than to one file in it. */
+    es.addEventListener("notes", function (event) {
+      if (!isNews(event)) return;
+      blink();
+      loadOne("/api/factories");
+      loadOne("/api/factories/health");
+      loadOne("/api/power/circuits");
+      loadOne("/api/plans");
+      refetchPins();
+    });
+    es.addEventListener("plans", function (event) {
+      var data = parsed<PlansEvent>(event);
+      if (!data || !isNews(event)) return;
+      blink();
+      loadOne("/api/plans");
+      onPlansEvent(data);
+    });
+    es.addEventListener("activity", function (event) {
+      var data = parsed<ActivityEvent>(event);
+      if (!data || !isNews(event)) return;
+      onPinActivity(data);
+      onActivityEvent(data);
+    });
+  }
 }

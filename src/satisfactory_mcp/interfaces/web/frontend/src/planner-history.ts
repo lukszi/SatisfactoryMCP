@@ -217,6 +217,17 @@ function kept(row: ActivityRow): boolean {
   return true;
 }
 
+function repeatedView(row: ActivityRow, prev: ActivityRow | undefined): boolean {
+  return (
+    !!prev &&
+    row.kind === "plan.view" &&
+    prev.kind === row.kind &&
+    prev.plan === row.plan &&
+    prev.actor.kind === row.actor.kind &&
+    prev.text === row.text
+  );
+}
+
 function what(row: ActivityRow): string {
   if (row.source === "plan") return "v" + row.rev + " " + commitWords(row.text);
   return objectiveText(row.text);
@@ -283,7 +294,9 @@ export function renderActivity(parent: HTMLElement): void {
   if (activity.error && activity.world === state.world) error(card, "the activity", activity.error, loadActivity);
   else if (!data) loading(card, "activity");
   else {
-    var rows = data.entries.filter(kept).reverse();
+    var rows = data.entries.filter(kept).reverse().filter(function (row, i, all) {
+      return !repeatedView(row, all[i - 1]);
+    });
     if (!rows.length) empty(card, "nothing yet", "plan edits from the page and from chat, and chat's solves, show here");
     else {
       var columns: Column<ActivityRow>[] = [

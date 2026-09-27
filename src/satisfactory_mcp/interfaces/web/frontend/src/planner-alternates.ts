@@ -180,20 +180,21 @@ export function renderAlternates(parent: HTMLElement, close: () => void): void {
   var alt = bench.alt;
   if (!alt) return;
   var data = alt.data;
-  var name = data ? data.name : alt.item;
+  var name = data ? data.name : "";
+  var heading = name ? "recipes for " + name : "recipes";
   var drawer = make("aside", "dash-card plan-drawer");
-  drawer.setAttribute("aria-label", "recipes for " + name);
+  drawer.setAttribute("aria-label", heading);
   var head = make("div", "dash-title");
-  head.appendChild(make("h2", "dash-h", "recipes for " + name + (data ? " · v" + data.rev : "")));
+  head.appendChild(make("h2", "dash-h", heading + (data ? " · v" + data.rev : "")));
   if (alt.asked) head.appendChild(make("span", "plan-status", "solving v" + alt.asked + "…"));
-  var shut = button("×", close, { title: "close the recipes (Escape)", label: "close the recipes for " + name });
+  var shut = button("×", close, { title: "close the recipes (Escape)", label: "close the " + heading });
   shut.setAttribute("data-ctl", "alt-close");
   head.appendChild(shut);
   drawer.appendChild(head);
   if (alt.error) {
     error(drawer, "the recipes", alt.error, loadAlternates);
   } else if (!data) {
-    loading(drawer, "the recipes for " + name);
+    loading(drawer, "the recipes");
   } else {
     var body = make("div", settled() ? "" : "plan-stale");
     if (!data.head_feasible) body.appendChild(make("p", "plan-warning", "v" + data.rev + " is not solvable"));

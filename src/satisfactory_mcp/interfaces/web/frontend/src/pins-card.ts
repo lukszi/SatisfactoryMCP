@@ -83,8 +83,10 @@ function place(p: PinRow): HTMLElement | string {
 
 function actions(p: PinRow, redraw: () => void): HTMLElement {
   var box = make("span", "dash-acts");
+  var slot = make("span", "pin-place");
   var where = place(p);
-  if (where) box.appendChild(typeof where === "string" ? make("span", "", where) : where);
+  if (where) slot.appendChild(typeof where === "string" ? make("span", "", where) : where);
+  box.appendChild(slot);
   box.appendChild(
     button(
       "rename",
