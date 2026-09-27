@@ -25,11 +25,11 @@
  * because without a heightfield "on terrain" degrades to "off-deck".
  */
 
-import { get } from "./api";
+import { get, latest } from "./api";
 import { code, popup } from "./dom";
 import { batch, hideFloors, onFloorExit, onFloorPick, showFloors } from "./layercontrol";
 import { L } from "./leaflet";
-import { map, writeHash } from "./map";
+import { flyPadded, map, writeHash } from "./map";
 // Reached for a rule rather than a picture: `sinkRoutes` owns the stacking inside the three
 // route layers, and rebuilding a group is exactly what disturbs it.
 import { sinkRoutes } from "./routes";
@@ -328,7 +328,7 @@ function ghostRows(platform: FloorPlatform, band: FloorBand, mark: FloorMark): R
     ["stands on", stands ? floorName(stands) + ", " + metres(stands.top_m) : null],
     ["height", mark.h_m + " m above its own deck"],
     ["through this floor", Math.round(through * 10) / 10 + " m"],
-    ["instance", code(mark.id)],
+    ["id", code(mark.id)],
   ];
 }
 
@@ -847,7 +847,7 @@ function flyToPlatform(): void {
   var bounds = platformBounds(view.platform);
   if (!bounds) return;
   view.flown = true;
-  map.flyToBounds(bounds, { maxZoom: FLOOR_MAX_ZOOM });
+  flyPadded(bounds, FLOOR_MAX_ZOOM);
 }
 
 /* Turn on what a floor is made of, once, and remember what this mode turned on. Often nothing,
@@ -900,11 +900,13 @@ function url(query: string): `/api/floors?${string}` {
  * the mode is entered either way, so a reader gets the sentence and a way out rather than a
  * toast that disappears over a map that did not change. */
 export function enterFloors(query: string, title: string, band?: string): void {
+  var ticket = latest("floors");
   get<FloorsResponse & { error?: string }>(url(query))
     .then(function (body) {
-      open(query, body, title, band);
+      if (ticket.fresh()) open(query, body, title, band);
     })
     .catch(function (error) {
+      if (!ticket.fresh()) return;
       // `get` throws with the server's own `error` string, which for a selection that matched
       // nothing is "no platform matches factory 'x'" -- the sentence to show, not to hide.
       open(query, { platforms: [], note: friendly(error) } as unknown as FloorsResponse, title, band);

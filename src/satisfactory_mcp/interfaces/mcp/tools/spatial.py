@@ -954,8 +954,12 @@ def show_on_map(
     # The local map goes FIRST and for every target, not only for a sited plan: it is the
     # only one of the two that can draw this world, and a link to a map that cannot see
     # the player's factory is not the answer to "show me my factory".
+    label = st.labels.find(text) if st and node is None and not resources else None
     local = maplink.local_map_url(
-        origin[0] / 100.0, origin[1] / 100.0, world=st.world_id if st else ""
+        origin[0] / 100.0,
+        origin[1] / 100.0,
+        world=st.world_id if st else "",
+        show=f"label:{label.name}" if label is not None and label.name == where else "",
     )
     body = f"local map: {local}\npublic map: {maplink.map_url(*origin, tokens, zoom=zoom)}"
     if tokens:

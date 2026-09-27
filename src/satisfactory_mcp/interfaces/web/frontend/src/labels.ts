@@ -12,10 +12,12 @@ import { cardWithFloors } from "./floors";
 import { batch } from "./layercontrol";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
-import { map } from "./map";
+import { flyPadded, map } from "./map";
+import { regionLabels } from "./regions";
 import { registerFetch } from "./registry";
 import { state } from "./state";
 import { note } from "./toast";
+import { W } from "./words";
 
 import type { FactoriesResponse, FactoryRow, ProposalRow } from "./api-shapes";
 import type { BboxM, PointM } from "./geometry";
@@ -93,6 +95,7 @@ var FACTORY_MAX_ZOOM = 1;
 function anchorMarker(centroid_m: PointM): L.Marker {
   return L.marker([-centroid_m[1], centroid_m[0]], {
     icon: L.divIcon({ className: "factory-anchor", iconSize: [0, 0] }),
+    keyboard: false,
   });
 }
 
@@ -122,6 +125,7 @@ function factoryAnchor(
 ): L.Marker {
   var marker = anchorMarker(row.centroid_m);
   marker._labelWeight = row.machines || 0; // declutter priority: big factories win
+  marker._labelName = factory || "";
   marker.bindTooltip(esc(text), {
     permanent: true,
     direction: "center",
@@ -136,12 +140,13 @@ function factoryAnchor(
     var to = bounds;
     marker.on("click", function () {
       reveal(FACTORY_LAYERS);
-      map.flyToBounds(to, { maxZoom: FACTORY_MAX_ZOOM });
+      flyPadded(to, FACTORY_MAX_ZOOM);
     });
   }
   if (factory !== null) {
     var picked = factory;
     marker.on("click", function () {
+      chooseLabel(picked);
       document.dispatchEvent(new CustomEvent(FACTORY_PICKED, { detail: picked }));
     });
   }
@@ -152,8 +157,16 @@ export function flyToFactory(bbox_m: BboxM | null | undefined): L.LatLngBounds |
   var bounds = factoryBounds(bbox_m);
   if (!bounds) return null;
   reveal(FACTORY_LAYERS);
-  map.flyToBounds(bounds, { maxZoom: FACTORY_MAX_ZOOM });
+  flyPadded(bounds, FACTORY_MAX_ZOOM);
   return bounds;
+}
+
+var chosen = "";
+
+export function chooseLabel(name: string): void {
+  if (chosen === name) return;
+  chosen = name;
+  declutter();
 }
 
 export function paddedBounds(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
@@ -181,17 +194,16 @@ export function drawFactories(data: FactoriesResponse): void {
   });
   // Directly under the labels it is the machine-made version of, and last of the chrome:
   // a proposal names a place nobody has named yet, which is the weakest claim in the band.
-  var proposed = layer("proposals", false, undefined, [BAND.chrome, 40, "proposals"]);
+  var proposed = layer("proposals", false, undefined, [BAND.chrome, 40, "proposals"], W.unnamedClusters);
   data.proposals.forEach(function (p) {
-    var title = "#" + p.index + " " + p.label;
     // No cohesion row: the clusterer does not compute the score yet (every proposal
     // reports 0.0), and a constant 0 reads as "this cluster scored zero".
     factoryAnchor(
       p,
-      title + " (" + p.machines + ")",
+      p.label + " (" + p.machines + ")",
       "factory-label proposal",
       [
-        ["proposal", title],
+        [W.unnamedCluster, p.label],
         ["machines", p.machines],
         ["spread", p.spread_m + " m"],
         ["selector", code("proposal:" + p.index)],
@@ -231,7 +243,7 @@ registerFetch<FactoriesResponse>({
  * rectangle -- and `marker` is what a badge click has to fly to. */
 interface Entry {
   node: HTMLElement;
-  marker: L.Marker;
+  marker: L.Marker | null;
   rank: number;
   weight: number;
 }
@@ -275,14 +287,21 @@ export function declutter(): void {
         entries.push({
           node: node,
           marker: marker,
-          rank: groupRank,
+          rank: chosen && marker._labelName === chosen ? -1 : groupRank,
           weight: marker._labelWeight || 0,
         });
       }
     });
   });
+  var names = state.layers["region names"];
+  if (names && map.hasLayer(names)) {
+    regionLabels().forEach(function (node) {
+      entries.push({ node: node, marker: null, rank: 2, weight: 0 });
+    });
+  }
   entries.forEach(function (entry) {
     L.DomUtil.removeClass(entry.node, "label-hidden");
+    L.DomUtil.removeClass(entry.node, "label-chosen");
     var old = entry.node.querySelector(".label-more");
     if (old) old.parentNode!.removeChild(old);
   });
@@ -303,12 +322,13 @@ export function declutter(): void {
     });
     if (covered) {
       L.DomUtil.addClass(m.entry.node, "label-hidden");
-      covered.hidden.push(m.entry);
+      if (m.entry.marker) covered.hidden.push(m.entry);
     } else {
       kept.push({ rect: r, entry: m.entry, hidden: [] });
     }
   });
   kept.forEach(function (k) {
+    if (k.entry.rank < 0) L.DomUtil.addClass(k.entry.node, "label-chosen");
     if (k.hidden.length) badgeHidden(k.entry, k.hidden);
   });
 }
@@ -317,7 +337,7 @@ export function declutter(): void {
  * separate until zoom 3, and flying six levels in one go from the whole-world view loses every
  * landmark on the way. If the group is still covered when the flight ends the badge is still
  * there, so the step simply repeats. */
-var LABEL_STEP_ZOOM = 3;
+var LABEL_STEP_ZOOM = 2;
 
 function badgeHidden(entry: Entry, hidden: Entry[]): void {
   // Absolutely positioned, so it hangs off the label's corner without changing the
@@ -329,9 +349,9 @@ function badgeHidden(entry: Entry, hidden: Entry[]): void {
     hidden.length === 1
       ? "1 more factory label is hidden under this one — click to zoom in"
       : hidden.length + " more factory labels are hidden here — click to zoom in";
-  var points = [entry.marker.getLatLng()];
+  var points = [entry.marker!.getLatLng()];
   hidden.forEach(function (other) {
-    points.push(other.marker.getLatLng());
+    points.push(other.marker!.getLatLng());
   });
   L.DomEvent.on(badge, "click", function (event) {
     // Without this the label's own click wins and flies to the covering factory's extent,

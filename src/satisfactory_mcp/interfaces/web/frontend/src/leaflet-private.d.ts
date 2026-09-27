@@ -110,11 +110,13 @@ declare module "leaflet" {
      *  another scale: the drawn latlngs are an output and cannot be re-subdivided from
      *  themselves. See routeShape and styleRoutes in routes.ts. */
     _route?: import("./geometry").RouteShape;
+    _occupied?: boolean;
   }
 
   interface Marker {
     /** Declutter priority. A factory's machine count: big factories win. */
     _labelWeight?: number;
+    _labelName?: string;
   }
 
   namespace Control {

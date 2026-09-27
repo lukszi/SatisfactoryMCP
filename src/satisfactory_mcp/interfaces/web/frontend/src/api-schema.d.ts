@@ -3028,7 +3028,8 @@ export interface components {
          *     beside it, where ``state`` is a reading of the buffers. ``uptime`` is the fraction of the
          *     machine's own ~300 s window it spent producing, null for a building carrying no monitor
          *     at all -- a different claim from zero. ``actionable`` is ``state in health.ACTIONABLE``,
-         *     sent so the map cannot keep its own list.
+         *     sent so the map cannot keep its own list. ``factory`` is the named factory whose
+         *     label anchors this machine, null for one no label holds.
          */
         PlacementRow: {
             /** Instance Leaf */
@@ -3065,6 +3066,8 @@ export interface components {
             l_m: number | null;
             /** H M */
             h_m: number | null;
+            /** Factory */
+            factory: string | null;
         };
         /**
          * PlanArgsBody

@@ -67,6 +67,37 @@ export var BAND = {
  */
 export type Rank = [number, number, string];
 
+var TICKS_KEY = "layer-ticks";
+
+var UNREMEMBERED = ["pickup: ", "regions"];
+
+function remembered(name: string): boolean {
+  return !UNREMEMBERED.some(function (prefix) {
+    return name.indexOf(prefix) === 0;
+  });
+}
+
+function readTicks(): Record<string, boolean> {
+  try {
+    var saved = JSON.parse(localStorage.getItem(TICKS_KEY) || "{}");
+    return saved && typeof saved === "object" ? saved : {};
+  } catch (ignored) {
+    return {};
+  }
+}
+
+export function rememberTick(event: L.LeafletEvent): void {
+  var name = state.layerName[L.Util.stamp((event as L.LayersControlEvent).layer)];
+  if (!name || !remembered(name)) return;
+  var ticks = readTicks();
+  ticks[name] = event.type === "overlayadd";
+  try {
+    localStorage.setItem(TICKS_KEY, JSON.stringify(ticks));
+  } catch (ignored) {
+    return;
+  }
+}
+
 /* A named layer that can be replaced wholesale on refetch without the checkbox forgetting
  * whether it was ticked -- which is why the LayerGroup identity is kept and only its contents
  * are cleared. `colour` puts a swatch in the control row, which is what makes the control
@@ -77,7 +108,7 @@ export type Rank = [number, number, string];
  * mode names it. The name is repeated inside the rank so that the sort key reads as one whole
  * value at the call site; dev mode checks the two agree.
  */
-export function layer(name: string, on?: boolean, colour?: string, rank?: Rank): L.LayerGroup {
+export function layer(name: string, on?: boolean, colour?: string, rank?: Rank, title?: string): L.LayerGroup {
   if (!state.layers[name]) {
     if (import.meta.env.DEV) {
       if (!rank) {
@@ -92,11 +123,10 @@ export function layer(name: string, on?: boolean, colour?: string, rank?: Rank):
     // Keyed by the same stamp Leaflet writes onto the row's checkbox, so decorateControl
     // can read a row's name back without parsing the swatch markup out of its text.
     state.layerName[L.Util.stamp(group)] = name;
-    var title = colour
-      ? '<i class="swatch" style="background:' + colour + '"></i>' + esc(name)
-      : esc(name);
-    control.addOverlay(group, title);
-    if (on) group.addTo(map);
+    var shown = esc(title || name);
+    control.addOverlay(group, colour ? '<i class="swatch" style="background:' + colour + '"></i>' + shown : shown);
+    var ticked = remembered(name) ? readTicks()[name] : undefined;
+    if (typeof ticked === "boolean" ? ticked : on) group.addTo(map);
   }
   var group = state.layers[name]!;
   // The floor filter's undo goes with the contents it is an undo OF: a refetch is exactly the

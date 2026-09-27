@@ -148,7 +148,29 @@ var REGION_COLOUR: Record<string, string> = declareColours("regions", {
  * neighbour's ground, and a name printed there contradicts the same page's right-click
  * inspector.
  */
+var tips: L.Tooltip[] = [];
+
+var raster: RegionsResponse | null = null;
+
+export function regionLabels(): HTMLElement[] {
+  var out: HTMLElement[] = [];
+  tips.forEach(function (tip) {
+    var node = tip.getElement();
+    if (node) out.push(node);
+  });
+  return out;
+}
+
+export function regionAt(x_m: number, y_m: number): string | null {
+  if (!raster) return null;
+  var row = raster.grid[Math.floor((y_m - raster.y0_m) / raster.cell_m)];
+  var letter = row ? row.charAt(Math.floor((x_m - raster.x0_m) / raster.cell_m)) : "";
+  return (letter && raster.legend[letter]) || null;
+}
+
 export function drawRegions(data: RegionsResponse): void {
+  raster = data;
+  tips = [];
   // Adjacent slots at the top of the legend, because they are a pair: the biome fill is the
   // ground every other layer is drawn over, and its names are the same thing said in words.
   var regions = layer("regions", true, undefined, [BAND.chrome, 0, "regions"]);
@@ -188,9 +210,11 @@ export function drawRegions(data: RegionsResponse): void {
     // to be text and nothing else.
     var here = data.regions[name]!;
     var at = here.label_m || here.centroid_m;
-    L.tooltip({ permanent: true, direction: "center", className: "region-label" })
-      .setLatLng([-at[1], at[0]])
-      .setContent(esc(name))
-      .addTo(names);
+    tips.push(
+      L.tooltip({ permanent: true, direction: "center", className: "region-label" })
+        .setLatLng([-at[1], at[0]])
+        .setContent(esc(name))
+        .addTo(names)
+    );
   });
 }

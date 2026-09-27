@@ -61,7 +61,8 @@ class PlacementRow(TypedDict):
     beside it, where ``state`` is a reading of the buffers. ``uptime`` is the fraction of the
     machine's own ~300 s window it spent producing, null for a building carrying no monitor
     at all -- a different claim from zero. ``actionable`` is ``state in health.ACTIONABLE``,
-    sent so the map cannot keep its own list.
+    sent so the map cannot keep its own list. ``factory`` is the named factory whose
+    label anchors this machine, null for one no label holds.
     """
 
     instance_leaf: str
@@ -81,6 +82,7 @@ class PlacementRow(TypedDict):
     w_m: float | None
     l_m: float | None
     h_m: float | None
+    factory: str | None
 
 
 class MachinesResponse(TypedDict):
@@ -123,7 +125,9 @@ def _leaf(row: dict) -> str:
     return str(row.get("instance", "")).rsplit(".", 1)[-1]
 
 
-def _record_row(st: WorldState, row: dict, verdict: health.MachineHealth) -> PlacementRow:
+def _record_row(
+    st: WorldState, row: dict, verdict: health.MachineHealth, owners: dict[str, str]
+) -> PlacementRow:
     """One machine/extractor/generator, flattened for the map.
 
     ``w_m``/``l_m`` are the X and Y extent of the union of the building's clearance boxes,
@@ -161,6 +165,7 @@ def _record_row(st: WorldState, row: dict, verdict: health.MachineHealth) -> Pla
         "w_m": round(footprint.width_m, 1) if footprint else None,
         "l_m": round(footprint.depth_m, 1) if footprint else None,
         "h_m": round(footprint.height_m, 1) if footprint else None,
+        "factory": owners.get(_leaf(row)),
     }
 
 
@@ -186,8 +191,9 @@ def machines(request: Request, save: str | None = None, world: str | None = None
     # Total by construction -- assess walks MACHINE_KINDS too -- and keyed on the leaf
     # /api/floors and the frontend's `_floor.id` already join on, so the lookup cannot miss.
     verdicts = {m.instance: m for m in health.assess("map", leaves, st.game, p, st.graph).machines}
+    owners = {leaf: label.name for label in st.labels.labels for leaf in label.anchors}
     return {
-        kind: [_record_row(st, row, verdicts[_leaf(row)]) for row in p.get(kind, ())]
+        kind: [_record_row(st, row, verdicts[_leaf(row)], owners) for row in p.get(kind, ())]
         for kind in MACHINE_KINDS
     }
 

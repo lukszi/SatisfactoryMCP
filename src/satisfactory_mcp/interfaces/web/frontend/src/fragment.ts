@@ -17,6 +17,7 @@ import { applyFloorFragment } from "./floors";
 import { reload } from "./load";
 import { map, writeHash, writtenHash } from "./map";
 import { applyPickupFragment } from "./markers";
+import { showSelector } from "./panel";
 import { dashOf, garbledNote, parseHash, pinnedPath, state } from "./state";
 import { setMode } from "./tiles";
 import { fail } from "./toast";
@@ -113,6 +114,7 @@ function apply(hash: string): void {
   if (!floored) applyView(asked);
   if (moved) reload("following the address bar…");
   else if (!floored) writeHash();
+  if (asked.show) showSelector(asked.show);
 }
 
 export function listenToFragment(): void {

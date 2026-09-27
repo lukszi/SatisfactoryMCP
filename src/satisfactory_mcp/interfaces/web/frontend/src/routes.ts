@@ -381,7 +381,7 @@ export function drawBelts(data: BeltsResponse): void {
         titleRow("belt part", a.name, a.cls),
         ["facing", a.yaw === null || a.yaw === undefined ? null : Math.round(a.yaw) + "°"],
         ["at", a.x_m + ", " + a.y_m + " m"],
-        ["instance", code(a.instance_leaf)],
+        ["id", code(a.instance_leaf)],
       ])
     );
     // A splitter rides in the belts layer but is joined the machines' way -- by instance id, in

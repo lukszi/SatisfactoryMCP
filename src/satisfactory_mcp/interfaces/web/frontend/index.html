@@ -34,48 +34,39 @@
       </div>
       <span id="live" class="dot" title="connecting to the save watcher&hellip;"></span>
     </header>
+    <aside id="panel" aria-label="factories and power">
+      <div class="panel-tabs">
+        <div class="panel-tablist" role="tablist" aria-label="side panel">
+          <button type="button" role="tab" class="panel-tab" data-tab="factories" aria-controls="panel-body">Factories</button>
+          <button type="button" role="tab" class="panel-tab" data-tab="power" aria-controls="panel-body">Power</button>
+        </div>
+        <button type="button" id="panel-fold" aria-controls="panel-body"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 8l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>
+      </div>
+      <div id="panel-body" role="tabpanel"></div>
+    </aside>
     <div id="map"></div>
     <main id="dash" hidden>
       <nav id="dash-nav"></nav>
       <div id="dash-body"></div>
     </main>
-    <aside id="panel">
-      <div class="panel-tabs">
-        <button type="button" data-tab="factories">Factories</button>
-        <button type="button" data-tab="power">Power</button>
-        <button type="button" id="panel-fold"></button>
-      </div>
-      <div id="panel-body"></div>
-    </aside>
-    <!-- The encodings no checkbox can explain, because they are inside a layer rather than
-         a layer of their own.
-
-         Hollow is the trap, so the shape is named in front of it every time. A hollow DOT is
-         a node with an extractor standing on it -- drawn away, because the thing on top of it
-         is the news. A hollow BOX is a container with nothing in it -- drawn away, because an
-         empty box is a place with room in it. Those are opposite claims about presence, and
-         the only thing telling them apart is dot versus box, so neither ever appears here
-         unqualified. (A paused or stopped machine is hollow too and is not a third meaning: the
-         dashed or red outline says which, and the fade only follows it.)
-
-         Kept in step with four files by hand: PURITY_RADIUS in markers.ts, the fillOpacity lines in markers.ts and placements.ts, ROUTE_CHEVRONS in routes.ts, and POLE_RADIUS_PX / TOWER_CLASS in power.ts.
-
-         A details element and not a strip, so the map's bottom edge belongs to the map: the
-         closed state is a chip the size of its two words, and the open card grows upward off
-         the same bottom anchor. Native disclosure, no script -- this file stays static. -->
-    <details id="legend" title="how the markers encode what they know">
+    <!-- The encodings no checkbox can explain, because they are inside a layer rather than a
+         layer of their own. Docked into the layer control at load (layercontrol.ts), so it folds
+         with it. Kept in step by hand with PURITY_RADIUS and the fillOpacity lines in markers.ts
+         and placements.ts, ROUTE_CHEVRONS in routes.ts, and POLE_RADIUS_PX / TOWER_CLASS in
+         power.ts. -->
+    <details id="legend">
       <summary>marker key</summary>
       <div class="legend-rows">
-        <span class="legend-term">dot size</span><span>purity &mdash; impure &lt; normal &lt; pure</span>
-        <span class="legend-term">hollow dot</span><span>extractor on that node</span>
-        <span class="legend-term">hollow box</span><span>empty container</span>
-        <span class="legend-term">dashed box</span><span>paused machine</span>
-        <span class="legend-term">red outline</span><span>stopped machine &mdash; needs action</span>
-        <span class="legend-term">yellow outline</span><span>blocked &mdash; output full, runs again once emptied</span>
-        <span class="legend-term">belt ring</span><span>conveyor lift</span>
-        <span class="legend-term">chevrons</span><span>which way the fluid goes</span>
-        <span class="legend-term">pole dot size</span><span>how many wires it carries</span>
-        <span class="legend-term">pole ring</span><span>power tower</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><circle class="sw-fill" cx="3" cy="6" r="1.5"/><circle class="sw-fill" cx="8.5" cy="6" r="2.3"/><circle class="sw-fill" cx="15.5" cy="6" r="3.2"/></svg><span class="legend-term">dot size</span><span>purity: impure, normal, pure</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><circle class="sw-line" cx="10" cy="6" r="3.5"/></svg><span class="legend-term">hollow dot</span><span>extractor on that node</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><rect class="sw-line" x="4" y="2" width="12" height="8"/></svg><span class="legend-term">hollow box</span><span>empty container</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><rect class="sw-line sw-dash" x="4" y="2" width="12" height="8"/></svg><span class="legend-term">dashed box</span><span>paused machine</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><rect class="sw-machine sw-bad" x="4" y="2" width="12" height="8"/></svg><span class="legend-term">red outline</span><span>stopped: need action</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><rect class="sw-machine sw-blocked" x="4" y="2" width="12" height="8"/></svg><span class="legend-term">yellow outline</span><span>blocked: need action, output full</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><path class="sw-line" d="M0 6h20"/><circle class="sw-line" cx="10" cy="6" r="3.5"/></svg><span class="legend-term">belt ring</span><span>conveyor lift</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><path class="sw-line" d="M3 3l3 3-3 3M9 3l3 3-3 3M15 3l3 3-3 3"/></svg><span class="legend-term">chevrons</span><span>which way the fluid goes</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><circle class="sw-fill" cx="5" cy="6" r="1.6"/><circle class="sw-fill" cx="14" cy="6" r="3"/></svg><span class="legend-term">pole dot size</span><span>how many wires it carries</span>
+        <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><circle class="sw-line" cx="10" cy="6" r="4"/><circle class="sw-fill" cx="10" cy="6" r="1.6"/></svg><span class="legend-term">pole ring</span><span>power tower</span>
       </div>
     </details>
     <div id="err"></div>
