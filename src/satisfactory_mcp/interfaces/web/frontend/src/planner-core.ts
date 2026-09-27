@@ -76,7 +76,7 @@ export interface AltView {
   opener: string;
 }
 
-var ALTERNATES = "/api/plan/alternates" as ApiPath;
+var ALTERNATES: ApiPath = "/api/plan/alternates";
 
 export var bench = {
   world: "",

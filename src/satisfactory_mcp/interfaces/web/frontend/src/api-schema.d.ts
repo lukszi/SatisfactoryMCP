@@ -1183,6 +1183,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan/alternates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Alternates
+         * @description Every recipe making ``item``, each with what requiring it would change in the plan.
+         */
+        post: operations["plan_alternates_api_plan_alternates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plans/{key}": {
         parameters: {
             query?: never;
@@ -1541,6 +1561,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pins
+         * @description Every live pin of this world, ascending by number, gone ones included and marked.
+         */
+        get: operations["pins_api_pins_get"];
+        put?: never;
+        /**
+         * Create Pin
+         * @description Pin an object; pinning one that already has a live pin returns that pin with a 200.
+         */
+        post: operations["create_pin_api_pins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pins/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Drop Pin
+         * @description Delete one pin. Not undoable, and its number is never given out again.
+         */
+        delete: operations["drop_pin_api_pins__n__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename Pin
+         * @description A new label for one pin, refused with a 409 when ``rev`` is not the pin's current one.
+         */
+        patch: operations["rename_pin_api_pins__n__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1601,6 +1669,15 @@ export interface components {
             already_undone: boolean;
             /** By */
             by: number;
+        };
+        /** AlternatesBody */
+        AlternatesBody: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev?: number | null;
+            /** Item */
+            item: string;
         };
         /**
          * AlternatesResponse
@@ -2262,6 +2339,8 @@ export interface components {
             buildings: components["schemas"]["DeltaRow"][];
             /** Inputs */
             inputs: components["schemas"]["DeltaRow"][];
+            /** Rows */
+            rows: components["schemas"]["RowChange"][];
             /** Text */
             text: string;
         };
@@ -3377,6 +3456,137 @@ export interface components {
             /** Spoiler */
             spoiler: boolean;
         };
+        /** PinCreateBody */
+        PinCreateBody: {
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label?: string;
+        };
+        /** PinCreated */
+        PinCreated: {
+            /** N */
+            n: number;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label: string;
+            /** Text */
+            text: string;
+            /** Selector */
+            selector: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Rev */
+            rev: number;
+            /** Created */
+            created: number;
+            /** Gone */
+            gone: boolean;
+            /** Gone Why */
+            gone_why: string;
+            /** Existing */
+            existing: boolean;
+        };
+        /** PinDropBody */
+        PinDropBody: {
+            /** Rev */
+            rev: number;
+        };
+        /** PinDropped */
+        PinDropped: {
+            /** Ok */
+            ok: boolean;
+            /** N */
+            n: number;
+        };
+        /**
+         * PinRef
+         * @description What a pin points at. ``resource`` and ``nodes`` are filled by the server for a field.
+         */
+        PinRef: {
+            /** Plan */
+            plan?: string;
+            /** Recipe */
+            recipe?: string;
+            /** Factory */
+            factory?: string;
+            /** Machine */
+            machine?: string;
+            /** Node */
+            node?: string;
+            /** X M */
+            x_m?: number;
+            /** Y M */
+            y_m?: number;
+            /** Resource */
+            resource?: string;
+            /** Nodes */
+            nodes?: string[];
+        };
+        /** PinRenameBody */
+        PinRenameBody: {
+            /** Rev */
+            rev: number;
+            /** Label */
+            label: string;
+        };
+        /**
+         * PinRow
+         * @description One pin as the page shows it. ``selector`` is the canonical text it stands for; a gone
+         *     pin says why in ``gone_why``; ``x_m``/``y_m`` are null for a pin with no place.
+         */
+        PinRow: {
+            /** N */
+            n: number;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label: string;
+            /** Text */
+            text: string;
+            /** Selector */
+            selector: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Rev */
+            rev: number;
+            /** Created */
+            created: number;
+            /** Gone */
+            gone: boolean;
+            /** Gone Why */
+            gone_why: string;
+        };
+        /**
+         * PinStaleResponse
+         * @description The 409 of a pin write: nothing was written; ``pin`` is the row as it stands.
+         */
+        PinStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            pin: components["schemas"]["PinRow"];
+        };
+        /** PinsResponse */
+        PinsResponse: {
+            /** Version */
+            version: number;
+            /** Pins */
+            pins: components["schemas"]["PinRow"][];
+        };
         /**
          * PipeRow
          * @description One fluid pipe, as the polyline it was built along, and what it carries.
@@ -3534,6 +3744,34 @@ export interface components {
             factory: string | null;
         };
         /**
+         * PlanAlternatesResponse
+         * @description Every recipe for one item with what requiring it changes in the plan at ``rev``.
+         */
+        PlanAlternatesResponse: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Head Feasible */
+            head_feasible: boolean;
+            /** Head Machines */
+            head_machines: number;
+            /** Head Mw Draw */
+            head_mw_draw: number | null;
+            /** Head Mw Net */
+            head_mw_net: number | null;
+            /** Options */
+            options: components["schemas"]["SwapOption"][];
+            /** Hidden */
+            hidden: number;
+            /** Text */
+            text: string;
+        };
+        /**
          * PlanArgsBody
          * @description The whole solve request, every field present at its default when unset (contract §2).
          */
@@ -3582,6 +3820,46 @@ export interface components {
             };
             /** Logistics Items */
             logistics_items: string[];
+        };
+        /** PlanGraph */
+        PlanGraph: {
+            /** Nodes */
+            nodes: components["schemas"]["PlanGraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["PlanGraphEdge"][];
+        };
+        /** PlanGraphEdge */
+        PlanGraphEdge: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number;
+            /** Text */
+            text: string | null;
+        };
+        /**
+         * PlanGraphNode
+         * @description ``kind`` is process, input or export; ``item`` is a class id, null for power.
+         */
+        PlanGraphNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /** Rank */
+            rank: number;
+            /** Row */
+            row: string | null;
+            /** Item */
+            item: string | null;
         };
         /**
          * PlanIndexRow
@@ -4178,6 +4456,48 @@ export interface components {
             sav?: string;
         };
         /**
+         * ResultDelta
+         * @description Two solves compared. ``comparable`` is false when either side is not solvable.
+         */
+        ResultDelta: {
+            /** Comparable */
+            comparable: boolean;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number;
+            /** Mw Net */
+            mw_net: number;
+            /** Buildings */
+            buildings: components["schemas"]["DeltaRow"][];
+            /** Inputs */
+            inputs: components["schemas"]["DeltaRow"][];
+            /** Rows */
+            rows: components["schemas"]["RowChange"][];
+            /** Text */
+            text: string;
+        };
+        /**
+         * RowChange
+         * @description A process row joined on ``SolveRow.id``; ``change`` is added, removed or changed.
+         */
+        RowChange: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Change */
+            change: string;
+            /** Machines Before */
+            machines_before: number;
+            /** Machines After */
+            machines_after: number;
+            /** Clock Before */
+            clock_before: number;
+            /** Clock After */
+            clock_after: number;
+        };
+        /**
          * SaveRow
          * @description One save file, cut to the five keys the picker reads -- of the header's thirteen.
          *
@@ -4445,6 +4765,7 @@ export interface components {
             inputs: components["schemas"]["SolveRate"][];
             /** Rows */
             rows: components["schemas"]["SolveRow"][];
+            graph: components["schemas"]["PlanGraph"];
             /** Shards */
             shards: number | null;
             /** Sloops Used */
@@ -4457,8 +4778,14 @@ export interface components {
         /**
          * SolveRow
          * @description One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
+         *
+         *     ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth.
          */
         SolveRow: {
+            /** Id */
+            id: string;
+            /** Depth */
+            depth: number;
             /** Building */
             building: string;
             /** Recipe */
@@ -4798,6 +5125,46 @@ export interface components {
             power: components["schemas"]["PowerSummary"];
             progression: components["schemas"]["ProgressionSummary"];
             player: components["schemas"]["PlayerPosition"];
+        };
+        /**
+         * SwapOption
+         * @description One recipe for the item. ``status`` is in use, required, banned, available or locked;
+         *     ``delta`` is null when ``solved`` is false (locked, or banned by a pattern).
+         */
+        SwapOption: {
+            /** Recipe Id */
+            recipe_id: string;
+            /** Name */
+            name: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Unlocked */
+            unlocked: boolean | null;
+            /** Spoiler */
+            spoiler: boolean;
+            /** Granted By */
+            granted_by: string[];
+            /** Status */
+            status: string;
+            /** In Use */
+            in_use: boolean;
+            /** Required */
+            required: boolean;
+            /** Banned */
+            banned: boolean;
+            /** Banned By */
+            banned_by: string | null;
+            /** Solved */
+            solved: boolean;
+            delta: components["schemas"]["ResultDelta"] | null;
+            /** Require Ops */
+            require_ops: components["schemas"]["PlanOpBody"][];
+            /** Ban Ops */
+            ban_ops: components["schemas"]["PlanOpBody"][];
+            /** Free Ops */
+            free_ops: components["schemas"]["PlanOpBody"][];
         };
         /** TierRow */
         TierRow: {
@@ -6692,6 +7059,43 @@ export interface operations {
             };
         };
     };
+    plan_alternates_api_plan_alternates_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+                spoilers?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlternatesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanAlternatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     plan_state_api_plans__key__get: {
         parameters: {
             query?: {
@@ -7358,6 +7762,177 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SitesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pins_api_pins_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pin_api_pins_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinCreateBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinCreated"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drop_pin_api_pins__n__delete: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinDropBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinDropped"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_pin_api_pins__n__patch: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinRenameBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinRow"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinStaleResponse"];
                 };
             };
             /** @description Validation Error */
