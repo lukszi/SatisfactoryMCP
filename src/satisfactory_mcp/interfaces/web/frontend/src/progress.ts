@@ -140,8 +140,8 @@ function shown(data: MilestonesResponse): MilestonesResponse {
   };
 }
 
-export function milestoneTile(): HTMLElement | null {
-  if (!milestones.data) return null;
+export function milestoneTile(): HTMLElement {
+  if (!milestones.data) return tile("milestones", "–", milestones.error || "loading…", false, hashFor("progress"));
   var ready = shown(milestones.data).milestones.filter(function (m) {
     return m.status === "READY";
   }).length;

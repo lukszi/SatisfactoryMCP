@@ -840,7 +840,10 @@ the split is the only addition, and it has three limits worth knowing before tru
   circuit with no source looks like.
 - **Unwired records are in no ledger.** A machine or generator on no power edge draws from and
   feeds nothing, so `power_report` leaves it out of both sides and the circuit rows sum to the
-  world line. `off_grid` carries its count and rated MW. The machines are listed on their own,
+  world line. `off_grid` carries its count and rated MW. One rule decides both the count and
+  the list: the wire is tested before anything else, so a paused machine on no wire is counted
+  (at no MW, and in `off_grid.paused`) and listed. A circuit's `consumers` counts its paused
+  machines the same way, and its ledger says how many in `paused`. The machines are listed on their own,
   beside the machines wired to a circuit no generator stands on — `assess`'s two lists over
   every machine in the world — and generators on no wire have a third list.
 - **Two generator classes need help from the save side.** A standing Biomass Burner is

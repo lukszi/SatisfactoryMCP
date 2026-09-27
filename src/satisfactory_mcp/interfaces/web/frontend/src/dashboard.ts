@@ -71,13 +71,13 @@ export function toMap(action: () => void): void {
   writeHash();
 }
 
-export function mapButton(title: string, action: () => void): HTMLButtonElement {
+export function mapButton(title: string, action: () => void, label?: string): HTMLButtonElement {
   return button(
     "map",
     function () {
       toMap(action);
     },
-    { title: title, map: true }
+    { title: title, map: true, label: label }
   );
 }
 
@@ -90,26 +90,37 @@ function located(row: { x_m: number | null; y_m: number | null }): row is Placed
   return row.x_m !== null && row.y_m !== null;
 }
 
-export function pointButton(row: {
-  x_m: number | null;
-  y_m: number | null;
-  instance?: string;
-  name?: string | null;
-  what?: string;
-}): HTMLElement {
+export function pointButton(
+  row: {
+    x_m: number | null;
+    y_m: number | null;
+    instance?: string;
+    name?: string | null;
+    what?: string;
+  },
+  label?: string
+): HTMLElement {
   var shown = { label: row.name || row.what, layers: row.instance ? ["machines"] : undefined };
   if (!located(row)) return make("span", "dash-muted", "–");
   var at = row;
-  return mapButton("fly the map to it", function () {
-    showPoint(at.x_m, at.y_m, shown);
-  });
+  return mapButton(
+    "fly the map to it",
+    function () {
+      showPoint(at.x_m, at.y_m, shown);
+    },
+    label
+  );
 }
 
 export function factoryMapButton(row: FactoryHealthRow): HTMLElement {
   if (!row.bbox_m) return make("span", "dash-muted", "–");
-  return mapButton("fly the map to this factory", function () {
-    showFactory(row.name);
-  });
+  return mapButton(
+    "fly the map to this factory",
+    function () {
+      showFactory(row.name);
+    },
+    "show " + row.name + " on the map"
+  );
 }
 
 export function actionButton(text: string, title: string, action: () => void, disabled?: boolean): HTMLButtonElement {

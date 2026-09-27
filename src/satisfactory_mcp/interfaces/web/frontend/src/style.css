@@ -1425,6 +1425,10 @@ a.dash-tile:hover {
   color: var(--bad);
 }
 
+.dash-tile.blocked .dash-tile-v {
+  color: var(--blocked);
+}
+
 .dash-tile-sub {
   color: var(--muted);
   font-size: var(--fs-s);
@@ -1592,6 +1596,29 @@ a.dash-tile:hover {
 
 .dash-table td a:hover {
   text-decoration: underline;
+}
+
+.dash-table .dash-trunc {
+  display: inline-block;
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.dash-table td.dash-nowrap {
+  white-space: nowrap;
+}
+
+.dash-table td.dash-wide {
+  min-width: 16ch;
+}
+
+.dash-table .dash-sub {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-s);
 }
 
 .dash-list {

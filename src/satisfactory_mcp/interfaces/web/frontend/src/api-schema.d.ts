@@ -2578,6 +2578,8 @@ export interface components {
             monitored: number;
             /** Unmonitored */
             unmonitored: number;
+            /** Paused */
+            paused: number;
         };
         /**
          * MachineIssue
@@ -2601,7 +2603,9 @@ export interface components {
         };
         /**
          * MachineRef
-         * @description ``circuit`` is the ``index`` of the circuit it stands on, null when on none.
+         * @description ``circuit`` is the ``index`` of the circuit it stands on, null when on none;
+         *     ``factory`` the named factory it is an anchor of, null when none; ``region`` where it
+         *     stands, null when unplaced or off the region map.
          */
         MachineRef: {
             /** Instance */
@@ -2610,6 +2614,9 @@ export interface components {
             name: string;
             /** Circuit */
             circuit: number | null;
+            /** Factory */
+            factory: string | null;
+            region: components["schemas"]["Region"] | null;
             /** X M */
             x_m: number | null;
             /** Y M */
@@ -4456,11 +4463,14 @@ export interface components {
         };
         /**
          * Unwired
-         * @description What stands on no wire, left out of every ledger above.
+         * @description What stands on no wire, left out of every ledger above. ``consumers`` counts the
+         *     paused ones too, as ``unwired`` lists them; ``paused`` says how many of them are.
          */
         Unwired: {
             /** Consumers */
             consumers: number;
+            /** Paused */
+            paused: number;
             /** Draw Mw */
             draw_mw: number;
             /** Generators */
