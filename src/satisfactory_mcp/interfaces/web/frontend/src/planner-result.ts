@@ -3,7 +3,7 @@
 import { button as kitButton } from "./dashkit";
 import { count, make } from "./dom";
 import { mw, perMin } from "./format";
-import { drawGraph } from "./graph";
+import { drawGraph, graphCard as graphFrame, GRAPH_HINT } from "./graph";
 import { vitals } from "./panel";
 import { bench, changed, gesture, undoRev } from "./planner-core";
 
@@ -15,7 +15,7 @@ interface PlanNode extends GraphNodeShape {
   tip: string;
 }
 
-var drawn: { data: SolveResponse | null; svg: SVGSVGElement | null } = { data: null, svg: null };
+var drawn: { data: SolveResponse | null; svg: HTMLElement | null } = { data: null, svg: null };
 
 export { perMin };
 
@@ -196,6 +196,14 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
   parent.appendChild(card);
 }
 
+var POWER = "MW";
+
+function items(rows: SolveRate[]): SolveRate[] {
+  return rows.filter(function (r) {
+    return r.item !== POWER;
+  });
+}
+
 function graphOf(data: SolveResponse): { nodes: PlanNode[]; edges: GraphEdgeShape[] } {
   var nodes: PlanNode[] = [];
   var edges: GraphEdgeShape[] = [];
@@ -203,18 +211,22 @@ function graphOf(data: SolveResponse): { nodes: PlanNode[]; edges: GraphEdgeShap
   var total: Record<string, number> = {};
   data.rows.forEach(function (row, i) {
     var id = "p" + i;
+    var power = row.mw ? " · " + mw(row.mw, { signed: true }) : "";
+    var clock = " · " + Math.round(row.clock * 100) + "%";
     nodes.push({
       id: id,
       kind: "process",
       label: row.recipe,
-      detail: row.building + " ×" + row.machines + " · " + Math.round(row.clock * 100) + "%",
+      detail: row.building + " ×" + row.machines + power + clock,
       machines: 0,
       running: 0,
       blocked: 0,
       stopped: 0,
-      tip: row.building + " · " + row.recipe + "\nin: " + rates(row.inputs) + "\nout: " + rates(row.outputs),
+      tip: row.building + " · " + row.recipe + clock + power + "\nin: " + rates(items(row.inputs)) + "\nout: " + rates(items(row.outputs)),
     });
-    row.outputs.forEach(function (o) {
+    var out = items(row.outputs);
+    if (row.mw > 0) out.push({ item: POWER, per_min: row.mw });
+    out.forEach(function (o) {
       (made[o.item] = made[o.item] || []).push({ id: id, per_min: o.per_min });
       total[o.item] = (total[o.item] || 0) + o.per_min;
     });
@@ -223,6 +235,7 @@ function graphOf(data: SolveResponse): { nodes: PlanNode[]; edges: GraphEdgeShap
   var feed = function (item: string, target: string, need: number) {
     var from = made[item];
     if (!from || !total[item]) {
+      if (item === POWER) return;
       if (!inputs[item]) {
         inputs[item] = true;
         nodes.push({ id: "in:" + item, kind: "input", label: item, detail: "from outside the plan", machines: 0, running: 0, blocked: 0, stopped: 0, tip: item });
@@ -231,46 +244,38 @@ function graphOf(data: SolveResponse): { nodes: PlanNode[]; edges: GraphEdgeShap
       return;
     }
     from.forEach(function (f) {
-      edges.push({ source: f.id, target: target, item: item, per_min: (need * f.per_min) / total[item]! });
+      var share = (need * f.per_min) / total[item]!;
+      edges.push({ source: f.id, target: target, item: item, per_min: share, text: item === POWER ? mw(share) : undefined });
     });
   };
   data.rows.forEach(function (row, i) {
-    row.inputs.forEach(function (input) {
+    items(row.inputs).forEach(function (input) {
       feed(input.item, "p" + i, input.per_min);
     });
   });
   data.exports.forEach(function (e) {
     var id = "ex:" + e.item;
-    nodes.push({ id: id, kind: "export", label: e.item, detail: "export " + perMin(e.per_min), machines: 0, running: 0, blocked: 0, stopped: 0, tip: "exported " + perMin(e.per_min) });
+    var amount = e.item === POWER ? mw(e.per_min) : perMin(e.per_min);
+    nodes.push({ id: id, kind: "export", label: e.item === POWER ? "power" : e.item, detail: "exported " + amount, machines: 0, running: 0, blocked: 0, stopped: 0, tip: "exported " + amount });
     feed(e.item, id, e.per_min);
   });
   return { nodes: nodes, edges: edges };
 }
 
 function graphCard(parent: HTMLElement, data: SolveResponse): void {
-  var card = make("section", "dash-card dash-graph");
-  var title = make("div", "dash-title");
-  title.appendChild(make("h2", "dash-h", "production graph"));
-  title.appendChild(
-    button(bench.graph ? "hide graph" : "graph", "draw this plan's production graph", function () {
-      bench.graph = !bench.graph;
-      changed();
-    })
-  );
-  card.appendChild(title);
+  var card = graphFrame("production graph", bench.graph, function () {
+    bench.graph = !bench.graph;
+    changed();
+  });
   if (bench.graph && data.rows.length) {
     if (drawn.data !== data) {
       drawn.data = data;
-      drawn.svg = drawGraph(
-        graphOf(data),
-        function (n: PlanNode) {
-          return n.tip;
-        },
-        function () {}
-      );
+      drawn.svg = drawGraph(graphOf(data), function (n: PlanNode) {
+        return n.tip;
+      });
     }
     card.appendChild(drawn.svg!);
-    card.appendChild(make("p", "dash-note", "each consumer's need is split over the processes making that item, by their share. Scroll to zoom, drag to pan, double-click to reset."));
+    card.appendChild(make("p", "dash-note", "rates split over each item's producers by share · " + GRAPH_HINT));
   }
   parent.appendChild(card);
 }

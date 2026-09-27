@@ -120,6 +120,7 @@ class Group:
     makes: dict[str, float] = field(default_factory=lambda: defaultdict(float))
     uses: dict[str, float] = field(default_factory=lambda: defaultdict(float))
     states: Counter = field(default_factory=Counter)
+    health: Counter = field(default_factory=Counter)
 
 
 @dataclass(frozen=True)
@@ -179,6 +180,7 @@ def build(state, game: GameData, view: FactoryView) -> FlowGraph:
             g.uses[item] += rate
         s = state_of.get(row.instance, "unmonitored")
         g.states["blocked" if s == "blocked" else "stopped" if s in ACTIONABLE else "running"] += 1
+        g.health[s] += 1
         group_of[row.instance] = key
 
     for g in out.groups.values():

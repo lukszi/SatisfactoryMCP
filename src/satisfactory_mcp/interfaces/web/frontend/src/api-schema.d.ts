@@ -2408,7 +2408,8 @@ export interface components {
         /**
          * GraphNode
          * @description ``kind`` is ``group`` (machines on one recipe), ``input``, or a terminal: ``storage``,
-         *     ``export``, ``sink``, ``nowhere``. Counts and ``bbox_m`` are for groups only.
+         *     ``export``, ``sink``, ``nowhere``. Counts, ``states`` (machines per health state) and ``bbox_m``
+         *     are for groups only.
          */
         GraphNode: {
             /** Id */
@@ -2431,6 +2432,10 @@ export interface components {
             blocked: number;
             /** Stopped */
             stopped: number;
+            /** States */
+            states: {
+                [key: string]: number;
+            };
             /** Bbox M */
             bbox_m: [
                 number,

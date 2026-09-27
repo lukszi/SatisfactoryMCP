@@ -374,7 +374,8 @@ def forget_label(
 
 class GraphNode(TypedDict):
     """``kind`` is ``group`` (machines on one recipe), ``input``, or a terminal: ``storage``,
-    ``export``, ``sink``, ``nowhere``. Counts and ``bbox_m`` are for groups only."""
+    ``export``, ``sink``, ``nowhere``. Counts, ``states`` (machines per health state) and ``bbox_m``
+    are for groups only."""
 
     id: str
     kind: str
@@ -386,6 +387,7 @@ class GraphNode(TypedDict):
     running: int
     blocked: int
     stopped: int
+    states: dict[str, int]
     bbox_m: tuple[float, float, float, float] | None
 
 
@@ -408,7 +410,7 @@ class FactoryGraphResponse(TypedDict):
 
 TERMINAL_LABELS = {
     "storage": "to storage",
-    "export": "leaves the cluster",
+    "export": "leaves the {}",
     "sink": "AWESOME Sink",
     "nowhere": "goes nowhere",
 }
@@ -426,6 +428,7 @@ def _bare(key: str, kind: str, label: str, detail: str) -> dict:
         "running": 0,
         "blocked": 0,
         "stopped": 0,
+        "states": {},
         "bbox_m": None,
     }
 
@@ -469,6 +472,7 @@ def factory_graph(
             return _fail(str(exc), 404)
         title = candidate
     _view, fg = _cluster(st, machines, title)
+    whole = "factory" if factory else "cluster"
     placed = fidentity.positions(st.projection)
     nodes: list[dict] = []
     for g in fg.groups.values():
@@ -488,15 +492,16 @@ def factory_graph(
                 "running": g.states["running"],
                 "blocked": g.states["blocked"],
                 "stopped": g.states["stopped"],
+                "states": dict(sorted(g.health.items())),
                 "bbox_m": None if box is None else [_m(v) for v in box],
             }
         )
     used = {e.source for e in fg.edges} | {e.target for e in fg.edges}
     for key in sorted(k for k in used if k.startswith("in:")):
-        nodes.append(_bare(key, "input", key[3:], "enters the cluster"))
+        nodes.append(_bare(key, "input", key[3:], f"enters the {whole}"))
     for kind, text in TERMINAL_LABELS.items():
         if kind in used:
-            nodes.append(_bare(kind, kind, text, f"{fg.terminals.get(kind, 0)} reached"))
+            nodes.append(_bare(kind, kind, text.format(whole), f"{fg.terminals.get(kind, 0)} reached"))
     return {
         "title": title,
         "token": pin.check(st.header, None),
