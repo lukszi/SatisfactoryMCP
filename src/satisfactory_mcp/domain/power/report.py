@@ -140,28 +140,32 @@ class PowerLedger:
         for it. It names each one, since knowing WHICH plant is the whole value.
 
         With ``wired`` set, a record on no power edge is left out of both sides and counted
-        under ``unwired_*`` instead, so the ledger is the sum of the circuits.
+        under ``unwired_*`` instead, so the ledger is the sum of the circuits. The wire is
+        tested first: a paused record on no wire is still counted there, at no MW, which is
+        the rule ``assess`` lists its unwired machines by.
         """
         gen: dict[str, dict] = {}
         total_mw = 0.0
         variable: list[str] = []
         starved: list[dict] = []
         starved_mw = 0.0
-        loose = {"generators": 0, "generation_mw": 0.0, "consumers": 0, "draw_mw": 0.0}
+        loose = {"generators": 0, "generation_mw": 0.0, "consumers": 0, "draw_mw": 0.0, "paused": 0}
         for g in self.projection.get("generators", ()):
-            if g.get("paused"):
-                continue
             b = generator_building(self.game, g["cls"])
-            if b is None:
-                variable.append(g["cls"])  # the HUB's built-in burner, absent from Docs
-                continue
-            clock = g.get("clock") or 1.0
-            mw = b.power_production_mw * clock
-            if not b.power_production_mw and b.variable_power_factor:
-                mw = b.variable_power_factor * clock  # geothermal: normal-geyser average
+            mw = 0.0
+            if b is not None:
+                clock = g.get("clock") or 1.0
+                mw = b.power_production_mw * clock
+                if not b.power_production_mw and b.variable_power_factor:
+                    mw = b.variable_power_factor * clock  # geothermal: normal-geyser average
             if not self._is_wired(g):
                 loose["generators"] += 1
-                loose["generation_mw"] += mw
+                loose["generation_mw"] += 0.0 if g.get("paused") else mw
+                continue
+            if g.get("paused"):
+                continue
+            if b is None:
+                variable.append(g["cls"])  # the HUB's built-in burner, absent from Docs
                 continue
             entry = gen.setdefault(g["cls"], {"name": b.name, "count": 0, "mw": 0.0})
             entry["count"] += 1
@@ -187,13 +191,22 @@ class PowerLedger:
         measured = 0.0
         monitored = 0
         unmonitored = 0
+        paused = 0
 
-        def _charge(rated: float, record: dict) -> None:
+        def _charge(rated: float | None, record: dict) -> None:
             """Add one machine to both totals, weighting the measured one by uptime."""
-            nonlocal draw, measured, monitored, unmonitored
+            nonlocal draw, measured, monitored, unmonitored, paused
             if not self._is_wired(record):
                 loose["consumers"] += 1
-                loose["draw_mw"] += rated
+                if record.get("paused"):
+                    loose["paused"] += 1
+                elif rated is not None:
+                    loose["draw_mw"] += rated
+                return
+            if record.get("paused"):
+                paused += 1
+                return
+            if rated is None:
                 return
             draw += rated
             share = measured_share(record)
@@ -205,22 +218,16 @@ class PowerLedger:
                 measured += rated * share
 
         for m in self.projection.get("machines", ()):
-            if m.get("paused"):
-                continue
             r = self.game.recipes.get(m.get("recipe") or "")
             clock = m.get("clock") or 1.0
             if r is not None:
                 _charge(self.game.recipe_power_mw(r, clock), m)
             else:
                 b = self.game.buildings.get(m["cls"])
-                if b:
-                    _charge(b.power_at(clock), m)
+                _charge(b.power_at(clock) if b else None, m)
         for e in self.projection.get("extractors", ()):
-            if e.get("paused"):
-                continue
             b = self.game.buildings.get(e["cls"])
-            if b:
-                _charge(b.power_at(e.get("clock") or 1.0), e)
+            _charge(b.power_at(e.get("clock") or 1.0) if b else None, e)
 
         return {
             "generation_mw": total_mw,
@@ -230,6 +237,7 @@ class PowerLedger:
             "measured_headroom_mw": total_mw - measured,
             "monitored": monitored,
             "unmonitored": unmonitored,
+            "paused_consumers": paused,
             "utilisation": (measured / draw) if draw else 1.0,
             "by_generator": gen,
             "unmodellable": sorted(set(variable)),
@@ -240,4 +248,5 @@ class PowerLedger:
             "unwired_generation_mw": loose["generation_mw"],
             "unwired_consumers": loose["consumers"],
             "unwired_draw_mw": loose["draw_mw"],
+            "unwired_paused": loose["paused"],
         }

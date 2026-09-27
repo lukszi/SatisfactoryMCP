@@ -129,9 +129,13 @@ def test_the_world_ledger_is_the_sum_of_the_circuits(client, state):
     assert off["consumers"] > 0, "the fixture world has machines on no wire"
 
 
-def test_a_machine_ref_names_the_circuit_it_stands_on(client):
+def test_a_machine_ref_names_the_circuit_it_stands_on(client, state):
     body = client.get("/api/power/circuits").json()
     indices = {c["index"] for c in body["circuits"]}
+    names = {x.name for x in state.labels.labels}
+    for r in body["unwired"] + body["no_generator"] + body["unwired_generators"]:
+        assert r["factory"] is None or r["factory"] in names
+        assert r["region"] is None or r["region"]["name"]
     assert all(r["circuit"] is None for r in body["unwired"])
     assert all(r["circuit"] in indices for r in body["no_generator"])
     for c in body["circuits"]:
@@ -195,3 +199,35 @@ def test_an_empty_hand_fed_generator_says_no_fuel_loaded(game):
     }
     body = _one_circuit(game, [coal])
     assert [s["cause"] for s in body["starved"]] == ["no fuel loaded"]
+
+
+def test_the_off_grid_counts_are_the_unwired_lists(client):
+    body = client.get("/api/power/circuits").json()
+    off = body["off_grid"]
+    assert off["consumers"] == len(body["unwired"])
+    assert off["generators"] == len(body["unwired_generators"])
+    for c in body["circuits"]:
+        led = c["ledger"]
+        assert c["consumers"] >= led["monitored"] + led["unmonitored"] + led["paused"]
+
+
+def test_a_paused_machine_on_no_wire_is_listed_and_counted_but_draws_nothing(game):
+    from fastapi.testclient import TestClient
+
+    from satisfactory_mcp.domain.world.state import WorldState
+    from satisfactory_mcp.interfaces.web.app import create_app
+
+    def smelter(n, **extra):
+        return {"instance": f"Build_SmelterMk1_C_{n}", "cls": "Build_SmelterMk1_C", **extra}
+
+    projection = {
+        "machines": [smelter(1), smelter(2, paused=True)],
+        "graph": {"actors": [], "power": []},
+    }
+    st = WorldState(projection=projection, game=game)
+    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
+    body = TestClient(app).get("/api/power/circuits").json()
+    rated = game.buildings["Build_SmelterMk1_C"].power_at(1.0)
+    assert body["off_grid"]["consumers"] == len(body["unwired"]) == 2
+    assert body["off_grid"]["paused"] == 1
+    assert body["off_grid"]["draw_mw"] == pytest.approx(rated, abs=0.1)

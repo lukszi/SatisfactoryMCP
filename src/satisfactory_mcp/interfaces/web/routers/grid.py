@@ -18,7 +18,8 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories.health import assess
 from ....domain.power.report import PowerLedger, starved_cause
 from ....domain.spatial import geo
-from ..serial import _fail, _m, _state
+from ....domain.spatial import regions as spatial_regions
+from ..serial import Region, _fail, _label_json, _m, _state
 
 __all__ = ["router"]
 
@@ -37,6 +38,7 @@ class Ledger(TypedDict):
     utilisation: float
     monitored: int
     unmonitored: int
+    paused: int
 
 
 class GeneratorGroup(TypedDict):
@@ -58,19 +60,25 @@ class StarvedGenerator(TypedDict):
 
 
 class MachineRef(TypedDict):
-    """``circuit`` is the ``index`` of the circuit it stands on, null when on none."""
+    """``circuit`` is the ``index`` of the circuit it stands on, null when on none;
+    ``factory`` the named factory it is an anchor of, null when none; ``region`` where it
+    stands, null when unplaced or off the region map."""
 
     instance: str
     name: str
     circuit: int | None
+    factory: str | None
+    region: Region | None
     x_m: float | None
     y_m: float | None
 
 
 class Unwired(TypedDict):
-    """What stands on no wire, left out of every ledger above."""
+    """What stands on no wire, left out of every ledger above. ``consumers`` counts the
+    paused ones too, as ``unwired`` lists them; ``paused`` says how many of them are."""
 
     consumers: int
+    paused: int
     draw_mw: float
     generators: int
     generation_mw: float
@@ -121,6 +129,7 @@ def _ledger(report: dict) -> dict:
         "utilisation": round(report["utilisation"], 3),
         "monitored": report["monitored"],
         "unmonitored": report["unmonitored"],
+        "paused": report["paused_consumers"],
     }
 
 
@@ -211,6 +220,16 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
             circuit_of[short] = index
 
     dark = assess("world", graph.machines(), st.game, st.projection, graph)
+    try:
+        rmap = spatial_regions.load_regions()
+    except FileNotFoundError:
+        rmap = None
+
+    def region(short: str) -> dict | None:
+        pos = placed.get(short)
+        if rmap is None or pos is None:
+            return None
+        return _label_json(rmap.label_for(pos[0], pos[1]))
 
     def refs(shorts: list[str]) -> list[dict]:
         out = []
@@ -222,6 +241,8 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
                     "instance": short,
                     "name": st.game.building_name(cls) or cls,
                     "circuit": circuit_of.get(short),
+                    "factory": label_of.get(short),
+                    "region": region(short),
                     "x_m": x,
                     "y_m": y,
                 }
@@ -238,6 +259,7 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
         "circuits": circuits,
         "off_grid": {
             "consumers": world_report["unwired_consumers"],
+            "paused": world_report["unwired_paused"],
             "draw_mw": round(world_report["unwired_draw_mw"], 1),
             "generators": world_report["unwired_generators"],
             "generation_mw": round(world_report["unwired_generation_mw"], 1),
