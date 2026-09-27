@@ -22,6 +22,12 @@ export function xy(row: { x_m: number; y_m: number }): L.LatLngTuple {
   return [-row.y_m, row.x_m];
 }
 
+export function flyToBox(box: [number, number, number, number], options?: { maxZoom?: number; padLeft?: number }): void {
+  var bounds = L.latLngBounds([xy({ x_m: box[0], y_m: box[1] }), xy({ x_m: box[2], y_m: box[3] })]);
+  var padLeft = options && options.padLeft !== undefined ? options.padLeft : 0;
+  map.flyToBounds(bounds, { maxZoom: options ? options.maxZoom : undefined, paddingTopLeft: [padLeft, 0] });
+}
+
 /* The in-game map square, in metres, and the sheet the generator cuts from it. These two
  * numbers set the map's pixel unit below, and they are the same square the server pins by
  * default -- a render pinned anywhere else is drawn as one overlay instead (see
