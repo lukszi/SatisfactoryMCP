@@ -120,8 +120,9 @@ function mapButton(place: StockPlace): HTMLElement {
 function fly(place: StockPlace): void {
   if (place.x_m === null || place.y_m === null || !host) return;
   var at = { x: place.x_m, y: place.y_m };
+  var shown = { label: place.name, layers: place.source === "storage" ? ["storage"] : undefined };
   host.toMap(function () {
-    showPoint(at.x, at.y);
+    showPoint(at.x, at.y, shown);
   });
 }
 
