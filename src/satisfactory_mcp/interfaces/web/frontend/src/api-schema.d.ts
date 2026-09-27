@@ -832,7 +832,8 @@ export interface paths {
          * @description Generation against draw, nameplate and measured, for the world and for each circuit.
          *
          *     ``unwired`` and ``no_generator`` are ``assess``'s two lists over every machine in the
-         *     world: no power edge at all, and a wire to a circuit no generator stands on.
+         *     world: no power edge at all, and a wire to a circuit no generator stands on. The world
+         *     ledger counts only what stands on a wire, so it is the sum of the circuits.
          */
         get: operations["power_circuits_api_power_circuits_get"];
         put?: never;
@@ -1662,7 +1663,9 @@ export interface components {
         };
         /**
          * CircuitRow
-         * @description ``bbox_m`` is null when no record on the circuit has a position.
+         * @description ``bbox_m`` is null when no record on the circuit has a position. ``factories`` is
+         *     every named factory on it, most machines first; ``unmodellable`` the generator classes
+         *     on it that game data cannot rate, whose output the ledger leaves out.
          */
         CircuitRow: {
             /** Index */
@@ -1672,12 +1675,16 @@ export interface components {
             generators: components["schemas"]["GeneratorGroup"][];
             /** Starved */
             starved: components["schemas"]["StarvedGenerator"][];
+            /** Unmodellable */
+            unmodellable: string[];
             /** Consumers */
             consumers: number;
             /** Poles */
             poles: number;
             /** Factories */
             factories: string[];
+            /** Factory Count */
+            factory_count: number;
             /** Centroid M */
             centroid_m: [
                 number,
@@ -1691,7 +1698,11 @@ export interface components {
                 number
             ] | null;
         };
-        /** CircuitsResponse */
+        /**
+         * CircuitsResponse
+         * @description ``world`` is the sum of ``circuits``; ``unwired`` lists machines on no wire and
+         *     ``unwired_generators`` generators on none.
+         */
         CircuitsResponse: {
             world: components["schemas"]["Ledger"];
             /** Paused */
@@ -1704,8 +1715,11 @@ export interface components {
             unmodellable: string[];
             /** Circuits */
             circuits: components["schemas"]["CircuitRow"][];
+            off_grid: components["schemas"]["Unwired"];
             /** Unwired */
             unwired: components["schemas"]["MachineRef"][];
+            /** Unwired Generators */
+            unwired_generators: components["schemas"]["MachineRef"][];
             /** No Generator */
             no_generator: components["schemas"]["MachineRef"][];
         };
@@ -2003,6 +2017,8 @@ export interface components {
         /**
          * FactoryHealthRow
          * @description ``review`` is ``LabelStore.review``'s status, null when every anchor still stands.
+         *     ``worst`` is the machines not fine, paused included; ``worst_actionable`` only those in
+         *     an ``actionable_states`` state, of which there are ``actionable`` in all.
          */
         FactoryHealthRow: {
             /** Name */
@@ -2043,6 +2059,8 @@ export interface components {
             no_generator: number;
             /** Worst */
             worst: components["schemas"]["MachineIssue"][];
+            /** Worst Actionable */
+            worst_actionable: components["schemas"]["MachineIssue"][];
             /** Attention */
             attention: number;
         };
@@ -2549,12 +2567,17 @@ export interface components {
             /** Y M */
             y_m: number | null;
         };
-        /** MachineRef */
+        /**
+         * MachineRef
+         * @description ``circuit`` is the ``index`` of the circuit it stands on, null when on none.
+         */
         MachineRef: {
             /** Instance */
             instance: string;
             /** Name */
             name: string;
+            /** Circuit */
+            circuit: number | null;
             /** X M */
             x_m: number | null;
             /** Y M */
@@ -3417,7 +3440,11 @@ export interface components {
             text: string;
             state: components["schemas"]["PlanStateBody"];
         };
-        /** Rate */
+        /**
+         * Rate
+         * @description ``amount`` is per cycle: per craft or per build for a manual or building recipe,
+         *     whose ``per_min`` rests on a placeholder cycle and means nothing.
+         */
         Rate: {
             /** Item */
             item: string;
@@ -3425,6 +3452,8 @@ export interface components {
             name: string;
             /** Per Min */
             per_min: number;
+            /** Amount */
+            amount: number;
         };
         /** RecipeDetail */
         RecipeDetail: {
@@ -3854,7 +3883,10 @@ export interface components {
             /** Required */
             required: boolean;
         };
-        /** StarvedGenerator */
+        /**
+         * StarvedGenerator
+         * @description ``cause`` is ``missing`` as one phrase: "out of Coal, Water" or "no fuel loaded".
+         */
         StarvedGenerator: {
             /** Instance */
             instance: string;
@@ -3864,6 +3896,8 @@ export interface components {
             mw: number;
             /** Missing */
             missing: string[];
+            /** Cause */
+            cause: string;
             /** X M */
             x_m: number | null;
             /** Y M */
@@ -4052,8 +4086,8 @@ export interface components {
          *     ``cls`` and ``name`` are not nullable: a container is an ACTOR record and its class is
          *     written out. The coordinates ARE nullable, because an actor whose transform did not
          *     decode has no ``pos``. ``w_m``/``l_m`` are null for the classes the docs dump carries no
-         *     clearance for -- the HUB's built-in container, the Blueprint Designer's, the Dimensional
-         *     Depot uploader -- because a size invented here would arrive looking measured.
+         *     clearance for -- the HUB's built-in container and the Blueprint Designer's -- because a
+         *     size invented here would arrive looking measured.
          *
          *     ``slots`` is the inventory component's own slot count forwarded whole, and null rather
          *     than 0 for a row the projection wrote none for. ``more`` is always 0 from this server,
@@ -4357,6 +4391,20 @@ export interface components {
             filename: string;
             /** Reason */
             reason: string;
+        };
+        /**
+         * Unwired
+         * @description What stands on no wire, left out of every ledger above.
+         */
+        Unwired: {
+            /** Consumers */
+            consumers: number;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Generators */
+            generators: number;
+            /** Generation Mw */
+            generation_mw: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -4950,6 +4998,7 @@ export interface operations {
             query?: {
                 save?: string | null;
                 world?: string | null;
+                style?: string;
             };
             header?: never;
             path?: never;

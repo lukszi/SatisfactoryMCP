@@ -150,3 +150,19 @@ def test_stock_takes_the_save_and_world_parameters_and_404s_on_an_unreadable_one
     assert asked[0] == ("x.sav", "Some World")
     assert bad.status_code == 404
     assert "no world matching" in bad.json()["error"]
+
+
+def test_the_piles_sum_to_the_places_that_hold_them(client):
+    """Per item, the storage pile is every container and fluid buffer, the crate pile every
+    crate: a fluid buffer's contents counted nowhere read as stock that does not exist."""
+    body = client.get("/api/stock").json()
+    held: dict[tuple[str, str], float] = {}
+    for place in body["places"]:
+        for entry in place["items"]:
+            key = (entry["item"], place["source"])
+            held[key] = held.get(key, 0.0) + entry["amount"]
+    piles = {p["item"]: p for p in body["items"]}
+    assert any(p["kind"] == "fluid" and p["total"] for p in body["places"])
+    for (item, source), amount in held.items():
+        pile = piles[item]["storage" if source == "storage" else "crates"]
+        assert pile == pytest.approx(amount, abs=0.01), (item, source)

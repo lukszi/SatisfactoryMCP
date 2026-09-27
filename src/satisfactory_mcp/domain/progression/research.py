@@ -9,6 +9,7 @@ from ...core.gamedata.model import GameData
 
 if TYPE_CHECKING:
     from ..world.inventory import Inventory
+    from .ladder import Rung
     from .unlocks import UnlockSet
 
 __all__ = ["ResearchGates"]
@@ -110,6 +111,16 @@ class ResearchGates:
         """
         tree = self.tree_of(schematic_id)
         return bool(tree) and self.knows_trees and tree not in self.unlocked_trees
+
+    def status(self, rung: Rung) -> str:
+        """A MAM node's status: DONE, RUNNING, TREE SHUT, or the ladder's own."""
+        if rung.done:
+            return "DONE"
+        if rung.schematic.cls in self.ongoing:
+            return "RUNNING"
+        if self.tree_locked(rung.schematic.cls):
+            return "TREE SHUT"
+        return rung.status
 
     def has_capability(self, name: str) -> bool:
         """Whether a MAM-gated capability is researched.

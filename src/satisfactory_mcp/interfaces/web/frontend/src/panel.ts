@@ -336,7 +336,7 @@ function refList(title: string, rows: Ref[], hint: string): HTMLElement {
     var line = make("li", "panel-issue" + (located(r) ? " go" : ""));
     line.appendChild(make("span", "panel-issue-what", r.name));
     if ("missing" in r) {
-      var why = mw(r.mw) + " · out of " + r.missing.join(", ");
+      var why = mw(r.mw) + " · " + r.cause;
       line.appendChild(make("span", "panel-issue-cause", why));
     }
     line.title = r.instance;
@@ -359,7 +359,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
   var led = row.ledger;
   var item = make("li", "panel-row" + (selected ? " on" : "") + (row.bbox_m ? " go" : ""));
   var head = make("div", "panel-row-head");
-  var name = row.factories.length ? row.factories.join(", ") : "circuit " + (row.index + 1);
+  var name = "circuit " + (row.index + 1) + (row.factories.length ? " · " + row.factories.slice(0, 3).join(", ") + (row.factory_count > 3 ? " +" + (row.factory_count - 3) : "") : "");
   head.appendChild(make("span", "panel-row-name", name));
   var dark = led.generation_mw <= 0 && row.consumers > 0;
   var short = led.measured_headroom_mw < 0 || led.starved_generation_mw > 0;
@@ -436,6 +436,9 @@ function renderPower(body: HTMLElement): void {
   if (data.no_generator.length) {
     var hint = "wired, but to a circuit no generator stands on";
     body.appendChild(refList("no generator on its circuit", data.no_generator, hint));
+  }
+  if (data.unwired_generators.length) {
+    body.appendChild(refList("generators on no wire", data.unwired_generators, "capacity no circuit can draw on"));
   }
   body.appendChild(make("h3", "panel-h", data.circuits.length + " circuits"));
   var list = make("ul", "panel-list");

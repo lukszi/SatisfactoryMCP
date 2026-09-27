@@ -53,8 +53,8 @@ class StorageSolid(TypedDict):
     ``cls`` and ``name`` are not nullable: a container is an ACTOR record and its class is
     written out. The coordinates ARE nullable, because an actor whose transform did not
     decode has no ``pos``. ``w_m``/``l_m`` are null for the classes the docs dump carries no
-    clearance for -- the HUB's built-in container, the Blueprint Designer's, the Dimensional
-    Depot uploader -- because a size invented here would arrive looking measured.
+    clearance for -- the HUB's built-in container and the Blueprint Designer's -- because a
+    size invented here would arrive looking measured.
 
     ``slots`` is the inventory component's own slot count forwarded whole, and null rather
     than 0 for a row the projection wrote none for. ``more`` is always 0 from this server,

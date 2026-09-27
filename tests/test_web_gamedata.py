@@ -88,9 +88,7 @@ def test_alternates_list_every_maker_alternates_first(client, game, state):
     assert flags == sorted(flags, reverse=True)
     for row in body["recipes"]:
         assert row["unlocked"] == (row["cls"] in state.available_recipe_ids)
-        assert bool(row["granted_by"]) == (
-            not row["unlocked"] and bool(granted_by(game, game.recipes[row["cls"]]))
-        )
+        assert row["granted_by"] == granted_by(game, game.recipes[row["cls"]])
     assert client.get("/api/gamedata/alternates", params={"item": "zzzz"}).status_code == 404
 
 
@@ -112,3 +110,20 @@ def test_unlocked_needs_a_save(client, monkeypatch):
     r = client.get("/api/gamedata/unlocked")
     assert r.status_code == 404
     assert "could not read save" in r.json()["error"]
+
+
+def test_a_building_recipe_is_read_per_build_not_per_minute(client):
+    """A build recipe has no cycle; its per-minute rate rests on a placeholder."""
+    body = client.get("/api/gamedata/recipe", params={"recipe": "Recipe_AssemblerMk1_C"}).json()
+    rotor = next(f for f in body["ingredients"] if f["name"] == "Rotor")
+    assert rotor["amount"] == 4
+
+
+def test_items_sort_regardless_of_case_with_event_items_last(game):
+    events = game.event_items()
+    assert "Desc_Gift_C" in events and "Desc_Wire_C" not in events
+    hits = search.find_items(game, "")
+    flags = [i.cls in events for i in hits]
+    assert flags == sorted(flags), "every event item after every other"
+    plain = [i.name for i in hits if i.cls not in events]
+    assert plain == sorted(plain, key=str.casefold)

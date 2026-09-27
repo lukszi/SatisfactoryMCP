@@ -46,13 +46,13 @@ def test_the_first_call_is_the_same_answer_as_the_second(game):
 
 
 def test_all_is_paged_rather_than_a_context_eviction(game):
-    """The 539-building table unpaged was ~60k characters -- past client token limits,
+    """The 540-building table unpaged was ~60k characters -- past client token limits,
     so the honest full answer was still a failure. The page says what it is showing and
     how to get the rest, in the same envelope every other list tool uses."""
     out = srv.list_buildings(building_kind="all")
     assert len(out) < 5000
     assert len(_rows(out)) == 25
-    assert "539 match(es), showing 25 from offset 0" in out
+    assert "540 match(es), showing 25 from offset 0" in out
     assert "call again with offset=25" in out
     # And the offset genuinely advances: no shared rows between page one and page two.
     page_two = srv.list_buildings(building_kind="all", offset=25)

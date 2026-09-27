@@ -81,6 +81,17 @@ BUILDING_CLASS_ALIASES: dict[str, str] = {
 }
 
 
+#: Display names for classes a save holds and Docs.json never describes: the coupon is only
+#: ever referenced there, and the three HUB and Blueprint Designer parts ship no entry. Every
+#: other undescribed class reads as its own id in words, through ``pretty_class``.
+CLASS_NAMES: dict[str, str] = {
+    "Desc_ResourceSinkCoupon_C": "FICSIT Coupon",
+    "Build_GeneratorIntegratedBiomass_C": "HUB Biomass Burner",
+    "Build_StorageIntegrated_C": "HUB Storage",
+    "Build_StorageBlueprint_C": "Blueprint Designer Storage",
+}
+
+
 #: Capabilities the game gates behind MAM research, and the schematic that grants each. A
 #: cross-check, not the primary source: ``BP_UnlockSubsystem_C``'s own flags are authoritative
 #: where present (§6, `docs/save-projection.md`). This register answers the other half --

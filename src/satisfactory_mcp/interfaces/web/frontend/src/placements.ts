@@ -256,11 +256,11 @@ var STORAGE = declareColours("placements", {
 var STORAGE_COLOUR = STORAGE.storage;
 var STORAGE_FLUID_COLOUR = STORAGE["storage fluid"];
 
-/* A container the docs dump carries no clearance for: the HUB's own box, the Blueprint
- * Designer's, and the Dimensional Depot uploader. The server sends null rather than a number
- * invented there, because an invented one would arrive indistinguishable from a measurement.
- * Four metres is half a foundation tile: small enough not to overstate an uploader, big enough
- * to be clickable at the zoom the layer is read at. */
+/* A container the docs dump carries no clearance for: the HUB's own box and the Blueprint
+ * Designer's. The server sends null rather than a number invented there, because an invented
+ * one would arrive indistinguishable from a measurement. Four metres is half a foundation
+ * tile: small enough not to overstate a box, big enough to be clickable at the zoom the layer
+ * is read at. */
 var STORAGE_FALLBACK_M = 4;
 
 /* What is in one container, as popup rows.

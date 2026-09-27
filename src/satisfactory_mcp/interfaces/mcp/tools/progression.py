@@ -354,15 +354,9 @@ def mam_research(
         startable=lambda r: r.schematic.cls not in ongoing and not shut[r.schematic.cls],
     ):
         cls = rung.schematic.cls
-        running = ongoing.get(cls)
-        if rung.done:
-            state = "DONE"
-        elif running is not None:
-            state = f"RUNNING {running:.0f}s"
-        elif shut[cls]:
-            state = "TREE SHUT"
-        else:
-            state = rung.status
+        state = st.research.status(rung)
+        if state == "RUNNING":
+            state = f"RUNNING {ongoing[cls]:.0f}s"
         rows.append(
             (
                 state,

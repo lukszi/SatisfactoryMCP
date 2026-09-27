@@ -110,3 +110,86 @@ def test_an_unreadable_save_is_an_error_not_an_empty_panel(client, monkeypatch):
         r = client.get(path)
         assert r.status_code == 404
         assert "could not read save" in r.json()["error"]
+
+
+def test_the_world_ledger_is_the_sum_of_the_circuits(client, state):
+    """What stands on no wire draws from nothing, so it is off every ledger, the world's too."""
+    from satisfactory_mcp.domain.power.report import PowerLedger
+
+    body = client.get("/api/power/circuits").json()
+    world, circuits = body["world"], body["circuits"]
+    for key in ("generation_mw", "draw_mw", "measured_draw_mw", "headroom_mw"):
+        total = sum(c["ledger"][key] for c in circuits)
+        assert world[key] == pytest.approx(total, abs=0.1 * len(circuits))
+    everything = PowerLedger(projection=state.projection, game=state.game).power_report()
+    off = body["off_grid"]
+    assert world["draw_mw"] + off["draw_mw"] == pytest.approx(everything["draw_mw"], abs=0.2)
+    assert off["consumers"] > 0, "the fixture world has machines on no wire"
+
+
+def test_a_machine_ref_names_the_circuit_it_stands_on(client):
+    body = client.get("/api/power/circuits").json()
+    indices = {c["index"] for c in body["circuits"]}
+    assert all(r["circuit"] is None for r in body["unwired"])
+    assert all(r["circuit"] in indices for r in body["no_generator"])
+    for c in body["circuits"]:
+        assert c["factory_count"] == len(c["factories"])
+
+
+def test_worst_actionable_holds_only_machines_needing_action(client):
+    rows = client.get("/api/factories/health").json()["factories"]
+    if not rows:
+        pytest.skip("the fixture world has no named factories")
+    for row in rows:
+        assert all(i["state"] in ACTIONABLE for i in row["worst_actionable"])
+        assert len(row["worst_actionable"]) == min(8, row["actionable"])
+
+
+def _one_circuit(game, generators, machines=()):
+    """A hand-built world: every record wired to one pole."""
+    from fastapi.testclient import TestClient
+
+    from satisfactory_mcp.domain.world.state import WorldState
+    from satisfactory_mcp.interfaces.web.app import create_app
+
+    records = [*generators, *machines]
+    actors = ["Build_PowerPoleMk1_C_1"] + [r["instance"] for r in records]
+    projection = {
+        "generators": list(generators),
+        "machines": list(machines),
+        "graph": {"actors": actors, "power": [[0, i] for i in range(1, len(actors))]},
+    }
+    st = WorldState(projection=projection, game=game)
+    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
+    return TestClient(app).get("/api/power/circuits").json()
+
+
+def test_a_standing_biomass_burner_is_rated_from_game_data(game):
+    """The save calls it Build_GeneratorBiomass_C; the dump rates it under another class."""
+    burner = {"instance": "Build_GeneratorBiomass_C_1", "cls": "Build_GeneratorBiomass_C"}
+    body = _one_circuit(game, [burner])
+    rated = game.buildings["Build_GeneratorBiomass_Automated_C"].power_production_mw
+    assert body["circuits"][0]["ledger"]["generation_mw"] == pytest.approx(rated)
+    assert body["unmodellable"] == []
+
+
+def test_a_generator_on_no_wire_is_not_a_machine_on_no_wire(game):
+    from satisfactory_mcp.domain.world.state import WorldState
+
+    burner = {"instance": "Build_GeneratorCoal_C_1", "cls": "Build_GeneratorCoal_C"}
+    projection = {"generators": [burner], "graph": {"actors": [], "power": []}}
+    st = WorldState(projection=projection, game=game)
+    report = assess("world", st.graph.machines(), game, projection, st.graph)
+    assert report.unwired == []
+    assert report.unwired_generators == ["Build_GeneratorCoal_C_1"]
+
+
+def test_an_empty_hand_fed_generator_says_no_fuel_loaded(game):
+    coal = {
+        "instance": "Build_GeneratorCoal_C_1",
+        "cls": "Build_GeneratorCoal_C",
+        "buffers": {"fuel": {"items": {}}},
+        "uptime": {"window_s": 300.0, "produce_s": 0.0},
+    }
+    body = _one_circuit(game, [coal])
+    assert [s["cause"] for s in body["starved"]] == ["no fuel loaded"]

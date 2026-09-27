@@ -4,13 +4,44 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ...core.gamedata.model import GameData
+from ...core.gamedata.constants import BUILDING_CLASS_ALIASES
+from ...core.gamedata.model import Building, GameData
 
-__all__ = ["PowerLedger", "dry_input_classes", "dry_inputs", "measured_share"]
+__all__ = [
+    "NO_FUEL",
+    "PowerLedger",
+    "dry_input_classes",
+    "dry_inputs",
+    "generator_building",
+    "measured_share",
+    "starved_cause",
+    "wired_actors",
+]
 
 #: Stands in for a fuel class where the save records none -- a hand-fed burner sitting
 #: empty. Not an item name; it is printed as it reads.
 NO_FUEL = "(no fuel)"
+
+
+def wired_actors(projection: dict) -> frozenset[str] | None:
+    """Every actor at either end of a power edge, or ``None`` when the projection carries no
+    power layer at all -- an older projection, where no record may be called unwired."""
+    payload = projection.get("graph") or {}
+    if "power" not in payload:
+        return None
+    actors = payload.get("actors") or []
+    return frozenset(actors[i] for row in payload["power"] for i in row[:2] if 0 <= i < len(actors))
+
+
+def generator_building(game: GameData, cls: str) -> Building | None:
+    """The game-data building for a generator class, through the save-to-dump aliases."""
+    return game.buildings.get(cls) or game.buildings.get(BUILDING_CLASS_ALIASES.get(cls, ""))
+
+
+def starved_cause(missing: list[str] | tuple[str, ...]) -> str:
+    """What a starved generator lacks, in one phrase."""
+    named = [m for m in missing if m != NO_FUEL]
+    return "out of " + ", ".join(named) if named else "no fuel loaded"
 
 
 def measured_share(record: dict) -> float | None:
@@ -77,6 +108,10 @@ class PowerLedger:
     projection: dict
     game: GameData
     paused_count: int = 0
+    wired: frozenset[str] | None = None
+
+    def _is_wired(self, record: dict) -> bool:
+        return self.wired is None or record["instance"].rsplit(".", 1)[-1] in self.wired
 
     def power_report(self) -> dict:
         """Generation capacity, and draw both nameplate and measured.
@@ -103,23 +138,31 @@ class PowerLedger:
         ``starved_generators`` is the exception to "generation is capacity": a plant with a
         dry input is not capacity, it is a number that will not appear when the grid asks
         for it. It names each one, since knowing WHICH plant is the whole value.
+
+        With ``wired`` set, a record on no power edge is left out of both sides and counted
+        under ``unwired_*`` instead, so the ledger is the sum of the circuits.
         """
         gen: dict[str, dict] = {}
         total_mw = 0.0
         variable: list[str] = []
         starved: list[dict] = []
         starved_mw = 0.0
+        loose = {"generators": 0, "generation_mw": 0.0, "consumers": 0, "draw_mw": 0.0}
         for g in self.projection.get("generators", ()):
             if g.get("paused"):
                 continue
-            b = self.game.buildings.get(g["cls"])
+            b = generator_building(self.game, g["cls"])
             if b is None:
-                variable.append(g["cls"])  # e.g. the two biomass classes absent from Docs
+                variable.append(g["cls"])  # the HUB's built-in burner, absent from Docs
                 continue
             clock = g.get("clock") or 1.0
             mw = b.power_production_mw * clock
             if not b.power_production_mw and b.variable_power_factor:
                 mw = b.variable_power_factor * clock  # geothermal: normal-geyser average
+            if not self._is_wired(g):
+                loose["generators"] += 1
+                loose["generation_mw"] += mw
+                continue
             entry = gen.setdefault(g["cls"], {"name": b.name, "count": 0, "mw": 0.0})
             entry["count"] += 1
             entry["mw"] += mw
@@ -148,6 +191,10 @@ class PowerLedger:
         def _charge(rated: float, record: dict) -> None:
             """Add one machine to both totals, weighting the measured one by uptime."""
             nonlocal draw, measured, monitored, unmonitored
+            if not self._is_wired(record):
+                loose["consumers"] += 1
+                loose["draw_mw"] += rated
+                return
             draw += rated
             share = measured_share(record)
             if share is None:
@@ -189,4 +236,8 @@ class PowerLedger:
             "paused_count": self.paused_count,
             "starved_generators": sorted(starved, key=lambda s: -s["mw"]),
             "starved_generation_mw": starved_mw,
+            "unwired_generators": loose["generators"],
+            "unwired_generation_mw": loose["generation_mw"],
+            "unwired_consumers": loose["consumers"],
+            "unwired_draw_mw": loose["draw_mw"],
         }

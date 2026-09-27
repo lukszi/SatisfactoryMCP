@@ -797,7 +797,7 @@ def test_name_hint_does_not_let_one_recipe_outvote_a_power_plant():
         buildings=Counter({"Build_GeneratorCoal_C": 32, "Build_ConstructorMk1_C": 1}),
     )
     hint = cand.name_hint()
-    assert hint.startswith("32x GeneratorCoal")
+    assert hint.startswith("32x Generator Coal")
     assert "Concrete" in hint, "the stray recipe is still worth mentioning, just not first"
 
 

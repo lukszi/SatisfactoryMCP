@@ -86,10 +86,13 @@ def test_a_purchased_milestone_is_done_and_the_count_matches_the_tier_table(ladd
 
 def test_the_mam_view_of_the_same_ladder_is_unchanged_by_it(ladder, state):
     """The refactor's own check. `mam_research` walks EST_MAM through this class now, so
-    its rows must still be the MAM tree in name order priced against the same stock."""
+    its rows must still be the MAM tree in name order priced against the same stock -- less
+    the nine retired nodes the dump still ships (eight "Discontinued" and "SPWN", plus one
+    with no name at all)."""
     mam = ladder.rungs("EST_MAM")
-    assert len(mam) == 120
-    assert [r.schematic.name for r in mam] == sorted(r.schematic.name for r in mam)
+    assert len(mam) == 111
+    names = [r.schematic.name for r in mam]
+    assert names == sorted(names, key=str.casefold)
     assert all(r.schematic.type == "EST_MAM" for r in mam)
 
 

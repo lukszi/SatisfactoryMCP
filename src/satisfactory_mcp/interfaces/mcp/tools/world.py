@@ -7,6 +7,7 @@ from __future__ import annotations
 from .... import config
 from ....core.saveio import projection as proj
 from ....core.text import ago, stamp
+from ....domain.power.report import starved_cause
 from ....presenters.text import primitives as render
 from ..app import AsOf, Limit, _state, integrity_notes, mcp, stale_artifact_notes
 
@@ -114,11 +115,11 @@ def world_summary(save: str | None = None, world: str | None = None, as_of: AsOf
                 ),
                 # Where the player left off, which is the one thing a resuming assistant
                 # cannot work out from counts: the HUB's own active pick, and the drive
-                # whose choice was settled last.
+                # analysed last.
                 render.kv(
                     [
                         ("working_on", working_on.name if working_on else ""),
-                        ("last_hard_drive_spent", last_drive),
+                        ("last_hard_drive_analysed", last_drive),
                     ]
                 ),
                 render.kv(
@@ -210,14 +211,21 @@ def power_report(save: str | None = None, world: str | None = None, as_of: AsOf 
     ]
     if pw["unmodellable"]:
         notes.append(f"not in game data, excluded: {', '.join(pw['unmodellable'])}")
+    if pw["unwired_consumers"] or pw["unwired_generators"]:
+        notes.append(
+            f"on no wire, so left out of every figure above: {pw['unwired_consumers']} "
+            f"machine(s) rated {render.num(pw['unwired_draw_mw'])} MW and "
+            f"{pw['unwired_generators']} generator(s) rated "
+            f"{render.num(pw['unwired_generation_mw'])} MW"
+        )
 
     starved = pw["starved_generators"]
     body = render.table(("generator", "count", "MW"), rows)
     if starved:
         body += "\n\n## starved generators\n" + render.table(
-            ("generator", "building", "MW", "out of"),
+            ("generator", "building", "MW", "why"),
             [
-                (s["instance"], s["name"], render.num(s["mw"]), ", ".join(s["missing"]))
+                (s["instance"], s["name"], render.num(s["mw"]), starved_cause(s["missing"]))
                 for s in starved
             ],
             total=len(starved),

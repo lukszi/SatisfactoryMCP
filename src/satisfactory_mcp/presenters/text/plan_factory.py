@@ -10,6 +10,7 @@ from __future__ import annotations
 from ...core.gamedata.model import GameData
 from ...domain.planning.optimize import MW
 from ...domain.planning.report import PlanFactoryReport
+from ...domain.planning.slice import grid_import_mw, linear_gap_note
 from ...domain.world.state import WorldState
 from . import primitives as render
 
@@ -310,6 +311,8 @@ def render_plan_factory(
         )
     if req.excluded:
         notes.append("excluded by request: " + ", ".join(req.excluded))
+    if gap := linear_gap_note(sol, bill):
+        notes.append(gap)
     if not audit_ok:
         notes.append(f"GUARD FAILED: free-lunch audit returned {audit_val} MW, not 0")
     for b in sol.binding[:6]:
@@ -353,10 +356,10 @@ def render_plan_factory(
             f"# {st.age_note}",
             render.kv(
                 [
-                    ("net_MW", render.num(sol.net_mw)),
+                    ("net_MW", render.num(bill.net_mw)),
                     ("buildings", render.num(sol.machines_total)),
                     ("water_extractors", n_water or None),
-                    ("grid_import_MW", render.num(sol.grid_import_mw)),
+                    ("grid_import_MW", render.num(grid_import_mw(sol, bill))),
                 ]
             ),
             # Zero-solved NAMED exports are printed as 0 rather than omitted: a missing row

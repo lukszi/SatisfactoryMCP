@@ -94,17 +94,16 @@ def test_a_fluid_buffer_reports_a_level_against_the_capacity_that_makes_it_a_rea
 def test_a_storage_row_carries_the_footprint_it_is_drawn_at_or_says_it_cannot(client):
     """Same contract as the machines: a measured footprint, or null and the client's fallback.
 
-    Three of the eight classes here are absent from the docs dump entirely -- the HUB's
-    built-in container, the Blueprint Designer's, and the Dimensional Depot uploader -- so they
-    get null rather than a number invented server-side, which would arrive indistinguishable
-    from a measurement.
+    Two of the eight classes here are absent from the docs dump entirely -- the HUB's built-in
+    container and the Blueprint Designer's -- so they get null rather than a number invented
+    server-side, which would arrive indistinguishable from a measurement. The Dimensional Depot
+    uploader sits in the dump under a native of its own, and is measured.
     """
     rows = client.get("/api/storage").json()["storage"]
     measured = {r["cls"] for r in rows if r["w_m"] is not None}
     unmeasured = {r["cls"] for r in rows if r["w_m"] is None}
-    assert "Build_StorageContainerMk1_C" in measured
+    assert {"Build_StorageContainerMk1_C", "Build_CentralStorage_C"} <= measured
     assert unmeasured == {
-        "Build_CentralStorage_C",
         "Build_StorageBlueprint_C",
         "Build_StorageIntegrated_C",
     }

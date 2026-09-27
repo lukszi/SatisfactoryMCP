@@ -66,9 +66,13 @@ class RecipesResponse(TypedDict):
 
 
 class Rate(TypedDict):
+    """``amount`` is per cycle: per craft or per build for a manual or building recipe,
+    whose ``per_min`` rests on a placeholder cycle and means nothing."""
+
     item: str
     name: str
     per_min: float
+    amount: float
 
 
 class RecipeDetail(TypedDict):
@@ -139,7 +143,13 @@ def _machine(g: GameData, r: Recipe) -> str | None:
 
 def _rates(g: GameData, flows) -> list[Rate]:
     return [
-        {"item": f.item, "name": g.item_name(f.item), "per_min": float(f.per_min)} for f in flows
+        {
+            "item": f.item,
+            "name": g.item_name(f.item),
+            "per_min": float(f.per_min),
+            "amount": float(f.amount),
+        }
+        for f in flows
     ]
 
 
@@ -276,7 +286,7 @@ def gamedata_alternates(
                 "ingredients": _rates(g, r.ingredients),
                 "products": _rates(g, r.products),
                 "unlocked": unlocked,
-                "granted_by": [] if unlocked else granted_by(g, r),
+                "granted_by": granted_by(g, r),
             }
         )
     return {**_item_row(g.items[iid]), "item": iid, "save_note": note, "recipes": rows}

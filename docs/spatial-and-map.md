@@ -838,6 +838,12 @@ the split is the only addition, and it has three limits worth knowing before tru
 - **Batteries are not in the ledger.** `PowerLedger` counts generators and consumers; a
   circuit running on Power Storage reads as generation 0 with draw, which is also what a
   circuit with no source looks like.
-- **Unwired machines are in the world totals and in no circuit**, so the circuit rows do not
-  sum to the world line. They are listed on their own, beside the machines wired to a circuit
-  no generator stands on — `assess`'s two lists over every machine in the world.
+- **Unwired records are in no ledger.** A machine or generator on no power edge draws from and
+  feeds nothing, so `power_report` leaves it out of both sides and the circuit rows sum to the
+  world line. `off_grid` carries its count and rated MW. The machines are listed on their own,
+  beside the machines wired to a circuit no generator stands on — `assess`'s two lists over
+  every machine in the world — and generators on no wire have a third list.
+- **Two generator classes need help from the save side.** A standing Biomass Burner is
+  `Build_GeneratorBiomass_C` in the save and `Build_GeneratorBiomass_Automated_C` in the dump,
+  joined by `BUILDING_CLASS_ALIASES`. The HUB's built-in burner has no entry at all, so it is
+  listed in `unmodellable`, on the world and on its circuit, and its output is not counted.

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.factories import identity as fidentity
 from ....domain.factories.health import assess
-from ....domain.power.report import PowerLedger
+from ....domain.power.report import PowerLedger, starved_cause
 from ....domain.spatial import geo
 from ..serial import _fail, _m, _state
 
@@ -46,43 +46,67 @@ class GeneratorGroup(TypedDict):
 
 
 class StarvedGenerator(TypedDict):
+    """``cause`` is ``missing`` as one phrase: "out of Coal, Water" or "no fuel loaded"."""
+
     instance: str
     name: str
     mw: float
     missing: list[str]
+    cause: str
     x_m: float | None
     y_m: float | None
 
 
 class MachineRef(TypedDict):
+    """``circuit`` is the ``index`` of the circuit it stands on, null when on none."""
+
     instance: str
     name: str
+    circuit: int | None
     x_m: float | None
     y_m: float | None
 
 
+class Unwired(TypedDict):
+    """What stands on no wire, left out of every ledger above."""
+
+    consumers: int
+    draw_mw: float
+    generators: int
+    generation_mw: float
+
+
 class CircuitRow(TypedDict):
-    """``bbox_m`` is null when no record on the circuit has a position."""
+    """``bbox_m`` is null when no record on the circuit has a position. ``factories`` is
+    every named factory on it, most machines first; ``unmodellable`` the generator classes
+    on it that game data cannot rate, whose output the ledger leaves out."""
 
     index: int
     ledger: Ledger
     generators: list[GeneratorGroup]
     starved: list[StarvedGenerator]
+    unmodellable: list[str]
     consumers: int
     poles: int
     factories: list[str]
+    factory_count: int
     centroid_m: tuple[float, float] | None
     bbox_m: tuple[float, float, float, float] | None
 
 
 class CircuitsResponse(TypedDict):
+    """``world`` is the sum of ``circuits``; ``unwired`` lists machines on no wire and
+    ``unwired_generators`` generators on none."""
+
     world: Ledger
     paused: int
     generators: list[GeneratorGroup]
     starved: list[StarvedGenerator]
     unmodellable: list[str]
     circuits: list[CircuitRow]
+    off_grid: Unwired
     unwired: list[MachineRef]
+    unwired_generators: list[MachineRef]
     no_generator: list[MachineRef]
 
 
@@ -122,6 +146,7 @@ def _starved(report: dict, placed: dict) -> list[dict]:
                 "name": s["name"],
                 "mw": round(s["mw"], 1),
                 "missing": list(s["missing"]),
+                "cause": starved_cause(s["missing"]),
                 "x_m": x,
                 "y_m": y,
             }
@@ -134,7 +159,8 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
     """Generation against draw, nameplate and measured, for the world and for each circuit.
 
     ``unwired`` and ``no_generator`` are ``assess``'s two lists over every machine in the
-    world: no power edge at all, and a wire to a circuit no generator stands on.
+    world: no power edge at all, and a wire to a circuit no generator stands on. The world
+    ledger counts only what stands on a wire, so it is the sum of the circuits.
     """
     try:
         st = _state(request, save, world)
@@ -150,6 +176,7 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
     label_of = {a: label.name for label in st.labels.labels for a in label.anchors}
 
     circuits = []
+    circuit_of: dict[str, int] = {}
     for component in graph.components("power"):
         members = set(component)
         sub = {key: [r for s, r in records[key].items() if s in members] for key in RECORD_LISTS}
@@ -164,12 +191,15 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
         circuits.append(
             {
                 "index": 0,
+                "members": members,
                 "ledger": _ledger(report),
                 "generators": _groups(report),
                 "starved": _starved(report, placed),
+                "unmodellable": list(report["unmodellable"]),
                 "consumers": len(sub["machines"]) + len(sub["extractors"]),
                 "poles": sum(1 for s in component if graph.kind(s) in ("pole", "tower")),
-                "factories": [n for n, _ in named.most_common(3)],
+                "factories": [n for n, _ in named.most_common()],
+                "factory_count": len(named),
                 "centroid_m": None if centre is None else [_m(centre[0]), _m(centre[1])],
                 "bbox_m": None if box is None else [_m(v) for v in box],
             }
@@ -177,6 +207,8 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
     circuits.sort(key=lambda c: -(c["ledger"]["generation_mw"] + c["ledger"]["draw_mw"]))
     for index, row in enumerate(circuits):
         row["index"] = index
+        for short in row.pop("members"):
+            circuit_of[short] = index
 
     dark = assess("world", graph.machines(), st.game, st.projection, graph)
 
@@ -186,7 +218,13 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
             x, y = _at(placed, short)
             cls = graph.cls.get(short, "")
             out.append(
-                {"instance": short, "name": st.game.building_name(cls) or cls, "x_m": x, "y_m": y}
+                {
+                    "instance": short,
+                    "name": st.game.building_name(cls) or cls,
+                    "circuit": circuit_of.get(short),
+                    "x_m": x,
+                    "y_m": y,
+                }
             )
         return out
 
@@ -198,6 +236,13 @@ def power_circuits(request: Request, save: str | None = None, world: str | None 
         "starved": _starved(world_report, placed),
         "unmodellable": list(world_report["unmodellable"]),
         "circuits": circuits,
+        "off_grid": {
+            "consumers": world_report["unwired_consumers"],
+            "draw_mw": round(world_report["unwired_draw_mw"], 1),
+            "generators": world_report["unwired_generators"],
+            "generation_mw": round(world_report["unwired_generation_mw"], 1),
+        },
         "unwired": refs(dark.unwired),
+        "unwired_generators": refs(dark.unwired_generators),
         "no_generator": refs(dark.no_generator),
     }

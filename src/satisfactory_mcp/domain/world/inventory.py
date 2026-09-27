@@ -107,6 +107,18 @@ class Inventory:
             it = self.game.items.get(item)
             if it is not None and it.is_fluid:
                 out[item] /= 1000.0
+        for item, m3 in self.fluid_buffers().items():
+            out[item] = out.get(item, 0.0) + m3
+        return out
+
+    def fluid_buffers(self) -> dict[str, float]:
+        """m3 standing in fluid buffers, per fluid. Part of the ``storage`` pile: the sidecar
+        keeps a buffer's contents on its storage row, not in ``inventories``, so without this
+        the piles would not sum to ``holdings``."""
+        out: dict[str, float] = {}
+        for row in self.projection.get("storage") or ():
+            if isinstance(row, dict) and row.get("fluid") and row.get("stored_m3"):
+                out[row["fluid"]] = out.get(row["fluid"], 0.0) + float(row["stored_m3"])
         return out
 
     def machine_buffers(self) -> dict[str, float]:
@@ -141,6 +153,10 @@ class Inventory:
                 row[bucket] += scaled
                 if bucket in SPENDABLE:
                     row["spendable"] += scaled
+        for item, m3 in self.fluid_buffers().items():
+            row = out.setdefault(item, dict.fromkeys((*BUCKETS, "spendable"), 0.0))
+            row["storage"] += m3
+            row["spendable"] += m3
         return out
 
     def holdings(self, item: str | None = None) -> list[Holding]:

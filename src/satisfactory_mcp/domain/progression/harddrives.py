@@ -32,11 +32,12 @@ class HardDriveDesk:
 
     @property
     def last_used_hard_drive_id(self) -> int | None:
-        """The id of the drive whose choice was settled most recently.
+        """The id of the drive analysed most recently in the MAM.
 
-        mLastUsedHardDriveID, which the game keeps to number the next one. Continuity for
-        a reader resuming a session, never an index into the pending offers: a settled
-        drive is gone from that list.
+        mLastUsedHardDriveID, the counter the game numbers each analysed drive with. The
+        drive it names can still be pending: on the reference save it is 36, and drive 36
+        is the newest row among the unclaimed offers. It says nothing about which choice
+        was settled.
         """
         raw = self.projection.get("research", {}).get("last_used_hard_drive_id")
         return raw if isinstance(raw, int) else None

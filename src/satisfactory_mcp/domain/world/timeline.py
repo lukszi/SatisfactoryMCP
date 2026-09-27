@@ -24,7 +24,7 @@ __all__ = ["INDEX_SCHEMA", "Timeline", "build_row", "load_timeline", "row_key", 
 #: rather than being served thin. Separate from the projection's schema, which is ALSO in the
 #: key: a projection bump that only adds geometry leaves every field here untouched, but the
 #: row was still computed by different code and nothing cheap can prove the difference.
-INDEX_SCHEMA = 1
+INDEX_SCHEMA = 2
 
 
 def row_key(header: dict) -> str:

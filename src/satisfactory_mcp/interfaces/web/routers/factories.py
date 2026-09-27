@@ -20,7 +20,9 @@ from typing import Any, TypedDict
 from fastapi import APIRouter, Request
 
 from ....domain.factories import identity as fidentity
+from ....domain.factories import naming
 from ....domain.spatial import geo
+from ....domain.spatial import regions as spatial_regions
 from ..serial import _fail, _m, _state
 
 __all__ = ["router"]
@@ -71,7 +73,12 @@ class FactoriesResponse(TypedDict):
 
 
 @router.get("/factories", response_model=FactoriesResponse)
-def factories(request: Request, save: str | None = None, world: str | None = None) -> Any:
+def factories(
+    request: Request,
+    save: str | None = None,
+    world: str | None = None,
+    style: str = naming.DEFAULT_STYLE,
+) -> Any:
     """Named factories and the coherence-scored proposals for the unnamed rest.
 
     Each row carries ``bbox_m`` -- ``[x_min, y_min, x_max, y_max]`` in metres, game axes --
@@ -88,6 +95,13 @@ def factories(request: Request, save: str | None = None, world: str | None = Non
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
 
+    if style not in naming.STYLES:
+        return _fail(f"unknown style {style!r}; known: {', '.join(naming.STYLES)}", 400)
+    try:
+        rmap = spatial_regions.load_regions()
+    except FileNotFoundError:
+        rmap = None
+    names = naming.proposal_names(st, st.proposals, style, rmap)
     placed = fidentity.positions(st.projection)
 
     def _bbox_m(machines) -> list[float] | None:
@@ -113,7 +127,7 @@ def factories(request: Request, save: str | None = None, world: str | None = Non
         proposals.append(
             {
                 "index": index,
-                "label": cand.name_hint(),
+                "label": names[index],
                 "centroid_m": [_m(cand.centroid[0]), _m(cand.centroid[1])],
                 "bbox_m": _bbox_m(pr.machines),
                 "machines": pr.size,

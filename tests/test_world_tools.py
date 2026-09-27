@@ -27,10 +27,10 @@ def tools(state, monkeypatch):
 def test_the_summary_says_what_the_player_was_last_working_on(tools):
     """mLastActiveSchematic and mLastUsedHardDriveID had no consumer at all, and they are
     the two facts an assistant resuming a session cannot derive from any count: the goal
-    the HUB is tracking, and the drive whose choice was settled last."""
+    the HUB is tracking, and the drive analysed last."""
     out = tools.world_summary()
     assert "working_on=Logistics Mk.5" in out
-    assert "last_hard_drive_spent=36" in out
+    assert "last_hard_drive_analysed=36" in out
 
 
 def test_a_save_naming_neither_prints_neither(state, game, monkeypatch):
@@ -47,7 +47,7 @@ def test_a_save_naming_neither_prints_neither(state, game, monkeypatch):
     monkeypatch.setattr(world_tools, "_state", lambda save=None, world=None, as_of=None: bare)
     out = world_tools.world_summary()
     assert "working_on" not in out
-    assert "last_hard_drive_spent" not in out
+    assert "last_hard_drive_analysed" not in out
 
 
 # ------------------------------------------------------------------- sites
