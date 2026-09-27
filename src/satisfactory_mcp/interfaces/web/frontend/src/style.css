@@ -1867,15 +1867,26 @@ a.dash-where:hover {
   font-style: italic;
 }
 
-.dash-graph .graph {
-  display: block;
-  width: 100%;
-  height: 560px;
+.graph-frame {
+  overflow: auto;
+  max-height: 80vh;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--r);
   cursor: grab;
-  touch-action: none;
+}
+
+.graph-frame.more {
+  mask-image: linear-gradient(to right, black calc(100% - 48px), transparent);
+}
+
+.graph-frame.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.graph {
+  display: block;
 }
 
 .graph-node rect {
@@ -1884,33 +1895,43 @@ a.dash-where:hover {
   stroke-width: 1.5;
 }
 
-.graph-node.kind-group {
+.graph-node.pickable {
   cursor: pointer;
 }
 
-.graph-node.kind-group:hover rect {
+.graph-node:focus {
+  outline: none;
+}
+
+.graph-node.pickable:hover rect,
+.graph-node:focus-visible rect {
   stroke: var(--accent);
 }
 
-.graph-node.blocked rect {
+.graph-node:focus-visible rect {
+  stroke-width: 3;
+}
+
+.graph-node.tone-blocked rect {
   stroke: var(--blocked);
   stroke-width: 3;
 }
 
-.graph-node.stopped rect {
+.graph-node.tone-bad rect {
   stroke: var(--bad);
   stroke-width: 3;
 }
 
-.graph-node.kind-input rect {
+.graph-node.kind-input rect,
+.graph-node.kind-nowhere rect {
   fill: transparent;
-  stroke-dasharray: 4 3;
+  stroke: var(--dim);
+  stroke-dasharray: 5 4;
 }
 
 .graph-node.kind-storage rect,
 .graph-node.kind-export rect {
-  stroke: var(--ok);
-  stroke-width: 2;
+  stroke: var(--muted);
 }
 
 .graph-node.kind-sink rect {
@@ -1919,29 +1940,15 @@ a.dash-where:hover {
   stroke-dasharray: 2 4;
 }
 
-.graph-node.kind-nowhere rect {
-  fill: transparent;
-  stroke: var(--dim);
-  stroke-dasharray: 6 4;
-}
-
 .graph-node text {
-  fill: var(--ink);
-  font-size: var(--fs-m);
-}
-
-.graph-node .graph-node-k {
-  font-weight: 600;
-}
-
-.graph-node .graph-node-d,
-.graph-node .graph-node-s {
   fill: var(--muted);
   font-size: var(--fs-s);
 }
 
-.graph-node.kind-sink .graph-node-d {
-  fill: var(--bad);
+.graph-node .graph-node-k {
+  fill: var(--ink);
+  font-size: var(--fs-m);
+  font-weight: 600;
 }
 
 .graph-edge {
@@ -1964,6 +1971,10 @@ a.dash-where:hover {
   fill: var(--ink-soft);
   font-size: var(--fs-s);
   text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .inv-search {
@@ -2595,8 +2606,4 @@ body.dash-on #trace {
   .plan-export-name {
     min-width: 6em;
   }
-}
-
-.graph-node.kind-process rect {
-  stroke: var(--accent);
 }

@@ -199,6 +199,8 @@ def test_a_candidate_graph_groups_by_recipe_and_ends_at_terminals(empty):
     assert all(e["source"] in ids and e["target"] in ids for e in graph["edges"])
     for n in groups:
         assert n["running"] + n["blocked"] + n["stopped"] == n["machines"]
+        assert sum(n["states"].values()) == n["machines"]
+        assert n["blocked"] == n["states"].get("blocked", 0)
     if row["products"]:
         assert {"storage", "export"} & ids
 
@@ -208,7 +210,11 @@ def test_a_named_factory_draws_the_same_graph_as_its_candidate(empty):
     _name(empty, body, row, name="graph me")
     named = _graph(empty, factory="graph me").json()
     unnamed = _graph(empty, candidate=row["selector"], token=body["token"]).json()
-    assert named["nodes"] == unnamed["nodes"] and named["edges"] == unnamed["edges"]
+    assert named["edges"] == unnamed["edges"]
+    groups = [[n for n in g["nodes"] if n["kind"] == "group"] for g in (named, unnamed)]
+    assert groups[0] == groups[1]
+    inputs = [n["detail"] for n in named["nodes"] if n["kind"] == "input"]
+    assert all(d == "enters the factory" for d in inputs)
 
 
 def test_the_graph_route_refuses_what_it_cannot_answer(empty):

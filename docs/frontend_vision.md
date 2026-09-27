@@ -835,10 +835,12 @@ me that graph for a detected factory".
   It is built by `flowgraph.build`, the same code that classes the Detect items (§9.4).
 - **Nodes.**
   - Recipe groups, e.g. "8× Assembler · Rotor", with machine count, mean clock, nameplate
-    outputs with destinations, and a running / blocked / stopped mix from `health.assess`
-    (`ACTIONABLE` minus blocked counts as stopped).
-  - One input node per item that enters the cluster.
-  - One terminal per kind: to storage, leaves the cluster, AWESOME Sink, goes nowhere.
+    outputs with destinations, and `states`: machines per `health.assess` state. The older
+    running / blocked / stopped mix stays in the payload (`ACTIONABLE` minus blocked counts
+    as stopped, and everything else, paused included, as running); the page reads `states`.
+  - One input node per item that enters the factory (or the cluster, for a Detect row).
+  - One terminal per kind: to storage, leaves the factory or cluster, AWESOME Sink, goes
+    nowhere.
 
   Edges are items with apportioned items/min (§9.4). The payload is grouped by recipe: the
   110-machine cluster is 16 nodes and 20 edges.
@@ -848,13 +850,26 @@ me that graph for a detected factory".
     Three barycentre sweeps order each column.
   - Edges between the same two nodes share one curve and one label. A backward edge dips
     below the nodes.
-  - Outlines follow the map: red when a machine in the group is stopped, yellow when one is
-    blocked. Storage and export terminals are green. The sink is dotted grey and reads
-    "sunk: not a product"; "goes nowhere" is dashed.
-  - Hovering shows each group's outputs and where they go. Clicking a group flies the map to
-    its machines and outlines them.
-  - Wheel zooms, dragging pans, and a double-click resets. The first view is about 1:1 scale,
-    so a wide graph is panned rather than shrunk.
+  - Each group's third line counts its machines by state through `states.ts`: fine states
+    read "running", every other state by its own name, so paused is never running. The
+    outline takes the worst tone: `--bad` when a machine needs action, `--blocked` when the
+    worst is blocked, neutral otherwise. Terminals and inputs are neutral; inputs and "goes
+    nowhere" are dashed, the sink dotted and "sunk: not a product" in muted text. A plan has
+    no live state, so its nodes stay neutral.
+  - Columns are as wide as their text, and each gap as wide as its edge labels, wrapped to
+    item and rate on two lines. A label slides along its curve until it clears every node
+    and label; one with no free spot is left to the edge's tooltip.
+  - Hovering shows each group's outputs and where they go. Clicking a group, or Enter on it
+    (groups are in the tab order), flies the map to its machines and outlines them.
+  - The first view fits the whole graph when the text stays between 11 and 14 px; a wider
+    graph opens at 11 px in a frame that scrolls sideways, faded at the right edge while
+    more is off-screen. The frame is as tall as the graph, up to 80% of the window.
+    Ctrl+wheel zooms (a plain wheel scrolls the page), dragging pans and a double-click
+    fits again.
+  - One card for both callers: `graphCard(heading, shown, toggle)` in `graph.ts`, with one
+    **hide graph** toggle per view. The planner draws its plan with the same component
+    (planner_vision.md §4.2); power is not an item there. A process's node shows its MW,
+    and exported power is a **power** terminal fed by the generators, labelled in MW.
 - **Where.** The factory detail view has a **graph** button next to **map**. Each Detect row
   has a **graph** action, which opens the same card above the list. The component takes any
   `{nodes, edges}` of that shape, so the planner's production graph (planner_vision.md §4.2)

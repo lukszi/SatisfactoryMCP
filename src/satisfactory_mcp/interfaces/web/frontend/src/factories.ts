@@ -4,8 +4,8 @@
 import { get, latest, send } from "./api";
 import { button, empty, error, fieldError, heading, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
-import { count, mw, num, pct, spoken } from "./format";
-import { drawGraph } from "./graph";
+import { count, mw, num, pct, perMin, spoken } from "./format";
+import { drawGraph, graphCard as graphFrame, GRAPH_HINT, stateLine } from "./graph";
 import { loadOne } from "./load";
 import { hashFor } from "./map";
 import { showBox, vitals } from "./panel";
@@ -52,11 +52,12 @@ var graphView = {
   source: "",
   subject: "",
   title: "",
+  token: "",
   epoch: -1,
   busy: false,
   failure: null as unknown,
   data: null as FactoryGraphResponse | null,
-  drawn: null as SVGSVGElement | null,
+  drawn: null as HTMLElement | null,
 };
 
 function settle(): void {
@@ -639,6 +640,7 @@ function openGraph(source: string, subject: string, title: string, token?: strin
   graphView.source = source;
   graphView.subject = subject;
   graphView.title = title;
+  graphView.token = token || "";
   graphView.epoch = state.epoch;
   graphView.busy = true;
   graphView.failure = null;
@@ -677,9 +679,9 @@ function closeGraph(): void {
 function nodeTip(node: GraphNode): string {
   var lines = [node.label + (node.detail ? " · " + node.detail : "")];
   if (node.kind === "group") {
-    lines.push(statusLine(node) + (node.clock !== null ? " · clock " + pct(node.clock) : ""));
+    lines.push(stateLine(node) + (node.clock !== null ? " · clock " + pct(node.clock) : ""));
     node.makes.forEach(function (f) {
-      lines.push("makes " + num(f.per_min) + " " + f.name + "/min" + (f.to.length ? " → " + f.to.join(", ") : ""));
+      lines.push("makes " + perMin(f.per_min, false) + " " + f.name + "/min" + (f.to.length ? " → " + f.to.join(", ") : ""));
     });
     lines.push("click: show these machines on the map");
   }
@@ -687,21 +689,19 @@ function nodeTip(node: GraphNode): string {
   return lines.join("\n");
 }
 
-function statusLine(node: GraphNode): string {
-  return node.running + " running · " + node.blocked + " blocked · " + node.stopped + " stopped";
-}
-
 function graphCard(parent: HTMLElement): void {
-  var card = make("section", "dash-card dash-graph");
-  var bar = make("div", "dash-title");
-  bar.appendChild(make("h2", "dash-h", "production graph · " + graphView.title));
-  bar.appendChild(button("close", closeGraph, { title: "close the graph" }));
-  card.appendChild(bar);
+  var data = graphView.data;
+  var card = graphFrame("production graph · " + graphView.title, true, graphView.source === "candidate" ? closeGraph : undefined);
   if (graphView.busy) loading(card, "the graph");
-  else if (graphView.failure) error(card, "the graph", graphView.failure);
-  else if (graphView.drawn) {
+  else if (graphView.failure) {
+    var again = { source: graphView.source, subject: graphView.subject, title: graphView.title, token: graphView.token };
+    error(card, "the graph", graphView.failure, function () {
+      openGraph(again.source, again.subject, again.title, again.token);
+    });
+  } else if (graphView.drawn && data) {
     card.appendChild(graphView.drawn);
-    note(card, "Nameplate items/min. Red outline: a machine stopped; yellow: blocked. Scroll to zoom, drag to pan, click a group for the map.");
+    var lead = "nameplate rates split over each item's producers by share" + (data.buffers ? " · " + count(data.buffers) + " boxes walked through" : "");
+    note(card, lead + " · " + GRAPH_HINT + ", click a group for the map");
   }
   parent.appendChild(card);
 }
