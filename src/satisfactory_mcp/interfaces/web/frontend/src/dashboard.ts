@@ -264,10 +264,8 @@ function follow(tab: Tab, subject: string): void {
   if (!subject) return;
   var v = vitals();
   if (tab === "factories" && v.health) {
-    var known = v.health.factories.some(function (r) {
-      return r.name === subject;
-    });
-    if (known) select({ kind: "factory", key: subject, label: subject });
+    var name = factoryAddress(subject, knownFactory).name;
+    if (knownFactory(name)) select({ kind: "factory", key: name, label: name });
   } else if (tab === "power" && v.circuits) {
     var row = v.circuits.circuits[+subject - 1];
     if (row) select({ kind: "circuit", key: String(row.index), label: circuitName(row) });
