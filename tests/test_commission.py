@@ -27,6 +27,7 @@ from satisfactory_mcp.domain.planning.commission import commission, track
 from satisfactory_mcp.domain.planning.diff import DiffReport, DiffRow, build_diff, group_key
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.world.state import WorldState
+from satisfactory_mcp.interfaces.mcp.tools import planning
 
 pytestmark = pytest.mark.integration
 
@@ -45,6 +46,20 @@ A_RECIPE = "Recipe_Alternate_HeavyOilResidue_C"
 
 #: The full 300 s productivity window. Fixed by the game on every carrier in the save.
 WINDOW = 300.0
+
+
+@pytest.fixture(autouse=True)
+def _tools_read_the_reference_world(monkeypatch, projection, game):
+    """The tool tests below quote this world's headroom, so they must not read the newest save.
+
+    A new state per call, as the server builds one, so a plan saved by one call is seen by
+    the next.
+    """
+    monkeypatch.setattr(
+        planning,
+        "_state",
+        lambda save=None, world=None, as_of=None: WorldState(projection=projection, game=game),
+    )
 
 
 @pytest.fixture
@@ -556,7 +571,7 @@ def test_recalling_a_stored_plan_answers_which_stage_you_are_in(game, tmp_path, 
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     saved = srv.plan_factory(save_as="stage-test", **SPIRE)
-    assert "saved as 'stage-test'" in saved
+    assert 'saved as "stage-test" v1' in saved
 
     out = srv.diff_vs_save(plan="stage-test")
     assert "# STAGES" in out
