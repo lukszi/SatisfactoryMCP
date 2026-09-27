@@ -7,7 +7,8 @@ import { keepFocus, make } from "./dom";
 import { go } from "./nav";
 import { onVitals } from "./panel";
 import { renderBench } from "./planner-bench";
-import { actorWord, bench, changed, followHead, forgetSolves, inbox, loadItems, onBench, openPlan, redoLast, reset, resyncHead, sav, undoLast } from "./planner-core";
+import { actorWord, bench, changed, followHead, forgetSolves, inbox, loadItems, onBench, openPlan, redoLast, reset, resyncHead, sav, undoLast, viewRev } from "./planner-core";
+import { loadActivity } from "./planner-history";
 import { loadList, planTitle, renderList } from "./planner-list";
 import { choice, onSetting } from "./settings";
 import { state } from "./state";
@@ -29,10 +30,17 @@ var focusTimer = 0;
 var drawTimer = 0;
 var pressed = false;
 
+function parts(at: string): { key: string; view: number } {
+  var cut = at.indexOf("/");
+  if (cut < 0) return { key: at, view: 0 };
+  var m = /^v(\d+)$/.exec(at.slice(cut + 1));
+  return { key: at.slice(0, cut), view: m ? Number(m[1]) : 0 };
+}
+
 function subject(): string | null {
   var dash = state.dash;
   if (dash === "planner") return "";
-  if (dash.indexOf("planner/") === 0) return dash.slice("planner/".length);
+  if (dash.indexOf("planner/") === 0) return parts(dash.slice("planner/".length)).key;
   return null;
 }
 
@@ -92,7 +100,9 @@ function draw(): void {
   if (held.length && !typing()) flush();
 }
 
-export function renderPlanner(body: HTMLElement, key: string): void {
+export function renderPlanner(body: HTMLElement, at: string): void {
+  var wanted = parts(at);
+  var key = wanted.key;
   if (!state.world) {
     body.textContent = "";
     loading(body, "the world");
@@ -117,6 +127,7 @@ export function renderPlanner(body: HTMLElement, key: string): void {
     }
     scheduleFocus();
   }
+  if (key && bench.view !== wanted.view) viewRev(wanted.view);
   draw();
 }
 
@@ -153,7 +164,10 @@ function news(ts: number): boolean {
 export function onPlansEvent(event: PlansEvent): void {
   if (event.world !== state.world) return;
   whenIdle(function () {
-    if (subject() === "") loadList();
+    if (subject() === "") {
+      loadList();
+      loadActivity();
+    }
     followHead(event);
   });
 }
@@ -169,6 +183,7 @@ function openFromChat(entry: ActivityEvent): void {
 export function onActivityEvent(entry: ActivityEvent): void {
   if (entry.world !== state.world || entry.actor.kind === "page" || seen[entry.id]) return;
   seen[entry.id] = true;
+  if (subject() === "") loadActivity();
   heard = Math.max(heard, entry.ts);
   if (!news(entry.ts)) return;
   var mode = choice("follow");
@@ -200,7 +215,10 @@ export function onActivityEvent(entry: ActivityEvent): void {
 }
 
 export function resyncPlanner(): void {
-  if (subject() === "") loadList();
+  if (subject() === "") {
+    loadList();
+    loadActivity();
+  }
   resyncHead();
   var since = Math.max(heard, state.opened / 1000 - 2);
   get<ActivityResponse>(`/api/activity?since=${since}`)

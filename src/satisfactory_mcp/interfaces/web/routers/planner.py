@@ -17,7 +17,7 @@ from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
 
-from ....domain.planning import focus, journal, summary
+from ....domain.planning import focus, journal, manage, summary
 from ....domain.planning.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
 from ..serial import ActorBody, _actor_json, _fail, _state
 
@@ -64,6 +64,7 @@ class SolveResponse(TypedDict):
     mw_net: float | None
     grid_import: bool
     exports: list[SolveRate]
+    inputs: list[SolveRate]
     rows: list[SolveRow]
     shards: int | None
     sloops_used: int
@@ -119,6 +120,31 @@ class ActivityRow(TypedDict):
 class ActivityResponse(TypedDict):
     now: float
     entries: list[ActivityRow]
+
+
+class DeltaRow(TypedDict):
+    """One building's machine count or one raw input's rate, before and after."""
+
+    name: str
+    before: float
+    after: float
+    delta: float
+
+
+class DeltaResponse(TypedDict):
+    """What re-solving ``from_rev`` and ``to_rev`` gives. ``comparable`` is false when either
+    side is not solvable, and then only ``text`` says anything."""
+
+    key: str
+    from_rev: int
+    to_rev: int
+    comparable: bool
+    machines: int
+    mw_draw: float
+    mw_net: float
+    buildings: list[DeltaRow]
+    inputs: list[DeltaRow]
+    text: str
 
 
 @router.post("/plan/solve", response_model=SolveResponse)
@@ -235,3 +261,37 @@ def activity(
     rows += [_entry_row(e, names) for e in journal.read(st.world_id, since_ts=since, limit=limit)]
     rows.sort(key=lambda r: (r["ts"], r["id"]))
     return {"now": now, "entries": rows[-limit:] if limit else []}
+
+
+@router.get("/plan/delta", response_model=DeltaResponse)
+def plan_delta(
+    request: Request,
+    key: str,
+    from_rev: int,
+    to_rev: int | None = None,
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """The result deltas between two versions of one plan, both re-solved against this save."""
+    if not _KEY.fullmatch(key):
+        return _fail(f"no plan “{key}” in this world", 404)
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+    log = PlanLog(st.world_id)
+    try:
+        to = log.head_rev(key) if to_rev is None else to_rev
+        before = log.state(key, from_rev).kwargs()
+        after = log.state(key, to).kwargs()
+    except UnknownPlan:
+        return _fail(f"no plan “{key}” in this world", 404)
+    except InvalidOp as exc:
+        return _fail(str(exc), 404)
+    try:
+        delta = manage.result_delta(
+            summary.solve_summary(st.game, st, before), summary.solve_summary(st.game, st, after)
+        )
+    except ValueError as exc:
+        return _fail(str(exc), 400)
+    return {"key": key, "from_rev": from_rev, "to_rev": to, **delta}

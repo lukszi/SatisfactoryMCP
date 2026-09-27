@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....core.gamedata.model import GameData
-from ....domain.planning import journal, summary
+from ....domain.planning import journal, manage, summary
 from ....domain.planning.planlog import (
     Actor,
     AlreadyUndone,
@@ -196,6 +196,39 @@ class UndoBody(TypedDict):
     base_rev: int
     rev: int
     sav: NotRequired[str]
+
+
+class RestoreBody(TypedDict):
+    base_rev: int
+    rev: int
+    sav: NotRequired[str]
+
+
+class DuplicateBody(TypedDict, total=False):
+    rev: int | None
+    name: str | None
+
+
+class VersionRow(TypedDict):
+    """One commit in the Versions list. ``restores`` is the rev a restore brought back."""
+
+    rev: int
+    ts: float
+    actor: ActorBody
+    text: str
+    undoes: int | None
+    undone_by: int | None
+    restores: int | None
+    merged_over: list[int]
+    note: str
+
+
+class VersionsResponse(TypedDict):
+    key: str
+    name: str
+    head: int
+    forgotten: bool
+    versions: list[VersionRow]
 
 
 def _page() -> Actor:
@@ -489,3 +522,116 @@ def undo_rev(
         _reject(st, key, sav, exc)
         return _refused(log, exc, st.game)
     return _pushed(log, pushed, st.game)
+
+
+@router.post(
+    "/plans/{key}/restore",
+    response_model=PushedResponse,
+    responses={409: {"model": OutdatedResponse}},
+)
+def restore_rev(
+    request: Request,
+    key: str,
+    body: Annotated[RestoreBody, Body()],
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """A new commit that makes the head equal ``rev`` again: never a rewind."""
+    st, log = _opened(request, key, save, world)
+    if st is None:
+        return log
+    sav = _token(st, body.get("sav"))
+    try:
+        pushed = log.restore_to(
+            key,
+            body["base_rev"],
+            body["rev"],
+            actor=_page(),
+            sav=sav,
+            stamp=summary.stamp_for(st.game, st),
+        )
+    except NameTaken as exc:
+        return JSONResponse({"error": str(exc), "name_taken": True}, status_code=409)
+    except _ERRORS as exc:
+        _reject(st, key, sav, exc)
+        return _refused(log, exc, st.game)
+    return _pushed(log, pushed, st.game)
+
+
+@router.post(
+    "/plans/{key}/duplicate",
+    status_code=201,
+    response_model=PushedResponse,
+    responses={409: {"model": NameTakenResponse}},
+)
+def duplicate_plan(
+    request: Request,
+    key: str,
+    body: Annotated[DuplicateBody, Body()],
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """A new plan at v1 equal to this one at ``rev`` (the head when omitted)."""
+    st, log = _opened(request, key, save, world)
+    if st is None:
+        return log
+    rev = body.get("rev")
+    try:
+        head = log.head_rev(key)
+    except UnknownPlan:
+        return _no_plan(key)
+    if rev is not None and not 1 <= rev <= head:
+        return _fail(f"plan {key} has no v{rev}; it is at v{head}", 404)
+    try:
+        pushed = manage.duplicate(
+            log,
+            key,
+            actor=_page(),
+            rev=rev,
+            name=body.get("name"),
+            sav=_token(st, None),
+            stamp=summary.stamp_for(st.game, st),
+        )
+    except NameTaken as exc:
+        return JSONResponse({"error": str(exc), "name_taken": True}, status_code=409)
+    except _ERRORS as exc:
+        return _refused(log, exc, st.game)
+    return _pushed(log, pushed, st.game)
+
+
+@router.get("/plans/{key}/versions", response_model=VersionsResponse)
+def plan_versions(
+    request: Request,
+    key: str,
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """Every version of one plan, newest first, with what undid or restored what."""
+    st, log = _opened(request, key, save, world)
+    if st is None:
+        return log
+    try:
+        head = log.state(key)
+        rows = manage.versions(log, key)
+    except UnknownPlan:
+        return _no_plan(key)
+    return {
+        "key": key,
+        "name": head.name,
+        "head": head.rev,
+        "forgotten": head.forgotten,
+        "versions": [
+            {
+                "rev": r["commit"].rev,
+                "ts": r["commit"].ts,
+                "actor": _actor_json(r["commit"].actor),
+                "text": r["commit"].text(),
+                "undoes": r["commit"].undoes,
+                "undone_by": r["undone_by"],
+                "restores": r["restores"],
+                "merged_over": list(r["commit"].merged_over),
+                "note": r["commit"].note,
+            }
+            for r in rows
+        ],
+    }
