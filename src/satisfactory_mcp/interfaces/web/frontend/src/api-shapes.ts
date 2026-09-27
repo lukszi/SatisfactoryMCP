@@ -141,6 +141,17 @@ export type CircuitsResponse = Body<"CircuitsResponse">;
 export type MilestoneRow = Schema["MilestoneRow"];
 export type MilestonesResponse = Body<"MilestonesResponse">;
 
+/* ------------------------------------------- /api/progress/{mam,phase,shards,sloops,harddrives} */
+
+export type MamRow = Schema["MamRow"];
+export type MamResponse = Body<"MamResponse">;
+export type PhaseRow = Schema["PhaseRow"];
+export type PhaseResponse = Body<"PhaseResponse">;
+export type ShardsResponse = Body<"ShardsResponse">;
+export type SloopsResponse = Body<"SloopsResponse">;
+export type DriveRow = Schema["DriveRow"];
+export type HardDrivesResponse = Body<"HardDrivesResponse">;
+
 /* ------------------------------------------------------------------ /api/plans */
 
 /** A stored plan's pad. Its coordinates are METRES already -- the siting is a statement the

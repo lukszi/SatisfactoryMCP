@@ -30,8 +30,8 @@ export var SETTINGS: Setting[] = [
   {
     kind: "switch",
     key: "spoilers",
-    label: "Show upcoming milestones",
-    hint: "Off: Progress shows the tiers you have started, done and not done, and hides the tiers ahead.",
+    label: "Show upcoming milestones and research",
+    hint: "Off: Progress shows the tiers you have started, the MAM trees you have opened and the Space Elevator phases up to the current target, and hides what lies beyond them.",
     fallback: true,
   },
   {

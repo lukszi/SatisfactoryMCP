@@ -859,6 +859,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/progress/mam": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Mam
+         * @description Every MAM node with the ``mam_research`` status, bill and shortfall.
+         */
+        get: operations["progress_mam_api_progress_mam_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/phase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Phase
+         * @description The Space Elevator record ``phase_requirements`` reads, joined to spendable stock.
+         */
+        get: operations["progress_phase_api_progress_phase_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/shards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Shards
+         * @description The ``power_shards`` budget: free, craftable from slugs, committed, and who holds them.
+         */
+        get: operations["progress_shards_api_progress_shards_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/sloops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Sloops
+         * @description The ``somersloops`` budget: free, slotted and owned, and which machines hold them.
+         */
+        get: operations["progress_sloops_api_progress_sloops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/harddrives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Harddrives
+         * @description ``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls.
+         */
+        get: operations["progress_harddrives_api_progress_harddrives_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/factories/candidates": {
         parameters: {
             query?: never;
@@ -1142,6 +1242,15 @@ export interface components {
             /** Candidates */
             candidates: components["schemas"]["CandidateRow"][];
         };
+        /** CapabilityRow */
+        CapabilityRow: {
+            /** Capability */
+            capability: string;
+            /** Researched */
+            researched: boolean;
+            /** Schematic Name */
+            schematic_name: string | null;
+        };
         /**
          * CircuitRow
          * @description ``bbox_m`` is null when no record on the circuit has a position.
@@ -1328,6 +1437,29 @@ export interface components {
             deaths: number;
             /** Items Total */
             items_total: number;
+        };
+        /**
+         * DriveOption
+         * @description ``slots`` is the inventory slots an option grants instead of recipes; 0 for most.
+         */
+        DriveOption: {
+            /** Schematic */
+            schematic: string;
+            /** Name */
+            name: string;
+            /** Slots */
+            slots: number;
+            /** Recipes */
+            recipes: components["schemas"]["GrantedRecipe"][];
+        };
+        /** DriveRow */
+        DriveRow: {
+            /** Hard Drive Id */
+            hard_drive_id: number | null;
+            /** Rerolls Left */
+            rerolls_left: number;
+            /** Options */
+            options: components["schemas"]["DriveOption"][];
         };
         /**
          * Elevation
@@ -1725,6 +1857,17 @@ export interface components {
             /** Mw */
             mw: number;
         };
+        /** GrantedRecipe */
+        GrantedRecipe: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Machine */
+            machine: string | null;
+            /** Products */
+            products: components["schemas"]["ItemAmount"][];
+        };
         /**
          * GraphEdge
          * @description ``per_min`` is null where an output reaches a terminal with no surplus to apportion.
@@ -1777,6 +1920,31 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HardDrivesResponse
+         * @description ``spare`` is unanalysed drives on hand; ``last_used`` the drive settled most recently.
+         */
+        HardDrivesResponse: {
+            /** Spare */
+            spare: number;
+            /** Last Used */
+            last_used: number | null;
+            /** Drives */
+            drives: components["schemas"]["DriveRow"][];
+        };
+        /** HaveRow */
+        HaveRow: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: number;
+            /** Have */
+            have: number;
+            /** Short */
+            short: number;
         };
         /** Hidden */
         Hidden: {
@@ -1889,6 +2057,44 @@ export interface components {
             generators: components["schemas"]["PlacementRow"][];
         };
         /**
+         * MamResponse
+         * @description ``knows_trees`` is false on a projection too old to list the opened trees.
+         */
+        MamResponse: {
+            /** Knows Trees */
+            knows_trees: boolean;
+            /** Capabilities */
+            capabilities: components["schemas"]["CapabilityRow"][];
+            /** Research */
+            research: components["schemas"]["MamRow"][];
+        };
+        /**
+         * MamRow
+         * @description ``status`` is DONE, RUNNING, TREE SHUT, BLOCKED, short or READY, as ``mam_research``.
+         */
+        MamRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Tree */
+            tree: string | null;
+            /** Status */
+            status: string;
+            /** Running S */
+            running_s: number | null;
+            /** Capability */
+            capability: string | null;
+            /** Cost */
+            cost: components["schemas"]["ItemAmount"][];
+            /** Short */
+            short: components["schemas"]["ItemAmount"][];
+            /** Unlocks */
+            unlocks: number;
+            /** Blocked By */
+            blocked_by: string[];
+        };
+        /**
          * MilestoneRow
          * @description ``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
          */
@@ -1923,6 +2129,13 @@ export interface components {
             tiers: components["schemas"]["TierRow"][];
             /** Milestones */
             milestones: components["schemas"]["MilestoneRow"][];
+        };
+        /** NamedAmount */
+        NamedAmount: {
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: number;
         };
         /** NamedResponse */
         NamedResponse: {
@@ -2043,6 +2256,38 @@ export interface components {
             save_error: string | null;
         };
         /**
+         * PhaseResponse
+         * @description ``deliverable`` is null when no row belongs to the target phase.
+         */
+        PhaseResponse: {
+            /** Current Phase */
+            current_phase: string | null;
+            /** Target Phase */
+            target_phase: string | null;
+            /** Delivered */
+            delivered: components["schemas"]["ItemAmount"][];
+            /** Deliverable */
+            deliverable: boolean | null;
+            /** Phases */
+            phases: components["schemas"]["PhaseRow"][];
+        };
+        /**
+         * PhaseRow
+         * @description ``trust`` is the domain's ``stale`` flag: usable, derived, complete, stale or unmapped.
+         */
+        PhaseRow: {
+            /** Phase */
+            phase: string | null;
+            /** Legacy Key */
+            legacy_key: string;
+            /** Trust */
+            trust: string;
+            /** Outstanding */
+            outstanding: components["schemas"]["HaveRow"][];
+            /** Complete */
+            complete: string[];
+        };
+        /**
          * PipeRow
          * @description One fluid pipe, as the polyline it was built along, and what it carries.
          *
@@ -2116,6 +2361,16 @@ export interface components {
             networks: number;
             /** Directed */
             directed: number;
+        };
+        /**
+         * PlaceRow
+         * @description ``place`` is carried, storage or depot.
+         */
+        PlaceRow: {
+            /** Place */
+            place: string;
+            /** Items */
+            items: components["schemas"]["NamedAmount"][];
         };
         /**
          * PlacementRow
@@ -2504,6 +2759,116 @@ export interface components {
             play_duration_s: number;
             /** Mtime Ns */
             mtime_ns: number;
+        };
+        /** ShardHolder */
+        ShardHolder: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string | null;
+            /** Clock */
+            clock: number;
+            /** Slotted */
+            slotted: number;
+            /** Needed */
+            needed: number;
+            /** Idle */
+            idle: number;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /**
+         * ShardsResponse
+         * @description ``measured`` false means ``committed`` is unknown rather than zero.
+         */
+        ShardsResponse: {
+            /** Measured */
+            measured: boolean;
+            /** Free */
+            free: number;
+            /** Craftable */
+            craftable: number;
+            /** Potential */
+            potential: number;
+            /** Committed */
+            committed: number;
+            /** Owned */
+            owned: number;
+            /** Per Shard */
+            per_shard: number;
+            /** Max Clock */
+            max_clock: number;
+            /** Slots Per Building */
+            slots_per_building: number;
+            /** Idle */
+            idle: number;
+            /** Slugs */
+            slugs: components["schemas"]["SlugRow"][];
+            /** By Place */
+            by_place: components["schemas"]["PlaceRow"][];
+            /** Holders */
+            holders: components["schemas"]["ShardHolder"][];
+        };
+        /**
+         * SloopHolder
+         * @description ``boost`` is the plan model's multiplier, ``boost_in_save`` the save's own.
+         */
+        SloopHolder: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** Sloops */
+            sloops: number;
+            /** Boost */
+            boost: number | null;
+            /** Boost In Save */
+            boost_in_save: number | null;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /**
+         * SloopsResponse
+         * @description ``amplifier_researched`` false means no sloop can go into a machine yet.
+         */
+        SloopsResponse: {
+            /** Measured */
+            measured: boolean;
+            /** Free */
+            free: number;
+            /** Committed */
+            committed: number;
+            /** Owned */
+            owned: number;
+            /** Mercer Spheres */
+            mercer_spheres: number;
+            /** By Place */
+            by_place: components["schemas"]["NamedAmount"][];
+            /** Amplifier Researched */
+            amplifier_researched: boolean;
+            /** Amplifier Research */
+            amplifier_research: string | null;
+            /** Amplifier Cost */
+            amplifier_cost: components["schemas"]["ItemAmount"][];
+            /** Holders */
+            holders: components["schemas"]["SloopHolder"][];
+        };
+        /** SlugRow */
+        SlugRow: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Held */
+            held: number;
+            /** Each */
+            each: number;
+            /** Shards */
+            shards: number;
         };
         /** StarvedGenerator */
         StarvedGenerator: {
@@ -3660,6 +4025,166 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MilestonesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_mam_api_progress_mam_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MamResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_phase_api_progress_phase_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_shards_api_progress_shards_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShardsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_sloops_api_progress_sloops_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SloopsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_harddrives_api_progress_harddrives_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HardDrivesResponse"];
                 };
             };
             /** @description Validation Error */
