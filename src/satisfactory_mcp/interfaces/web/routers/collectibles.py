@@ -10,12 +10,13 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
+from ....domain.collectibles import service
 from ....domain.collectibles.service import collect_view
-from ..serial import _fail, _state, _xyz
+from ..serial import CollectibleRow, TableAge, _fail, _pickup_json, _state
 
 __all__ = ["router"]
 
@@ -25,32 +26,23 @@ router = APIRouter(prefix="/api")
 # ---------------------------------------------------------------- collectibles
 
 
-class CollectibleRow(TypedDict):
-    """One map placement, and what this save says about it.
+class CensusRow(TypedDict):
+    """One category: the map's count, this save's collections, and what is left.
 
-    The three coordinates are not nullable: they come off the generated placement table,
-    where a row without all three does not exist.
-
-    ``observed`` is the placement table's scan of every save on disk rather than of the
-    loaded one, and it is null both for a row this save has collected and for a state this
-    build does not know. ``distance_m`` is populated only by ``mode=nearest``, the one mode
-    that resolves an origin; elsewhere it is null rather than zero.
-
-    ``looted`` is a pod's own ``mHasBeenLooted``, and null means one thing: no loot flag was
-    read for this placement. Only ``crashed_drop_pod`` writes one, and only a save that had
-    the pod loaded records it, so ``looted`` is non-null exactly on a pod whose ``observed``
-    is ``"standing"``. **Null is never "not looted"** -- that is ``false``.
+    ``remaining`` is null where no save records a collection of the class at all.
     """
 
     category: str
-    name: str
-    x_m: float
-    y_m: float
-    z_m: float
-    collected: bool
-    observed: str | None
-    looted: bool | None
-    distance_m: float | None
+    label: str
+    placed: int
+    collected: int
+    remaining: int | None
+    standing: int
+    never_streamed: int
+    looted_standing: int
+    state_tracked: bool
+    pedestal_of: str | None
+    spoiler: bool
 
 
 class CollectiblesResponse(TypedDict):
@@ -74,6 +66,10 @@ class CollectiblesResponse(TypedDict):
     hidden_pedestals: int
     save_only: bool
     where: str
+    census: list[CensusRow]
+    found: list[str]
+    hidden_spoilers: int
+    stale: TableAge | None
 
 
 @router.get("/collectibles", response_model=CollectiblesResponse)
@@ -82,6 +78,7 @@ def collectibles(
     group: str | None = None,
     mode: str = "remaining",
     near: str | None = None,
+    spoilers: Annotated[int | None, Query(ge=0, le=1)] = None,
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
@@ -90,6 +87,11 @@ def collectibles(
     ``collect_view`` owns every refusal -- unknown mode, retired group, and the one that
     matters here: ``mode=remaining`` needs the generated placement table, and without it the
     honest answer is that refusal rather than a shorter list.
+
+    ``census`` rides along in every mode. ``spoilers=0`` drops every category this save has
+    never collected one of (pods and loot caches excepted) from the rows, the counts and the
+    census, and ``hidden_spoilers`` says how many categories went; absent, every row comes
+    with its ``spoiler`` flag.
     """
     try:
         st = _state(request, save, world)
@@ -100,24 +102,48 @@ def collectibles(
     if view.error:
         return _fail(view.error)
 
+    census = service.census_rows(st) if view.table is not None else []
+    found = service.found(st, census)
+    hide = spoilers == 0
+    kept_census = [c for c in census if not (hide and c["spoiler"])]
+    hidden = {c["category"] for c in census} - {c["category"] for c in kept_census}
     rows = [
-        {
-            "category": r["category"],
-            "name": r["name"],
-            **_xyz(r["pos"]),
-            "collected": r["collected"],
-            "observed": r["observed"],
-            "looted": r["looted"],
-            "distance_m": round(r["distance_m"], 1) if r.get("distance_m") is not None else None,
-        }
+        _pickup_json(r, service.is_spoiler(r["category"], found))
         for r in (view.rows or ())
+        if r["category"] not in hidden
     ]
+    counts = view.counts
+    if hidden:
+        counts = {}
+        for r in view.rows or ():
+            if r["category"] not in hidden:
+                key = r["observed"] or "collected"
+                counts[key] = counts.get(key, 0) + 1
     return {
         "mode": view.mode,
         "group": view.group,
         "rows": rows,
-        "counts": view.counts,
+        "counts": counts,
         "hidden_pedestals": view.hidden,
         "save_only": view.save_only,
         "where": view.where,
+        "census": [
+            {
+                "category": c["category"],
+                "label": c["label"],
+                "placed": c["placed"],
+                "collected": c["collected"],
+                "remaining": c["remaining"],
+                "standing": c["standing"],
+                "never_streamed": c["never_streamed"],
+                "looted_standing": c["looted_and_standing"],
+                "state_tracked": c["state_tracked"],
+                "pedestal_of": c["pedestal_of"],
+                "spoiler": c["spoiler"],
+            }
+            for c in kept_census
+        ],
+        "found": found,
+        "hidden_spoilers": len(hidden),
+        "stale": service.table_age(st),
     }

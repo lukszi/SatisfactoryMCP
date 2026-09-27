@@ -65,6 +65,13 @@ which the answer says -- so it is not in `resolve_origin` and no other tool acce
 Spelled with the `:` of rule 4 like everything else; the bare resource name it replaces
 is retired, and unprefixed text is a factory label here as it is everywhere.
 
+The local link `show_on_map` writes carries a `show=` key the page opens once it has
+loaded, and it names the place in the same spelling as the table above: `show=node:<leaf>`
+for a node, `show=chain:<n>` / `show=pipe:<n>` for a run, `show=label:<name>` for a named
+factory. A node or a run is flown to, ringed in the finder pane and selected; a label
+selects the factory. Other places carry no `show=`, only the centre. `maplink.show_ref`
+spells all four.
+
 ## Which nodes — `sources=`
 
 A **source spec** is a list of selectors, and it is what every `sources=` parameter takes:

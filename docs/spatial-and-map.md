@@ -227,6 +227,19 @@ against, and a pure node overclocked is 600 m³/min, not 1,200.
 `plan_layout` were always right — which is how the discrepancy was spotted: the same world
 read 480 in one tool and 240 in the other.
 
+### 7.2d The point inspector
+
+A right-click on the map asks `/api/inspect`, which calls `place.describe`, the function
+`describe_location` calls. One answer, several parts, each labelled for what it is: the
+region with its confidence; the terrain reading and the sampled ground and built
+elevations within `radius_m` (200 m by default); the grid cell and direction from the map
+centre; the belts and pipes whose drawn lines pass within `radius_m`; the five nearest
+nodes, each with its `spoiler` flag; up to three per-resource fields with a member within
+500 m; and up to five remaining pickups within 500 m, pedestals left out. With no readable
+save the node table still answers the geography, the nodes and the fields; `conduits` is
+null and `pickups` empty, and `save_error` says why. `stale` carries the node and
+collectible tables' ages when either is behind the save.
+
 ### 7.3 Source selectors
 
 **Decision: one selector language, used by every spatial and planning tool.** `plan_factory` takes no

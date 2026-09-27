@@ -176,3 +176,39 @@ def test_the_inspector_names_a_resource_the_same_way_a_node_dot_does(client):
 
 def test_inspect_needs_a_coordinate(client):
     assert client.get("/api/inspect").status_code == 422
+
+
+def test_inspect_adds_grid_fields_conduits_and_pickups(client):
+    body = client.get(
+        "/api/inspect", params={"x_m": IN_THE_FIELD[0], "y_m": IN_THE_FIELD[1]}
+    ).json()
+    assert body["grid"] == "X5Y5" and body["direction"] == "northeast"
+    assert body["conduits"] == {"belt": 0, "pipe": 0, "radius_m": 200.0}
+    assert 0 < len(body["fields"]) <= 3
+    assert all(f["distance_m"] <= 500 for f in body["fields"])
+    assert all(len(f["resources"]) == 1 for f in body["fields"])
+    assert 0 < len(body["pickups"]) <= 5
+    pickup = body["pickups"][0]
+    assert {"label", "spoiler", "category", "distance_m"} <= set(pickup)
+    assert [p["distance_m"] for p in body["pickups"]] == sorted(
+        p["distance_m"] for p in body["pickups"]
+    )
+    assert all(isinstance(n["spoiler"], bool) for n in body["nearest"])
+    assert body["stale"] == []
+
+
+def test_inspect_radius_widens_the_elevation_and_conduit_reach(client):
+    x_m, y_m = ON_PLATFORM
+    near = client.get("/api/inspect", params={"x_m": x_m, "y_m": y_m, "radius_m": 50}).json()
+    far = client.get("/api/inspect", params={"x_m": x_m, "y_m": y_m, "radius_m": 400}).json()
+    assert near["elevation"]["radius_m"] == 50 and far["conduits"]["radius_m"] == 400
+    assert far["conduits"]["belt"] >= near["conduits"]["belt"]
+    assert client.get("/api/inspect", params={"x_m": 0, "y_m": 0, "radius_m": 0}).status_code == 422
+
+
+def test_inspect_without_a_save_keeps_nodes_and_nulls_conduits(game):
+    app = create_app(state_loader=_explode, game_loader=lambda: game)
+    with TestClient(app) as c:
+        body = c.get("/api/inspect", params={"x_m": IN_THE_FIELD[0], "y_m": IN_THE_FIELD[1]}).json()
+    assert body["nearest"] and body["fields"]
+    assert body["conduits"] is None and body["pickups"] == [] and body["stale"] == []
