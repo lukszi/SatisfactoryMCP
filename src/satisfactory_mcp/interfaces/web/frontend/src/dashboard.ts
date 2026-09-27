@@ -8,6 +8,7 @@ import { drawGraph } from "./graph";
 import { hashFor, writeHash } from "./map";
 import { onVitals, showBox, showCircuit, showFactory, showPoint, vitals } from "./panel";
 import { stateTone } from "./placements";
+import { renderRecipes } from "./recipes";
 import { registerFetch } from "./registry";
 import { editName, refreshLabels, renamedTo } from "./rename";
 import { amount, choice, onSetting, setSetting, setting, SETTINGS } from "./settings";
@@ -32,13 +33,14 @@ import type {
   StarvedGenerator,
 } from "./api-shapes";
 
-type Tab = "overview" | "factories" | "power" | "progress" | "settings";
+type Tab = "overview" | "factories" | "power" | "progress" | "recipes" | "settings";
 
 var TABS: [Tab, string][] = [
   ["overview", "Overview"],
   ["factories", "Factories"],
   ["power", "Power"],
   ["progress", "Progress"],
+  ["recipes", "Recipes"],
   ["settings", "Settings"],
 ];
 
@@ -1523,6 +1525,7 @@ function render(): void {
     if (at.subject) renderCircuit(body, at.subject);
     else renderPower(body);
   } else if (at.tab === "progress") renderProgress(body);
+  else if (at.tab === "recipes") renderRecipes(body, at.subject, render);
   else renderSettings(body);
   el("dash").scrollTop = scroll;
   if (typing !== null) {

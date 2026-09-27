@@ -30,8 +30,8 @@ export var SETTINGS: Setting[] = [
   {
     kind: "switch",
     key: "spoilers",
-    label: "Show upcoming milestones",
-    hint: "Off: Progress shows the tiers you have started, done and not done, and hides the tiers ahead.",
+    label: "Show upcoming milestones and locked recipes",
+    hint: "Off: Progress shows the tiers you have started, done and not done, and hides the tiers ahead; Recipes and search hide recipes this save has not unlocked.",
     fallback: true,
   },
   {

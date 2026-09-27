@@ -946,10 +946,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/gamedata/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Items
+         * @description Items whose name contains ``q``, the ``search_items`` order. Needs no save.
+         */
+        get: operations["gamedata_items_api_gamedata_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Recipes
+         * @description ``search_recipes``: by name, or by what a recipe eats or makes, marked HAVE or LOCKED.
+         */
+        get: operations["gamedata_recipes_api_gamedata_recipes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/recipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Recipe
+         * @description ``recipe_detail``: one recipe by class id or display name.
+         */
+        get: operations["gamedata_recipe_api_gamedata_recipe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/alternates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Alternates
+         * @description ``alternates_for_item``: every automatable recipe that makes an item, alternates first.
+         */
+        get: operations["gamedata_alternates_api_gamedata_alternates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/unlocked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Unlocked
+         * @description ``unlocked_recipes``: the recipes this save has, alternates only by default.
+         */
+        get: operations["gamedata_unlocked_api_gamedata_unlocked_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search
+         * @description Items, part recipes and named factories whose names contain ``q``.
+         */
+        get: operations["search_api_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AlternatesResponse */
+        AlternatesResponse: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Fluid */
+            fluid: boolean;
+            /** Energy Mj */
+            energy_mj: number;
+            /** Sink Points */
+            sink_points: number;
+            /** Save Note */
+            save_note: string | null;
+            /** Recipes */
+            recipes: components["schemas"]["MakerRow"][];
+        };
         /** Amount */
         Amount: {
             /** Name */
@@ -1141,6 +1278,25 @@ export interface components {
             hidden: components["schemas"]["Hidden"];
             /** Candidates */
             candidates: components["schemas"]["CandidateRow"][];
+        };
+        /** Census */
+        Census: {
+            /** Total */
+            total: number;
+            /** By Kind */
+            by_kind: {
+                [key: string]: number;
+            };
+            /** Have */
+            have: {
+                [key: string]: number;
+            };
+            /** Locked */
+            locked: {
+                [key: string]: number;
+            };
+            /** Events */
+            events: number;
         };
         /**
          * CircuitRow
@@ -1456,6 +1612,13 @@ export interface components {
             worst: components["schemas"]["MachineIssue"][];
             /** Attention */
             attention: number;
+        };
+        /** FactoryHit */
+        FactoryHit: {
+            /** Name */
+            name: string;
+            /** Machines */
+            machines: number;
         };
         /**
          * FactoryRow
@@ -1824,6 +1987,33 @@ export interface components {
             /** Amount */
             amount: number;
         };
+        /** ItemHit */
+        ItemHit: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+        };
+        /** ItemRow */
+        ItemRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Fluid */
+            fluid: boolean;
+            /** Energy Mj */
+            energy_mj: number;
+            /** Sink Points */
+            sink_points: number;
+        };
+        /** ItemsResponse */
+        ItemsResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["ItemRow"][];
+        };
         /** Ledger */
         Ledger: {
             /** Generation Mw */
@@ -1887,6 +2077,27 @@ export interface components {
             extractors: components["schemas"]["PlacementRow"][];
             /** Generators */
             generators: components["schemas"]["PlacementRow"][];
+        };
+        /** MakerRow */
+        MakerRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Power Mw */
+            power_mw: number;
+            /** Ingredients */
+            ingredients: components["schemas"]["Rate"][];
+            /** Products */
+            products: components["schemas"]["Rate"][];
+            /** Unlocked */
+            unlocked: boolean | null;
+            /** Granted By */
+            granted_by: string[];
         };
         /**
          * MilestoneRow
@@ -2385,6 +2596,93 @@ export interface components {
             /** Spread M */
             spread_m: number;
         };
+        /** Rate */
+        Rate: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Per Min */
+            per_min: number;
+        };
+        /** RecipeDetail */
+        RecipeDetail: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Duration S */
+            duration_s: number;
+            /** Power Mw */
+            power_mw: number;
+            /** Power Range Mw */
+            power_range_mw: [
+                number,
+                number
+            ] | null;
+            /** Ingredients */
+            ingredients: components["schemas"]["Rate"][];
+            /** Products */
+            products: components["schemas"]["Rate"][];
+            /** Granted By */
+            granted_by: string[];
+            /** Unlocked */
+            unlocked: boolean | null;
+            /** Save Note */
+            save_note: string | null;
+        };
+        /**
+         * RecipeHit
+         * @description ``unlocked`` is null when no save could be read.
+         */
+        RecipeHit: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Unlocked */
+            unlocked: boolean | null;
+        };
+        /**
+         * RecipeRow
+         * @description ``unlocked`` is null when no save could be read; ``qty`` is the amount of the queried
+         *     item per minute (part) or per craft (building, manual), 0 with no item asked.
+         */
+        RecipeRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Qty */
+            qty: number;
+            /** Unlocked */
+            unlocked: boolean | null;
+        };
+        /**
+         * RecipesResponse
+         * @description ``save_note`` says why ``unlocked`` is null on every row, and is null otherwise.
+         */
+        RecipesResponse: {
+            census: components["schemas"]["Census"];
+            /** Save Note */
+            save_note: string | null;
+            /** Recipes */
+            recipes: components["schemas"]["RecipeRow"][];
+        };
         /**
          * Region
          * @description What ``_label_json`` sends: a region lookup that never arrives without its doubt.
@@ -2504,6 +2802,26 @@ export interface components {
             play_duration_s: number;
             /** Mtime Ns */
             mtime_ns: number;
+        };
+        /**
+         * SearchResponse
+         * @description Each list holds the first few hits; the ``*_total`` fields count them all.
+         */
+        SearchResponse: {
+            /** Items */
+            items: components["schemas"]["ItemHit"][];
+            /** Items Total */
+            items_total: number;
+            /** Recipes */
+            recipes: components["schemas"]["RecipeHit"][];
+            /** Recipes Total */
+            recipes_total: number;
+            /** Factories */
+            factories: components["schemas"]["FactoryHit"][];
+            /** Factories Total */
+            factories_total: number;
+            /** Save Note */
+            save_note: string | null;
         };
         /** StarvedGenerator */
         StarvedGenerator: {
@@ -2729,6 +3047,28 @@ export interface components {
             done: number;
             /** Total */
             total: number;
+        };
+        /** UnlockedResponse */
+        UnlockedResponse: {
+            /** Age Note */
+            age_note: string;
+            /** Alternates Unlocked */
+            alternates_unlocked: number;
+            /** Alternates Total */
+            alternates_total: number;
+            /** Automatable Total */
+            automatable_total: number;
+            /** Recipes */
+            recipes: components["schemas"]["UnlockedRow"][];
+        };
+        /** UnlockedRow */
+        UnlockedRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Machine */
+            machine: string | null;
         };
         /**
          * UnsupportedFile
@@ -3839,6 +4179,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_items_api_gamedata_items_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_recipes_api_gamedata_recipes_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                consumes?: string | null;
+                produces?: string | null;
+                recipe_kind?: string;
+                only_alternates?: boolean;
+                include_events?: boolean;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_recipe_api_gamedata_recipe_get: {
+        parameters: {
+            query: {
+                recipe: string;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_alternates_api_gamedata_alternates_get: {
+        parameters: {
+            query: {
+                item: string;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlternatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_unlocked_api_gamedata_unlocked_get: {
+        parameters: {
+            query?: {
+                only_alternates?: boolean;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnlockedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_search_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
                 };
             };
             /** @description Validation Error */

@@ -1,0 +1,84 @@
+"""``/api/search``: the header box over items, recipes and named factories, and its cost."""
+
+from __future__ import annotations
+
+import time
+
+import pytest
+
+fastapi = pytest.importorskip("fastapi")
+
+from fastapi.testclient import TestClient
+
+from satisfactory_mcp import config
+from satisfactory_mcp.core.gamedata import search
+from satisfactory_mcp.domain.world.state import WorldState
+from satisfactory_mcp.interfaces.web.app import create_app
+
+ORIGIN = {"origin": "http://testserver"}
+
+
+def test_an_empty_query_finds_nothing(client):
+    body = client.get("/api/search", params={"q": "  "}).json()
+    assert body["items"] == body["recipes"] == body["factories"] == []
+    assert body["items_total"] == body["recipes_total"] == 0
+
+
+def test_items_and_recipes_match_the_codex(client, game, state):
+    body = client.get("/api/search", params={"q": "plate"}).json()
+    items = search.find_items(game, "plate")
+    hits, _ = search.search(game, query="plate", recipe_kind="part")
+    assert body["items_total"] == len(items)
+    assert body["recipes_total"] == len(hits)
+    assert len(body["items"]) <= 8 and len(body["recipes"]) <= 8
+    starts = [r["name"].casefold().startswith("plate") for r in body["recipes"]]
+    assert starts == sorted(starts, reverse=True)
+    for row in body["recipes"]:
+        assert row["unlocked"] == (row["cls"] in state.available_recipe_ids)
+
+
+def test_named_factories_are_found(tmp_path, monkeypatch, projection, game):
+    monkeypatch.setattr(config, "labels_dir", lambda: tmp_path / "labels")
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+    app = create_app(
+        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
+        game_loader=lambda: game,
+    )
+    with TestClient(app) as c:
+        body = c.get(
+            "/api/factories/candidates", params={"fed_only": False, "min_machines": 1}
+        ).json()
+        row = body["candidates"][0]
+        named = c.post(
+            "/api/labels",
+            json={
+                "name": "Zebra Works",
+                "proposal": row["index"],
+                "as_of": body["token"],
+                "version": body["version"],
+            },
+            headers=ORIGIN,
+        )
+        assert named.status_code == 200, named.text
+        found = c.get("/api/search", params={"q": "zebra"}).json()
+    assert found["factories"] == [{"name": "Zebra Works", "machines": row["machines"]}]
+    assert found["factories_total"] == 1
+
+
+def test_no_save_still_finds_items_and_recipes(client, monkeypatch):
+    def boom(save=None, world=None):
+        raise RuntimeError("sidecar produced no output")
+
+    monkeypatch.setattr(client.app.state, "load_state", boom)
+    body = client.get("/api/search", params={"q": "plate"}).json()
+    assert body["items"] and body["recipes"] and body["factories"] == []
+    assert "no save could be read" in body["save_note"]
+    assert all(r["unlocked"] is None for r in body["recipes"])
+
+
+def test_a_keystroke_stays_cheap(client):
+    client.get("/api/search", params={"q": "i"})
+    start = time.perf_counter()
+    for q in ("i", "ir", "iro", "iron", "iron p", "iron pl", "iron pla", "iron plat"):
+        assert client.get("/api/search", params={"q": q}).status_code == 200
+    assert (time.perf_counter() - start) / 8 < 0.25

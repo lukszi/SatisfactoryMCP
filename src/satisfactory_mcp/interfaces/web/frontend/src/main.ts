@@ -29,6 +29,7 @@ import { map, writeHash } from "./map";
 import { notePickupChoice } from "./markers";
 import { noteRegionChoice, updateRegionBlend } from "./regions";
 import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
+import { wireSearch } from "./search";
 import { listen } from "./sse";
 import { BOOT, state } from "./state";
 import { loadBaseMap } from "./tiles";
@@ -57,6 +58,7 @@ import "./panel";
 import "./placements";
 import "./plans";
 import "./power";
+import "./recipes";
 import "./routes";
 
 /* ------------------------------------------------------------------- wiring */
@@ -120,6 +122,7 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
 /* ...and the third: one delegated click for every selector on the page, which is why it is
  * here and not in whatever module last built a popup. */
 listenForCopies();
+wireSearch();
 
 /* -------------------------------------------------------------------- boot */
 
