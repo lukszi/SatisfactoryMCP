@@ -37,6 +37,22 @@ def test_items_and_recipes_match_the_codex(client, game, state):
         assert row["unlocked"] == (row["cls"] in state.available_recipe_ids)
 
 
+def test_only_unlocked_drops_locked_recipes_before_the_cut_and_the_count(client, game, state):
+    """With spoilers off the page asks for unlocked recipes only; cutting to the first few
+    first and hiding locked ones after left most unlocked matches unseen, and the total
+    still counted the locked ones."""
+    have = state.available_recipe_ids
+    hits, _ = search.search(game, query="ingot", recipe_kind="part", unlocked=have)
+    unlocked = [h for h in hits if h.unlocked]
+    assert len(hits) > len(unlocked) > 0, "the fixture must mix locked and unlocked hits"
+    body = client.get("/api/search", params={"q": "ingot", "only_unlocked": True}).json()
+    assert body["recipes_total"] == len(unlocked)
+    assert len(body["recipes"]) == min(8, len(unlocked))
+    assert all(r["unlocked"] for r in body["recipes"])
+    full = client.get("/api/search", params={"q": "ingot"}).json()
+    assert full["recipes_total"] == len(hits)
+
+
 def test_named_factories_are_found(tmp_path, monkeypatch, projection, game):
     monkeypatch.setattr(config, "labels_dir", lambda: tmp_path / "labels")
     monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")

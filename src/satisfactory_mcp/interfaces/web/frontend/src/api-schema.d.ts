@@ -1176,6 +1176,9 @@ export interface paths {
         /**
          * Search
          * @description Items, part recipes and named factories whose names contain ``q``.
+         *
+         *     ``only_unlocked`` drops locked recipes before the cut and the count, so neither the
+         *     list nor ``recipes_total`` says what the save has not reached.
          */
         get: operations["search_api_search_get"];
         put?: never;
@@ -5206,6 +5209,7 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
+                only_unlocked?: boolean;
                 save?: string | null;
                 world?: string | null;
             };

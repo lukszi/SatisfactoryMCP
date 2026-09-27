@@ -58,8 +58,18 @@ def _first(name: str, q: str) -> tuple[bool, str]:
 
 
 @router.get("/search", response_model=SearchResponse)
-def search(request: Request, q: str = "", save: str | None = None, world: str | None = None) -> Any:
-    """Items, part recipes and named factories whose names contain ``q``."""
+def search(
+    request: Request,
+    q: str = "",
+    only_unlocked: bool = False,
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """Items, part recipes and named factories whose names contain ``q``.
+
+    ``only_unlocked`` drops locked recipes before the cut and the count, so neither the
+    list nor ``recipes_total`` says what the save has not reached.
+    """
     text = q.strip()
     if not text:
         return {
@@ -84,6 +94,8 @@ def search(request: Request, q: str = "", save: str | None = None, world: str | 
     except Exception as exc:
         note = f"no save could be read ({exc}): factories are missing and HAVE/LOCKED is unknown"
     hits, _census = gsearch.search(g, query=text, recipe_kind="part", unlocked=have)
+    if only_unlocked:
+        hits = [h for h in hits if h.unlocked is not False]
     hits.sort(key=lambda h: _first(h.recipe.name, key))
     labels.sort(key=lambda lb: _first(lb.name, key))
     return {

@@ -22,7 +22,7 @@ var asked = 0;
 var hits: Hit[] = [];
 var active = -1;
 
-function flatten(data: SearchResponse): { rows: Hit[]; hidden: number } {
+function flatten(data: SearchResponse): Hit[] {
   var rows: Hit[] = [];
   data.factories.forEach(function (f) {
     rows.push({ group: "factories", text: f.name, sub: f.machines + " machines", dash: "factories/" + f.name });
@@ -30,16 +30,11 @@ function flatten(data: SearchResponse): { rows: Hit[]; hidden: number } {
   data.items.forEach(function (i) {
     rows.push({ group: "items", text: i.name, sub: "", dash: "recipes/item/" + i.cls });
   });
-  var hidden = 0;
   data.recipes.forEach(function (r) {
-    if (r.unlocked === false && !setting("spoilers")) {
-      hidden += 1;
-      return;
-    }
     var sub = r.unlocked === null ? "" : r.unlocked ? "have" : "locked";
     rows.push({ group: "recipes", text: r.name, sub: sub, dash: "recipes/recipe/" + r.cls });
   });
-  return { rows: rows, hidden: hidden };
+  return rows;
 }
 
 function more(data: SearchResponse): string {
@@ -73,8 +68,7 @@ function mark(): void {
 function draw(data: SearchResponse): void {
   var box = el("search-hits");
   box.textContent = "";
-  var flat = flatten(data);
-  hits = flat.rows;
+  hits = flatten(data);
   active = hits.length ? 0 : -1;
   var group = "";
   hits.forEach(function (hit, i) {
@@ -93,7 +87,6 @@ function draw(data: SearchResponse): void {
     box.appendChild(row);
   });
   if (!hits.length) box.appendChild(make("div", "search-note", "nothing matches"));
-  if (flat.hidden) box.appendChild(make("div", "search-note", flat.hidden + " locked recipes hidden by the spoiler setting"));
   var tail = more(data);
   if (tail) box.appendChild(make("div", "search-note", tail));
   if (data.save_note) box.appendChild(make("div", "search-note", data.save_note));
@@ -108,7 +101,7 @@ function run(): void {
     close();
     return;
   }
-  get<SearchResponse>(`/api/search?q=${encodeURIComponent(text)}`)
+  get<SearchResponse>(`/api/search?q=${encodeURIComponent(text)}&only_unlocked=${!setting("spoilers")}`)
     .then(function (data) {
       if (mine === asked) draw(data);
     })
