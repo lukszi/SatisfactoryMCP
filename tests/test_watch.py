@@ -28,8 +28,15 @@ from __future__ import annotations
 import asyncio
 import time
 
+import pytest
+
+from satisfactory_mcp import config
+from satisfactory_mcp.domain.planning import journal
+from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.web.watch import (
+    KIND_ACTIVITY,
     KIND_NOTES,
+    KIND_PLANS,
     KIND_SAVE,
     QUEUE_MAX,
     SaveWatcher,
@@ -256,3 +263,121 @@ def test_stopping_a_watcher_that_never_started_is_a_no_op(tmp_path):
         return watcher._task
 
     assert asyncio.run(go()) is None
+
+
+# ------------------------------------------------------------------ the plan and journal tail
+
+
+@pytest.fixture
+def logs(tmp_path, monkeypatch):
+    for name in ("plans_dir", "activity_dir"):
+        root = tmp_path / name
+        root.mkdir()
+        monkeypatch.setattr(config, name, lambda root=root: root)
+    monkeypatch.setattr(journal, "_writer", "")
+    return tmp_path
+
+
+def _tail(watcher: SaveWatcher) -> list[WatchEvent]:
+    return asyncio.run(watcher.tail_once())
+
+
+CHAT = Actor("chat", "claude-code", 7)
+PAGE = Actor("page", "", 8)
+
+
+def test_the_first_tail_is_a_baseline_and_announces_nothing(logs):
+    PlanLog("W").create("old plan", {}, actor=CHAT)
+    watcher = SaveWatcher(root=logs, notes=())
+    assert _tail(watcher) == []
+    assert _tail(watcher) == []
+
+
+def test_new_commits_are_one_plans_event_per_plan_per_tick(logs):
+    log = PlanLog("W")
+    key = log.create("north", {}, actor=CHAT).key
+    watcher = SaveWatcher(root=logs, notes=())
+    _tail(watcher)
+    log.push(key, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=CHAT)
+    log.push(key, 2, [{"op": "rename", "name": "south"}], actor=PAGE)
+    [event] = _tail(watcher)
+    assert event.kind == KIND_PLANS
+    data = event.as_dict()
+    assert data["world"] == "W" and data["key"] == key and data["name"] == "south"
+    assert (data["from_rev"], data["rev"]) == (1, 3)
+    assert [a["display"] for a in data["actors"]] == ["Claude Code", "page"]
+    assert data["text"] == 'v3 page: renamed "north"→"south"'
+    assert data["forgotten"] is False and data["ts"] == event.mtime
+    assert _tail(watcher) == []
+
+
+def test_a_plan_created_after_the_baseline_is_announced_from_its_create(logs):
+    watcher = SaveWatcher(root=logs, notes=())
+    _tail(watcher)
+    PlanLog("W").create("fresh", {}, actor=PAGE)
+    [event] = _tail(watcher)
+    assert event.as_dict()["rev"] == 1 and event.as_dict()["from_rev"] == 0
+
+
+def test_a_torn_tail_waits_for_its_newline(logs):
+    log = PlanLog("W")
+    key = log.create("north", {}, actor=CHAT).key
+    watcher = SaveWatcher(root=logs, notes=())
+    _tail(watcher)
+    ops = log.root / key / "ops.jsonl"
+    with open(ops, "ab") as handle:
+        handle.write(b'{"rev": 2, "half')
+    assert _tail(watcher) == []
+    log.push(key, 1, [{"op": "set", "field": "sloops", "value": 1}], actor=CHAT)
+    [event] = _tail(watcher)
+    assert event.as_dict()["rev"] == 2
+
+
+def test_each_journal_entry_is_an_activity_event(logs):
+    journal.set_writer("chat")
+    watcher = SaveWatcher(root=logs, notes=())
+    _tail(watcher)
+    journal.append("W", "plan.solve", actor=CHAT, args={"sloops": 2}, text="solved")
+    journal.append("W", "plan.view", actor=CHAT, plan="a1b2c3d4", rev=3)
+    events = _tail(watcher)
+    assert [e.kind for e in events] == [KIND_ACTIVITY, KIND_ACTIVITY]
+    first, second = (e.as_dict() for e in events)
+    assert first["kind"] == "plan.solve" and first["args"] == {"sloops": 2}
+    assert first["actor"]["display"] == "Claude Code" and first["world"] == "W"
+    assert (second["plan"], second["rev"]) == ("a1b2c3d4", 3)
+    assert watcher.latest[KIND_ACTIVITY] == events[-1]
+
+
+def test_the_tail_publishes_to_subscribers_and_runs_only_when_asked(logs):
+    async def go():
+        quiet = SaveWatcher(root=logs, notes=(), interval=60)
+        await quiet.start()
+        tailing = SaveWatcher(root=logs, notes=(), interval=60, tail=True, tail_interval=0.01)
+        q = tailing.subscribe()
+        await tailing.start()
+        try:
+            await _until(lambda: tailing._offsets is not None)
+            PlanLog("W").create("fresh", {}, actor=PAGE)
+            await _until(lambda: q.qsize() > 0)
+            return quiet._tail_task, q.get_nowait()
+        finally:
+            await quiet.stop()
+            await tailing.stop()
+
+    idle, event = asyncio.run(go())
+    assert idle is None
+    assert event.kind == KIND_PLANS
+
+
+def test_plan_logs_and_snapshots_no_longer_fire_notes(tmp_path, monkeypatch):
+    labels, plans = tmp_path / "labels", tmp_path / "plans"
+    labels.mkdir()
+    (plans / "W" / "a1b2c3d4" / "snap").mkdir(parents=True)
+    (plans / "W" / "a1b2c3d4" / "snap" / "1.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(config, "labels_dir", lambda: labels)
+    monkeypatch.setattr(config, "plans_dir", lambda: plans)
+    watcher = SaveWatcher(root=tmp_path / "saves")
+    assert asyncio.run(watcher.poll_once()) == []
+    (plans / "W.json").write_text("{}", encoding="utf-8")
+    [event] = asyncio.run(watcher.poll_once())
+    assert event.kind == KIND_NOTES and event.filename == "W.json"

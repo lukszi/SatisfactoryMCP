@@ -8,6 +8,7 @@ WARNING: the function name is the operation_id -- renaming it churns the committ
 
 from __future__ import annotations
 
+import os
 from typing import Any, TypedDict
 
 from fastapi import APIRouter, Body, Request
@@ -18,6 +19,7 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories.labels import LabelError, StaleStore, stamp
 from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
+from ....domain.planning.planlog import Actor
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world import pin
@@ -279,7 +281,15 @@ def rename_label(
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
     try:
-        done = edits.rename(st.world_id, _session(st), name, to, exact=True, expect=version)
+        done = edits.rename(
+            st.world_id,
+            _session(st),
+            name,
+            to,
+            exact=True,
+            expect=version,
+            actor=Actor("page", "", os.getpid()),
+        )
     except (StaleStore, LabelError, LockTimeout) as exc:
         return _refused(exc)
     return {

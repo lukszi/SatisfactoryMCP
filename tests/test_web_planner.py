@@ -1,0 +1,334 @@
+"""The planner routes: plans read at a version, pushed by ops or args, undone, solved, focused.
+
+docs/planner_slice_contract.md §9 and §11 is what these pin. Every write lands in temporary
+plans, activity and ui directories; the fixture world is read and never written.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+
+import pytest
+
+fastapi = pytest.importorskip("fastapi")
+
+from fastapi.testclient import TestClient
+
+from satisfactory_mcp import config
+from satisfactory_mcp.domain.planning import focus, journal
+from satisfactory_mcp.domain.planning.planlog import KINDS, Actor, PlanLog
+from satisfactory_mcp.domain.world.state import WorldState
+from satisfactory_mcp.interfaces.web.app import create_app
+
+ORIGIN = {"origin": "http://testserver"}
+WORLD = "X2faPVKjX06VaRzClNv5KQ"
+CHAT = Actor("chat", "claude-code", 4242)
+RIP = "Reinforced Iron Plate"
+HMF_ARGS = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
+
+
+@pytest.fixture
+def dirs(tmp_path, monkeypatch):
+    for name in ("plans_dir", "labels_dir", "activity_dir", "ui_dir"):
+        root = tmp_path / name
+        root.mkdir()
+        monkeypatch.setattr(config, name, lambda root=root: root)
+    monkeypatch.setattr(journal, "_writer", "")
+    return tmp_path
+
+
+@pytest.fixture
+def client(dirs, projection, game):
+    app = create_app(
+        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
+        game_loader=lambda: game,
+    )
+    with TestClient(app) as c:
+        yield c
+
+
+def _create(client, name="rip 5", args=None):
+    reply = client.post("/api/plans", json={"name": name, "args": args or HMF_ARGS}, headers=ORIGIN)
+    assert reply.status_code == 201, reply.text
+    return reply.json()
+
+
+def _push(client, key, base_rev, *ops):
+    return client.post(
+        f"/api/plans/{key}/ops", json={"base_rev": base_rev, "ops": list(ops)}, headers=ORIGIN
+    )
+
+
+def _rate(value):
+    return {"op": "put", "field": "export_minimums", "item": RIP, "value": value}
+
+
+# ------------------------------------------------------------------ create and read
+
+
+def test_a_created_plan_is_v1_with_every_field_and_a_stamp(client):
+    body = _create(client)
+    state = body["state"]
+    assert body["rev"] == 1 and state["rev"] == 1 and state["head"] == 1
+    assert list(state["args"]) == list(KINDS)
+    assert state["args"]["export_minimums"] == {RIP: 5.0}
+    assert state["args"]["allow_sinks"] is True and state["args"]["water_extractors"] is None
+    assert state["plan_id"], "a page-created plan must be stamped, or list_plans says it moved"
+    assert state["siting"] is None
+    assert state["text"] == "v1 page: created"
+    commit = PlanLog(WORLD).commits(body["key"])[0]
+    assert commit.actor.kind == "page" and commit.actor.pid == os.getpid()
+
+
+def test_a_taken_name_is_a_409_that_says_so(client):
+    _create(client, "north")
+    reply = client.post("/api/plans", json={"name": "NORTH", "args": {}}, headers=ORIGIN)
+    assert reply.status_code == 409
+    assert reply.json()["name_taken"] is True
+
+
+def test_invalid_args_are_a_400_and_nothing_is_created(client):
+    reply = client.post(
+        "/api/plans", json={"name": "x", "args": {"objective": "most"}}, headers=ORIGIN
+    )
+    assert reply.status_code == 400
+    assert PlanLog(WORLD).keys() == []
+
+
+def test_a_plan_reads_at_any_version_and_404s_past_its_head(client):
+    key = _create(client)["key"]
+    assert _push(client, key, 1, _rate(15)).status_code == 200
+    old = client.get(f"/api/plans/{key}?rev=1").json()
+    head = client.get(f"/api/plans/{key}").json()
+    assert old["args"]["export_minimums"] == {RIP: 5.0} and old["head"] == 2
+    assert head["args"]["export_minimums"] == {RIP: 15.0} and head["rev"] == 2
+    assert head["text"] == f"v2 page: rate {RIP} 5→15/min"
+    assert client.get(f"/api/plans/{key}?rev=3").status_code == 404
+    assert client.get("/api/plans/0000beef").status_code == 404
+    assert client.get("/api/plans/..").status_code == 404
+
+
+def test_the_ops_route_lists_commits_after_since(client):
+    key = _create(client)["key"]
+    _push(client, key, 1, {"op": "set", "field": "sloops", "value": 2})
+    body = client.get(f"/api/plans/{key}/ops?since=1").json()
+    assert body["head"] == 2 and [c["rev"] for c in body["commits"]] == [2]
+    commit = body["commits"][0]
+    assert commit["actor"]["display"] == "page"
+    assert commit["ops"][0] == {"op": "set", "field": "sloops", "value": 2, "was": 0}
+    assert commit["text"] == "v2 page: sloops 0→2"
+
+
+# ------------------------------------------------------------------ push and merge
+
+
+def test_a_page_edit_over_a_chat_edit_to_another_key_merges(client):
+    key = _create(client)["key"]
+    PlanLog(WORLD).push(key, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=CHAT)
+    reply = _push(client, key, 1, _rate(15))
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    assert body["rev"] == 3 and body["merged_over"] == [2]
+    assert [c["actor"]["display"] for c in body["others"]] == ["Claude Code"]
+    assert body["state"]["args"]["sloops"] == 4
+    assert body["state"]["args"]["export_minimums"] == {RIP: 15.0}
+    assert "merged onto v2" in body["text"]
+
+
+def test_the_same_key_is_a_409_with_the_head_and_nothing_applied(client, monkeypatch):
+    journal.set_writer("web")
+    key = _create(client)["key"]
+    PlanLog(WORLD).push(key, 1, [_rate(15)], actor=CHAT)
+    reply = _push(client, key, 1, _rate(12))
+    assert reply.status_code == 409
+    body = reply.json()
+    assert body["outdated"] is True and body["head"] == 2 and body["base_rev"] == 1
+    assert body["state"]["args"]["export_minimums"] == {RIP: 15.0}
+    [conflict] = body["conflicts"]
+    assert conflict["theirs_actor"]["display"] == "Claude Code" and conflict["theirs_rev"] == 2
+    assert conflict["text"] == f"rate {RIP}: you 12, Claude Code set 15 in v2"
+    assert [c["rev"] for c in body["since"]] == [2]
+    assert PlanLog(WORLD).head_rev(key) == 2
+    [entry] = journal.read(WORLD)
+    assert entry["kind"] == "plan.rejected" and entry["plan"] == key and entry["rev"] == 2
+    assert entry["actor"]["kind"] == "page"
+
+
+def test_a_no_op_push_appends_nothing(client):
+    key = _create(client)["key"]
+    body = _push(client, key, 1, _rate(5)).json()
+    assert body["noop"] is True and body["rev"] == 1
+    assert PlanLog(WORLD).head_rev(key) == 1
+
+
+def test_a_bad_op_is_a_400_and_a_forgotten_plan_a_410(client):
+    key = _create(client)["key"]
+    assert _push(client, key, 1, {"op": "set", "field": "sloops", "value": -1}).status_code == 400
+    assert _push(client, key, 5, _rate(1)).status_code == 400
+    PlanLog(WORLD).push(key, 1, [{"op": "forget"}], actor=CHAT)
+    assert _push(client, key, 2, _rate(1)).status_code == 410
+
+
+def test_a_write_from_another_origin_is_refused_by_the_guard(client):
+    key = _create(client)["key"]
+    reply = client.post(
+        f"/api/plans/{key}/ops",
+        json={"base_rev": 1, "ops": [_rate(1)]},
+        headers={"origin": "http://evil.example"},
+    )
+    assert reply.status_code == 403
+    assert PlanLog(WORLD).head_rev(key) == 1
+
+
+def test_args_from_a_chat_solve_apply_as_one_commit_naming_the_entry(client):
+    key = _create(client)["key"]
+    args = {**HMF_ARGS, "export_minimums": {RIP: 20}, "banned": ["Recipe_Alternate_Screw_2_C"]}
+    reply = client.post(
+        f"/api/plans/{key}/args",
+        json={"base_rev": 1, "args": args, "from_entry": "chat-1:7"},
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 200, reply.text
+    commit = PlanLog(WORLD).commits(key, since=1)[0]
+    assert commit.note == "applied chat solve chat-1:7"
+    assert reply.json()["state"]["args"]["banned"] == ["Recipe_Alternate_Screw_2_C"]
+
+
+# ------------------------------------------------------------------ undo
+
+
+def test_undo_is_an_inverse_commit_and_twice_is_already_undone(client):
+    key = _create(client)["key"]
+    _push(client, key, 1, _rate(15))
+    reply = client.post(f"/api/plans/{key}/undo", json={"base_rev": 2, "rev": 2}, headers=ORIGIN)
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    assert body["rev"] == 3 and body["state"]["args"]["export_minimums"] == {RIP: 5.0}
+    assert body["state"]["text"].startswith("v3 page: undo v2")
+    again = client.post(f"/api/plans/{key}/undo", json={"base_rev": 3, "rev": 2}, headers=ORIGIN)
+    assert again.status_code == 409
+    assert again.json() == {"error": "v2 was already undone by v3", "already_undone": True, "by": 3}
+    redo = client.post(f"/api/plans/{key}/undo", json={"base_rev": 3, "rev": 3}, headers=ORIGIN)
+    assert redo.json()["state"]["args"]["export_minimums"] == {RIP: 15.0}
+
+
+def test_undoing_what_chat_changed_again_since_is_outdated(client):
+    key = _create(client)["key"]
+    _push(client, key, 1, _rate(15))
+    PlanLog(WORLD).push(key, 2, [_rate(30)], actor=CHAT)
+    reply = client.post(f"/api/plans/{key}/undo", json={"base_rev": 3, "rev": 2}, headers=ORIGIN)
+    assert reply.status_code == 409 and reply.json()["outdated"] is True
+
+
+# ------------------------------------------------------------------ solve
+
+
+def test_a_stored_version_and_its_args_solve_to_the_same_answer(client):
+    created = _create(client)
+    by_key = client.post("/api/plan/solve", json={"key": created["key"]}, headers=ORIGIN)
+    by_args = client.post("/api/plan/solve", json={"args": HMF_ARGS}, headers=ORIGIN)
+    assert by_key.status_code == 200, by_key.text
+    a, b = by_key.json(), by_args.json()
+    assert a == b
+    assert a["feasible"] is True and a["plan_id"] == created["state"]["plan_id"]
+    assert a["exports"] == [{"item": RIP, "per_min": 5.0}]
+    assert a["mw_net"] == pytest.approx(a["mw_generated"] - a["mw_draw"], abs=0.02)
+    assert a["machines"] >= len(a["rows"]) > 0 and a["token"].startswith("sav:")
+    keys = [(r["building"], r["recipe"]) for r in a["rows"]]
+    assert keys == sorted(keys)
+    top = next(r for r in a["rows"] if r["item"] == RIP)
+    assert top["outputs"][0] == {"item": RIP, "per_min": 5.0} and top["mw"] < 0
+
+
+def test_a_required_recipe_that_is_not_a_recipe_is_named_as_a_blocker(client):
+    args = {**HMF_ARGS, "required": ["Recipe_NoSuchThing_C"]}
+    body = client.post("/api/plan/solve", json={"args": args}, headers=ORIGIN).json()
+    assert any("Recipe_NoSuchThing_C" in b for b in body["blockers"])
+
+
+def test_a_required_recipe_in_force_is_flagged_on_its_row(client, game):
+    args = {**HMF_ARGS, "required": ["Recipe_IronPlate_C"]}
+    body = client.post("/api/plan/solve", json={"args": args}, headers=ORIGIN).json()
+    if not body["feasible"]:
+        pytest.skip("the fixture save cannot run this plan")
+    rows = [r for r in body["rows"] if r["recipe_id"] == "Recipe_IronPlate_C"]
+    assert rows and all(r["required"] for r in rows)
+
+
+def test_solve_takes_exactly_one_of_args_and_key(client):
+    for payload in ({}, {"args": HMF_ARGS, "key": "0000beef"}):
+        assert client.post("/api/plan/solve", json=payload, headers=ORIGIN).status_code == 400
+    assert (
+        client.post("/api/plan/solve", json={"key": "0000beef"}, headers=ORIGIN).status_code == 404
+    )
+    bad = client.post("/api/plan/solve", json={"args": {"sloops": "x"}}, headers=ORIGIN)
+    assert bad.status_code == 400
+
+
+# ------------------------------------------------------------------ focus and activity
+
+
+def test_focus_is_written_with_a_heartbeat_for_ui_context_to_read(client):
+    reply = client.put(
+        "/api/ui/focus",
+        json={
+            "view": "planner",
+            "dash": "planner/0000beef",
+            "plan": "0000beef",
+            "rev": 3,
+            "tab": "workbench",
+            "selection": {"kind": "process", "label": "Constructor · Iron Plate", "ref": "R"},
+            "follow": "toasts",
+            "sav": "sav:000000000000",
+        },
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 200, reply.text
+    stored = focus.read(WORLD)
+    assert stored["heartbeat"] == reply.json()["heartbeat"]
+    assert stored["plan"] == "0000beef" and stored["follow"] == "toasts"
+    assert focus.is_open(stored)
+    bad = client.put("/api/ui/focus", json={"view": "kitchen"}, headers=ORIGIN)
+    assert bad.status_code == 400
+
+
+def test_activity_merges_commits_and_journal_entries_by_time(client):
+    journal.set_writer("web")
+    key = _create(client)["key"]
+    journal.append(WORLD, "plan.solve", actor=CHAT, args={"sloops": 2}, text="solved it")
+    _push(client, key, 1, _rate(15))
+    body = client.get("/api/activity").json()
+    kinds = [(e["source"], e["kind"]) for e in body["entries"]]
+    assert kinds == [("plan", "commit"), ("journal", "plan.solve"), ("plan", "commit")]
+    solve = body["entries"][1]
+    assert solve["actor"]["display"] == "Claude Code" and solve["args"] == {"sloops": 2}
+    assert body["entries"][2]["name"] == "rip 5" and body["entries"][2]["rev"] == 2
+    since = body["entries"][1]["ts"]
+    later = client.get(f"/api/activity?since={since}").json()["entries"]
+    assert [e["rev"] for e in later] == [2]
+    assert len(client.get("/api/activity?limit=1").json()["entries"]) == 1
+
+
+# ------------------------------------------------------------------ the schema
+
+
+def test_the_conflict_bodies_reach_the_published_schema(client):
+    schema = client.get("/openapi.json").json()
+    push = schema["paths"]["/api/plans/{key}/ops"]["post"]
+    assert push["responses"]["409"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/OutdatedResponse"
+    }
+    create = schema["paths"]["/api/plans"]["post"]
+    assert "201" in create["responses"] and "409" in create["responses"]
+    for name in ("PushedResponse", "PlanStateBody", "SolveResponse", "ActivityResponse"):
+        assert name in schema["components"]["schemas"], name
+    ops = [
+        op["operationId"]
+        for path in schema["paths"].values()
+        for op in path.values()
+        if op["operationId"].split("_api_")[0]
+        in {"create_plan", "plan_state", "plan_ops", "push_ops", "push_args", "undo_rev"}
+    ]
+    assert len(ops) == 6
+    json.dumps(schema)

@@ -1,8 +1,8 @@
-"""``/api/plans``: where each stored plan is to STAND.
+"""``/api/plans``: where each stored plan is to STAND, and the index of live plans.
 
-The siting, and nothing else about the plan. A plan's contents are a solve -- ``PlanStore``
-holds the request and re-solves on recall -- and this endpoint answers the one question the
-map can draw: the rectangle the pad occupies on the ground.
+``plans`` is the siting the map draws; ``index`` is one row per live plan at its head, for
+the Planner's list (docs/planner_slice_contract.md §11.1). A plan's contents are a request,
+never a solve; ``/api/plan/solve`` re-solves one.
 
 WARNING: the function name is the operation_id -- renaming it churns the committed schema.
 
@@ -16,7 +16,8 @@ from typing import Any, TypedDict
 from fastapi import APIRouter, Request
 
 from ....domain.planning import siting as planning_siting
-from ..serial import _fail, _state
+from ....domain.planning.planlog import PlanLog
+from ..serial import ActorBody, _actor_json, _fail, _state
 
 __all__ = ["router"]
 
@@ -39,6 +40,7 @@ class PlanSiting(TypedDict):
     ``plan_layout`` budgeted, which is the difference between a pad and an estimate.
     """
 
+    key: str
     name: str
     x_m: float
     y_m: float
@@ -51,11 +53,64 @@ class PlanSiting(TypedDict):
     factory: str
 
 
+class PlanLast(TypedDict):
+    """The plan's newest commit: who, when, and the words ``describe_commit`` gives it."""
+
+    rev: int
+    ts: float
+    actor: ActorBody
+    text: str
+
+
+class PlanIndexRow(TypedDict):
+    """One live plan at its head. ``rates`` is ``export_minimums``, item name to per minute."""
+
+    key: str
+    name: str
+    rev: int
+    objective: str
+    target_item: str | None
+    exports: list[str]
+    rates: dict[str, float]
+    sited: bool
+    factory: str
+    plan_id: str
+    last: PlanLast
+
+
 class PlansResponse(TypedDict):
     """What ``/api/plans`` sends on a 200. An error is a 4xx with ``{"error": ...}``."""
 
     plans: list[PlanSiting]
     stored: int
+    index: list[PlanIndexRow]
+
+
+def _index(log: PlanLog) -> list[PlanIndexRow]:
+    rows: list[PlanIndexRow] = []
+    for state in log.heads():
+        newest = log.commits(state.key, since=state.rev - 1)[-1]
+        rows.append(
+            {
+                "key": state.key,
+                "name": state.name,
+                "rev": state.rev,
+                "objective": state.args.objective,
+                "target_item": state.args.target_item,
+                "exports": list(state.args.exports),
+                "rates": dict(state.args.export_minimums),
+                "sited": bool(state.siting),
+                "factory": state.factory,
+                "plan_id": state.plan_id,
+                "last": {
+                    "rev": newest.rev,
+                    "ts": newest.ts,
+                    "actor": _actor_json(newest.actor),
+                    "text": newest.text(),
+                },
+            }
+        )
+    return rows
 
 
 @router.get("/plans", response_model=PlansResponse)
@@ -82,6 +137,7 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
             continue
         rows.append(
             {
+                "key": getattr(plan, "key", ""),
                 "name": plan.name,
                 "x_m": sit.x_m,
                 "y_m": sit.y_m,
@@ -94,4 +150,5 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
                 "factory": plan.factory,
             }
         )
-    return {"plans": rows, "stored": len(st.plans.plans)}
+    log = PlanLog(st.world_id, st.header.get("session_name") or "")
+    return {"plans": rows, "stored": len(st.plans.plans), "index": _index(log)}

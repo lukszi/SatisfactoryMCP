@@ -3,9 +3,8 @@
 ``importorskip`` at module scope, not a marker: ``fastapi`` lives in the optional
 ``web`` extra, so an install without it must skip this file rather than fail collection.
 
-The plan store is injected rather than read off disk -- ``WorldState.plans`` is a
-``cached_property``, so a store written into ``__dict__`` is the one the router sees, and
-nothing here touches the reader's own plans directory.
+Plans are written through ``PlanLog`` into a temporary plans directory, so nothing here
+touches the reader's own.
 """
 
 from __future__ import annotations
@@ -18,8 +17,9 @@ fastapi = pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 
+from satisfactory_mcp import config
+from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.siting import Siting
-from satisfactory_mcp.domain.planning.store import Plan, PlanStore
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web.app import create_app
 
@@ -41,27 +41,32 @@ SITED = Siting(
 ESTIMATED = Siting(x_m=0.0, y_m=0.0, yaw_deg=0.0, width_m=48.0, depth_m=48.0, source="layout")
 
 
-def _store() -> PlanStore:
-    return PlanStore(
-        world_id="w",
-        plans=[
-            Plan(name="Aluminium", siting=SITED.to_dict(), factory="North Smelter"),
-            Plan(name="Sketch"),  # stored, never sited
-            Plan(name="Guess", siting=ESTIMATED.to_dict()),
-        ],
-    )
+WORLD = "X2faPVKjX06VaRzClNv5KQ"
+CHAT = Actor("chat", "claude-code", 1)
 
 
 @pytest.fixture
-def planned(projection, game):
-    """The API over the fixture world, holding the three plans above."""
-    st = WorldState(projection=projection, game=game)
-    st.__dict__["plans"] = _store()
+def plans_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+    return tmp_path / "plans"
+
+
+def _client(projection, game):
     app = create_app(
-        state_loader=lambda save=None, world=None: st,
+        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
         game_loader=lambda: game,
     )
-    with TestClient(app) as c:
+    return TestClient(app)
+
+
+@pytest.fixture
+def planned(plans_dir, projection, game):
+    """The API over the fixture world, holding three plans: sited, never sited, estimated."""
+    log = PlanLog(WORLD)
+    log.create("Aluminium", {}, siting=SITED.to_dict(), factory="North Smelter", actor=CHAT)
+    log.create("Sketch", {}, actor=CHAT)
+    log.create("Guess", {}, siting=ESTIMATED.to_dict(), actor=CHAT)
+    with _client(projection, game) as c:
         yield c
 
 
@@ -89,6 +94,7 @@ def test_a_sited_plan_is_sent_as_the_rectangle_it_recorded(planned):
     assert set(rows) == {"Aluminium", "Guess"}
     row = rows["Aluminium"]
     assert set(row) == {
+        "key",
         "name",
         "x_m",
         "y_m",
@@ -108,6 +114,35 @@ def test_a_sited_plan_is_sent_as_the_rectangle_it_recorded(planned):
     assert row["yaw_deg"] == SITED.yaw_deg
     assert row["origin_label"] == "Coal Powerplant"
     assert row["factory"] == "North Smelter"
+    assert row["key"] == PlanLog(WORLD).find("Aluminium").key
+
+
+def test_the_index_lists_every_live_plan_at_its_head(planned):
+    log = PlanLog(WORLD)
+    sketch = log.find("Sketch").key
+    log.push(
+        sketch,
+        1,
+        [
+            {"op": "set", "field": "objective", "value": "min_machines"},
+            {"op": "add", "field": "exports", "member": "Wire"},
+            {"op": "put", "field": "export_minimums", "item": "Wire", "value": 30},
+        ],
+        actor=Actor("page"),
+    )
+    log.push(log.find("Guess").key, 1, [{"op": "forget"}], actor=CHAT)
+    index = {row["name"]: row for row in planned.get("/api/plans").json()["index"]}
+    assert set(index) == {"Aluminium", "Sketch"}, "a forgotten plan is not listed"
+    row = index["Sketch"]
+    assert row["key"] == sketch and row["rev"] == 2
+    assert (row["objective"], row["exports"], row["rates"]) == (
+        "min_machines",
+        ["Wire"],
+        {"Wire": 30.0},
+    )
+    assert row["sited"] is False and index["Aluminium"]["sited"] is True
+    assert row["last"]["rev"] == 2 and row["last"]["actor"]["display"] == "page"
+    assert row["last"]["text"].startswith("v2 page: objective max_mw→min_machines")
 
 
 def test_an_estimated_footprint_says_so_and_a_measured_one_says_so(planned):
@@ -154,29 +189,22 @@ def test_the_drawn_rectangle_is_the_one_the_domain_counts_machines_inside(planne
     assert not SITED.contains_cm((row["x_m"] + 47) * 100, (row["y_m"] + 31) * 100)
 
 
-def test_a_world_with_no_plans_answers_with_an_empty_layer_and_not_an_error(projection, game):
+def test_a_world_with_no_plans_answers_with_an_empty_layer_and_not_an_error(
+    plans_dir, projection, game
+):
     """A player who has never run ``site_plan`` is the ordinary case. ``stored: 0`` is what
     tells that apart from "three plans, none of them sited"."""
-    st = WorldState(projection=projection, game=game)
-    st.__dict__["plans"] = PlanStore(world_id="w")
-    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
-    with TestClient(app) as c:
-        assert c.get("/api/plans").json() == {"plans": [], "stored": 0}
+    with _client(projection, game) as c:
+        assert c.get("/api/plans").json() == {"plans": [], "stored": 0, "index": []}
 
 
-def test_a_hand_edited_siting_that_will_not_parse_costs_one_row(projection, game):
+def test_a_hand_edited_siting_that_will_not_parse_costs_one_row(plans_dir, projection, game):
     """``siting.parse`` answers ``None`` for a record it cannot read, and this layer must
     treat that as "not sited" rather than as a 500 over the whole map."""
-    st = WorldState(projection=projection, game=game)
-    st.__dict__["plans"] = PlanStore(
-        world_id="w",
-        plans=[
-            Plan(name="Broken", siting={"origin_m": ["north", "east"]}),
-            Plan(name="Aluminium", siting=SITED.to_dict()),
-        ],
-    )
-    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
-    with TestClient(app) as c:
+    log = PlanLog(WORLD)
+    log.create("Broken", {}, siting={"origin_m": ["north", "east"]}, actor=CHAT)
+    log.create("Aluminium", {}, siting=SITED.to_dict(), actor=CHAT)
+    with _client(projection, game) as c:
         body = c.get("/api/plans").json()
     assert [row["name"] for row in body["plans"]] == ["Aluminium"]
     assert body["stored"] == 2

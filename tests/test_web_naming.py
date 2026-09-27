@@ -333,6 +333,9 @@ def test_rename_keeps_the_machines_and_moves_the_plans(empty, store_dir):
     label = _stored(store_dir)["labels"][0]
     assert label["name"] == "new name" and len(label["anchors"]) == row["machines"]
     assert _plan_factories() == {"north plan": "new name", "other plan": "elsewhere"}
+    log = PlanLog("X2faPVKjX06VaRzClNv5KQ")
+    moved = log.commits(log.find("north plan").key)[-1]
+    assert moved.actor.kind == "page", "a page rename must say the page moved the plan"
 
 
 def test_rename_refuses_a_taken_blank_or_missing_name(empty):

@@ -23,6 +23,8 @@ from . import (
     naming,
     nodes,
     placements,
+    planlog,
+    planner,
     plans,
     progress,
     power,
@@ -60,4 +62,6 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     grid.router,
     progress.router,
     naming.router,
+    planner.router,
+    planlog.router,
 )
