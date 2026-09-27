@@ -357,7 +357,8 @@ Writers rewrite before the store: the MCP save path (`plan_factory save_as`, cre
 push_args) and the web `create_plan`, `push_args`, `push_ops` (`add` ops on `sources`,
 `required`, `banned`). A `near:pin:3@200` source becomes `near:<x>,<y>@200`. So a plan
 reads the same after its pin is deleted, and `plan_id` and provenance see ordinary
-selectors.
+selectors. A siting made at a pin (`site_at=pin:N`) echoes the pin in the reply but stores
+the resolved place as its `origin_label`, without the `pin:N =` prefix.
 
 ---
 
@@ -428,7 +429,7 @@ Module rule: planner modules never import `dashboard.ts`; `pins.ts` imports no p
 
 | Layer / interaction | Behaviour |
 |---|---|
-| **pins** layer (BAND.chrome, after labels) | One `L.marker` + `divIcon` per located live pin, text `N`, class `.pin-tag` (gone pins add `.gone`, muted). `title` and `alt` set. Keyboard-focusable (Leaflet marker `keyboard: true`) |
+| **pins** layer (BAND.chrome, after labels) | One `L.marker` + `divIcon` per located live pin, text `N`, class `.pin-tag` (gone pins add `.gone`, muted). `title` and `aria-label` set (Leaflet ignores `alt` on a `divIcon`). Keyboard-focusable (Leaflet marker `keyboard: true`) |
 | tag click | popup: `pin:N` (copyable), label, what, selector (copyable), `gone_why` if gone |
 | right-click (inspect) | popup gains a **pin** row: `point`, `machine` (on a machine), `node <resource>` and `field` for `nearest[0]` |
 | node dot popup | **pin node**, **pin field** |
