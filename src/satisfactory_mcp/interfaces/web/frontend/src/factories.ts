@@ -534,14 +534,11 @@ function namedList(card: HTMLElement): void {
 function filterLine(card: HTMLElement, data: CandidatesResponse, skipped: number): void {
   var line = make("p", "dash-note dash-filters");
   var parts: string[] = [];
-  if (detect.showAll) line.appendChild(document.createTextNode("every " + W.unnamedCluster + ", filters off "));
+  if (detect.showAll) sentence(line, "every " + W.unnamedCluster + ", ", " off");
   else {
     if (data.hidden.not_fed) parts.push(count(data.hidden.not_fed) + " not fed");
     if (data.hidden.small) parts.push(count(data.hidden.small) + " below " + counted(data.min_machines, "machine"));
-    if (parts.length) {
-      var hidden = data.hidden.not_fed + data.hidden.small;
-      line.appendChild(document.createTextNode(count(hidden) + " hidden: " + parts.join(", ") + " "));
-    }
+    if (parts.length) sentence(line, count(data.hidden.not_fed + data.hidden.small) + " hidden by the ", ": " + parts.join(", "));
   }
   if (detect.showAll) {
     line.appendChild(
@@ -574,9 +571,14 @@ function filterLine(card: HTMLElement, data: CandidatesResponse, skipped: number
       })
     );
   }
-  if (!line.childNodes.length) return;
-  line.appendChild(link("settings", "filters"));
-  card.appendChild(line);
+  if (line.childNodes.length) card.appendChild(line);
+}
+
+function sentence(line: HTMLElement, before: string, after: string): void {
+  var span = make("span", "", before);
+  span.appendChild(link("settings", "filters"));
+  span.appendChild(document.createTextNode(after));
+  line.appendChild(span);
 }
 
 function renderDetect(body: HTMLElement): void {
@@ -838,7 +840,7 @@ export function renderFactory(body: HTMLElement, name: string): void {
   body.appendChild(link("factories", "‹ all factories", "dash-back"));
   if (!healthState(body)) return;
   if (!row) {
-    empty(body, "no factory named “" + name + "” in this world", "it may have been renamed or forgotten since this link was made");
+    empty(body, "no factory named “" + name + "” in this world", "it may have been renamed or forgotten; pick one from the list");
     return;
   }
   var head = make("div", "dash-title");
@@ -884,8 +886,7 @@ export function renderFactory(body: HTMLElement, name: string): void {
   if (row.review) note(body, "label " + row.review + ": " + row.alive + " of " + row.anchors + " anchors still stand");
   var power = row.unwired + row.no_generator;
   var tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("machines", count(row.machines), count(row.alive) + " of " + count(row.anchors) + " anchors standing"));
-  tiles.appendChild(tile("uptime", pct(row.uptime), "mean of each machine's last 300 s"));
+  tiles.appendChild(tile("machines", count(row.machines), pct(row.uptime) + " mean uptime"));
   tiles.appendChild(
     tile(W.needAction, count(row.actionable), count(row.attention) + " " + W.notRunning, row.actionable > 0)
   );
