@@ -6,8 +6,9 @@
 
 import { el } from "./dom";
 import { loadLive, loadOne } from "./load";
+import { onActivity as onAskActivity, refetchAsks } from "./asks";
 import { onActivity as onPinActivity, refetchPins } from "./pins";
-import { onActivityEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
+import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
 import { state } from "./state";
 import { fail } from "./toast";
 import { refreshWorlds } from "./worlds";
@@ -99,6 +100,7 @@ export function listen() {
       loadOne("/api/power/circuits");
       loadOne("/api/plans");
       refetchPins();
+      refetchAsks();
       resyncPlanner();
     };
     var blink = function () {
@@ -131,6 +133,7 @@ export function listen() {
       loadOne("/api/power/circuits");
       loadOne("/api/plans");
       refetchPins();
+      onNotesEvent();
     });
     es.addEventListener("plans", function (event) {
       var data = parsed<PlansEvent>(event);
@@ -143,6 +146,7 @@ export function listen() {
       var data = parsed<ActivityEvent>(event);
       if (!data || !isNews(event)) return;
       onPinActivity(data);
+      onAskActivity(data);
       onActivityEvent(data);
     });
   }

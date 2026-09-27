@@ -2,6 +2,7 @@
  * docs/planner_slice_contract.md §12. */
 
 import { get, send } from "./api";
+import { askOpen, closeBar, onAsks, renderAskBar, settleAskFocus } from "./asks";
 import { loading } from "./dashkit";
 import { keepFocus, make } from "./dom";
 import { dashParts, go } from "./nav";
@@ -11,12 +12,14 @@ import {
   actorWord,
   bench,
   changed,
+  dropFeeders,
   followHead,
   forgetSolves,
   hideAlternates,
   inbox,
   loadAlternates,
   loadItems,
+  loadTrack,
   onBench,
   openPlan,
   redoLast,
@@ -24,13 +27,16 @@ import {
   resyncHead,
   sav,
   showAlternates,
+  trackDash,
   undoLast,
   viewRev,
 } from "./planner-core";
 import { loadActivity } from "./planner-history";
 import { loadList, planTitle, renderList } from "./planner-list";
 import { clearPick } from "./planner-result";
+import { focusStartup } from "./planner-track";
 import { onPins } from "./pins";
+import { onBiomass } from "./powerview";
 import { choice, onSetting } from "./settings";
 import { state } from "./state";
 import { note, offer } from "./toast";
@@ -52,13 +58,38 @@ var drawTimer = 0;
 var pressed = false;
 var refocus = "";
 var focusSig = "";
+var startupFocus = false;
 
-function parts(at: string): { key: string; view: number; alt: string } {
+interface Address {
+  key: string;
+  view: number;
+  alt: string;
+  track: boolean;
+  stage: number;
+}
+
+function parts(at: string): Address {
   var rest = dashParts("planner/" + at).rest;
   var key = rest[0] || "";
   var m = /^v(\d+)$/.exec(rest[1] || "");
   var alt = rest[1] === "alt" && rest[2] ? rest.slice(2).join("/") : "";
-  return { key: key, view: m ? Number(m[1]) : 0, alt: alt };
+  var track = rest[1] === "track";
+  var stage = track && /^\d+$/.test(rest[2] || "") ? Number(rest[2]) : 0;
+  return { key: key, view: m ? Number(m[1]) : 0, alt: alt, track: track, stage: stage };
+}
+
+function syncTab(wanted: Address): void {
+  if (wanted.alt) return;
+  if (wanted.track) {
+    var entering = bench.tab !== "track";
+    bench.tab = "track";
+    bench.track.stage = wanted.stage;
+    if (entering) loadTrack();
+  } else if (bench.tab === "track") bench.tab = "build list";
+}
+
+function trackShowing(): boolean {
+  return !!subject() && bench.tab === "track" && !!bench.plan && !bench.view;
 }
 
 function subject(): string | null {
@@ -81,7 +112,7 @@ function closeAlternates(): void {
   var back = bench.altBack && dashParts().rest[1] === "alt";
   refocus = hideAlternates();
   if (back) history.back();
-  else go("planner/" + bench.key, true);
+  else go(bench.tab === "track" ? trackDash(bench.key, bench.track.stage) : "planner/" + bench.key, true);
   changed();
 }
 
@@ -135,9 +166,12 @@ function draw(): void {
   heldDraw = false;
   keepFocus(root, function () {
     root.textContent = "";
+    renderAskBar(root);
     if (mounted) renderBench(root, select, closeAlternates);
     else renderList(root);
   });
+  settleAskFocus(root);
+  if (startupFocus && trackShowing() && focusStartup(root)) startupFocus = false;
   var alt = bench.alt;
   var shut = alt && alt.enter && parts(dashParts().subject).alt === alt.item ? root.querySelector<HTMLElement>('[data-ctl="alt-close"]') : null;
   if (alt && shut) {
@@ -187,6 +221,7 @@ export function renderPlanner(body: HTMLElement, at: string): void {
     }
     scheduleFocus();
   }
+  if (key) syncTab(wanted);
   if (key && bench.view !== wanted.view) viewRev(wanted.view);
   if (key && wanted.alt) showAlternates(wanted.alt);
   else if (bench.alt) refocus = hideAlternates();
@@ -208,7 +243,7 @@ function focusBody(): Record<string, unknown> {
     dash: state.dash,
     plan: planner && at && bench.key === at ? at : null,
     rev: planner && at && bench.plan ? bench.plan.rev : null,
-    tab: planner ? (at ? (bench.tab === "graph" ? "graph" : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
+    tab: planner ? (at ? (bench.tab === "graph" || bench.tab === "track" ? bench.tab : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
     selection: planner && at ? altSelection() || bench.selection : null,
     follow: choice("follow"),
     sav: sav(),
@@ -258,6 +293,26 @@ export function onActivityEvent(entry: ActivityEvent): void {
   if (mode === "off") return;
   var who = actorWord(entry.actor);
   var args = entry.args || {};
+  if (entry.kind === "plan.view" && entry.plan && args.view === "track") {
+    var tracked = entry.plan;
+    var stage = typeof args.stage === "number" && args.stage >= 1 ? Math.floor(args.stage) : 0;
+    var there = trackDash(tracked, stage);
+    var startup = args.section === "startup";
+    var called = entry.name || planTitle(tracked) || "a plan";
+    var open = function () {
+      startupFocus = startup;
+      if (state.dash === there) changed();
+      else go(there);
+    };
+    if (mode === "toasts") offer(who + " looked at the track of “" + called + "”", "open", open);
+    else {
+      whenIdle(function () {
+        if (state.dash !== there) note(who + " opened the track of “" + called + "” (Settings, follow chat)");
+        open();
+      });
+    }
+    return;
+  }
   if (entry.kind === "plan.view" && entry.plan && args.view === "alternates" && typeof args.item === "string") {
     var plan = entry.plan;
     var at = altDash(plan, args.item);
@@ -303,6 +358,7 @@ export function resyncPlanner(): void {
     loadActivity();
   }
   resyncHead();
+  if (trackShowing()) loadTrack();
   var since = Math.max(heard, state.opened / 1000 - 2);
   get<ActivityResponse>(`/api/activity?since=${since}`)
     .then(function (body) {
@@ -316,10 +372,22 @@ export function resyncPlanner(): void {
 export function onSaveEvent(): void {
   if (bench.plan) forgetSolves();
   if (bench.alt) loadAlternates();
+  dropFeeders();
+  if (trackShowing()) loadTrack();
+}
+
+export function onNotesEvent(): void {
+  if (trackShowing() && bench.plan && bench.plan.factory) loadTrack();
 }
 
 function escape(event: KeyboardEvent): void {
-  if (event.key !== "Escape" || !subject() || !root.isConnected) return;
+  if (event.key !== "Escape" || !root.isConnected || subject() === null) return;
+  if (askOpen()) {
+    event.preventDefault();
+    closeBar();
+    return;
+  }
+  if (!subject()) return;
   if (bench.alt) {
     event.preventDefault();
     closeAlternates();
@@ -343,6 +411,11 @@ function keys(event: KeyboardEvent): void {
 function wire(): void {
   onBench(later);
   onPins(later);
+  onAsks(later);
+  onBiomass(function () {
+    dropFeeders();
+    if (trackShowing()) loadTrack();
+  });
   onVitals(function () {
     if (mounted) later();
   });

@@ -8,7 +8,9 @@ import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "./gra
 import { dashParts, go } from "./nav";
 import { vitals } from "./panel";
 import { renderAlternates } from "./planner-alternates";
-import { bench, changed, gesture, showAlternates, undoRev } from "./planner-core";
+import { askButton, askMarks } from "./asks";
+import { bench, changed, gesture, pickTab, showAlternates, undoRev } from "./planner-core";
+import { renderTrack } from "./planner-track";
 import { pinsFor, pinThis } from "./pins";
 import { headroom, LEDGER } from "./powerview";
 import { W } from "./words";
@@ -40,6 +42,7 @@ var WIDE = window.matchMedia("(min-width: 1280px)");
 var TABS: { id: ResultTab; label: string }[] = [
   { id: "build list", label: "build list" },
   { id: "graph", label: "graph" },
+  { id: "track", label: W.track },
 ];
 
 function rates(rows: SolveRate[]): string {
@@ -187,7 +190,7 @@ function pickRow(row: SolveRow, select: (s: Selection) => void): void {
   select({ kind: "process", label: row.building + " · " + row.recipe, ref: row.recipe_id || row.recipe });
 }
 
-function recipesButton(item: string, name: string, where: string): HTMLButtonElement {
+export function recipesButton(item: string, name: string, where: string): HTMLButtonElement {
   var ctl = "alt:" + where + ":" + item;
   var open = !!bench.alt && bench.alt.item === item;
   var b = button(
@@ -238,7 +241,13 @@ function rowActions(data: SolveResponse, row: SolveRow): HTMLElement {
   box.appendChild(banButton(row));
   var pin = pinButton(row);
   if (pin) box.appendChild(pin);
+  box.appendChild(processAsk(row, "row"));
   return box;
+}
+
+function processAsk(row: SolveRow, where: string): HTMLButtonElement {
+  var ref = row.recipe_id || row.recipe;
+  return askButton({ kind: "process", label: row.building + " · " + row.recipe, ref: ref, plan: bench.key, rev: bench.plan ? bench.plan.rev : null }, where + ":" + row.id);
 }
 
 function recipeCell(row: SolveRow, live: boolean): HTMLElement {
@@ -248,6 +257,9 @@ function recipeCell(row: SolveRow, live: boolean): HTMLElement {
   if (bench.chatRows[row.id]) cell.appendChild(chip(W.actorChat, "muted", "chat changed this process since you opened the plan"));
   var pinned = row.recipe_id ? pinsFor(bench.key)[row.recipe_id] : undefined;
   if (pinned) cell.appendChild(chip(pinned.id, "muted", pinned.text));
+  askMarks(bench.key, "process", row.recipe_id || row.recipe).forEach(function (a) {
+    cell.appendChild(chip(a.id, "muted", a.text));
+  });
   return cell;
 }
 
@@ -492,10 +504,15 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
       if (pin) acts.appendChild(pin);
     }
     if (row.recipe_id) acts.appendChild(copyFor(row.recipe_id, row.recipe));
+    if (!bench.gone) acts.appendChild(processAsk(row, "node"));
   } else {
     card.appendChild(title);
     card.appendChild(make("p", "plan-facts", node.detail));
     if (node.item && !bench.gone) acts.appendChild(recipesButton(node.item, node.label, "node"));
+    if (!bench.gone) {
+      var about = { kind: "item", label: node.label, ref: node.item || node.id, plan: bench.key, rev: bench.plan ? bench.plan.rev : null };
+      acts.appendChild(askButton(about, "node:" + node.id));
+    }
   }
   card.appendChild(acts);
   parent.appendChild(card);
@@ -540,6 +557,7 @@ export function renderResult(parent: HTMLElement, select: (s: Selection) => void
     if (bench.alt) renderAlternates(parent, close);
     if (!last) return;
     var grey = make("div", "plan-stale");
+    if (bench.tab === "track") grey.appendChild(make("p", "dash-note", "track needs a solvable version"));
     grey.appendChild(make("p", "dash-note", "last solvable version, v" + last.rev + ":"));
     summary(grey, last.data, last.rev, false);
     buildList(grey, last.data, select, false);
@@ -551,20 +569,21 @@ export function renderResult(parent: HTMLElement, select: (s: Selection) => void
       TABS,
       bench.tab,
       function (id) {
-        bench.tab = id as ResultTab;
-        changed();
+        pickTab(id as ResultTab);
       },
       "result view"
     )
   );
   var beside = !!bench.alt && bench.tab === "graph" && WIDE.matches;
   var split = make("div", "plan-result" + (beside ? " beside" : ""));
-  var main = make("div", "plan-main" + (bench.solving && bench.solving !== bench.resultRev ? " plan-stale" : ""));
+  var dim = bench.tab !== "track" && bench.solving && bench.solving !== bench.resultRev;
+  var main = make("div", "plan-main" + (dim ? " plan-stale" : ""));
   if (bench.alt && !beside) renderAlternates(split, close);
   split.appendChild(main);
   if (bench.alt && beside) renderAlternates(split, close);
   var frame = bench.tab === "graph" ? graphTab(main, data, select) : null;
-  if (bench.tab !== "graph") buildList(main, data, select, true);
+  if (bench.tab === "track") renderTrack(main, select);
+  else if (bench.tab !== "graph") buildList(main, data, select, true);
   parent.appendChild(split);
   if (!frame) return;
   frame.scrollLeft = drawn.x;

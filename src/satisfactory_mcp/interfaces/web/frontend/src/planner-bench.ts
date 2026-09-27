@@ -1,5 +1,6 @@
 /* The workbench: one plan at its head, every control a versioned gesture. */
 
+import { askButton } from "./asks";
 import { button, chip, copyButton, empty, error, link, loading, pressed } from "./dashkit";
 import { make } from "./dom";
 import { perMin } from "./format";
@@ -666,6 +667,7 @@ function header(parent: HTMLElement): void {
   );
   var call = "plan_factory(plan=" + JSON.stringify(plan.name) + ")  # base_rev=" + plan.rev;
   acts.appendChild(copyButton(call, "copy as tool call", { title: call }));
+  if (!bench.gone) acts.appendChild(askButton({ kind: "plan", label: plan.name, ref: key, plan: key, rev: plan.rev }, "plan", W.askChat));
   parent.appendChild(acts);
 }
 
