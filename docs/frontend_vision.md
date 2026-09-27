@@ -881,14 +881,30 @@ Roadmap phase 3: the `stock`, `storage` and `crates` tools as one dashboard sect
   projection and feed the map layers. The containers and crates tables here read `places`
   instead, so they come from the same `holdings()` the tools call, fill included. The map
   layers are unchanged.
-- **Section:** three tiles (item kinds, containers, crates), a sortable stock table, a
-  containers table (kind select, "show empty", fill bar in the existing neutral grey), and a
-  crates table sorted by distance from the player. A stock row sets the filter to that item.
-  A container or crate row with a position has **map**, which returns to the map, flies there
-  and draws the panel's highlight ring (`showPoint`).
+- **Section:** three tiles (item kinds, containers, crates), then crates, stock and
+  containers, in that order. Crates come first because they are few and time-limited; the
+  card is left out when no crate matches. The stock table shows its top 25 rows under the
+  current sort, with a button for the rest, so the containers stay within reach. The
+  containers tile counts storage boxes only, and names fluid buffers and Dimensional Depot
+  uploaders beside it. All three tables are `dashkit.table()`: sortable headers, explicit
+  alignment, and definitions in the header tooltips rather than in notes (T9).
+- **Rows:** a stock row sets the filter to that item. A container row stacks its name, region
+  and size (slots, or m³ for a fluid buffer) in one cell. The contents appear once, in
+  "holds", and the fill column carries the used-of-size figure as its tooltip. The holds sort
+  keeps solids and fluids apart, since counts and m³ do not compare. A crate row uses
+  `crateLabel()` from `crates.ts` (the name the map popup uses) and shows the server's kind
+  sentence under it. Below 600 px the fill bar collapses to its percentage, and the crate
+  contents move under the crate's name. A container or crate row with a position has
+  **map**, which returns to the map, flies there and draws the panel's highlight ring
+  (`showPoint`).
 - **Filter:** case-insensitive. A query that names an item exactly shows only that item, and
-  a note lists the other names containing it; otherwise it matches substrings. The tiles
-  count the whole world, and the filter changes rows only (principle 6).
+  the line under the filter links the other names containing it; otherwise it matches
+  substrings. The tiles count the whole world, and the filter changes rows only
+  (principle 6). While a filter is active, "show empty" is disabled, since only containers
+  holding a match are listed. A query that matches nothing anywhere gives one empty state
+  instead of three empty cards.
+- **States:** `dashkit.loading()` until `/api/stock` lands, and `dashkit.error()` with a
+  retry (`loadOne`) when it fails.
 - **Spoilers:** the section lists only what the save holds, so the spoiler setting has
   nothing to hide here.
 - **Code:** `frontend/src/inventory.ts`. `dashboard.ts` only registers the tab and routes to
