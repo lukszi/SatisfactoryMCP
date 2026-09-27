@@ -1373,6 +1373,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/factories/aspects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Aspects
+         * @description What one named factory makes, needs, draws, holds and touches.
+         *
+         *     Rates are items/min at the saved clocks, nameplate and measured, never blended.
+         */
+        get: operations["factory_aspects_api_factories_aspects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/factories/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Sites
+         * @description Built production buildings clustered into sites, largest first.
+         *
+         *     With ``?factory=``, only the sites holding any of that factory's machines, each with
+         *     the count it holds: a factory that is a small part of a big site is a grown-together
+         *     base, and one spread over several sites is not one place.
+         */
+        get: operations["factory_sites_api_factories_sites_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1462,6 +1508,97 @@ export interface components {
             name: string;
             /** Count */
             count: number;
+        };
+        /**
+         * AspectBalance
+         * @description ``measured_net`` is null where every machine touching the item keeps no monitor.
+         */
+        AspectBalance: {
+            /** Item */
+            item: string;
+            /** Made */
+            made: number;
+            /** Used */
+            used: number;
+            /** Net */
+            net: number;
+            /** Measured Net */
+            measured_net: number | null;
+            /** Verdict */
+            verdict: string;
+            /** Unmonitored Made */
+            unmonitored_made: number;
+            /** Unmonitored Used */
+            unmonitored_used: number;
+        };
+        /** AspectCount */
+        AspectCount: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
+        /**
+         * AspectLink
+         * @description ``factory`` is null for machines no label covers.
+         */
+        AspectLink: {
+            /** Factory */
+            factory: string | null;
+            /** Machines */
+            machines: number;
+        };
+        /** AspectMachine */
+        AspectMachine: {
+            /** Instance */
+            instance: string;
+            /** Building */
+            building: string;
+            /** Recipe */
+            recipe: string | null;
+            /** Clock */
+            clock: number;
+            /** Paused */
+            paused: boolean;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+        };
+        /**
+         * AspectNode
+         * @description ``left`` is the save's ``mResourcesLeft``, null on an infinite node.
+         */
+        AspectNode: {
+            /** Node */
+            node: string;
+            /** Resource */
+            resource: string;
+            /** Purity */
+            purity: string;
+            /** Extractor */
+            extractor: string;
+            /** Clock */
+            clock: number;
+            /** Left */
+            left: number | null;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /** AspectPower */
+        AspectPower: {
+            /** Draw Mw */
+            draw_mw: number;
+            /** Measured Draw Mw */
+            measured_draw_mw: number;
+            /** Generation Mw */
+            generation_mw: number;
+            /** Unmonitored */
+            unmonitored: number;
         };
         /**
          * AttachmentRow
@@ -2007,6 +2144,48 @@ export interface components {
             labels: components["schemas"]["FactoryRow"][];
             /** Proposals */
             proposals: components["schemas"]["ProposalRow"][];
+        };
+        /** FactoryAspectsResponse */
+        FactoryAspectsResponse: {
+            /** Name */
+            name: string;
+            /** Size */
+            size: number;
+            /** Centroid M */
+            centroid_m: [
+                number,
+                number
+            ];
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Spread M */
+            spread_m: number;
+            /** Producers */
+            producers: number;
+            /** Unmonitored Producers */
+            unmonitored_producers: number;
+            /** Producing Now */
+            producing_now: number;
+            power: components["schemas"]["AspectPower"];
+            /** Balance */
+            balance: components["schemas"]["AspectBalance"][];
+            /** Machines */
+            machines: components["schemas"]["AspectMachine"][];
+            /** Recipes */
+            recipes: components["schemas"]["AspectCount"][];
+            /** Buildings */
+            buildings: components["schemas"]["AspectCount"][];
+            /** Nodes */
+            nodes: components["schemas"]["AspectNode"][];
+            /** Links */
+            links: components["schemas"]["AspectLink"][];
+            /** Issues */
+            issues: string[];
         };
         /** FactoryGraphResponse */
         FactoryGraphResponse: {
@@ -3844,6 +4023,46 @@ export interface components {
             by_place: components["schemas"]["PlaceRow"][];
             /** Holders */
             holders: components["schemas"]["ShardHolder"][];
+        };
+        /**
+         * SiteRow
+         * @description ``mine`` is how many of the asked factory's machines stand in this site; 0 without
+         *     ``?factory=``.
+         */
+        SiteRow: {
+            /** Index */
+            index: number;
+            /** Direction */
+            direction: string;
+            /** Grid */
+            grid: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+            /** Count */
+            count: number;
+            /** Diameter M */
+            diameter_m: number;
+            /** Selector */
+            selector: string;
+            /** Buildings */
+            buildings: components["schemas"]["AspectCount"][];
+            /** Mine */
+            mine: number;
+        };
+        /** SitesResponse */
+        SitesResponse: {
+            /** Total */
+            total: number;
+            /** Factory */
+            factory: string | null;
+            /** Factory Machines */
+            factory_machines: number;
+            /** Sites */
+            sites: components["schemas"]["SiteRow"][];
         };
         /**
          * SloopHolder
@@ -6515,6 +6734,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TraceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_aspects_api_factories_aspects_get: {
+        parameters: {
+            query: {
+                factory: string;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryAspectsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_sites_api_factories_sites_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SitesResponse"];
                 };
             };
             /** @description Validation Error */

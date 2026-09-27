@@ -14,6 +14,7 @@ import { amount, choice, resetSettings, setSetting, setting, SETTINGS } from "./
 import type { Setting } from "./settings";
 import { state } from "./state";
 import { renderFactories, renderFactory, wireDetect } from "./factories";
+import { factoryAddress } from "./factory-detail";
 import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
 import { circuitName } from "./powerview";
@@ -220,8 +221,15 @@ function tabLabel(tab: Tab): string {
   return label;
 }
 
+function knownFactory(name: string): boolean {
+  var health = vitals().health;
+  return !!health && health.factories.some(function (r) {
+    return r.name === name;
+  });
+}
+
 function subjectName(tab: Tab, subject: string): string {
-  if (tab === "factories") return subject;
+  if (tab === "factories") return factoryAddress(subject, knownFactory).name;
   if (tab !== "power" || !subject) return "";
   var circuits = vitals().circuits;
   var row = circuits ? circuits.circuits[+subject - 1] : undefined;

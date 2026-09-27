@@ -219,3 +219,17 @@ export type Region = Schema["Region"];
 
 export type TraceMachine = Schema["TraceMachine"];
 export type TraceResponse = Body<"TraceResponse">;
+
+/* ------------------------------------------- /api/factories/aspects and /sites */
+
+export type AspectBalance = Schema["AspectBalance"];
+export type AspectMachine = Schema["AspectMachine"];
+export type AspectCount = Schema["AspectCount"];
+export type AspectNode = Schema["AspectNode"];
+export type AspectLink = Schema["AspectLink"];
+export type FactoryAspectsResponse = Body<"FactoryAspectsResponse">;
+export type SiteRow = Schema["SiteRow"];
+export type SitesResponse = Body<"SitesResponse">;
+export type FloorPlatform = Schema["FloorPlatform"];
+export type FloorBand = Schema["FloorBand"];
+export type FactoryFloorsResponse = Body<"FloorsResponse">;
