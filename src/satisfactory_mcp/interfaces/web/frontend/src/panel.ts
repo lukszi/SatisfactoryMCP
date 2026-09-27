@@ -1,7 +1,7 @@
 /* The side panel: factory health and the power circuits, over the map. See
  * docs/spatial-and-map.md §21. */
 
-import { el, make } from "./dom";
+import { el, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
 import { mw, pct, spoken } from "./format";
 import { FACTORY_PICKED, flyToFactory, paddedBounds } from "./labels";
 import { L } from "./leaflet";
@@ -24,7 +24,7 @@ import type {
 
 type Tab = "factories" | "power";
 
-var HIGHLIGHT = declareColours("panel", { highlight: "#ff4fd8" }).highlight;
+export var HIGHLIGHT = declareColours("panel", { highlight: "#ff4fd8" }).highlight;
 
 var MACHINE_ZOOM = 2;
 
@@ -233,6 +233,12 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
       });
     };
     tools.appendChild(rename);
+    var trace = make("button", "panel-rename", "trace supply");
+    trace.type = "button";
+    trace.title = "draw what feeds this factory on the map";
+    trace.setAttribute(TRACE_ATTR, "label:" + row.name);
+    trace.setAttribute(TRACE_DIR_ATTR, "up");
+    tools.appendChild(trace);
     item.appendChild(tools);
   }
   if (selected && row.worst.length) {

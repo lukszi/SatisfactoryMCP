@@ -29,9 +29,11 @@ import { map, writeHash } from "./map";
 import { notePickupChoice } from "./markers";
 import { noteRegionChoice, updateRegionBlend } from "./regions";
 import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
+import { wireSearch } from "./search";
 import { listen } from "./sse";
 import { BOOT, state } from "./state";
 import { loadBaseMap } from "./tiles";
+import { listenForTraces } from "./trace";
 import { loadWorlds } from "./worlds";
 
 /* ---------------------------------------------------------------- features */
@@ -49,14 +51,16 @@ import { loadWorlds } from "./worlds";
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
 import "./crates";
-import "./dashboard";
 import "./header";
+import "./inventory";
 import "./labels";
 import "./markers";
 import "./panel";
 import "./placements";
 import "./plans";
 import "./power";
+import "./progress";
+import "./recipes";
 import "./routes";
 
 /* ------------------------------------------------------------------- wiring */
@@ -120,6 +124,8 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
 /* ...and the third: one delegated click for every selector on the page, which is why it is
  * here and not in whatever module last built a popup. */
 listenForCopies();
+wireSearch();
+listenForTraces();
 
 /* -------------------------------------------------------------------- boot */
 

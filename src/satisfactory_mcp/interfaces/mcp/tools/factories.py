@@ -19,7 +19,7 @@ from ....domain.factories.resolve import resolve_factory
 from ....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from ....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
 from ....domain.factories.select import SelectorError
-from ....domain.factories.trace import power_at_risk, trace
+from ....domain.factories.trace import power_at_risk, resolve_seeds, trace
 from ....domain.spatial import nodes as nodes_mod
 from ....presenters.text import primitives as render
 from ..app import AsOf, Limit, _state, actor, game, mcp, retired
@@ -1663,33 +1663,10 @@ def trace_upstream(
     except Exception as exc:
         return f"could not read save: {exc}"
 
-    records = {r["instance"].rsplit(".", 1)[-1]: r for r in st._all_records()}
-    seeds: list[str] = []
-    what = seed.strip()
-    if what in records:
-        seeds = [what]
-        subject = f"{records[what].get('cls', '?')} {what}"
-    else:
-        by_class = [
-            inst
-            for inst, rec in records.items()
-            if rec.get("cls") == what
-            or (
-                rec.get("cls") in g.buildings
-                and g.buildings[rec["cls"]].name.casefold() == what.casefold()
-            )
-        ]
-        if by_class:
-            seeds, subject = by_class, f"{len(by_class)}x {what}"
-        else:
-            try:
-                name, machines = resolve_factory(st, what)
-            except SelectorError as exc:
-                return f"! {exc}"
-            # resolve_factory hands back machine ids, already shortened. Indexing them as
-            # records raised TypeError for every label and every selector.
-            seeds = list(machines)
-            subject = f"factory {name!r} ({len(seeds)} machines)"
+    try:
+        seeds, subject = resolve_seeds(st, g, seed)
+    except SelectorError as exc:
+        return f"! {exc}"
     if not seeds:
         return f"! nothing matches {seed!r} -- give a machine instance, a building name, or a factory label"
 

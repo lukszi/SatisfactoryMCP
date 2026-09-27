@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .model import GameData, Recipe
+from .model import GameData, Item, Recipe
 
-__all__ = ["KINDS", "Census", "Hit", "search"]
+__all__ = ["KINDS", "Census", "Hit", "find_items", "makers_of", "search"]
 
 #: Report order. Part recipes first because they are what a factory runs.
 KINDS = ("part", "building", "manual")
@@ -139,3 +139,17 @@ def search(
     else:
         hits.sort(key=lambda h: (not h.recipe.is_alternate, h.recipe.name))
     return hits, census
+
+
+def find_items(game: GameData, query: str) -> list[Item]:
+    """Items whose name contains ``query``, names that start with it first."""
+    q = query.casefold()
+    return sorted(
+        (i for i in game.items.values() if q in i.name.casefold() and i.form != "RF_INVALID"),
+        key=lambda i: (not i.name.casefold().startswith(q), i.name),
+    )
+
+
+def makers_of(game: GameData, item: str) -> list[Recipe]:
+    """Every automatable recipe that makes ``item``, alternates first."""
+    return sorted(game.producers_of(item, "part"), key=lambda r: (not r.is_alternate, r.name))

@@ -141,6 +141,36 @@ export type CircuitsResponse = Body<"CircuitsResponse">;
 export type MilestoneRow = Schema["MilestoneRow"];
 export type MilestonesResponse = Body<"MilestonesResponse">;
 
+/* ------------------------------------------- /api/progress/{mam,phase,shards,sloops,harddrives} */
+
+export type MamRow = Schema["MamRow"];
+export type MamResponse = Body<"MamResponse">;
+export type PhaseRow = Schema["PhaseRow"];
+export type PhaseResponse = Body<"PhaseResponse">;
+export type ShardsResponse = Body<"ShardsResponse">;
+export type SloopsResponse = Body<"SloopsResponse">;
+export type DriveRow = Schema["DriveRow"];
+export type HardDrivesResponse = Body<"HardDrivesResponse">;
+
+/* ------------------------------------------------------------------ /api/stock */
+
+export type StockPile = Schema["StockPile"];
+export type StockPlace = Schema["StockPlace"];
+export type StockResponse = Body<"StockResponse">;
+
+/* ------------------------------------------------------ /api/gamedata and /api/search */
+
+export type ItemRow = Schema["ItemRow"];
+export type ItemsResponse = Body<"ItemsResponse">;
+export type RecipeRow = Schema["RecipeRow"];
+export type RecipesResponse = Body<"RecipesResponse">;
+export type Rate = Schema["Rate"];
+export type RecipeDetail = Body<"RecipeDetail">;
+export type MakerRow = Schema["MakerRow"];
+export type AlternatesResponse = Body<"AlternatesResponse">;
+export type UnlockedResponse = Body<"UnlockedResponse">;
+export type SearchResponse = Body<"SearchResponse">;
+
 /* ------------------------------------------------------------------ /api/plans */
 
 /** A stored plan's pad. Its coordinates are METRES already -- the siting is a statement the
@@ -166,7 +196,7 @@ export type NameTakenResponse = Body<"NameTakenResponse">;
 /* ------------------------------------------ /api/plan/solve, /api/ui/focus, /api/activity */
 
 export type SolveRow = Schema["SolveRow"];
-export type SolveRate = Schema["Rate"];
+export type SolveRate = Schema["SolveRate"];
 export type SolveResponse = Body<"SolveResponse">;
 export type FocusSelection = Schema["Selection"];
 export type FocusResponse = Body<"FocusResponse">;
@@ -183,3 +213,8 @@ export type CollectiblesResponse = Body<"CollectiblesResponse">;
 /** A region lookup, hung on a node row and answered for an inspected point. Declared once
  *  on the server too -- in `serial.py`, for the same reason it is one name here. */
 export type Region = Schema["Region"];
+
+/* ------------------------------------------------------------------ /api/trace */
+
+export type TraceMachine = Schema["TraceMachine"];
+export type TraceResponse = Body<"TraceResponse">;

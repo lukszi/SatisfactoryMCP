@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api")
 _KEY = re.compile(r"[0-9a-f]{8}")
 
 
-class Rate(TypedDict):
+class SolveRate(TypedDict):
     item: str
     per_min: float
 
@@ -43,8 +43,8 @@ class SolveRow(TypedDict):
     machines: int
     clock: float
     mw: float
-    inputs: list[Rate]
-    outputs: list[Rate]
+    inputs: list[SolveRate]
+    outputs: list[SolveRate]
     required: bool
 
 
@@ -62,7 +62,7 @@ class SolveResponse(TypedDict):
     mw_generated: float | None
     mw_net: float | None
     grid_import: bool
-    exports: list[Rate]
+    exports: list[SolveRate]
     rows: list[SolveRow]
     shards: int | None
     sloops_used: int

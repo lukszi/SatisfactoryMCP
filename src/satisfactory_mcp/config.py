@@ -69,6 +69,23 @@ def saves_root() -> Path:
     return Path(local) / "FactoryGame" / "Saved" / "SaveGames"
 
 
+WEB_HOST = "127.0.0.1"
+WEB_PORT = 8712
+
+
+def web_port() -> int:
+    """The web map's port: ``SATISFACTORY_WEB_PORT`` when it is a valid port, else 8712."""
+    raw = (os.environ.get("SATISFACTORY_WEB_PORT") or "").strip()
+    if raw.isdigit() and 0 < int(raw) < 65536:
+        return int(raw)
+    return WEB_PORT
+
+
+def web_url() -> str:
+    """The web map's root URL, as the server started with the same environment binds it."""
+    return f"http://{WEB_HOST}:{web_port()}/"
+
+
 #: The extractor, named as a module rather than a file. Spawning it with ``-m`` means the
 #: child resolves it through the same import machinery this process used, so it can never
 #: run a stale copy sitting next to a path someone built by hand.

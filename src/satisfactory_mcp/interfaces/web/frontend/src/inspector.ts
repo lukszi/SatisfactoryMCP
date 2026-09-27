@@ -8,7 +8,7 @@
  */
 
 import { get } from "./api";
-import { code, esc, html, popup } from "./dom";
+import { code, esc, html, popup, traceButtons } from "./dom";
 import { regionLine } from "./format";
 import { L } from "./leaflet";
 import { map } from "./map";
@@ -71,10 +71,13 @@ function elevationRows(e: Elevation): Row[] {
   return rows;
 }
 
-function inspectHtml(d: InspectResponse): string {
-  var rows: Row[] = ([["region", regionLine(d.region)]] as Row[]).concat(
-    elevationRows(d.elevation)
-  );
+function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string }): string {
+  var rows: Row[] = [];
+  if (machine) {
+    rows.push(["machine", machine.name]);
+    rows.push(["trace", traceButtons(machine.leaf)]);
+  }
+  rows = rows.concat([["region", regionLine(d.region)]] as Row[], elevationRows(d.elevation));
   /* Each nearest node carries the same `node:` selector its own dot's popup prints, because
    * the answer's next step is an MCP tool call naming one of these nodes and a resource plus
    * a distance cannot say WHICH one -- a world has dozens of impure copper nodes. On the same
@@ -111,6 +114,7 @@ export function inspect(e: L.LeafletMouseEvent): void {
     if (dom._inspected) return;
     dom._inspected = true;
   }
+  var machine = dom ? dom._machine : undefined;
   // The inverse of the page's one coordinate rule: a point plotted at [-y, x] reads back as
   // x = lng, y = -lat. Rounded to a decimetre because the popup prints the same numbers it
   // asked with, and a coordinate you cannot retype is not a copyable coordinate.
@@ -124,7 +128,7 @@ export function inspect(e: L.LeafletMouseEvent): void {
     .openOn(map);
   get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y) as `/api/inspect?${string}`)
     .then(function (d) {
-      if (map.hasLayer(card)) card.setContent(inspectHtml(d));
+      if (map.hasLayer(card)) card.setContent(inspectHtml(d, machine));
     })
     .catch(function (err) {
       if (map.hasLayer(card)) card.setContent(popup([["inspect failed", friendly(err)]]));

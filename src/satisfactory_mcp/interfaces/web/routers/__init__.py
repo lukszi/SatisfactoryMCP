@@ -16,6 +16,7 @@ from . import (
     events,
     factories,
     floors,
+    gamedata,
     grid,
     health,
     icons,
@@ -26,12 +27,15 @@ from . import (
     planlog,
     planner,
     plans,
-    progress,
     power,
+    progress,
     regions,
     routes_layer,
+    search,
+    stock,
     storage,
     tiles,
+    trace,
     world,
 )
 
@@ -64,4 +68,8 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     naming.router,
     planner.router,
     planlog.router,
+    stock.router,
+    gamedata.router,
+    search.router,
+    trace.router,
 )

@@ -194,7 +194,7 @@ def test_a_hard_drive_answer_carries_a_local_link_with_the_pod_layer_on(
         world, tmp_path, monkeypatch, group="crashed_drop_pod", view="remaining"
     )
     local = _line(out, "local map: ")
-    assert maplink.LOCAL_BASE + "#" in local
+    assert maplink.local_base() + "#" in local
     assert "pickups=crashed_drop_pod" in local
     assert f"z={maplink.LOCAL_WORLD_ZOOM}" in local, "a layer link has to open far enough out"
     assert "hardDrives" in _line(out, "public map: ")

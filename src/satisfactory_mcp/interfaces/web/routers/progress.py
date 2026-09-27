@@ -1,20 +1,26 @@
-"""``/api/progress/milestones``: the ``milestones`` tool's ladder, every HUB milestone as a row.
+"""``/api/progress/*``: the progression tools' facts, one route per tool.
 
-The same ``SchematicLadder`` the MCP tool walks, priced against the same spendable stock, so
-READY means the bill is covered and nothing about whether the tier is open. The dashboard it
-feeds: docs/frontend_vision.md §8. Wire rules: docs/web-wire.md.
+``milestones`` and ``mam`` walk the same ``SchematicLadder`` the MCP tools walk, priced against
+the same spendable stock, so READY means the bill is covered and nothing about whether the
+tier is open. ``phase``, ``shards``, ``sloops`` and ``harddrives`` read the same ``WorldState``
+records as ``phase_requirements``, ``power_shards``, ``somersloops`` and
+``list_pending_hard_drive_choices``. The dashboard they feed: docs/frontend_vision.md §8 and
+"Phase 4: Progress". Wire rules: docs/web-wire.md.
 
 WARNING: the function name is the operation_id -- renaming it churns the committed schema.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
+from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock
 from ....domain.progression.ladder import SchematicLadder
-from ..serial import _fail, _state
+from ....domain.world.state import WorldState
+from ..serial import _fail, _state, _xyz
 
 __all__ = ["router"]
 
@@ -65,7 +71,9 @@ def progress_milestones(request: Request, save: str | None = None, world: str | 
 
     g = st.game
     ladder = SchematicLadder(game=g, unlocks=st.unlocks, inventory=st.inventory)
-    rungs = sorted(ladder.rungs("EST_Milestone"), key=lambda r: (r.schematic.tier, r.schematic.name))
+    rungs = sorted(
+        ladder.rungs("EST_Milestone"), key=lambda r: (r.schematic.tier, r.schematic.name)
+    )
 
     tiers: dict[int, list[int]] = {}
     rows = []
@@ -99,4 +107,437 @@ def progress_milestones(request: Request, save: str | None = None, world: str | 
         "highest_complete_tier": prog["highest_complete_tier"],
         "tiers": [{"tier": t, "done": d, "total": n} for t, (d, n) in sorted(tiers.items())],
         "milestones": rows,
+    }
+
+
+class MamRow(TypedDict):
+    """``status`` is DONE, RUNNING, TREE SHUT, BLOCKED, short or READY, as ``mam_research``."""
+
+    cls: str
+    name: str
+    tree: str | None
+    status: str
+    running_s: float | None
+    capability: str | None
+    cost: list[ItemAmount]
+    short: list[ItemAmount]
+    unlocks: int
+    blocked_by: list[str]
+
+
+class CapabilityRow(TypedDict):
+    """``tree_shut`` is true while the research sits in a MAM tree not opened yet."""
+
+    capability: str
+    researched: bool
+    schematic_name: str | None
+    tree_shut: bool
+
+
+class MamResponse(TypedDict):
+    """``knows_trees`` is false on a projection too old to list the opened trees."""
+
+    knows_trees: bool
+    capabilities: list[CapabilityRow]
+    research: list[MamRow]
+
+
+def _tree_name(tree: str | None) -> str | None:
+    if not tree:
+        return None
+    core = tree.removeprefix("BPD_ResearchTree_").removesuffix("_C")
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", core)
+
+
+def _amounts(st: WorldState, pairs: Any) -> list[ItemAmount]:
+    return [{"item": i, "name": st.game.item_name(i), "amount": float(a)} for i, a in pairs]
+
+
+@router.get("/progress/mam", response_model=MamResponse)
+def progress_mam(request: Request, save: str | None = None, world: str | None = None) -> Any:
+    """Every MAM node with the ``mam_research`` status, bill and shortfall."""
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+
+    research = st.research
+    gates = {v: k for k, v in CAPABILITY_SCHEMATICS.items()}
+    ladder = SchematicLadder(game=st.game, unlocks=st.unlocks, inventory=st.inventory)
+    rows = []
+    for rung in ladder.rungs("EST_MAM"):
+        s = rung.schematic
+        running = research.ongoing.get(s.cls)
+        if rung.done:
+            status = "DONE"
+        elif running is not None:
+            status = "RUNNING"
+        elif research.tree_locked(s.cls):
+            status = "TREE SHUT"
+        else:
+            status = rung.status
+        rows.append(
+            {
+                "cls": s.cls,
+                "name": s.name,
+                "tree": _tree_name(research.tree_of(s.cls)),
+                "status": status,
+                "running_s": None if running is None else float(running),
+                "capability": gates.get(s.cls),
+                "cost": _amounts(st, ((f.item, f.amount) for f in s.cost)),
+                "short": _amounts(st, ((m.item, round(m.short_by, 1)) for m in rung.missing)),
+                "unlocks": len(st.unlocks.schematic_recipes(s)),
+                "blocked_by": list(rung.blocked_by),
+            }
+        )
+
+    capabilities = []
+    for name, cls in CAPABILITY_SCHEMATICS.items():
+        schematic = st.game.schematics.get(cls)
+        capabilities.append(
+            {
+                "capability": name,
+                "researched": st.has_capability(name),
+                "schematic_name": schematic.name if schematic else None,
+                "tree_shut": research.tree_locked(cls),
+            }
+        )
+    return {"knows_trees": research.knows_trees, "capabilities": capabilities, "research": rows}
+
+
+class HaveRow(TypedDict):
+    item: str
+    name: str
+    amount: float
+    have: float
+    short: float
+
+
+class PhaseRow(TypedDict):
+    """``trust`` is the domain's ``stale`` flag: usable, derived, complete, stale or unmapped."""
+
+    phase: str | None
+    legacy_key: str
+    trust: str
+    outstanding: list[HaveRow]
+    complete: list[str]
+
+
+class PhaseResponse(TypedDict):
+    """``deliverable`` is null when no row belongs to the target phase."""
+
+    current_phase: str | None
+    target_phase: str | None
+    delivered: list[ItemAmount]
+    deliverable: bool | None
+    phases: list[PhaseRow]
+
+
+@router.get("/progress/phase", response_model=PhaseResponse)
+def progress_phase(request: Request, save: str | None = None, world: str | None = None) -> Any:
+    """The Space Elevator record ``phase_requirements`` reads, joined to spendable stock."""
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+
+    req = st.phase_requirements()
+    stock = st.stock()
+    phases = []
+    deliverable = None
+    for row in req["phases"]:
+        items = []
+        for item, need in sorted(row["outstanding"].items(), key=lambda kv: -kv[1]):
+            have = float(stock.get(item, 0.0))
+            items.append(
+                {
+                    "item": item,
+                    "name": st.game.item_name(item),
+                    "amount": float(need),
+                    "have": have,
+                    "short": round(max(0.0, float(need) - have), 1),
+                }
+            )
+        if row["phase"] and row["phase"] == req["target_phase"]:
+            deliverable = all(i["short"] <= 0 for i in items)
+        phases.append(
+            {
+                "phase": row["phase"],
+                "legacy_key": row["egp"],
+                "trust": row["stale"],
+                "outstanding": items,
+                "complete": [st.game.item_name(i) for i in row["complete"]],
+            }
+        )
+    return {
+        "current_phase": req["current_phase"] or None,
+        "target_phase": req["target_phase"] or None,
+        "delivered": _amounts(st, sorted(req["paid_off_target"].items())),
+        "deliverable": deliverable,
+        "phases": phases,
+    }
+
+
+class NamedAmount(TypedDict):
+    name: str
+    amount: float
+
+
+class PlaceRow(TypedDict):
+    """``place`` is carried, storage or depot."""
+
+    place: str
+    items: list[NamedAmount]
+
+
+class SlugRow(TypedDict):
+    item: str
+    name: str
+    held: float
+    each: float
+    shards: float
+
+
+class ShardHolder(TypedDict):
+    instance: str
+    name: str | None
+    clock: float
+    slotted: int
+    needed: int
+    idle: int
+    x_m: float | None
+    y_m: float | None
+
+
+class ShardsResponse(TypedDict):
+    """``measured`` false means ``committed`` is unknown rather than zero."""
+
+    measured: bool
+    free: float
+    craftable: float
+    potential: float
+    committed: int
+    owned: float
+    per_shard: float
+    max_clock: float
+    slots_per_building: int
+    idle: int
+    slugs: list[SlugRow]
+    by_place: list[PlaceRow]
+    holders: list[ShardHolder]
+
+
+def _positions(st: WorldState) -> dict[str, dict[str, float | None]]:
+    out = {}
+    for record in st.overclock.records:
+        xyz = _xyz(record.get("pos"))
+        out[str(record.get("instance", "")).rsplit(".", 1)[-1]] = {
+            "x_m": xyz["x_m"],
+            "y_m": xyz["y_m"],
+        }
+    return out
+
+
+def _nowhere() -> dict[str, float | None]:
+    return {"x_m": None, "y_m": None}
+
+
+@router.get("/progress/shards", response_model=ShardsResponse)
+def progress_shards(request: Request, save: str | None = None, world: str | None = None) -> Any:
+    """The ``power_shards`` budget: free, craftable from slugs, committed, and who holds them."""
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+
+    budget = st.shard_budget()
+    per_shard = max(budget["shard_items"].values()) if budget["shard_items"] else 0.0
+    at = _positions(st)
+    return {
+        "measured": budget["measured"],
+        "free": float(budget["free"]),
+        "craftable": float(budget["craftable"]),
+        "potential": float(budget["potential"]),
+        "committed": int(budget["committed"]),
+        "owned": float(budget["owned"]),
+        "per_shard": float(per_shard),
+        "max_clock": float(max_clock(per_shard)),
+        "slots_per_building": int(budget["slots_per_building"]),
+        "idle": sum(int(h["idle"]) for h in budget["holders"]),
+        "slugs": [
+            {
+                "item": s["item"],
+                "name": s["name"],
+                "held": float(s["held"]),
+                "each": float(s["each"]),
+                "shards": float(s["shards"]),
+            }
+            for s in budget["slugs"]
+        ],
+        "by_place": [
+            {
+                "place": place,
+                "items": [{"name": k, "amount": float(v)} for k, v in sorted(held.items())],
+            }
+            for place, held in budget["by_place"].items()
+        ],
+        "holders": [
+            {
+                "instance": h["instance"],
+                "name": st.game.building_name(h["cls"]),
+                "clock": float(h["clock"]),
+                "slotted": int(h["slotted"]),
+                "needed": int(h["needed"]),
+                "idle": int(h["idle"]),
+                **at.get(h["instance"], _nowhere()),
+            }
+            for h in budget["holders"]
+        ],
+    }
+
+
+class SloopHolder(TypedDict):
+    """``boost`` is the plan model's multiplier, ``boost_in_save`` the save's own."""
+
+    instance: str
+    name: str
+    sloops: float
+    boost: float | None
+    boost_in_save: float | None
+    x_m: float | None
+    y_m: float | None
+
+
+class SloopsResponse(TypedDict):
+    """``amplifier_researched`` false means no sloop can go into a machine yet.
+
+    ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet.
+    """
+
+    measured: bool
+    free: float
+    committed: float
+    owned: float
+    mercer_spheres: float
+    by_place: list[NamedAmount]
+    amplifier_researched: bool
+    amplifier_research: str | None
+    amplifier_tree_shut: bool
+    amplifier_cost: list[ItemAmount]
+    holders: list[SloopHolder]
+
+
+@router.get("/progress/sloops", response_model=SloopsResponse)
+def progress_sloops(request: Request, save: str | None = None, world: str | None = None) -> Any:
+    """The ``somersloops`` budget: free, slotted and owned, and which machines hold them."""
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+
+    budget = st.sloop_budget()
+    gate = st.research_gate("production_boost")
+    at = _positions(st)
+    return {
+        "measured": budget["committed_measured"],
+        "free": float(budget["free"]),
+        "committed": float(budget["committed"]),
+        "owned": float(budget["owned"]),
+        "mercer_spheres": float(budget["mercer_spheres"]),
+        "by_place": [{"name": k, "amount": float(v)} for k, v in budget["by_place"].items()],
+        "amplifier_researched": gate is None,
+        "amplifier_research": gate["schematic_name"] if gate else None,
+        "amplifier_tree_shut": st.research.tree_locked(CAPABILITY_SCHEMATICS["production_boost"]),
+        "amplifier_cost": _amounts(st, ((r["item"], r["need"]) for r in gate["cost"]))
+        if gate
+        else [],
+        "holders": [
+            {
+                "instance": h["instance"],
+                "name": h["name"],
+                "sloops": float(h["sloops"]),
+                "boost": None if h["boost"] is None else float(h["boost"]),
+                "boost_in_save": None if h["boost_in_save"] is None else float(h["boost_in_save"]),
+                **at.get(h["instance"], _nowhere()),
+            }
+            for h in budget["holders"]
+        ],
+    }
+
+
+class GrantedRecipe(TypedDict):
+    cls: str
+    name: str
+    machine: str | None
+    products: list[ItemAmount]
+
+
+class DriveOption(TypedDict):
+    """``slots`` is the inventory slots an option grants instead of recipes; 0 for most."""
+
+    schematic: str
+    name: str
+    slots: int
+    recipes: list[GrantedRecipe]
+
+
+class DriveRow(TypedDict):
+    hard_drive_id: int | None
+    rerolls_left: int
+    options: list[DriveOption]
+
+
+class HardDrivesResponse(TypedDict):
+    """``spare`` is unanalysed drives on hand; ``last_used`` the drive settled most recently."""
+
+    spare: int
+    last_used: int | None
+    drives: list[DriveRow]
+
+
+@router.get("/progress/harddrives", response_model=HardDrivesResponse)
+def progress_harddrives(request: Request, save: str | None = None, world: str | None = None) -> Any:
+    """``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls."""
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+
+    g = st.game
+    drives = []
+    for offer in st.hard_drive_offers:
+        options = []
+        for opt in offer.options:
+            recipes = []
+            for r in opt["recipes"]:
+                machine = g.machine(r)
+                recipes.append(
+                    {
+                        "cls": r.cls,
+                        "name": r.name,
+                        "machine": machine.name if machine else None,
+                        "products": _amounts(
+                            st, ((f.item, round(f.per_min, 2)) for f in r.products)
+                        ),
+                    }
+                )
+            options.append(
+                {
+                    "schematic": opt["schematic"],
+                    "name": opt["name"],
+                    "slots": int(opt["slots"] or 0),
+                    "recipes": recipes,
+                }
+            )
+        drives.append(
+            {
+                "hard_drive_id": offer.hard_drive_id,
+                "rerolls_left": int(offer.rerolls_left),
+                "options": options,
+            }
+        )
+    return {
+        "spare": int(st.spare_hard_drives()),
+        "last_used": st.harddrive_desk.last_used_hard_drive_id,
+        "drives": drives,
     }

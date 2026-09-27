@@ -9,7 +9,7 @@
  * the point of drawing it.
  */
 
-import { CONTENTS_POPUP_PX, code, contentsRows, count, popup } from "./dom";
+import { CONTENTS_POPUP_PX, code, contentsRows, count, popup, traceButtons } from "./dom";
 import type { Row } from "./dom";
 import { refreshFloors } from "./floors";
 import { L } from "./leaflet";
@@ -19,6 +19,7 @@ import { raiseNodeDots } from "./markers";
 import { declareColours } from "./palette";
 import { registerFetch } from "./registry";
 
+import type { InspectedEvent } from "./leaflet-private";
 import type {
   MachinesResponse,
   StorageResponse,
@@ -123,8 +124,8 @@ const MACHINE_SLOT: Record<(typeof MACHINE_KINDS)[number], number> = {
 /* Thick outline = the server's `actionable`: generator red when stopped, signal yellow when
  * blocked. Grammar and the yellow's measured distances: docs/save-projection.md §6.2d. */
 export var BLOCKED = "blocked";
-var BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
-var STOPPED_COLOUR = KIND_COLOUR.generators;
+export var BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
+export var STOPPED_COLOUR = KIND_COLOUR.generators;
 document.documentElement.style.setProperty("--blocked", BLOCKED_COLOUR);
 
 export function stateTone(state: string, actionable: boolean): string {
@@ -181,8 +182,14 @@ export function drawMachines(data: MachinesResponse): void {
           ["facing", m.yaw === null || m.yaw === undefined ? null : Math.round(m.yaw) + "°"],
           ["at", m.x_m + ", " + m.y_m + " m"],
           ["instance", code(m.instance_leaf)],
+          ["trace", traceButtons(m.instance_leaf)],
         ])
       );
+      var mark = { leaf: m.instance_leaf, name: m.name };
+      piece.on("contextmenu", function (e: L.LeafletMouseEvent) {
+        var dom = e.originalEvent as InspectedEvent | undefined;
+        if (dom && !dom._machine) dom._machine = mark;
+      });
       // What the floor filter joins a machine by, and what it needs to know to tell whether
       // one on a lower deck comes up through this floor. See floors.ts.
       piece._floor = {

@@ -863,6 +863,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/progress/mam": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Mam
+         * @description Every MAM node with the ``mam_research`` status, bill and shortfall.
+         */
+        get: operations["progress_mam_api_progress_mam_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/phase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Phase
+         * @description The Space Elevator record ``phase_requirements`` reads, joined to spendable stock.
+         */
+        get: operations["progress_phase_api_progress_phase_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/shards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Shards
+         * @description The ``power_shards`` budget: free, craftable from slugs, committed, and who holds them.
+         */
+        get: operations["progress_shards_api_progress_shards_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/sloops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Sloops
+         * @description The ``somersloops`` budget: free, slotted and owned, and which machines hold them.
+         */
+        get: operations["progress_sloops_api_progress_sloops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/harddrives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Harddrives
+         * @description ``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls.
+         */
+        get: operations["progress_harddrives_api_progress_harddrives_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/factories/candidates": {
         parameters: {
             query?: never;
@@ -1094,6 +1194,169 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock
+         * @description Every item held, split into piles, and every place holding something, biggest first.
+         */
+        get: operations["stock_api_stock_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Items
+         * @description Items whose name contains ``q``, the ``search_items`` order. Needs no save.
+         */
+        get: operations["gamedata_items_api_gamedata_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Recipes
+         * @description ``search_recipes``: by name, or by what a recipe eats or makes, marked HAVE or LOCKED.
+         */
+        get: operations["gamedata_recipes_api_gamedata_recipes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/recipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Recipe
+         * @description ``recipe_detail``: one recipe by class id or display name.
+         */
+        get: operations["gamedata_recipe_api_gamedata_recipe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/alternates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Alternates
+         * @description ``alternates_for_item``: every automatable recipe that makes an item, alternates first.
+         */
+        get: operations["gamedata_alternates_api_gamedata_alternates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gamedata/unlocked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gamedata Unlocked
+         * @description ``unlocked_recipes``: the recipes this save has, alternates only by default.
+         */
+        get: operations["gamedata_unlocked_api_gamedata_unlocked_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search
+         * @description Items, part recipes and named factories whose names contain ``q``.
+         *
+         *     ``only_unlocked`` drops locked recipes before the cut and the count, so neither the
+         *     list nor ``recipes_total`` says what the save has not reached.
+         */
+        get: operations["search_api_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trace Path
+         * @description What feeds a machine, a building type or a factory (``up``), or what it feeds (``down``).
+         */
+        get: operations["trace_path_api_trace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1154,6 +1417,23 @@ export interface components {
             already_undone: boolean;
             /** By */
             by: number;
+        };
+        /** AlternatesResponse */
+        AlternatesResponse: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Fluid */
+            fluid: boolean;
+            /** Energy Mj */
+            energy_mj: number;
+            /** Sink Points */
+            sink_points: number;
+            /** Save Note */
+            save_note: string | null;
+            /** Recipes */
+            recipes: components["schemas"]["MakerRow"][];
         };
         /** Amount */
         Amount: {
@@ -1346,6 +1626,39 @@ export interface components {
             hidden: components["schemas"]["Hidden"];
             /** Candidates */
             candidates: components["schemas"]["CandidateRow"][];
+        };
+        /**
+         * CapabilityRow
+         * @description ``tree_shut`` is true while the research sits in a MAM tree not opened yet.
+         */
+        CapabilityRow: {
+            /** Capability */
+            capability: string;
+            /** Researched */
+            researched: boolean;
+            /** Schematic Name */
+            schematic_name: string | null;
+            /** Tree Shut */
+            tree_shut: boolean;
+        };
+        /** Census */
+        Census: {
+            /** Total */
+            total: number;
+            /** By Kind */
+            by_kind: {
+                [key: string]: number;
+            };
+            /** Have */
+            have: {
+                [key: string]: number;
+            };
+            /** Locked */
+            locked: {
+                [key: string]: number;
+            };
+            /** Events */
+            events: number;
         };
         /**
          * CircuitRow
@@ -1583,6 +1896,29 @@ export interface components {
             from_entry?: string;
         };
         /**
+         * DriveOption
+         * @description ``slots`` is the inventory slots an option grants instead of recipes; 0 for most.
+         */
+        DriveOption: {
+            /** Schematic */
+            schematic: string;
+            /** Name */
+            name: string;
+            /** Slots */
+            slots: number;
+            /** Recipes */
+            recipes: components["schemas"]["GrantedRecipe"][];
+        };
+        /** DriveRow */
+        DriveRow: {
+            /** Hard Drive Id */
+            hard_drive_id: number | null;
+            /** Rerolls Left */
+            rerolls_left: number;
+            /** Options */
+            options: components["schemas"]["DriveOption"][];
+        };
+        /**
          * Elevation
          * @description One probe as JSON. The nullables here are the point of the endpoint, not slack in it.
          *
@@ -1709,6 +2045,13 @@ export interface components {
             worst: components["schemas"]["MachineIssue"][];
             /** Attention */
             attention: number;
+        };
+        /** FactoryHit */
+        FactoryHit: {
+            /** Name */
+            name: string;
+            /** Machines */
+            machines: number;
         };
         /**
          * FactoryRow
@@ -2003,6 +2346,17 @@ export interface components {
             /** Mw */
             mw: number;
         };
+        /** GrantedRecipe */
+        GrantedRecipe: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Machine */
+            machine: string | null;
+            /** Products */
+            products: components["schemas"]["ItemAmount"][];
+        };
         /**
          * GraphEdge
          * @description ``per_min`` is null where an output reaches a terminal with no surplus to apportion.
@@ -2056,6 +2410,31 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HardDrivesResponse
+         * @description ``spare`` is unanalysed drives on hand; ``last_used`` the drive settled most recently.
+         */
+        HardDrivesResponse: {
+            /** Spare */
+            spare: number;
+            /** Last Used */
+            last_used: number | null;
+            /** Drives */
+            drives: components["schemas"]["DriveRow"][];
+        };
+        /** HaveRow */
+        HaveRow: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: number;
+            /** Have */
+            have: number;
+            /** Short */
+            short: number;
+        };
         /** Hidden */
         Hidden: {
             /** Small */
@@ -2101,6 +2480,33 @@ export interface components {
             name: string;
             /** Amount */
             amount: number;
+        };
+        /** ItemHit */
+        ItemHit: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+        };
+        /** ItemRow */
+        ItemRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Fluid */
+            fluid: boolean;
+            /** Energy Mj */
+            energy_mj: number;
+            /** Sink Points */
+            sink_points: number;
+        };
+        /** ItemsResponse */
+        ItemsResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["ItemRow"][];
         };
         /** Ledger */
         Ledger: {
@@ -2166,6 +2572,65 @@ export interface components {
             /** Generators */
             generators: components["schemas"]["PlacementRow"][];
         };
+        /** MakerRow */
+        MakerRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Power Mw */
+            power_mw: number;
+            /** Ingredients */
+            ingredients: components["schemas"]["Rate"][];
+            /** Products */
+            products: components["schemas"]["Rate"][];
+            /** Unlocked */
+            unlocked: boolean | null;
+            /** Granted By */
+            granted_by: string[];
+        };
+        /**
+         * MamResponse
+         * @description ``knows_trees`` is false on a projection too old to list the opened trees.
+         */
+        MamResponse: {
+            /** Knows Trees */
+            knows_trees: boolean;
+            /** Capabilities */
+            capabilities: components["schemas"]["CapabilityRow"][];
+            /** Research */
+            research: components["schemas"]["MamRow"][];
+        };
+        /**
+         * MamRow
+         * @description ``status`` is DONE, RUNNING, TREE SHUT, BLOCKED, short or READY, as ``mam_research``.
+         */
+        MamRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Tree */
+            tree: string | null;
+            /** Status */
+            status: string;
+            /** Running S */
+            running_s: number | null;
+            /** Capability */
+            capability: string | null;
+            /** Cost */
+            cost: components["schemas"]["ItemAmount"][];
+            /** Short */
+            short: components["schemas"]["ItemAmount"][];
+            /** Unlocks */
+            unlocks: number;
+            /** Blocked By */
+            blocked_by: string[];
+        };
         /**
          * MilestoneRow
          * @description ``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
@@ -2208,6 +2673,13 @@ export interface components {
             error: string;
             /** Name Taken */
             name_taken: boolean;
+        };
+        /** NamedAmount */
+        NamedAmount: {
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: number;
         };
         /** NamedResponse */
         NamedResponse: {
@@ -2347,6 +2819,38 @@ export interface components {
             state: components["schemas"]["PlanStateBody"];
         };
         /**
+         * PhaseResponse
+         * @description ``deliverable`` is null when no row belongs to the target phase.
+         */
+        PhaseResponse: {
+            /** Current Phase */
+            current_phase: string | null;
+            /** Target Phase */
+            target_phase: string | null;
+            /** Delivered */
+            delivered: components["schemas"]["ItemAmount"][];
+            /** Deliverable */
+            deliverable: boolean | null;
+            /** Phases */
+            phases: components["schemas"]["PhaseRow"][];
+        };
+        /**
+         * PhaseRow
+         * @description ``trust`` is the domain's ``stale`` flag: usable, derived, complete, stale or unmapped.
+         */
+        PhaseRow: {
+            /** Phase */
+            phase: string | null;
+            /** Legacy Key */
+            legacy_key: string;
+            /** Trust */
+            trust: string;
+            /** Outstanding */
+            outstanding: components["schemas"]["HaveRow"][];
+            /** Complete */
+            complete: string[];
+        };
+        /**
          * PipeRow
          * @description One fluid pipe, as the polyline it was built along, and what it carries.
          *
@@ -2420,6 +2924,25 @@ export interface components {
             networks: number;
             /** Directed */
             directed: number;
+        };
+        /** PlaceItem */
+        PlaceItem: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: number;
+        };
+        /**
+         * PlaceRow
+         * @description ``place`` is carried, storage or depot.
+         */
+        PlaceRow: {
+            /** Place */
+            place: string;
+            /** Items */
+            items: components["schemas"]["NamedAmount"][];
         };
         /**
          * PlacementRow
@@ -2898,8 +3421,88 @@ export interface components {
         Rate: {
             /** Item */
             item: string;
+            /** Name */
+            name: string;
             /** Per Min */
             per_min: number;
+        };
+        /** RecipeDetail */
+        RecipeDetail: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Duration S */
+            duration_s: number;
+            /** Power Mw */
+            power_mw: number;
+            /** Power Range Mw */
+            power_range_mw: [
+                number,
+                number
+            ] | null;
+            /** Ingredients */
+            ingredients: components["schemas"]["Rate"][];
+            /** Products */
+            products: components["schemas"]["Rate"][];
+            /** Granted By */
+            granted_by: string[];
+            /** Unlocked */
+            unlocked: boolean | null;
+            /** Save Note */
+            save_note: string | null;
+        };
+        /**
+         * RecipeHit
+         * @description ``unlocked`` is null when no save could be read.
+         */
+        RecipeHit: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Unlocked */
+            unlocked: boolean | null;
+        };
+        /**
+         * RecipeRow
+         * @description ``unlocked`` is null when no save could be read; ``qty`` is the amount of the queried
+         *     item per minute (part) or per craft (building, manual), 0 with no item asked.
+         */
+        RecipeRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Qty */
+            qty: number;
+            /** Unlocked */
+            unlocked: boolean | null;
+        };
+        /**
+         * RecipesResponse
+         * @description ``save_note`` says why ``unlocked`` is null on every row, and is null otherwise.
+         */
+        RecipesResponse: {
+            census: components["schemas"]["Census"];
+            /** Save Note */
+            save_note: string | null;
+            /** Recipes */
+            recipes: components["schemas"]["RecipeRow"][];
         };
         /**
          * Region
@@ -3021,6 +3624,26 @@ export interface components {
             /** Mtime Ns */
             mtime_ns: number;
         };
+        /**
+         * SearchResponse
+         * @description Each list holds the first few hits; the ``*_total`` fields count them all.
+         */
+        SearchResponse: {
+            /** Items */
+            items: components["schemas"]["ItemHit"][];
+            /** Items Total */
+            items_total: number;
+            /** Recipes */
+            recipes: components["schemas"]["RecipeHit"][];
+            /** Recipes Total */
+            recipes_total: number;
+            /** Factories */
+            factories: components["schemas"]["FactoryHit"][];
+            /** Factories Total */
+            factories_total: number;
+            /** Save Note */
+            save_note: string | null;
+        };
         /** Selection */
         Selection: {
             /** Kind */
@@ -3029,6 +3652,120 @@ export interface components {
             label: string;
             /** Ref */
             ref: string;
+        };
+        /** ShardHolder */
+        ShardHolder: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string | null;
+            /** Clock */
+            clock: number;
+            /** Slotted */
+            slotted: number;
+            /** Needed */
+            needed: number;
+            /** Idle */
+            idle: number;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /**
+         * ShardsResponse
+         * @description ``measured`` false means ``committed`` is unknown rather than zero.
+         */
+        ShardsResponse: {
+            /** Measured */
+            measured: boolean;
+            /** Free */
+            free: number;
+            /** Craftable */
+            craftable: number;
+            /** Potential */
+            potential: number;
+            /** Committed */
+            committed: number;
+            /** Owned */
+            owned: number;
+            /** Per Shard */
+            per_shard: number;
+            /** Max Clock */
+            max_clock: number;
+            /** Slots Per Building */
+            slots_per_building: number;
+            /** Idle */
+            idle: number;
+            /** Slugs */
+            slugs: components["schemas"]["SlugRow"][];
+            /** By Place */
+            by_place: components["schemas"]["PlaceRow"][];
+            /** Holders */
+            holders: components["schemas"]["ShardHolder"][];
+        };
+        /**
+         * SloopHolder
+         * @description ``boost`` is the plan model's multiplier, ``boost_in_save`` the save's own.
+         */
+        SloopHolder: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** Sloops */
+            sloops: number;
+            /** Boost */
+            boost: number | null;
+            /** Boost In Save */
+            boost_in_save: number | null;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /**
+         * SloopsResponse
+         * @description ``amplifier_researched`` false means no sloop can go into a machine yet.
+         *
+         *     ``amplifier_tree_shut`` is true while that research sits in a MAM tree not opened yet.
+         */
+        SloopsResponse: {
+            /** Measured */
+            measured: boolean;
+            /** Free */
+            free: number;
+            /** Committed */
+            committed: number;
+            /** Owned */
+            owned: number;
+            /** Mercer Spheres */
+            mercer_spheres: number;
+            /** By Place */
+            by_place: components["schemas"]["NamedAmount"][];
+            /** Amplifier Researched */
+            amplifier_researched: boolean;
+            /** Amplifier Research */
+            amplifier_research: string | null;
+            /** Amplifier Tree Shut */
+            amplifier_tree_shut: boolean;
+            /** Amplifier Cost */
+            amplifier_cost: components["schemas"]["ItemAmount"][];
+            /** Holders */
+            holders: components["schemas"]["SloopHolder"][];
+        };
+        /** SlugRow */
+        SlugRow: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Held */
+            held: number;
+            /** Each */
+            each: number;
+            /** Shards */
+            shards: number;
         };
         /**
          * SolveBody
@@ -3043,6 +3780,13 @@ export interface components {
             key?: string | null;
             /** Rev */
             rev?: number | null;
+        };
+        /** SolveRate */
+        SolveRate: {
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number;
         };
         /**
          * SolveResponse
@@ -3072,7 +3816,7 @@ export interface components {
             /** Grid Import */
             grid_import: boolean;
             /** Exports */
-            exports: components["schemas"]["Rate"][];
+            exports: components["schemas"]["SolveRate"][];
             /** Rows */
             rows: components["schemas"]["SolveRow"][];
             /** Shards */
@@ -3104,9 +3848,9 @@ export interface components {
             /** Mw */
             mw: number;
             /** Inputs */
-            inputs: components["schemas"]["Rate"][];
+            inputs: components["schemas"]["SolveRate"][];
             /** Outputs */
-            outputs: components["schemas"]["Rate"][];
+            outputs: components["schemas"]["SolveRate"][];
             /** Required */
             required: boolean;
         };
@@ -3131,6 +3875,104 @@ export interface components {
             state: string;
             /** Count */
             count: number;
+        };
+        /** StockCensus */
+        StockCensus: {
+            /** Containers */
+            containers: number;
+            /** Solid */
+            solid: number;
+            /** Fluid */
+            fluid: number;
+            /** Filled */
+            filled: number;
+            /** Crates */
+            crates: number;
+            /** Deaths */
+            deaths: number;
+        };
+        /**
+         * StockPile
+         * @description One item's piles. ``spendable`` is carried + storage + depot; fluids are m3.
+         */
+        StockPile: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Fluid */
+            fluid: boolean;
+            /** Spendable */
+            spendable: number;
+            /** Carried */
+            carried: number;
+            /** Storage */
+            storage: number;
+            /** Depot */
+            depot: number;
+            /** Buffers */
+            buffers: number;
+            /** Crates */
+            crates: number;
+        };
+        /**
+         * StockPlace
+         * @description A container, fluid buffer or crate. ``source`` is ``storage`` or ``crate``.
+         */
+        StockPlace: {
+            /** Source */
+            source: string;
+            /** Kind */
+            kind: string;
+            /** Instance Leaf */
+            instance_leaf: string;
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+            region: components["schemas"]["Region"] | null;
+            /** Distance M */
+            distance_m: number | null;
+            /** Items */
+            items: components["schemas"]["PlaceItem"][];
+            /** Total */
+            total: number;
+            /** Slots */
+            slots: number | null;
+            /** Slots Used */
+            slots_used: number | null;
+            /** Fill */
+            fill: number | null;
+            /** Capacity M3 */
+            capacity_m3: number | null;
+            /** Crate Kind */
+            crate_kind: string | null;
+            /** Crate Kind Text */
+            crate_kind_text: string | null;
+        };
+        /** StockPlayer */
+        StockPlayer: {
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+        };
+        /** StockResponse */
+        StockResponse: {
+            /** Items */
+            items: components["schemas"]["StockPile"][];
+            /** Places */
+            places: components["schemas"]["StockPlace"][];
+            census: components["schemas"]["StockCensus"];
+            player: components["schemas"]["StockPlayer"];
         };
         /**
          * StorageFluid
@@ -3335,6 +4177,143 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * TraceEdge
+         * @description Group to group, ``in:<item>`` for supply from outside the traced set, or a terminal
+         *     (``storage``, ``export``, ``sink``, ``nowhere``). ``per_min`` null: nothing to share.
+         */
+        TraceEdge: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number | null;
+        };
+        /** TraceGroup */
+        TraceGroup: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /** Machines */
+            machines: number;
+            /** Running */
+            running: number;
+            /** Blocked */
+            blocked: number;
+            /** Stopped */
+            stopped: number;
+            /** Makes */
+            makes: components["schemas"]["TraceRate"][];
+        };
+        /**
+         * TraceMachine
+         * @description ``kind`` is ``extractor``, ``generator`` or ``production``; ``hops`` is 0 on a seed.
+         *     Rates are nameplate at the machine's clock. ``x_m``/``y_m`` are null for an unplaced
+         *     record.
+         */
+        TraceMachine: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Seed */
+            seed: boolean;
+            /** Hops */
+            hops: number;
+            /** Recipe */
+            recipe: string | null;
+            /** Makes */
+            makes: components["schemas"]["TraceRate"][];
+            /** Uses */
+            uses: components["schemas"]["TraceRate"][];
+            /** State */
+            state: string;
+            /** Actionable */
+            actionable: boolean;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /** TraceRate */
+        TraceRate: {
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number;
+        };
+        /**
+         * TraceResponse
+         * @description ``items`` is what the reached machines make (up) or use (down), seeds excluded.
+         */
+        TraceResponse: {
+            /** Seed */
+            seed: string;
+            /** Subject */
+            subject: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "up" | "down";
+            /** Token */
+            token: string;
+            /** Visited */
+            visited: number;
+            /** Deepest */
+            deepest: number;
+            /** Ambiguous */
+            ambiguous: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Seeds */
+            seeds: number;
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Items */
+            items: components["schemas"]["TraceRate"][];
+            /** Machines */
+            machines: components["schemas"]["TraceMachine"][];
+            /** Runs */
+            runs: components["schemas"]["TraceRun"][];
+            /** Groups */
+            groups: components["schemas"]["TraceGroup"][];
+            /** Edges */
+            edges: components["schemas"]["TraceEdge"][];
+        };
+        /**
+         * TraceRun
+         * @description One conduit run the walk crossed; ``ident`` is empty where the run carries no id.
+         */
+        TraceRun: {
+            /** Ident */
+            ident: string;
+            /**
+             * Medium
+             * @enum {string}
+             */
+            medium: "belt" | "pipe";
+            /** Pieces */
+            pieces: number;
+            /** Lines M */
+            lines_m: [
+                number,
+                number
+            ][][];
+        };
         /** UndoBody */
         UndoBody: {
             /** Base Rev */
@@ -3343,6 +4322,28 @@ export interface components {
             rev: number;
             /** Sav */
             sav?: string;
+        };
+        /** UnlockedResponse */
+        UnlockedResponse: {
+            /** Age Note */
+            age_note: string;
+            /** Alternates Unlocked */
+            alternates_unlocked: number;
+            /** Alternates Total */
+            alternates_total: number;
+            /** Automatable Total */
+            automatable_total: number;
+            /** Recipes */
+            recipes: components["schemas"]["UnlockedRow"][];
+        };
+        /** UnlockedRow */
+        UnlockedRow: {
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** Machine */
+            machine: string | null;
         };
         /**
          * UnsupportedFile
@@ -4332,6 +5333,166 @@ export interface operations {
             };
         };
     };
+    progress_mam_api_progress_mam_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MamResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_phase_api_progress_phase_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_shards_api_progress_shards_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShardsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_sloops_api_progress_sloops_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SloopsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_harddrives_api_progress_harddrives_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HardDrivesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     factory_candidates_api_factories_candidates_get: {
         parameters: {
             query?: {
@@ -4815,6 +5976,276 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutdatedResponse"] | components["schemas"]["AlreadyUndoneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_api_stock_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_items_api_gamedata_items_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_recipes_api_gamedata_recipes_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                consumes?: string | null;
+                produces?: string | null;
+                recipe_kind?: string;
+                only_alternates?: boolean;
+                include_events?: boolean;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_recipe_api_gamedata_recipe_get: {
+        parameters: {
+            query: {
+                recipe: string;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_alternates_api_gamedata_alternates_get: {
+        parameters: {
+            query: {
+                item: string;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlternatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gamedata_unlocked_api_gamedata_unlocked_get: {
+        parameters: {
+            query?: {
+                only_alternates?: boolean;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnlockedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_search_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                only_unlocked?: boolean;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trace_path_api_trace_get: {
+        parameters: {
+            query: {
+                seed: string;
+                direction?: string;
+                as_of?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceResponse"];
                 };
             };
             /** @description Validation Error */

@@ -147,7 +147,7 @@ tool table.
 |---|---|---|---|---|
 | `list_worlds` | Header world picker | none | dropdown, saves per world | exists `/api/worlds` |
 | `world_summary` | Status strip + World > Overview | none | vitals, last active schematic, problems | exists `/api/summary` (partial: add problems, warnings) |
-| `unlocked_recipes` | Recipes > Unlocked | alternates-only toggle | sortable table | new |
+| `unlocked_recipes` | Recipes > Unlocked | alternates-only toggle | sortable table | **built** `/api/gamedata/unlocked` (§12) |
 | `power_report` | Power (step 0) | none | capacity vs draw, nameplate + measured, per generator kind | new (step 0 may add it) |
 | `factory_sites` | Factories > Sites | none | cluster list; map clusters | new (or fold into `/api/factories`) |
 | `whereami` | Header "me" button; World > Here | radius slider | player marker + nearby list | exists (`/api/summary.player`) + new for the nearby list |
@@ -155,7 +155,7 @@ tool table.
 | `describe_location` | Map click inspector | click point, radius | popup: region, elevation, nodes, conduits, buildings | exists `/api/inspect` (same default radius); add conduits/buildings counts |
 | `search_conduits` | World > Conduits; context menu "conduits here" | near (click), radius, to (second click), belt/pipe, runs/networks | run list; runs highlighted on the map | new (geometry exists in `/api/belts`, `/api/pipes`) |
 | `search_resource_nodes` | World > Nodes | sources builder, resource, purity, kind, free only, view fields/nodes/nearest, near | field clusters or node rows; map filters to the result | partial `/api/nodes`; new for fields and nearest |
-| `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick | exists (fragment) |
+| `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick | exists (fragment); the tool's local link follows the configured port (§13) |
 | `rank_build_sites` | Planner > Site > "where to mine X"; World > Nodes | resource, sources | ranked fields with raw components; numbered pins on map | new |
 | `list_plans` | Planner > Plans list | name filter | table: sited, world moved, field moved | exists `/api/plans` (siting only) + new for status |
 | `forget_plan` | Plans list row menu | confirm | row gone | new, W |
@@ -169,21 +169,21 @@ tool table.
 | `bom` | Planner > Bill; Recipes > item "bill" | item, qty, outlets, include/exclude | raw totals + per-item rows, loop note | new |
 | `commission_plan` | Planner > Startup order | plan, headroom MW | waves: energise these, MW before/after | new |
 | `rank_unlocks` | Progress > Unlock value; Planner result chip | plan (or current form), query | alternates by gain, granted by, INFEASIBLE marked | new (slow: many solves; measure) |
-| `stock` | Inventory > Stock | item, "where" toggle | four piles as columns; where rows fly to box | new (data in `/api/storage`) |
-| `storage` | Inventory > Containers | item, near (click), radius, solid/fluid, show empty | container table with fill bar; map filter | exists `/api/storage` (add filters server-side) |
-| `crates` | Inventory > Crates | none | list, sorted by distance to me | exists `/api/crates` |
-| `phase_requirements` | Progress > Elevator | none | have / short / deliverable | new |
-| `power_shards` | Power > Shards | plan machines, plan clock | held / committed / free; cost of an overclock plan | new |
-| `somersloops` | Power > Sloops | none | held / slotted / owned; where slotted | new |
-| `mam_research` | Progress > MAM | show todo/affordable/all, query | tree or table with cost, have, affordable | new |
-| `milestones` | Progress > Milestones | show, tier, query | per tier cost / have / short / grants | new |
+| `stock` | Inventory > Stock | item, "where" toggle | four piles as columns; where rows fly to box | **built** `/api/stock` (§10) |
+| `storage` | Inventory > Containers | item, near (click), radius, solid/fluid, show empty | container table with fill bar; map filter | **built** from `/api/stock` (§10); filters client-side |
+| `crates` | Inventory > Crates | none | list, sorted by distance to me | **built** from `/api/stock` (§10) |
+| `phase_requirements` | Progress > Elevator | none | have / short / deliverable | **built** `/api/progress/phase`, Progress > Space Elevator (§11) |
+| `power_shards` | Power > Shards | plan machines, plan clock | held / committed / free; cost of an overclock plan | **built** `/api/progress/shards`, Progress > Power shards (§11) |
+| `somersloops` | Power > Sloops | none | held / slotted / owned; where slotted | **built** `/api/progress/sloops`, Progress > Somersloops (§11) |
+| `mam_research` | Progress > MAM | show todo/affordable/all, query | tree or table with cost, have, affordable | **built** `/api/progress/mam` (§11) |
+| `milestones` | Progress > Milestones | show, tier, query | per tier cost / have / short / grants | **built** `/api/progress/milestones` (§8, §11) |
 | `collected_from_world` | World > Collectibles | group, show census/collected/remaining/nearest, near | census + list; pickups layer | exists `/api/collectibles` |
-| `list_pending_hard_drive_choices` | Progress > Hard drives | none | per drive: two options, rerolls, recipes granted | new |
+| `list_pending_hard_drive_choices` | Progress > Hard drives | none | per drive: two options, rerolls, recipes granted | **built** `/api/progress/harddrives` (§11) |
 | `advise_hard_drive_pick` | Progress > Hard drives > "rank options" | drive, sources | options by marginal value | new (slow: counterfactual LPs) |
-| `search_items` | Search box; Recipes > Items | query | list: form, energy, sink points | new |
-| `recipe_detail` | Recipes > recipe card | recipe | rates, machine, power, unlocked by | new |
-| `alternates_for_item` | Recipes > item card | item, include locked | recipes that make it, HAVE/LOCKED | new |
-| `search_recipes` | Recipes > Search | query, consumes, produces, part/building/manual/all, alternates only, events | census header + rows | new |
+| `search_items` | Search box; Recipes > Items | query | list: form, energy, sink points | **built** `/api/gamedata/items`, `/api/search` (§12) |
+| `recipe_detail` | Recipes > recipe card | recipe | rates, machine, power, unlocked by | **built** `/api/gamedata/recipe` (§12) |
+| `alternates_for_item` | Recipes > item card | item, include locked | recipes that make it, HAVE/LOCKED | **built** `/api/gamedata/alternates` (§12) |
+| `search_recipes` | Recipes > Search | query, consumes, produces, part/building/manual/all, alternates only, events | census header + rows | **built** `/api/gamedata/recipes` (§12) |
 | `list_buildings` | Recipes > Buildings | building kind | table | new |
 | `factory_map` | Factories > Candidates / Slabs / Unlabelled | show candidates/named/slabs/unlabelled/all | lists; slab outlines on the map | exists `/api/factories`, `/api/structures` (partial) |
 | `factory_query` | Factory detail tabs | factory, aspects (summary, machines, recipes, buildings, balance, inputs, outputs, internal, power, nodes, links, issues) | one sub-tab per aspect | new |
@@ -195,7 +195,7 @@ tool table.
 | `amend_factory` | Factory detail > edit | add/drop via lasso or selector, prune missing, dry run | diff preview, then applied | new, W |
 | `list_factories` | Factories list (step 0) | none | named factories, % still standing | exists `/api/factories` |
 | `forget_factory` | "undo" after naming in the dashboard | none | label gone | **built** `DELETE /api/labels/{name}`, W (§9); detail-view button still open |
-| `trace_upstream` | Factory/machine detail > Trace | seed (selection), up/down | tree; path drawn on the map | new |
+| `trace_upstream` | Machine popup, right-click inspector, factory detail, side panel > Trace | seed (selection), up/down | path drawn on the map; items, rates, flows in a card | **built** `/api/trace` (§13) |
 | `factory_floors` | Factory detail > Floors; floor picker | factory or platform | decks with machines; floor picker jumps | exists `/api/floors` |
 
 ### 3.2 Resources (4)
@@ -292,13 +292,13 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/power/report` | GET | `domain/power/report.py` | step 0 may already add it |
 | `/api/factories/{id}` + `?aspect=` | GET | `domain/factories/query.py` | one aspect per call |
 | `/api/factories/{id}/health` | GET | `domain/factories/health.py` | `all` for the list colours |
-| `/api/trace` | GET | `domain/factories/trace.py` | seed, direction |
-| `/api/stock` | GET | `domain/world/inventory.py` | four piles, `where` |
-| `/api/progress/{milestones,mam,phase}` | GET | `domain/progression/ladder.py`, `phases.py` | one ladder, three views |
-| `/api/harddrives` | GET | `domain/progression/harddrives.py` | list |
+| `/api/trace` | GET | `domain/factories/trace.py` | seed, direction; **built** (§13) |
+| `/api/stock` | GET | `domain/world/inventory.py` | four piles and every place; **built** (§10) |
+| `/api/progress/{milestones,mam,phase}` | GET | `domain/progression/ladder.py`, `phases.py` | **built**; one ladder, three views |
+| `/api/progress/harddrives` | GET | `domain/progression/harddrives.py` | **built**, under `/api/progress/` |
 | `/api/harddrives/{id}/advice` | POST | `domain/planning/advisor.py` | slow |
-| `/api/shards`, `/api/sloops` | GET | progression | |
-| `/api/gamedata/{items,recipes,recipe/{id},buildings,alternates}` | GET | `core/gamedata` | no save needed except HAVE/LOCKED |
+| `/api/progress/shards`, `/api/progress/sloops` | GET | `domain/progression/shards.py` | **built**, under `/api/progress/` |
+| `/api/gamedata/{items,recipes,recipe,alternates,unlocked}`, `/api/search` | GET | `core/gamedata` | **built** (§12); no save needed except HAVE/LOCKED; `buildings` still open |
 | `/api/nodes/fields`, `/api/sites/rank` | GET | `domain/spatial/select.py`, `ranking.py` | |
 | `/api/conduits` | GET | `domain/world/conduits.py` | |
 | `/api/select/nodes`, `/api/select/machines` | GET | the two selector modules | live preview counts |
@@ -341,11 +341,11 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 0 | Factories + Power panel (in progress) | `list_factories`, `power_report`, parts of `factory_map` | per step 0 | no |
 | 1 | **Shell:** rail, selection model, status strip, `as_of` on fetches | `world_summary`, `list_worlds` | none | no |
 | 2 | **Factory detail:** aspects, health, floors | `factory_query`, `factory_health`, `factory_floors`, `factory_sites` | 2–3 | no |
-| 3 | **Inventory:** stock, containers, crates | `stock`, `storage`, `crates` | 1 | no |
-| 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list | 6 tools | 4–5 | no |
-| 5 | **Recipes codex + search box** | 5 game-data tools, `unlocked_recipes` | 5 | no |
+| 3 | **Inventory:** stock, containers, crates. **Built 2026-09-27** (§10) | `stock`, `storage`, `crates` | 1 | no |
+| 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
+| 5 | **Recipes codex + search box**. **Built 2026-09-27** (§12; `list_buildings` still open) | 5 game-data tools, `unlocked_recipes` | 6 | no |
 | 6 | **World finders:** nodes, fields, conduits, collectibles, whereami, inspector upgrade | 7 spatial tools, `collected_from_world` | 3 | no |
-| 7 | **Trace:** upstream/downstream drawn on the map | `trace_upstream` | 1 | no |
+| 7 | **Trace:** upstream/downstream drawn on the map — **built** (§13) | `trace_upstream` | 1 | no |
 | 8 | **Planner (stateless):** solve, bill, compare, byproducts | 4 planning tools | 4 POST | no |
 | 9 | **Write guard + Plans:** save, rename, forget, site by dragging | 4 plan tools | CRUD | **yes** |
 | 10 | **Plan follow-through:** layout, diff, startup order | `plan_layout`, `diff_vs_save`, `commission_plan` | 3 | no |
@@ -385,7 +385,8 @@ None of these are assumed above. Each changes the design.
 10. Should the UI suggest a "next" step at all, or only show facts and let you decide?
 11. Spoilers: show locked milestones, MAM nodes and alternates in full, or only what the game
     shows you at this point? **Answered 2026-09-26 for milestones: a per-browser setting**
-    (§8.6). MAM nodes and alternates are not covered yet.
+    (§8.6). **Extended 2026-09-27 to MAM nodes and elevator phases** (§11) **and to recipes
+    and alternates** (§12.3), all under the same setting.
 12. Hard drives: do you pick at once, or hoard? (Affects whether "pending" is an alert.)
 
 **World and history**
@@ -832,3 +833,218 @@ me that graph for a detected factory".
 - **Not yet.** Per-machine drill-down, belt tiers on edges, and a layout that keeps positions
   steady across saves.
 
+---
+
+## 10. Inventory (2026-09-27)
+
+Roadmap phase 3: the `stock`, `storage` and `crates` tools as one dashboard section.
+
+- **Address:** `dash=inventory[/<item>]`. The subject is the item filter, so a link such as
+  `dash=inventory/Quartz Crystal` opens the section filtered. Typing in the filter rewrites the
+  fragment in place (no history entry per keystroke).
+- **Route:** `GET /api/stock` (`routers/stock.py`), live wave, rank 70. It sends
+  `Inventory.breakdown()` as `items` (the `stock` tool's piles: spendable, carried, storage,
+  depot, machine buffers, crates) and `Inventory.holdings()` as `places` (the rows the `storage`
+  and `crates` tools print), plus a census and the player position. Each place carries its
+  region (`_label_json`), fill, slots used and its ground distance from the player. Warm on the
+  reference save: 4 ms, 100 kB.
+- **One route, not three.** `/api/storage` and `/api/crates` build their rows from the
+  projection and feed the map layers. The containers and crates tables here read `places`
+  instead, so they come from the same `holdings()` the tools call, fill included. The map
+  layers are unchanged.
+- **Section:** three tiles (item kinds, containers, crates), a sortable stock table, a
+  containers table (kind select, "show empty", fill bar in the existing neutral grey), and a
+  crates table sorted by distance from the player. A stock row sets the filter to that item.
+  A container or crate row with a position has **map**, which returns to the map, flies there
+  and draws the panel's highlight ring (`showPoint`).
+- **Filter:** case-insensitive. A query that names an item exactly shows only that item, and
+  a note lists the other names containing it; otherwise it matches substrings. The tiles
+  count the whole world, and the filter changes rows only (principle 6).
+- **Spoilers:** the section lists only what the save holds, so the spoiler setting has
+  nothing to hide here.
+- **Code:** `frontend/src/inventory.ts`. `dashboard.ts` only registers the tab and routes to
+  `renderInventory`, passing its `toMap` and `render`.
+- **Not yet:** a "storage near here" point filter, `as_of=`, and turning the storage layer
+  on when a container row flies to the map (the ring marks the spot, but the box itself is
+  hidden while that layer is off).
+
+---
+
+## 11. Progress (2026-09-27)
+
+The dashboard's Progress tab now covers all six read tools of roadmap phase 4. The slow
+advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
+
+### 11.1 What was built
+
+- **Routes.** Five GET routes join `/api/progress/milestones` in `routers/progress.py`:
+  `mam`, `phase`, `shards`, `sloops` and `harddrives`. Each reads the same domain objects
+  as its MCP tool: `SchematicLadder` and `ResearchGates` for MAM, `PhaseLedger` for the
+  elevator, `OverclockBudget` for shards and sloops, and `HardDriveDesk` for the drives.
+  The tool bodies are unchanged. Every route declares a response model and follows the
+  `?save=`/`?world=` convention.
+- **Page.** `frontend/src/progress.ts` holds the section. It was moved out of
+  `dashboard.ts` with the milestone view unchanged. The shared building blocks (tile,
+  note, link, table cell) now sit in `frontend/src/dashkit.ts`, which both modules import.
+- **Layout.** Six "next up" tiles sit at the top of every Progress page. They give facts
+  only: parts short for the elevator, affordable milestones and MAM nodes, pending drives,
+  free shards and free somersloops. Below them, a sub-nav reaches one page per tool:
+  - Milestones: as before.
+  - MAM: tree tallies and a table with the tool's statuses (DONE, RUNNING, TREE SHUT,
+    BLOCKED, short, READY).
+  - Space Elevator: the target phase joined to stock, plus every phase record with its
+    trust label.
+  - Hard drives: each pending drive with both options and what they grant.
+  - Power shards: free, craftable, slotted and idle, the slugs, and the overclocked buildings.
+  - Somersloops: free, slotted and Mercer Spheres, and the amplified machines with both
+    boost readings.
+  - Every building row flies to the map.
+- **Addresses.** `#dash=progress/mam`, `progress/elevator`, `progress/drives`,
+  `progress/shards` and `progress/sloops`. A bare `progress` opens the milestones.
+
+### 11.2 Decided 2026-09-27
+
+- Routes live under `/api/progress/` rather than at `/api/harddrives`, `/api/shards` and
+  `/api/sloops` as §5.2 first proposed. One module and one prefix for one tab.
+- The spoiler switch covers the whole tab. Its label read "Show upcoming milestones and
+  research"; with recipes added (§12.3) it now reads "Show upcoming milestones, research and
+  locked recipes". When it is off, the page hides three things:
+  - MAM nodes in trees not opened yet (TREE SHUT);
+  - elevator phase records past the target phase;
+  - milestone tiers not yet started, as before.
+
+  Hard drive options stay visible, because the game shows them once a drive is analysed.
+  This answers §7 Q11 for MAM nodes. Alternates in the codex follow the same switch (§12.3).
+- A stale elevator record is shown greyed and labelled, never hidden and never used as a
+  cost. Only the target phase row is joined to stock, the same rule `phase_requirements`
+  states.
+
+### 11.3 Not yet
+
+- Filters and search inside the MAM and milestone tables (the tools' `query=`).
+- A drop-pod map layer tied to the hard drive page (§2.2).
+- The MAM costs show the class id `Desc_HardDrive_C` where a node asks for a hard drive,
+  because `item_name` has no entry for it. The MCP tool prints the same id.
+
+---
+
+## 12. Recipes codex and search box (2026-09-27)
+
+Phase 5 of §6. It is a read-only surface over the game data, marked against the save.
+
+### 12.1 What was built
+
+- **Routes.** Each calls the function its MCP tool calls. `find_items` and `makers_of` in
+  `core/gamedata/search.py` and `find_recipe` in `domain/planning/scenario.py` moved out of
+  the tool bodies so both surfaces share them.
+
+  | Route | Tool | Needs a save |
+  |---|---|---|
+  | `GET /api/gamedata/items?q=` | `search_items` | no; capped at 200 rows, `total` counts all |
+  | `GET /api/gamedata/recipes?q=&consumes=&produces=&recipe_kind=&only_alternates=` | `search_recipes` | no; `unlocked` is null and `save_note` says why |
+  | `GET /api/gamedata/recipe?recipe=` | `recipe_detail` | no; id or name, 409 lists an ambiguous name's matches |
+  | `GET /api/gamedata/alternates?item=` | `alternates_for_item` | no; `granted_by` only on locked rows |
+  | `GET /api/gamedata/unlocked?only_alternates=` | `unlocked_recipes` | yes; 404 without one |
+  | `GET /api/search?q=` | the header box | no; factories need one |
+
+  The recipe detail takes a query parameter rather than a path segment, so the page's
+  typed `get()` can check the URL against the schema.
+- **Recipes tab** (`dash=recipes`, `frontend/src/recipes.ts`). It has three modes: Items,
+  Recipes (kind picker, alternates only, census line) and Unlocked. Clicking an item opens
+  its card (`dash=recipes/item/<cls>`), with **made by** (alternates first, HAVE/LOCKED,
+  granted by) and **used by** (every kind, per minute, per build or per craft). Clicking a
+  recipe opens its card (`dash=recipes/recipe/<cls>`), with machine, cycle, power, grants,
+  and in and out rates that link to items. Item icons come from `/api/icons`. The codex
+  sends one HEAD probe first and draws no icons when it answers 204, so an install without
+  the icon directory logs no 404 per item.
+- **Header search** (`frontend/src/search.ts`). One box, focused with `/`. Results are
+  grouped as factories, items and recipes, eight of each, with the totals said below. Arrow
+  keys and Enter pick a result. A factory opens its dashboard detail, and an item or recipe
+  opens its card.
+- **Freshness.** `recipes.ts` registers `/api/gamedata/unlocked` in the live wave. Each save
+  event bumps a generation that empties the codex cache, so HAVE and LOCKED follow the game.
+
+### 12.2 Cost per keystroke
+
+Both inputs debounce: 150 ms in the header and 180 ms in the codex. A newer query drops an
+older reply. The codex keeps the last rows on screen while the next query loads.
+
+Measured on the reference fixture in-process (median of 30): `/api/search` 0.7–1.0 ms,
+`/api/gamedata/items` unfiltered 0.7 ms (20 KB), `/api/gamedata/recipes` unfiltered 1.1 ms
+(42 KB). Over HTTP on a live server with a real save: 3 ms warm. The first call after start
+took 230 ms, which is the state load and not the search. No index or cache was added.
+
+### 12.3 Spoilers
+
+Decided 2026-09-27: the one spoiler switch covers recipes too. Merged with the Progress
+wording (§11.2), it is now labelled "Show upcoming milestones, research and locked
+recipes". When it is off:
+
+- The codex, the item card and the header box drop recipes this save has not unlocked, and
+  say how many were hidden.
+- A locked recipe's own card shows only that it is locked.
+- Census lines keep their totals but drop the locked counts.
+
+Items are never hidden. An item carries no unlock of its own.
+
+### 12.4 Not yet
+
+- `list_buildings` (Recipes > Buildings).
+- "Where is this made": highlighting the factories that run a recipe.
+- The **compare routes** and **bill** buttons on an item card (phase 8).
+- Plans, regions, node ids, `x,y` and `chain:<n>` in the search box (§2.1).
+- Whether items should follow the spoiler switch, and whether the census should hide its
+  totals too, are left for a decision.
+
+---
+
+## 13. Trace on the map (2026-09-27)
+
+Phase 7 of §6. What feeds a machine or a factory, or what it feeds, drawn on the map.
+
+### 13.1 What was built
+
+- **Route.** `GET /api/trace?seed=&direction=up|down&as_of=` (`routers/trace.py`). The seed
+  grammar is `resolve_seeds` in `domain/factories/trace.py`: an instance, a building name, a
+  factory label, or any selector. The MCP tool `trace_upstream` now calls the same function,
+  so the two cannot disagree about what a seed means. The walk is the existing `trace()`.
+- **What it sends.** Every machine on the path (seeds included) with position, hops, recipe,
+  nameplate rates at its clock and its `health.assess` state; every conduit run the walk
+  crossed, as polylines; and `flowgraph.build` over the seeds plus everything reached, which
+  gives recipe groups and item flows with apportioned rates. `items` totals what the reached
+  machines make (up) or use (down).
+- **Frontend.** `frontend/src/trace.ts`. Entry points: the machine popup, the right-click
+  inspector when the click lands on a machine (the machine layer has to be on), the selected
+  row in the side panel's Factories tab, and "trace supply" on the dashboard's factory page.
+  All but the dashboard use one delegated click on `data-trace` buttons, so no drawing module
+  imports the trace module. The card toggles up/down and clears; it refetches on each live
+  save and clears on a world switch.
+- **On the map.** Crossed runs in the panel highlight colour. Each machine on the path gets a
+  ring: red when stopped, yellow when blocked, highlight otherwise; seeds are larger. The
+  colours are the placements layer's own, so the marker key still reads.
+
+### 13.2 The two bugs
+
+- **`trace_upstream` with a factory label.** Did not reproduce at `bb5b04c`: the fix is already
+  in, and `tests/test_trace_seeds.py` covers labels and selectors. The seed resolution moved from
+  the tool body into the domain (`resolve_seeds`) so the route shares it, with a domain-level
+  test for the label path.
+- **`show_on_map` links.** The tool already led with a local link; its host and port were
+  hard-coded. `config.web_url()` now builds it from `WEB_HOST` and `web_port()`
+  (`SATISFACTORY_WEB_PORT`, default 8712), and `satisfactory-mcp-web` binds the same values.
+  The MCP server and the web server are separate processes, so both need the variable when the
+  port moves. The satisfactory-calculator.com link stays second: spatial-and-map.md §7.2b
+  documents it as the public map, and the tool's `layers` tokens only mean anything there.
+
+### 13.3 Limits, stated
+
+- **Over-reporting.** Belt-to-belt and pipe-to-pipe joins state no direction, and the walk
+  takes them both ways (§5.3, physical trace mode). On the reference save a factory's upstream
+  can include feeders that only share a manifold with it. The card says so whenever the save
+  has such joins.
+- **Rates are nameplate**, apportioned by `flowgraph` as on the production graph (§9.8), not
+  measured belt throughput. A run on the map carries no item of its own.
+- **Not in the fragment yet.** A trace is not deep-linkable (§1 principle 9); a `trace=` key
+  would need `state.ts` and `fragment.ts`.
+- **Right-click on a machine under a trace ring** opens the ring's popup rather than the
+  machine's; the ring's popup has the same trace buttons.
