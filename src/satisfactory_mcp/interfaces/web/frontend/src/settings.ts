@@ -1,8 +1,11 @@
 /* Per-browser preferences, kept in localStorage and never sent to the server. The page
  * works without storage: a setting then lasts until reload. See docs/frontend_vision.md §8.6. */
 
+import { W } from "./words";
+
 interface Base {
   key: string;
+  group: string;
   label: string;
   hint: string;
 }
@@ -21,6 +24,7 @@ export interface Choice extends Base {
 export interface Amount extends Base {
   kind: "number";
   min: number;
+  max: number;
   fallback: number;
 }
 
@@ -30,15 +34,17 @@ export var SETTINGS: Setting[] = [
   {
     kind: "switch",
     key: "spoilers",
-    label: "Show upcoming milestones, research and locked recipes",
-    hint: "Off: Progress shows the tiers the HUB has open, the MAM trees you have opened and the Space Elevator phases up to the current target, and hides what lies beyond them; Recipes and search hide recipes this save has not unlocked.",
+    group: "spoilers",
+    label: "show what is not unlocked yet",
+    hint: "later tiers, MAM trees, phases and locked recipes",
     fallback: false,
   },
   {
     kind: "choice",
     key: "naming",
-    label: "Factory name suggestions",
-    hint: "How Detect words the name it offers for an unnamed cluster. Every suggestion stays editable.",
+    group: "detect factories",
+    label: "name suggestions",
+    hint: "every suggestion stays editable",
     options: [
       ["short", "short: “steel pipe factory”"],
       ["product, region", "product and region: “Steel Pipe, Rocky Desert”"],
@@ -48,25 +54,29 @@ export var SETTINGS: Setting[] = [
   {
     kind: "switch",
     key: "fedOnly",
-    label: "Only suggest fed clusters",
-    hint: "Hide clusters whose belts and pipes reach no miner, extractor or outside machine. A box filled by hand is not a source; a train, drone or truck station counts as unknown and stays.",
+    group: "detect factories",
+    label: "only fed " + W.unnamedClusters,
+    hint: "a belt or pipe reaches a miner, extractor or outside machine",
     fallback: true,
   },
   {
     kind: "number",
     key: "minMachines",
-    label: "Minimum machines",
-    hint: "Hide smaller clusters from Detect.",
+    group: "detect factories",
+    label: "minimum machines",
+    hint: "smaller " + W.unnamedClusters + " stay hidden",
     min: 1,
+    max: 500,
     fallback: 2,
   },
   {
     kind: "choice",
     key: "follow",
-    label: "Follow chat",
-    hint: "What the page does when chat solves a plan or opens one. A change chat makes to the plan you have open always shows up, whatever this says; the page never moves while you are typing.",
+    group: "planner",
+    label: "follow chat",
+    hint: "when chat solves or opens a plan",
     options: [
-      ["follow", "follow: open what chat works on"],
+      ["follow", "open what chat works on"],
       ["toasts", "toasts only"],
       ["off", "off"],
     ],
@@ -89,7 +99,7 @@ function valid(s: Setting, value: unknown): boolean {
       return o[0] === value;
     });
   }
-  return typeof value === "number" && Number.isInteger(value) && value >= s.min;
+  return typeof value === "number" && Number.isInteger(value) && value >= s.min && value <= s.max;
 }
 
 function recall(): void {
@@ -141,6 +151,14 @@ export function setSetting(key: string, value: boolean | string | number): void 
   var found = find(key);
   if (!found || !valid(found, value)) return;
   values[key] = value;
+  remember();
+  listeners.forEach(function (listener) {
+    listener();
+  });
+}
+
+export function resetSettings(): void {
+  values = {};
   remember();
   listeners.forEach(function (listener) {
     listener();

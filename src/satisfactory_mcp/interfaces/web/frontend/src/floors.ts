@@ -325,7 +325,7 @@ function ghostRows(platform: FloorPlatform, band: FloorBand, mark: FloorMark): R
   var stands = mark.id === undefined ? null : bandOfId(platform, mark.id);
   var through = (mark.z_m || 0) + (mark.h_m || 0) - (band.top_m || 0);
   return [
-    ["ghost", "not on this floor — it comes up through it"],
+    ["ghost", "not on this floor: it comes up through it"],
     ["stands on", stands ? floorName(stands) + ", " + metres(stands.top_m) : null],
     ["height", mark.h_m + " m above its own deck"],
     ["through this floor", Math.round(through * 10) / 10 + " m"],
@@ -373,7 +373,7 @@ function connectorGlyph(run: FloorRun, platform: number, band: FloorBand, at: Po
         run.lift ? "conveyor lift" : run.kind === "pipe" ? "pipe riser" : "belt riser",
         up ? "goes up from this floor" : "goes down from this floor",
       ],
-      ["to", away ? floorName(away) + ", " + metres(away.top_m) : "no deck — the ground"],
+      ["to", away ? floorName(away) + ", " + metres(away.top_m) : "no deck: the ground"],
       ["rise", run.rise_m === null ? null : run.rise_m + " m"],
       // Which of the two claims this is. A lift is a class the docs dump names; a riser is a
       // run that climbs six metres or more -- and stage 0 measured that a quarter of lifts
@@ -440,14 +440,14 @@ function wireGlyph(
   marker.bindPopup(
     popup([
       ["power line", up ? "goes up from this floor" : "goes down from this floor"],
-      ["to", lands ? floorName(lands) + ", " + metres(lands.top_m) : "no deck — the ground"],
+      ["to", lands ? floorName(lands) + ", " + metres(lands.top_m) : "no deck: the ground"],
       ["rise", Math.round(Math.abs(away[2] - here[2]) * 10) / 10 + " m"],
       // Where the other end actually is, because a wire can leave a floor sideways as well as
       // vertically and "up" alone would not say which cable this is.
       ["other end", away[0] + ", " + away[1] + " m"],
       // Said here as well as on the wire itself, because the reader is looking at an arrow on a
       // floor plan, where a straight chord through three storeys is what needs the caveat.
-      ["shape", "a straight chord — a wire sags and the save records no sag"],
+      ["shape", "a straight chord; a wire sags and the save records no sag"],
     ])
   );
   return marker;
@@ -725,7 +725,7 @@ function groundDetail(body: FloorsResponse): string {
   var runs = groundRuns(body);
   var how = body.terrain_measured
     ? "on terrain, measured"
-    : "off-deck — no heightfield here to measure against";
+    : "off-deck: no heightfield here to measure against";
   return how + " · " + placed + " placed · " + runs + " runs";
 }
 
@@ -801,7 +801,7 @@ function busiest(platform: FloorPlatform): string {
 function showPicker(): void {
   if (!view) return;
   showFloors(
-    "floors — " + view.title,
+    "floors · " + view.title,
     choices(view.body, view.platform),
     state.floor ? state.floor.band : "",
     view.message
@@ -1034,8 +1034,7 @@ export function cardWithFloors(rows: Row[], factory: string): HTMLElement {
   action.className = "card-action";
   action.textContent = "floors";
   action.title =
-    "show this factory one storey at a time — its decks are recovered from the geometry, " +
-    "not read off the save";
+    "show this factory one storey at a time";
   L.DomEvent.on(action, "click", function (event) {
     L.DomEvent.stop(event);
     map.closePopup();
@@ -1059,7 +1058,7 @@ export function escapeLeavesFloorMode(event: KeyboardEvent): void {
     return;
   }
   leaveFloors();
-  note("left floor mode — the whole world again");
+  note("left floor mode: the whole world again");
 }
 
 onFloorPick(pickBand);

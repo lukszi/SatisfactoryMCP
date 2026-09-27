@@ -298,7 +298,7 @@ def _reject(st, key: str, sav: str, exc: Exception) -> None:
 def _opened(request: Request, key: str, save: str | None, world: str | None):
     """``(state, log)`` for a plan route, or the 404 that stops it."""
     if not _KEY.fullmatch(key):
-        return None, _fail(f"no saved plan with key {key!r}", 404)
+        return None, _fail(f"no plan “{key}” in this world", 404)
     try:
         st = _state(request, save, world)
     except Exception as exc:

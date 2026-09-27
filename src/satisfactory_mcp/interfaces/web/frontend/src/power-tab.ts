@@ -475,7 +475,7 @@ export function renderCircuit(body: HTMLElement, subject: string): void {
   }
   var row = data.circuits[+subject - 1];
   if (!row) {
-    note(body, "this save has no circuit " + subject);
+    note(body, "no circuit " + subject + " in this world");
     return;
   }
   var index = row.index;
@@ -503,5 +503,5 @@ export function renderCircuit(body: HTMLElement, subject: string): void {
   if (row.generators.length) note(body, generatorLine(row.generators));
   if (row.unmodellable.length) note(body, unratedLine(row.unmodellable));
   problemCard(body, { unwired: [], noGenerator: stranded, starved: row.starved });
-  note(body, "circuit numbers follow size in this save and can change when the next save is read");
+  note(body, "circuit numbers follow size and can change with the next save");
 }

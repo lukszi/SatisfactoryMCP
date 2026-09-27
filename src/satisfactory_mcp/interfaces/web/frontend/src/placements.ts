@@ -165,7 +165,7 @@ export function drawMachines(data: MachinesResponse): void {
           // is standing still.
           [
             "state",
-            (blocked ? "blocked — output full" : m.state) + (m.actionable ? " · " + W.needAction : ""),
+            (blocked ? "blocked: output full" : m.state) + (m.actionable ? " · " + W.needAction : ""),
           ],
           [
             W.factory,
@@ -260,8 +260,8 @@ var STORAGE_FALLBACK_M = 4;
  * TWO KINDS, AND ONLY ONE OF THEM GETS A GRID. A solid container holds stacks of things a
  * reader would recognise by their pictures, which is what `contentsRows` draws; a fluid buffer
  * holds ONE fluid and a level, so a grid of a single tile would be a picture claiming to be a
- * set, with nowhere to put the reading -- what a reader wants off a tank is "1,441 m³ of 2,400
- * — 60% full", and a corner badge cannot say a denominator.
+ * set, with nowhere to put the reading -- what a reader wants off a tank is
+ * "1,441 m³ of 2,400, 60% full", and a corner badge cannot say a denominator.
  */
 function storageContents(s: StorageRow): Row[] {
   if (s.kind === "fluid") {
@@ -272,7 +272,7 @@ function storageContents(s: StorageRow): Row[] {
     // rather than the save -- so where the dump is silent the row says the level alone
     // instead of inventing a denominator.
     if (s.capacity_m3) {
-      level += " of " + count(s.capacity_m3) + " — " + Math.round((s.fill || 0) * 100) + "% full";
+      level += " of " + count(s.capacity_m3) + ", " + Math.round((s.fill || 0) * 100) + "% full";
     }
     return [
       ["fluid", s.fluid_name || (s.fluid ? null : "empty")],

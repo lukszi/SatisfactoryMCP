@@ -90,8 +90,7 @@ export function declareColours<T extends Record<string, string>>(owner: string, 
  * CIE76 rather than the later and better CIEDE2000, and that is a compatibility fact rather
  * than a preference. Every dE already written down on this page was computed this way: the
  * numbers quoted in the feature files reproduce to the decimal under this function and under
- * no other. CIEDE2000 would put the storage magenta 25.3 from the generator red where its
- * own warrant says 51.8, and the chevron cream 18.7 from the extractor amber where the
+ * no other. CIEDE2000 would put the chevron cream 18.7 from the extractor amber where the
  * warrant says 45.5 -- so adopting it would mean re-deriving every published number and
  * throwing away the only record of what anybody actually measured. The threshold below is
  * calibrated against those numbers, so the formula and the threshold travel together.
@@ -193,7 +192,7 @@ var DISCHARGED: Exception[] = [
    * another, and a coal that is not near-black is not coal. What separates the marks is that
    * they are different KINDS of mark -- a 3-6 px disc, stroked at full opacity, against a
    * 256 m flat fill that REGION_BLEND fades to 0.45 wherever there is imagery -- which is the
-   * point-against-area axis the storage magenta's warrant established, applied to the one
+   * point-against-area axis the first storage warrant established, applied to the one
    * family where nothing else was available. Eight entries rather than one line so that a
    * ground edit that closes any single gap still trips the drift check. */
   {

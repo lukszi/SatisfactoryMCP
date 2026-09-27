@@ -241,7 +241,7 @@ function named(cls: string, name: string, linked: boolean): HTMLElement {
 
 function status(unlocked: boolean | null): HTMLElement {
   if (unlocked === null) return make("span", "dash-muted", "–");
-  return make("span", unlocked ? "rx-have" : "rx-locked", unlocked ? "have" : "locked");
+  return make("span", unlocked ? "rx-have" : "rx-locked", unlocked ? "unlocked" : "locked");
 }
 
 function statusRank(unlocked: boolean | null): number {
@@ -252,7 +252,6 @@ function statusColumn<R extends { unlocked: boolean | null }>(): Column<R> {
   return {
     key: "status",
     label: "status",
-    title: "have: unlocked on this save; locked: not yet",
     sort: function (r) {
       return statusRank(r.unlocked);
     },
@@ -290,7 +289,7 @@ function countLine(parent: HTMLElement, text: string, readable: boolean): void {
   if (hidesLocked() && readable) {
     p.appendChild(document.createTextNode((text ? " · " : "") + "locked recipes hidden; "));
     p.appendChild(link("settings", "Settings"));
-    p.appendChild(document.createTextNode(" shows them"));
+    p.appendChild(document.createTextNode(" can show them"));
   }
   if (p.childNodes.length) parent.appendChild(p);
 }
@@ -677,7 +676,7 @@ function renderItem(body: HTMLElement, cls: string): void {
   var data = got.data;
   if (data.build_recipe && !data.recipes.length) {
     title(body, "items", data.name, data.item, "building");
-    var built = make("p", "dash-note", "Placed with the build gun, not made in a machine: see ");
+    var built = make("p", "dash-note", "placed with the build gun, not made in a machine: see ");
     built.appendChild(recipeLink(data.build_recipe, "its build cost"));
     body.appendChild(built);
     return;
@@ -739,7 +738,7 @@ function renderRecipe(body: HTMLElement, cls: string): void {
   var r = got.data;
   if (r.unlocked === false && hidesLocked()) {
     title(body, "recipes", "Locked recipe", "", "");
-    empty(body, "this recipe is not unlocked on this save", settingsLink("can show locked recipes."));
+    empty(body, "this recipe is not unlocked in this world", settingsLink("can show locked recipes"));
     return;
   }
   var part = r.kind === "part";

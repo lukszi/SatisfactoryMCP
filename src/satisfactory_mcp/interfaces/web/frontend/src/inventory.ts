@@ -306,7 +306,7 @@ function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]
       key: "spendable",
       label: "spendable",
       align: "right",
-      title: "carried + storage + depot: what an affordability check spends. Fluids in m³.",
+      title: "carried + storage + depot: what an affordability check spends; fluids in m³",
       sort: function (r) {
         return r.spendable;
       },

@@ -159,21 +159,21 @@ def trace_path(
     """What feeds a machine, a building type or a factory (``up``), or what it feeds (``down``)."""
     way = direction.strip().casefold()
     if way not in ("up", "down"):
-        return _fail(f"unknown direction {direction!r}: up or down", 400)
+        return _fail(f"unknown direction “{direction}”: up or down", 400)
     try:
         st = _state(request, save, world)
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
     try:
         token = pin.check(st.header, as_of)
-    except pin.PinRefused as exc:
-        return _fail(str(exc), 409)
+    except pin.PinRefused:
+        return _fail("a newer save was written since this was traced; trace again", 409)
     try:
         seeds, subject = resolve_seeds(st, st.game, seed)
     except SelectorError as exc:
         return _fail(str(exc), 404)
     if not seeds:
-        return _fail(f"nothing matches {seed!r}", 404)
+        return _fail(f"nothing matches “{seed}”", 404)
 
     walked = trace(st, st.game, seeds, way)
     reached = {r.instance: r for r in walked.reached}

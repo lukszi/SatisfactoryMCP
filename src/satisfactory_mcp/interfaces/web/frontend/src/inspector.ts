@@ -102,7 +102,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   });
   // Said out loud rather than left to be inferred: with no save there is no built
   // population and no occupancy, so every node above reads as free whether it is or not.
-  if (d.save_error) more.push(["save", d.save_error + " — nodes only, occupancy unknown"]);
+  if (d.save_error) more.push(["save", d.save_error + "; nodes only, occupancy unknown"]);
   return popup(rows) + '<details class="popup-more"><summary>details</summary>' + popup(more) + "</details>";
 }
 

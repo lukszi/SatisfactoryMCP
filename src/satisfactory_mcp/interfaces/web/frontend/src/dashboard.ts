@@ -1,7 +1,7 @@
 /* The dashboard shell: the tabs, the routing on the fragment's `dash=` key and the pieces the
  * tab modules share. See docs/frontend_vision.md §8. */
 
-import { button, empty, heading, link, note } from "./dashkit";
+import { button, empty, fieldError, link, note } from "./dashkit";
 import { el, keepFocus, make } from "./dom";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
@@ -10,7 +10,8 @@ import { renderPlanner } from "./planner";
 import { onProgress, renderProgress } from "./progress";
 import { renderRecipes } from "./recipes";
 import { cancelRename, editName, renamingIn } from "./rename";
-import { amount, choice, setSetting, setting, SETTINGS } from "./settings";
+import { amount, choice, resetSettings, setSetting, setting, SETTINGS } from "./settings";
+import type { Setting } from "./settings";
 import { state } from "./state";
 import { renderFactories, renderFactory, wireDetect } from "./factories";
 import { renderOverview } from "./overview";
@@ -141,51 +142,72 @@ export function renameButton(name: string, host: HTMLElement, onRenamed: (to: st
   );
 }
 
+function settingRow(s: Setting): HTMLElement {
+  var row = make("label", "dash-setting");
+  var words = make("span", "dash-setting-text");
+  words.appendChild(make("span", "dash-setting-k", s.label));
+  words.appendChild(make("span", "dash-setting-hint", s.hint));
+  row.appendChild(words);
+  if (s.kind === "switch") {
+    var box = make("input");
+    box.type = "checkbox";
+    box.checked = setting(s.key);
+    box.onchange = function () {
+      setSetting(s.key, box.checked);
+    };
+    row.appendChild(box);
+  } else if (s.kind === "choice") {
+    var pick = make("select", "dash-select");
+    s.options.forEach(function (o) {
+      var option = make("option", "", o[1]);
+      option.value = o[0];
+      pick.appendChild(option);
+    });
+    pick.value = choice(s.key);
+    pick.onchange = function () {
+      setSetting(s.key, pick.value);
+    };
+    row.appendChild(pick);
+  } else {
+    var least = s.min;
+    var most = s.max;
+    var num = make("input", "dash-number");
+    num.type = "number";
+    num.min = String(least);
+    num.max = String(most);
+    num.step = "1";
+    num.value = String(amount(s.key));
+    num.onchange = function () {
+      var n = Number(num.value);
+      if (Number.isInteger(n) && n >= least && n <= most) {
+        fieldError(num, "");
+        setSetting(s.key, n);
+      } else fieldError(num, "a whole number from " + least + " to " + most);
+    };
+    var cell = make("span", "dash-setting-ctl");
+    cell.appendChild(num);
+    row.appendChild(cell);
+  }
+  return row;
+}
+
 function renderSettings(body: HTMLElement): void {
   var card = make("section", "dash-card");
-  heading(card, "settings");
-  note(card, "Kept in this browser only. Nothing is sent to the server.");
+  var bar = make("div", "dash-title");
+  bar.appendChild(make("h2", "dash-h", "settings"));
+  bar.appendChild(button("reset to defaults", function () {
+    resetSettings();
+    render();
+  }, { title: "put every setting back to its default" }));
+  card.appendChild(bar);
+  note(card, "kept in this browser only; nothing is sent to the server");
+  var group = "";
   SETTINGS.forEach(function (s) {
-    var row = make("label", "dash-setting");
-    var words = make("span", "dash-setting-text");
-    words.appendChild(make("span", "dash-setting-k", s.label));
-    words.appendChild(make("span", "dash-setting-hint", s.hint));
-    row.appendChild(words);
-    if (s.kind === "switch") {
-      var box = make("input");
-      box.type = "checkbox";
-      box.checked = setting(s.key);
-      box.onchange = function () {
-        setSetting(s.key, box.checked);
-      };
-      row.appendChild(box);
-    } else if (s.kind === "choice") {
-      var pick = make("select", "dash-select");
-      s.options.forEach(function (o) {
-        var option = make("option", "", o[1]);
-        option.value = o[0];
-        pick.appendChild(option);
-      });
-      pick.value = choice(s.key);
-      pick.onchange = function () {
-        setSetting(s.key, pick.value);
-      };
-      row.appendChild(pick);
-    } else {
-      var least = s.min;
-      var num = make("input", "dash-number");
-      num.type = "number";
-      num.min = String(least);
-      num.step = "1";
-      num.value = String(amount(s.key));
-      num.onchange = function () {
-        var n = Math.floor(Number(num.value));
-        if (n >= least) setSetting(s.key, n);
-        else num.value = String(amount(s.key));
-      };
-      row.appendChild(num);
+    if (s.group !== group) {
+      group = s.group;
+      card.appendChild(make("h3", "dash-setting-group", group));
     }
-    card.appendChild(row);
+    card.appendChild(settingRow(s));
   });
   body.appendChild(card);
 }
@@ -253,7 +275,7 @@ export function render(): void {
   var body = el("dash-body");
   if (state.noSaves && SAVELESS.indexOf(at.tab) < 0) {
     body.textContent = "";
-    empty(body, W.noSaves, "Save a game, or set SATISFACTORY_SAVES if the saves live elsewhere. Recipes and Settings still work.");
+    empty(body, W.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere; Recipes and Settings still work");
     return;
   }
   if (at.tab === "planner") {

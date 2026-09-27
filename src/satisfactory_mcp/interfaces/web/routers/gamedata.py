@@ -227,7 +227,7 @@ def gamedata_recipes(
         if text:
             ids[key] = resolve_item(g, text)
             if ids[key] is None:
-                return _fail(f"no item matching {text!r}", 404)
+                return _fail(f"no item matching “{text}”", 404)
     have, note = _have(request, save, world)
     question = {
         "query": q,
@@ -286,9 +286,9 @@ def gamedata_recipe(
     if r is None and spoilers is False and have is not None:
         hits = [h for h in hits if h in have]
     if r is None and hits:
-        return _fail(f'"{recipe}" matches {len(hits)} recipes', 409)
+        return _fail(f"“{recipe}” matches {len(hits)} recipes", 409)
     if r is None:
-        return _fail(f'no recipe is called "{recipe}"', 404)
+        return _fail(f"no recipe is called “{recipe}”", 404)
     unlocked = None if have is None else r.cls in have
     return {
         "cls": r.cls,
@@ -322,7 +322,7 @@ def gamedata_alternates(
     g = request.app.state.game()
     iid = resolve_item(g, item)
     if iid is None:
-        return _fail(f"no item matching {item!r}", 404)
+        return _fail(f"no item matching “{item}”", 404)
     have, note = _have(request, save, world)
     rows = []
     for r in search.makers_of(g, iid):

@@ -192,7 +192,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
       });
     } else if (subject() !== key) {
       whenIdle(function () {
-        note(who + " opened “" + (entry.name || planTitle(key) || "a plan") + "” (Settings, Follow chat)");
+        note(who + " opened “" + (entry.name || planTitle(key) || "a plan") + "” (Settings, follow chat)");
         go("planner/" + key);
       });
     }

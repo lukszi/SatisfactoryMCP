@@ -93,8 +93,7 @@ class StaleStore(RuntimeError):
 
     def __init__(self, expected: int, found: int) -> None:
         super().__init__(
-            f"the factory labels changed elsewhere (chat, or another tab) since this page "
-            f"loaded them: version {expected}, now {found}. Reload and try again."
+            "the factory names changed elsewhere (chat, or another tab); reload and try again"
         )
         self.expected, self.found = expected, found
 

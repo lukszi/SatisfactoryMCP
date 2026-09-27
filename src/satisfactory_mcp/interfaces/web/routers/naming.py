@@ -195,7 +195,7 @@ def factory_candidates(
 ) -> Any:
     """Every proposal the player has not named, filtered, each with a suggested name."""
     if style not in naming.STYLES:
-        return _fail(f"unknown style {style!r}; known: {', '.join(naming.STYLES)}", 400)
+        return _fail(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
     if min_machines < 1:
         return _fail("min_machines is at least 1", 400)
     try:
@@ -293,7 +293,7 @@ def name_candidate(
     except SelectorError as exc:
         return _fail(str(exc), 404)
     if not picked:
-        return _fail(f"proposal:{proposal} matched no machines", 404)
+        return _fail("that unnamed cluster matched no machines; detect again", 404)
     cand = fidentity.describe(picked, st.graph, st.game, st.projection, "label")
     overlaps = st.labels.overlaps(picked, name)
     try:
@@ -465,7 +465,7 @@ def factory_graph(
     if factory:
         label = next((x for x in st.labels.labels if x.name == factory), None)
         if label is None:
-            return _fail(f"no factory named {factory!r}", 404)
+            return _fail(f"no factory named “{factory}” in this world", 404)
         alive = set(st.graph.machines())
         machines, title = [m for m in label.anchors if m in alive], label.name
     else:
@@ -473,8 +473,8 @@ def factory_graph(
             return _fail("candidate= needs the token= it was detected at", 400)
         try:
             pin.check(st.header, token)
-        except pin.PinRefused as exc:
-            return _fail(str(exc), 409)
+        except pin.PinRefused:
+            return _fail("a newer save was written since this was detected; detect again", 409)
         try:
             machines = select_machines([candidate], st)
         except SelectorError as exc:

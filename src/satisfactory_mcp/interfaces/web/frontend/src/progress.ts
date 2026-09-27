@@ -120,7 +120,7 @@ registerFetch(fetcher(sloops, 65));
 onSetting(changed);
 
 if (spoilerNotice()) {
-  offer("Upcoming milestones, research and locked recipes are now hidden until the save reaches them.", "show them", function () {
+  offer("upcoming milestones, research and locked recipes are now hidden until the save reaches them", "show them", function () {
     setSetting("spoilers", true);
   });
 }
@@ -159,9 +159,9 @@ function placed(rows: { name: string; amount: number }[]): string {
 }
 
 function spoilerNote(body: HTMLElement, text: string): void {
-  var hid = make("p", "dash-note", text + " ");
+  var hid = make("p", "dash-note", text + "; ");
   hid.appendChild(link("settings", "Settings"));
-  hid.appendChild(document.createTextNode(" can show them."));
+  hid.appendChild(document.createTextNode(" can show them"));
   body.appendChild(hid);
 }
 
@@ -169,8 +169,8 @@ function milestoneStatus(m: MilestoneRow): string {
   if (m.opens_at !== null && m.status !== "DONE") return "locked (phase " + m.opens_at + ")";
   if (m.status === "DONE") return "done";
   if (m.status === "READY") return "affordable";
-  if (m.status === "BLOCKED") return "blocked by " + m.blocked_by.join(", ");
-  return m.status;
+  if (m.status === "BLOCKED") return "needs " + m.blocked_by.join(", ") + " first";
+  return m.status.toLowerCase();
 }
 
 function affordable(rows: MilestoneRow[]): number {
@@ -290,7 +290,7 @@ function renderMilestones(body: HTMLElement): void {
     strip.appendChild(tally("tier " + t.tier, t.done, t.total));
   });
   body.appendChild(strip);
-  if (tiers.length < full.tiers.length) spoilerNote(body, "Tiers the HUB has not opened yet are hidden.");
+  if (tiers.length < full.tiers.length) spoilerNote(body, "tiers the HUB has not opened yet are hidden");
 
   var card = make("section", "dash-card");
   var bar = make("div", "dash-title");
@@ -329,11 +329,11 @@ function duration(seconds: number): string {
 
 function mamStatus(r: MamRow): string {
   if (r.status === "RUNNING") return "running, " + duration(r.running_s || 0) + " left at save";
-  if (r.status === "BLOCKED") return "blocked by " + r.blocked_by.join(", ");
+  if (r.status === "BLOCKED") return "needs " + r.blocked_by.join(", ") + " first";
   if (r.status === "TREE SHUT") return "tree not open";
   if (r.status === "READY") return "affordable";
   if (r.status === "DONE") return "done";
-  return r.status;
+  return r.status.toLowerCase();
 }
 
 function owes(r: MamRow): boolean {
@@ -436,7 +436,7 @@ function renderMam(body: HTMLElement): void {
       strip.appendChild(tally(name, trees[name]![0]!, trees[name]![1]!));
     });
   body.appendChild(strip);
-  if (hidden) spoilerNote(body, hidden + " research nodes in trees not opened yet are hidden.");
+  if (hidden) spoilerNote(body, hidden + " research nodes in trees not opened yet are hidden");
   if (!data.knows_trees) note(body, "this save predates the list of opened trees, so a node in an unopened tree reads as available");
 
   var card = make("section", "dash-card");
@@ -599,7 +599,7 @@ function renderElevator(body: HTMLElement): void {
     );
   } else if (rows.length === named.length) note(all, "this save records no Space Elevator phase");
   var hidden = named.length - rows.length;
-  if (hidden) spoilerNote(all, data.target_phase ? hidden + " phases past the target are hidden." : "The save names no target phase, so its " + hidden + " phase records are hidden.");
+  if (hidden) spoilerNote(all, data.target_phase ? hidden + " phases past the target are hidden" : "the save names no target phase, so its " + hidden + " phase records are hidden");
   body.appendChild(all);
 }
 
@@ -696,7 +696,7 @@ function renderDrives(body: HTMLElement): void {
         },
       })
     );
-    note(card, "The option not picked returns to the pool and a later drive can offer it again; only the drive is spent.");
+    note(card, "the option not picked returns to the pool; only the drive is spent");
   }
   body.appendChild(card);
 }
@@ -866,7 +866,7 @@ function renderSloops(body: HTMLElement, point: PointButton): void {
   tiles.appendChild(tile("free", num(data.free), data.by_place.length ? placed(data.by_place) : "none in stock"));
   tiles.appendChild(tile("slotted", data.measured ? num(data.committed) : "–", data.measured ? "in production machines" : "this save does not record slots"));
   tiles.appendChild(tile("owned", num(data.owned), "free plus slotted"));
-  if (data.mercer_spheres || setting("spoilers")) tiles.appendChild(tile("Mercer Spheres", num(data.mercer_spheres), "counted apart, never added in"));
+  if (data.mercer_spheres || setting("spoilers")) tiles.appendChild(tile("mercer spheres", num(data.mercer_spheres), "counted apart, never added in"));
   body.appendChild(tiles);
   if (!data.amplifier_researched && data.amplifier_spoiler && !setting("spoilers")) {
     note(body, "no somersloop can go into a machine yet: the research for it is still locked");

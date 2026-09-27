@@ -13,7 +13,7 @@ import { loadOne, reload } from "./load";
 import { writeHash } from "./map";
 import { W } from "./words";
 import { BOOT, currentWorld, pinnedPath, state } from "./state";
-import { fail, friendly } from "./toast";
+import { fail, friendly, note } from "./toast";
 
 import type { WorldRow, WorldsResponse } from "./api-shapes";
 
@@ -25,7 +25,7 @@ function worldOption(w: WorldRow, dupes: Record<string, number>): HTMLOptionElem
   // Two worlds can share a session name -- one id-keyed, one a legacy grouping of saves
   // too old to carry a world id. A save count alone cannot tell them apart.
   if ((dupes[w.session_name] ?? 0) > 1 && w.world_id.indexOf("session:") === 0) {
-    label += " — old saves without a world id";
+    label += ": old saves without a world id";
   }
   option.textContent = label;
   option.title = "world id: " + w.world_id;
@@ -97,6 +97,14 @@ export function syncPickers(): void {
   fillSavePicker();
 }
 
+function substituted(world: boolean, save: boolean): void {
+  if (!world && !save) return;
+  var shown = currentWorld();
+  var name = shown ? "“" + shown.session_name + "”" : "another world";
+  if (world) note("the linked world is not in the save folder; showing " + name + (BOOT.save ? " and its newest save" : ""));
+  else note("the linked save “" + BOOT.save + "” is not in this world; showing the newest save");
+}
+
 export function loadWorlds(): Promise<void> {
   return fetch("/api/worlds")
     .then(function (r) {
@@ -128,7 +136,7 @@ export function loadWorlds(): Promise<void> {
           .join(" · ");
         var text =
           "no readable saves found" +
-          (reasons ? " — " + reasons : "") +
+          (reasons ? ": " + reasons : "") +
           " (set SATISFACTORY_SAVES if they live elsewhere)";
         el("summary").textContent = W.noSaves;
         el("summary").title = text;
@@ -146,15 +154,14 @@ export function loadWorlds(): Promise<void> {
         return;
       }
 
-      state.world =
-        BOOT.world && state.worlds.some(function (w) { return w.world_id === BOOT.world; })
-          ? BOOT.world
-          : state.worlds[0]!.world_id;
+      var known = !!BOOT.world && state.worlds.some(function (w) { return w.world_id === BOOT.world; });
+      state.world = known ? BOOT.world! : state.worlds[0]!.world_id;
       picker.value = state.world;
       // The fragment names a save by FILENAME; the pin is a path. Same conversion the
       // hashchange path makes, which is why it is one function in state.ts.
-      state.save = pinnedPath(BOOT.save || "", currentWorld());
+      state.save = known || !BOOT.world ? pinnedPath(BOOT.save || "", currentWorld()) : "";
       fillSavePicker();
+      substituted(!!BOOT.world && !known, !!BOOT.save && !state.save);
       writeHash();
     })
     .catch(function (e) {
@@ -183,7 +190,7 @@ export function refreshWorlds(): void {
         state.noSaves = false;
         el<HTMLSelectElement>("world").value = state.world;
         fillSavePicker();
-        reload("world found — loading…");
+        reload("world found, loading…");
         return;
       }
       if (!currentWorld()) return; // the selected world vanished; keep showing it as-is

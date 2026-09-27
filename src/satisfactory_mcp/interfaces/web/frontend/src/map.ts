@@ -175,7 +175,7 @@ export function pixelsPerMetre(zoom?: number): number {
 // map has that nothing on screen hints at.
 map.attributionControl
   .setPrefix(window.matchMedia("(pointer: coarse)").matches ? "" : "right-click: inspect a point")
-  .addAttribution("map data from your save &middot; Leaflet");
+  .addAttribution("map data from the save &middot; Leaflet");
 
 /* The optional map render -- tile pyramid or single overlay -- gets the bottom pane of the
  * three, so the region fill is drawn OVER it rather than instead of it. Sharing a pane with

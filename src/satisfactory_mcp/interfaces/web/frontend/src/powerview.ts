@@ -41,7 +41,9 @@ export function bar(ledger: Ledger, legend?: boolean): HTMLElement {
     LEDGER.measuredDraw +
     ", " +
     mw(ledger.draw_mw) +
-    " nameplate, against " +
+    " " +
+    LEDGER.nameplateDraw +
+    ", against " +
     mw(ledger.generation_mw) +
     " " +
     LEDGER.generation;

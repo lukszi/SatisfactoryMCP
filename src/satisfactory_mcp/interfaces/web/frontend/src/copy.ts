@@ -50,7 +50,7 @@ function copyFrom(event: Event): void {
       note("copied " + text);
     },
     function (error) {
-      fail("could not copy " + text + " — " + String((error && error.message) || error));
+      fail("could not copy " + text + ": " + String((error && error.message) || error));
     }
   );
 }

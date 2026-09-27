@@ -252,7 +252,7 @@ export function contentsRows(items: Stack[], more: number): Row[] {
   if (more) {
     tiles +=
       '<span class="item-tile item-tile-more" title="' +
-      esc(more + " more kinds — the server sends the biggest few") +
+      esc(more + " more kinds; the server sends the biggest few") +
       '">+' +
       esc(String(more)) +
       "</span>";

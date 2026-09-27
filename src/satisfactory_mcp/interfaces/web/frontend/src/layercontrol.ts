@@ -185,7 +185,7 @@ function foldHead(
     '<span class="layer-count">' +
     esc(tail) +
     "</span>";
-  element.title = (open ? "hide " : "show ") + title + " — " + note;
+  element.title = (open ? "hide " : "show ") + title + ": " + note;
 }
 
 /** What both counting heads put in their tail and their tooltip. */
@@ -600,7 +600,7 @@ function buildFloors(list: HTMLElement): HTMLElement {
   var out = L.DomUtil.create("button", "layer-floor-exit", head) as HTMLButtonElement;
   out.type = "button";
   out.innerHTML = "&#10005;";
-  out.title = "leave floor mode (Esc) — the whole world again";
+  out.title = "leave floor mode (Esc): the whole world again";
   out.setAttribute("aria-label", "leave floor mode");
   L.DomEvent.on(out, "click", function (event) {
     L.DomEvent.stop(event);

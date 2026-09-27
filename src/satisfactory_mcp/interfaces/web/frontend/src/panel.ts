@@ -305,7 +305,7 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
 
 function unavailable(body: HTMLElement, thing: string, failed: string, path: "/api/factories/health" | "/api/power/circuits"): boolean {
   if (state.noSaves) {
-    empty(body, W.noSaves, "Save a game, or set SATISFACTORY_SAVES if the saves live elsewhere.");
+    empty(body, W.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere");
     return true;
   }
   if (failed) {
@@ -416,7 +416,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
         " · " +
         counted(row.consumers, "consumer") +
         " · " +
-        counted(row.poles, "pole")
+        counted(row.poles, "pole or tower", LEDGER.poles)
     )
   );
   if (led.generation_mw > 0 || led.draw_mw > 0) item.appendChild(bar(led));
@@ -460,20 +460,15 @@ function renderPower(body: HTMLElement): void {
     });
     say(body, kinds.join(" · "));
   }
-  if (data.paused) say(body, counted(data.paused, "paused building") + " left out of both sides");
+  if (data.paused) say(body, counted(data.paused, "paused building") + ", left out of both sides");
   if (data.unmodellable.length) {
     say(body, "not in game data, left out: " + data.unmodellable.join(", "));
   }
+  if (data.unwired_generators.length) body.appendChild(refList("generators on no wire", data.unwired_generators, "generation no circuit can use"));
+  if (data.starved.length || data.unwired.length || data.no_generator.length) body.appendChild(make("h3", "panel-h", W.powerProblems));
   if (data.starved.length) body.appendChild(refList(W.starvedGenerator + "s", data.starved, STARVED_HINT));
-  if (data.unwired.length) {
-    body.appendChild(refList(W.noWire, data.unwired, "machines with no wire at all"));
-  }
-  if (data.no_generator.length) {
-    body.appendChild(refList(W.noGenerator, data.no_generator, "wired, but to a circuit no generator stands on"));
-  }
-  if (data.unwired_generators.length) {
-    body.appendChild(refList("generators on no wire", data.unwired_generators, "generation no circuit can draw on"));
-  }
+  if (data.unwired.length) body.appendChild(refList(W.noWire, data.unwired, "machines on no power line"));
+  if (data.no_generator.length) body.appendChild(refList(W.noGenerator, data.no_generator, "wired to a circuit no generator stands on"));
   body.appendChild(make("h3", "panel-h", counted(data.circuits.length, "circuit")));
   var list = make("ul", "panel-list");
   data.circuits.forEach(function (row) {

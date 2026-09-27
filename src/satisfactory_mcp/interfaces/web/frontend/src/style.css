@@ -1760,6 +1760,19 @@ a.dash-where:hover {
   }
 }
 
+.dash-setting-group {
+  margin: var(--sp-3) 0 var(--sp-1);
+  color: var(--ink);
+  font-size: var(--fs-m);
+  font-weight: 600;
+}
+
+.dash-setting-ctl {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .dash-setting-text {
   display: flex;
   flex-direction: column;

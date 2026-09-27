@@ -79,7 +79,7 @@ def test_an_ambiguous_recipe_lists_the_candidates_and_unknown_is_404(client):
     assert "matches" in ambiguous.json()["error"]
     unknown = client.get("/api/gamedata/recipe", params={"recipe": "zzzz-no-such"})
     assert unknown.status_code == 404
-    assert unknown.json()["error"] == 'no recipe is called "zzzz-no-such"'
+    assert unknown.json()["error"] == "no recipe is called “zzzz-no-such”"
 
 
 def test_an_ambiguous_name_counts_only_unlocked_candidates_with_spoilers_0(client, game, state):

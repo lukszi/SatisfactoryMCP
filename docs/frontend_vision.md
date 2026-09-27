@@ -523,7 +523,7 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   machine gets a red outline, and a blocked one a yellow outline, because blocked is waiting on
   downstream, not broken (docs/save-projection.md §6.2d).
 - **Spoilers are a setting, off by default** (T3, §14). Settings (`dash=settings`) holds a
-  "Show upcoming milestones" switch. Off, Progress shows only the tiers the HUB has open (the
+  "show what is not unlocked yet" switch. Off, Progress shows only the tiers the HUB has open (the
   delivered Space Elevator phases open them, §12.3), plus any tier with a milestone done; the
   tier strip, the tallies and the Overview's "affordable" count follow the same filter. The
   default was on until 2026-09-27. A browser that never set the switch gets a one-time notice
@@ -1159,6 +1159,38 @@ Decided 2026-09-27, binding for the design-system work and the page batches afte
 - **T8** The Host check applies to every method (§9.2).
 - **T9 Explanations.** One line at most on the page; longer definitions go to the docs. The
   marker key stays.
+
+The vocabulary that follows from these, one term per concept, lives in `words.ts`:
+
+- **need action** is the count and the column name ("3 need action", "none need action");
+  **not running** is the wider set of every state that is not fine, defined in its column
+  tooltip.
+- **power problems** are no wire, no generator and starved generator. They are never folded
+  into the need-action count, on the map, the panel or the dashboard.
+- **unnamed cluster** is what Detect offers, what the map layer draws and what Settings filters.
+- The power ledger says **generation**, **measured draw**, **nameplate draw**, **headroom now**
+  and **headroom at full rate** (always signed), and counts **poles and towers**. The header
+  uses the same words: "measured draw / generation".
+- Status words are lowercase and coloured by token (locked, looted, unlocked, done); upper
+  case is only for tag chips.
+- Copy is lowercase, without a trailing full stop, and uses a colon or semicolon rather than a
+  dash. Names in running text are quoted as “…”.
+
+Settings are grouped as spoilers, detect factories and planner, each with a one-clause hint.
+What the hints leave out:
+
+- **show what is not unlocked yet**, off: Progress shows the tiers the HUB has open, the MAM
+  trees already opened and the Space Elevator phases up to the current target, and hides what
+  lies beyond them; Recipes and search hide recipes the save has not unlocked.
+- **only fed unnamed clusters** hides a cluster whose belts and pipes reach no miner,
+  extractor or outside machine. A box filled by hand is not a source; a train, drone or truck
+  station counts as unknown, and the cluster stays.
+- **minimum machines** takes a whole number from 1 to 500; anything else is refused under the
+  field and the old value stays.
+- **follow chat** decides what the page does when chat solves a plan or opens one. A change
+  chat makes to the plan already open always shows up, whatever this says, and the page never
+  moves while a field has the cursor.
+- **reset to defaults** clears every stored value, so each setting reads its default again.
 
 ---
 

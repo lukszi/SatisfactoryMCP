@@ -128,7 +128,7 @@ export function drawNodes(data: NodesResponse): void {
               // and a row saying "reachable: yes" on 600 dots is noise.
               [
                 "status",
-                locked ? "LOCKED — no extractor this world has unlocked can work it" : null,
+                locked ? "locked: no extractor this world has unlocked can work it" : null,
               ],
               // Joined server-side: the raster and its orientation trap stay on one side.
               ["region", regionLine(n.region)],
@@ -140,7 +140,7 @@ export function drawNodes(data: NodesResponse): void {
                 n.occupied
                   ? "occupied by " + (n.occupant_name || n.occupant_cls)
                   : data.save_error
-                    ? "unknown — save could not be read"
+                    ? "unknown: the save could not be read"
                     : "no extractor known here",
               ],
               ["selector", code("node:" + n.name)],
@@ -153,7 +153,7 @@ export function drawNodes(data: NodesResponse): void {
     });
   raiseNodeDots();
   if (data.save_error && !state.noSaves) {
-    fail("nodes: " + data.save_error + " — nodes drawn, occupancy unknown");
+    fail("nodes: " + data.save_error + "; nodes drawn, occupancy unknown");
   }
 }
 
@@ -218,7 +218,7 @@ export function drawPlayer(p: SummaryResponse["player"]): void {
   })
     .bindPopup(
       popup([
-        ["player", "where you last stood (as of this save)"],
+        ["player", "where the player last stood in this save"],
         ["at", p.x_m + ", " + p.y_m + " m"],
       ])
     )
@@ -231,8 +231,8 @@ export function drawPlayer(p: SummaryResponse["player"]): void {
 // Handed out one per kind rather than measured against the page, except for the three the audit
 // caught. The drop pod is the drab olive no network or ground spends: nearest cross-owner
 // neighbour Dune Desert at dE 28.1, the three belt tones 50.8 to 53.5 away. The somersloop
-// takes the rose the page's reds leave free, dE 28.3 from the generator red and 28.7 from the
-// storage magenta. The hard drive is an indigo, dE 42.1 from the machine blue and 36.6 from the
+// takes the rose the page's reds leave free, dE 28.3 from the stopped red and 35.9 from the
+// lighter pipe tone. The hard drive is an indigo, dE 42.1 from the machine blue and 36.6 from the
 // wire violet -- still blue enough to be the drive it is.
 var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
   somersloop: "#d84378",
@@ -312,9 +312,9 @@ function pickupDot(here: L.LatLngTuple, colour: string, r: CollectibleRow): L.Ci
 /** What a pod's loot flag says, or null for a row that never had one to read. */
 function lootLine(r: CollectibleRow): string | null {
   if (r.category !== POD_CATEGORY || r.collected) return null;
-  if (r.looted === true) return "LOOTED — the hard drive is already yours";
-  if (r.looted === false) return "unlooted — the hard drive is still in it";
-  return "unknown — no save has had this pod loaded, so its loot flag was never read";
+  if (r.looted === true) return "looted: the hard drive is already taken";
+  if (r.looted === false) return "unlooted: the hard drive is still in it";
+  return "unknown: no save has loaded this pod yet";
 }
 
 export function drawCollectibles(data: CollectiblesResponse): void {

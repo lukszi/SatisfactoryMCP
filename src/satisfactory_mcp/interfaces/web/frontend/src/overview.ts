@@ -186,7 +186,7 @@ function factoriesCard(parent: HTMLElement): void {
     return r.actionable > 0;
   });
   if (!worst.length) {
-    empty(card, "no named factory has a machine that needs action");
+    empty(card, "none " + W.needAction);
     return;
   }
   card.appendChild(
@@ -273,7 +273,7 @@ function machinesCard(parent: HTMLElement): void {
   if (healthMissing(card)) return;
   var found = groups();
   if (!found.rows.length) {
-    empty(card, "no machine in a named factory is " + spoken(actionable(), "or"));
+    empty(card, "none " + W.needAction);
     return;
   }
   var shown = found.rows.slice(0, ROWS_SHOWN);

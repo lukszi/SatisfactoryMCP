@@ -262,8 +262,8 @@ function render(): void {
       "nothing outside this selection " +
         (view.direction === "up" ? "feeds it" : "is fed by it") +
         (data.seeds > 1
-          ? " — trace one machine to see the chain inside it"
-          : " — its runs reach no other machine")
+          ? "; trace one machine to see the chain inside it"
+          : "; its runs reach no other machine")
     );
   }
   if (data.items.length) {

@@ -28,7 +28,7 @@ import type { PlanSiting, PlansResponse } from "./api-shapes";
  * from the concrete it will replace, 110.7 from the machine blue standing on it, and 69.9
  * from the nearest biome ground.
  *
- * Green because the page spends none of it on anything built: blue, amber, red, magenta,
+ * Green because the page spends none of it on anything built: blue, amber, tan, blue-violet,
  * slate and rust are all placements or networks, so an outline in a hue no built thing wears
  * cannot be mistaken for one. */
 var PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
@@ -42,7 +42,7 @@ function planPopup(p: PlanSiting): Row[] {
   return [
     ["plan", p.name],
     ["footprint", p.width_m + " x " + p.depth_m + " m"],
-    ["from", measured ? "measured" : "the square plan_layout budgets — an estimate"],
+    ["from", measured ? "measured" : "estimated from the machine count"],
     // Degrees about world Z, positive turning +X towards +Y: the same convention the machine
     // rectangles are drawn with, so a pad and the machines on it turn the same way.
     ["facing", Math.round(p.yaw_deg) + "°"],

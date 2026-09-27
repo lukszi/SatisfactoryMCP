@@ -51,7 +51,7 @@ export function reveal(names: string[]): void {
     (turned.length > 1
       ? turned.slice(0, -1).join(", ") + " and " + turned[turned.length - 1]
       : turned[0]) +
-      " turned on — untick " +
+      " turned on; untick " +
       (turned.length > 1 ? "those layers" : "the " + turned[0] + " layer") +
       " to hide them again"
   );
@@ -347,8 +347,8 @@ function badgeHidden(entry: Entry, hidden: Entry[]): void {
   badge.textContent = "+" + hidden.length;
   badge.title =
     hidden.length === 1
-      ? "1 more factory label is hidden under this one — click to zoom in"
-      : hidden.length + " more factory labels are hidden here — click to zoom in";
+      ? "1 more factory label is hidden under this one; click to zoom in"
+      : hidden.length + " more factory labels are hidden here; click to zoom in";
   var points = [entry.marker!.getLatLng()];
   hidden.forEach(function (other) {
     points.push(other.marker!.getLatLng());

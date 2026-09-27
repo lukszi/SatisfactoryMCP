@@ -138,7 +138,7 @@ def solve_plan(
         return _fail(f"could not read save: {exc}", 404)
     if key is not None:
         if not _KEY.fullmatch(key):
-            return _fail(f"no saved plan with key {key!r}", 404)
+            return _fail(f"no plan “{key}” in this world", 404)
         try:
             kwargs = PlanLog(st.world_id).state(key, body.get("rev")).kwargs()
         except (UnknownPlan, InvalidOp) as exc:

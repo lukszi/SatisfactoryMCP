@@ -14,6 +14,7 @@ import { el } from "./dom";
 import { mw, phaseText } from "./format";
 import { drawPlayer } from "./markers";
 import { registerFetch } from "./registry";
+import { W } from "./words";
 
 import type { SummaryResponse } from "./api-shapes";
 
@@ -22,14 +23,14 @@ function drawHeader(s: SummaryResponse): void {
   var power = s.power;
   // No fallback to the nameplate: `PowerReport` starts the measured figure at 0.0 and charges
   // an unmonitored machine in full, so it is always a number -- and a nameplate total printed
-  // under the word "drawn" is the opposite of what the split exists to say.
+  // under the words "measured draw" is the opposite of what the split exists to say.
   var measured = power.measured_draw_mw;
   var parts = [s.header.session_name];
   var phase = phaseText(s.progression.game_phase);
   if (phase) parts.push(phase);
   // The measured figure, labelled: the nameplate total alone reads as "one factory
   // from a brown-out" on a base that is mostly idle. Both live in the tooltip.
-  parts.push(mw(measured) + " drawn / " + mw(power.generation_mw) + " generation");
+  parts.push(mw(measured) + " " + W.measuredDraw + " / " + mw(power.generation_mw) + " " + W.generation);
   var span = el("summary");
   span.textContent = parts.join(" · ");
   // Set in the same breath as the text, and so is the failure branch below: a branch that
@@ -41,11 +42,16 @@ function drawHeader(s: SummaryResponse): void {
     s.age_note +
     "\npower: " +
     mw(measured) +
-    " measured draw; " +
+    " " +
+    W.measuredDraw +
+    "; " +
     mw(power.draw_mw) +
-    " nameplate if every machine ran at once; " +
+    " " +
+    W.nameplateDraw +
+    "; " +
     mw(power.generation_mw) +
-    " generation";
+    " " +
+    W.generation;
 }
 
 function wireSearchToggle(): void {

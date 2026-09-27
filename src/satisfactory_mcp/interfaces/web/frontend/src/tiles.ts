@@ -54,7 +54,7 @@ var MODES: ModeSpec[] = [
     layer: "map",
     label: "artwork",
     about: "the game's own map artwork",
-    generator: "tools/gen_map_image.py, which cuts it out of your own installed game",
+    generator: "tools/gen_map_image.py, which cuts it out of the installed game",
   },
   {
     key: "terrain",
@@ -78,7 +78,7 @@ var MODES: ModeSpec[] = [
     key: "plain",
     layer: "",
     label: "plain",
-    about: "no base imagery — the biome regions on the page's own sea",
+    about: "no base imagery: the biome regions on the page's own sea",
     generator: "",
   },
 ];
@@ -283,7 +283,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => L.Layer) | 
       modeFailed(
         spec,
         "the pyramid is on disk but a tile would not load",
-        spec.label + " tiles: the pyramid is there but a tile would not load — showing plain instead"
+        spec.label + " tiles: the pyramid is there but a tile would not load; showing plain instead"
       );
     });
     return tiles;
@@ -303,7 +303,7 @@ function overlayMaker(spec: ModeSpec, response: Response): () => L.Layer {
       modeFailed(
         spec,
         "data/local/map.png exists but could not be decoded",
-        "map image: data/local/map.png exists but could not be decoded — showing plain instead"
+        "map image: data/local/map.png exists but could not be decoded; showing plain instead"
       );
     });
     return image;
@@ -346,7 +346,7 @@ function modeChoices(): ModeChoice[] {
       ready: ready,
       note: ready
         ? spec.about
-        : refusals[spec.key] || "not generated yet — written by " + spec.generator,
+        : refusals[spec.key] || "not generated yet; written by " + spec.generator,
     };
   });
 }

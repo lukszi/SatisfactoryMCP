@@ -115,7 +115,7 @@ var REGION_COLOUR: Record<string, string> = declareColours("regions", {
    * 768 painted cells -- so it is the largest thing on this layer and the one that must NOT
    * read as a biome. Bare, pale and desaturated, one step brighter than any ground here.
    *
-   * Measured like the pipe rust and the storage magenta. In CIE Lab it is dE 17.1 from its
+   * Measured like the pipe rust and the storage blue-violet. In CIE Lab it is dE 17.1 from its
    * nearest neighbour (Rocky Desert, which it borders for most of the west coast), 18.4 from
    * Dune Desert and 20.6 from Western Dune Forest -- above the ~15.6 step the belts use and
    * comfortably above the pipes' 15.1. All three are same-owner comparisons and palette.ts

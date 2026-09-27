@@ -415,21 +415,22 @@ dashboard counts the same tuple (docs/frontend_vision.md §8.6), and so does the
 `frontend/src/placements.ts` keeps no list of its own.
 
 **How the map marks a machine.** The fill stays the kind's hue (machines blue, extractors
-amber, generators red); the outline carries the state:
+amber, generators tan); the outline carries the state:
 
 | mark | meaning |
 |---|---|
 | solid box, thin outline in the kind's hue | running, or not in `ACTIONABLE` (`intermittent`, `saturated`, `unmonitored`) |
 | hollow box, dashed outline | `paused` |
-| hollow box, thick **red** outline | stopped, needs action: `dead node`, `no recipe`, `starved`, `stalled` |
+| hollow box, thick **red** outline | stopped, need action: `dead node`, `no recipe`, `starved`, `stalled` |
 | solid box, thick **yellow** outline | `blocked`: output full, runs again once emptied |
 
 Colours decided 2026-09-26: red means broken, and blocked is not red. A blocked
 machine runs again as soon as its output is emptied, so it is waiting on downstream rather
 than broken. It still counts as `actionable`.
 
-The red is the page's problem colour, `--warn` in style.css, which is also the generator hue
-(`#d9534f`). A stopped generator therefore keeps a red outline, only thicker and hollow.
+The outline red is `placements/stopped` (`#d9534f`); the page's CSS problem colour is `--bad`.
+Generators moved off that red to a warm tan (`placements/generators`, `#b89a70`), so a
+generator no longer reads as a fault, and a stopped one is the only generator drawn in red.
 
 The yellow is `placements/blocked`, `#ffd000`, a new colour: the palette had no yellow free.
 The ore and pickup yellows are node dots, and an equal hex in another module is dE 0 and
@@ -439,12 +440,12 @@ loot cache 46.7. A darker ochre landed within 16–19 of the extractor amber, an
 yellow within 10–15 of gold and sulfur.
 
 Every `actionable` machine gets the thick outline, red unless it is blocked, so a state added
-to `ACTIONABLE` needs no frontend change. The popup's state row says "blocked — output full"
+to `ACTIONABLE` needs no frontend change. The popup's state row says "blocked: output full"
 and appends "need action" for every actionable state. The marker key lists both outlines.
 
 The side panel and the dashboard use the same yellow for anything that names `blocked`: the
-state chips, the machine-row labels, the per-state table cell and its bar. `placements.ts`
-publishes the declared colour as the CSS variable `--blocked`, and `states.ts` `tone()` picks the
+state chips, the machine-row labels, the per-state table cell and its bar. The CSS twin of the
+declared colour is `--blocked` in the `:root` of style.css, and `states.ts` `tone()` picks the
 class, so all three surfaces read one token. The other actionable states stay red. On the
 panel background (`#1f2228`) the yellow has a contrast ratio of about 11:1.
 

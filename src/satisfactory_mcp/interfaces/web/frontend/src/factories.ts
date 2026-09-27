@@ -147,8 +147,8 @@ function factoryColumns(): Column<FactoryHealthRow>[] {
     },
     counter("actionable", W.needAction, true, W.needAction + ": " + spoken(actionable(), "or")),
     counter("attention", W.notRunning, false, "every machine that is not " + spoken(stateSets().ok, "or")),
-    counter("unwired", W.noWire, true, "machines with no power connection"),
-    counter("no_generator", W.noGenerator, true, "machines on a circuit with no generator"),
+    counter("unwired", W.noWire, true, W.powerProblems + ": machines with " + W.noWire),
+    counter("no_generator", W.noGenerator, true, W.powerProblems + ": machines on a circuit with " + W.noGenerator),
     {
       key: "measured_mw",
       label: W.measuredDraw,
@@ -200,7 +200,7 @@ export function renderFactories(body: HTMLElement): void {
   renderDetect(body);
   var rows = vitals().health!.factories.slice();
   if (!rows.length) {
-    empty(body, "no factories named yet", "Detect them above, or ask chat to name one.");
+    empty(body, "no factories named yet", "detect them above, or ask chat to name one");
     return;
   }
   heading(body, counted(rows.length, "named factory", "named factories"));
@@ -453,7 +453,7 @@ function candidateTable(rows: CandidateRow[]): HTMLElement {
         key: "name",
         label: "name",
         className: "name",
-        title: "Enter names it, Esc restores the suggestion; a dashed border marks a guess",
+        title: "Enter saves the name, Esc restores the suggestion; a dashed border marks a guess",
         render: nameField,
       },
       { key: "acts", label: "", align: "right", className: "dt-acts", render: candidateActs },
@@ -476,7 +476,7 @@ function candidateActs(row: CandidateRow): HTMLElement {
   var box = row.bbox_m;
   acts.appendChild(
     box
-      ? mapButton("fly the map to this cluster and outline it", function () {
+      ? mapButton("fly the map to this " + W.unnamedCluster + " and outline it", function () {
           showBox(box!);
         })
       : make("span", "dash-muted", "–")
@@ -488,7 +488,7 @@ function candidateActs(row: CandidateRow): HTMLElement {
         var data = detect.data;
         if (data) openGraph("candidate", String(row.index), chosenName(row) + " (" + W.unnamedCluster + ")", data.token);
       },
-      { title: "draw this cluster's production graph" }
+      { title: "draw the production graph of this " + W.unnamedCluster }
     )
   );
   acts.appendChild(
@@ -497,7 +497,7 @@ function candidateActs(row: CandidateRow): HTMLElement {
       function () {
         nameCandidate(row);
       },
-      { title: "write this name to the label file", disabled: detect.saving >= 0 }
+      { title: "save this name as a factory", disabled: detect.saving >= 0 }
     )
   );
   acts.appendChild(
@@ -534,7 +534,7 @@ function namedList(card: HTMLElement): void {
 function filterLine(card: HTMLElement, data: CandidatesResponse, skipped: number): void {
   var line = make("p", "dash-note dash-filters");
   var parts: string[] = [];
-  if (detect.showAll) line.appendChild(document.createTextNode("every cluster, filters off "));
+  if (detect.showAll) line.appendChild(document.createTextNode("every " + W.unnamedCluster + ", filters off "));
   else {
     if (data.hidden.not_fed) parts.push(count(data.hidden.not_fed) + " not fed");
     if (data.hidden.small) parts.push(count(data.hidden.small) + " below " + counted(data.min_machines, "machine"));
@@ -590,7 +590,7 @@ function renderDetect(body: HTMLElement): void {
       function () {
         runDetect();
       },
-      { title: "find the machine clusters no factory covers", disabled: detect.busy }
+      { title: "find the machines no factory covers", disabled: detect.busy }
     )
   );
   card.appendChild(bar);
@@ -598,7 +598,7 @@ function renderDetect(body: HTMLElement): void {
   namedList(card);
   if (graphView.source === "candidate") graphCard(card);
   if (!data) {
-    if (!detect.failure) note(card, "Finds the machine clusters no factory covers yet and suggests a name for each.");
+    if (!detect.failure) note(card, "finds the machines no factory covers yet and suggests a name for each");
     body.appendChild(card);
     return;
   }
@@ -713,7 +713,7 @@ function worstList(parent: HTMLElement, row: FactoryHealthRow): void {
   if (!shown.length) {
     empty(
       section,
-      "nothing needs action",
+      "none " + W.needAction,
       row.attention ? counted(row.attention, "machine") + " " + W.notRunning : ""
     );
     parent.appendChild(section);
@@ -838,7 +838,7 @@ export function renderFactory(body: HTMLElement, name: string): void {
   body.appendChild(link("factories", "‹ all factories", "dash-back"));
   if (!healthState(body)) return;
   if (!row) {
-    empty(body, "no factory named “" + name + "” in this world", "It may have been renamed or forgotten since this link was made.");
+    empty(body, "no factory named “" + name + "” in this world", "it may have been renamed or forgotten since this link was made");
     return;
   }
   var head = make("div", "dash-title");

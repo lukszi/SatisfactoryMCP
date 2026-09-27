@@ -310,11 +310,11 @@ function coversGround(points: Point3M[]): boolean {
  * supports and says so, since silence would hand a reader a ring indistinguishable from a
  * measured one. */
 function beltKind(b: BeltRow, ring: boolean): string | null {
-  if (b.lift === true) return "conveyor lift — vertical, so drawn as a ring";
+  if (b.lift === true) return "conveyor lift: vertical, so drawn as a ring";
   if (b.lift === false || b.lift === undefined) return null;
   return ring
-    ? "the dump has no entry for this class, so whether it is a lift is unknown — drawn as a ring because this route covers no ground"
-    : "the dump has no entry for this class, so whether it is a lift is unknown — drawn as a line because this route covers ground";
+    ? "lift or not is unknown for this class: drawn as a ring, since it covers no ground"
+    : "lift or not is unknown for this class: drawn as a line, since it covers ground";
 }
 
 function beltPopup(b: BeltRow, kind: string | null, first: Point3M, last: Point3M): string {
@@ -480,7 +480,7 @@ export function styleRoutes() {
  * extractors, and the mid-rust band is the bauxite dot's own neighbourhood -- pipes run exactly
  * where bauxite is refined -- so the network went darker instead of brighter. Still warm where
  * the belts are cool. Measured against the current full table: dE 27.4 from the bauxite dot,
- * 28.7 from the generator red, 30.1 from the nearest ground (Red Bamboo Fields), 49.0 from the
+ * 28.7 from the stopped red, 30.1 from the nearest ground (Red Bamboo Fields), 49.0 from the
  * nearest of the artwork tones binned in power.ts, and 58.5 from the extractor amber. */
 var PIPE_COLOUR = declareColours("routes", { pipes: "#7d221a" }).pipes;
 
@@ -490,7 +490,7 @@ var PIPE_COLOUR = declareColours("routes", { pipes: "#7d221a" }).pipes;
  *
  * A ramp can walk a colour into a neighbour, so both ends are measured: Mk2, the lighter end
  * and the closest the family comes to the bauxite dot, stays dE 21.4 from it and 23.4 from the
- * generator red; Mk1's nearest is Red Bamboo Fields at 32.6, with the bauxite dot at 33.5. */
+ * stopped red; Mk1's nearest is Red Bamboo Fields at 32.6, with the bauxite dot at 33.5. */
 var PIPE_TIER = declareColours("routes", { "pipe mk1": "#690e06", "pipe mk2": "#91362e" });
 var PIPE_MK1 = PIPE_TIER["pipe mk1"];
 var PIPE_MK2 = PIPE_TIER["pipe mk2"];

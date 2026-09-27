@@ -73,7 +73,7 @@ export function friendly(error: unknown): string {
   var message = (error as { message?: unknown } | null | undefined)?.message;
   var text = error && message ? String(message) : String(error);
   if (/Failed to fetch|NetworkError|Load failed/i.test(text)) {
-    return "the server is not answering — is it still running?";
+    return "the server is not answering; is it still running?";
   }
   if (/Unexpected token|not valid JSON/i.test(text)) {
     return "the server answered with something that is not JSON";

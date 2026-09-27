@@ -41,8 +41,8 @@ import type { Point3M } from "./geometry";
  */
 
 /* The casing: a deep indigo, and the furthest any colour on this page sits from all the
- * others. Nearest cross-owner neighbour is the fluid-storage magenta at dE 33.7, then the oil
- * node at 34.6, the concrete at 35.4, the lift fill at 39.7 and the coal dot at 46.7. Violet
+ * others. Nearest cross-owner neighbour is the fluid-storage blue-violet at dE 27.8, then the
+ * oil node at 34.6, the concrete at 35.4 and the lift fill at 39.7. Violet
  * rather than black because a near-black casing lands in the middle of the map's tightest grey
  * cluster.
  *
@@ -53,12 +53,13 @@ import type { Point3M } from "./geometry";
 var CASING_COLOUR = declareColours("power", { casing: "#1c1550" }).casing;
 
 /* The core. Violet is this layer's free hue -- blue is the machines, amber the extractors, red
- * the generators, magenta the storage, steel the belts, rust the pipes.
+ * the stopped outline, tan the generators, blue-violet the storage, steel the belts, rust the
+ * pipes.
  *
- * Nearest cross-owner neighbour is the raw-quartz dot at dE 22.8, then the water dot at 28.2
- * and the machine blue at 28.3. The belts are the comparison that has to hold, because a wire
- * and a belt genuinely do run side by side inside a factory, and they are dE 33.2, 33.5 and
- * 36.5 away across their three tones. Against the artwork it is dE 39.1 to 40.2 from the
+ * Nearest cross-owner neighbour is the raw-quartz dot at dE 22.8, then the storage blue-violet
+ * at 23.9, the water dot at 28.2 and the machine blue at 28.3. The belts are the comparison
+ * that has to hold, because a wire and a belt genuinely do run side by side inside a factory,
+ * and they are dE 33.2, 33.5 and 36.5 away across their three tones. Against the artwork it is dE 39.1 to 40.2 from the
  * nearest ground tone. */
 var WIRE_COLOUR = declareColours("power", { wires: "#b8b0f8" }).wires;
 
@@ -67,7 +68,7 @@ var WIRE_COLOUR = declareColours("power", { wires: "#b8b0f8" }).wires;
  * rather than a tier: the line and the thing the line ends at.
  *
  * The step is the house step, dE 16.0, against the belts' 15.6 between their slowest and
- * fastest, the pipes' 15.1 between Mk1 and Mk2 and the storage pair's 16.7. Lighter rather
+ * fastest, the pipes' 15.1 between Mk1 and Mk2 and the storage pair's 15.8. Lighter rather
  * than darker buys the world view, where a pole is the mark that says a base is here.
  *
  * Nearest cross-owner neighbour is the fast belt at dE 23.6, then the raw-quartz dot at 25.2
@@ -152,7 +153,7 @@ function polePopup(p: PoleRow): string {
     // two of this world's tower platforms were built and never strung to anything.
     [
       "connections",
-      p.connections === 0 ? "none — nothing is wired to this" : String(p.connections),
+      p.connections === 0 ? "none: nothing is wired to this" : String(p.connections),
     ],
     ["facing", p.yaw === null ? null : Math.round(p.yaw) + "°"],
     ["at", p.x_m + ", " + p.y_m + " m"],
@@ -169,8 +170,8 @@ function wirePopup(w: WireRow): string {
      * meaningful: the server measures which published endpoint belongs to which actor, since
      * the save's own order agrees with the wiring only about half the time, so this pair lines
      * up with the two coordinates in `ends` below. */
-    ["power line", (w.from || unnamed) + " — " + (w.to || unnamed)],
-    ["span", w.span_m + " m, straight line — a wire sags and the save records no sag"],
+    ["power line", (w.from || unnamed) + " → " + (w.to || unnamed)],
+    ["span", w.span_m + " m, straight line; a wire sags and the save records no sag"],
     ["ends", w.a_m[0] + ", " + w.a_m[1] + " m and " + w.b_m[0] + ", " + w.b_m[1] + " m"],
     // Unsigned: a climb is only a climb once there is an end to measure it from.
     ["height difference", Math.abs(Math.round((w.b_m[2] - w.a_m[2]) * 10) / 10) + " m"],

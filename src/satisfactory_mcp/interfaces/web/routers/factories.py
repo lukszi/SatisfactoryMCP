@@ -96,7 +96,7 @@ def factories(
         return _fail(f"could not read save: {exc}", 404)
 
     if style not in naming.STYLES:
-        return _fail(f"unknown style {style!r}; known: {', '.join(naming.STYLES)}", 400)
+        return _fail(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
     try:
         rmap = spatial_regions.load_regions()
     except FileNotFoundError:

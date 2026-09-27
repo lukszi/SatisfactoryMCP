@@ -64,9 +64,9 @@ export function listen() {
     var dropped = wasOpen;
     missed = missed || dropped;
     wasOpen = false;
-    if (missed) showLive("lost", "offline", "live connection lost — is the server still running? Retrying…");
+    if (missed) showLive("lost", "offline", "live connection lost; retrying (is the server still running?)");
     else showLive("", "connecting…", "connecting to the save watcher…");
-    if (dropped) fail("live updates lost — what is on screen may be stale");
+    if (dropped) fail("live updates lost; what is on screen may be stale");
   };
   var resync = function () {
     refreshWorlds();
