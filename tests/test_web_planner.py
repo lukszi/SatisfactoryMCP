@@ -499,7 +499,9 @@ def test_track_is_one_solve_of_the_head_with_rows_and_stages(client):
     assert old["rev"] == 1 and old["headroom_mw"] is None
     assert old["startup"]["headroom_source"] == "nameplate from the save"
     assert client.get(f"/api/plan/track?key={key}&biomass=include").status_code == 200
-    assert client.get(f"/api/plan/track?key={key}&biomass=true").json()["power"]["biomass"] is True
+    assert client.get(f"/api/plan/track?key={key}&biomass=include").json()["power"]["biomass"] is True
+    assert client.get(f"/api/plan/track?key={key}&biomass=true").status_code == 422
+    assert client.get("/api/plan/feeders?biomass=true").status_code == 422
 
 
 def test_track_refuses_unknown_plans_and_revs(client):

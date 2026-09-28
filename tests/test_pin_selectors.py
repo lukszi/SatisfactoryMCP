@@ -57,7 +57,7 @@ def test_every_located_kind_is_a_place(world):
 
 def test_a_point_is_spelt_like_its_selector(world):
     point, _ = pins.create(world, "point", {"x_m": -7.9, "y_m": -5.5})
-    assert point["selector"] == "-7.9,-5.5" and point["text"] == "point -7.9, -5.5"
+    assert point["selector"] == "-7.9,-5.5" and point["text"] == "point x -8, y -6 m"
 
 
 def test_a_place_refuses_what_has_no_place(world):

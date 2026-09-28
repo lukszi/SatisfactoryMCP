@@ -24,7 +24,7 @@ out of headroom by default; transport deferred; local only; the page never promp
 |---|---|
 | **Track** as a third result tab (**build list · graph · track**) at the plan's head, addressable as `#dash=planner/<key>/track[/<stage>]` | Track of an old version; Track of an unsaved chat solve |
 | One route that solves once and returns the diff (actions, ranges, targets, cost, neighbours, on-site census) **and** the startup stages matched against the save | ETAs, progress over time (timeline, §22 of the vision) |
-| Startup waves: stage table with fill floors, the headroom they were built against, and **what the waves stand on** (live feeders) on demand | A dedicated Track map layer or new map colours (palette closed) |
+| Startup waves: stage table with fill floors, the headroom they were built against, and **what the stages stand on** (live feeders) on demand | A dedicated Track map layer or new map colours (palette closed) |
 | A stored **startup headroom** on the plan (`set headroom_mw`), read by the page, `diff_vs_save` and `commission_plan` alike | Chat writing `headroom_mw` (§15 C1) |
 | The plan's **count-as-built scope** (`set factory`) editable on Track | Unnamed clusters as a scope |
 | Live drift: Track re-requests on every new head, every game `save`, every label change, every biomass toggle | A faster channel than the 3 s save poll |
@@ -73,7 +73,7 @@ Top to bottom, one `dash-card` each (§9.2):
 9. **On site** (sited plans only): building · planned · on site · Δ.
 10. **Startup order**: headroom used and where it came from, plant draw/generation, minimum
     slice, warnings, and per stage the fill floor `≥ 34 s before its generators produce` for
-    waves that energise both consumers and generators. **[what the waves stand on]** loads
+    waves that energise both consumers and generators. **[what the stages stand on]** loads
     `GET /api/plan/feeders` on demand (~0.7 s, `loading`) and lists extractors feeding
     running generators, each with [map] and [copy id]. Rows overlap where extractors feed the
     same generators, so the headline `total_mw` is the union reached from any of them,
@@ -407,7 +407,8 @@ No new SSE event name. Journal entries reach the page as `activity` within ~0.5 
 | Module | New/changed | Does | Primitives it must use |
 |---|---|---|---|
 | `planner-track.ts` | **new** | Renders the track tab (F2–F5): headline, renumber notice, headroom and scope controls, stages table, next line, jobs table, short, nearby, on site, startup order, feeders, caveats; row **[map] [copy ids] [recipes] [ask]** | `table` (numbers right-aligned, `onRow` for stages, `rowClass` for the picked stage), `button`, `pressed`, `copyButton`, `chip` + `states.tone`, `states.actionTone`, `loading/empty/error`, `fieldError`, `format.mw/count/range/pct/num`, `powerview.headroom`, `words.ts`, `nav.onMap`, `panel.showBox`, `asks.askButton` |
-| `asks.ts` | **new** | Asks client: store (`GET /api/asks`, one in flight, latest wins), `askButton(about, opener)`, the single ask bar (open/replace/close, focus in and back, Escape), `queue()` with clipboard + toast, `dropAsk()` with 409 handling, `asksFor(planKey)`, `onActivity(entry)`, `refetchAsks()` | `button`, `fieldError`, `copy.copyText`, `toast.note/fail`, `api.get/send`, `words.ts` |
+| `livestore.ts` | **new** | The one store loop pins and asks share: one refetch in flight (a second waits and wins), world/epoch guard, 409-with-row replaces the row, one delete per row at a time | `api.get`, `toast.friendly` |
+| `asks.ts` | **new** | Asks client: store (`livestore`, `GET /api/asks`), `askButton(about, opener)`, the single ask bar (open/replace/close, focus in and back, Escape), `queue()` with clipboard + toast, `dropAsk()` with 409 handling, `asksFor(planKey)`, `onActivity(entry)`, `refetchAsks()` | `button`, `fieldError`, `copy.copyText`, `toast.note/fail`, `api.get/send`, `words.ts` |
 | `asks-card.ts` | **new** | The asks card: `table` ask · question · about · state · actions; empty `no asks yet: ask chat from any row of a plan` | `table`, `button`, `copyButton`, `chip(…,"muted")`, `empty`, `error`, `link` (about → plan) |
 | `planner-core.ts` | changed | `ResultTab` gains `"track"`; `bench.track = {data, error, seq, stage, notice, feeders}`; `bench.seen: Record<key, Partition>`; `loadTrack()` (latest wins by `seq`, dims while in flight), `loadFeeders()`, `pickStage(n)`; re-request hooks for head / save / notes / biomass | `api.get`, `latest("planner-track")` |
 | `planner.ts` | changed | Address `planner/<key>/track[/<n>]` in `parts()`; closing the drawer returns to `/track` when the tab is track; follow for `plan.view` `view: "track"`; `onSaveEvent` / new `onNotesEvent` re-request Track; focus `tab: "track"`, selection `{kind: "stage", label: "stage 2 of 4", ref: "2"}` or `{kind: "process", label, ref: row id}` | `nav.dashParts`, `nav.go`, settings `follow` |
@@ -418,7 +419,7 @@ No new SSE event name. Journal entries reach the page as `activity` within ~0.5 
 | `pins.ts` | changed | `showPin` goes to the map through `nav.onMap` (no second implementation) | `nav.onMap` |
 | `nav.ts` | changed | `onMap(action)`: runs `action` now when on the map, else after the hashchange that `go("")` causes (the code moved out of `pins.showPin`) | – |
 | `panel.ts` | changed | `showBox(bbox_m, options?: {layers?: string[]})` reveals `layers` first, as `showPoint` does | `labels.reveal` |
-| `format.ts` | changed | `range(lo, hi)`: `count(lo)` when equal or `hi` null, else `count(lo) + ".." + count(hi)` | – |
+| `format.ts` | changed | `range(lo, hi)`: `count(lo)` when equal or `hi` null, else `count(lo) + "–" + count(hi)` (en dash); `clock(ts)` for a time of day | – |
 | `words.ts` | changed | `W.track`, `W.askChat = "ask chat"`, `W.stage(n, of)`, `VERB` (`ok: "–"`, `unpause`, `setrecipe: "set recipe"`, `build`), `ASK_STATE` (`open: "waiting for chat"`, `seen: "seen by chat"`, `answered: "answered"`), `W.countAsBuilt = "count as built"`, `W.wholeWorld = "whole world"`, `W.startupHeadroom = "startup headroom"` | – |
 | `sse.ts` | changed | Forward `activity` to `asks.onActivity`; `notes` → `planner.onNotesEvent`; reconnect → `refetchAsks()` | – |
 | `style.css` | changed | `.plan-track`, `.track-stage.picked`, `.ask-bar`, `.track-notice` | tokens only: `--panel`, `--ink`, `--line`, `--muted`, `--bad`, `--select`, `--fs-s`, `--fs-m`, `--sp-*`, `--r` |
@@ -476,7 +477,8 @@ ask reaches it only when the player pastes it.
 ## 11. Performance budget
 
 Measured 2026-09-28 on a copy of the user-data backup (3 stored plans, 6–11 job rows, newest
-autosave), warm process, median of 5 (max in brackets).
+autosave), warm process, median of 5 (max in brackets). Route budgets are in-process
+(TestClient), without the ~15 ms HTTP floor Windows adds.
 
 | Call | Measured | Budget |
 |---|---|---|
@@ -535,7 +537,7 @@ copy. Never ports 8712/8713.
 | A6 | Stage rows show state chips; stopped reads red, blocked yellow, no other hue appears; clicking a stage (and Enter) filters the jobs to it and the address ends `/track/<n>`; clicking again clears it |
 | A7 | **count as built** set to a named factory makes one version, the scope note appears and counts change; a factory with no machines left shows the scope error |
 | A8 | **map** on a job flies the map to the outlined box with the machines layer on; **copy ids** copies `machine:`/`node:` selectors |
-| A9 | **what the waves stand on** shows `loading…`, then a list (or its empty state) within ~1 s |
+| A9 | **what the stages stand on** shows `loading…`, then a list (or its empty state) within ~1 s |
 | A10 | An edit in the goal bar while Track is open re-requests Track (dims, then refreshes) without leaving the tab |
 | A11 | Touching the scratch save copy's newest `.sav` mtime (or a new autosave in a copy) re-requests Track within the save poll plus parse time |
 | A12 | In-process `diff_vs_save(plan=…)` opens Track on the page within ~1 s (follow on); with `stage=2` stage 2 is picked; `commission_plan(plan=…)` lands focus on Startup order; with follow off nothing moves |

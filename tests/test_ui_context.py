@@ -271,7 +271,7 @@ def test_pins_are_listed_and_a_pinned_selection_names_its_pin(ctx, monkeypatch):
     lines = srv.ui_context().splitlines()
     assert lines[1].endswith('selected: process "Blender · Diluted Fuel" (Recipe_X_C) (pin:2)')
     assert lines[3] == (
-        "pins: pin:1 point 1, 2 · pin:2 process Recipe_X_C in “north hmf” · "
+        "pins: pin:1 point x 1, y 2 m · pin:2 process Recipe_X_C in “north hmf” · "
         "pin:3 factory “gone factory” “old” (gone)"
     )
 

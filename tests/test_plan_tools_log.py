@@ -501,6 +501,18 @@ def test_a_same_key_edit_from_chat_is_outdated(scratch, game):
 
 
 @pytest.mark.integration
+def test_a_recalled_outdated_save_never_tells_chat_to_pass_save_as(scratch, game):
+    srv.plan_factory(save_as="probe", **PROBE)
+    world = srv._state().world_id
+    key = PlanLog(world).find("probe").key
+    PlanLog(world).push(key, 1, [{"op": "set", "field": "water_extractors", "value": 5}], actor=PAGE)
+    out = srv.plan_factory(plan="probe", save_as="probe", base_rev=1, water_extractors=3, limit=2)
+    assert "! outdated:" in out
+    assert "pass save_as to keep it" not in out
+    assert "overridden this call: water_extractors (not saved: see below)" in out
+
+
+@pytest.mark.integration
 def test_a_bare_solve_is_journalled_with_its_request(scratch, game):
     journal.set_writer("chat")
     srv.plan_factory(objective="min_power", **PROBE)

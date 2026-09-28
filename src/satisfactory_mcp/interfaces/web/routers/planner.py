@@ -622,16 +622,12 @@ def plan_alternates(
         return _fail(str(exc), 400)
 
 
-def _counted(biomass: bool | str) -> bool:
-    return biomass is True or biomass == "include"
-
-
 @router.get("/plan/track", response_model=TrackResponse)
 def plan_track(
     request: Request,
     key: str,
     rev: int | None = None,
-    biomass: bool | Biomass = False,
+    biomass: Biomass = "exclude",
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
@@ -649,7 +645,7 @@ def plan_track(
     except InvalidOp as exc:
         return _fail(str(exc), 404)
     try:
-        return track.track_view(st.game, st, state, biomass=_counted(biomass))
+        return track.track_view(st.game, st, state, biomass=biomass == "include")
     except ValueError as exc:
         return _fail(str(exc), 400)
 
@@ -657,7 +653,7 @@ def plan_track(
 @router.get("/plan/feeders", response_model=FeedersResponse)
 def plan_feeders(
     request: Request,
-    biomass: bool | Biomass = False,
+    biomass: Biomass = "exclude",
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
@@ -666,4 +662,4 @@ def plan_feeders(
         st = _state(request, save, world)
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
-    return track.feeders_view(st.game, st, biomass=_counted(biomass))
+    return track.feeders_view(st.game, st, biomass=biomass == "include")

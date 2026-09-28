@@ -71,7 +71,7 @@ def test_create_is_201_then_200_for_the_same_object(client):
     assert again.json()["n"] == 1
     [entry] = _journal()
     assert entry["kind"] == "pin.add" and entry["args"] == {"n": 1, "kind": "point"}
-    assert entry["text"] == "pinned pin:1 point 100, -200" and entry["actor"]["kind"] == "page"
+    assert entry["text"] == "pinned pin:1 point x 100, y -200 m" and entry["actor"]["kind"] == "page"
 
 
 def test_the_list_is_every_live_pin_with_the_version(client):

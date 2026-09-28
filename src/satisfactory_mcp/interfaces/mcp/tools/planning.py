@@ -1148,6 +1148,8 @@ def plan_factory(
 
     if save_as_note.startswith("saved"):
         plan_notes = [n.replace(UNSAVED_OVERRIDE, "(saved by this call)") for n in plan_notes]
+    elif save_as:
+        plan_notes = [n.replace(UNSAVED_OVERRIDE, "(not saved: see below)") for n in plan_notes]
     out = render_plan_factory(
         g,
         st,

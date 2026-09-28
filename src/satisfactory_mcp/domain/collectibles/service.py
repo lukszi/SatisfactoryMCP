@@ -286,8 +286,8 @@ def table_age(st) -> dict | None:
     notes = []
     if behind:
         notes.append(
-            f"the map's placement table was cut from game build CL {cut} and this save is "
-            f"buildVersion {build}: a placement a later update moved or added is not in it"
+            f"the pickup table predates this save's game update (build {cut} vs {build}): "
+            "a placement a later update moved or added is not in it"
         )
     if matches is False:
         notes.append(

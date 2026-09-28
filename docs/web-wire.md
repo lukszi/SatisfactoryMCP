@@ -79,8 +79,8 @@ named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes a
 `GET /api/plan/track?key=&rev=&biomass=` (`routers/planner.py`) builds its whole reply from one
 solve (`domain/planning/track.py`). Not feasible, empty, and a count-as-built factory with no
 machines left are all 200s that say so (`feasible`, `empty`, `scope_error`) with empty lists;
-a 400 is only a solve that refuses its arguments. `biomass` takes `true`/`false` or the
-`include`/`exclude` spelling the power routes use. `GET /api/plan/feeders` is the ~0.7 s
+a 400 is only a solve that refuses its arguments. `biomass` is `include` or `exclude`, the
+spelling every power route uses. `GET /api/plan/feeders` is the ~0.7 s
 extractor walk, never run per save.
 
 `/api/asks` (`routers/asks.py`) follows the pins rules: the guard on every method, a delete

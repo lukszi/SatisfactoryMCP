@@ -93,3 +93,17 @@ def test_a_site_lists_its_members_and_a_covering_selector():
     assert sorted(out[0]["instances"]) == ["A", "B"]
     assert out[0]["selector"] == "near:50,0@60"
     assert out[1]["instances"] == [OUTSIDER]
+
+
+def test_an_issue_names_the_building_and_keeps_the_id_for_a_selector():
+    from satisfactory_mcp.interfaces.web.routers.factory_detail import _issue
+
+    names = {"Build_ConstructorMk1_C": "Constructor"}.get
+    assert _issue("Build_ConstructorMk1_C_2146520259: paused (Copper Sheet)", names) == {
+        "text": "Constructor: paused (Copper Sheet)",
+        "machine": "Build_ConstructorMk1_C_2146520259",
+    }
+    assert _issue("3 machines unmonitored", names) == {
+        "text": "3 machines unmonitored",
+        "machine": None,
+    }

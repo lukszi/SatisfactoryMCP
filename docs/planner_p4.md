@@ -35,7 +35,7 @@ what was measured.
 | # | Contract says | Built | Why |
 |---|---|---|---|
 | B1 | `stage_text` = `Tracking.headline()` | `Tracking.headline(brief=True)`; the text tool keeps the long form | F2 shows the short sentence; the text output had to stay unchanged |
-| B2 | `?biomass=` a bool | accepts `true`/`false` and `include`/`exclude` | The page's `powerview` helper already sends `biomass=include|exclude` to every power route |
+| B2 | `?biomass=` a bool | `include`/`exclude` only | The page's `powerview.biomassQuery` already sends that spelling to every power route; one spelling, one helper |
 | B3 | Headroom source `"nameplate from the save"` | used by Track and `diff_vs_save`; `commission_plan` keeps printing `power_report, nameplate` | The commission text is unchanged; its measured-headroom note keys on that source |
 | B4 | `AskError`, `AskMissing`, `AskStale` | adds `AboutMissing(AskError)` and `asks.row`/`asks.state_of` | A 404 for an unknown `about.plan` needs its own type; the routes and the tool build rows the same way |
 | B5 | `scope_error` text | `“<name>” has no machines in this save` | The F4 wording, so the page can show it as it comes |

@@ -433,7 +433,9 @@ fixture with a recorded skew covers the chip.
 ## 10. Performance budget
 
 Measured on the reference save (Han Solo autosave, 608 nodes, 2,681 runs, 4,446 placements),
-in-process, warm, median of 7; cold is the first call after start.
+in-process, warm, median of 7; cold is the first call after start. Route budgets are
+in-process (TestClient): over HTTP on Windows every call also pays a floor of about 15 ms
+(timer tick plus the sync threadpool), which is not the route's cost.
 
 | Call | Measured | Budget (warm) | Notes |
 |---|---|---|---|

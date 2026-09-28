@@ -460,7 +460,8 @@ The page never moves while a field has the cursor (P1 rule).
 ## 11. Performance budget
 
 Measured 2026-09-27 on a copy of the user-data backup (3 stored plans, newest autosave), warm
-process, median of 5.
+process, median of 5. Route budgets are in-process (TestClient), without the ~15 ms HTTP floor
+Windows adds.
 
 | Call | Measured | Budget |
 |---|---|---|

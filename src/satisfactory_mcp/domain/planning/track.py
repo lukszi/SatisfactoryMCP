@@ -5,6 +5,7 @@ docs/planner-p4_contract.md §3 and §5.2 are the specification; docs/planner_p4
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 
 from ...core.gamedata.model import GameData
@@ -64,12 +65,18 @@ PAGE_NO_MONITOR = (
     "but not what is powered"
 )
 PAGE_DRIFT = "the world changed since this plan was saved, so stage numbers may have moved"
+_NO_ORDER = "no startup order exists at this scope: "
 _PAGE = {ENERGISED_CAVEAT: PAGE_ENERGISED, RANGE_CAVEAT: PAGE_RANGE, NO_MONITOR: PAGE_NO_MONITOR}
 
 
 def page_text(text: str) -> str:
-    """A tool-facing sentence in the page's words."""
-    return _PAGE.get(text) or text.replace(" -- ", ": ")
+    """A tool-facing sentence in the page's words: stages, not waves, and no repeat of the
+    headline's "no startup order"."""
+    if text in _PAGE:
+        return _PAGE[text]
+    text = text.replace(" -- ", ": ").replace(_NO_ORDER, "")
+    text = re.sub(r"(\d%?)\.\.(\d)", "\\1–\\2", text)
+    return re.sub(r"\bwave(s?)\b", r"stage\1", text)
 
 
 def page_lines(text: str) -> list[str]:
@@ -224,7 +231,7 @@ def _stage(stage, where) -> dict:
         "running": stage.running if stage.monitored else None,
         "dark": stage.dark,
         "complete": stage.complete,
-        "state": stage.describe(),
+        "state": page_text(stage.describe()),
         "draw_mw": round(stage.draw_mw, 2),
         "generation_mw": round(stage.generation_mw, 2),
         "available_before": round(stage.available_before, 2),

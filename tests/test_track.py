@@ -185,7 +185,7 @@ def test_the_page_reads_no_ids_codes_or_property_names(world):
     out = track_mod.track_view(world.game, world, _plan(world, headroom_mw=100000))
     assert out["stages"]
     for text in _page_strings(out):
-        for banned in ("sav:", "OQ", "mHas", " -- ", "plan_id", "BUILD", "saveVersion", "%-"):
+        for banned in ("sav:", "OQ", "mHas", " -- ", "plan_id", "BUILD", "saveVersion", "%-", "km out", "..", "wave"):
             assert banned not in text, (banned, text)
 
 
