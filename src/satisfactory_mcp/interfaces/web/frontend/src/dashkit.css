@@ -13,6 +13,11 @@
   cursor: pointer;
 }
 
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
 .btn:hover {
   border-color: var(--accent);
   color: var(--accent-hi);
@@ -185,6 +190,11 @@
 
 .chip-muted {
   color: var(--muted);
+}
+
+.chip-id {
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .dk-field-error {

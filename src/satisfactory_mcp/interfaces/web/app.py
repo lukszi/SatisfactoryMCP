@@ -25,7 +25,7 @@ from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...core.schema import NewerSchema
-from ...domain.planning import journal
+from ...domain.planning import journal, planlog
 from ...domain.world.state import WorldState, load_state
 from .guard import guard
 from .pinning import pinning
@@ -72,6 +72,14 @@ def _game() -> GameData:
     return normalize(load_docs(config.docs_path()))
 
 
+def _recipe_names(load_game: Callable[[], GameData]) -> Callable[[], dict[str, str]]:
+    @lru_cache(maxsize=1)
+    def names() -> dict[str, str]:
+        return {cls: recipe.name for cls, recipe in load_game().recipes.items()}
+
+    return names
+
+
 def create_app(
     state_loader: Callable[..., WorldState] | None = None,
     game_loader: Callable[[], GameData] | None = None,
@@ -94,11 +102,14 @@ def create_app(
     async def lifespan(instance: FastAPI):
         if tail:
             journal.set_writer("web")
+            planlog.use_recipe_names(_recipe_names(load_game))
         await instance.state.watcher.start()
         try:
             yield
         finally:
             await instance.state.watcher.stop()
+            if tail:
+                planlog.use_recipe_names(None)
 
     instance = FastAPI(
         title="Satisfactory MCP web",

@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from . import (
+    asks,
     collectibles,
     crates,
     events,
@@ -25,6 +26,7 @@ from . import (
     inspect,
     naming,
     nodes,
+    pins,
     placements,
     planlog,
     planner,
@@ -76,4 +78,6 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     trace.router,
     factory_detail.router,
     finders.router,
+    pins.router,
+    asks.router,
 )

@@ -9,7 +9,7 @@ will otherwise get wrong: the save separates built from energised in one directi
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ...domain.planning.commission import Tracking
+from ...domain.planning.commission import ENERGISED_CAVEAT, RANGE_CAVEAT, Tracking
 from ...domain.planning.diff import NEIGHBOUR_RADIUS_M as DIFF_NEIGHBOUR_M
 from ...domain.planning.diff_service import DiffVsSaveReport
 from ...domain.power.report import biomass_note
@@ -18,29 +18,6 @@ from . import primitives as render
 
 __all__ = ["ENERGISED_CAVEAT", "RANGE_CAVEAT", "render_diff"]
 
-#: Said on every stage report, because it is the one thing about this feature that a
-#: reader will otherwise get wrong. `built` is exact; `running` is the only positive
-#: evidence of power the save carries, and its absence is not evidence of no power.
-ENERGISED_CAVEAT = (
-    "built and ENERGISED are different states and the save separates them only one way: "
-    "a machine that produced inside the last 300s window certainly had power, while a "
-    "machine that did not may be unpowered, starved, blocked or simply idle. mHasPower "
-    "and the circuit id are not SaveGame properties and the circuit subsystem stores "
-    "nothing, so grid membership is rebuilt at load and is NOT in the file. A fully "
-    "built, wholly dark block is a valid state here, not an anomaly"
-)
-
-#: Emitted only when some row's built count is an interval. Without it "built 1..11,
-#: running 11" reads as a contradiction; it is not, because the two columns have
-#: different denominators.
-RANGE_CAVEAT = (
-    "a built count is a RANGE wherever a machine cannot be attributed to this plan "
-    "(Water Extractors, OQ5): the low bound counts only the ones standing among the "
-    "plan's own. 'running' is measured over every MATCHED machine, so it can sit above "
-    "the low bound without contradicting it"
-)
-
-
 #: Cost rows shown. Deliberately below ``limit``: the bill is ranked by shortfall and the
 #: gate on a build is at its head, so this is a headline and not the whole bill.
 COST_ROWS = 5
@@ -48,22 +25,6 @@ COST_ROWS = 5
 #: Machine ids named per actionable row. Enough to walk to the first few and no more: a
 #: row can name 23 machines, and the footer is a starting point, not a work order.
 ACT_IDS = 3
-
-
-def _stage_state(stage) -> str:
-    """One phrase per stage, saying only what the save supports."""
-    if stage.built_max <= 0:
-        return "not built"
-    if not stage.complete:
-        span = f"{stage.fraction_built:.0%}"
-        if stage.built_max != stage.built and stage.machines:
-            span = f"{span}-{stage.built_max / stage.machines:.0%}"
-        return f"{span} built"
-    if stage.running >= stage.machines:
-        return "built, all running"
-    if stage.running:
-        return f"built, {stage.running} running"
-    return "built, none running"
 
 
 def _stage_overview(tracking: Tracking) -> tuple[str, list[str]]:
@@ -78,26 +39,11 @@ def _stage_overview(tracking: Tracking) -> tuple[str, list[str]]:
             s.running,
             f"{render.num(-s.draw_mw)}/+{render.num(s.generation_mw)}",
             f"{s.available_after:,.0f}",
-            _stage_state(s),
+            s.describe(),
         )
         for s in tracking.stages
     ]
-    if tracking.current:
-        done = tracking.current - 1
-        here = next(s for s in tracking.stages if s.index == tracking.current)
-        headline = (
-            f"# you are in STAGE {tracking.current} of {len(tracking.stages)}: "
-            + (f"stages 1-{done} complete, " if done > 1 else "stage 1 complete, " if done else "")
-            + f"stage {tracking.current} is {here.fraction_built:.0%} built "
-            f"({here.built}/{here.machines}) and {here.running} machine(s) in it are "
-            "proven running"
-        )
-    else:
-        headline = (
-            f"# every stage is built ({tracking.built}/{tracking.machines} machines). "
-            f"{tracking.running} are proven running; the rest may be built-and-unpowered, "
-            "which is what this plan expects until you energise them"
-        )
+    headline = "# " + tracking.headline()
     body = (
         "# STAGES: the commission_plan startup order, matched against the save\n"
         + render.table(("stage", "on", "built", "running", "MW", "free after", "state"), rows)
@@ -149,7 +95,7 @@ def _stage_detail(tracking: Tracking, index: int, limit: int) -> tuple[str, list
         )
     body = (
         f"# STAGE {index} of {len(tracking.stages)}: {stage.machines} machine(s), "
-        f"{_stage_state(stage)}\n"
+        f"{stage.describe()}\n"
         + render.kv(
             [
                 ("draw_MW", render.num(stage.draw_mw)),

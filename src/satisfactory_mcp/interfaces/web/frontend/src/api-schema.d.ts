@@ -1189,6 +1189,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan/alternates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Alternates
+         * @description Every recipe making ``item``, each with what requiring it would change in the plan.
+         */
+        post: operations["plan_alternates_api_plan_alternates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Track
+         * @description One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
+         */
+        get: operations["plan_track_api_plan_track_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/feeders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Feeders
+         * @description Built extractors whose output reaches a running generator: what startup waves stand on.
+         */
+        get: operations["plan_feeders_api_plan_feeders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plans/{key}": {
         parameters: {
             query?: never;
@@ -1658,6 +1718,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pins
+         * @description Every live pin of this world, ascending by number, gone ones included and marked.
+         */
+        get: operations["pins_api_pins_get"];
+        put?: never;
+        /**
+         * Create Pin
+         * @description Pin an object; pinning one that already has a live pin returns that pin with a 200.
+         */
+        post: operations["create_pin_api_pins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pins/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Drop Pin
+         * @description Delete one pin. Not undoable, and its number is never given out again.
+         */
+        delete: operations["drop_pin_api_pins__n__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename Pin
+         * @description A new label for one pin, refused with a 409 when ``rev`` is not the pin's current one.
+         */
+        patch: operations["rename_pin_api_pins__n__patch"];
+        trace?: never;
+    };
+    "/api/asks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Asks
+         * @description Every live ask of this world, ascending by number, answered ones included.
+         */
+        get: operations["asks_api_asks_get"];
+        put?: never;
+        /**
+         * Create Ask
+         * @description Queue one question for chat; the player pastes its ``copy`` into chat.
+         */
+        post: operations["create_ask_api_asks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/asks/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Drop Ask
+         * @description Delete one ask, refused with a 409 when ``rev`` is not its current one.
+         */
+        delete: operations["drop_ask_api_asks__n__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1718,6 +1870,15 @@ export interface components {
             already_undone: boolean;
             /** By */
             by: number;
+        };
+        /** AlternatesBody */
+        AlternatesBody: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev?: number | null;
+            /** Item */
+            item: string;
         };
         /**
          * AlternatesResponse
@@ -1795,6 +1956,90 @@ export interface components {
             name: string;
             /** Count */
             count: number;
+        };
+        /**
+         * AskAbout
+         * @description What an ask is about: ``kind`` is plan, process, stage, item or pin; ``plan`` a plan key.
+         */
+        AskAbout: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Ref */
+            ref: string;
+            /** Plan */
+            plan?: string | null;
+            /** Rev */
+            rev?: number | null;
+        };
+        /** AskCreateBody */
+        AskCreateBody: {
+            /** Text */
+            text: string;
+            about: components["schemas"]["AskAbout"];
+        };
+        /** AskDropBody */
+        AskDropBody: {
+            /** Rev */
+            rev: number;
+        };
+        /** AskDropped */
+        AskDropped: {
+            /** Ok */
+            ok: boolean;
+            /** N */
+            n: number;
+        };
+        /**
+         * AskRow
+         * @description One ask. ``state`` is open, seen or answered; ``copy`` is what the page puts on the
+         *     clipboard; ``plan_name`` is ``about.plan`` resolved when read.
+         */
+        AskRow: {
+            /** N */
+            n: number;
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+            about: components["schemas"]["AskAbout"];
+            /** State */
+            state: string;
+            /** Rev */
+            rev: number;
+            /** Created */
+            created: number;
+            /** Seen */
+            seen: number | null;
+            /** Seen By */
+            seen_by: string;
+            /** Answered */
+            answered: number | null;
+            /** Answered By */
+            answered_by: string;
+            /** Plan Name */
+            plan_name: string | null;
+            /** Copy */
+            copy: string;
+        };
+        /**
+         * AskStaleResponse
+         * @description The 409 of an ask delete: nothing was written; ``ask`` is the row as it stands.
+         */
+        AskStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            ask: components["schemas"]["AskRow"];
+        };
+        /** AsksResponse */
+        AsksResponse: {
+            /** Version */
+            version: number;
+            /** Asks */
+            asks: components["schemas"]["AskRow"][];
         };
         /**
          * AspectBalance
@@ -2475,6 +2720,8 @@ export interface components {
             buildings: components["schemas"]["DeltaRow"][];
             /** Inputs */
             inputs: components["schemas"]["DeltaRow"][];
+            /** Rows */
+            rows: components["schemas"]["RowChange"][];
             /** Text */
             text: string;
         };
@@ -2745,6 +2992,30 @@ export interface components {
             machines: number;
             /** Notes */
             notes: string;
+        };
+        /** Feeder */
+        Feeder: {
+            /** Name */
+            name: string;
+            /** Instance */
+            instance: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Mw */
+            mw: number;
+            /** Region */
+            region: string;
+        };
+        /** FeedersResponse */
+        FeedersResponse: {
+            /** Feeders */
+            feeders: components["schemas"]["Feeder"][];
+            /** Total Mw */
+            total_mw: number;
+            /** Text */
+            text: string;
         };
         /**
          * FloorBand
@@ -3852,6 +4123,137 @@ export interface components {
             /** Spoiler */
             spoiler: boolean;
         };
+        /** PinCreateBody */
+        PinCreateBody: {
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label?: string;
+        };
+        /** PinCreated */
+        PinCreated: {
+            /** N */
+            n: number;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label: string;
+            /** Text */
+            text: string;
+            /** Selector */
+            selector: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Rev */
+            rev: number;
+            /** Created */
+            created: number;
+            /** Gone */
+            gone: boolean;
+            /** Gone Why */
+            gone_why: string;
+            /** Existing */
+            existing: boolean;
+        };
+        /** PinDropBody */
+        PinDropBody: {
+            /** Rev */
+            rev: number;
+        };
+        /** PinDropped */
+        PinDropped: {
+            /** Ok */
+            ok: boolean;
+            /** N */
+            n: number;
+        };
+        /**
+         * PinRef
+         * @description What a pin points at. ``resource`` and ``nodes`` are filled by the server for a field.
+         */
+        PinRef: {
+            /** Plan */
+            plan?: string;
+            /** Recipe */
+            recipe?: string;
+            /** Factory */
+            factory?: string;
+            /** Machine */
+            machine?: string;
+            /** Node */
+            node?: string;
+            /** X M */
+            x_m?: number;
+            /** Y M */
+            y_m?: number;
+            /** Resource */
+            resource?: string;
+            /** Nodes */
+            nodes?: string[];
+        };
+        /** PinRenameBody */
+        PinRenameBody: {
+            /** Rev */
+            rev: number;
+            /** Label */
+            label: string;
+        };
+        /**
+         * PinRow
+         * @description One pin as the page shows it. ``selector`` is the canonical text it stands for; a gone
+         *     pin says why in ``gone_why``; ``x_m``/``y_m`` are null for a pin with no place.
+         */
+        PinRow: {
+            /** N */
+            n: number;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label: string;
+            /** Text */
+            text: string;
+            /** Selector */
+            selector: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Rev */
+            rev: number;
+            /** Created */
+            created: number;
+            /** Gone */
+            gone: boolean;
+            /** Gone Why */
+            gone_why: string;
+        };
+        /**
+         * PinStaleResponse
+         * @description The 409 of a pin write: nothing was written; ``pin`` is the row as it stands.
+         */
+        PinStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            pin: components["schemas"]["PinRow"];
+        };
+        /** PinsResponse */
+        PinsResponse: {
+            /** Version */
+            version: number;
+            /** Pins */
+            pins: components["schemas"]["PinRow"][];
+        };
         /**
          * PipeRow
          * @description One fluid pipe, as the polyline it was built along, and what it carries.
@@ -4009,6 +4411,34 @@ export interface components {
             factory: string | null;
         };
         /**
+         * PlanAlternatesResponse
+         * @description Every recipe for one item with what requiring it changes in the plan at ``rev``.
+         */
+        PlanAlternatesResponse: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Head Feasible */
+            head_feasible: boolean;
+            /** Head Machines */
+            head_machines: number;
+            /** Head Mw Draw */
+            head_mw_draw: number | null;
+            /** Head Mw Net */
+            head_mw_net: number | null;
+            /** Options */
+            options: components["schemas"]["SwapOption"][];
+            /** Hidden */
+            hidden: number;
+            /** Text */
+            text: string;
+        };
+        /**
          * PlanArgsBody
          * @description The whole solve request, every field present at its default when unset (contract §2).
          */
@@ -4057,6 +4487,46 @@ export interface components {
             };
             /** Logistics Items */
             logistics_items: string[];
+        };
+        /** PlanGraph */
+        PlanGraph: {
+            /** Nodes */
+            nodes: components["schemas"]["PlanGraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["PlanGraphEdge"][];
+        };
+        /** PlanGraphEdge */
+        PlanGraphEdge: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number;
+            /** Text */
+            text: string | null;
+        };
+        /**
+         * PlanGraphNode
+         * @description ``kind`` is process, input or export; ``item`` is a class id, null for power.
+         */
+        PlanGraphNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /** Rank */
+            rank: number;
+            /** Row */
+            row: string | null;
+            /** Item */
+            item: string | null;
         };
         /**
          * PlanIndexRow
@@ -4199,6 +4669,8 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             args: components["schemas"]["PlanArgsBody"];
+            /** Headroom Mw */
+            headroom_mw: number | null;
             /** Names */
             names: {
                 [key: string]: string;
@@ -4701,6 +5173,48 @@ export interface components {
             /** Sav */
             sav?: string;
         };
+        /**
+         * ResultDelta
+         * @description Two solves compared. ``comparable`` is false when either side is not solvable.
+         */
+        ResultDelta: {
+            /** Comparable */
+            comparable: boolean;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number;
+            /** Mw Net */
+            mw_net: number;
+            /** Buildings */
+            buildings: components["schemas"]["DeltaRow"][];
+            /** Inputs */
+            inputs: components["schemas"]["DeltaRow"][];
+            /** Rows */
+            rows: components["schemas"]["RowChange"][];
+            /** Text */
+            text: string;
+        };
+        /**
+         * RowChange
+         * @description A process row joined on ``SolveRow.id``; ``change`` is added, removed or changed.
+         */
+        RowChange: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Change */
+            change: string;
+            /** Machines Before */
+            machines_before: number;
+            /** Machines After */
+            machines_after: number;
+            /** Clock Before */
+            clock_before: number;
+            /** Clock After */
+            clock_after: number;
+        };
         /** RunEnd */
         RunEnd: {
             /** X M */
@@ -5079,6 +5593,7 @@ export interface components {
             inputs: components["schemas"]["SolveRate"][];
             /** Rows */
             rows: components["schemas"]["SolveRow"][];
+            graph: components["schemas"]["PlanGraph"];
             /** Shards */
             shards: number | null;
             /** Sloops Used */
@@ -5091,8 +5606,14 @@ export interface components {
         /**
          * SolveRow
          * @description One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
+         *
+         *     ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth.
          */
         SolveRow: {
+            /** Id */
+            id: string;
+            /** Depth */
+            depth: number;
             /** Building */
             building: string;
             /** Recipe */
@@ -5434,6 +5955,46 @@ export interface components {
             player: components["schemas"]["PlayerPosition"];
         };
         /**
+         * SwapOption
+         * @description One recipe for the item. ``status`` is in use, required, banned, available or locked;
+         *     ``delta`` is null when ``solved`` is false (locked, or banned by a pattern).
+         */
+        SwapOption: {
+            /** Recipe Id */
+            recipe_id: string;
+            /** Name */
+            name: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Unlocked */
+            unlocked: boolean | null;
+            /** Spoiler */
+            spoiler: boolean;
+            /** Granted By */
+            granted_by: string[];
+            /** Status */
+            status: string;
+            /** In Use */
+            in_use: boolean;
+            /** Required */
+            required: boolean;
+            /** Banned */
+            banned: boolean;
+            /** Banned By */
+            banned_by: string | null;
+            /** Solved */
+            solved: boolean;
+            delta: components["schemas"]["ResultDelta"] | null;
+            /** Require Ops */
+            require_ops: components["schemas"]["PlanOpBody"][];
+            /** Ban Ops */
+            ban_ops: components["schemas"]["PlanOpBody"][];
+            /** Free Ops */
+            free_ops: components["schemas"]["PlanOpBody"][];
+        };
+        /**
          * TableAge
          * @description Whether a shipped map table is older than the save; built by the domain's ``table_age``.
          *
@@ -5608,6 +6169,303 @@ export interface components {
                 number,
                 number
             ][][];
+        };
+        /** TrackCost */
+        TrackCost: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Need */
+            need: number;
+            /** Stock */
+            stock: number;
+            /** Short */
+            short: number;
+            /** Lines */
+            lines: number;
+        };
+        /** TrackMachine */
+        TrackMachine: {
+            /** Instance */
+            instance: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /** TrackNeighbour */
+        TrackNeighbour: {
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+        };
+        /** TrackPower */
+        TrackPower: {
+            /** Generation Mw */
+            generation_mw: number;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Headroom Mw */
+            headroom_mw: number;
+            /** Measured Headroom Mw */
+            measured_headroom_mw: number;
+            /** Biomass */
+            biomass: boolean;
+        };
+        /**
+         * TrackResponse
+         * @description One plan version's diff and startup stages against this save, from one solve.
+         *
+         *     Not feasible is a 200 with ``feasible: false`` and empty lists; a count-as-built factory
+         *     with no machines left is a 200 with ``scope_error`` and empty lists.
+         */
+        TrackResponse: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Name */
+            name: string;
+            /** Feasible */
+            feasible: boolean;
+            /** Empty */
+            empty: boolean;
+            /** Headline */
+            headline: string;
+            /** Cause */
+            cause: string;
+            /** Save Id */
+            save_id: string;
+            /** Age Note */
+            age_note: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Scope */
+            scope: string;
+            /** Scope Note */
+            scope_note: string;
+            /** Scope Error */
+            scope_error: string;
+            /** Drift Note */
+            drift_note: string;
+            /** Headroom Mw */
+            headroom_mw: number | null;
+            /** Current */
+            current: number;
+            /** Count */
+            count: number;
+            /** Partition Id */
+            partition_id: string;
+            /** Stage Text */
+            stage_text: string;
+            /** To Build */
+            to_build: number;
+            /** To Build Max */
+            to_build_max: number;
+            /** Actionable */
+            actionable: number;
+            /** Unpause */
+            unpause: number;
+            /** Setrecipe */
+            setrecipe: number;
+            /** Rows */
+            rows: components["schemas"]["TrackRow"][];
+            /** Stages */
+            stages: components["schemas"]["TrackStage"][];
+            startup: components["schemas"]["TrackStartup"];
+            power: components["schemas"]["TrackPower"];
+            /** Cost */
+            cost: components["schemas"]["TrackCost"][];
+            /** Neighbours */
+            neighbours: components["schemas"]["TrackNeighbour"][];
+            site: components["schemas"]["TrackSite"] | null;
+            /** Notes */
+            notes: string[];
+            /** Caveats */
+            caveats: string[];
+            /** Monitored */
+            monitored: number;
+        };
+        /**
+         * TrackRow
+         * @description One build job. ``verb`` is ok, unpause, setrecipe or build; ``build_max`` and ``have_min``
+         *     are null when the count is exact; ``running`` is null when no matched machine is monitored.
+         */
+        TrackRow: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Step */
+            step: number;
+            /** Stages */
+            stages: number[];
+            /** Process */
+            process: string;
+            /** Building */
+            building: string;
+            /** Recipe Id */
+            recipe_id: string | null;
+            /** Item */
+            item: string | null;
+            /** Need */
+            need: number;
+            /** Have */
+            have: number;
+            /** Have Min */
+            have_min: number | null;
+            /** Build */
+            build: number;
+            /** Build Max */
+            build_max: number | null;
+            /** Verb */
+            verb: string;
+            /** Count */
+            count: number;
+            /** Reuse */
+            reuse: number;
+            /** Running */
+            running: number | null;
+            /** States */
+            states: components["schemas"]["TrackState"][];
+            /** New Building */
+            new_building: boolean;
+            /** Note */
+            note: string;
+            /** Delta Mw */
+            delta_mw: number;
+            /** Act */
+            act: components["schemas"]["TrackMachine"][];
+            /** Targets */
+            targets: components["schemas"]["TrackTarget"][];
+            /** Bbox M */
+            bbox_m: number[] | null;
+            /** Selectors */
+            selectors: string;
+        };
+        /** TrackSite */
+        TrackSite: {
+            /** Text */
+            text: string;
+            /** Planned Total */
+            planned_total: number;
+            /** Standing Total */
+            standing_total: number;
+            /** Rows */
+            rows: components["schemas"]["TrackSiteRow"][];
+        };
+        /** TrackSiteRow */
+        TrackSiteRow: {
+            /** Name */
+            name: string;
+            /** Planned */
+            planned: number;
+            /** Standing */
+            standing: number;
+        };
+        /**
+         * TrackStage
+         * @description One startup wave matched against the save; ``state`` is the server's phrase for it.
+         */
+        TrackStage: {
+            /** Index */
+            index: number;
+            /** Machines */
+            machines: number;
+            /** Built */
+            built: number;
+            /** Built Max */
+            built_max: number;
+            /** Running */
+            running: number | null;
+            /** Dark */
+            dark: number;
+            /** Complete */
+            complete: boolean;
+            /** State */
+            state: string;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Generation Mw */
+            generation_mw: number;
+            /** Available Before */
+            available_before: number;
+            /** Available After */
+            available_after: number;
+            /** Fill S */
+            fill_s: number;
+            /** Waits For Fill */
+            waits_for_fill: boolean;
+            /** States */
+            states: components["schemas"]["TrackState"][];
+            /** Rows */
+            rows: components["schemas"]["TrackStageRow"][];
+            /** Bbox M */
+            bbox_m: number[] | null;
+        };
+        /** TrackStageRow */
+        TrackStageRow: {
+            /** Row */
+            row: string;
+            /** Label */
+            label: string;
+            /** Building */
+            building: string;
+            /** Machines */
+            machines: number;
+            /** Total */
+            total: number;
+            /** Built */
+            built: number;
+            /** Built Max */
+            built_max: number;
+            /** Running */
+            running: number | null;
+            /** States */
+            states: components["schemas"]["TrackState"][];
+            /** Draw Mw */
+            draw_mw: number;
+            /** Generation Mw */
+            generation_mw: number;
+            /** To Build */
+            to_build: number;
+        };
+        /** TrackStartup */
+        TrackStartup: {
+            /** Ok */
+            ok: boolean;
+            /** Headroom Mw */
+            headroom_mw: number;
+            /** Headroom Source */
+            headroom_source: string;
+            /** Plant Draw Mw */
+            plant_draw_mw: number;
+            /** Plant Generation Mw */
+            plant_generation_mw: number;
+            /** Minimum Slice Mw */
+            minimum_slice_mw: number;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** TrackState */
+        TrackState: {
+            /** State */
+            state: string;
+            /** Count */
+            count: number;
+        };
+        /** TrackTarget */
+        TrackTarget: {
+            /** Node */
+            node: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** M */
+            m: number | null;
         };
         /** UndoBody */
         UndoBody: {
@@ -7369,6 +8227,111 @@ export interface operations {
             };
         };
     };
+    plan_alternates_api_plan_alternates_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+                spoilers?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlternatesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanAlternatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_track_api_plan_track_get: {
+        parameters: {
+            query: {
+                key: string;
+                rev?: number | null;
+                biomass?: boolean | ("exclude" | "include");
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_feeders_api_plan_feeders_get: {
+        parameters: {
+            query?: {
+                biomass?: boolean | ("exclude" | "include");
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedersResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     plan_state_api_plans__key__get: {
         parameters: {
             query?: {
@@ -8220,6 +9183,292 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RegionTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pins_api_pins_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pin_api_pins_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinCreateBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinCreated"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drop_pin_api_pins__n__delete: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinDropBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinDropped"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_pin_api_pins__n__patch: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinRenameBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinRow"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asks_api_asks_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ask_api_asks_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskRow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drop_ask_api_asks__n__delete: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskDropBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskDropped"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskStaleResponse"];
                 };
             };
             /** @description Validation Error */

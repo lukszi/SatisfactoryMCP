@@ -39,6 +39,7 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 from scipy.optimize import linprog
 
+from ...core import solverlane
 from ...core.gamedata.constants import AWESOME_SINK_MW
 from ...core.gamedata.model import GameData
 from ...core.gamedata.unlocks import granted_by_label
@@ -274,17 +275,21 @@ def _cycle_absorbs(inner: list[Process], members: set[str]) -> tuple[bool, bool]
     cap = np.ones((1, len(inner)))
     zeros = np.zeros(len(order))
 
-    absorb = linprog(
-        c=total,
-        A_ub=np.vstack([a, cap]),
-        b_ub=np.concatenate([zeros, [1.0]]),
-        bounds=(0, None),
+    absorb = solverlane.run(
+        lambda: linprog(
+            c=total,
+            A_ub=np.vstack([a, cap]),
+            b_ub=np.concatenate([zeros, [1.0]]),
+            bounds=(0, None),
+        )
     )
-    create = linprog(
-        c=-total,
-        A_ub=np.vstack([-a, cap]),
-        b_ub=np.concatenate([zeros, [1.0]]),
-        bounds=(0, None),
+    create = solverlane.run(
+        lambda: linprog(
+            c=-total,
+            A_ub=np.vstack([-a, cap]),
+            b_ub=np.concatenate([zeros, [1.0]]),
+            bounds=(0, None),
+        )
     )
     return (
         bool(absorb.success and absorb.fun < -_EPS),

@@ -25,6 +25,7 @@ __all__ = [
     "Biomass",
     "CollectibleRow",
     "FoundField",
+    "PlanOpBody",
     "Region",
     "TableAge",
     "_actor_json",
@@ -168,6 +169,16 @@ def _field_json(f: Any, game: GameData | None) -> FoundField:
         "distance_m": None if f.distance_m is None else round(f.distance_m, 1),
         "spoiler": f.spoiler,
     }
+class PlanOpBody(TypedDict, total=False):
+    """One op as the log holds it; which keys are present depends on ``op`` (contract §3)."""
+
+    op: str
+    field: str
+    value: Any
+    item: str
+    member: Any
+    name: str
+    was: Any
 
 
 class ActorBody(TypedDict):

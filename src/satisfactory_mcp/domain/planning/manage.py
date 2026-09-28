@@ -20,6 +20,7 @@ __all__ = [
     "duplicate",
     "plan_status",
     "result_delta",
+    "row_changes",
     "undone_by",
     "versions",
 ]
@@ -160,8 +161,43 @@ def _changes(before: dict, after: dict, round_to: int) -> list[dict]:
     return sorted(rows, key=lambda r: (-abs(r["delta"]), r["name"]))
 
 
+_CHANGE_ORDER = {"added": 0, "changed": 1, "removed": 2}
+
+
+def row_changes(before: dict, after: dict) -> list[dict]:
+    """Process rows added, removed or changed between two solves, joined on ``SolveRow.id``."""
+    was = {r["id"]: r for r in before.get("rows") or () if r.get("id")}
+    now = {r["id"]: r for r in after.get("rows") or () if r.get("id")}
+    out = []
+    for rid in set(was) | set(now):
+        old, new = was.get(rid), now.get(rid)
+        if old is None:
+            change = "added"
+        elif new is None:
+            change = "removed"
+        elif (
+            int(old["machines"]) != int(new["machines"])
+            or abs(float(old["clock"]) - float(new["clock"])) >= 0.001
+        ):
+            change = "changed"
+        else:
+            continue
+        out.append(
+            {
+                "id": rid,
+                "label": (new or old)["recipe"],
+                "change": change,
+                "machines_before": int(old["machines"]) if old else 0,
+                "machines_after": int(new["machines"]) if new else 0,
+                "clock_before": float(old["clock"]) if old else 0.0,
+                "clock_after": float(new["clock"]) if new else 0.0,
+            }
+        )
+    return sorted(out, key=lambda r: (_CHANGE_ORDER[r["change"]], r["label"], r["id"]))
+
+
 def result_delta(before: dict, after: dict) -> dict:
-    """How two ``summary.solve_summary`` results differ: machines, MW and raw inputs.
+    """How two ``summary.solve_summary`` results differ: machines, MW, raw inputs and rows.
 
     Facts only. When either side is not solvable, only that is said: the counts of an
     infeasible solve are zero, and a delta against zero would read as a real change.
@@ -174,6 +210,7 @@ def result_delta(before: dict, after: dict) -> dict:
         "mw_net": 0.0,
         "buildings": [],
         "inputs": [],
+        "rows": [],
         "text": "",
     }
     if not both:
@@ -189,6 +226,7 @@ def result_delta(before: dict, after: dict) -> dict:
     out["mw_net"] = round(float(after["mw_net"] or 0) - float(before["mw_net"] or 0), 2)
     out["buildings"] = _changes(_machines(before), _machines(after), 0)
     out["inputs"] = _changes(_rates(before.get("inputs")), _rates(after.get("inputs")), 4)
+    out["rows"] = row_changes(before, after)
     parts = [f"{_num(b['delta'], 0)} {b['name']}" for b in out["buildings"][:4]]
     if len(out["buildings"]) > 4:
         parts.append(f"+{len(out['buildings']) - 4} more buildings changed")

@@ -48,6 +48,7 @@ __all__ = [
     "inverse",
     "is_power",
     "merge_key",
+    "use_recipe_names",
 ]
 
 SNAPSHOT_EVERY = 50
@@ -84,7 +85,8 @@ KINDS: dict[str, str] = {
     "logistics_items": "set",
 }
 FLOAT_SETS = frozenset({"clocks", "extractor_clocks"})
-PLAN_SCALARS = ("notes", "factory")
+PLAN_SCALARS = ("notes", "factory", "headroom_mw")
+HEADROOM_MAX_MW = 1_000_000.0
 KWARG_NAME = {"banned": "exclude_recipes"}
 
 
@@ -150,7 +152,7 @@ def _number(name: str, value, optional: bool = False) -> float | None:
     if value is None and optional:
         return None
     if isinstance(value, bool) or not isinstance(value, int | float):
-        raise _fail(f"{name} must be a number, not {value!r}")
+        raise _fail(f"{name} must be a number, not {json.dumps(value, default=str)}")
     if not math.isfinite(value):
         raise _fail(f"{name} must be finite, not {value!r}")
     return float(value)
@@ -162,7 +164,7 @@ def _count(name: str, value, optional: bool = False) -> int | None:
     if isinstance(value, float) and math.isfinite(value) and value.is_integer():
         value = int(value)
     if isinstance(value, bool) or not isinstance(value, int):
-        raise _fail(f"{name} must be a whole number, not {value!r}")
+        raise _fail(f"{name} must be a whole number, not {json.dumps(value, default=str)}")
     if value < 0:
         raise _fail(f"{name} must be 0 or more, not {value}")
     return value
@@ -180,6 +182,13 @@ def _flag(name: str, value) -> bool:
     if not isinstance(value, bool):
         raise _fail(f"{name} must be true or false, not {value!r}")
     return value
+
+
+def _headroom(name: str, value) -> float | None:
+    number = _number(name, value, optional=True)
+    if number is not None and not 0 < number <= HEADROOM_MAX_MW:
+        raise _fail(f"{name} must be above 0 and at most {HEADROOM_MAX_MW:,.0f} MW, not {value!r}")
+    return number
 
 
 def _objective(name: str, value) -> str:
@@ -200,6 +209,7 @@ _SCALAR_CHECK: dict[str, Callable] = {
     "pipe_m3min": lambda n, v: _number(n, v, optional=True),
     "notes": _text,
     "factory": _text,
+    "headroom_mw": _headroom,
 }
 
 
@@ -300,6 +310,13 @@ class PlanArgs:
         return out
 
 
+def _stored_headroom(value) -> float | None:
+    try:
+        return _headroom("headroom_mw", value)
+    except InvalidOp:
+        return None
+
+
 @dataclass
 class PlanState:
     key: str
@@ -313,6 +330,7 @@ class PlanState:
     provenance: dict = field(default_factory=dict)
     siting: dict = field(default_factory=dict)
     args: PlanArgs = field(default_factory=PlanArgs)
+    headroom_mw: float | None = None
 
     def kwargs(self) -> dict:
         return self.args.kwargs()
@@ -330,6 +348,7 @@ class PlanState:
             "provenance": copy.deepcopy(self.provenance),
             "siting": copy.deepcopy(self.siting),
             "args": self.args.to_dict(),
+            "headroom_mw": self.headroom_mw,
         }
 
     @classmethod
@@ -346,6 +365,7 @@ class PlanState:
             provenance=copy.deepcopy(raw.get("provenance") or {}),
             siting=copy.deepcopy(raw.get("siting") or {}),
             args=PlanArgs.from_dict(raw.get("args")),
+            headroom_mw=_stored_headroom(raw.get("headroom_mw")),
         )
 
     def body(self) -> dict:
@@ -392,11 +412,32 @@ def _fmt(value) -> str:
     return str(value)
 
 
+_namer: list[Callable[[], dict[str, str]]] = []
+
+
+def use_recipe_names(source: Callable[[], dict[str, str]] | None) -> None:
+    _namer[:] = [source] if source is not None else []
+
+
+def _member_name(field_name: str, member) -> str:
+    if not _namer or field_name not in ("banned", "required"):
+        return _fmt(member)
+    try:
+        return _namer[0]().get(member, _fmt(member))
+    except Exception:
+        return _fmt(member)
+
+
 def describe_op(op: dict) -> str:
     kind, name = op.get("op"), op.get("field", "")
     if kind == "set":
         if name == "notes":
             return "notes changed"
+        if name == "headroom_mw":
+            value = op.get("value")
+            if value is None:
+                return "startup headroom: nameplate"
+            return f"startup headroom {_fmt(float(value))} MW"
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
     if kind in ("put", "del"):
         word = "rate" if name == "export_minimums" else name
@@ -411,7 +452,7 @@ def describe_op(op: dict) -> str:
         )
     if kind in ("add", "remove"):
         sign = "+" if kind == "add" else MINUS
-        return f"{sign}{name} {_fmt(op.get('member'))}"
+        return f"{sign}{name} {_member_name(name, op.get('member'))}"
     if kind == "site":
         if not op.get("value"):
             return "site cleared"
@@ -678,7 +719,7 @@ def _label(op: dict) -> str:
     if kind in ("add", "remove"):
         return f"{name} {_fmt(op['member'])}"
     if kind == "set":
-        return name
+        return "startup headroom" if name == "headroom_mw" else name
     if kind == "site":
         return "site"
     if kind == "rename":
@@ -686,10 +727,17 @@ def _label(op: dict) -> str:
     return "plan"
 
 
+def _value_word(op: dict) -> str:
+    if op.get("field") == "headroom_mw":
+        value = op.get("value")
+        return "nameplate" if value is None else f"{_fmt(float(value))} MW"
+    return _fmt(op["value"])
+
+
 def _did(op: dict) -> str:
     kind = op["op"]
     if kind in ("set", "put"):
-        return f"set {_fmt(op['value'])}"
+        return f"set {_value_word(op)}"
     if kind == "del":
         return "removed it"
     if kind == "add":
@@ -712,7 +760,7 @@ class Conflict:
     theirs_actor: Actor
 
     def text(self) -> str:
-        mine = _fmt(self.mine["value"]) if self.mine["op"] in ("set", "put") else _did(self.mine)
+        mine = _value_word(self.mine) if self.mine["op"] in ("set", "put") else _did(self.mine)
         who = self.theirs_actor.display()
         return f"{_label(self.mine)}: you {mine}, {who} {_did(self.theirs)} in v{self.theirs_rev}"
 

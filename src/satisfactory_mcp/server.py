@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from .domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from .domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
-from .domain.planning import journal
+from .domain.planning import journal, planlog
 from .interfaces.mcp import tools as _tools
 from .interfaces.mcp.app import (
     Limit,
@@ -60,6 +60,7 @@ from .interfaces.mcp.tools.inventory import crates, stock, storage
 from .interfaces.mcp.tools.planning import (
     PLAN_DEFAULTS,
     _plan_kwargs,
+    _recipe_names,
     bom,
     commission_plan,
     compare_recipe_options,
@@ -179,6 +180,7 @@ _ = (_state, _item_id, _player_xy, _cand_row, _resolve_factory, _plan_kwargs, _o
 
 def main() -> None:
     journal.set_writer("chat")
+    planlog.use_recipe_names(_recipe_names)
     mcp.run()
 
 

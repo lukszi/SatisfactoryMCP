@@ -13,7 +13,7 @@
 import { COPY_ATTR, COPY_CLASS } from "./dom";
 import { fail, note } from "./toast";
 
-function write(text: string): Promise<void> {
+export function copyText(text: string): Promise<void> {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     return navigator.clipboard.writeText(text);
   }
@@ -45,7 +45,7 @@ function copyFrom(event: Event): void {
   var text = span.getAttribute(COPY_ATTR) || span.textContent || "";
   // Said out loud both ways: a copy that silently did nothing is worse than no affordance,
   // because the reader pastes whatever was in the clipboard before.
-  write(text).then(
+  copyText(text).then(
     function () {
       note("copied " + text);
     },

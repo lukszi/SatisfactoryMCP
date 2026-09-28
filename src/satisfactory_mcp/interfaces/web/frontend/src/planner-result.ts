@@ -1,20 +1,29 @@
-/* The result panel: what the head solves to, redrawn after every new version. */
+/* The result panel: what the head solves to, as a build list or a graph, redrawn after every
+ * new version. See docs/planner-p3_contract.md §9. */
 
-import { button, chip, error, loading, table } from "./dashkit";
+import { button, chip, copyButton, error, idChip, loading, table, tabs2 } from "./dashkit";
 import { make } from "./dom";
-import { count, flow, mw, pct, perMin } from "./format";
-import { drawGraph, graphCard as graphFrame, GRAPH_HINT } from "./graph";
+import { count, flow, mw, pct } from "./format";
+import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "./graph";
+import { dashParts, go } from "./nav";
 import { vitals } from "./panel";
-import { bench, changed, gesture, undoRev } from "./planner-core";
+import { renderAlternates } from "./planner-alternates";
+import { askButton, askMarks } from "./asks";
+import { bench, changed, gesture, pickTab, showAlternates, undoRev } from "./planner-core";
+import { renderTrack } from "./planner-track";
+import { pinsFor, pinThis } from "./pins";
 import { headroom, LEDGER } from "./powerview";
+import { W } from "./words";
 
 import type { Column, SortState } from "./dashkit";
-import type { GraphEdgeShape, GraphNodeShape } from "./graph";
-import type { Ledger, SolveRate, SolveResponse, SolveRow } from "./api-shapes";
-import type { Op, Selection } from "./planner-core";
+import type { GraphNodeShape } from "./graph";
+import type { Ledger, PlanGraphNode, SolveRate, SolveResponse, SolveRow } from "./api-shapes";
+import type { Op, ResultTab, Selection } from "./planner-core";
 
 interface PlanNode extends GraphNodeShape {
   tip: string;
+  row: string | null;
+  item: string | null;
 }
 
 interface BudgetRow {
@@ -23,10 +32,18 @@ interface BudgetRow {
   after: number | null;
 }
 
-var drawn: { data: SolveResponse | null; svg: HTMLElement | null } = { data: null, svg: null };
+var drawn = { data: null as SolveResponse | null, key: "", frame: null as HTMLElement | null, x: 0, y: 0, focus: "" };
+var flashed: Record<string, number> = {};
 var order: SortState = { key: "building", desc: false };
 
 var POWER = "MW";
+var FLASH_MS = 4000;
+var WIDE = window.matchMedia("(min-width: 1280px)");
+var TABS: { id: ResultTab; label: string }[] = [
+  { id: "build list", label: "build list" },
+  { id: "graph", label: "graph" },
+  { id: "track", label: W.track },
+];
 
 function rates(rows: SolveRate[]): string {
   return (
@@ -38,18 +55,18 @@ function rates(rows: SolveRate[]): string {
   );
 }
 
+function items(rows: SolveRate[]): SolveRate[] {
+  return rows.filter(function (r) {
+    return r.item !== POWER;
+  });
+}
+
 export function recipeName(id: string): string {
   return (bench.plan && bench.plan.names[id]) || id;
 }
 
 function listed(field: "required" | "banned", member: string): boolean {
   return !!bench.plan && bench.plan.args[field].indexOf(member) >= 0;
-}
-
-export function requireOps(id: string): Op[] {
-  var ops: Op[] = [{ op: "add", field: "required", member: id }];
-  if (listed("banned", id)) ops.push({ op: "remove", field: "banned", member: id });
-  return ops;
 }
 
 export function banOps(member: string): Op[] {
@@ -145,8 +162,7 @@ function summary(parent: HTMLElement, data: SolveResponse, rev: number, live: bo
   var body = make("div", waiting ? "plan-stale" : "");
   card.appendChild(body);
   if (!data.feasible) {
-    var head = make("p", "plan-headline bad", "not solvable: " + data.cause);
-    body.appendChild(head);
+    body.appendChild(make("p", "plan-headline bad", "not solvable: " + data.cause));
     if (live) undoButton(body);
   } else {
     body.appendChild(make("p", "plan-facts", facts(data)));
@@ -158,46 +174,98 @@ function summary(parent: HTMLElement, data: SolveResponse, rev: number, live: bo
   parent.appendChild(card);
 }
 
-function pick(row: SolveRow, select: (s: Selection) => void): void {
+function mainItem(data: SolveResponse, row: SolveRow): string | null {
+  var node = data.graph.nodes.filter(function (n) {
+    return n.row === row.id;
+  })[0];
+  return node ? node.item : null;
+}
+
+WIDE.addEventListener("change", function () {
+  if (bench.alt) changed();
+});
+
+function pickRow(row: SolveRow, select: (s: Selection) => void): void {
+  bench.picked = row.id;
   select({ kind: "process", label: row.building + " · " + row.recipe, ref: row.recipe_id || row.recipe });
 }
 
-function actions(row: SolveRow): HTMLElement {
-  var box = make("span", "dash-acts");
-  var id = row.recipe_id;
-  if (id && !row.required) {
-    box.appendChild(
-      button(
-        "require",
-        function () {
-          gesture(requireOps(id!));
-        },
-        { title: "make every " + (row.item || "output") + " with this recipe", label: "require " + row.recipe }
-      )
-    );
-  }
-  box.appendChild(
-    button(
-      "ban",
-      function () {
-        gesture(banOps(id || row.recipe));
-      },
-      { title: "exclude this recipe from the plan", label: "ban " + row.recipe }
-    )
+export function recipesButton(item: string, name: string, where: string): HTMLButtonElement {
+  var ctl = "alt:" + where + ":" + item;
+  var open = !!bench.alt && bench.alt.item === item;
+  var b = button(
+    W.recipes,
+    function () {
+      var switching = dashParts().rest[1] === "alt";
+      showAlternates(item, ctl);
+      if (!switching) bench.altBack = true;
+      go("planner/" + bench.key + "/alt/" + item, switching);
+    },
+    { title: "every recipe for " + name + " and what requiring each would change", label: "recipes for " + name }
   );
+  b.setAttribute("data-ctl", ctl);
+  b.setAttribute("aria-expanded", String(open));
+  return b;
+}
+
+function banButton(row: SolveRow): HTMLButtonElement {
+  return button(
+    "ban",
+    function () {
+      gesture(banOps(row.recipe_id || row.recipe));
+    },
+    { title: "keep this recipe out of the plan", label: "ban " + row.recipe }
+  );
+}
+
+function pinButton(row: SolveRow): HTMLButtonElement | null {
+  var id = row.recipe_id;
+  if (!id) return null;
+  return button(
+    W.pin,
+    function () {
+      pinThis("process", { plan: bench.key, recipe: id! });
+    },
+    { title: "pin this process and copy its pin:N for chat", label: "pin " + row.recipe }
+  );
+}
+
+function copyFor(text: string, what: string): HTMLButtonElement {
+  return copyButton(text, "copy", { title: "copy " + text + " for a tool call", label: "copy " + what });
+}
+
+function rowActions(data: SolveResponse, row: SolveRow): HTMLElement {
+  var box = make("span", "dash-acts");
+  var item = mainItem(data, row);
+  if (item && row.recipe_id) box.appendChild(recipesButton(item, row.item || row.recipe, "row"));
+  box.appendChild(banButton(row));
+  var pin = pinButton(row);
+  if (pin) box.appendChild(pin);
+  box.appendChild(processAsk(row, "row"));
   return box;
 }
 
-function recipeCell(row: SolveRow): HTMLElement {
-  var cell = make("span", "", row.recipe);
+function processAsk(row: SolveRow, where: string): HTMLButtonElement {
+  var ref = row.recipe_id || row.recipe;
+  return askButton({ kind: "process", label: row.building + " · " + row.recipe, ref: ref, plan: bench.key, rev: bench.plan ? bench.plan.rev : null }, where + ":" + row.id);
+}
+
+function recipeCell(row: SolveRow, live: boolean): HTMLElement {
+  var cell = make("span", "plan-recipe", row.recipe);
   if (row.required) cell.appendChild(chip("required", "muted"));
+  if (!live) return cell;
+  if (bench.chatRows[row.id]) cell.appendChild(chip(W.actorChat, "muted", "chat changed this process since you opened the plan"));
+  var pinned = row.recipe_id ? pinsFor(bench.key)[row.recipe_id] : undefined;
+  if (pinned) cell.appendChild(idChip(pinned.id, pinned.text));
+  askMarks(bench.key, "process", row.recipe_id || row.recipe).forEach(function (a) {
+    cell.appendChild(idChip(a.id, a.text));
+  });
   return cell;
 }
 
 function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selection) => void, live: boolean): void {
   var card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "build list · " + count(data.rows.length) + " processes"));
-  var picked = bench.selection ? bench.selection.ref : "";
   var columns: Column<SolveRow>[] = [
     {
       key: "building",
@@ -215,7 +283,9 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
       sort: function (r) {
         return r.recipe;
       },
-      render: recipeCell,
+      render: function (r) {
+        return recipeCell(r, live);
+      },
     },
     {
       key: "machines",
@@ -267,16 +337,24 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
       },
     },
   ];
-  if (live && !bench.gone) columns.push({ key: "acts", label: "", render: actions });
+  if (live && !bench.gone) {
+    columns.push({
+      key: "acts",
+      label: "",
+      render: function (r) {
+        return rowActions(data, r);
+      },
+    });
+  }
   card.appendChild(
     table(columns, data.rows, {
       sort: order,
       onSort: changed,
       onRow: function (row) {
-        pick(row, select);
+        pickRow(row, select);
       },
       rowClass: function (row) {
-        return picked && picked === (row.recipe_id || row.recipe) ? "plan-picked" : "";
+        return live && bench.picked === row.id ? "plan-picked" : "";
       },
       caption: "build list",
     })
@@ -284,87 +362,174 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
   parent.appendChild(card);
 }
 
-
-function items(rows: SolveRate[]): SolveRate[] {
-  return rows.filter(function (r) {
-    return r.item !== POWER;
+function flashing(): string[] {
+  var now = Date.now();
+  Object.keys(flashed).forEach(function (id) {
+    if (!bench.chatRows[id]) delete flashed[id];
+  });
+  Object.keys(bench.chatRows).forEach(function (id) {
+    if (!flashed[id]) flashed[id] = now;
+  });
+  return Object.keys(flashed).filter(function (id) {
+    return now - flashed[id]! < FLASH_MS;
   });
 }
 
-function graphOf(data: SolveResponse): { nodes: PlanNode[]; edges: GraphEdgeShape[] } {
-  var nodes: PlanNode[] = [];
-  var edges: GraphEdgeShape[] = [];
-  var made: Record<string, { id: string; per_min: number }[]> = {};
-  var total: Record<string, number> = {};
-  data.rows.forEach(function (row, i) {
-    var id = "p" + i;
-    var power = row.mw ? " · " + mw(row.mw, { signed: true }) : "";
-    var at = " · " + pct(row.clock, 1);
-    nodes.push({
-      id: id,
-      kind: "process",
-      label: row.recipe,
-      detail: row.building + " ×" + count(row.machines) + power + at,
+function planNodes(data: SolveResponse): PlanNode[] {
+  var byId: Record<string, SolveRow> = {};
+  data.rows.forEach(function (r) {
+    byId[r.id] = r;
+  });
+  var pins = pinsFor(bench.key);
+  return data.graph.nodes.map(function (n: PlanGraphNode): PlanNode {
+    var row = n.row ? byId[n.row] : undefined;
+    var badges: string[] = [];
+    if (row && bench.chatRows[row.id]) badges.push(W.actorChat);
+    if (row && row.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
+    var tip = row
+      ? row.building + " · " + row.recipe + "\nin: " + rates(items(row.inputs)) + "\nout: " + rates(items(row.outputs))
+      : n.label + (n.detail ? " · " + n.detail : "");
+    return {
+      id: n.id,
+      kind: n.kind,
+      label: n.label,
+      detail: n.detail,
+      rank: n.rank,
+      row: n.row,
+      item: n.item,
+      badges: badges,
+      tip: tip,
       machines: 0,
       running: 0,
       blocked: 0,
       stopped: 0,
-      tip: row.building + " · " + row.recipe + at + power + "\nin: " + rates(items(row.inputs)) + "\nout: " + rates(items(row.outputs)),
-    });
-    var out = items(row.outputs);
-    if (row.mw > 0) out.push({ item: POWER, per_min: row.mw });
-    out.forEach(function (o) {
-      (made[o.item] = made[o.item] || []).push({ id: id, per_min: o.per_min });
-      total[o.item] = (total[o.item] || 0) + o.per_min;
-    });
+    };
   });
-  var inputs: Record<string, boolean> = {};
-  var feed = function (item: string, target: string, need: number) {
-    var from = made[item];
-    if (!from || !total[item]) {
-      if (item === POWER) return;
-      if (!inputs[item]) {
-        inputs[item] = true;
-        nodes.push({ id: "in:" + item, kind: "input", label: item, detail: "from outside the plan", machines: 0, running: 0, blocked: 0, stopped: 0, tip: item });
-      }
-      edges.push({ source: "in:" + item, target: target, item: item, per_min: need });
-      return;
-    }
-    from.forEach(function (f) {
-      var share = (need * f.per_min) / total[item]!;
-      edges.push({ source: f.id, target: target, item: item, per_min: share, text: item === POWER ? mw(share) : undefined });
-    });
-  };
-  data.rows.forEach(function (row, i) {
-    items(row.inputs).forEach(function (input) {
-      feed(input.item, "p" + i, input.per_min);
-    });
-  });
-  data.exports.forEach(function (e) {
-    var id = "ex:" + e.item;
-    var amount = e.item === POWER ? mw(e.per_min) : perMin(e.per_min);
-    nodes.push({ id: id, kind: "export", label: e.item === POWER ? "power" : e.item, detail: "exported " + amount, machines: 0, running: 0, blocked: 0, stopped: 0, tip: "exported " + amount });
-    feed(e.item, id, e.per_min);
-  });
-  return { nodes: nodes, edges: edges };
 }
 
-function graphCard(parent: HTMLElement, data: SolveResponse): void {
-  var card = graphFrame("production graph", bench.graph, function () {
-    bench.graph = !bench.graph;
-    changed();
-  });
-  if (bench.graph && data.rows.length) {
-    if (drawn.data !== data) {
-      drawn.data = data;
-      drawn.svg = drawGraph(graphOf(data), function (n: PlanNode) {
-        return n.tip;
-      });
-    }
-    card.appendChild(drawn.svg!);
-    card.appendChild(make("p", "dash-note", "rates split over each item's producers by share · " + GRAPH_HINT));
+function pickNode(data: SolveResponse, node: PlanNode, select: (s: Selection) => void): void {
+  var row = data.rows.filter(function (r) {
+    return r.id === node.row;
+  })[0];
+  if (row) {
+    pickRow(row, select);
+    return;
   }
+  bench.picked = node.id;
+  select({ kind: "item", label: node.label, ref: node.item || "" });
+}
+
+function graphFrameFor(data: SolveResponse, select: (s: Selection) => void): HTMLElement {
+  var nodes = planNodes(data);
+  var flash = flashing();
+  var key =
+    nodes
+      .map(function (n) {
+        return n.id + "=" + (n.badges || []).join("+");
+      })
+      .join("|") +
+    "#" +
+    flash.join("|");
+  if (drawn.data !== data || drawn.key !== key || !drawn.frame) {
+    var frame = drawGraph(
+      { nodes: nodes, edges: data.graph.edges.map(function (e) {
+        return { source: e.source, target: e.target, item: e.item, per_min: e.per_min, text: e.text || undefined };
+      }) },
+      function (n: PlanNode) {
+        return n.tip;
+      },
+      function (n: PlanNode) {
+        pickNode(data, n, select);
+      },
+      {
+        pickable: function (n: PlanNode) {
+          return n.kind === "process" || (n.kind === "export" && !!n.item);
+        },
+        picked: bench.picked,
+        flash: flash,
+      }
+    );
+    if (drawn.data !== data) {
+      drawn.x = 0;
+      drawn.y = 0;
+    }
+    frame.addEventListener("scroll", function () {
+      if (!frame.isConnected) return;
+      drawn.x = frame.scrollLeft;
+      drawn.y = frame.scrollTop;
+    });
+    frame.addEventListener("focusin", function (event) {
+      var node = (event.target as Element).closest(".graph-node");
+      drawn.focus = node ? node.getAttribute("data-node") || "" : "";
+    });
+    frame.addEventListener("focusout", function () {
+      setTimeout(function () {
+        if (frame.isConnected && !frame.contains(document.activeElement)) drawn.focus = "";
+      }, 0);
+    });
+    drawn.data = data;
+    drawn.key = key;
+    drawn.frame = frame;
+    if (flash.length) setTimeout(changed, FLASH_MS);
+  } else setPicked(drawn.frame, bench.picked);
+  return drawn.frame;
+}
+
+function nodeCard(parent: HTMLElement, data: SolveResponse): void {
+  var picked = bench.picked;
+  var node = picked
+    ? data.graph.nodes.filter(function (n) {
+        return n.id === picked;
+      })[0]
+    : undefined;
+  if (!node) return;
+  var card = make("section", "dash-card plan-node");
+  card.setAttribute("aria-label", "picked: " + node.label);
+  var row = data.rows.filter(function (r) {
+    return r.id === node!.row;
+  })[0];
+  var title = make("div", "dash-title");
+  title.appendChild(make("h2", "dash-h", row ? row.recipe : node.label));
+  var acts = make("div", "dash-acts");
+  if (row) {
+    var power = row.mw ? " · " + mw(row.mw, { signed: true }) : "";
+    card.appendChild(title);
+    card.appendChild(make("p", "plan-facts", row.building + " ×" + count(row.machines) + " · " + pct(row.clock, 1) + power));
+    card.appendChild(make("p", "dash-sub", "in: " + rates(items(row.inputs))));
+    card.appendChild(make("p", "dash-sub", "out: " + rates(items(row.outputs))));
+    if (!bench.gone) {
+      if (node.item && row.recipe_id) acts.appendChild(recipesButton(node.item, row.item || row.recipe, "node"));
+      acts.appendChild(banButton(row));
+      var pin = pinButton(row);
+      if (pin) acts.appendChild(pin);
+    }
+    if (row.recipe_id) acts.appendChild(copyFor(row.recipe_id, row.recipe));
+    if (!bench.gone) acts.appendChild(processAsk(row, "node"));
+  } else {
+    card.appendChild(title);
+    card.appendChild(make("p", "plan-facts", node.detail));
+    if (node.item && !bench.gone) acts.appendChild(recipesButton(node.item, node.label, "node"));
+    if (!bench.gone) {
+      var about = { kind: "item", label: node.label, ref: node.item || node.id, plan: bench.key, rev: bench.plan ? bench.plan.rev : null };
+      acts.appendChild(askButton(about, "node:" + node.id));
+    }
+  }
+  card.appendChild(acts);
   parent.appendChild(card);
+}
+
+function graphTab(parent: HTMLElement, data: SolveResponse, select: (s: Selection) => void): HTMLElement | null {
+  var card = graphFrame("production graph", true);
+  parent.appendChild(card);
+  if (!data.graph.nodes.length) {
+    card.appendChild(make("p", "dash-note", "nothing to draw"));
+    return null;
+  }
+  var frame = graphFrameFor(data, select);
+  card.appendChild(frame);
+  card.appendChild(make("p", "dash-note", "click a process for its recipes · rates split over each item's producers by share · " + GRAPH_HINT));
+  nodeCard(parent, data);
+  return frame;
 }
 
 export function renderVersionResult(parent: HTMLElement, data: SolveResponse, rev: number, select: (s: Selection) => void): void {
@@ -372,7 +537,14 @@ export function renderVersionResult(parent: HTMLElement, data: SolveResponse, re
   if (data.feasible) buildList(parent, data, select, false);
 }
 
-export function renderResult(parent: HTMLElement, select: (s: Selection) => void): void {
+export function clearPick(): boolean {
+  if (!bench.picked) return false;
+  bench.picked = "";
+  changed();
+  return true;
+}
+
+export function renderResult(parent: HTMLElement, select: (s: Selection) => void, close: () => void): void {
   if (bench.solveError) error(parent, "the result", bench.solveError);
   var data = bench.result;
   if (!data) {
@@ -382,16 +554,41 @@ export function renderResult(parent: HTMLElement, select: (s: Selection) => void
   summary(parent, data, bench.resultRev, true);
   if (!data.feasible) {
     var last = bench.feasible;
+    if (bench.alt) renderAlternates(parent, close);
     if (!last) return;
     var grey = make("div", "plan-stale");
+    if (bench.tab === "track") grey.appendChild(make("p", "dash-note", "track needs a solvable version"));
     grey.appendChild(make("p", "dash-note", "last solvable version, v" + last.rev + ":"));
     summary(grey, last.data, last.rev, false);
     buildList(grey, last.data, select, false);
     parent.appendChild(grey);
     return;
   }
-  var rest = make("div", bench.solving && bench.solving !== bench.resultRev ? "plan-stale" : "");
-  graphCard(rest, data);
-  buildList(rest, data, select, true);
-  parent.appendChild(rest);
+  parent.appendChild(
+    tabs2(
+      TABS,
+      bench.tab,
+      function (id) {
+        pickTab(id as ResultTab);
+      },
+      "result view"
+    )
+  );
+  var beside = !!bench.alt && bench.tab === "graph" && WIDE.matches;
+  var split = make("div", "plan-result" + (beside ? " beside" : ""));
+  var dim = bench.tab !== "track" && bench.solving && bench.solving !== bench.resultRev;
+  var main = make("div", "plan-main" + (dim ? " plan-stale" : ""));
+  if (bench.alt && !beside) renderAlternates(split, close);
+  split.appendChild(main);
+  if (bench.alt && beside) renderAlternates(split, close);
+  var frame = bench.tab === "graph" ? graphTab(main, data, select) : null;
+  if (bench.tab === "track") renderTrack(main, select);
+  else if (bench.tab !== "graph") buildList(main, data, select, true);
+  parent.appendChild(split);
+  if (!frame) return;
+  frame.scrollLeft = drawn.x;
+  frame.scrollTop = drawn.y;
+  var lost = !document.activeElement || document.activeElement === document.body;
+  var again = drawn.focus && lost ? frame.querySelector<SVGGElement>('[data-node="' + CSS.escape(drawn.focus) + '"]') : null;
+  if (again) again.focus({ preventScroll: true });
 }

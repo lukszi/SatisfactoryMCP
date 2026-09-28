@@ -53,6 +53,7 @@ place table the only table a reader needs for "where".
 | `slab:<n>` | a foundation platform's tile mean, by the index `factory_map show=slabs` prints | yes |
 | `chain:<n>` / `pipe:<n>` | the midpoint of a conduit run, by the ident `search_conduits` prints | yes |
 | `plan:<name>` | a stored plan's recorded site origin (see `site_plan`) | yes |
+| `pin:<n>` | a located pin: point, node, field centroid, machine, factory centroid, sited plan | yes |
 
 The two map facts resolve with no save at all; the rest name what they are missing rather
 than falling back. The point a place resolved to is echoed back with the name that
@@ -84,6 +85,7 @@ A **source spec** is a list of selectors, and it is what every `sources=` parame
 | `region:Northern Forest` | named region; a bare name also works |
 | `grid:X3Y4` | one exact 1.024 km biome grid cell |
 | `node:BP_ResourceNode30_103` | one specific node, repeatable |
+| `pin:<n>` | a node pin's node, or every node of a field pin |
 | `near:<place>@<radius_m>` | a circle around any place in the table above |
 | `bbox:<x1>,<y1>,<x2>,<y2>` | a rectangle, corners in metres |
 | `resource:Crude Oil` | filter: resource type |
@@ -120,6 +122,7 @@ are interchangeable there.
 | `proposal:<n>` | the nth cluster from `propose_factories` |
 | `label:<name>` | what a named factory already covers |
 | `machine:<instance>` | named instances, exactly as the tools print them |
+| `pin:<n>` | a machine pin's machine, or what a factory pin's label covers |
 | `all` | every machine |
 
 **Terms are ANDed; commas inside one term are ORed; a leading `-` excludes.** So
@@ -136,12 +139,37 @@ from the save on every call.** They shift when you build. Read an index and name
 selected in the same breath; never store one. A label is durable because it holds machine
 ids.
 
+## Pins — `pin:<n>`
+
+A pin is a numbered handle the page places on a plan, a process, a machine, a factory, a
+field, a node or a point (docs/planner-p3_contract.md §4). `pin:<n>` is accepted wherever the
+thing it pins could stand, and `domain/planning/pins.py` is the only code that parses it:
+
+| grammar | resolver | kinds accepted | becomes |
+|---|---|---|---|
+| place (`at=`, `near=`, `to=`, `site_at=`, `near:pin:<n>@r`) | `resolve_origin` | point, node, field, machine, factory, sited plan | the pin's position |
+| node sources | `select_nodes` | node, field | `node:<id>` per node |
+| machine select, `factory=` | `select_machines` (also `-pin:<n>`) | machine, factory | `machine:<instance>` / `label:<name>` |
+| `plan=` | `recall.plan_ref` | plan | the plan key |
+| `required=`, `exclude_recipes=` | `pins.canonical` at the tool or route | process | the recipe class id |
+
+Every expansion is echoed as `pin:3 = node:BP_ResourceNode30_103 (Iron Ore, pure)`. A pin
+that cannot stand somewhere is refused in words: `pin:9 does not exist (pins run to pin:6)`,
+`pin:3 was deleted`, `pin:4 is a process: it cannot stand for resource nodes`, `pin:2 is a
+point: write near:pin:2@<radius_m>`, `pin:5 is gone: plan forgotten`, `pin:1 is a plan with no
+site`. `pin:` inside `bbox:` or `grid:` is not a term.
+
+**Stored plans never hold `pin:`.** `plan_factory` and the web writes (`create_plan`,
+`push_args`, `push_ops`) rewrite `sources`, `required` and `banned` members to what the pin
+stands for before the store, and `near:pin:3@200` becomes `near:<x>,<y>@200`. A plan therefore
+reads the same after its pin is deleted.
+
 ## What the two selector languages still do not share
 
 Named here so that the next reader knows it is a known state and not an oversight.
 
 - **`near:` no longer differs.** Both selector modules hand the whole world state to
-  `resolve_origin` and take the same seven places, so a `near:` term copied from one
+  `resolve_origin` and take the same eight places, so a `near:` term copied from one
   works in the other. Neither module resolves a place itself; a second resolver is what
   the divergence was made of.
 - **Indices are machine-side only.** `base:`, `line:`, `slab:` and `proposal:` have no

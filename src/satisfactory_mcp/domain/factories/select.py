@@ -15,6 +15,7 @@ can say which machines they mean without listing 50 instance ids. Hence selector
     proposal:7                    the nth cluster from propose_factories
     label:steel factory           what a label already covers
     machine:Build_SmelterMk1_C_3  named instances, exactly as the tools print them
+    pin:4                         a machine or factory pin
     all                           every machine
 
 Terms combine as an intersection, and any term may be negated with a leading ``-``::
@@ -38,7 +39,7 @@ from ..spatial import geo, origin
 from .identity import bases, cluster_machines
 from .model import FactoryGraph
 
-__all__ = ["INDEX_WARNING", "SELECTOR_HELP", "SelectorError", "select_machines"]
+__all__ = ["INDEX_WARNING", "SELECTOR_HELP", "SelectorError", "pin_notes", "select_machines"]
 
 #: ``base:``, ``line:``, ``slab:`` and ``proposal:`` are POSITIONS in lists that are
 #: recomputed from the save every call, and every one of those lists is ordered by size.
@@ -55,7 +56,7 @@ SELECTOR_HELP = (
     "product:<item> | recipe:<name> | building:<class or name> | "
     "near:<place>@<radius_m> | base:<n> | line:<n> | slab:<n> | "
     "proposal:<n> | "
-    "label:<name> | machine:<instance> | all. Terms are ANDed; comma-separated values "
+    "label:<name> | machine:<instance> | pin:<n> | all. Terms are ANDed; comma-separated values "
     "inside one term are ORed; prefix a term with '-' to exclude it"
 )
 
@@ -219,6 +220,8 @@ def _resolve(term: str, st, graph: FactoryGraph, game: GameData, projection: dic
         if label is None:
             raise SelectorError(f"no label named {value!r}")
         return set(label.anchors)
+    if kind == "pin":
+        return _by_pin(term, st, graph, game, projection)
     if kind == "machine":
         # Checked against the graph, because an unknown id used to select itself: the term
         # resolved to a one-element set of a machine that does not exist, and every tool
@@ -234,6 +237,39 @@ def _resolve(term: str, st, graph: FactoryGraph, game: GameData, projection: dic
             )
         return set(wanted)
     raise SelectorError(f"unknown selector {kind!r}. Use one of: {SELECTOR_HELP}")
+
+
+def _pin_terms(term: str, st) -> tuple[list[str], str]:
+    from ..planning import pins
+
+    n = pins.parse(term)
+    if n is None:
+        raise SelectorError(f"{term!r} is not a pin: write pin:<n>. Use one of: {SELECTOR_HELP}")
+    try:
+        return pins.terms(st, n, "machines")
+    except pins.PinError as exc:
+        raise SelectorError(str(exc)) from None
+
+
+def _by_pin(term: str, st, graph: FactoryGraph, game: GameData, projection: dict) -> set[str]:
+    wanted, _echo = _pin_terms(term, st)
+    out: set[str] = set()
+    for inner in wanted:
+        out |= _resolve(inner, st, graph, game, projection)
+    return out
+
+
+def pin_notes(selectors: list[str] | None, st) -> list[str]:
+    """What each ``pin:N`` term among ``selectors`` stood for, as tools echo it."""
+    notes = []
+    for raw in selectors or ():
+        term = raw.strip().removeprefix("-").strip()
+        if term.casefold().startswith("pin:"):
+            try:
+                notes.append(_pin_terms(term, st)[1])
+            except SelectorError:
+                continue
+    return notes
 
 
 def expand_to_components(machines: set[str], graph: FactoryGraph) -> set[str]:

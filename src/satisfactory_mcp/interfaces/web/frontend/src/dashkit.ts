@@ -1,7 +1,7 @@
 /* The dashboard's building blocks, shared by dashboard.ts and the sections split out of it. */
 
 import "./dashkit.css";
-import { count, make } from "./dom";
+import { COPY_ATTR, COPY_CLASS, count, make } from "./dom";
 import { hashFor } from "./map";
 import { tone } from "./states";
 import { friendly } from "./toast";
@@ -285,6 +285,15 @@ export function button(text: string, action: () => void, options?: ButtonOptions
   return b;
 }
 
+export function copyButton(value: string, text: string, options: ButtonOptions): HTMLButtonElement {
+  var b = make("button", "btn " + COPY_CLASS, text);
+  b.type = "button";
+  b.title = options.title || "copy " + value;
+  if (options.label) b.setAttribute("aria-label", options.label);
+  b.setAttribute(COPY_ATTR, value);
+  return b;
+}
+
 export function pressed(text: string, on: boolean, action: () => void, options?: ButtonOptions): HTMLButtonElement {
   var b = button(text, action, options);
   b.setAttribute("aria-pressed", String(on));
@@ -384,6 +393,12 @@ export function showAll(card: HTMLElement, grid: HTMLElement, rows: number, show
 export function chip(text: string, tone?: "ok" | "bad" | "blocked" | "mid" | "muted", title?: string): HTMLElement {
   var c = make("span", "chip chip-" + (tone || "muted"), text);
   if (title) c.title = title;
+  return c;
+}
+
+export function idChip(id: string, title?: string): HTMLElement {
+  var c = chip(id, "muted", title);
+  c.classList.add("chip-id");
   return c;
 }
 

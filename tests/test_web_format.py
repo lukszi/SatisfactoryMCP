@@ -36,7 +36,9 @@ RUN = """import { pathToFileURL } from "node:url";
 const m = await import(pathToFileURL(process.argv[2]).href);
 const fn = process.argv[3];
 const cases = JSON.parse(process.argv[4]);
-console.log(JSON.stringify(cases.map((args) => m[fn](...args))));
+const say = { count: m.count, perMin: (n) => m.perMin(n), bare: (n) => m.perMin(n, false) };
+console.log(JSON.stringify(cases.map((args) =>
+  fn === "signed" ? m.signed(args[0], say[args[1]]) : m[fn](...args))));
 """
 
 
@@ -107,3 +109,9 @@ def test_mw_rounds_a_half_away_from_zero_on_both_signs(tmp_path):
 
 def test_mw_keeps_small_negatives_unsigned_zero(tmp_path):
     assert _mw(tmp_path, [(-0.4, True), (0.4, True), (-0.5, True)]) == ["0 MW", "0 MW", "-1 MW"]
+
+
+def test_signed_shares_one_sign_rule_across_units(tmp_path):
+    cases = [(3, "count"), (-3, "count"), (0, "count"), (-12.34, "perMin"), (0.04, "bare"), (-0.04, "bare")]
+    got = _run(tmp_path, "signed", [list(c) for c in cases])
+    assert got == ["+3", "-3", "0", "-12.3/min", "0", "0"]

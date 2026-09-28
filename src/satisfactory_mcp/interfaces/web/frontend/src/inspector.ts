@@ -14,11 +14,13 @@ import { count, num, perMin, regionLine } from "./format";
 import { L } from "./leaflet";
 import { hashFor, map, NARROW } from "./map";
 import { withQuery } from "./nav";
+import { pinButtons } from "./pins";
 import { setting } from "./settings";
 import { friendly } from "./toast";
 import { counted, W } from "./words";
 
 import type { ConduitCount, Elevation, FoundField, InspectResponse, NearPickup } from "./api-shapes";
+import type { PinTarget } from "./pins";
 import type { Row } from "./dom";
 import type { InspectedEvent } from "./leaflet-private";
 
@@ -150,6 +152,13 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   var nearest = shown(d.nearest);
   var pickups = shown(d.pickups);
   var fields = shown(d.fields);
+  var targets: PinTarget[] = [{ kind: "point", ref: { x_m: d.at.x_m, y_m: d.at.y_m }, text: "point" }];
+  if (machine) targets.push({ kind: "machine", ref: { machine: machine.leaf }, text: "machine" });
+  var near = nearest[0];
+  if (near) {
+    targets.push({ kind: "node", ref: { node: near.name }, text: "node " + near.resource_name });
+    targets.push({ kind: "field", ref: { node: near.name }, text: "field" });
+  }
   rows.push(["region", regionLine(d.region)]);
   rows.push(["elevation", elevationLine(d.elevation)]);
   rows.push(["grid", d.grid ? d.grid + (d.direction ? " · " + d.direction : "") : null]);
@@ -160,6 +169,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   // every other coordinate row on the map ends with -- must ride along.
   rows.push(["at", html(code(d.at.x_m + "," + d.at.y_m).html + " m")]);
   rows.push(["", html('<span class="popup-acts">' + actions(d.at.x_m, d.at.y_m) + "</span>")]);
+  rows.push([W.pin, pinButtons(targets)]);
   var more: Row[] = elevationRows(d.elevation);
   /* Each nearest node carries the same `node:` selector its own dot's popup prints, because
    * the answer's next step is an MCP tool call naming one of these nodes and a resource plus

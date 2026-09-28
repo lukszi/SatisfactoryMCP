@@ -6,6 +6,7 @@ versioned: docs/mcp-surface.md §10.1k."""
 from __future__ import annotations
 
 import copy
+import json
 import os
 import time
 from collections.abc import Callable
@@ -17,12 +18,14 @@ from pydantic import Field
 
 from ....core.filelock import LockTimeout
 from ....core.gamedata.unlocks import granted_by_label
+from ....core.schema import NewerSchema
 from ....domain.factories.select import SelectorError
+from ....domain.planning import asks, compare, journal, manage, pins, summary
 from ....domain.planning import bom as bom_mod
-from ....domain.planning import compare, journal, manage, summary
 from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
 from ....domain.planning.carrier import resolve_tiers
+from ....domain.planning.commission import partition_id
 from ....domain.planning.commission_service import build_commission_report
 from ....domain.planning.diff_service import build_diff_report
 from ....domain.planning.layout_service import LayoutReport, build_layout_report
@@ -42,7 +45,7 @@ from ....domain.planning.planlog import (
     describe_op,
 )
 from ....domain.planning.prepare import prepare
-from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of
+from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of, plan_ref
 from ....domain.planning.recall import recall_plan as _plan_kwargs
 from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
@@ -71,6 +74,10 @@ CONTEXT_COMMITS = 6
 CONTEXT_JOURNAL = 8
 FIRST_LOOK = 5
 CONTEXT_BUDGET = 3800
+CONTEXT_PINS = 8
+CONTEXT_PIN_WIDTH = 90
+CONTEXT_ASKS = 6
+CONTEXT_ASK_WIDTH = 200
 
 BaseRev = Annotated[
     int | None,
@@ -275,6 +282,10 @@ def list_plans(
     except Exception as exc:
         return f"could not read save: {exc}"
     if name:
+        try:
+            name, _echo = _plan_pin(st, name)
+        except KeyError as exc:
+            return f"! {exc.args[0]}"
         stored = st.plans.find(name)
         if stored is None:
             return _unknown(st, name)
@@ -380,6 +391,10 @@ def forget_plan(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
+    try:
+        name, _echo = _plan_pin(st, name)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
     stored = st.plans.find(name)
     if stored is None:
         return _unknown(st, name)
@@ -420,6 +435,10 @@ def rename_plan(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
+    try:
+        name, _echo = _plan_pin(st, name)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
     stored = st.plans.find(name)
     if stored is None:
         return _unknown(st, name)
@@ -506,6 +525,10 @@ def site_plan(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
+    try:
+        plan, _echo = _plan_pin(st, plan)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
     stored = st.plans.find(plan)
     if stored is None:
         return _unknown(st, plan)
@@ -608,6 +631,16 @@ def site_plan(
     )
 
 
+def _refusal(exc: Exception) -> str:
+    return exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
+
+
+def _plan_pin(st, plan: str | None) -> tuple[str | None, list[str]]:
+    """``plan`` with a plan pin swapped for its key, and the echo. Raises ``KeyError``."""
+    found, echo = plan_ref(st, plan)
+    return found, [echo] if echo else []
+
+
 def _live_named(st, name: str):
     wanted = name.strip().casefold()
     return next((p for p in st.plans.plans if p.name.casefold() == wanted), None)
@@ -662,7 +695,7 @@ def _solve_text(plan_kwargs: dict, feasible: bool, recalled) -> str:
     return f"{'solved' if feasible else 'infeasible:'}{on} {what} ({objective})"
 
 
-def _journal_view(st, plan: str | None, tool: str, ctx) -> None:
+def _journal_view(st, plan: str | None, tool: str, ctx, args: dict | None = None) -> None:
     if not plan:
         return
     stored = st.plans.find(plan)
@@ -676,7 +709,50 @@ def _journal_view(st, plan: str | None, tool: str, ctx) -> None:
         tool=tool,
         plan=stored.key,
         rev=stored.rev,
+        args=args,
         text=f'{tool} on plan "{stored.name}" v{stored.rev}',
+    )
+
+
+_stages_seen: dict[tuple[str, str], tuple[str, int, int, int]] = {}
+
+
+def _recalled(st, plan: str | None):
+    """The stored version ``plan`` names, as the plan log holds it, or None."""
+    if not plan:
+        return None
+    found = st.plans.find(plan)
+    if found is None:
+        return None
+    try:
+        return _log(st).state(found.key)
+    except PlanLogError:
+        return None
+
+
+def _where(current: int, count: int) -> str:
+    if not count:
+        return "no startup order fits the headroom"
+    if not current:
+        return f"every stage of {count} built"
+    return f"stage {current} of {count}"
+
+
+def _renumbered(st, stored, tracking) -> str:
+    """The note that the stages moved since this process last read this plan, or ''."""
+    if stored is None or tracking is None:
+        return ""
+    count = len(tracking.stages) if tracking.ok else 0
+    now = (partition_id(tracking), tracking.current if count else 0, count, stored.rev)
+    seen = _stages_seen.get((st.world_id, stored.key))
+    _stages_seen[(st.world_id, stored.key)] = now
+    if seen is None or seen[0] == now[0]:
+        return ""
+    was = _where(seen[1], seen[2])
+    was = f"you were in {was}" if seen[2] and seen[1] else f"before, {was}"
+    return (
+        f"the stages changed since you last read this plan (v{seen[3]} -> v{now[3]}): "
+        f"{was}, now {_where(now[1], now[2])}"
     )
 
 
@@ -909,6 +985,18 @@ def plan_factory(
     except Exception as exc:
         return f"could not read save: {exc}"
 
+    try:
+        plan, pin_notes = _plan_pin(st, plan)
+        sources, said = pins.canonical(st, "sources", sources) if sources else (sources, [])
+        pin_notes += said
+        required, said = pins.canonical(st, "required", required) if required else (required, [])
+        pin_notes += said
+        if exclude_recipes:
+            exclude_recipes, said = pins.canonical(st, "exclude_recipes", exclude_recipes)
+            pin_notes += said
+    except (KeyError, pins.PinError) as exc:
+        return f"! {_refusal(exc)}; nothing solved"
+
     required_ids, refused = _resolve_required(required)
     if refused:
         return refused
@@ -945,6 +1033,7 @@ def plan_factory(
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
     # Its own pair, never written back over the arguments: a recalled plan's site is
@@ -1200,9 +1289,11 @@ def plan_layout(
         pipe_m3min=tiers.pipe_m3min if tiers.asked_pipe else None,
     )
     try:
+        plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
     try:
@@ -1319,10 +1410,13 @@ def diff_vs_save(
         only_recipes=only_recipes,
     )
     try:
+        plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
+    stored = _recalled(st, plan)
 
     try:
         report = build_diff_report(
@@ -1335,10 +1429,16 @@ def diff_vs_save(
             stage=stage,
             factory=factory,
             biomass=biomass,
+            headroom_mw=stored.headroom_mw if stored is not None else None,
+            stored=stored,
         )
     except SelectorError as exc:
         return f"! {exc}"
-    _journal_view(st, plan, "diff_vs_save", ctx)
+    view = {"view": "track", "stage": stage if stage and stage >= 1 else None, "section": "stages"}
+    _journal_view(st, plan, "diff_vs_save", ctx, view)
+    moved = _renumbered(st, stored, report.tracking)
+    if moved:
+        plan_notes = [moved, *plan_notes]
 
     return render_diff(
         g,
@@ -1548,15 +1648,22 @@ def commission_plan(
         sloops=sloops,
     )
     try:
+        plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
+    stored = _recalled(st, plan)
     report = build_commission_report(
-        g, st, plan_kwargs, headroom_mw, objective=objective, biomass=biomass
+        g, st, plan_kwargs, headroom_mw, objective=objective, biomass=biomass, stored=stored
     )
-    _journal_view(st, plan, "commission_plan", ctx)
+    view = {"view": "track", "stage": None, "section": "startup"}
+    _journal_view(st, plan, "commission_plan", ctx, view)
+    moved = _renumbered(st, stored, report.tracking) if headroom_mw is None else ""
+    if moved:
+        plan_notes = [moved, *plan_notes]
 
     return render_commission(
         g,
@@ -1636,9 +1743,11 @@ def rank_unlocks(
         sloops=sloops,
     )
     try:
+        plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
         return f"! {exc.args[0]}"
+    plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
 
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
@@ -1816,6 +1925,10 @@ def plan_log(
         st = _state(save, world, as_of)
     except Exception as exc:
         return f"could not read save: {exc}"
+    try:
+        name, _echo = _plan_pin(st, name)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
     log = _log(st)
     found = log.find(name, include_forgotten=True)
     if found is None:
@@ -1864,6 +1977,33 @@ def _page_focus(world_id: str) -> tuple[dict | None, bool]:
 
 def _short(token: str) -> str:
     return token[:8] + "…" if len(token) > 8 else token
+
+
+def _pin_text(pin: dict) -> str:
+    text = f"{pin['id']} {pin['text']}"
+    if pin["label"]:
+        text += f" “{pin['label']}”"
+    if pin["gone"]:
+        text += " (gone)"
+    return _cut(text, CONTEXT_PIN_WIDTH)
+
+
+def _pins_line(rows: list[dict]) -> str:
+    if not rows:
+        return "pins: none"
+    shown = sorted(rows, key=lambda p: p["n"])[-CONTEXT_PINS:]
+    line = "pins: " + " · ".join(_pin_text(p) for p in shown)
+    if len(rows) > CONTEXT_PINS:
+        line += f" (+{len(rows) - CONTEXT_PINS} more)"
+    return line
+
+
+def _selected_pin(focus: dict, rows: list[dict]) -> str:
+    picked = focus.get("selection")
+    if not isinstance(picked, dict) or not picked.get("kind") or not picked.get("label"):
+        return ""
+    found = pins.match(rows, str(picked["kind"]), str(picked.get("ref") or ""), focus.get("plan"))
+    return f" ({found['id']})" if found else ""
 
 
 def _focus_line(focus: dict, log: PlanLog) -> str:
@@ -1923,6 +2063,92 @@ def _plan_news(log: PlanLog, cursor, names: dict[str, str], me: int) -> tuple[li
     return lines, {key: state.rev for key, state in heads.items()}
 
 
+def _quoted(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _ask_text(row: dict) -> str:
+    about = row["about"]
+    text = f"{row['id']} {_quoted(row['text'])} about {about['kind']} {_quoted(about['label'])}"
+    if row["plan_name"] and about["kind"] != "plan":
+        text += f" in {_quoted(row['plan_name'])}"
+    if about.get("rev"):
+        text += f" v{about['rev']}"
+    if row["state"] == "seen":
+        text += " (seen)"
+    return _cut(text, CONTEXT_ASK_WIDTH)
+
+
+def _asks_lines(world_id: str, who: str, me) -> list[str]:
+    """The ``asks`` line and its hint, marking every listed open ask seen."""
+    try:
+        waiting = [r for r in asks.live(world_id) if r["state"] in ("open", "seen")]
+    except (NewerSchema, OSError) as exc:
+        return [f"asks: unreadable ({type(exc).__name__})"]
+    if not waiting:
+        return ["asks: none waiting"]
+    shown = waiting[-CONTEXT_ASKS:]
+    line = f"asks ({len(waiting)} waiting): " + " · ".join(_ask_text(r) for r in shown)
+    if len(waiting) > CONTEXT_ASKS:
+        line += f" (+{len(waiting) - CONTEXT_ASKS} more)"
+    fresh = [r["n"] for r in shown if r["state"] == "open"]
+    try:
+        seen = asks.mark_seen(world_id, fresh, who) if fresh else []
+    except (LockTimeout, NewerSchema, OSError):
+        seen = []
+    if seen:
+        journal.append(
+            world_id,
+            "ask.seen",
+            actor=me,
+            args={"n": seen},
+            text="chat saw " + ", ".join(f"ask:{n}" for n in seen),
+        )
+    ids = ", ".join(f'"{r["id"]}"' for r in shown[:2])
+    more = ", …" if len(shown) > 2 else ""
+    return [
+        line,
+        f"answer them, then ui_context(answered=[{ids}{more}]) marks them done on the page",
+    ]
+
+
+def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
+    """Mark ``answered`` asks done; the ``marked answered`` line and one line per refusal."""
+    lines, wanted = [], []
+    try:
+        data = asks.read(world_id)
+    except NewerSchema as exc:
+        return [f"! asks were saved by a newer version (schema {exc.found}); nothing marked"]
+    top = data["next"] - 1
+    by_n = {a["n"]: a for a in data["asks"]}
+    for raw in answered:
+        n = asks.parse(raw)
+        if n is None:
+            lines.append(f"! {raw!r} is not an ask id (ask:N)")
+        elif n not in by_n:
+            lines.append(f"! {asks.AskMissing(n, top=top)}")
+        elif by_n[n].get("deleted"):
+            lines.append(f"! {asks.AskMissing(n, deleted=True)}")
+        else:
+            wanted.append(n)
+    try:
+        asks.mark_answered(world_id, wanted, who)
+    except asks.AskMissing as exc:
+        return [f"! {exc}; nothing marked", *lines]
+    except (LockTimeout, NewerSchema, OSError) as exc:
+        return [f"! asks are busy ({type(exc).__name__}); nothing marked", *lines]
+    if wanted:
+        journal.append(
+            world_id,
+            "ask.answered",
+            actor=me,
+            args={"n": wanted},
+            text="chat answered " + ", ".join(f"ask:{n}" for n in wanted),
+        )
+        lines.insert(0, "marked answered: " + ", ".join(f"ask:{n}" for n in wanted))
+    return lines
+
+
 def _journal_who(raw: dict | None) -> str:
     who = Actor.from_dict(raw)
     return f"{who.display()} (other session)" if who.kind == "chat" else who.display()
@@ -1947,12 +2173,22 @@ def _journal_news(world_id: str, cursor, me: int) -> tuple[list[str], float]:
 
 
 @mcp.tool(structured_output=False)
-def ui_context(save: str | None = None, world: str | None = None) -> str:
+def ui_context(
+    save: str | None = None,
+    world: str | None = None,
+    answered: Annotated[
+        list[str] | None,
+        Field(description="ask:N ids you have answered"),
+    ] = None,
+    ctx: Context | None = None,
+) -> str:
     """What the web page has open, and what changed in plans since this session last looked.
 
-    Call it first when the user says "this", "here" or "what I have open": it names the
-    page's view, plan and version, tab and selection, whether the page reads the same save
-    as you, and every plan version and chat solve by someone else since your last look.
+    Call it first when the user says "this", "here" or "what I have open", or quotes an
+    ask: or pin: id: it names the page's view, plan and version, tab and selection, whether
+    the page reads the same save as you, the asks queued for you, and every plan version
+    and chat solve by someone else since your last look. Asks it lists are marked seen on
+    the page; pass ``answered`` once you have answered them.
     """
     try:
         st = _state(save, world)
@@ -1979,10 +2215,20 @@ def ui_context(save: str | None = None, world: str | None = None) -> str:
             same = "= yours" if theirs == ours else f"≠ yours ({_short(ours)})"
             head += f" · page {_short(theirs)} {same}"
     lines = [head]
+    chat = actor(ctx)
+    if answered:
+        lines += _answer(world_id, list(answered), chat.display(), chat)
+    try:
+        pin_rows = pins.live(st)
+        pin_line = _pins_line(pin_rows)
+    except Exception as exc:
+        pin_rows, pin_line = [], f"pins: unreadable ({type(exc).__name__})"
     if focus is not None:
-        line = _focus_line(focus, log)
+        line = _focus_line(focus, log) + _selected_pin(focus, pin_rows)
         lines.append(line if is_open else "last " + line)
         lines.append(f"follow: {focus.get('follow') or 'follow'}")
+    lines.append(pin_line)
+    lines += _asks_lines(world_id, chat.display(), chat)
 
     cursor = _cursor.get(world_id)
     try:

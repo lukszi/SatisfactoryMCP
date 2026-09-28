@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import LinearConstraint, milp
 
+from ...core import solverlane
 from ...core.gamedata.constants import AWESOME_SINK_MW
 from ...core.gamedata.model import GameData
 from .carrier import carrier_for
@@ -666,7 +667,9 @@ def solve(sc: Scenario) -> Solution:
         for i in range(nP):
             c[col_p(i)] += sc.machine_cost_mw
 
-    res = milp(c=c, constraints=constraints, integrality=integrality, bounds=(lb, ub))
+    res = solverlane.run(
+        lambda: milp(c=c, constraints=constraints, integrality=integrality, bounds=(lb, ub))
+    )
     if not res.success or res.x is None:
         return Solution(
             "infeasible",
@@ -693,11 +696,13 @@ def solve(sc: Scenario) -> Solution:
         c2 = np.zeros(n)
         for i in range(nP):
             c2[col_p(i)] = 1.0
-        res2 = milp(
-            c=c2,
-            constraints=[*constraints, pin],
-            integrality=integrality,
-            bounds=(lb, ub),
+        res2 = solverlane.run(
+            lambda: milp(
+                c=c2,
+                constraints=[*constraints, pin],
+                integrality=integrality,
+                bounds=(lb, ub),
+            )
         )
         if res2.success and res2.x is not None:
             x = res2.x

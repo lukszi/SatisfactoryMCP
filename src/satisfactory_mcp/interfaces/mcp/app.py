@@ -32,8 +32,8 @@ from ...domain.world.state import WorldState, load_state
 
 INSTRUCTIONS = (
     "Plans are versioned: read one (list_plans name=) and pass its version as base_rev when "
-    "you change it. When the user says 'this', 'here' or 'what I have open', call ui_context "
-    "first."
+    "you change it. When the user says 'this', 'here' or 'what I have open', or quotes an "
+    "ask: or pin: id, call ui_context first."
 )
 
 mcp = FastMCP("satisfactory", instructions=INSTRUCTIONS)

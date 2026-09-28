@@ -1,7 +1,7 @@
 /* The dashboard address: reading `tab/subject` apart, and going to one.
  * One parser, so every tab splits its address the same way. */
 
-import { hashFor } from "./map";
+import { hashFor, map } from "./map";
 import { state } from "./state";
 
 export interface DashParts {
@@ -21,8 +21,28 @@ export function dashParts(dash?: string): DashParts {
   };
 }
 
-export function go(dash: string): void {
-  location.hash = hashFor(dash);
+export function go(dash: string, replace?: boolean): void {
+  if (replace) location.replace(hashFor(dash));
+  else location.hash = hashFor(dash);
+}
+
+export function onMap(action: () => void): void {
+  var run = function () {
+    map.invalidateSize();
+    action();
+  };
+  if (!state.dash) {
+    run();
+    return;
+  }
+  window.addEventListener(
+    "hashchange",
+    function () {
+      requestAnimationFrame(run);
+    },
+    { once: true }
+  );
+  go("");
 }
 
 export interface SubjectQuery {

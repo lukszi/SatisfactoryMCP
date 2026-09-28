@@ -870,7 +870,9 @@ def show_on_map(
         "world only -- nothing you built is on it"
     )
     return render.envelope(
-        f"# {where} at {int(origin[0] / 100)},{int(origin[1] / 100)} (metres)", body, notes
+        f"# {where} at {round(origin[0] / 100, 1):g},{round(origin[1] / 100, 1):g} (metres)",
+        body,
+        notes,
     )
 
 

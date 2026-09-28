@@ -40,6 +40,18 @@ tools/           data generators
 the save format across six `saveVersion`s, and the server talks to it through one subprocess
 boundary, so a torn autosave or a format change cannot take the server down.
 
+## Solver threads
+
+Every `scipy.optimize.milp` and `linprog` call goes through `core/solverlane.run`, which runs it on
+one of four daemon threads that live as long as the process. On Windows with CPython 3.13 and
+SciPy 1.18, a thread that has run a HiGHS solve can spin forever while it exits, holding the GIL
+and blocking every later thread start. The web server hits this when an idle AnyIO worker thread
+retires: static files, `/api/*` and SSE all stop, and a py-spy dump shows the main thread in
+`threading.start` beside a frameless thread holding the GIL. A loop that starts one thread per
+solve reproduces it within about fifty solves; the same loop through the lanes ran 2,800 solves
+without a stall. Solver threads therefore never exit before the process does, and new solver
+code calls `solverlane.run` instead of the solver directly.
+
 ## Regenerating world data
 
 You do not need any of this to use the project: every world table the server uses is committed

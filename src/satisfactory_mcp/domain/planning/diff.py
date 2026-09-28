@@ -107,6 +107,8 @@ class DiffRow:
     #: Idle machines re-recipe'd into this row rather than built.
     reuse: int = 0
     note: str = ""
+    #: ``note`` for the page: no issue codes, and nothing the action cell or a chip says.
+    page_note: str = ""
     #: MW these actions ADD. Incremental on purpose: machines that already exist and
     #: already run are already in the world's draw, so charging the plan's full figure
     #: would double-count them and overstate what the build needs.
@@ -403,6 +405,7 @@ def _row_for(
     need = group["machines"]
     records = _matched(group, index)
     notes: list[str] = []
+    page: list[str] = []
     build_max: int | None = None
     have_min: int | None = None
     targets: list[tuple[str, float]] = []
@@ -424,6 +427,8 @@ def _row_for(
         close = {id(r) for r in near}
         records = [*near, *(r for r in records if id(r) not in close)]
         notes.append("no node link (OQ5), low bound counts every one built")
+        if have_min != len(records):
+            page.append("not tied to a node, so built is a range")
     elif group["kind"] == "extractor":
         free = sorted(
             index.free.get((group["resource"], group["purity"]), []),
@@ -475,17 +480,20 @@ def _row_for(
         notes.append(
             f"{setrecipe} idle {plural(group['building'], setrecipe)}{where}, no output today"
         )
+        page.append(notes[-1])
 
     reclock = _reclock_note([*records, *reused])
     if reclock:
         # Not a change the plan asks for, so it never becomes the verb -- but a pump at
         # 250% means the plan is quietly understating what the player already extracts.
         notes.append(f"{reclock}, plan budgets 100%")
+        page.append(notes[-1])
 
     if len(group["labels"]) > 1:
         notes.append(
             " + ".join(f"{n} on {lbl.rsplit(' on ', 1)[-1]}" for lbl, n in group["labels"])
         )
+        page.append(notes[-1])
     elif group["kind"] == "recipe" and have and verb == "BUILD":
         # Pre-empts "but I already own 36 Refineries": 31 of them are making copper,
         # plastic and alumina, and counting them would tell the player to break those.
@@ -496,6 +504,7 @@ def _row_for(
         )
         if busy:
             notes.append(f"{busy} {plural(group['building'], busy)} busy on other recipes")
+            page.append(notes[-1])
     if group["building_id"] and state.built(group["building_id"]) == 0:
         notes.append("NEW BUILDING TYPE")
 
@@ -531,6 +540,7 @@ def _row_for(
         reuse=setrecipe,
         targets=targets,
         note="; ".join(notes),
+        page_note="; ".join(page),
         delta_mw=added * per_machine,
     )
 
@@ -704,7 +714,8 @@ def build_diff(
     ]
     if shadowing:
         notes.append(
-            f"{len(shadowing)} extractor(s) unmatched to a node, so a node that looks "
+            f"{len(shadowing)} {plural('extractor', len(shadowing))} "
+            "unmatched to a node, so a node that looks "
             "free may already be taken"
         )
 

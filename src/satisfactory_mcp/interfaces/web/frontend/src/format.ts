@@ -63,13 +63,27 @@ export function coords(x: number, y: number): string {
   return rounded(x) + ", " + rounded(y) + " m";
 }
 
+export function signed(value: number, say: (magnitude: number) => string): string {
+  var text = say(Math.abs(value));
+  if (text === say(0)) return text;
+  return (value < 0 ? "-" : "+") + text;
+}
+
 export function mw(value: number, options?: { signed?: boolean }): string {
-  var whole = (value < 0 ? -Math.round(-value) : Math.round(value)) + 0;
-  return (options && options.signed && whole > 0 ? "+" : "") + count(whole) + " MW";
+  var say = function (magnitude: number): string {
+    return count(Math.round(magnitude)) + " MW";
+  };
+  var text = signed(value, say);
+  return options && options.signed ? text : text.replace(/^\+/, "");
 }
 
 export function num(value: number, dp?: number): string {
   return count(rounded(value, dp === undefined ? 1 : dp));
+}
+
+export function range(lo: number, hi: number | null | undefined): string {
+  if (hi === null || hi === undefined || hi === lo) return count(lo);
+  return count(lo) + ".." + count(hi);
 }
 
 export function amount(value: number, fluid?: boolean): string {
