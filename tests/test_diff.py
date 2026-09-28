@@ -169,12 +169,11 @@ def test_the_range_only_appears_where_identity_is_actually_missing(spire):
         (0.375, True),
     ],
 )
-def test_reclock_compares_against_100_percent_never_the_plans_clock(clock, expected):
-    """The plan clock is a DERIVED RATIO -- 53 machines carrying 52.8 machines worth of
-    throughput renders as 99.43%. Comparing a machine against that would turn every
-    ordinary plan row into a reclock job for every machine in it. A machine is only
-    worth touching when its own clock is off 100%."""
-    assert bool(_reclock_note([{"clock": clock}])) is expected
+def test_reclock_compares_against_100_percent_when_the_plan_budgets_100(clock, expected):
+    """A plan clock within tolerance of 100% is a DERIVED RATIO -- 53 machines carrying
+    52.8 machines worth of throughput renders as 99.43% -- and budgets 100%, so a machine
+    is only worth a note when its own clock is off 100%."""
+    assert bool(_reclock_note([{"clock": clock}], 1.0)) is expected
 
 
 def test_a_ratio_clock_plan_row_asks_nobody_to_reclock(spire):

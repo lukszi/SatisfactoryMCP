@@ -63,10 +63,9 @@ __all__ = [
 #: world's 32 Coal Generators, which sit 887-1060 m from the oil plant.
 NEIGHBOUR_RADIUS_M = 200.0
 
-#: A machine is worth reclocking only when ITS OWN clock is off 100%. Never compare
-#: against the plan's clock: 99.43% is a derived ratio (the reference plan's 176 Fuel
-#: Generators carrying 175 machines' throughput), not an instruction, and comparing against it would render a
-#: routine plan as hundreds of slider adjustments.
+#: A machine is worth a reclock note only when its clock is off what the plan budgets. A
+#: plan clock within this of 100% counts as 100%: 99.43% is a derived ratio (the reference
+#: plan's 176 Fuel Generators carrying 175 machines' throughput), not an instruction.
 RECLOCK_TOLERANCE = 0.02
 
 
@@ -198,12 +197,14 @@ def _group_processes(sol: Solution) -> list[dict]:
                 "resource": _resource_of(proc) if proc["kind"] == "extractor" else "",
                 "purity": proc.get("purity", ""),
                 "machines": 0,
+                "clock": 0.0,
                 "mw": 0.0,
                 "labels": [],
                 "rates": {},
             }
             groups[key] = entry
         entry["machines"] += proc["machines"]
+        entry["clock"] += proc["machines"] * float(proc.get("clock") or 1.0)
         entry["mw"] += proc["mw"]
         entry["labels"].append((proc["label"], proc["machines"]))
         for item, rate in proc.get("rates", {}).items():
@@ -376,21 +377,23 @@ def _node_backed(group: dict, index: _SaveIndex) -> bool:
     )
 
 
-def _reclock_note(records: list[dict]) -> str:
-    """Machines whose own clock is off 100%, compared against 1.0 and never the plan.
+def _planned_clock(group: dict) -> float:
+    """The clock the plan budgets for this job, 1.0 when it only differs by a derived ratio."""
+    clock = group["clock"] / group["machines"] if group["machines"] else 1.0
+    return 1.0 if abs(clock - 1.0) <= RECLOCK_TOLERANCE else clock
 
-    The plan's clock is a derived ratio, so comparing against it would turn every
-    ordinary 99.4% row into a fictitious reclock job for every machine in it.
-    """
+
+def _reclock_note(records: list[dict], planned: float) -> str:
+    """Machines whose own clock is off what the plan budgets, or "" when none is."""
     off = [
         r["clock"]
         for r in records
-        if r.get("clock") is not None and abs(r["clock"] - 1.0) > RECLOCK_TOLERANCE
+        if r.get("clock") is not None and abs(r["clock"] - planned) > RECLOCK_TOLERANCE
     ]
     if not off:
         return ""
-    worst = max(off, key=lambda c: abs(c - 1.0))
-    return f"{len(off)} at {worst * 100:.4g}%"
+    worst = max(off, key=lambda c: abs(c - planned))
+    return f"{len(off)} at {worst * 100:.4g}%, plan budgets {planned * 100:.4g}%"
 
 
 def _row_for(
@@ -444,6 +447,7 @@ def _row_for(
 
     have = len(records)
     paused = [r for r in records if r.get("paused")]
+    unpause = paused[: max(0, need - (have - len(paused)))]
     build = max(0, need - have)
 
     reused: list[dict] = []
@@ -465,8 +469,8 @@ def _row_for(
         build_max = max(build, build_max)
 
     verb, count = "OK", 0
-    if paused:
-        verb, count = "UNPAUSE", len(paused)
+    if unpause:
+        verb, count = "UNPAUSE", len(unpause)
     elif setrecipe:
         verb, count = "SETRECIPE", setrecipe
     elif build > 0:
@@ -476,17 +480,21 @@ def _row_for(
         notes.append(f"then BUILD {build}..{build_max}" if build_max else f"then BUILD {build}")
     if setrecipe:
         away = [d for d in (_nearest_m(_xy(r), [anchor] if anchor else []) for r in reused) if d]
-        where = f" {sum(away) / len(away) / 1000:.1f}km out" if away else ""
-        notes.append(
-            f"{setrecipe} idle {plural(group['building'], setrecipe)}{where}, no output today"
-        )
+        mean = sum(away) / len(away) if away else None
+        idle = f"{setrecipe} idle {plural(group['building'], setrecipe)}"
+        where = f" {mean / 1000:.1f}km out" if mean is not None else ""
+        notes.append(f"{idle}{where}, no output today")
+        page.append(f"{idle}{f' {mean:,.0f} m out' if mean is not None else ''}, no output today")
+
+    if len(paused) > len(unpause):
+        spare = len(paused) - len(unpause)
+        notes.append(f"{spare} {'more ' if unpause else ''}paused, not needed to cover this job")
         page.append(notes[-1])
 
-    reclock = _reclock_note([*records, *reused])
+    reclock = _reclock_note([*records, *reused], _planned_clock(group))
     if reclock:
-        # Not a change the plan asks for, so it never becomes the verb -- but a pump at
-        # 250% means the plan is quietly understating what the player already extracts.
-        notes.append(f"{reclock}, plan budgets 100%")
+        # Not a change the plan asks for, so it never becomes the verb.
+        notes.append(reclock)
         page.append(notes[-1])
 
     if len(group["labels"]) > 1:
@@ -508,14 +516,14 @@ def _row_for(
     if group["building_id"] and state.built(group["building_id"]) == 0:
         notes.append("NEW BUILDING TYPE")
 
-    added = build + len(paused) + setrecipe
+    added = build + len(unpause) + setrecipe
     per_machine = group["mw"] / group["machines"] if group["machines"] else 0.0
 
     return DiffRow(
         stage=stage,
         key=group["key"],
         have_instances=[_short(r) for r in records],
-        act_instances=[_short(r) for r in (paused if verb == "UNPAUSE" else reused)]
+        act_instances=[_short(r) for r in (unpause if verb == "UNPAUSE" else reused)]
         if verb in ("UNPAUSE", "SETRECIPE")
         else [],
         have_min=have_min,
