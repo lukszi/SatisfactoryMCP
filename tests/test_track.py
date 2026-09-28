@@ -215,3 +215,25 @@ def test_feeders_name_what_the_waves_stand_on(world):
     assert [f["mw"] for f in out["feeders"]] == sorted(
         (f["mw"] for f in out["feeders"]), reverse=True
     )
+    assert all(isinstance(f["region"], str) for f in out["feeders"])
+
+
+def test_page_lines_split_a_warning_into_lower_case_lines():
+    text = "no order: 800 MW and only 116 MW is free. Plan a smaller sub-plant, or add generation"
+    assert track_mod.page_lines(text) == [
+        "no order: 800 MW and only 116 MW is free",
+        "plan a smaller sub-plant, or add generation",
+    ]
+    assert track_mod.page_lines("MW is short. MAM first") == ["MW is short", "MAM first"]
+
+
+def test_site_line_rounds_metres_and_spaces_the_footprint():
+    from satisfactory_mcp.domain.planning.siting import Siting
+
+    sit = Siting(-27.71, -2195.37, None, 0.0, 432.0, 432.0, "layout", "oil setup")
+    assert track_mod.site_line(sit) == (
+        "origin x -28 m, y -2,195 m (from oil setup), yaw 0°, "
+        "footprint 432 × 432 m from the plan layout"
+    )
+    assert track_mod.site_line(Siting(0.2, -0.3)).endswith("yaw 0°, no footprint recorded")
+    assert "x 0 m, y 0 m" in track_mod.site_line(Siting(0.2, -0.3))

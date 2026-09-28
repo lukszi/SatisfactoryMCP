@@ -2792,6 +2792,8 @@ export interface components {
             y_m: number | null;
             /** Mw */
             mw: number;
+            /** Region */
+            region: string;
         };
         /** FeedersResponse */
         FeedersResponse: {

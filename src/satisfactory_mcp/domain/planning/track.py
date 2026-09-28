@@ -12,6 +12,7 @@ from ...core.text import ago
 from ..factories.select import SelectorError
 from ..power.report import biomass_note
 from ..spatial import nodes as nodes_mod
+from ..spatial.regions import load_regions
 from ..world.state import WorldState
 from . import summary
 from .commission import (
@@ -36,8 +37,10 @@ __all__ = [
     "PAGE_RANGE",
     "feeders_view",
     "job_id",
+    "page_lines",
     "page_text",
     "save_line",
+    "site_line",
     "track_view",
 ]
 
@@ -67,6 +70,38 @@ _PAGE = {ENERGISED_CAVEAT: PAGE_ENERGISED, RANGE_CAVEAT: PAGE_RANGE, NO_MONITOR:
 def page_text(text: str) -> str:
     """A tool-facing sentence in the page's words."""
     return _PAGE.get(text) or text.replace(" -- ", ": ")
+
+
+def page_lines(text: str) -> list[str]:
+    """``page_text`` split into one line per sentence, each starting lower case."""
+    out = []
+    for part in page_text(text).split(". "):
+        part = part.strip().rstrip(".")
+        if part[:1].isupper() and part[1:2].islower():
+            part = part[0].lower() + part[1:]
+        if part:
+            out.append(part)
+    return out
+
+
+def _metres(value: float) -> str:
+    n = round(float(value))
+    return f"{n if n else 0:,}"
+
+
+def site_line(site) -> str:
+    """The recorded site in page words: whole metres, degrees and a spaced footprint."""
+    where = f"origin x {_metres(site.x_m)} m, y {_metres(site.y_m)} m"
+    if site.z_m is not None:
+        where += f", z {_metres(site.z_m)} m"
+    if site.origin_label:
+        where += f" (from {site.origin_label})"
+    where += f", yaw {_metres(site.yaw_deg)}°"
+    if not site.has_footprint:
+        return where + ", no footprint recorded"
+    size = f"{_metres(site.width_m)} × {_metres(site.depth_m)} m"
+    source = {"layout": "from the plan layout", "given": "as given", "default": "by default"}.get(site.source, "")
+    return where + f", footprint {size}" + (f" {source}" if source else "")
 
 
 def save_line(st: WorldState) -> str:
@@ -249,7 +284,7 @@ def _startup(run, pw: dict, state: PlanState) -> dict:
         "plant_draw_mw": round(run.plant_draw_mw, 2),
         "plant_generation_mw": round(run.plant_generation_mw, 2),
         "minimum_slice_mw": round(run.minimum_slice_mw, 2),
-        "warnings": [page_text(w) for w in run.warnings],
+        "warnings": [line for w in run.warnings for line in page_lines(w)],
     }
 
 
@@ -361,7 +396,7 @@ def track_view(g: GameData, st: WorldState, state: PlanState, *, biomass: bool =
     site = None
     if report.site is not None and sv is not None:
         site = {
-            "text": report.site.describe(),
+            "text": site_line(report.site),
             "planned_total": sv.planned_total,
             "standing_total": sv.standing_total,
             "rows": [
@@ -420,6 +455,10 @@ def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
     from ..factories.trace import power_at_risk
 
     found = feeder_records(g, st)
+    try:
+        regions = load_regions()
+    except (OSError, ValueError, KeyError):
+        regions = None
     feeders = []
     for record, name, mw in found:
         instance = str(record.get("instance") or "").rsplit(".", 1)[-1]
@@ -431,6 +470,7 @@ def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
                 "x_m": _m(pos[0]) if pos else None,
                 "y_m": _m(pos[1]) if pos else None,
                 "mw": round(mw, 1),
+                "region": (regions.label_for(pos[0], pos[1]).name if regions and pos else None) or "",
             }
         )
     if not found:

@@ -431,6 +431,7 @@ class Feeder(TypedDict):
     x_m: float | None
     y_m: float | None
     mw: float
+    region: str
 
 
 class FeedersResponse(TypedDict):

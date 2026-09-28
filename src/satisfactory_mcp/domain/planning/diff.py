@@ -427,7 +427,8 @@ def _row_for(
         close = {id(r) for r in near}
         records = [*near, *(r for r in records if id(r) not in close)]
         notes.append("no node link (OQ5), low bound counts every one built")
-        page.append("not tied to a node, so built is a range")
+        if have_min != len(records):
+            page.append("not tied to a node, so built is a range")
     elif group["kind"] == "extractor":
         free = sorted(
             index.free.get((group["resource"], group["purity"]), []),
@@ -713,7 +714,8 @@ def build_diff(
     ]
     if shadowing:
         notes.append(
-            f"{len(shadowing)} extractor(s) unmatched to a node, so a node that looks "
+            f"{len(shadowing)} {plural('extractor', len(shadowing))} "
+            "unmatched to a node, so a node that looks "
             "free may already be taken"
         )
 

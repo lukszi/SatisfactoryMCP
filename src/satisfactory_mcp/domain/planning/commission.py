@@ -18,6 +18,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData
+from ...core.text import plural
 from ..factories.health import assess
 from ..world.state import WorldState
 from .diff import DiffReport, group_key
@@ -267,9 +268,10 @@ def commission(
     while sum(done.values()) < sum(totals.values()):
         if len(out.waves) >= MAX_WAVES:
             out.ok = False
+            left = sum(totals.values()) - sum(done.values())
             out.warnings.append(
                 f"gave up after {MAX_WAVES} waves with "
-                f"{sum(totals.values()) - sum(done.values())} machine(s) unstarted -- "
+                f"{left} {plural('machine', left)} unstarted -- "
                 "the sequence is not converging, which means generation is not "
                 "outrunning draw"
             )
