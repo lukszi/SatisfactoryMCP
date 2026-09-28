@@ -198,3 +198,12 @@
 .dk-table tr.mid > td.dk-lead {
   color: var(--mid);
 }
+
+.dk-capped-25 tbody tr:nth-child(n + 26),
+.dk-capped-50 tbody tr:nth-child(n + 51) {
+  display: none;
+}
+
+.dk-more {
+  margin-top: var(--sp-2);
+}

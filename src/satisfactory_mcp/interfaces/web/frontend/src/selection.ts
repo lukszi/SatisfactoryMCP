@@ -1,7 +1,7 @@
 /* The one selected thing the map, the side panel, the dashboard and the status strip share.
  * See docs/frontend_vision.md §2.3 and §16. */
 
-export type SelectionKind = "factory" | "circuit" | "point";
+export type SelectionKind = "factory" | "circuit" | "point" | "node" | "field" | "conduit" | "pickup";
 
 export interface Selection {
   kind: SelectionKind;
@@ -9,6 +9,7 @@ export interface Selection {
   label: string;
   x_m?: number;
   y_m?: number;
+  ref?: string;
 }
 
 var current: Selection | null = null;
@@ -26,6 +27,13 @@ export function selected(): Selection | null {
 
 export function isSelected(kind: SelectionKind, key: string): boolean {
   return !!current && current.kind === kind && current.key === key;
+}
+
+export function selectionRef(s: Selection): string {
+  if (s.ref) return s.ref;
+  if (s.kind === "factory") return "label:" + s.key;
+  if (s.kind === "point") return s.key;
+  return "";
 }
 
 export function select(next: Selection | null): void {

@@ -81,14 +81,14 @@ class Elevation:
         return out
 
     @staticmethod
-    def _median(values: list[float]) -> float | None:
+    def middle(values: list[float]) -> float | None:
         if not values:
             return None
         mid = len(values) // 2
         return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2.0
 
     def median(self, *sources: str) -> float | None:
-        return self._median(self.of(*sources))
+        return self.middle(self.of(*sources))
 
     def spread(self, *sources: str) -> float | None:
         vals = self.of(*sources)
@@ -111,7 +111,7 @@ class Elevation:
         ground, built = self.ground, self.built
         if len(ground) < MIN_GROUND_SAMPLES or not built:
             return None
-        return self._median(built) - self._median(ground)
+        return self.middle(built) - self.middle(ground)
 
 
 def sample_points(node_table=None, state=None) -> list[Sample]:

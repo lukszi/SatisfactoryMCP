@@ -28,7 +28,21 @@ export var W = {
   actorYou: "you",
   actorChat: "chat",
   noSaves: "no readable saves",
+  free: "free",
+  tapped: "tapped",
+  locked: "locked",
+  field: "field",
+  hiddenBySpoilers: "hidden while spoilers are off",
+  node: "node",
+  run: "run",
+  network: "network",
+  remaining: "remaining",
+  collected: "collected",
+  neverStreamed: "never streamed",
+  mapDataBehind: "map data older than this save",
 } as const;
+
+export var NODE_KIND: Record<string, string> = { node: "node", well_sat: "well satellite", geyser: "geyser" };
 
 export var OBJECTIVES: Record<string, string> = {
   max_mw: "max MW",

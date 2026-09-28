@@ -2110,13 +2110,6 @@ a.dash-where:hover {
   display: none;
 }
 
-.inv-capped tbody tr:nth-child(n + 26) {
-  display: none;
-}
-
-.inv-more {
-  margin-top: var(--sp-2);
-}
 
 @media (max-width: 600px) {
   .inv-results .dash-table td.bar {
@@ -2864,3 +2857,93 @@ path.lasso-area {
   fill-opacity: 0.12;
 }
 
+
+.world-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+
+.world-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.world-field-k {
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+
+.world-field :disabled {
+  color: var(--dim);
+  border-color: var(--line);
+  cursor: default;
+}
+
+.world-text {
+  width: 220px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.world-census,
+.world-acts,
+.world-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+
+.world-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+
+.world-facts dt {
+  color: var(--muted);
+}
+
+.world-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dash-table td .copyable {
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.world-selectors code {
+  margin-right: var(--sp-1);
+}
+
+.world-chips,
+.world-via {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+
+.dk-table tr.on > td {
+  background: color-mix(in srgb, var(--select) 12%, var(--surface));
+}
+
+.finder-filter {
+  flex-wrap: wrap;
+}
+
+.popup-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}

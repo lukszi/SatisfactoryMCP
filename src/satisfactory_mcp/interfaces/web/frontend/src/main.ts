@@ -20,6 +20,7 @@ import "./style.css";
 
 import { listenForCopies } from "./copy";
 import { el } from "./dom";
+import { listenForFinds } from "./finder";
 import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./floors";
 import { listenToFragment } from "./fragment";
 import { inspect } from "./inspector";
@@ -28,7 +29,7 @@ import { isBatching, onSettled } from "./layercontrol";
 import { loadLive, loadRegions, loadStatic } from "./load";
 import { rememberTick } from "./layers";
 import { fitWorld, map, padPopups, writeHash } from "./map";
-import { notePickupChoice } from "./markers";
+import { markHiddenRows, notePickupChoice } from "./markers";
 import { render as renderPanel, showSelector } from "./panel";
 import { noteRegionChoice, updateRegionBlend } from "./regions";
 import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
@@ -67,6 +68,7 @@ import "./power";
 import "./progress";
 import "./recipes";
 import "./routes";
+import "./world";
 
 /* ------------------------------------------------------------------- wiring */
 
@@ -76,7 +78,7 @@ import "./routes";
  * consequence of the import graph, so reordering two imports would silently reorder the
  * handlers -- and three of these events have more than one listener:
  *
- *   zoomend            writeHash, styleRoutes, declutter
+ *   zoomend            writeHash, styleRoutes, declutter, markHiddenRows
  *   overlayadd         (the control's own decorator), noteRegionChoice, noteFloorChoice,
  *                      notePickupChoice, styleRoutes + sinkRoutes, declutter
  *   overlayremove      (the control's own decorator), noteRegionChoice, noteFloorChoice,
@@ -116,6 +118,7 @@ map.on("zoomend overlayadd overlayremove", function () {
   if (!isBatching()) declutter();
 });
 onSettled(declutter);
+map.on("zoomend", markHiddenRows);
 
 map.on("preclick contextmenu", padPopups);
 map.on("contextmenu", inspect);
@@ -133,6 +136,7 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
 listenForCopies();
 wireSearch();
 listenForTraces();
+listenForFinds();
 wireStatus();
 if (BOOT_GARBLED.length) fail(garbledNote(BOOT_GARBLED));
 el("world").addEventListener("change", fitWorld);

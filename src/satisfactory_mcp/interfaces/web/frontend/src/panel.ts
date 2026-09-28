@@ -3,6 +3,7 @@
 
 import { button, chip, empty, error, issueCount, issueGroups, link, loading } from "./dashkit";
 import { el, keepFocus, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
+import { showRef } from "./finder";
 import { count, mw, pct } from "./format";
 import { chooseLabel, FACTORY_PICKED, flyToFactory, paddedBounds, reveal } from "./labels";
 import { onLayersToggle, setLayersOpen } from "./layercontrol";
@@ -564,6 +565,7 @@ export function showFactory(name: string): void {
 
 export function showSelector(selector: string): void {
   if (selector.indexOf("label:") === 0) showFactory(selector.slice("label:".length));
+  else if (/^(node|chain|pipe):/.test(selector)) showRef(selector);
 }
 
 export function showCircuit(index: number): void {

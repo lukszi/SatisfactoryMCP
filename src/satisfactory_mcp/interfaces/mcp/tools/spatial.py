@@ -6,12 +6,13 @@ from typing import Annotated
 
 from pydantic import Field
 
-from ....domain.spatial import elevation, geo, heightfield
+from ....domain.spatial import finder, geo, heightfield, place
 from ....domain.spatial import nodes as nodes_mod
 from ....domain.spatial import ranking as ranking_mod
 from ....domain.spatial import regions as regions_mod
-from ....domain.spatial.origin import NODE_PREFIX, resolve_origin
-from ....domain.spatial.select import SELECTOR_HELP, select_nodes
+from ....domain.spatial.origin import NODE_PREFIX, RUN_PREFIXES, resolve_origin
+from ....domain.spatial.select import SELECTOR_HELP
+from ....domain.world import conduits as conduits_mod
 from ....presenters.text import primitives as render
 from ..app import (
     AsOf,
@@ -51,27 +52,17 @@ def list_regions(
     if resource and rid is None:
         return f"no resource matching {resource!r}"
 
-    pool = table.by_resource(rid) if rid else table.nodes
-    rows = []
-    for name in rm.names():
-        info = rm.summary(name)
-        hits = rm.filter_nodes(pool, name)
-        if rid and not hits:
-            continue
-        # Every column is read off the anchor, so the row cannot name a direction and a
-        # grid cell belonging to a point it does not print.
-        ax, ay = info["anchor"] or info["centroid"]
-        rows.append(
-            (
-                name,
-                geo.direction_of(ax, ay),
-                geo.grid_cell(ax, ay),
-                f"{int(ax / 100)},{int(ay / 100)}",
-                render.num(info["area_km2"]),
-                len(hits),
-            )
+    rows = [
+        (
+            r["name"],
+            r["direction"],
+            r["grid"],
+            f"{int(r['anchor'][0] / 100)},{int(r['anchor'][1] / 100)}",
+            render.num(r["area_km2"]),
+            r["nodes"],
         )
-    rows.sort(key=lambda r: -r[5])
+        for r in regions_mod.region_rows(table, rid)
+    ]
     scope = f" containing {g.item_name(rid)}" if rid else ""
     return render.envelope(
         f"# {len(rows)} region(s){scope}; anchor in metres",
@@ -144,11 +135,10 @@ def describe_location(
     except ValueError as exc:
         return f"! {exc}"
 
-    rm = regions_mod.load_regions()
-    label = rm.label_for(x, y)
-    table = nodes_mod.load_nodes()
     field = heightfield.load_field()
-    near = elevation.probe(x, y, elevation.sample_points(table, st), radius_m, terrain_field=field)
+    found = place.describe(st, game(), x, y, radius_m, terrain_field=field)
+    label = found.label
+    near = found.probe
 
     # Echoed because `at=` can resolve to somewhere the caller never typed, and every
     # number below is about THAT point. A bare coordinate resolves to itself, so naming it
@@ -187,7 +177,7 @@ def describe_location(
         for what, values in (("ground", near.ground), ("built", near.built)):
             if not values:
                 continue
-            mid = values[len(values) // 2]
+            mid = near.middle(values)
             fields.append(
                 (
                     f"{what}_elevation_m",
@@ -225,10 +215,8 @@ def describe_location(
     # Conduits are counted against their drawn lines, not their corner points, so a belt
     # crossing mid-span is seen. Reported even at zero: with a readable save, absence in
     # this answer finally means absence in the world.
-    if st is not None:
-        from ....domain.world import conduits as conduits_mod
-
-        counted = conduits_mod.near_counts(st.conduit_runs, x, y, radius_m)
+    counted = found.conduits
+    if counted is not None:
         fields.append(
             (
                 "conduits",
@@ -242,14 +230,40 @@ def describe_location(
             notes.append("search_conduits lists those runs with endpoints, lengths and elevation")
     else:
         notes.append("no save read: belts and pipes here are unknown, not absent")
-    # Ground elevation here IS node z, so a stale node row is a stale ground level -- and
-    # it can flip the 1 m threshold the fill note above is quoted at. Only the nodes inside
-    # the probe radius are in scope, so an untouched location stays silent.
-    notes += nodes_mod.position_notes(
-        nodes_mod.skew_for_save(st.header if st else None, table),
-        [n["instance"] for n in table.filter(center=(x, y), radius_m=radius_m)],
-    )
+    fields += _surroundings(found)
+    notes += found.notes
     return render.envelope(render.kv(fields), "", notes)
+
+
+def _surroundings(found) -> list[tuple[str, str]]:
+    g = game()
+    out = []
+    if found.nearest:
+        n = found.nearest[0]
+        out.append(
+            (
+                "nearest_node",
+                (
+                    f"{g.item_name(n['resource'])} {n['purity']} {n['distance_m']:.0f}m "
+                    f"(node:{n['instance'].rsplit('.', 1)[-1]})"
+                ),
+            )
+        )
+    if found.fields:
+        f = found.fields[0]
+        names = ", ".join(g.item_name(r) for r in f.resources)
+        out.append(
+            (
+                "fields",
+                (
+                    f"{found.fields_total} within {place.FIELD_REACH_M:g}m; nearest {names}, "
+                    f"{f.size} node(s) {f.distance_m:.0f}m ({f.selector})"
+                ),
+            )
+        )
+    if found.pickups_total is not None:
+        out.append(("pickups", f"{found.pickups_total} remaining within {place.PICKUP_REACH_M:g}m"))
+    return out
 
 
 def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset: int) -> str:
@@ -260,39 +274,22 @@ def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset
     a player thinks in and the reason "is there a pipe from here to there" has an answer
     at all.
     """
-    grouped: dict[object, list] = {}
-    for run in st.conduit_runs:
-        if run.kind == "pipe":
-            grouped.setdefault(run.network, []).append(run)
-    order = sorted(grouped.items(), key=lambda kv: -sum(r.length_m for r in kv[1]))
+    order = conduits_mod.networks(st, origin)
 
     rows = []
     start = max(0, offset)
-    for net, runs in order[start : start + render.clamp(limit, default=12)]:
-        fluid = next((r.fluid for r in runs if r.fluid), None)
-        ends = [e for r in runs for e in (r.a, r.b)]
-        # What the system TOUCHES: a plug naming another run is plumbing continuing, not
-        # something the network delivers to.
-        touches: list[str] = []
-        for run in runs:
-            for name in (run.a.plugs, run.b.plugs, *run.via):
-                if name and not name.startswith(("pipe:", "chain:")) and name not in touches:
-                    touches.append(name)
-        extra = len(touches) - 4
-        centre = (
-            f"{sum(e.x for e in ends) / len(ends) / 100:.0f},"
-            f"{sum(e.y for e in ends) / len(ends) / 100:.0f}"
-        )
+    for view in order[start : start + render.clamp(limit, default=12)]:
+        extra = len(view.touches) - 4
         rows.append(
             (
-                net if net is not None else "-",
-                g.item_name(fluid) if fluid else "?",
-                len(runs),
-                f"{sum(r.length_m for r in runs):.0f}m",
-                centre,
-                f"{min(r.z_min_m for r in runs):.0f}..{max(r.z_max_m for r in runs):.0f}",
-                f"{min(r.dist_m(*origin) for r in runs):.0f}m",
-                ", ".join(touches[:4]) + (f" +{extra} more" if extra > 0 else "") or "?",
+                view.network if view.network is not None else "-",
+                g.item_name(view.fluid) if view.fluid else "?",
+                view.pieces,
+                f"{view.length_m:.0f}m",
+                f"{view.centre[0] / 100:.0f},{view.centre[1] / 100:.0f}",
+                f"{view.z_min_m:.0f}..{view.z_max_m:.0f}",
+                f"{view.distance_m:.0f}m",
+                ", ".join(view.touches[:4]) + (f" +{extra} more" if extra > 0 else "") or "?",
             )
         )
 
@@ -309,9 +306,10 @@ def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset
         ),
         "search_conduits near=<x,y> lists the individual runs on any of these",
     ]
-    if None in grouped:
+    loose = next((v for v in order if v.network is None), None)
+    if loose is not None:
         notes.append(
-            f"{len(grouped[None])} pipe piece(s) belong to no network at all -- placed, "
+            f"{loose.pieces} pipe piece(s) belong to no network at all -- placed, "
             "but joined to nothing that holds fluid"
         )
     return render.envelope(
@@ -348,14 +346,15 @@ def search_conduits(
     ] = None,
     conduit_kind: Annotated[str | None, Field(description="belt | pipe | all")] = None,
     show: Annotated[str, Field(description="runs | networks")] = "runs",
+    network: Annotated[
+        int | None, Field(description="list every pipe of this fluid network (show=networks ids)")
+    ] = None,
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
     limit: Limit = 12,
     offset: int = 0,
-    kind: Annotated[
-        str | None, Field(description="retired -- write conduit_kind= instead")
-    ] = None,
+    kind: Annotated[str | None, Field(description="retired -- write conduit_kind= instead")] = None,
 ) -> str:
     """Belt and pipe runs near a point or between two areas: ends, length, elevation.
 
@@ -398,56 +397,31 @@ def search_conduits(
     if view not in ("runs", "networks"):
         return f"! unknown show {show!r}. Choose from: runs, networks"
 
-    try:
-        origin, where = resolve_origin(st, near)
-    except ValueError as exc:
-        return f"! {exc}"
     if view == "networks":
+        try:
+            origin, where = resolve_origin(st, near)
+        except ValueError as exc:
+            return f"! {exc}"
         if want == "belt":
             return "! show='networks' lists fluid networks; a belt chain belongs to none"
         return _networks_view(g, st, origin, where, limit, offset)
-    second, where2 = None, ""
-    if to is not None:
-        try:
-            second, where2 = resolve_origin(st, to)
-        except ValueError as exc:
-            return f"! {exc}"
-    r2 = to_radius_m if to_radius_m is not None else radius_m
 
-    # In between-mode a run must pass near BOTH areas -- but a pipe ROUTE is usually
-    # several pieces, so the game's own network id is consulted too: one network is one
-    # connected plumbing system, and a network touching both areas joins them even when
-    # no single piece spans the distance. Belts have no such id (a route through a
-    # splitter is several chains), so a note owns that gap rather than a guess.
-    hits = []
-    bridged: dict[int, dict] = {}
-    direct_nets: set[int] = set()
-    for run in st.conduit_runs:
-        if want is not None and (run.kind == "pipe") != (want == "pipe"):
-            continue
-        near_a = run.dist_m(*origin) <= radius_m
-        if second is None:
-            if near_a:
-                hits.append(run)
-            continue
-        near_b = run.dist_m(*second) <= r2
-        if near_a and near_b:
-            hits.append(run)
-            if run.network is not None:
-                direct_nets.add(run.network)
-        elif run.network is not None and (near_a or near_b):
-            entry = bridged.setdefault(run.network, {"fluid": run.fluid, "a": 0, "b": 0})
-            entry["a"] += near_a
-            entry["b"] += near_b
-    hits.sort(key=lambda r: -r.length_m)
+    found = conduits_mod.search(
+        st, near, radius_m, to=to, to_radius_m=to_radius_m, kind=want, network=network
+    )
+    if found.error:
+        return found.error
+    hits, where, belts, pipes = found.hits, found.where, found.belts, found.pipes
+    bridge_notes = found.bridged
 
     label = f"{want} run(s)" if want else "conduit run(s)"
     scope = f"within {radius_m:g}m of {where}"
-    if second is not None:
-        scope += f" AND {r2:g}m of {where2}"
+    if found.second is not None:
+        scope += f" AND {found.to_radius_m:g}m of {found.where_to}"
+    if network is not None:
+        label = "pipe run(s)"
+        scope = f"on fluid network {network}, distance from {where}"
 
-    belts = [r for r in hits if r.kind != "pipe"]
-    pipes = [r for r in hits if r.kind == "pipe"]
     fluids = sorted({g.item_name(r.fluid) for r in pipes if r.fluid})
     summary = (
         f"# {st.age_note}\n"
@@ -457,20 +431,6 @@ def search_conduits(
         + (f"; {', '.join(fluids)}" if fluids else "")
         + ")"
     )
-
-    bridge_notes = [
-        f"pipe network {net} ({g.item_name(entry['fluid']) if entry['fluid'] else '?'}) "
-        f"touches BOTH areas -- one connected plumbing system, {entry['a']} piece(s) near "
-        f"{where} and {entry['b']} near {where2}, though no single piece spans both"
-        for net, entry in sorted(bridged.items())
-        if entry["a"] and entry["b"] and net not in direct_nets
-    ]
-    if second is not None and want != "pipe" and (belts or hits or bridge_notes):
-        bridge_notes.append(
-            "a belt route through a splitter is several chains, so a chain near only one "
-            "end may still continue to the other -- follow its connects column, or "
-            "trace_upstream from the machine it feeds"
-        )
 
     if not hits:
         return render.envelope(
@@ -572,6 +532,9 @@ def search_resource_nodes(
     purity: Annotated[str | None, Field(description="pure | normal | impure | all")] = None,
     kind: Annotated[str | None, Field(description="node | well_sat | geyser | all")] = None,
     only_free: bool = False,
+    status: Annotated[
+        str | None, Field(description="free | tapped | all; only_free=true means free")
+    ] = None,
     show: Annotated[str, Field(description="fields | nodes | nearest")] = "fields",
     near: Annotated[
         str | None,
@@ -617,17 +580,14 @@ def search_resource_nodes(
     if gone := retired(("mode", mode, "show"), ("group", group, "show")):
         return gone
     g = game()
-    table = nodes_mod.load_nodes()
 
     view = (show or "fields").strip().casefold()
     view = {"field": "fields", "node": "nodes"}.get(view, view)
-    if view not in ("fields", "nodes", "nearest"):
+    if view not in finder.VIEWS:
         return f"! unknown show {show!r}. Choose from: fields, nodes, nearest"
-
-    spec = list(sources or [])
-    for extra, value in (("resource", resource), ("purity", purity), ("kind", kind)):
-        if value:
-            spec.append(f"{extra}:{value}")
+    wanted = (status or ("free" if only_free else "all")).strip().casefold()
+    if wanted not in finder.STATUSES:
+        return f"! unknown status {status!r}. Choose from: free, tapped, all"
 
     st = None
     try:
@@ -635,83 +595,46 @@ def search_resource_nodes(
     except Exception:
         pass
 
-    origin = None
-    where = ""
-    if near:
-        try:
-            origin, where = resolve_origin(st, near)
-        except ValueError as exc:
-            return f"! {exc}"
-    if view == "nearest" and origin is None:
+    if view == "nearest" and not near:
         return "! show='nearest' needs near=<x,y | me | factory name> to measure from"
-
-    sel = select_nodes(spec or None, table.nodes, resolve_resource=_item_id, st=st)
-    if sel.errors and not sel.nodes:
-        return render.envelope("# no nodes selected", "", [*sel.errors, SELECTOR_HELP])
-
-    rows_all = nodes_mod.annotate(
-        sel.nodes,
+    found = finder.find_nodes(
+        st,
         g,
-        st.projection if st else None,
-        st.unlocked_building_ids if st else None,
+        sources=sources,
+        resource=resource,
+        purity=purity,
+        kind=kind,
+        status=wanted,
+        view=view,
+        near=near,
+        resolve_resource=_item_id,
     )
-    if only_free:
-        rows_all = [r for r in rows_all if not r["tapped"]]
-    if origin is not None:
-        for r in rows_all:
-            r["_d"] = geo.distance_m((r["x"], r["y"]), origin)
+    if found.error:
+        return found.error
+    if found.unselected:
+        return render.envelope("# no nodes selected", "", [*found.errors, SELECTOR_HELP])
+    rows_all = found.rows
     if not rows_all:
         return render.envelope(
-            f"# no nodes in {sel.description}",
+            f"# no nodes in {found.description}",
             "",
-            sel.errors or ["try widening the selector"],
+            found.errors or ["try widening the selector"],
         )
 
     rm = regions_mod.load_regions()
-    resources = sorted({r["resource"] for r in rows_all})
-    mixed = len(resources) > 1
-    unit = "mixed" if mixed else ("m3/min" if g.items[resources[0]].is_fluid else "/min")
-    total = sum(r["rate"] for r in rows_all)
-    free = nodes_mod.capacity(rows_all, only_free=True)
-    locked_rate = sum(r["rate"] for r in rows_all if not r["reachable"])
-
-    notes = list(sel.errors)
-    if st is None:
-        notes.append("no save read: tapped/free unknown, everything shown as free")
-    else:
-        if locked_rate:
-            notes.append(
-                f"{render.num(locked_rate)} excluded from free: needs an extractor this "
-                "world has not unlocked (marked LOCKED)"
-            )
-        unres = nodes_mod.unresolved_extractors(st.projection)
-        if unres:
-            notes.append(
-                f"{len(unres)} extractor(s) unmatched to a node (mostly water pumps), "
-                "so free may be overstated"
-            )
-        # This tool quotes z per node AND joins the save by instance name, so both halves
-        # of a stale table bite here. Scoped to the rows in THIS answer: a query that
-        # returns none of the drifted rows says nothing at all.
-        notes += nodes_mod.skew_notes(
-            nodes_mod.skew_for_save(st.header, table),
-            [r["instance"] for r in rows_all],
-        )
-
+    mixed = found.mixed
+    notes = list(found.notes)
+    where = found.where
     start = max(0, offset)
     n = render.clamp(limit, default=25)
     if view in ("nodes", "nearest"):
-        if view == "nearest":
-            rows_all.sort(key=lambda r: r["_d"])
-        else:
-            rows_all.sort(key=lambda r: (-r["rate"], r["instance"]))
-        show_distance = origin is not None
+        show_distance = found.origin is not None
         rows = [
             (
                 r["instance"].rsplit(".", 1)[-1],
                 g.item_name(r["resource"]) if mixed else r["purity"],
                 *(
-                    (f"{r['_d']:.0f}m",)
+                    (f"{r['distance_m']:.0f}m",)
                     if show_distance
                     else (r["purity"] if mixed else r["kind"],)
                 ),
@@ -719,7 +642,7 @@ def search_resource_nodes(
                 f"{int(r['x'] / 100)},{int(r['y'] / 100)}",
                 f"{r['z'] / 100:.0f}",
                 render.num(r["rate"]),
-                "tapped" if r["tapped"] else ("LOCKED" if not r["reachable"] else "free"),
+                {"locked": "LOCKED"}.get(finder.status_of(r), finder.status_of(r)),
                 _occupant(r, g),
                 rm.label_for_node(r).name or "-",
             )
@@ -744,26 +667,22 @@ def search_resource_nodes(
             "it is switched off, so that node's rate is not being produced"
         )
     else:
-        clusters = geo.cluster(rows_all, link_m=200.0)
-        crows = []
-        for c in clusters[start : start + n]:
-            cx, cy, _cz = c.centroid
-            label = rm.label_for(cx, cy)
-            c_free = sum(m["rate"] for m in c.members if not m["tapped"] and m["reachable"])
-            crows.append(
-                (
-                    label.name or regions_mod.OFF_MAP,
-                    geo.grid_cell(cx, cy),
-                    geo.direction_of(cx, cy),
-                    f"{int(cx / 100)},{int(cy / 100)}",
-                    c.size,
-                    ",".join(f"{n}{k[0]}" for k, n in sorted(c.purities().items())),
-                    render.num(sum(m["rate"] for m in c.members)),
-                    render.num(c_free),
-                    f"{c.diameter_m:.0f}m",
-                    "" if all(m["reachable"] for m in c.members) else "LOCKED",
-                )
+        clusters = found.fields
+        crows = [
+            (
+                c.region or regions_mod.OFF_MAP,
+                c.grid,
+                c.direction,
+                f"{int(c.centroid[0] / 100)},{int(c.centroid[1] / 100)}",
+                c.size,
+                ",".join(f"{n}{k[0]}" for k, n in sorted(c.purities.items())),
+                render.num(c.total),
+                render.num(c.free),
+                f"{c.diameter_m:.0f}m",
+                "LOCKED" if c.locked else "",
             )
+            for c in clusters[start : start + n]
+        ]
         headers = (
             "region",
             "grid",
@@ -779,71 +698,48 @@ def search_resource_nodes(
         body = render.table(headers, crows, total=len(clusters), offset=start, limit=n)
         notes.append('show="nodes" lists individual nodes; show="nearest" ranks by distance')
 
-    # Elevation matters for fluids and nothing else: a pipe running downhill is free and
-    # one running uphill needs head. The SPAN is reported, never a pump count -- head per
-    # pump is a game rule this project has no data for, and guessing it would be the kind
-    # of invented number the rest of this file exists to avoid.
-    zs = [r["z"] / 100.0 for r in rows_all if "z" in r]
     head = ""
-    if zs and any(g.items[r].is_fluid for r in resources if r in g.items):
-        low, high = min(zs), max(zs)
+    if found.elevation is not None:
+        low, high = found.elevation
         head = (
             f"\n# elevation {low:.0f}..{high:.0f}m (span {high - low:.0f}m); fluid, so "
             "uphill runs need pumps and downhill runs do not"
         )
 
-    # Water is the one resource whose supply is not in the node table at all: every row this
-    # tool can return for it is a fracking satellite, so "0 free and reachable" is a fact
-    # about the satellites and says nothing about the lakes.
-    if "Desc_Water_C" in resources:
-        notes.insert(
-            0,
-            "open water carries NO NODE: a Water Extractor is placed on a shoreline, has no "
-            "purity and draws a flat rate, so there is no node cap for it to be free "
-            "against. Every row above is a fracking satellite, which does sit on a node",
+    water = found.water
+    if water is not None:
+        level = water["sea_level_m"]
+        per_pump = water["per_pump_m3_min"]
+        body = (
+            "## open water\n"
+            + render.kv(
+                [
+                    ("bodies drawn from", len(water["bodies"])),
+                    ("pumps built", water["pumps"]),
+                    ("per pump at 100%", f"{per_pump:.0f} m3/min" if per_pump is not None else ""),
+                    (
+                        "sea level",
+                        f"{level:.1f}m (pumps span {water['sea_level_span_m']:.2f}m)"
+                        if level is not None
+                        else "",
+                    ),
+                ]
+            )
+            + "\n"
+            + render.table(
+                ("body", "pumps"),
+                sorted(water["bodies"].items(), key=lambda kv: -kv[1]),
+                total=len(water["bodies"]),
+            )
+            + "\n\n"
+            + body
         )
-        if st is not None:
-            wv = st.water_volumes()
-            pump = g.buildings.get("Build_WaterPump_C")
-            level = wv["sea_level_m"]
-            body = (
-                "## open water\n"
-                + render.kv(
-                    [
-                        ("bodies drawn from", len(wv["volumes"])),
-                        ("pumps built", wv["pumps"]),
-                        (
-                            "per pump at 100%",
-                            f"{pump.extract_rate('normal', 1.0):.0f} m3/min" if pump else "",
-                        ),
-                        (
-                            "sea level",
-                            f"{level:.1f}m (pumps span {wv['sea_level_span_m']:.2f}m)"
-                            if level is not None
-                            else "",
-                        ),
-                    ]
-                )
-                + "\n"
-                + render.table(
-                    ("body", "pumps"),
-                    sorted(wv["volumes"].items(), key=lambda kv: -kv[1]),
-                    total=len(wv["volumes"]),
-                )
-                + "\n\n"
-                + body
-            )
-            notes.insert(
-                1,
-                "a body is the FGWaterVolume each pump's mExtractableResource names. Its "
-                "SHAPE is level geometry and is not in the save, so this says how many "
-                "separate shorelines are already worked, not how much is left in them -- "
-                "and sea level is measured off those pumps, not assumed",
-            )
 
+    tapped = "tapped " if wanted == "tapped" else ""
     return render.envelope(
-        f"# {sel.description}: {len(rows_all)} node(s), "
-        f"{render.num(total)} {unit} total, {render.num(free)} free and reachable\n"
+        f"# {found.description}: {len(rows_all)} {tapped}node(s), "
+        f"{render.num(found.total)} {found.unit} total, "
+        f"{render.num(found.free)} free and reachable\n"
         f"# rates at 100% clock; coords in metres{head}",
         body,
         notes,
@@ -959,7 +855,11 @@ def show_on_map(
         origin[0] / 100.0,
         origin[1] / 100.0,
         world=st.world_id if st else "",
-        show=f"label:{label.name}" if label is not None and label.name == where else "",
+        show=maplink.show_ref(
+            node=node["instance"] if node is not None else None,
+            run=text if kind.casefold() in RUN_PREFIXES else None,
+            label=label.name if label is not None and label.name == where else None,
+        ),
     )
     body = f"local map: {local}\npublic map: {maplink.map_url(*origin, tokens, zoom=zoom)}"
     if tokens:
@@ -1000,7 +900,6 @@ def rank_build_sites(
     rid = _item_id(resource)
     if rid is None:
         return f"no resource matching {resource!r}"
-    table = nodes_mod.load_nodes()
     n = render.clamp(top if top is not None else limit, default=5)
 
     try:
@@ -1010,20 +909,11 @@ def rank_build_sites(
             f"could not read save: {exc} (site ranking needs a save to know what is already built)"
         )
 
-    spec = [*(sources or []), f"resource:{rid}"]
-    sel = select_nodes(spec, table.nodes, resolve_resource=_item_id, st=st)
-    if sel.errors and not sel.nodes:
+    ranked = finder.rank(st, g, rid, sources, resolve_resource=_item_id)
+    sel = ranked.selection
+    if ranked.unselected:
         return render.envelope("# no candidates", "", [*sel.errors, SELECTOR_HELP])
-
-    rows = nodes_mod.annotate(sel.nodes, g, st.projection, st.unlocked_building_ids)
-    clusters = geo.cluster(rows, link_m=200.0)
-    terrain = heightfield.load_field()
-    scored = ranking_mod.rank_sites(
-        clusters,
-        infra=st.infra_points(),
-        consumer_z=st.consumer_z(),
-        terrain=terrain,
-    )
+    scored = ranked.scored
     if not scored:
         return render.envelope(
             f"# no untapped {g.item_name(rid)} in {sel.description}",
@@ -1038,26 +928,23 @@ def rank_build_sites(
     unit = "m3/min" if g.items[rid].is_fluid else "/min"
     out_rows = []
     for sc in scored[:n]:
-        cx, cy, _cz = sc.centroid
-        raw = sc.raw
-        alt = raw["altitude_vs_consumer_m"]
+        v = finder.site_view(sc, rm)
+        alt = v["alt_m"]
         out_rows.append(
             (
-                render.num(sc.score),
-                rm.label_for(cx, cy).name or regions_mod.OFF_MAP,
-                geo.grid_cell(cx, cy),
-                f"{int(cx / 100)},{int(cy / 100)}",
-                raw["nodes"],
-                render.num(raw["untapped_rate"]),
-                f"{render.num(raw['spread_m'])}m",
-                "-"
-                if raw["distance_to_infra_m"] is None
-                else f"{render.num(raw['distance_to_infra_m'])}m",
-                render.num(raw["purity_quality"]),
+                render.num(v["score"]),
+                v["region"] or regions_mod.OFF_MAP,
+                v["grid"],
+                f"{int(v['x'] / 100)},{int(v['y'] / 100)}",
+                v["nodes"],
+                render.num(v["untapped"]),
+                f"{render.num(v['spread_m'])}m",
+                "-" if v["to_infra_m"] is None else f"{render.num(v['to_infra_m'])}m",
+                render.num(v["purity"]),
                 "-" if alt is None else f"{alt:+.0f}m",
-                "-" if raw["pad_roughness_m"] is None else f"{raw['pad_roughness_m']:.1f}m",
-                "-" if raw["pad_slope_deg"] is None else f"{raw['pad_slope_deg']:.0f}deg",
-                "-" if raw["pad_submerged_pct"] is None else f"{raw['pad_submerged_pct']:.0f}%",
+                "-" if v["rough_m"] is None else f"{v['rough_m']:.1f}m",
+                "-" if v["slope_deg"] is None else f"{v['slope_deg']:.0f}deg",
+                "-" if v["wet_pct"] is None else f"{v['wet_pct']:.0f}%",
             )
         )
 
@@ -1070,7 +957,7 @@ def rank_build_sites(
         "alt is the field's height above your refineries: POSITIVE means fluid flows "
         "downhill to them and needs no pipeline pumps"
     )
-    if terrain is None:
+    if not ranked.terrain:
         notes.append(
             "no terrain field on this machine, so rough/slope/wet are blank -- run "
             "tools/gen_world_heightmap.py against your game install to fill them"
@@ -1083,13 +970,9 @@ def rank_build_sites(
             f"weight here. rough is bump height off a best-fit plane, so a clean ramp reads "
             f"near zero however steep it is"
         )
-    if st.consumer_z() is None:
+    if ranked.consumer_z is None:
         notes.append("no refineries found, so altitude is not shown")
-    # `alt` is a node z minus a refinery z, and it decides whether a fluid run needs pumps.
-    # Scoped to the candidate nodes, not the whole table.
-    notes += nodes_mod.skew_notes(
-        nodes_mod.skew_for_save(st.header, table), [r["instance"] for r in rows]
-    )
+    notes += ranked.notes
 
     return render.envelope(
         f"# {len(scored)} candidate {g.item_name(rid)} field(s) in {sel.description}, "
@@ -1141,51 +1024,31 @@ def whereami(
     except Exception as exc:
         return f"could not read save: {exc}"
 
-    here = st.player_position()
-    if here is None:
+    found = place.here(st, g, radius_m)
+    if found.player is None:
         return "no player pawn in this save, so there is no position to report"
-    x, y, z = here
-    rm = regions_mod.load_regions()
-    label = rm.label_for(x, y)
-
-    table = nodes_mod.load_nodes()
-    near = nodes_mod.annotate(
-        table.filter(center=(x, y), radius_m=radius_m),
-        g,
-        st.projection,
-        st.unlocked_building_ids,
-    )
-    near.sort(key=lambda n: geo.distance_m((n["x"], n["y"]), (x, y)))
+    x, y, z = found.player
+    label = found.label
+    near = found.nodes
     rows = [
         (
             g.item_name(n["resource"]),
             n["purity"],
             render.num(n["rate"]),
-            f"{geo.distance_m((n['x'], n['y']), (x, y)):.0f}m",
-            geo.direction_of(n["x"], n["y"], x, y),
-            "tapped" if n["tapped"] else ("LOCKED" if not n["reachable"] else "free"),
+            f"{n['distance_m']:.0f}m",
+            n["direction"],
+            {"locked": "LOCKED"}.get(finder.status_of(n), finder.status_of(n)),
         )
         for n in near[: render.clamp(limit, default=8)]
     ]
 
-    builds = [r for r in st._all_records() if r.get("pos")]
-    closest = min(
-        builds,
-        key=lambda r: geo.distance_m((r["pos"][0], r["pos"][1]), (x, y)),
-        default=None,
-    )
     notes = [f"use near:me@{radius_m:g} as a source selector to plan around here"]
-    # Distances here are measured FROM the table's coordinates, so a stale row makes
-    # "nearest node" quietly wrong. Scoped to what is actually within radius_m.
-    notes += nodes_mod.skew_notes(
-        nodes_mod.skew_for_save(st.header, table), [n["instance"] for n in near]
-    )
-    if closest is not None:
-        d = geo.distance_m((closest["pos"][0], closest["pos"][1]), (x, y))
-        name = g.buildings[closest["cls"]].name if closest["cls"] in g.buildings else closest["cls"]
+    notes += found.notes
+    if found.nearest_building is not None:
+        name, d = found.nearest_building
         notes.append(f"nearest building: {name} at {d:.0f}m")
-    if len(st.players) > 1:
-        notes.append(f"{len(st.players)} pawns in this save; showing the one holding a build gun")
+    if found.pawns > 1:
+        notes.append(f"{found.pawns} pawns in this save; showing the one holding a build gun")
 
     return render.envelope(
         "\n".join(

@@ -27,6 +27,7 @@ __all__ = [
     "local_base",
     "local_map_url",
     "map_url",
+    "show_ref",
 ]
 
 BASE = "https://satisfactory-calculator.com/en/interactive-map"
@@ -131,6 +132,19 @@ def map_url(
     return f"{BASE}#{quote(fragment, safe=';|.-')}"
 
 
+def show_ref(node: str | None = None, run: str | None = None, label: str | None = None) -> str:
+    """The ``show=`` value for one place: ``node:<leaf>``, ``chain:<n>``/``pipe:<n>`` or
+    ``label:<name>``, the first one given; ``""`` for none."""
+    if node:
+        return "node:" + str(node).rsplit(".", 1)[-1]
+    if run:
+        head, _sep, tail = run.strip().partition(":")
+        return f"{head.strip().casefold()}:{tail.strip()}"
+    if label:
+        return f"label:{label}"
+    return ""
+
+
 def local_map_url(
     x_m: float,
     y_m: float,
@@ -151,7 +165,8 @@ def local_map_url(
     that omits this opens the map with nothing of what it is about drawn on it.
 
     ``show`` is a selector the page opens once it has loaded -- ``label:<name>`` selects that
-    factory in the side panel, outlines it and turns its layers on.
+    factory in the side panel, outlines it and turns its layers on; ``node:``, ``chain:`` and
+    ``pipe:`` ring that node or run in the finder pane (``show_ref`` spells all four).
     """
     parts = []
     if world:

@@ -86,8 +86,28 @@ def test_an_open_page_names_plan_version_tab_and_selection(ctx, monkeypatch):
     assert lines[0].endswith("page sav:3f2a… = yours")
     assert lines[1] == (
         'focus: planner › "north hmf" v1 › workbench   selected: process "Blender · Diluted Fuel"'
+        " (Recipe_X_C)"
     )
     assert lines[2] == "follow: follow"
+
+
+def test_a_world_selection_prints_its_selector_so_chat_can_resolve_it(ctx, monkeypatch):
+    ref = "node:BP_ResourceNode453"
+    _focus(
+        monkeypatch,
+        2,
+        True,
+        view="dashboard",
+        dash="world/nodes",
+        selection={"kind": "node", "label": "Iron Ore, pure", "ref": ref},
+    )
+    line = srv.ui_context().splitlines()[1]
+    assert line.endswith(f'selected: node "Iron Ore, pure" ({ref})')
+
+
+def test_a_selection_without_a_ref_prints_no_empty_brackets(ctx, monkeypatch):
+    _focus(monkeypatch, 2, True, selection={"kind": "point", "label": "12, 34 m", "ref": ""})
+    assert srv.ui_context().splitlines()[1].endswith('selected: point "12, 34 m"')
 
 
 def test_a_page_on_another_save_and_behind_the_head_is_flagged(ctx, monkeypatch):

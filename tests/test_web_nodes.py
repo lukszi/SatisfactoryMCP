@@ -145,3 +145,17 @@ def test_nodes_carry_the_region_they_sit_in(client):
         "verified was a claim about a wiki image and there is no wiki image any more"
     )
     assert any(r["region"]["confidence"] == "interior" for r in named)
+
+
+def test_a_node_is_a_spoiler_exactly_when_it_is_locked(client):
+    rows = client.get("/api/nodes").json()["nodes"]
+    for row in rows:
+        assert row["spoiler"] == (row["reachable"] is False and not row["occupied"]), row
+    assert any(r["spoiler"] for r in rows) and not all(r["spoiler"] for r in rows)
+
+
+def test_without_a_save_no_node_is_a_spoiler(game):
+    app = create_app(state_loader=_explode, game_loader=lambda: game)
+    with TestClient(app) as c:
+        rows = c.get("/api/nodes").json()["nodes"]
+    assert not any(r["spoiler"] for r in rows)

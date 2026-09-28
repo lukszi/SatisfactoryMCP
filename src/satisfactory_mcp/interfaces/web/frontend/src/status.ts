@@ -11,19 +11,29 @@ import { onVitals, showCircuit, showFactory, showPoint, vitals } from "./panel";
 import { faultCount, faultsOf } from "./power-tab";
 import { ratedWorld, readNow } from "./powerview";
 import { onProgress, readyMilestones } from "./progress";
-import { onSelect, select, selected } from "./selection";
+import { showRef } from "./finder";
+import { onSelect, select, selected, selectionRef } from "./selection";
 import { state } from "./state";
 import { actionTone, statesOf } from "./states";
 import { counted, W } from "./words";
 
 import type { Selection } from "./selection";
 
-var KIND_WORD = { factory: W.factory, circuit: "circuit", point: "point" };
+var KIND_WORD = {
+  factory: W.factory,
+  circuit: "circuit",
+  point: "point",
+  node: W.node,
+  field: W.field,
+  conduit: W.run,
+  pickup: "pickup",
+};
 
 function fly(s: Selection): void {
   var go = function () {
     if (s.kind === "factory") showFactory(s.key);
     else if (s.kind === "circuit") showCircuit(+s.key);
+    else if (s.kind !== "point") showRef(selectionRef(s), s);
     else if (s.x_m !== undefined && s.y_m !== undefined) showPoint(s.x_m, s.y_m, { label: s.label });
   };
   if (state.dash) toMap(go);

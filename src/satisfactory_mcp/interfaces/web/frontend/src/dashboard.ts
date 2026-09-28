@@ -21,6 +21,7 @@ import { circuitName } from "./powerview";
 import { dashParts } from "./nav";
 import { drawRail } from "./rail";
 import { select } from "./selection";
+import { renderWorld, worldTitle } from "./world";
 import { W } from "./words";
 
 import type { FactoryHealthRow } from "./api-shapes";
@@ -31,6 +32,7 @@ type Tab =
   | "power"
   | "progress"
   | "inventory"
+  | "world"
   | "recipes"
   | "planner"
   | "settings";
@@ -41,6 +43,7 @@ export var TABS: [Tab, string][] = [
   ["power", "Power"],
   ["progress", "Progress"],
   ["inventory", "Inventory"],
+  ["world", "World"],
   ["recipes", "Recipes"],
   ["planner", "Planner"],
   ["settings", "Settings"],
@@ -75,7 +78,8 @@ export function toMap(action: () => void): void {
   show();
   action();
   writeHash();
-  if (keyed) el("map").focus({ preventScroll: true });
+  var now = document.activeElement;
+  if (keyed && (!now || now === document.body || el("dash").contains(now))) el("map").focus({ preventScroll: true });
 }
 
 export function mapButton(title: string, action: () => void, label?: string): HTMLButtonElement {
@@ -232,6 +236,7 @@ function knownFactory(name: string): boolean {
 
 function subjectName(tab: Tab, subject: string): string {
   if (tab === "factories") return factoryAddress(subject, knownFactory).name;
+  if (tab === "world") return worldTitle(subject);
   if (tab !== "power" || !subject) return "";
   var circuits = vitals().circuits;
   var row = circuits ? circuits.circuits[+subject - 1] : undefined;
@@ -317,6 +322,7 @@ export function render(): void {
       else renderPower(body);
     } else if (at.tab === "progress") renderProgress(body, at.subject, pointButton);
     else if (at.tab === "inventory") renderInventory(body, { toMap: toMap, render: render });
+    else if (at.tab === "world") renderWorld(body);
     else if (at.tab === "recipes") renderRecipes(body, at.subject, render);
     else renderSettings(body);
     if (!body.querySelector("h1")) body.insertBefore(make("h1", "dk-hidden", tabLabel(at.tab)), body.firstChild);

@@ -207,3 +207,10 @@ def test_a_resource_is_show_on_maps_own_kind_and_says_so(monkeypatch, state, gam
     # factory label like anywhere else, and there is no factory by that name.
     refused = srv.show_on_map("Crude Oil")
     assert refused.startswith("! ") and "does not name a place" in refused
+
+
+def test_show_ref_names_a_node_by_its_leaf():
+    assert maplink.show_ref(node="Persistent_Level:PersistentLevel.BP_ResourceNode1") == (
+        "node:BP_ResourceNode1"
+    )
+    assert maplink.show_ref(node="x", run="chain:1") == "node:x"

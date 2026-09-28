@@ -79,7 +79,24 @@ export function friendly(error: unknown): string {
     return "the server answered with something that is not JSON";
   }
   if (/^\d{3} \/api\//.test(text)) return "the server hit an error";
-  return scrubbed(text) || "the server hit an error";
+  return untooled(scrubbed(text)) || "the server hit an error";
+}
+
+var TOOL = /\b(?:search|trace|list|describe|rank|collected|show|plan|factory|name|amend)_[a-z_]+\b/;
+
+var NOT_A_PLACE = /^(['"])(.*)\1 does not name a place\b/;
+
+export function untooled(text: string): string {
+  var line = text.replace(/^!\s*/, "");
+  var place = NOT_A_PLACE.exec(line);
+  if (place) return "“" + place[2] + "” is not a place: try me, x,y, a factory name or node:…";
+  return line
+    .split(/(?=;\s|,\s*or\s|\s--\s)/)
+    .filter(function (part, i) {
+      return i === 0 || !TOOL.test(part);
+    })
+    .join("")
+    .trim();
 }
 
 function leaf(path: string): string {

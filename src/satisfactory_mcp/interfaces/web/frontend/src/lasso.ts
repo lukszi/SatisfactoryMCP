@@ -350,7 +350,7 @@ function stopStroke(): void {
 function onDown(event: PointerEvent): void {
   if (!view.factory || view.busy || event.button !== 0) return;
   var target = event.target as Element | null;
-  if (target && target.closest(".leaflet-control-container")) return;
+  if (target && target.closest(".leaflet-control-container, .leaflet-popup")) return;
   event.preventDefault();
   event.stopPropagation();
   discard();

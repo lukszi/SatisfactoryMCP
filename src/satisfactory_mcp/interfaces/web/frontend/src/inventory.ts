@@ -2,7 +2,7 @@
  * addressed as `dash=inventory[/<item>]`. See docs/frontend_vision.md §10. */
 
 import { crateLabel } from "./crates";
-import { button, checkbox, empty, error, heading, link, loading, note, table, tile } from "./dashkit";
+import { button, checkbox, empty, error, heading, link, loading, note, showAll, table, tile } from "./dashkit";
 import { make } from "./dom";
 import { amount, count, num, pct, regionLine } from "./format";
 import { loadOne } from "./load";
@@ -42,7 +42,7 @@ var view = { empty: false, kind: "all", allStock: false };
 
 var CONTENTS_SHOWN = 3;
 
-var STOCK_SHOWN = 25;
+var STOCK_SHOWN: 25 = 25;
 
 var UPLOADER = "Build_CentralStorage_C";
 
@@ -360,18 +360,9 @@ function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]
     },
   });
   card.appendChild(grid);
-  if (rows.length > STOCK_SHOWN && !view.allStock) {
-    grid.classList.add("inv-capped");
-    var more = make("div", "inv-more");
-    more.appendChild(
-      button("show all " + counted(rows.length, "item"), function () {
-        view.allStock = true;
-        grid.classList.remove("inv-capped");
-        more.remove();
-      })
-    );
-    card.appendChild(more);
-  }
+  showAll(card, grid, rows.length, STOCK_SHOWN, "show all " + counted(rows.length, "item"), view.allStock, function () {
+    view.allStock = true;
+  });
   parent.appendChild(card);
 }
 

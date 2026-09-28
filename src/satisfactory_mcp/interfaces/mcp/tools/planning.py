@@ -1887,6 +1887,8 @@ def _focus_line(focus: dict, log: PlanLog) -> str:
     picked = focus.get("selection")
     if isinstance(picked, dict) and picked.get("label"):
         line += f'   selected: {picked.get("kind") or "item"} "{picked["label"]}"'
+        if picked.get("ref"):
+            line += f" ({picked['ref']})"
     return line
 
 

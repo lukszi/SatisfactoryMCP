@@ -49,10 +49,14 @@ export function overlayPad(): { topLeft: L.Point; bottomRight: L.Point } {
   var frame = map.getContainer().getBoundingClientRect();
   var topLeft = L.point(GAP_PX, GAP_PX);
   var bottomRight = L.point(GAP_PX, GAP_PX);
-  ["panel", "trace"].forEach(function (id) {
+  var cards: string[] = [];
+  document.querySelectorAll<HTMLElement>(".mapcard[id]").forEach(function (card) {
+    cards.push(card.id);
+  });
+  ["panel"].concat(cards).forEach(function (id) {
     var r = shown(id);
     if (!r) return;
-    if (id === "trace" || r.width >= frame.width * SHEET_SHARE) {
+    if (id !== "panel" || r.width >= frame.width * SHEET_SHARE) {
       bottomRight.y = Math.max(bottomRight.y, frame.bottom - r.top + GAP_PX);
     } else topLeft.x = Math.max(topLeft.x, r.right - frame.left + GAP_PX);
   });

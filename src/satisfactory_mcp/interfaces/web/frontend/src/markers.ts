@@ -9,16 +9,17 @@
 
 import { code, popup } from "./dom";
 import { regionLine, shortResource } from "./format";
-import { batch, registerSection } from "./layercontrol";
+import { batch, control, registerSection } from "./layercontrol";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
 import { map, xy } from "./map";
 import { declareColours } from "./palette";
 import { registerFetch } from "./registry";
+import { onSetting, setting } from "./settings";
 import { parseList, state } from "./state";
 import { fail } from "./toast";
 
-import type { OnMap } from "./leaflet-private";
+import type { LayerInput, OnMap } from "./leaflet-private";
 
 import type {
   CollectibleRow,
@@ -61,7 +62,7 @@ export function raiseNodeDots() {
 // they collide the other side moves, and where it cannot the pair is DISCHARGED in palette.ts
 // with a measured warrant: coal against eight dark grounds, water against the machine blue,
 // limestone against the fast belt.
-var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
+export var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
   Desc_OreIron_C: "#c8b6a6",
   Desc_OreCopper_C: "#e08a4b",
   Desc_Stone_C: "#cfcfcf",
@@ -83,9 +84,25 @@ var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
  * node, not how much room it takes up. */
 var PURITY_RADIUS: Record<string, number> = { impure: 3, normal: 4.5, pure: 6 };
 
+var drawn = { nodes: null as NodesResponse | null, pickups: null as CollectiblesResponse | null };
+
+export function knownNodes(): NodeRow[] {
+  return drawn.nodes ? drawn.nodes.nodes : [];
+}
+
 export function drawNodes(data: NodesResponse): void {
+  drawn.nodes = data;
+  paintNodes(data);
+  if (data.save_error && !state.noSaves) {
+    fail("nodes: " + data.save_error + "; nodes drawn, occupancy unknown");
+  }
+}
+
+function paintNodes(data: NodesResponse): void {
+  var spoilers = setting("spoilers");
   var byResource: Record<string, NodeRow[]> = {};
   data.nodes.forEach(function (n) {
+    if (n.spoiler && !spoilers) return;
     (byResource[n.resource] = byResource[n.resource] || []).push(n);
   });
   Object.keys(state.layers).forEach(function (name) {
@@ -152,9 +169,6 @@ export function drawNodes(data: NodesResponse): void {
       });
     });
   raiseNodeDots();
-  if (data.save_error && !state.noSaves) {
-    fail("nodes: " + data.save_error + "; nodes drawn, occupancy unknown");
-  }
 }
 
 /* The `node: ` rows as a family: one fold, one tri-state box, one "n of 14". Declared here
@@ -234,7 +248,7 @@ export function drawPlayer(p: SummaryResponse["player"]): void {
 // takes the rose the page's reds leave free, dE 28.3 from the stopped red and 35.9 from the
 // lighter pipe tone. The hard drive is an indigo, dE 42.1 from the machine blue and 36.6 from the
 // wire violet -- still blue enough to be the drive it is.
-var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
+export var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
   somersloop: "#d84378",
   mercer_sphere: "#b06ae0",
   hard_drive: "#5468d4",
@@ -260,22 +274,35 @@ var PICKUP_FALLBACK = declareColours("markers", { "pickup fallback": "#7fd1b9" }
  * two drift apart. The trailing space is load-bearing; see Section.prefix. */
 var PICKUP_PREFIX = "pickup: ";
 
-var PICKUP_NAME: Record<string, string> = {
-  crashed_drop_pod: "drop pods",
-  hard_drive: "hard drives",
-  loot_cache: "loot caches",
-  mercer_sphere: "mercer spheres",
-  mushroom: "mushrooms",
-  power_slug_blue: "blue power slugs",
-  power_slug_yellow: "yellow power slugs",
-  power_slug_purple: "purple power slugs",
-  somersloop: "somersloops",
-  tape_pickup: "tapes",
-  customization_unlock_pickup: "customisation unlocks",
-};
+var labels: Record<string, string> = {};
 
-function pickupName(category: string): string {
-  return PICKUP_NAME[category] || category.replace(/_/g, " ");
+var hiddenKinds: string[] = [];
+
+export function pickupName(category: string): string {
+  return labels[category] || category.replace(/_/g, " ");
+}
+
+export function layerWord(name: string): string {
+  return name.indexOf(PICKUP_PREFIX) === 0 ? pickupName(name.slice(PICKUP_PREFIX.length)) : name;
+}
+
+export function hiddenPickups(): string[] {
+  return hiddenKinds;
+}
+
+var HIDDEN_TITLE = "not found yet: turn spoilers on in Settings";
+
+export function markHiddenRows(): void {
+  var box = control.getContainer();
+  if (!box) return;
+  var inputs = box.querySelectorAll<LayerInput>("input.leaflet-control-layers-selector");
+  Array.prototype.forEach.call(inputs, function (input: LayerInput) {
+    var hidden = hiddenKinds.indexOf(pickupCategory(state.layerName[input.layerId] || "")) >= 0;
+    if (input.disabled === hidden) return;
+    input.disabled = hidden;
+    var row = input.closest("label");
+    if (row) row.title = hidden ? HIDDEN_TITLE : "";
+  });
 }
 
 /** The category a layer name is about, or "" for a layer that is not a pickup row. */
@@ -310,7 +337,7 @@ function pickupDot(here: L.LatLngTuple, colour: string, r: CollectibleRow): L.Ci
 }
 
 /** What a pod's loot flag says, or null for a row that never had one to read. */
-function lootLine(r: CollectibleRow): string | null {
+export function lootLine(r: CollectibleRow): string | null {
   if (r.category !== POD_CATEGORY || r.collected) return null;
   if (r.looted === true) return "looted: the hard drive is already taken";
   if (r.looted === false) return "unlooted: the hard drive is still in it";
@@ -318,9 +345,24 @@ function lootLine(r: CollectibleRow): string | null {
 }
 
 export function drawCollectibles(data: CollectiblesResponse): void {
+  drawn.pickups = data;
+  paintPickups(data);
+}
+
+function paintPickups(data: CollectiblesResponse): void {
+  var spoilers = setting("spoilers");
+  hiddenKinds = [];
+  data.census.forEach(function (c) {
+    labels[c.category] = c.label;
+    if (c.spoiler && !spoilers) hiddenKinds.push(c.category);
+  });
   var byCategory: Record<string, CollectibleRow[]> = {};
   data.rows.forEach(function (r) {
-    (byCategory[r.category] = byCategory[r.category] || []).push(r);
+    if (hiddenKinds.indexOf(r.category) < 0) (byCategory[r.category] = byCategory[r.category] || []).push(r);
+  });
+  hiddenKinds.forEach(function (category) {
+    var name = PICKUP_PREFIX + category;
+    layer(name, false, PICKUP_COLOUR[category] || PICKUP_FALLBACK, [BAND.pickup, 0, name], pickupName(category));
   });
   Object.keys(state.layers).forEach(function (name) {
     // A category this world has none of (all collected, or never present) must not keep
@@ -372,7 +414,16 @@ export function drawCollectibles(data: CollectiblesResponse): void {
           .addTo(group);
       });
     });
+  markHiddenRows();
 }
+
+function repaint(): void {
+  if (drawn.nodes) paintNodes(drawn.nodes);
+  if (drawn.pickups) paintPickups(drawn.pickups);
+}
+
+onSetting(repaint);
+new MutationObserver(markHiddenRows).observe(control.getContainer()!, { childList: true, subtree: true });
 
 /* The `pickup: ` rows as a family, on the same terms as the node one above and shut for the
  * same reason -- ten rows, nine of them normally off, and a count that says so folded. */

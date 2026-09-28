@@ -1,0 +1,125 @@
+"""One question, one answer: each World route against the MCP tool that asks the same thing.
+
+The tool's text is parsed back into ids and numbers and compared with the route's JSON over
+the fixture world, so a change to either side that makes them disagree fails here.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+fastapi = pytest.importorskip("fastapi")
+
+from satisfactory_mcp.interfaces.mcp.tools import progression, spatial  # noqa: E402
+
+
+@pytest.fixture
+def tools(state, monkeypatch):
+    monkeypatch.setattr(spatial, "_state", lambda save=None, world=None, as_of=None: state)
+    monkeypatch.setattr(progression, "_state", lambda save=None, world=None, as_of=None: state)
+    return spatial
+
+
+def _table(text: str, header: str) -> list[list[str]]:
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(header))
+    out = []
+    for line in lines[start + 1 :]:
+        if not line or line.startswith(("#", "!")):
+            break
+        out.append(line.split("\t"))
+    return out
+
+
+def test_nearest_free_iron_lists_the_same_nodes_in_the_same_order(tools, client):
+    text = tools.search_resource_nodes(
+        resource="Iron Ore", only_free=True, show="nearest", near="me", limit=100
+    )
+    tool_ids = [row[0] for row in _table(text, "node_id")]
+    body = client.get(
+        "/api/world/nodes",
+        params={"view": "nearest", "resource": "Iron Ore", "status": "free", "near": "me"},
+    ).json()
+    assert tool_ids == [r["name"] for r in body["nodes"]][: len(tool_ids)]
+    assert f"{body['count']} node(s)" in text.splitlines()[0]
+
+
+def test_the_census_line_matches_the_tools_header(tools, client):
+    text = tools.search_resource_nodes(resource="Iron Ore", only_free=True)
+    body = client.get("/api/world/nodes", params={"resource": "Iron Ore", "status": "free"}).json()
+    head = text.splitlines()[0]
+    assert f"{body['count']} node(s)" in head
+    assert f"{body['total']:g} /min total" in head
+    assert f"{body['free']:g} free and reachable" in head
+
+
+def test_fields_have_the_same_centres_and_totals(tools, client):
+    text = tools.search_resource_nodes(resource="Copper Ore", show="fields", limit=100)
+    rows = _table(text, "region\tgrid")
+    body = client.get(
+        "/api/world/nodes", params={"view": "fields", "resource": "Copper Ore"}
+    ).json()
+    assert f"{len(body['fields'])} match(es)" in text
+    for row, f in zip(rows, body["fields"], strict=False):
+        cx, cy = (int(v) for v in row[3].split(","))
+        assert abs(cx - f["x_m"]) <= 1 and abs(cy - f["y_m"]) <= 1
+        assert int(row[4]) == f["size"]
+        assert float(row[6]) == pytest.approx(f["total"])
+        assert float(row[7]) == pytest.approx(f["free"])
+
+
+def test_sites_come_in_the_same_order(tools, client):
+    text = tools.rank_build_sites(resource="Copper Ore", limit=10)
+    rows = _table(text, "score")
+    body = client.get("/api/world/sites", params={"resource": "Copper Ore", "limit": 10}).json()
+    assert len(rows) == len(body["sites"]) == 10
+    for row, site in zip(rows, body["sites"], strict=True):
+        cx, cy = (int(v) for v in row[3].split(","))
+        assert abs(cx - site["x_m"]) <= 1 and abs(cy - site["y_m"]) <= 1
+    assert [float(r[0]) for r in rows] == pytest.approx(
+        [s["score"] for s in body["sites"]], abs=0.01
+    )
+
+
+def test_conduits_near_me_are_the_same_runs(tools, client):
+    text = tools.search_conduits(near="me", limit=50)
+    tool_ids = [row[0] for row in _table(text, "id\tkind")]
+    body = client.get("/api/world/conduits", params={"limit": 50}).json()
+    assert tool_ids == [r["id"] for r in body["runs"]][: len(tool_ids)]
+    assert f"# {body['total']} conduit run(s) within 250m of you" in text
+
+
+def test_networks_are_the_same_systems(tools, client):
+    text = tools.search_conduits(near="me", show="networks", limit=50)
+    tool = [row[0] for row in _table(text, "network\tcarries")]
+    body = client.get("/api/world/conduits", params={"view": "networks"}).json()
+    assert tool == [
+        str(n["network"]) if n["network"] is not None else "-" for n in body["networks"]
+    ]
+
+
+def test_here_matches_whereami(tools, client):
+    text = tools.whereami(limit=50)
+    body = client.get("/api/world/here").json()
+    assert f"# {body['nodes_total']} node(s) within 500m" in text
+    rows = _table(text, "resource\tpurity")
+    assert [r[3] for r in rows] == [f"{n['distance_m']:.0f}m" for n in body["nodes"]]
+
+
+def test_regions_match_list_regions(tools, client):
+    text = tools.list_regions(resource="Iron Ore")
+    rows = _table(text, "region\tdir")
+    body = client.get("/api/world/regions", params={"resource": "Iron Ore"}).json()
+    assert [(r[0], int(r[5])) for r in rows] == [(r["name"], r["nodes"]) for r in body["rows"]]
+
+
+def test_the_census_numbers_match_collected_from_world(tools, client, state):
+    text = progression.collected_from_world()
+    rows = {r[0]: r for r in _table(text, "category\tplaced")}
+    body = client.get("/api/collectibles", params={"mode": "census"}).json()
+    assert body["census"]
+    for c in body["census"]:
+        row = rows[c["category"]]
+        assert int(row[1]) == c["placed"] and int(row[2]) == c["collected"]
+    collected = sum(c["collected"] for c in body["census"])
+    assert f"whole_world_collected={collected}" in text

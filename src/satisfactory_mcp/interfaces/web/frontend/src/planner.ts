@@ -10,6 +10,7 @@ import { renderBench } from "./planner-bench";
 import { actorWord, bench, changed, followHead, forgetSolves, inbox, loadItems, onBench, openPlan, redoLast, reset, resyncHead, sav, undoLast, viewRev } from "./planner-core";
 import { loadActivity } from "./planner-history";
 import { loadList, planTitle, renderList } from "./planner-list";
+import { onSelect, selected, selectionRef } from "./selection";
 import { choice, onSetting } from "./settings";
 import { state } from "./state";
 import { note, offer } from "./toast";
@@ -132,6 +133,11 @@ export function renderPlanner(body: HTMLElement, at: string): void {
   draw();
 }
 
+function shared(): Selection | null {
+  var s = selected();
+  return s ? { kind: s.kind, label: s.label, ref: selectionRef(s) } : null;
+}
+
 function focusBody(): Record<string, unknown> {
   var at = subject();
   var planner = at !== null;
@@ -142,7 +148,7 @@ function focusBody(): Record<string, unknown> {
     plan: planner && at && bench.key === at ? at : null,
     rev: planner && at && bench.plan ? bench.plan.rev : null,
     tab: planner ? (at ? "workbench" : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
-    selection: planner && at ? bench.selection : null,
+    selection: planner && at ? bench.selection : shared(),
     follow: choice("follow"),
     sav: sav(),
   };
@@ -260,6 +266,7 @@ function wire(): void {
     }, 0);
   });
   onSetting(scheduleFocus);
+  onSelect(scheduleFocus);
   document.addEventListener("keydown", keys);
   document.addEventListener("focusout", function () {
     setTimeout(flush, 0);

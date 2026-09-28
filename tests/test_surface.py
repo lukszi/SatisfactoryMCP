@@ -128,6 +128,14 @@ def test_describe_location_declares_one_way_to_say_where():
     assert set(tool.inputSchema["properties"]) == {"at", "radius_m", "save", "world", "as_of"}
 
 
+def test_the_finder_tools_take_the_status_and_network_the_page_filters_by():
+    """``status`` and ``network`` are the World page's filters, so chat can ask the same."""
+    tools = {t.name: t for t in _run(srv.mcp.list_tools())}
+    assert "status" in tools["search_resource_nodes"].inputSchema["properties"]
+    assert "only_free" in tools["search_resource_nodes"].inputSchema["properties"]
+    assert "network" in tools["search_conduits"].inputSchema["properties"]
+
+
 @pytest.mark.parametrize(
     "uri",
     [

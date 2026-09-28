@@ -422,3 +422,18 @@ def test_between_mode_requires_both_areas_and_says_so_in_the_scope(game, live):
 
     out = srv.search_conduits(near="-3500,3500", to="-3400,3400", radius_m=50)
     assert "AND 50m of -3400,3400" in out
+
+
+def test_the_tool_lists_one_fluid_network_by_id(game, projection, monkeypatch):
+    from satisfactory_mcp.domain.world.state import WorldState
+    from satisfactory_mcp.interfaces.mcp.tools import spatial as stools
+
+    st = WorldState(projection=projection, game=game)
+    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: st)
+    net = next(r.network for r in st.conduit_runs if r.kind == "pipe" and r.network is not None)
+    pieces = [r for r in st.conduit_runs if r.kind == "pipe" and r.network == net]
+    out = stools.search_conduits(near="0,0", network=net, limit=100)
+    assert f"# {len(pieces)} pipe run(s) on fluid network {net}" in out
+    longest = sorted(pieces, key=lambda r: -r.length_m)[:10]
+    listed = [line.split("\t")[0] for line in out.splitlines()]
+    assert all(r.ident in listed for r in longest)

@@ -38,14 +38,38 @@ export function phaseText(raw: string | null | undefined): string | null {
   return raw;
 }
 
+export function measured(value: number | null | undefined, dp: number, unit: string): string {
+  return value === null || value === undefined ? "–" : num(value, dp) + unit;
+}
+
+export function metres(value: number | null | undefined, dp?: number): string {
+  return measured(value, dp || 0, " m");
+}
+
+export function rounded(value: number, dp?: number): number {
+  var places = dp || 0;
+  if (!isFinite(value) || Math.abs(value) >= 1e15) return Math.round(value);
+  var exact = Math.abs(value).toFixed(100);
+  var point = exact.indexOf(".");
+  var whole = Number(exact.slice(0, point) + exact.slice(point + 1, point + 1 + places));
+  var rest = exact.slice(point + 1 + places);
+  var first = rest.charAt(0);
+  if (first > "5" || (first === "5" && (/[1-9]/.test(rest.slice(1)) || whole % 2 === 1))) whole += 1;
+  var out = whole / Math.pow(10, places);
+  return (value < 0 ? -out : out) + 0;
+}
+
+export function coords(x: number, y: number): string {
+  return rounded(x) + ", " + rounded(y) + " m";
+}
+
 export function mw(value: number, options?: { signed?: boolean }): string {
   var whole = (value < 0 ? -Math.round(-value) : Math.round(value)) + 0;
   return (options && options.signed && whole > 0 ? "+" : "") + count(whole) + " MW";
 }
 
 export function num(value: number, dp?: number): string {
-  var scale = Math.pow(10, dp === undefined ? 1 : dp);
-  return count(Math.round(value * scale) / scale + 0);
+  return count(rounded(value, dp === undefined ? 1 : dp));
 }
 
 export function amount(value: number, fluid?: boolean): string {
