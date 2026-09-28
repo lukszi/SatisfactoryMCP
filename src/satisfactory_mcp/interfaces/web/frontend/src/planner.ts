@@ -35,7 +35,7 @@ import {
 import { loadActivity } from "./planner-history";
 import { loadList, planTitle, renderList } from "./planner-list";
 import { clearPick } from "./planner-result";
-import { focusStartup } from "./planner-track";
+import { focusStartup, revealStage, settleTrackFocus } from "./planner-track";
 import { onPins } from "./pins";
 import { onBiomass } from "./powerview";
 import { choice, onSetting } from "./settings";
@@ -60,6 +60,7 @@ var pressed = false;
 var refocus = "";
 var focusSig = "";
 var startupFocus = false;
+var stageReveal = 0;
 
 interface Address {
   key: string;
@@ -124,6 +125,11 @@ function typing(): boolean {
   return active.tagName !== "SELECT" && active.value !== active.defaultValue;
 }
 
+function inField(): boolean {
+  var active = document.activeElement;
+  return !!active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+}
+
 function hint(): void {
   var line = root.querySelector(".plan-held");
   if (line) line.textContent = held.length || heldDraw ? "an update is waiting: finish the edit to see it" : "";
@@ -173,6 +179,11 @@ function draw(): void {
   });
   settleAskFocus(root);
   if (startupFocus && trackShowing() && focusStartup(root)) startupFocus = false;
+  settleTrackFocus(root);
+  if (stageReveal && trackShowing() && bench.track.data && !bench.track.asked) {
+    if (!inField() && bench.track.stage === stageReveal) revealStage(root, stageReveal);
+    stageReveal = 0;
+  }
   var alt = bench.alt;
   var shut = alt && alt.enter && parts(dashParts().subject).alt === alt.item ? root.querySelector<HTMLElement>('[data-ctl="alt-close"]') : null;
   if (alt && shut) {
@@ -320,6 +331,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
     var startup = args.section === "startup";
     var open = function () {
       startupFocus = startup;
+      stageReveal = startup ? 0 : stage;
       if (state.dash === there) changed();
       else go(there);
     };

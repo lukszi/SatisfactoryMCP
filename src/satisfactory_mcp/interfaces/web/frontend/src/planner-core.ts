@@ -374,21 +374,25 @@ function nowWords(p: Partition): string {
   return "now " + W.stage(p.current, p.count);
 }
 
+function stillWords(p: Partition): string {
+  if (!p.count) return "still no startup order fits the headroom";
+  if (!p.current) return "every stage of " + p.count + " is still built";
+  return "you are still in " + W.stage(p.current, p.count);
+}
+
 function renumber(data: TrackResponse): void {
   if (!data.feasible || data.scope_error) return;
   var now = partition(data);
   var was = bench.seen[data.key];
   bench.seen[data.key] = now;
   if (!was || was.partition_id === now.partition_id) return;
-  var cause =
-    was.rev !== now.rev
-      ? "v" + now.rev + " changed the stages"
-      : was.headroom_mw !== now.headroom_mw
-        ? "the new headroom changed the stages"
-        : was.save_id !== now.save_id
-          ? "the new save changed the stages"
-          : "the stages changed";
-  bench.track.notice = cause + ": " + wasWords(was) + ", " + nowWords(now);
+  var who =
+    was.rev !== now.rev ? "v" + now.rev : was.headroom_mw !== now.headroom_mw ? "the new headroom" : was.save_id !== now.save_id ? "the new save" : "";
+  if (was.current === now.current && was.count === now.count) {
+    bench.track.notice = (who || "the plan") + " moved machines between stages; " + stillWords(now);
+    return;
+  }
+  bench.track.notice = (who ? who + " changed the stages" : "the stages changed") + ": " + wasWords(was) + ", " + nowWords(now);
 }
 
 export function loadTrack(): void {

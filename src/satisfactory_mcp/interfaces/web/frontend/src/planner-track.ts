@@ -27,6 +27,11 @@ var NARROW = window.matchMedia("(max-width: 899px)");
 var STARTUP_CTL = "track-startup";
 
 var headroomProblem = { key: "", text: "", raw: "" };
+var backTo = "";
+
+function stageCtl(n: number): string {
+  return "track-stage-" + n;
+}
 
 NARROW.addEventListener("change", function () {
   if (bench.tab === "track") changed();
@@ -96,8 +101,9 @@ function stateChips(parent: HTMLElement, states: TrackState[]): void {
 
 function verb(row: TrackRow): string {
   var build = VERB.build + " " + range(row.build, row.build_max);
-  if (row.verb === "unpause") return VERB.unpause + " " + count(row.count) + (row.build > 0 ? ", then " + build : "");
-  if (row.verb === "setrecipe") return VERB.setrecipe + " " + count(row.count) + (row.build > 0 ? ", then " + build : "");
+  var then = row.build > 0 || (row.build_max || 0) > 0 ? ", then " + build : "";
+  if (row.verb === "unpause") return VERB.unpause + " " + count(row.count) + then;
+  if (row.verb === "setrecipe") return VERB.setrecipe + " " + count(row.count) + then;
   if (row.verb === "build") return build;
   return VERB.ok || "–";
 }
@@ -384,6 +390,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
   frame.querySelectorAll("tbody tr").forEach(function (tr, i) {
     var s = d.stages[i];
     if (!s) return;
+    tr.setAttribute("data-ctl", stageCtl(s.index));
     tr.setAttribute("aria-selected", String(s.index === picked));
     tr.setAttribute("aria-label", W.stage(s.index, d.count) + ": " + s.state);
   });
@@ -419,6 +426,7 @@ function stageFilter(parent: HTMLElement, n: number, total: number): void {
   x.title = "show the jobs of every stage";
   x.setAttribute("aria-label", "show the jobs of every stage");
   x.onclick = function () {
+    backTo = stageCtl(n);
     pickStage(n);
   };
   c.appendChild(x);
@@ -627,6 +635,11 @@ function site(parent: HTMLElement, d: TrackResponse): void {
   parent.appendChild(card);
 }
 
+function tail(instance: string): string {
+  var m = /(\d+)$/.exec(instance);
+  return m ? m[1]!.slice(-4) : instance.slice(-4);
+}
+
 function feederActions(r: Feeder): HTMLElement {
   var acts = make("span", "dash-acts");
   var x = r.x_m;
@@ -677,12 +690,20 @@ function feeders(card: HTMLElement): void {
   else if (f.error) error(sub, "what the waves stand on", f.error, loadFeeders);
   else if (f.data && !f.data.feeders.length) empty(sub, "no extractor feeds a running generator");
   else if (f.data) {
+    var twins: Record<string, number> = {};
+    f.data.feeders.forEach(function (r) {
+      var k = r.name + "|" + r.region;
+      twins[k] = (twins[k] || 0) + 1;
+    });
     var columns: Column<Feeder>[] = [
       {
         key: "name",
         label: "extractor",
         render: function (r) {
-          return r.name;
+          var cell = make("span", "", r.name);
+          var place = [r.region || "", (twins[r.name + "|" + r.region] || 0) > 1 ? "#" + tail(r.instance) : ""].filter(Boolean).join(" · ");
+          if (place) cell.appendChild(make("span", "dash-sub", " " + place));
+          return cell;
         },
       },
       {
@@ -742,6 +763,18 @@ export function focusStartup(root: HTMLElement): boolean {
   h.focus();
   h.scrollIntoView({ block: "start" });
   return true;
+}
+
+export function settleTrackFocus(root: HTMLElement): void {
+  if (!backTo) return;
+  var row = root.querySelector<HTMLElement>('[data-ctl="' + backTo + '"]');
+  backTo = "";
+  if (row) row.focus();
+}
+
+export function revealStage(root: HTMLElement, n: number): void {
+  var row = root.querySelector<HTMLElement>('[data-ctl="' + stageCtl(n) + '"]');
+  if (row) row.scrollIntoView({ block: "center" });
 }
 
 export function renderTrack(parent: HTMLElement, select: (s: Selection) => void): void {
