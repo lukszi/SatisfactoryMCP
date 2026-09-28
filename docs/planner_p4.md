@@ -39,6 +39,7 @@ what was measured.
 | B4 | `AskError`, `AskMissing`, `AskStale` | adds `AboutMissing(AskError)` and `asks.row`/`asks.state_of` | A 404 for an unknown `about.plan` needs its own type; the routes and the tool build rows the same way |
 | B5 | `scope_error` text | `“<name>” has no machines in this save` | The F4 wording, so the page can show it as it comes |
 | B6 | Renumber note on every `commission_plan(plan=)` | not when the call passes its own `headroom_mw` | That call deliberately partitions differently; recording it would announce a renumbering on the next ordinary read |
+| B7 | `age_note`, `drift_note`, caveats, notes and row notes are the text tool's words | page-facing short forms (contract §5.2) | The long forms carried save ids, issue codes and property names onto the page |
 
 ## Measured (2026-09-28, copy of the user-data backup, newest save, warm process)
 
@@ -46,7 +47,7 @@ what was measured.
 |---|---|---|
 | `track_view`, 3 stored plans, nameplate / 2,000 / 6,372 MW | median 10.0–14.4 ms, max 15.6 ms | – |
 | `GET /api/plan/track` over HTTP | warm median 30–32 ms, max 41 ms (a bare `GET /api/asks` is 31 ms on the same client) | p95 ≤ 60 ms |
-| Track payload | 7.6–11.2 kB at nameplate (no stages), up to 22.5 kB with 3 stages (`north oil rig`, 11 rows) | ≤ 40 kB |
+| Track payload | 7.6–11.2 kB at nameplate (no stages), up to 22.5 kB with 3 stages (`north oil rig`, 11 rows); 51 kB for a 33-job plan, where the matched-machine `selectors` of rows with no action dominate. Render stays at 3–14 ms | ≤ 64 kB (was 40 kB) |
 | stages on the reference save | nameplate 116 MW: none (minimum slices 392–644 MW); 2,000 MW: 2–3; 6,372 MW: 1–2 | – |
 | `feeders_view` | 0.69–0.87 s (19 feeders) | on demand only |
 | `push_ops set headroom_mw` | 26–40 ms | – |
@@ -59,15 +60,10 @@ what was measured.
 
 - `manage.duplicate` builds the copy field by field and does not carry `headroom_mw`; a
   duplicate starts at the nameplate.
-- `?biomass=` on `/api/plan/feeders` is accepted and ignored: which extractors feed running
-  generators does not depend on it.
-- A refused undo names the field `startup headroom`, but a cleared value still reads `none`
-  rather than `nameplate` (the conflict wording is shared by every scalar).
+- A refused undo still words the conflict as `you <value>, <actor> set <value> in vN`, the
+  grammar shared with chat; for the page both sides can be the page.
 - Undo of a headroom change is refused once a later version changed the headroom again, even
   when that later version was itself undone: the P1 conflict window (slice contract §4.3).
-- `age_note` on Track is the text presenter's full save line (save id, `saveVersion`, the
-  autosave hint); the energised caveat names save properties; feeder names carry instance
-  numbers. The page prints them as they come.
 - The `nodes` layer passed to `showBox` for rows with targets names no layer; node layers are
   per resource and on by default.
 - Not checked in a browser: a game save re-requesting Track (A11) needs a writable save

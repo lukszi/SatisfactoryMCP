@@ -75,7 +75,9 @@ Top to bottom, one `dash-card` each (§9.2):
     slice, warnings, and per stage the fill floor `≥ 34 s before its generators produce` for
     waves that energise both consumers and generators. **[what the waves stand on]** loads
     `GET /api/plan/feeders` on demand (~0.7 s, `loading`) and lists extractors feeding
-    running generators.
+    running generators, each with [map] and [copy id]. Rows overlap where extractors feed the
+    same generators, so the headline `total_mw` is the union reached from any of them,
+    counted once, and never exceeds the save's generation.
 11. **Caveats** footnote: the server `caveats` lines (energised vs built; ranges).
 
 ### F3 Show a job or stage on the map
@@ -286,8 +288,8 @@ class TrackResponse(TypedDict):
     rows: list[TrackRow]; stages: list[TrackStage]; startup: TrackStartup; power: TrackPower
     cost: list[TrackCost]; neighbours: list[TrackNeighbour]; site: TrackSite | None
     notes: list[str]; caveats: list[str]; monitored: int
-class Feeder(TypedDict): name: str; mw: float
-class FeedersResponse(TypedDict): feeders: list[Feeder]; text: str
+class Feeder(TypedDict): name: str; instance: str; x_m: float | None; y_m: float | None; mw: float
+class FeedersResponse(TypedDict): feeders: list[Feeder]; total_mw: float; text: str
 
 class AskAbout(TypedDict):
     kind: str; label: str; ref: str; plan: NotRequired[str | None]; rev: NotRequired[int | None]
@@ -314,8 +316,16 @@ class AskStaleResponse(TypedDict): error: str; stale: bool; ask: AskRow
 - `scope` = the plan's `factory`; a `SelectorError` becomes `scope_error` (200, empty lists).
 - Not feasible → 200 with `feasible: false`, the solve's `headline`/`cause`, empty lists.
 - `caveats`: the energised caveat always; the range caveat when any built count is a range;
-  the no-monitor warning when `monitored == 0`. The words are `ENERGISED_CAVEAT` /
-  `RANGE_CAVEAT`, shared with the text presenter.
+  the no-monitor warning when `monitored == 0`. The page gets short forms
+  (`track.PAGE_ENERGISED` / `PAGE_RANGE` / `PAGE_NO_MONITOR`); the text presenter keeps the
+  long `ENERGISED_CAVEAT` / `RANGE_CAVEAT` / `NO_MONITOR`.
+- Page-facing text carries no issue codes, property names, caps emphasis, ` -- ` or plan ids:
+  `age_note` is `track.save_line` (file · written N ago · autosave), `drift_note` is
+  `track.PAGE_DRIFT`, row `note` is `DiffRow.page_note` (no `then BUILD`, which the action cell
+  shows, and no `NEW BUILDING TYPE`, which the chip shows), `notes` and `startup.warnings` go
+  through `track.page_text`.
+- `running` on a stage and on a stage row is null when none of its machines is monitored, as
+  on a job row. A stage `state` range is written `a%..b% built`.
 - `unpause` / `setrecipe` = sums of `count` over rows with that verb.
 - **Ask 409**: `rev` ≠ current → `{error: "ask:7 changed since you read it", stale: true, ask}`.
 
@@ -383,6 +393,7 @@ No new SSE event name. Journal entries reach the page as `activity` within ~0.5 
 | `activity` `plan.view`, `args.view == "track"`, other actor | follow: go to `planner/<key>/track[/<stage>]` after the gesture; toasts: toast [open]; off: nothing |
 | `plans` for the open plan | as P1–P3; if the track tab is showing, re-request Track for the new head |
 | `save` (unpinned save) | re-request Track if showing (drift live on every game save); feeders list cleared |
+| save picked in the header (`load.onReload`, same world) | clear Track data and feeders, forget the solves, re-request Track if showing |
 | `notes` (labels) | re-request Track if showing and the plan has a `factory` scope; refresh the scope select |
 | biomass setting (`powerview.onBiomass`) | re-request Track and clear feeders |
 | reconnect resync | refetch asks; re-request Track if showing |
@@ -470,7 +481,7 @@ autosave), warm process, median of 5 (max in brackets).
 | Call | Measured | Budget |
 |---|---|---|
 | `load_state` per request (projection cached) | 0.4 ms | – |
-| `build_diff_report(plan=)` (prepare + diff + commission + track) | 10.9–15.6 ms (27.8) | `GET /api/plan/track` p95 ≤ 60 ms warm, payload ≤ 40 kB |
+| `build_diff_report(plan=)` (prepare + diff + commission + track) | 10.9–15.6 ms (27.8) | `GET /api/plan/track` p95 ≤ 60 ms warm, payload ≤ 64 kB |
 | of which `prepare` (the solve) / `build_diff` | 6.5–9.2 / 1.5–1.8 ms | – |
 | `commission` / `track` with 1–3 stages | 0.02–0.09 / 0.23–0.43 ms | – |
 | `build_commission_report` alone | 8.0–11.3 ms | not called: Track shares one solve |
