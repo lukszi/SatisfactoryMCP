@@ -3,8 +3,8 @@
  * Two kinds live here. The leading-underscore marks (`_rank`, `_chevron`, `_labelWeight`,
  * `_section`, `_part`, `_inspected`, `_floor…`) are this page's own, set on objects Leaflet
  * owns to save a WeakMap probe per mark, and optional because an object that never passed
- * through the code that sets one does not have it. `_handlingClick`, `_update` and `layerId`
- * are real Leaflet internals that `@types/leaflet` does not publish -- three places where
+ * through the code that sets one does not have it. `_handlingClick`, `_update`, `layerId` and
+ * `_getBoundsOffset` are real Leaflet internals that `@types/leaflet` does not publish -- four places where
  * this page is coupled to Leaflet 1.9.4, greppable before an upgrade.
  */
 
@@ -117,6 +117,10 @@ declare module "leaflet" {
     /** Declutter priority. A factory's machine count: big factories win. */
     _labelWeight?: number;
     _labelName?: string;
+  }
+
+  interface Map {
+    _getBoundsOffset(pxBounds: L.Bounds, maxBounds: L.LatLngBounds, zoom?: number): L.Point;
   }
 
   namespace Control {
