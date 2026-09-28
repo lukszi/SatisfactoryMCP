@@ -340,8 +340,8 @@ function adopt(plan: PlanStateBody): void {
   }
 }
 
-var TRACK = "/api/plan/track" as ApiPath;
-var FEEDERS = "/api/plan/feeders" as ApiPath;
+var TRACK: ApiPath = "/api/plan/track";
+var FEEDERS: ApiPath = "/api/plan/feeders";
 
 function biomassFlag(): string {
   return "biomass=" + (setting("biomass") ? "true" : "false");

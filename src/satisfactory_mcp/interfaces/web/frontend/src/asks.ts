@@ -16,8 +16,8 @@ export var ASK_MAX = 200;
 
 var LABEL_MAX = 120;
 var REF_MAX = 200;
-var ASKS = "/api/asks" as ApiPath;
-var ASK_ONE = "/api/asks/{n}" as ApiPath;
+var ASKS: ApiPath = "/api/asks";
+var ASK_ONE: ApiPath = "/api/asks/{n}";
 var TEXT_CTL = "ask-text";
 
 var store = { data: null as AsksResponse | null, error: "", world: "" };
