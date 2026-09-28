@@ -6,6 +6,7 @@ versioned: docs/mcp-surface.md §10.1k."""
 from __future__ import annotations
 
 import copy
+import json
 import os
 import time
 from collections.abc import Callable
@@ -2060,11 +2061,15 @@ def _plan_news(log: PlanLog, cursor, names: dict[str, str], me: int) -> tuple[li
     return lines, {key: state.rev for key, state in heads.items()}
 
 
+def _quoted(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
 def _ask_text(row: dict) -> str:
     about = row["about"]
-    text = f'{row["id"]} "{row["text"]}" about {about["kind"]} "{about["label"]}"'
+    text = f"{row['id']} {_quoted(row['text'])} about {about['kind']} {_quoted(about['label'])}"
     if row["plan_name"] and about["kind"] != "plan":
-        text += f' in "{row["plan_name"]}"'
+        text += f" in {_quoted(row['plan_name'])}"
     if about.get("rev"):
         text += f" v{about['rev']}"
     if row["state"] == "seen":

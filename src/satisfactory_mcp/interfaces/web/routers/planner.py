@@ -309,7 +309,7 @@ class TrackStageRow(TypedDict):
     total: int
     built: int
     built_max: int
-    running: int
+    running: int | None
     states: list[TrackState]
     draw_mw: float
     generation_mw: float
@@ -323,7 +323,7 @@ class TrackStage(TypedDict):
     machines: int
     built: int
     built_max: int
-    running: int
+    running: int | None
     dark: int
     complete: bool
     state: str
@@ -427,11 +427,15 @@ class TrackResponse(TypedDict):
 
 class Feeder(TypedDict):
     name: str
+    instance: str
+    x_m: float | None
+    y_m: float | None
     mw: float
 
 
 class FeedersResponse(TypedDict):
     feeders: list[Feeder]
+    total_mw: float
     text: str
 
 
@@ -661,4 +665,4 @@ def plan_feeders(
         st = _state(request, save, world)
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
-    return track.feeders_view(st.game, st)
+    return track.feeders_view(st.game, st, biomass=_counted(biomass))

@@ -677,10 +677,11 @@ def _stage(index, *rows):
 def test_a_stage_describes_itself_in_the_words_the_text_used():
     assert _stage(1, (("a",), 4, 0, 0, {})).describe() == "not built"
     assert _stage(1, (("a",), 4, 1, 1, {})).describe() == "25% built"
-    assert _stage(1, (("a",), 4, 1, 3, {})).describe() == "25%-75% built"
+    assert _stage(1, (("a",), 4, 1, 3, {})).describe() == "25%..75% built"
     assert _stage(1, (("a",), 2, 2, 2, {"saturated": 2})).describe() == "built, all running"
     assert _stage(1, (("a",), 2, 2, 2, {"saturated": 1})).describe() == "built, 1 running"
     assert _stage(1, (("a",), 2, 2, 2, {"stalled": 2})).describe() == "built, none running"
+    assert _stage(1, (("a",), 2, 2, 2, {"unmonitored": 2})).describe() == "built"
 
 
 def test_the_headline_and_the_partition_come_from_the_tracking():

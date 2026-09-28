@@ -36,6 +36,7 @@ __all__ = [
     "Tracking",
     "Wave",
     "commission",
+    "feeder_records",
     "live_feeders",
     "machine_states",
     "partition_id",
@@ -405,8 +406,10 @@ class Stage:
         if not self.complete:
             span = f"{self.fraction_built:.0%}"
             if self.built_max != self.built and self.machines:
-                span = f"{span}-{self.built_max / self.machines:.0%}"
+                span = f"{span}..{self.built_max / self.machines:.0%}"
             return f"{span} built"
+        if not self.monitored:
+            return "built"
         if self.running >= self.machines:
             return "built, all running"
         if self.running:
@@ -420,6 +423,10 @@ class Stage:
     @property
     def running(self) -> int:
         return sum(r.running for r in self.rows)
+
+    @property
+    def monitored(self) -> int:
+        return sum(n for s, n in self.by_state.items() if s in MONITORED_STATES)
 
     @property
     def by_state(self) -> Counter:
@@ -647,14 +654,22 @@ def live_feeders(g, st, floor_mw: float = 1.0) -> list[tuple[str, float]]:
     sixteen Oil Extractors carrying all the running fuel generation -- so "repipe the
     extractors" is usually many safe moves and one that browns out the base.
     """
+    return [
+        (f"{name} {record['instance'].rsplit('.', 1)[-1][-10:]}", mw)
+        for record, name, mw in feeder_records(g, st, floor_mw)
+    ]
+
+
+def feeder_records(g, st, floor_mw: float = 1.0) -> list[tuple[dict, str, float]]:
+    """``live_feeders`` as (extractor record, building name, MW), largest first."""
     from ..factories.trace import power_at_risk
 
-    out: list[tuple[str, float]] = []
+    out: list[tuple[dict, str, float]] = []
     for record in st.projection.get("extractors", ()):
         instance = record["instance"].rsplit(".", 1)[-1]
         mw, _, running = power_at_risk(st, g, [instance])
         if running and mw >= floor_mw:
             building = g.buildings.get(record.get("cls", ""))
-            out.append((f"{building.name if building else record.get('cls')} {instance[-10:]}", mw))
-    out.sort(key=lambda pair: -pair[1])
+            out.append((record, building.name if building else str(record.get("cls")), mw))
+    out.sort(key=lambda row: -row[2])
     return out

@@ -536,6 +536,8 @@ def test_feeders_answer_on_demand(client):
     assert reply.status_code == 200, reply.text
     body = reply.json()
     assert isinstance(body["feeders"], list) and body["text"]
+    assert body["total_mw"] >= 0
+    assert all({"name", "instance", "x_m", "y_m", "mw"} <= set(f) for f in body["feeders"])
 
 
 def test_headroom_is_validated_merged_and_undone_like_any_scalar(client):

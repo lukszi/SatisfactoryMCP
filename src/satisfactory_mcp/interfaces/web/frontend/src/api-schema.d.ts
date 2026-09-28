@@ -2784,6 +2784,12 @@ export interface components {
         Feeder: {
             /** Name */
             name: string;
+            /** Instance */
+            instance: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
             /** Mw */
             mw: number;
         };
@@ -2791,6 +2797,8 @@ export interface components {
         FeedersResponse: {
             /** Feeders */
             feeders: components["schemas"]["Feeder"][];
+            /** Total Mw */
+            total_mw: number;
             /** Text */
             text: string;
         };
@@ -5707,7 +5715,7 @@ export interface components {
             /** Built Max */
             built_max: number;
             /** Running */
-            running: number;
+            running: number | null;
             /** Dark */
             dark: number;
             /** Complete */
@@ -5750,7 +5758,7 @@ export interface components {
             /** Built Max */
             built_max: number;
             /** Running */
-            running: number;
+            running: number | null;
             /** States */
             states: components["schemas"]["TrackState"][];
             /** Draw Mw */

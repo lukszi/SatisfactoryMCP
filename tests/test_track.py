@@ -11,11 +11,7 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import track as track_mod
-from satisfactory_mcp.domain.planning.commission import (
-    ENERGISED_CAVEAT,
-    RANGE_CAVEAT,
-    partition_id,
-)
+from satisfactory_mcp.domain.planning.commission import partition_id
 from satisfactory_mcp.domain.planning.commission_service import build_commission_report
 from satisfactory_mcp.domain.planning.diff_service import build_diff_report
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
@@ -167,17 +163,55 @@ def test_an_empty_solve_says_so(world):
 
 def test_caveats_and_payload(world):
     out = track_mod.track_view(world.game, world, _plan(world))
-    assert out["caveats"][0] == ENERGISED_CAVEAT
+    assert out["caveats"][0] == track_mod.PAGE_ENERGISED
     ranged = any(r["build_max"] not in (None, r["build"]) for r in out["rows"])
-    assert (RANGE_CAVEAT in out["caveats"]) == ranged
+    assert (track_mod.PAGE_RANGE in out["caveats"]) == ranged
     assert out["monitored"] > 0
-    assert len(json.dumps(out)) < 40_000
+    assert len(json.dumps(out)) < 64_000
+
+
+def _page_strings(out):
+    yield out["age_note"]
+    yield out["drift_note"]
+    yield out["scope_note"]
+    yield from out["notes"]
+    yield from out["caveats"]
+    yield from out["startup"]["warnings"]
+    yield from (r["note"] for r in out["rows"])
+    yield from (s["state"] for s in out["stages"])
+
+
+def test_the_page_reads_no_ids_codes_or_property_names(world):
+    out = track_mod.track_view(world.game, world, _plan(world, headroom_mw=100000))
+    assert out["stages"]
+    for text in _page_strings(out):
+        for banned in ("sav:", "OQ", "mHas", " -- ", "plan_id", "BUILD", "saveVersion", "%-"):
+            assert banned not in text, (banned, text)
+
+
+def test_page_text_rewrites_the_tool_caveats():
+    from satisfactory_mcp.domain.planning.commission import (
+        ENERGISED_CAVEAT,
+        NO_MONITOR,
+        RANGE_CAVEAT,
+    )
+
+    assert track_mod.page_text(ENERGISED_CAVEAT) == track_mod.PAGE_ENERGISED
+    assert track_mod.page_text(RANGE_CAVEAT) == track_mod.PAGE_RANGE
+    assert track_mod.page_text(NO_MONITOR) == track_mod.PAGE_NO_MONITOR
+    assert track_mod.page_text("a -- b") == "a: b"
 
 
 def test_feeders_name_what_the_waves_stand_on(world):
     out = track_mod.feeders_view(world.game, world)
     assert out["text"]
-    assert all(f["mw"] > 0 and f["name"] for f in out["feeders"])
+    assert all(f["mw"] > 0 and f["name"] and f["instance"] for f in out["feeders"])
+    assert all(f["instance"] not in f["name"] for f in out["feeders"])
+    generation = world.power_report(biomass=False)["generation_mw"]
+    assert out["total_mw"] <= generation + 0.5
+    if out["feeders"]:
+        assert out["total_mw"] >= out["feeders"][0]["mw"] - 0.5
+        assert f"{out['total_mw']:,.0f} MW" in out["text"]
     assert [f["mw"] for f in out["feeders"]] == sorted(
         (f["mw"] for f in out["feeders"]), reverse=True
     )

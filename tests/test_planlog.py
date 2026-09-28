@@ -903,7 +903,8 @@ def test_headroom_conflicts_only_with_itself(plans, plan):
     with pytest.raises(Outdated) as caught:
         plans.push(plan, 1, [_headroom(3000)], actor=PAGE)
     assert caught.value.conflicts[0].key == "headroom_mw"
-    assert caught.value.conflicts[0].text().startswith("startup headroom: you ")
+    assert caught.value.conflicts[0].text().startswith("startup headroom: you 3,000 MW, ")
+    assert "set 2,000 MW in v2" in caught.value.conflicts[0].text()
     assert plans.push(plan, 1, [_headroom(2000)], actor=PAGE).noop
     merged = plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
     assert merged.state.headroom_mw == 2000.0 and merged.state.args.sloops == 2
@@ -934,3 +935,16 @@ def test_an_older_snapshot_without_headroom_reads_none(plans, plan):
     raw["state"]["headroom_mw"] = "junk"
     snap.write_text(json.dumps(raw), encoding="utf-8")
     assert plans.state(plan, 1).headroom_mw is None
+
+
+def test_a_cleared_headroom_reads_nameplate_in_a_conflict(plans, plan):
+    plans.push(plan, 1, [_headroom(400)], actor=CHAT)
+    plans.push(plan, 2, [_headroom(500)], actor=CHAT)
+    with pytest.raises(Outdated) as caught:
+        plans.push(plan, 2, [_headroom(None)], actor=PAGE)
+    assert caught.value.conflicts[0].text().startswith("startup headroom: you nameplate, ")
+
+
+def test_a_boolean_is_named_in_json_words(plans, plan):
+    with pytest.raises(InvalidOp, match="must be a number, not true"):
+        plans.push(plan, 1, [_headroom(True)], actor=PAGE)

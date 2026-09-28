@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import Counter
 
 from ...core.gamedata.model import GameData
+from ...core.text import ago
 from ..factories.select import SelectorError
 from ..power.report import biomass_note
 from ..spatial import nodes as nodes_mod
@@ -19,18 +20,68 @@ from .commission import (
     NO_MONITOR,
     RANGE_CAVEAT,
     RUNNING_STATES,
-    live_feeders,
+    feeder_records,
     partition_id,
 )
 from .diff import _save_id
 from .diff_service import NAMEPLATE_SOURCE, STORED_SOURCE, build_diff_report
 from .planlog import PlanState
 
-__all__ = ["CAP", "COST_ROWS", "feeders_view", "job_id", "track_view"]
+__all__ = [
+    "CAP",
+    "COST_ROWS",
+    "PAGE_DRIFT",
+    "PAGE_ENERGISED",
+    "PAGE_NO_MONITOR",
+    "PAGE_RANGE",
+    "feeders_view",
+    "job_id",
+    "page_text",
+    "save_line",
+    "track_view",
+]
 
 CAP = 50
 COST_ROWS = 12
 _VERBS = {"OK": "ok", "UNPAUSE": "unpause", "SETRECIPE": "setrecipe", "BUILD": "build"}
+
+PAGE_ENERGISED = (
+    "built is not the same as powered: a machine that produced in the last 5 minutes "
+    "certainly had power, one that did not may be unpowered, starved, blocked or idle. "
+    "The save does not record which grid a machine is on, so a fully built stage that "
+    "sits dark is possible"
+)
+PAGE_RANGE = (
+    "built is a range where a machine cannot be tied to this plan, such as water pumps: "
+    "the low end counts only the ones among the plan's own. Running counts every matched "
+    "machine, so it can sit above the low end"
+)
+PAGE_NO_MONITOR = (
+    "no productivity monitor covers a matched machine, so the save shows what is built "
+    "but not what is powered"
+)
+PAGE_DRIFT = "the world changed since this plan was saved, so stage numbers may have moved"
+_PAGE = {ENERGISED_CAVEAT: PAGE_ENERGISED, RANGE_CAVEAT: PAGE_RANGE, NO_MONITOR: PAGE_NO_MONITOR}
+
+
+def page_text(text: str) -> str:
+    """A tool-facing sentence in the page's words."""
+    return _PAGE.get(text) or text.replace(" -- ", ": ")
+
+
+def save_line(st: WorldState) -> str:
+    """The save as the page names it: file, age, and whether it is an autosave."""
+    h = st.projection.get("header", {})
+    name = str(h.get("filename") or "?")
+    if name.lower().endswith(".sav"):
+        name = name[:-4]
+    parts = [name]
+    written = ago(h.get("mtime_ns"))
+    if written:
+        parts.append("written " + written)
+    if "autosave" in name.lower():
+        parts.append("autosave, may lag the game")
+    return " · ".join(parts)
 
 
 def job_id(key: tuple) -> str:
@@ -119,7 +170,7 @@ def _row(g, st, r, health, where, nodes, stages_of) -> dict:
         "running": sum(n for s, n in states.items() if s in RUNNING_STATES) if monitored else None,
         "states": _states(states),
         "new_building": bool(r.building_id) and st.built(r.building_id) == 0,
-        "note": r.note,
+        "note": r.page_note,
         "delta_mw": round(r.delta_mw, 2),
         "act": act,
         "targets": targets,
@@ -135,7 +186,7 @@ def _stage(stage, where) -> dict:
         "machines": stage.machines,
         "built": stage.built,
         "built_max": stage.built_max,
-        "running": stage.running,
+        "running": stage.running if stage.monitored else None,
         "dark": stage.dark,
         "complete": stage.complete,
         "state": stage.describe(),
@@ -155,7 +206,9 @@ def _stage(stage, where) -> dict:
                 "total": row.total,
                 "built": row.built,
                 "built_max": row.built_max,
-                "running": row.running,
+                "running": row.running
+                if any(s in MONITORED_STATES for s in row.by_state)
+                else None,
                 "states": _states(row.by_state),
                 "draw_mw": round(row.draw_mw, 2),
                 "generation_mw": round(row.generation_mw, 2),
@@ -196,7 +249,7 @@ def _startup(run, pw: dict, state: PlanState) -> dict:
         "plant_draw_mw": round(run.plant_draw_mw, 2),
         "plant_generation_mw": round(run.plant_generation_mw, 2),
         "minimum_slice_mw": round(run.minimum_slice_mw, 2),
-        "warnings": list(run.warnings),
+        "warnings": [page_text(w) for w in run.warnings],
     }
 
 
@@ -218,7 +271,7 @@ def _blank(st: WorldState, state: PlanState, biomass: bool) -> dict:
         "headline": "",
         "cause": "",
         "save_id": _save_id(st),
-        "age_note": st.age_note,
+        "age_note": save_line(st),
         "plan_id": state.plan_id,
         "scope": state.factory,
         "scope_note": "",
@@ -242,7 +295,7 @@ def _blank(st: WorldState, state: PlanState, biomass: bool) -> dict:
         "neighbours": [],
         "site": None,
         "notes": [],
-        "caveats": [ENERGISED_CAVEAT],
+        "caveats": [PAGE_ENERGISED],
         "monitored": 0,
     }
 
@@ -292,16 +345,17 @@ def track_view(g: GameData, st: WorldState, state: PlanState, *, biomass: bool =
     stages = [_stage(s, where) for s in tracking.stages] if tracking is not None else []
     monitored = sum(1 for s in health.values() if s in MONITORED_STATES)
 
-    caveats = [ENERGISED_CAVEAT]
+    caveats = [PAGE_ENERGISED]
     ranged = any(r["build_max"] is not None and r["build_max"] != r["build"] for r in rows)
     ranged = ranged or any(s["built_max"] != s["built"] for s in stages)
     if ranged:
-        caveats.append(RANGE_CAVEAT)
+        caveats.append(PAGE_RANGE)
     if monitored == 0:
-        caveats.append(NO_MONITOR)
-    notes = list(rep.notes)
+        caveats.append(PAGE_NO_MONITOR)
+    notes = [page_text(n) for n in rep.notes]
+    left_out = report.power.get("biomass_mw") or 0
     if biomass_note(report.power):
-        notes.append(biomass_note(report.power))
+        notes.append(f"{left_out:,.0f} MW of biomass burners left out of generation and headroom")
 
     sv = report.site_survey
     site = None
@@ -317,8 +371,13 @@ def track_view(g: GameData, st: WorldState, state: PlanState, *, biomass: bool =
 
     out.update(
         save_id=rep.save_id,
-        scope_note=report.scope_note,
-        drift_note=report.drift_note,
+        scope_note=(
+            f"only machines in “{state.factory}” count as built, and nodes other factories "
+            "tap are taken"
+            if report.scope_note
+            else ""
+        ),
+        drift_note=PAGE_DRIFT if report.drift_note else "",
         current=tracking.current if tracking is not None and tracking.ok else 0,
         count=len(stages),
         partition_id=partition_id(tracking) if tracking is not None else "",
@@ -352,15 +411,39 @@ def track_view(g: GameData, st: WorldState, state: PlanState, *, biomass: bool =
     return out
 
 
-def feeders_view(g: GameData, st: WorldState) -> dict:
-    """Built extractors whose output reaches a running generator, largest first."""
-    found = live_feeders(g, st)
-    if not found:
-        text = "no built extractor feeds a running generator"
-    else:
-        total = sum(mw for _, mw in found)
-        text = (
-            f"{len(found)} extractor(s) feed running generators, {total:,.0f} MW in all: "
-            "repiping one mid-startup takes that power out"
+def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
+    """Built extractors whose output reaches a running generator, largest first.
+
+    Extractors feeding the same generators each carry that generation, so the headline is
+    the union reached from any of them, counted once.
+    """
+    from ..factories.trace import power_at_risk
+
+    found = feeder_records(g, st)
+    feeders = []
+    for record, name, mw in found:
+        instance = str(record.get("instance") or "").rsplit(".", 1)[-1]
+        pos = record.get("pos")
+        feeders.append(
+            {
+                "name": name,
+                "instance": instance,
+                "x_m": _m(pos[0]) if pos else None,
+                "y_m": _m(pos[1]) if pos else None,
+                "mw": round(mw, 1),
+            }
         )
-    return {"feeders": [{"name": name, "mw": round(mw, 1)} for name, mw in found], "text": text}
+    if not found:
+        return {
+            "feeders": [],
+            "total_mw": 0.0,
+            "text": "no built extractor feeds a running generator",
+        }
+    total, _, _ = power_at_risk(st, g, [f["instance"] for f in feeders])
+    generation = st.power_report(biomass=biomass).get("generation_mw", 0.0)
+    text = (
+        f"{len(found)} extractors feed running generators, together {total:,.0f} MW of "
+        f"{generation:,.0f} MW generated. Extractors that feed the same generators share "
+        "that power, so the rows overlap. Repiping one mid-startup takes its row's power out."
+    )
+    return {"feeders": feeders, "total_mw": round(total, 1), "text": text}

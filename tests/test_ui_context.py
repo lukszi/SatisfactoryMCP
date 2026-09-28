@@ -294,6 +294,13 @@ def _asks_line(out: str) -> str:
     return next(line for line in out.splitlines() if line.startswith("asks"))
 
 
+def test_quotes_inside_an_ask_stay_unambiguous(ctx):
+    asks.create(WORLD, 'why "min" and not max?', ABOUT)
+    assert _asks_line(srv.ui_context()) == (
+        'asks (1 waiting): ask:1 "why \\"min\\" and not max?" about stage "stage 1"'
+    )
+
+
 def test_no_asks_says_none_waiting_and_prints_no_hint(ctx):
     out = srv.ui_context()
     assert "asks: none waiting" in out.splitlines()

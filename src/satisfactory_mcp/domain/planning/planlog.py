@@ -152,7 +152,7 @@ def _number(name: str, value, optional: bool = False) -> float | None:
     if value is None and optional:
         return None
     if isinstance(value, bool) or not isinstance(value, int | float):
-        raise _fail(f"{name} must be a number, not {value!r}")
+        raise _fail(f"{name} must be a number, not {json.dumps(value, default=str)}")
     if not math.isfinite(value):
         raise _fail(f"{name} must be finite, not {value!r}")
     return float(value)
@@ -164,7 +164,7 @@ def _count(name: str, value, optional: bool = False) -> int | None:
     if isinstance(value, float) and math.isfinite(value) and value.is_integer():
         value = int(value)
     if isinstance(value, bool) or not isinstance(value, int):
-        raise _fail(f"{name} must be a whole number, not {value!r}")
+        raise _fail(f"{name} must be a whole number, not {json.dumps(value, default=str)}")
     if value < 0:
         raise _fail(f"{name} must be 0 or more, not {value}")
     return value
@@ -727,10 +727,17 @@ def _label(op: dict) -> str:
     return "plan"
 
 
+def _value_word(op: dict) -> str:
+    if op.get("field") == "headroom_mw":
+        value = op.get("value")
+        return "nameplate" if value is None else f"{_fmt(float(value))} MW"
+    return _fmt(op["value"])
+
+
 def _did(op: dict) -> str:
     kind = op["op"]
     if kind in ("set", "put"):
-        return f"set {_fmt(op['value'])}"
+        return f"set {_value_word(op)}"
     if kind == "del":
         return "removed it"
     if kind == "add":
@@ -753,7 +760,7 @@ class Conflict:
     theirs_actor: Actor
 
     def text(self) -> str:
-        mine = _fmt(self.mine["value"]) if self.mine["op"] in ("set", "put") else _did(self.mine)
+        mine = _value_word(self.mine) if self.mine["op"] in ("set", "put") else _did(self.mine)
         who = self.theirs_actor.display()
         return f"{_label(self.mine)}: you {mine}, {who} {_did(self.theirs)} in v{self.theirs_rev}"
 
