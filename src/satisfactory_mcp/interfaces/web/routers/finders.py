@@ -275,7 +275,7 @@ def _found_node(r: dict, game, rm, drifted: set[str]) -> FoundNode:
         "occupant": occupant,
         "occupant_off": bool(r.get("tapped_paused")) if cls else None,
         "region": _label_json(rm.label_for_node(r)),
-        "distance_m": round(r["distance_m"], 1) if r.get("distance_m") is not None else None,
+        "distance_m": r.get("distance_m"),
         "moved": leaf in drifted,
         "spoiler": status == "locked",
     }
@@ -468,7 +468,7 @@ def _run_row(run, origin, game) -> RunRow:
         "rate": None if run.rate is None else round(run.rate, 2),
         "network": run.network,
         "via": list(run.via),
-        "distance_m": round(run.dist_m(*origin), 1),
+        "distance_m": run.dist_m(*origin),
         "lines_m": [[(_m(p[0]), _m(p[1])) for p in line] for line in run.lines],
     }
 
@@ -545,7 +545,7 @@ def world_conduits(
                     "y_m": _m(v.centre[1]),
                     "z_min_m": round(v.z_min_m, 1),
                     "z_max_m": round(v.z_max_m, 1),
-                    "distance_m": round(v.distance_m, 1),
+                    "distance_m": v.distance_m,
                     "touches": v.touches,
                 }
                 for v in page
@@ -627,7 +627,7 @@ def world_here(
         "nodes_total": len(rows),
         "nearest_building": None
         if building is None
-        else {"name": building[0], "distance_m": round(building[1], 1)},
+        else {"name": building[0], "distance_m": building[1]},
         "pawns": found.pawns,
         "stale": stale,
     }

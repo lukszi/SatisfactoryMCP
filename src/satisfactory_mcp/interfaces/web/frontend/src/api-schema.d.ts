@@ -131,7 +131,8 @@ export interface paths {
          *
          *     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
          *     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-         *     elevation and conduit reach; fields and pickups look 500 m out.
+         *     elevation and conduit reach; fields and pickups look 500 m out. ``spoilers=0`` skips
+         *     locked nodes so that ``nearest`` still holds the closest ones some extractor can work.
          *
          *     **A failed save is not a failed answer.** The node table is static, covers the whole map
          *     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -6758,6 +6759,7 @@ export interface operations {
                 x_m: number;
                 y_m: number;
                 radius_m?: number;
+                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };

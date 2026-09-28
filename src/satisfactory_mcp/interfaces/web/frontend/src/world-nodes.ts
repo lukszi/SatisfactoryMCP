@@ -16,7 +16,7 @@ import {
   spoilerParam,
   worldUrl,
 } from "./finder";
-import { count, measured, metres, num, perMin } from "./format";
+import { count, measured, metres, num, perMin, rounded, signed } from "./format";
 import { isSelected, select } from "./selection";
 import { state } from "./state";
 import {
@@ -309,8 +309,8 @@ function siteTable(rows: RankedSite[]): HTMLElement {
     n("spread", "spread", function (s) { return s.spread_m; }, function (s) { return metres(s.spread_m); }),
     n("infra", "to built", function (s) { return s.to_infra_m; }, function (s) { return metres(s.to_infra_m); }, "to the nearest thing already built"),
     n("purity", "purity", function (s) { return s.purity; }, function (s) { return num(s.purity, 2); }),
-    n("alt", "height", function (s) { return s.alt_m; }, function (s) { return metres(s.alt_m); }),
-    n("rough", "rough", function (s) { return s.rough_m; }, function (s) { return metres(s.rough_m, 1); }, "how uneven the ground is"),
+    n("alt", "above refineries", function (s) { return s.alt_m; }, function (s) { return s.alt_m === null ? "–" : signed(s.alt_m, function (v) { return metres(v); }); }, "height above your refineries: positive means fluid flows downhill to them"),
+    n("rough", "rough", function (s) { return s.rough_m; }, function (s) { return s.rough_m === null ? "–" : rounded(s.rough_m, 1).toFixed(1) + " m"; }, "how uneven the ground is"),
     n("slope", "slope", function (s) { return s.slope_deg; }, function (s) { return measured(s.slope_deg, 0, "°"); }),
     n("wet", "water", function (s) { return s.wet_pct; }, function (s) { return measured(s.wet_pct, 0, "%"); }, "share of the site under water"),
     { key: "selector", label: "selector", render: function (s) { return copyCell(s.selector); } },

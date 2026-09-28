@@ -148,7 +148,8 @@ def test_node_notes_are_page_words_not_engine_names(client):
     for raw in ("FGWaterVolume", "mExtractableResource", "NO NODE", "LOCKED", "BP_", "Build_"):
         assert raw not in text
     for n in [n for n in body["notes"] if "left out of free" in n]:
-        figure = n.split(" per min")[0]
+        assert " m³/min left out of free" in n
+        figure = n.split(" m³/min")[0]
         assert figure.replace(",", "").isdigit()
         assert len(figure) < 4 or "," in figure
 

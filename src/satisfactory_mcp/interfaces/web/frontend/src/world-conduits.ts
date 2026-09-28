@@ -255,7 +255,8 @@ function census(card: HTMLElement, d: ConduitsResponse, params: Record<string, s
   card.appendChild(line);
   var where = "near " + (d.where || "–") + " within " + metres(d.radius_m);
   if (d.where_to) where += " · to " + d.where_to + (d.to_radius_m === null ? "" : " within " + metres(d.to_radius_m));
-  if (params.network) where += " · " + W.network + " #" + params.network;
+  if (params.network) where = W.network + " #" + params.network;
+  else if (params.view === "networks") where = "every fluid " + W.network + ", distance from " + (d.where || "you");
   note(card, where);
   d.bridged.forEach(function (t) {
     note(card, untooled(t));

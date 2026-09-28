@@ -7,13 +7,13 @@ import { FIND_AT_ATTR, FIND_ATTR, keepFocus } from "./dom";
 import { coords, count, metres, num, perMin, rounded } from "./format";
 import { reveal } from "./labels";
 import { L } from "./leaflet";
-import { flyPadded, flyToBox, flyToPoint, map, xy } from "./map";
+import { FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, xy } from "./map";
 import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "./mapcard";
 import { knownNodes, pickupName } from "./markers";
 import { withQuery } from "./nav";
 import { HIGHLIGHT, makeRoom, onVitals, showPoint } from "./panel";
 import { select } from "./selection";
-import { setting } from "./settings";
+import { onSetting, setting } from "./settings";
 import { state } from "./state";
 import { friendly } from "./toast";
 import { W } from "./words";
@@ -48,6 +48,8 @@ var NEAR_M = 500;
 var POINT_ZOOM = 1;
 
 var ALL_ZOOM = 1;
+
+var ALL_PAD = 0.05;
 
 var RADII = ["100", "250", "500", "1000"];
 
@@ -262,7 +264,7 @@ function flyTo(set: Shown, seed: number, bounds: L.LatLngBounds | null): void {
     flyToPoint(xy(at), Math.max(map.getZoom(), POINT_ZOOM));
     return;
   }
-  if (bounds) flyPadded(bounds.pad(0.15), ALL_ZOOM);
+  if (bounds) flyPadded(bounds.pad(ALL_PAD), ALL_ZOOM, FIT_SNAP);
 }
 
 function selectionOf(set: Shown, i: number): Selection {
@@ -379,7 +381,7 @@ function columns(set: Shown): Column<Listed>[] {
 function listed(box: HTMLElement, set: Shown): void {
   var total = set.rows.length;
   if (!total) {
-    cardLine(box, "nothing found here");
+    cardLine(box, view.at && set.kind === "nodes" ? "no " + W.node + " within " + count(NEAR_M) + " m" : "nothing found here");
     return;
   }
   var rows: Listed[] = [];
@@ -725,6 +727,20 @@ function refresh(): void {
   }, 50);
 }
 
+function hideSpoilers(): void {
+  if (!view.open || !view.set || setting("spoilers")) return;
+  var rows = view.set.rows as { spoiler?: boolean }[];
+  if (!rows.some(function (r) { return r.spoiler; })) return;
+  if (view.at || view.ref) {
+    refresh();
+    return;
+  }
+  view.set = { kind: view.set.kind, rows: rows.filter(function (r) { return !r.spoiler; }) } as Shown;
+  view.seed = -1;
+  draw(view.set, -1);
+  render();
+}
+
 function finding(event: Event): void {
   var target = event.target as Element | null;
   var hit = target && target.closest ? target.closest("[" + FIND_ATTR + "]") : null;
@@ -747,4 +763,5 @@ export function listenForFinds(): void {
     if (event.key === "Escape" && view.open && !(event.target as Element).closest("input[type=text], input[type=search], textarea")) closeFinder();
   });
   onVitals(refresh);
+  onSetting(hideSpoilers);
 }

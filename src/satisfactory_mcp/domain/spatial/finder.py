@@ -210,7 +210,7 @@ def page_notes(found: NodeFind, st) -> list[str]:
         return notes
     if found.locked_rate:
         notes.append(
-            f"{found.locked_rate:,.0f} per min left out of free: "
+            f"{found.locked_rate:,.0f} {'m³/min' if found.unit == 'm3/min' else 'per min'} left out of free: "
             "it needs an extractor not unlocked yet"
         )
     unmatched = len(nodes_mod.unresolved_extractors(st.projection))

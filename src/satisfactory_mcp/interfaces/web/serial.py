@@ -114,7 +114,7 @@ def _pickup_json(row: dict, spoiler: bool) -> dict:
         "collected": row["collected"],
         "observed": row["observed"],
         "looted": row["looted"],
-        "distance_m": round(row["distance_m"], 1) if row.get("distance_m") is not None else None,
+        "distance_m": row.get("distance_m"),
         "spoiler": spoiler,
     }
 
@@ -166,7 +166,7 @@ def _field_json(f: Any, game: GameData | None) -> FoundField:
         "free": round(f.free, 2),
         "spread_m": round(f.diameter_m, 1),
         "locked": f.locked,
-        "distance_m": None if f.distance_m is None else round(f.distance_m, 1),
+        "distance_m": f.distance_m,
         "spoiler": f.spoiler,
     }
 class PlanOpBody(TypedDict, total=False):

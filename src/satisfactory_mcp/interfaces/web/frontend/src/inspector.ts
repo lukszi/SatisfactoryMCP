@@ -12,7 +12,7 @@ import { code, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from ".
 import { pickupPlace } from "./finder";
 import { count, num, perMin, regionLine } from "./format";
 import { L } from "./leaflet";
-import { hashFor, map, NARROW } from "./map";
+import { hashFor, map, MAP_SQUARE_M, NARROW } from "./map";
 import { withQuery } from "./nav";
 import { pinButtons } from "./pins";
 import { setting } from "./settings";
@@ -89,6 +89,10 @@ function nearestText(n: InspectResponse["nearest"][number]): string {
 
 var PICKUPS_NEAR_M = 500;
 
+function onSquare(x: number, y: number): boolean {
+  return x >= MAP_SQUARE_M.x_min && x <= MAP_SQUARE_M.x_max && y >= MAP_SQUARE_M.y_min && y <= MAP_SQUARE_M.y_max;
+}
+
 function shown<T extends { spoiler: boolean }>(rows: T[]): T[] {
   var all = setting("spoilers");
   return rows.filter(function (r) {
@@ -161,7 +165,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   }
   rows.push(["region", regionLine(d.region)]);
   rows.push(["elevation", elevationLine(d.elevation)]);
-  rows.push(["grid", d.grid ? d.grid + (d.direction ? " · " + d.direction : "") : null]);
+  rows.push(["grid", d.grid && onSquare(d.at.x_m, d.at.y_m) ? d.grid + (d.direction ? " · " + d.direction : "") : null]);
   if (nearest.length) rows.push(["nearest", nearestText(nearest[0]!)]);
   rows.push(["conduits", d.conduits ? conduitLine(d.conduits) : null]);
   rows.push(["pickups", pickupsWithin(d)]);
@@ -226,7 +230,7 @@ export function inspect(e: L.LeafletMouseEvent): void {
     .setLatLng(e.latlng)
     .setContent("inspecting " + x + ", " + y + " m&hellip;")
     .openOn(map);
-  get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y) as `/api/inspect?${string}`)
+  get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y + (setting("spoilers") ? "" : "&spoilers=0")) as `/api/inspect?${string}`)
     .then(function (d) {
       if (!map.hasLayer(card)) return;
       var body = document.createElement("div");

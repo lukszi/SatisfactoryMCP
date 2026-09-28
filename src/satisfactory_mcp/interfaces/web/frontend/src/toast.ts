@@ -78,6 +78,7 @@ export function friendly(error: unknown): string {
   if (/Unexpected token|not valid JSON/i.test(text)) {
     return "the server answered with something that is not JSON";
   }
+  if (/^422 \/api\//.test(text)) return "a value in the address is out of range";
   if (/^\d{3} \/api\//.test(text)) return "the server hit an error";
   return untooled(scrubbed(text)) || "the server hit an error";
 }
