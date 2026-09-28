@@ -6,7 +6,7 @@ import { el, keepFocus, make } from "./dom";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
 import { onVitals, showFactory, showPoint, vitals } from "./panel";
-import { renderPlanner } from "./planner";
+import { renderPlanner, viewFocus } from "./planner";
 import { bench, onBench } from "./planner-core";
 import { planTitle } from "./planner-list";
 import { onProgress, renderProgress } from "./progress";
@@ -301,6 +301,7 @@ export function render(): void {
   forgetVitals();
   relink();
   retitle();
+  viewFocus();
   if (!state.dash) return;
   if (renamingIn(el("dash"))) {
     missed = true;

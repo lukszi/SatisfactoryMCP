@@ -209,7 +209,7 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
   var row = make("div", "plan-row");
   row.appendChild(make("span", "plan-label", W.startupHeadroom));
   var body = make("div", "plan-controls");
-  var measured = Math.round(d.power.measured_headroom_mw);
+  var measured = d.power.measured_headroom_mw;
   body.appendChild(
     pressed(
       "nameplate " + mw(d.power.headroom_mw),

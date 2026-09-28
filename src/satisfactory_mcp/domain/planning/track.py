@@ -234,8 +234,8 @@ def _stage(stage, where) -> dict:
         "state": page_text(stage.describe()),
         "draw_mw": round(stage.draw_mw, 2),
         "generation_mw": round(stage.generation_mw, 2),
-        "available_before": round(stage.available_before, 2),
-        "available_after": round(stage.available_after, 2),
+        "available_before": stage.available_before,
+        "available_after": stage.available_after,
         "fill_s": round(stage.fill_s, 1),
         "waits_for_fill": stage.waits_for_fill,
         "states": _states(stage.by_state),
@@ -266,8 +266,8 @@ def _power(pw: dict, biomass: bool) -> dict:
     return {
         "generation_mw": round(pw.get("generation_mw", 0.0), 2),
         "draw_mw": round(pw.get("draw_mw", 0.0), 2),
-        "headroom_mw": round(pw.get("headroom_mw", 0.0), 2),
-        "measured_headroom_mw": round(pw.get("measured_headroom_mw", 0.0), 2),
+        "headroom_mw": pw.get("headroom_mw", 0.0),
+        "measured_headroom_mw": pw.get("measured_headroom_mw", 0.0),
         "biomass": biomass,
     }
 
@@ -286,7 +286,7 @@ def _startup(run, pw: dict, state: PlanState) -> dict:
         }
     return {
         "ok": run.ok,
-        "headroom_mw": round(run.headroom_mw, 2),
+        "headroom_mw": run.headroom_mw,
         "headroom_source": run.headroom_source,
         "plant_draw_mw": round(run.plant_draw_mw, 2),
         "plant_generation_mw": round(run.plant_generation_mw, 2),

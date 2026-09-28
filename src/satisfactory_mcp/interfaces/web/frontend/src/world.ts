@@ -307,7 +307,7 @@ function renderHere(body: HTMLElement): void {
     ["region", regionCell(data.region, true)],
     ["grid", data.grid ? data.grid + (data.direction ? " · " + data.direction : "") : "–"],
     ["nearest building", data.nearest_building ? data.nearest_building.name + ", " + metres(data.nearest_building.distance_m) : "none"],
-    ["selector", copyCell(rounded(at.x_m) + "," + rounded(at.y_m))],
+    ["id", copyCell(rounded(at.x_m) + "," + rounded(at.y_m), "copy")],
   ];
   if (data.pawns > 1) facts.push(["players", count(data.pawns) + " in this save; the position is the host's"]);
   var list = make("dl", "world-facts");

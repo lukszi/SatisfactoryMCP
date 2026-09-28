@@ -254,7 +254,7 @@ def _nearest_json(n: dict, game) -> NearestNode:
         **_xyz((n["x"], n["y"], n["z"])),
         "occupied": n["tapped"],
         "occupant_cls": n["tapped_by"],
-        "distance_m": round(n["distance_m"], 1),
+        "distance_m": n["distance_m"],
         "spoiler": not n["tapped"] and not n["reachable"],
     }
 

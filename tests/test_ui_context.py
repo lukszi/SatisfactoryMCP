@@ -107,6 +107,19 @@ def test_a_world_selection_prints_its_selector_so_chat_can_resolve_it(ctx, monke
     assert line.endswith(f'selected: node "Iron Ore, pure" ({ref})')
 
 
+@pytest.mark.parametrize(
+    "view, dash, tab, want",
+    [
+        ("dashboard", "power", "power", "focus: dashboard › power"),
+        ("dashboard", "factories/North", "factories", "focus: dashboard › factories/North"),
+        ("planner", "planner", "list", "focus: planner › list"),
+    ],
+)
+def test_a_dashboard_tab_is_named_once(ctx, monkeypatch, view, dash, tab, want):
+    _focus(monkeypatch, 2, True, view=view, dash=dash, tab=tab)
+    assert srv.ui_context().splitlines()[1] == want
+
+
 def test_a_selection_without_a_ref_prints_no_empty_brackets(ctx, monkeypatch):
     _focus(monkeypatch, 2, True, selection={"kind": "point", "label": "12, 34 m", "ref": ""})
     assert srv.ui_context().splitlines()[1].endswith('selected: point "12, 34 m"')

@@ -575,3 +575,14 @@ def test_the_track_and_ask_shapes_reach_the_published_schema(client):
         op["operationId"].split("_api_")[0] for p in schema["paths"].values() for op in p.values()
     }
     assert {"plan_track", "plan_feeders", "asks", "create_ask", "drop_ask"} <= ids
+
+
+def test_the_last_stage_and_the_budget_start_from_the_same_measured_headroom(client):
+    key = _create(client)["key"]
+    measured = client.get("/api/power/circuits").json()["world"]["measured_headroom_mw"]
+    power = client.get(f"/api/plan/track?key={key}").json()["power"]
+    assert power["measured_headroom_mw"] == measured
+    assert _push(client, key, 1, _headroom(measured)).status_code == 200
+    stages = client.get(f"/api/plan/track?key={key}").json()["stages"]
+    net = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()["mw_net"]
+    assert stages[-1]["available_after"] == pytest.approx(measured + net, abs=0.006)

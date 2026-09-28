@@ -2021,10 +2021,11 @@ def _focus_line(focus: dict, log: PlanLog) -> str:
         if state is not None and rev and rev != state.rev:
             label += f" (head v{state.rev})"
         parts.append(label)
-    elif focus.get("dash"):
+    elif focus.get("dash") and focus["dash"] != parts[0]:
         parts.append(str(focus["dash"]))
-    if focus.get("tab"):
-        parts.append(str(focus["tab"]))
+    tab = str(focus.get("tab") or "")
+    if tab and tab != str(focus.get("dash") or "").split("/")[0]:
+        parts.append(tab)
     line = "focus: " + " › ".join(parts)
     picked = focus.get("selection")
     if isinstance(picked, dict) and picked.get("label"):

@@ -62,6 +62,7 @@ var drawTimer = 0;
 var pressed = false;
 var refocus = "";
 var focusSig = "";
+var viewSent: string | null = null;
 var startupFocus = false;
 var stageReveal = 0;
 
@@ -276,6 +277,13 @@ function focusBody(): Record<string, unknown> {
 function sendFocus(): void {
   if (!state.world) return;
   send<FocusResponse>("PUT", "/api/ui/focus", focusBody()).catch(function () {});
+}
+
+export function viewFocus(): void {
+  if (!state.world || state.dash === viewSent) return;
+  viewSent = state.dash;
+  clearTimeout(focusTimer);
+  sendFocus();
 }
 
 function scheduleFocus(): void {

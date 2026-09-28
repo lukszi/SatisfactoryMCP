@@ -302,3 +302,18 @@ def test_every_world_route_is_pinned_by_as_of(client, state, path, params):
 @pytest.mark.parametrize("path, params", ROUTES)
 def test_every_world_route_refuses_a_foreign_host(client, path, params):
     assert client.get(path, params=params, headers={"host": "evil.example"}).status_code == 403
+
+
+def test_node_distances_travel_unrounded_so_chat_and_page_agree(client, state, monkeypatch):
+    from satisfactory_mcp.interfaces.mcp.tools import spatial as stools
+
+    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: state)
+    params = {"resource": "Desc_OreIron_C", "near": "me"}
+    body = client.get("/api/world/nodes", params=params).json()
+    page = {r["name"]: r["distance_m"] for r in body["nodes"]}
+    assert any(round(d, 1) != d for d in page.values())
+    chat = stools.search_resource_nodes(resource="Iron Ore", show="nearest", near="me", limit=10)
+    said = dict(line.split("\t")[::2][:2] for line in chat.splitlines() if line.startswith("BP_"))
+    assert len(said) == 10
+    for name, text in said.items():
+        assert text == f"{page[name]:.0f}m"
