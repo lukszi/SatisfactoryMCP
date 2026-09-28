@@ -1,14 +1,15 @@
 /* World > pickups: the census per kind, and what is left, what was taken, and what is nearest.
  * See docs/world-finders_contract.md §2.4. */
 
-import { button, empty, heading, table, tabs2 } from "./dashkit";
+import { button, empty, heading, note, table, tabs2 } from "./dashkit";
 import { mapButton, render, toMap } from "./dashboard";
 import { make } from "./dom";
-import { pickupPlace, pickupSelection, showRows, spoilerParam, worldUrl } from "./finder";
+import { pickupPlace, pickupSelection, showRows, worldUrl } from "./finder";
 import { count } from "./format";
 import { hashFor } from "./map";
 import { lootLine, pickupName } from "./markers";
 import { isSelected, select } from "./selection";
+import { spoilerFlag } from "./settings";
 import { state } from "./state";
 import {
   capped,
@@ -177,7 +178,7 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
       mode: list,
       group: params.group || "",
       near: list === "nearest" ? params.near || "me" : "",
-      spoilers: spoilerParam(),
+      spoilers: spoilerFlag(),
     })
   );
   if (waiting(top, box, "pickups")) return;
@@ -221,6 +222,11 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
   }
   var line = make("div", "world-census");
   line.appendChild(make("span", "", counted(rows.length, "pickup") + (d.where ? " · nearest to " + d.where : "")));
+  var paired = params.group
+    ? []
+    : d.census.filter(function (c) {
+        return !!c.pedestal_of;
+      });
   line.appendChild(
     button("show all on map", function () {
       var dash = state.dash;
@@ -230,6 +236,16 @@ export function renderPickups(body: HTMLElement, params: Record<string, string>)
     }, { map: true, title: "ring every row on the map and list them beside it" })
   );
   card.appendChild(line);
+  if (paired.length) {
+    note(
+      card,
+      paired
+        .map(function (c) {
+          return c.label;
+        })
+        .join(", ") + " are listed with what stands on them, so this list is shorter than the kinds table adds up to"
+    );
+  }
   var grid = listTable(rows, list);
   card.appendChild(grid);
   capped(card, grid, rows.length, "pickups-" + list, "pickup");

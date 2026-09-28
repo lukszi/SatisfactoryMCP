@@ -1,4 +1,4 @@
-/* The track tab: where a half-built plan stands against the save, wave by wave and job by job.
+/* The track tab: where a half-built plan stands against the save, stage by stage and job by job.
  * See docs/planner-p4_contract.md §2 F2–F5 and §8. */
 
 import { askButton, askMarks } from "./asks";
@@ -25,6 +25,7 @@ type Box = [number, number, number, number];
 var HEADROOM_MAX = 1000000;
 var NARROW = window.matchMedia("(max-width: 899px)");
 var STARTUP_CTL = "track-startup";
+var FEEDS = "what the " + W.stages + " stand on";
 
 var headroomProblem = { key: "", text: "", raw: "" };
 var backTo = "";
@@ -110,7 +111,7 @@ function verb(row: TrackRow): string {
 
 function stagesWord(stages: number[]): string {
   if (!stages.length) return "–";
-  return (stages.length === 1 ? "stage " : "stages ") + stages.join(", ");
+  return (stages.length === 1 ? W.stageUnit + " " : W.stages + " ") + stages.join(", ");
 }
 
 function nextLine(d: TrackResponse): string {
@@ -137,10 +138,6 @@ function headline(parent: HTMLElement, d: TrackResponse, asked: number): void {
     card.appendChild(make("p", "dash-note", n));
   });
   parent.appendChild(card);
-}
-
-function floorTen(value: number): number {
-  return Math.floor(value / 10) * 10;
 }
 
 function setHeadroom(value: number | null): void {
@@ -212,7 +209,7 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
   var row = make("div", "plan-row");
   row.appendChild(make("span", "plan-label", W.startupHeadroom));
   var body = make("div", "plan-controls");
-  var measured = floorTen(d.power.measured_headroom_mw);
+  var measured = Math.round(d.power.measured_headroom_mw);
   body.appendChild(
     pressed(
       "nameplate " + mw(d.power.headroom_mw),
@@ -225,13 +222,13 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
   );
   body.appendChild(
     pressed(
-      "measured " + mw(d.power.measured_headroom_mw),
+      "measured " + mw(measured),
       stored !== null && stored === measured,
       function () {
         setHeadroom(measured);
       },
       {
-        title: measured > 0 ? "store the measured headroom, rounded down to " + mw(measured) : "the measured headroom is not above 0 MW in this save",
+        title: measured > 0 ? "store the measured headroom, " + mw(measured) : "the measured headroom is not above 0 MW in this save",
         disabled: bench.gone || measured <= 0,
       }
     )
@@ -307,17 +304,17 @@ function stageActions(s: TrackStage, total: number): HTMLElement {
 }
 
 function stageLead(s: TrackStage): HTMLElement {
-  var cell = make("span", "", "stage " + s.index);
+  var cell = make("span", "", W.stageUnit + " " + s.index);
   marks(cell, "stage", String(s.index));
   return cell;
 }
 
 function stages(parent: HTMLElement, d: TrackResponse): void {
   var card = make("section", "dash-card");
-  card.appendChild(make("h2", "dash-h", d.count ? "stages · " + counted(d.count, "stage") : "stages"));
+  card.appendChild(make("h2", "dash-h", d.count ? W.stages + " · " + counted(d.count, W.stageUnit) : W.stages));
   notice(card);
   if (!d.stages.length) {
-    empty(card, "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom", "pick the measured headroom or give one above");
+    empty(card, "no " + W.stages + ": see the headline above", "pick the measured headroom or give one above");
     parent.appendChild(card);
     return;
   }
@@ -327,7 +324,8 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
     key: "built",
     label: "built",
     align: "right",
-    title: "machines of this wave standing in the save; a range where the save cannot tell them apart",
+    className: "dash-nowrap",
+    title: "machines of this " + W.stageUnit + " standing in the save; a range where the save cannot tell them apart",
     render: function (s) {
       return range(s.built, s.built_max);
     },
@@ -338,7 +336,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
       key: "on",
       label: "on",
       align: "right",
-      title: "machines this wave switches on",
+      title: "machines this " + W.stageUnit + " switches on",
       render: function (s) {
         return count(s.machines);
       },
@@ -347,7 +345,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
       key: "running",
       label: "running",
       align: "right",
-      title: "machines of this wave a productivity monitor proves running; – where none is monitored",
+      title: "machines of this " + W.stageUnit + " a productivity monitor proves running; – where none is monitored",
       render: function (s) {
         return s.running === null ? "–" : count(s.running);
       },
@@ -364,7 +362,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
       key: "free",
       label: "free after",
       align: "right",
-      title: "headroom left once this wave runs",
+      title: "headroom left once this " + W.stageUnit + " runs",
       render: function (s) {
         return headroom(s.available_after);
       },
@@ -457,6 +455,7 @@ function jobs(parent: HTMLElement, d: TrackResponse, select: (s: Selection) => v
       key: "built",
       label: "built",
       align: "right",
+      className: "dash-nowrap",
       title: "matching machines in the save; a range where the save cannot tell them apart",
       render: function (r) {
         return r.have_min === null ? count(r.have) : range(r.have_min, r.have);
@@ -508,6 +507,12 @@ function jobs(parent: HTMLElement, d: TrackResponse, select: (s: Selection) => v
     var columns = NARROW.matches
       ? [lead, built, action, building, need, running, where, noteCol, acts]
       : [lead, building, need, built, running, action, where, noteCol, acts];
+    var staged = rows.some(function (r) {
+      return r.stages.length > 0;
+    });
+    if (!staged) columns = columns.filter(function (c) {
+      return c !== where;
+    });
     card.appendChild(
       table(columns, rows, {
         onRow: function (r) {
@@ -521,6 +526,7 @@ function jobs(parent: HTMLElement, d: TrackResponse, select: (s: Selection) => v
       })
     );
   }
+  caveats(card, d);
   if (d.neighbours.length) {
     card.appendChild(
       make(
@@ -679,15 +685,13 @@ function feederActions(r: Feeder): HTMLElement {
 function feeders(card: HTMLElement): void {
   var f = bench.track.feeders;
   if (!f) {
-    card.appendChild(
-      button("what the waves stand on", loadFeeders, { title: "list the extractors that feed running generators today (takes about a second)" })
-    );
+    card.appendChild(button(FEEDS, loadFeeders, { title: "list the extractors that feed running generators today (takes about a second)" }));
     return;
   }
   var sub = make("div", "track-feeders");
-  sub.appendChild(make("h3", "dash-h", "what the waves stand on"));
-  if (f.busy) loading(sub, "what the waves stand on");
-  else if (f.error) error(sub, "what the waves stand on", f.error, loadFeeders);
+  sub.appendChild(make("h3", "dash-h", FEEDS));
+  if (f.busy) loading(sub, FEEDS);
+  else if (f.error) error(sub, FEEDS, f.error, loadFeeders);
   else if (f.data && !f.data.feeders.length) empty(sub, "no extractor feeds a running generator");
   else if (f.data) {
     var twins: Record<string, number> = {};
@@ -734,7 +738,7 @@ function startup(parent: HTMLElement, d: TrackResponse): void {
     make(
       "p",
       "plan-facts",
-      "plant draw " + mw(s.plant_draw_mw) + " · generation " + mw(s.plant_generation_mw) + " · minimum slice " + mw(s.minimum_slice_mw)
+      "plant draw " + mw(s.plant_draw_mw) + " · generation " + mw(s.plant_generation_mw) + " · smallest " + W.stageUnit + " " + mw(s.minimum_slice_mw)
     )
   );
   s.warnings.forEach(function (w) {
@@ -742,19 +746,20 @@ function startup(parent: HTMLElement, d: TrackResponse): void {
   });
   d.stages.forEach(function (st) {
     if (!st.waits_for_fill) return;
-    card.appendChild(make("p", "dash-note", "stage " + st.index + ": ≥ " + num(st.fill_s, 0) + " s before its generators produce"));
+    card.appendChild(make("p", "dash-note", W.stageUnit + " " + st.index + ": ≥ " + num(st.fill_s, 0) + " s before its generators produce"));
   });
   feeders(card);
   parent.appendChild(card);
 }
 
-function caveats(parent: HTMLElement, d: TrackResponse): void {
+function caveats(card: HTMLElement, d: TrackResponse): void {
   if (!d.caveats.length) return;
-  var foot = make("div", "track-caveats");
+  var more = make("details", "track-caveats");
+  more.appendChild(make("summary", "dash-sub", "about built and running"));
   d.caveats.forEach(function (c) {
-    foot.appendChild(make("p", "dash-note", c));
+    more.appendChild(make("p", "dash-note", c));
   });
-  parent.appendChild(foot);
+  card.appendChild(more);
 }
 
 export function focusStartup(root: HTMLElement): boolean {
@@ -806,6 +811,5 @@ export function renderTrack(parent: HTMLElement, select: (s: Selection) => void)
   short(frame, d.cost);
   site(frame, d);
   startup(frame, d);
-  caveats(frame, d);
   renderAsks(frame, changed, bench.key);
 }

@@ -146,6 +146,14 @@ export function setting(key: string): boolean {
   return read(key) === true;
 }
 
+export function spoilerFlag(): string {
+  return setting("spoilers") ? "1" : "0";
+}
+
+export function spoilerQuery(): string {
+  return "spoilers=" + spoilerFlag();
+}
+
 export function choice(key: string): string {
   var value = read(key);
   return typeof value === "string" ? value : "";

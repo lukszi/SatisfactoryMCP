@@ -60,7 +60,7 @@ export function rounded(value: number, dp?: number): number {
 }
 
 export function coords(x: number, y: number): string {
-  return rounded(x) + ", " + rounded(y) + " m";
+  return "x " + num(x, 0) + ", y " + num(y, 0) + " m";
 }
 
 export function signed(value: number, say: (magnitude: number) => string): string {
@@ -83,7 +83,7 @@ export function num(value: number, dp?: number): string {
 
 export function range(lo: number, hi: number | null | undefined): string {
   if (hi === null || hi === undefined || hi === lo) return count(lo);
-  return count(lo) + ".." + count(hi);
+  return count(lo) + "–" + count(hi);
 }
 
 export function amount(value: number, fluid?: boolean): string {
@@ -101,6 +101,10 @@ export function flow(item: string, value: number, dp?: number): string {
 export function pct(value: number | null | undefined, dp?: number): string {
   if (value === null || value === undefined) return "–";
   return (dp ? num(value * 100, dp) : String(Math.round(value * 100))) + "%";
+}
+
+export function clock(ts: number): string {
+  return new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function spoken(names: string[], last: string): string {

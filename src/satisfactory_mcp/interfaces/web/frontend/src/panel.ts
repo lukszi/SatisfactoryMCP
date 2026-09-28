@@ -2,7 +2,7 @@
  * docs/spatial-and-map.md §21. */
 
 import { button, chip, empty, error, issueCount, issueGroups, link, loading } from "./dashkit";
-import { el, keepFocus, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
+import { el, esc, keepFocus, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "./dom";
 import { showRef } from "./finder";
 import { count, mw, pct } from "./format";
 import { chooseLabel, FACTORY_PICKED, flyToFactory, paddedBounds, reveal } from "./labels";
@@ -151,7 +151,7 @@ function pin(x_m: number, y_m: number, label?: string): void {
     fill: false,
     interactive: false,
   });
-  if (label) ring.bindTooltip(label, { permanent: true, direction: "right", offset: [14, 0], className: "pin-label" });
+  if (label) ring.bindTooltip(esc(label), { permanent: true, direction: "right", offset: [14, 0], className: "pin-label" });
   ring.addTo(mark);
   if (!map.hasLayer(mark)) mark.addTo(map);
   flyToPoint([-y_m, x_m], Math.max(map.getZoom(), MACHINE_ZOOM));

@@ -25,8 +25,10 @@ export function note(parent: HTMLElement, text: string): HTMLElement {
   return line;
 }
 
-export function heading(parent: HTMLElement, text: string): void {
-  parent.appendChild(make("h2", "dash-h", text));
+export function heading(parent: HTMLElement, text: string, unit?: string): void {
+  var h = make("h2", "dash-h", text);
+  if (unit) h.appendChild(make("span", "dash-unit", " " + unit));
+  parent.appendChild(h);
 }
 
 export function tile(label: string, value: string, sub: string, bad?: boolean, href?: string): HTMLElement {

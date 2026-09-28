@@ -1,10 +1,11 @@
 /* Asks: questions queued on the page for chat as ask:N, the one ask bar, and the store.
  * See docs/planner-p4_contract.md §2 F6 and §4. */
 
-import { get, send } from "./api";
+import { send } from "./api";
 import { copyText } from "./copy";
 import { button, fieldError } from "./dashkit";
 import { make } from "./dom";
+import { liveStore } from "./livestore";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 import { ASK_KIND, W } from "./words";
@@ -20,27 +21,16 @@ var ASKS: ApiPath = "/api/asks";
 var ASK_ONE: ApiPath = "/api/asks/{n}";
 var TEXT_CTL = "ask-text";
 
-var store = { data: null as AsksResponse | null, error: "", world: "" };
+var store = liveStore<AsksResponse, AskRow>(ASKS, function (data) {
+  return data.asks;
+}, "ask");
 var bar = { about: null as AskAbout | null, opener: "", text: "", problem: "", enter: false, back: "", busy: false };
-var listeners: Array<() => void> = [];
-var inflight = false;
-var again = false;
-var dropping: Record<number, boolean> = {};
 
-export function onAsks(listener: () => void): void {
-  listeners.push(listener);
-}
-
-function notify(): void {
-  listeners.forEach(function (listener) {
-    listener();
-  });
-}
-
-export function askStore(): { data: AsksResponse | null; error: string } {
-  if (store.world !== state.world) return { data: null, error: "" };
-  return store;
-}
+export var onAsks = store.on;
+export var askStore = store.read;
+export var refetchAsks = store.refetch;
+export var loadAsks = store.load;
+var notify = store.notify;
 
 export function liveAsks(): AskRow[] {
   var data = askStore().data;
@@ -57,42 +47,6 @@ export function askMarks(planKey: string, kind: string, ref: string): AskRow[] {
   return asksFor(planKey).filter(function (a) {
     return a.about.kind === kind && a.about.ref === ref && a.state !== "answered";
   });
-}
-
-export function refetchAsks(): void {
-  if (inflight) {
-    again = true;
-    return;
-  }
-  inflight = true;
-  var epoch = state.epoch;
-  var world = state.world;
-  var done = function () {
-    inflight = false;
-    if (again) {
-      again = false;
-      refetchAsks();
-    }
-  };
-  get<AsksResponse>(ASKS)
-    .then(function (data) {
-      if (epoch !== state.epoch || world !== state.world || again) return;
-      store.data = data;
-      store.error = "";
-      store.world = world;
-      notify();
-    })
-    .catch(function (reason) {
-      if (epoch !== state.epoch || world !== state.world || again) return;
-      store.error = friendly(reason);
-      store.world = world;
-      notify();
-    })
-    .then(done, done);
-}
-
-export function loadAsks(): void {
-  if (store.world !== state.world && !inflight) refetchAsks();
 }
 
 export function onActivity(entry: { world: string; kind: string }): void {
@@ -216,7 +170,7 @@ export function renderAskBar(parent: HTMLElement): void {
   line.appendChild(input);
   line.appendChild(
     button(
-      bar.busy ? "queueing…" : "queue",
+      bar.busy ? "queueing…" : "queue for chat",
       function () {
         queue(input);
       },
@@ -255,35 +209,19 @@ export function settleAskFocus(root: HTMLElement): void {
   opener.scrollIntoView({ block: "center" });
 }
 
-function replaced(row: AskRow): void {
-  if (!store.data) return;
-  store.data.asks = store.data.asks.map(function (a) {
-    return a.n === row.n ? row : a;
-  });
-  notify();
-}
-
 export function dropAsk(row: AskRow): void {
-  if (dropping[row.n]) return;
-  dropping[row.n] = true;
-  send<AskDropped>("DELETE", ASK_ONE, { rev: row.rev }, String(row.n))
-    .then(function () {
-      note("deleted " + row.id);
-      refetchAsks();
-    })
-    .catch(function (reason) {
-      var err = reason as StatusError;
-      var body = err && (err.body as AskStaleResponse | undefined);
-      if (err && err.status === 409 && body && body.ask) {
-        fail(body.error || row.id + " changed since you read it");
-        replaced(body.ask);
-        return;
-      }
-      fail("could not delete " + row.id + ": " + friendly(reason));
-      refetchAsks();
-    })
-    .then(function () {
-      delete dropping[row.n];
-      notify();
-    });
+  store.once(row.n, function () {
+    return send<AskDropped>("DELETE", ASK_ONE, { rev: row.rev }, String(row.n))
+      .then(function () {
+        note("deleted " + row.id);
+        refetchAsks();
+      })
+      .catch(function (reason) {
+        var current = store.refused(reason);
+        if (current) {
+          var body = (reason as StatusError).body as AskStaleResponse;
+          fail(body.error || row.id + " changed since you read it");
+        } else fail("could not delete " + row.id + ": " + friendly(reason));
+      });
+  });
 }

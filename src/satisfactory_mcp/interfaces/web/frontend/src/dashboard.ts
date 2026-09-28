@@ -7,6 +7,8 @@ import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
 import { onVitals, showFactory, showPoint, vitals } from "./panel";
 import { renderPlanner } from "./planner";
+import { bench, onBench } from "./planner-core";
+import { planTitle } from "./planner-list";
 import { onProgress, renderProgress } from "./progress";
 import { renderRecipes } from "./recipes";
 import { cancelRename, editName, renamingIn } from "./rename";
@@ -237,6 +239,10 @@ function knownFactory(name: string): boolean {
 function subjectName(tab: Tab, subject: string): string {
   if (tab === "factories") return factoryAddress(subject, knownFactory).name;
   if (tab === "world") return worldTitle(subject);
+  if (tab === "planner") {
+    var key = dashParts("planner/" + subject).rest[0] || "";
+    return key ? planTitle(key) || (bench.key === key && bench.plan ? bench.plan.name : "") : "";
+  }
   if (tab !== "power" || !subject) return "";
   var circuits = vitals().circuits;
   var row = circuits ? circuits.circuits[+subject - 1] : undefined;
@@ -254,6 +260,10 @@ function retitle(): void {
   }
   document.title = parts.join(" · ");
 }
+
+onBench(function () {
+  if (state.dash.indexOf("planner/") === 0) retitle();
+});
 
 function forgetVitals(): void {
   if (state.epoch === shownEpoch) return;

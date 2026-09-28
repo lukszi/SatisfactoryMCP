@@ -4,16 +4,13 @@
 import { askLabel, askStore, asksFor, dropAsk, liveAsks, loadAsks, refetchAsks } from "./asks";
 import { button, chip, copyButton, empty, error, link, loading, table } from "./dashkit";
 import { make } from "./dom";
+import { clock } from "./format";
 import { ASK_STATE, counted } from "./words";
 
 import type { Column, SortState } from "./dashkit";
 import type { AskRow } from "./api-shapes";
 
 var order: SortState = { key: "ask", desc: true };
-
-function clock(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-}
 
 function stateChip(a: AskRow): HTMLElement {
   if (a.state === "answered" && a.answered !== null) {

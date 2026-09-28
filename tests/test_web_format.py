@@ -98,7 +98,10 @@ def test_num_rounds_a_half_to_even_as_the_tools_format_does(tmp_path):
 
 
 def test_coords_and_metres_round_like_the_tools(tmp_path):
-    assert _run(tmp_path, "coords", [[472.5, -961.5]]) == [f"{472.5:.0f}, {-961.5:.0f} m"]
+    assert _run(tmp_path, "coords", [[472.5, -961.5], [1140.2, -2821.7]]) == [
+        f"x {472.5:.0f}, y {-961.5:.0f} m",
+        f"x {1140.2:,.0f}, y {-2821.7:,.0f} m",
+    ]
     assert _run(tmp_path, "metres", [[696.5], [None]]) == [f"{696.5:.0f} m", "–"]
 
 
@@ -115,3 +118,7 @@ def test_signed_shares_one_sign_rule_across_units(tmp_path):
     cases = [(3, "count"), (-3, "count"), (0, "count"), (-12.34, "perMin"), (0.04, "bare"), (-0.04, "bare")]
     got = _run(tmp_path, "signed", [list(c) for c in cases])
     assert got == ["+3", "-3", "0", "-12.3/min", "0", "0"]
+
+
+def test_a_range_reads_with_an_en_dash(tmp_path):
+    assert _run(tmp_path, "range", [[8, 27], [3, 3], [4, None]]) == ["8–27", "3", "4"]

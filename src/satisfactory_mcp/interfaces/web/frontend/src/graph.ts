@@ -451,6 +451,7 @@ export function drawGraph<N extends GraphNodeShape>(
     if (!spot) return;
     var place: Box = spot;
     taken.push(place);
+    labelLayer.appendChild(svg("rect", { class: "graph-edge-back", x: place.x, y: place.y, width: place.w, height: place.h, rx: 2 }));
     var label = svg("text", { class: "graph-edge-label", x: place.x + place.w / 2, y: place.y + 2 });
     shown.forEach(function (t, i) {
       var line = svg("tspan", { x: place.x + place.w / 2, y: place.y + 2 + (i + 1) * LINE - 3 });

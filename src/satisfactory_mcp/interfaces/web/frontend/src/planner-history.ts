@@ -2,7 +2,7 @@
  * See docs/plan_management.md. */
 
 import { get } from "./api";
-import { button, chip, empty, error, link, loading, table, tabs2 } from "./dashkit";
+import { button, empty, error, link, loading, table, tabs2 } from "./dashkit";
 import { make } from "./dom";
 import { go } from "./nav";
 import { argsWords } from "./planner-bench";
@@ -312,7 +312,9 @@ export function renderActivity(parent: HTMLElement): void {
           key: "who",
           label: "by",
           render: function (r) {
-            return r.actor.kind === "page" || r.actor.kind === "chat" ? chip(actorWord(r.actor), "muted", r.actor.display) : actorWord(r.actor);
+            var who = make("span", "", actorWord(r.actor));
+            if (r.actor.display) who.title = r.actor.display;
+            return who;
           },
         },
         {

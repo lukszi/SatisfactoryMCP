@@ -5,19 +5,19 @@ import { get, latest } from "./api";
 import { choice, empty, error, heading, link, loading, note, showAll, table, tabs2 } from "./dashkit";
 import { mapButton, render } from "./dashboard";
 import { code, make, rebuilding } from "./dom";
-import { resourceOptions, spoilerParam, worldUrl } from "./finder";
+import { resourceOptions, worldUrl } from "./finder";
 import { coords, count, metres, num, regionLine, rounded } from "./format";
 import { loadOne } from "./load";
 import { hashFor, writeHash } from "./map";
 import { dashParts, subjectQuery, withQuery } from "./nav";
 import { showPoint } from "./panel";
 import { registerFetch } from "./registry";
-import { onSetting } from "./settings";
+import { onSetting, spoilerFlag } from "./settings";
 import { state } from "./state";
 import { renderConduits } from "./world-conduits";
 import { nodeTable, renderNodes } from "./world-nodes";
 import { renderPickups } from "./world-pickups";
-import { counted, W } from "./words";
+import { counted, gapText, W } from "./words";
 
 import type { ApiError, ApiPath, ApiUrl } from "./api";
 import type { Column, SortState } from "./dashkit";
@@ -164,9 +164,9 @@ export function waiting<T>(parent: HTMLElement, box: Loaded<T>, what: string): b
   return false;
 }
 
-export function copyCell(text: string): HTMLElement {
+export function copyCell(text: string, shown?: string): HTMLElement {
   var holder = make("span");
-  holder.innerHTML = code(text).html;
+  holder.innerHTML = code(text, shown).html;
   return holder.firstChild as HTMLElement;
 }
 
@@ -244,7 +244,7 @@ export function capped(card: HTMLElement, grid: HTMLElement, rows: number, key: 
 
 export function staleText(t: TableAge): string {
   if (t.notes.length) return t.notes.join(" ");
-  return W.mapDataBehind + (t.gap ? " (" + t.gap + ")" : "");
+  return W.mapDataBehind + (t.gap ? " (" + gapText(t.gap) + ")" : "");
 }
 
 export function staleLine(parent: HTMLElement, t: TableAge | null): void {
@@ -282,7 +282,7 @@ export function distanceColumn<R extends { distance_m: number | null }>(label?: 
 }
 
 function hereQuery(): string {
-  return withQuery("", { radius_m: String(HERE_RADIUS_M), spoilers: spoilerParam() }).slice(1);
+  return withQuery("", { radius_m: String(HERE_RADIUS_M), spoilers: spoilerFlag() }).slice(1);
 }
 
 function renderHere(body: HTMLElement): void {
@@ -337,7 +337,7 @@ function renderHere(body: HTMLElement): void {
     if (t.table === "nodes") staleLine(card, t);
   });
   var near = make("section", "dash-card");
-  heading(near, counted(data.nodes_total, "node") + " within " + num(data.radius_m, 0) + " m");
+  heading(near, counted(data.nodes_total, "node") + " within " + num(data.radius_m, 0), "m");
   body.appendChild(near);
   if (!data.nodes.length) {
     empty(near, "no resource node within " + num(data.radius_m, 0) + " m");
@@ -361,7 +361,7 @@ function renderRegions(body: HTMLElement, params: Record<string, string>): void 
       edit({ resource: v });
     })
   );
-  want("world-regions", regionsBox, worldUrl("/api/world/regions", { resource: params.resource || "", spoilers: spoilerParam() }));
+  want("world-regions", regionsBox, worldUrl("/api/world/regions", { resource: params.resource || "", spoilers: spoilerFlag() }));
   if (waiting(card, regionsBox, "regions")) return;
   var data = regionsBox.data!;
   note(card, "region names are good to about " + num(data.accuracy_m, 0) + " m" + (data.resource_name ? " · nodes counted: " + data.resource_name : ""));

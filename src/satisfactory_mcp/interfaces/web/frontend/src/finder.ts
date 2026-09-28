@@ -13,7 +13,7 @@ import { knownNodes, pickupName } from "./markers";
 import { withQuery } from "./nav";
 import { HIGHLIGHT, makeRoom, onVitals, showPoint } from "./panel";
 import { select } from "./selection";
-import { onSetting, setting } from "./settings";
+import { onSetting, setting, spoilerFlag } from "./settings";
 import { state } from "./state";
 import { friendly } from "./toast";
 import { W } from "./words";
@@ -87,10 +87,6 @@ function card(): HTMLElement {
 export function worldUrl(path: ApiPath, params: Record<string, string>): ApiUrl {
   var query = withQuery("", params).slice(1);
   return query ? `${path}?${query}` : path;
-}
-
-export function spoilerParam(): string {
-  return setting("spoilers") ? "" : "0";
 }
 
 export function resourceOptions(any: string, current: string): [string, string][] {
@@ -564,7 +560,7 @@ function pointQuery(): { url: ApiUrl; dash: string } {
         near: here,
         resource: f.resource,
         status: f.free ? "free" : "",
-        spoilers: spoilerParam(),
+        spoilers: spoilerFlag(),
       }),
       dash: withQuery("world/nodes", { near: here, resource: f.resource, status: f.free ? "free" : "" }),
     };
@@ -576,7 +572,7 @@ function pointQuery(): { url: ApiUrl; dash: string } {
     };
   }
   return {
-    url: worldUrl("/api/collectibles", { mode: "nearest", near: here, group: f.group, spoilers: spoilerParam() }),
+    url: worldUrl("/api/collectibles", { mode: "nearest", near: here, group: f.group, spoilers: spoilerFlag() }),
     dash: withQuery("world/pickups", { view: "nearest", near: here, group: f.group }),
   };
 }

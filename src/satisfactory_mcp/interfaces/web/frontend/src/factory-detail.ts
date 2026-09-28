@@ -3,7 +3,7 @@
 
 import { get, latest } from "./api";
 import { button, chip, empty, error, heading, link, loading, note, table, tabs2, tile } from "./dashkit";
-import { make } from "./dom";
+import { code, make } from "./dom";
 import { count, mw, num, pct, perMin, signed } from "./format";
 import { enterFloors } from "./floors";
 import { hashFor } from "./map";
@@ -341,8 +341,14 @@ function renderMachines(body: HTMLElement, data: FactoryAspectsResponse): void {
   if (data.issues.length) {
     var issues = card(body, "issues");
     var list = make("ul", "dash-list");
-    data.issues.forEach(function (text) {
-      list.appendChild(make("li", "", text));
+    data.issues.forEach(function (issue) {
+      var li = make("li", "", issue.text + " ");
+      if (issue.machine) {
+        var copy = make("span");
+        copy.innerHTML = code("machine:" + issue.machine, "copy id").html;
+        li.appendChild(copy.firstChild!);
+      }
+      list.appendChild(li);
     });
     issues.appendChild(list);
   }

@@ -50,7 +50,7 @@ export var COPY_ATTR = "data-copy";
 /* A selector, and a click that copies it -- every one of these exists to be pasted into an
  * MCP tool call. The exact text is repeated into `data-copy` so that what gets copied is
  * this string and not whatever the cell ends up rendering. The listener is in copy.ts. */
-export function code(text: unknown): Markup {
+export function code(text: unknown, shown?: string): Markup {
   var value = esc(text);
   return html(
     '<code class="' +
@@ -59,8 +59,10 @@ export function code(text: unknown): Markup {
       COPY_ATTR +
       '="' +
       value +
-      '" title="click to copy" tabindex="0" role="button">' +
-      value +
+      '" title="' +
+      (shown ? value + ": click to copy" : "click to copy") +
+      '" tabindex="0" role="button">' +
+      (shown ? esc(shown) : value) +
       "</code>"
   );
 }

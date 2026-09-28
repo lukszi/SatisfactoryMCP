@@ -2072,6 +2072,17 @@ export interface components {
             count: number;
         };
         /**
+         * AspectIssue
+         * @description ``machine`` is the instance the issue is about, for a ``machine:`` selector; null when
+         *     the issue names none.
+         */
+        AspectIssue: {
+            /** Text */
+            text: string;
+            /** Machine */
+            machine: string | null;
+        };
+        /**
          * AspectLink
          * @description ``factory`` is null for machines no label covers.
          */
@@ -2864,7 +2875,7 @@ export interface components {
             /** Links */
             links: components["schemas"]["AspectLink"][];
             /** Issues */
-            issues: string[];
+            issues: components["schemas"]["AspectIssue"][];
         };
         /** FactoryGraphResponse */
         FactoryGraphResponse: {
@@ -8271,7 +8282,7 @@ export interface operations {
             query: {
                 key: string;
                 rev?: number | null;
-                biomass?: boolean | ("exclude" | "include");
+                biomass?: "exclude" | "include";
                 save?: string | null;
                 world?: string | null;
             };
@@ -8304,7 +8315,7 @@ export interface operations {
     plan_feeders_api_plan_feeders_get: {
         parameters: {
             query?: {
-                biomass?: boolean | ("exclude" | "include");
+                biomass?: "exclude" | "include";
                 save?: string | null;
                 world?: string | null;
             };

@@ -10,14 +10,14 @@
 import { get } from "./api";
 import { code, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "./dom";
 import { pickupPlace } from "./finder";
-import { count, num, perMin, regionLine } from "./format";
+import { coords, count, metres, num, perMin, regionLine } from "./format";
 import { L } from "./leaflet";
 import { hashFor, map, MAP_SQUARE_M, NARROW } from "./map";
 import { withQuery } from "./nav";
 import { pinButtons } from "./pins";
-import { setting } from "./settings";
+import { setting, spoilerQuery } from "./settings";
 import { friendly } from "./toast";
-import { counted, W } from "./words";
+import { counted, gapText, W } from "./words";
 
 import type { ConduitCount, Elevation, FoundField, InspectResponse, NearPickup } from "./api-shapes";
 import type { PinTarget } from "./pins";
@@ -73,18 +73,18 @@ function elevationRows(e: Elevation): Row[] {
   }
   // A missing fill is printed as the REASON it is missing, never as 0: zero fill is a
   // real and different measurement, and a blank row reads as a bug in the map.
-  rows.push(["fill", e.fill_m === null ? e.fill_note : e.fill_m + " m"]);
+  rows.push(["fill", e.fill_m === null ? e.fill_note : metres(e.fill_m)]);
   return rows;
 }
 
 function elevationLine(e: Elevation): string {
-  if (e.terrain_m !== null && e.terrain_m !== undefined) return e.terrain_m + " m";
+  if (e.terrain_m !== null && e.terrain_m !== undefined) return metres(e.terrain_m);
   if (e.ground_count) return "about " + e.ground_m + " m, from nearby ground";
   return e.terrain_note || "not known here";
 }
 
 function nearestText(n: InspectResponse["nearest"][number]): string {
-  return n.resource_name + " " + n.purity + " · " + n.distance_m + " m" + (n.occupied ? " (occupied)" : "");
+  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + (n.occupied ? " (occupied)" : "");
 }
 
 var PICKUPS_NEAR_M = 500;
@@ -169,9 +169,9 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   if (nearest.length) rows.push(["nearest", nearestText(nearest[0]!)]);
   rows.push(["conduits", d.conduits ? conduitLine(d.conduits) : null]);
   rows.push(["pickups", pickupsWithin(d)]);
-  // The one row built to be copied into an MCP tool call, so the unit -- the same " m"
-  // every other coordinate row on the map ends with -- must ride along.
-  rows.push(["at", html(code(d.at.x_m + "," + d.at.y_m).html + " m")]);
+  // Shown in whole metres like every other position; the click copies the full-precision
+  // selector for an MCP tool call.
+  rows.push(["at", html(code(d.at.x_m + "," + d.at.y_m, coords(d.at.x_m, d.at.y_m)).html)]);
   rows.push(["", html('<span class="popup-acts">' + actions(d.at.x_m, d.at.y_m) + "</span>")]);
   rows.push([W.pin, pinButtons(targets)]);
   var more: Row[] = elevationRows(d.elevation);
@@ -189,7 +189,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   });
   d.stale.forEach(function (t) {
     if (!t.behind && !t.moved && !t.unjoinable) return;
-    more.push(["map data", t.notes.length ? t.notes.join(" ") : W.mapDataBehind + (t.gap ? " (" + t.gap + ")" : "")]);
+    more.push(["map data", t.notes.length ? t.notes.join(" ") : W.mapDataBehind + (t.gap ? " (" + gapText(t.gap) + ")" : "")]);
   });
   // Said out loud rather than left to be inferred: with no save there is no built
   // population and no occupancy, so every node above reads as free whether it is or not.
@@ -230,7 +230,7 @@ export function inspect(e: L.LeafletMouseEvent): void {
     .setLatLng(e.latlng)
     .setContent("inspecting " + x + ", " + y + " m&hellip;")
     .openOn(map);
-  get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y + (setting("spoilers") ? "" : "&spoilers=0")) as `/api/inspect?${string}`)
+  get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y + "&" + spoilerQuery()) as `/api/inspect?${string}`)
     .then(function (d) {
       if (!map.hasLayer(card)) return;
       var body = document.createElement("div");

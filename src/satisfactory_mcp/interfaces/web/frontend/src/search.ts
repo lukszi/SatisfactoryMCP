@@ -5,7 +5,7 @@ import { get, latest } from "./api";
 import { el, make } from "./dom";
 import { count } from "./format";
 import { go } from "./nav";
-import { setting } from "./settings";
+import { spoilerQuery } from "./settings";
 import { friendly } from "./toast";
 import { counted, RECIPE_KIND } from "./words";
 
@@ -132,7 +132,7 @@ function run(openFirst: boolean): void {
     close();
     return;
   }
-  get<SearchResponse>(`/api/search?q=${encodeURIComponent(text)}&spoilers=${setting("spoilers") ? 1 : 0}`)
+  get<SearchResponse>(`/api/search?q=${encodeURIComponent(text)}&${spoilerQuery()}`)
     .then(function (data) {
       if (!ticket.fresh()) return;
       answered = text;

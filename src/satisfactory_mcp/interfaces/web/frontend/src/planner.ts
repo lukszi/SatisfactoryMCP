@@ -1,7 +1,7 @@
 /* The Planner tab: mounting, following chat, and the focus heartbeat. See
  * docs/planner_slice_contract.md §12. */
 
-import { get, send } from "./api";
+import { get, onToken, send } from "./api";
 import { askOpen, closeBar, onAsks, renderAskBar, settleAskFocus } from "./asks";
 import { loading } from "./dashkit";
 import { keepFocus, make } from "./dom";
@@ -23,6 +23,7 @@ import {
   loadTrack,
   onBench,
   openPlan,
+  pendingFocus,
   redoLast,
   reset,
   resyncHead,
@@ -42,6 +43,7 @@ import { onSelect, selected, selectionRef } from "./selection";
 import { choice, onSetting } from "./settings";
 import { state } from "./state";
 import { note, offer } from "./toast";
+import { objectiveText } from "./words";
 
 import type { ActivityResponse, FocusResponse, PlansResponse } from "./api-shapes";
 import type { ActivityEvent, PlansEvent, Selection } from "./planner-core";
@@ -191,6 +193,9 @@ function draw(): void {
     alt.enter = false;
     shut.focus();
   }
+  var target = pendingFocus.ctl ? root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(pendingFocus.ctl) + '"]') : null;
+  if (target || Date.now() > pendingFocus.until) pendingFocus.ctl = "";
+  if (target) target.focus({ preventScroll: true });
   if (refocus) {
     var back = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(refocus) + '"]');
     if (back) {
@@ -198,7 +203,7 @@ function draw(): void {
       back.focus({ preventScroll: true });
     }
   }
-  var sig = JSON.stringify([bench.tab, bench.alt ? bench.alt.item : "", bench.selection]);
+  var sig = JSON.stringify([bench.tab, bench.alt ? bench.alt.item : "", bench.selection, bench.plan ? bench.plan.rev : null]);
   if (sig !== focusSig) {
     focusSig = sig;
     scheduleFocus();
@@ -264,7 +269,7 @@ function focusBody(): Record<string, unknown> {
     tab: planner ? (at ? (bench.tab === "graph" || bench.tab === "track" ? bench.tab : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
     selection: planner && at ? altSelection() || bench.selection : shared(),
     follow: choice("follow"),
-    sav: sav(),
+    sav: state.token || sav(),
   };
 }
 
@@ -374,7 +379,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
   }
   if (entry.kind === "plan.solve") {
     if (mode === "toasts") {
-      offer(who + " solved: " + entry.text, "open", function () {
+      offer(who + " " + objectiveText(entry.text), "open", function () {
         openFromChat(entry);
       });
     } else {
@@ -422,6 +427,7 @@ export function onSaveEvent(): void {
 }
 
 onReload(function () {
+  scheduleFocus();
   if (bench.world !== state.world) return;
   bench.track.data = null;
   onSaveEvent();
@@ -479,6 +485,7 @@ function wire(): void {
       if (heldDraw) draw();
     }, 0);
   });
+  onToken(scheduleFocus);
   onSetting(scheduleFocus);
   onSelect(scheduleFocus);
   document.addEventListener("keydown", keys);

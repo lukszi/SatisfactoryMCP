@@ -13,11 +13,11 @@ import {
   resourceOptions,
   showRows,
   siteSelection,
-  spoilerParam,
   worldUrl,
 } from "./finder";
 import { count, measured, metres, num, perMin, rounded, signed } from "./format";
 import { isSelected, select } from "./selection";
+import { spoilerFlag } from "./settings";
 import { state } from "./state";
 import {
   capped,
@@ -164,9 +164,9 @@ export function nodeTable(rows: FoundNode[], near: boolean, stale?: TableAge | n
   if (near) columns.push(distanceColumn<FoundNode>());
   columns.push({
     key: "selector",
-    label: "selector",
+    label: "id",
     render: function (n) {
-      return copyCell("node:" + n.name);
+      return copyCell("node:" + n.name, "copy");
     },
   });
   columns.push({
@@ -252,7 +252,7 @@ function fieldTable(rows: FoundField[], near: boolean): HTMLElement {
     },
   ];
   if (near) columns.push(distanceColumn<FoundField>());
-  columns.push({ key: "selector", label: "selector", render: function (f) { return copyCell(f.selector); } });
+  columns.push({ key: "selector", label: "id", render: function (f) { return copyCell(f.selector, "copy"); } });
   columns.push({
     key: "map",
     label: "",
@@ -313,7 +313,7 @@ function siteTable(rows: RankedSite[]): HTMLElement {
     n("rough", "rough", function (s) { return s.rough_m; }, function (s) { return s.rough_m === null ? "–" : rounded(s.rough_m, 1).toFixed(1) + " m"; }, "how uneven the ground is"),
     n("slope", "slope", function (s) { return s.slope_deg; }, function (s) { return measured(s.slope_deg, 0, "°"); }),
     n("wet", "water", function (s) { return s.wet_pct; }, function (s) { return measured(s.wet_pct, 0, "%"); }, "share of the site under water"),
-    { key: "selector", label: "selector", render: function (s) { return copyCell(s.selector); } },
+    { key: "selector", label: "id", render: function (s) { return copyCell(s.selector, "copy"); } },
     {
       key: "map",
       label: "",
@@ -382,7 +382,8 @@ function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
     );
   }
   card.appendChild(line);
-  if (d.unit === "mixed") note(card, "* items and m³ of fluid added together; choose one resource for a true total");
+  var caveats: string[] = [];
+  if (d.unit === "mixed") caveats.push("* items and m³ of fluid added together; choose one resource for a true total");
   if (d.selectors.length) {
     var sel = make("p", "dash-note world-selectors");
     sel.appendChild(document.createTextNode("as selectors: "));
@@ -393,19 +394,17 @@ function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
     if (d.where) sel.appendChild(document.createTextNode("· near " + d.where));
     card.appendChild(sel);
   } else if (d.where) note(card, "near " + d.where);
-  if (d.elevation) note(card, "between " + num(d.elevation[0], 0) + " and " + num(d.elevation[1], 0) + " m up");
+  if (d.elevation) caveats.push("between " + num(d.elevation[0], 0) + " and " + num(d.elevation[1], 0) + " m up");
   if (d.water && d.water.pumps) {
-    note(
-      card,
+    caveats.push(
       counted(d.water.pumps, "water pump spot") +
         (d.water.per_pump_m3_min === null ? "" : " · " + num(d.water.per_pump_m3_min, 1) + " m³/min each") +
         (d.water.sea_level_m === null ? "" : " · sea level " + num(d.water.sea_level_m, 0) + " m")
     );
   }
-  d.notes.forEach(function (t) {
-    note(card, t);
-  });
-  if (d.save_error) note(card, d.save_error + "; occupancy unknown");
+  caveats = caveats.concat(d.notes);
+  if (d.save_error) caveats.push(d.save_error + "; occupancy unknown");
+  if (caveats.length) note(card, caveats.join(" · "));
   hiddenLine(card, d.hidden_spoilers, "locked node");
   staleLine(card, d.stale);
 }
@@ -466,7 +465,7 @@ export function renderNodes(body: HTMLElement, view: "nodes" | "fields", params:
       kind: params.kind || "",
       status: params.status || "",
       near: params.near || "",
-      spoilers: spoilerParam(),
+      spoilers: spoilerFlag(),
     })
   );
   if (waiting(card, nodesBox, view)) return;

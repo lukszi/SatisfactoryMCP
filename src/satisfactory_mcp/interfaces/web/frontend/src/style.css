@@ -1400,6 +1400,11 @@ body.dash-on #panel {
   text-transform: uppercase;
 }
 
+.dash-unit {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .dash-card > .dash-h:first-child,
 .dash-card > .dash-title:first-child .dash-h {
   margin-top: 0;
@@ -2064,6 +2069,11 @@ a.dash-where:hover {
 
 .graph-arrowhead {
   fill: var(--accent);
+}
+
+.graph-edge-back {
+  fill: var(--bg);
+  opacity: 0.85;
 }
 
 .graph-edge-label {
@@ -3067,12 +3077,6 @@ path.lasso-area {
   min-width: 7.5em;
 }
 
-.pin-place > .btn {
-  flex: 1;
-  justify-content: center;
-  text-align: center;
-}
-
 .pin-tag {
   display: flex;
   align-items: center;
@@ -3134,6 +3138,16 @@ path.lasso-area {
   margin-top: var(--sp-2);
 }
 
+.track-caveats > summary {
+  cursor: pointer;
+}
+
+@media (min-width: 600px) {
+  .track-controls .plan-row {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+}
+
 .ask-bar {
   display: flex;
   flex-direction: column;
@@ -3141,7 +3155,7 @@ path.lasso-area {
   margin-bottom: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   background: var(--panel);
-  border: 1px solid var(--select);
+  border: 1px solid var(--line);
   border-radius: var(--r);
   font-size: var(--fs-m);
 }

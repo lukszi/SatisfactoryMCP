@@ -38,6 +38,16 @@ var KINDS: [string, string][] = [
 
 var KIND_WORD: Record<string, string> = { belt: "belt", lift: "lift", pipe: "pipe" };
 
+var BASIS: Record<string, string> = {
+  "machine port": "a machine port",
+  pump: "a pump or valve",
+  propagated: "its network",
+  unresolved: "not known",
+  role: "its ends",
+  nature: "its kind",
+  unknown: "not known",
+};
+
 function endText(e: RunEnd): string {
   return coords(e.x_m, e.y_m);
 }
@@ -53,7 +63,7 @@ function recentre(params: Record<string, string>, to: string): void {
 function plug(cell: HTMLElement, v: string | null, params: Record<string, string>): void {
   if (v && /^(chain|pipe):/.test(v)) {
     cell.appendChild(
-      button(v, function () {
+      button(v.replace(":", " "), function () {
         recentre(params, v);
       }, { title: "search again near " + v })
     );
@@ -79,9 +89,11 @@ function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
         return r.id;
       },
       render: function (r) {
-        var cell = make("span");
-        cell.appendChild(copyCell(r.id));
-        if (r.label && r.label !== r.id) cell.appendChild(make("span", "dash-sub", r.label));
+        var named = r.label && r.label !== r.id ? r.label : (KIND_WORD[r.kind] || r.kind) + " · " + metres(r.length_m);
+        var cell = make("span", "", named);
+        var sub = make("span", "dash-sub");
+        sub.appendChild(copyCell(r.id, r.id.replace(":", " ")));
+        cell.appendChild(sub);
         return cell;
       },
     },
@@ -134,10 +146,10 @@ function runTable(rows: RunRow[], params: Record<string, string>): HTMLElement {
     },
     {
       key: "basis",
-      label: "basis",
+      label: "direction from",
       title: "how the flow direction was worked out",
       render: function (r) {
-        return r.basis || "–";
+        return r.basis ? BASIS[r.basis] || r.basis : "–";
       },
     },
     {

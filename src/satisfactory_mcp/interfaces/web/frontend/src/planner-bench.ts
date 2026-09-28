@@ -128,10 +128,11 @@ function conflictLine(parent: HTMLElement, id: number, who: string, text: string
   parent.appendChild(line);
 }
 
-function removable(parent: HTMLElement, text: string, ops: Op[]): void {
+function removable(parent: HTMLElement, text: string, ops: Op[], ctl?: string): void {
   var c = make("span", "plan-chip", text);
   var x = make("button", "plan-chip-x", "×");
   x.type = "button";
+  if (ctl) x.setAttribute("data-ctl", ctl);
   x.title = "remove";
   x.setAttribute("aria-label", "remove " + text);
   x.onclick = function () {
@@ -143,7 +144,7 @@ function removable(parent: HTMLElement, text: string, ops: Op[]): void {
 
 function chips(parent: HTMLElement, field: string, members: unknown[], words: (m: unknown) => string): void {
   members.forEach(function (m) {
-    removable(parent, words(m), [{ op: "remove", field: field, member: m }]);
+    removable(parent, words(m), [{ op: "remove", field: field, member: m }], field + ":" + String(m));
   });
 }
 

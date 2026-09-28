@@ -51,8 +51,10 @@ export var W = {
   countAsBuilt: "count as built",
   wholeWorld: "whole world",
   startupHeadroom: "startup headroom",
+  stageUnit: "stage",
+  stages: "stages",
   stage: function (n: number, of: number): string {
-    return "stage " + count(n) + " of " + count(of);
+    return W.stageUnit + " " + count(n) + " of " + count(of);
   },
 } as const;
 
@@ -104,6 +106,10 @@ export function objectiveText(text: string): string {
 }
 
 export var RECIPE_KIND: Record<string, string> = { part: "machine", building: "building", manual: "crafted" };
+
+export function gapText(gap: string): string {
+  return gap.replace(/buildVersion/g, "build").replace(/saveVersion/g, "save format").replace("->", "→");
+}
 
 export function version(n: number): string {
   return "version v" + n;

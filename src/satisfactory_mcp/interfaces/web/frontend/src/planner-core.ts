@@ -2,7 +2,8 @@
 
 import { get, latest, missing, push, send } from "./api";
 import { go } from "./nav";
-import { setting } from "./settings";
+import { biomassQuery } from "./powerview";
+import { spoilerQuery } from "./settings";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 import { W } from "./words";
@@ -103,7 +104,6 @@ export interface AltView {
   item: string;
   data: PlanAlternatesResponse | null;
   error: string;
-  seq: number;
   asked: number;
   opener: string;
   enter: boolean;
@@ -147,6 +147,8 @@ export var bench = {
   track: freshTrack(),
   seen: {} as Record<string, Partition>,
 };
+
+export var pendingFocus = { ctl: "", until: 0 };
 
 export var inbox = { card: null as ActivityEvent | null };
 
@@ -343,10 +345,6 @@ function adopt(plan: PlanStateBody): void {
 var TRACK: ApiPath = "/api/plan/track";
 var FEEDERS: ApiPath = "/api/plan/feeders";
 
-function biomassFlag(): string {
-  return "biomass=" + (setting("biomass") ? "true" : "false");
-}
-
 export function trackDash(key: string, stage: number): string {
   return "planner/" + key + "/track" + (stage ? "/" + stage : "");
 }
@@ -404,7 +402,7 @@ export function loadTrack(): void {
   view.seq++;
   view.asked = plan.rev;
   changed();
-  get<TrackResponse>(`${TRACK}?key=${encodeURIComponent(key)}&${biomassFlag()}` as ApiUrl)
+  get<TrackResponse>(`${TRACK}?key=${encodeURIComponent(key)}&${biomassQuery()}` as ApiUrl)
     .then(function (data) {
       if (!ticket.fresh() || bench.key !== key || bench.track !== view) return;
       renumber(data);
@@ -432,17 +430,18 @@ export function loadFeeders(): void {
   var view = bench.track;
   var key = bench.key;
   var feeders: FeedersView = { data: null, error: "", busy: true };
+  var ticket = latest("planner-feeders");
   view.feeders = feeders;
   changed();
-  get<FeedersResponse>(`${FEEDERS}?${biomassFlag()}` as ApiUrl)
+  get<FeedersResponse>(`${FEEDERS}?${biomassQuery()}` as ApiUrl)
     .then(function (data) {
-      if (bench.key !== key || view.feeders !== feeders) return;
+      if (!ticket.fresh() || bench.key !== key || view.feeders !== feeders) return;
       feeders.data = data;
       feeders.busy = false;
       changed();
     })
     .catch(function (reason) {
-      if (bench.key !== key || view.feeders !== feeders) return;
+      if (!ticket.fresh() || bench.key !== key || view.feeders !== feeders) return;
       feeders.error = friendly(reason);
       feeders.busy = false;
       changed();
@@ -476,7 +475,7 @@ export function showAlternates(item: string, opener?: string): void {
     }
     return;
   }
-  bench.alt = { item: item, data: null, error: "", seq: 0, asked: 0, opener: opener || "", enter: !!opener };
+  bench.alt = { item: item, data: null, error: "", asked: 0, opener: opener || "", enter: !!opener };
   loadAlternates();
 }
 
@@ -487,22 +486,19 @@ export function hideAlternates(): string {
   return opener;
 }
 
-var altSeq = 0;
-
 export function loadAlternates(): void {
   var alt = bench.alt;
   var plan = bench.plan;
   if (!alt || !plan) return;
   var key = bench.key;
   var rev = plan.rev;
-  var seq = ++altSeq;
-  alt.seq = seq;
+  var ticket = latest("planner-alternates");
   alt.asked = rev;
   changed();
-  send<PlanAlternatesResponse>("POST", ALTERNATES, { key: key, rev: rev, item: alt.item }, undefined, "spoilers=" + (setting("spoilers") ? 1 : 0))
+  send<PlanAlternatesResponse>("POST", ALTERNATES, { key: key, rev: rev, item: alt.item }, undefined, spoilerQuery())
     .then(function (data) {
       var now = bench.alt;
-      if (!now || now.seq !== seq || bench.key !== key) return;
+      if (!now || !ticket.fresh() || bench.key !== key) return;
       now.data = data;
       now.error = "";
       now.asked = 0;
@@ -510,7 +506,7 @@ export function loadAlternates(): void {
     })
     .catch(function (reason) {
       var now = bench.alt;
-      if (!now || now.seq !== seq || bench.key !== key) return;
+      if (!now || !ticket.fresh() || bench.key !== key) return;
       now.error = friendly(reason);
       now.asked = 0;
       changed();

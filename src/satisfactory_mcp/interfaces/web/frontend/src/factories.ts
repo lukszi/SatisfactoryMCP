@@ -10,7 +10,7 @@ import { loadOne } from "./load";
 import { ringCandidate, startLasso } from "./lasso";
 import { hashFor } from "./map";
 import { showBox, vitals } from "./panel";
-import { blankOrLong, NAME_MAX, newest, refreshLabels, refusal, renamedTo, wrote } from "./rename";
+import { blankOrLong, NAME_MAX, newest, onRenamed, refreshLabels, refusal, renamedTo, wrote } from "./rename";
 import { amount, choice, onSetting, setting } from "./settings";
 import { state } from "./state";
 import { actionTone, stateSets, tone, toneClass } from "./states";
@@ -922,3 +922,7 @@ export function wireDetect(): void {
   detect.asked = detectAsked();
   onSetting(settingChanged);
 }
+
+onRenamed(function () {
+  if (state.dash.indexOf("factories/") === 0) render();
+});

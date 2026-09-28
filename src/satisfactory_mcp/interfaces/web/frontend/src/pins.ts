@@ -1,11 +1,12 @@
 /* Pins: numbered handles (pin:N) the player makes on the page and names to chat.
  * See docs/planner-p3_contract.md §4, §8 and §9. */
 
-import { get, send } from "./api";
+import { send } from "./api";
 import { copyText } from "./copy";
 import { code, esc, html, popup } from "./dom";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
+import { liveStore } from "./livestore";
 import { flyToPoint, map, xy } from "./map";
 import { onMap } from "./nav";
 import { registerFetch } from "./registry";
@@ -31,26 +32,19 @@ var KIND_ATTR = "data-pin-kind";
 var REF_ATTR = "data-pin-ref";
 var PIN_ZOOM = 1;
 
-var store = { data: null as PinsResponse | null, error: "", world: "" };
 var markers: Record<number, L.Marker> = {};
-var listeners: Array<() => void> = [];
-var inflight = false;
-var again = false;
+var store = liveStore<PinsResponse, PinRow>(
+  PINS,
+  function (data) {
+    return data.pins;
+  },
+  "pin",
+  draw
+);
 
-export function onPins(listener: () => void): void {
-  listeners.push(listener);
-}
-
-function notify(): void {
-  listeners.forEach(function (listener) {
-    listener();
-  });
-}
-
-export function pinStore(): { data: PinsResponse | null; error: string } {
-  if (store.world !== state.world) return { data: null, error: "" };
-  return store;
-}
+export var onPins = store.on;
+export var pinStore = store.read;
+export var refetchPins = store.refetch;
 
 export function livePins(): PinRow[] {
   var data = pinStore().data;
@@ -86,9 +80,6 @@ function pinRows(p: PinRow): Row[] {
 }
 
 function draw(data: PinsResponse): void {
-  store.data = data;
-  store.error = "";
-  store.world = state.world;
   var group = layer("pins", true, undefined, [BAND.chrome, 60, "pins"]);
   markers = {};
   var stacked: Record<string, number> = {};
@@ -112,7 +103,7 @@ function draw(data: PinsResponse): void {
     tag.addTo(group);
     markers[p.n] = tag;
   });
-  notify();
+  store.accept(data);
 }
 
 registerFetch<PinsResponse>({
@@ -124,33 +115,6 @@ registerFetch<PinsResponse>({
   refilters: false,
   draw: draw,
 });
-
-export function refetchPins(): void {
-  if (inflight) {
-    again = true;
-    return;
-  }
-  inflight = true;
-  var epoch = state.epoch;
-  var done = function () {
-    inflight = false;
-    if (again) {
-      again = false;
-      refetchPins();
-    }
-  };
-  get<PinsResponse>(PINS)
-    .then(function (data) {
-      if (epoch === state.epoch) draw(data);
-    })
-    .catch(function (reason) {
-      if (epoch !== state.epoch) return;
-      store.error = friendly(reason);
-      store.world = state.world;
-      notify();
-    })
-    .then(done, done);
-}
 
 export function pinThis(kind: string, ref: PinRef): void {
   send<PinCreated>("POST", PINS, { kind: kind, ref: ref })
@@ -171,31 +135,16 @@ export function pinThis(kind: string, ref: PinRef): void {
     });
 }
 
-function replaced(row: PinRow): void {
-  if (!store.data) return;
-  store.data.pins = store.data.pins.map(function (p) {
-    return p.n === row.n ? row : p;
-  });
-  notify();
-}
-
-function refused(reason: unknown): boolean {
-  var err = reason as StatusError;
-  var body = err && (err.body as PinStaleResponse | undefined);
-  if (err && err.status === 409 && body && body.pin) {
-    fail(body.error + "; this is the current one");
-    replaced(body.pin);
-    return true;
-  }
-  fail(friendly(reason));
-  refetchPins();
-  return false;
+function refused(reason: unknown): void {
+  var current = store.refused(reason);
+  var body = current ? ((reason as StatusError).body as PinStaleResponse) : null;
+  fail(body ? body.error + "; this is the current one" : friendly(reason));
 }
 
 export function renamePin(pin: PinRow, label: string): Promise<boolean> {
   return send<PinRow & ApiError>("PATCH", PIN_ONE, { rev: pin.rev, label: label }, String(pin.n))
     .then(function (row) {
-      replaced(row);
+      store.replace(row);
       return true;
     })
     .catch(function (reason) {
@@ -204,20 +153,15 @@ export function renamePin(pin: PinRow, label: string): Promise<boolean> {
     });
 }
 
-var dropping: Record<number, boolean> = {};
-
 export function dropPin(pin: PinRow): void {
-  if (dropping[pin.n]) return;
-  dropping[pin.n] = true;
-  send<PinDropped>("DELETE", PIN_ONE, { rev: pin.rev }, String(pin.n))
-    .then(function () {
-      note("deleted " + pin.id);
-      refetchPins();
-    })
-    .catch(refused)
-    .then(function () {
-      delete dropping[pin.n];
-    });
+  store.once(pin.n, function () {
+    return send<PinDropped>("DELETE", PIN_ONE, { rev: pin.rev }, String(pin.n))
+      .then(function () {
+        note("deleted " + pin.id);
+        refetchPins();
+      })
+      .catch(refused);
+  });
 }
 
 export function showPin(pin: PinRow): void {

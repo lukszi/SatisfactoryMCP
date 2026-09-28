@@ -9,7 +9,7 @@ import { dashParts, go } from "./nav";
 import { vitals } from "./panel";
 import { renderAlternates } from "./planner-alternates";
 import { askButton, askMarks } from "./asks";
-import { bench, changed, gesture, pickTab, showAlternates, undoRev } from "./planner-core";
+import { bench, changed, gesture, pendingFocus, pickTab, showAlternates, undoRev } from "./planner-core";
 import { renderTrack } from "./planner-track";
 import { pinsFor, pinThis } from "./pins";
 import { headroom, LEDGER } from "./powerview";
@@ -212,7 +212,10 @@ function banButton(row: SolveRow): HTMLButtonElement {
   return button(
     "ban",
     function () {
-      gesture(banOps(row.recipe_id || row.recipe));
+      var member = row.recipe_id || row.recipe;
+      pendingFocus.ctl = "banned:" + member;
+      pendingFocus.until = Date.now() + 5000;
+      gesture(banOps(member));
     },
     { title: "keep this recipe out of the plan", label: "ban " + row.recipe }
   );

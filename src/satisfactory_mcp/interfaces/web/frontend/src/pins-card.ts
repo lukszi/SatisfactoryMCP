@@ -2,7 +2,7 @@
  * See docs/planner-p3_contract.md §2 F4. */
 
 import { askButton } from "./asks";
-import { button, chip, copyButton, empty, error, fieldError, link, loading, table } from "./dashkit";
+import { button, chip, copyButton, empty, error, fieldError, link, loading, showAll, table } from "./dashkit";
 import { make } from "./dom";
 import { dropPin, LABEL_MAX, pinStore, refetchPins, renamePin, showPin } from "./pins";
 import { counted, PIN_KIND } from "./words";
@@ -118,6 +118,8 @@ function actions(p: PinRow, redraw: () => void): HTMLElement {
   return box;
 }
 
+var allPins = false;
+
 export function renderPins(parent: HTMLElement, redraw: () => void): void {
   var card = make("section", "dash-card");
   var got = pinStore();
@@ -177,7 +179,11 @@ export function renderPins(parent: HTMLElement, redraw: () => void): void {
         },
       },
     ];
-    card.appendChild(table(columns, rows, { sort: order, onSort: redraw, caption: "pins" }));
+    var grid = table(columns, rows, { sort: order, onSort: redraw, caption: "pins" });
+    card.appendChild(grid);
+    showAll(card, grid, rows.length, 50, "show all " + counted(rows.length, "pin"), allPins, function () {
+      allPins = true;
+    });
   }
   parent.appendChild(card);
 }
