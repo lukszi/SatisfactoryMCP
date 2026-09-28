@@ -719,7 +719,7 @@ def _label(op: dict) -> str:
     if kind in ("add", "remove"):
         return f"{name} {_fmt(op['member'])}"
     if kind == "set":
-        return name
+        return "startup headroom" if name == "headroom_mw" else name
     if kind == "site":
         return "site"
     if kind == "rename":

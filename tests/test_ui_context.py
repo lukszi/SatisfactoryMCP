@@ -334,6 +334,13 @@ def test_asks_are_listed_with_what_they_are_about_and_marked_seen(ctx):
     assert len([e for e in journal.read(WORLD) if e["kind"] == "ask.seen"]) == 1
 
 
+def test_an_ask_about_a_plan_names_the_plan_once(ctx):
+    made = PlanLog(WORLD).create("north hmf", {}, actor=PAGE)
+    about = {"kind": "plan", "label": "north hmf", "ref": made.key, "plan": made.key, "rev": 1}
+    asks.create(WORLD, "what is left?", about)
+    assert _asks_line(srv.ui_context()).endswith('about plan "north hmf" v1')
+
+
 def test_only_the_newest_six_asks_show(ctx):
     for n in range(9):
         asks.create(WORLD, f"question {n}", ABOUT)

@@ -903,6 +903,7 @@ def test_headroom_conflicts_only_with_itself(plans, plan):
     with pytest.raises(Outdated) as caught:
         plans.push(plan, 1, [_headroom(3000)], actor=PAGE)
     assert caught.value.conflicts[0].key == "headroom_mw"
+    assert caught.value.conflicts[0].text().startswith("startup headroom: you ")
     assert plans.push(plan, 1, [_headroom(2000)], actor=PAGE).noop
     merged = plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
     assert merged.state.headroom_mw == 2000.0 and merged.state.args.sloops == 2

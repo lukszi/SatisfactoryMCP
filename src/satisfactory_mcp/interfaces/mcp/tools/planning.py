@@ -2063,7 +2063,7 @@ def _plan_news(log: PlanLog, cursor, names: dict[str, str], me: int) -> tuple[li
 def _ask_text(row: dict) -> str:
     about = row["about"]
     text = f'{row["id"]} "{row["text"]}" about {about["kind"]} "{about["label"]}"'
-    if row["plan_name"]:
+    if row["plan_name"] and about["kind"] != "plan":
         text += f' in "{row["plan_name"]}"'
     if about.get("rev"):
         text += f" v{about['rev']}"
