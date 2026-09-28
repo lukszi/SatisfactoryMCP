@@ -408,6 +408,8 @@ export function loadTrack(): void {
       view.error = "";
       view.asked = 0;
       if (view.stage > data.stages.length) view.stage = 0;
+      var here = trackDash(key, view.stage);
+      if (state.dash.indexOf(trackDash(key, 0)) === 0 && state.dash !== here) go(here, true);
       changed();
     })
     .catch(function (reason) {

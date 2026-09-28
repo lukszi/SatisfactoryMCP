@@ -1,7 +1,7 @@
 /* The result panel: what the head solves to, as a build list or a graph, redrawn after every
  * new version. See docs/planner-p3_contract.md §9. */
 
-import { button, chip, copyButton, error, loading, table, tabs2 } from "./dashkit";
+import { button, chip, copyButton, error, idChip, loading, table, tabs2 } from "./dashkit";
 import { make } from "./dom";
 import { count, flow, mw, pct } from "./format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "./graph";
@@ -256,9 +256,9 @@ function recipeCell(row: SolveRow, live: boolean): HTMLElement {
   if (!live) return cell;
   if (bench.chatRows[row.id]) cell.appendChild(chip(W.actorChat, "muted", "chat changed this process since you opened the plan"));
   var pinned = row.recipe_id ? pinsFor(bench.key)[row.recipe_id] : undefined;
-  if (pinned) cell.appendChild(chip(pinned.id, "muted", pinned.text));
+  if (pinned) cell.appendChild(idChip(pinned.id, pinned.text));
   askMarks(bench.key, "process", row.recipe_id || row.recipe).forEach(function (a) {
-    cell.appendChild(chip(a.id, "muted", a.text));
+    cell.appendChild(idChip(a.id, a.text));
   });
   return cell;
 }

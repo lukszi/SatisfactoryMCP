@@ -97,6 +97,12 @@ function busy(on: boolean): void {
   else L.DomUtil.removeClass(container, "busy");
 }
 
+var reloaded: Array<() => void> = [];
+
+export function onReload(listener: () => void): void {
+  reloaded.push(listener);
+}
+
 export function reload(note?: string): void {
   state.epoch += 1;
   dropToken();
@@ -113,4 +119,7 @@ export function reload(note?: string): void {
   writeHash();
   loadStatic();
   loadLive();
+  reloaded.forEach(function (listener) {
+    listener();
+  });
 }

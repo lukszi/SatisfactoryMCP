@@ -349,6 +349,12 @@ export function chip(text: string, tone?: "ok" | "bad" | "blocked" | "mid" | "mu
   return c;
 }
 
+export function idChip(id: string, title?: string): HTMLElement {
+  var c = chip(id, "muted", title);
+  c.classList.add("chip-id");
+  return c;
+}
+
 var fieldSerial = 0;
 
 export function fieldError(field: HTMLElement, message: string): void {

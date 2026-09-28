@@ -250,7 +250,9 @@ export function settleAskFocus(root: HTMLElement): void {
   if (!bar.back) return;
   var opener = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(bar.back) + '"]');
   bar.back = "";
-  if (opener) opener.focus({ preventScroll: true });
+  if (!opener) return;
+  opener.focus({ preventScroll: true });
+  opener.scrollIntoView({ block: "center" });
 }
 
 function replaced(row: AskRow): void {

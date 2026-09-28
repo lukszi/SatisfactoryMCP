@@ -66,7 +66,7 @@ export function renderAsks(parent: HTMLElement, redraw: () => void, planKey?: st
   card.appendChild(make("h2", "dash-h", got.data && rows.length ? "asks · " + counted(rows.length, "ask") : "asks"));
   if (got.error && !got.data) error(card, "the asks", got.error, refetchAsks);
   else if (!got.data) loading(card, "asks");
-  else if (!rows.length) empty(card, "no asks yet: ask chat from any row of a plan");
+  else if (!rows.length) empty(card, planKey ? "no asks about this plan yet" : "no asks yet: ask chat from any row of a plan");
   else {
     var columns: Column<AskRow>[] = [
       {

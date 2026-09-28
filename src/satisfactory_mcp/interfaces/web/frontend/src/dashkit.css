@@ -192,6 +192,11 @@ a.btn {
   color: var(--muted);
 }
 
+.chip-id {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .dk-field-error {
   display: block;
   margin-top: 2px;

@@ -4,11 +4,11 @@
 import { askButton, askMarks } from "./asks";
 import { renderAsks } from "./asks-card";
 import { copyText } from "./copy";
-import { button, chip, empty, error, fieldError, loading, pressed, table } from "./dashkit";
+import { button, chip, empty, error, fieldError, idChip, loading, pressed, table } from "./dashkit";
 import { make } from "./dom";
 import { count, mw, num, range, signed } from "./format";
 import { onMap } from "./nav";
-import { showBox, vitals } from "./panel";
+import { showBox, showPoint, vitals } from "./panel";
 import { bench, changed, gesture, loadFeeders, loadTrack, pickStage } from "./planner-core";
 import { recipesButton } from "./planner-result";
 import { headroom } from "./powerview";
@@ -81,7 +81,7 @@ function about(kind: string, label: string, ref: string): AskAbout {
 
 function marks(cell: HTMLElement, kind: string, ref: string): void {
   askMarks(bench.key, kind, ref).forEach(function (a) {
-    cell.appendChild(chip(a.id, "muted", a.text));
+    cell.appendChild(idChip(a.id, a.text));
   });
 }
 
@@ -96,7 +96,7 @@ function stateChips(parent: HTMLElement, states: TrackState[]): void {
 
 function verb(row: TrackRow): string {
   var build = VERB.build + " " + range(row.build, row.build_max);
-  if (row.verb === "unpause") return VERB.unpause + " " + count(row.count);
+  if (row.verb === "unpause") return VERB.unpause + " " + count(row.count) + (row.build > 0 ? ", then " + build : "");
   if (row.verb === "setrecipe") return VERB.setrecipe + " " + count(row.count) + (row.build > 0 ? ", then " + build : "");
   if (row.verb === "build") return build;
   return VERB.ok || "–";
@@ -121,7 +121,7 @@ function headline(parent: HTMLElement, d: TrackResponse, asked: number): void {
   title.appendChild(make("h2", "dash-h", W.track + " · v" + d.rev));
   if (asked) title.appendChild(make("span", "plan-status", "tracking v" + asked + "…"));
   card.appendChild(title);
-  var text = d.stage_text || (d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom");
+  var text = d.scope_error ? "" : d.stage_text || (d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom");
   if (text) card.appendChild(make("p", "plan-headline", text));
   var facts = ["save " + d.age_note];
   if (d.scope_note) facts.push(d.scope_note);
@@ -181,9 +181,8 @@ function givenField(parent: HTMLElement, stored: number | null, measured: number
       field.blur();
     }
   };
-  parent.appendChild(make("span", "plan-sub", "given"));
+  parent.appendChild(make("span", "plan-sub", "given (MW)"));
   parent.appendChild(field);
-  parent.appendChild(make("span", "dash-muted", "MW"));
   if (headroomProblem.key === key && headroomProblem.text) fieldError(field, headroomProblem.text);
 }
 
@@ -342,9 +341,9 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
       key: "running",
       label: "running",
       align: "right",
-      title: "machines of this wave a productivity monitor proves running",
+      title: "machines of this wave a productivity monitor proves running; – where none is monitored",
       render: function (s) {
-        return count(s.running);
+        return s.running === null ? "–" : count(s.running);
       },
     },
     {
@@ -628,6 +627,42 @@ function site(parent: HTMLElement, d: TrackResponse): void {
   parent.appendChild(card);
 }
 
+function feederActions(r: Feeder): HTMLElement {
+  var acts = make("span", "dash-acts");
+  var x = r.x_m;
+  var y = r.y_m;
+  if (x !== null && y !== null) {
+    acts.appendChild(
+      button(
+        "map",
+        function () {
+          onMap(function () {
+            showPoint(x as number, y as number, { label: r.name, layers: ["machines"] });
+          });
+        },
+        { map: true, title: "fly the map to this " + r.name, label: "show this " + r.name + " on the map" }
+      )
+    );
+  }
+  acts.appendChild(
+    button(
+      "copy id",
+      function () {
+        copyText("machine:" + r.instance).then(
+          function () {
+            note("copied the id of this " + r.name);
+          },
+          function () {
+            fail("could not copy the id: the browser refused");
+          }
+        );
+      },
+      { title: "copy this extractor's selector for a tool call", label: "copy the id of this " + r.name }
+    )
+  );
+  return acts;
+}
+
 function feeders(card: HTMLElement): void {
   var f = bench.track.feeders;
   if (!f) {
@@ -658,6 +693,7 @@ function feeders(card: HTMLElement): void {
           return mw(r.mw);
         },
       },
+      { key: "acts", label: "", render: feederActions },
     ];
     sub.appendChild(table(columns, f.data.feeders, { caption: "extractors feeding running generators" }));
     if (f.data.text) sub.appendChild(make("p", "dash-note", f.data.text));
@@ -728,6 +764,10 @@ export function renderTrack(parent: HTMLElement, select: (s: Selection) => void)
     return;
   }
   controls(frame, d);
+  if (d.scope_error) {
+    renderAsks(frame, changed, bench.key);
+    return;
+  }
   stages(frame, d);
   jobs(frame, d, select);
   short(frame, d.cost);

@@ -5,6 +5,7 @@ import { get, send } from "./api";
 import { askOpen, closeBar, onAsks, renderAskBar, settleAskFocus } from "./asks";
 import { loading } from "./dashkit";
 import { keepFocus, make } from "./dom";
+import { onReload } from "./load";
 import { dashParts, go } from "./nav";
 import { onVitals } from "./panel";
 import { renderBench } from "./planner-bench";
@@ -41,7 +42,7 @@ import { choice, onSetting } from "./settings";
 import { state } from "./state";
 import { note, offer } from "./toast";
 
-import type { ActivityResponse, FocusResponse } from "./api-shapes";
+import type { ActivityResponse, FocusResponse, PlansResponse } from "./api-shapes";
 import type { ActivityEvent, PlansEvent, Selection } from "./planner-core";
 
 var FOCUS_DEBOUNCE_MS = 1000;
@@ -283,6 +284,25 @@ function openFromChat(entry: ActivityEvent): void {
   else go("planner");
 }
 
+function named(key: string, given: string | null | undefined, then: (name: string) => void): void {
+  var known = given || (bench.key === key && bench.plan ? bench.plan.name : "") || planTitle(key);
+  if (known) {
+    then(known);
+    return;
+  }
+  get<PlansResponse>("/api/plans").then(
+    function (data) {
+      var row = data.index.filter(function (r) {
+        return r.key === key;
+      })[0];
+      then(row ? row.name : "a plan");
+    },
+    function () {
+      then("a plan");
+    }
+  );
+}
+
 export function onActivityEvent(entry: ActivityEvent): void {
   if (entry.world !== state.world || entry.actor.kind === "page" || seen[entry.id]) return;
   seen[entry.id] = true;
@@ -298,17 +318,24 @@ export function onActivityEvent(entry: ActivityEvent): void {
     var stage = typeof args.stage === "number" && args.stage >= 1 ? Math.floor(args.stage) : 0;
     var there = trackDash(tracked, stage);
     var startup = args.section === "startup";
-    var called = entry.name || planTitle(tracked) || "a plan";
     var open = function () {
       startupFocus = startup;
       if (state.dash === there) changed();
       else go(there);
     };
-    if (mode === "toasts") offer(who + " looked at the track of “" + called + "”", "open", open);
-    else {
+    if (mode === "toasts") {
+      named(tracked, entry.name, function (called) {
+        offer(who + " looked at the track of “" + called + "”", "open", open);
+      });
+    } else {
       whenIdle(function () {
-        if (state.dash !== there) note(who + " opened the track of “" + called + "” (Settings, follow chat)");
+        var moving = state.dash !== there;
         open();
+        if (moving) {
+          named(tracked, entry.name, function (called) {
+            note(who + " opened the track of “" + called + "” (Settings, follow chat)");
+          });
+        }
       });
     }
     return;
@@ -375,6 +402,12 @@ export function onSaveEvent(): void {
   dropFeeders();
   if (trackShowing()) loadTrack();
 }
+
+onReload(function () {
+  if (bench.world !== state.world) return;
+  bench.track.data = null;
+  onSaveEvent();
+});
 
 export function onNotesEvent(): void {
   if (trackShowing() && bench.plan && bench.plan.factory) loadTrack();

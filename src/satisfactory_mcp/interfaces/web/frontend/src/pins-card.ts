@@ -112,7 +112,7 @@ function actions(p: PinRow, redraw: () => void): HTMLElement {
       { title: "delete " + p.id + "; its number is not reused", label: "delete " + p.id }
     )
   );
-  var about: AskAbout = { kind: "pin", label: p.label ? p.id + " “" + p.label + "”" : p.id + " " + p.text, ref: p.id };
+  var about: AskAbout = { kind: "pin", label: p.id + " " + (p.label || p.text.replace(/ in “[^”]*”$/, "")), ref: p.id };
   if (p.ref.plan && !p.gone) about.plan = p.ref.plan;
   box.appendChild(askButton(about, "pin:" + p.n));
   return box;
