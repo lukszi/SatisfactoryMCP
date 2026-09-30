@@ -5,7 +5,7 @@ import { button, choice as choiceBox, empty, fieldError, link, note } from "./da
 import { el, keepFocus, make } from "./dom";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
-import { onVitals, showFactory, showPoint, vitals } from "./panel";
+import { onVitals, showFactory, showMachine, showPoint, vitals } from "./panel";
 import { renderPlanner, viewFocus } from "./planner";
 import { bench, onBench } from "./planner-core";
 import { planTitle } from "./planner-list";
@@ -113,13 +113,15 @@ export function pointButton(
   },
   label?: string
 ): HTMLElement {
-  var shown = { label: row.name || row.what, layers: row.instance ? ["machines"] : undefined };
+  var instance = row.instance;
+  var shown = { label: row.name || row.what, layers: instance ? ["machines"] : undefined };
   if (!located(row)) return make("span", "dash-muted", "–");
   var at = row;
   return mapButton(
     "fly the map to it",
     function () {
-      showPoint(at.x_m, at.y_m, shown);
+      if (instance) showMachine(instance, shown.label || "a machine", at.x_m, at.y_m, shown);
+      else showPoint(at.x_m, at.y_m, shown);
     },
     label || (shown.label ? "show " + shown.label + " on the map" : undefined)
   );
