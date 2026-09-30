@@ -306,9 +306,7 @@ def inspect(
     nearest = found.nearest
     stale = []
     if st is not None:
-        nodes_age = spatial_nodes.table_age(
-            st.header, table, [n["instance"] for n in nearest]
-        )
+        nodes_age = spatial_nodes.table_age(st.header, table, [n["instance"] for n in nearest])
         pickups_age = collectibles_service.table_age(st)
         stale = [
             age
