@@ -31,6 +31,7 @@ import {
 } from "./planner-core";
 import { duplicateButton, renderVersions, renderView } from "./planner-history";
 import { loadList, planTitle } from "./planner-list";
+import { powerRow } from "./planner-power";
 import { banOps, recipeName, renderResult } from "./planner-result";
 import { pinFor, pinThis } from "./pins";
 import { fail, friendly } from "./toast";
@@ -39,7 +40,7 @@ import { counted, OBJECTIVES, objectiveText, W } from "./words";
 import type { Op, Selection } from "./planner-core";
 
 var CLOCKS = [1, 1.5, 2, 2.5];
-var FIELDS = ["objective", "export_minimums", "target_item", "exports", "sources", "required", "banned", "water_extractors", "sloops", "extractor_clocks", "notes"];
+var FIELDS = ["objective", "export_minimums", "target_item", "exports", "sources", "required", "banned", "water_extractors", "sloops", "extractor_clocks", "power_priority", "notes"];
 var POWER = /^(mw|power|__mw__)$/i;
 
 var invalid: Record<string, string> = {};
@@ -487,6 +488,7 @@ export function argsWords(args: Record<string, unknown>): string {
   var required = (args.required as string[] | undefined) || [];
   if (required.length) parts.push(counted(required.length, "required recipe"));
   if (args.sloops) parts.push(counted(Number(args.sloops), "somersloop"));
+  if (args.power_priority) parts.push("power priority " + String(args.power_priority));
   return parts.join(" · ");
 }
 
@@ -722,6 +724,7 @@ export function renderBench(root: HTMLElement, select: (s: Selection) => void, c
   sources(controls);
   recipes(controls);
   supply(controls);
+  powerRow(section(controls, ["power_priority"], "power"));
   notes(controls);
   root.appendChild(controls);
   renderResult(root, select, close);
