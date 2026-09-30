@@ -40,6 +40,7 @@ __all__ = [
     "_machine_spots",
     "_pickup_json",
     "_resource_name",
+    "_settings_json",
     "_state",
     "_xyz",
     "_yaw",
@@ -202,6 +203,12 @@ def _actor_json(raw: Any) -> ActorBody:
         raw if isinstance(raw, Actor) else Actor.from_dict(raw if isinstance(raw, dict) else None)
     )
     return {**actor.to_dict(), "display": actor.display()}
+
+
+def _settings_json(view: dict) -> dict:
+    """``domain.settings.read()`` as ``/api/settings`` and the ``settings`` event send it."""
+    by = view.get("by")
+    return {**view, "by": _actor_json(by) if by else None}
 
 
 class Flow(TypedDict):

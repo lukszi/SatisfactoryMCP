@@ -38,6 +38,7 @@ from . import (
     regions,
     routes_layer,
     search,
+    settings,
     stock,
     storage,
     tiles,
@@ -84,4 +85,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     asks.router,
     factory_graph.router,
     plan_track.router,
+    settings.router,
 )

@@ -1810,6 +1810,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared Settings
+         * @description The shared settings: chat's tools read the same file.
+         */
+        get: operations["shared_settings_api_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Settings
+         * @description Change shared settings; a ``version`` that is not the current one is a 409.
+         */
+        patch: operations["change_settings_api_settings_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5447,6 +5471,63 @@ export interface components {
             label: string;
             /** Ref */
             ref: string;
+        };
+        /**
+         * SettingsChanges
+         * @description The settings to change; null puts one back to its default.
+         */
+        SettingsChanges: {
+            /** Stage Headroom */
+            stage_headroom?: ("measured" | "nameplate") | null;
+            /** Biomass */
+            biomass?: boolean | null;
+        };
+        /** SettingsPatchBody */
+        SettingsPatchBody: {
+            values: components["schemas"]["SettingsChanges"];
+            /** Version */
+            version?: number | null;
+            /** Only Unset */
+            only_unset?: boolean;
+        };
+        /**
+         * SettingsResponse
+         * @description ``stored`` names the settings that were set rather than defaulted; ``by`` and
+         *     ``updated`` are the last write, null before the first.
+         */
+        SettingsResponse: {
+            /** Version */
+            version: number;
+            values: components["schemas"]["SettingsValues"];
+            /** Stored */
+            stored: string[];
+            /** Updated */
+            updated: number | null;
+            by: components["schemas"]["ActorBody"] | null;
+        };
+        /**
+         * SettingsStaleResponse
+         * @description The 409 of a write whose ``version`` is not the current one: nothing was written.
+         */
+        SettingsStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            settings: components["schemas"]["SettingsResponse"];
+        };
+        /**
+         * SettingsValues
+         * @description Every shared setting, set or defaulted.
+         */
+        SettingsValues: {
+            /**
+             * Stage Headroom
+             * @enum {string}
+             */
+            stage_headroom: "measured" | "nameplate";
+            /** Biomass */
+            biomass: boolean;
         };
         /** ShardHolder */
         ShardHolder: {
@@ -9538,6 +9619,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedersResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_settings_api_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+        };
+    };
+    change_settings_api_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsStaleResponse"];
                 };
             };
             /** @description Validation Error */
