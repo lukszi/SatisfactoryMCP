@@ -23,7 +23,7 @@ testing contract. Section numbers are continuous with the rest of the spec;
 **Inventory:** `stock`, `storage`, `crates`
 **Spatial:** `list_regions`, `describe_location`, `search_resource_nodes`, `search_conduits`, `rank_build_sites`, `show_on_map`
 **Planning:** `plan_factory`, `plan_layout`, `commission_plan`, `diff_vs_save`, `bom`, `rank_unlocks`, `list_plans`, `plan_log`, `site_plan`, `rename_plan`, `forget_plan`, `explain_byproducts`, `compare_recipe_options`
-**The page:** `ui_context`
+**The page:** `ui_context`, `settings`
 **Hard drives:** `list_pending_hard_drive_choices`, `advise_hard_drive_pick`
 
 ```
@@ -679,6 +679,16 @@ An id may carry one line of answer after it (`"ask:7 it makes the diluted fuel"`
 or `ask:7 -`): it is stored on the ask (`answer`, ≤ 200 characters, whitespace folded), shown on
 the page beside the ask, and quoted in the journal text; passing a new line replaces it.
 The server's `instructions` add "or quotes an ask: or pin: id". No tool was added.
+
+### 10.1l `settings` — what the page and chat share
+
+`settings()` prints every shared setting as `setting · value · takes · means`, marking a value
+nobody set `(default)`, with the last writer in the header. `settings(change={...})` writes as
+`chat`, last writer wins, and `null` resets a setting. The description tells the model to change
+one only when the user asks. `diff_vs_save` and `commission_plan` stage against
+`stage_headroom`, and `biomass=` on the four power tools defaults to `None`, meaning the shared
+value. An unreadable file falls back to the default with a note. Tool count 55.
+[shared-settings.md](shared-settings.md) is the specification.
 
 ### 10.2 Context budget
 

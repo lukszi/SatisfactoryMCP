@@ -12,7 +12,7 @@ import { planTitle } from "./planner-list";
 import { onProgress, renderProgress } from "./progress";
 import { renderRecipes } from "./recipes";
 import { cancelRename, editName, renamingIn } from "./rename";
-import { amount, choice, resetSettings, setSetting, setting, SETTINGS } from "./settings";
+import { amount, choice, onSetting, resetSettings, setSetting, setting, SETTINGS } from "./settings";
 import type { Setting } from "./settings";
 import { state } from "./state";
 import { renderFactories, renderFactory, wireDetect } from "./factories";
@@ -210,7 +210,7 @@ function renderSettings(body: HTMLElement): void {
     render();
   }, { title: "put every setting back to its default" }));
   card.appendChild(bar);
-  note(card, "kept in this browser only");
+  note(card, "kept in this browser, except those chat uses too: those every tab and chat share");
   var group = "";
   SETTINGS.forEach(function (s) {
     if (s.group !== group) {
@@ -399,6 +399,9 @@ function wire(): void {
   new MutationObserver(mirrorBusy).observe(el("map"), { attributes: true, attributeFilter: ["class"] });
   onVitals(render);
   onProgress(render);
+  onSetting(function () {
+    if (state.dash && address().tab === "settings") render();
+  });
   wireDetect();
 }
 

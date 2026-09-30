@@ -133,6 +133,13 @@ def _no_journal_writer(monkeypatch):
     monkeypatch.setattr(journal, "_seq", {})
 
 
+@pytest.fixture(autouse=True)
+def _own_shared_settings(monkeypatch, tmp_path):
+    """Tools read the shared settings; never the reader's own file."""
+    path = tmp_path / "shared-settings" / "settings.json"
+    monkeypatch.setattr(config, "settings_path", lambda: path)
+
+
 @pytest.fixture(scope="session")
 def game():
     if not _docs_available():

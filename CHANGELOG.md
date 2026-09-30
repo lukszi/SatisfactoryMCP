@@ -25,6 +25,9 @@ Planned as 0.2.0.
 - Label writes answer a bad name with 400 and an unknown label with 404 (both were 409); a
   409 carries `stale`, `name_taken` and `pin` flags. Names with `/` or over 60 characters
   are refused for new labels.
+- *Stage headroom* and *count biomass burners* are shared by the page and chat, in
+  `settings.json` in the user data dir. A browser's own earlier value is adopted once. Chat's
+  `biomass=` now defaults to that setting, and a new `settings` tool reads and writes it.
 
 ### Added
 

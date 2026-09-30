@@ -10,11 +10,13 @@ import { onActivity as onAskActivity, refetchAsks } from "./asks";
 import { onActivity as onPinActivity, onPlanChange, refetchPins } from "./pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
 import { onRenameActivity } from "./rename";
+import { onSettingsEvent, refetchSharedSettings } from "./shared-settings";
 import { state } from "./state";
 import { fail } from "./toast";
 import { onFindActivity } from "./world";
 import { refreshWorlds } from "./worlds";
 
+import type { SettingsResponse } from "./api-shapes";
 import type { ActivityEvent, PlansEvent } from "./planner-core";
 
 /* The stream replays the newest event of every kind to each new subscriber, so the first one
@@ -125,6 +127,7 @@ export function listen() {
       loadOne("/api/plans");
       refetchPins();
       refetchAsks();
+      refetchSharedSettings();
       resyncPlanner(dispatchActivity);
     };
     var blink = function () {
@@ -171,6 +174,10 @@ export function listen() {
       var data = parsed<ActivityEvent>(event);
       if (!data || !isNews(event)) return;
       dispatchActivity([data]);
+    });
+    es.addEventListener("settings", function (event) {
+      var data = parsed<SettingsResponse>(event);
+      if (data) onSettingsEvent(data);
     });
   }
 }

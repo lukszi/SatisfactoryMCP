@@ -86,6 +86,7 @@ from .interfaces.mcp.tools.progression import (
 )
 from .interfaces.mcp.tools.prompts import design_factory, pick_hard_drive, plan_power_plant
 from .interfaces.mcp.tools.resources import current_save, docs_summary, factory_labels, map_regions
+from .interfaces.mcp.tools.settings import settings
 from .interfaces.mcp.tools.spatial import (
     describe_location,
     list_regions,
@@ -162,6 +163,7 @@ __all__ = [
     "search_recipes",
     "search_resource_nodes",
     "select_machines",
+    "settings",
     "show_on_map",
     "site_plan",
     "somersloops",
