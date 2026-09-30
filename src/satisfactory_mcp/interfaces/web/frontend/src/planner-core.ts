@@ -827,15 +827,15 @@ function write(
   });
 }
 
-export function gesture(ops: Op[]): void {
+export function gesture(ops: Op[], requireItem?: string): void {
   if (!ops.length || !bench.plan) return;
   bench.redo = [];
   var again = function () {
-    gesture(ops);
+    gesture(ops, requireItem);
   };
   write(
     "/api/plans/{key}/ops",
-    { ops: ops },
+    requireItem ? { ops: ops, require_item: requireItem } : { ops: ops },
     function (reply) {
       landed(reply, "done");
     },
