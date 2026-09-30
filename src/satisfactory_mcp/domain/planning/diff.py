@@ -487,7 +487,7 @@ def _row_for(
         notes.append(f"{idle}{where}, no output today")
         page.append(f"{idle}{f' {mean:,.0f} m out' if mean is not None else ''}, no output today")
 
-    if len(paused) > len(unpause):
+    if len(paused) > len(unpause) and (have_min is None or have_min >= need):
         spare = len(paused) - len(unpause)
         notes.append(f"{spare} {'more ' if unpause else ''}paused, not needed to cover this job")
         page.append(notes[-1])

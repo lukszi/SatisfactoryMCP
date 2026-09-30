@@ -55,8 +55,9 @@ def _pumps(running: int, paused: int) -> _SaveIndex:
     )
 
 
-def _row(need: int, running: int, paused: int):
-    return _row_for(_World(), _group(need), _pumps(running, paused), 1, None, [], set())
+def _row(need: int, running: int, paused: int, near: bool = True):
+    points = [(0.0, 0.0)] if near else []
+    return _row_for(_World(), _group(need), _pumps(running, paused), 1, None, points, set())
 
 
 def _clocked(*clocks: float) -> list[dict]:
@@ -135,6 +136,12 @@ def test_every_paused_pump_is_unpaused_when_the_plan_needs_them_all():
     row = _row(need=30, running=16, paused=4)
     assert row.verb == "UNPAUSE" and row.count == 4
     assert "paused, not needed" not in row.note
+
+
+def test_paused_pumps_are_not_called_spare_when_the_low_bound_is_under_need():
+    row = _row(need=6, running=16, paused=4, near=False)
+    assert row.have_min == 0 and row.build_max == 6
+    assert "not needed" not in row.note and "not needed" not in row.page_note
 
 
 def test_page_text_says_stages_and_leaves_the_headline_to_say_no_order_fits():
