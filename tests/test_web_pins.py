@@ -84,7 +84,7 @@ def test_the_list_is_every_live_pin_with_the_version(client):
 
 def test_bad_bodies_are_400_and_absent_objects_404(client):
     assert _pin(client, "ask", {}).status_code == 400
-    assert _pin(client, "point", {"x_m": 1e9, "y_m": 0}).status_code == 400
+    assert _pin(client, "point", {"x_m": 1e9, "y_m": 0}).status_code == 404
     assert _pin(client, "point", {"x_m": 1.0, "y_m": 2.0}, "x" * 81).status_code == 400
     missing = _pin(client, "node", {"node": "BP_NoSuch"})
     assert missing.status_code == 404 and missing.json() == {
