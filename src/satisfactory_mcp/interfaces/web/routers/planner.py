@@ -23,7 +23,8 @@ from fastapi import APIRouter, Body, Request
 from ....domain.planning import focus, journal, manage, summary, swaps, track
 from ....domain.planning.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
 from ....domain.planning.scenario import resolve_item
-from ..serial import ActorBody, Biomass, PlanOpBody, _actor_json, _fail, _state
+from ....domain.world import pin
+from ..serial import ActorBody, Biomass, PlanOpBody, TrackBuiltAt, _actor_json, _fail, _state
 
 __all__ = ["router"]
 
@@ -423,6 +424,7 @@ class TrackResponse(TypedDict):
     notes: list[str]
     caveats: list[str]
     monitored: int
+    built_at: TrackBuiltAt
 
 
 class Feeder(TypedDict):
@@ -645,9 +647,11 @@ def plan_track(
     except InvalidOp as exc:
         return _fail(str(exc), 404)
     try:
-        return track.track_view(st.game, st, state, biomass=biomass == "include")
+        out = track.track_view(st.game, st, state, biomass=biomass == "include")
     except ValueError as exc:
         return _fail(str(exc), 400)
+    out["built_at"]["token"] = pin.check(st.header, None)
+    return out
 
 
 @router.get("/plan/feeders", response_model=FeedersResponse)

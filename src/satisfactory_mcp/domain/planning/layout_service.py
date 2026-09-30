@@ -177,6 +177,8 @@ def build_layout_report(
     if report.scope_name is None and plan:
         stored = st.plans.find(plan)
         report.scope_name = (stored.factory or None) if stored else None
+    if report.scope_name and report.scope_name.startswith("/"):
+        report.scope_name = None
     if report.scope_name:
         from .fit import assess_fit
 
