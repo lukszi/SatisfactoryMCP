@@ -1,5 +1,5 @@
 """Matching by rate: machines spread over a lower clock count as the fewer machines they
-stand in for, in the diff and in the startup stages (docs/planning.md, "Clocks")."""
+stand in for, in the diff and in the startup stages (docs/planning.md, "Counting by rate")."""
 
 from __future__ import annotations
 

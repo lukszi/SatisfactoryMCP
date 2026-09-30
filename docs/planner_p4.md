@@ -78,3 +78,75 @@ Headless Chrome at 1440×900 and 390×844 against the merged server and a copy o
 backup. A1–A10 and A12–A20 as in contract §13, apart from the two items above. Measured: follow
 to `/track` 0.1–0.4 s after the tool returns; feeders 0.77 s; a stage pick redraws the planner
 in 12–15 ms (9-job plan); `ui_context` → `seen by chat` on the page within the 1 s budget.
+
+## How built is found
+
+`domain/planning/built.py`, reached through `diff_service.match_scope(stored=)`; contract §17
+is the specification. Detection is derived and never written.
+
+**Position seeds; clusters decide.** A raw radius cannot tell two factories apart: 300 m single
+linkage merges the oil plant and the main base, and a region is ±256 m advisory. So position
+only picks **seeds**: machines whose job (building and recipe, or generator building) is in the
+plan and that stand in the search area (§17.2). Each seed's coherence cluster
+(`WorldState.proposals`, never merging two hand-named factories in the leave-one-out tests)
+then adds its other machines on the plan's jobs. Clusters are capped at 250 m before
+dependents attach and **extractors never grow a cluster**: grown from the three pumps on
+`spire-coast-e1`'s nodes, the rule pulled in eleven refineries 1.4 km away. Extractors count on
+the plan's own nodes when their owner is one of the counted clusters or a cluster that makes
+nothing; water pumps count when they belong to a counted cluster.
+
+**Owners and the one hard rule.** Every counted machine has an owner: its named factory, else
+its cluster. Owners are ranked by fit (rate overlap with the plan over the union of the two,
+so a big neighbour with the same recipes loses to the small factory that is the plan). A
+machine another named factory holds **never counts**; the line names it instead
+(`8 matching machines nearby belong to “temporary iron line”`). A new factory is a new
+factory: a plan does not grow into an existing named one unless the plan is pinned to it.
+
+**Confidence.**
+
+| | Rule |
+|---|---|
+| nothing | no seed at the site; `node_owner` says who taps the plan's nodes |
+| unsure | the top owner is a named factory holding under 10% of the plan's rate, or another named factory holds at least 20% with half the top's fit, or the excluded machines cover more of the rate than the counted ones |
+| sure | the top owner is named, holds at least 80% of the counted rate, nothing was excluded, and the area is not only nodes |
+| likely | everything else (an unnamed cluster, a nodes-only area, excluded neighbours) |
+
+Unsure counts a range: low is the counted machines no factory name holds, high adds the top
+and rival factories.
+
+**Rate.** Jobs count by rate (docs/planning.md, "Counting by rate"); the progress figure is
+machines at the plan's clock, capped per job at the need, and the percent is the covered share
+of the planned rate.
+
+### Measured (2026-09-30, newest autosave of the reference world, 15 named factories)
+
+Each named factory stood in for a plan wanting exactly its machines, sited at its centroid:
+
+| Rule | Exact (precision = recall = 1) | Misses |
+|---|---|---|
+| clusters grown from every seed, extractors included | 10 / 15 | tier 1&2, tor, copper, scratch area, concrete, temporary iron line |
+| extractors never grow | 11 / 15 | tier 1&2 0.93, tor 0.96, scratch area 0.92, temporary iron line 0.17 |
+| **plus: another named factory never counts** | **14 / 15** | tor factory 0.96: three unnamed machines inside its own cluster, on its recipes |
+
+Recall is 1.00 on all 15. `tests/test_built.py` holds this on the committed fixture world, and
+tests the same-spot pair (tier 1&2 around temporary iron line) with the small factory's name
+removed, so the rule is not checked against the label it reads.
+
+A 30% partial build was found whole from a site on its centroid for 14 of 14 factories with
+three or more machines, 11 of 14 at 100 m off, 3 of 14 at 200 m: the site must be where the
+plan is built, which is how plans are built here (at the pin, one plan one spot).
+
+The stored plans: `spire-coast-full` (a region) is not placed; `spire-coast-e1` finds nothing
+at its site, and its three crude oil nodes already feed an unnamed cluster; `north oil rig`
+(13 nodes) is unsure between “oil setup” (3.6% of its rate) and an unnamed cluster, 15–43 of
+801 machines. Detection costs 0.3–0.6 ms per plan once the clusters exist (about 0.4 s once
+per save, shared with the map), plus 30 ms when an unnamed cluster needs its suggested name;
+`GET /api/plan/built` for the three plans is about 90 ms cold, cached after.
+
+### Open
+
+- Two plans on one site are not allocated between each other (design §3.8): a machine can
+  count for both.
+- `ui_context`'s focus line does not repeat the built line; `plan_log` shows the new
+  `count as built: …` words.
+- The somersloop boost on a machine is not in its rate (one record, field unverified).

@@ -112,7 +112,7 @@ class DiffRow:
     #: would double-count them and overstate what the build needs.
     delta_mw: float = 0.0
     #: The job's rate in full-speed machines: planned, and summed over the counted clocks.
-    #: ``have`` and ``build`` are these divided by ``plan_clock`` (docs/planning.md, "Clocks").
+    #: ``have`` and ``build`` are these over ``plan_clock`` (docs/planning.md, "Counting by rate").
     need_rate: float = 0.0
     have_rate: float = 0.0
     plan_clock: float = 1.0
