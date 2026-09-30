@@ -16,6 +16,7 @@ from .planlog import PlanLog, PlanLogError
 
 __all__ = [
     "ABOUT_KINDS",
+    "ANSWER_MAX",
     "LABEL_MAX",
     "MAX_LIVE",
     "REF_MAX",
@@ -31,6 +32,7 @@ __all__ = [
     "mark_answered",
     "mark_seen",
     "parse",
+    "parse_answer",
     "path_for",
     "read",
     "row",
@@ -42,8 +44,10 @@ MAX_LIVE = 200
 TEXT_MAX = 200
 LABEL_MAX = 120
 REF_MAX = 200
+ANSWER_MAX = 200
 ABOUT_KINDS = ("plan", "process", "stage", "item", "pin")
 _ASK = re.compile(r"\s*ask:(\d+)\s*", re.IGNORECASE)
+_ANSWERED = re.compile(r"\s*ask:(\d+)(?:\s*[:=\-–—]\s*|\s+|$)(.*)", re.IGNORECASE | re.DOTALL)
 _KEY = re.compile(r"[0-9a-f]{8}")
 
 
@@ -120,6 +124,20 @@ def parse(text) -> int | None:
         return None
     hit = _ASK.fullmatch(text)
     return int(hit.group(1)) if hit else None
+
+
+def parse_answer(text) -> tuple[int, str] | None:
+    """``"ask:7 the Blender makes the fuel"`` -> ``(7, "the Blender makes the fuel")``; the
+    answer is one line of at most ``ANSWER_MAX`` characters, ``""`` when none is given."""
+    if not isinstance(text, str):
+        return None
+    hit = _ANSWERED.fullmatch(text)
+    if hit is None:
+        return None
+    line = " ".join(hit.group(2).split())
+    if len(line) > ANSWER_MAX:
+        line = line[: ANSWER_MAX - 1].rstrip() + "…"
+    return int(hit.group(1)), line
 
 
 def state_of(ask: dict) -> str:
@@ -210,6 +228,7 @@ def row(ask: dict, names: dict[str, str]) -> dict:
         "seen_by": str(ask.get("seen_by") or ""),
         "answered": ask.get("answered"),
         "answered_by": str(ask.get("answered_by") or ""),
+        "answer": str(ask.get("answer") or ""),
         "plan_name": names.get(plan) if plan else None,
         "copy": f"ask:{ask['n']} {ask.get('text') or ''}",
     }
@@ -286,18 +305,26 @@ def mark_seen(world_id: str, ns: list[int], who: str) -> list[int]:
     return _write(world_id, change)
 
 
-def mark_answered(world_id: str, ns: list[int], who: str) -> list[int]:
-    """Asks among ``ns`` become answered; ``AskMissing`` when one is unknown or deleted."""
+def mark_answered(
+    world_id: str, ns: list[int], who: str, answers: dict[int, str] | None = None
+) -> list[int]:
+    """Asks among ``ns`` become answered, keeping the answer line given for one; returns the
+    asks that changed. ``AskMissing`` when one is unknown or deleted."""
     if not ns:
         return []
+    answers = answers or {}
 
     def change(data: dict):
         found = [_find(data, n) for n in dict.fromkeys(ns)]
         now, fresh = time.time(), []
         for ask in found:
-            if ask.get("answered"):
+            line = answers.get(ask["n"], "")
+            if ask.get("answered") and (not line or line == ask.get("answer")):
                 continue
-            ask["answered"], ask["answered_by"] = now, who
+            if not ask.get("answered"):
+                ask["answered"], ask["answered_by"] = now, who
+            if line:
+                ask["answer"] = line
             ask["rev"] = int(ask.get("rev") or 1) + 1
             fresh.append(ask["n"])
         return fresh, bool(fresh)

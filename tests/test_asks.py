@@ -166,6 +166,34 @@ def test_mark_answered_refuses_unknown_and_deleted_and_writes_nothing(dirs):
     assert row["state"] == "answered" and row["answered_by"] == "Claude Code"
 
 
+def test_an_answer_line_is_kept_and_can_be_replaced(dirs):
+    asks.create(WORLD, "why a Blender?", ABOUT)
+    assert asks.mark_answered(WORLD, [1], "Claude Code", {1: "it makes the fuel"}) == [1]
+    row = asks.live(WORLD)[0]
+    assert row["state"] == "answered" and row["answer"] == "it makes the fuel"
+    answered = row["answered"]
+    assert asks.mark_answered(WORLD, [1], "Claude Code", {1: "it makes the fuel"}) == []
+    assert asks.mark_answered(WORLD, [1], "Claude Code") == []
+    assert asks.mark_answered(WORLD, [1], "Claude Code", {1: "diluted fuel"}) == [1]
+    row = asks.live(WORLD)[0]
+    assert row["answer"] == "diluted fuel" and row["answered"] == answered and row["rev"] == 3
+
+
+def test_an_ask_without_an_answer_line_reads_blank(dirs):
+    asks.create(WORLD, "a", ABOUT)
+    asks.mark_answered(WORLD, [1], "Claude Code")
+    assert asks.live(WORLD)[0]["answer"] == ""
+
+
+def test_parse_answer_takes_an_id_and_one_line():
+    assert asks.parse_answer("ask:7") == (7, "")
+    assert asks.parse_answer(" ASK:7: yes,\n stage 1 ") == (7, "yes, stage 1")
+    assert asks.parse_answer("ask:12 - no") == (12, "no")
+    assert asks.parse_answer("ask:7x") is None and asks.parse_answer("pin:1 a") is None
+    n, line = asks.parse_answer("ask:1 " + "z" * 500)
+    assert n == 1 and len(line) == asks.ANSWER_MAX and line.endswith("…")
+
+
 def test_parse_reads_ask_ids_case_insensitively():
     assert asks.parse("ask:7") == 7 and asks.parse(" ASK:12 ") == 12
     assert asks.parse("pin:7") is None and asks.parse("ask:x") is None and asks.parse(7) is None

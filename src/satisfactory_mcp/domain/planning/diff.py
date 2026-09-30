@@ -392,9 +392,7 @@ def _reclock_note(records: list[dict], to_build: int, group: dict) -> str:
     ratio = (sum(_clock(r) for r in records) + to_build * each) / planned
     if abs(ratio - 1.0) <= RECLOCK_TOLERANCE or (ratio > 1.0 and len(records) > need):
         return ""
-    return (
-        f"clocks give {ratio * 100:.0f}% of the planned rate (plan: {need} at {each * 100:.4g}%)"
-    )
+    return f"clocks give {ratio * 100:.0f}% of the planned rate (plan: {need} at {each * 100:.4g}%)"
 
 
 def _row_for(

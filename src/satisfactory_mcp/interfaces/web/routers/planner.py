@@ -648,9 +648,7 @@ def plan_track(
     except InvalidOp as exc:
         return _fail(str(exc), 404)
     try:
-        return track.track_view(
-            st.game, st, state, biomass=biomass == "include", default=headroom
-        )
+        return track.track_view(st.game, st, state, biomass=biomass == "include", default=headroom)
     except ValueError as exc:
         return _fail(str(exc), 400)
 

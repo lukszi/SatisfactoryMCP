@@ -189,7 +189,7 @@ nameplate → `"nameplate from the save"` (decided 2026-09-30, §15 C2). Biomass
                      "ref": "job:recipe|Build_Blender_C|Recipe_Alternate_DilutedFuel_C",
                      "plan": "a1b2c3d4", "rev": 14},
            "rev": 2, "created": 1790000000.1, "seen": 1790000060.0, "seen_by": "Claude Code",
-           "answered": null, "answered_by": "", "deleted": false}]}
+           "answered": null, "answered_by": "", "answer": "", "deleted": false}]}
 ```
 
 - `n` starts at 1 and is never reused; delete sets `deleted: true`. `version` counts every
@@ -210,7 +210,8 @@ def read(world_id: str) -> dict: ...
 def create(world_id: str, text: str, about: dict) -> dict: ...
 def drop(world_id: str, n: int, rev: int) -> dict: ...
 def mark_seen(world_id: str, ns: list[int], who: str) -> list[int]: ...      # newly seen only
-def mark_answered(world_id: str, ns: list[int], who: str) -> list[int]: ...  # AskMissing
+def mark_answered(world_id: str, ns: list[int], who: str,
+                  answers: dict[int, str] | None = None) -> list[int]: ...  # AskMissing
 def live(world_id: str) -> list[dict]: ...     # AskRow (§5.2), newest last
 def parse(text: str) -> int | None: ...        # "ask:7" -> 7, case-insensitive
 ```
@@ -300,6 +301,7 @@ class AskRow(TypedDict):
     text: str; about: AskAbout; state: str # "open" | "seen" | "answered"
     rev: int; created: float
     seen: float | None; seen_by: str; answered: float | None; answered_by: str
+    answer: str                            # chat's one-line answer, "" for none (C4)
     plan_name: str | None                  # about.plan resolved at read time
     copy: str                              # "ask:7 why does this need a Blender?"
 class AsksResponse(TypedDict): version: int; asks: list[AskRow]
@@ -370,7 +372,8 @@ since you last looked: … · journal: 14:06 page queued ask:7
 - Every listed `open` ask becomes `seen` (`mark_seen`, `seen_by` = client display name) and
   one journal `ask.seen` entry is written with `args {"n": [7]}`.
 - `answered=`: each id marked answered first (`ask.answered` journal, `args {"n": [...]}`),
-  then the normal reply, whose first line after the header is `marked answered: ask:7`.
+  then the normal reply, whose first line after the header is `marked answered: ask:7`. An id
+  may carry one line after it, `"ask:7 <answer>"`, stored as the ask's `answer` (C4).
   Unknown or deleted ids: `! ask:9 does not exist (asks run to ask:8)` / `! ask:3 was
   deleted`; the others still apply.
 - The whole reply stays under `CONTEXT_BUDGET` (3800).
@@ -576,7 +579,7 @@ copy. Never ports 8712/8713.
 | C1 | Only the page writes `headroom_mw`; chat reads it and can still pass `headroom_mw=` to `commission_plan` for one call | A `plan_factory` parameter |
 | C2 | ~~Nameplate stays the default headroom~~ **Decided 2026-09-30: measured by default**, page and tools; the page's *stage headroom* setting can pick nameplate | Nameplate by default |
 | C3 | The last-seen partition lives in page memory (and per MCP process) | Stored in focus or per plan |
-| C4 | Asks carry no answer text; `answered` is a flag | An answer note shown on the page |
+| C4 | ~~Asks carry no answer text~~ **Decided 2026-09-30: a one-line answer**: `ui_context(answered=["ask:7 <answer>"])` stores it and the page shows it beside the ask, truncated, full text on hover | Flag only |
 | C5 | Ask buttons only in the planner (Track, build list, node card, header, pins card) | Map popups, factory detail, dashboard rows |
 | C6 | Answered asks stay until deleted | Auto-hide after a day |
 | C7 | Only `plan=` calls open Track | Ad-hoc diffs open a from-chat card |

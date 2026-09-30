@@ -666,6 +666,9 @@ or seen asks with what each is about, then a hint line; every listed open ask is
 (`seen_by` the client name) and journalled as `ask.seen`. `ui_context(answered=["ask:7"])` marks
 asks answered first (journal `ask.answered`) and prints `marked answered: ask:7` as the line
 after the header; an unknown or deleted id is refused on its own line and the rest still apply.
+An id may carry one line of answer after it (`"ask:7 it makes the diluted fuel"`, also `ask:7:`
+or `ask:7 -`): it is stored on the ask (`answer`, ≤ 200 characters, whitespace folded), shown on
+the page beside the ask, and quoted in the journal text; passing a new line replaces it.
 The server's `instructions` add "or quotes an ask: or pin: id". No tool was added.
 
 ### 10.2 Context budget
