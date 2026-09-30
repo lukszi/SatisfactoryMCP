@@ -157,10 +157,9 @@ def test_finder_calls_tell_a_following_page_where_to_go(tools, followed):
             "world.find",
             "rank_build_sites",
             {
-                "view": "fields",
+                "view": "rank",
                 "params": {
                     "resource": "Desc_OreCopper_C",
-                    "rank": "1",
                     "at": "hub",
                     "within_m": "1500",
                     "pure": "1",
@@ -170,7 +169,7 @@ def test_finder_calls_tell_a_following_page_where_to_go(tools, followed):
         (
             "world.find",
             "rank_build_sites",
-            {"view": "fields", "params": {"resource": "Desc_OreCopper_C", "rank": "1"}},
+            {"view": "rank", "params": {"resource": "Desc_OreCopper_C"}},
         ),
         (
             "world.find",

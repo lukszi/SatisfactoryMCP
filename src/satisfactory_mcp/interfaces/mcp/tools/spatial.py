@@ -1037,8 +1037,8 @@ def rank_build_sites(
         st,
         ctx,
         "rank_build_sites",
-        "fields",
-        {"resource": rid, "rank": 1, **_rank_pane(sources)},
+        "rank",
+        {"resource": rid, **_rank_pane(sources)},
         f"ranked build sites for {g.item_name(rid)}",
     )
     scored = ranked.scored

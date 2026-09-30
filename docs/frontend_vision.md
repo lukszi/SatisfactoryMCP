@@ -156,7 +156,7 @@ tool table.
 | `search_conduits` | World > Conduits; inspector "conduits here" | near, radius, to, belt/pipe, runs/networks, network | run list; runs drawn in the finder pane | **built** `/api/world/conduits` (§18) |
 | `search_resource_nodes` | World > Nodes and Fields | sources, resource, purity, kind, status free/tapped/all, view fields/nodes/nearest, near | field clusters or node rows; finder pane | **built** `/api/world/nodes` (§18); `/api/nodes` stays the layer |
 | `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick; `show=node:`/`chain:`/`pipe:` ring the place | exists (fragment); the tool's local link follows the configured port (§13) and carries `show=` (§18) |
-| `rank_build_sites` | World > Fields, **rank** toggle | resource, sources | ranked fields with raw components | **built** `/api/world/sites` (§18) |
+| `rank_build_sites` | World > Rank | resource, sources | ranked fields with raw components | **built** `/api/world/sites` (§18) |
 | `list_plans` | Planner > Plans list | name filter | table: sited, world moved, field moved | exists `/api/plans` (siting only) + new for status |
 | `forget_plan` | Plans list row menu | confirm | row gone | new, W |
 | `rename_plan` | Plans list row menu | text | row renamed | new, W |
@@ -1463,6 +1463,9 @@ section records what the backend built and what it decided on the way.
   `FoundField` moved to `serial.py`, since `/api/inspect` sends them too.
 - **A geyser search no longer raises.** `show=nodes kind=geyser` hit a `KeyError` on the
   geyser's missing item; the unit now falls back to `/min`.
+- **Rank is its own World tab** (2026-09-30), `world/rank?…`, beside fields; old
+  `world/fields?…&rank=1` links redirect to it and chat's `rank_build_sites` opens it. A run
+  of chat finder calls is one Activity row with a count (contract §17).
 
 ### 18.3 Measured
 
