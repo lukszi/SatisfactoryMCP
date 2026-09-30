@@ -29,6 +29,7 @@ import { isBatching, onSettled } from "./layercontrol";
 import { loadLive, loadRegions, loadStatic } from "./load";
 import { rememberTick } from "./layers";
 import { fitWorld, map, padPopups, writeHash } from "./map";
+import { listenForEmptyClicks } from "./mapclick";
 import { markHiddenRows, notePickupChoice } from "./markers";
 import { render as renderPanel, showSelector } from "./panel";
 import { listenForPins } from "./pins";
@@ -124,6 +125,7 @@ map.on("zoomend", markHiddenRows);
 
 map.on("preclick contextmenu", padPopups);
 map.on("contextmenu", inspect);
+listenForEmptyClicks();
 map.on("overlayadd overlayremove", rememberTick);
 
 /* The listeners that are not the map's: the address bar, the one key this page binds, and the

@@ -1,7 +1,7 @@
-/* The one selected thing the map, the side panel, the dashboard and the status strip share.
- * See docs/frontend_vision.md §2.3 and §16. */
+/* The one selected thing the map, the side panel, the dashboard and the status strip share,
+ * shared across tabs too. See docs/frontend_vision.md §2.3 and §16. */
 
-export type SelectionKind = "factory" | "circuit" | "point" | "node" | "field" | "conduit" | "pickup";
+export type SelectionKind = "factory" | "circuit" | "machine" | "point" | "node" | "field" | "conduit" | "pickup";
 
 export interface Selection {
   kind: SelectionKind;
@@ -12,13 +12,13 @@ export interface Selection {
   ref?: string;
 }
 
-var KINDS: SelectionKind[] = ["factory", "circuit", "point", "node", "field", "conduit", "pickup"];
+var KINDS: SelectionKind[] = ["factory", "circuit", "machine", "point", "node", "field", "conduit", "pickup"];
 
 var STORE_KEY = "selection";
 
-function recall(): Selection | null {
+function parse(text: string | null): Selection | null {
   try {
-    var s = JSON.parse(sessionStorage.getItem(STORE_KEY) || "null");
+    var s = JSON.parse(text || "null");
     if (!s || KINDS.indexOf(s.kind) < 0 || typeof s.key !== "string" || typeof s.label !== "string") return null;
     var out: Selection = { kind: s.kind, key: s.key, label: s.label };
     if (typeof s.x_m === "number" && typeof s.y_m === "number") {
@@ -32,10 +32,18 @@ function recall(): Selection | null {
   }
 }
 
+function recall(): Selection | null {
+  try {
+    return parse(localStorage.getItem(STORE_KEY));
+  } catch (ignored) {
+    return null;
+  }
+}
+
 function remember(s: Selection | null): void {
   try {
-    if (s) sessionStorage.setItem(STORE_KEY, JSON.stringify(s));
-    else sessionStorage.removeItem(STORE_KEY);
+    if (s) localStorage.setItem(STORE_KEY, JSON.stringify(s));
+    else localStorage.removeItem(STORE_KEY);
   } catch (ignored) {
     return;
   }
@@ -50,6 +58,13 @@ function same(a: Selection | null, b: Selection | null): boolean {
   return a.kind === b.kind && a.key === b.key && a.label === b.label;
 }
 
+function settle(next: Selection | null): void {
+  current = next;
+  listeners.forEach(function (listener) {
+    listener();
+  });
+}
+
 export function selected(): Selection | null {
   return current;
 }
@@ -58,22 +73,36 @@ export function isSelected(kind: SelectionKind, key: string): boolean {
   return !!current && current.kind === kind && current.key === key;
 }
 
+/** A machine's leaf, from a leaf or a full instance path. */
+export function machineLeaf(instance: string): string {
+  return instance.slice(instance.lastIndexOf(".") + 1);
+}
+
+export function machineSelection(instance: string, name: string, x_m: number, y_m: number): Selection {
+  var leaf = machineLeaf(instance);
+  return { kind: "machine", key: leaf, label: name, x_m: x_m, y_m: y_m, ref: "machine:" + leaf };
+}
+
 export function selectionRef(s: Selection): string {
   if (s.ref) return s.ref;
   if (s.kind === "factory") return "label:" + s.key;
+  if (s.kind === "machine") return "machine:" + s.key;
   if (s.kind === "point") return s.key;
   return "";
 }
 
 export function select(next: Selection | null): void {
   if (same(current, next)) return;
-  current = next;
   remember(next);
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  settle(next);
 }
 
 export function onSelect(listener: () => void): void {
   listeners.push(listener);
 }
+
+window.addEventListener("storage", function (event) {
+  if (event.key !== STORE_KEY && event.key !== null) return;
+  var next = event.key === null ? null : parse(event.newValue);
+  if (!same(current, next)) settle(next);
+});

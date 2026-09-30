@@ -2787,6 +2787,11 @@ a.status-name:hover,
     color: var(--ink-hi);
   }
 
+  #views,
+  #dash-nav {
+    display: none;
+  }
+
   #rail.rail-drawer-open {
     display: block;
     position: fixed;

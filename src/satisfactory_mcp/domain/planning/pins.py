@@ -629,6 +629,9 @@ def canonical_ops(st, ops: list) -> tuple[list, list[str]]:
 
 
 def match(rows: list[dict], kind: str, ref: str, plan: str | None = None) -> dict | None:
+    prefix = "label:" if kind == "factory" else kind + ":"
+    if kind in ("factory", "machine", "node") and ref.casefold().startswith(prefix):
+        ref = ref[len(prefix) :]
     for pin in rows:
         if pin["kind"] != kind or pin.get("gone"):
             continue

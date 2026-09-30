@@ -137,6 +137,7 @@ def test_resolve_seeds_hands_back_machine_leaves_for_a_label(traced, game):
     assert subject == "factory 'rod line' (1 machines)"
     assert resolve_seeds(traced, game, "building:Constructor")[0] == [CONSTRUCTOR]
     assert resolve_seeds(traced, game, SMELTER)[0] == [SMELTER]
+    assert resolve_seeds(traced, game, "machine:" + SMELTER) == resolve_seeds(traced, game, SMELTER)
 
 
 def test_a_label_prefix_traces_the_label_even_when_it_shares_a_building_name(traced, game):

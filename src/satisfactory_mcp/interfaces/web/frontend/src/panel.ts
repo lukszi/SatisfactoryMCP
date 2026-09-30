@@ -27,7 +27,7 @@ import {
   whereOf,
 } from "./powerview";
 import { registerFetch } from "./registry";
-import { onSelect, select, selected } from "./selection";
+import { machineSelection, onSelect, select, selected } from "./selection";
 import { editName, renamingIn } from "./rename";
 import { state } from "./state";
 import { actionTone, learnStates, statesOf, tone } from "./states";
@@ -36,6 +36,7 @@ import { counted, W } from "./words";
 import type { IssueGroup } from "./dashkit";
 import type { CircuitRow, CircuitsResponse, FactoryHealthResponse, FactoryHealthRow, MachineRef, StarvedGenerator } from "./api-shapes";
 import type { Rated, Reading } from "./powerview";
+import type { Selection } from "./selection";
 
 type Tab = "factories" | "power";
 
@@ -130,7 +131,7 @@ function setOpen(open: boolean): void {
 }
 
 function outline(bounds: L.LatLngBounds): void {
-  mark.clearLayers();
+  clearMark();
   L.rectangle(bounds, {
     color: HIGHLIGHT,
     weight: 2,
@@ -141,9 +142,16 @@ function outline(bounds: L.LatLngBounds): void {
   if (!map.hasLayer(mark)) mark.addTo(map);
 }
 
-function pin(x_m: number, y_m: number, label?: string, stay?: boolean): void {
-  select({ kind: "point", key: x_m + "," + y_m, label: label || "a point", x_m: x_m, y_m: y_m });
+var ringed = "";
+
+function clearMark(): void {
   mark.clearLayers();
+  ringed = "";
+}
+
+function ringAt(x_m: number, y_m: number, label: string, key: string): void {
+  clearMark();
+  ringed = key;
   var ring = L.circleMarker([-y_m, x_m], {
     radius: 14,
     color: HIGHLIGHT,
@@ -154,6 +162,12 @@ function pin(x_m: number, y_m: number, label?: string, stay?: boolean): void {
   if (label) ring.bindTooltip(esc(label), { permanent: true, direction: "right", offset: [14, 0], className: "pin-label" });
   ring.addTo(mark);
   if (!map.hasLayer(mark)) mark.addTo(map);
+}
+
+function pin(x_m: number, y_m: number, label?: string, stay?: boolean, as?: Selection): void {
+  var s = as || { kind: "point", key: x_m + "," + y_m, label: label || "a point", x_m: x_m, y_m: y_m };
+  select(s);
+  ringAt(x_m, y_m, as ? s.label : label || "", s.kind + ":" + s.key);
   if (!stay) flyToPoint([-y_m, x_m], Math.max(map.getZoom(), MACHINE_ZOOM));
 }
 
@@ -175,7 +189,7 @@ function selectFactory(row: FactoryHealthRow, fly: boolean): void {
   chooseLabel(row.name);
   var bounds = fly ? flyToFactory(row.bbox_m) : paddedBounds(row.bbox_m);
   if (bounds) outline(bounds);
-  else mark.clearLayers();
+  else clearMark();
   render();
   select({ kind: "factory", key: row.name, label: row.name });
 }
@@ -187,25 +201,33 @@ function selectCircuit(row: CircuitRow): void {
     outline(bounds);
     flyPadded(bounds, CIRCUIT_ZOOM);
   } else {
-    mark.clearLayers();
+    clearMark();
   }
   render();
   select(view.circuit >= 0 ? { kind: "circuit", key: String(row.index), label: circuitName(row) } : null);
 }
 
+function spot(s: Selection | null): boolean {
+  return !!s && (s.kind === "point" || s.kind === "machine");
+}
+
 function follow(): void {
   var s = selected();
+  if (!s) clearMark();
   var factory = s && s.kind === "factory" && factoryNamed(s.key) ? s.key : "";
   var circuitRow = s && s.kind === "circuit" && view.circuits ? view.circuits.circuits[+s.key] : undefined;
   var circuit = circuitRow ? circuitRow.index : -1;
-  if (s && !factory && !circuitRow && s.kind !== "point") return;
+  if (s && spot(s) && ringed !== s.kind + ":" + s.key && s.x_m !== undefined && s.y_m !== undefined) {
+    ringAt(s.x_m, s.y_m, s.label, s.kind + ":" + s.key);
+  }
+  if (s && !factory && !circuitRow && !spot(s)) return;
   if (factory === view.factory && circuit === view.circuit) return;
   view.factory = factory;
   view.circuit = circuit;
   var box = factory ? factoryNamed(factory)!.bbox_m : circuitRow ? circuitRow.bbox_m : null;
   var bounds = box ? paddedBounds(box) : null;
   if (bounds) outline(bounds);
-  else if (!s || s.kind !== "point") mark.clearLayers();
+  else if (!spot(s)) clearMark();
   render();
 }
 
@@ -582,6 +604,11 @@ export function showPoint(x_m: number, y_m: number, options?: { label?: string; 
   pin(x_m, y_m, options && options.label, options && options.stay);
 }
 
+export function showMachine(instance: string, name: string, x_m: number, y_m: number, options?: { layers?: string[]; stay?: boolean }): void {
+  if (options && options.layers) reveal(options.layers);
+  pin(x_m, y_m, name, options && options.stay, machineSelection(instance, name, x_m, y_m));
+}
+
 export function showBox(bbox_m: [number, number, number, number], options?: { layers?: string[] }): void {
   if (options && options.layers) reveal(options.layers);
   var bounds = flyToFactory(bbox_m);
@@ -649,7 +676,7 @@ registerFetch<FactoryHealthResponse>({
     view.healthError = "";
     if (view.factory && !factoryNamed(view.factory)) {
       view.factory = "";
-      mark.clearLayers();
+      clearMark();
       select(null);
     }
     var s = selected();

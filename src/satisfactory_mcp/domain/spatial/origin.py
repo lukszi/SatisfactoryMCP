@@ -21,6 +21,9 @@ SLAB_PREFIX = "slab"
 #: spelling the node selectors use to pick that node OUT of a field.
 NODE_PREFIX = "node"
 
+#: One standing machine, by the instance id the tools print, as in ``machine:`` selects.
+MACHINE_PREFIX = "machine"
+
 #: A stored plan's recorded site, by the plan's own name.
 PLAN_PREFIX = "plan"
 
@@ -39,8 +42,8 @@ HUB_PARTS = ("Build_StorageIntegrated_C", "Build_GeneratorIntegratedBiomass_C")
 #: What a term that named no place should have said, so rule 6 of the grammar holds
 #: wherever a place is taken rather than only where a tool remembered to list them.
 PLACE_GRAMMAR = (
-    "A place is x,y in metres, 'me', 'hub', a factory name, node:<id>, slab:<n>, "
-    "chain:<n>/pipe:<n>, plan:<name>, or pin:<n>"
+    "A place is x,y in metres, 'me', 'hub', a factory name, node:<id>, machine:<id>, "
+    "slab:<n>, chain:<n>/pipe:<n>, plan:<name>, or pin:<n>"
 )
 
 #: The one spelling of a circle, for node selectors and machine selectors alike. ``@``
@@ -155,6 +158,18 @@ def _node_origin(text: str) -> tuple[tuple[float, float], str]:
     raise ValueError(f"no resource node called {want!r}; search_resource_nodes lists the ids")
 
 
+def _machine_origin(st, text: str) -> tuple[tuple[float, float], str]:
+    """Centre on one standing machine; the leaf and the full instance path both match."""
+    if st is None:
+        raise ValueError(f"{text!r} names a machine, which needs a readable save")
+    want = text.partition(":")[2].strip().rsplit(".", 1)[-1]
+    for key in ("machines", "extractors", "generators"):
+        for record in st.projection.get(key, ()):
+            if record.get("pos") and record.get("instance", "").rsplit(".", 1)[-1] == want:
+                return (record["pos"][0], record["pos"][1]), f"machine:{want}"
+    raise ValueError(f"no machine called {want!r} in this save")
+
+
 def _plan_origin(st, text: str) -> tuple[tuple[float, float], str]:
     """Centre on a stored plan's recorded site, which only a sited plan has."""
     # Imported here because planning.siting imports this module: the plan record is
@@ -197,6 +212,8 @@ def resolve_origin(st, near: str) -> tuple[tuple[float, float], str]:
             return _slab_origin(st, text)
         if head == NODE_PREFIX:
             return _node_origin(text)
+        if head == MACHINE_PREFIX:
+            return _machine_origin(st, text)
         if head == PLAN_PREFIX:
             return _plan_origin(st, text)
         if head == PIN_PREFIX:

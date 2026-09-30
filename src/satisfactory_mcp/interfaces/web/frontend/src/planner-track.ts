@@ -9,7 +9,7 @@ import { make } from "./dom";
 import { count, mw, num, range, signed } from "./format";
 import { nodeLayers } from "./markers";
 import { onMap } from "./nav";
-import { showBox, showPoint } from "./panel";
+import { showBox, showMachine } from "./panel";
 import { builtColumn, builtLine } from "./planner-built";
 import { bench, changed, gesture, loadFeeders, loadTrack, pickStage, stageHeadroom } from "./planner-core";
 import { recipesButton } from "./planner-result";
@@ -628,7 +628,7 @@ function feederActions(r: Feeder): HTMLElement {
         "map",
         function () {
           onMap(function () {
-            showPoint(x as number, y as number, { label: r.name, layers: ["machines"] });
+            showMachine(r.instance, r.name, x as number, y as number, { layers: ["machines"] });
           });
         },
         { map: true, title: "fly the map to this " + r.name, label: "show this " + r.name + " on the map" }

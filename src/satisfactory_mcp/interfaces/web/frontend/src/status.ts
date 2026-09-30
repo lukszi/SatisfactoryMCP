@@ -7,13 +7,14 @@ import { toMap } from "./dashboard";
 import { el, keepFocus, make } from "./dom";
 import { count } from "./format";
 import { reload } from "./load";
-import { onVitals, showCircuit, showFactory, showPoint, vitals } from "./panel";
+import { onVitals, showCircuit, showFactory, showMachine, showPoint, vitals } from "./panel";
 import { faultCount, faultsOf } from "./power-tab";
 import { ratedWorld, readNow } from "./powerview";
 import { onProgress, readyMilestones } from "./progress";
 import { showRef } from "./finder";
 import { onSelect, select, selected, selectionRef } from "./selection";
 import { state } from "./state";
+import { startTrace } from "./trace";
 import { actionTone, statesOf } from "./states";
 import { counted, W } from "./words";
 
@@ -22,6 +23,7 @@ import type { Selection } from "./selection";
 var KIND_WORD = {
   factory: W.factory,
   circuit: "circuit",
+  machine: "machine",
   point: "point",
   node: W.node,
   field: W.field,
@@ -29,16 +31,20 @@ var KIND_WORD = {
   pickup: "pickup",
 };
 
-function fly(s: Selection): void {
-  var go = function () {
-    if (s.kind === "factory") showFactory(s.key);
-    else if (s.kind === "circuit") showCircuit(+s.key);
-    else if (s.kind !== "point") showRef(selectionRef(s), s);
-    else if (s.x_m !== undefined && s.y_m !== undefined) showPoint(s.x_m, s.y_m, { label: s.label });
-  };
+function onMapView(go: () => void): void {
   if (state.dash) toMap(go);
   else go();
   renderStatus();
+}
+
+function fly(s: Selection): void {
+  onMapView(function () {
+    if (s.kind === "factory") showFactory(s.key);
+    else if (s.kind === "circuit") showCircuit(+s.key);
+    else if (s.kind === "machine" && s.x_m !== undefined && s.y_m !== undefined) showMachine(s.key, s.label, s.x_m, s.y_m, { layers: ["machines"] });
+    else if (s.kind !== "point") showRef(selectionRef(s), s);
+    else if (s.x_m !== undefined && s.y_m !== undefined) showPoint(s.x_m, s.y_m, { label: s.label });
+  });
 }
 
 function selectionPart(s: Selection): HTMLElement {
@@ -49,6 +55,9 @@ function selectionPart(s: Selection): HTMLElement {
   name.title = s.label;
   part.appendChild(name);
   part.appendChild(button("map", function () { fly(s); }, { map: true, title: "fly the map to it", label: "show " + s.label + " on the map" }));
+  if (s.kind === "factory" || s.kind === "machine") {
+    part.appendChild(button("trace", function () { onMapView(function () { startTrace(selectionRef(s), "up"); }); }, { title: "draw what feeds this " + KIND_WORD[s.kind] + " on the map" }));
+  }
   part.appendChild(button("clear", function () { select(null); }, { title: "clear the selection" }));
   return part;
 }
