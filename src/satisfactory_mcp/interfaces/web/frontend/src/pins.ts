@@ -202,6 +202,14 @@ export function pinButtons(targets: PinTarget[]): Markup {
   );
 }
 
+export function onPlanChange(entry: { world: string; key: string }): void {
+  if (entry.world !== state.world) return;
+  var touched = livePins().some(function (p) {
+    return p.ref.plan === entry.key;
+  });
+  if (touched) refetchPins();
+}
+
 export function onActivity(entry: { world: string; kind: string }): void {
   if (entry.world === state.world && entry.kind.indexOf("pin.") === 0) refetchPins();
 }

@@ -56,8 +56,8 @@ stat-compared every 3 s.
   `pin.add`, `pin.edit` or `pin.drop`, which reaches every page as `activity` within the 0.5 s
   tail. `plan` is the plan key for plan and process pins, else null. Chat's
   `show_on_map(pin=True)` appends `pin.add` to its own journal file, so a pin chat makes
-  reaches the page the same way. A `plans` event also refetches pins, so a plan forgotten
-  from chat turns its pin gone at once.
+  reaches the page the same way. A `plans` event for a plan that a plan or process pin names
+  also refetches pins, so a plan forgotten from chat turns its pin gone at once.
 - Ask writes (`/api/asks`, Planner P4) add no event name either: the web appends `ask.add` and
   `ask.drop`, and chat's `ui_context` appends `ask.seen` and `ask.answered` to its own journal
   file, so every change reaches every page as `activity`. `diff_vs_save(plan=)` and

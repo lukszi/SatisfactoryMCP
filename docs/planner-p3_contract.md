@@ -388,6 +388,7 @@ They reach the page as the existing `activity` event within ~0.5 s.
 | `activity` `plan.view` with `args.view == "alternates"`, other actor | follow: go to `planner/<key>/alt/<item>` (after the gesture ends); toasts: toast with [open]; off: nothing |
 | `save` | refetch pins (gone flags depend on the save); re-request the open drawer |
 | `plans` for the open plan | as P1/P2; plus re-request the open drawer and redraw chat badges from the new strip delta |
+| `plans` for any plan a plan or process pin names | refetch pins, so a plan forgotten (or restored) from chat turns its pins gone (or live) at once |
 | reconnect resync | refetch pins with everything else |
 
 ---

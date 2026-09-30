@@ -7,7 +7,7 @@
 import { el } from "./dom";
 import { loadLive, loadOne } from "./load";
 import { onActivity as onAskActivity, refetchAsks } from "./asks";
-import { onActivity as onPinActivity, refetchPins } from "./pins";
+import { onActivity as onPinActivity, onPlanChange, refetchPins } from "./pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
 import { onRenameActivity } from "./rename";
 import { state } from "./state";
@@ -141,6 +141,7 @@ export function listen() {
       if (!data || !isNews(event)) return;
       blink();
       loadOne("/api/plans");
+      onPlanChange(data);
       onPlansEvent(data);
     });
     es.addEventListener("activity", function (event) {
