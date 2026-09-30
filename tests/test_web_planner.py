@@ -370,6 +370,32 @@ def test_repeat_looks_at_one_item_collapse_to_the_newest(client):
         ("plan.view", "look 59"),
         ("plan.view", "plate"),
     ]
+    assert [r["count"] for r in rows] == [1, 60, 1]
+
+
+def test_a_run_of_finder_calls_is_one_row_with_a_count_and_the_latest_params(client):
+    journal.set_writer("web")
+    key = _create(client)["key"]
+    for n in range(70):
+        params = {"resource": "Desc_OreCopper_C", "at": "hub", "within_m": str(500 + n)}
+        journal.append(
+            WORLD,
+            "world.find",
+            actor=CHAT,
+            args={"view": "rank", "params": params},
+            text=f"find {n}",
+        )
+    journal.append(
+        WORLD, "world.find", actor=Actor("chat", "other", 7), args={"view": ""}, text="elsewhere"
+    )
+    rows = client.get("/api/activity?limit=50").json()["entries"]
+    assert [(r["kind"], r["text"], r["count"]) for r in rows] == [
+        ("commit", rows[0]["text"], 1),
+        ("world.find", "find 69", 70),
+        ("world.find", "elsewhere", 1),
+    ]
+    assert rows[1]["args"]["params"]["within_m"] == "569"
+    assert rows[0]["plan"] == key
 
 
 # ------------------------------------------------------------------ graph, deltas, alternates

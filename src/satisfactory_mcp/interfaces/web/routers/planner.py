@@ -178,6 +178,7 @@ class ActivityRow(TypedDict):
     rev: int | None
     text: str
     args: dict | None
+    count: int  # entries a collapsed run stands for; 1 otherwise
 
 
 class ActivityResponse(TypedDict):
@@ -353,6 +354,7 @@ def _commit_rows(log: PlanLog, since: float) -> list[ActivityRow]:
                     "rev": commit.rev,
                     "text": commit.text(),
                     "args": None,
+                    "count": 1,
                 }
             )
     return rows
@@ -371,6 +373,7 @@ def _entry_row(entry: dict, names: dict[str, str]) -> ActivityRow:
         "rev": entry.get("rev"),
         "text": str(entry.get("text") or ""),
         "args": entry.get("args"),
+        "count": 1,
     }
 
 
@@ -399,6 +402,8 @@ def activity(
 
 
 def _view_key(row: ActivityRow) -> tuple | None:
+    if row["kind"] == "world.find":
+        return ("world.find", row["actor"].get("kind"), row["actor"].get("pid"))
     if row["kind"] != "plan.view":
         return None
     args = row["args"] if isinstance(row["args"], dict) else {}
@@ -407,13 +412,13 @@ def _view_key(row: ActivityRow) -> tuple | None:
 
 
 def _collapse_views(rows: list[ActivityRow]) -> list[ActivityRow]:
-    """A run of the same ``plan.view`` by the same actor keeps only its newest entry, so
-    repeat looks cannot crowd plan commits out of the capped list."""
+    """A run of the same ``plan.view``, or of ``world.find`` by one actor, keeps its newest
+    entry and counts the run, so repeat looks cannot crowd plan commits out of the cap."""
     out: list[ActivityRow] = []
     for row in rows:
         key = _view_key(row)
         if key is not None and out and _view_key(out[-1]) == key:
-            out[-1] = row
+            out[-1] = {**row, "count": out[-1]["count"] + row["count"]}
         else:
             out.append(row)
     return out

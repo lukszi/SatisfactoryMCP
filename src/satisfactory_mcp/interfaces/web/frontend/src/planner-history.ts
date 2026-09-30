@@ -4,13 +4,13 @@
 import { get } from "./api";
 import { button, empty, error, link, loading, table, tabs2 } from "./dashkit";
 import { make } from "./dom";
-import { go } from "./nav";
+import { go, withQuery } from "./nav";
 import { argsWords } from "./planner-bench";
 import { actorWord, age, bench, changed, commitWords, duplicatePlan, inbox, restoreRev, undoIn } from "./planner-core";
 import { renderVersionResult } from "./planner-result";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
-import { objectiveText, W } from "./words";
+import { counted, objectiveText, W } from "./words";
 
 import type { Column } from "./dashkit";
 import type { ActivityResponse, ActivityRow, VersionRow } from "./api-shapes";
@@ -217,18 +217,35 @@ function kept(row: ActivityRow): boolean {
   return true;
 }
 
-function repeatedView(row: ActivityRow, prev: ActivityRow | undefined): boolean {
-  return (
-    !!prev &&
-    row.kind === "plan.view" &&
-    prev.kind === row.kind &&
-    prev.plan === row.plan &&
-    prev.actor.kind === row.actor.kind &&
-    prev.text === row.text
-  );
+function sameRun(a: ActivityRow, b: ActivityRow): boolean {
+  if (a.kind !== b.kind || a.actor.kind !== b.actor.kind) return false;
+  if (a.kind === "world.find") return a.actor.pid === b.actor.pid;
+  return a.kind === "plan.view" && a.plan === b.plan && a.text === b.text;
+}
+
+function collapsed(rows: ActivityRow[]): ActivityRow[] {
+  var out: ActivityRow[] = [];
+  rows.forEach(function (row) {
+    var last = out[out.length - 1];
+    if (last && sameRun(last, row)) out[out.length - 1] = { ...last, count: last.count + row.count };
+    else out.push(row);
+  });
+  return out;
+}
+
+interface FindArgs {
+  view?: string;
+  params?: Record<string, string>;
+}
+
+function findDash(row: ActivityRow): string {
+  var args = (row.args || {}) as FindArgs;
+  var view = typeof args.view === "string" ? args.view : "";
+  return withQuery(view ? "world/" + view : "world", args.params || {});
 }
 
 function what(row: ActivityRow): string {
+  if (row.kind === "world.find" && row.count > 1) return counted(row.count, "find") + " · latest: " + row.text;
   if (row.source === "plan") return "v" + row.rev + " " + commitWords(row.text);
   return objectiveText(row.text);
 }
@@ -254,6 +271,11 @@ function activityActs(row: ActivityRow): HTMLElement {
         { title: "undo v" + rev + " as a new version", label: "undo v" + rev + " of " + (row.name || "the plan") }
       )
     );
+  } else if (row.kind === "world.find") {
+    var params = ((row.args || {}) as FindArgs).params || {};
+    var open = link(findDash(row), "open");
+    open.title = Object.keys(params).map(function (k) { return k + "=" + params[k]; }).join(" · ") || "open this World view";
+    box.appendChild(open);
   } else if (row.kind === "plan.solve" && row.args) {
     box.appendChild(
       button(
@@ -294,10 +316,8 @@ export function renderActivity(parent: HTMLElement): void {
   if (activity.error && activity.world === state.world) error(card, "the activity", activity.error, loadActivity);
   else if (!data) loading(card, "activity");
   else {
-    var rows = data.entries.filter(kept).reverse().filter(function (row, i, all) {
-      return !repeatedView(row, all[i - 1]);
-    });
-    if (!rows.length) empty(card, "nothing yet", "plan edits from the page and from chat, and chat's solves, show here");
+    var rows = collapsed(data.entries.filter(kept).reverse());
+    if (!rows.length) empty(card, "nothing yet", "plan edits from the page and from chat, and chat's solves and finds, show here");
     else {
       var columns: Column<ActivityRow>[] = [
         {
