@@ -51,7 +51,9 @@ var ALL_ZOOM = 1;
 
 var ALL_PAD = 0.05;
 
-var RADII = ["100", "250", "500", "1000"];
+export var CONDUIT_RADIUS_M = "250";
+
+var RADII = ["100", CONDUIT_RADIUS_M, "500", "1000"];
 
 var pane = map.createPane("finder");
 pane.style.zIndex = "445";
@@ -73,7 +75,7 @@ var view = {
   busy: false,
   world: "",
   epoch: 0,
-  filter: { resource: "", free: false, conduitKind: "all", radius: "250", group: "" },
+  filter: { resource: "", free: false, conduitKind: "all", radius: CONDUIT_RADIUS_M, group: "" },
   groups: [] as string[],
   beyond: 0,
   focus: false,
@@ -91,12 +93,8 @@ export function worldUrl(path: ApiPath, params: Record<string, string>): ApiUrl 
 
 export function resourceOptions(any: string, current: string): [string, string][] {
   var names: Record<string, string> = {};
-  var every: Record<string, string> = {};
-  var all = setting("spoilers");
   knownNodes().forEach(function (n) {
-    if (n.kind === "geyser") return;
-    every[n.resource] = n.resource_name;
-    if (all || !n.spoiler) names[n.resource] = n.resource_name;
+    if (n.kind !== "geyser") names[n.resource] = n.resource_name;
   });
   var options = Object.keys(names)
     .map(function (id): [string, string] {
@@ -105,7 +103,7 @@ export function resourceOptions(any: string, current: string): [string, string][
     .sort(function (a, b) {
       return a[1].localeCompare(b[1]);
     });
-  if (current && !names[current]) options.unshift([current, (every[current] || current) + " (" + W.hiddenBySpoilers + ")"]);
+  if (current && !names[current]) options.unshift([current, current]);
   return [["", any] as [string, string]].concat(options);
 }
 
@@ -555,12 +553,11 @@ function pointQuery(): { url: ApiUrl; dash: string } {
   if (view.kind === "nodes") {
     return {
       url: worldUrl("/api/world/nodes", {
-        view: "nearest",
+        view: "nodes",
         source: "near:" + here + "@" + NEAR_M,
         near: here,
         resource: f.resource,
         status: f.free ? "free" : "",
-        spoilers: spoilerFlag(),
       }),
       dash: withQuery("world/nodes", { near: here, resource: f.resource, status: f.free ? "free" : "" }),
     };
@@ -579,7 +576,12 @@ function pointQuery(): { url: ApiUrl; dash: string } {
 
 function landed(kind: FindKind, data: NodeFindResponse | ConduitsResponse | CollectiblesResponse): Shown {
   view.beyond = 0;
-  if (kind === "nodes") return { kind: "nodes", rows: (data as NodeFindResponse).nodes };
+  if (kind === "nodes") {
+    var nodes = (data as NodeFindResponse).nodes.slice().sort(function (a, b) {
+      return (a.distance_m || 0) - (b.distance_m || 0);
+    });
+    return { kind: "nodes", rows: nodes };
+  }
   if (kind === "conduits") {
     view.note = (data as ConduitsResponse).age_note;
     return { kind: "runs", rows: (data as ConduitsResponse).runs };
@@ -724,7 +726,7 @@ function refresh(): void {
 }
 
 function hideSpoilers(): void {
-  if (!view.open || !view.set || setting("spoilers")) return;
+  if (!view.open || !view.set || view.set.kind !== "pickups" || setting("spoilers")) return;
   var rows = view.set.rows as { spoiler?: boolean }[];
   if (!rows.some(function (r) { return r.spoiler; })) return;
   if (view.at || view.ref) {

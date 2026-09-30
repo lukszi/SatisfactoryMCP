@@ -11,6 +11,7 @@ import { onActivity as onPinActivity, refetchPins } from "./pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
 import { state } from "./state";
 import { fail } from "./toast";
+import { onFindActivity } from "./world";
 import { refreshWorlds } from "./worlds";
 
 import type { ActivityEvent, PlansEvent } from "./planner-core";
@@ -147,6 +148,7 @@ export function listen() {
       if (!data || !isNews(event)) return;
       onPinActivity(data);
       onAskActivity(data);
+      onFindActivity(data);
       onActivityEvent(data);
     });
   }

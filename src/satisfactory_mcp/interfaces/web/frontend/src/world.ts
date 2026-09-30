@@ -9,11 +9,13 @@ import { resourceOptions, worldUrl } from "./finder";
 import { coords, count, metres, num, regionLine, rounded } from "./format";
 import { loadOne } from "./load";
 import { hashFor, writeHash } from "./map";
-import { dashParts, subjectQuery, withQuery } from "./nav";
+import { dashParts, go, subjectQuery, withQuery } from "./nav";
 import { showPoint } from "./panel";
 import { registerFetch } from "./registry";
-import { onSetting, spoilerFlag } from "./settings";
+import { actorWord } from "./planner-core";
+import { choice as followMode, onSetting } from "./settings";
 import { state } from "./state";
+import { note as toast, offer } from "./toast";
 import { renderConduits } from "./world-conduits";
 import { nodeTable, renderNodes } from "./world-nodes";
 import { renderPickups } from "./world-pickups";
@@ -22,6 +24,7 @@ import { counted, gapText, W } from "./words";
 import type { ApiError, ApiPath, ApiUrl } from "./api";
 import type { Column, SortState } from "./dashkit";
 import type { HereResponse, Region, RegionRow, RegionTableResponse, TableAge } from "./api-shapes";
+import type { ActivityEvent } from "./planner-core";
 
 var VIEWS: [string, string][] = [
   ["", "here"],
@@ -236,6 +239,45 @@ export function textField(
   return labelled(label, input);
 }
 
+export interface Span {
+  min: number;
+  max: number;
+  step: number;
+}
+
+export function rangeField(
+  label: string,
+  candidate: string,
+  value: number,
+  span: Span,
+  show: (value: number) => string,
+  change: (value: number) => void,
+  o?: FieldOptions
+): HTMLElement {
+  var opts = o || {};
+  var box = make("span", "world-range");
+  var input = make("input", "world-slider");
+  input.type = "range";
+  input.min = String(span.min);
+  input.max = String(span.max);
+  input.step = String(span.step);
+  input.value = String(value);
+  input.disabled = !!opts.disabled;
+  input.setAttribute("data-candidate", candidate);
+  input.setAttribute("aria-label", label);
+  if (opts.title) input.title = opts.title;
+  var out = make("output", "world-range-v", show(value));
+  input.oninput = function () {
+    out.textContent = show(Number(input.value));
+  };
+  input.onchange = function () {
+    if (!rebuilding()) change(Number(input.value));
+  };
+  box.appendChild(input);
+  box.appendChild(out);
+  return labelled(label, box);
+}
+
 export function capped(card: HTMLElement, grid: HTMLElement, rows: number, key: string, noun: string): void {
   showAll(card, grid, rows, SHOWN, "show all " + counted(rows, noun), !!uncapped[key], function () {
     uncapped[key] = true;
@@ -282,7 +324,7 @@ export function distanceColumn<R extends { distance_m: number | null }>(label?: 
 }
 
 function hereQuery(): string {
-  return withQuery("", { radius_m: String(HERE_RADIUS_M), spoilers: spoilerFlag() }).slice(1);
+  return withQuery("", { radius_m: String(HERE_RADIUS_M) }).slice(1);
 }
 
 function renderHere(body: HTMLElement): void {
@@ -361,11 +403,10 @@ function renderRegions(body: HTMLElement, params: Record<string, string>): void 
       edit({ resource: v });
     })
   );
-  want("world-regions", regionsBox, worldUrl("/api/world/regions", { resource: params.resource || "", spoilers: spoilerFlag() }));
+  want("world-regions", regionsBox, worldUrl("/api/world/regions", { resource: params.resource || "" }));
   if (waiting(card, regionsBox, "regions")) return;
   var data = regionsBox.data!;
   note(card, "region names are good to about " + num(data.accuracy_m, 0) + " m" + (data.resource_name ? " · nodes counted: " + data.resource_name : ""));
-  hiddenLine(card, data.hidden_spoilers, "locked node");
   if (!data.rows.length) {
     empty(card, "no region holds a matching node");
     return;
@@ -457,7 +498,27 @@ registerFetch<HereResponse>({
   },
 });
 
-onSetting(function () {
-  loadOne(HERE_PATH);
-  redraw();
-});
+onSetting(redraw);
+
+function busy(): boolean {
+  var active = document.activeElement;
+  return !!active && /^(INPUT|TEXTAREA)$/.test(active.tagName);
+}
+
+export function onFindActivity(entry: ActivityEvent): void {
+  if (entry.kind !== "world.find" || entry.world !== state.world || entry.actor.kind === "page") return;
+  var mode = followMode("follow");
+  var args = (entry.args || {}) as { view?: string; params?: Record<string, string> };
+  if (mode === "off" || typeof args.view !== "string") return;
+  var there = viewDash(args.view, args.params || {});
+  if (state.dash === there) return;
+  var who = actorWord(entry.actor);
+  if (mode === "toasts" || busy()) {
+    offer(who + " " + entry.text, "open", function () {
+      go(there);
+    });
+    return;
+  }
+  toast(who + " " + entry.text + " (Settings, follow chat)");
+  go(there);
+}

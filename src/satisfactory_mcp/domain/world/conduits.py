@@ -53,6 +53,7 @@ from .flow import BASIS_NONE
 __all__ = [
     "JOINT_M",
     "KINDS",
+    "NEAR_RADIUS_M",
     "PORT_REACH_M",
     "ConduitSearch",
     "End",
@@ -63,6 +64,9 @@ __all__ = [
     "networks",
     "search",
 ]
+
+#: How far from a place a run counts as near it: every finder, tool and popup uses this.
+NEAR_RADIUS_M = 250.0
 
 #: Two piece endpoints within this of each other are the same joint. Measured over the
 #: reference world's 254 multi-piece chains: the median end-to-start gap is 0.0 cm and a
@@ -560,7 +564,7 @@ class ConduitSearch:
 def search(
     st,
     near: str,
-    radius_m: float = 250.0,
+    radius_m: float = NEAR_RADIUS_M,
     to: str | None = None,
     to_radius_m: float | None = None,
     kind: str | None = None,

@@ -129,3 +129,20 @@ def test_the_table_age_follows_the_save_build(state, game):
     assert stale["table"] == "collectibles" and stale["behind"] is True
     assert stale["gap"] == "buildVersion 495413 -> 502094"
     assert stale["observed_matches"] is True
+
+
+def test_another_worlds_seen_states_are_dropped(state, game):
+    other = type(state)(
+        projection={**state.projection, "header": {**state.header, "session_name": "Elsewhere"}},
+        game=game,
+    )
+    assert other.removed.observed is False
+    assert all(p["observed"] is None for p in other.placements(remaining_only=True))
+    app = create_app(state_loader=lambda save=None, world=None: other, game_loader=lambda: game)
+    with TestClient(app) as c:
+        body = c.get("/api/collectibles", params={"mode": "remaining"}).json()
+    assert body["stale"]["observed_matches"] is False
+    assert all(c["standing"] is None and c["never_streamed"] is None for c in body["census"])
+    assert all(r["observed"] is None for r in body["rows"])
+    assert set(body["counts"]) == {"unstated"}
+    assert sum(body["counts"].values()) == len(body["rows"])

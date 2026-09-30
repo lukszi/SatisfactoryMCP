@@ -53,13 +53,12 @@ function listOf(params: Record<string, string>): string {
 function censusTable(d: CollectiblesResponse): HTMLElement {
   var stale = d.stale;
   var foreign = !!stale && stale.observed_matches === false;
-  function n(key: string, label: string, pick: (c: CensusRow) => number | null, title?: string, className?: string): Column<CensusRow> {
+  function n(key: string, label: string, pick: (c: CensusRow) => number | null, title?: string): Column<CensusRow> {
     return {
       key: key,
       label: label,
       align: "right",
       title: title,
-      className: className,
       sort: function (c) {
         var v = pick(c);
         return v === null ? -1 : v;
@@ -73,7 +72,7 @@ function censusTable(d: CollectiblesResponse): HTMLElement {
   var streamedTitle =
     "placed where no save has had them loaded" +
     (stale && stale.observed_from ? "; read from the saves of " + stale.observed_from : "") +
-    (foreign ? ", another world, so it may not hold here" : "");
+    (foreign ? ", another world, so left out" : "");
   var columns: Column<CensusRow>[] = [
     {
       key: "kind",
@@ -89,7 +88,7 @@ function censusTable(d: CollectiblesResponse): HTMLElement {
     n("collected", W.collected, function (c) { return c.collected; }),
     n("remaining", W.remaining, function (c) { return c.remaining; }),
     n("standing", "standing", function (c) { return c.standing; }, "seen still standing in a save that had them loaded"),
-    n("streamed", W.neverStreamed, function (c) { return c.never_streamed; }, streamedTitle, foreign ? "dash-muted" : undefined),
+    n("streamed", W.neverStreamed, function (c) { return c.never_streamed; }, streamedTitle),
   ];
   return table(columns, d.census, { sort: sorts.census, caption: "pickups per kind" });
 }

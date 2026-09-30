@@ -1436,14 +1436,13 @@ section records what the backend built and what it decided on the way.
 
 ### 18.2 Decided here, smallest option
 
-- **Spoilers are applied before counting.** `spoilers=0` on `/api/world/nodes` drops locked
-  nodes before the totals, the notes and the fields are made, so a field is clustered from
-  the nodes on screen and the "excluded from free" note does not name locked capacity.
-  `hidden_spoilers` counts nodes there and on `/api/world/regions`, and counts categories on
-  `/api/collectibles` (the page's line is "N kinds not found yet are hidden").
+- **Locked nodes fade, they are never dropped.** The node routes take no `spoilers`; every
+  locked node is sent flagged, counted, clustered and searchable, and the page draws it
+  faded. `hidden_spoilers` exists only on `/api/collectibles`, where it counts categories
+  (the page's line is "N kinds not found yet are hidden").
 - **A node is a spoiler when it is locked**: untapped and unworkable with what this world
   has unlocked. `/api/nodes` uses the same rule, so a node an extractor already stands on is
-  never hidden. With no readable save nothing is a spoiler.
+  never faded. With no readable save nothing is a spoiler.
 - **A field's `distance_m` is to its nearest member**, not its centre, so "fields within
   500 m" in the inspector means a member within 500 m.
 - **`network=` ignores the radii** and lists every pipe of that network, longest first, with
@@ -1451,7 +1450,7 @@ section records what the backend built and what it decided on the way.
 - **The collectible table's age** compares the save's `build_version` with the `CL-<n>` of
   the table's `game_build`; `observed_from` is the session the generator read.
 - **Schema names.** `SiteRow` and `SitesResponse` were taken by `/api/factories/sites`, so
-  the ranking's shapes are `SiteRankRow` and `SiteRankResponse`. `CollectibleRow` and
+  the ranking's shapes are `RankedSite` and `RankedSitesResponse`. `CollectibleRow` and
   `FoundField` moved to `serial.py`, since `/api/inspect` sends them too.
 - **A geyser search no longer raises.** `show=nodes kind=geyser` hit a `KeyError` on the
   geyser's missing item; the unit now falls back to `/min`.

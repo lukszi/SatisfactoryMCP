@@ -25,9 +25,9 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 | Map finder card (`mapcard.ts`, id `finder`) and a finder pane drawn on the map | "Plan a factory here" from the inspector (planner phase; §17 Q6) |
 | Right-click inspector upgrade: here, nearest nodes, fields, conduits, pickups, actions | "Storage near here" (inventory §10 "not yet") |
 | `rank_build_sites` as the fields view's **rank** toggle | A pickup route planner (vision Q13 is open) |
-| Spoiler flag on nodes and pickups; the map's node and pickup layers follow the switch | Items as spoilers (§12.4, still open) |
+| Spoiler flag on nodes and pickups; locked nodes are drawn faded, the pickup layers follow the switch | Items as spoilers (§12.4, still open) |
 | Staleness of the node table, the collectible table and the save, said where it applies | Regenerating either table (tools/gen_*.py) |
-| `show_on_map` links that ring a node or a run; the page's selection reported to `ui_context` | Chat moving the page on a finder call (§17 Q4) |
+| `show_on_map` links that ring a node or a run; the page's selection reported to `ui_context`; a finder call in chat moves a page that follows chat | — |
 | Moving tool-body logic into the domain (vision §5.1) | Changing any tool's text beyond §6 |
 
 ---
@@ -53,6 +53,12 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 2. **rank** (a `dashkit.pressed` toggle, enabled only with one resource chosen) calls
    `/api/world/sites`. Columns switch to score and its raw components; one line states the
    weights. **rank** off returns to the plain list.
+3. While **rank** is on, the node filters give way to the rank pane (`world-rank.ts`):
+   **near** anywhere (default, the whole map) | the HUB | the player | a pin | a factory | a
+   map point (the selected point, or **pick on map**, one click); **within** a slider from
+   0.5 to 5 km, default 1 km; **pure only**, off by default. They go to the route as
+   `source=near:<place>@<m>` and `source=purity:pure`, and to the address as
+   `at=hub|me|pin:<n>|<factory>|x,y`, `within_m` and `pure=1`. One line says what is ranked.
 3. **map** on a field: flies to the field's box and draws the members in the finder pane.
 4. **show all on map**: the whole current result (nodes, fields or ranked fields) is drawn
    and listed in the finder card; the card rows fly and select.
@@ -113,7 +119,9 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 - The page reports its selection in the focus heartbeat on every view (not only the planner),
   as `{kind, label, ref}` with `ref` the selector. `ui_context` prints it, so chat can resolve
   "the selected node" with `node:<id>`.
-- Finder tool calls in chat do not move the page (§17 Q4).
+- A finder tool call in chat (`search_resource_nodes`, `rank_build_sites`, `search_conduits`,
+  `whereami`, `collected_from_world`) journals `world.find`, and a page set to follow chat (the
+  default) opens the same World view; "toasts only" offers it (docs/web-wire.md, World).
 
 ---
 
@@ -129,18 +137,20 @@ there is no guard change and no 409 besides the pinning middleware's.
 
 | Path | Params (default) | Model | Codes | Domain |
 |---|---|---|---|---|
-| `/api/world/here` | `radius_m` (500, 1–5000); `spoilers` 0\|1 | `HereResponse` | 200, 404 no save | `place.here` |
-| `/api/world/nodes` | `view` nodes\|fields\|nearest (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near`; `spoilers` 0\|1 | `NodeFindResponse` | 200, 400 bad value / unresolvable near / nearest without near / every selector failed | `finder.find_nodes` |
-| `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `SitesResponse` | 200, 400 unknown resource, 404 no save | `finder.rank` |
+| `/api/world/here` | `radius_m` (500, 1–5000) | `HereResponse` | 200, 404 no save | `place.here` |
+| `/api/world/nodes` | `view` nodes\|fields (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near` | `NodeFindResponse` | 200, 400 bad value / unresolvable near / every selector failed | `finder.find_nodes` |
+| `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `RankedSitesResponse` | 200, 400 unknown resource, 404 no save | `finder.rank` |
 | `/api/world/conduits` | `near` (me); `radius_m` (250, 1–2000); `to`; `to_radius_m`; `conduit_kind` belt\|pipe\|all; `view` runs\|networks; `network`; `run`; `offset` (0); `limit` (200, 1–500) | `ConduitsResponse` | 200, 400 bad value / unresolvable place / networks with belt, 404 no save | `conduits.search`, `conduits.networks` |
-| `/api/world/regions` | `resource`; `spoilers` 0\|1 | `RegionTableResponse` | 200, 400 unknown resource | `regions.region_rows` |
-| `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new | `InspectResponse` + fields in §3.2 | as today | `place.describe` |
+| `/api/world/regions` | `resource` | `RegionTableResponse` | 200, 400 unknown resource | `regions.region_rows` |
+| `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new, the elevation reach | `InspectResponse` + fields in §3.2 | as today | `place.describe` |
 | `/api/nodes` (changed) | as today | `NodeRow` + `spoiler` | as today | as today |
 | `/api/collectibles` (changed) | as today + `spoilers` 0\|1 | `CollectiblesResponse` + fields in §3.2 | as today | `collect_view` + `service.census_rows` |
 
 `spoilers` absent means every row plus its `spoiler` flag, so nothing changes for a caller that
-does not send it (the §12.3 rule). `spoilers=0` drops spoiler rows and every count in the reply
-counts only what is returned; `hidden_spoilers` says how many were dropped.
+does not send it (the §12.3 rule). Only `/api/collectibles` takes `spoilers=0`: it drops spoiler
+categories, every count in the reply counts only what is returned, and `hidden_spoilers` says
+how many categories were dropped. Node routes take no `spoilers`: a locked node is always sent,
+flagged, and the page fades it (§8.1).
 
 `resource` takes an item name or class id, resolved by `domain/planning/scenario.resolve_item`
 (the tools' `_item_id`). `near`, `to` and `at` take the place vocabulary of `resolve_origin`
@@ -193,7 +203,8 @@ class FoundField(TypedDict):
     spoiler: bool                     # every member locked
 
 class NodeFindResponse(TypedDict):
-    view: Literal["nodes", "fields", "nearest"]
+    view: Literal["nodes", "fields"]         # no "nearest": with near, rows carry distance_m
+                                      #  and the page sorts by it
     description: str                  # the selection's description, e.g. "region:Grass Fields"
     selectors: list[str]              # what was built from the filters (copyable)
     where: str                        # what near resolved to; "" without near
@@ -207,12 +218,11 @@ class NodeFindResponse(TypedDict):
     choices: NodeChoices              # {resources: [{id, name, nodes}], purities: [str],
                                       #  kinds: [str]} over the whole table, not the filter
     notes: list[str]                  # selector errors, locked capacity, unresolved extractors
-    hidden_spoilers: int
     stale: TableAge | None
     save_error: str | None
 
-class SiteRow(TypedDict):             # SitesResponse = {resource, resource_name, description,
-    rank: int; score: float           #  sites, count, weights, notes, stale}
+class RankedSite(TypedDict):          # RankedSitesResponse = {resource, resource_name, description,
+    rank: int; score: float           #  sites, count, weights: dict[str, float], notes, stale}
     region: str | None; grid: str
     x_m: float; y_m: float; selector: str
     nodes: int; untapped: float; spread_m: float
@@ -262,13 +272,14 @@ class HereResponse(TypedDict):
     stale: list[TableAge]             # nodes and collectibles, each when behind or joined badly
 
 class RegionRow(TypedDict):           # RegionTableResponse = {resource, resource_name, rows,
-    name: str; direction: str; grid: str   #  accuracy_m, hidden_spoilers}
+    name: str; direction: str; grid: str   #  accuracy_m}
     anchor_m: tuple[float, float]; area_km2: float; nodes: int
 
-# NearestNode gains `spoiler: bool` (the page hides those rows by the flag).
+# NearestNode gains `spoiler: bool` (the page marks those rows locked).
 # InspectResponse gains, after `nearest`:
     grid: str; direction: str
-    conduits: ConduitCount | None     # {belt, pipe, radius_m}; null without a save
+    conduits: ConduitCount | None     # {belt, pipe, radius_m}; null without a save; radius_m is
+                                      #  conduits.NEAR_RADIUS_M (250), the finders' default too
     fields: list[FoundField]          # up to 3: per-resource fields with a member within 500 m
     pickups: list[NearPickup]         # up to 5 remaining within 500 m, nearest first
     pickups_within: int | None        # how many remain within 500 m; null with no save
@@ -337,7 +348,8 @@ None new. Behaviour on the existing ones:
 | `collected_from_world` | census built by `service.census_rows`; labels from `service.LABELS` | unchanged |
 | `ui_context` | prints `ref` after a selection label when present: `selected: node "Iron Ore, pure" (node:BP_...)` | one line |
 
-No tool gains a spoiler filter: spoilers are a page setting (§12.3 precedent). `docs/mcp-surface.md`
+The finder tools and `collected_from_world` also journal `world.find` (§2.7); their text is
+unchanged. No tool gains a spoiler filter: spoilers are a page setting (§12.3 precedent). `docs/mcp-surface.md`
 and `test_surface.py` follow the signature changes.
 
 ---
@@ -353,6 +365,7 @@ every tag `chip`. Numbers through `format.ts`, words through `words.ts`, address
 |---|---|---|
 | `world.ts` (new) | section shell `renderWorld(body, subject)`, `tabs2` of the six views, **here** and **regions** views; registers `/api/world/here` (live wave); exports `here()`, `onHere()` | `tabs2`, `table`, `button`, `link`, `empty/loading/error`, `chip`, `format.num/perMin`, `W`, `nav.dashParts`/`subjectQuery`, `pointButton` |
 | `world-nodes.ts` (new) | nodes, fields and the rank toggle | `table` (sortable), `pressed` (rank, free), `button` (map, show all on map), `chip` (status, moved), `code()` copy cells, `latest("world-nodes")` |
+| `world-rank.ts` (new) | the rank pane: near anchor, within slider, pure only; `rankSources(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (world.ts), `note`, `panel.vitals`, `pins.livePins` |
 | `world-conduits.ts` (new) | runs and networks | `table`, `tabs2` (runs/networks), `button`, `latest("world-conduits")` |
 | `world-pickups.ts` (new) | census and lists | `table`, `tabs2` (remaining/collected/nearest), `chip`, `markers.pickupName`, `crates`-style loot line from `markers.lootLine` (exported), `latest("world-pickups")` |
 | `finder.ts` (new) | the map card `finder`, the `finder` pane (z 445, under trace's 450), `startAt(kind, x, y)`, `showRows(...)`, `showRef(ref)`, delegated click on `data-find` | `mapCard`, `claim`, `cardHead/Row/Line/Heading`, `tabs2`, `table`, `button`, `HIGHLIGHT`, `latest("finder")`, `select()` |
@@ -361,17 +374,17 @@ every tag `chip`. Numbers through `format.ts`, words through `words.ts`, address
 | `status.ts` | kind words for the new kinds; `fly()` sends the new kinds to `finder.showRef` | existing |
 | `dashboard.ts` | `["world", "World"]` after Inventory in `TABS`; route to `renderWorld` | — |
 | `nav.ts` | `subjectQuery(subject) -> {head, params}` and `withQuery(head, params)`; `recipes.ts` `parseBrowse`/`browseDash` switch to them | — |
-| `markers.ts` | node layer and pickup layer hide `spoiler` rows while the switch is off, redraw on `onSetting`; `PICKUP_NAME` is deleted and `pickupName` reads the census `label` from the collectibles reply (category words as the fallback before it lands); export `pickupName`, `lootLine`, `PICKUP_COLOUR`, `RESOURCE_COLOUR` | `settings.setting` |
+| `markers.ts` | node layer draws `spoiler` rows faded; pickup layer hides `spoiler` rows while the switch is off, redraw on `onSetting`; `PICKUP_NAME` is deleted and `pickupName` reads the census `label` from the collectibles reply (category words as the fallback before it lands); export `pickupName`, `lootLine`, `PICKUP_COLOUR`, `RESOURCE_COLOUR` | `settings.setting` |
 | `panel.ts` | `showSelector` hands `node:`, `chain:`, `pipe:` to `finder.showRef` (one line) | — |
 | `planner.ts` | `focusBody().selection` = the shared selection outside the planner workbench; `onSelect(scheduleFocus)` | — |
-| `settings.ts` | spoiler hint: "later tiers, MAM trees, phases, locked recipes, locked nodes and unfound pickups" | — |
+| `settings.ts` | spoiler hint: "later tiers, MAM trees, phases, locked recipes and unfound pickups" | — |
 | `words.ts` | `free`, `tapped`, `locked`, `field`, `node`, `run`, `network`, `remaining`, `collected`, `neverStreamed: "never streamed"`, `mapDataBehind: "map data older than this save"` | — |
 | `dom.ts` | `FIND_ATTR = "data-find"`, `FIND_AT_ATTR = "data-find-at"` beside the trace constants | — |
 | `main.ts` | FEATURES line `import "./world";`; `listenForFinds()` beside `listenForTraces()` | — |
 | `api-shapes.ts` | aliases for every §3.2 name | — |
 | `style.css` | World filter bar, finder pane classes; tokens only, no hex | — |
 
-Addresses: `world` (here), `world/nodes?…`, `world/fields?…[&rank=1]`, `world/conduits?…`,
+Addresses: `world` (here), `world/nodes?…`, `world/fields?…[&rank=1&at=…&within_m=…&pure=1]`, `world/conduits?…`,
 `world/pickups?view=remaining|collected|nearest&group=…`, `world/regions?resource=…`. Keys match
 the route params. Filter edits rewrite the fragment in place (`history.replaceState`), a tab
 switch pushes. `document.title` = "World · Satisfactory", with the view name for sub-views.
@@ -384,11 +397,11 @@ switch pushes. `document.title` = "World · Satisfactory", with the view name fo
 
 | Layer | Change |
 |---|---|
-| `node: <resource>` rows | `spoiler` dots (unreachable nodes) are not drawn while spoilers are off; the counts in the section head follow |
+| `node: <resource>` rows | `spoiler` dots (unreachable nodes) are drawn faded and hollow whatever the switch; tables fade those rows too and keep their `locked` chip |
 | `pickup: <category>` rows | spoiler categories are not drawn while spoilers are off; their rows stay in the control, disabled, titled "not found yet: turn spoilers on in Settings" |
 | finder pane (new, not in the layer control) | rings for nodes and pickups (`HIGHLIGHT`, seed 11 px, others 7 px), a dashed box for a field, polylines for runs (as trace draws them); cleared by the card's ×, Esc, a world switch, or `claim` |
 
-Switching spoilers needs no refetch: both layers already carry every row and the flag.
+Switching spoilers needs no refetch: the pickup layers already carry every row and the flag.
 
 ### 8.2 Spoiler rules (server side)
 
@@ -397,7 +410,7 @@ Switching spoilers needs no refetch: both layers already carry every row and the
 | node | `reachable is False`: no extractor this world has unlocked can work it |
 | field | every member is a spoiler |
 | pickup, census row | its category is not in `found` (this save has collected none of it), **except** `crashed_drop_pod` and `loot_cache`, which are never spoilers (they stand in plain sight) |
-| region row count | counts non-spoiler nodes when `spoilers=0` |
+| region row count | counts every node, locked ones included |
 | conduits, sites, here's position | never (player-built, or already reachable-only) |
 
 ### 8.3 Interactions
@@ -419,8 +432,8 @@ Switching spoilers needs no refetch: both layers already carry every row and the
 | Source | Signal | Where it shows |
 |---|---|---|
 | Node table vs the save's build | `TableAge` from `nodes.table_age` (existing `TableSkew`, scoped to the rows in the reply) | a `chip` "moved" on affected rows (title: the drift note); one line above a table; inspector details |
-| Collectible table vs the save's build | `TableAge.behind` when the save's `build_version` is past the table's `game_build` CL | one line under the pickups census: `W.mapDataBehind` + gap; pickups tab only |
-| Collectible `observed` states | `observed_from` is the session whose saves the generator read; `observed_matches` false on any other world | the "never streamed" column title says whose saves it comes from; greyed when it does not match |
+| Collectible table vs the save's build | `TableAge.behind` when the save's `build_version` is past the table's `game_build` CL (one changelist space: checked on the saves on disk, every save written under exe `CL-495413` carries `buildVersion` 495413 and the first under `CL-502094` carries 502094) | one line under the pickups census: `W.mapDataBehind` + gap; pickups tab only |
+| Collectible `observed` states | `observed_from` is the session whose saves the generator read; `observed_matches` false on any other world, and then every row's `observed` and the census `standing`/`never_streamed` are null | the "never streamed" column title says whose saves it comes from; `–` when they are another world's |
 | The save itself | `age_note` | here view subtitle; finder card head title |
 | Region names | `Region.confidence`/`accuracy_m` | the region cell's title, as the node popup does today |
 
@@ -457,6 +470,13 @@ in-process (TestClient): over HTTP on Windows every call also pays a floor of ab
 | `/api/world/conduits` | tool 3.2 ms | ≤ 30 ms, ≤ 400 kB | limit 200, radius ≤ 2000 m |
 | `/api/world/regions` | tool 6.5 ms | ≤ 15 ms | |
 
+Re-measured after the fade change and the rank pane (2026-09-30, same save, in-process, warm,
+median of 7): `/api/nodes` 6.0 ms, 264.5 kB; `/api/collectibles?mode=remaining` 22 ms,
+652 kB; `/api/world/nodes` 7.9 ms, 288 kB (locked nodes now always sent); `view=fields`
+54 ms, 67 kB; `/api/world/sites` 115 ms, 2.8 kB, and 4.4 ms with a rank-pane `near` source;
+`/api/world/here` 3.8 ms; `/api/world/regions` 10 ms. The two map payloads stay over their
++5% / +10% lines and are **accepted**: the page is local only, so size costs no network.
+
 Page: place inputs (`near`, `to`) query on Enter or when they lose focus, never per keystroke; each view holds one `latest()` slot (`world-here`,
 `world-nodes`, `world-sites`, `world-conduits`, `world-pickups`, `world-regions`, `finder`);
 the last rows stay on screen while the next query loads. Tables over 50 rows render 50 and a
@@ -469,7 +489,7 @@ adding one.
 
 | Direction | What happens |
 |---|---|
-| chat → page | `show_on_map` links open the page on the thing, ringed and selected (§2.7). Nothing else moves the page. |
+| chat → page | `show_on_map` links open the page on the thing, ringed and selected; a finder call opens its World view under follow chat (§2.7). |
 | page → chat | every row shows its selector (`node:`, `near:x,y@r`, `chain:`, `pipe:`, `region:`) as a copyable `code` cell; the shared selection reaches `ui_context` as `{kind, label, ref}` |
 | same answer | a route and its tool call one domain function; `test_world_parity.py` compares them on one save |
 | page prompts agent | never |
@@ -483,7 +503,7 @@ Backend (`PYTHONPATH=<worktree>/src`, the main venv, `satisfactory_mcp.__file__`
 | File | Covers |
 |---|---|
 | `tests/test_world_finder_domain.py` (new) | `find_nodes` filters (resource, purity, kind, status, region source, near), nearest ordering, totals, locked capacity; `fields`; `rank`; `place.here` no pawn; `place.describe` fields and pickups; `conduits.search` near/to/network/run and bridged; `region_rows`; `table_age` scoping; `census_rows`, `found`, spoiler rule incl. pods and caches |
-| `tests/test_web_world_finders.py` (new) | each `/api/world/*` route: shape, defaults, every 400/404/422, `spoilers` absent vs `0` (rows dropped, counts follow, `hidden_spoilers`), `save_error` path, `as_of` 409 via the middleware, Host 403 |
+| `tests/test_web_world_finders.py` (new) | each `/api/world/*` route: shape, defaults, every 400/404/422, locked nodes kept and counted, `save_error` path, `as_of` 409 via the middleware, Host 403 |
 | `tests/test_world_parity.py` (new) | tool vs route on the fixture: same node ids and order, same field centres and totals, same site order, same run ids, same census numbers |
 | `tests/test_web_inspect.py` | new fields; `radius_m`; no-save path keeps nodes and nulls conduits |
 | `tests/test_web_nodes.py`, `tests/test_web_collectibles.py` | `spoiler` flags; census; `spoilers=0`; `TableAge` with a patched build |
@@ -505,8 +525,8 @@ Frontend: `npm ci`, `npx tsc --noEmit`, `npm run build`; schema regenerated offl
 3. Nodes: choosing Iron Ore + free + near me writes all three into the address; reload
    restores them; Back undoes a tab switch, not each keystroke.
 4. Nodes census line equals `search_resource_nodes resource="iron ore" only_free=true` header.
-5. No locked node appears with spoilers off; turning spoilers on in Settings shows them with a
-   `locked` chip, and the map's node dots gain the faded ones without a reload.
+5. Locked nodes show faded with a `locked` chip, and faded hollow dots on the map, with
+   spoilers off and on alike; counts and search include them.
 6. Fields: **rank** is disabled without one resource; with Copper Ore it shows score columns
    whose order equals `rank_build_sites resource="copper ore" limit=10`.
 7. Conduits near me: rows equal `search_conduits near=me` (ids, order); **map** on a run draws
@@ -574,14 +594,16 @@ read-only for both.
 
 - Collectibles are spoilers per category until this save collects one; pods and loot caches
   never are. Census counts follow the rows (T3).
-- A node is a spoiler when no unlocked extractor can work it; the map's node layer follows.
+- A node is a spoiler when no unlocked extractor can work it; it is shown faded, never removed,
+  and counts and search include it (owner decision, 2026-09-30).
 - Staleness is shown only where the data is used, never in the status strip.
 - The finder card lists at most 25 rows; the dashboard holds the rest.
 - Selection kinds grow by four; the strip still offers only **map** and **clear** (§16.3 Q1
   stays open).
 - **rank** scores every field of the one resource over the whole map, as `rank_build_sites`
-  does with no source. While it is on, the purity, kind, status and near filters are disabled
-  rather than silently ignored, and the census reads "top 10 of N".
+  does with no source, unless the rank pane narrows it (§2.2 step 3). While it is on, the
+  purity, kind, status and near filters give way to that pane, and the census reads "top 10
+  of N".
 - The page rounds a half to even, as the tools' Python formatting does, so a distance or a
   height reads the same number on the page and in chat. MW keeps its own rule.
 - `/api/world/nodes` sends its notes in the page's words; the tool keeps its own sentences.
@@ -589,16 +611,15 @@ read-only for both.
 
 ---
 
-## 17. Open questions
+## 17. Open questions, answered (2026-09-30)
 
-1. Is "never collected one" the right spoiler line for pickups, or should positions follow a
-   scanner unlock, or never be spoilers?
-2. Should the pickup census counts (placed, remaining) stay visible for hidden categories?
-3. Should unreachable nodes vanish from the map when spoilers are off, or stay faded as today?
-4. Should a finder call in chat move the page (as plan events do under "follow chat")?
-5. When the collectible table was generated from another world's saves, should `observed`
-   be dropped rather than greyed?
-6. Should the inspector offer "plan a factory here" once the planner takes a point source?
-7. Should a world-wide Sites list (factory_sites) join World, or stay under Factories (§17.2)?
-8. Should **rank** honour the near filter (as a `near:<place>@r` source) or purity, instead of
-   disabling them?
+1. Pickups as spoilers: a kind stays hidden until this save has collected one of it; drop pods
+   and loot caches never are. As built.
+2. Census counts of hidden kinds stay hidden: counts follow the rows. As built.
+3. Unreachable nodes stay on the map and in the tables, faded; counts and search include
+   them (§8.1, §16).
+4. A finder call in chat moves a page that follows chat, the default (§2.7).
+5. Another world's `observed` states are dropped, not greyed (§9).
+6. No "plan a factory here" until the planner takes a point source.
+7. The world-wide sites list stays under Factories.
+8. **rank** gets its own pane: near an anchor within 0.5–5 km, and pure only (§2.2 step 3).

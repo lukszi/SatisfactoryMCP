@@ -78,7 +78,7 @@ def test_nodes_default_to_every_node_with_its_status(client):
     assert set(row) >= {"id", "name", "status", "occupant", "region", "moved", "spoiler", "rate"}
     assert {r["status"] for r in body["nodes"]} == {"free", "tapped", "locked"}
     assert all(r["spoiler"] == (r["status"] == "locked") for r in body["nodes"])
-    assert body["hidden_spoilers"] == 0
+    assert "hidden_spoilers" not in body
     assert body["choices"]["resources"] and body["choices"]["purities"]
     assert body["save_error"] is None and body["stale"] is None
 
@@ -109,17 +109,15 @@ def test_nodes_fields_view_sends_fields_and_the_tools_totals(client):
     assert len(f["bbox_m"]) == 4
 
 
-def test_spoilers_zero_drops_locked_nodes_and_the_counts_follow(client):
+def test_locked_nodes_stay_in_and_count_whatever_the_spoiler_switch(client):
     every = client.get("/api/world/nodes", params={"resource": "Crude Oil"}).json()
-    hidden = client.get("/api/world/nodes", params={"resource": "Crude Oil", "spoilers": 0}).json()
+    off = client.get("/api/world/nodes", params={"resource": "Crude Oil", "spoilers": 0}).json()
     locked = [r for r in every["nodes"] if r["spoiler"]]
     assert locked
-    assert hidden["hidden_spoilers"] == len(locked)
-    assert hidden["count"] == every["count"] - len(locked)
-    assert not any(r["spoiler"] for r in hidden["nodes"])
-    assert hidden["total"] == pytest.approx(sum(r["rate"] for r in hidden["nodes"]))
-    assert every["hidden_spoilers"] == 0
-    assert client.get("/api/world/nodes", params={"spoilers": 2}).status_code == 422
+    assert off == every
+    assert every["count"] == len(every["nodes"])
+    assert every["total"] == pytest.approx(sum(r["rate"] for r in every["nodes"]))
+    assert every["free"] < every["total"] - sum(r["rate"] for r in locked) + 1e-6
 
 
 @pytest.mark.parametrize(
@@ -131,7 +129,7 @@ def test_spoilers_zero_drops_locked_nodes_and_the_counts_follow(client):
         ({"kind": "volcano"}, "unknown kind"),
         ({"resource": "Unobtainium"}, "unknown resource"),
         ({"near": "nowhere at all"}, "does not name a place"),
-        ({"view": "nearest"}, "needs near"),
+        ({"view": "nearest"}, "unknown view"),
         ({"source": "region:Nowhere"}, "no selector resolved"),
     ],
 )
@@ -199,6 +197,22 @@ def test_sites_rank_one_resource_best_first(client):
     scores = [s["score"] for s in body["sites"]]
     assert scores == sorted(scores, reverse=True)
     assert set(body["weights"]) == {"throughput", "spread", "distance", "purity", "roughness"}
+
+
+def test_sites_honour_the_rank_panes_near_and_purity(client):
+    every = client.get("/api/world/sites", params={"resource": "Iron Ore", "limit": 50}).json()
+    near = client.get(
+        "/api/world/sites",
+        params={"resource": "Iron Ore", "limit": 50, "source": "near:hub@1500"},
+    ).json()
+    assert 0 < near["count"] < every["count"]
+    assert "of the HUB" in near["description"]
+    pure = client.get(
+        "/api/world/sites",
+        params={"resource": "Iron Ore", "limit": 50, "source": ["near:hub@5000", "purity:pure"]},
+    ).json()
+    assert 0 < pure["count"]
+    assert "purity=pure" in pure["description"]
 
 
 def test_sites_refusals(client, game):
@@ -281,11 +295,8 @@ def test_regions_list_and_filter(client):
     crude = client.get("/api/world/regions", params={"resource": "Crude Oil"}).json()
     assert crude["resource_name"] == "Crude Oil"
     assert all(r["nodes"] > 0 for r in crude["rows"])
-    hidden = client.get(
-        "/api/world/regions", params={"resource": "Crude Oil", "spoilers": 0}
-    ).json()
-    assert hidden["hidden_spoilers"] > 0
-    assert sum(r["nodes"] for r in hidden["rows"]) < sum(r["nodes"] for r in crude["rows"])
+    off = client.get("/api/world/regions", params={"resource": "Crude Oil", "spoilers": 0}).json()
+    assert off == crude
     assert client.get("/api/world/regions", params={"resource": "Unobtainium"}).status_code == 400
 
 

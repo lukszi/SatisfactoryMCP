@@ -60,6 +60,16 @@ stat-compared every 3 s.
   file, so every change reaches every page as `activity`. `diff_vs_save(plan=)` and
   `commission_plan(plan=)` journal `plan.view` with `args.view = "track"`.
 
+## World
+
+- `hidden_spoilers` is sent only by `/api/collectibles`, and it counts **categories** (pickup
+  kinds) dropped by `spoilers=0`, never placements. The node routes take no `spoilers`: a
+  locked node is always sent with `spoiler: true` and the page fades it.
+- The finder tools (`search_resource_nodes`, `rank_build_sites`, `search_conduits`,
+  `whereami`, `collected_from_world`) journal `world.find` with `args {view, params}`: the
+  World view and its address parameters, the ones the page's own filters write. A page set to
+  follow chat opens `world/<view>?<params>`; "toasts only" offers it instead.
+
 ## Pins
 
 `/api/pins` (`routers/pins.py`) follows the rules above: `?save=`/`?world=`, the guard on

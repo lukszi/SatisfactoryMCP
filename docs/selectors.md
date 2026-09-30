@@ -49,6 +49,7 @@ place table the only table a reader needs for "where".
 | `x,y` | that coordinate, in metres | no |
 | `node:<instance>` | one resource node, by the id `search_resource_nodes` prints | no |
 | `me` | the player pawn's position in the save | yes |
+| `hub` | the HUB, off its built-in storage; a factory named `hub` wins | yes |
 | `<factory name>` | the centroid of a named factory's machines | yes |
 | `slab:<n>` | a foundation platform's tile mean, by the index `factory_map show=slabs` prints | yes |
 | `chain:<n>` / `pipe:<n>` | the midpoint of a conduit run, by the ident `search_conduits` prints | yes |

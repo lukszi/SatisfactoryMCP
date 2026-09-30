@@ -131,8 +131,7 @@ export interface paths {
          *
          *     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
          *     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-         *     elevation and conduit reach; fields and pickups look 500 m out. ``spoilers=0`` skips
-         *     locked nodes so that ``nearest`` still holds the closest ones some extractor can work.
+         *     elevation reach; conduits count within 250 m, fields and pickups look 500 m out.
          *
          *     **A failed save is not a failed answer.** The node table is static, covers the whole map
          *     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -1617,12 +1616,13 @@ export interface paths {
         };
         /**
          * World Nodes
-         * @description Resource nodes as ``search_resource_nodes`` finds them: nodes, fields or nearest.
+         * @description Resource nodes as ``search_resource_nodes`` finds them: nodes or fields.
          *
          *     ``resource`` is a name or class id; ``purity`` and ``kind`` take ``all`` for no filter;
          *     ``status`` is ``free`` (untapped), ``tapped`` or ``all``. ``source`` repeats and takes
-         *     the tool's selectors. ``spoilers=0`` drops locked nodes before anything is counted. A
-         *     save that will not load still answers from the node table, with ``save_error`` set.
+         *     the tool's selectors. With ``near`` every row carries ``distance_m`` and the page sorts
+         *     by it. Locked nodes stay in, flagged ``spoiler``; the page fades them. A save that will
+         *     not load still answers from the node table, with ``save_error`` set.
          */
         get: operations["world_nodes_api_world_nodes_get"];
         put?: never;
@@ -1706,9 +1706,6 @@ export interface paths {
         /**
          * World Regions
          * @description Named regions with their node counts, as ``list_regions`` lists them.
-         *
-         *     ``spoilers=0`` counts only nodes some unlocked extractor can work; with no readable
-         *     save every node counts.
          */
         get: operations["world_regions_api_world_regions_get"];
         put?: never;
@@ -2368,7 +2365,8 @@ export interface components {
          * CensusRow
          * @description One category: the map's count, this save's collections, and what is left.
          *
-         *     ``remaining`` is null where no save records a collection of the class at all.
+         *     ``remaining`` is null where no save records a collection of the class at all;
+         *     ``standing`` and ``never_streamed`` are null when the table's states are another world's.
          */
         CensusRow: {
             /** Category */
@@ -2382,9 +2380,9 @@ export interface components {
             /** Remaining */
             remaining: number | null;
             /** Standing */
-            standing: number;
+            standing: number | null;
             /** Never Streamed */
-            never_streamed: number;
+            never_streamed: number | null;
             /** Looted Standing */
             looted_standing: number;
             /** State Tracked */
@@ -3976,7 +3974,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "nodes" | "fields" | "nearest";
+            view: "nodes" | "fields";
             /** Description */
             description: string;
             /** Selectors */
@@ -4004,8 +4002,6 @@ export interface components {
             choices: components["schemas"]["NodeChoices"];
             /** Notes */
             notes: string[];
-            /** Hidden Spoilers */
-            hidden_spoilers: number;
             stale: components["schemas"]["TableAge"] | null;
             /** Save Error */
             save_error: string | null;
@@ -4031,7 +4027,7 @@ export interface components {
          *     and with no world there is nothing to have researched it.
          *
          *     ``spoiler`` is an unoccupied node with ``reachable`` false, the rows the text surface
-         *     marks ``LOCKED``: the page hides those dots while spoilers are off.
+         *     marks ``LOCKED``: the page draws those dots faded.
          */
         NodeRow: {
             /** Id */
@@ -4930,6 +4926,61 @@ export interface components {
             text: string;
             state: components["schemas"]["PlanStateBody"];
         };
+        /** RankedSite */
+        RankedSite: {
+            /** Rank */
+            rank: number;
+            /** Score */
+            score: number;
+            /** Region */
+            region: string | null;
+            /** Grid */
+            grid: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Selector */
+            selector: string;
+            /** Nodes */
+            nodes: number;
+            /** Untapped */
+            untapped: number;
+            /** Spread M */
+            spread_m: number;
+            /** To Infra M */
+            to_infra_m: number | null;
+            /** Purity */
+            purity: number;
+            /** Alt M */
+            alt_m: number | null;
+            /** Rough M */
+            rough_m: number | null;
+            /** Slope Deg */
+            slope_deg: number | null;
+            /** Wet Pct */
+            wet_pct: number | null;
+        };
+        /** RankedSitesResponse */
+        RankedSitesResponse: {
+            /** Resource */
+            resource: string;
+            /** Resource Name */
+            resource_name: string;
+            /** Description */
+            description: string;
+            /** Sites */
+            sites: components["schemas"]["RankedSite"][];
+            /** Count */
+            count: number;
+            /** Weights */
+            weights: {
+                [key: string]: number;
+            };
+            /** Notes */
+            notes: string[];
+            stale: components["schemas"]["TableAge"] | null;
+        };
         /**
          * Rate
          * @description ``amount`` is per cycle: per craft or per build for a manual or building recipe,
@@ -5114,8 +5165,6 @@ export interface components {
             rows: components["schemas"]["RegionRow"][];
             /** Accuracy M */
             accuracy_m: number;
-            /** Hidden Spoilers */
-            hidden_spoilers: number;
         };
         /**
          * RegionsResponse
@@ -5387,61 +5436,6 @@ export interface components {
             by_place: components["schemas"]["PlaceRow"][];
             /** Holders */
             holders: components["schemas"]["ShardHolder"][];
-        };
-        /** SiteRankResponse */
-        SiteRankResponse: {
-            /** Resource */
-            resource: string;
-            /** Resource Name */
-            resource_name: string;
-            /** Description */
-            description: string;
-            /** Sites */
-            sites: components["schemas"]["SiteRankRow"][];
-            /** Count */
-            count: number;
-            /** Weights */
-            weights: {
-                [key: string]: number;
-            };
-            /** Notes */
-            notes: string[];
-            stale: components["schemas"]["TableAge"] | null;
-        };
-        /** SiteRankRow */
-        SiteRankRow: {
-            /** Rank */
-            rank: number;
-            /** Score */
-            score: number;
-            /** Region */
-            region: string | null;
-            /** Grid */
-            grid: string;
-            /** X M */
-            x_m: number;
-            /** Y M */
-            y_m: number;
-            /** Selector */
-            selector: string;
-            /** Nodes */
-            nodes: number;
-            /** Untapped */
-            untapped: number;
-            /** Spread M */
-            spread_m: number;
-            /** To Infra M */
-            to_infra_m: number | null;
-            /** Purity */
-            purity: number;
-            /** Alt M */
-            alt_m: number | null;
-            /** Rough M */
-            rough_m: number | null;
-            /** Slope Deg */
-            slope_deg: number | null;
-            /** Wet Pct */
-            wet_pct: number | null;
         };
         /**
          * SiteRow
@@ -6770,7 +6764,6 @@ export interface operations {
                 x_m: number;
                 y_m: number;
                 radius_m?: number;
-                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };
@@ -9034,7 +9027,6 @@ export interface operations {
                 status?: string;
                 source?: string[] | null;
                 near?: string | null;
-                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };
@@ -9085,7 +9077,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SiteRankResponse"];
+                    "application/json": components["schemas"]["RankedSitesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9145,7 +9137,6 @@ export interface operations {
         parameters: {
             query?: {
                 radius_m?: number;
-                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };
@@ -9179,7 +9170,6 @@ export interface operations {
         parameters: {
             query?: {
                 resource?: string | null;
-                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };

@@ -612,8 +612,8 @@ schema. Called as a plain function (tests, scripts) the client is blank and read
 
 **The activity journal** (`domain/planning/journal.py`, contract §8) holds what is not a plan
 edit: `plan.solve` for a `plan_factory` without `save_as` (the page offers it as a from-chat
-card), `plan.view` for `plan_layout`, `diff_vs_save` and `commission_plan` with `plan=`, and
-`plan.rejected` from the web. One file per process under `activity/<world>/`, `chat-<pid>.jsonl`
+card), `plan.view` for `plan_layout`, `diff_vs_save` and `commission_plan` with `plan=`,
+`world.find` for the finder tools (docs/web-wire.md, World), and `plan.rejected` from the web. One file per process under `activity/<world>/`, `chat-<pid>.jsonl`
 or `web-<pid>.jsonl`, so a single writer needs no lock. Nothing is written until the process
 names itself: `server.main` calls `journal.set_writer("chat")` and the web lifespan
 `set_writer("web")`. Importing the tools, as the test suite does, journals nothing, so a test

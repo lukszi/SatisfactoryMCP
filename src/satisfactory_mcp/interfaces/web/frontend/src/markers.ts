@@ -91,6 +91,15 @@ export function knownNodes(): NodeRow[] {
   return drawn.nodes ? drawn.nodes.nodes : [];
 }
 
+export function nodeLayers(names: string[]): string[] {
+  var out: string[] = [];
+  knownNodes().forEach(function (n) {
+    var name = "node: " + shortResource(n.resource);
+    if (names.indexOf(n.name) >= 0 && out.indexOf(name) < 0) out.push(name);
+  });
+  return out;
+}
+
 export function drawNodes(data: NodesResponse): void {
   drawn.nodes = data;
   paintNodes(data);
@@ -100,10 +109,8 @@ export function drawNodes(data: NodesResponse): void {
 }
 
 function paintNodes(data: NodesResponse): void {
-  var spoilers = setting("spoilers");
   var byResource: Record<string, NodeRow[]> = {};
   data.nodes.forEach(function (n) {
-    if (n.spoiler && !spoilers) return;
     (byResource[n.resource] = byResource[n.resource] || []).push(n);
   });
   Object.keys(state.layers).forEach(function (name) {

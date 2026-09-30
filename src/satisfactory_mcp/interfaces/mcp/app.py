@@ -23,6 +23,7 @@ from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...domain.factories.resolve import resolve_factory as _resolve_factory
+from ...domain.planning import journal
 from ...domain.planning.planlog import Actor
 from ...domain.planning.scenario import resolve_item
 from ...domain.spatial.origin import player_xy as _player_xy
@@ -83,6 +84,24 @@ def actor(ctx: Context | None) -> Actor:
     except (AttributeError, ValueError):
         client = ""
     return Actor("chat", client, os.getpid())
+
+
+def follow(st, ctx: Context | None, tool: str, view: str, params: dict, text: str) -> None:
+    """Journal a finder call, so a page that follows chat opens the same World view."""
+    try:
+        sav = pin.check(st.header, None)
+    except Exception:
+        sav = ""
+    kept = {k: str(v) for k, v in params.items() if v not in (None, "")}
+    journal.append(
+        st.world_id,
+        "world.find",
+        actor=actor(ctx),
+        sav=sav,
+        tool=tool,
+        args={"view": view, "params": kept},
+        text=text,
+    )
 
 
 def _item_id(query: str) -> str | None:

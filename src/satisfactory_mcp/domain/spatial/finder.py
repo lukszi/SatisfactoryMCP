@@ -138,7 +138,6 @@ class NodeFind:
     notes: list[str] = field(default_factory=list)
     skew: nodes_mod.TableSkew | None = None
     save_read: bool = False
-    hidden: int = 0
 
     @property
     def description(self) -> str:
@@ -234,14 +233,11 @@ def find_nodes(
     view: str = "fields",
     near: str | None = None,
     resolve_resource=None,
-    hide_locked: bool = False,
 ) -> NodeFind:
     """The node search behind ``search_resource_nodes`` and ``/api/world/nodes``.
 
     ``view`` and ``status`` arrive validated. ``st`` may be ``None``: the table needs no
     save, and without one every node reads as free and reachable, which a note says.
-    ``hide_locked`` drops the nodes no unlocked extractor can work before anything is
-    counted (the page's spoiler switch); ``hidden`` says how many.
     """
     table = nodes_mod.load_nodes()
     found = NodeFind(view=view, status=status, save_read=st is not None)
@@ -275,10 +271,6 @@ def find_nodes(
         rows = [r for r in rows if not r["tapped"]]
     elif status == "tapped":
         rows = [r for r in rows if r["tapped"]]
-    if hide_locked:
-        kept = [r for r in rows if status_of(r) != "locked"]
-        found.hidden = len(rows) - len(kept)
-        rows = kept
     if found.origin is not None:
         for r in rows:
             r["distance_m"] = geo.distance_m((r["x"], r["y"]), found.origin)
