@@ -432,7 +432,7 @@ Switching spoilers needs no refetch: the pickup layers already carry every row a
 | Source | Signal | Where it shows |
 |---|---|---|
 | Node table vs the save's build | `TableAge` from `nodes.table_age` (existing `TableSkew`, scoped to the rows in the reply) | a `chip` "moved" on affected rows (title: the drift note); one line above a table; inspector details |
-| Collectible table vs the save's build | `TableAge.behind` when the save's `build_version` is past the table's `game_build` CL | one line under the pickups census: `W.mapDataBehind` + gap; pickups tab only |
+| Collectible table vs the save's build | `TableAge.behind` when the save's `build_version` is past the table's `game_build` CL (one changelist space: checked on the saves on disk, every save written under exe `CL-495413` carries `buildVersion` 495413 and the first under `CL-502094` carries 502094) | one line under the pickups census: `W.mapDataBehind` + gap; pickups tab only |
 | Collectible `observed` states | `observed_from` is the session whose saves the generator read; `observed_matches` false on any other world, and then every row's `observed` and the census `standing`/`never_streamed` are null | the "never streamed" column title says whose saves it comes from; `–` when they are another world's |
 | The save itself | `age_note` | here view subtitle; finder card head title |
 | Region names | `Region.confidence`/`accuracy_m` | the region cell's title, as the node popup does today |
@@ -469,6 +469,13 @@ in-process (TestClient): over HTTP on Windows every call also pays a floor of ab
 | `/api/world/sites` | 86 ms | ≤ 150 ms, ≤ 1 s cold | only on **rank**, never per keystroke |
 | `/api/world/conduits` | tool 3.2 ms | ≤ 30 ms, ≤ 400 kB | limit 200, radius ≤ 2000 m |
 | `/api/world/regions` | tool 6.5 ms | ≤ 15 ms | |
+
+Re-measured after the fade change and the rank pane (2026-09-30, same save, in-process, warm,
+median of 7): `/api/nodes` 6.0 ms, 264.5 kB; `/api/collectibles?mode=remaining` 22 ms,
+652 kB; `/api/world/nodes` 7.9 ms, 288 kB (locked nodes now always sent); `view=fields`
+54 ms, 67 kB; `/api/world/sites` 115 ms, 2.8 kB, and 4.4 ms with a rank-pane `near` source;
+`/api/world/here` 3.8 ms; `/api/world/regions` 10 ms. The two map payloads stay over their
++5% / +10% lines and are **accepted**: the page is local only, so size costs no network.
 
 Page: place inputs (`near`, `to`) query on Enter or when they lose focus, never per keystroke; each view holds one `latest()` slot (`world-here`,
 `world-nodes`, `world-sites`, `world-conduits`, `world-pickups`, `world-regions`, `finder`);
@@ -604,16 +611,15 @@ read-only for both.
 
 ---
 
-## 17. Open questions
+## 17. Open questions, answered (2026-09-30)
 
-1. Is "never collected one" the right spoiler line for pickups, or should positions follow a
-   scanner unlock, or never be spoilers?
-2. Should the pickup census counts (placed, remaining) stay visible for hidden categories?
-3. Should unreachable nodes vanish from the map when spoilers are off, or stay faded as today?
-4. Should a finder call in chat move the page (as plan events do under "follow chat")?
-5. When the collectible table was generated from another world's saves, should `observed`
-   be dropped rather than greyed?
-6. Should the inspector offer "plan a factory here" once the planner takes a point source?
-7. Should a world-wide Sites list (factory_sites) join World, or stay under Factories (§17.2)?
-8. Should **rank** honour the near filter (as a `near:<place>@r` source) or purity, instead of
-   disabling them?
+1. Pickups as spoilers: a kind stays hidden until this save has collected one of it; drop pods
+   and loot caches never are. As built.
+2. Census counts of hidden kinds stay hidden: counts follow the rows. As built.
+3. Unreachable nodes stay on the map and in the tables, faded; counts and search include
+   them (§8.1, §16).
+4. A finder call in chat moves a page that follows chat, the default (§2.7).
+5. Another world's `observed` states are dropped, not greyed (§9).
+6. No "plan a factory here" until the planner takes a point source.
+7. The world-wide sites list stays under Factories.
+8. **rank** gets its own pane: near an anchor within 0.5–5 km, and pure only (§2.2 step 3).
