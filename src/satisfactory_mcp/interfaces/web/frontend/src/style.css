@@ -2961,6 +2961,34 @@ path.lasso-area {
   opacity: 0.55;
 }
 
+.world-rank {
+  padding: var(--sp-2) var(--sp-3) 0;
+  margin-bottom: var(--sp-1);
+  border-left: 2px solid var(--line);
+}
+
+.world-range {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.world-slider {
+  width: 160px;
+  max-width: 100%;
+  accent-color: var(--accent);
+}
+
+.world-range-v {
+  min-width: 4.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-picking,
+.map-picking .leaflet-interactive {
+  cursor: crosshair;
+}
+
 
 .dk-table tr.on > td {
   background: color-mix(in srgb, var(--select) 12%, var(--surface));

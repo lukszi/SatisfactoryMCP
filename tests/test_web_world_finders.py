@@ -199,6 +199,22 @@ def test_sites_rank_one_resource_best_first(client):
     assert set(body["weights"]) == {"throughput", "spread", "distance", "purity", "roughness"}
 
 
+def test_sites_honour_the_rank_panes_near_and_purity(client):
+    every = client.get("/api/world/sites", params={"resource": "Iron Ore", "limit": 50}).json()
+    near = client.get(
+        "/api/world/sites",
+        params={"resource": "Iron Ore", "limit": 50, "source": "near:hub@1500"},
+    ).json()
+    assert 0 < near["count"] < every["count"]
+    assert "of the HUB" in near["description"]
+    pure = client.get(
+        "/api/world/sites",
+        params={"resource": "Iron Ore", "limit": 50, "source": ["near:hub@5000", "purity:pure"]},
+    ).json()
+    assert 0 < pure["count"]
+    assert "purity=pure" in pure["description"]
+
+
 def test_sites_refusals(client, game):
     assert client.get("/api/world/sites").status_code == 422
     assert (

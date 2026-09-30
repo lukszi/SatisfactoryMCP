@@ -236,6 +236,45 @@ export function textField(
   return labelled(label, input);
 }
 
+export interface Span {
+  min: number;
+  max: number;
+  step: number;
+}
+
+export function rangeField(
+  label: string,
+  candidate: string,
+  value: number,
+  span: Span,
+  show: (value: number) => string,
+  change: (value: number) => void,
+  o?: FieldOptions
+): HTMLElement {
+  var opts = o || {};
+  var box = make("span", "world-range");
+  var input = make("input", "world-slider");
+  input.type = "range";
+  input.min = String(span.min);
+  input.max = String(span.max);
+  input.step = String(span.step);
+  input.value = String(value);
+  input.disabled = !!opts.disabled;
+  input.setAttribute("data-candidate", candidate);
+  input.setAttribute("aria-label", label);
+  if (opts.title) input.title = opts.title;
+  var out = make("output", "world-range-v", show(value));
+  input.oninput = function () {
+    out.textContent = show(Number(input.value));
+  };
+  input.onchange = function () {
+    if (!rebuilding()) change(Number(input.value));
+  };
+  box.appendChild(input);
+  box.appendChild(out);
+  return labelled(label, box);
+}
+
 export function capped(card: HTMLElement, grid: HTMLElement, rows: number, key: string, noun: string): void {
   showAll(card, grid, rows, SHOWN, "show all " + counted(rows, noun), !!uncapped[key], function () {
     uncapped[key] = true;

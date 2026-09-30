@@ -34,12 +34,12 @@ import {
   waiting,
   want,
 } from "./world";
+import { rankPane, rankSources } from "./world-rank";
 import { counted, NODE_KIND, W } from "./words";
 
 import type { Column, SortState } from "./dashkit";
 import type { FoundField, FoundNode, NodeFindResponse, RankedSite, RankedSitesResponse, TableAge } from "./api-shapes";
 import type { Shown } from "./finder";
-import type { FieldOptions } from "./world";
 
 var SITES_LIMIT = "10";
 
@@ -350,11 +350,12 @@ function filters(card: HTMLElement, view: string, params: Record<string, string>
     selectField("resource", "world-resource", params.resource || "", resourceOptions("any resource", params.resource || ""), set("resource"))
   );
   var on = view === "fields" && params.rank === "1" && !!params.resource;
-  var off: FieldOptions = on ? { disabled: true, title: "rank scores every field of the resource; turn rank off to filter" } : {};
-  bar.appendChild(selectField("purity", "world-purity", params.purity || "", PURITIES, set("purity"), off));
-  bar.appendChild(selectField("kind", "world-kind", params.kind || "", kinds(), set("kind"), off));
-  bar.appendChild(selectField("status", "world-status", params.status || "", STATUSES, set("status"), off));
-  bar.appendChild(textField("near", "world-near", params.near || "", "me, x,y, a factory or node:…", set("near", true), off));
+  if (!on) {
+    bar.appendChild(selectField("purity", "world-purity", params.purity || "", PURITIES, set("purity")));
+    bar.appendChild(selectField("kind", "world-kind", params.kind || "", kinds(), set("kind")));
+    bar.appendChild(selectField("status", "world-status", params.status || "", STATUSES, set("status")));
+    bar.appendChild(textField("near", "world-near", params.near || "", "me, x,y, a factory or node:…", set("near", true)));
+  }
   if (view !== "fields") return;
   bar.appendChild(
     pressed("rank", on, function () {
@@ -364,6 +365,7 @@ function filters(card: HTMLElement, view: string, params: Record<string, string>
       title: params.resource ? "score build sites for this resource" : "choose one resource to rank its build sites",
     })
   );
+  if (on) rankPane(card, params);
 }
 
 function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
@@ -407,12 +409,16 @@ function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
 }
 
 function renderSites(card: HTMLElement, params: Record<string, string>): void {
-  want("world-sites", sitesBox, worldUrl("/api/world/sites", { resource: params.resource || "", limit: SITES_LIMIT }));
+  var url = worldUrl("/api/world/sites", { resource: params.resource || "", limit: SITES_LIMIT });
+  rankSources(params).forEach(function (s) {
+    url = (url + "&source=" + encodeURIComponent(s)) as typeof url;
+  });
+  want("world-sites", sitesBox, url);
   if (waiting(card, sitesBox, "ranked sites")) return;
   var d = sitesBox.data!;
   var line = make("div", "world-census");
-  var top = d.sites.length < d.count ? "top " + count(d.sites.length) + " of " + count(d.count) : counted(d.sites.length, "site");
-  line.appendChild(make("span", "", top + " candidate " + W.field + "s for " + d.resource_name + (d.description ? " · " + d.description : "")));
+  var top = d.sites.length < d.count ? "top " + count(d.sites.length) + " of " + count(d.count) + " candidate " + W.field + "s" : counted(d.sites.length, "candidate " + W.field);
+  line.appendChild(make("span", "", top + " for " + d.resource_name));
   if (d.sites.length) {
     line.appendChild(
       button("show all on map", function () {

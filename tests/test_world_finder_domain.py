@@ -369,3 +369,11 @@ def test_choices_cover_the_whole_table(game):
 def test_node_rate_without_game_data_is_zero():
     node = nodes_mod.load_nodes().nodes[0]
     assert nodes_mod.node_rate(node, None) == 0.0
+
+
+def test_hub_is_a_place(state):
+    from satisfactory_mcp.domain.spatial.origin import resolve_origin
+
+    (x, y), where = resolve_origin(state, "HUB")
+    assert where == "the HUB"
+    assert (round(x / 100), round(y / 100)) == (-411, -1443)
