@@ -46,6 +46,9 @@ PLAN_DEFAULTS: dict = {
     # and trunks -- so it belongs with the stored arguments, not with presentation.
     "belt_ipm": None,
     "pipe_m3min": None,
+    # None, not 0, so that recalling a plan with power_priority=0 is an override: the one
+    # argument whose reset to the plain build a caller asks for by name.
+    "power_priority": None,
 }
 
 

@@ -109,3 +109,5 @@ MCP process (seen, answered), so every write holds the file lock.
 
 `PlanStateBody.headroom_mw` is the stored startup headroom, `null` for the save's own figure
 (measured by default, see `headroom` above).
+`SolveResponse.power` is the power-priority ladder: the same solve read out at all five steps
+([planner-power-priority_contract.md](planner-power-priority_contract.md) §5).

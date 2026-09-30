@@ -217,3 +217,30 @@ a.btn {
 .dk-more {
   margin-top: var(--sp-2);
 }
+
+.dash-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 22em;
+  max-width: 100%;
+}
+
+.dash-slider input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.dash-slider-ticks,
+.dash-slider-ends {
+  display: flex;
+  justify-content: space-between;
+  padding-inline: 2px;
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+
+.dash-slider-ends {
+  color: var(--dim);
+}

@@ -44,6 +44,7 @@ from ....domain.planning.planlog import (
     describe_commit,
     describe_op,
 )
+from ....domain.planning.power_priority import STEPS
 from ....domain.planning.prepare import prepare
 from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of, plan_ref
 from ....domain.planning.recall import recall_plan as _plan_kwargs
@@ -878,6 +879,13 @@ def plan_factory(
         list[str] | None,
         Field(description="recipes that must make their item; others for it are excluded"),
     ] = None,
+    power_priority: Annotated[
+        int | None,
+        Field(
+            description="0-4: how far to split production rows into more, slower machines to "
+            "save power; 0 full clock, 1 at most 75%, 2 50%, 3 33%, 4 25%. Stored per plan"
+        ),
+    ] = None,
     plan: Annotated[str | None, Field(description="recall a saved plan by name")] = None,
     save_as: Annotated[str | None, Field(description="store this request under a name")] = None,
     base_rev: Annotated[
@@ -957,6 +965,12 @@ def plan_factory(
     its machine, so they are placed one at a time across many machines rather than
     filling one -- output is linear in sloops and power is quadratic, so spreading wins.
 
+    ``power_priority`` (0-4) trades machines for power without changing the solve: each
+    production row is split so no machine runs above 100%, 75%, 50%, 33% or 25%. Power goes
+    as clock**1.32, so twice the machines at half clock draw 20% less. Extractors,
+    generators and somersloop rows are never split. It is stored with the plan; the notes
+    say what the current step saves and what the next would. 0 resets a recalled plan.
+
     ``required`` names recipes (exact name or class id) that must make their item: every
     other recipe whose main product is that item is excluded. A locked or banned one is
     refused by name.
@@ -1028,7 +1042,10 @@ def plan_factory(
         sloops=sloops,
         recycle_once=recycle_once,
         supplied=supplied,
+        power_priority=power_priority,
     )
+    if power_priority is not None and not 0 <= power_priority < STEPS:
+        return f"! power_priority must be 0 to {STEPS - 1}, not {power_priority}; nothing solved"
     try:
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
@@ -1193,6 +1210,13 @@ def plan_layout(
         int,
         Field(description="Somersloops the plan may spend; 0 spends none"),
     ] = 0,
+    power_priority: Annotated[
+        int | None,
+        Field(
+            description="0-4: how far to split production rows into more, slower machines to "
+            "save power; 0 full clock, 1 at most 75%, 2 50%, 3 33%, 4 25%. Stored per plan"
+        ),
+    ] = None,
     sites: Annotated[
         dict[str, list[str]] | None,
         Field(
@@ -1289,7 +1313,10 @@ def plan_layout(
         # noise that trains a reader to skip the override line that does matter.
         belt_ipm=tiers.belt_ipm if tiers.asked_belt else None,
         pipe_m3min=tiers.pipe_m3min if tiers.asked_pipe else None,
+        power_priority=power_priority,
     )
+    if power_priority is not None and not 0 <= power_priority < STEPS:
+        return f"! power_priority must be 0 to {STEPS - 1}, not {power_priority}; nothing solved"
     try:
         plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)

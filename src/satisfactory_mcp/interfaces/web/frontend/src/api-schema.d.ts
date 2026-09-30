@@ -2264,6 +2264,13 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** BuildAmount */
+        BuildAmount: {
+            /** Item */
+            item: string;
+            /** Amount */
+            amount: number;
+        };
         /**
          * CandidateRow
          * @description ``region`` is null in the sea and off the map; ``selector`` is what the MCP tools take.
@@ -4506,6 +4513,8 @@ export interface components {
             };
             /** Logistics Items */
             logistics_items: string[];
+            /** Power Priority */
+            power_priority: number;
         };
         /** PlanGraph */
         PlanGraph: {
@@ -4763,6 +4772,19 @@ export interface components {
             connections: number;
         };
         /**
+         * PowerPriority
+         * @description ``step`` is the plan's; ``splits`` is false when no step changes a row, and ``steps``
+         *     is empty when the plan did not solve.
+         */
+        PowerPriority: {
+            /** Step */
+            step: number;
+            /** Splits */
+            splits: boolean;
+            /** Steps */
+            steps: components["schemas"]["PowerStep"][];
+        };
+        /**
          * PowerResponse
          * @description The two lists and the three counts.
          *
@@ -4782,6 +4804,29 @@ export interface components {
             wire_count: number;
             /** Edge Count */
             edge_count: number;
+        };
+        /**
+         * PowerStep
+         * @description The plan at one power-priority step. ``extra_machines``, ``saved_mw``, ``cost`` and
+         *     ``foundations`` are against step 0; ``cost`` is what the extra machines take to build.
+         */
+        PowerStep: {
+            /** Step */
+            step: number;
+            /** Max Clock */
+            max_clock: number;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number;
+            /** Extra Machines */
+            extra_machines: number;
+            /** Saved Mw */
+            saved_mw: number;
+            /** Cost */
+            cost: components["schemas"]["BuildAmount"][];
+            /** Foundations */
+            foundations: number;
         };
         /**
          * PowerSummary
@@ -5621,6 +5666,7 @@ export interface components {
             shards: number | null;
             /** Sloops Used */
             sloops_used: number;
+            power: components["schemas"]["PowerPriority"];
             /** Blockers */
             blockers: string[];
             /** Token */
