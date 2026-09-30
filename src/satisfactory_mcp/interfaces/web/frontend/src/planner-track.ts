@@ -4,7 +4,7 @@
 import { askButton, askMarks } from "./asks";
 import { renderAsks } from "./asks-card";
 import { copyText } from "./copy";
-import { button, chip, empty, error, fieldError, idChip, loading, pressed, table } from "./dashkit";
+import { button, chip, choice, empty, error, fieldError, idChip, loading, pressed, table } from "./dashkit";
 import { make } from "./dom";
 import { count, mw, num, range, signed } from "./format";
 import { onMap } from "./nav";
@@ -254,22 +254,19 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
     bad.setAttribute("role", "alert");
     pickBox.appendChild(bad);
   }
-  var pick = make("select", "dash-select");
-  pick.setAttribute("data-ctl", "track-scope");
-  pick.setAttribute("aria-label", W.countAsBuilt);
-  pick.disabled = bench.gone;
-  var whole = make("option", "", W.wholeWorld);
-  whole.value = "";
-  pick.appendChild(whole);
+  var scopes: [string, string][] = [["", W.wholeWorld]];
   factoryNames(plan.factory).forEach(function (name) {
-    var option = make("option", "", name);
-    option.value = name;
-    pick.appendChild(option);
+    scopes.push([name, name]);
   });
-  pick.value = plan.factory;
-  pick.onchange = function () {
-    if (pick.value !== plan.factory) gesture([{ op: "set", field: "factory", value: pick.value }]);
-  };
+  var pick = choice(
+    scopes,
+    plan.factory,
+    function (value) {
+      if (value !== plan.factory) gesture([{ op: "set", field: "factory", value: value }]);
+    },
+    { label: W.countAsBuilt, disabled: bench.gone }
+  );
+  pick.setAttribute("data-ctl", "track-scope");
   pickBox.appendChild(pick);
   scope.appendChild(pickBox);
   card.appendChild(scope);
