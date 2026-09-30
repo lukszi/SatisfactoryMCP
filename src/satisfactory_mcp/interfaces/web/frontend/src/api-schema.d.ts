@@ -2369,7 +2369,8 @@ export interface components {
          * CensusRow
          * @description One category: the map's count, this save's collections, and what is left.
          *
-         *     ``remaining`` is null where no save records a collection of the class at all.
+         *     ``remaining`` is null where no save records a collection of the class at all;
+         *     ``standing`` and ``never_streamed`` are null when the table's states are another world's.
          */
         CensusRow: {
             /** Category */
@@ -2383,9 +2384,9 @@ export interface components {
             /** Remaining */
             remaining: number | null;
             /** Standing */
-            standing: number;
+            standing: number | null;
             /** Never Streamed */
-            never_streamed: number;
+            never_streamed: number | null;
             /** Looted Standing */
             looted_standing: number;
             /** State Tracked */

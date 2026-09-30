@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from ..spatial.origin import resolve_origin
 from ..world.state import WorldState
+from .removed import observed_session
 from .table import CollectiblesUnreadable, CollectibleTable, load_collectibles
 
 __all__ = [
@@ -208,7 +209,8 @@ def collect_view(
 
     counts: dict[str, int] = {}
     for r in rows:
-        counts[r["observed"] or "collected"] = counts.get(r["observed"] or "collected", 0) + 1
+        key = "collected" if r["collected"] else r["observed"] or "unstated"
+        counts[key] = counts.get(key, 0) + 1
 
     view.rows = rows
     view.hidden = hidden
@@ -280,7 +282,7 @@ def table_age(st) -> dict | None:
     cut = int(match.group(1)) if match else None
     build = st.header.get("build_version")
     behind = isinstance(build, int) and cut is not None and build > cut
-    session = ((table.meta.get("source") or {}).get("status") or {}).get("session")
+    session = observed_session(table)
     name = st.header.get("session_name")
     matches = None if not session or not name else session == name
     notes = []
@@ -291,8 +293,8 @@ def table_age(st) -> dict | None:
         )
     if matches is False:
         notes.append(
-            f"never streamed comes from the saves of {session!r}, not of this world, so it "
-            "says nothing about what this world has loaded"
+            f"seen and unseen states come from the saves of {session!r}, not of this world, "
+            "so they are left out"
         )
     return {
         "table": "collectibles",

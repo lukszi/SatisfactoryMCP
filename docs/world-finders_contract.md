@@ -422,7 +422,7 @@ Switching spoilers needs no refetch: both layers already carry every row and the
 |---|---|---|
 | Node table vs the save's build | `TableAge` from `nodes.table_age` (existing `TableSkew`, scoped to the rows in the reply) | a `chip` "moved" on affected rows (title: the drift note); one line above a table; inspector details |
 | Collectible table vs the save's build | `TableAge.behind` when the save's `build_version` is past the table's `game_build` CL | one line under the pickups census: `W.mapDataBehind` + gap; pickups tab only |
-| Collectible `observed` states | `observed_from` is the session whose saves the generator read; `observed_matches` false on any other world | the "never streamed" column title says whose saves it comes from; greyed when it does not match |
+| Collectible `observed` states | `observed_from` is the session whose saves the generator read; `observed_matches` false on any other world, and then every row's `observed` and the census `standing`/`never_streamed` are null | the "never streamed" column title says whose saves it comes from; `–` when they are another world's |
 | The save itself | `age_note` | here view subtitle; finder card head title |
 | Region names | `Region.confidence`/`accuracy_m` | the region cell's title, as the node popup does today |
 
