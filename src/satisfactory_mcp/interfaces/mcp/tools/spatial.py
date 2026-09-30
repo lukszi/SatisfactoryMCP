@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
+from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from ....domain.planning import journal, pins
 from ....domain.spatial import finder, geo, heightfield, place
 from ....domain.spatial import nodes as nodes_mod
 from ....domain.spatial import ranking as ranking_mod
 from ....domain.spatial import regions as regions_mod
-from ....domain.spatial.origin import NODE_PREFIX, RUN_PREFIXES, resolve_origin
+from ....domain.spatial.origin import NODE_PREFIX, PLAN_PREFIX, RUN_PREFIXES, resolve_origin
 from ....domain.spatial.select import SELECTOR_HELP
 from ....domain.world import conduits as conduits_mod
 from ....presenters.text import primitives as render
@@ -19,6 +21,7 @@ from ..app import (
     Limit,
     _item_id,
     _state,
+    actor,
     game,
     mcp,
     retired,
@@ -764,6 +767,8 @@ def show_on_map(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
+    pin: Annotated[bool, Field(description="also pin it on the page (pin:N)")] = False,
+    ctx: Context | None = None,
 ) -> str:
     """Map links centred on something: this project's own map, and the public one.
 
@@ -780,6 +785,9 @@ def show_on_map(
     Only the Crude Oil layer tokens are confirmed; the rest follow the same pattern and
     are flagged. A wrong token still opens the map in the right place, just without that
     overlay.
+
+    ``pin=True`` also pins the place for the page (a node, factory, sited plan or point;
+    pinning it twice returns the pin it already has), and the page shows it at once.
     """
     from ....domain.spatial import maplink
 
@@ -869,11 +877,53 @@ def show_on_map(
         "running; the public one is satisfactory-calculator.com and knows the vanilla "
         "world only -- nothing you built is on it"
     )
+    if pin:
+        body += "\n" + _pin_place(st, text, node, label, origin, resources, ctx)
     return render.envelope(
         f"# {where} at {round(origin[0] / 100, 1):g},{round(origin[1] / 100, 1):g} (metres)",
         body,
         notes,
     )
+
+
+def _pin_place(st, text: str, node, label, origin, resources, ctx) -> str:
+    """Pin what ``show_on_map`` showed; the ``pin:`` line, or why nothing was pinned."""
+    if st is None:
+        return "! not pinned: the save could not be read"
+    head = text.partition(":")[0].casefold()
+    if resources and node is None:
+        return "! not pinned: a whole resource is no place; pin one node:<id> or x,y instead"
+    if head == "pin":
+        n = pins.parse(text)
+        return f"pin: already pin:{n}" if n is not None else "! not pinned"
+    if node is not None:
+        kind, ref = "node", {"node": node["instance"]}
+    elif head == PLAN_PREFIX:
+        stored = st.plans.find(text.partition(":")[2].strip())
+        kind, ref = "plan", {"plan": stored.key if stored is not None else ""}
+    elif label is not None:
+        kind, ref = "factory", {"factory": label.name}
+    else:
+        kind = "point"
+        ref = {"x_m": round(origin[0] / 100.0, 1), "y_m": round(origin[1] / 100.0, 1)}
+    try:
+        row, existing = pins.create(st, kind, ref)
+    except pins.PinError as exc:
+        return f"! not pinned: {exc}"
+    except Exception as exc:
+        return f"! not pinned: the pins are busy ({type(exc).__name__})"
+    if existing:
+        return f"pin: already {row['id']} {row['text']}"
+    plan = ref.get("plan") if kind == "plan" else None
+    journal.append(
+        st.world_id,
+        "pin.add",
+        actor=actor(ctx),
+        plan=plan,
+        args={"n": row["n"], "kind": kind},
+        text=f"pinned {row['id']} {row['text']}",
+    )
+    return f"pin: pinned as {row['id']} {row['text']}"
 
 
 @mcp.tool(structured_output=False)

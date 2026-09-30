@@ -138,7 +138,8 @@ local, so the budget was restated rather than the fields trimmed.
 
 `domain/planning/pins.py`. File `config.pins_dir()/<world>.json` (new sibling of `ui_dir()`),
 sanitised like `focus.path_for`. Writes hold `filelock.held(<file>)` and use
-`atomic.write_text`; readers take no lock. The web process is the only writer in P3.
+`atomic.write_text`; readers take no lock. The web process was the only writer in P3; since
+C1 was decided, `show_on_map(pin=True)` creates pins from MCP processes too, under the same lock.
 
 ```json
 {"schema": 1, "version": 7, "next": 5,
@@ -543,7 +544,7 @@ copy. Never ports 8712/8713.
 
 | # | Choice | Alternative |
 |---|---|---|
-| C1 | Chat cannot create pins; it reads them (L6 stays open) | A `pin` tool or `show_on_map pin=true` |
+| C1 | ~~Chat cannot create pins~~ **Decided 2026-09-30: `show_on_map(pin=True)`** pins what it shows; pinning twice returns the existing pin; the page refetches on the `pin.add` activity entry | A separate `pin` tool |
 | C2 | Pins have a label, no note | Note field |
 | C3 | Require replaces other required recipes for the same item | Keep them (N3 allows two required per item) |
 | C4 | Build-list rows lose **require**; it lives in the drawer next to its delta | Keep four row buttons |

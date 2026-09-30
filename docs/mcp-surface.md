@@ -635,7 +635,10 @@ characters. The server's `instructions` tell the client to call it when the user
 "here" or "what I have open".
 
 **Pins** (Planner P3, [planner_p3.md](planner_p3.md)). The page creates, renames and deletes
-pins; chat only reads them. `ui_context` prints a `pins:` line (the newest eight live pins,
+pins. Chat creates one with `show_on_map(at=..., pin=True)`: a node, a factory, a sited plan or
+a point (anything else it shows pins as the point it resolved to; `resource:` refuses), the
+reply ends `pin: pinned as pin:N ...` or `pin: already pin:N ...`, and a `pin.add` journal entry
+by chat makes every open page refetch its pins. `ui_context` prints a `pins:` line (the newest eight live pins,
 ascending, each cut to 90 characters, `(+N more)` past them, `pins: none` when empty, gone
 pins ending `(gone)`) and appends `(pin:N)` to a selection that a pin matches. Every tool that
 takes a place, a node source, a machine select, `plan=`, `required=` or `exclude_recipes=`
