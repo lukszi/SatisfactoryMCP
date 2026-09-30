@@ -54,7 +54,8 @@ out of headroom by default; transport deferred; local only; the page never promp
 Top to bottom, one `dash-card` each (§9.2):
 
 1. **Headline**: `you are in stage 2 of 4: 76% built (13/17), 13 proven running` (server
-   text), then `save <age_note>`, the scope note and the world-moved note when present.
+   text), then `save written <written_ago>` (the full `age_note` on hover; one line, decided
+   2026-09-30), the scope note and the world-moved note when present.
 2. **Renumber notice** when the partition changed since the page last showed this plan (F5).
 3. **Startup headroom** and **count as built** controls (F4).
 4. **Stages** table: stage · on · built · running · MW draw / gen · free after · state ·
@@ -281,7 +282,7 @@ class TrackSite(TypedDict): text: str; planned_total: int; standing_total: int; 
 class TrackResponse(TypedDict):
     key: str; rev: int; name: str
     feasible: bool; empty: bool; headline: str; cause: str   # headline/cause: the solve's, when not feasible
-    save_id: str; age_note: str; plan_id: str
+    save_id: str; age_note: str; written_ago: str | None; plan_id: str
     scope: str; scope_note: str; scope_error: str; drift_note: str
     headroom_mw: float | None                                # as stored on the plan
     current: int; count: int; partition_id: str; stage_text: str   # Tracking.headline(); "" when no stages
