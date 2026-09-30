@@ -22,6 +22,15 @@ function stateChip(a: AskRow): HTMLElement {
   return chip(ASK_STATE.open || a.state, "muted", "queued " + clock(a.created) + "; paste " + a.id + " into chat");
 }
 
+function questionCell(a: AskRow): HTMLElement {
+  var cell = make("span", "", a.text);
+  if (!a.answer) return cell;
+  var said = make("span", "ask-answer", "answer: " + a.answer);
+  said.title = a.answer;
+  cell.appendChild(said);
+  return cell;
+}
+
 function aboutCell(a: AskRow, planKey: string): HTMLElement {
   var plan = a.about.plan;
   if (a.about.kind === "plan" && plan && a.plan_name && plan !== planKey) {
@@ -80,9 +89,7 @@ export function renderAsks(parent: HTMLElement, redraw: () => void, planKey?: st
         key: "text",
         label: "question",
         className: "ask-question",
-        render: function (a) {
-          return a.text;
-        },
+        render: questionCell,
       },
       {
         key: "about",

@@ -3185,6 +3185,15 @@ path.lasso-area {
 .ask-question {
   min-width: 14em;
 }
+
+.ask-answer {
+  display: block;
+  max-width: min(28em, 60vw);
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dash-table td.track-note {
   min-width: 18em;
 }
