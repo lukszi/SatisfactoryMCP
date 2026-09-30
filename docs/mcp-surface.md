@@ -657,6 +657,12 @@ partition it last printed per plan; when a later read partitions differently, th
 stage 2 of 5`. A `commission_plan` with an explicit `headroom_mw` neither prints nor records it.
 `plan_factory save_as` never writes `headroom_mw`, so a chat save keeps the page's value.
 
+**Power priority** ([planner-power-priority_contract.md](planner-power-priority_contract.md)).
+`plan_factory` and `plan_layout` take `power_priority` (0–4): no production machine runs above
+100%, 75%, 50%, 33% or 25%, so rows are split into more, slower machines to save power. It is
+a stored `PlanArgs` scalar that both chat and page write; `power_priority=0` resets a recalled
+plan. `plan_factory` notes what the current step saves against step 0 and what the next adds.
+
 The page queues **asks** (`ask:N`, a question about a plan, process, stage, item or pin) and
 the player pastes one into chat. `ui_context` prints `asks (N waiting): ...`, the newest six open
 or seen asks with what each is about, then a hint line; every listed open ask is marked seen

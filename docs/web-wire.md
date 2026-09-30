@@ -90,3 +90,5 @@ key (404 otherwise). Ask numbers are never reused. Unlike pins, the store has wr
 MCP process (seen, answered), so every write holds the file lock.
 
 `PlanStateBody.headroom_mw` is the stored startup headroom, `null` for the nameplate.
+`SolveResponse.power` is the power-priority ladder: the same solve read out at all five steps
+([planner-power-priority_contract.md](planner-power-priority_contract.md) §5).
