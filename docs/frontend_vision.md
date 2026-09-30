@@ -926,8 +926,9 @@ me that graph for a detected factory".
   mode, as_of, version, dry_run: true}`. `area` is the drawn polygon in metres. The reply lists
   the machines it would add (green rings) or remove (red rings), the anchor count before and
   after, and any other label that already holds an added machine. **apply** sends the same body
-  with `dry_run: false`; **discard** or a new drag starts again. Switching add/remove re-checks
-  the same area.
+  with `dry_run: false`; **discard** or a new drag starts again. Shift-drag, or **+ area** and a
+  drag on a touch screen, adds another area to the same preview instead (`extra_areas` in the
+  body; a machine inside any area counts). Switching add/remove re-checks the same areas.
 - **Same path as the tool.** The route picks the machines inside the area (`geo.inside`, an
   even-odd test on the machine positions), then calls `edits.plan_amend`, the dry run that
   `amend_factory` now uses too, and `edits.amend`, now under `LabelStore.editing` with
@@ -937,8 +938,7 @@ me that graph for a detected factory".
   missing label, 400 for a bad mode or an area under three corners. Removing every machine is
   a 409 with no flag set, and the page shows its words: `forget` deletes a label. A stale or
   moved refusal reloads the rings and asks for the area again.
-- **Choices left open.** One area per preview (no adding several strokes before applying); a
-  lasso only, with no separate box tool; added machines another label already holds stay in
+- **Choices left open.** A lasso only, with no separate box tool; added machines another label already holds stay in
   both labels, as `amend_factory` does, with a warning in the preview. A trace started while
   the amend card is open is not closed by it.
 
@@ -1318,11 +1318,14 @@ built on top of it.
   `dashkit.link`, so its address is rebuilt on click and never carries a stale viewport.
   The rail replaces the dashboard's own tab row at that width; the header's **Map | Dashboard**
   stays as it was.
-- **Narrow widths (T6):** below 900 px the rail is hidden and the header's **Map |
-  Dashboard** plus the dashboard's tab row are the navigation, as before. Nothing scrolls
+- **Narrow widths (T6):** below 900 px the rail is a drawer behind the header's **sections**
+  button (`aria-expanded`). Opening it focuses the current entry; Escape, a click outside,
+  focus leaving it or picking an entry closes it, and Escape or a pick returns focus to the
+  button. The header's **Map | Dashboard** and the dashboard's tab row stay. Nothing scrolls
   sideways at 390 px.
 - **Selection** (`selection.ts`): one selected thing, a factory, a circuit or a point. The
-  map sets it (a factory label click, a panel row, a map fly-to), the side panel follows it
+  map sets it (a factory label click, a machine click, a panel row, a map fly-to), the side
+  panel follows it
   (row highlight and the dashed outline, without flying), and the dashboard sets it when a
   factory or circuit detail opens. A factory that disappears from the health reply clears it.
 - **Status strip** (`status.ts`, `#status`): one line under the header. It shows the
@@ -1346,7 +1349,10 @@ built on top of it.
 - The selection is not written into the fragment. Links are built with the fragment of the
   moment, so a stale `sel=` in an older link would undo a newer selection; the dashboard
   address (`factories/<name>`, `power/<n>`) already deep-links the two kinds that matter.
-- A machine clicked on the map opens its popup and does not become the selection.
+  It survives a reload through `sessionStorage` (per tab, so a new tab starts empty); a
+  stored factory the health reply does not know is dropped.
+- A machine clicked on the map opens its popup and becomes the selection as a point with the
+  building's name and a ring, the same as its **map** button in a table, without flying.
 - Writes keep their own checks: `as_of` in a request body (naming) and 409 conflicts are
   untouched by the middleware, which only reads GET, HEAD and OPTIONS.
 
@@ -1354,10 +1360,7 @@ built on top of it.
 
 - Should the selection chip offer more than **map**: trace supply, plan here, open in
   dashboard as buttons (§2.3)?
-- Should a point or a machine be selectable from the map by a plain click, and should the
-  selection survive a reload through the fragment?
-- Should the rail open as a drawer on phones rather than hand over to the header and the tab
-  row?
+- Should a plain click on an empty point select it, as a machine click now does?
 - The panel beside the map still shows only Factories and Power; §2.1's panel with every
   rail section is not built. The rail sends the other sections to the dashboard.
 
