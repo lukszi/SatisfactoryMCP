@@ -1182,15 +1182,27 @@ class PlanLog:
         sav: str = "",
         stamp: Stamp | None = None,
         note: str = "",
+        extend: Callable[[PlanState], list[dict]] | None = None,
     ) -> Pushed:
+        """``extend`` adds ops worked out from the head under the plan lock; they merge by
+        M1 like the rest, so one that clashes with a commit since ``base_rev`` refuses."""
         mine = [_check_op(op) for op in ops]
-        return self._locked(
-            _names(mine),
-            key,
-            lambda commits: self._merge(
-                key, commits, base_rev, mine, actor, sav, stamp, note, None
-            ),
-        )
+
+        def run(commits: list[Commit]) -> Pushed:
+            more = [_check_op(op) for op in extend(self._state(key, commits))] if extend else []
+            return self._merge(
+                key,
+                commits,
+                base_rev,
+                mine + [op for op in more if op not in mine],
+                actor,
+                sav,
+                stamp,
+                note,
+                None,
+            )
+
+        return self._locked(_names(mine), key, run)
 
     def push_args(
         self,

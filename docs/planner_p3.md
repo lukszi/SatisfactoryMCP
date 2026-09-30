@@ -33,8 +33,8 @@ what the backend and the page do, where they depart, and what was measured.
 
 | # | Contract says | Built | Why |
 |---|---|---|---|
-| P1 | Drawer beside the result from 900 px | Beside only on the graph tab and from 1280 px; above the result otherwise | Beside a build list the table was squeezed to a column of wrapped rows at 1440 px |
-| P2 | Factory position resolved at read time only | Also stored at create; a live label's centroid still wins, a gone factory keeps the stored place | A15 asks for a muted tag for a gone factory, which needs a place |
+| P1 | Drawer beside the result from 900 px | Beside only on the graph tab and from 1280 px; above the result otherwise | Now contract §9.2 and §14 P3-8 |
+| P2 | Factory position resolved at read time only | Also stored at create; a live label's centroid still wins, a gone factory keeps the stored place | Now contract §4.1 and §14 P3-9 |
 | B1 | `AlternatesResponse` in `planner.py` | `PlanAlternatesResponse` | `routers/gamedata.py` already publishes `AlternatesResponse`; a second model of that name would rename both in the generated schema |
 | B2 | `PlanOpBody` in `planlog.py` | moved to `serial.py`, same name and docstring | Routers may not import each other and two now publish it |
 | B3 | Handler/`PinError` set in §4.1 | adds `ObjectMissing(PinError)`, `pins.row`, `pins.match`, `canonical_args`, `canonical_ops`, `recall.plan_ref`, `factories.select.pin_notes`, `origin.label_centre` | 404 needs a type of its own; the rest are the shared helpers the routes and tools call |

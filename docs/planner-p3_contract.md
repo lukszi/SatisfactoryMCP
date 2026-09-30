@@ -157,8 +157,9 @@ C1 was decided, `show_on_map(pin=True)` creates pins from MCP processes too, und
   rounded to 0.1 m. Creating a live duplicate returns the existing pin.
 - **Field**: the single-link cluster (`geo.cluster`, 200 m) of the pinned node's resource that
   contains the node, frozen at pin time. Position = cluster centroid.
-- **Position** stored at create for point, node, field, machine; factory and plan positions are
-  resolved at read time (label centroid; plan site origin, null when unsited).
+- **Position** stored at create for point, node, field, machine, factory; a live factory label's
+  centroid and a plan's site origin are resolved at read time (null when unsited), and a gone
+  factory keeps its stored place (P3-9).
 
 ### 4.2 Resolution and state
 
@@ -214,6 +215,11 @@ All handlers declare `response_model`; 409 bodies are declared in `responses=` s
 | `create_pin` | POST `/api/pins` | `PinCreateBody {kind, ref: PinRef, label?: str}` | 201 `PinCreated`; 200 `PinCreated` with `existing: true` | 400 `PinError` (also 500 live pins reached); 404 object not found; 503 lock/schema |
 | `rename_pin` | PATCH `/api/pins/{n}` | `PinRenameBody {rev: int, label: str}` | 200 `PinRow` | 400; 404 unknown or deleted; **409 `PinStaleResponse`**; 503 |
 | `drop_pin` | DELETE `/api/pins/{n}` | `PinDropBody {rev: int}` | 200 `PinDropped {ok: true, n: int}` | 404; **409 `PinStaleResponse`**; 503 |
+
+`push_ops` takes an optional `require_item` (an item class id) with a drawer **require**: under
+the plan lock the server adds `remove required R'` for every other required recipe of that item
+the head holds (`swaps.replaced_required`, C3), merged by M1 like the rest, so one required since
+the page's base refuses with the usual 409 instead of leaving two.
 
 `push_ops`, `push_args`, `create_plan` (planlog.py) additionally run `pins.canonical` on
 `sources`, `required`, `banned` members before the store (§7.2): a pin that cannot stand there
@@ -417,8 +423,9 @@ Module rule: planner modules never import `dashboard.ts`; `pins.ts` imports no p
 ### 9.2 Layout and states
 
 - **Drawer**: an `aside.plan-drawer` with `aria-label="recipes for <item>"`, placed in the
-  workbench after the result tabs. ≥ 900 px: a right column beside the result (the result
-  narrows, no overlay); < 900 px: a block above the result. The Δ table scrolls inside
+  workbench after the result tabs. On the graph tab from 1280 px: a right column beside the
+  result (the result narrows, no overlay); otherwise a block above the result, first in the DOM
+  so the tab order matches the screen (P3-8). The Δ table scrolls inside
   `.dash-scroll` with its first column sticky (frontend_vision §15).
 - **Node card**: a `dash-card` under the graph; empty until a node is picked, then one line of
   facts and the buttons. Picking again replaces it; Escape clears the pick.
@@ -537,6 +544,8 @@ copy. Never ports 8712/8713.
 | P3-5 | Pins inside any selector, as a reference | Resolved at use; **stored plans hold the canonical selector** | A deleted pin must not break a plan; the store stays free of pin state |
 | P3-6 | Graph: edge width ∝ log(rate) | Uniform width as graph.ts draws today | No change to the shared drawing beyond badges, ranks and picking |
 | P3-7 | Pins via right-click on any object | Buttons on node card, rows, headers and popups | Keyboard-reachable and uses existing primitives; no context menu primitive exists |
+| P3-8 | (this contract, first draft) drawer beside the result from 900 px | Beside only on the graph tab and from 1280 px; above the result otherwise | Beside a build list the Δ table was squeezed to a column of wrapped rows at 1440 × 900 (about 560 px, four lines per row) |
+| P3-9 | (this contract, first draft) factory places resolved at read time only | Also stored at create; a live label's centroid still wins, a gone factory keeps the stored place | A15 asks for a muted tag on a gone factory, which needs a place |
 
 ---
 
@@ -546,7 +555,7 @@ copy. Never ports 8712/8713.
 |---|---|---|
 | C1 | ~~Chat cannot create pins~~ **Decided 2026-09-30: `show_on_map(pin=True)`** pins what it shows; pinning twice returns the existing pin; the page refetches on the `pin.add` activity entry | A separate `pin` tool |
 | C2 | Pins have a label, no note | Note field |
-| C3 | Require replaces other required recipes for the same item | Keep them (N3 allows two required per item) |
+| C3 | Require replaces other required recipes for the same item; the server enforces it against the head (`require_item`, §5.1) | Keep them (N3 allows two required per item) |
 | C4 | Build-list rows lose **require**; it lives in the drawer next to its delta | Keep four row buttons |
 | C5 | Pinning an object twice returns the existing pin | A new number each time |
 | C6 | The pins card lives on the plans list | A dashboard tab or the side panel |

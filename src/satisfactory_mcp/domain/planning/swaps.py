@@ -14,7 +14,7 @@ from . import manage, summary
 from .planlog import PlanArgs, PlanState
 from .scenario import match_recipes
 
-__all__ = ["STATUS_ORDER", "makers", "swap_deltas"]
+__all__ = ["STATUS_ORDER", "makers", "replaced_required", "swap_deltas"]
 
 STATUS_ORDER = ("in use", "required", "available", "banned", "locked")
 
@@ -64,6 +64,25 @@ def _ops(g: GameData, args: PlanArgs, recipe: Recipe, item: str) -> tuple[list, 
     free = [_op("remove", "required", m) for m in required]
     free += [_op("remove", "banned", m) for m in literal_bans]
     return require, ban, free
+
+
+def replaced_required(g: GameData, head: PlanState, item: str, ops: list[dict]) -> list[dict]:
+    """The ``remove required`` ops that make a require of ``item`` in ``ops`` replace every
+    other required recipe for it in ``head`` (contract C3), whatever the page last saw."""
+    added = {
+        op.get("member")
+        for op in ops
+        if op.get("op") == "add"
+        and op.get("field") == "required"
+        and _first(g, str(op.get("member"))) == item
+    }
+    if not added:
+        return []
+    return [
+        _op("remove", "required", m)
+        for m in head.args.required
+        if m not in added and _first(g, m) == item
+    ]
 
 
 def _applied(args: PlanArgs, ops: list[dict]) -> dict:

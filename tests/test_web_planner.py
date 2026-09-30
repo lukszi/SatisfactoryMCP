@@ -434,6 +434,48 @@ def test_alternates_for_a_stored_plan(client):
     assert by_rev.status_code == 200
 
 
+def _required(member):
+    return {"op": "add", "field": "required", "member": member}
+
+
+def test_a_drawer_require_replaces_every_required_recipe_for_the_item_at_the_head(client):
+    bolted = "Recipe_Alternate_ReinforcedIronPlate_1_C"
+    stitched = "Recipe_Alternate_ReinforcedIronPlate_2_C"
+    key = _create(client)["key"]
+    assert _push(client, key, 1, _required(bolted)).status_code == 200
+    reply = client.post(
+        f"/api/plans/{key}/ops",
+        json={
+            "base_rev": 2,
+            "ops": [_required(stitched)],
+            "require_item": "Desc_IronPlateReinforced_C",
+        },
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 200, reply.text
+    assert reply.json()["state"]["args"]["required"] == [stitched]
+    plain = _push(client, key, 3, _required(bolted))
+    assert sorted(plain.json()["state"]["args"]["required"]) == sorted([bolted, stitched])
+
+
+def test_a_drawer_require_refuses_when_another_was_required_since_its_base(client):
+    bolted = "Recipe_Alternate_ReinforcedIronPlate_1_C"
+    stitched = "Recipe_Alternate_ReinforcedIronPlate_2_C"
+    key = _create(client)["key"]
+    assert _push(client, key, 1, _required(bolted)).status_code == 200
+    reply = client.post(
+        f"/api/plans/{key}/ops",
+        json={
+            "base_rev": 1,
+            "ops": [_required(stitched)],
+            "require_item": "Desc_IronPlateReinforced_C",
+        },
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 409 and reply.json()["outdated"] is True
+    assert client.get(f"/api/plans/{key}").json()["args"]["required"] == [bolted]
+
+
 def test_alternates_refuse_unknown_plans_revs_and_items(client):
     key = _create(client)["key"]
     for payload in (
@@ -502,7 +544,9 @@ def test_track_is_one_solve_of_the_head_with_rows_and_stages(client):
     assert plate["startup"]["headroom_source"] == "nameplate from the save"
     assert client.get(f"/api/plan/track?key={key}&headroom=given").status_code == 422
     assert client.get(f"/api/plan/track?key={key}&biomass=include").status_code == 200
-    assert client.get(f"/api/plan/track?key={key}&biomass=include").json()["power"]["biomass"] is True
+    assert (
+        client.get(f"/api/plan/track?key={key}&biomass=include").json()["power"]["biomass"] is True
+    )
     assert client.get(f"/api/plan/track?key={key}&biomass=true").status_code == 422
     assert client.get("/api/plan/feeders?biomass=true").status_code == 422
 
