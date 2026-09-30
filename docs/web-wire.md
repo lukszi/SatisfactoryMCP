@@ -74,6 +74,10 @@ stat-compared every 3 s.
   `whereami`, `collected_from_world`) journal `world.find` with `args {view, params}`: the
   World view and its address parameters, the ones the page's own filters write. A page set to
   follow chat opens `world/<view>?<params>`; "toasts only" offers it instead.
+  `rank_build_sites` sends `view: "rank"`.
+- `GET /api/activity` keeps one row for a run of `world.find` by one actor (kind and pid), the
+  newest, before it applies `limit`. Every row carries `count`: the entries it stands for,
+  1 unless collapsed. A collapsed `plan.view` run counts the same way.
 
 ## Pins
 

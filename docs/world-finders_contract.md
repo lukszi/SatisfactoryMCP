@@ -21,10 +21,10 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 
 | In | Out (and where it goes) |
 |---|---|
-| Dashboard section **World** (`dash=world/...`): here, nodes, fields, conduits, pickups, regions | Transport networks (deferred) |
+| Dashboard section **World** (`dash=world/...`): here, nodes, fields, rank, conduits, pickups, regions | Transport networks (deferred) |
 | Map finder card (`mapcard.ts`, id `finder`) and a finder pane drawn on the map | "Plan a factory here" from the inspector (planner phase; §17 Q6) |
 | Right-click inspector upgrade: here, nearest nodes, fields, conduits, pickups, actions | "Storage near here" (inventory §10 "not yet") |
-| `rank_build_sites` as the fields view's **rank** toggle | A pickup route planner (vision Q13 is open) |
+| `rank_build_sites` as the World **rank** tab (§2.2) | A pickup route planner (vision Q13 is open) |
 | Spoiler flag on nodes and pickups; locked nodes are drawn faded, the pickup layers follow the switch | Items as spoilers (§12.4, still open) |
 | Staleness of the node table, the collectible table and the save, said where it applies | Regenerating either table (tools/gen_*.py) |
 | `show_on_map` links that ring a node or a run; the page's selection reported to `ui_context`; a finder call in chat moves a page that follows chat | — |
@@ -47,20 +47,22 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 5. **map** on the row: switches to the map, flies there, rings the node in the finder pane.
 6. The `node:<id>` cell copies on click (principle 7). The player can paste it into chat.
 
-### 2.2 Where is there a lot of copper, and where would I build (fields)
+### 2.2 Where is there a lot of copper, and where would I build (fields, rank)
 
 1. **fields** tab, resource *Copper Ore*: clusters with total, free, spread, region.
-2. **rank** (a `dashkit.pressed` toggle, enabled only with one resource chosen) calls
-   `/api/world/sites`. Columns switch to score and its raw components; one line states the
-   weights. **rank** off returns to the plain list.
-3. While **rank** is on, the node filters give way to the rank pane (`world-rank.ts`):
+2. **rank** tab (its own level-2 tab, address `world/rank?…`; the resource carries over from
+   fields) calls `/api/world/sites` once one resource is chosen. Columns are the score and its
+   raw components; one line states the weights. No resource: one `dashkit.empty` line.
+3. The rank tab's filter bar (`world-rank.ts`): resource, then
    **near** anywhere (default, the whole map) | the HUB | the player | a pin | a factory | a
    map point (the selected point, or **pick on map**, one click); **within** a slider from
    0.5 to 5 km, default 1 km; **pure only**, off by default. They go to the route as
    `source=near:<place>@<m>` and `source=purity:pure`, and to the address as
    `at=hub|me|pin:<n>|<factory>|x,y`, `within_m` and `pure=1`. One line says what is ranked.
-3. **map** on a field: flies to the field's box and draws the members in the finder pane.
-4. **show all on map**: the whole current result (nodes, fields or ranked fields) is drawn
+   An old `world/fields?…&rank=1` address is rewritten in place to `world/rank?…`, keeping
+   `resource`, `at`, `within_m` and `pure`.
+4. **map** on a field: flies to the field's box and draws the members in the finder pane.
+5. **show all on map**: the whole current result (nodes, fields or ranked fields) is drawn
    and listed in the finder card; the card rows fly and select.
 
 ### 2.3 Is there a pipe between these two places (conduits)
@@ -122,6 +124,8 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 - A finder tool call in chat (`search_resource_nodes`, `rank_build_sites`, `search_conduits`,
   `whereami`, `collected_from_world`) journals `world.find`, and a page set to follow chat (the
   default) opens the same World view; "toasts only" offers it (docs/web-wire.md, World).
+  `rank_build_sites` opens the rank tab. In Activity, a run of these by one chat process is
+  one row: "N finds · latest: …", with **open** to the newest one's view.
 
 ---
 
@@ -364,8 +368,8 @@ every tag `chip`. Numbers through `format.ts`, words through `words.ts`, address
 | Module | Owns | Primitives it must use |
 |---|---|---|
 | `world.ts` (new) | section shell `renderWorld(body, subject)`, `tabs2` of the six views, **here** and **regions** views; registers `/api/world/here` (live wave); exports `here()`, `onHere()` | `tabs2`, `table`, `button`, `link`, `empty/loading/error`, `chip`, `format.num/perMin`, `W`, `nav.dashParts`/`subjectQuery`, `pointButton` |
-| `world-nodes.ts` (new) | nodes, fields and the rank toggle | `table` (sortable), `pressed` (rank, free), `button` (map, show all on map), `chip` (status, moved), `code()` copy cells, `latest("world-nodes")` |
-| `world-rank.ts` (new) | the rank pane: near anchor, within slider, pure only; `rankSources(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (world.ts), `note`, `panel.vitals`, `pins.livePins` |
+| `world-nodes.ts` (new) | nodes and fields | `table` (sortable), `pressed` (free), `button` (map, show all on map), `chip` (status, moved), `code()` copy cells, `latest("world-nodes")` |
+| `world-rank.ts` (new) | the rank tab: resource, near anchor, within slider, pure only, the sites table; `rankSources(params)`, `fromFieldsRank(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (world.ts), `note`, `panel.vitals`, `pins.livePins` |
 | `world-conduits.ts` (new) | runs and networks | `table`, `tabs2` (runs/networks), `button`, `latest("world-conduits")` |
 | `world-pickups.ts` (new) | census and lists | `table`, `tabs2` (remaining/collected/nearest), `chip`, `markers.pickupName`, `crates`-style loot line from `markers.lootLine` (exported), `latest("world-pickups")` |
 | `finder.ts` (new) | the map card `finder`, the `finder` pane (z 445, under trace's 450), `startAt(kind, x, y)`, `showRows(...)`, `showRef(ref)`, delegated click on `data-find` | `mapCard`, `claim`, `cardHead/Row/Line/Heading`, `tabs2`, `table`, `button`, `HIGHLIGHT`, `latest("finder")`, `select()` |
@@ -384,7 +388,8 @@ every tag `chip`. Numbers through `format.ts`, words through `words.ts`, address
 | `api-shapes.ts` | aliases for every §3.2 name | — |
 | `style.css` | World filter bar, finder pane classes; tokens only, no hex | — |
 
-Addresses: `world` (here), `world/nodes?…`, `world/fields?…[&rank=1&at=…&within_m=…&pure=1]`, `world/conduits?…`,
+Addresses: `world` (here), `world/nodes?…`, `world/fields?…`,
+`world/rank?resource=…[&at=…&within_m=…&pure=1]`, `world/conduits?…`,
 `world/pickups?view=remaining|collected|nearest&group=…`, `world/regions?resource=…`. Keys match
 the route params. Filter edits rewrite the fragment in place (`history.replaceState`), a tab
 switch pushes. `document.title` = "World · Satisfactory", with the view name for sub-views.
@@ -527,7 +532,7 @@ Frontend: `npm ci`, `npx tsc --noEmit`, `npm run build`; schema regenerated offl
 4. Nodes census line equals `search_resource_nodes resource="iron ore" only_free=true` header.
 5. Locked nodes show faded with a `locked` chip, and faded hollow dots on the map, with
    spoilers off and on alike; counts and search include them.
-6. Fields: **rank** is disabled without one resource; with Copper Ore it shows score columns
+6. Rank: without one resource it shows one empty line; with Copper Ore it shows score columns
    whose order equals `rank_build_sites resource="copper ore" limit=10`.
 7. Conduits near me: rows equal `search_conduits near=me` (ids, order); **map** on a run draws
    its line; a `chain:` in connects re-centres the query.
@@ -586,7 +591,7 @@ read-only for both.
 | §5.2: `/api/nodes/fields`, `/api/sites/rank`, `/api/conduits` | `/api/world/nodes?view=fields`, `/api/world/sites`, `/api/world/conduits` | one prefix; fields are a view of the node search, as in the tool |
 | §3.1: whereami as a header "me" button | World > here and the status strip selection | the header has no free slot at 390 px; smallest option |
 | §2.1: context menu with a separate menu | the inspector popup carries the actions | one right-click answer, not two |
-| §3.1: rank_build_sites under Planner > Site | fields view's **rank** toggle | the planner site step is a later phase |
+| §3.1: rank_build_sites under Planner > Site | World **rank** tab | the planner site step is a later phase |
 
 ---
 
@@ -601,9 +606,8 @@ read-only for both.
 - Selection kinds grow by four; the strip still offers only **map** and **clear** (§16.3 Q1
   stays open).
 - **rank** scores every field of the one resource over the whole map, as `rank_build_sites`
-  does with no source, unless the rank pane narrows it (§2.2 step 3). While it is on, the
-  purity, kind, status and near filters give way to that pane, and the census reads "top 10
-  of N".
+  does with no source, unless its filter bar narrows it (§2.2 step 3). It has no purity,
+  kind, status or near filter of its own, and the census reads "top 10 of N".
 - The page rounds a half to even, as the tools' Python formatting does, so a distance or a
   height reads the same number on the page and in chat. MW keeps its own rule.
 - `/api/world/nodes` sends its notes in the page's words; the tool keeps its own sentences.
@@ -623,3 +627,7 @@ read-only for both.
 6. No "plan a factory here" until the planner takes a point source.
 7. The world-wide sites list stays under Factories.
 8. **rank** gets its own pane: near an anchor within 0.5–5 km, and pure only (§2.2 step 3).
+9. **rank** is its own World tab, `world/rank?…`; old `rank=1` fields links redirect, and
+   chat's `rank_build_sites` opens it. "pure only" stays as built (2026-09-30).
+10. A run of `world.find` entries by one chat process is one Activity row: a count and the
+   newest entry's text and parameters (§2.7).
