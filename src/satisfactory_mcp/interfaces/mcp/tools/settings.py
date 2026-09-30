@@ -40,12 +40,11 @@ def _render(view: dict, head: str) -> str:
         )
         for key, spec in store.SPECS.items()
     ]
-    notes = []
     if view["by"]:
         who = Actor.from_dict(view["by"]).display()
         when = ago(int(float(view["updated"] or 0) * 1e9)) or "at an unknown time"
-        notes.append(f"last changed by {who} {when}")
-    return render.envelope(head, render.table(("setting", "value", "takes", "means"), rows), notes)
+        head += f"\n# last changed by {who} {when}"
+    return render.envelope(head, render.table(("setting", "value", "takes", "means"), rows))
 
 
 @mcp.tool(structured_output=False)
