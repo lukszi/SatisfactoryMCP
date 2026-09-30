@@ -66,4 +66,4 @@ available if a remote client ever appears.
 - `alternates_for_item(plan=)` rows follow the drawer's order (status), not the plain
   tool's alternates-first order.
 - Chat creates pins through `show_on_map(pin=True)` (contract C1, decided 2026-09-30).
-- The activity journal keeps the newest 50 entries server-side, `plan.view` included, so a run of drawer opens from chat can still push plan commits out of the page's Activity list.
+- `GET /api/activity` collapses a run of the same `plan.view` (same plan, actor, view and item or stage) to its newest entry before the 50-entry cap, so repeat looks no longer push plan commits out of the page's Activity list. Looks at different items still count one each.

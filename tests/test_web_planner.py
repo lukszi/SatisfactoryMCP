@@ -356,6 +356,22 @@ def test_activity_merges_commits_and_journal_entries_by_time(client):
     assert len(client.get("/api/activity?limit=1").json()["entries"]) == 1
 
 
+def test_repeat_looks_at_one_item_collapse_to_the_newest(client):
+    journal.set_writer("web")
+    key = _create(client)["key"]
+    look = {"view": "alternates", "item": "Desc_IronPlateReinforced_C"}
+    for n in range(60):
+        journal.append(WORLD, "plan.view", actor=CHAT, plan=key, args=look, text=f"look {n}")
+    other = {**look, "item": "Desc_IronPlate_C"}
+    journal.append(WORLD, "plan.view", actor=CHAT, plan=key, args=other, text="plate")
+    rows = client.get("/api/activity?limit=50").json()["entries"]
+    assert [(r["kind"], r["text"]) for r in rows] == [
+        ("commit", rows[0]["text"]),
+        ("plan.view", "look 59"),
+        ("plan.view", "plate"),
+    ]
+
+
 # ------------------------------------------------------------------ graph, deltas, alternates
 
 

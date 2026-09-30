@@ -552,9 +552,31 @@ def activity(
     log = PlanLog(st.world_id, st.header.get("session_name") or "")
     names = {s.key: s.name for s in log.heads(include_forgotten=True)}
     rows = _commit_rows(log, since)
-    rows += [_entry_row(e, names) for e in journal.read(st.world_id, since_ts=since, limit=limit)]
+    rows += [_entry_row(e, names) for e in journal.read(st.world_id, since_ts=since, limit=500)]
     rows.sort(key=lambda r: (r["ts"], r["id"]))
+    rows = _collapse_views(rows)
     return {"now": now, "entries": rows[-limit:] if limit else []}
+
+
+def _view_key(row: ActivityRow) -> tuple | None:
+    if row["kind"] != "plan.view":
+        return None
+    args = row["args"] if isinstance(row["args"], dict) else {}
+    look = tuple(str(args.get(k)) for k in ("view", "item", "stage", "section"))
+    return (row["plan"], row["actor"].get("kind"), row["actor"].get("pid"), *look)
+
+
+def _collapse_views(rows: list[ActivityRow]) -> list[ActivityRow]:
+    """A run of the same ``plan.view`` by the same actor keeps only its newest entry, so
+    repeat looks cannot crowd plan commits out of the capped list."""
+    out: list[ActivityRow] = []
+    for row in rows:
+        key = _view_key(row)
+        if key is not None and out and _view_key(out[-1]) == key:
+            out[-1] = row
+        else:
+            out.append(row)
+    return out
 
 
 @router.get("/plan/delta", response_model=DeltaResponse)
