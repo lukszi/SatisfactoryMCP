@@ -3002,12 +3002,6 @@ path.lasso-area {
   opacity: 0.55;
 }
 
-.world-rank {
-  padding: var(--sp-2) var(--sp-3) 0;
-  margin-bottom: var(--sp-1);
-  border-left: 2px solid var(--line);
-}
-
 .world-range {
   display: inline-flex;
   align-items: center;

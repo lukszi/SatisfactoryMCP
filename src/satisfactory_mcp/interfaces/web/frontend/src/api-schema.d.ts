@@ -1847,6 +1847,8 @@ export interface components {
             args: {
                 [key: string]: unknown;
             } | null;
+            /** Count */
+            count: number;
         };
         /**
          * ActorBody

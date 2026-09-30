@@ -19,6 +19,7 @@ import { note as toast, offer } from "./toast";
 import { renderConduits } from "./world-conduits";
 import { nodeTable, renderNodes } from "./world-nodes";
 import { renderPickups } from "./world-pickups";
+import { fromFieldsRank, renderRank } from "./world-rank";
 import { counted, gapText, W } from "./words";
 
 import type { ApiError, ApiPath, ApiUrl } from "./api";
@@ -30,6 +31,7 @@ var VIEWS: [string, string][] = [
   ["", "here"],
   ["nodes", "nodes"],
   ["fields", "fields"],
+  ["rank", "rank"],
   ["conduits", "conduits"],
   ["pickups", "pickups"],
   ["regions", "regions"],
@@ -449,6 +451,11 @@ export function worldTitle(subject: string): string {
 
 export function renderWorld(body: HTMLElement): void {
   var at = address();
+  if (at.view === "fields" && at.params.rank === "1") {
+    at = { view: "rank", params: fromFieldsRank(at.params) };
+    state.dash = viewDash(at.view, at.params);
+    writeHash();
+  }
   body.appendChild(
     tabs2(
       VIEWS.map(function (v) {
@@ -461,6 +468,7 @@ export function renderWorld(body: HTMLElement): void {
   );
   if (at.view === "") renderHere(body);
   else if (at.view === "nodes" || at.view === "fields") renderNodes(body, at.view, at.params);
+  else if (at.view === "rank") renderRank(body, at.params);
   else if (at.view === "conduits") renderConduits(body, at.params);
   else if (at.view === "pickups") renderPickups(body, at.params);
   else renderRegions(body, at.params);
@@ -468,7 +476,7 @@ export function renderWorld(body: HTMLElement): void {
 
 function carried(view: string, params: Record<string, string>): Record<string, string> {
   var kept: Record<string, string> = {};
-  if (view === "nodes" || view === "fields" || view === "regions") kept.resource = params.resource || "";
+  if (view === "nodes" || view === "fields" || view === "rank" || view === "regions") kept.resource = params.resource || "";
   if (view === "nodes" || view === "fields") kept.near = params.near || "";
   return kept;
 }

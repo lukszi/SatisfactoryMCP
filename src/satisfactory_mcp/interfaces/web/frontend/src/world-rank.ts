@@ -1,20 +1,33 @@
-/* World > fields > rank: where the ranking looks, and whether only pure nodes count.
- * The settings become `near:<place>@<m>` and `purity:pure` sources. See
- * docs/world-finders_contract.md §2.2. */
+/* World > rank: build sites for one resource, scored. The pane says where the ranking looks
+ * and whether only pure nodes count; those become `near:<place>@<m>` and `purity:pure`
+ * sources. See docs/world-finders_contract.md §2.2. */
 
-import { render } from "./dashboard";
-import { button, note, pressed } from "./dashkit";
+import { mapButton, render, toMap } from "./dashboard";
+import { button, empty, note, pressed, table } from "./dashkit";
 import { make } from "./dom";
-import { coords, num } from "./format";
+import { resourceOptions, showRows, siteSelection, worldUrl } from "./finder";
+import { coords, count, measured, metres, num, perMin, rounded, signed } from "./format";
 import { map } from "./map";
 import { dashParts, go, onMap, subjectQuery } from "./nav";
 import { onVitals, vitals } from "./panel";
 import { livePins, onPins, pinName } from "./pins";
-import { selected } from "./selection";
+import { isSelected, select, selected } from "./selection";
+import { state } from "./state";
 import { note as toast } from "./toast";
-import { changed, edit, rangeField, selectField, viewDash } from "./world";
+import { changed, copyCell, edit, filterBar, loaded, rangeField, selectField, staleLine, viewDash, waiting, want } from "./world";
+import { counted, W } from "./words";
 
 import type * as L from "leaflet";
+import type { Column, SortState } from "./dashkit";
+import type { RankedSite, RankedSitesResponse } from "./api-shapes";
+
+var SITES_LIMIT = "10";
+
+var RANK_KEYS = ["resource", "at", "within_m", "pure"];
+
+var sitesBox = loaded<RankedSitesResponse>();
+
+var siteSort: SortState = { key: "rank", desc: false };
 
 type Anchor = "" | "hub" | "me" | "pin" | "factory" | "point";
 
@@ -99,7 +112,7 @@ function pick(params: Record<string, string>): void {
     function clicked(e: L.LeafletMouseEvent): void {
       done();
       if (mine !== picking) return;
-      go(viewDash("fields", changed(params, { at: Math.round(e.latlng.lng) + "," + Math.round(-e.latlng.lat) })));
+      go(viewDash("rank", changed(params, { at: Math.round(e.latlng.lng) + "," + Math.round(-e.latlng.lat) })));
     }
     function key(e: KeyboardEvent): void {
       if (e.key !== "Escape") return;
@@ -122,10 +135,13 @@ function where(params: Record<string, string>, anchor: Anchor): string {
   return "“" + at + "”";
 }
 
-export function rankPane(card: HTMLElement, params: Record<string, string>): void {
-  var pane = make("div", "world-rank");
-  var bar = make("div", "world-filters");
-  pane.appendChild(bar);
+function rankPane(card: HTMLElement, params: Record<string, string>): void {
+  var bar = filterBar(card);
+  bar.appendChild(
+    selectField("resource", "world-rank-resource", params.resource || "", resourceOptions("choose a resource", params.resource || ""), function (v) {
+      set({ resource: v });
+    })
+  );
   var anchor = anchorOf(params.at || "");
   var pinList = pins();
   var factoryList = factories();
@@ -178,14 +194,139 @@ export function rankPane(card: HTMLElement, params: Record<string, string>): voi
       set({ pure: params.pure === "1" ? "" : "1" });
     }, { title: "rank fields made only of pure nodes" })
   );
-  card.appendChild(pane);
-  var scope = anchor ? "fields with a node within " + km(within) + " of " + where(params, anchor) : "every field on the map";
-  note(card, "ranks " + (params.pure === "1" ? "pure-node " : "") + scope);
+  var kind = (params.pure === "1" ? "pure-node " : "") + "field";
+  note(card, "ranks " + (anchor ? kind + "s with a node within " + km(within) + " of " + where(params, anchor) : "every " + kind + " on the map"));
+}
+
+export function fromFieldsRank(params: Record<string, string>): Record<string, string> {
+  var kept: Record<string, string> = {};
+  RANK_KEYS.forEach(function (k) {
+    if (params[k]) kept[k] = params[k]!;
+  });
+  return kept;
+}
+
+function siteTable(rows: RankedSite[]): HTMLElement {
+  var from = state.dash;
+  function n(key: string, label: string, pick: (s: RankedSite) => number | null, show: (s: RankedSite) => string, title?: string): Column<RankedSite> {
+    return {
+      key: key,
+      label: label,
+      align: "right",
+      title: title,
+      sort: function (s) {
+        var v = pick(s);
+        return v === null ? Infinity : v;
+      },
+      render: show,
+    };
+  }
+  var columns: Column<RankedSite>[] = [
+    n("rank", "rank", function (s) { return s.rank; }, function (s) { return String(s.rank); }),
+    {
+      key: "region",
+      label: "region",
+      sort: function (s) { return s.region || ""; },
+      render: function (s) {
+        var cell = make("span", "", s.region || "off the map");
+        cell.appendChild(make("span", "dash-sub", s.grid));
+        return cell;
+      },
+    },
+    n("score", "score", function (s) { return s.score; }, function (s) { return num(s.score, 2); }),
+    n("nodes", "nodes", function (s) { return s.nodes; }, function (s) { return count(s.nodes); }),
+    n("untapped", "untapped", function (s) { return s.untapped; }, function (s) { return perMin(s.untapped, false); }, "per min on nodes with no extractor"),
+    n("spread", "spread", function (s) { return s.spread_m; }, function (s) { return metres(s.spread_m); }),
+    n("infra", "to built", function (s) { return s.to_infra_m; }, function (s) { return metres(s.to_infra_m); }, "to the nearest thing already built"),
+    n("purity", "purity", function (s) { return s.purity; }, function (s) { return num(s.purity, 2); }),
+    n("alt", "above refineries", function (s) { return s.alt_m; }, function (s) { return s.alt_m === null ? "–" : signed(s.alt_m, function (v) { return metres(v); }); }, "height above your refineries: positive means fluid flows downhill to them"),
+    n("rough", "rough", function (s) { return s.rough_m; }, function (s) { return s.rough_m === null ? "–" : rounded(s.rough_m, 1).toFixed(1) + " m"; }, "how uneven the ground is"),
+    n("slope", "slope", function (s) { return s.slope_deg; }, function (s) { return measured(s.slope_deg, 0, "°"); }),
+    n("wet", "water", function (s) { return s.wet_pct; }, function (s) { return measured(s.wet_pct, 0, "%"); }, "share of the site under water"),
+    { key: "selector", label: "id", render: function (s) { return copyCell(s.selector, "copy"); } },
+    {
+      key: "map",
+      label: "",
+      align: "right",
+      render: function (s) {
+        return mapButton("fly the map to this site", function () {
+          showRows({ kind: "sites", rows: [s] }, "site " + s.rank, from, 0);
+        }, "show site " + s.rank + " on the map");
+      },
+    },
+  ];
+  return table(columns, rows, {
+    sort: siteSort,
+    caption: "ranked build sites",
+    onRow: function (s) {
+      select(siteSelection(s));
+      render();
+    },
+    rowClass: function (s) {
+      return isSelected("field", s.selector) ? "on" : "";
+    },
+  });
+}
+
+function renderSites(card: HTMLElement, params: Record<string, string>): void {
+  var url = worldUrl("/api/world/sites", { resource: params.resource || "", limit: SITES_LIMIT });
+  rankSources(params).forEach(function (s) {
+    url = (url + "&source=" + encodeURIComponent(s)) as typeof url;
+  });
+  want("world-sites", sitesBox, url);
+  if (waiting(card, sitesBox, "ranked sites")) return;
+  var d = sitesBox.data!;
+  var line = make("div", "world-census");
+  var top = d.sites.length < d.count ? "top " + count(d.sites.length) + " of " + count(d.count) + " candidate " + W.field + "s" : counted(d.sites.length, "candidate " + W.field);
+  line.appendChild(make("span", "", top + " for " + d.resource_name));
+  if (d.sites.length) {
+    line.appendChild(
+      button("show all on map", function () {
+        var dash = state.dash;
+        toMap(function () {
+          showRows({ kind: "sites", rows: d.sites }, d.resource_name + " sites", dash);
+        });
+      }, { map: true, title: "ring every site on the map and list them beside it" })
+    );
+  }
+  card.appendChild(line);
+  var weights = Object.keys(d.weights || {});
+  if (weights.length) {
+    note(
+      card,
+      "score weights: " +
+        weights
+          .map(function (k) {
+            return k.replace(/_/g, " ") + " " + num(d.weights[k]!, 2);
+          })
+          .join(" · ")
+    );
+  }
+  d.notes.forEach(function (t) {
+    note(card, t);
+  });
+  staleLine(card, d.stale);
+  if (!d.sites.length) {
+    empty(card, "no build site found for " + d.resource_name);
+    return;
+  }
+  card.appendChild(siteTable(d.sites));
+}
+
+export function renderRank(body: HTMLElement, params: Record<string, string>): void {
+  var card = make("section", "dash-card");
+  body.appendChild(card);
+  rankPane(card, params);
+  if (!params.resource) {
+    empty(card, "choose one resource to rank its build sites");
+    return;
+  }
+  renderSites(card, params);
 }
 
 function rerank(): void {
   var at = dashParts();
-  if (at.tab === "world" && subjectQuery(at.subject).params.rank === "1") render();
+  if (at.tab === "world" && subjectQuery(at.subject).head === "rank") render();
 }
 
 onVitals(rerank);
