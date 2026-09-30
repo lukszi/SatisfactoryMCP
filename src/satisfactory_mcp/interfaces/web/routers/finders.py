@@ -112,7 +112,7 @@ class NodeFindResponse(TypedDict):
     save_error: str | None
 
 
-class SiteRankRow(TypedDict):
+class RankedSite(TypedDict):
     rank: int
     score: float
     region: str | None
@@ -131,11 +131,11 @@ class SiteRankRow(TypedDict):
     wet_pct: float | None
 
 
-class SiteRankResponse(TypedDict):
+class RankedSitesResponse(TypedDict):
     resource: str
     resource_name: str
     description: str
-    sites: list[SiteRankRow]
+    sites: list[RankedSite]
     count: int
     weights: dict[str, float]
     notes: list[str]
@@ -390,7 +390,7 @@ def world_nodes(
     }
 
 
-@router.get("/sites", response_model=SiteRankResponse)
+@router.get("/sites", response_model=RankedSitesResponse)
 def world_sites(
     request: Request,
     resource: str,

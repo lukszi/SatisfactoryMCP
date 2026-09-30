@@ -131,7 +131,7 @@ export interface paths {
          *
          *     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
          *     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-         *     elevation and conduit reach; fields and pickups look 500 m out. ``spoilers=0`` skips
+         *     elevation reach; conduits count within 250 m, fields and pickups look 500 m out. ``spoilers=0`` skips
          *     locked nodes so that ``nearest`` still holds the closest ones some extractor can work.
          *
          *     **A failed save is not a failed answer.** The node table is static, covers the whole map
@@ -4930,6 +4930,61 @@ export interface components {
             text: string;
             state: components["schemas"]["PlanStateBody"];
         };
+        /** RankedSite */
+        RankedSite: {
+            /** Rank */
+            rank: number;
+            /** Score */
+            score: number;
+            /** Region */
+            region: string | null;
+            /** Grid */
+            grid: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Selector */
+            selector: string;
+            /** Nodes */
+            nodes: number;
+            /** Untapped */
+            untapped: number;
+            /** Spread M */
+            spread_m: number;
+            /** To Infra M */
+            to_infra_m: number | null;
+            /** Purity */
+            purity: number;
+            /** Alt M */
+            alt_m: number | null;
+            /** Rough M */
+            rough_m: number | null;
+            /** Slope Deg */
+            slope_deg: number | null;
+            /** Wet Pct */
+            wet_pct: number | null;
+        };
+        /** RankedSitesResponse */
+        RankedSitesResponse: {
+            /** Resource */
+            resource: string;
+            /** Resource Name */
+            resource_name: string;
+            /** Description */
+            description: string;
+            /** Sites */
+            sites: components["schemas"]["RankedSite"][];
+            /** Count */
+            count: number;
+            /** Weights */
+            weights: {
+                [key: string]: number;
+            };
+            /** Notes */
+            notes: string[];
+            stale: components["schemas"]["TableAge"] | null;
+        };
         /**
          * Rate
          * @description ``amount`` is per cycle: per craft or per build for a manual or building recipe,
@@ -5387,61 +5442,6 @@ export interface components {
             by_place: components["schemas"]["PlaceRow"][];
             /** Holders */
             holders: components["schemas"]["ShardHolder"][];
-        };
-        /** SiteRankResponse */
-        SiteRankResponse: {
-            /** Resource */
-            resource: string;
-            /** Resource Name */
-            resource_name: string;
-            /** Description */
-            description: string;
-            /** Sites */
-            sites: components["schemas"]["SiteRankRow"][];
-            /** Count */
-            count: number;
-            /** Weights */
-            weights: {
-                [key: string]: number;
-            };
-            /** Notes */
-            notes: string[];
-            stale: components["schemas"]["TableAge"] | null;
-        };
-        /** SiteRankRow */
-        SiteRankRow: {
-            /** Rank */
-            rank: number;
-            /** Score */
-            score: number;
-            /** Region */
-            region: string | null;
-            /** Grid */
-            grid: string;
-            /** X M */
-            x_m: number;
-            /** Y M */
-            y_m: number;
-            /** Selector */
-            selector: string;
-            /** Nodes */
-            nodes: number;
-            /** Untapped */
-            untapped: number;
-            /** Spread M */
-            spread_m: number;
-            /** To Infra M */
-            to_infra_m: number | null;
-            /** Purity */
-            purity: number;
-            /** Alt M */
-            alt_m: number | null;
-            /** Rough M */
-            rough_m: number | null;
-            /** Slope Deg */
-            slope_deg: number | null;
-            /** Wet Pct */
-            wet_pct: number | null;
         };
         /**
          * SiteRow
@@ -9085,7 +9085,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SiteRankResponse"];
+                    "application/json": components["schemas"]["RankedSitesResponse"];
                 };
             };
             /** @description Validation Error */

@@ -131,7 +131,7 @@ there is no guard change and no 409 besides the pinning middleware's.
 |---|---|---|---|---|
 | `/api/world/here` | `radius_m` (500, 1–5000); `spoilers` 0\|1 | `HereResponse` | 200, 404 no save | `place.here` |
 | `/api/world/nodes` | `view` nodes\|fields\|nearest (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near`; `spoilers` 0\|1 | `NodeFindResponse` | 200, 400 bad value / unresolvable near / nearest without near / every selector failed | `finder.find_nodes` |
-| `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `SitesResponse` | 200, 400 unknown resource, 404 no save | `finder.rank` |
+| `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `RankedSitesResponse` | 200, 400 unknown resource, 404 no save | `finder.rank` |
 | `/api/world/conduits` | `near` (me); `radius_m` (250, 1–2000); `to`; `to_radius_m`; `conduit_kind` belt\|pipe\|all; `view` runs\|networks; `network`; `run`; `offset` (0); `limit` (200, 1–500) | `ConduitsResponse` | 200, 400 bad value / unresolvable place / networks with belt, 404 no save | `conduits.search`, `conduits.networks` |
 | `/api/world/regions` | `resource`; `spoilers` 0\|1 | `RegionTableResponse` | 200, 400 unknown resource | `regions.region_rows` |
 | `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new, the elevation reach | `InspectResponse` + fields in §3.2 | as today | `place.describe` |
@@ -211,8 +211,8 @@ class NodeFindResponse(TypedDict):
     stale: TableAge | None
     save_error: str | None
 
-class SiteRow(TypedDict):             # SitesResponse = {resource, resource_name, description,
-    rank: int; score: float           #  sites, count, weights, notes, stale}
+class RankedSite(TypedDict):          # RankedSitesResponse = {resource, resource_name, description,
+    rank: int; score: float           #  sites, count, weights: dict[str, float], notes, stale}
     region: str | None; grid: str
     x_m: float; y_m: float; selector: str
     nodes: int; untapped: float; spread_m: float

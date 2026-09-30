@@ -1451,7 +1451,7 @@ section records what the backend built and what it decided on the way.
 - **The collectible table's age** compares the save's `build_version` with the `CL-<n>` of
   the table's `game_build`; `observed_from` is the session the generator read.
 - **Schema names.** `SiteRow` and `SitesResponse` were taken by `/api/factories/sites`, so
-  the ranking's shapes are `SiteRankRow` and `SiteRankResponse`. `CollectibleRow` and
+  the ranking's shapes are `RankedSite` and `RankedSitesResponse`. `CollectibleRow` and
   `FoundField` moved to `serial.py`, since `/api/inspect` sends them too.
 - **A geyser search no longer raises.** `show=nodes kind=geyser` hit a `KeyError` on the
   geyser's missing item; the unit now falls back to `/min`.
