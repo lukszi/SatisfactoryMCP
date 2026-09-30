@@ -1218,7 +1218,9 @@ Decided 2026-09-27, binding for the design-system work and the page batches afte
   but counted there, and the map outline for no wire uses the power-problem style.
 - **T2 Palette.** Map generators move off the stopped red to a warm neutral, storage moves
   off the selection pink to a teal-violet, LOCKED is muted instead of amber, and uptime
-  badges carry no colour.
+  badges carry no colour. Tones (`:root` in style.css, dark only): `--bad` red is broken or
+  stopped, errors and "this won't work" warnings; `--blocked` yellow is a blocked machine
+  and soft warnings (incomplete, not broken); `--remove` amber is a pending lasso removal.
 - **T3 Spoilers** default to off, with a one-time notice. When off, counts and search
   results follow the rows, and the item list follows too (§12.3).
 - **T4 Tiles.** At most one row of tiles per view. Progress keeps its next-up strip on the

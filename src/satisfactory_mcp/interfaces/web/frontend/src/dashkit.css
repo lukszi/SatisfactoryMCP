@@ -184,6 +184,11 @@ a.btn {
   color: var(--blocked);
 }
 
+.chip-remove {
+  border-color: color-mix(in srgb, var(--remove) 60%, transparent);
+  color: var(--remove);
+}
+
 .chip-mid {
   color: var(--mid);
 }
