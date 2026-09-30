@@ -150,7 +150,8 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
 
 
 def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
-    """A seed as machine leaves plus a subject line: an instance, a building, else a factory.
+    """A seed as machine leaves plus a subject line: an instance (bare or ``machine:``), a
+    building, else a factory.
 
     ``label:<name>`` names only a factory, so a label that shares a building's name still
     traces the label.
@@ -169,6 +170,10 @@ def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
         name, machines = resolve_factory(state, wanted)
         seeds = [str(m) for m in machines]
         return seeds, f"factory {name!r} ({len(seeds)} machines)"
+    if what.casefold().startswith("machine:") and "," not in what:
+        what = what[len("machine:") :].strip().rsplit(".", 1)[-1]
+        if what not in records:
+            raise SelectorError(f"no machine called {what!r} in this save")
     if what in records:
         return [what], f"{records[what].get('cls', '?')} {what}"
     by_class = [

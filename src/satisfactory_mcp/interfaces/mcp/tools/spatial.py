@@ -822,7 +822,7 @@ def show_on_map(
         str,
         Field(
             description="any place -- 'x,y' in metres, 'me', a factory label, "
-            "'node:<id>', 'slab:<n>', 'chain:<n>'/'pipe:<n>', 'plan:<name>' -- or "
+            "'node:<id>', 'machine:<id>', 'slab:<n>', 'chain:<n>'/'pipe:<n>', 'plan:<name>' -- or "
             "'resource:Crude Oil' for every node of one resource"
         ),
     ],

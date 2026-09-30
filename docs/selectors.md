@@ -48,6 +48,7 @@ place table the only table a reader needs for "where".
 |---|---|---|
 | `x,y` | that coordinate, in metres | no |
 | `node:<instance>` | one resource node, by the id `search_resource_nodes` prints | no |
+| `machine:<instance>` | one standing machine, by the id the tools print (the machine-select term) | yes |
 | `me` | the player pawn's position in the save | yes |
 | `hub` | the HUB, off its built-in storage; a factory named `hub` wins | yes |
 | `<factory name>` | the centroid of a named factory's machines | yes |
@@ -55,6 +56,10 @@ place table the only table a reader needs for "where".
 | `chain:<n>` / `pipe:<n>` | the midpoint of a conduit run, by the ident `search_conduits` prints | yes |
 | `plan:<name>` | a stored plan's recorded site origin (see `site_plan`) | yes |
 | `pin:<n>` | a located pin: point, node, field centroid, machine, factory centroid, sited plan | yes |
+
+`machine:<instance>` is the machine-select term of the same spelling, so one machine is
+written one way whether it is picked or pointed at; the page's machine selection carries it
+as its ref, and `trace_upstream` takes it as a seed.
 
 The two map facts resolve with no save at all; the rest name what they are missing rather
 than falling back. The point a place resolved to is echoed back with the name that
@@ -170,7 +175,7 @@ reads the same after its pin is deleted.
 Named here so that the next reader knows it is a known state and not an oversight.
 
 - **`near:` no longer differs.** Both selector modules hand the whole world state to
-  `resolve_origin` and take the same eight places, so a `near:` term copied from one
+  `resolve_origin` and take the same nine places, so a `near:` term copied from one
   works in the other. Neither module resolves a place itself; a second resolver is what
   the divergence was made of.
 - **Indices are machine-side only.** `base:`, `line:`, `slab:` and `proposal:` have no

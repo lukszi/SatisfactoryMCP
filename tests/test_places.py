@@ -91,6 +91,7 @@ def places(world, a_node_id) -> list[str]:
         "slab:1",
         world.conduit_runs[0].ident,
         f"node:{a_node_id}",
+        f"machine:{sorted(_machine_positions(world.projection))[0]}",
         f"plan:{PROBE_PLAN}",
     ]
 
@@ -162,6 +163,13 @@ def test_the_place_kinds_that_need_no_save_still_resolve_without_one():
     ):
         sel = select_nodes([f"near:{place}@200"], table.nodes)
         assert any(expected in e for e in sel.errors), (place, sel.errors)
+
+
+def test_a_machine_place_centres_on_that_machine(world):
+    leaf, at = sorted(_machine_positions(world.projection).items())[0]
+    assert resolve_origin(world, f"machine:{leaf}") == (at, f"machine:{leaf}")
+    with pytest.raises(ValueError, match="no machine"):
+        resolve_origin(world, "machine:Build_Nothing_C_0")
 
 
 def test_a_node_place_and_the_node_selector_name_the_same_node(world, a_node_id):

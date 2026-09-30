@@ -289,6 +289,28 @@ def test_pins_are_listed_and_a_pinned_selection_names_its_pin(ctx, monkeypatch):
     )
 
 
+def test_a_machine_selection_prints_its_selector(ctx, monkeypatch):
+    ref = "machine:Build_ConstructorMk1_C_7"
+    _focus(monkeypatch, 2, True, view="map", selection={"kind": "machine", "label": "Constructor", "ref": ref})
+    line = srv.ui_context().splitlines()[1]
+    assert line.endswith(f'selected: machine "Constructor" ({ref})')
+
+
+@pytest.mark.parametrize(
+    "kind, stored, ref",
+    [
+        ("machine", {"machine": "Build_ConstructorMk1_C_7"}, "machine:Build_ConstructorMk1_C_7"),
+        ("node", {"node": "BP_ResourceNode453"}, "node:BP_ResourceNode453"),
+        ("factory", {"factory": "North"}, "label:north"),
+    ],
+)
+def test_a_selector_ref_from_the_page_finds_its_pin(kind, stored, ref):
+    from satisfactory_mcp.domain.planning import pins
+
+    rows = [{"n": 1, "id": "pin:1", "kind": kind, "ref": stored}]
+    assert pins.match(rows, kind, ref) is rows[0]
+
+
 def test_only_the_newest_eight_pins_show_and_the_reply_stays_in_budget(ctx):
     _pins(
         ctx,

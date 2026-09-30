@@ -8,7 +8,8 @@ can say which machines they mean without listing 50 instance ids. Hence selector
     recipe:Alternate: Solid Steel Ingot
     building:Foundry
     near:-1069,-1273@200          within 200 m of any place -- a coordinate, me, a
-    near:steel@150                factory, node:<id>, slab:<n>, chain:<n>, plan:<name>
+    near:steel@150                factory, node:<id>, machine:<id>, slab:<n>, chain:<n>,
+                                  plan:<name>
     base:0                        power island, largest first
     line:3                        material component, largest first
     slab:2                        foundation platform, by its own printed index
