@@ -2902,9 +2902,9 @@ path.lasso-add {
 }
 
 path.lasso-drop {
-  stroke: var(--bad);
+  stroke: var(--blocked);
   stroke-width: 3;
-  fill: var(--bad);
+  fill: var(--blocked);
   fill-opacity: 0.35;
 }
 

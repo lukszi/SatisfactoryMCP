@@ -125,7 +125,7 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
   var changes = p.added.length + p.dropped.length;
   var chips = make("div", "panel-chips");
   if (p.added.length) chips.appendChild(chip("+" + counted(p.added.length, "machine") + " to add", "ok"));
-  if (p.dropped.length) chips.appendChild(chip("−" + counted(p.dropped.length, "machine") + " to remove", "bad"));
+  if (p.dropped.length) chips.appendChild(chip("−" + counted(p.dropped.length, "machine") + " to remove", "blocked"));
   if (!changes) chips.appendChild(chip(view.mode === "add" ? "nothing new inside" : "none of its machines inside", "muted"));
   chips.appendChild(chip(p.before + " → " + counted(p.after, "anchor"), "muted"));
   if (view.areas.length > 1) chips.appendChild(chip(counted(view.areas.length, "area"), "muted"));
