@@ -557,7 +557,7 @@ function pointQuery(): { url: ApiUrl; dash: string } {
   if (view.kind === "nodes") {
     return {
       url: worldUrl("/api/world/nodes", {
-        view: "nearest",
+        view: "nodes",
         source: "near:" + here + "@" + NEAR_M,
         near: here,
         resource: f.resource,
@@ -581,7 +581,12 @@ function pointQuery(): { url: ApiUrl; dash: string } {
 
 function landed(kind: FindKind, data: NodeFindResponse | ConduitsResponse | CollectiblesResponse): Shown {
   view.beyond = 0;
-  if (kind === "nodes") return { kind: "nodes", rows: (data as NodeFindResponse).nodes };
+  if (kind === "nodes") {
+    var nodes = (data as NodeFindResponse).nodes.slice().sort(function (a, b) {
+      return (a.distance_m || 0) - (b.distance_m || 0);
+    });
+    return { kind: "nodes", rows: nodes };
+  }
   if (kind === "conduits") {
     view.note = (data as ConduitsResponse).age_note;
     return { kind: "runs", rows: (data as ConduitsResponse).runs };

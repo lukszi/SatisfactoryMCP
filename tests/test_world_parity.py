@@ -38,9 +38,10 @@ def test_nearest_free_iron_lists_the_same_nodes_in_the_same_order(tools, client)
     tool_ids = [row[0] for row in _table(text, "node_id")]
     body = client.get(
         "/api/world/nodes",
-        params={"view": "nearest", "resource": "Iron Ore", "status": "free", "near": "me"},
+        params={"resource": "Iron Ore", "status": "free", "near": "me"},
     ).json()
-    assert tool_ids == [r["name"] for r in body["nodes"]][: len(tool_ids)]
+    by_distance = sorted(body["nodes"], key=lambda r: r["distance_m"])
+    assert tool_ids == [r["name"] for r in by_distance][: len(tool_ids)]
     assert f"{body['count']} node(s)" in text.splitlines()[0]
 
 

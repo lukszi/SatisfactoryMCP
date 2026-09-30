@@ -130,7 +130,7 @@ there is no guard change and no 409 besides the pinning middleware's.
 | Path | Params (default) | Model | Codes | Domain |
 |---|---|---|---|---|
 | `/api/world/here` | `radius_m` (500, 1–5000); `spoilers` 0\|1 | `HereResponse` | 200, 404 no save | `place.here` |
-| `/api/world/nodes` | `view` nodes\|fields\|nearest (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near`; `spoilers` 0\|1 | `NodeFindResponse` | 200, 400 bad value / unresolvable near / nearest without near / every selector failed | `finder.find_nodes` |
+| `/api/world/nodes` | `view` nodes\|fields (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near`; `spoilers` 0\|1 | `NodeFindResponse` | 200, 400 bad value / unresolvable near / every selector failed | `finder.find_nodes` |
 | `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `RankedSitesResponse` | 200, 400 unknown resource, 404 no save | `finder.rank` |
 | `/api/world/conduits` | `near` (me); `radius_m` (250, 1–2000); `to`; `to_radius_m`; `conduit_kind` belt\|pipe\|all; `view` runs\|networks; `network`; `run`; `offset` (0); `limit` (200, 1–500) | `ConduitsResponse` | 200, 400 bad value / unresolvable place / networks with belt, 404 no save | `conduits.search`, `conduits.networks` |
 | `/api/world/regions` | `resource`; `spoilers` 0\|1 | `RegionTableResponse` | 200, 400 unknown resource | `regions.region_rows` |
@@ -193,7 +193,8 @@ class FoundField(TypedDict):
     spoiler: bool                     # every member locked
 
 class NodeFindResponse(TypedDict):
-    view: Literal["nodes", "fields", "nearest"]
+    view: Literal["nodes", "fields"]         # no "nearest": with near, rows carry distance_m
+                                      #  and the page sorts by it
     description: str                  # the selection's description, e.g. "region:Grass Fields"
     selectors: list[str]              # what was built from the filters (copyable)
     where: str                        # what near resolved to; "" without near

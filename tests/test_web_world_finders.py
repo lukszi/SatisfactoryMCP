@@ -131,7 +131,7 @@ def test_spoilers_zero_drops_locked_nodes_and_the_counts_follow(client):
         ({"kind": "volcano"}, "unknown kind"),
         ({"resource": "Unobtainium"}, "unknown resource"),
         ({"near": "nowhere at all"}, "does not name a place"),
-        ({"view": "nearest"}, "needs near"),
+        ({"view": "nearest"}, "unknown view"),
         ({"source": "region:Nowhere"}, "no selector resolved"),
     ],
 )

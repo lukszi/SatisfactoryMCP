@@ -42,6 +42,8 @@ router = APIRouter(prefix="/api/world")
 
 Spoilers = Annotated[int | None, Query(ge=0, le=1)]
 
+PAGE_VIEWS = ("nodes", "fields")
+
 
 class FoundNode(TypedDict):
     """One node, its status in this save, and the extractor on it.
@@ -93,7 +95,7 @@ class NodeChoices(TypedDict):
 class NodeFindResponse(TypedDict):
     """``count``/``total``/``free`` are the tool's header figures over the rows returned."""
 
-    view: Literal["nodes", "fields", "nearest"]
+    view: Literal["nodes", "fields"]
     description: str
     selectors: list[str]
     where: str
@@ -305,18 +307,19 @@ def world_nodes(
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
-    """Resource nodes as ``search_resource_nodes`` finds them: nodes, fields or nearest.
+    """Resource nodes as ``search_resource_nodes`` finds them: nodes or fields.
 
     ``resource`` is a name or class id; ``purity`` and ``kind`` take ``all`` for no filter;
     ``status`` is ``free`` (untapped), ``tapped`` or ``all``. ``source`` repeats and takes
-    the tool's selectors. ``spoilers=0`` drops locked nodes before anything is counted. A
-    save that will not load still answers from the node table, with ``save_error`` set.
+    the tool's selectors. With ``near`` every row carries ``distance_m`` and the page sorts
+    by it. ``spoilers=0`` drops locked nodes before anything is counted. A save that will
+    not load still answers from the node table, with ``save_error`` set.
     """
     game = request.app.state.game()
     view = view.strip().casefold()
     status = status.strip().casefold()
     refusal = (
-        _choice(view, finder.VIEWS, "view")
+        _choice(view, PAGE_VIEWS, "view")
         or _choice(status, finder.STATUSES, "status")
         or _choice(purity, (*finder.PURITIES, "all"), "purity")
         or _choice(kind, (*finder.KINDS, "all"), "kind")
@@ -328,8 +331,6 @@ def world_nodes(
         if rid is None:
             return _fail(f"unknown resource {resource!r}")
         resource = _resource_name(game, rid)
-    if view == "nearest" and not near:
-        return _fail("view=nearest needs near=<x,y | me | factory name> to measure from")
     try:
         spatial_nodes.load_nodes()
     except FileNotFoundError as exc:

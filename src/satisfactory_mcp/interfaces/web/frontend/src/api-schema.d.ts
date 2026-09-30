@@ -1617,12 +1617,13 @@ export interface paths {
         };
         /**
          * World Nodes
-         * @description Resource nodes as ``search_resource_nodes`` finds them: nodes, fields or nearest.
+         * @description Resource nodes as ``search_resource_nodes`` finds them: nodes or fields.
          *
          *     ``resource`` is a name or class id; ``purity`` and ``kind`` take ``all`` for no filter;
          *     ``status`` is ``free`` (untapped), ``tapped`` or ``all``. ``source`` repeats and takes
-         *     the tool's selectors. ``spoilers=0`` drops locked nodes before anything is counted. A
-         *     save that will not load still answers from the node table, with ``save_error`` set.
+         *     the tool's selectors. With ``near`` every row carries ``distance_m`` and the page sorts
+         *     by it. ``spoilers=0`` drops locked nodes before anything is counted. A save that will
+         *     not load still answers from the node table, with ``save_error`` set.
          */
         get: operations["world_nodes_api_world_nodes_get"];
         put?: never;
@@ -3976,7 +3977,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "nodes" | "fields" | "nearest";
+            view: "nodes" | "fields";
             /** Description */
             description: string;
             /** Selectors */
