@@ -83,10 +83,14 @@ KINDS: dict[str, str] = {
     "recycle_once": "set",
     "supplied": "map",
     "logistics_items": "set",
+    "power_priority": "scalar",
 }
 FLOAT_SETS = frozenset({"clocks", "extractor_clocks"})
 PLAN_SCALARS = ("notes", "factory", "headroom_mw")
 HEADROOM_MAX_MW = 1_000_000.0
+#: Percent clock cap per power-priority step, for words; optimize.POWER_PRIORITY_CLOCKS is
+#: the source, repeated here because the plan log needs no solver.
+POWER_PRIORITY_PERCENT = ("100%", "75%", "50%", "33%", "25%")
 KWARG_NAME = {"banned": "exclude_recipes"}
 
 
@@ -191,6 +195,13 @@ def _headroom(name: str, value) -> float | None:
     return number
 
 
+def _priority(name: str, value) -> int:
+    step = _count(name, value)
+    if step >= len(POWER_PRIORITY_PERCENT):
+        raise _fail(f"{name} must be 0 to {len(POWER_PRIORITY_PERCENT) - 1}, not {value!r}")
+    return step
+
+
 def _objective(name: str, value) -> str:
     if value not in OBJECTIVES:
         raise _fail(f"objective must be one of {', '.join(OBJECTIVES)}, not {value!r}")
@@ -210,6 +221,7 @@ _SCALAR_CHECK: dict[str, Callable] = {
     "notes": _text,
     "factory": _text,
     "headroom_mw": _headroom,
+    "power_priority": _priority,
 }
 
 
@@ -273,6 +285,7 @@ class PlanArgs:
     recycle_once: list = field(default_factory=list)
     supplied: dict = field(default_factory=dict)
     logistics_items: list = field(default_factory=list)
+    power_priority: int = 0
 
     @classmethod
     def from_dict(cls, raw: dict | None, lenient: list | None = None) -> PlanArgs:
@@ -428,6 +441,13 @@ def _member_name(field_name: str, member) -> str:
         return _fmt(member)
 
 
+def _priority_words(value) -> str:
+    step = value if isinstance(value, int) and 0 < value < len(POWER_PRIORITY_PERCENT) else 0
+    if not step:
+        return "power priority off: machines at full clock"
+    return f"power priority {step}: machines at most {POWER_PRIORITY_PERCENT[step]}"
+
+
 def describe_op(op: dict) -> str:
     kind, name = op.get("op"), op.get("field", "")
     if kind == "set":
@@ -438,6 +458,8 @@ def describe_op(op: dict) -> str:
             if value is None:
                 return "startup headroom: nameplate"
             return f"startup headroom {_fmt(float(value))} MW"
+        if name == "power_priority":
+            return _priority_words(op.get("value"))
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
     if kind in ("put", "del"):
         word = "rate" if name == "export_minimums" else name
