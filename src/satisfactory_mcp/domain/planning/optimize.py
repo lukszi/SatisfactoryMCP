@@ -37,15 +37,20 @@ from .carrier import carrier_for
 
 __all__ = [
     "MW",
+    "POWER_PRIORITY_CLOCKS",
     "Process",
     "Scenario",
     "Solution",
     "free_lunch_audit",
     "normalise_objective",
     "solve",
+    "spread_count",
 ]
 
 MW = "__MW__"
+#: The highest clock a production machine may run at, per power-priority step. Step 0 is
+#: the plain build; docs/planner-power-priority_contract.md §2 says why these five stop at 25%.
+POWER_PRIORITY_CLOCKS = (1.0, 0.75, 0.5, 1 / 3, 0.25)
 #: A process whose every item rate is below this is omitted from the build table.
 #: One item per ten hours is not a build instruction, and a whole machine printed at
 #: 0.0087% clock reads as one. Deliberately a RATE rather than a machine count: the same
@@ -205,9 +210,17 @@ class Scenario:
     #: Ignored (forced to 0) when MW is an export, since a power plant that imports
     #: power to export it is unbounded.
     grid_import_mw: float | None = None
+    #: Index into POWER_PRIORITY_CLOCKS. Changes only how the readout splits production
+    #: rows into machines, never what the LP solves.
+    power_priority: int = 0
 
     def __post_init__(self) -> None:
         self.objective = normalise_objective(self.objective)
+        if not 0 <= self.power_priority < len(POWER_PRIORITY_CLOCKS):
+            raise ValueError(
+                f"power_priority must be 0 to {len(POWER_PRIORITY_CLOCKS) - 1}, "
+                f"not {self.power_priority!r}"
+            )
 
 
 @dataclass
@@ -225,6 +238,10 @@ class Solution:
     logistics: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     binding: list[str] = field(default_factory=list)
+    #: The same solve read out at every power-priority step:
+    #: ``{step, max_clock, machines, draw_mw, buildings: {class: count}}``, where
+    #: ``buildings`` counts only the rows a step can split.
+    power_steps: list[dict] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -415,6 +432,44 @@ def _logistics(
 
 
 # ------------------------------------------------------------------------ solve
+
+
+def spread_count(units: float, baseline: int, max_clock: float, min_clock: float = 0.01) -> int:
+    """Whole machines for ``units`` machine-equivalents at 100% when none may run above
+    ``max_clock``: never fewer than ``baseline``, never so many that one drops below
+    ``min_clock``."""
+    wanted = math.ceil(units / max_clock - 1e-9)
+    ceiling = math.floor(units / min_clock + 1e-9)
+    return max(baseline, min(wanted, ceiling))
+
+
+def _spreadable(p: Process) -> bool:
+    """A row the power priority may split: production at or below 100% with no sloops, on a
+    building whose power is convex in clock. Extractors are bound by their nodes."""
+    return p.kind == "recipe" and not p.sloops and p.clock <= 1.0 and p.power_exponent > 1.0
+
+
+def _power_steps(fixed: tuple[float, float], rows: list, game: GameData) -> list[dict]:
+    machines_fixed, draw_fixed = fixed
+    out = []
+    for step, cap in enumerate(POWER_PRIORITY_CLOCKS):
+        machines, draw, buildings = machines_fixed, draw_fixed, {}
+        for p, units, baseline in rows:
+            b = game.buildings.get(p.building or "")
+            n = spread_count(units, baseline, cap, b.min_clock if b is not None else 0.01)
+            machines += n
+            draw += -n * p.mw_at_full * ((units / n) ** p.power_exponent)
+            buildings[p.building] = buildings.get(p.building, 0) + n
+        out.append(
+            {
+                "step": step,
+                "max_clock": cap,
+                "machines": machines,
+                "draw_mw": round(draw, 4),
+                "buildings": buildings,
+            }
+        )
+    return out
 
 
 def _sinkable(sc: Scenario, item_id: str) -> bool:
@@ -736,6 +791,8 @@ def solve(sc: Scenario) -> Solution:
     exact_mw_total = 0.0
     folded: set[str] = set()
     dropped: list[tuple[str, float]] = []
+    spread: list[tuple[Process, float, int]] = []
+    fixed_machines, fixed_draw = 0, 0.0
 
     def emit(
         p,
@@ -808,6 +865,8 @@ def solve(sc: Scenario) -> Solution:
             # rate is unchanged, and clock <= the highest mode because units <= count
             # times that mode.
             built = max(1, math.ceil(count - 1e-9))
+            fixed_machines += built
+            fixed_draw += max(0.0, -built * p.mw_at_full * ((units / built) ** p.power_exponent))
             emit(p, built, units / built, count, units / p.clock)
             continue
 
@@ -826,7 +885,20 @@ def solve(sc: Scenario) -> Solution:
         # for that throughput because c**k is convex, so a uniform clock beats any
         # mix. This is why ratio underclocking needs no solver mode.
         built = max(1, math.ceil(v - 1e-9))
-        emit(p, built, p.clock * v / built, v, v, listed=not negligible)
+        units = p.clock * v
+        if _spreadable(p) and not negligible:
+            spread.append((p, units, built))
+            b = g.buildings.get(p.building or "")
+            built = spread_count(
+                units,
+                built,
+                POWER_PRIORITY_CLOCKS[sc.power_priority],
+                b.min_clock if b is not None else 0.01,
+            )
+        else:
+            fixed_machines += built
+            fixed_draw += max(0.0, -built * p.mw_at_full * ((units / built) ** p.power_exponent))
+        emit(p, built, units / built, v, v, listed=not negligible)
     out_procs.sort(key=lambda d: -abs(d["mw"]))
 
     raw_used = {raw_items[j]: round(float(x[col_r(j)]), 4) for j in range(nR) if x[col_r(j)] > _EPS}
@@ -929,6 +1001,7 @@ def solve(sc: Scenario) -> Solution:
         logistics=logistics,
         warnings=warnings,
         binding=binding,
+        power_steps=_power_steps((fixed_machines, fixed_draw), spread, g),
     )
 
 
