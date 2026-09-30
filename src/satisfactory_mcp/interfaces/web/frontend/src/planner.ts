@@ -411,7 +411,7 @@ export function onActivityEvent(entry: ActivityEvent): void {
   }
 }
 
-export function resyncPlanner(): void {
+export function resyncPlanner(replay: (entries: ActivityEvent[]) => void): void {
   if (subject() === "") {
     loadList();
     loadActivity();
@@ -421,9 +421,15 @@ export function resyncPlanner(): void {
   var since = Math.max(heard, state.opened / 1000 - 2);
   get<ActivityResponse>(`/api/activity?since=${since}`)
     .then(function (body) {
-      body.entries.forEach(function (row) {
-        if (row.source === "journal") onActivityEvent({ ...row, world: state.world });
-      });
+      replay(
+        body.entries
+          .filter(function (row) {
+            return row.source === "journal";
+          })
+          .map(function (row) {
+            return { ...row, world: state.world };
+          })
+      );
     })
     .catch(function () {});
 }

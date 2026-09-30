@@ -40,6 +40,28 @@ function parsed<T>(event: MessageEvent): T | null {
   }
 }
 
+/* Every activity entry reaches every listener once, live or replayed after a reconnect. A
+ * replay can hold several finds; only the newest may move the page, the older ones are history. */
+var dispatched: Record<string, boolean> = {};
+
+function dispatchActivity(entries: ActivityEvent[]): void {
+  var fresh = entries.filter(function (entry) {
+    return !dispatched[entry.id];
+  });
+  var lastFind = -1;
+  fresh.forEach(function (entry, i) {
+    if (entry.kind === "world.find" && entry.actor.kind !== "page") lastFind = i;
+  });
+  fresh.forEach(function (entry, i) {
+    dispatched[entry.id] = true;
+    onPinActivity(entry);
+    onAskActivity(entry);
+    if (entry.kind !== "world.find" || i === lastFind) onFindActivity(entry);
+    onRenameActivity(entry);
+    onActivityEvent(entry);
+  });
+}
+
 function showLive(kind: string, text: string, title: string): void {
   var live = el("live");
   live.className = "live" + (kind ? " " + kind : "");
@@ -103,7 +125,7 @@ export function listen() {
       loadOne("/api/plans");
       refetchPins();
       refetchAsks();
-      resyncPlanner();
+      resyncPlanner(dispatchActivity);
     };
     var blink = function () {
       var live = el("live");
@@ -148,11 +170,7 @@ export function listen() {
     es.addEventListener("activity", function (event) {
       var data = parsed<ActivityEvent>(event);
       if (!data || !isNews(event)) return;
-      onPinActivity(data);
-      onAskActivity(data);
-      onFindActivity(data);
-      onRenameActivity(data);
-      onActivityEvent(data);
+      dispatchActivity([data]);
     });
   }
 }
