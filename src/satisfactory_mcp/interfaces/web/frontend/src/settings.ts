@@ -80,6 +80,18 @@ export var SETTINGS: Setting[] = [
   },
   {
     kind: "choice",
+    key: "progress",
+    group: "planner",
+    label: "built progress",
+    hint: "a plan's headline on Track and in the plans list; click the figure to switch",
+    options: [
+      ["machines", "machines: “12 / 16 machines”"],
+      ["percent", "percent of the planned rate: “75%”"],
+    ],
+    fallback: "machines",
+  },
+  {
+    kind: "choice",
     key: "follow",
     group: "planner",
     label: "follow chat",

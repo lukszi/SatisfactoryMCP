@@ -8,7 +8,8 @@ import { button, chip, empty, error, fieldError, idChip, loading, pressed, table
 import { make } from "./dom";
 import { count, mw, num, range, signed } from "./format";
 import { onMap } from "./nav";
-import { showBox, showPoint, vitals } from "./panel";
+import { showBox, showPoint } from "./panel";
+import { builtColumn, builtLine } from "./planner-built";
 import { bench, changed, gesture, loadFeeders, loadTrack, pickStage } from "./planner-core";
 import { recipesButton } from "./planner-result";
 import { headroom } from "./powerview";
@@ -130,6 +131,7 @@ function headline(parent: HTMLElement, d: TrackResponse, asked: number): void {
   card.appendChild(title);
   var text = d.scope_error ? "" : d.stage_text || (d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom");
   if (text) card.appendChild(make("p", "plan-headline", text));
+  builtLine(card, d.built_at);
   var facts = ["save " + d.age_note];
   if (d.scope_note) facts.push(d.scope_note);
   if (d.drift_note) facts.push(d.drift_note);
@@ -189,19 +191,6 @@ function givenField(parent: HTMLElement, stored: number | null, measured: number
   if (headroomProblem.key === key && headroomProblem.text) fieldError(field, headroomProblem.text);
 }
 
-function factoryNames(current: string): string[] {
-  var health = vitals().health;
-  var names = health
-    ? health.factories.map(function (f) {
-        return f.name;
-      })
-    : [];
-  if (current && names.indexOf(current) < 0) names.push(current);
-  return names.sort(function (a, b) {
-    return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
-  });
-}
-
 function controls(parent: HTMLElement, d: TrackResponse): void {
   var plan = bench.plan!;
   var stored = plan.headroom_mw === undefined ? d.headroom_mw : plan.headroom_mw;
@@ -237,33 +226,6 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
   row.appendChild(body);
   card.appendChild(row);
   card.appendChild(make("p", "dash-note", "startup order uses " + mw(d.startup.headroom_mw) + ", " + d.startup.headroom_source));
-  var scope = make("div", "plan-row");
-  scope.appendChild(make("span", "plan-label", W.countAsBuilt));
-  var pickBox = make("div", "plan-controls plan-stack");
-  if (d.scope_error) {
-    var bad = make("p", "plan-invalid", "“" + d.scope + "” has no machines in this save");
-    bad.setAttribute("role", "alert");
-    pickBox.appendChild(bad);
-  }
-  var pick = make("select", "dash-select");
-  pick.setAttribute("data-ctl", "track-scope");
-  pick.setAttribute("aria-label", W.countAsBuilt);
-  pick.disabled = bench.gone;
-  var whole = make("option", "", W.wholeWorld);
-  whole.value = "";
-  pick.appendChild(whole);
-  factoryNames(plan.factory).forEach(function (name) {
-    var option = make("option", "", name);
-    option.value = name;
-    pick.appendChild(option);
-  });
-  pick.value = plan.factory;
-  pick.onchange = function () {
-    if (pick.value !== plan.factory) gesture([{ op: "set", field: "factory", value: pick.value }]);
-  };
-  pickBox.appendChild(pick);
-  scope.appendChild(pickBox);
-  card.appendChild(scope);
   parent.appendChild(card);
 }
 
@@ -322,7 +284,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
   var lead: Column<TrackStage> = { key: "stage", label: "stage", render: stageLead };
   var built: Column<TrackStage> = {
     key: "built",
-    label: "built",
+    label: builtColumn(d.built_at),
     align: "right",
     className: "dash-nowrap",
     title: "machines of this " + W.stageUnit + " standing in the save; a range where the save cannot tell them apart",
@@ -453,7 +415,7 @@ function jobs(parent: HTMLElement, d: TrackResponse, select: (s: Selection) => v
     var lead: Column<TrackRow> = { key: "process", label: "process", render: processCell };
     var built: Column<TrackRow> = {
       key: "built",
-      label: "built",
+      label: builtColumn(d.built_at),
       align: "right",
       className: "dash-nowrap",
       title: "matching machines in the save; a range where the save cannot tell them apart",
