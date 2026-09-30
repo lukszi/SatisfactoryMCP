@@ -17,12 +17,10 @@ recipes, making copper, plastic and alumina. "You have 36 Refineries, build 10" 
 arithmetically true and would tell the player to break their copper line. Off-recipe
 machines are reported as a reuse pool and never counted.
 
-**Position reports; it never matches.** The region raster is +/-256 m advisory and
-splits this world's single 458-building site across three region names, and 300 m
-single-linkage merges the oil plant and the main base, which stand only ~900 m apart,
-into one cluster. No spatial rule separates them, so none is used for matching.
-Proximity decides only what to MENTION: which idle machines are plausibly reusable, and
-what stands among the plant without being in the plan.
+**Position seeds; clusters decide.** Which machines a stored plan may count is ``built``'s
+answer, handed in as ``scope`` (docs/planner_p4.md, "How built is found"). Here proximity
+decides only what to MENTION: which idle machines are plausibly reusable, and what stands
+among the plant without being in the plan.
 
 **Where identity is unavailable, emit a range.** Water Extractors have no recipe, and
 all 23 in this save point at ``FGWaterVolume`` objects that are not node keys (OQ5), so
@@ -55,6 +53,8 @@ __all__ = [
     "DiffRow",
     "build_diff",
     "group_key",
+    "machine_rate",
+    "rate_units",
 ]
 
 #: How close a machine must stand to one of the plan's own matched machines before it
@@ -112,6 +112,13 @@ class DiffRow:
     #: already run are already in the world's draw, so charging the plan's full figure
     #: would double-count them and overstate what the build needs.
     delta_mw: float = 0.0
+    #: The job's rate in full-speed machines: planned, and summed over the counted clocks.
+    #: ``have`` and ``build`` are these divided by ``plan_clock`` (docs/planning.md, "Clocks").
+    need_rate: float = 0.0
+    have_rate: float = 0.0
+    plan_clock: float = 1.0
+    #: Each counted machine's clock, beside ``have_instances``.
+    have_clocks: list[float] = field(default_factory=list)
 
     @property
     def actionable(self) -> bool:
@@ -150,6 +157,8 @@ class DiffReport:
     slices: int
     anchor: tuple[float, float] | None
     save_id: str
+    #: ``built.BuiltAt`` when a stored plan was matched: where it was found and how sure.
+    built_at: object | None = None
 
 
 # ------------------------------------------------------------------- plan side
@@ -232,6 +241,23 @@ def _nearest_m(
     if point is None or not others:
         return None
     return min(geo.distance_m(point, other) for other in others)
+
+
+def machine_rate(record: dict) -> float:
+    """One machine's rate in full-speed machines: its clock, and 1.0 where the save omits it."""
+    clock = record.get("clock")
+    return 1.0 if clock is None else float(clock)
+
+
+def rate_units(rate: float, clock: float) -> int:
+    """Whole machines at ``clock`` that ``rate`` covers."""
+    return math.floor(rate / clock + 1e-6) if clock > 0 else 0
+
+
+def _short_units(need_rate: float, have_rate: float, clock: float) -> int:
+    """Machines at ``clock`` still to add before ``have_rate`` meets ``need_rate``."""
+    gap = need_rate - have_rate
+    return max(0, math.ceil(gap / clock - 1e-6)) if clock > 0 and gap > 0 else 0
 
 
 @dataclass
@@ -406,6 +432,8 @@ def _row_for(
     claimed_idle: set[str],
 ) -> DiffRow:
     need = group["machines"]
+    need_rate = group["clock"]
+    plan_clock = _planned_clock(group)
     records = _matched(group, index)
     notes: list[str] = []
     page: list[str] = []
@@ -422,15 +450,16 @@ def _row_for(
             for r in records
             if (d := _nearest_m(_xy(r), matched_points)) is not None and d <= NEIGHBOUR_RADIUS_M
         ]
-        build_max = max(0, need - len(near))
-        have_min = len(near)
+        near_rate = sum(machine_rate(r) for r in near)
+        build_max = _short_units(need_rate, near_rate, plan_clock)
+        have_min = rate_units(near_rate, plan_clock)
         # Nearest first, so anything downstream that samples this row's machines samples
         # the ones plausibly at the plant before the ones 2.5 km away. It changes no
         # count -- both bounds are already fixed above -- only which machines get asked.
         close = {id(r) for r in near}
         records = [*near, *(r for r in records if id(r) not in close)]
         notes.append("no node link (OQ5), low bound counts every one built")
-        if have_min != len(records):
+        if len(near) != len(records):
             page.append("not tied to a node, so built is a range")
     elif group["kind"] == "extractor":
         free = sorted(
@@ -445,10 +474,11 @@ def _row_for(
             for r in free[: max(0, need - len(records))]
         ]
 
-    have = len(records)
+    have_rate = sum(machine_rate(r) for r in records)
+    have = rate_units(have_rate, plan_clock)
     paused = [r for r in records if r.get("paused")]
     unpause = paused[: max(0, need - (have - len(paused)))]
-    build = max(0, need - have)
+    build = _short_units(need_rate, have_rate, plan_clock)
 
     reused: list[dict] = []
     setrecipe = 0
@@ -550,6 +580,10 @@ def _row_for(
         note="; ".join(notes),
         page_note="; ".join(page),
         delta_mw=added * per_machine,
+        need_rate=need_rate,
+        have_rate=have_rate,
+        plan_clock=plan_clock,
+        have_clocks=[machine_rate(r) for r in records],
     )
 
 

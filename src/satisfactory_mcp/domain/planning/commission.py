@@ -21,7 +21,7 @@ from ...core.gamedata.model import GameData
 from ...core.text import plural
 from ..factories.health import assess
 from ..world.state import WorldState
-from .diff import DiffReport, group_key
+from .diff import DiffReport, group_key, rate_units
 
 __all__ = [
     "DARK_STATES",
@@ -368,8 +368,9 @@ class StageRow:
 
     @property
     def running(self) -> int:
-        """Machines PROVEN to have had power: they produced inside the last window."""
-        return sum(n for s, n in self.by_state.items() if s in RUNNING_STATES)
+        """Machines PROVEN to have had power: they produced inside the last window. At
+        most ``machines``: spread-out machines at a lower clock stand in for fewer."""
+        return min(self.machines, sum(n for s, n in self.by_state.items() if s in RUNNING_STATES))
 
     @property
     def states(self) -> list[tuple[str, int]]:
@@ -549,16 +550,20 @@ def machine_states(report: DiffReport, game: GameData, state: WorldState) -> dic
     return {m.instance: m.state for m in assess("plan", matched, game, state.projection).machines}
 
 
-def _states_for(row, health: dict[str, str]) -> list[tuple[str, str]]:
-    """This build job's matched machines, running ones first.
+def _states_for(row, health: dict[str, str]) -> list[tuple[str, str, float]]:
+    """This build job's matched machines with their clocks, running ones first.
 
     Identical machines are indistinguishable in the save -- nothing records which Refinery
     was meant for wave 2 -- so built machines are allotted to the EARLIEST wave that wants
     them and, within that, running ones first. Both halves assume progress was made in the
     order the startup sequence prescribes, which is the only rule the file supports.
     """
-    pairs = [(name, health.get(name, "unmonitored")) for name in row.have_instances]
-    return sorted(pairs, key=lambda p: (p[1] not in RUNNING_STATES, p[1]))
+    clocks = list(row.have_clocks) + [1.0] * (len(row.have_instances) - len(row.have_clocks))
+    triples = [
+        (name, health.get(name, "unmonitored"), clock)
+        for name, clock in zip(row.have_instances, clocks, strict=False)
+    ]
+    return sorted(triples, key=lambda p: (p[1] not in RUNNING_STATES, p[1]))
 
 
 def track(
@@ -592,14 +597,19 @@ def track(
     if health is None:
         health = machine_states(report, game, state)
 
-    # Remaining pool per build job, consumed wave by wave. `low` is the pessimistic count:
-    # where machines cannot be attributed, only those standing among the plan's own are
-    # certainly its own and the rest may belong to any plant.
-    pool: dict[tuple, list[tuple[str, str]]] = {}
-    low: dict[tuple, int] = {}
+    # Remaining pool per build job, consumed wave by wave BY RATE, so machines spread at a
+    # lower clock fill a stage as the fewer machines they stand in for. `low` is the
+    # pessimistic rate: where machines cannot be attributed, only those standing among the
+    # plan's own are certainly its own and the rest may belong to any plant.
+    pool: dict[tuple, list[tuple[str, str, float]]] = {}
+    left: dict[tuple, float] = {}
+    low: dict[tuple, float] = {}
+    clock_of: dict[tuple, float] = {}
     for key, row in by_key.items():
         pool[key] = _states_for(row, health)
-        low[key] = row.have if row.have_min is None else row.have_min
+        clock_of[key] = row.plan_clock or 1.0
+        left[key] = row.have_rate if row.have_instances else 0.0
+        low[key] = left[key] if row.have_min is None else row.have_min * clock_of[key]
 
     for wave in run.waves:
         stage = Stage(
@@ -614,11 +624,23 @@ def track(
         for energised in wave.rows:
             key = key_of_pid.get(energised.pid, ())
             diff_row = by_key.get(key)
-            take = pool.get(key, [])[: energised.machines]
+            clock = clock_of.get(key, 1.0)
+            wanted = energised.machines * clock
+            got = min(wanted, left.get(key, 0.0))
+            sure = min(wanted, low.get(key, 0.0))
+            if key in left:
+                left[key] -= got
+                low[key] = max(0.0, low[key] - wanted)
+            take, taken = [], 0.0
+            rest = pool.get(key, [])
+            while rest and taken < got - 1e-6:
+                take.append(rest[0])
+                taken += rest[0][2]
+                rest = rest[1:]
             if key in pool:
-                pool[key] = pool[key][energised.machines :]
-            certain = min(energised.machines, low.get(key, 0))
-            low[key] = max(0, low.get(key, 0) - energised.machines)
+                pool[key] = rest
+            reached = min(energised.machines, rate_units(got, clock))
+            certain = min(reached, rate_units(sure, clock))
             stage.rows.append(
                 StageRow(
                     stage=wave.index,
@@ -628,10 +650,10 @@ def track(
                     machines=energised.machines,
                     total=energised.total,
                     built=certain,
-                    built_max=len(take),
-                    by_state=Counter(s for _, s in take),
+                    built_max=reached,
+                    by_state=Counter(s for _, s, _ in take),
                     key=key,
-                    instances=[name for name, _ in take],
+                    instances=[name for name, _, _ in take],
                     draw_mw=energised.draw_mw,
                     generation_mw=energised.generation_mw,
                     verb=diff_row.verb if diff_row else "OK",
