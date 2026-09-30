@@ -8,7 +8,7 @@ what was measured.
 
 | Piece | Where | What it does |
 |---|---|---|
-| Startup headroom | `domain/planning/planlog.py` | `headroom_mw` joins `PLAN_SCALARS`: optional number, > 0 and ≤ 1,000,000 MW, `null` clears. `PlanState.headroom_mw` (absent and unreadable values read as `None`, schema stays 1), in `to_dict`/`from_dict` and the `create` body. Merge key `headroom_mw`; undo, restore and `describe_op` (`startup headroom 2,000 MW` / `startup headroom: nameplate`) work as for any scalar. Not part of `plan_id` |
+| Startup headroom | `domain/planning/planlog.py` | `headroom_mw` joins `PLAN_SCALARS`: optional number, > 0 and ≤ 1,000,000 MW, `null` clears. `PlanState.headroom_mw` (absent and unreadable values read as `None`, schema stays 1), in `to_dict`/`from_dict` and the `create` body. Merge key `headroom_mw`; undo, restore and `describe_op` (`startup headroom 2,000 MW` / `startup headroom: save default`) work as for any scalar. Not part of `plan_id` |
 | Shared words | `domain/planning/commission.py` | `ENERGISED_CAVEAT`, `RANGE_CAVEAT` and `NO_MONITOR` moved here from the text presenter, which re-exports them. `Stage.describe()` (the stage phrase), `Tracking.headline(brief=)` (the text's headline; `brief` is the page's `you are in stage 2 of 4: 76% built (13/17), 13 proven running`), `partition_id(tracking)`, `machine_states(report, …)` (the one health pass). `StageRow` gains `key` and `instances`; `Stage` gains `fill_s` and `waits_for_fill` from its wave |
 | One solve | `domain/planning/diff_service.py` | `build_diff_report` takes `stored` (scope, siting and plan_id come from that `PlanState`) and `headroom_mw`, keeps `run` (the `Commissioning`) and `health`. `match_scope` is the scoped diff both services call. A drift note is no longer printed for a plan saved without a plan_id |
 | Commission | `domain/planning/commission_service.py` | `build_commission_report(stored=)`: with no `headroom_mw` it uses the plan's (`stored on the plan`), and it matches the waves against the save under the plan's scope so chat gets the same partition as the page |
@@ -23,7 +23,7 @@ what was measured.
 | Piece | Where | What it does |
 |---|---|---|
 | Track tab | `planner-track.ts`, `planner-core.ts`, `planner.ts` | Third result tab, `#dash=planner/<key>/track[/<n>]`. Re-requests on a new head, a game save (feeders cleared), a labels event when the plan has a scope, the biomass toggle, reconnect and entering the tab. The renumber notice picks its cause in the order rev → headroom → save; a fourth cause (the biomass toggle) reads `the stages changed: …`. When the current stage and the count both stay, it reads `<cause> moved machines between stages; you are still in stage N of M`. Clearing the stage filter with × focuses that stage's row (`data-ctl=track-stage-<n>`) |
-| Headroom and scope | `planner-track.ts` | `measured` stores `floor(measured / 10) * 10` and is disabled when that is 0 or less; the `given` field (`data-ctl=track-headroom`) takes > 0 and ≤ 1,000,000 and shows the stored value only when it differs from the measured one. The scope select is `data-ctl=track-scope` |
+| Headroom and scope | `planner-track.ts` | Two buttons, `measured` and `nameplate`. The one the *stage headroom* setting names is pressed while nothing is stored and clears the plan's headroom (`null`); the other stores its figure floored to 10 MW and is disabled when that is 0 or less; the `given` field (`data-ctl=track-headroom`) takes > 0 and ≤ 1,000,000 and shows the stored value only when it differs from the measured one. The scope select is `data-ctl=track-scope` |
 | Follow | `planner.ts` | `plan.view` with `view: track` goes to `/track[/<n>]` after the gesture; `section: startup` focuses the Startup order heading (`data-ctl=track-startup`); a stage without a section scrolls that stage's row to the middle of the view once the track has loaded, unless focus is in a field |
 | Asks | `asks.ts`, `asks-card.ts` | One ask bar, the first child of `.plan-root` on the list and the workbench. Ask buttons carry `data-ctl` `ask:job:<id>`, `ask:stage:<n>`, `ask:item:<cls>`, `ask:row:<solve row id>`, `ask:node:<node id>`, `ask:plan` and `ask:pin:<n>`, so focus returns to the opener. Open asks show as muted `ask:N` chips on the matching Track job, stage and short rows and on build-list rows. The card drops the `in “<plan>”` part for asks about a plan |
 | Map | `nav.ts`, `panel.ts`, `pins.ts` | `nav.onMap(action)` is the one path to the map (`pins.showPin` uses it); `panel.showBox(bbox, {layers})` reveals the layers first |
@@ -65,7 +65,7 @@ what was measured.
   headroom is staged differently on the page than in chat, which always uses measured.
 - A refused undo still words the conflict as `you <value>, <actor> set <value> in vN`, the
   grammar shared with chat; for the page both sides can be the page. A cleared headroom reads
-  `nameplate` there, never `none`.
+  `save default` there, never `none`.
 - The `nodes` layer passed to `showBox` for rows with targets names no layer; node layers are
   per resource and on by default.
 - Not checked in a browser: a game save re-requesting Track (A11) needs a writable save

@@ -194,21 +194,26 @@ var HEADROOM_WHAT: Record<string, string> = {
   nameplate: "generation minus every built machine running at once",
 };
 
+function floorTen(value: number): number {
+  return Math.floor(value / 10) * 10;
+}
+
 function headroomButton(parent: HTMLElement, which: string, value: number, stored: number | null): void {
   var fallback = which === stageHeadroom();
+  var kept = floorTen(value);
   var title = fallback
     ? "use the save's " + which + " headroom, " + HEADROOM_WHAT[which] + ": the stage headroom setting"
-    : value > 0
-      ? "store the " + which + " headroom, " + mw(value)
+    : kept > 0
+      ? "store the " + which + " headroom, " + mw(kept)
       : "the " + which + " headroom is not above 0 MW in this save";
   parent.appendChild(
     pressed(
       which + " " + mw(value),
-      stored === null ? fallback : stored === value,
+      stored === null ? fallback : stored === kept,
       function () {
-        setHeadroom(fallback ? null : value);
+        setHeadroom(fallback ? null : kept);
       },
-      { title: title, disabled: bench.gone || (!fallback && value <= 0) }
+      { title: title, disabled: bench.gone || (!fallback && kept <= 0) }
     )
   );
 }
@@ -237,7 +242,7 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
   var plate = d.power.headroom_mw;
   headroomButton(body, "measured", measured, stored);
   headroomButton(body, "nameplate", plate, stored);
-  givenField(body, stored, [measured, plate]);
+  givenField(body, stored, [floorTen(measured), floorTen(plate)]);
   row.appendChild(body);
   card.appendChild(row);
   card.appendChild(make("p", "dash-note", "startup order uses " + mw(d.startup.headroom_mw) + ", " + d.startup.headroom_source));

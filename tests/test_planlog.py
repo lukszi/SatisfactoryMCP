@@ -947,25 +947,25 @@ def test_headroom_undoes_to_its_previous_value(plans, plan):
     assert plans.restore_to(plan, 5, 3, actor=PAGE).state.headroom_mw == 500.0
 
 
-def test_measured_then_given_then_two_undos_lands_on_nameplate(plans, plan):
+def test_measured_then_given_then_two_undos_lands_on_the_default(plans, plan):
     plans.push(plan, 1, [_headroom(6370)], actor=PAGE)
     plans.push(plan, 2, [_headroom(2000)], actor=PAGE)
     assert plans.undo(plan, 3, 3, actor=PAGE).state.headroom_mw == 6370.0
     assert plans.undo(plan, 4, 2, actor=PAGE).state.headroom_mw is None
 
 
-def test_a_refused_undo_back_to_nameplate_reads_nameplate(plans, plan):
+def test_a_refused_undo_back_to_the_default_names_it_not_none(plans, plan):
     plans.push(plan, 1, [_headroom(500)], actor=PAGE)
     plans.push(plan, 2, [_headroom(700)], actor=CHAT)
     with pytest.raises(Outdated) as caught:
         plans.undo(plan, 3, 2, actor=PAGE)
     text = caught.value.conflicts[0].text()
-    assert text.startswith("startup headroom: you nameplate, ") and "none" not in text
+    assert text.startswith("startup headroom: you save default, ") and "none" not in text
 
 
 def test_headroom_in_words():
     assert describe_op({**_headroom(2000.0), "was": None}) == "startup headroom 2,000 MW"
-    assert describe_op({**_headroom(None), "was": 2000.0}) == "startup headroom: nameplate"
+    assert describe_op({**_headroom(None), "was": 2000.0}) == "startup headroom: save default"
     assert describe_op({**_headroom(1234.5), "was": None}) == "startup headroom 1,234.5 MW"
 
 
@@ -980,12 +980,12 @@ def test_an_older_snapshot_without_headroom_reads_none(plans, plan):
     assert plans.state(plan, 1).headroom_mw is None
 
 
-def test_a_cleared_headroom_reads_nameplate_in_a_conflict(plans, plan):
+def test_a_cleared_headroom_reads_save_default_in_a_conflict(plans, plan):
     plans.push(plan, 1, [_headroom(400)], actor=CHAT)
     plans.push(plan, 2, [_headroom(500)], actor=CHAT)
     with pytest.raises(Outdated) as caught:
         plans.push(plan, 2, [_headroom(None)], actor=PAGE)
-    assert caught.value.conflicts[0].text().startswith("startup headroom: you nameplate, ")
+    assert caught.value.conflicts[0].text().startswith("startup headroom: you save default, ")
 
 
 def test_a_boolean_is_named_in_json_words(plans, plan):

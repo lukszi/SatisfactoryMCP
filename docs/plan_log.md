@@ -70,7 +70,7 @@ forget is refused while another live plan has taken the name. Any push holding a
   redo → undo would collide with its own redo.
 - A later commit that stands undone leaves the window too, with its whole chain: the pair
   cancels out, as `git revert` of a revert does. So Ctrl+Z, Ctrl+Z walks back like a stack
-  (set 6,370 MW, set 2,000 MW, undo, undo lands on nameplate). A later commit that was undone
+  (set 6,370 MW, set 2,000 MW, undo, undo lands on the save default). A later commit that was undone
   and then redone stays in the window, and so does any later edit to the same field.
 - `AlreadyUndone` is raised when an undo of the rev still stands, that is, when it has not
   itself been undone by a standing commit.

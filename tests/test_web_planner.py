@@ -621,7 +621,7 @@ def test_headroom_is_validated_merged_and_undone_like_any_scalar(client):
     assert undo.json()["state"]["headroom_mw"] == 2000.0
     cleared = _push(client, key, 5, _headroom(None))
     assert cleared.json()["state"]["headroom_mw"] is None
-    assert cleared.json()["state"]["text"] == "v6 page: startup headroom: nameplate"
+    assert cleared.json()["state"]["text"] == "v6 page: startup headroom: save default"
 
 
 def test_the_track_and_ask_shapes_reach_the_published_schema(client):

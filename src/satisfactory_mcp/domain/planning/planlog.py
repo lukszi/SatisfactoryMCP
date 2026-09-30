@@ -436,7 +436,7 @@ def describe_op(op: dict) -> str:
         if name == "headroom_mw":
             value = op.get("value")
             if value is None:
-                return "startup headroom: nameplate"
+                return "startup headroom: save default"
             return f"startup headroom {_fmt(float(value))} MW"
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
     if kind in ("put", "del"):
@@ -730,7 +730,7 @@ def _label(op: dict) -> str:
 def _value_word(op: dict) -> str:
     if op.get("field") == "headroom_mw":
         value = op.get("value")
-        return "nameplate" if value is None else f"{_fmt(float(value))} MW"
+        return "save default" if value is None else f"{_fmt(float(value))} MW"
     return _fmt(op["value"])
 
 

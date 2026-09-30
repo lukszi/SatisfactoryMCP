@@ -92,8 +92,7 @@ Top to bottom, one `dash-card` each (§9.2):
 
 | Control | Gesture | Op pushed (one version) |
 |---|---|---|
-| Startup headroom: `pressed("nameplate <mw>")` | click | `set headroom_mw null` |
-| `pressed("measured <mw>")` | click | `set headroom_mw <floor(measured, 10)>` |
+| Startup headroom: `pressed("measured <mw>")`, `pressed("nameplate <mw>")` | click | the one the *stage headroom* setting names (measured by default): `set headroom_mw null`; the other: `set headroom_mw <floor(figure, 10)>` |
 | number field `given … MW` (> 0, ≤ 1,000,000) | Enter / blur | `set headroom_mw <n>` |
 | Count as built: `<select>` *whole world* + every named factory | change | `set factory ""` / `set factory "<name>"` |
 | Any bench control above the tabs | as P1 | as P1 |
@@ -156,7 +155,7 @@ feed it:
 
 | Where | Change |
 |---|---|
-| `planlog.py` | `headroom_mw` joins `PLAN_SCALARS`; `_SCALAR_CHECK["headroom_mw"]` = optional number, > 0, ≤ 1e6, `null` clears. `PlanState.headroom_mw: float \| None = None`, in `to_dict`/`from_dict` (absent reads as `None`, schema stays 1). Merge key `headroom_mw` (scalar, M1). `describe_op`: `startup headroom 2,000 MW` / `startup headroom: nameplate`. Not part of `plan_id` |
+| `planlog.py` | `headroom_mw` joins `PLAN_SCALARS`; `_SCALAR_CHECK["headroom_mw"]` = optional number, > 0, ≤ 1e6, `null` clears. `PlanState.headroom_mw: float \| None = None`, in `to_dict`/`from_dict` (absent reads as `None`, schema stays 1). Merge key `headroom_mw` (scalar, M1). `describe_op`: `startup headroom 2,000 MW` / `startup headroom: save default` (null follows the save's default, measured since 2026-09-30). Not part of `plan_id` |
 | `diff_service.build_diff_report` | New kwargs `headroom_mw: float \| None = None` (used for `commission` when given; source `"stored on the plan"`), `stored: PlanState \| None = None` (scope, siting and plan_id come from it instead of `st.plans.find`). Keeps the `Commissioning` it computes as `report.run` |
 | `commission.py` | `StageRow.key` (the `group_key`), `StageRow.states` via the same health pass; `Stage.describe()` (the words of today's `presenters/text/diff._stage_state`, moved so text and web share them); `Tracking.headline()` (today's `_stage_overview` headline); `partition_id(tracking) -> str` = first 10 hex of sha1 over `[[stage.index, [[repr(row.key), row.machines], …]], …]`; `""` when there are no stages |
 | `presenters/text/diff.py` | Uses `Stage.describe` / `Tracking.headline`; output unchanged apart from §6.2 |
