@@ -944,6 +944,16 @@ def _chain(commits: list[Commit], rev: int) -> set[int]:
     return out
 
 
+def _skipped(commits: list[Commit], rev: int) -> set[int]:
+    """Revs an undo of ``rev`` ignores: its own chain, and every later commit that stands
+    undone together with its chain, since the two cancel out (docs/plan_log.md, Undo)."""
+    out = _chain(commits, rev)
+    for commit in commits[rev:]:
+        if commit.rev not in out and _undoers(commits, commit.rev) is not None:
+            out |= _chain(commits, commit.rev)
+    return out
+
+
 def _names(ops: list[dict]) -> bool:
     """Whether ``ops`` can clash on a name across plans, and so need the world lock."""
     return any(op.get("op") in ("rename", "restore") for op in ops)
@@ -1224,7 +1234,7 @@ class PlanLog:
             if by is not None:
                 raise AlreadyUndone(rev, by.rev)
             mine = inverse([op for op in target.ops if op.get("op") != "record"])
-            window = _chain(current, rev)
+            window = _skipped(current, rev)
             return self._merge(key, current, base_rev, mine, actor, sav, stamp, "", rev, window)
 
         return self._locked(renames, key, run)
