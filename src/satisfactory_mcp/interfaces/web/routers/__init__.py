@@ -17,6 +17,7 @@ from . import (
     events,
     factories,
     factory_detail,
+    factory_graph,
     finders,
     floors,
     gamedata,
@@ -28,6 +29,7 @@ from . import (
     nodes,
     pins,
     placements,
+    plan_track,
     planlog,
     planner,
     plans,
@@ -80,4 +82,6 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     finders.router,
     pins.router,
     asks.router,
+    factory_graph.router,
+    plan_track.router,
 )

@@ -89,9 +89,13 @@ naming the pins, not the path. Pin numbers are never reused.
 named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes an
 `AlternatesResponse` and two models with one name would rename both in `api-schema.d.ts`.
 
+`Flow`, `MachineSpot` and their builders `_flow` and `_machine_spots` live in `serial.py`
+because `routers/naming.py` (candidates, amend) and `routers/factory_graph.py` (`/api/factories/graph`,
+`/api/factories/machines`) both send them.
+
 ## Track and asks
 
-`GET /api/plan/track?key=&rev=&biomass=&headroom=` (`routers/planner.py`) builds its whole reply from one
+`GET /api/plan/track?key=&rev=&biomass=&headroom=` (`routers/plan_track.py`) builds its whole reply from one
 solve (`domain/planning/track.py`). Not feasible, empty, and a count-as-built factory with no
 machines left are all 200s that say so (`feasible`, `empty`, `scope_error`) with empty lists;
 a 400 is only a solve that refuses its arguments. `biomass` is `include` or `exclude`, the

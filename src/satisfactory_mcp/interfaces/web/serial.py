@@ -16,6 +16,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from ...core.gamedata.model import GameData, pretty_class
+from ...domain.factories import identity as fidentity
 from ...domain.planning.planlog import Actor
 from ...domain.spatial import regions as spatial_regions
 from ...domain.world.state import WorldState
@@ -24,15 +25,19 @@ __all__ = [
     "ActorBody",
     "Biomass",
     "CollectibleRow",
+    "Flow",
     "FoundField",
+    "MachineSpot",
     "PlanOpBody",
     "Region",
     "TableAge",
     "_actor_json",
     "_fail",
     "_field_json",
+    "_flow",
     "_label_json",
     "_m",
+    "_machine_spots",
     "_pickup_json",
     "_resource_name",
     "_state",
@@ -169,6 +174,8 @@ def _field_json(f: Any, game: GameData | None) -> FoundField:
         "distance_m": f.distance_m,
         "spoiler": f.spoiler,
     }
+
+
 class PlanOpBody(TypedDict, total=False):
     """One op as the log holds it; which keys are present depends on ``op`` (contract §3)."""
 
@@ -195,6 +202,50 @@ def _actor_json(raw: Any) -> ActorBody:
         raw if isinstance(raw, Actor) else Actor.from_dict(raw if isinstance(raw, dict) else None)
     )
     return {**actor.to_dict(), "display": actor.display()}
+
+
+class Flow(TypedDict):
+    """Items per minute at nameplate: made, or for an input consumed. ``to`` is where the
+    output physically ends up (``storage``, ``export``, ``sink``, ``nowhere``)."""
+
+    name: str
+    per_min: float
+    to: list[str]
+
+
+def _flow(fg: Any, item: str, rate: float) -> Flow:
+    """One item's rate in a factory's flow graph, with where that item ends up."""
+    return {"name": item, "per_min": round(rate, 2), "to": sorted(fg.destinations.get(item, ()))}
+
+
+class MachineSpot(TypedDict):
+    """One placed machine. ``factory`` is the label that holds it, if any."""
+
+    id: str
+    building: str
+    x_m: float
+    y_m: float
+    factory: str | None
+
+
+def _machine_spots(st: WorldState, machines) -> list[dict]:
+    placed = fidentity.positions(st.projection)
+    out = []
+    for m in sorted(machines):
+        if m not in placed:
+            continue
+        held = st.labels.label_for(m)
+        cls = st.graph.cls.get(m, "")
+        out.append(
+            {
+                "id": m,
+                "building": st.game.building_name(cls) or cls,
+                "x_m": _m(placed[m][0]),
+                "y_m": _m(placed[m][1]),
+                "factory": held.name if held else None,
+            }
+        )
+    return out
 
 
 def _m(value: float | None) -> float | None:
