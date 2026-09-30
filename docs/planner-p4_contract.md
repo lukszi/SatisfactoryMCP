@@ -495,6 +495,7 @@ autosave), warm process, median of 5 (max in brackets). Route budgets are in-pro
 | `power_report` (warm) | 0.5 ms | – |
 | `live_feeders` (world-only) | 636–673 ms | on demand only, never per save |
 | job rows payload (matched instances 66–76) | 4.2–5.8 kB | – |
+| whole Track payload | up to 51 kB for a 33-job plan (the matched-machine `selectors` of rows with no action dominate) | ≤ 64 kB, accepted 2026-09-30; the selectors are not capped below 50, since a cap would change what **[copy ids]** copies. The page is local, so no gzip |
 | game save → Track redrawn | save poll 3 s + projection parse ~4 s (pre-existing, per process) + route | ≤ poll + parse + 150 ms |
 | page edit / chat edit → Track redrawn | – | ≤ 1 s |
 | asks write → other tab / `ui_context` seen → page | – | ≤ 1 s |

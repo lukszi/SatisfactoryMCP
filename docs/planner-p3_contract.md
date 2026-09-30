@@ -128,7 +128,8 @@ edges (`planner-result.ts graphOf` is deleted).
 
 Budget: `graph` adds ≤ 1 ms and about 0.5 kB per row (≈ 20 kB for a 40-row plan). The first
 figure, ≤ 8 kB, did not hold with class ids as node ids (25 kB measured at 50 rows); the page is
-local, so the budget was restated rather than the fields trimmed.
+local, so the budget was restated rather than the fields trimmed, and no gzip is added
+(settled 2026-09-30).
 
 ---
 
