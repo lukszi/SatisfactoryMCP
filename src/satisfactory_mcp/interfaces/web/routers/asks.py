@@ -40,8 +40,9 @@ class AskAbout(TypedDict):
 
 
 class AskRow(TypedDict):
-    """One ask. ``state`` is open, seen or answered; ``copy`` is what the page puts on the
-    clipboard; ``plan_name`` is ``about.plan`` resolved when read."""
+    """One ask. ``state`` is open, seen or answered; ``answer`` is the one line chat left
+    with it ("" for none); ``copy`` is what the page puts on the clipboard; ``plan_name`` is
+    ``about.plan`` resolved when read."""
 
     n: int
     id: str
@@ -54,6 +55,7 @@ class AskRow(TypedDict):
     seen_by: str
     answered: float | None
     answered_by: str
+    answer: str
     plan_name: str | None
     copy: str
 

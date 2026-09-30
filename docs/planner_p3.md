@@ -33,12 +33,11 @@ what the backend and the page do, where they depart, and what was measured.
 
 | # | Contract says | Built | Why |
 |---|---|---|---|
-| P1 | Drawer beside the result from 900 px | Beside only on the graph tab and from 1280 px; above the result otherwise | Beside a build list the table was squeezed to a column of wrapped rows at 1440 px |
-| P2 | Factory position resolved at read time only | Also stored at create; a live label's centroid still wins, a gone factory keeps the stored place | A15 asks for a muted tag for a gone factory, which needs a place |
+| P1 | Drawer beside the result from 900 px | Beside only on the graph tab and from 1280 px; above the result otherwise | Now contract §9.2 and §14 P3-8 |
+| P2 | Factory position resolved at read time only | Also stored at create; a live label's centroid still wins, a gone factory keeps the stored place | Now contract §4.1 and §14 P3-9 |
 | B1 | `AlternatesResponse` in `planner.py` | `PlanAlternatesResponse` | `routers/gamedata.py` already publishes `AlternatesResponse`; a second model of that name would rename both in the generated schema |
 | B2 | `PlanOpBody` in `planlog.py` | moved to `serial.py`, same name and docstring | Routers may not import each other and two now publish it |
 | B3 | Handler/`PinError` set in §4.1 | adds `ObjectMissing(PinError)`, `pins.row`, `pins.match`, `canonical_args`, `canonical_ops`, `recall.plan_ref`, `factories.select.pin_notes`, `origin.label_centre` | 404 needs a type of its own; the rest are the shared helpers the routes and tools call |
-| B4 | A point outside the map | 400 (`PinError`) | Nothing is absent, the request is malformed; map square is the web map's `DEFAULT_MAP_BOUNDS_M` |
 | B5 | Row ids unique within a solve | a repeated `recipe_id` (two clock modes of one recipe) gets `#2`, `#3` | Uniqueness had to be guaranteed, and the solver can emit one recipe twice |
 
 ## Measured (2026-09-27, copy of the user-data backup, newest autosave, warm process)
@@ -65,5 +64,5 @@ available if a remote client ever appears.
 
 - `alternates_for_item(plan=)` rows follow the drawer's order (status), not the plain
   tool's alternates-first order.
-- Pins created by chat stay out (contract C1, L6).
-- The activity journal keeps the newest 50 entries server-side, `plan.view` included, so a run of drawer opens from chat can still push plan commits out of the page's Activity list.
+- Chat creates pins through `show_on_map(pin=True)` (contract C1, decided 2026-09-30).
+- `GET /api/activity` collapses a run of the same `plan.view` (same plan, actor, view and item or stage) to its newest entry before the 50-entry cap, so repeat looks no longer push plan commits out of the page's Activity list. Looks at different items still count one each.

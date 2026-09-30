@@ -404,7 +404,8 @@ def test_open_ocean_answers_zero_not_silence(game, live):
     assert "nothing runs there" in out
 
     described = srv.describe_location("-3500,3500")
-    assert "conduits=0 belt run(s), 0 pipe run(s) within 200m" in described
+    radius = f"{conduits.NEAR_RADIUS_M:g}m"
+    assert f"conduits=0 belt run(s), 0 pipe run(s) within {radius}" in described
 
 
 @pytest.mark.integration

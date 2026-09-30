@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from ...core.gamedata.model import GameData
 from ...domain.planning.commission_service import CommissionReport
+from ...domain.planning.diff_service import MEASURED_SOURCE, NAMEPLATE_SOURCE
 from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render
@@ -98,9 +99,9 @@ def render_commission(
     )
 
     notes = [*plan_notes, *plan_run.warnings]
-    if source == "power_report, nameplate" and biomass_note(power):
+    if source in (NAMEPLATE_SOURCE, MEASURED_SOURCE) and biomass_note(power):
         notes.append(biomass_note(power))
-    if source == "power_report, nameplate" and power["measured_headroom_mw"] > head * 1.2:
+    if source == NAMEPLATE_SOURCE and power["measured_headroom_mw"] > head * 1.2:
         notes.append(
             f"your grid is only {power['utilisation']:.0%} utilised, so measured headroom "
             f"is {power['measured_headroom_mw']:,.0f} MW against the {head:,.0f} MW "
@@ -108,6 +109,14 @@ def render_commission(
             "un-starve idle machines and the fuse blows on demand, not on averages -- but "
             "if you know your base is quiet, pass headroom_mw= to plan against the real "
             "figure and get far fewer waves"
+        )
+    nameplate = power["headroom_mw"]
+    if source == MEASURED_SOURCE and nameplate < head:
+        notes.append(
+            f"measured headroom is what the grid has free right now; nameplate from the save "
+            f"is {nameplate:,.0f} MW and is the safe bound -- energising a block can "
+            "un-starve idle machines and the fuse blows on demand, not on averages"
+            + (f". pass headroom_mw={nameplate:.0f} to plan against it" if nameplate >= 1 else "")
         )
     if plan_run.ok:
         notes.append(

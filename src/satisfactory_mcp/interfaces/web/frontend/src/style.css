@@ -2762,6 +2762,47 @@ a.status-name:hover,
   display: none;
 }
 
+#rail-open {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  #rail-open {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  #rail-open:hover,
+  #rail-open[aria-expanded="true"] {
+    color: var(--ink-hi);
+  }
+
+  #rail.rail-drawer-open {
+    display: block;
+    position: fixed;
+    top: calc(40px + var(--strip-h));
+    bottom: 0;
+    left: 0;
+    width: min(200px, 80vw);
+    overflow-y: auto;
+    padding: var(--sp-2) 0;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.4);
+    z-index: var(--z-dropdown);
+  }
+}
+
 .rail-list {
   margin: 0;
   padding: 0;
@@ -2861,9 +2902,9 @@ path.lasso-add {
 }
 
 path.lasso-drop {
-  stroke: var(--bad);
+  stroke: var(--blocked);
   stroke-width: 3;
-  fill: var(--bad);
+  fill: var(--blocked);
   fill-opacity: 0.35;
 }
 
@@ -2955,6 +2996,38 @@ path.lasso-area {
   display: inline-flex;
   flex-wrap: wrap;
   gap: var(--sp-1);
+}
+
+.dash-table tr.world-locked td:not(.dt-acts) {
+  opacity: 0.55;
+}
+
+.world-rank {
+  padding: var(--sp-2) var(--sp-3) 0;
+  margin-bottom: var(--sp-1);
+  border-left: 2px solid var(--line);
+}
+
+.world-range {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.world-slider {
+  width: 160px;
+  max-width: 100%;
+  accent-color: var(--accent);
+}
+
+.world-range-v {
+  min-width: 4.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-picking,
+.map-picking .leaflet-interactive {
+  cursor: crosshair;
 }
 
 
@@ -3223,6 +3296,15 @@ path.lasso-area {
 
 .ask-question {
   min-width: 14em;
+}
+
+.ask-answer {
+  display: block;
+  max-width: min(28em, 60vw);
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .dash-table td.track-note {
   min-width: 18em;

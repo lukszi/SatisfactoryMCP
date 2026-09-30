@@ -612,8 +612,8 @@ schema. Called as a plain function (tests, scripts) the client is blank and read
 
 **The activity journal** (`domain/planning/journal.py`, contract §8) holds what is not a plan
 edit: `plan.solve` for a `plan_factory` without `save_as` (the page offers it as a from-chat
-card), `plan.view` for `plan_layout`, `diff_vs_save` and `commission_plan` with `plan=`, and
-`plan.rejected` from the web. One file per process under `activity/<world>/`, `chat-<pid>.jsonl`
+card), `plan.view` for `plan_layout`, `diff_vs_save` and `commission_plan` with `plan=`,
+`world.find` for the finder tools (docs/web-wire.md, World), and `plan.rejected` from the web. One file per process under `activity/<world>/`, `chat-<pid>.jsonl`
 or `web-<pid>.jsonl`, so a single writer needs no lock. Nothing is written until the process
 names itself: `server.main` calls `journal.set_writer("chat")` and the web lifespan
 `set_writer("web")`. Importing the tools, as the test suite does, journals nothing, so a test
@@ -635,7 +635,10 @@ characters. The server's `instructions` tell the client to call it when the user
 "here" or "what I have open".
 
 **Pins** (Planner P3, [planner_p3.md](planner_p3.md)). The page creates, renames and deletes
-pins; chat only reads them. `ui_context` prints a `pins:` line (the newest eight live pins,
+pins. Chat creates one with `show_on_map(at=..., pin=True)`: a node, a factory, a sited plan or
+a point (anything else it shows pins as the point it resolved to; `resource:` refuses), the
+reply ends `pin: pinned as pin:N ...` or `pin: already pin:N ...`, and a `pin.add` journal entry
+by chat makes every open page refetch its pins. `ui_context` prints a `pins:` line (the newest eight live pins,
 ascending, each cut to 90 characters, `(+N more)` past them, `pins: none` when empty, gone
 pins ending `(gone)`) and appends `(pin:N)` to a selection that a pin matches. Every tool that
 takes a place, a node source, a machine select, `plan=`, `required=` or `exclude_recipes=`
@@ -647,15 +650,24 @@ It journals `plan.view` with `args {"view": "alternates", "item": <class id>}` a
 `looked at recipes for <item>`. No tool was added.
 
 **Track and asks** (Planner P4, [planner_p4.md](planner_p4.md)). A stored plan carries a
-startup headroom, `headroom_mw` (a plan scalar the page sets; `null` is the save's nameplate).
+startup headroom, `headroom_mw` (a plan scalar the page sets; `null` is the save's measured
+headroom, source `measured from the save`, the page's default too).
 `diff_vs_save(plan=)` and `commission_plan(plan=)` both use it, so the stage numbers chat reads
 are the page's; `commission_plan(headroom_mw=)` still overrides it for one call (source `given
-by caller`). Both journal `plan.view` with `args {"view": "track", "stage": n|null, "section":
+by caller`). Headroom sources read `stored on the plan`, `measured from the save`, `nameplate from
+the save` or `given by caller` in every tool; `commission_plan` names the nameplate figure as the
+safe bound when it used measured, and `diff_vs_save` notes the headroom its stages used. Both journal `plan.view` with `args {"view": "track", "stage": n|null, "section":
 "stages"|"startup"}`, which the page follows into its Track tab. Each process remembers the
 partition it last printed per plan; when a later read partitions differently, the first note is
 `the stages changed since you last read this plan (v14 -> v15): you were in stage 2 of 4, now
 stage 2 of 5`. A `commission_plan` with an explicit `headroom_mw` neither prints nor records it.
 `plan_factory save_as` never writes `headroom_mw`, so a chat save keeps the page's value.
+
+**Power priority** ([planner-power-priority_contract.md](planner-power-priority_contract.md)).
+`plan_factory` and `plan_layout` take `power_priority` (0–4): no production machine runs above
+100%, 75%, 50%, 33% or 25%, so rows are split into more, slower machines to save power. It is
+a stored `PlanArgs` scalar that both chat and page write; `power_priority=0` resets a recalled
+plan. `plan_factory` notes what the current step saves against step 0 and what the next adds.
 
 The page queues **asks** (`ask:N`, a question about a plan, process, stage, item or pin) and
 the player pastes one into chat. `ui_context` prints `asks (N waiting): ...`, the newest six open
@@ -663,6 +675,9 @@ or seen asks with what each is about, then a hint line; every listed open ask is
 (`seen_by` the client name) and journalled as `ask.seen`. `ui_context(answered=["ask:7"])` marks
 asks answered first (journal `ask.answered`) and prints `marked answered: ask:7` as the line
 after the header; an unknown or deleted id is refused on its own line and the rest still apply.
+An id may carry one line of answer after it (`"ask:7 it makes the diluted fuel"`, also `ask:7:`
+or `ask:7 -`): it is stored on the ask (`answer`, ≤ 200 characters, whitespace folded), shown on
+the page beside the ask, and quoted in the journal text; passing a new line replaces it.
 The server's `instructions` add "or quotes an ask: or pin: id". No tool was added.
 
 ### 10.2 Context budget

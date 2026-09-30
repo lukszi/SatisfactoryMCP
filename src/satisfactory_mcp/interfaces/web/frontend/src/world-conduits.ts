@@ -4,7 +4,7 @@
 import { button, empty, note, table, tabs2 } from "./dashkit";
 import { mapButton, render, toMap } from "./dashboard";
 import { make } from "./dom";
-import { carriesText, runLabel, runSelection, showRows, worldUrl } from "./finder";
+import { carriesText, CONDUIT_RADIUS_M, runLabel, runSelection, showRows, worldUrl } from "./finder";
 import { coords, count, metres, num, rounded } from "./format";
 import { hashFor } from "./map";
 import { go } from "./nav";
@@ -26,7 +26,7 @@ var sorts: Record<string, SortState> = {
   networks: { key: "length", desc: true },
 };
 
-var RADII: [string, string][] = ["100", "250", "500", "1000", "2000"].map(function (r): [string, string] {
+var RADII: [string, string][] = ["100", CONDUIT_RADIUS_M, "500", "1000", "2000"].map(function (r): [string, string] {
   return [r, r + " m"];
 });
 
@@ -243,9 +243,9 @@ function filters(card: HTMLElement, params: Record<string, string>): void {
     };
   }
   bar.appendChild(textField("near", "world-conduits-near", params.near || "", "me, x,y, a factory, chain:7", set("near", true)));
-  bar.appendChild(selectField("within", "world-conduits-radius", params.radius_m || "250", RADII, set("radius_m")));
+  bar.appendChild(selectField("within", "world-conduits-radius", params.radius_m || CONDUIT_RADIUS_M, RADII, set("radius_m")));
   bar.appendChild(textField("to", "world-conduits-to", params.to || "", "optional second place", set("to", true)));
-  if (params.to) bar.appendChild(selectField("to within", "world-conduits-to-radius", params.to_radius_m || "250", RADII, set("to_radius_m")));
+  if (params.to) bar.appendChild(selectField("to within", "world-conduits-to-radius", params.to_radius_m || CONDUIT_RADIUS_M, RADII, set("to_radius_m")));
   bar.appendChild(selectField("kind", "world-conduits-kind", params.conduit_kind || "", KINDS, set("conduit_kind")));
 }
 

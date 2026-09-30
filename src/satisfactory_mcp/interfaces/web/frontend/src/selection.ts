@@ -12,7 +12,36 @@ export interface Selection {
   ref?: string;
 }
 
-var current: Selection | null = null;
+var KINDS: SelectionKind[] = ["factory", "circuit", "point", "node", "field", "conduit", "pickup"];
+
+var STORE_KEY = "selection";
+
+function recall(): Selection | null {
+  try {
+    var s = JSON.parse(sessionStorage.getItem(STORE_KEY) || "null");
+    if (!s || KINDS.indexOf(s.kind) < 0 || typeof s.key !== "string" || typeof s.label !== "string") return null;
+    var out: Selection = { kind: s.kind, key: s.key, label: s.label };
+    if (typeof s.x_m === "number" && typeof s.y_m === "number") {
+      out.x_m = s.x_m;
+      out.y_m = s.y_m;
+    }
+    if (typeof s.ref === "string") out.ref = s.ref;
+    return out;
+  } catch (ignored) {
+    return null;
+  }
+}
+
+function remember(s: Selection | null): void {
+  try {
+    if (s) sessionStorage.setItem(STORE_KEY, JSON.stringify(s));
+    else sessionStorage.removeItem(STORE_KEY);
+  } catch (ignored) {
+    return;
+  }
+}
+
+var current: Selection | null = recall();
 
 var listeners: Array<() => void> = [];
 
@@ -39,6 +68,7 @@ export function selectionRef(s: Selection): string {
 export function select(next: Selection | null): void {
   if (same(current, next)) return;
   current = next;
+  remember(next);
   listeners.forEach(function (listener) {
     listener();
   });

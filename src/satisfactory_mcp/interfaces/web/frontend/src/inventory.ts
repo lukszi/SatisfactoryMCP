@@ -2,7 +2,7 @@
  * addressed as `dash=inventory[/<item>]`. See docs/frontend_vision.md §10. */
 
 import { crateLabel } from "./crates";
-import { button, checkbox, empty, error, heading, link, loading, note, showAll, table, tile } from "./dashkit";
+import { button, checkbox, choice, empty, error, heading, link, loading, note, showAll, table, tile } from "./dashkit";
 import { make } from "./dom";
 import { amount, count, num, pct, regionLine } from "./format";
 import { loadOne } from "./load";
@@ -367,22 +367,20 @@ function renderStock(parent: HTMLElement, data: StockResponse, rows: StockPile[]
 }
 
 function kindPicker(): HTMLElement {
-  var kind = make("select", "dash-select inv-kind");
-  [
-    ["all", "solid and fluid"],
-    ["solid", "solid only"],
-    ["fluid", "fluid only"],
-  ].forEach(function (o) {
-    var option = make("option", "", o[1]);
-    option.value = o[0]!;
-    kind.appendChild(option);
-  });
-  kind.value = view.kind;
-  kind.setAttribute("aria-label", "container kind");
-  kind.onchange = function () {
-    view.kind = kind.value;
-    redraw();
-  };
+  var kind = choice(
+    [
+      ["all", "solid and fluid"],
+      ["solid", "solid only"],
+      ["fluid", "fluid only"],
+    ],
+    view.kind,
+    function (value) {
+      view.kind = value;
+      redraw();
+    },
+    { label: "container kind" }
+  );
+  kind.classList.add("inv-kind");
   return kind;
 }
 

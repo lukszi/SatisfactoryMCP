@@ -43,6 +43,7 @@ PLAN_ARGS = (
     "pipe_m3min",
     "recycle_once",
     "supplied",
+    "power_priority",
 )
 
 

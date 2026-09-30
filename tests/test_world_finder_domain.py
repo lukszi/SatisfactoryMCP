@@ -83,17 +83,13 @@ def test_every_selector_failing_selects_nothing_rather_than_the_map(state, game)
     assert "unknown region" in found.errors[0]
 
 
-def test_locked_capacity_is_named_and_can_be_hidden(state, game):
+def test_locked_capacity_is_named_and_counted(state, game):
     crude = _find(state, game, resource="Crude Oil", view="nodes")
     locked = [r for r in crude.rows if finder.status_of(r) == "locked"]
     assert locked, "the reference world has locked crude satellites"
     assert crude.locked_rate == pytest.approx(sum(r["rate"] for r in locked))
     assert any("excluded from free" in n for n in crude.notes)
-    hidden = _find(state, game, resource="Crude Oil", view="nodes", hide_locked=True)
-    assert hidden.hidden == len(locked)
-    assert len(hidden.rows) == len(crude.rows) - len(locked)
-    assert not any("excluded from free" in n for n in hidden.notes)
-    assert hidden.total == pytest.approx(sum(r["rate"] for r in hidden.rows))
+    assert crude.total == pytest.approx(sum(r["rate"] for r in crude.rows))
 
 
 def test_without_a_save_everything_reads_free(game):
@@ -373,3 +369,11 @@ def test_choices_cover_the_whole_table(game):
 def test_node_rate_without_game_data_is_zero():
     node = nodes_mod.load_nodes().nodes[0]
     assert nodes_mod.node_rate(node, None) == 0.0
+
+
+def test_hub_is_a_place(state):
+    from satisfactory_mcp.domain.spatial.origin import resolve_origin
+
+    (x, y), where = resolve_origin(state, "HUB")
+    assert where == "the HUB"
+    assert (round(x / 100), round(y / 100)) == (-411, -1443)

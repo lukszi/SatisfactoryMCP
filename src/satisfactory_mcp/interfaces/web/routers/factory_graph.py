@@ -1,0 +1,210 @@
+"""``/api/factories/graph`` and ``/api/factories/machines``: one factory's machines, drawn.
+
+Both answer for a named factory or for a detected candidate (its ``proposal:N`` selector plus
+the ``token`` it was detected at): the graph as recipe groups and terminals, the machines as
+spots on the map. Naming, renaming and amending are ``naming.py``.
+
+WARNING: the function name is the operation_id -- renaming it churns the committed schema.
+"""
+
+from __future__ import annotations
+
+from typing import Any, TypedDict
+
+from fastapi import APIRouter, Request
+
+from ....domain.factories import flowgraph
+from ....domain.factories import identity as fidentity
+from ....domain.factories.query import build_view
+from ....domain.factories.select import SelectorError, select_machines
+from ....domain.spatial import geo
+from ....domain.world import pin
+from ..serial import Flow, MachineSpot, _fail, _flow, _m, _machine_spots, _state
+
+__all__ = ["router"]
+
+router = APIRouter(prefix="/api")
+
+
+class GraphNode(TypedDict):
+    """``kind`` is ``group`` (machines on one recipe), ``input``, or a terminal: ``storage``,
+    ``export``, ``sink``, ``nowhere``. Counts, ``states`` (machines per health state) and ``bbox_m``
+    are for groups only."""
+
+    id: str
+    kind: str
+    label: str
+    detail: str
+    machines: int
+    clock: float | None
+    makes: list[Flow]
+    running: int
+    blocked: int
+    stopped: int
+    states: dict[str, int]
+    bbox_m: tuple[float, float, float, float] | None
+
+
+class GraphEdge(TypedDict):
+    """``per_min`` is null where an output reaches a terminal with no surplus to apportion."""
+
+    source: str
+    target: str
+    item: str
+    per_min: float | None
+
+
+class FactoryGraphResponse(TypedDict):
+    title: str
+    token: str
+    buffers: int
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+
+
+TERMINAL_LABELS = {
+    "storage": "to storage",
+    "export": "leaves the {}",
+    "sink": "AWESOME Sink",
+    "nowhere": "goes nowhere",
+}
+
+
+def _bare(key: str, kind: str, label: str, detail: str) -> dict:
+    return {
+        "id": key,
+        "kind": kind,
+        "label": label,
+        "detail": detail,
+        "machines": 0,
+        "clock": None,
+        "makes": [],
+        "running": 0,
+        "blocked": 0,
+        "stopped": 0,
+        "states": {},
+        "bbox_m": None,
+    }
+
+
+def _subject(
+    request: Request,
+    factory: str | None,
+    candidate: str | None,
+    token: str | None,
+    save: str | None,
+    world: str | None,
+) -> Any:
+    """The standing machines of a named factory, or of a candidate detected at ``token``:
+    ``(state, machines, title)``, or the refusal to send."""
+    if bool(factory) == bool(candidate):
+        return _fail("pass exactly one of factory= or candidate=", 400)
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+    if factory:
+        label = next((x for x in st.labels.labels if x.name == factory), None)
+        if label is None:
+            return _fail(f"no factory named “{factory}” in this world", 404)
+        alive = set(st.graph.machines())
+        return st, [m for m in label.anchors if m in alive], label.name
+    if not token:
+        return _fail("candidate= needs the token= it was detected at", 400)
+    try:
+        pin.check(st.header, token)
+    except pin.PinRefused:
+        return _fail("a newer save was written since this was detected; detect again", 409)
+    try:
+        return st, select_machines([candidate], st), candidate
+    except SelectorError as exc:
+        return _fail(str(exc), 404)
+
+
+@router.get("/factories/graph", response_model=FactoryGraphResponse)
+def factory_graph(
+    request: Request,
+    factory: str | None = None,
+    candidate: str | None = None,
+    token: str | None = None,
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """The recipe-group production graph of a named factory, or of a detected candidate.
+
+    A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
+    written since then is refused (409), since the index may now name another cluster.
+    """
+    picked = _subject(request, factory, candidate, token, save, world)
+    if not isinstance(picked, tuple):
+        return picked
+    st, machines, title = picked
+    fg = flowgraph.build(st, st.game, build_view(title, machines, st.graph, st.game, st.projection))
+    whole = "factory" if factory else "cluster"
+    placed = fidentity.positions(st.projection)
+    nodes: list[dict] = []
+    for g in fg.groups.values():
+        box = geo.bbox([placed[m][:2] for m in g.machines if m in placed])
+        nodes.append(
+            {
+                "id": g.key,
+                "kind": "group",
+                "label": f"{len(g.machines)}× {g.building}",
+                "detail": g.recipe,
+                "machines": len(g.machines),
+                "clock": round(sum(g.clocks) / len(g.clocks), 3) if g.clocks else None,
+                "makes": [
+                    _flow(fg, k, v) for k, v in sorted(g.makes.items(), key=lambda kv: -kv[1])
+                ],
+                "running": g.states["running"],
+                "blocked": g.states["blocked"],
+                "stopped": g.states["stopped"],
+                "states": dict(sorted(g.health.items())),
+                "bbox_m": None if box is None else [_m(v) for v in box],
+            }
+        )
+    used = {e.source for e in fg.edges} | {e.target for e in fg.edges}
+    for key in sorted(k for k in used if k.startswith("in:")):
+        nodes.append(_bare(key, "input", key[3:], f"enters the {whole}"))
+    for kind, text in TERMINAL_LABELS.items():
+        if kind in used:
+            nodes.append(
+                _bare(kind, kind, text.format(whole), f"{fg.terminals.get(kind, 0)} reached")
+            )
+    return {
+        "title": title,
+        "token": pin.check(st.header, None),
+        "buffers": len(fg.buffers),
+        "nodes": nodes,
+        "edges": [
+            {"source": e.source, "target": e.target, "item": e.item, "per_min": e.per_min}
+            for e in fg.edges
+        ],
+    }
+
+
+class FactoryMachinesResponse(TypedDict):
+    title: str
+    token: str
+    machines: list[MachineSpot]
+
+
+@router.get("/factories/machines", response_model=FactoryMachinesResponse)
+def factory_machines(
+    request: Request,
+    factory: str | None = None,
+    candidate: str | None = None,
+    token: str | None = None,
+    save: str | None = None,
+    world: str | None = None,
+) -> Any:
+    """Where each standing machine of a named factory, or of a detected candidate, stands."""
+    picked = _subject(request, factory, candidate, token, save, world)
+    if not isinstance(picked, tuple):
+        return picked
+    st, machines, title = picked
+    return {
+        "title": title,
+        "token": pin.check(st.header, None),
+        "machines": _machine_spots(st, machines),
+    }

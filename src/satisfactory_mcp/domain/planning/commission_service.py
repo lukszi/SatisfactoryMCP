@@ -14,7 +14,7 @@ from ...core.gamedata.model import GameData
 from ..factories.select import SelectorError
 from ..world.state import WorldState
 from .commission import Commissioning, Tracking, commission, live_feeders, track
-from .diff_service import STORED_SOURCE, match_scope
+from .diff_service import DEFAULT_HEADROOM, STORED_SOURCE, default_headroom, match_scope
 from .planlog import PlanState
 from .prepare import PreparedPlan, prepare
 
@@ -50,6 +50,7 @@ def build_commission_report(
     objective: str = "",
     biomass: bool = False,
     stored: PlanState | None = None,
+    default: str = DEFAULT_HEADROOM,
 ) -> CommissionReport:
     """Solve ``plan_kwargs``, order it into waves, and read what the waves stand on.
 
@@ -70,12 +71,10 @@ def build_commission_report(
     elif stored is not None and stored.headroom_mw is not None:
         head, source = float(stored.headroom_mw), STORED_SOURCE
     else:
-        # Nameplate on purpose. Measured headroom is usually much larger -- 6,034 MW
-        # against 711 on the reference save, because most of that factory is idle -- but
-        # energising a block can un-starve the very machines that are idle, and the fuse
-        # blows on demand, not on averages. The safe bound is the default; the measured
-        # one is reported so a player who knows their base is quiet can pass it in.
-        head, source = power["headroom_mw"], "power_report, nameplate"
+        # Measured by default: on the reference save nameplate leaves 116 MW free against a
+        # 392 MW minimum slice, so no plan gets stages. The text names nameplate as the
+        # safe bound beside it (docs/planner_p4.md, B3).
+        head, source = default_headroom(power, default)
     report.head_mw, report.head_source = head, source
 
     report.plan_run = plan_run = commission(prepared, g, head, source)

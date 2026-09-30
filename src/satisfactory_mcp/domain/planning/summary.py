@@ -14,7 +14,7 @@ from ...core.gamedata.model import GameData
 from ..spatial import nodes as nodes_mod
 from ..world import pin
 from ..world.state import WorldState
-from . import provenance
+from . import power_priority, provenance
 from .layout import chain_depth
 from .optimize import MW
 from .report import build_plan_report
@@ -318,6 +318,7 @@ def solve_summary(
         "graph": {"nodes": [], "edges": []},
         "shards": None,
         "sloops_used": 0,
+        "power": {"step": int(kwargs.get("power_priority") or 0), "splits": False, "steps": []},
         "token": token,
     }
     errors = [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
@@ -346,6 +347,9 @@ def solve_summary(
     rows = [r for r, _ in paired]
     graph = production_graph(g, paired, sol.exports)
     notes = [*errors, *prepared.notes]
+    machines = round(sol.machines_total)
+    mw_draw = round(bill.draw_mw + bill.sink_mw, 2)
+    power = power_priority.ladder(g, sol, req.scenario.power_priority, machines, mw_draw)
     if req.excluded:
         notes.append("excluded by request: " + ", ".join(req.excluded))
     return {
@@ -356,9 +360,9 @@ def solve_summary(
         "warnings": _warnings(g, st, report, objective),
         "blockers": _blockers(errors, []),
         **base,
-        "machines": round(sol.machines_total),
+        "machines": machines,
         "processes": len(sol.processes),
-        "mw_draw": round(bill.draw_mw + bill.sink_mw, 2),
+        "mw_draw": mw_draw,
         "mw_generated": round(bill.generation_mw, 2),
         "mw_net": round(bill.net_mw, 2),
         "grid_import": sol.grid_import_mw > _EPS,
@@ -371,6 +375,7 @@ def solve_summary(
         "graph": graph,
         "shards": bill.shards,
         "sloops_used": bill.sloops_used,
+        "power": power,
     }
 
 

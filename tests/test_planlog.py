@@ -505,6 +505,33 @@ def test_undoing_something_changed_again_since_is_outdated(plans, plan):
         plans.undo(plan, 3, 2, actor=CHAT)
 
 
+def test_undo_twice_walks_back_like_a_stack(plans, plan):
+    plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=PAGE)
+    plans.push(plan, 2, [{"op": "set", "field": "sloops", "value": 6}], actor=PAGE)
+    assert plans.undo(plan, 3, 3, actor=PAGE).state.args.sloops == 4
+    assert plans.undo(plan, 4, 2, actor=PAGE).state.args.sloops == 0
+    assert plans.undo(plan, 5, 5, actor=PAGE).state.args.sloops == 4
+    assert plans.undo(plan, 6, 4, actor=PAGE).state.args.sloops == 6
+
+
+def test_a_redone_commit_still_blocks_undoing_what_it_changed(plans, plan):
+    plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=PAGE)
+    plans.push(plan, 2, [{"op": "set", "field": "sloops", "value": 6}], actor=CHAT)
+    plans.undo(plan, 3, 3, actor=CHAT)
+    plans.undo(plan, 4, 4, actor=CHAT)
+    with pytest.raises(Outdated):
+        plans.undo(plan, 5, 2, actor=PAGE)
+
+
+def test_an_undone_pair_does_not_hide_a_later_change(plans, plan):
+    plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=PAGE)
+    plans.push(plan, 2, [{"op": "set", "field": "sloops", "value": 6}], actor=PAGE)
+    plans.undo(plan, 3, 3, actor=PAGE)
+    plans.push(plan, 4, [{"op": "set", "field": "sloops", "value": 8}], actor=CHAT)
+    with pytest.raises(Outdated):
+        plans.undo(plan, 5, 2, actor=PAGE)
+
+
 def test_undo_restores_the_exact_previous_value_of_every_kind(plans, plan):
     ops = [
         {"op": "set", "field": "target_item", "value": "Wire"},
@@ -942,9 +969,25 @@ def test_headroom_undoes_to_its_previous_value(plans, plan):
     assert plans.restore_to(plan, 5, 3, actor=PAGE).state.headroom_mw == 500.0
 
 
+def test_measured_then_given_then_two_undos_lands_on_the_default(plans, plan):
+    plans.push(plan, 1, [_headroom(6370)], actor=PAGE)
+    plans.push(plan, 2, [_headroom(2000)], actor=PAGE)
+    assert plans.undo(plan, 3, 3, actor=PAGE).state.headroom_mw == 6370.0
+    assert plans.undo(plan, 4, 2, actor=PAGE).state.headroom_mw is None
+
+
+def test_a_refused_undo_back_to_the_default_names_it_not_none(plans, plan):
+    plans.push(plan, 1, [_headroom(500)], actor=PAGE)
+    plans.push(plan, 2, [_headroom(700)], actor=CHAT)
+    with pytest.raises(Outdated) as caught:
+        plans.undo(plan, 3, 2, actor=PAGE)
+    text = caught.value.conflicts[0].text()
+    assert text.startswith("startup headroom: you save default, ") and "none" not in text
+
+
 def test_headroom_in_words():
     assert describe_op({**_headroom(2000.0), "was": None}) == "startup headroom 2,000 MW"
-    assert describe_op({**_headroom(None), "was": 2000.0}) == "startup headroom: nameplate"
+    assert describe_op({**_headroom(None), "was": 2000.0}) == "startup headroom: save default"
     assert describe_op({**_headroom(1234.5), "was": None}) == "startup headroom 1,234.5 MW"
 
 
@@ -959,12 +1002,12 @@ def test_an_older_snapshot_without_headroom_reads_none(plans, plan):
     assert plans.state(plan, 1).headroom_mw is None
 
 
-def test_a_cleared_headroom_reads_nameplate_in_a_conflict(plans, plan):
+def test_a_cleared_headroom_reads_save_default_in_a_conflict(plans, plan):
     plans.push(plan, 1, [_headroom(400)], actor=CHAT)
     plans.push(plan, 2, [_headroom(500)], actor=CHAT)
     with pytest.raises(Outdated) as caught:
         plans.push(plan, 2, [_headroom(None)], actor=PAGE)
-    assert caught.value.conflicts[0].text().startswith("startup headroom: you nameplate, ")
+    assert caught.value.conflicts[0].text().startswith("startup headroom: you save default, ")
 
 
 def test_a_boolean_is_named_in_json_words(plans, plan):

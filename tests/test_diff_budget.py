@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from satisfactory_mcp.domain.planning.diff import (
     RECLOCK_TOLERANCE,
-    _planned_clock,
     _reclock_note,
     _row_for,
     _SaveIndex,
@@ -56,21 +55,67 @@ def _pumps(running: int, paused: int) -> _SaveIndex:
     )
 
 
-def _row(need: int, running: int, paused: int):
-    return _row_for(_World(), _group(need), _pumps(running, paused), 1, None, [], set())
+def _row(need: int, running: int, paused: int, near: bool = True):
+    points = [(0.0, 0.0)] if near else []
+    return _row_for(_World(), _group(need), _pumps(running, paused), 1, None, points, set())
 
 
-def test_a_plan_at_250_percent_is_the_budget_a_250_percent_pump_is_measured_against():
-    assert _reclock_note([{"clock": 2.5}], 2.5) == ""
-    assert _reclock_note([{"clock": 1.0}], 2.5) == "1 at 100%, plan budgets 250%"
-    assert _reclock_note([{"clock": 2.5}], 1.0) == "1 at 250%, plan budgets 100%"
+def _clocked(*clocks: float) -> list[dict]:
+    return [{"clock": c} for c in clocks]
 
 
-def test_a_derived_ratio_near_100_percent_budgets_100_percent():
+def test_spreading_the_planned_rate_over_more_machines_is_no_note():
+    water = _group(1, 0.9524)
+    assert _reclock_note(_clocked(0.4762, 0.4762), 0, water) == ""
+    assert _reclock_note(_clocked(0.9524), 0, water) == ""
+    assert _reclock_note(_clocked(0.3175, 0.3175, 0.3175), 0, water) == ""
+
+
+def test_a_total_that_misses_the_plan_is_noted():
+    water = _group(1, 0.9524)
+    said = _reclock_note(_clocked(0.25, 0.25), 0, water)
+    assert said == "clocks give 52% of the planned rate (plan: 1 at 95.24%)"
+    assert _reclock_note(_clocked(1.0), 0, _group(1, 2.5)) == (
+        "clocks give 40% of the planned rate (plan: 1 at 250%)"
+    )
+    assert "250%" not in _reclock_note(_clocked(2.5), 0, _group(1, 2.5))
+
+
+def test_an_overclock_that_outruns_the_plan_is_noted_but_extra_machines_are_not():
+    assert _reclock_note(_clocked(2.5, 1.0), 0, _group(2)) == (
+        "clocks give 175% of the planned rate (plan: 2 at 100%)"
+    )
+    assert _reclock_note(_clocked(1.0, 1.0, 1.0), 0, _group(2)) == ""
+
+
+def test_machines_still_to_build_count_at_the_plans_clock():
+    assert _reclock_note(_clocked(0.75), 1, _group(2, 0.75)) == ""
+    assert _reclock_note(_clocked(1.0), 1, _group(2, 0.5)) == (
+        "clocks give 150% of the planned rate (plan: 2 at 50%)"
+    )
+
+
+def test_a_derived_ratio_near_100_percent_is_met_by_machines_at_100():
     near = _group(53, 1.0 - RECLOCK_TOLERANCE / 2)
-    assert _planned_clock(near) == 1.0
-    assert _planned_clock(_group(7, 2.5)) == 2.5
-    assert _reclock_note([{"clock": 1.0}], _planned_clock(near)) == ""
+    assert _reclock_note(_clocked(*[1.0] * 53), 0, near) == ""
+    assert _reclock_note([{"clock": None}] * 53, 0, near) == ""
+
+
+def test_a_ranged_water_row_spread_over_two_pumps_says_nothing_about_clocks():
+    rows = [
+        {"instance": f"L.{PUMP}_{i}", "pos": (0.0, 0.0, 0.0), "clock": 0.4762} for i in range(2)
+    ]
+    index = _SaveIndex(
+        by_recipe={},
+        by_generator={},
+        by_extractor_class={PUMP: rows},
+        idle={},
+        tapped={},
+        free={},
+        extractor_on={},
+    )
+    row = _row_for(_World(), _group(1, 0.9524), index, 1, None, [(0.0, 0.0)], set())
+    assert "planned rate" not in row.note
 
 
 def test_unpause_asks_only_for_the_shortfall():
@@ -91,6 +136,12 @@ def test_every_paused_pump_is_unpaused_when_the_plan_needs_them_all():
     row = _row(need=30, running=16, paused=4)
     assert row.verb == "UNPAUSE" and row.count == 4
     assert "paused, not needed" not in row.note
+
+
+def test_paused_pumps_are_not_called_spare_when_the_low_bound_is_under_need():
+    row = _row(need=6, running=16, paused=4, near=False)
+    assert row.have_min == 0 and row.build_max == 6
+    assert "not needed" not in row.note and "not needed" not in row.page_note
 
 
 def test_page_text_says_stages_and_leaves_the_headline_to_say_no_order_fits():

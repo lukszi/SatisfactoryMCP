@@ -45,6 +45,7 @@ from ....domain.planning.planlog import (
     describe_op,
     factory_words,
 )
+from ....domain.planning.power_priority import STEPS
 from ....domain.planning.prepare import prepare
 from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of, plan_ref
 from ....domain.planning.recall import recall_plan as _plan_kwargs
@@ -918,6 +919,13 @@ def plan_factory(
         list[str] | None,
         Field(description="recipes that must make their item; others for it are excluded"),
     ] = None,
+    power_priority: Annotated[
+        int | None,
+        Field(
+            description="0-4: how far to split production rows into more, slower machines to "
+            "save power; 0 full clock, 1 at most 75%, 2 50%, 3 33%, 4 25%. Stored per plan"
+        ),
+    ] = None,
     plan: Annotated[str | None, Field(description="recall a saved plan by name")] = None,
     save_as: Annotated[str | None, Field(description="store this request under a name")] = None,
     base_rev: Annotated[
@@ -1000,6 +1008,12 @@ def plan_factory(
     its machine, so they are placed one at a time across many machines rather than
     filling one -- output is linear in sloops and power is quadratic, so spreading wins.
 
+    ``power_priority`` (0-4) trades machines for power without changing the solve: each
+    production row is split so no machine runs above 100%, 75%, 50%, 33% or 25%. Power goes
+    as clock**1.32, so twice the machines at half clock draw 20% less. Extractors,
+    generators and somersloop rows are never split. It is stored with the plan; the notes
+    say what the current step saves and what the next would. 0 resets a recalled plan.
+
     ``required`` names recipes (exact name or class id) that must make their item: every
     other recipe whose main product is that item is excluded. A locked or banned one is
     refused by name.
@@ -1071,7 +1085,10 @@ def plan_factory(
         sloops=sloops,
         recycle_once=recycle_once,
         supplied=supplied,
+        power_priority=power_priority,
     )
+    if power_priority is not None and not 0 <= power_priority < STEPS:
+        return f"! power_priority must be 0 to {STEPS - 1}, not {power_priority}; nothing solved"
     try:
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
@@ -1236,6 +1253,13 @@ def plan_layout(
         int,
         Field(description="Somersloops the plan may spend; 0 spends none"),
     ] = 0,
+    power_priority: Annotated[
+        int | None,
+        Field(
+            description="0-4: how far to split production rows into more, slower machines to "
+            "save power; 0 full clock, 1 at most 75%, 2 50%, 3 33%, 4 25%. Stored per plan"
+        ),
+    ] = None,
     sites: Annotated[
         dict[str, list[str]] | None,
         Field(
@@ -1332,7 +1356,10 @@ def plan_layout(
         # noise that trains a reader to skip the override line that does matter.
         belt_ipm=tiers.belt_ipm if tiers.asked_belt else None,
         pipe_m3min=tiers.pipe_m3min if tiers.asked_pipe else None,
+        power_priority=power_priority,
     )
+    if power_priority is not None and not 0 <= power_priority < STEPS:
+        return f"! power_priority must be 0 to {STEPS - 1}, not {power_priority}; nothing solved"
     try:
         plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
@@ -2150,17 +2177,18 @@ def _asks_lines(world_id: str, who: str, me) -> list[str]:
             args={"n": seen},
             text="chat saw " + ", ".join(f"ask:{n}" for n in seen),
         )
-    ids = ", ".join(f'"{r["id"]}"' for r in shown[:2])
+    ids = ", ".join(f'"{r["id"]} <answer>"' for r in shown[:2])
     more = ", …" if len(shown) > 2 else ""
-    return [
-        line,
-        f"answer them, then ui_context(answered=[{ids}{more}]) marks them done on the page",
-    ]
+    hint = (
+        f"answer them, then ui_context(answered=[{ids}{more}]) marks them done on the page "
+        "with that one-line answer"
+    )
+    return [line, hint]
 
 
 def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
     """Mark ``answered`` asks done; the ``marked answered`` line and one line per refusal."""
-    lines, wanted = [], []
+    lines, wanted, said = [], [], {}
     try:
         data = asks.read(world_id)
     except NewerSchema as exc:
@@ -2168,7 +2196,8 @@ def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
     top = data["next"] - 1
     by_n = {a["n"]: a for a in data["asks"]}
     for raw in answered:
-        n = asks.parse(raw)
+        hit = asks.parse_answer(raw)
+        n = hit[0] if hit else None
         if n is None:
             lines.append(f"! {raw!r} is not an ask id (ask:N)")
         elif n not in by_n:
@@ -2177,8 +2206,10 @@ def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
             lines.append(f"! {asks.AskMissing(n, deleted=True)}")
         else:
             wanted.append(n)
+            if hit[1]:
+                said[n] = hit[1]
     try:
-        asks.mark_answered(world_id, wanted, who)
+        asks.mark_answered(world_id, wanted, who, said)
     except asks.AskMissing as exc:
         return [f"! {exc}; nothing marked", *lines]
     except (LockTimeout, NewerSchema, OSError) as exc:
@@ -2189,7 +2220,8 @@ def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
             "ask.answered",
             actor=me,
             args={"n": wanted},
-            text="chat answered " + ", ".join(f"ask:{n}" for n in wanted),
+            text="chat answered "
+            + ", ".join(f"ask:{n}" + (f": {said[n]}" if n in said else "") for n in wanted),
         )
         lines.insert(0, "marked answered: " + ", ".join(f"ask:{n}" for n in wanted))
     return lines
@@ -2224,7 +2256,7 @@ def ui_context(
     world: str | None = None,
     answered: Annotated[
         list[str] | None,
-        Field(description="ask:N ids you have answered"),
+        Field(description='ask:N ids you have answered, each may add a line: "ask:7 <answer>"'),
     ] = None,
     ctx: Context | None = None,
 ) -> str:

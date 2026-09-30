@@ -124,11 +124,25 @@ def test_the_partition_moves_with_the_machine_count_and_the_headroom(world):
     assert out["rows"], "no startup order still shows the jobs"
 
 
-def test_the_default_headroom_is_the_nameplate_from_the_save(world):
+def test_the_default_headroom_is_measured_from_the_save(world):
     out = track_mod.track_view(world.game, world, _plan(world))
     assert out["headroom_mw"] is None
+    assert out["startup"]["headroom_source"] == "measured from the save"
+    assert out["startup"]["headroom_mw"] == out["power"]["measured_headroom_mw"]
+
+
+def test_the_nameplate_default_is_still_there_when_asked_for(world):
+    out = track_mod.track_view(world.game, world, _plan(world), default="nameplate")
     assert out["startup"]["headroom_source"] == "nameplate from the save"
     assert out["startup"]["headroom_mw"] == out["power"]["headroom_mw"]
+
+
+def test_tools_default_to_the_same_measured_headroom_as_the_page(world):
+    state = _plan(world)
+    out = track_mod.track_view(world.game, world, state)
+    report = build_commission_report(world.game, world, state.kwargs(), None, stored=state)
+    assert report.head_source == "measured from the save"
+    assert partition_id(report.tracking) == out["partition_id"]
 
 
 def test_tools_and_track_share_one_partition(world):

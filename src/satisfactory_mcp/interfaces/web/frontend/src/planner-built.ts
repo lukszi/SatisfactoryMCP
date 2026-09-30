@@ -3,13 +3,13 @@
 
 import { send } from "./api";
 import { copyText } from "./copy";
-import { button, fieldError } from "./dashkit";
+import { button, choice, fieldError } from "./dashkit";
 import { make } from "./dom";
 import { onMap } from "./nav";
 import { showBox, vitals } from "./panel";
 import { bench, changed, gesture } from "./planner-core";
 import { blankOrLong, newest, refreshLabels, refusal, wrote } from "./rename";
-import { choice, setSetting } from "./settings";
+import { choice as setting, setSetting } from "./settings";
 import { fail, friendly, note } from "./toast";
 import { W } from "./words";
 
@@ -34,7 +34,7 @@ interface Figures {
 /** "12 / 16 machines" or "75%", as the progress setting says; "–" when not placed. */
 export function progressText(f: Figures): string {
   if (f.built === null) return f.figure || "–";
-  if (choice("progress") === "percent" && f.percent !== null) {
+  if (setting("progress") === "percent" && f.percent !== null) {
     var lo = Math.round(f.percent);
     var hi = f.percent_max === null ? lo : Math.round(f.percent_max);
     return (hi !== lo ? lo + "–" + hi : String(lo)) + "%";
@@ -43,7 +43,7 @@ export function progressText(f: Figures): string {
 }
 
 export function toggleProgress(): void {
-  setSetting("progress", choice("progress") === "percent" ? "machines" : "percent");
+  setSetting("progress", setting("progress") === "percent" ? "machines" : "percent");
   changed();
 }
 
@@ -146,48 +146,34 @@ function factoryNames(current: string): string[] {
 
 function picker(parent: HTMLElement, b: TrackBuiltAt): void {
   var plan = bench.plan!;
-  var pick = make("select", "dash-select");
-  pick.setAttribute("data-ctl", "track-scope");
-  pick.setAttribute("aria-label", W.countAsBuilt);
-  pick.disabled = bench.gone;
-  var add = function (value: string, text: string, group?: HTMLElement) {
-    var option = make("option", "", text);
-    option.value = value;
-    (group || pick).appendChild(option);
-  };
-  add("", W.foundAutomatically);
   var clusters = b.candidates.filter(function (c) {
     return c.kind === "cluster" && c.proposal !== null;
   });
-  if (clusters.length) {
-    var here = make("optgroup", "");
-    here.label = W.unnamedClusters + " here (names it)";
-    clusters.forEach(function (c) {
-      add(CLUSTER + c.proposal, c.name, here);
-    });
-    pick.appendChild(here);
-  }
-  var named = make("optgroup", "");
-  named.label = "named factories";
-  factoryNames(plan.factory).forEach(function (name) {
-    add(name, name, named);
+  var options: [string, string][] = [["", W.foundAutomatically]];
+  clusters.forEach(function (c) {
+    options.push([CLUSTER + c.proposal, c.name + " (" + W.unnamedCluster + ": names it)"]);
   });
-  pick.appendChild(named);
-  add(WORLD, W.wholeWorld);
-  add(NONE, W.nothingBuiltYet);
-  pick.value = plan.factory;
-  pick.onchange = function () {
-    var value = pick.value;
-    if (value.indexOf(CLUSTER) === 0) {
-      var n = Number(value.slice(CLUSTER.length));
-      var c = clusters.filter(function (x) {
-        return x.proposal === n;
-      })[0];
-      if (c) startNaming(c);
-      return;
-    }
-    setFactory(value);
-  };
+  factoryNames(plan.factory).forEach(function (name) {
+    options.push([name, name]);
+  });
+  options.push([WORLD, W.wholeWorld], [NONE, W.nothingBuiltYet]);
+  var pick = choice(
+    options,
+    plan.factory,
+    function (value) {
+      if (value.indexOf(CLUSTER) === 0) {
+        var n = Number(value.slice(CLUSTER.length));
+        var c = clusters.filter(function (x) {
+          return x.proposal === n;
+        })[0];
+        if (c) startNaming(c);
+        return;
+      }
+      setFactory(value);
+    },
+    { label: W.countAsBuilt, disabled: bench.gone }
+  );
+  pick.setAttribute("data-ctl", "track-scope");
   var row = make("div", "plan-line");
   row.appendChild(make("span", "plan-sub", W.countAsBuilt));
   row.appendChild(pick);
@@ -295,7 +281,7 @@ export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   line.setAttribute("data-ctl", "built-line");
   var figure = make("button", "built-figure", progressText(b));
   figure.type = "button";
-  figure.title = b.built === null ? "not placed, so no progress" : choice("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
+  figure.title = b.built === null ? "not placed, so no progress" : setting("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
   figure.disabled = b.built === null;
   figure.onclick = function (event) {
     event.stopPropagation();

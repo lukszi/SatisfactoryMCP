@@ -79,6 +79,50 @@ export function checkbox(label: string, checked: boolean, change: (on: boolean) 
   return toggle;
 }
 
+export interface SliderOptions {
+  label: string;
+  ends?: [string, string];
+  disabled?: boolean;
+  title?: string;
+}
+
+export function slider(stops: string[], value: number, move: (i: number) => void, commit: (i: number) => void, o: SliderOptions): HTMLElement {
+  var wrap = make("div", "dash-slider");
+  var input = make("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = String(stops.length - 1);
+  input.step = "1";
+  input.value = String(value);
+  input.disabled = !!o.disabled;
+  input.setAttribute("aria-label", o.label);
+  if (o.title) input.title = o.title;
+  var say = function () {
+    input.setAttribute("aria-valuetext", stops[Number(input.value)] || input.value);
+  };
+  say();
+  input.oninput = function () {
+    say();
+    move(Number(input.value));
+  };
+  input.onchange = function () {
+    commit(Number(input.value));
+  };
+  wrap.appendChild(input);
+  var ticks = make("div", "dash-slider-ticks");
+  stops.forEach(function (text) {
+    ticks.appendChild(make("span", "", text));
+  });
+  wrap.appendChild(ticks);
+  if (o.ends) {
+    var ends = make("div", "dash-slider-ends");
+    ends.appendChild(make("span", "", o.ends[0]));
+    ends.appendChild(make("span", "", o.ends[1]));
+    wrap.appendChild(ends);
+  }
+  return wrap;
+}
+
 export interface ChoiceOptions {
   candidate?: string;
   label?: string;

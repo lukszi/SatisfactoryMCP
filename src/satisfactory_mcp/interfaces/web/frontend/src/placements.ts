@@ -17,6 +17,7 @@ import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
 import { footprintCorners, hashFor } from "./map";
 import { raiseNodeDots } from "./markers";
+import { showPoint } from "./panel";
 import { declareColours } from "./palette";
 import { registerFetch } from "./registry";
 import { W } from "./words";
@@ -191,6 +192,10 @@ export function drawMachines(data: MachinesResponse): void {
         ])
       );
       var mark = { leaf: m.instance_leaf, name: m.name };
+      var at = { x_m: m.x_m, y_m: m.y_m! };
+      piece.on("click", function () {
+        showPoint(at.x_m, at.y_m, { label: mark.name, stay: true });
+      });
       piece.on("contextmenu", function (e: L.LeafletMouseEvent) {
         var dom = e.originalEvent as InspectedEvent | undefined;
         if (dom && !dom._machine) dom._machine = mark;

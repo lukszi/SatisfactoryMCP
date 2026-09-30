@@ -30,10 +30,16 @@ PIN_PREFIX = "pin"
 #: The player, spelled the same wherever a place is taken.
 PLAYER_WORDS = ("me", "player", "here")
 
+#: The HUB. A factory label of the same name wins, so naming one "HUB" changes nothing.
+HUB_WORDS = ("hub",)
+
+#: The HUB's own parts; the HUB itself carries no record in the projection.
+HUB_PARTS = ("Build_StorageIntegrated_C", "Build_GeneratorIntegratedBiomass_C")
+
 #: What a term that named no place should have said, so rule 6 of the grammar holds
 #: wherever a place is taken rather than only where a tool remembered to list them.
 PLACE_GRAMMAR = (
-    "A place is x,y in metres, 'me', a factory name, node:<id>, slab:<n>, "
+    "A place is x,y in metres, 'me', 'hub', a factory name, node:<id>, slab:<n>, "
     "chain:<n>/pipe:<n>, plan:<name>, or pin:<n>"
 )
 
@@ -79,6 +85,18 @@ def player_xy(st) -> tuple[float, float] | None:
     """Player XY for the near:me selector, or None if the save has no pawn."""
     here = st.player_position() if st else None
     return (here[0], here[1]) if here else None
+
+
+def hub_xy(st) -> tuple[float, float] | None:
+    """The HUB's position in centimetres, off its built-in storage or burners."""
+    if st is None:
+        return None
+    for key in ("storage", "generators"):
+        for cls in HUB_PARTS:
+            for record in st.projection.get(key, ()):
+                if record.get("cls") == cls and record.get("pos"):
+                    return record["pos"][0], record["pos"][1]
+    return None
 
 
 def _run_origin(st, text: str) -> tuple[tuple[float, float], str]:
@@ -197,6 +215,11 @@ def resolve_origin(st, near: str) -> tuple[tuple[float, float], str]:
         return here, "you"
 
     label = st.labels.find(text) if st else None
+    if label is None and text.casefold() in HUB_WORDS:
+        hub = hub_xy(st)
+        if hub is None:
+            raise ValueError("this save has no HUB, so 'hub' cannot be resolved")
+        return hub, "the HUB"
     if label is None:
         known = ", ".join(x.name for x in st.labels.labels) if st else ""
         raise ValueError(

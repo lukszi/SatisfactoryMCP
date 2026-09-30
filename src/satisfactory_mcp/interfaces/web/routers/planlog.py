@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....core.gamedata.model import GameData
-from ....domain.planning import journal, manage, pins, summary
+from ....domain.planning import journal, manage, pins, summary, swaps
 from ....domain.planning.planlog import (
     Actor,
     AlreadyUndone,
@@ -89,6 +89,7 @@ class PlanArgsBody(TypedDict):
     recycle_once: list[str]
     supplied: dict[str, float]
     logistics_items: list[str]
+    power_priority: int
 
 
 class PlanStateBody(TypedDict):
@@ -170,9 +171,13 @@ class PlanOpsResponse(TypedDict):
 
 
 class PushBody(TypedDict):
+    """``require_item``: the item class id a drawer require is for; the server then also
+    removes every other required recipe for it that the head holds (contract C3)."""
+
     base_rev: int
     ops: list[dict]
     sav: NotRequired[str]
+    require_item: NotRequired[str | None]
 
 
 class PushArgsBody(TypedDict):
@@ -442,6 +447,14 @@ def push_ops(
         ops, _said = pins.canonical_ops(st, body["ops"])
     except pins.PinError as exc:
         return _fail(str(exc), 400)
+    item = body.get("require_item")
+    extend = None
+    if item:
+        game = st.game
+
+        def extend(head):
+            return swaps.replaced_required(game, head, item, ops)
+
     try:
         pushed = log.push(
             key,
@@ -450,6 +463,7 @@ def push_ops(
             actor=_page(),
             sav=sav,
             stamp=summary.stamp_for(st.game, st),
+            extend=extend,
         )
     except _ERRORS as exc:
         _reject(st, key, sav, exc)

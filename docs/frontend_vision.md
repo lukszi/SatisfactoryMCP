@@ -832,6 +832,12 @@ the shared domain code. The new name is free text (the naming style does not app
 trimmed. `test_the_page_and_the_tool_rename_to_the_same_files` compares both label and plan
 files after each path.
 
+**Following a rename.** Both paths journal `label.rename` with `args {was, to}`. Every page gets
+it as `activity` and `rename.onRenameActivity` records the new name, so an open factory detail
+or dashboard row moves to it. This replaced a guess from geometry (same centroid and machine
+count, one candidate), which missed a rename that landed with a save changing that factory's
+machine count.
+
 **Names.** `LabelStore._free` refuses a blank name, a name with `/` in it, and a name over 60
 characters (`NAME_MAX`), for `POST` and `PATCH` alike. The `PATCH` and `DELETE` routes take
 the name as the rest of the path (`{name:path}`), so a label named with a `/` before the rule
@@ -926,8 +932,9 @@ me that graph for a detected factory".
   mode, as_of, version, dry_run: true}`. `area` is the drawn polygon in metres. The reply lists
   the machines it would add (green rings) or remove (red rings), the anchor count before and
   after, and any other label that already holds an added machine. **apply** sends the same body
-  with `dry_run: false`; **discard** or a new drag starts again. Switching add/remove re-checks
-  the same area.
+  with `dry_run: false`; **discard** or a new drag starts again. Shift-drag, or **+ area** and a
+  drag on a touch screen, adds another area to the same preview instead (`extra_areas` in the
+  body; a machine inside any area counts). Switching add/remove re-checks the same areas.
 - **Same path as the tool.** The route picks the machines inside the area (`geo.inside`, an
   even-odd test on the machine positions), then calls `edits.plan_amend`, the dry run that
   `amend_factory` now uses too, and `edits.amend`, now under `LabelStore.editing` with
@@ -937,8 +944,7 @@ me that graph for a detected factory".
   missing label, 400 for a bad mode or an area under three corners. Removing every machine is
   a 409 with no flag set, and the page shows its words: `forget` deletes a label. A stale or
   moved refusal reloads the rings and asks for the area again.
-- **Choices left open.** One area per preview (no adding several strokes before applying); a
-  lasso only, with no separate box tool; added machines another label already holds stay in
+- **Choices left open.** A lasso only, with no separate box tool; added machines another label already holds stay in
   both labels, as `amend_factory` does, with a warning in the preview. A trace started while
   the amend card is open is not closed by it.
 
@@ -1318,11 +1324,14 @@ built on top of it.
   `dashkit.link`, so its address is rebuilt on click and never carries a stale viewport.
   The rail replaces the dashboard's own tab row at that width; the header's **Map | Dashboard**
   stays as it was.
-- **Narrow widths (T6):** below 900 px the rail is hidden and the header's **Map |
-  Dashboard** plus the dashboard's tab row are the navigation, as before. Nothing scrolls
+- **Narrow widths (T6):** below 900 px the rail is a drawer behind the header's **sections**
+  button (`aria-expanded`). Opening it focuses the current entry; Escape, a click outside,
+  focus leaving it or picking an entry closes it, and Escape or a pick returns focus to the
+  button. The header's **Map | Dashboard** and the dashboard's tab row stay. Nothing scrolls
   sideways at 390 px.
 - **Selection** (`selection.ts`): one selected thing, a factory, a circuit or a point. The
-  map sets it (a factory label click, a panel row, a map fly-to), the side panel follows it
+  map sets it (a factory label click, a machine click, a panel row, a map fly-to), the side
+  panel follows it
   (row highlight and the dashed outline, without flying), and the dashboard sets it when a
   factory or circuit detail opens. A factory that disappears from the health reply clears it.
 - **Status strip** (`status.ts`, `#status`): one line under the header. It shows the
@@ -1346,7 +1355,10 @@ built on top of it.
 - The selection is not written into the fragment. Links are built with the fragment of the
   moment, so a stale `sel=` in an older link would undo a newer selection; the dashboard
   address (`factories/<name>`, `power/<n>`) already deep-links the two kinds that matter.
-- A machine clicked on the map opens its popup and does not become the selection.
+  It survives a reload through `sessionStorage` (per tab, so a new tab starts empty); a
+  stored factory the health reply does not know is dropped.
+- A machine clicked on the map opens its popup and becomes the selection as a point with the
+  building's name and a ring, the same as its **map** button in a table, without flying.
 - Writes keep their own checks: `as_of` in a request body (naming) and 409 conflicts are
   untouched by the middleware, which only reads GET, HEAD and OPTIONS.
 
@@ -1354,10 +1366,7 @@ built on top of it.
 
 - Should the selection chip offer more than **map**: trace supply, plan here, open in
   dashboard as buttons (§2.3)?
-- Should a point or a machine be selectable from the map by a plain click, and should the
-  selection survive a reload through the fragment?
-- Should the rail open as a drawer on phones rather than hand over to the header and the tab
-  row?
+- Should a plain click on an empty point select it, as a machine click now does?
 - The panel beside the map still shows only Factories and Power; §2.1's panel with every
   rail section is not built. The rail sends the other sections to the dashboard.
 
@@ -1436,14 +1445,13 @@ section records what the backend built and what it decided on the way.
 
 ### 18.2 Decided here, smallest option
 
-- **Spoilers are applied before counting.** `spoilers=0` on `/api/world/nodes` drops locked
-  nodes before the totals, the notes and the fields are made, so a field is clustered from
-  the nodes on screen and the "excluded from free" note does not name locked capacity.
-  `hidden_spoilers` counts nodes there and on `/api/world/regions`, and counts categories on
-  `/api/collectibles` (the page's line is "N kinds not found yet are hidden").
+- **Locked nodes fade, they are never dropped.** The node routes take no `spoilers`; every
+  locked node is sent flagged, counted, clustered and searchable, and the page draws it
+  faded. `hidden_spoilers` exists only on `/api/collectibles`, where it counts categories
+  (the page's line is "N kinds not found yet are hidden").
 - **A node is a spoiler when it is locked**: untapped and unworkable with what this world
   has unlocked. `/api/nodes` uses the same rule, so a node an extractor already stands on is
-  never hidden. With no readable save nothing is a spoiler.
+  never faded. With no readable save nothing is a spoiler.
 - **A field's `distance_m` is to its nearest member**, not its centre, so "fields within
   500 m" in the inspector means a member within 500 m.
 - **`network=` ignores the radii** and lists every pipe of that network, longest first, with
@@ -1451,7 +1459,7 @@ section records what the backend built and what it decided on the way.
 - **The collectible table's age** compares the save's `build_version` with the `CL-<n>` of
   the table's `game_build`; `observed_from` is the session the generator read.
 - **Schema names.** `SiteRow` and `SitesResponse` were taken by `/api/factories/sites`, so
-  the ranking's shapes are `SiteRankRow` and `SiteRankResponse`. `CollectibleRow` and
+  the ranking's shapes are `RankedSite` and `RankedSitesResponse`. `CollectibleRow` and
   `FoundField` moved to `serial.py`, since `/api/inspect` sends them too.
 - **A geyser search no longer raises.** `show=nodes kind=geyser` hit a `KeyError` on the
   geyser's missing item; the unit now falls back to `/min`.

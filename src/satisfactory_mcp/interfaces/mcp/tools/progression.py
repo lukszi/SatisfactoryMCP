@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Annotated
 
+from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock, shards_for_clock
@@ -16,7 +17,7 @@ from ....domain.collectibles.service import collect_view
 from ....domain.progression.ladder import Rung, SchematicLadder
 from ....presenters.text import primitives as render
 from ....presenters.text.collectibles import render_collectibles
-from ..app import AsOf, Limit, _state, mcp, retired
+from ..app import AsOf, Limit, _state, follow, mcp, retired
 
 #: The three views onto a schematic ladder, spelled the same way by both tools that walk
 #: one. Adding a fourth here without teaching ``_select`` about it silently shows everything.
@@ -666,6 +667,7 @@ def collected_from_world(
     as_of: AsOf = None,
     limit: Limit = 25,
     offset: int = 0,
+    ctx: Context | None = None,
 ) -> str:
     """Map collectibles: how many exist, how many you took, what is left and what is closest.
 
@@ -694,4 +696,14 @@ def collected_from_world(
         return f"could not read save: {exc}"
 
     view = collect_view(st, group, show, near)
+    if not view.error:
+        listed = view.mode if view.mode in ("collected", "nearest") else None
+        follow(
+            st,
+            ctx,
+            "collected_from_world",
+            "pickups",
+            {"view": listed, "group": group, "near": near if listed == "nearest" else None},
+            "looked at pickups" + (f" ({group})" if group else ""),
+        )
     return render_collectibles(st, view, limit, offset=offset)

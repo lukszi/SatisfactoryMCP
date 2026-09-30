@@ -869,6 +869,7 @@ Nothing still open below is assumed above. Memory `verify-play-patterns`: ask, d
 - **L4.** Should the agent call `ui_context` on its own when you say "this" (a server instruction,
   costing context every time), or only when you mention `ask:`/`pin:`?
 - **L6.** May the agent **create pins** (e.g. pin the fields it recommends), or only read yours?
+  *Decided 2026-09-30: yes, with `show_on_map(pin=True)`.*
 
 **How you plan**
 3. For "X per minute of Y", which default: **fewest machines**, **least raw**, or **least power**?

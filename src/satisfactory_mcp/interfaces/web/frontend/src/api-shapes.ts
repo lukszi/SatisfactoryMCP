@@ -265,9 +265,7 @@ export type CollectibleRow = Schema["CollectibleRow"];
 export type CensusRow = Schema["CensusRow"];
 export type CollectiblesResponse = Body<"CollectiblesResponse">;
 
-/* ------------------------------------------------------------------ /api/world/*
- * RankedSite(s) are the server's SiteRankRow and SiteRankResponse; the factory sites own
- * SiteRow and SitesResponse. */
+/* ------------------------------------------------------------------ /api/world/* */
 
 export type TableAge = Schema["TableAge"];
 export type FoundNode = Schema["FoundNode"];
@@ -275,8 +273,8 @@ export type FoundField = Schema["FoundField"];
 export type WaterBlock = Schema["WaterBlock"];
 export type NodeChoices = Schema["NodeChoices"];
 export type NodeFindResponse = Body<"NodeFindResponse">;
-export type RankedSite = Schema["SiteRankRow"];
-export type RankedSitesResponse = Body<"SiteRankResponse">;
+export type RankedSite = Schema["RankedSite"];
+export type RankedSitesResponse = Body<"RankedSitesResponse">;
 export type RunEnd = Schema["RunEnd"];
 export type RunRow = Schema["RunRow"];
 export type NetworkRow = Schema["NetworkRow"];

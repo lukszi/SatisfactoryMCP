@@ -320,7 +320,7 @@ def _normalise(world: _World, kind: str, ref: dict) -> tuple[dict, tuple[float, 
     x_m, y_m = _number(ref, "x_m"), _number(ref, "y_m")
     x0, y0, x1, y1 = MAP_SQUARE_M
     if not (x0 <= x_m <= x1 and y0 <= y_m <= y1):
-        raise PinError(f"{x_m:g},{y_m:g} is outside the map")
+        raise ObjectMissing(f"{x_m:g},{y_m:g} is outside the map")
     return {"x_m": round(x_m, 1), "y_m": round(y_m, 1)}, (round(x_m, 1), round(y_m, 1))
 
 

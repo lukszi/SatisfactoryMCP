@@ -7,10 +7,12 @@
 import { el } from "./dom";
 import { loadLive, loadOne } from "./load";
 import { onActivity as onAskActivity, refetchAsks } from "./asks";
-import { onActivity as onPinActivity, refetchPins } from "./pins";
+import { onActivity as onPinActivity, onPlanChange, refetchPins } from "./pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
+import { onRenameActivity } from "./rename";
 import { state } from "./state";
 import { fail } from "./toast";
+import { onFindActivity } from "./world";
 import { refreshWorlds } from "./worlds";
 
 import type { ActivityEvent, PlansEvent } from "./planner-core";
@@ -140,6 +142,7 @@ export function listen() {
       if (!data || !isNews(event)) return;
       blink();
       loadOne("/api/plans");
+      onPlanChange(data);
       onPlansEvent(data);
     });
     es.addEventListener("activity", function (event) {
@@ -147,6 +150,8 @@ export function listen() {
       if (!data || !isNews(event)) return;
       onPinActivity(data);
       onAskActivity(data);
+      onFindActivity(data);
+      onRenameActivity(data);
       onActivityEvent(data);
     });
   }

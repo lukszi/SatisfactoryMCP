@@ -29,7 +29,8 @@ router = APIRouter(prefix="/api")
 class CensusRow(TypedDict):
     """One category: the map's count, this save's collections, and what is left.
 
-    ``remaining`` is null where no save records a collection of the class at all.
+    ``remaining`` is null where no save records a collection of the class at all;
+    ``standing`` and ``never_streamed`` are null when the table's states are another world's.
     """
 
     category: str
@@ -37,8 +38,8 @@ class CensusRow(TypedDict):
     placed: int
     collected: int
     remaining: int | None
-    standing: int
-    never_streamed: int
+    standing: int | None
+    never_streamed: int | None
     looted_standing: int
     state_tracked: bool
     pedestal_of: str | None
@@ -104,6 +105,7 @@ def collectibles(
 
     census = service.census_rows(st) if view.table is not None else []
     found = service.found(st, census)
+    observed = st.removed.observed
     hide = spoilers == 0
     kept_census = [c for c in census if not (hide and c["spoiler"])]
     hidden = {c["category"] for c in census} - {c["category"] for c in kept_census}
@@ -117,7 +119,7 @@ def collectibles(
         counts = {}
         for r in view.rows or ():
             if r["category"] not in hidden:
-                key = r["observed"] or "collected"
+                key = "collected" if r["collected"] else r["observed"] or "unstated"
                 counts[key] = counts.get(key, 0) + 1
     return {
         "mode": view.mode,
@@ -134,8 +136,8 @@ def collectibles(
                 "placed": c["placed"],
                 "collected": c["collected"],
                 "remaining": c["remaining"],
-                "standing": c["standing"],
-                "never_streamed": c["never_streamed"],
+                "standing": c["standing"] if observed else None,
+                "never_streamed": c["never_streamed"] if observed else None,
                 "looted_standing": c["looted_and_standing"],
                 "state_tracked": c["state_tracked"],
                 "pedestal_of": c["pedestal_of"],

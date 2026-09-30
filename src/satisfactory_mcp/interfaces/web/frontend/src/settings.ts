@@ -37,7 +37,7 @@ export var SETTINGS: Setting[] = [
     key: "spoilers",
     group: "spoilers",
     label: "show what is not unlocked yet",
-    hint: "later tiers, MAM trees, phases, locked recipes, locked nodes and unfound pickups",
+    hint: "later tiers, MAM trees, phases, locked recipes and unfound pickups",
     fallback: false,
   },
   {
@@ -95,13 +95,25 @@ export var SETTINGS: Setting[] = [
     key: "follow",
     group: "planner",
     label: "follow chat",
-    hint: "when chat solves or opens a plan",
+    hint: "when chat solves or opens a plan, or searches the world",
     options: [
       ["follow", "open what chat works on"],
       ["toasts", "toasts only"],
       ["off", "off"],
     ],
     fallback: "follow",
+  },
+  {
+    kind: "choice",
+    key: "stageHeadroom",
+    group: "planner",
+    label: "stage headroom",
+    hint: "for a plan with no startup headroom of its own; chat uses measured",
+    options: [
+      ["measured", "measured: what the grid has free now"],
+      ["nameplate", "nameplate: every built machine running at once"],
+    ],
+    fallback: "measured",
   },
 ];
 

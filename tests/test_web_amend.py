@@ -139,6 +139,40 @@ def test_an_area_adds_and_then_drops_a_machine(client, store_dir):
     assert spot["id"] not in _stored(store_dir)["labels"][0]["anchors"]
 
 
+def test_extra_areas_add_to_the_first(client, store_dir):
+    body, second = _named(client)
+    spots = _spots(client, candidate=second["selector"], token=body["token"])
+    one = _lone(spots)
+    two = _lone(
+        [s for s in spots if abs(s["x_m"] - one["x_m"]) > 1 or abs(s["y_m"] - one["y_m"]) > 1]
+    )
+    reply = client.post(
+        "/api/labels/amend",
+        json={
+            "name": "steel",
+            "area": _square(one),
+            "extra_areas": [_square(two)],
+            "mode": "add",
+            "as_of": body["token"],
+            "version": 1,
+            "dry_run": True,
+        },
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 200, reply.text
+    assert sorted(s["id"] for s in reply.json()["added"]) == sorted([one["id"], two["id"]])
+    short = dict(
+        name="steel",
+        area=_square(one),
+        extra_areas=[[[0, 0], [1, 1]]],
+        mode="add",
+        as_of=body["token"],
+        version=1,
+        dry_run=True,
+    )
+    assert client.post("/api/labels/amend", json=short, headers=ORIGIN).status_code == 400
+
+
 def test_an_area_with_nothing_new_writes_nothing(client, store_dir):
     body, _second = _named(client)
     out = _amend(client, [[0, 0], [0.1, 0], [0.1, 0.1]], token=body["token"]).json()

@@ -141,7 +141,7 @@ function outline(bounds: L.LatLngBounds): void {
   if (!map.hasLayer(mark)) mark.addTo(map);
 }
 
-function pin(x_m: number, y_m: number, label?: string): void {
+function pin(x_m: number, y_m: number, label?: string, stay?: boolean): void {
   select({ kind: "point", key: x_m + "," + y_m, label: label || "a point", x_m: x_m, y_m: y_m });
   mark.clearLayers();
   var ring = L.circleMarker([-y_m, x_m], {
@@ -154,7 +154,7 @@ function pin(x_m: number, y_m: number, label?: string): void {
   if (label) ring.bindTooltip(esc(label), { permanent: true, direction: "right", offset: [14, 0], className: "pin-label" });
   ring.addTo(mark);
   if (!map.hasLayer(mark)) mark.addTo(map);
-  flyToPoint([-y_m, x_m], Math.max(map.getZoom(), MACHINE_ZOOM));
+  if (!stay) flyToPoint([-y_m, x_m], Math.max(map.getZoom(), MACHINE_ZOOM));
 }
 
 interface Placed {
@@ -577,9 +577,9 @@ export function showCircuit(index: number): void {
   selectCircuit(row);
 }
 
-export function showPoint(x_m: number, y_m: number, options?: { label?: string; layers?: string[] }): void {
+export function showPoint(x_m: number, y_m: number, options?: { label?: string; layers?: string[]; stay?: boolean }): void {
   if (options && options.layers) reveal(options.layers);
-  pin(x_m, y_m, options && options.label);
+  pin(x_m, y_m, options && options.label, options && options.stay);
 }
 
 export function showBox(bbox_m: [number, number, number, number], options?: { layers?: string[] }): void {
@@ -652,6 +652,8 @@ registerFetch<FactoryHealthResponse>({
       mark.clearLayers();
       select(null);
     }
+    var s = selected();
+    if (s && s.kind === "factory" && !factoryNamed(s.key)) select(null);
     follow();
     changed();
     if (view.pending) showFactory(view.pending);

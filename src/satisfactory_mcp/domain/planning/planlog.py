@@ -85,10 +85,14 @@ KINDS: dict[str, str] = {
     "recycle_once": "set",
     "supplied": "map",
     "logistics_items": "set",
+    "power_priority": "scalar",
 }
 FLOAT_SETS = frozenset({"clocks", "extractor_clocks"})
 PLAN_SCALARS = ("notes", "factory", "headroom_mw")
 HEADROOM_MAX_MW = 1_000_000.0
+#: Percent clock cap per power-priority step, for words; optimize.POWER_PRIORITY_CLOCKS is
+#: the source, repeated here because the plan log needs no solver.
+POWER_PRIORITY_PERCENT = ("100%", "75%", "50%", "33%", "25%")
 KWARG_NAME = {"banned": "exclude_recipes"}
 
 
@@ -204,6 +208,13 @@ def _headroom(name: str, value) -> float | None:
     return number
 
 
+def _priority(name: str, value) -> int:
+    step = _count(name, value)
+    if step >= len(POWER_PRIORITY_PERCENT):
+        raise _fail(f"{name} must be 0 to {len(POWER_PRIORITY_PERCENT) - 1}, not {value!r}")
+    return step
+
+
 def _objective(name: str, value) -> str:
     if value not in OBJECTIVES:
         raise _fail(f"objective must be one of {', '.join(OBJECTIVES)}, not {value!r}")
@@ -223,6 +234,7 @@ _SCALAR_CHECK: dict[str, Callable] = {
     "notes": _text,
     "factory": _factory,
     "headroom_mw": _headroom,
+    "power_priority": _priority,
 }
 
 
@@ -286,6 +298,7 @@ class PlanArgs:
     recycle_once: list = field(default_factory=list)
     supplied: dict = field(default_factory=dict)
     logistics_items: list = field(default_factory=list)
+    power_priority: int = 0
 
     @classmethod
     def from_dict(cls, raw: dict | None, lenient: list | None = None) -> PlanArgs:
@@ -449,6 +462,13 @@ def factory_words(value) -> str:
     )
 
 
+def _priority_words(value) -> str:
+    step = value if isinstance(value, int) and 0 < value < len(POWER_PRIORITY_PERCENT) else 0
+    if not step:
+        return "power priority off: machines at full clock"
+    return f"power priority {step}: machines at most {POWER_PRIORITY_PERCENT[step]}"
+
+
 def describe_op(op: dict) -> str:
     kind, name = op.get("op"), op.get("field", "")
     if kind == "set":
@@ -459,8 +479,10 @@ def describe_op(op: dict) -> str:
         if name == "headroom_mw":
             value = op.get("value")
             if value is None:
-                return "startup headroom: nameplate"
+                return "startup headroom: save default"
             return f"startup headroom {_fmt(float(value))} MW"
+        if name == "power_priority":
+            return _priority_words(op.get("value"))
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
     if kind in ("put", "del"):
         word = "rate" if name == "export_minimums" else name
@@ -753,7 +775,7 @@ def _label(op: dict) -> str:
 def _value_word(op: dict) -> str:
     if op.get("field") == "headroom_mw":
         value = op.get("value")
-        return "nameplate" if value is None else f"{_fmt(float(value))} MW"
+        return "save default" if value is None else f"{_fmt(float(value))} MW"
     return _fmt(op["value"])
 
 
@@ -964,6 +986,16 @@ def _chain(commits: list[Commit], rev: int) -> set[int]:
     for commit in commits:
         if commit.undoes in out:
             out.add(commit.rev)
+    return out
+
+
+def _skipped(commits: list[Commit], rev: int) -> set[int]:
+    """Revs an undo of ``rev`` ignores: its own chain, and every later commit that stands
+    undone together with its chain, since the two cancel out (docs/plan_log.md, Undo)."""
+    out = _chain(commits, rev)
+    for commit in commits[rev:]:
+        if commit.rev not in out and _undoers(commits, commit.rev) is not None:
+            out |= _chain(commits, commit.rev)
     return out
 
 
@@ -1195,15 +1227,27 @@ class PlanLog:
         sav: str = "",
         stamp: Stamp | None = None,
         note: str = "",
+        extend: Callable[[PlanState], list[dict]] | None = None,
     ) -> Pushed:
+        """``extend`` adds ops worked out from the head under the plan lock; they merge by
+        M1 like the rest, so one that clashes with a commit since ``base_rev`` refuses."""
         mine = [_check_op(op) for op in ops]
-        return self._locked(
-            _names(mine),
-            key,
-            lambda commits: self._merge(
-                key, commits, base_rev, mine, actor, sav, stamp, note, None
-            ),
-        )
+
+        def run(commits: list[Commit]) -> Pushed:
+            more = [_check_op(op) for op in extend(self._state(key, commits))] if extend else []
+            return self._merge(
+                key,
+                commits,
+                base_rev,
+                mine + [op for op in more if op not in mine],
+                actor,
+                sav,
+                stamp,
+                note,
+                None,
+            )
+
+        return self._locked(_names(mine), key, run)
 
     def push_args(
         self,
@@ -1247,7 +1291,7 @@ class PlanLog:
             if by is not None:
                 raise AlreadyUndone(rev, by.rev)
             mine = inverse([op for op in target.ops if op.get("op") != "record"])
-            window = _chain(current, rev)
+            window = _skipped(current, rev)
             return self._merge(key, current, base_rev, mine, actor, sav, stamp, "", rev, window)
 
         return self._locked(renames, key, run)

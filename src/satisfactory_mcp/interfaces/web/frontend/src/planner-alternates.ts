@@ -64,8 +64,8 @@ function settled(): boolean {
   return !!alt && !!alt.data && !alt.asked && !pushing() && !!bench.plan && alt.data.rev === bench.plan.rev;
 }
 
-function act(list: Op[]): void {
-  if (settled()) gesture(list);
+function act(list: Op[], requires?: boolean): void {
+  if (settled()) gesture(list, requires && bench.alt && bench.alt.data ? bench.alt.data.item : undefined);
 }
 
 function acts(o: SwapOption): HTMLElement {
@@ -83,7 +83,7 @@ function acts(o: SwapOption): HTMLElement {
       button(
         "require",
         function () {
-          act(require);
+          act(require, true);
         },
         { title: "make every " + (bench.alt && bench.alt.data ? bench.alt.data.name : "unit") + " in this plan with " + o.name, label: "require " + o.name }
       )

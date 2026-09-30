@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
+from mcp.server.fastmcp import Context
 from pydantic import Field
 
+from ....domain.planning import journal, pins
 from ....domain.spatial import finder, geo, heightfield, place
 from ....domain.spatial import nodes as nodes_mod
 from ....domain.spatial import ranking as ranking_mod
 from ....domain.spatial import regions as regions_mod
-from ....domain.spatial.origin import NODE_PREFIX, RUN_PREFIXES, resolve_origin
+from ....domain.spatial.origin import NODE_PREFIX, PLAN_PREFIX, RUN_PREFIXES, resolve_origin
 from ....domain.spatial.select import SELECTOR_HELP
 from ....domain.world import conduits as conduits_mod
 from ....presenters.text import primitives as render
@@ -19,6 +21,8 @@ from ..app import (
     Limit,
     _item_id,
     _state,
+    actor,
+    follow,
     game,
     mcp,
     retired,
@@ -222,7 +226,7 @@ def describe_location(
                 "conduits",
                 (
                     f"{counted['belt']} belt run(s), {counted['pipe']} pipe run(s) "
-                    f"within {radius_m:g}m"
+                    f"within {found.conduit_radius_m:g}m"
                 ),
             )
         )
@@ -336,7 +340,7 @@ def search_conduits(
             "from this tool ('chain:7', 'pipe:333')"
         ),
     ],
-    radius_m: float = 250.0,
+    radius_m: float = conduits_mod.NEAR_RADIUS_M,
     to: Annotated[
         str | None,
         Field(description="second area: list only runs passing near BOTH, same forms as near"),
@@ -355,6 +359,7 @@ def search_conduits(
     limit: Limit = 12,
     offset: int = 0,
     kind: Annotated[str | None, Field(description="retired -- write conduit_kind= instead")] = None,
+    ctx: Context | None = None,
 ) -> str:
     """Belt and pipe runs near a point or between two areas: ends, length, elevation.
 
@@ -396,6 +401,22 @@ def search_conduits(
     view = (show or "runs").strip().casefold()
     if view not in ("runs", "networks"):
         return f"! unknown show {show!r}. Choose from: runs, networks"
+    follow(
+        st,
+        ctx,
+        "search_conduits",
+        "conduits",
+        {
+            "near": near,
+            "radius_m": None if radius_m == conduits_mod.NEAR_RADIUS_M else f"{radius_m:g}",
+            "to": to,
+            "to_radius_m": None if to_radius_m is None else f"{to_radius_m:g}",
+            "conduit_kind": want,
+            "view": "networks" if view == "networks" else None,
+            "network": network,
+        },
+        f"searched belts and pipes near {near}",
+    )
 
     if view == "networks":
         try:
@@ -525,6 +546,52 @@ def _occupant(row: dict, g) -> str:
     return " ".join(parts)
 
 
+def _follow_nodes(st, ctx, view, resource, purity, kind, status, near, where) -> None:
+    def given(value: str | None) -> str | None:
+        return None if not value or value.strip().casefold() == "all" else value
+
+    rid = _item_id(resource) if given(resource) else None
+    name = game().item_name(rid) if rid else "every"
+    shown = "fields" if view == "fields" else "nodes"
+    follow(
+        st,
+        ctx,
+        "search_resource_nodes",
+        shown,
+        {
+            "resource": rid,
+            "purity": given(purity),
+            "kind": given(kind),
+            "status": given(status),
+            "near": near,
+        },
+        f"searched {name} {shown}" + (f" near {where}" if where else ""),
+    )
+
+
+def _slider(radius: str) -> bool:
+    try:
+        return 500.0 <= float(radius) <= 5000.0
+    except ValueError:
+        return False
+
+
+def _rank_pane(sources: list[str] | None) -> dict:
+    """The rank pane's settings, when ``sources`` says no more than it can."""
+    out: dict = {}
+    for term in sources or []:
+        head, _, body = term.partition(":")
+        head = head.strip().casefold()
+        place, at, radius = body.rpartition("@")
+        if head == "near" and at and "at" not in out and _slider(radius):
+            out["at"], out["within_m"] = place.strip(), radius.strip()
+        elif head == "purity" and body.strip().casefold() == "pure":
+            out["pure"] = 1
+        else:
+            return {}
+    return out
+
+
 @mcp.tool(structured_output=False)
 def search_resource_nodes(
     sources: list[str] | None = None,
@@ -547,6 +614,7 @@ def search_resource_nodes(
     as_of: AsOf = None,
     limit: Limit = 25,
     offset: int = 0,
+    ctx: Context | None = None,
 ) -> str:
     """Resource nodes, in one of three views.
 
@@ -613,6 +681,8 @@ def search_resource_nodes(
         return found.error
     if found.unselected:
         return render.envelope("# no nodes selected", "", [*found.errors, SELECTOR_HELP])
+    if st is not None:
+        _follow_nodes(st, ctx, view, resource, purity, kind, wanted, near, found.where)
     rows_all = found.rows
     if not rows_all:
         return render.envelope(
@@ -764,6 +834,8 @@ def show_on_map(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
+    pin: Annotated[bool, Field(description="also pin it on the page (pin:N)")] = False,
+    ctx: Context | None = None,
 ) -> str:
     """Map links centred on something: this project's own map, and the public one.
 
@@ -780,6 +852,9 @@ def show_on_map(
     Only the Crude Oil layer tokens are confirmed; the rest follow the same pattern and
     are flagged. A wrong token still opens the map in the right place, just without that
     overlay.
+
+    ``pin=True`` also pins the place for the page (a node, factory, sited plan or point;
+    pinning it twice returns the pin it already has), and the page shows it at once.
     """
     from ....domain.spatial import maplink
 
@@ -869,11 +944,53 @@ def show_on_map(
         "running; the public one is satisfactory-calculator.com and knows the vanilla "
         "world only -- nothing you built is on it"
     )
+    if pin:
+        body += "\n" + _pin_place(st, text, node, label, origin, resources, ctx)
     return render.envelope(
         f"# {where} at {round(origin[0] / 100, 1):g},{round(origin[1] / 100, 1):g} (metres)",
         body,
         notes,
     )
+
+
+def _pin_place(st, text: str, node, label, origin, resources, ctx) -> str:
+    """Pin what ``show_on_map`` showed; the ``pin:`` line, or why nothing was pinned."""
+    if st is None:
+        return "! not pinned: the save could not be read"
+    head = text.partition(":")[0].casefold()
+    if resources and node is None:
+        return "! not pinned: a whole resource is no place; pin one node:<id> or x,y instead"
+    if head == "pin":
+        n = pins.parse(text)
+        return f"pin: already pin:{n}" if n is not None else "! not pinned"
+    if node is not None:
+        kind, ref = "node", {"node": node["instance"]}
+    elif head == PLAN_PREFIX:
+        stored = st.plans.find(text.partition(":")[2].strip())
+        kind, ref = "plan", {"plan": stored.key if stored is not None else ""}
+    elif label is not None:
+        kind, ref = "factory", {"factory": label.name}
+    else:
+        kind = "point"
+        ref = {"x_m": round(origin[0] / 100.0, 1), "y_m": round(origin[1] / 100.0, 1)}
+    try:
+        row, existing = pins.create(st, kind, ref)
+    except pins.PinError as exc:
+        return f"! not pinned: {exc}"
+    except Exception as exc:
+        return f"! not pinned: the pins are busy ({type(exc).__name__})"
+    if existing:
+        return f"pin: already {row['id']} {row['text']}"
+    plan = ref.get("plan") if kind == "plan" else None
+    journal.append(
+        st.world_id,
+        "pin.add",
+        actor=actor(ctx),
+        plan=plan,
+        args={"n": row["n"], "kind": kind},
+        text=f"pinned {row['id']} {row['text']}",
+    )
+    return f"pin: pinned as {row['id']} {row['text']}"
 
 
 @mcp.tool(structured_output=False)
@@ -885,6 +1002,7 @@ def rank_build_sites(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
+    ctx: Context | None = None,
 ) -> str:
     """Rank candidate fields for a new extraction site, best first.
 
@@ -915,6 +1033,14 @@ def rank_build_sites(
     sel = ranked.selection
     if ranked.unselected:
         return render.envelope("# no candidates", "", [*sel.errors, SELECTOR_HELP])
+    follow(
+        st,
+        ctx,
+        "rank_build_sites",
+        "fields",
+        {"resource": rid, "rank": 1, **_rank_pane(sources)},
+        f"ranked build sites for {g.item_name(rid)}",
+    )
     scored = ranked.scored
     if not scored:
         return render.envelope(
@@ -1012,6 +1138,7 @@ def whereami(
     world: str | None = None,
     as_of: AsOf = None,
     limit: Limit = 8,
+    ctx: Context | None = None,
 ) -> str:
     """Where the player is standing, and what is around them.
 
@@ -1027,6 +1154,7 @@ def whereami(
         return f"could not read save: {exc}"
 
     found = place.here(st, g, radius_m)
+    follow(st, ctx, "whereami", "", {}, "looked where the player is")
     if found.player is None:
         return "no player pawn in this save, so there is no position to report"
     x, y, z = found.player

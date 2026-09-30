@@ -147,6 +147,7 @@ class Description:
     label: regions_mod.Label
     probe: elevation.Elevation
     conduits: dict[str, int] | None
+    conduit_radius_m: float
     nearest: list[dict]
     fields: list[finder.FieldView]
     fields_total: int
@@ -161,6 +162,8 @@ def describe(
     st, game, x: float, y: float, radius_m: float = 200.0, terrain_field=None
 ) -> Description:
     """Region, sampled elevation, conduits, nearest nodes, fields and pickups at a point.
+
+    ``radius_m`` is the elevation reach; conduits count within ``conduits.NEAR_RADIUS_M``.
 
     ``st`` may be ``None``: the node table and the regions need no save, and what needs one
     comes back empty (``conduits`` and ``pickups_total`` as ``None``).
@@ -178,7 +181,12 @@ def describe(
         radius_m=radius_m,
         label=regions_mod.load_regions().label_for(x, y),
         probe=probe,
-        conduits=conduits_mod.near_counts(st.conduit_runs, x, y, radius_m) if st else None,
+        conduits=(
+            conduits_mod.near_counts(st.conduit_runs, x, y, conduits_mod.NEAR_RADIUS_M)
+            if st
+            else None
+        ),
+        conduit_radius_m=conduits_mod.NEAR_RADIUS_M,
         nearest=nearest_nodes(st, game, x, y),
         fields=fields[:FIELDS],
         fields_total=len(fields),

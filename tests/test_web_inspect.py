@@ -18,6 +18,7 @@ fastapi = pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 
+from satisfactory_mcp.domain.world import conduits as conduits_mod
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers import inspect as web_inspect
@@ -183,7 +184,7 @@ def test_inspect_adds_grid_fields_conduits_and_pickups(client):
         "/api/inspect", params={"x_m": IN_THE_FIELD[0], "y_m": IN_THE_FIELD[1]}
     ).json()
     assert body["grid"] == "X5Y5" and body["direction"] == "northeast"
-    assert body["conduits"] == {"belt": 0, "pipe": 0, "radius_m": 200.0}
+    assert body["conduits"] == {"belt": 0, "pipe": 0, "radius_m": 250.0}
     assert 0 < len(body["fields"]) <= 3
     assert all(f["distance_m"] <= 500 for f in body["fields"])
     assert all(len(f["resources"]) == 1 for f in body["fields"])
@@ -209,12 +210,13 @@ def test_inspect_counts_every_pickup_within_reach_not_just_the_five_it_lists(cli
     assert body["pickups_within_spoilers"] == sum(1 for p in found if p["spoiler"])
 
 
-def test_inspect_radius_widens_the_elevation_and_conduit_reach(client):
+def test_inspect_radius_widens_the_elevation_reach_but_not_the_conduit_reach(client):
     x_m, y_m = ON_PLATFORM
     near = client.get("/api/inspect", params={"x_m": x_m, "y_m": y_m, "radius_m": 50}).json()
     far = client.get("/api/inspect", params={"x_m": x_m, "y_m": y_m, "radius_m": 400}).json()
-    assert near["elevation"]["radius_m"] == 50 and far["conduits"]["radius_m"] == 400
-    assert far["conduits"]["belt"] >= near["conduits"]["belt"]
+    assert near["elevation"]["radius_m"] == 50 and far["elevation"]["radius_m"] == 400
+    assert near["conduits"] == far["conduits"]
+    assert far["conduits"]["radius_m"] == conduits_mod.NEAR_RADIUS_M
     assert client.get("/api/inspect", params={"x_m": 0, "y_m": 0, "radius_m": 0}).status_code == 422
 
 
@@ -227,11 +229,9 @@ def test_inspect_without_a_save_keeps_nodes_and_nulls_conduits(game):
     assert body["pickups_within"] is None
 
 
-def test_spoilers_off_fills_nearest_with_nodes_an_extractor_can_work(client):
+def test_locked_nodes_stay_in_nearest_flagged_for_the_page_to_fade(client):
     at = {"x_m": -430.0, "y_m": -66.0}
-    every = client.get("/api/inspect", params=at).json()["nearest"]
-    kept = client.get("/api/inspect", params={**at, "spoilers": 0}).json()["nearest"]
-    assert any(n["spoiler"] for n in every)
-    assert len(kept) == web_inspect.INSPECT_NEAREST
-    assert not any(n["spoiler"] for n in kept)
-    assert [n["distance_m"] for n in kept] == sorted(n["distance_m"] for n in kept)
+    nearest = client.get("/api/inspect", params=at).json()["nearest"]
+    assert any(n["spoiler"] for n in nearest)
+    assert len(nearest) == web_inspect.INSPECT_NEAREST
+    assert [n["distance_m"] for n in nearest] == sorted(n["distance_m"] for n in nearest)
