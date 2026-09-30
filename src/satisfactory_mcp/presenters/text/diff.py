@@ -16,7 +16,7 @@ from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render
 
-__all__ = ["ENERGISED_CAVEAT", "RANGE_CAVEAT", "render_diff"]
+__all__ = ["ENERGISED_CAVEAT", "RANGE_CAVEAT", "built_lines", "render_diff"]
 
 #: Cost rows shown. Deliberately below ``limit``: the bill is ranked by shortfall and the
 #: gate on a build is at its head, so this is a headline and not the whole bill.
@@ -132,6 +132,33 @@ def _stage_detail(tracking: Tracking, index: int, limit: int) -> tuple[str, list
     return body, notes
 
 
+def built_lines(found, plan_name: str = "") -> list[str]:
+    """Where a stored plan's built machines were found, as header lines."""
+    if found is None or not hasattr(found, "tool_text"):
+        return []
+    lines = [f"# {found.tool_text()}"]
+    lines += [f"#   {extra}" for extra in (found.fallback, found.hint, *found.details()) if extra]
+    plan = f"plan={plan_name!r}" if plan_name else "plan=<name>"
+    top = found.top
+    if found.confidence == "unsure":
+        name = next((c.name for c in found.candidates if c.kind == "factory"), "<name>")
+        lines.append(
+            f"#   pass factory={name!r} for this call, or plan_factory {plan} "
+            f"for_factory={name!r} to keep it"
+        )
+    elif found.confidence == "no site":
+        lines.append(
+            f"#   site_plan {plan} at=<where> places it; plan_factory {plan} "
+            "for_factory=<factory> or 'whole world' counts without a site"
+        )
+    elif found.mode == "auto" and top is not None and top.kind == "cluster":
+        lines.append(
+            f"#   found automatically; name_factory select=['proposal:{top.proposal}'] names "
+            "that cluster, then for_factory= keeps it"
+        )
+    return lines
+
+
 def render_diff(
     g: GameData,
     st: WorldState,
@@ -178,6 +205,7 @@ def render_diff(
     if report.scope_note:
         plan_notes.append(report.scope_note)
     rep, pw, tracking = report.rep, report.power, report.tracking
+    found = built_lines(rep.built_at, plan_name)
     if report.drift_note:
         plan_notes.append(report.drift_note)
 
@@ -197,6 +225,7 @@ def render_diff(
                         f"[plan {req.plan_id}/save {rep.save_id}]"
                     ),
                     f"# {st.age_note}",
+                    *found,
                 ]
             ),
             body,
@@ -253,6 +282,7 @@ def render_diff(
         [
             f"# diff vs plan {objective}|{sel.description} [plan {req.plan_id}/save {rep.save_id}]",
             f"# {st.age_note}",
+            *found,
             render.kv(
                 [
                     ("target_MW", render.num(sol.net_mw)),

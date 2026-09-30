@@ -14,6 +14,7 @@ from ...domain.planning.commission_service import CommissionReport
 from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render
+from .diff import built_lines
 
 __all__ = ["render_commission"]
 
@@ -83,6 +84,7 @@ def render_commission(
             + (f" ({plan_name})" if plan_name else "")
             + f", {len(plan_run.waves)} wave(s)",
             f"# {st.age_note}",
+            *built_lines(report.built_at, plan_name),
             (
                 f"headroom_MW={head:,.0f} (source: {source})  "
                 f"plant_draw_MW={plan_run.plant_draw_mw:,.0f}  "

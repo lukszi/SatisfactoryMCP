@@ -290,3 +290,14 @@ def test_the_progress_figure(named):
         ["6 / 10 machines built (65% of the rate)"]
     )
 
+
+def test_chat_sees_where_built_was_found(planned):
+    from satisfactory_mcp.interfaces.mcp.tools import planning
+
+    out = planning.diff_vs_save(plan="spire-coast-full")
+    assert "# not placed: pick a spot or a factory to count what is built" in out
+    assert "site_plan plan='spire-coast-full'" in out
+    listing = planning.list_plans()
+    assert "\tbuilt\t" in listing and "not placed" in listing
+    world = planning.diff_vs_save(plan="spire-coast-full", factory="whole world")
+    assert "# counting the whole world ·" in world and "machines built" in world
