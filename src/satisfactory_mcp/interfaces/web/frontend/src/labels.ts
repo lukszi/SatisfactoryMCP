@@ -16,7 +16,6 @@ import { BAND, layer } from "./layers";
 import { layerWord } from "./markers";
 import { flyPadded, map } from "./map";
 import { regionLabels } from "./regions";
-import { noticeRenames } from "./rename";
 import { registerFetch } from "./registry";
 import { state } from "./state";
 import { note } from "./toast";
@@ -179,7 +178,6 @@ export function paddedBounds(bbox_m: BboxM | null | undefined): L.LatLngBounds |
 export function drawFactories(data: FactoriesResponse): void {
   // Chrome rather than built: a label is the page's name for a place, not a thing standing
   // in it -- the same kind of row as the region names two slots up, and read the same way.
-  noticeRenames(data.labels);
   var named = layer("factory labels", true, undefined, [BAND.chrome, 30, "factory labels"]);
   data.labels.forEach(function (f) {
     factoryAnchor(

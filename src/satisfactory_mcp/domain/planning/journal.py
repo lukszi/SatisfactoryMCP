@@ -25,6 +25,7 @@ KINDS = (
     "ask.drop",
     "ask.seen",
     "ask.answered",
+    "label.rename",
 )
 MAX_LINE = 1000
 MAX_TEXT = 200

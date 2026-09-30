@@ -9,6 +9,7 @@ import { loadLive, loadOne } from "./load";
 import { onActivity as onAskActivity, refetchAsks } from "./asks";
 import { onActivity as onPinActivity, refetchPins } from "./pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
+import { onRenameActivity } from "./rename";
 import { state } from "./state";
 import { fail } from "./toast";
 import { refreshWorlds } from "./worlds";
@@ -147,6 +148,7 @@ export function listen() {
       if (!data || !isNews(event)) return;
       onPinActivity(data);
       onAskActivity(data);
+      onRenameActivity(data);
       onActivityEvent(data);
     });
   }

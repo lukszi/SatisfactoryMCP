@@ -493,3 +493,27 @@ def test_the_user_data_override_moves_labels_and_plans(tmp_path, monkeypatch):
     assert config.user_dir() == tmp_path
     assert config.labels_dir.__wrapped__() == tmp_path / "labels"
     assert config.plans_dir.__wrapped__() == tmp_path / "plans"
+
+
+def test_a_rename_is_journalled_with_was_and_to(
+    empty, store_dir, projection, game, monkeypatch, tmp_path
+):
+    from satisfactory_mcp.domain.planning import journal
+    from satisfactory_mcp.interfaces.mcp.tools import factories as tools
+
+    monkeypatch.setattr(config, "activity_dir", lambda: tmp_path / "activity")
+    monkeypatch.setattr(journal, "_writer", "")
+    monkeypatch.setattr(journal, "_seq", {})
+    journal.set_writer("web")
+    monkeypatch.setattr(
+        tools, "_state", lambda *a, **k: WorldState(projection=projection, game=game)
+    )
+    body, row = _first(empty)
+    _name(empty, body, row, name="old name")
+    assert _rename(empty, "old name", "mid name", _version(empty)).status_code == 200
+    assert "renamed factory" in tools.rename_factory("mid name", "new name")
+    entries = [e for e in journal.read("X2faPVKjX06VaRzClNv5KQ") if e["kind"] == "label.rename"]
+    assert [(e["actor"]["kind"], e["args"]) for e in entries] == [
+        ("page", {"was": "old name", "to": "mid name"}),
+        ("chat", {"was": "mid name", "to": "new name"}),
+    ]
