@@ -63,9 +63,8 @@ __all__ = [
 #: world's 32 Coal Generators, which sit 887-1060 m from the oil plant.
 NEIGHBOUR_RADIUS_M = 200.0
 
-#: A machine is worth a reclock note only when its clock is off what the plan budgets. A
-#: plan clock within this of 100% counts as 100%: 99.43% is a derived ratio (the reference
-#: plan's 176 Fuel Generators carrying 175 machines' throughput), not an instruction.
+#: How far the built clocks' total may stray from the plan's before a job gets a clock
+#: note, as a share of the plan's total (docs/planning.md, "Clocks").
 RECLOCK_TOLERANCE = 0.02
 
 
@@ -377,23 +376,25 @@ def _node_backed(group: dict, index: _SaveIndex) -> bool:
     )
 
 
-def _planned_clock(group: dict) -> float:
-    """The clock the plan budgets for this job, 1.0 when it only differs by a derived ratio."""
-    clock = group["clock"] / group["machines"] if group["machines"] else 1.0
-    return 1.0 if abs(clock - 1.0) <= RECLOCK_TOLERANCE else clock
+def _clock(record: dict) -> float:
+    clock = record.get("clock")
+    return 1.0 if clock is None else float(clock)
 
 
-def _reclock_note(records: list[dict], planned: float) -> str:
-    """Machines whose own clock is off what the plan budgets, or "" when none is."""
-    off = [
-        r["clock"]
-        for r in records
-        if r.get("clock") is not None and abs(r["clock"] - planned) > RECLOCK_TOLERANCE
-    ]
-    if not off:
+def _reclock_note(records: list[dict], to_build: int, group: dict) -> str:
+    """A note when the built clocks plus the machines still to build at the plan's clock
+    miss the plan's total, or "" when they meet it. More machines at a lower clock is
+    the same rate, so neither the count nor one machine's clock decides it."""
+    need, planned = group["machines"], group["clock"]
+    if not records or not need or planned <= 0:
         return ""
-    worst = max(off, key=lambda c: abs(c - planned))
-    return f"{len(off)} at {worst * 100:.4g}%, plan budgets {planned * 100:.4g}%"
+    each = planned / need
+    ratio = (sum(_clock(r) for r in records) + to_build * each) / planned
+    if abs(ratio - 1.0) <= RECLOCK_TOLERANCE or (ratio > 1.0 and len(records) > need):
+        return ""
+    return (
+        f"clocks give {ratio * 100:.0f}% of the planned rate (plan: {need} at {each * 100:.4g}%)"
+    )
 
 
 def _row_for(
@@ -491,7 +492,10 @@ def _row_for(
         notes.append(f"{spare} {'more ' if unpause else ''}paused, not needed to cover this job")
         page.append(notes[-1])
 
-    reclock = _reclock_note([*records, *reused], _planned_clock(group))
+    if have_min is None:
+        reclock = _reclock_note([*records, *reused], build, group)
+    else:
+        reclock = _reclock_note(records[:have_min], build_max or 0, group)
     if reclock:
         # Not a change the plan asks for, so it never becomes the verb.
         notes.append(reclock)
