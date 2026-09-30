@@ -1327,11 +1327,11 @@ built on top of it.
 - **Narrow widths (T6):** below 900 px the rail is a drawer behind the header's **sections**
   button (`aria-expanded`). Opening it focuses the current entry; Escape, a click outside,
   focus leaving it or picking an entry closes it, and Escape or a pick returns focus to the
-  button. The header's **Map | Dashboard** and the dashboard's tab row stay. Nothing scrolls
-  sideways at 390 px.
-- **Selection** (`selection.ts`): one selected thing, a factory, a circuit or a point. The
-  map sets it (a factory label click, a machine click, a panel row, a map fly-to), the side
-  panel follows it
+  button. The header's **Map | Dashboard** and the dashboard's tab row are hidden there, so
+  each section is listed once, in the drawer (§16.4). Nothing scrolls sideways at 390 px.
+- **Selection** (`selection.ts`): one selected thing, a factory, a circuit, a machine, a
+  point or a world row. The map sets it (a factory label click, a machine click, a panel row,
+  a map fly-to), the side panel follows it
   (row highlight and the dashed outline, without flying), and the dashboard sets it when a
   factory or circuit detail opens. A factory that disappears from the health reply clears it.
 - **Status strip** (`status.ts`, `#status`): one line under the header. It shows the
@@ -1355,10 +1355,10 @@ built on top of it.
 - The selection is not written into the fragment. Links are built with the fragment of the
   moment, so a stale `sel=` in an older link would undo a newer selection; the dashboard
   address (`factories/<name>`, `power/<n>`) already deep-links the two kinds that matter.
-  It survives a reload through `sessionStorage` (per tab, so a new tab starts empty); a
-  stored factory the health reply does not know is dropped.
-- A machine clicked on the map opens its popup and becomes the selection as a point with the
-  building's name and a ring, the same as its **map** button in a table, without flying.
+  It lives in `localStorage` and is shared by every open tab (§16.4); a stored factory the
+  health reply does not know is dropped.
+- A machine clicked on the map opens its popup and becomes the selection as a machine with
+  the building's name and a ring, the same as its **map** button in a table, without flying.
 - Writes keep their own checks: `as_of` in a request body (naming) and 409 conflicts are
   untouched by the middleware, which only reads GET, HEAD and OPTIONS.
 
@@ -1366,9 +1366,32 @@ built on top of it.
 
 - Should the selection chip offer more than **map**: trace supply, plan here, open in
   dashboard as buttons (§2.3)?
-- Should a plain click on an empty point select it, as a machine click now does?
 - The panel beside the map still shows only Factories and Power; §2.1's panel with every
   rail section is not built. The rail sends the other sections to the dashboard.
+- No planner context claims empty clicks yet: the siting screen (planner_vision.md §4.7) is
+  not built, so `clicksPickPoints` has no caller.
+- Tabs on two different worlds share one selection; a factory one world does not know is
+  dropped by that tab's next health reply, for both.
+
+### 16.4 Decided 2026-09-30
+
+- **Shared selection.** `localStorage`, every access in `try`/`catch`. The `storage` event
+  carries a change to every other open tab live: the status strip, the panel row and the
+  ring follow without a reload.
+- **Drawer only below 900 px.** Where the drawer exists, the header's **Map | Dashboard**
+  and the dashboard's tab row are hidden; from 900 px the rail stands and the tab row is
+  hidden as before.
+- **Machine is a selection kind.** Key and ref are the instance leaf, the ref spelled
+  `machine:<leaf>` (docs/selectors.md: a machine-select term, a place and a trace seed).
+  A map click on a machine and a table **map** button on a row with an instance select it.
+  The status strip says "selected machine" and offers **map**, **trace** (for a machine or
+  a factory) and **clear**; chat's `ui_context` prints the ref and names a matching pin.
+- **Empty map ground deselects** (`mapclick.ts`). A plain click that no layer took clears
+  the selection. A click on a machine, node, label or any other interactive layer is that
+  layer's; a drag, a lasso stroke (amend mode swallows the click) and the World Rank
+  **pick on map** mode are untouched. A planner context that wants a point instead calls
+  `clicksPickPoints(owner, true)`; while any owner holds it, the click selects that spot
+  as a point.
 
 ---
 
