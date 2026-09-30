@@ -436,7 +436,7 @@ export function showAll(card: HTMLElement, grid: HTMLElement, rows: number, show
   card.appendChild(more);
 }
 
-export function chip(text: string, tone?: "ok" | "bad" | "blocked" | "mid" | "muted", title?: string): HTMLElement {
+export function chip(text: string, tone?: "ok" | "bad" | "blocked" | "remove" | "mid" | "muted", title?: string): HTMLElement {
   var c = make("span", "chip chip-" + (tone || "muted"), text);
   if (title) c.title = title;
   return c;

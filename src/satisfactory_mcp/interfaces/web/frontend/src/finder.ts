@@ -497,7 +497,7 @@ function fill(el: HTMLElement): void {
     );
     filterRow(el);
   }
-  if (view.error) cardLine(el, view.error, "blocked");
+  if (view.error) cardLine(el, view.error, "bad");
   else if (view.set) listed(el, view.set);
   else if (view.busy) cardLine(el, "finding…");
   if (view.dash) {

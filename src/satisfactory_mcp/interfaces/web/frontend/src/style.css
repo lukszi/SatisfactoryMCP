@@ -37,6 +37,7 @@
   --blocked: #ffd000;
   --mid: #9aa0a8;
   --flash: #f0ad4e;
+  --remove: #f0ad4e;
 
   --floor-up: #eef4f8;
   --floor-down: #93a5b4;
@@ -2432,6 +2433,10 @@ body.dash-on .mapcard {
   font-size: var(--fs-s);
 }
 
+.mapcard-note.bad {
+  color: var(--bad);
+}
+
 .mapcard-note.blocked {
   color: var(--blocked);
 }
@@ -2907,9 +2912,9 @@ path.lasso-add {
 }
 
 path.lasso-drop {
-  stroke: var(--blocked);
+  stroke: var(--remove);
   stroke-width: 3;
-  fill: var(--blocked);
+  fill: var(--remove);
   fill-opacity: 0.35;
 }
 

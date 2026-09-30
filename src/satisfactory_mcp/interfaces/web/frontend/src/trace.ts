@@ -211,7 +211,7 @@ function render(): void {
   box.appendChild(head);
   var data = view.data;
   if (view.error) {
-    cardLine(box, view.error, "blocked");
+    cardLine(box, view.error, "bad");
     return;
   }
   if (!data) {
