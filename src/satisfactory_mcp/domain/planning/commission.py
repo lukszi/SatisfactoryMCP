@@ -608,7 +608,7 @@ def track(
     for key, row in by_key.items():
         pool[key] = _states_for(row, health)
         clock_of[key] = row.plan_clock or 1.0
-        left[key] = row.have_rate if row.have_instances else 0.0
+        left[key] = sum(clock for _, _, clock in pool[key])
         low[key] = left[key] if row.have_min is None else row.have_min * clock_of[key]
 
     for wave in run.waves:

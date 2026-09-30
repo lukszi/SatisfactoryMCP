@@ -432,8 +432,8 @@ def _row_for(
     claimed_idle: set[str],
 ) -> DiffRow:
     need = group["machines"]
-    need_rate = group["clock"]
     plan_clock = _plan_clock(group)
+    need_rate = need * plan_clock
     records = _matched(group, index)
     notes: list[str] = []
     page: list[str] = []
