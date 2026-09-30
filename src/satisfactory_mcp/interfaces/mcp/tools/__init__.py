@@ -15,6 +15,7 @@ from . import (
     progression,
     prompts,
     resources,
+    settings,
     spatial,
     world,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "progression",
     "prompts",
     "resources",
+    "settings",
     "spatial",
     "world",
 ]

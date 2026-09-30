@@ -22,6 +22,8 @@ from ...core.gameassets import provenance
 from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
+from ...core.schema import NewerSchema
+from ...domain import settings
 from ...domain.factories.resolve import resolve_factory as _resolve_factory
 from ...domain.planning import journal
 from ...domain.planning.planlog import Actor
@@ -48,11 +50,22 @@ AsOf = Annotated[
     Field(default=None, description="pin to one world state: a sav:… token from an earlier answer"),
 ]
 
-#: The web page's "count biomass burners in headroom" setting, default off on both surfaces.
+#: The shared ``biomass`` setting (docs/shared-settings.md), overridable per call.
 Biomass = Annotated[
-    bool,
-    Field(default=False, description="count hand-fed biomass burners as generation"),
+    bool | None,
+    Field(
+        default=None,
+        description="count hand-fed biomass burners as generation; omitted: the shared setting",
+    ),
 ]
+
+
+def shared(key: str) -> tuple:
+    """A shared setting's value, and a note when the file could not be read (the default)."""
+    try:
+        return settings.value(key), ""
+    except (NewerSchema, OSError) as exc:
+        return settings.SPECS[key].default, f"shared settings unreadable, {key} defaulted: {exc}"
 
 
 @lru_cache(maxsize=1)

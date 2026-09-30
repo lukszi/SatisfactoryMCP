@@ -61,7 +61,7 @@ from ....presenters.text.compare import render_comparison
 from ....presenters.text.diff import ENERGISED_CAVEAT, RANGE_CAVEAT, render_diff
 from ....presenters.text.layout import render_layout
 from ....presenters.text.plan_factory import render_plan_factory
-from ..app import AsOf, Biomass, Limit, _item_id, _state, actor, game, mcp, retired
+from ..app import AsOf, Biomass, Limit, _item_id, _state, actor, game, mcp, retired, shared
 
 #: The stored-argument defaults, re-exported under their old home for ``server``. The
 #: two stage caveats keep their old home too: they were read from here before they had
@@ -1355,6 +1355,15 @@ def plan_layout(
     )
 
 
+def _shared_power(biomass: bool | None) -> tuple[bool, str, list[str]]:
+    """``biomass`` or the shared setting, the shared stage headroom, and any unread note."""
+    head, unread = shared("stage_headroom")
+    notes = [unread] if unread else []
+    if biomass is None:
+        biomass, _ = shared("biomass")
+    return biomass, head, notes
+
+
 @mcp.tool(structured_output=False)
 def diff_vs_save(
     objective: str = "max_mw",
@@ -1383,7 +1392,7 @@ def diff_vs_save(
         str | None,
         Field(description="only count this factory's machines as already built"),
     ] = None,
-    biomass: Biomass = False,
+    biomass: Biomass = None,
     ctx: Context | None = None,
 ) -> str:
     """What to change to get from the factory you have to the one plan_factory plans.
@@ -1446,6 +1455,8 @@ def diff_vs_save(
     plan_notes = [*pin_notes, *plan_notes]
     objective = plan_kwargs.get("objective") or objective
     stored = _recalled(st, plan)
+    biomass, default, unread = _shared_power(biomass)
+    plan_notes += unread
 
     try:
         report = build_diff_report(
@@ -1460,6 +1471,7 @@ def diff_vs_save(
             biomass=biomass,
             headroom_mw=stored.headroom_mw if stored is not None else None,
             stored=stored,
+            default=default,
         )
     except SelectorError as exc:
         return f"! {exc}"
@@ -1634,7 +1646,7 @@ def commission_plan(
     limit: Limit = 25,
     offset: int = 0,
     plan: Annotated[str | None, Field(description="recall a saved plan by name")] = None,
-    biomass: Biomass = False,
+    biomass: Biomass = None,
     ctx: Context | None = None,
 ) -> str:
     """In what order to switch a built plant on, without blowing the fuse.
@@ -1685,8 +1697,17 @@ def commission_plan(
     objective = plan_kwargs.get("objective") or objective
 
     stored = _recalled(st, plan)
+    biomass, default, unread = _shared_power(biomass)
+    plan_notes += unread
     report = build_commission_report(
-        g, st, plan_kwargs, headroom_mw, objective=objective, biomass=biomass, stored=stored
+        g,
+        st,
+        plan_kwargs,
+        headroom_mw,
+        objective=objective,
+        biomass=biomass,
+        stored=stored,
+        default=default,
     )
     view = {"view": "track", "stage": None, "section": "startup"}
     _journal_view(st, plan, "commission_plan", ctx, view)
