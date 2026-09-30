@@ -9,9 +9,11 @@
 
 import { code, esc, popup } from "./dom";
 import { cardWithFloors } from "./floors";
+import { coords } from "./format";
 import { batch } from "./layercontrol";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
+import { layerWord } from "./markers";
 import { flyPadded, map } from "./map";
 import { regionLabels } from "./regions";
 import { registerFetch } from "./registry";
@@ -41,7 +43,7 @@ export function reveal(names: string[]): void {
       var group = state.layers[name];
       if (!group || map.hasLayer(group)) return;
       group.addTo(map);
-      turned.push(name);
+      turned.push(layerWord(name));
     });
   });
   if (!turned.length) return;
@@ -186,7 +188,7 @@ export function drawFactories(data: FactoriesResponse): void {
         ["factory", f.name],
         ["machines", f.machines],
         ["notes", f.notes],
-        ["at", f.centroid_m[0] + ", " + f.centroid_m[1] + " m"],
+        ["at", coords(f.centroid_m[0], f.centroid_m[1])],
         ["selector", code("label:" + f.name)],
       ],
       f.name

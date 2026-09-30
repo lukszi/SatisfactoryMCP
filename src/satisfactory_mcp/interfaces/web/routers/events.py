@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 
 from ....core.saveio import projection as proj
 from ....domain.world import pin
-from ..watch import KIND_SAVE, KINDS, WatchEvent
+from ..watch import KIND_ACTIVITY, KIND_PLANS, KIND_SAVE, KINDS, WatchEvent
 
 __all__ = ["PING_SECONDS", "router"]
 
@@ -70,8 +70,12 @@ async def _payload(event: WatchEvent) -> str:
     return json.dumps({**body, "save_token": _MEMO[1]})
 
 
+def _history(event: WatchEvent, since: float) -> bool:
+    return event.kind in (KIND_PLANS, KIND_ACTIVITY) and event.mtime <= since
+
+
 @router.get("/events")
-async def events(request: Request) -> StreamingResponse:
+async def events(request: Request, since: float = 0.0) -> StreamingResponse:
     """Server-sent events: one event per observed write, plus keepalives.
 
     ``save`` is the game writing a ``.sav``; ``notes`` is a factory label (or the legacy
@@ -81,6 +85,9 @@ async def events(request: Request) -> StreamingResponse:
     ``save`` and ``notes`` carry the trigger, never the payload: the page decides what to
     refetch. ``plans`` and ``activity`` carry the commit summary or the entry itself, as
     docs/web-wire.md lists.
+
+    ``since`` is the page's open time: a ``plans`` or ``activity`` event stamped at or before
+    it is history, withheld from the replay and from the live stream alike.
     """
     watcher = request.app.state.watcher
     queue = watcher.subscribe()
@@ -92,7 +99,7 @@ async def events(request: Request) -> StreamingResponse:
             # way every time it connects.
             for kind in KINDS:
                 held = watcher.latest.get(kind)
-                if held is not None:
+                if held is not None and not _history(held, since):
                     yield _sse(kind, await _payload(held))
             while True:
                 if watcher.cut(queue) and queue.empty():
@@ -102,7 +109,8 @@ async def events(request: Request) -> StreamingResponse:
                 except TimeoutError:
                     yield _sse(None, "ping")
                     continue
-                yield _sse(event.kind, await _payload(event))
+                if not _history(event, since):
+                    yield _sse(event.kind, await _payload(event))
         finally:
             watcher.unsubscribe(queue)
 

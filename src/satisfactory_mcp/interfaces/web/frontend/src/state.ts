@@ -76,6 +76,8 @@ export interface PageState {
   stale: boolean;
 }
 
+var FRAGMENT_KEYS = ["world", "save", "floor", "mode", "pickups", "dash", "show", "z", "c"];
+
 /* The selection lives in the URL fragment so a reload, a bookmark or a pasted link lands on the
  * same world, save, layers and viewport. Read before `state` is built, because the boot values
  * below are half of it. */
@@ -120,12 +122,18 @@ export function parseHash(hash: string, garbled?: string[]): Record<string, stri
       if (eq <= 0) return;
       var key = piece.slice(0, eq);
       var raw = piece.slice(eq + 1);
+      var value: string;
       try {
-        out[key] = decodeURIComponent(raw);
+        value = decodeURIComponent(raw);
       } catch (ignored) {
-        out[key] = lenient(raw);
+        value = lenient(raw);
         if (garbled) garbled.push(key);
       }
+      if (FRAGMENT_KEYS.indexOf(key) < 0 && out.dash && out.dash.indexOf("?") >= 0) {
+        out.dash += "&" + encodeURIComponent(key) + "=" + encodeURIComponent(value);
+        return;
+      }
+      out[key] = value;
     });
   return out;
 }

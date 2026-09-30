@@ -1,11 +1,11 @@
 /* The Recipes codex: the dashboard's `dash=recipes…` section. See docs/frontend_vision.md §10. */
 
 import { get, latest, missing } from "./api";
-import { empty, error, link, loading, note, table, tabs2 } from "./dashkit";
+import { choice, empty, error, link, loading, note, table, tabs2 } from "./dashkit";
 import { el, make } from "./dom";
 import { count, num, perMin } from "./format";
 import { hashFor, writeHash } from "./map";
-import { go } from "./nav";
+import { decoded, go, subjectQuery, withQuery } from "./nav";
 import { registerFetch } from "./registry";
 import { setting } from "./settings";
 import { state } from "./state";
@@ -99,40 +99,24 @@ function subjectOf(dash: string): string {
   return cut < 0 ? "" : dash.slice(cut + 1);
 }
 
-function decoded(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch (_e) {
-    return text;
-  }
-}
-
 function parseBrowse(subject: string): Browse {
-  var cut = subject.indexOf("?");
-  var head = cut < 0 ? subject : subject.slice(0, cut);
-  var b: Browse = { mode: "items", q: "", kind: "part", alt: false, all: false };
+  var parts = subjectQuery(subject);
+  var p = parts.params;
+  var b: Browse = { mode: "items", q: p.q || "", kind: "part", alt: p.alt === "1", all: p.all === "1" };
   MODES.forEach(function (m) {
-    if (m[0] === head) b.mode = m[0];
+    if (m[0] === parts.head) b.mode = m[0];
   });
-  (cut < 0 ? "" : subject.slice(cut + 1)).split("&").forEach(function (pair) {
-    var eq = pair.indexOf("=");
-    var key = eq < 0 ? pair : pair.slice(0, eq);
-    var value = eq < 0 ? "" : decoded(pair.slice(eq + 1));
-    if (key === "q") b.q = value;
-    else if (key === "kind" && KINDS.some(function (k) { return k[0] === value; })) b.kind = value;
-    else if (key === "alt") b.alt = value === "1";
-    else if (key === "all") b.all = value === "1";
-  });
+  if (KINDS.some(function (k) { return k[0] === p.kind; })) b.kind = p.kind!;
   return b;
 }
 
 function browseDash(b: Browse): string {
-  var params: string[] = [];
-  if (b.q) params.push("q=" + encodeURIComponent(b.q));
-  if (b.mode === "recipes" && b.kind !== "part") params.push("kind=" + b.kind);
-  if (b.mode === "recipes" && b.alt) params.push("alt=1");
-  if (b.mode === "unlocked" && b.all) params.push("all=1");
-  return "recipes/" + b.mode + (params.length ? "?" + params.join("&") : "");
+  return withQuery("recipes/" + b.mode, {
+    q: b.q,
+    kind: b.mode === "recipes" && b.kind !== "part" ? b.kind : "",
+    alt: b.mode === "recipes" && b.alt ? "1" : "",
+    all: b.mode === "unlocked" && b.all ? "1" : "",
+  });
 }
 
 function hidesLocked(): boolean {
@@ -473,19 +457,16 @@ function renderItems(card: HTMLElement, b: Browse): boolean {
 
 function renderRecipeSearch(card: HTMLElement, b: Browse): boolean {
   var controls = make("div", "rx-controls");
-  var kind = make("select", "dash-select");
-  kind.setAttribute("aria-label", "recipe kind");
-  kind.setAttribute("data-candidate", "recipes-kind");
-  KINDS.forEach(function (k) {
-    var option = make("option", "", k[1]);
-    option.value = k[0];
-    kind.appendChild(option);
-  });
-  kind.value = b.kind;
-  kind.onchange = function () {
-    go(browseDash({ mode: b.mode, q: b.q, kind: kind.value, alt: b.alt, all: b.all }));
-  };
-  controls.appendChild(kind);
+  controls.appendChild(
+    choice(
+      KINDS,
+      b.kind,
+      function (value) {
+        go(browseDash({ mode: b.mode, q: b.q, kind: value, alt: b.alt, all: b.all }));
+      },
+      { label: "recipe kind", candidate: "recipes-kind" }
+    )
+  );
   controls.appendChild(
     checkbox("alternates only", b.alt, "recipes-alt", function (on) {
       go(browseDash({ mode: b.mode, q: b.q, kind: b.kind, alt: on, all: b.all }));

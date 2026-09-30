@@ -22,7 +22,10 @@ from ...core.gameassets import provenance
 from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
+from ...core.schema import NewerSchema
+from ...domain import settings
 from ...domain.factories.resolve import resolve_factory as _resolve_factory
+from ...domain.planning import journal
 from ...domain.planning.planlog import Actor
 from ...domain.planning.scenario import resolve_item
 from ...domain.spatial.origin import player_xy as _player_xy
@@ -32,8 +35,8 @@ from ...domain.world.state import WorldState, load_state
 
 INSTRUCTIONS = (
     "Plans are versioned: read one (list_plans name=) and pass its version as base_rev when "
-    "you change it. When the user says 'this', 'here' or 'what I have open', call ui_context "
-    "first."
+    "you change it. When the user says 'this', 'here' or 'what I have open', or quotes an "
+    "ask: or pin: id, call ui_context first."
 )
 
 mcp = FastMCP("satisfactory", instructions=INSTRUCTIONS)
@@ -47,11 +50,22 @@ AsOf = Annotated[
     Field(default=None, description="pin to one world state: a sav:… token from an earlier answer"),
 ]
 
-#: The web page's "count biomass burners in headroom" setting, default off on both surfaces.
+#: The shared ``biomass`` setting (docs/shared-settings.md), overridable per call.
 Biomass = Annotated[
-    bool,
-    Field(default=False, description="count hand-fed biomass burners as generation"),
+    bool | None,
+    Field(
+        default=None,
+        description="count hand-fed biomass burners as generation; omitted: the shared setting",
+    ),
 ]
+
+
+def shared(key: str) -> tuple:
+    """A shared setting's value, and a note when the file could not be read (the default)."""
+    try:
+        return settings.value(key), ""
+    except (NewerSchema, OSError) as exc:
+        return settings.SPECS[key].default, f"shared settings unreadable, {key} defaulted: {exc}"
 
 
 @lru_cache(maxsize=1)
@@ -83,6 +97,24 @@ def actor(ctx: Context | None) -> Actor:
     except (AttributeError, ValueError):
         client = ""
     return Actor("chat", client, os.getpid())
+
+
+def follow(st, ctx: Context | None, tool: str, view: str, params: dict, text: str) -> None:
+    """Journal a finder call, so a page that follows chat opens the same World view."""
+    try:
+        sav = pin.check(st.header, None)
+    except Exception:
+        sav = ""
+    kept = {k: str(v) for k, v in params.items() if v not in (None, "")}
+    journal.append(
+        st.world_id,
+        "world.find",
+        actor=actor(ctx),
+        sav=sav,
+        tool=tool,
+        args={"view": view, "params": kept},
+        text=text,
+    )
 
 
 def _item_id(query: str) -> str | None:

@@ -356,6 +356,182 @@ def test_activity_merges_commits_and_journal_entries_by_time(client):
     assert len(client.get("/api/activity?limit=1").json()["entries"]) == 1
 
 
+def test_repeat_looks_at_one_item_collapse_to_the_newest(client):
+    journal.set_writer("web")
+    key = _create(client)["key"]
+    look = {"view": "alternates", "item": "Desc_IronPlateReinforced_C"}
+    for n in range(60):
+        journal.append(WORLD, "plan.view", actor=CHAT, plan=key, args=look, text=f"look {n}")
+    other = {**look, "item": "Desc_IronPlate_C"}
+    journal.append(WORLD, "plan.view", actor=CHAT, plan=key, args=other, text="plate")
+    rows = client.get("/api/activity?limit=50").json()["entries"]
+    assert [(r["kind"], r["text"]) for r in rows] == [
+        ("commit", rows[0]["text"]),
+        ("plan.view", "look 59"),
+        ("plan.view", "plate"),
+    ]
+    assert [r["count"] for r in rows] == [1, 60, 1]
+
+
+def test_a_run_of_finder_calls_is_one_row_with_a_count_and_the_latest_params(client):
+    journal.set_writer("web")
+    key = _create(client)["key"]
+    for n in range(70):
+        params = {"resource": "Desc_OreCopper_C", "at": "hub", "within_m": str(500 + n)}
+        journal.append(
+            WORLD,
+            "world.find",
+            actor=CHAT,
+            args={"view": "rank", "params": params},
+            text=f"find {n}",
+        )
+    journal.append(
+        WORLD, "world.find", actor=Actor("chat", "other", 7), args={"view": ""}, text="elsewhere"
+    )
+    rows = client.get("/api/activity?limit=50").json()["entries"]
+    assert [(r["kind"], r["text"], r["count"]) for r in rows] == [
+        ("commit", rows[0]["text"], 1),
+        ("world.find", "find 69", 70),
+        ("world.find", "elsewhere", 1),
+    ]
+    assert rows[1]["args"]["params"]["within_m"] == "569"
+    assert rows[0]["plan"] == key
+
+
+# ------------------------------------------------------------------ graph, deltas, alternates
+
+
+def test_the_solve_carries_the_production_graph_with_ids_and_depths(client, game):
+    body = client.post("/api/plan/solve", json={"args": HMF_ARGS}, headers=ORIGIN).json()
+    rows, graph = body["rows"], body["graph"]
+    ids = [r["id"] for r in rows]
+    assert len(set(ids)) == len(ids)
+    assert all(r["id"] == (r["recipe_id"] or r["id"]) for r in rows)
+    assert all(r["id"].startswith("label:") for r in rows if r["recipe_id"] is None)
+    kinds = [n["kind"] for n in graph["nodes"]]
+    assert kinds == sorted(kinds, key=["input", "process", "export"].index)
+    procs = [n for n in graph["nodes"] if n["kind"] == "process"]
+    assert [n["id"] for n in procs] == ids and [n["row"] for n in procs] == ids
+    assert [n["rank"] for n in procs] == [r["depth"] + 1 for r in rows]
+    [export] = [n for n in graph["nodes"] if n["kind"] == "export"]
+    assert export["id"] == f"ex:{RIP}" and export["item"] == "Desc_IronPlateReinforced_C"
+    assert export["rank"] == max(n["rank"] for n in procs) + 1
+    assert export["detail"] == "exported 5/min"
+    top = next(n for n in procs if n["item"] == "Desc_IronPlateReinforced_C")
+    row = next(r for r in rows if r["id"] == top["id"])
+    assert top["detail"].startswith(f"{row['building']} ×{row['machines']} · ")
+    assert top["detail"].endswith("%") and " MW · " in top["detail"]
+    names = {n["id"] for n in graph["nodes"]}
+    assert all(e["source"] in names and e["target"] in names for e in graph["edges"])
+    into = sum(e["per_min"] for e in graph["edges"] if e["target"] == export["id"])
+    assert into == pytest.approx(5.0, abs=1e-3)
+    miners = [r for r in rows if r["id"].startswith("label:")]
+    assert miners and all(r["depth"] == 0 for r in miners)
+    assert len(json.dumps(graph)) < 8000
+
+
+def test_an_infeasible_solve_has_an_empty_graph(client):
+    args = {**HMF_ARGS, "export_minimums": {RIP: 10_000_000}}
+    body = client.post("/api/plan/solve", json={"args": args}, headers=ORIGIN).json()
+    assert body["feasible"] is False and body["graph"] == {"nodes": [], "edges": []}
+
+
+def test_the_delta_names_rows_added_changed_and_removed(client):
+    key = _create(client)["key"]
+    alt = "Recipe_Alternate_ReinforcedIronPlate_1_C"
+    _push(client, key, 1, {"op": "add", "field": "banned", "member": alt}, _rate(10))
+    body = client.get(f"/api/plan/delta?key={key}&from_rev=1").json()
+    changes = {r["id"]: r for r in body["rows"]}
+    assert changes[alt]["change"] == "removed" and changes[alt]["machines_after"] == 0
+    added = [r for r in body["rows"] if r["change"] == "added"]
+    assert added and all(r["machines_before"] == 0 for r in added)
+    order = [r["change"] for r in body["rows"]]
+    assert order == sorted(order, key=["added", "changed", "removed"].index)
+    same = client.get(f"/api/plan/delta?key={key}&from_rev=2&to_rev=2").json()
+    assert same["rows"] == []
+
+
+def test_alternates_for_a_stored_plan(client):
+    key = _create(client)["key"]
+    reply = client.post(
+        "/api/plan/alternates",
+        json={"key": key, "item": "Desc_IronPlateReinforced_C"},
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    assert body["key"] == key and body["rev"] == 1 and body["name"] == RIP
+    assert body["text"].startswith(f"recipes for {RIP} in “rip 5” v1: ")
+    assert {o["status"] for o in body["options"]} >= {"in use", "available"}
+    hidden = client.post(
+        "/api/plan/alternates?spoilers=0",
+        json={"key": key, "item": RIP},
+        headers=ORIGIN,
+    ).json()
+    assert all(o["status"] != "locked" for o in hidden["options"])
+    assert hidden["hidden"] == len(body["options"]) - len(hidden["options"])
+    by_rev = client.post(
+        "/api/plan/alternates", json={"key": key, "rev": 1, "item": RIP}, headers=ORIGIN
+    )
+    assert by_rev.status_code == 200
+
+
+def _required(member):
+    return {"op": "add", "field": "required", "member": member}
+
+
+def test_a_drawer_require_replaces_every_required_recipe_for_the_item_at_the_head(client):
+    bolted = "Recipe_Alternate_ReinforcedIronPlate_1_C"
+    stitched = "Recipe_Alternate_ReinforcedIronPlate_2_C"
+    key = _create(client)["key"]
+    assert _push(client, key, 1, _required(bolted)).status_code == 200
+    reply = client.post(
+        f"/api/plans/{key}/ops",
+        json={
+            "base_rev": 2,
+            "ops": [_required(stitched)],
+            "require_item": "Desc_IronPlateReinforced_C",
+        },
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 200, reply.text
+    assert reply.json()["state"]["args"]["required"] == [stitched]
+    plain = _push(client, key, 3, _required(bolted))
+    assert sorted(plain.json()["state"]["args"]["required"]) == sorted([bolted, stitched])
+
+
+def test_a_drawer_require_refuses_when_another_was_required_since_its_base(client):
+    bolted = "Recipe_Alternate_ReinforcedIronPlate_1_C"
+    stitched = "Recipe_Alternate_ReinforcedIronPlate_2_C"
+    key = _create(client)["key"]
+    assert _push(client, key, 1, _required(bolted)).status_code == 200
+    reply = client.post(
+        f"/api/plans/{key}/ops",
+        json={
+            "base_rev": 1,
+            "ops": [_required(stitched)],
+            "require_item": "Desc_IronPlateReinforced_C",
+        },
+        headers=ORIGIN,
+    )
+    assert reply.status_code == 409 and reply.json()["outdated"] is True
+    assert client.get(f"/api/plans/{key}").json()["args"]["required"] == [bolted]
+
+
+def test_alternates_refuse_unknown_plans_revs_and_items(client):
+    key = _create(client)["key"]
+    for payload in (
+        {"key": "0000beef", "item": RIP},
+        {"key": "..", "item": RIP},
+        {"key": key, "rev": 9, "item": RIP},
+        {"key": key, "item": "Plait of nothing"},
+    ):
+        reply = client.post("/api/plan/alternates", json=payload, headers=ORIGIN)
+        assert reply.status_code == 404, payload
+    missing = client.post("/api/plan/alternates", json={"key": key}, headers=ORIGIN)
+    assert missing.status_code in (400, 422)
+
+
 # ------------------------------------------------------------------ the schema
 
 
@@ -378,3 +554,125 @@ def test_the_conflict_bodies_reach_the_published_schema(client):
     ]
     assert len(ops) == 6
     json.dumps(schema)
+
+
+# ------------------------------------------------------------------ track (P4)
+
+
+def _headroom(value):
+    return {"op": "set", "field": "headroom_mw", "value": value}
+
+
+def test_track_is_one_solve_of_the_head_with_rows_and_stages(client):
+    key = _create(client)["key"]
+    pushed = _push(client, key, 1, _headroom(2000))
+    assert pushed.status_code == 200, pushed.text
+    assert pushed.json()["state"]["headroom_mw"] == 2000.0
+    assert pushed.json()["text"] == 'plan "rip 5" is now v2'
+    assert client.get(f"/api/plans/{key}").json()["headroom_mw"] == 2000.0
+    reply = client.get(f"/api/plan/track?key={key}")
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    assert body["key"] == key and body["rev"] == 2 and body["feasible"] is True
+    assert (
+        body["headroom_mw"] == 2000.0 and body["startup"]["headroom_source"] == "stored on the plan"
+    )
+    assert body["rows"] and body["stages"] and body["count"] == len(body["stages"])
+    assert body["rows"][0]["id"].startswith("job:")
+    old = client.get(f"/api/plan/track?key={key}&rev=1").json()
+    assert old["rev"] == 1 and old["headroom_mw"] is None
+    assert old["startup"]["headroom_source"] == "measured from the save"
+    plate = client.get(f"/api/plan/track?key={key}&rev=1&headroom=nameplate").json()
+    assert plate["startup"]["headroom_source"] == "nameplate from the save"
+    assert client.get(f"/api/plan/track?key={key}&headroom=given").status_code == 422
+    assert client.get(f"/api/plan/track?key={key}&biomass=include").status_code == 200
+    assert (
+        client.get(f"/api/plan/track?key={key}&biomass=include").json()["power"]["biomass"] is True
+    )
+    assert client.get(f"/api/plan/track?key={key}&biomass=true").status_code == 422
+    assert client.get("/api/plan/feeders?biomass=true").status_code == 422
+
+
+def test_track_refuses_unknown_plans_and_revs(client):
+    key = _create(client)["key"]
+    for query in ("key=0000beef", "key=..", f"key={key}&rev=4"):
+        assert client.get(f"/api/plan/track?{query}").status_code == 404, query
+
+
+def test_track_is_a_400_when_the_solve_refuses(client, monkeypatch):
+    from satisfactory_mcp.domain.planning import track
+
+    key = _create(client)["key"]
+
+    def refuse(*_a, **_k):
+        raise ValueError("no such item")
+
+    monkeypatch.setattr(track, "track_view", refuse)
+    reply = client.get(f"/api/plan/track?key={key}")
+    assert reply.status_code == 400 and reply.json() == {"error": "no such item"}
+
+
+def test_track_of_an_infeasible_plan_or_an_empty_scope_is_a_200(client):
+    key = _create(client, args={**HMF_ARGS, "export_minimums": {RIP: 1e7}})["key"]
+    body = client.get(f"/api/plan/track?key={key}").json()
+    assert body["feasible"] is False and body["cause"] and body["rows"] == []
+    other = _create(client, name="scoped")["key"]
+    _push(client, other, 1, {"op": "set", "field": "factory", "value": "nowhere"})
+    body = client.get(f"/api/plan/track?key={other}").json()
+    assert body["scope"] == "nowhere" and body["scope_error"] == "" and body["rows"]
+    assert body["built_at"]["fallback"].startswith("“nowhere” has no machines left")
+
+
+def test_feeders_answer_on_demand(client):
+    reply = client.get("/api/plan/feeders")
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    assert isinstance(body["feeders"], list) and body["text"]
+    assert body["total_mw"] >= 0
+    assert all({"name", "instance", "x_m", "y_m", "mw"} <= set(f) for f in body["feeders"])
+
+
+def test_headroom_is_validated_merged_and_undone_like_any_scalar(client):
+    key = _create(client)["key"]
+    for bad in (0, -5, 2_000_000, "lots", True):
+        assert _push(client, key, 1, _headroom(bad)).status_code == 400, bad
+    assert _push(client, key, 1, _headroom(2000)).status_code == 200
+    PlanLog(WORLD).push(key, 2, [_headroom(1500)], actor=CHAT)
+    clash = _push(client, key, 2, _headroom(3000))
+    assert clash.status_code == 409
+    assert clash.json()["conflicts"][0]["key"] == "headroom_mw"
+    merged = _push(client, key, 2, _rate(15))
+    assert merged.status_code == 200 and merged.json()["state"]["headroom_mw"] == 1500.0
+    undo = client.post(f"/api/plans/{key}/undo", json={"base_rev": 4, "rev": 3}, headers=ORIGIN)
+    assert undo.status_code == 200, undo.text
+    assert undo.json()["state"]["headroom_mw"] == 2000.0
+    cleared = _push(client, key, 5, _headroom(None))
+    assert cleared.json()["state"]["headroom_mw"] is None
+    assert cleared.json()["state"]["text"] == "v6 page: startup headroom: save default"
+
+
+def test_the_track_and_ask_shapes_reach_the_published_schema(client):
+    schema = client.get("/openapi.json").json()
+    names = schema["components"]["schemas"]
+    for name in ("TrackResponse", "TrackRow", "TrackStage", "FeedersResponse", "AskRow"):
+        assert name in names, name
+    assert "headroom_mw" in names["PlanStateBody"]["properties"]
+    drop = schema["paths"]["/api/asks/{n}"]["delete"]
+    assert drop["responses"]["409"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AskStaleResponse"
+    }
+    ids = {
+        op["operationId"].split("_api_")[0] for p in schema["paths"].values() for op in p.values()
+    }
+    assert {"plan_track", "plan_feeders", "asks", "create_ask", "drop_ask"} <= ids
+
+
+def test_the_last_stage_and_the_budget_start_from_the_same_measured_headroom(client):
+    key = _create(client)["key"]
+    measured = client.get("/api/power/circuits").json()["world"]["measured_headroom_mw"]
+    power = client.get(f"/api/plan/track?key={key}").json()["power"]
+    assert power["measured_headroom_mw"] == measured
+    assert _push(client, key, 1, _headroom(measured)).status_code == 200
+    stages = client.get(f"/api/plan/track?key={key}").json()["stages"]
+    net = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()["mw_net"]
+    assert stages[-1]["available_after"] == pytest.approx(measured + net, abs=0.006)

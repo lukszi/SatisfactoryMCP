@@ -6,11 +6,17 @@
 
 import { el } from "./dom";
 import { loadLive, loadOne } from "./load";
-import { onActivityEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
+import { onActivity as onAskActivity, refetchAsks } from "./asks";
+import { onActivity as onPinActivity, onPlanChange, refetchPins } from "./pins";
+import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
+import { onRenameActivity } from "./rename";
+import { onSettingsEvent, refetchSharedSettings } from "./shared-settings";
 import { state } from "./state";
 import { fail } from "./toast";
+import { onFindActivity } from "./world";
 import { refreshWorlds } from "./worlds";
 
+import type { SettingsResponse } from "./api-shapes";
 import type { ActivityEvent, PlansEvent } from "./planner-core";
 
 /* The stream replays the newest event of every kind to each new subscriber, so the first one
@@ -36,6 +42,28 @@ function parsed<T>(event: MessageEvent): T | null {
   }
 }
 
+/* Every activity entry reaches every listener once, live or replayed after a reconnect. A
+ * replay can hold several finds; only the newest may move the page, the older ones are history. */
+var dispatched: Record<string, boolean> = {};
+
+function dispatchActivity(entries: ActivityEvent[]): void {
+  var fresh = entries.filter(function (entry) {
+    return !dispatched[entry.id];
+  });
+  var lastFind = -1;
+  fresh.forEach(function (entry, i) {
+    if (entry.kind === "world.find" && entry.actor.kind !== "page") lastFind = i;
+  });
+  fresh.forEach(function (entry, i) {
+    dispatched[entry.id] = true;
+    onPinActivity(entry);
+    onAskActivity(entry);
+    if (entry.kind !== "world.find" || i === lastFind) onFindActivity(entry);
+    onRenameActivity(entry);
+    onActivityEvent(entry);
+  });
+}
+
 function showLive(kind: string, text: string, title: string): void {
   var live = el("live");
   live.className = "live" + (kind ? " " + kind : "");
@@ -50,75 +78,106 @@ function showLive(kind: string, text: string, title: string): void {
  * of what that kind of write can change. The grey dot means connecting, retrying or dead, so
  * its text says which, and losing an ESTABLISHED connection also says so in a toast. */
 export function listen() {
-  var source = new EventSource("/api/events");
+  var source: EventSource | null = null;
   var wasOpen = false;
   var missed = false;
-  showLive("", "connecting…", "connecting to the save watcher…");
-  source.onopen = function () {
-    if (missed) resync();
-    missed = false;
-    wasOpen = true;
-    showLive("on", "live", "live: watching for save writes");
-  };
-  source.onerror = function () {
-    var dropped = wasOpen;
-    missed = missed || dropped;
+  window.addEventListener("pagehide", function () {
+    if (!source) return;
+    source.close();
+    source = null;
     wasOpen = false;
-    if (missed) showLive("lost", "offline", "live connection lost; retrying (is the server still running?)");
-    else showLive("", "connecting…", "connecting to the save watcher…");
-    if (dropped) fail("live updates lost; what is on screen may be stale");
-  };
-  var resync = function () {
-    refreshWorlds();
-    if (!state.save) {
-      loadLive();
-      onSaveEvent();
-    }
-    loadOne("/api/factories");
-    loadOne("/api/factories/health");
-    loadOne("/api/power/circuits");
-    loadOne("/api/plans");
-    resyncPlanner();
-  };
-  var blink = function () {
-    var live = el("live");
-    live.classList.add("hit");
-    setTimeout(function () {
-      live.classList.remove("hit");
-    }, 800);
-  };
-  source.addEventListener("save", function (event) {
-    if (!isNews(event)) return;
-    blink();
-    refreshWorlds();
-    // A pinned save is pinned: the point of the picker is to hold a view while the game
-    // autosaves over the newest. The dot still blinks so the write is not invisible.
-    if (!state.save) {
-      loadLive();
-      onSaveEvent();
-    }
   });
-  /* The other write: a factory label or a stored plan, which the MCP tools put on disk while
-   * the page is open and no autosave goes near. These two paths are the payloads built from
-   * those files and no others -- and a pinned save does not pin either, because a label and
-   * a siting belong to the world rather than to one file in it. */
-  source.addEventListener("notes", function (event) {
-    if (!isNews(event)) return;
-    blink();
-    loadOne("/api/factories");
-    loadOne("/api/factories/health");
-    loadOne("/api/power/circuits");
-    loadOne("/api/plans");
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted || source) return;
+    missed = true;
+    connect();
   });
-  source.addEventListener("plans", function (event) {
-    var data = parsed<PlansEvent>(event);
-    if (!data || !isNews(event)) return;
-    blink();
-    loadOne("/api/plans");
-    onPlansEvent(data);
-  });
-  source.addEventListener("activity", function (event) {
-    var data = parsed<ActivityEvent>(event);
-    if (data && isNews(event)) onActivityEvent(data);
-  });
+  connect();
+
+  function connect() {
+    showLive("", "connecting…", "connecting to the save watcher…");
+    source = new EventSource(`/api/events?since=${state.opened / 1000}`);
+    wire(source);
+  }
+
+  function wire(es: EventSource) {
+    es.onopen = function () {
+      if (missed) resync();
+      missed = false;
+      wasOpen = true;
+      showLive("on", "live", "live: watching for save writes");
+    };
+    es.onerror = function () {
+      var dropped = wasOpen;
+      missed = missed || dropped;
+      wasOpen = false;
+      if (missed) showLive("lost", "offline", "live connection lost; retrying (is the server still running?)");
+      else showLive("", "connecting…", "connecting to the save watcher…");
+      if (dropped) fail("live updates lost; what is on screen may be stale");
+    };
+    var resync = function () {
+      refreshWorlds();
+      if (!state.save) {
+        loadLive();
+        onSaveEvent();
+      }
+      loadOne("/api/factories");
+      loadOne("/api/factories/health");
+      loadOne("/api/power/circuits");
+      loadOne("/api/plans");
+      refetchPins();
+      refetchAsks();
+      refetchSharedSettings();
+      resyncPlanner(dispatchActivity);
+    };
+    var blink = function () {
+      var live = el("live");
+      live.classList.add("hit");
+      setTimeout(function () {
+        live.classList.remove("hit");
+      }, 800);
+    };
+    es.addEventListener("save", function (event) {
+      if (!isNews(event)) return;
+      blink();
+      refreshWorlds();
+      // A pinned save is pinned: the point of the picker is to hold a view while the game
+      // autosaves over the newest. The dot still blinks so the write is not invisible.
+      if (!state.save) {
+        loadLive();
+        onSaveEvent();
+      }
+    });
+    /* The other write: a factory label or a stored plan, which the MCP tools put on disk while
+     * the page is open and no autosave goes near. These two paths are the payloads built from
+     * those files and no others -- and a pinned save does not pin either, because a label and
+     * a siting belong to the world rather than to one file in it. */
+    es.addEventListener("notes", function (event) {
+      if (!isNews(event)) return;
+      blink();
+      loadOne("/api/factories");
+      loadOne("/api/factories/health");
+      loadOne("/api/power/circuits");
+      loadOne("/api/plans");
+      refetchPins();
+      onNotesEvent();
+    });
+    es.addEventListener("plans", function (event) {
+      var data = parsed<PlansEvent>(event);
+      if (!data || !isNews(event)) return;
+      blink();
+      loadOne("/api/plans");
+      onPlanChange(data);
+      onPlansEvent(data);
+    });
+    es.addEventListener("activity", function (event) {
+      var data = parsed<ActivityEvent>(event);
+      if (!data || !isNews(event)) return;
+      dispatchActivity([data]);
+    });
+    es.addEventListener("settings", function (event) {
+      var data = parsed<SettingsResponse>(event);
+      if (data) onSettingsEvent(data);
+    });
+  }
 }

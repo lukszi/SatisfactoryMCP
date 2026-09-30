@@ -7,6 +7,7 @@ stops enforcing its row cap, and a response that quietly grows.
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 from conftest import REFERENCE_FIELD
@@ -121,11 +122,47 @@ def test_tool_descriptions_stay_short():
         assert len(first) <= 120, (tool.name, first)
 
 
+def test_ui_context_takes_answered_asks_without_a_new_tool():
+    tools = {t.name: t for t in _run(srv.mcp.list_tools())}
+    props = tools["ui_context"].inputSchema["properties"]
+    assert set(props) == {"save", "world", "answered"}
+    assert props["answered"]["description"] == (
+        'ask:N ids you have answered, each may add a line: "ask:7 <answer>"'
+    )
+    assert "ask:" in srv.mcp.instructions and "pin:" in srv.mcp.instructions
+    first = tools["ui_context"].description.strip().splitlines()[0]
+    assert len(first) <= 120
+
+
+def test_show_on_map_pins_with_a_flag_rather_than_a_tool():
+    tools = {t.name: t for t in _run(srv.mcp.list_tools())}
+    pin = tools["show_on_map"].inputSchema["properties"]["pin"]
+    assert pin["default"] is False and "pin:N" in pin["description"]
+    assert "pin" not in tools
+
+
+def test_alternates_for_item_takes_a_plan_without_a_second_tool():
+    tools = {t.name: t for t in _run(srv.mcp.list_tools())}
+    plan = tools["alternates_for_item"].inputSchema["properties"]["plan"]
+    assert "stored plan" in json.dumps(plan)
+    assert [n for n in tools if "alternate" in n or "swap" in n] == ["alternates_for_item"]
+    first = tools["alternates_for_item"].description.strip().splitlines()[0]
+    assert len(first) <= 120
+
+
 def test_describe_location_declares_one_way_to_say_where():
     """It declared `x_m`/`y_m` AND `at=`, which strictly subsumes them, so a client reading
     the schema met two spellings of one thing and had to guess which the tool preferred."""
     tool = next(t for t in _run(srv.mcp.list_tools()) if t.name == "describe_location")
     assert set(tool.inputSchema["properties"]) == {"at", "radius_m", "save", "world", "as_of"}
+
+
+def test_the_finder_tools_take_the_status_and_network_the_page_filters_by():
+    """``status`` and ``network`` are the World page's filters, so chat can ask the same."""
+    tools = {t.name: t for t in _run(srv.mcp.list_tools())}
+    assert "status" in tools["search_resource_nodes"].inputSchema["properties"]
+    assert "only_free" in tools["search_resource_nodes"].inputSchema["properties"]
+    assert "network" in tools["search_conduits"].inputSchema["properties"]
 
 
 @pytest.mark.parametrize(
@@ -314,9 +351,9 @@ def test_the_registered_surface_survives_the_split():
     no tool did. 49: +rename_plan. 50: +milestones, the HUB half of the ladder mam_research
     already walked for the MAM. 52: +rename_factory, +amend_factory -- a label could be
     written and deleted and nothing in between. 54: +plan_log, +ui_context -- plan versions
-    and what the page has open."""
+    and what the page has open. 55: +settings, what the page and chat share."""
     tools = _run(srv.mcp.list_tools())
-    assert len(tools) == 54
+    assert len(tools) == 55
     assert {
         "amend_factory",
         "collected_from_world",
@@ -330,6 +367,7 @@ def test_the_registered_surface_survives_the_split():
         "rename_factory",
         "rename_plan",
         "search_conduits",
+        "settings",
         "site_plan",
         "somersloops",
         "stock",

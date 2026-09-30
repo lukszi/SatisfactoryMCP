@@ -80,6 +80,22 @@ class AspectLink(TypedDict):
     machines: int
 
 
+class AspectIssue(TypedDict):
+    """``machine`` is the instance the issue is about, for a ``machine:`` selector; null when
+    the issue names none."""
+
+    text: str
+    machine: str | None
+
+
+def _issue(line: str, bname) -> AspectIssue:
+    head, sep, rest = line.partition(": ")
+    cls, found, _tail = head.rpartition("_C_")
+    if not sep or not found:
+        return {"text": line, "machine": None}
+    return {"text": f"{bname(cls + '_C')}: {rest}", "machine": head}
+
+
 class FactoryAspectsResponse(TypedDict):
     name: str
     size: int
@@ -96,7 +112,7 @@ class FactoryAspectsResponse(TypedDict):
     buildings: list[AspectCount]
     nodes: list[AspectNode]
     links: list[AspectLink]
-    issues: list[str]
+    issues: list[AspectIssue]
 
 
 def _label_machines(st, factory: str) -> tuple[str, list[str]] | None:
@@ -202,7 +218,7 @@ def factory_aspects(
             {"factory": None if k == "(unlabelled)" else k, "machines": v}
             for k, v in view.links.most_common()
         ],
-        "issues": list(view.issues),
+        "issues": [_issue(line, bname) for line in view.issues],
     }
 
 

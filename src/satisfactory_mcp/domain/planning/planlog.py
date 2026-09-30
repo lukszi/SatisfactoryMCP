@@ -22,6 +22,7 @@ from ...core import atomic, filelock, schema
 from .store import PLAN_ARGS, Plan, PlanStore
 
 __all__ = [
+    "FACTORY_SENTINELS",
     "OBJECTIVES",
     "POWER",
     "SNAPSHOT_EVERY",
@@ -45,9 +46,11 @@ __all__ = [
     "describe_commit",
     "describe_op",
     "diff_args",
+    "factory_words",
     "inverse",
     "is_power",
     "merge_key",
+    "use_recipe_names",
 ]
 
 SNAPSHOT_EVERY = 50
@@ -82,9 +85,14 @@ KINDS: dict[str, str] = {
     "recycle_once": "set",
     "supplied": "map",
     "logistics_items": "set",
+    "power_priority": "scalar",
 }
 FLOAT_SETS = frozenset({"clocks", "extractor_clocks"})
-PLAN_SCALARS = ("notes", "factory")
+PLAN_SCALARS = ("notes", "factory", "headroom_mw")
+HEADROOM_MAX_MW = 1_000_000.0
+#: Percent clock cap per power-priority step, for words; optimize.POWER_PRIORITY_CLOCKS is
+#: the source, repeated here because the plan log needs no solver.
+POWER_PRIORITY_PERCENT = ("100%", "75%", "50%", "33%", "25%")
 KWARG_NAME = {"banned": "exclude_recipes"}
 
 
@@ -150,7 +158,7 @@ def _number(name: str, value, optional: bool = False) -> float | None:
     if value is None and optional:
         return None
     if isinstance(value, bool) or not isinstance(value, int | float):
-        raise _fail(f"{name} must be a number, not {value!r}")
+        raise _fail(f"{name} must be a number, not {json.dumps(value, default=str)}")
     if not math.isfinite(value):
         raise _fail(f"{name} must be finite, not {value!r}")
     return float(value)
@@ -162,7 +170,7 @@ def _count(name: str, value, optional: bool = False) -> int | None:
     if isinstance(value, float) and math.isfinite(value) and value.is_integer():
         value = int(value)
     if isinstance(value, bool) or not isinstance(value, int):
-        raise _fail(f"{name} must be a whole number, not {value!r}")
+        raise _fail(f"{name} must be a whole number, not {json.dumps(value, default=str)}")
     if value < 0:
         raise _fail(f"{name} must be 0 or more, not {value}")
     return value
@@ -176,10 +184,35 @@ def _text(name: str, value, optional: bool = False) -> str | None:
     return value
 
 
+#: ``factory`` values that are not a factory name: count the whole world, or nothing yet.
+FACTORY_SENTINELS = ("/world", "/none")
+
+
+def _factory(name: str, value) -> str:
+    text = _text(name, value)
+    if text.startswith("/") and text not in FACTORY_SENTINELS:
+        raise _fail(f"{name} is a factory name, {' or '.join(FACTORY_SENTINELS)}, not {text!r}")
+    return text
+
+
 def _flag(name: str, value) -> bool:
     if not isinstance(value, bool):
         raise _fail(f"{name} must be true or false, not {value!r}")
     return value
+
+
+def _headroom(name: str, value) -> float | None:
+    number = _number(name, value, optional=True)
+    if number is not None and not 0 < number <= HEADROOM_MAX_MW:
+        raise _fail(f"{name} must be above 0 and at most {HEADROOM_MAX_MW:,.0f} MW, not {value!r}")
+    return number
+
+
+def _priority(name: str, value) -> int:
+    step = _count(name, value)
+    if step >= len(POWER_PRIORITY_PERCENT):
+        raise _fail(f"{name} must be 0 to {len(POWER_PRIORITY_PERCENT) - 1}, not {value!r}")
+    return step
 
 
 def _objective(name: str, value) -> str:
@@ -199,7 +232,9 @@ _SCALAR_CHECK: dict[str, Callable] = {
     "belt_ipm": lambda n, v: _number(n, v, optional=True),
     "pipe_m3min": lambda n, v: _number(n, v, optional=True),
     "notes": _text,
-    "factory": _text,
+    "factory": _factory,
+    "headroom_mw": _headroom,
+    "power_priority": _priority,
 }
 
 
@@ -263,6 +298,7 @@ class PlanArgs:
     recycle_once: list = field(default_factory=list)
     supplied: dict = field(default_factory=dict)
     logistics_items: list = field(default_factory=list)
+    power_priority: int = 0
 
     @classmethod
     def from_dict(cls, raw: dict | None, lenient: list | None = None) -> PlanArgs:
@@ -300,6 +336,13 @@ class PlanArgs:
         return out
 
 
+def _stored_headroom(value) -> float | None:
+    try:
+        return _headroom("headroom_mw", value)
+    except InvalidOp:
+        return None
+
+
 @dataclass
 class PlanState:
     key: str
@@ -313,6 +356,7 @@ class PlanState:
     provenance: dict = field(default_factory=dict)
     siting: dict = field(default_factory=dict)
     args: PlanArgs = field(default_factory=PlanArgs)
+    headroom_mw: float | None = None
 
     def kwargs(self) -> dict:
         return self.args.kwargs()
@@ -330,6 +374,7 @@ class PlanState:
             "provenance": copy.deepcopy(self.provenance),
             "siting": copy.deepcopy(self.siting),
             "args": self.args.to_dict(),
+            "headroom_mw": self.headroom_mw,
         }
 
     @classmethod
@@ -346,6 +391,7 @@ class PlanState:
             provenance=copy.deepcopy(raw.get("provenance") or {}),
             siting=copy.deepcopy(raw.get("siting") or {}),
             args=PlanArgs.from_dict(raw.get("args")),
+            headroom_mw=_stored_headroom(raw.get("headroom_mw")),
         )
 
     def body(self) -> dict:
@@ -392,11 +438,51 @@ def _fmt(value) -> str:
     return str(value)
 
 
+_namer: list[Callable[[], dict[str, str]]] = []
+
+
+def use_recipe_names(source: Callable[[], dict[str, str]] | None) -> None:
+    _namer[:] = [source] if source is not None else []
+
+
+def _member_name(field_name: str, member) -> str:
+    if not _namer or field_name not in ("banned", "required"):
+        return _fmt(member)
+    try:
+        return _namer[0]().get(member, _fmt(member))
+    except Exception:
+        return _fmt(member)
+
+
+def factory_words(value) -> str:
+    """A stored ``factory`` value in words."""
+    text = str(value or "")
+    return {"": "found automatically", "/world": "whole world", "/none": "nothing yet"}.get(
+        text, text
+    )
+
+
+def _priority_words(value) -> str:
+    step = value if isinstance(value, int) and 0 < value < len(POWER_PRIORITY_PERCENT) else 0
+    if not step:
+        return "power priority off: machines at full clock"
+    return f"power priority {step}: machines at most {POWER_PRIORITY_PERCENT[step]}"
+
+
 def describe_op(op: dict) -> str:
     kind, name = op.get("op"), op.get("field", "")
     if kind == "set":
         if name == "notes":
             return "notes changed"
+        if name == "factory":
+            return "count as built: " + factory_words(op.get("value"))
+        if name == "headroom_mw":
+            value = op.get("value")
+            if value is None:
+                return "startup headroom: save default"
+            return f"startup headroom {_fmt(float(value))} MW"
+        if name == "power_priority":
+            return _priority_words(op.get("value"))
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
     if kind in ("put", "del"):
         word = "rate" if name == "export_minimums" else name
@@ -411,7 +497,7 @@ def describe_op(op: dict) -> str:
         )
     if kind in ("add", "remove"):
         sign = "+" if kind == "add" else MINUS
-        return f"{sign}{name} {_fmt(op.get('member'))}"
+        return f"{sign}{name} {_member_name(name, op.get('member'))}"
     if kind == "site":
         if not op.get("value"):
             return "site cleared"
@@ -678,7 +764,7 @@ def _label(op: dict) -> str:
     if kind in ("add", "remove"):
         return f"{name} {_fmt(op['member'])}"
     if kind == "set":
-        return name
+        return "startup headroom" if name == "headroom_mw" else name
     if kind == "site":
         return "site"
     if kind == "rename":
@@ -686,10 +772,17 @@ def _label(op: dict) -> str:
     return "plan"
 
 
+def _value_word(op: dict) -> str:
+    if op.get("field") == "headroom_mw":
+        value = op.get("value")
+        return "save default" if value is None else f"{_fmt(float(value))} MW"
+    return _fmt(op["value"])
+
+
 def _did(op: dict) -> str:
     kind = op["op"]
     if kind in ("set", "put"):
-        return f"set {_fmt(op['value'])}"
+        return f"set {_value_word(op)}"
     if kind == "del":
         return "removed it"
     if kind == "add":
@@ -712,7 +805,7 @@ class Conflict:
     theirs_actor: Actor
 
     def text(self) -> str:
-        mine = _fmt(self.mine["value"]) if self.mine["op"] in ("set", "put") else _did(self.mine)
+        mine = _value_word(self.mine) if self.mine["op"] in ("set", "put") else _did(self.mine)
         who = self.theirs_actor.display()
         return f"{_label(self.mine)}: you {mine}, {who} {_did(self.theirs)} in v{self.theirs_rev}"
 
@@ -893,6 +986,16 @@ def _chain(commits: list[Commit], rev: int) -> set[int]:
     for commit in commits:
         if commit.undoes in out:
             out.add(commit.rev)
+    return out
+
+
+def _skipped(commits: list[Commit], rev: int) -> set[int]:
+    """Revs an undo of ``rev`` ignores: its own chain, and every later commit that stands
+    undone together with its chain, since the two cancel out (docs/plan_log.md, Undo)."""
+    out = _chain(commits, rev)
+    for commit in commits[rev:]:
+        if commit.rev not in out and _undoers(commits, commit.rev) is not None:
+            out |= _chain(commits, commit.rev)
     return out
 
 
@@ -1124,15 +1227,27 @@ class PlanLog:
         sav: str = "",
         stamp: Stamp | None = None,
         note: str = "",
+        extend: Callable[[PlanState], list[dict]] | None = None,
     ) -> Pushed:
+        """``extend`` adds ops worked out from the head under the plan lock; they merge by
+        M1 like the rest, so one that clashes with a commit since ``base_rev`` refuses."""
         mine = [_check_op(op) for op in ops]
-        return self._locked(
-            _names(mine),
-            key,
-            lambda commits: self._merge(
-                key, commits, base_rev, mine, actor, sav, stamp, note, None
-            ),
-        )
+
+        def run(commits: list[Commit]) -> Pushed:
+            more = [_check_op(op) for op in extend(self._state(key, commits))] if extend else []
+            return self._merge(
+                key,
+                commits,
+                base_rev,
+                mine + [op for op in more if op not in mine],
+                actor,
+                sav,
+                stamp,
+                note,
+                None,
+            )
+
+        return self._locked(_names(mine), key, run)
 
     def push_args(
         self,
@@ -1176,7 +1291,7 @@ class PlanLog:
             if by is not None:
                 raise AlreadyUndone(rev, by.rev)
             mine = inverse([op for op in target.ops if op.get("op") != "record"])
-            window = _chain(current, rev)
+            window = _skipped(current, rev)
             return self._merge(key, current, base_rev, mine, actor, sav, stamp, "", rev, window)
 
         return self._locked(renames, key, run)

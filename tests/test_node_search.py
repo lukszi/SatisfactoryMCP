@@ -303,3 +303,17 @@ def test_top_still_means_limit(game):
     assert srv.rank_build_sites(resource="Iron Ore", top=1) == srv.rank_build_sites(
         resource="Iron Ore", limit=1
     )
+
+
+def test_status_tapped_lists_only_nodes_an_extractor_stands_on(game, monkeypatch, projection):
+    from satisfactory_mcp.interfaces.mcp.tools import spatial as stools
+
+    st = WorldState(projection=projection, game=game)
+    monkeypatch.setattr(stools, "_state", lambda save=None, world=None, as_of=None: st)
+    out = stools.search_resource_nodes(resource="Iron Ore", status="tapped", show="nodes")
+    assert "tapped node(s)" in out.splitlines()[0]
+    rows = [line.split("\t") for line in out.splitlines() if line.startswith("BP_")]
+    assert rows and {r[7] for r in rows} == {"tapped"}
+    assert stools.search_resource_nodes(status="busy").startswith("! unknown status 'busy'")
+    free = stools.search_resource_nodes(resource="Iron Ore", status="free")
+    assert free == stools.search_resource_nodes(resource="Iron Ore", only_free=True)

@@ -182,6 +182,8 @@ def build_scenario(
     recycle_once: list[str] | None = None,
     supplied: dict[str, float] | None = None,
     required: list[str] | None = None,
+    #: Index into ``optimize.POWER_PRIORITY_CLOCKS``; None is 0, the plain build.
+    power_priority: int | None = None,
     #: Where the factory will stand, in any spelling ``spatial.origin`` takes. It buys the
     #: plan a MEASURED water assumption instead of an assumed one; it changes no number the
     #: LP sees, because how much water a site yields is placement geometry no data here has.
@@ -331,6 +333,7 @@ def build_scenario(
         # Without this the power row forces generation == consumption. Ignored when MW
         # is exported, since a power plant that imports power to export it is unbounded.
         grid_import_mw=None if MW in export_ids else 1e6,
+        power_priority=int(power_priority or 0),
     )
 
     if recycle_once:
@@ -425,7 +428,9 @@ def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = N
     The save's mtime is excluded: a rotating autosave that changed nothing relevant must
     yield the SAME id, or the id stops meaning "same plan" and starts meaning "same second".
     """
-    fields = {"required": sorted(required)} if required else {}
+    fields: dict = {"required": sorted(required)} if required else {}
+    if sc.power_priority:
+        fields["power_priority"] = sc.power_priority
     payload = json.dumps(
         {
             **fields,

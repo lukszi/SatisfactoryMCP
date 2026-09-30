@@ -17,12 +17,10 @@ recipes, making copper, plastic and alumina. "You have 36 Refineries, build 10" 
 arithmetically true and would tell the player to break their copper line. Off-recipe
 machines are reported as a reuse pool and never counted.
 
-**Position reports; it never matches.** The region raster is +/-256 m advisory and
-splits this world's single 458-building site across three region names, and 300 m
-single-linkage merges the oil plant and the main base, which stand only ~900 m apart,
-into one cluster. No spatial rule separates them, so none is used for matching.
-Proximity decides only what to MENTION: which idle machines are plausibly reusable, and
-what stands among the plant without being in the plan.
+**Position seeds; clusters decide.** Which machines a stored plan may count is ``built``'s
+answer, handed in as ``scope`` (docs/planner_p4.md, "How built is found"). Here proximity
+decides only what to MENTION: which idle machines are plausibly reusable, and what stands
+among the plant without being in the plan.
 
 **Where identity is unavailable, emit a range.** Water Extractors have no recipe, and
 all 23 in this save point at ``FGWaterVolume`` objects that are not node keys (OQ5), so
@@ -55,6 +53,8 @@ __all__ = [
     "DiffRow",
     "build_diff",
     "group_key",
+    "machine_rate",
+    "rate_units",
 ]
 
 #: How close a machine must stand to one of the plan's own matched machines before it
@@ -63,10 +63,8 @@ __all__ = [
 #: world's 32 Coal Generators, which sit 887-1060 m from the oil plant.
 NEIGHBOUR_RADIUS_M = 200.0
 
-#: A machine is worth reclocking only when ITS OWN clock is off 100%. Never compare
-#: against the plan's clock: 99.43% is a derived ratio (the reference plan's 176 Fuel
-#: Generators carrying 175 machines' throughput), not an instruction, and comparing against it would render a
-#: routine plan as hundreds of slider adjustments.
+#: How far the built clocks' total may stray from the plan's before a job gets a clock
+#: note, as a share of the plan's total (docs/planning.md, "Clocks").
 RECLOCK_TOLERANCE = 0.02
 
 
@@ -107,10 +105,19 @@ class DiffRow:
     #: Idle machines re-recipe'd into this row rather than built.
     reuse: int = 0
     note: str = ""
+    #: ``note`` for the page: no issue codes, and nothing the action cell or a chip says.
+    page_note: str = ""
     #: MW these actions ADD. Incremental on purpose: machines that already exist and
     #: already run are already in the world's draw, so charging the plan's full figure
     #: would double-count them and overstate what the build needs.
     delta_mw: float = 0.0
+    #: The job's rate in full-speed machines: planned, and summed over the counted clocks.
+    #: ``have`` and ``build`` are these over ``plan_clock`` (docs/planning.md, "Counting by rate").
+    need_rate: float = 0.0
+    have_rate: float = 0.0
+    plan_clock: float = 1.0
+    #: Each counted machine's clock, beside ``have_instances``.
+    have_clocks: list[float] = field(default_factory=list)
 
     @property
     def actionable(self) -> bool:
@@ -149,6 +156,8 @@ class DiffReport:
     slices: int
     anchor: tuple[float, float] | None
     save_id: str
+    #: ``built.BuiltAt`` when a stored plan was matched: where it was found and how sure.
+    built_at: object | None = None
 
 
 # ------------------------------------------------------------------- plan side
@@ -196,12 +205,14 @@ def _group_processes(sol: Solution) -> list[dict]:
                 "resource": _resource_of(proc) if proc["kind"] == "extractor" else "",
                 "purity": proc.get("purity", ""),
                 "machines": 0,
+                "clock": 0.0,
                 "mw": 0.0,
                 "labels": [],
                 "rates": {},
             }
             groups[key] = entry
         entry["machines"] += proc["machines"]
+        entry["clock"] += proc["machines"] * float(proc.get("clock") or 1.0)
         entry["mw"] += proc["mw"]
         entry["labels"].append((proc["label"], proc["machines"]))
         for item, rate in proc.get("rates", {}).items():
@@ -229,6 +240,23 @@ def _nearest_m(
     if point is None or not others:
         return None
     return min(geo.distance_m(point, other) for other in others)
+
+
+def machine_rate(record: dict) -> float:
+    """One machine's rate in full-speed machines: its clock, and 1.0 where the save omits it."""
+    clock = record.get("clock")
+    return 1.0 if clock is None else float(clock)
+
+
+def rate_units(rate: float, clock: float) -> int:
+    """Whole machines at ``clock`` that ``rate`` covers."""
+    return math.floor(rate / clock + 1e-6) if clock > 0 else 0
+
+
+def _short_units(need_rate: float, have_rate: float, clock: float) -> int:
+    """Machines at ``clock`` still to add before ``have_rate`` meets ``need_rate``."""
+    gap = need_rate - have_rate
+    return max(0, math.ceil(gap / clock - 1e-6)) if clock > 0 and gap > 0 else 0
 
 
 @dataclass
@@ -374,21 +402,24 @@ def _node_backed(group: dict, index: _SaveIndex) -> bool:
     )
 
 
-def _reclock_note(records: list[dict]) -> str:
-    """Machines whose own clock is off 100%, compared against 1.0 and never the plan.
+def _plan_clock(group: dict) -> float:
+    """The clock the plan runs this job at, 1.0 when it only differs by a derived ratio."""
+    clock = group["clock"] / group["machines"] if group["machines"] else 1.0
+    return 1.0 if abs(clock - 1.0) <= RECLOCK_TOLERANCE else clock
 
-    The plan's clock is a derived ratio, so comparing against it would turn every
-    ordinary 99.4% row into a fictitious reclock job for every machine in it.
-    """
-    off = [
-        r["clock"]
-        for r in records
-        if r.get("clock") is not None and abs(r["clock"] - 1.0) > RECLOCK_TOLERANCE
-    ]
-    if not off:
+
+def _reclock_note(records: list[dict], to_build: int, group: dict) -> str:
+    """A note when the built clocks plus the machines still to build at the plan's clock
+    miss the plan's total, or "" when they meet it. More machines at a lower clock is
+    the same rate, so neither the count nor one machine's clock decides it."""
+    need, planned = group["machines"], group["clock"]
+    if not records or not need or planned <= 0:
         return ""
-    worst = max(off, key=lambda c: abs(c - 1.0))
-    return f"{len(off)} at {worst * 100:.4g}%"
+    each = planned / need
+    ratio = (sum(machine_rate(r) for r in records) + to_build * each) / planned
+    if abs(ratio - 1.0) <= RECLOCK_TOLERANCE or (ratio > 1.0 and len(records) > need):
+        return ""
+    return f"clocks give {ratio * 100:.0f}% of the planned rate (plan: {need} at {each * 100:.4g}%)"
 
 
 def _row_for(
@@ -401,11 +432,15 @@ def _row_for(
     claimed_idle: set[str],
 ) -> DiffRow:
     need = group["machines"]
+    plan_clock = _plan_clock(group)
+    need_rate = need * plan_clock
     records = _matched(group, index)
     notes: list[str] = []
+    page: list[str] = []
     build_max: int | None = None
     have_min: int | None = None
     targets: list[tuple[str, float]] = []
+    near: list[dict] = []
 
     if group["kind"] == "extractor" and not _node_backed(group, index):
         # Nothing to join against, so fall back to counting the class. That cannot say
@@ -416,14 +451,17 @@ def _row_for(
             for r in records
             if (d := _nearest_m(_xy(r), matched_points)) is not None and d <= NEIGHBOUR_RADIUS_M
         ]
-        build_max = max(0, need - len(near))
-        have_min = len(near)
+        near_rate = sum(machine_rate(r) for r in near)
+        build_max = _short_units(need_rate, near_rate, plan_clock)
+        have_min = rate_units(near_rate, plan_clock)
         # Nearest first, so anything downstream that samples this row's machines samples
         # the ones plausibly at the plant before the ones 2.5 km away. It changes no
         # count -- both bounds are already fixed above -- only which machines get asked.
         close = {id(r) for r in near}
         records = [*near, *(r for r in records if id(r) not in close)]
         notes.append("no node link (OQ5), low bound counts every one built")
+        if len(near) != len(records):
+            page.append("not tied to a node, so built is a range")
     elif group["kind"] == "extractor":
         free = sorted(
             index.free.get((group["resource"], group["purity"]), []),
@@ -437,9 +475,11 @@ def _row_for(
             for r in free[: max(0, need - len(records))]
         ]
 
-    have = len(records)
+    have_rate = sum(machine_rate(r) for r in records)
+    have = rate_units(have_rate, plan_clock)
     paused = [r for r in records if r.get("paused")]
-    build = max(0, need - have)
+    unpause = paused[: max(0, need - (have - len(paused)))]
+    build = _short_units(need_rate, have_rate, plan_clock)
 
     reused: list[dict] = []
     setrecipe = 0
@@ -460,8 +500,8 @@ def _row_for(
         build_max = max(build, build_max)
 
     verb, count = "OK", 0
-    if paused:
-        verb, count = "UNPAUSE", len(paused)
+    if unpause:
+        verb, count = "UNPAUSE", len(unpause)
     elif setrecipe:
         verb, count = "SETRECIPE", setrecipe
     elif build > 0:
@@ -471,21 +511,31 @@ def _row_for(
         notes.append(f"then BUILD {build}..{build_max}" if build_max else f"then BUILD {build}")
     if setrecipe:
         away = [d for d in (_nearest_m(_xy(r), [anchor] if anchor else []) for r in reused) if d]
-        where = f" {sum(away) / len(away) / 1000:.1f}km out" if away else ""
-        notes.append(
-            f"{setrecipe} idle {plural(group['building'], setrecipe)}{where}, no output today"
-        )
+        mean = sum(away) / len(away) if away else None
+        idle = f"{setrecipe} idle {plural(group['building'], setrecipe)}"
+        where = f" {mean / 1000:.1f}km out" if mean is not None else ""
+        notes.append(f"{idle}{where}, no output today")
+        page.append(f"{idle}{f' {mean:,.0f} m out' if mean is not None else ''}, no output today")
 
-    reclock = _reclock_note([*records, *reused])
+    if len(paused) > len(unpause) and (have_min is None or have_min >= need):
+        spare = len(paused) - len(unpause)
+        notes.append(f"{spare} {'more ' if unpause else ''}paused, not needed to cover this job")
+        page.append(notes[-1])
+
+    if have_min is None:
+        reclock = _reclock_note([*records, *reused], build, group)
+    else:
+        reclock = _reclock_note(records[: len(near)], build_max or 0, group)
     if reclock:
-        # Not a change the plan asks for, so it never becomes the verb -- but a pump at
-        # 250% means the plan is quietly understating what the player already extracts.
-        notes.append(f"{reclock}, plan budgets 100%")
+        # Not a change the plan asks for, so it never becomes the verb.
+        notes.append(reclock)
+        page.append(notes[-1])
 
     if len(group["labels"]) > 1:
         notes.append(
             " + ".join(f"{n} on {lbl.rsplit(' on ', 1)[-1]}" for lbl, n in group["labels"])
         )
+        page.append(notes[-1])
     elif group["kind"] == "recipe" and have and verb == "BUILD":
         # Pre-empts "but I already own 36 Refineries": 31 of them are making copper,
         # plastic and alumina, and counting them would tell the player to break those.
@@ -496,17 +546,18 @@ def _row_for(
         )
         if busy:
             notes.append(f"{busy} {plural(group['building'], busy)} busy on other recipes")
+            page.append(notes[-1])
     if group["building_id"] and state.built(group["building_id"]) == 0:
         notes.append("NEW BUILDING TYPE")
 
-    added = build + len(paused) + setrecipe
+    added = build + len(unpause) + setrecipe
     per_machine = group["mw"] / group["machines"] if group["machines"] else 0.0
 
     return DiffRow(
         stage=stage,
         key=group["key"],
         have_instances=[_short(r) for r in records],
-        act_instances=[_short(r) for r in (paused if verb == "UNPAUSE" else reused)]
+        act_instances=[_short(r) for r in (unpause if verb == "UNPAUSE" else reused)]
         if verb in ("UNPAUSE", "SETRECIPE")
         else [],
         have_min=have_min,
@@ -531,7 +582,12 @@ def _row_for(
         reuse=setrecipe,
         targets=targets,
         note="; ".join(notes),
+        page_note="; ".join(page),
         delta_mw=added * per_machine,
+        need_rate=need_rate,
+        have_rate=have_rate,
+        plan_clock=plan_clock,
+        have_clocks=[machine_rate(r) for r in records],
     )
 
 
@@ -704,7 +760,8 @@ def build_diff(
     ]
     if shadowing:
         notes.append(
-            f"{len(shadowing)} extractor(s) unmatched to a node, so a node that looks "
+            f"{len(shadowing)} {plural('extractor', len(shadowing))} "
+            "unmatched to a node, so a node that looks "
             "free may already be taken"
         )
 

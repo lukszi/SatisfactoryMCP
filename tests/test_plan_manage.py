@@ -140,6 +140,51 @@ def test_a_delta_across_an_unsolvable_version_says_only_that():
     assert manage.result_delta(ok, bad)["machines"] == 0
 
 
+def _row(rid, recipe, machines, clock):
+    return {"id": rid, "recipe": recipe, "building": "B", "machines": machines, "clock": clock}
+
+
+def test_row_changes_join_on_id_and_sort_added_changed_removed():
+    before = {
+        "feasible": True,
+        "machines": 0,
+        "mw_draw": 0,
+        "mw_net": 0,
+        "rows": [
+            _row("R_a", "Zeta", 2, 1.0),
+            _row("R_b", "Beta", 1, 0.5),
+            _row("R_c", "Gamma", 1, 0.5),
+            _row("label:x", "Miner", 1, 0.25),
+        ],
+    }
+    after = {
+        **before,
+        "rows": [
+            _row("R_a", "Zeta", 2, 1.0005),
+            _row("R_b", "Beta", 2, 0.5),
+            _row("R_c", "Gamma", 1, 0.502),
+            _row("R_d", "Alpha", 3, 0.9),
+        ],
+    }
+    rows = manage.result_delta(before, after)["rows"]
+    assert [(r["id"], r["change"]) for r in rows] == [
+        ("R_d", "added"),
+        ("R_b", "changed"),
+        ("R_c", "changed"),
+        ("label:x", "removed"),
+    ]
+    assert rows[0] == {
+        "id": "R_d",
+        "label": "Alpha",
+        "change": "added",
+        "machines_before": 0,
+        "machines_after": 3,
+        "clock_before": 0.0,
+        "clock_after": 0.9,
+    }
+    assert manage.result_delta(before, {**after, "feasible": False})["rows"] == []
+
+
 # ------------------------------------------------------------------ routes
 
 

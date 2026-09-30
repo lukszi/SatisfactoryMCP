@@ -52,9 +52,13 @@ route needs it.
 - Q13: a stored result summary per version would make deltas free; the log still stores
   arguments only.
 - Vision §2.7 outlines changed graph nodes and build-list rows for a few seconds after a
-  chat edit. Not built: the delta names buildings, not rows.
+  chat edit. The backend half is built in P3: `result_delta` now carries `rows`, the process
+  rows added, changed or removed, joined on `SolveRow.id` ([planner_p3.md](planner_p3.md)).
+  The badges and pulse are the page's half.
 - A list of forgotten plans. Today a forgotten plan is reached through Activity, or chat's
   `plan_log`; after 50 newer entries it drops out of Activity.
-- The Asks column of the §2.10 wireframe waits for asks (P1 deferred them, contract S7).
+- The Asks column of the §2.10 wireframe: asks are built in P4 (store, routes, `ui_context`
+  listing and marking; [planner_p4.md](planner_p4.md)). The page shows them as an asks card on
+  the plans list and at the end of Track rather than as a column.
 - Undo from Activity uses the plan's current head as `base_rev`, so it conflicts only on
   what changed after the undone version, as `plan_log undo=` does.

@@ -161,3 +161,21 @@ def ui_dir() -> Path:
     d = user_dir() / "ui"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+@lru_cache(maxsize=1)
+def pins_dir() -> Path:
+    """Pins the player placed from the page, one file per world (docs/planner-p3_contract.md §4)."""
+    return user_dir() / "pins"
+
+
+@lru_cache(maxsize=1)
+def asks_dir() -> Path:
+    """Questions the page queued for chat, one file per world (docs/planner-p4_contract.md §4)."""
+    return user_dir() / "asks"
+
+
+@lru_cache(maxsize=1)
+def settings_path() -> Path:
+    """Settings the page and chat share, one file for every world (docs/shared-settings.md)."""
+    return user_dir() / "settings.json"

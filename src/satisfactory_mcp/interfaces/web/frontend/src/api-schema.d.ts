@@ -127,10 +127,11 @@ export interface paths {
         };
         /**
          * Inspect
-         * @description What is at a coordinate: the region, the measured ground, and the nearest nodes.
+         * @description What is at a coordinate: region, measured ground, nodes, fields, conduits, pickups.
          *
-         *     Every answer comes straight out of ``domain.spatial``; this endpoint converts metres to
-         *     the save's centimetres, calls three functions, and rounds.
+         *     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
+         *     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
+         *     elevation reach; conduits count within 250 m, fields and pickups look 500 m out.
          *
          *     **A failed save is not a failed answer.** The node table is static, covers the whole map
          *     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -656,6 +657,11 @@ export interface paths {
          *     ``collect_view`` owns every refusal -- unknown mode, retired group, and the one that
          *     matters here: ``mode=remaining`` needs the generated placement table, and without it the
          *     honest answer is that refusal rather than a shorter list.
+         *
+         *     ``census`` rides along in every mode. ``spoilers=0`` drops every category this save has
+         *     never collected one of (pods and loot caches excepted) from the rows, the counts and the
+         *     census, and ``hidden_spoilers`` says how many categories went; absent, every row comes
+         *     with its ``spoiler`` flag.
          */
         get: operations["collectibles_api_collectibles_get"];
         put?: never;
@@ -684,6 +690,9 @@ export interface paths {
          *     ``save`` and ``notes`` carry the trigger, never the payload: the page decides what to
          *     refetch. ``plans`` and ``activity`` carry the commit summary or the entry itself, as
          *     docs/web-wire.md lists.
+         *
+         *     ``since`` is the page's open time: a ``plans`` or ``activity`` event stamped at or before
+         *     it is history, withheld from the replay and from the live stream alike.
          */
         get: operations["events_api_events_get"];
         put?: never;
@@ -794,6 +803,27 @@ export interface paths {
          * @description A new plan at v1, stamped against the save this request read.
          */
         post: operations["create_plan_api_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/built": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plans Built
+         * @description Every live plan's built progress, for the Planner's list: a solve per plan, cached
+         *     per plan version, save and factory names.
+         */
+        get: operations["plans_built_api_plan_built_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1038,49 +1068,6 @@ export interface paths {
         patch: operations["rename_label_api_labels__name__patch"];
         trace?: never;
     };
-    "/api/factories/graph": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Factory Graph
-         * @description The recipe-group production graph of a named factory, or of a detected candidate.
-         *
-         *     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
-         *     written since then is refused (409), since the index may now name another cluster.
-         */
-        get: operations["factory_graph_api_factories_graph_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/factories/machines": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Factory Machines
-         * @description Where each standing machine of a named factory, or of a detected candidate, stands.
-         */
-        get: operations["factory_machines_api_factories_machines_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/labels/amend": {
         parameters: {
             query?: never;
@@ -1092,7 +1079,8 @@ export interface paths {
         put?: never;
         /**
          * Amend Label
-         * @description Add the machines inside ``area`` (metres, map frame) to a label, or drop them from it.
+         * @description Add the machines inside ``area`` or ``extra_areas`` (metres, map frame) to a label, or
+         *     drop them from it.
          *
          *     The same ``plan_amend`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
          */
@@ -1177,6 +1165,26 @@ export interface paths {
         get: operations["plan_delta_api_plan_delta_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/alternates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Alternates
+         * @description Every recipe making ``item``, each with what requiring it would change in the plan.
+         */
+        post: operations["plan_alternates_api_plan_alternates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1541,6 +1549,315 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/world/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Nodes
+         * @description Resource nodes as ``search_resource_nodes`` finds them: nodes or fields.
+         *
+         *     ``resource`` is a name or class id; ``purity`` and ``kind`` take ``all`` for no filter;
+         *     ``status`` is ``free`` (untapped), ``tapped`` or ``all``. ``source`` repeats and takes
+         *     the tool's selectors. With ``near`` every row carries ``distance_m`` and the page sorts
+         *     by it. Locked nodes stay in, flagged ``spoiler``; the page fades them. A save that will
+         *     not load still answers from the node table, with ``save_error`` set.
+         */
+        get: operations["world_nodes_api_world_nodes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Sites
+         * @description Candidate fields for one resource, best first, as ``rank_build_sites`` ranks them.
+         */
+        get: operations["world_sites_api_world_sites_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/conduits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Conduits
+         * @description Belt and pipe runs near a place (and ``to`` a second one), or every fluid network.
+         *
+         *     The runs are ``search_conduits``'s, longest first. ``network`` lists every pipe of one
+         *     fluid network and ``run`` one run by id; both ignore the radii.
+         */
+        get: operations["world_conduits_api_world_conduits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/here": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Here
+         * @description Where the player stands and the nodes around them, as ``whereami`` answers it.
+         */
+        get: operations["world_here_api_world_here_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/world/regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * World Regions
+         * @description Named regions with their node counts, as ``list_regions`` lists them.
+         */
+        get: operations["world_regions_api_world_regions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pins
+         * @description Every live pin of this world, ascending by number, gone ones included and marked.
+         */
+        get: operations["pins_api_pins_get"];
+        put?: never;
+        /**
+         * Create Pin
+         * @description Pin an object; pinning one that already has a live pin returns that pin with a 200.
+         */
+        post: operations["create_pin_api_pins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pins/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Drop Pin
+         * @description Delete one pin. Not undoable, and its number is never given out again.
+         */
+        delete: operations["drop_pin_api_pins__n__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename Pin
+         * @description A new label for one pin, refused with a 409 when ``rev`` is not the pin's current one.
+         */
+        patch: operations["rename_pin_api_pins__n__patch"];
+        trace?: never;
+    };
+    "/api/asks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Asks
+         * @description Every live ask of this world, ascending by number, answered ones included.
+         */
+        get: operations["asks_api_asks_get"];
+        put?: never;
+        /**
+         * Create Ask
+         * @description Queue one question for chat; the player pastes its ``copy`` into chat.
+         */
+        post: operations["create_ask_api_asks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/asks/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Drop Ask
+         * @description Delete one ask, refused with a 409 when ``rev`` is not its current one.
+         */
+        delete: operations["drop_ask_api_asks__n__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/factories/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Graph
+         * @description The recipe-group production graph of a named factory, or of a detected candidate.
+         *
+         *     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
+         *     written since then is refused (409), since the index may now name another cluster.
+         */
+        get: operations["factory_graph_api_factories_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/factories/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Machines
+         * @description Where each standing machine of a named factory, or of a detected candidate, stands.
+         */
+        get: operations["factory_machines_api_factories_machines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Track
+         * @description One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
+         *     ``headroom`` is the save's figure a plan with no stored headroom is staged against.
+         */
+        get: operations["plan_track_api_plan_track_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/feeders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Feeders
+         * @description Built extractors whose output reaches a running generator: what startup waves stand on.
+         */
+        get: operations["plan_feeders_api_plan_feeders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared Settings
+         * @description The shared settings: chat's tools read the same file.
+         */
+        get: operations["shared_settings_api_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Settings
+         * @description Change shared settings; a ``version`` that is not the current one is a 409.
+         */
+        patch: operations["change_settings_api_settings_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1578,6 +1895,8 @@ export interface components {
             args: {
                 [key: string]: unknown;
             } | null;
+            /** Count */
+            count: number;
         };
         /**
          * ActorBody
@@ -1601,6 +1920,15 @@ export interface components {
             already_undone: boolean;
             /** By */
             by: number;
+        };
+        /** AlternatesBody */
+        AlternatesBody: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev?: number | null;
+            /** Item */
+            item: string;
         };
         /**
          * AlternatesResponse
@@ -1626,7 +1954,8 @@ export interface components {
         };
         /**
          * AmendBody
-         * @description ``area`` is a polygon of ``[x_m, y_m]`` corners; ``mode`` is ``add`` or ``drop``.
+         * @description ``area`` is a polygon of ``[x_m, y_m]`` corners and ``extra_areas`` any further ones; a
+         *     machine inside any of them counts. ``mode`` is ``add`` or ``drop``.
          */
         AmendBody: {
             /** Name */
@@ -1636,6 +1965,11 @@ export interface components {
                 number,
                 number
             ][];
+            /** Extra Areas */
+            extra_areas?: [
+                number,
+                number
+            ][][];
             /** Mode */
             mode: string;
             /** As Of */
@@ -1680,6 +2014,93 @@ export interface components {
             count: number;
         };
         /**
+         * AskAbout
+         * @description What an ask is about: ``kind`` is plan, process, stage, item or pin; ``plan`` a plan key.
+         */
+        AskAbout: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Ref */
+            ref: string;
+            /** Plan */
+            plan?: string | null;
+            /** Rev */
+            rev?: number | null;
+        };
+        /** AskCreateBody */
+        AskCreateBody: {
+            /** Text */
+            text: string;
+            about: components["schemas"]["AskAbout"];
+        };
+        /** AskDropBody */
+        AskDropBody: {
+            /** Rev */
+            rev: number;
+        };
+        /** AskDropped */
+        AskDropped: {
+            /** Ok */
+            ok: boolean;
+            /** N */
+            n: number;
+        };
+        /**
+         * AskRow
+         * @description One ask. ``state`` is open, seen or answered; ``answer`` is the one line chat left
+         *     with it ("" for none); ``copy`` is what the page puts on the clipboard; ``plan_name`` is
+         *     ``about.plan`` resolved when read.
+         */
+        AskRow: {
+            /** N */
+            n: number;
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+            about: components["schemas"]["AskAbout"];
+            /** State */
+            state: string;
+            /** Rev */
+            rev: number;
+            /** Created */
+            created: number;
+            /** Seen */
+            seen: number | null;
+            /** Seen By */
+            seen_by: string;
+            /** Answered */
+            answered: number | null;
+            /** Answered By */
+            answered_by: string;
+            /** Answer */
+            answer: string;
+            /** Plan Name */
+            plan_name: string | null;
+            /** Copy */
+            copy: string;
+        };
+        /**
+         * AskStaleResponse
+         * @description The 409 of an ask delete: nothing was written; ``ask`` is the row as it stands.
+         */
+        AskStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            ask: components["schemas"]["AskRow"];
+        };
+        /** AsksResponse */
+        AsksResponse: {
+            /** Version */
+            version: number;
+            /** Asks */
+            asks: components["schemas"]["AskRow"][];
+        };
+        /**
          * AspectBalance
          * @description ``measured_net`` is null where every machine touching the item keeps no monitor.
          */
@@ -1707,6 +2128,17 @@ export interface components {
             name: string;
             /** Count */
             count: number;
+        };
+        /**
+         * AspectIssue
+         * @description ``machine`` is the instance the issue is about, for a ``machine:`` selector; null when
+         *     the issue names none.
+         */
+        AspectIssue: {
+            /** Text */
+            text: string;
+            /** Machine */
+            machine: string | null;
         };
         /**
          * AspectLink
@@ -1882,6 +2314,13 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** BuildAmount */
+        BuildAmount: {
+            /** Item */
+            item: string;
+            /** Amount */
+            amount: number;
+        };
         /**
          * CandidateRow
          * @description ``region`` is null in the sea and off the map; ``selector`` is what the MCP tools take.
@@ -1991,6 +2430,37 @@ export interface components {
             events: number;
         };
         /**
+         * CensusRow
+         * @description One category: the map's count, this save's collections, and what is left.
+         *
+         *     ``remaining`` is null where no save records a collection of the class at all;
+         *     ``standing`` and ``never_streamed`` are null when the table's states are another world's.
+         */
+        CensusRow: {
+            /** Category */
+            category: string;
+            /** Label */
+            label: string;
+            /** Placed */
+            placed: number;
+            /** Collected */
+            collected: number;
+            /** Remaining */
+            remaining: number | null;
+            /** Standing */
+            standing: number | null;
+            /** Never Streamed */
+            never_streamed: number | null;
+            /** Looted Standing */
+            looted_standing: number;
+            /** State Tracked */
+            state_tracked: boolean;
+            /** Pedestal Of */
+            pedestal_of: string | null;
+            /** Spoiler */
+            spoiler: boolean;
+        };
+        /**
          * CircuitRow
          * @description ``bbox_m`` is null when no record on the circuit has a position. ``factories`` is
          *     every named factory on it, most machines first; ``unmodellable`` the generator classes
@@ -2056,18 +2526,20 @@ export interface components {
          * CollectibleRow
          * @description One map placement, and what this save says about it.
          *
-         *     The three coordinates are not nullable: they come off the generated placement table,
-         *     where a row without all three does not exist.
+         *     Here because ``/api/collectibles`` and ``/api/inspect`` both send placements. The three
+         *     coordinates come off the generated placement table and are never null.
          *
          *     ``observed`` is the placement table's scan of every save on disk rather than of the
          *     loaded one, and it is null both for a row this save has collected and for a state this
-         *     build does not know. ``distance_m`` is populated only by ``mode=nearest``, the one mode
-         *     that resolves an origin; elsewhere it is null rather than zero.
+         *     build does not know. ``distance_m`` is set only where an origin was resolved.
          *
          *     ``looted`` is a pod's own ``mHasBeenLooted``, and null means one thing: no loot flag was
          *     read for this placement. Only ``crashed_drop_pod`` writes one, and only a save that had
          *     the pod loaded records it, so ``looted`` is non-null exactly on a pod whose ``observed``
          *     is ``"standing"``. **Null is never "not looted"** -- that is ``false``.
+         *
+         *     ``spoiler`` is true for a category this save has never collected one of; pods and loot
+         *     caches never are.
          */
         CollectibleRow: {
             /** Category */
@@ -2088,6 +2560,8 @@ export interface components {
             looted: boolean | null;
             /** Distance M */
             distance_m: number | null;
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * CollectiblesResponse
@@ -2123,6 +2597,13 @@ export interface components {
             save_only: boolean;
             /** Where */
             where: string;
+            /** Census */
+            census: components["schemas"]["CensusRow"][];
+            /** Found */
+            found: string[];
+            /** Hidden Spoilers */
+            hidden_spoilers: number;
+            stale: components["schemas"]["TableAge"] | null;
         };
         /**
          * CommitBody
@@ -2148,6 +2629,61 @@ export interface components {
             note: string;
             /** Text */
             text: string;
+        };
+        /**
+         * ConduitCount
+         * @description Runs passing within ``radius_m`` of the point, lifts counted as belts.
+         */
+        ConduitCount: {
+            /** Belt */
+            belt: number;
+            /** Pipe */
+            pipe: number;
+            /** Radius M */
+            radius_m: number;
+        };
+        /**
+         * ConduitsResponse
+         * @description ``total`` counts every match; ``runs``/``networks`` hold one page of them.
+         */
+        ConduitsResponse: {
+            /**
+             * View
+             * @enum {string}
+             */
+            view: "runs" | "networks";
+            /** Where */
+            where: string;
+            /** Where To */
+            where_to: string;
+            /** Radius M */
+            radius_m: number;
+            /** To Radius M */
+            to_radius_m: number | null;
+            /** Runs */
+            runs: components["schemas"]["RunRow"][];
+            /** Networks */
+            networks: components["schemas"]["NetworkRow"][];
+            /** Total */
+            total: number;
+            /** Offset */
+            offset: number;
+            /** Belts */
+            belts: number;
+            /** Pipes */
+            pipes: number;
+            /** Belt M */
+            belt_m: number;
+            /** Pipe M */
+            pipe_m: number;
+            /** Fluids */
+            fluids: string[];
+            /** Bridged */
+            bridged: string[];
+            /** Notes */
+            notes: string[];
+            /** Age Note */
+            age_note: string;
         };
         /** ConflictBody */
         ConflictBody: {
@@ -2262,6 +2798,8 @@ export interface components {
             buildings: components["schemas"]["DeltaRow"][];
             /** Inputs */
             inputs: components["schemas"]["DeltaRow"][];
+            /** Rows */
+            rows: components["schemas"]["RowChange"][];
             /** Text */
             text: string;
         };
@@ -2403,7 +2941,7 @@ export interface components {
             /** Links */
             links: components["schemas"]["AspectLink"][];
             /** Issues */
-            issues: string[];
+            issues: components["schemas"]["AspectIssue"][];
         };
         /** FactoryGraphResponse */
         FactoryGraphResponse: {
@@ -2532,6 +3070,30 @@ export interface components {
             machines: number;
             /** Notes */
             notes: string;
+        };
+        /** Feeder */
+        Feeder: {
+            /** Name */
+            name: string;
+            /** Instance */
+            instance: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Mw */
+            mw: number;
+            /** Region */
+            region: string;
+        };
+        /** FeedersResponse */
+        FeedersResponse: {
+            /** Feeders */
+            feeders: components["schemas"]["Feeder"][];
+            /** Total Mw */
+            total_mw: number;
+            /** Text */
+            text: string;
         };
         /**
          * FloorBand
@@ -2774,6 +3336,107 @@ export interface components {
             /** Stored In */
             stored_in: string;
         };
+        /**
+         * FoundField
+         * @description A cluster of nodes within 200 m of each other; ``key`` is stable across saves.
+         *
+         *     ``free`` is untapped and reachable capacity; ``locked`` says some member no unlocked
+         *     extractor can work, ``spoiler`` that none can. ``distance_m`` is to the nearest member
+         *     and is null where nothing was measured from.
+         */
+        FoundField: {
+            /** Key */
+            key: string;
+            /** Selector */
+            selector: string;
+            /** Members */
+            members: string[];
+            /** Region */
+            region: string | null;
+            /** Grid */
+            grid: string;
+            /** Direction */
+            direction: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Bbox M */
+            bbox_m: [
+                number,
+                number,
+                number,
+                number
+            ];
+            /** Size */
+            size: number;
+            /** Purities */
+            purities: {
+                [key: string]: number;
+            };
+            /** Resources */
+            resources: string[];
+            /** Total */
+            total: number;
+            /** Free */
+            free: number;
+            /** Spread M */
+            spread_m: number;
+            /** Locked */
+            locked: boolean;
+            /** Distance M */
+            distance_m: number | null;
+            /** Spoiler */
+            spoiler: boolean;
+        };
+        /**
+         * FoundNode
+         * @description One node, its status in this save, and the extractor on it.
+         *
+         *     ``status`` is ``locked`` for an untapped node no unlocked extractor can work, which is
+         *     also ``spoiler``. ``rate`` is at 100% clock with the best extractor. ``moved`` marks a
+         *     row a later game build moved or renamed (see ``stale``).
+         */
+        FoundNode: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Resource */
+            resource: string;
+            /** Resource Name */
+            resource_name: string;
+            /** Purity */
+            purity: string;
+            /** Kind */
+            kind: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+            /** Grid */
+            grid: string;
+            /** Rate */
+            rate: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "free" | "tapped" | "locked";
+            /** Occupant */
+            occupant: string | null;
+            /** Occupant Off */
+            occupant_off: boolean | null;
+            region: components["schemas"]["Region"] | null;
+            /** Distance M */
+            distance_m: number | null;
+            /** Moved */
+            moved: boolean;
+            /** Spoiler */
+            spoiler: boolean;
+        };
         /** GeneratorGroup */
         GeneratorGroup: {
             /** Name */
@@ -2889,6 +3552,35 @@ export interface components {
             /** Short */
             short: number;
         };
+        /**
+         * HereResponse
+         * @description ``player`` is null for a save with no pawn; the rest of World still answers.
+         */
+        HereResponse: {
+            /** Age Note */
+            age_note: string;
+            /** Written Ago */
+            written_ago: string | null;
+            /** Save Token */
+            save_token: string;
+            player: components["schemas"]["PlayerAt"] | null;
+            region: components["schemas"]["Region"] | null;
+            /** Grid */
+            grid: string | null;
+            /** Direction */
+            direction: string | null;
+            /** Radius M */
+            radius_m: number;
+            /** Nodes */
+            nodes: components["schemas"]["FoundNode"][];
+            /** Nodes Total */
+            nodes_total: number;
+            nearest_building: components["schemas"]["NearestBuilding"] | null;
+            /** Pawns */
+            pawns: number;
+            /** Stale */
+            stale: components["schemas"]["TableAge"][];
+        };
         /** Hidden */
         Hidden: {
             /** Small */
@@ -2923,6 +3615,21 @@ export interface components {
             elevation: components["schemas"]["Elevation"];
             /** Nearest */
             nearest: components["schemas"]["NearestNode"][];
+            /** Grid */
+            grid: string;
+            /** Direction */
+            direction: string;
+            conduits: components["schemas"]["ConduitCount"] | null;
+            /** Fields */
+            fields: components["schemas"]["FoundField"][];
+            /** Pickups */
+            pickups: components["schemas"]["NearPickup"][];
+            /** Pickups Within */
+            pickups_within: number | null;
+            /** Pickups Within Spoilers */
+            pickups_within_spoilers: number;
+            /** Stale */
+            stale: components["schemas"]["TableAge"][];
             /** Save Error */
             save_error: string | null;
         };
@@ -3220,6 +3927,41 @@ export interface components {
             stored_in: string;
         };
         /**
+         * NearPickup
+         * @description A remaining placement within 500 m, with the category's one word.
+         */
+        NearPickup: {
+            /** Category */
+            category: string;
+            /** Name */
+            name: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+            /** Collected */
+            collected: boolean;
+            /** Observed */
+            observed: string | null;
+            /** Looted */
+            looted: boolean | null;
+            /** Distance M */
+            distance_m: number | null;
+            /** Spoiler */
+            spoiler: boolean;
+            /** Label */
+            label: string;
+        };
+        /** NearestBuilding */
+        NearestBuilding: {
+            /** Name */
+            name: string;
+            /** Distance M */
+            distance_m: number;
+        };
+        /**
          * NearestNode
          * @description One of the five nodes nearest a right-clicked point.
          *
@@ -3256,6 +3998,81 @@ export interface components {
             occupant_cls: string | null;
             /** Distance M */
             distance_m: number;
+            /** Spoiler */
+            spoiler: boolean;
+        };
+        /** NetworkRow */
+        NetworkRow: {
+            /** Network */
+            network: number | null;
+            /** Carries */
+            carries: string | null;
+            /** Pieces */
+            pieces: number;
+            /** Length M */
+            length_m: number;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z Min M */
+            z_min_m: number;
+            /** Z Max M */
+            z_max_m: number;
+            /** Distance M */
+            distance_m: number;
+            /** Touches */
+            touches: string[];
+        };
+        /** NodeChoices */
+        NodeChoices: {
+            /** Resources */
+            resources: components["schemas"]["ResourceChoice"][];
+            /** Purities */
+            purities: string[];
+            /** Kinds */
+            kinds: string[];
+        };
+        /**
+         * NodeFindResponse
+         * @description ``count``/``total``/``free`` are the tool's header figures over the rows returned.
+         */
+        NodeFindResponse: {
+            /**
+             * View
+             * @enum {string}
+             */
+            view: "nodes" | "fields";
+            /** Description */
+            description: string;
+            /** Selectors */
+            selectors: string[];
+            /** Where */
+            where: string;
+            /** Nodes */
+            nodes: components["schemas"]["FoundNode"][];
+            /** Fields */
+            fields: components["schemas"]["FoundField"][];
+            /** Count */
+            count: number;
+            /** Total */
+            total: number;
+            /** Free */
+            free: number;
+            /** Unit */
+            unit: string;
+            /** Elevation */
+            elevation: [
+                number,
+                number
+            ] | null;
+            water: components["schemas"]["WaterBlock"] | null;
+            choices: components["schemas"]["NodeChoices"];
+            /** Notes */
+            notes: string[];
+            stale: components["schemas"]["TableAge"] | null;
+            /** Save Error */
+            save_error: string | null;
         };
         /**
          * NodeRow
@@ -3276,6 +4093,9 @@ export interface components {
          *     surface prints as ``LOCKED`` and excludes from free capacity. It is null, never true, when
          *     the save could not be read: reachability is a fact about what this world has researched,
          *     and with no world there is nothing to have researched it.
+         *
+         *     ``spoiler`` is an unoccupied node with ``reachable`` false, the rows the text surface
+         *     marks ``LOCKED``: the page draws those dots faded.
          */
         NodeRow: {
             /** Id */
@@ -3305,6 +4125,8 @@ export interface components {
             /** Reachable */
             reachable: boolean | null;
             region: components["schemas"]["Region"] | null;
+            /** Spoiler */
+            spoiler: boolean;
         };
         /**
          * NodesResponse
@@ -3376,6 +4198,137 @@ export interface components {
             complete: string[];
             /** Spoiler */
             spoiler: boolean;
+        };
+        /** PinCreateBody */
+        PinCreateBody: {
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label?: string;
+        };
+        /** PinCreated */
+        PinCreated: {
+            /** N */
+            n: number;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label: string;
+            /** Text */
+            text: string;
+            /** Selector */
+            selector: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Rev */
+            rev: number;
+            /** Created */
+            created: number;
+            /** Gone */
+            gone: boolean;
+            /** Gone Why */
+            gone_why: string;
+            /** Existing */
+            existing: boolean;
+        };
+        /** PinDropBody */
+        PinDropBody: {
+            /** Rev */
+            rev: number;
+        };
+        /** PinDropped */
+        PinDropped: {
+            /** Ok */
+            ok: boolean;
+            /** N */
+            n: number;
+        };
+        /**
+         * PinRef
+         * @description What a pin points at. ``resource`` and ``nodes`` are filled by the server for a field.
+         */
+        PinRef: {
+            /** Plan */
+            plan?: string;
+            /** Recipe */
+            recipe?: string;
+            /** Factory */
+            factory?: string;
+            /** Machine */
+            machine?: string;
+            /** Node */
+            node?: string;
+            /** X M */
+            x_m?: number;
+            /** Y M */
+            y_m?: number;
+            /** Resource */
+            resource?: string;
+            /** Nodes */
+            nodes?: string[];
+        };
+        /** PinRenameBody */
+        PinRenameBody: {
+            /** Rev */
+            rev: number;
+            /** Label */
+            label: string;
+        };
+        /**
+         * PinRow
+         * @description One pin as the page shows it. ``selector`` is the canonical text it stands for; a gone
+         *     pin says why in ``gone_why``; ``x_m``/``y_m`` are null for a pin with no place.
+         */
+        PinRow: {
+            /** N */
+            n: number;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            ref: components["schemas"]["PinRef"];
+            /** Label */
+            label: string;
+            /** Text */
+            text: string;
+            /** Selector */
+            selector: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Rev */
+            rev: number;
+            /** Created */
+            created: number;
+            /** Gone */
+            gone: boolean;
+            /** Gone Why */
+            gone_why: string;
+        };
+        /**
+         * PinStaleResponse
+         * @description The 409 of a pin write: nothing was written; ``pin`` is the row as it stands.
+         */
+        PinStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            pin: components["schemas"]["PinRow"];
+        };
+        /** PinsResponse */
+        PinsResponse: {
+            /** Version */
+            version: number;
+            /** Pins */
+            pins: components["schemas"]["PinRow"][];
         };
         /**
          * PipeRow
@@ -3534,6 +4487,34 @@ export interface components {
             factory: string | null;
         };
         /**
+         * PlanAlternatesResponse
+         * @description Every recipe for one item with what requiring it changes in the plan at ``rev``.
+         */
+        PlanAlternatesResponse: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Head Feasible */
+            head_feasible: boolean;
+            /** Head Machines */
+            head_machines: number;
+            /** Head Mw Draw */
+            head_mw_draw: number | null;
+            /** Head Mw Net */
+            head_mw_net: number | null;
+            /** Options */
+            options: components["schemas"]["SwapOption"][];
+            /** Hidden */
+            hidden: number;
+            /** Text */
+            text: string;
+        };
+        /**
          * PlanArgsBody
          * @description The whole solve request, every field present at its default when unset (contract §2).
          */
@@ -3582,6 +4563,79 @@ export interface components {
             };
             /** Logistics Items */
             logistics_items: string[];
+            /** Power Priority */
+            power_priority: number;
+        };
+        /**
+         * PlanBuiltRow
+         * @description One live plan's progress at its head: ``built_at`` without the startup order.
+         *
+         *     ``figure`` is ``12 / 16``, ``12–16 / 20`` (unsure), ``–`` (not placed) or ``?`` (the
+         *     plan does not solve or builds nothing).
+         */
+        PlanBuiltRow: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Mode */
+            mode: string;
+            /** Confidence */
+            confidence: string;
+            /** Built */
+            built: number | null;
+            /** Built Max */
+            built_max: number | null;
+            /** Total */
+            total: number;
+            /** Percent */
+            percent: number | null;
+            /** Percent Max */
+            percent_max: number | null;
+            /** Figure */
+            figure: string;
+            /** Text */
+            text: string;
+        };
+        /** PlanGraph */
+        PlanGraph: {
+            /** Nodes */
+            nodes: components["schemas"]["PlanGraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["PlanGraphEdge"][];
+        };
+        /** PlanGraphEdge */
+        PlanGraphEdge: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Item */
+            item: string;
+            /** Per Min */
+            per_min: number;
+            /** Text */
+            text: string | null;
+        };
+        /**
+         * PlanGraphNode
+         * @description ``kind`` is process, input or export; ``item`` is a class id, null for power.
+         */
+        PlanGraphNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /** Rank */
+            rank: number;
+            /** Row */
+            row: string | null;
+            /** Item */
+            item: string | null;
         };
         /**
          * PlanIndexRow
@@ -3724,6 +4778,8 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             args: components["schemas"]["PlanArgsBody"];
+            /** Headroom Mw */
+            headroom_mw: number | null;
             /** Names */
             names: {
                 [key: string]: string;
@@ -3732,6 +4788,11 @@ export interface components {
             head: number;
             /** Text */
             text: string;
+        };
+        /** PlansBuiltResponse */
+        PlansBuiltResponse: {
+            /** Rows */
+            rows: components["schemas"]["PlanBuiltRow"][];
         };
         /**
          * PlansResponse
@@ -3744,6 +4805,15 @@ export interface components {
             stored: number;
             /** Index */
             index: components["schemas"]["PlanIndexRow"][];
+        };
+        /** PlayerAt */
+        PlayerAt: {
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
         };
         /**
          * PlayerPosition
@@ -3788,6 +4858,19 @@ export interface components {
             connections: number;
         };
         /**
+         * PowerPriority
+         * @description ``step`` is the plan's; ``splits`` is false when no step changes a row, and ``steps``
+         *     is empty when the plan did not solve.
+         */
+        PowerPriority: {
+            /** Step */
+            step: number;
+            /** Splits */
+            splits: boolean;
+            /** Steps */
+            steps: components["schemas"]["PowerStep"][];
+        };
+        /**
          * PowerResponse
          * @description The two lists and the three counts.
          *
@@ -3807,6 +4890,29 @@ export interface components {
             wire_count: number;
             /** Edge Count */
             edge_count: number;
+        };
+        /**
+         * PowerStep
+         * @description The plan at one power-priority step. ``extra_machines``, ``saved_mw``, ``cost`` and
+         *     ``foundations`` are against step 0; ``cost`` is what the extra machines take to build.
+         */
+        PowerStep: {
+            /** Step */
+            step: number;
+            /** Max Clock */
+            max_clock: number;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number;
+            /** Extra Machines */
+            extra_machines: number;
+            /** Saved Mw */
+            saved_mw: number;
+            /** Cost */
+            cost: components["schemas"]["BuildAmount"][];
+            /** Foundations */
+            foundations: number;
         };
         /**
          * PowerSummary
@@ -3926,7 +5032,11 @@ export interface components {
             /** From Entry */
             from_entry?: string;
         };
-        /** PushBody */
+        /**
+         * PushBody
+         * @description ``require_item``: the item class id a drawer require is for; the server then also
+         *     removes every other required recipe for it that the head holds (contract C3).
+         */
         PushBody: {
             /** Base Rev */
             base_rev: number;
@@ -3936,6 +5046,8 @@ export interface components {
             }[];
             /** Sav */
             sav?: string;
+            /** Require Item */
+            require_item?: string | null;
         };
         /**
          * PushedResponse
@@ -3961,6 +5073,61 @@ export interface components {
             /** Text */
             text: string;
             state: components["schemas"]["PlanStateBody"];
+        };
+        /** RankedSite */
+        RankedSite: {
+            /** Rank */
+            rank: number;
+            /** Score */
+            score: number;
+            /** Region */
+            region: string | null;
+            /** Grid */
+            grid: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Selector */
+            selector: string;
+            /** Nodes */
+            nodes: number;
+            /** Untapped */
+            untapped: number;
+            /** Spread M */
+            spread_m: number;
+            /** To Infra M */
+            to_infra_m: number | null;
+            /** Purity */
+            purity: number;
+            /** Alt M */
+            alt_m: number | null;
+            /** Rough M */
+            rough_m: number | null;
+            /** Slope Deg */
+            slope_deg: number | null;
+            /** Wet Pct */
+            wet_pct: number | null;
+        };
+        /** RankedSitesResponse */
+        RankedSitesResponse: {
+            /** Resource */
+            resource: string;
+            /** Resource Name */
+            resource_name: string;
+            /** Description */
+            description: string;
+            /** Sites */
+            sites: components["schemas"]["RankedSite"][];
+            /** Count */
+            count: number;
+            /** Weights */
+            weights: {
+                [key: string]: number;
+            };
+            /** Notes */
+            notes: string[];
+            stale: components["schemas"]["TableAge"] | null;
         };
         /**
          * Rate
@@ -4118,6 +5285,35 @@ export interface components {
                 number
             ];
         };
+        /** RegionRow */
+        RegionRow: {
+            /** Name */
+            name: string;
+            /** Direction */
+            direction: string;
+            /** Grid */
+            grid: string;
+            /** Anchor M */
+            anchor_m: [
+                number,
+                number
+            ];
+            /** Area Km2 */
+            area_km2: number;
+            /** Nodes */
+            nodes: number;
+        };
+        /** RegionTableResponse */
+        RegionTableResponse: {
+            /** Resource */
+            resource: string | null;
+            /** Resource Name */
+            resource_name: string | null;
+            /** Rows */
+            rows: components["schemas"]["RegionRow"][];
+            /** Accuracy M */
+            accuracy_m: number;
+        };
         /**
          * RegionsResponse
          * @description What ``/api/regions`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
@@ -4168,6 +5364,15 @@ export interface components {
             /** Stored In */
             stored_in: string;
         };
+        /** ResourceChoice */
+        ResourceChoice: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Nodes */
+            nodes: number;
+        };
         /** RestoreBody */
         RestoreBody: {
             /** Base Rev */
@@ -4176,6 +5381,103 @@ export interface components {
             rev: number;
             /** Sav */
             sav?: string;
+        };
+        /**
+         * ResultDelta
+         * @description Two solves compared. ``comparable`` is false when either side is not solvable.
+         */
+        ResultDelta: {
+            /** Comparable */
+            comparable: boolean;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number;
+            /** Mw Net */
+            mw_net: number;
+            /** Buildings */
+            buildings: components["schemas"]["DeltaRow"][];
+            /** Inputs */
+            inputs: components["schemas"]["DeltaRow"][];
+            /** Rows */
+            rows: components["schemas"]["RowChange"][];
+            /** Text */
+            text: string;
+        };
+        /**
+         * RowChange
+         * @description A process row joined on ``SolveRow.id``; ``change`` is added, removed or changed.
+         */
+        RowChange: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Change */
+            change: string;
+            /** Machines Before */
+            machines_before: number;
+            /** Machines After */
+            machines_after: number;
+            /** Clock Before */
+            clock_before: number;
+            /** Clock After */
+            clock_after: number;
+        };
+        /** RunEnd */
+        RunEnd: {
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+            /** Plugs */
+            plugs: string | null;
+        };
+        /**
+         * RunRow
+         * @description One belt chain or pipe piece; ``lines_m`` are the drawn polylines, as trace sends.
+         */
+        RunRow: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "belt" | "lift" | "pipe";
+            /** Label */
+            label: string;
+            /** Pieces */
+            pieces: number;
+            /** Length M */
+            length_m: number;
+            a: components["schemas"]["RunEnd"];
+            b: components["schemas"]["RunEnd"];
+            /** Z Min M */
+            z_min_m: number;
+            /** Z Max M */
+            z_max_m: number;
+            /** Directed */
+            directed: boolean;
+            /** Basis */
+            basis: string | null;
+            /** Carries */
+            carries: string | null;
+            /** Rate */
+            rate: number | null;
+            /** Network */
+            network: number | null;
+            /** Via */
+            via: string[];
+            /** Distance M */
+            distance_m: number;
+            /** Lines M */
+            lines_m: [
+                number,
+                number
+            ][][];
         };
         /**
          * SaveRow
@@ -4231,6 +5533,63 @@ export interface components {
             label: string;
             /** Ref */
             ref: string;
+        };
+        /**
+         * SettingsChanges
+         * @description The settings to change; null puts one back to its default.
+         */
+        SettingsChanges: {
+            /** Stage Headroom */
+            stage_headroom?: ("measured" | "nameplate") | null;
+            /** Biomass */
+            biomass?: boolean | null;
+        };
+        /** SettingsPatchBody */
+        SettingsPatchBody: {
+            values: components["schemas"]["SettingsChanges"];
+            /** Version */
+            version?: number | null;
+            /** Only Unset */
+            only_unset?: boolean;
+        };
+        /**
+         * SettingsResponse
+         * @description ``stored`` names the settings that were set rather than defaulted; ``by`` and
+         *     ``updated`` are the last write, null before the first.
+         */
+        SettingsResponse: {
+            /** Version */
+            version: number;
+            values: components["schemas"]["SettingsValues"];
+            /** Stored */
+            stored: string[];
+            /** Updated */
+            updated: number | null;
+            by: components["schemas"]["ActorBody"] | null;
+        };
+        /**
+         * SettingsStaleResponse
+         * @description The 409 of a write whose ``version`` is not the current one: nothing was written.
+         */
+        SettingsStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            settings: components["schemas"]["SettingsResponse"];
+        };
+        /**
+         * SettingsValues
+         * @description Every shared setting, set or defaulted.
+         */
+        SettingsValues: {
+            /**
+             * Stage Headroom
+             * @enum {string}
+             */
+            stage_headroom: "measured" | "nameplate";
+            /** Biomass */
+            biomass: boolean;
         };
         /** ShardHolder */
         ShardHolder: {
@@ -4445,10 +5804,12 @@ export interface components {
             inputs: components["schemas"]["SolveRate"][];
             /** Rows */
             rows: components["schemas"]["SolveRow"][];
+            graph: components["schemas"]["PlanGraph"];
             /** Shards */
             shards: number | null;
             /** Sloops Used */
             sloops_used: number;
+            power: components["schemas"]["PowerPriority"];
             /** Blockers */
             blockers: string[];
             /** Token */
@@ -4457,8 +5818,14 @@ export interface components {
         /**
          * SolveRow
          * @description One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
+         *
+         *     ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth.
          */
         SolveRow: {
+            /** Id */
+            id: string;
+            /** Depth */
+            depth: number;
             /** Building */
             building: string;
             /** Recipe */
@@ -4799,6 +6166,74 @@ export interface components {
             progression: components["schemas"]["ProgressionSummary"];
             player: components["schemas"]["PlayerPosition"];
         };
+        /**
+         * SwapOption
+         * @description One recipe for the item. ``status`` is in use, required, banned, available or locked;
+         *     ``delta`` is null when ``solved`` is false (locked, or banned by a pattern).
+         */
+        SwapOption: {
+            /** Recipe Id */
+            recipe_id: string;
+            /** Name */
+            name: string;
+            /** Alternate */
+            alternate: boolean;
+            /** Machine */
+            machine: string | null;
+            /** Unlocked */
+            unlocked: boolean | null;
+            /** Spoiler */
+            spoiler: boolean;
+            /** Granted By */
+            granted_by: string[];
+            /** Status */
+            status: string;
+            /** In Use */
+            in_use: boolean;
+            /** Required */
+            required: boolean;
+            /** Banned */
+            banned: boolean;
+            /** Banned By */
+            banned_by: string | null;
+            /** Solved */
+            solved: boolean;
+            delta: components["schemas"]["ResultDelta"] | null;
+            /** Require Ops */
+            require_ops: components["schemas"]["PlanOpBody"][];
+            /** Ban Ops */
+            ban_ops: components["schemas"]["PlanOpBody"][];
+            /** Free Ops */
+            free_ops: components["schemas"]["PlanOpBody"][];
+        };
+        /**
+         * TableAge
+         * @description Whether a shipped map table is older than the save; built by the domain's ``table_age``.
+         *
+         *     ``moved`` and ``unjoinable`` count rows in the reply they travel with (nodes only);
+         *     ``observed_from``/``observed_matches`` are the collectible table's (null for nodes).
+         */
+        TableAge: {
+            /**
+             * Table
+             * @enum {string}
+             */
+            table: "nodes" | "collectibles";
+            /** Behind */
+            behind: boolean;
+            /** Gap */
+            gap: string | null;
+            /** Moved */
+            moved: number;
+            /** Unjoinable */
+            unjoinable: number;
+            /** Observed From */
+            observed_from: string | null;
+            /** Observed Matches */
+            observed_matches: boolean | null;
+            /** Notes */
+            notes: string[];
+        };
         /** TierRow */
         TierRow: {
             /** Tier */
@@ -4947,6 +6382,373 @@ export interface components {
                 number
             ][][];
         };
+        /**
+         * TrackBuiltAt
+         * @description Where the plan's built machines were found and the progress figure
+         *     (docs/planner-p4_contract.md §5.2, ``built_at``). ``built`` is null when the plan has no
+         *     site; ``built_max`` differs from ``built`` only when the finding is unsure.
+         */
+        TrackBuiltAt: {
+            /** Mode */
+            mode: string;
+            /** Confidence */
+            confidence: string;
+            /** Text */
+            text: string;
+            /** Figure */
+            figure: string;
+            /** Hint */
+            hint: string;
+            /** Fallback */
+            fallback: string;
+            /** Area */
+            area: string;
+            /** Picked */
+            picked: string;
+            /** Built */
+            built: number | null;
+            /** Built Max */
+            built_max: number | null;
+            /** Total */
+            total: number;
+            /** Percent */
+            percent: number | null;
+            /** Percent Max */
+            percent_max: number | null;
+            /** Candidates */
+            candidates: components["schemas"]["TrackBuiltCandidate"][];
+            /** Missing */
+            missing: string[];
+            /** Also Here */
+            also_here: string[];
+            /** Foreign */
+            foreign: string[];
+            /** Node Owner */
+            node_owner: string;
+            /** Labels Version */
+            labels_version: number;
+            /** Token */
+            token: string;
+        };
+        /**
+         * TrackBuiltCandidate
+         * @description One owner of matching machines at the plan's site: a named factory or an unnamed
+         *     cluster (``proposal`` is its index in this save only).
+         */
+        TrackBuiltCandidate: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Proposal */
+            proposal: number | null;
+            /** Machines */
+            machines: number;
+            /** Rate Share */
+            rate_share: number;
+            /** Bbox M */
+            bbox_m: number[] | null;
+        };
+        /** TrackCost */
+        TrackCost: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Need */
+            need: number;
+            /** Stock */
+            stock: number;
+            /** Short */
+            short: number;
+            /** Lines */
+            lines: number;
+        };
+        /** TrackMachine */
+        TrackMachine: {
+            /** Instance */
+            instance: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /** TrackNeighbour */
+        TrackNeighbour: {
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+        };
+        /** TrackPower */
+        TrackPower: {
+            /** Generation Mw */
+            generation_mw: number;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Headroom Mw */
+            headroom_mw: number;
+            /** Measured Headroom Mw */
+            measured_headroom_mw: number;
+            /** Biomass */
+            biomass: boolean;
+        };
+        /**
+         * TrackResponse
+         * @description One plan version's diff and startup stages against this save, from one solve.
+         *
+         *     Not feasible is a 200 with ``feasible: false`` and empty lists; a count-as-built factory
+         *     with no machines left is a 200 with ``scope_error`` and empty lists.
+         */
+        TrackResponse: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Name */
+            name: string;
+            /** Feasible */
+            feasible: boolean;
+            /** Empty */
+            empty: boolean;
+            /** Headline */
+            headline: string;
+            /** Cause */
+            cause: string;
+            /** Save Id */
+            save_id: string;
+            /** Age Note */
+            age_note: string;
+            /** Written Ago */
+            written_ago: string | null;
+            /** Plan Id */
+            plan_id: string;
+            /** Scope */
+            scope: string;
+            /** Scope Note */
+            scope_note: string;
+            /** Scope Error */
+            scope_error: string;
+            /** Drift Note */
+            drift_note: string;
+            /** Headroom Mw */
+            headroom_mw: number | null;
+            /** Current */
+            current: number;
+            /** Count */
+            count: number;
+            /** Partition Id */
+            partition_id: string;
+            /** Stage Text */
+            stage_text: string;
+            /** To Build */
+            to_build: number;
+            /** To Build Max */
+            to_build_max: number;
+            /** Actionable */
+            actionable: number;
+            /** Unpause */
+            unpause: number;
+            /** Setrecipe */
+            setrecipe: number;
+            /** Rows */
+            rows: components["schemas"]["TrackRow"][];
+            /** Stages */
+            stages: components["schemas"]["TrackStage"][];
+            startup: components["schemas"]["TrackStartup"];
+            power: components["schemas"]["TrackPower"];
+            /** Cost */
+            cost: components["schemas"]["TrackCost"][];
+            /** Neighbours */
+            neighbours: components["schemas"]["TrackNeighbour"][];
+            site: components["schemas"]["TrackSite"] | null;
+            /** Notes */
+            notes: string[];
+            /** Caveats */
+            caveats: string[];
+            /** Monitored */
+            monitored: number;
+            built_at: components["schemas"]["TrackBuiltAt"];
+        };
+        /**
+         * TrackRow
+         * @description One build job. ``verb`` is ok, unpause, setrecipe or build; ``build_max`` and ``have_min``
+         *     are null when the count is exact; ``running`` is null when no matched machine is monitored.
+         */
+        TrackRow: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Step */
+            step: number;
+            /** Stages */
+            stages: number[];
+            /** Process */
+            process: string;
+            /** Building */
+            building: string;
+            /** Recipe Id */
+            recipe_id: string | null;
+            /** Item */
+            item: string | null;
+            /** Need */
+            need: number;
+            /** Have */
+            have: number;
+            /** Have Min */
+            have_min: number | null;
+            /** Build */
+            build: number;
+            /** Build Max */
+            build_max: number | null;
+            /** Verb */
+            verb: string;
+            /** Count */
+            count: number;
+            /** Reuse */
+            reuse: number;
+            /** Running */
+            running: number | null;
+            /** States */
+            states: components["schemas"]["TrackState"][];
+            /** New Building */
+            new_building: boolean;
+            /** Note */
+            note: string;
+            /** Delta Mw */
+            delta_mw: number;
+            /** Act */
+            act: components["schemas"]["TrackMachine"][];
+            /** Targets */
+            targets: components["schemas"]["TrackTarget"][];
+            /** Bbox M */
+            bbox_m: number[] | null;
+            /** Selectors */
+            selectors: string;
+        };
+        /** TrackSite */
+        TrackSite: {
+            /** Text */
+            text: string;
+            /** Planned Total */
+            planned_total: number;
+            /** Standing Total */
+            standing_total: number;
+            /** Rows */
+            rows: components["schemas"]["TrackSiteRow"][];
+        };
+        /** TrackSiteRow */
+        TrackSiteRow: {
+            /** Name */
+            name: string;
+            /** Planned */
+            planned: number;
+            /** Standing */
+            standing: number;
+        };
+        /**
+         * TrackStage
+         * @description One startup wave matched against the save; ``state`` is the server's phrase for it.
+         */
+        TrackStage: {
+            /** Index */
+            index: number;
+            /** Machines */
+            machines: number;
+            /** Built */
+            built: number;
+            /** Built Max */
+            built_max: number;
+            /** Running */
+            running: number | null;
+            /** Dark */
+            dark: number;
+            /** Complete */
+            complete: boolean;
+            /** State */
+            state: string;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Generation Mw */
+            generation_mw: number;
+            /** Available Before */
+            available_before: number;
+            /** Available After */
+            available_after: number;
+            /** Fill S */
+            fill_s: number;
+            /** Waits For Fill */
+            waits_for_fill: boolean;
+            /** States */
+            states: components["schemas"]["TrackState"][];
+            /** Rows */
+            rows: components["schemas"]["TrackStageRow"][];
+            /** Bbox M */
+            bbox_m: number[] | null;
+        };
+        /** TrackStageRow */
+        TrackStageRow: {
+            /** Row */
+            row: string;
+            /** Label */
+            label: string;
+            /** Building */
+            building: string;
+            /** Machines */
+            machines: number;
+            /** Total */
+            total: number;
+            /** Built */
+            built: number;
+            /** Built Max */
+            built_max: number;
+            /** Running */
+            running: number | null;
+            /** States */
+            states: components["schemas"]["TrackState"][];
+            /** Draw Mw */
+            draw_mw: number;
+            /** Generation Mw */
+            generation_mw: number;
+            /** To Build */
+            to_build: number;
+        };
+        /** TrackStartup */
+        TrackStartup: {
+            /** Ok */
+            ok: boolean;
+            /** Headroom Mw */
+            headroom_mw: number;
+            /** Headroom Source */
+            headroom_source: string;
+            /** Plant Draw Mw */
+            plant_draw_mw: number;
+            /** Plant Generation Mw */
+            plant_generation_mw: number;
+            /** Minimum Slice Mw */
+            minimum_slice_mw: number;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** TrackState */
+        TrackState: {
+            /** State */
+            state: string;
+            /** Count */
+            count: number;
+        };
+        /** TrackTarget */
+        TrackTarget: {
+            /** Node */
+            node: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** M */
+            m: number | null;
+        };
         /** UndoBody */
         UndoBody: {
             /** Base Rev */
@@ -5063,6 +6865,19 @@ export interface components {
             forgotten: boolean;
             /** Versions */
             versions: components["schemas"]["VersionRow"][];
+        };
+        /** WaterBlock */
+        WaterBlock: {
+            /** Bodies */
+            bodies: {
+                [key: string]: number;
+            };
+            /** Pumps */
+            pumps: number;
+            /** Per Pump M3 Min */
+            per_pump_m3_min: number | null;
+            /** Sea Level M */
+            sea_level_m: number | null;
         };
         /** WireRow */
         WireRow: {
@@ -5224,6 +7039,7 @@ export interface operations {
             query: {
                 x_m: number;
                 y_m: number;
+                radius_m?: number;
                 save?: string | null;
                 world?: string | null;
             };
@@ -5712,6 +7528,7 @@ export interface operations {
                 group?: string | null;
                 mode?: string;
                 near?: string | null;
+                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };
@@ -5743,7 +7560,9 @@ export interface operations {
     };
     events_api_events_get: {
         parameters: {
-            query?: never;
+            query?: {
+                since?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5757,6 +7576,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5919,6 +7747,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NameTakenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plans_built_api_plan_built_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlansBuiltResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6418,76 +8278,6 @@ export interface operations {
             };
         };
     };
-    factory_graph_api_factories_graph_get: {
-        parameters: {
-            query?: {
-                factory?: string | null;
-                candidate?: string | null;
-                token?: string | null;
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FactoryGraphResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    factory_machines_api_factories_machines_get: {
-        parameters: {
-            query?: {
-                factory?: string | null;
-                candidate?: string | null;
-                token?: string | null;
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FactoryMachinesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     amend_label_api_labels_amend_post: {
         parameters: {
             query?: {
@@ -6679,6 +8469,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeltaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_alternates_api_plan_alternates_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+                spoilers?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlternatesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanAlternatesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7358,6 +9185,675 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SitesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_nodes_api_world_nodes_get: {
+        parameters: {
+            query?: {
+                view?: string;
+                resource?: string | null;
+                purity?: string | null;
+                kind?: string | null;
+                status?: string;
+                source?: string[] | null;
+                near?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeFindResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_sites_api_world_sites_get: {
+        parameters: {
+            query: {
+                resource: string;
+                source?: string[] | null;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankedSitesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_conduits_api_world_conduits_get: {
+        parameters: {
+            query?: {
+                near?: string;
+                radius_m?: number;
+                to?: string | null;
+                to_radius_m?: number | null;
+                conduit_kind?: string;
+                view?: string;
+                network?: number | null;
+                run?: string | null;
+                offset?: number;
+                limit?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConduitsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_here_api_world_here_get: {
+        parameters: {
+            query?: {
+                radius_m?: number;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HereResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    world_regions_api_world_regions_get: {
+        parameters: {
+            query?: {
+                resource?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegionTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pins_api_pins_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pin_api_pins_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinCreateBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinCreated"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drop_pin_api_pins__n__delete: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinDropBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinDropped"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_pin_api_pins__n__patch: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinRenameBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinRow"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asks_api_asks_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ask_api_asks_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskRow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drop_ask_api_asks__n__delete: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskDropBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskDropped"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_graph_api_factories_graph_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                candidate?: string | null;
+                token?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_machines_api_factories_machines_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                candidate?: string | null;
+                token?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryMachinesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_track_api_plan_track_get: {
+        parameters: {
+            query: {
+                key: string;
+                rev?: number | null;
+                biomass?: "exclude" | "include";
+                headroom?: "measured" | "nameplate";
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_feeders_api_plan_feeders_get: {
+        parameters: {
+            query?: {
+                biomass?: "exclude" | "include";
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedersResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_settings_api_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+        };
+    };
+    change_settings_api_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsStaleResponse"];
                 };
             };
             /** @description Validation Error */

@@ -13,7 +13,7 @@ import time
 import pytest
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning import journal
+from satisfactory_mcp.domain.planning import asks, journal
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.mcp.tools import planning
 
@@ -41,6 +41,8 @@ def ctx(tmp_path, monkeypatch):
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
+    monkeypatch.setattr(journal.config, "pins_dir", lambda: tmp_path / "pins")
+    monkeypatch.setattr(journal.config, "asks_dir", lambda: tmp_path / "asks")
     monkeypatch.setattr(journal, "_writer", "")
     monkeypatch.setattr(journal, "_seq", {})
     monkeypatch.setattr(planning, "_state", lambda *a, **k: _World())
@@ -86,8 +88,41 @@ def test_an_open_page_names_plan_version_tab_and_selection(ctx, monkeypatch):
     assert lines[0].endswith("page sav:3f2a… = yours")
     assert lines[1] == (
         'focus: planner › "north hmf" v1 › workbench   selected: process "Blender · Diluted Fuel"'
+        " (Recipe_X_C)"
     )
     assert lines[2] == "follow: follow"
+
+
+def test_a_world_selection_prints_its_selector_so_chat_can_resolve_it(ctx, monkeypatch):
+    ref = "node:BP_ResourceNode453"
+    _focus(
+        monkeypatch,
+        2,
+        True,
+        view="dashboard",
+        dash="world/nodes",
+        selection={"kind": "node", "label": "Iron Ore, pure", "ref": ref},
+    )
+    line = srv.ui_context().splitlines()[1]
+    assert line.endswith(f'selected: node "Iron Ore, pure" ({ref})')
+
+
+@pytest.mark.parametrize(
+    "view, dash, tab, want",
+    [
+        ("dashboard", "power", "power", "focus: dashboard › power"),
+        ("dashboard", "factories/North", "factories", "focus: dashboard › factories/North"),
+        ("planner", "planner", "list", "focus: planner › list"),
+    ],
+)
+def test_a_dashboard_tab_is_named_once(ctx, monkeypatch, view, dash, tab, want):
+    _focus(monkeypatch, 2, True, view=view, dash=dash, tab=tab)
+    assert srv.ui_context().splitlines()[1] == want
+
+
+def test_a_selection_without_a_ref_prints_no_empty_brackets(ctx, monkeypatch):
+    _focus(monkeypatch, 2, True, selection={"kind": "point", "label": "12, 34 m", "ref": ""})
+    assert srv.ui_context().splitlines()[1].endswith('selected: point "12, 34 m"')
 
 
 def test_a_page_on_another_save_and_behind_the_head_is_flagged(ctx, monkeypatch):
@@ -213,7 +248,210 @@ def test_the_real_focus_file_is_read_when_the_web_module_exists(ctx, monkeypatch
     assert is_open and found["follow"] == "toasts"
 
 
+def _pins(ctx, rows: list[dict]) -> None:
+    (ctx / "pins").mkdir(exist_ok=True)
+    stored = [
+        {"rev": 1, "created": 0.0, "deleted": False, "label": "", "x_m": None, "y_m": None, **row}
+        for row in rows
+    ]
+    body = {"schema": 1, "version": len(rows), "next": len(rows) + 1, "pins": stored}
+    (ctx / "pins" / f"{WORLD}.json").write_text(json.dumps(body), encoding="utf-8")
+
+
+def test_no_pins_says_none(ctx):
+    assert "pins: none" in srv.ui_context().splitlines()
+
+
+def test_pins_are_listed_and_a_pinned_selection_names_its_pin(ctx, monkeypatch):
+    made = PlanLog(WORLD).create("north hmf", {}, actor=PAGE)
+    _pins(
+        ctx,
+        [
+            {"n": 1, "kind": "point", "ref": {"x_m": 1.0, "y_m": 2.0}, "x_m": 1.0, "y_m": 2.0},
+            {"n": 2, "kind": "process", "ref": {"plan": made.key, "recipe": "Recipe_X_C"}},
+            {"n": 3, "kind": "factory", "ref": {"factory": "gone factory"}, "label": "old"},
+        ],
+    )
+    _focus(
+        monkeypatch,
+        2,
+        True,
+        plan=made.key,
+        rev=1,
+        tab="graph",
+        selection={"kind": "process", "label": "Blender · Diluted Fuel", "ref": "Recipe_X_C"},
+    )
+    lines = srv.ui_context().splitlines()
+    assert lines[1].endswith('selected: process "Blender · Diluted Fuel" (Recipe_X_C) (pin:2)')
+    assert lines[3] == (
+        "pins: pin:1 point x 1, y 2 m · pin:2 process Recipe_X_C in “north hmf” · "
+        "pin:3 factory “gone factory” “old” (gone)"
+    )
+
+
+def test_a_machine_selection_prints_its_selector(ctx, monkeypatch):
+    ref = "machine:Build_ConstructorMk1_C_7"
+    _focus(
+        monkeypatch,
+        2,
+        True,
+        view="map",
+        selection={"kind": "machine", "label": "Constructor", "ref": ref},
+    )
+    line = srv.ui_context().splitlines()[1]
+    assert line.endswith(f'selected: machine "Constructor" ({ref})')
+
+
+@pytest.mark.parametrize(
+    "kind, stored, ref",
+    [
+        ("machine", {"machine": "Build_ConstructorMk1_C_7"}, "machine:Build_ConstructorMk1_C_7"),
+        ("node", {"node": "BP_ResourceNode453"}, "node:BP_ResourceNode453"),
+        ("factory", {"factory": "North"}, "label:north"),
+    ],
+)
+def test_a_selector_ref_from_the_page_finds_its_pin(kind, stored, ref):
+    from satisfactory_mcp.domain.planning import pins
+
+    rows = [{"n": 1, "id": "pin:1", "kind": kind, "ref": stored}]
+    assert pins.match(rows, kind, ref) is rows[0]
+
+
+def test_only_the_newest_eight_pins_show_and_the_reply_stays_in_budget(ctx):
+    _pins(
+        ctx,
+        [
+            {
+                "n": n,
+                "kind": "point",
+                "ref": {"x_m": float(n), "y_m": 2.0},
+                "x_m": float(n),
+                "y_m": 2.0,
+                "label": "a very long label " * 5,
+            }
+            for n in range(1, 21)
+        ],
+    )
+    out = srv.ui_context()
+    line = next(x for x in out.splitlines() if x.startswith("pins: "))
+    assert line.startswith("pins: pin:13 ") and line.endswith(" (+12 more)")
+    parts = line.removeprefix("pins: ").removesuffix(" (+12 more)").split(" · ")
+    assert len(parts) == 8 and all(len(part) <= 90 for part in parts)
+    assert len(out) < planning.CONTEXT_BUDGET
+
+
 def test_a_plan_created_since_the_last_look_reads_as_new(ctx):
     srv.ui_context()
     PlanLog(WORLD).create("fresh", {}, actor=PAGE)
     assert '"fresh" new -> v1 by page: v1 created' in srv.ui_context()
+
+
+# ------------------------------------------------------------------ asks (P4)
+
+ABOUT = {"kind": "stage", "label": "stage 1", "ref": "1"}
+
+
+def _asks_line(out: str) -> str:
+    return next(line for line in out.splitlines() if line.startswith("asks"))
+
+
+def test_quotes_inside_an_ask_stay_unambiguous(ctx):
+    asks.create(WORLD, 'why "min" and not max?', ABOUT)
+    assert _asks_line(srv.ui_context()) == (
+        'asks (1 waiting): ask:1 "why \\"min\\" and not max?" about stage "stage 1"'
+    )
+
+
+def test_no_asks_says_none_waiting_and_prints_no_hint(ctx):
+    out = srv.ui_context()
+    assert "asks: none waiting" in out.splitlines()
+    assert "ui_context(answered=" not in out
+
+
+def test_asks_are_listed_with_what_they_are_about_and_marked_seen(ctx):
+    journal.set_writer("chat")
+    made = PlanLog(WORLD).create("north hmf", {}, actor=PAGE)
+    about = {
+        "kind": "process",
+        "label": "Blender · Diluted Fuel",
+        "ref": "job:recipe|B|R",
+        "plan": made.key,
+        "rev": 1,
+    }
+    asks.create(WORLD, "why does this need a Blender?", about)
+    asks.create(WORLD, "is stage 1 safe to switch on?", ABOUT)
+    lines = srv.ui_context().splitlines()
+    line = next(x for x in lines if x.startswith("asks"))
+    assert line == (
+        'asks (2 waiting): ask:1 "why does this need a Blender?" about process '
+        '"Blender · Diluted Fuel" in "north hmf" v1 · ask:2 "is stage 1 safe to switch on?" '
+        'about stage "stage 1"'
+    )
+    hint = lines[lines.index(line) + 1]
+    assert (
+        hint == 'answer them, then ui_context(answered=["ask:1 <answer>", "ask:2 <answer>"]) marks '
+        "them done on the page with that one-line answer"
+    )
+    rows = asks.live(WORLD)
+    assert [r["state"] for r in rows] == ["seen", "seen"]
+    assert rows[0]["seen_by"] == "chat"
+    [entry] = [e for e in journal.read(WORLD) if e["kind"] == "ask.seen"]
+    assert entry["args"] == {"n": [1, 2]} and entry["text"] == "chat saw ask:1, ask:2"
+    again = srv.ui_context()
+    assert _asks_line(again).endswith('about stage "stage 1" (seen)')
+    assert len([e for e in journal.read(WORLD) if e["kind"] == "ask.seen"]) == 1
+
+
+def test_an_ask_about_a_plan_names_the_plan_once(ctx):
+    made = PlanLog(WORLD).create("north hmf", {}, actor=PAGE)
+    about = {"kind": "plan", "label": "north hmf", "ref": made.key, "plan": made.key, "rev": 1}
+    asks.create(WORLD, "what is left?", about)
+    assert _asks_line(srv.ui_context()).endswith('about plan "north hmf" v1')
+
+
+def test_only_the_newest_six_asks_show(ctx):
+    for n in range(9):
+        asks.create(WORLD, f"question {n}", ABOUT)
+    line = _asks_line(srv.ui_context())
+    assert line.startswith("asks (9 waiting): ask:4 ")
+    assert line.endswith("(+3 more)") and "ask:3 " not in line
+    assert [r["state"] for r in asks.live(WORLD)] == ["open"] * 3 + ["seen"] * 6
+
+
+def test_answered_marks_them_done_and_says_so_first(ctx):
+    journal.set_writer("chat")
+    for text in ("a", "b", "c"):
+        asks.create(WORLD, text, ABOUT)
+    asks.drop(WORLD, 3, 1)
+    lines = srv.ui_context(answered=["ask:1", "ASK:9", "ask:3", "nonsense"]).splitlines()
+    assert lines[1] == "marked answered: ask:1"
+    assert lines[2:5] == [
+        "! ask:9 does not exist (asks run to ask:3)",
+        "! ask:3 was deleted",
+        "! 'nonsense' is not an ask id (ask:N)",
+    ]
+    assert [r["state"] for r in asks.live(WORLD)] == ["answered", "seen"]
+    [entry] = [e for e in journal.read(WORLD) if e["kind"] == "ask.answered"]
+    assert entry["args"] == {"n": [1]} and entry["text"] == "chat answered ask:1"
+    assert next(x for x in lines if x.startswith("asks")).startswith("asks (1 waiting): ask:2 ")
+
+
+def test_answered_keeps_the_line_after_the_id(ctx):
+    journal.set_writer("chat")
+    asks.create(WORLD, "why a Blender?", ABOUT)
+    lines = srv.ui_context(answered=["ask:1 it makes the diluted fuel"]).splitlines()
+    assert lines[1] == "marked answered: ask:1"
+    assert asks.live(WORLD)[0]["answer"] == "it makes the diluted fuel"
+    [entry] = [e for e in journal.read(WORLD) if e["kind"] == "ask.answered"]
+    assert entry["text"] == "chat answered ask:1: it makes the diluted fuel"
+
+
+def test_many_long_asks_stay_inside_the_budget(ctx):
+    for n in range(200):
+        asks.create(WORLD, f"{n} " + "y" * 190, {**ABOUT, "label": "l" * 120})
+    out = srv.ui_context()
+    assert len(out) < planning.CONTEXT_BUDGET
+    line = _asks_line(out)
+    assert line.startswith("asks (200 waiting): ") and line.endswith(" (+194 more)")
+    parts = line.removeprefix("asks (200 waiting): ").removesuffix(" (+194 more)").split(" · ")
+    assert len(parts) == 6 and all(len(p) <= planning.CONTEXT_ASK_WIDTH for p in parts)

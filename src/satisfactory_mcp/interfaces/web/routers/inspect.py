@@ -11,17 +11,30 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
+from ....domain.collectibles import service as collectibles_service
 from ....domain.spatial import elevation as spatial_elevation
-from ....domain.spatial import geo
+from ....domain.spatial import geo, place
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world.state import WorldState
 from .. import terrain
-from ..serial import Region, _fail, _label_json, _resource_name, _state, _xyz
+from ..serial import (
+    CollectibleRow,
+    FoundField,
+    Region,
+    TableAge,
+    _fail,
+    _field_json,
+    _label_json,
+    _pickup_json,
+    _resource_name,
+    _state,
+    _xyz,
+)
 
 __all__ = ["INSPECT_NEAREST", "INSPECT_RADIUS_M", "router"]
 
@@ -104,6 +117,21 @@ class NearestNode(TypedDict):
     occupied: bool
     occupant_cls: str | None
     distance_m: float
+    spoiler: bool
+
+
+class ConduitCount(TypedDict):
+    """Runs passing within ``radius_m`` of the point, lifts counted as belts."""
+
+    belt: int
+    pipe: int
+    radius_m: float
+
+
+class NearPickup(CollectibleRow):
+    """A remaining placement within 500 m, with the category's one word."""
+
+    label: str
 
 
 class InspectResponse(TypedDict):
@@ -118,6 +146,14 @@ class InspectResponse(TypedDict):
     region: Region | None
     elevation: Elevation
     nearest: list[NearestNode]
+    grid: str
+    direction: str
+    conduits: ConduitCount | None
+    fields: list[FoundField]
+    pickups: list[NearPickup]
+    pickups_within: int | None
+    pickups_within_spoilers: int
+    stale: list[TableAge]
     save_error: str | None
 
 
@@ -205,32 +241,20 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     }
 
 
-def _nearest_nodes(
-    table, taken: dict, game, x: float, y: float, limit: int
-) -> list[NearestNode]:
-    """The closest ``limit`` nodes to a point, centimetres in, metres out."""
-    ranked = sorted(
-        ((geo.distance_m((x, y), (n["x"], n["y"])), n) for n in table.nodes),
-        key=lambda pair: pair[0],
-    )
-    out: list[NearestNode] = []
-    for distance_m, n in ranked[:limit]:
-        held = taken.get(n["instance"])
-        out.append(
-            {
-                "id": n["instance"],
-                "name": str(n["instance"]).rsplit(".", 1)[-1],
-                "resource": n["resource"],
-                "resource_name": _resource_name(game, n["resource"]),
-                "kind": n["kind"],
-                "purity": n["purity"],
-                **_xyz((n["x"], n["y"], n["z"])),
-                "occupied": held is not None,
-                "occupant_cls": held["extractor"] if held else None,
-                "distance_m": round(distance_m, 1),
-            }
-        )
-    return out
+def _nearest_json(n: dict, game) -> NearestNode:
+    return {
+        "id": n["instance"],
+        "name": str(n["instance"]).rsplit(".", 1)[-1],
+        "resource": n["resource"],
+        "resource_name": _resource_name(game, n["resource"]),
+        "kind": n["kind"],
+        "purity": n["purity"],
+        **_xyz((n["x"], n["y"], n["z"])),
+        "occupied": n["tapped"],
+        "occupant_cls": n["tapped_by"],
+        "distance_m": n["distance_m"],
+        "spoiler": not n["tapped"] and not n["reachable"],
+    }
 
 
 @router.get("/inspect", response_model=InspectResponse)
@@ -238,13 +262,15 @@ def inspect(
     request: Request,
     x_m: float,
     y_m: float,
+    radius_m: Annotated[float, Query(ge=1, le=2000)] = INSPECT_RADIUS_M,
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
-    """What is at a coordinate: the region, the measured ground, and the nearest nodes.
+    """What is at a coordinate: region, measured ground, nodes, fields, conduits, pickups.
 
-    Every answer comes straight out of ``domain.spatial``; this endpoint converts metres to
-    the save's centimetres, calls three functions, and rounds.
+    Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
+    this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
+    elevation reach; conduits count within 250 m, fields and pickups look 500 m out.
 
     **A failed save is not a failed answer.** The node table is static, covers the whole map
     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -263,7 +289,7 @@ def inspect(
     """
     try:
         table = spatial_nodes.load_nodes()
-        rmap = spatial_regions.load_regions()
+        spatial_regions.load_regions()
     except FileNotFoundError as exc:
         return _fail(str(exc), 404)
 
@@ -274,19 +300,32 @@ def inspect(
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
+    game = request.app.state.game()
     x, y = x_m * 100.0, y_m * 100.0
-    near = spatial_elevation.probe(
-        x,
-        y,
-        spatial_elevation.sample_points(table, st),
-        INSPECT_RADIUS_M,
-        terrain_field=terrain.field(),
-    )
-    taken = spatial_nodes.occupancy(st.projection) if st is not None else {}
+    found = place.describe(st, game, x, y, radius_m, terrain_field=terrain.field())
+    nearest = found.nearest
+    stale = []
+    if st is not None:
+        nodes_age = spatial_nodes.table_age(st.header, table, [n["instance"] for n in nearest])
+        pickups_age = collectibles_service.table_age(st)
+        stale = [
+            age
+            for age in (nodes_age, pickups_age)
+            if age is not None and (age["behind"] or age["observed_matches"] is False)
+        ]
+    counted = found.conduits
     return {
         "at": {"x_m": round(x_m, 1), "y_m": round(y_m, 1)},
-        "region": _label_json(rmap.label_for(x, y)),
-        "elevation": _elevation_json(near),
-        "nearest": _nearest_nodes(table, taken, request.app.state.game(), x, y, INSPECT_NEAREST),
+        "region": _label_json(found.label),
+        "elevation": _elevation_json(found.probe),
+        "nearest": [_nearest_json(n, game) for n in nearest],
+        "grid": geo.grid_cell(x, y),
+        "direction": geo.direction_of(x, y),
+        "conduits": None if counted is None else {**counted, "radius_m": found.conduit_radius_m},
+        "fields": [_field_json(f, game) for f in found.fields],
+        "pickups": [{**_pickup_json(p, p["spoiler"]), "label": p["label"]} for p in found.pickups],
+        "pickups_within": found.pickups_total,
+        "pickups_within_spoilers": found.pickups_spoilers,
+        "stale": stale,
         "save_error": save_error,
     }

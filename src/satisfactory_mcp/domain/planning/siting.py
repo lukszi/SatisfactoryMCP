@@ -85,6 +85,11 @@ class Siting:
     def has_footprint(self) -> bool:
         return self.width_m > 0 and self.depth_m > 0
 
+    def stored_label(self) -> str:
+        if self.origin_label.startswith("pin:") and " = " in self.origin_label:
+            return self.origin_label.split(" = ", 1)[1]
+        return self.origin_label
+
     def to_dict(self) -> dict:
         return {
             "schema": SITING_SCHEMA,
@@ -92,7 +97,7 @@ class Siting:
             "yaw_deg": self.yaw_deg,
             "footprint_m": [self.width_m, self.depth_m],
             "footprint_source": self.source,
-            "origin_label": self.origin_label,
+            "origin_label": self.stored_label(),
             "when": self.when,
         }
 

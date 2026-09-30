@@ -2,12 +2,13 @@
  * links, floors and sites. The address is `factories/<name>/<aspect>`. */
 
 import { get, latest } from "./api";
-import { chip, empty, error, heading, link, loading, note, table, tabs2, tile } from "./dashkit";
-import { make } from "./dom";
-import { count, mw, num, pct, perMin } from "./format";
+import { button, chip, empty, error, heading, link, loading, note, table, tabs2, tile } from "./dashkit";
+import { code, make } from "./dom";
+import { count, mw, num, pct, perMin, signed } from "./format";
 import { enterFloors } from "./floors";
 import { hashFor } from "./map";
 import { showBox } from "./panel";
+import { pinThis } from "./pins";
 import { state } from "./state";
 import { counted, W } from "./words";
 import { mapButton, pointButton, render } from "./dashboard";
@@ -63,6 +64,16 @@ export function factoryAddress(subject: string, known?: (name: string) => boolea
 
 export function factoryDash(name: string, aspect: string): string {
   return "factories/" + name + (aspect ? "/" + aspect : "");
+}
+
+export function factoryPinButton(name: string): HTMLButtonElement {
+  return button(
+    W.pin,
+    function () {
+      pinThis("factory", { factory: name });
+    },
+    { title: "pin this factory and copy its pin:N for chat", label: "pin " + name }
+  );
 }
 
 export function aspectTabs(name: string, aspect: string): HTMLElement {
@@ -181,9 +192,10 @@ function card(parent: HTMLElement, title: string): HTMLElement {
   return section;
 }
 
-function signed(value: number): string {
-  if (Math.abs(value) < 0.05) return "0";
-  return (value > 0 ? "+" : "−") + perMin(Math.abs(value), false);
+function net(value: number): string {
+  return signed(value, function (magnitude) {
+    return perMin(magnitude, false);
+  });
 }
 
 var flowSort: SortState = { key: "net", desc: true };
@@ -253,7 +265,7 @@ function renderFlows(body: HTMLElement, data: FactoryAspectsResponse): void {
             return r.net;
           },
           render: function (r) {
-            return signed(r.net);
+            return net(r.net);
           },
         },
         {
@@ -265,7 +277,7 @@ function renderFlows(body: HTMLElement, data: FactoryAspectsResponse): void {
             return r.measured_net === null ? -Infinity : r.measured_net;
           },
           render: function (r) {
-            return r.measured_net === null ? "–" : signed(r.measured_net);
+            return r.measured_net === null ? "–" : net(r.measured_net);
           },
         },
         {
@@ -329,8 +341,14 @@ function renderMachines(body: HTMLElement, data: FactoryAspectsResponse): void {
   if (data.issues.length) {
     var issues = card(body, "issues");
     var list = make("ul", "dash-list");
-    data.issues.forEach(function (text) {
-      list.appendChild(make("li", "", text));
+    data.issues.forEach(function (issue) {
+      var li = make("li", "", issue.text + " ");
+      if (issue.machine) {
+        var copy = make("span");
+        copy.innerHTML = code("machine:" + issue.machine, "copy id").html;
+        li.appendChild(copy.firstChild!);
+      }
+      list.appendChild(li);
     });
     issues.appendChild(list);
   }

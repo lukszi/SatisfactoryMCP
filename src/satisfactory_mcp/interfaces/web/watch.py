@@ -28,9 +28,10 @@ from pathlib import Path
 
 from ... import config
 from ...core.saveio.projection import load_projection
+from ...domain import settings
 from ...domain.planning import journal
 from ...domain.planning.planlog import Commit, PlanLog, PlanLogError
-from .serial import _actor_json
+from .serial import _actor_json, _settings_json
 
 __all__ = [
     "KINDS",
@@ -38,6 +39,7 @@ __all__ = [
     "KIND_NOTES",
     "KIND_PLANS",
     "KIND_SAVE",
+    "KIND_SETTINGS",
     "POLL_SECONDS",
     "TAIL_SECONDS",
     "SaveWatcher",
@@ -69,8 +71,11 @@ KIND_PLANS = "plans"
 #: One new activity-journal entry.
 KIND_ACTIVITY = "activity"
 
+#: The shared settings file changed.
+KIND_SETTINGS = "settings"
+
 #: Every kind, in the order a newly connected browser is told about them.
-KINDS = (KIND_SAVE, KIND_NOTES, KIND_PLANS, KIND_ACTIVITY)
+KINDS = (KIND_SAVE, KIND_NOTES, KIND_PLANS, KIND_ACTIVITY, KIND_SETTINGS)
 
 
 @dataclass(frozen=True)
@@ -188,6 +193,7 @@ class SaveWatcher:
         self.tail = tail
         self.tail_interval = tail_interval
         self._offsets: dict[Path, int] | None = None
+        self._settings_stamp: tuple[int, int] | None | bool = False
         self._warming: threading.Thread | None = None
         self._subscribers: set[asyncio.Queue] = set()
         self._cut: set[asyncio.Queue] = set()
@@ -347,8 +353,29 @@ class SaveWatcher:
                 events += [_activity_event(world, row) for row in rows]
         return events
 
+    def settings_scan(self) -> list[WatchEvent]:
+        """The settings file as one event when its stamp moved; the first call only records it."""
+        try:
+            stat = config.settings_path().stat()
+            stamp: tuple[int, int] | None = (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            stamp = None
+        first = self._settings_stamp is False
+        if stamp == self._settings_stamp:
+            return []
+        self._settings_stamp = stamp
+        if first or stamp is None:
+            return []
+        try:
+            view = settings.read()
+        except Exception:
+            return []
+        data = _settings_json(view)
+        return [WatchEvent(KIND_SETTINGS, "settings.json", float(view["updated"] or 0.0), data)]
+
     async def tail_once(self) -> list[WatchEvent]:
         news = await asyncio.to_thread(self.tail_scan)
+        news += await asyncio.to_thread(self.settings_scan)
         for event in news:
             self.latest[event.kind] = event
             self._publish(event)

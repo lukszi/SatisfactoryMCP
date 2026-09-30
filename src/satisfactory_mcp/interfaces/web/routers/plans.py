@@ -17,7 +17,9 @@ from fastapi import APIRouter, Request
 
 from ....domain.planning import manage
 from ....domain.planning import siting as planning_siting
+from ....domain.planning.diff_service import plan_progress
 from ....domain.planning.planlog import PlanLog
+from ....domain.world import pin
 from ..serial import ActorBody, _actor_json, _fail, _state
 
 __all__ = ["router"]
@@ -162,3 +164,88 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
         )
     log = PlanLog(st.world_id, st.header.get("session_name") or "")
     return {"plans": rows, "stored": len(st.plans.plans), "index": _index(log, st)}
+
+
+# ------------------------------------------------------------------ progress
+
+
+class PlanBuiltRow(TypedDict):
+    """One live plan's progress at its head: ``built_at`` without the startup order.
+
+    ``figure`` is ``12 / 16``, ``12–16 / 20`` (unsure), ``–`` (not placed) or ``?`` (the
+    plan does not solve or builds nothing)."""
+
+    key: str
+    rev: int
+    mode: str
+    confidence: str
+    built: int | None
+    built_max: int | None
+    total: int
+    percent: float | None
+    percent_max: float | None
+    figure: str
+    text: str
+
+
+class PlansBuiltResponse(TypedDict):
+    rows: list[PlanBuiltRow]
+
+
+#: (world, plan key, rev, save token, labels version) -> row. Every part of the answer's
+#: input is in the key, so an entry is never stale, only unused.
+_BUILT: dict[tuple, PlanBuiltRow] = {}
+_BUILT_MAX = 256
+
+
+def _built_row(st, state) -> PlanBuiltRow:
+    found = plan_progress(st.game, st, state)
+    if found is None:
+        return {
+            "key": state.key,
+            "rev": state.rev,
+            "mode": "",
+            "confidence": "",
+            "built": None,
+            "built_max": None,
+            "total": 0,
+            "percent": None,
+            "percent_max": None,
+            "figure": "?",
+            "text": "the plan does not solve today",
+        }
+    return {
+        "key": state.key,
+        "rev": state.rev,
+        "mode": found.mode,
+        "confidence": found.confidence,
+        "built": found.built,
+        "built_max": found.built_max,
+        "total": found.total,
+        "percent": found.percent,
+        "percent_max": found.percent_max,
+        "figure": "?" if found.confidence == "unsure" else found.figure(),
+        "text": found.where(),
+    }
+
+
+@router.get("/plan/built", response_model=PlansBuiltResponse)
+def plans_built(request: Request, save: str | None = None, world: str | None = None) -> Any:
+    """Every live plan's built progress, for the Planner's list: a solve per plan, cached
+    per plan version, save and factory names."""
+    try:
+        st = _state(request, save, world)
+    except Exception as exc:
+        return _fail(f"could not read save: {exc}", 404)
+    token = pin.check(st.header, None)
+    log = PlanLog(st.world_id, st.header.get("session_name") or "")
+    rows = []
+    for state in log.heads():
+        key = (st.world_id, state.key, state.rev, token, st.labels.version)
+        row = _BUILT.get(key)
+        if row is None:
+            if len(_BUILT) >= _BUILT_MAX:
+                _BUILT.clear()
+            row = _BUILT[key] = _built_row(st, state)
+        rows.append(row)
+    return {"rows": rows}

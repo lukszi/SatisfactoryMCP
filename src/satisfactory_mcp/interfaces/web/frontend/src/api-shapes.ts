@@ -199,8 +199,8 @@ export type NameTakenResponse = Body<"NameTakenResponse">;
 
 /* ------------------------------------------ /api/plan/solve, /api/ui/focus, /api/activity */
 
-export type SolveRow = Schema["SolveRow"];
 export type SolveRate = Schema["SolveRate"];
+export type SolveRow = Schema["SolveRow"];
 export type SolveResponse = Body<"SolveResponse">;
 export type FocusSelection = Schema["Selection"];
 export type FocusResponse = Body<"FocusResponse">;
@@ -214,10 +214,76 @@ export type VersionsResponse = Body<"VersionsResponse">;
 export type DeltaRow = Schema["DeltaRow"];
 export type DeltaResponse = Body<"DeltaResponse">;
 
+/* ------------------------------ planner P3: graph, alternates, pins (docs/planner-p3_contract.md §5.2) */
+
+export type PlanGraphNode = Schema["PlanGraphNode"];
+export type PlanGraphEdge = Schema["PlanGraphEdge"];
+export type PlanGraph = Schema["PlanGraph"];
+export type RowChange = Schema["RowChange"];
+export type ResultDelta = Schema["ResultDelta"];
+export type SwapOption = Schema["SwapOption"];
+export type PlanAlternatesResponse = Body<"PlanAlternatesResponse">;
+export type PinRef = Schema["PinRef"];
+export type PinRow = Schema["PinRow"];
+export type PinsResponse = Body<"PinsResponse">;
+export type PinCreated = Body<"PinCreated">;
+export type PinDropped = Body<"PinDropped">;
+export type PinStaleResponse = Body<"PinStaleResponse">;
+
+/* ------------------------------------- /api/plan/track, /api/plan/feeders, /api/asks */
+
+export type TrackState = Schema["TrackState"];
+export type TrackMachine = Schema["TrackMachine"];
+export type TrackTarget = Schema["TrackTarget"];
+export type TrackRow = Schema["TrackRow"];
+export type TrackStageRow = Schema["TrackStageRow"];
+export type TrackStage = Schema["TrackStage"];
+export type TrackStartup = Schema["TrackStartup"];
+export type TrackPower = Schema["TrackPower"];
+export type TrackCost = Schema["TrackCost"];
+export type TrackNeighbour = Schema["TrackNeighbour"];
+export type TrackSiteRow = Schema["TrackSiteRow"];
+export type TrackSite = Schema["TrackSite"];
+export type TrackResponse = Body<"TrackResponse">;
+export type TrackBuiltCandidate = Schema["TrackBuiltCandidate"];
+export type TrackBuiltAt = Schema["TrackBuiltAt"];
+export type PlanBuiltRow = Schema["PlanBuiltRow"];
+export type PlansBuiltResponse = Body<"PlansBuiltResponse">;
+export type Feeder = Schema["Feeder"];
+export type FeedersResponse = Body<"FeedersResponse">;
+export type AskAbout = Schema["AskAbout"];
+export type AskRow = Schema["AskRow"];
+export type AsksResponse = Body<"AsksResponse">;
+export type AskCreateBody = Schema["AskCreateBody"];
+export type AskDropBody = Schema["AskDropBody"];
+export type AskDropped = Body<"AskDropped">;
+export type AskStaleResponse = Body<"AskStaleResponse">;
+
 /* ---------------------------------------------------------- /api/collectibles */
 
 export type CollectibleRow = Schema["CollectibleRow"];
+export type CensusRow = Schema["CensusRow"];
 export type CollectiblesResponse = Body<"CollectiblesResponse">;
+
+/* ------------------------------------------------------------------ /api/world/* */
+
+export type TableAge = Schema["TableAge"];
+export type FoundNode = Schema["FoundNode"];
+export type FoundField = Schema["FoundField"];
+export type WaterBlock = Schema["WaterBlock"];
+export type NodeChoices = Schema["NodeChoices"];
+export type NodeFindResponse = Body<"NodeFindResponse">;
+export type RankedSite = Schema["RankedSite"];
+export type RankedSitesResponse = Body<"RankedSitesResponse">;
+export type RunEnd = Schema["RunEnd"];
+export type RunRow = Schema["RunRow"];
+export type NetworkRow = Schema["NetworkRow"];
+export type ConduitsResponse = Body<"ConduitsResponse">;
+export type HereResponse = Body<"HereResponse">;
+export type RegionRow = Schema["RegionRow"];
+export type RegionTableResponse = Body<"RegionTableResponse">;
+export type ConduitCount = Schema["ConduitCount"];
+export type NearPickup = Schema["NearPickup"];
 
 /* ------------------------------------------------------------------ both, and shared */
 
@@ -243,3 +309,8 @@ export type SitesResponse = Body<"SitesResponse">;
 export type FloorPlatform = Schema["FloorPlatform"];
 export type FloorBand = Schema["FloorBand"];
 export type FactoryFloorsResponse = Body<"FloorsResponse">;
+
+/* ---------------------------------------------------------------- /api/settings */
+
+export type SettingsResponse = Body<"SettingsResponse">;
+export type SettingsStaleResponse = Body<"SettingsStaleResponse">;

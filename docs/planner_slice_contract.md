@@ -85,6 +85,7 @@ and **drops values at their default**.
 | `recycle_once` | list[str] | [] | set | same |
 | `supplied` | dict[str, float] | {} | map | same |
 | `logistics_items` | list[str] | [] | set | not a solve kwarg; presentation only |
+| `power_priority` | int 0–4 | 0 | scalar | same ([planner-power-priority_contract.md](planner-power-priority_contract.md)) |
 
 Sets keep insertion order for display and have set semantics for merging. A float member of
 `clocks`/`extractor_clocks` is compared by `f"{x:g}"`. Map keys are item names as typed.
@@ -513,6 +514,10 @@ Module `satisfactory_mcp/domain/planning/focus.py`. File `ui/<world>.json`, with
 - `view` ∈ `map`, `dashboard`, `planner`. `tab` is free text.
 - `selection` is null or `{kind, label, ref}`.
 - `follow` ∈ `follow`, `toasts`, `off`.
+- `sav` is the save the page has loaded (the token the header shows), on every view.
+- The page writes focus once the world and its save have loaded, after every save switch,
+  whenever the view, tab, selection or the open plan's head rev changes, and on a 15 s
+  heartbeat.
 
 ```python
 OPEN_WITHIN_S = 45.0

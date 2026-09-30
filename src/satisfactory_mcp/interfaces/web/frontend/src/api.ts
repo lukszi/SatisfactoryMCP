@@ -92,9 +92,20 @@ export function onStale(listener: () => void): void {
   staleListeners.push(listener);
 }
 
+var tokenListeners: Array<() => void> = [];
+
+export function onToken(listener: () => void): void {
+  tokenListeners.push(listener);
+}
+
 export function holdToken(token: string): void {
+  var moved = state.token !== token;
   state.token = token;
   stale(false);
+  if (moved)
+    tokenListeners.forEach(function (listener) {
+      listener();
+    });
 }
 
 export function dropToken(): void {

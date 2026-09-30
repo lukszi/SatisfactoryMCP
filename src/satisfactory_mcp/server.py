@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from .domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from .domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
-from .domain.planning import journal
+from .domain.planning import journal, planlog
 from .interfaces.mcp import tools as _tools
 from .interfaces.mcp.app import (
     Limit,
@@ -60,6 +60,7 @@ from .interfaces.mcp.tools.inventory import crates, stock, storage
 from .interfaces.mcp.tools.planning import (
     PLAN_DEFAULTS,
     _plan_kwargs,
+    _recipe_names,
     bom,
     commission_plan,
     compare_recipe_options,
@@ -85,6 +86,7 @@ from .interfaces.mcp.tools.progression import (
 )
 from .interfaces.mcp.tools.prompts import design_factory, pick_hard_drive, plan_power_plant
 from .interfaces.mcp.tools.resources import current_save, docs_summary, factory_labels, map_regions
+from .interfaces.mcp.tools.settings import settings
 from .interfaces.mcp.tools.spatial import (
     describe_location,
     list_regions,
@@ -161,6 +163,7 @@ __all__ = [
     "search_recipes",
     "search_resource_nodes",
     "select_machines",
+    "settings",
     "show_on_map",
     "site_plan",
     "somersloops",
@@ -179,6 +182,7 @@ _ = (_state, _item_id, _player_xy, _cand_row, _resolve_factory, _plan_kwargs, _o
 
 def main() -> None:
     journal.set_writer("chat")
+    planlog.use_recipe_names(_recipe_names)
     mcp.run()
 
 

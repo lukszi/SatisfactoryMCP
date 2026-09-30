@@ -211,7 +211,7 @@ function render(): void {
   box.appendChild(head);
   var data = view.data;
   if (view.error) {
-    cardLine(box, view.error, "bad");
+    cardLine(box, view.error, "blocked");
     return;
   }
   if (!data) {
@@ -221,7 +221,7 @@ function render(): void {
   var only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;
   cardSubject(box, only ? only.name + (only.recipe ? " · " + only.recipe : "") : data.subject);
   if (data.truncated) {
-    cardLine(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "bad");
+    cardLine(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "blocked");
   }
   if (data.ambiguous) {
     cardLine(box, "may over-report a feeder").title =

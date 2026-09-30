@@ -1,7 +1,7 @@
 /* The dashboard's building blocks, shared by dashboard.ts and the sections split out of it. */
 
 import "./dashkit.css";
-import { count, make } from "./dom";
+import { COPY_ATTR, COPY_CLASS, count, make } from "./dom";
 import { hashFor } from "./map";
 import { tone } from "./states";
 import { friendly } from "./toast";
@@ -19,12 +19,16 @@ export function link(dash: string, text: string, className?: string): HTMLAnchor
   return a;
 }
 
-export function note(parent: HTMLElement, text: string): void {
-  parent.appendChild(make("p", "dash-note", text));
+export function note(parent: HTMLElement, text: string): HTMLElement {
+  var line = make("p", "dash-note", text);
+  parent.appendChild(line);
+  return line;
 }
 
-export function heading(parent: HTMLElement, text: string): void {
-  parent.appendChild(make("h2", "dash-h", text));
+export function heading(parent: HTMLElement, text: string, unit?: string): void {
+  var h = make("h2", "dash-h", text);
+  if (unit) h.appendChild(make("span", "dash-unit", " " + unit));
+  parent.appendChild(h);
 }
 
 export function tile(label: string, value: string, sub: string, bad?: boolean, href?: string): HTMLElement {
@@ -73,6 +77,76 @@ export function checkbox(label: string, checked: boolean, change: (on: boolean) 
   toggle.appendChild(box);
   toggle.appendChild(document.createTextNode(" " + label));
   return toggle;
+}
+
+export interface SliderOptions {
+  label: string;
+  ends?: [string, string];
+  disabled?: boolean;
+  title?: string;
+}
+
+export function slider(stops: string[], value: number, move: (i: number) => void, commit: (i: number) => void, o: SliderOptions): HTMLElement {
+  var wrap = make("div", "dash-slider");
+  var input = make("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = String(stops.length - 1);
+  input.step = "1";
+  input.value = String(value);
+  input.disabled = !!o.disabled;
+  input.setAttribute("aria-label", o.label);
+  if (o.title) input.title = o.title;
+  var say = function () {
+    input.setAttribute("aria-valuetext", stops[Number(input.value)] || input.value);
+  };
+  say();
+  input.oninput = function () {
+    say();
+    move(Number(input.value));
+  };
+  input.onchange = function () {
+    commit(Number(input.value));
+  };
+  wrap.appendChild(input);
+  var ticks = make("div", "dash-slider-ticks");
+  stops.forEach(function (text) {
+    ticks.appendChild(make("span", "", text));
+  });
+  wrap.appendChild(ticks);
+  if (o.ends) {
+    var ends = make("div", "dash-slider-ends");
+    ends.appendChild(make("span", "", o.ends[0]));
+    ends.appendChild(make("span", "", o.ends[1]));
+    wrap.appendChild(ends);
+  }
+  return wrap;
+}
+
+export interface ChoiceOptions {
+  candidate?: string;
+  label?: string;
+  title?: string;
+  disabled?: boolean;
+}
+
+export function choice(options: [string, string][], value: string, change: (value: string) => void, o?: ChoiceOptions): HTMLSelectElement {
+  var opts = o || {};
+  var pick = make("select", "dash-select");
+  if (opts.candidate) pick.setAttribute("data-candidate", opts.candidate);
+  if (opts.label) pick.setAttribute("aria-label", opts.label);
+  if (opts.title) pick.title = opts.title;
+  pick.disabled = !!opts.disabled;
+  options.forEach(function (item) {
+    var option = make("option", "", item[1]);
+    option.value = item[0];
+    pick.appendChild(option);
+  });
+  pick.value = value;
+  pick.onchange = function () {
+    change(pick.value);
+  };
+  return pick;
 }
 
 export type Align = "left" | "right" | "center";
@@ -257,6 +331,15 @@ export function button(text: string, action: () => void, options?: ButtonOptions
   return b;
 }
 
+export function copyButton(value: string, text: string, options: ButtonOptions): HTMLButtonElement {
+  var b = make("button", "btn " + COPY_CLASS, text);
+  b.type = "button";
+  b.title = options.title || "copy " + value;
+  if (options.label) b.setAttribute("aria-label", options.label);
+  b.setAttribute(COPY_ATTR, value);
+  return b;
+}
+
 export function pressed(text: string, on: boolean, action: () => void, options?: ButtonOptions): HTMLButtonElement {
   var b = button(text, action, options);
   b.setAttribute("aria-pressed", String(on));
@@ -334,9 +417,34 @@ export function error(parent: HTMLElement, thing: string, reason: unknown, retry
   parent.appendChild(box);
 }
 
+export function statusChip(status: "free" | "tapped" | "locked"): HTMLElement {
+  return chip(W[status], status === "free" ? "ok" : "muted");
+}
+
+export function showAll(card: HTMLElement, grid: HTMLElement, rows: number, shown: 25 | 50, label: string, open: boolean, onOpen: () => void): void {
+  if (rows <= shown || open) return;
+  var cls = "dk-capped-" + shown;
+  grid.classList.add(cls);
+  var more = make("div", "dk-more");
+  more.appendChild(
+    button(label, function () {
+      onOpen();
+      grid.classList.remove(cls);
+      more.remove();
+    })
+  );
+  card.appendChild(more);
+}
+
 export function chip(text: string, tone?: "ok" | "bad" | "blocked" | "mid" | "muted", title?: string): HTMLElement {
   var c = make("span", "chip chip-" + (tone || "muted"), text);
   if (title) c.title = title;
+  return c;
+}
+
+export function idChip(id: string, title?: string): HTMLElement {
+  var c = chip(id, "muted", title);
+  c.classList.add("chip-id");
   return c;
 }
 

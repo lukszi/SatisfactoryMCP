@@ -156,6 +156,22 @@ def test_the_median_resists_a_spire(points):
 # ------------------------------------------------------------- the tool
 
 
+def test_an_even_count_takes_the_mean_of_the_middle_two():
+    assert elevation.Elevation.middle([127.0, 137.0]) == pytest.approx(132.0)
+    assert elevation.Elevation.middle([1.0, 2.0, 9.0]) == 2.0
+    assert elevation.Elevation.middle([]) is None
+
+
+@pytest.mark.parametrize("radius", [50, 200, 400, 800])
+def test_the_tool_quotes_the_median_the_inspector_sends(game, points, radius):
+    near = elevation.probe(IN_THE_FIELD[0] * 100, IN_THE_FIELD[1] * 100, points, radius_m=radius)
+    out = srv.describe_location(_at(IN_THE_FIELD), radius_m=radius)
+    if not near.ground:
+        assert "ground_elevation_m=" not in out
+        return
+    assert f"ground_elevation_m={near.median('node'):.0f} (median of {len(near.ground)}," in out
+
+
 def test_describe_location_reports_elevation(game):
     out = srv.describe_location(_at(ON_PLATFORM))
     assert "built_elevation_m=" in out

@@ -82,3 +82,67 @@ def test_remaining_is_refused_when_the_map_table_is_absent(state, game, monkeypa
         r = c.get("/api/collectibles", params={"mode": "remaining"})
     assert r.status_code == 400
     assert "needs the map's own placement table" in r.json()["error"]
+
+
+def test_every_mode_carries_the_census_with_labels_and_spoilers(client):
+    for mode in ("census", "remaining", "collected"):
+        body = client.get("/api/collectibles", params={"mode": mode}).json()
+        assert body["census"], mode
+        assert body["found"]
+    census = {c["category"]: c for c in body["census"]}
+    assert census["power_slug_blue"]["label"] == "blue power slugs"
+    assert census["crashed_drop_pod"]["spoiler"] is False
+    for c in census.values():
+        assert c["spoiler"] == (
+            c["category"] not in body["found"]
+            and c["category"]
+            not in (
+                "crashed_drop_pod",
+                "loot_cache",
+            )
+        )
+
+
+def test_spoilers_zero_hides_unfound_categories_and_recounts(client):
+    every = client.get("/api/collectibles", params={"mode": "remaining"}).json()
+    hidden = client.get("/api/collectibles", params={"mode": "remaining", "spoilers": 0}).json()
+    spoiled = {c["category"] for c in every["census"] if c["spoiler"]}
+    assert every["hidden_spoilers"] == 0
+    assert all(r["spoiler"] == (r["category"] in spoiled) for r in every["rows"])
+    assert hidden["hidden_spoilers"] == len(spoiled)
+    assert not any(r["spoiler"] for r in hidden["rows"])
+    assert {c["category"] for c in hidden["census"]}.isdisjoint(spoiled)
+    assert sum(hidden["counts"].values()) == len(hidden["rows"])
+    if spoiled:
+        assert len(hidden["rows"]) < len(every["rows"])
+
+
+def test_the_table_age_follows_the_save_build(state, game):
+    newer = type(state)(
+        projection={**state.projection, "header": {**state.header, "build_version": 502094}},
+        game=game,
+    )
+    app = create_app(state_loader=lambda save=None, world=None: newer, game_loader=lambda: game)
+    with TestClient(app) as c:
+        body_now = c.get("/api/collectibles", params={"mode": "census"}).json()
+    stale = body_now["stale"]
+    assert stale["table"] == "collectibles" and stale["behind"] is True
+    assert stale["gap"] == "buildVersion 495413 -> 502094"
+    assert stale["observed_matches"] is True
+
+
+def test_another_worlds_seen_states_are_dropped(state, game):
+    other = type(state)(
+        projection={**state.projection, "header": {**state.header, "session_name": "Elsewhere"}},
+        game=game,
+    )
+    assert other.removed.observed is False
+    assert all(p["observed"] is None for p in other.placements(remaining_only=True))
+    app = create_app(state_loader=lambda save=None, world=None: other, game_loader=lambda: game)
+    with TestClient(app) as c:
+        body = c.get("/api/collectibles", params={"mode": "remaining"}).json()
+    assert body["stale"]["observed_matches"] is False
+    assert all(c["standing"] is None and c["never_streamed"] is None for c in body["census"])
+    assert all(r["observed"] is None for r in body["rows"])
+    assert set(body["counts"]) == {"unstated"}
+    assert sum(body["counts"].values()) == len(body["rows"])

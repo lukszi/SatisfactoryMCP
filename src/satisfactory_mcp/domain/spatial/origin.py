@@ -21,17 +21,29 @@ SLAB_PREFIX = "slab"
 #: spelling the node selectors use to pick that node OUT of a field.
 NODE_PREFIX = "node"
 
+#: One standing machine, by the instance id the tools print, as in ``machine:`` selects.
+MACHINE_PREFIX = "machine"
+
 #: A stored plan's recorded site, by the plan's own name.
 PLAN_PREFIX = "plan"
+
+#: A located pin, by the number the pins card prints.
+PIN_PREFIX = "pin"
 
 #: The player, spelled the same wherever a place is taken.
 PLAYER_WORDS = ("me", "player", "here")
 
+#: The HUB. A factory label of the same name wins, so naming one "HUB" changes nothing.
+HUB_WORDS = ("hub",)
+
+#: The HUB's own parts; the HUB itself carries no record in the projection.
+HUB_PARTS = ("Build_StorageIntegrated_C", "Build_GeneratorIntegratedBiomass_C")
+
 #: What a term that named no place should have said, so rule 6 of the grammar holds
 #: wherever a place is taken rather than only where a tool remembered to list them.
 PLACE_GRAMMAR = (
-    "A place is x,y in metres, 'me', a factory name, node:<id>, slab:<n>, "
-    "chain:<n>/pipe:<n>, or plan:<name>"
+    "A place is x,y in metres, 'me', 'hub', a factory name, node:<id>, machine:<id>, "
+    "slab:<n>, chain:<n>/pipe:<n>, plan:<name>, or pin:<n>"
 )
 
 #: The one spelling of a circle, for node selectors and machine selectors alike. ``@``
@@ -76,6 +88,18 @@ def player_xy(st) -> tuple[float, float] | None:
     """Player XY for the near:me selector, or None if the save has no pawn."""
     here = st.player_position() if st else None
     return (here[0], here[1]) if here else None
+
+
+def hub_xy(st) -> tuple[float, float] | None:
+    """The HUB's position in centimetres, off its built-in storage or burners."""
+    if st is None:
+        return None
+    for key in ("storage", "generators"):
+        for cls in HUB_PARTS:
+            for record in st.projection.get(key, ()):
+                if record.get("cls") == cls and record.get("pos"):
+                    return record["pos"][0], record["pos"][1]
+    return None
 
 
 def _run_origin(st, text: str) -> tuple[tuple[float, float], str]:
@@ -134,6 +158,18 @@ def _node_origin(text: str) -> tuple[tuple[float, float], str]:
     raise ValueError(f"no resource node called {want!r}; search_resource_nodes lists the ids")
 
 
+def _machine_origin(st, text: str) -> tuple[tuple[float, float], str]:
+    """Centre on one standing machine; the leaf and the full instance path both match."""
+    if st is None:
+        raise ValueError(f"{text!r} names a machine, which needs a readable save")
+    want = text.partition(":")[2].strip().rsplit(".", 1)[-1]
+    for key in ("machines", "extractors", "generators"):
+        for record in st.projection.get(key, ()):
+            if record.get("pos") and record.get("instance", "").rsplit(".", 1)[-1] == want:
+                return (record["pos"][0], record["pos"][1]), f"machine:{want}"
+    raise ValueError(f"no machine called {want!r} in this save")
+
+
 def _plan_origin(st, text: str) -> tuple[tuple[float, float], str]:
     """Centre on a stored plan's recorded site, which only a sited plan has."""
     # Imported here because planning.siting imports this module: the plan record is
@@ -176,8 +212,12 @@ def resolve_origin(st, near: str) -> tuple[tuple[float, float], str]:
             return _slab_origin(st, text)
         if head == NODE_PREFIX:
             return _node_origin(text)
+        if head == MACHINE_PREFIX:
+            return _machine_origin(st, text)
         if head == PLAN_PREFIX:
             return _plan_origin(st, text)
+        if head == PIN_PREFIX:
+            return _pin_origin(st, text)
     if "," in text:
         try:
             x_m, y_m = (float(v) for v in text.split(",", 1))
@@ -192,18 +232,41 @@ def resolve_origin(st, near: str) -> tuple[tuple[float, float], str]:
         return here, "you"
 
     label = st.labels.find(text) if st else None
+    if label is None and text.casefold() in HUB_WORDS:
+        hub = hub_xy(st)
+        if hub is None:
+            raise ValueError("this save has no HUB, so 'hub' cannot be resolved")
+        return hub, "the HUB"
     if label is None:
         known = ", ".join(x.name for x in st.labels.labels) if st else ""
         raise ValueError(
             f"{near!r} does not name a place. {PLACE_GRAMMAR}"
             + (f". Named factories: {known}" if known else "")
         )
+    centre = label_centre(st, label)
+    if centre is None:
+        raise ValueError(f"{label.name!r} has no machines left to centre on")
+    return centre, label.name
+
+
+def _pin_origin(st, text: str) -> tuple[tuple[float, float], str]:
+    from ..planning import pins
+
+    n = pins.parse(text)
+    if n is None:
+        raise ValueError(f"{text!r} is not a pin: write pin:<n>, as the pins card prints it")
+    try:
+        return pins.place(st, n)
+    except pins.PinError as exc:
+        raise ValueError(str(exc)) from None
+
+
+def label_centre(st, label) -> tuple[float, float] | None:
+    """The centroid of a label's standing machines in centimetres, or None when none stand."""
     pos = {}
     for key in ("machines", "extractors", "generators"):
         for record in st.projection.get(key, ()):
             if record.get("pos"):
                 pos[record["instance"].rsplit(".", 1)[-1]] = record["pos"]
     points = [pos[m][:2] for m in label.anchors if m in pos]
-    if not points:
-        raise ValueError(f"{label.name!r} has no machines left to centre on")
-    return geo.centroid(points), label.name
+    return geo.centroid(points) if points else None

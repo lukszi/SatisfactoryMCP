@@ -57,6 +57,22 @@ export function renamedTo(name: string): string | undefined {
   return now;
 }
 
+var renamedListeners: Array<() => void> = [];
+
+export function onRenamed(listener: () => void): void {
+  renamedListeners.push(listener);
+}
+
+export function onRenameActivity(entry: { kind: string; args?: unknown }): void {
+  if (entry.kind !== "label.rename") return;
+  var args = (entry.args || {}) as { was?: unknown; to?: unknown };
+  if (typeof args.was !== "string" || typeof args.to !== "string" || formerly[args.was] === args.to) return;
+  formerly[args.was] = args.to;
+  renamedListeners.forEach(function (listener) {
+    listener();
+  });
+}
+
 export function refreshLabels(): void {
   loadOne("/api/factories");
   loadOne("/api/factories/health");

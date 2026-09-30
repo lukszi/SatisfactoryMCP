@@ -18,7 +18,7 @@ from typing import Any, ClassVar
 from ...core.gamedata.model import GameData, Recipe, Schematic
 from ...core.saveio import projection as proj
 from ...core.singleflight import Singleflight
-from ..collectibles.removed import RemovedActors
+from ..collectibles.removed import RemovedActors, observed_session
 from ..collectibles.table import CollectibleTable, _name_stem, load_collectibles
 from ..power.report import PowerLedger, wired_actors
 from ..progression.harddrives import HardDriveDesk, HardDriveOffer
@@ -132,7 +132,14 @@ class WorldState:
 
     @cached_property
     def removed(self) -> RemovedActors:
-        return RemovedActors(projection=self.projection, table=self.collectibles)
+        table = self.collectibles
+        session = observed_session(table)
+        name = self.header.get("session_name")
+        return RemovedActors(
+            projection=self.projection,
+            table=table,
+            observed=not session or not name or session == name,
+        )
 
     # ---- identity ------------------------------------------------------
 

@@ -16,6 +16,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from ...core.gamedata.model import GameData, pretty_class
+from ...domain.factories import identity as fidentity
 from ...domain.planning.planlog import Actor
 from ...domain.spatial import regions as spatial_regions
 from ...domain.world.state import WorldState
@@ -23,12 +24,23 @@ from ...domain.world.state import WorldState
 __all__ = [
     "ActorBody",
     "Biomass",
+    "CollectibleRow",
+    "Flow",
+    "FoundField",
+    "MachineSpot",
+    "PlanOpBody",
     "Region",
+    "TableAge",
     "_actor_json",
     "_fail",
+    "_field_json",
+    "_flow",
     "_label_json",
     "_m",
+    "_machine_spots",
+    "_pickup_json",
     "_resource_name",
+    "_settings_json",
     "_state",
     "_xyz",
     "_yaw",
@@ -52,6 +64,131 @@ class Region(TypedDict):
     text: str
 
 
+class TableAge(TypedDict):
+    """Whether a shipped map table is older than the save; built by the domain's ``table_age``.
+
+    ``moved`` and ``unjoinable`` count rows in the reply they travel with (nodes only);
+    ``observed_from``/``observed_matches`` are the collectible table's (null for nodes).
+    """
+
+    table: Literal["nodes", "collectibles"]
+    behind: bool
+    gap: str | None
+    moved: int
+    unjoinable: int
+    observed_from: str | None
+    observed_matches: bool | None
+    notes: list[str]
+
+
+class CollectibleRow(TypedDict):
+    """One map placement, and what this save says about it.
+
+    Here because ``/api/collectibles`` and ``/api/inspect`` both send placements. The three
+    coordinates come off the generated placement table and are never null.
+
+    ``observed`` is the placement table's scan of every save on disk rather than of the
+    loaded one, and it is null both for a row this save has collected and for a state this
+    build does not know. ``distance_m`` is set only where an origin was resolved.
+
+    ``looted`` is a pod's own ``mHasBeenLooted``, and null means one thing: no loot flag was
+    read for this placement. Only ``crashed_drop_pod`` writes one, and only a save that had
+    the pod loaded records it, so ``looted`` is non-null exactly on a pod whose ``observed``
+    is ``"standing"``. **Null is never "not looted"** -- that is ``false``.
+
+    ``spoiler`` is true for a category this save has never collected one of; pods and loot
+    caches never are.
+    """
+
+    category: str
+    name: str
+    x_m: float
+    y_m: float
+    z_m: float
+    collected: bool
+    observed: str | None
+    looted: bool | None
+    distance_m: float | None
+    spoiler: bool
+
+
+def _pickup_json(row: dict, spoiler: bool) -> dict:
+    return {
+        "category": row["category"],
+        "name": row["name"],
+        **_xyz(row["pos"]),
+        "collected": row["collected"],
+        "observed": row["observed"],
+        "looted": row["looted"],
+        "distance_m": row.get("distance_m"),
+        "spoiler": spoiler,
+    }
+
+
+class FoundField(TypedDict):
+    """A cluster of nodes within 200 m of each other; ``key`` is stable across saves.
+
+    ``free`` is untapped and reachable capacity; ``locked`` says some member no unlocked
+    extractor can work, ``spoiler`` that none can. ``distance_m`` is to the nearest member
+    and is null where nothing was measured from.
+    """
+
+    key: str
+    selector: str
+    members: list[str]
+    region: str | None
+    grid: str
+    direction: str
+    x_m: float
+    y_m: float
+    bbox_m: tuple[float, float, float, float]
+    size: int
+    purities: dict[str, int]
+    resources: list[str]
+    total: float
+    free: float
+    spread_m: float
+    locked: bool
+    distance_m: float | None
+    spoiler: bool
+
+
+def _field_json(f: Any, game: GameData | None) -> FoundField:
+    x0, y0, x1, y1 = f.bbox
+    return {
+        "key": f.key,
+        "selector": f.selector,
+        "members": [str(m["instance"]).rsplit(".", 1)[-1] for m in f.members],
+        "region": f.region,
+        "grid": f.grid,
+        "direction": f.direction,
+        "x_m": _m(f.centroid[0]),
+        "y_m": _m(f.centroid[1]),
+        "bbox_m": (_m(x0), _m(y0), _m(x1), _m(y1)),
+        "size": f.size,
+        "purities": dict(f.purities),
+        "resources": [_resource_name(game, r) for r in f.resources],
+        "total": round(f.total, 2),
+        "free": round(f.free, 2),
+        "spread_m": round(f.diameter_m, 1),
+        "locked": f.locked,
+        "distance_m": f.distance_m,
+        "spoiler": f.spoiler,
+    }
+
+
+class PlanOpBody(TypedDict, total=False):
+    """One op as the log holds it; which keys are present depends on ``op`` (contract §3)."""
+
+    op: str
+    field: str
+    value: Any
+    item: str
+    member: Any
+    name: str
+    was: Any
+
+
 class ActorBody(TypedDict):
     """Who wrote a plan commit or a journal entry; ``display`` is the word the page shows."""
 
@@ -66,6 +203,56 @@ def _actor_json(raw: Any) -> ActorBody:
         raw if isinstance(raw, Actor) else Actor.from_dict(raw if isinstance(raw, dict) else None)
     )
     return {**actor.to_dict(), "display": actor.display()}
+
+
+def _settings_json(view: dict) -> dict:
+    """``domain.settings.read()`` as ``/api/settings`` and the ``settings`` event send it."""
+    by = view.get("by")
+    return {**view, "by": _actor_json(by) if by else None}
+
+
+class Flow(TypedDict):
+    """Items per minute at nameplate: made, or for an input consumed. ``to`` is where the
+    output physically ends up (``storage``, ``export``, ``sink``, ``nowhere``)."""
+
+    name: str
+    per_min: float
+    to: list[str]
+
+
+def _flow(fg: Any, item: str, rate: float) -> Flow:
+    """One item's rate in a factory's flow graph, with where that item ends up."""
+    return {"name": item, "per_min": round(rate, 2), "to": sorted(fg.destinations.get(item, ()))}
+
+
+class MachineSpot(TypedDict):
+    """One placed machine. ``factory`` is the label that holds it, if any."""
+
+    id: str
+    building: str
+    x_m: float
+    y_m: float
+    factory: str | None
+
+
+def _machine_spots(st: WorldState, machines) -> list[dict]:
+    placed = fidentity.positions(st.projection)
+    out = []
+    for m in sorted(machines):
+        if m not in placed:
+            continue
+        held = st.labels.label_for(m)
+        cls = st.graph.cls.get(m, "")
+        out.append(
+            {
+                "id": m,
+                "building": st.game.building_name(cls) or cls,
+                "x_m": _m(placed[m][0]),
+                "y_m": _m(placed[m][1]),
+                "factory": held.name if held else None,
+            }
+        )
+    return out
 
 
 def _m(value: float | None) -> float | None:

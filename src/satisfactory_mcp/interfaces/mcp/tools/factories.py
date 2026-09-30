@@ -21,6 +21,7 @@ from ....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from ....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
 from ....domain.factories.select import SelectorError
 from ....domain.factories.trace import power_at_risk, resolve_seeds, trace
+from ....domain.planning import journal
 from ....domain.spatial import nodes as nodes_mod
 from ....presenters.text import primitives as render
 from ..app import AsOf, Limit, _state, actor, game, mcp, retired
@@ -1332,7 +1333,13 @@ def select_machines(
     clashes = {lbl.name for m in picked if (lbl := st.labels.label_for(m))}
     if clashes:
         parts.append("already named: " + ", ".join(sorted(clashes)))
-    return render.envelope(f"# {st.age_note}", "\n".join(parts))
+    return render.envelope(f"# {st.age_note}", "\n".join(parts), _pin_notes(select, st))
+
+
+def _pin_notes(select: list[str] | None, st) -> list[str]:
+    from ....domain.factories import select as gsel
+
+    return gsel.pin_notes(select, st)
 
 
 @mcp.tool(structured_output=False)
@@ -1379,7 +1386,7 @@ def name_factory(
         f"{int(cand.centroid[0] / 100)},{int(cand.centroid[1] / 100)} "
         f"(spread {cand.spread_m:.0f}m): {cand.name_hint()}"
     )
-    warn = _overlaps(store, picked, name)
+    warn = _pin_notes(select, st) + _overlaps(store, picked, name)
     if existing and not dry_run:
         kept = len(set(existing.anchors) & set(picked))
         warn.append(
@@ -1431,10 +1438,18 @@ def rename_factory(
         return f"! no label named {name!r}. Known: {known}"
     if label.name == to.strip():
         return f"factory {label.name!r} already has that name"
+    who = actor(ctx)
     try:
-        done = edits.rename(st.world_id, _session(st), label.name, to, actor=actor(ctx), exact=True)
+        done = edits.rename(st.world_id, _session(st), label.name, to, actor=who, exact=True)
     except LABEL_REFUSALS as exc:
         return _label_refused(exc)
+    journal.append(
+        st.world_id,
+        "label.rename",
+        actor=who,
+        args={"was": done.was, "to": done.name},
+        text=f'renamed factory "{done.was}" to "{done.name}"',
+    )
     notes = [
         (
             f"recall it as factory={done.name!r}; its {done.machines} anchor "
@@ -1511,7 +1526,8 @@ def amend_factory(
         plan = edits.plan_amend(store, label, wanted, going, alive)
     except LabelError as exc:
         return _label_refused(exc)
-    warn = [f"overlaps {other!r} on {n} machine(s)" for other, n in plan.overlaps.items()]
+    warn = _pin_notes([*(add or ()), *(drop or ())], st)
+    warn += [f"overlaps {other!r} on {n} machine(s)" for other, n in plan.overlaps.items()]
     if plan.named:
         warn.append(
             f"{len(plan.added)} added machine(s) already have a name -- covers(), which the "

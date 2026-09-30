@@ -1,18 +1,24 @@
 """Game-data lookups: items, recipes, alternates, buildings.
 
-Read-only over the normalized dump. Nothing here touches a save."""
+Read-only over the normalized dump; ``alternates_for_item(plan=)`` also re-solves a stored
+plan and journals the look (docs/planner-p3_contract.md §6.1)."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
+from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....core.gamedata import search
 from ....core.gamedata.unlocks import granted_by_label
+from ....domain.planning import journal, swaps
+from ....domain.planning.planlog import PlanLog
+from ....domain.planning.recall import plan_ref
+from ....domain.world import pin as save_pin
 from ....presenters.text import primitives as render
 from ....presenters.text.search import render_search
-from ..app import AsOf, Limit, _item_id, _state, game, mcp, retired
+from ..app import AsOf, Limit, _item_id, _state, actor, game, mcp, retired
 
 
 def _no_save_note(reason: str | None) -> str:
@@ -92,6 +98,80 @@ def recipe_detail(recipe_id: str) -> str:
     return "\n".join(lines)
 
 
+def _delta_cells(option: dict) -> list[str]:
+    delta = option["delta"]
+    if delta is None:
+        return ["-", "-", "-"]
+    if not delta["comparable"]:
+        return [delta["text"], "-", "-"]
+    raw = ", ".join(f"{i['name']} {i['delta']:+g}" for i in delta["inputs"][:2])
+    return [f"{delta['machines']:+d}", f"{delta['mw_draw']:+g}", raw or "0"]
+
+
+def _in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
+    """The alternates table against a stored plan: status and deltas per recipe."""
+    try:
+        key, echo = plan_ref(st, plan)
+    except KeyError as exc:
+        return f"! {exc.args[0]}"
+    stored = st.plans.find(key)
+    if stored is None:
+        known = ", ".join(x.name for x in st.plans.plans) or "(none)"
+        return f"! no saved plan named {plan!r}. Saved: {known}"
+    state = PlanLog(st.world_id).state(stored.key)
+    result = swaps.swap_deltas(g, st, state, iid, spoilers=include_locked)
+    rows = []
+    for o in result["options"]:
+        r = g.recipes[o["recipe_id"]]
+        status = o["status"]
+        if o["banned_by"] and status == "banned":
+            status += f" by {o['banned_by']!r}"
+        rows.append(
+            [
+                o["name"],
+                o["machine"] or "-",
+                render.flows((g.item_name(f.item), f.per_min, False) for f in r.ingredients),
+                render.flows((g.item_name(f.item), f.per_min, False) for f in r.products),
+                "HAVE" if o["unlocked"] else "LOCKED",
+                status,
+                *_delta_cells(o),
+            ]
+        )
+    headers = ["recipe", "building", "in/min", "out/min", "status", "in plan"]
+    body = render.table([*headers, "Δmach", "ΔMW draw", "Δraw"], rows)
+    footer = render.ids_footer((o["name"], o["recipe_id"]) for o in result["options"])
+    notes = [echo] if echo else []
+    if result["hidden"]:
+        notes.append(f"{result['hidden']} locked recipe(s) hidden (include_locked=false)")
+    notes.append(
+        "deltas compare the plan with each recipe required against the plan as it is; "
+        "facts, not a ranking"
+    )
+    notes.append(
+        f'plan "{state.name}" v{state.rev}; require one with plan_factory(plan="{state.name}", '
+        f'required=[...], base_rev={state.rev}, save_as="{state.name}")'
+    )
+    journal.append(
+        st.world_id,
+        "plan.view",
+        actor=actor(ctx),
+        sav=_sav(st),
+        tool="alternates_for_item",
+        plan=state.key,
+        rev=state.rev,
+        args={"view": "alternates", "item": iid},
+        text=f"looked at recipes for {g.item_name(iid)}",
+    )
+    return render.envelope(f"# {result['text']}", body + "\n" + footer, notes)
+
+
+def _sav(st) -> str:
+    try:
+        return save_pin.check(st.header, None)
+    except Exception:
+        return ""
+
+
 @mcp.tool(structured_output=False)
 def alternates_for_item(
     item: str,
@@ -99,16 +179,29 @@ def alternates_for_item(
     world: str | None = None,
     as_of: AsOf = None,
     include_locked: bool = True,
+    plan: Annotated[
+        str | None,
+        Field(description="a stored plan: add what requiring each recipe would change in it"),
+    ] = None,
+    ctx: Context | None = None,
 ) -> str:
     """Every automatable recipe that makes an item, alternates first.
 
     When a save is readable, each row is marked HAVE or LOCKED, and a LOCKED one says
     which schematic would grant it -- a hard drive and a milestone are different work.
+    With ``plan`` each recipe also carries its status in that plan and what requiring it
+    would change there: machines, MW draw and the first raw inputs.
     """
     g = game()
     iid = _item_id(item)
     if iid is None:
         return f"no item matching {item!r}"
+    if plan:
+        try:
+            st = _state(save, world, as_of)
+        except Exception as exc:
+            return f"could not read save: {exc}"
+        return _in_plan(g, st, iid, plan, include_locked, ctx)
     producers = search.makers_of(g, iid)
     # ``None``, not an empty set. The status column blanks for both "no save" and "a save
     # whose recipe list is empty", and only one of those is a fact about the world -- so

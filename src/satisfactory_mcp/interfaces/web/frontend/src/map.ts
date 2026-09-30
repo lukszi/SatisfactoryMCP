@@ -49,10 +49,14 @@ export function overlayPad(): { topLeft: L.Point; bottomRight: L.Point } {
   var frame = map.getContainer().getBoundingClientRect();
   var topLeft = L.point(GAP_PX, GAP_PX);
   var bottomRight = L.point(GAP_PX, GAP_PX);
-  ["panel", "trace"].forEach(function (id) {
+  var cards: string[] = [];
+  document.querySelectorAll<HTMLElement>(".mapcard[id]").forEach(function (card) {
+    cards.push(card.id);
+  });
+  ["panel"].concat(cards).forEach(function (id) {
     var r = shown(id);
     if (!r) return;
-    if (id === "trace" || r.width >= frame.width * SHEET_SHARE) {
+    if (id !== "panel" || r.width >= frame.width * SHEET_SHARE) {
       bottomRight.y = Math.max(bottomRight.y, frame.bottom - r.top + GAP_PX);
     } else topLeft.x = Math.max(topLeft.x, r.right - frame.left + GAP_PX);
   });
@@ -76,16 +80,19 @@ export function padPopups(): void {
   POPUP_BOTTOM_RIGHT.y = pad.bottomRight.y;
 }
 
-export function flyPadded(bounds: L.LatLngBounds, maxZoom: number): void {
+export function flyPadded(bounds: L.LatLngBounds, maxZoom: number, snap?: number): void {
   var pad = overlayPad();
+  var was = map.options.zoomSnap;
+  if (snap) map.options.zoomSnap = snap;
   map.flyToBounds(bounds, { maxZoom: maxZoom, paddingTopLeft: pad.topLeft, paddingBottomRight: pad.bottomRight });
+  map.options.zoomSnap = was;
 }
 
 export function flyToPoint(at: L.LatLngTuple, zoom: number): void {
   flyPadded(L.latLngBounds([at, at]), zoom);
 }
 
-var FIT_SNAP = 0.25;
+export var FIT_SNAP = 0.25;
 
 export function fitWorld(): void {
   var pad = overlayPad();
@@ -143,6 +150,26 @@ export var map = L.map("map", {
   maxBoundsViscosity: 0.6,
 });
 state.map = map;
+
+function rebound(lo: number, hi: number): number {
+  if (lo + hi > 0) return lo < 0 ? lo : hi < 0 ? -hi : 0;
+  return Math.max(0, Math.ceil(lo)) - Math.max(0, Math.floor(hi));
+}
+
+map._getBoundsOffset = function (px: L.Bounds, bounds: L.LatLngBounds, zoom?: number): L.Point {
+  var pad = overlayPad();
+  var min = px.min!.add(pad.topLeft);
+  var max = px.max!.subtract(pad.bottomRight);
+  if (min.x >= max.x || min.y >= max.y) {
+    min = px.min!;
+    max = px.max!;
+  }
+  var a = map.project(bounds.getNorthEast(), zoom);
+  var b = map.project(bounds.getSouthWest(), zoom);
+  var lo = L.point(Math.min(a.x, b.x) - min.x, Math.min(a.y, b.y) - min.y);
+  var hi = L.point(max.x - Math.max(a.x, b.x), max.y - Math.max(a.y, b.y));
+  return L.point(rebound(lo.x, hi.x), rebound(lo.y, hi.y));
+};
 
 (function () {
   // The viewport the page opens on: the URL's, if the fragment carries one.

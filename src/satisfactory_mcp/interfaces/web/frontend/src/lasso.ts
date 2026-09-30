@@ -38,7 +38,8 @@ var view = {
   token: "",
   members: null as MachineSpot[] | null,
   error: "",
-  area: null as Corner[] | null,
+  areas: [] as Corner[][],
+  more: false,
   preview: null as AmendedResponse | null,
   busy: false,
   world: "",
@@ -113,7 +114,7 @@ function toggle(text: string, title: string, mode: Mode): HTMLButtonElement {
     function () {
       if (view.mode === mode) return;
       view.mode = mode;
-      if (view.area) check();
+      if (view.areas.length) check();
       else render();
     },
     { title: title }
@@ -124,9 +125,10 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
   var changes = p.added.length + p.dropped.length;
   var chips = make("div", "panel-chips");
   if (p.added.length) chips.appendChild(chip("+" + counted(p.added.length, "machine") + " to add", "ok"));
-  if (p.dropped.length) chips.appendChild(chip("−" + counted(p.dropped.length, "machine") + " to remove", "bad"));
+  if (p.dropped.length) chips.appendChild(chip("−" + counted(p.dropped.length, "machine") + " to remove", "blocked"));
   if (!changes) chips.appendChild(chip(view.mode === "add" ? "nothing new inside" : "none of its machines inside", "muted"));
   chips.appendChild(chip(p.before + " → " + counted(p.after, "anchor"), "muted"));
+  if (view.areas.length > 1) chips.appendChild(chip(counted(view.areas.length, "area"), "muted"));
   box.appendChild(chips);
   var moved = p.added.length ? p.added : p.dropped;
   if (moved.length) cardLine(box, buildings(moved));
@@ -145,13 +147,25 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
           return counted(held[k]!, "machine") + " already in “" + k + "”; both factories will hold them";
         })
         .join(" · "),
-      "bad"
+      "blocked"
     );
   }
   var acts = cardRow();
   acts.appendChild(button(view.busy ? "applying…" : "apply", apply, { title: "write this change to the factory", disabled: view.busy || !changes }));
-  acts.appendChild(button("discard", discard, { title: "draw again" }));
+  acts.appendChild(button("discard", discard, { title: "clear every area and draw again" }));
+  acts.appendChild(
+    pressed(
+      "+ area",
+      view.more,
+      function () {
+        view.more = !view.more;
+        render();
+      },
+      { title: "the next drag adds another area instead of starting over" }
+    )
+  );
   box.appendChild(acts);
+  cardLine(box, "shift-drag or + area adds another area");
 }
 
 function render(): void {
@@ -172,7 +186,7 @@ function render(): void {
   box.appendChild(head);
   cardSubject(box, view.title);
   if (view.error) {
-    cardLine(box, view.error, "bad");
+    cardLine(box, view.error, "blocked");
     return;
   }
   if (!view.members) {
@@ -226,7 +240,8 @@ function begin(title: string, kind: string, factory: string): void {
   view.mode = "add";
   view.members = null;
   view.error = "";
-  view.area = null;
+  view.areas = [];
+  view.more = false;
   view.preview = null;
   view.busy = false;
   view.world = state.world;
@@ -258,7 +273,8 @@ export function closeLasso(): void {
   view.factory = "";
   view.members = null;
   view.preview = null;
-  view.area = null;
+  view.areas = [];
+  view.more = false;
   rings.clearLayers();
   ink.clearLayers();
   map.dragging.enable();
@@ -268,7 +284,8 @@ export function closeLasso(): void {
 function body(dryRun: boolean): object {
   return {
     name: view.factory,
-    area: view.area,
+    area: view.areas[0],
+    extra_areas: view.areas.slice(1),
     mode: view.mode,
     as_of: view.preview && !dryRun ? view.preview.token : view.token,
     version: newest(view.preview ? view.preview.version : 0),
@@ -333,7 +350,8 @@ function apply(): void {
 
 function discard(): void {
   latest("amend");
-  view.area = null;
+  view.areas = [];
+  view.more = false;
   view.preview = null;
   view.busy = false;
   ink.clearLayers();
@@ -343,17 +361,17 @@ function discard(): void {
 
 function stopStroke(): void {
   if (!stroke) return;
+  stroke.line.remove();
   stroke = null;
-  ink.clearLayers();
 }
 
 function onDown(event: PointerEvent): void {
   if (!view.factory || view.busy || event.button !== 0) return;
   var target = event.target as Element | null;
-  if (target && target.closest(".leaflet-control-container")) return;
+  if (target && target.closest(".leaflet-control-container, .leaflet-popup")) return;
   event.preventDefault();
   event.stopPropagation();
-  discard();
+  if (!view.areas.length || !(event.shiftKey || view.more)) discard();
   var at = map.mouseEventToLatLng(event as unknown as MouseEvent);
   stroke = {
     points: [at],
@@ -376,14 +394,17 @@ function onMove(event: PointerEvent): void {
 function onUp(): void {
   if (!stroke) return;
   var points = stroke.points;
+  stroke.line.remove();
   stroke = null;
-  ink.clearLayers();
   drew = true;
   if (points.length < 3) return;
   L.polygon(points, { className: "lasso-area", renderer: renderer, pane: "lasso", interactive: false }).addTo(ink);
-  view.area = points.map(function (p) {
-    return [p.lng, -p.lat] as Corner;
-  });
+  view.areas.push(
+    points.map(function (p) {
+      return [p.lng, -p.lat] as Corner;
+    })
+  );
+  view.more = false;
   check();
 }
 

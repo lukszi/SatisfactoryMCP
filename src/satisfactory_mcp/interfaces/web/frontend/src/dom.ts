@@ -50,7 +50,7 @@ export var COPY_ATTR = "data-copy";
 /* A selector, and a click that copies it -- every one of these exists to be pasted into an
  * MCP tool call. The exact text is repeated into `data-copy` so that what gets copied is
  * this string and not whatever the cell ends up rendering. The listener is in copy.ts. */
-export function code(text: unknown): Markup {
+export function code(text: unknown, shown?: string): Markup {
   var value = esc(text);
   return html(
     '<code class="' +
@@ -59,8 +59,10 @@ export function code(text: unknown): Markup {
       COPY_ATTR +
       '="' +
       value +
-      '" title="click to copy" tabindex="0" role="button">' +
-      value +
+      '" title="' +
+      (shown ? value + ": click to copy" : "click to copy") +
+      '" tabindex="0" role="button">' +
+      (shown ? esc(shown) : value) +
       "</code>"
   );
 }
@@ -68,6 +70,8 @@ export function code(text: unknown): Markup {
 export var TRACE_ATTR = "data-trace";
 export var TRACE_DIR_ATTR = "data-trace-dir";
 export var LASSO_ATTR = "data-lasso";
+export var FIND_ATTR = "data-find";
+export var FIND_AT_ATTR = "data-find-at";
 
 export function traceButtons(seed: string): Markup {
   var value = esc(seed);
@@ -189,6 +193,21 @@ function focusables(container: HTMLElement, key: string): HTMLElement[] {
   }) as HTMLElement[];
 }
 
+var rebuilds = 0;
+
+export function rebuilding(): boolean {
+  return rebuilds > 0;
+}
+
+function quietly(rebuild: () => void): void {
+  rebuilds += 1;
+  try {
+    rebuild();
+  } finally {
+    rebuilds -= 1;
+  }
+}
+
 export function keepFocus(container: HTMLElement, rebuild: () => void): void {
   var was = document.activeElement as HTMLElement | null;
   if (!was || was === container || !container.contains(was)) {
@@ -197,7 +216,7 @@ export function keepFocus(container: HTMLElement, rebuild: () => void): void {
   }
   var key = focusKey(was);
   var nth = focusables(container, key).indexOf(was);
-  rebuild();
+  quietly(rebuild);
   var now = document.activeElement;
   if (was.isConnected || (now && now !== document.body && container.contains(now))) return;
   var same = focusables(container, key);

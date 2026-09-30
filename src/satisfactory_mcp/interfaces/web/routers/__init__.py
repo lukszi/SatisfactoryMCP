@@ -11,11 +11,14 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from . import (
+    asks,
     collectibles,
     crates,
     events,
     factories,
     factory_detail,
+    factory_graph,
+    finders,
     floors,
     gamedata,
     grid,
@@ -24,7 +27,9 @@ from . import (
     inspect,
     naming,
     nodes,
+    pins,
     placements,
+    plan_track,
     planlog,
     planner,
     plans,
@@ -33,6 +38,7 @@ from . import (
     regions,
     routes_layer,
     search,
+    settings,
     stock,
     storage,
     tiles,
@@ -74,4 +80,10 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     search.router,
     trace.router,
     factory_detail.router,
+    finders.router,
+    pins.router,
+    asks.router,
+    factory_graph.router,
+    plan_track.router,
+    settings.router,
 )

@@ -1,23 +1,27 @@
 /* The plans list, and the item-at-rate form that starts a new plan. */
 
 import { get } from "./api";
+import { renderAsks } from "./asks-card";
 import { empty, error, link, loading, table } from "./dashkit";
 import { make } from "./dom";
 import { perMin } from "./format";
 import { go } from "./nav";
 import { renderCard } from "./planner-bench";
-import { actorWord, age, changed, commitWords, createPlan, itemList, knownItem, loadItems } from "./planner-core";
+import { progressText, toggleProgress } from "./planner-built";
+import { actorWord, age, changed, commitWords, createPlan, itemList, knownItem, loadItems, trackDash } from "./planner-core";
 import { renderActivity } from "./planner-history";
+import { renderPins } from "./pins-card";
 import { state } from "./state";
 import { friendly } from "./toast";
 import { OBJECTIVES } from "./words";
 
 import type { Column, SortState } from "./dashkit";
-import type { PlanIndexRow, PlansResponse } from "./api-shapes";
+import type { PlanBuiltRow, PlanIndexRow, PlansBuiltResponse, PlansResponse } from "./api-shapes";
 
 var list = {
   world: "",
   data: null as PlansResponse | null,
+  built: {} as Record<string, PlanBuiltRow>,
   error: "",
   creating: false,
   draft: ["", ""],
@@ -37,12 +41,48 @@ export function loadList(): void {
       list.data = data;
       list.error = "";
       changed();
+      loadBuilt(mine);
     })
     .catch(function (reason) {
       if (mine !== seq) return;
       list.error = friendly(reason);
       changed();
     });
+}
+
+function loadBuilt(mine: number): void {
+  get<PlansBuiltResponse>("/api/plan/built")
+    .then(function (data) {
+      if (mine !== seq) return;
+      var rows: Record<string, PlanBuiltRow> = {};
+      data.rows.forEach(function (r) {
+        rows[r.key] = r;
+      });
+      list.built = rows;
+      changed();
+    })
+    .catch(function () {
+      /* the column stays "…"; the list itself is fine */
+    });
+}
+
+function builtCell(row: PlanIndexRow): HTMLElement | string {
+  var b = list.built[row.key];
+  if (!b || b.rev !== row.rev) return "…";
+  if (b.figure === "?") {
+    var ask = link(trackDash(row.key, 0), "?");
+    ask.title = b.text || "open Track to say which factory this plan is";
+    return ask;
+  }
+  var cell = make("button", "built-figure", progressText(b));
+  cell.type = "button";
+  cell.title = b.text + (b.built === null ? "" : " · click to switch machines and percent");
+  cell.disabled = b.built === null;
+  cell.onclick = function (event) {
+    event.stopPropagation();
+    toggleProgress();
+  };
+  return cell;
 }
 
 export function planTitle(key: string): string {
@@ -100,6 +140,18 @@ function plans(parent: HTMLElement, rows: PlanIndexRow[]): void {
       key: "target",
       label: "exports",
       render: target,
+    },
+    {
+      key: "built",
+      label: "built",
+      align: "right",
+      className: "dash-nowrap",
+      title: "what stands at the plan's site; ? means Track asks which factory it is, – that the plan has no site",
+      sort: function (r) {
+        var b = list.built[r.key];
+        return b && b.total ? (b.built || 0) / b.total : -1;
+      },
+      render: builtCell,
     },
     {
       key: "version",
@@ -230,4 +282,6 @@ export function renderList(root: HTMLElement): void {
   root.appendChild(card);
   form(root);
   renderActivity(root);
+  renderPins(root, changed);
+  renderAsks(root, changed);
 }

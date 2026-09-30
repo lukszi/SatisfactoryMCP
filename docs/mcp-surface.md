@@ -23,7 +23,7 @@ testing contract. Section numbers are continuous with the rest of the spec;
 **Inventory:** `stock`, `storage`, `crates`
 **Spatial:** `list_regions`, `describe_location`, `search_resource_nodes`, `search_conduits`, `rank_build_sites`, `show_on_map`
 **Planning:** `plan_factory`, `plan_layout`, `commission_plan`, `diff_vs_save`, `bom`, `rank_unlocks`, `list_plans`, `plan_log`, `site_plan`, `rename_plan`, `forget_plan`, `explain_byproducts`, `compare_recipe_options`
-**The page:** `ui_context`
+**The page:** `ui_context`, `settings`
 **Hard drives:** `list_pending_hard_drive_choices`, `advise_hard_drive_pick`
 
 ```
@@ -36,8 +36,8 @@ plan_factory(objective="max_mw", target_item=None, sources=[...],
      + a logistics table of `limit` flows, plus any logistics_items pinned
 
 search_resource_nodes(sources=[...], resource=None, purity=None, kind=None,
-                      only_free=False, show="fields"|"nodes"|"nearest", near=None,
-                      limit=25, offset=0)
+                      only_free=False, status="free"|"tapped"|"all"|None,
+                      show="fields"|"nodes"|"nearest", near=None, limit=25, offset=0)
   -> per-field clusters (region, grid, centre, purity mix, total/free, spread)
      or per-node rows whose ids feed straight back in as node: selectors
 
@@ -344,11 +344,14 @@ must report a bad request identically. There is also a test that `prepare` works
 MCP layer at all, which is the point of the extraction — a script or a batch planner gets
 the same guards.
 
-**Not everything was extracted, deliberately.** `search_resource_nodes` (177 lines) and
-`factory_query` (185) are long but their length is filtering and table-building against a
-domain call that already exists; there is no second copy to drift from. Extracting those
-would add indirection and remove nothing. The rule applied was: extract where logic is
-*duplicated* or *unreachable without the MCP layer*, not wherever a function is long.
+**Not everything was extracted, deliberately.** `factory_query` (185 lines) is long but its
+length is filtering and table-building against a domain call that already exists; there is
+no second copy to drift from. The rule applied was: extract where logic is *duplicated* or
+*unreachable without the MCP layer*, not wherever a function is long. `search_resource_nodes`
+met the second half of that rule once the World page needed the same answer: its selection,
+status, totals and fields are `domain/spatial/finder.py` now, beside `rank`, `place.here`,
+`place.describe`, `conduits.search` and `regions.region_rows`, and each spatial tool is that
+call plus its text (frontend_vision.md §18).
 
 ### 10.1f `search_conduits` — belts and pipes become queryable text
 
@@ -360,9 +363,12 @@ could not look.
 
 ```
 search_conduits(near="x,y"|"me"|<factory>, radius_m=250, to=None, to_radius_m=None,
-                conduit_kind="belt"|"pipe"|"all"|None, limit=12, offset=0)
+                conduit_kind="belt"|"pipe"|"all"|None, show="runs"|"networks",
+                network=None, limit=12, offset=0)
   -> per-run rows: id (chain:<n> / pipe:<row>), kind+tier, drawn length, both ends
      (position + what stands there where known), elevation span, carries, connects
+     network=<id> lists every pipe of one fluid network (ids from show="networks"),
+     whatever the radius
 ```
 
 Decisions that took measurement:
@@ -606,8 +612,8 @@ schema. Called as a plain function (tests, scripts) the client is blank and read
 
 **The activity journal** (`domain/planning/journal.py`, contract §8) holds what is not a plan
 edit: `plan.solve` for a `plan_factory` without `save_as` (the page offers it as a from-chat
-card), `plan.view` for `plan_layout`, `diff_vs_save` and `commission_plan` with `plan=`, and
-`plan.rejected` from the web. One file per process under `activity/<world>/`, `chat-<pid>.jsonl`
+card), `plan.view` for `plan_layout`, `diff_vs_save` and `commission_plan` with `plan=`,
+`world.find` for the finder tools (docs/web-wire.md, World), and `plan.rejected` from the web. One file per process under `activity/<world>/`, `chat-<pid>.jsonl`
 or `web-<pid>.jsonl`, so a single writer needs no lock. Nothing is written until the process
 names itself: `server.main` calls `journal.set_writer("chat")` and the web lifespan
 `set_writer("web")`. Importing the tools, as the test suite does, journals nothing, so a test
@@ -618,13 +624,71 @@ oldest first.
 **`ui_context`** reads the page's focus file (the web group's `focus.read`, contract §9) and the
 logs, and answers in one block: open or closed by heartbeat age, world, whether the page reads
 the same save token as this session, the focused view, plan and version (with the head when
-the page is behind), tab and selection, the follow setting, then *since you last looked*: every
+the page is behind), tab and selection -- with the selection's selector after its label,
+`selected: node "Iron Ore, pure" (node:BP_...)`, so chat can resolve "the selected node" --,
+the follow setting, then *since you last looked*: every
 plan version and journal entry by someone else since this process's last call. The cursor is
 per process and in memory. The first call shows the last five of each; the process's own
 commits and entries are left out by pid. Plans past eight, versions past six per plan and
 journal entries past eight are counted as `(+N more)`, and the whole stays under 3,800
 characters. The server's `instructions` tell the client to call it when the user says "this",
 "here" or "what I have open".
+
+**Pins** (Planner P3, [planner_p3.md](planner_p3.md)). The page creates, renames and deletes
+pins. Chat creates one with `show_on_map(at=..., pin=True)`: a node, a factory, a sited plan or
+a point (anything else it shows pins as the point it resolved to; `resource:` refuses), the
+reply ends `pin: pinned as pin:N ...` or `pin: already pin:N ...`, and a `pin.add` journal entry
+by chat makes every open page refetch its pins. `ui_context` prints a `pins:` line (the newest eight live pins,
+ascending, each cut to 90 characters, `(+N more)` past them, `pins: none` when empty, gone
+pins ending `(gone)`) and appends `(pin:N)` to a selection that a pin matches. Every tool that
+takes a place, a node source, a machine select, `plan=`, `required=` or `exclude_recipes=`
+accepts `pin:<n>` as [selectors.md](selectors.md) "Pins" lists, and echoes what it expanded
+to. `alternates_for_item(plan=)` adds the plan's view of each recipe: its status in the plan,
+Δ machines, Δ MW draw and the first two raw inputs that change if it were required, and a
+note naming the `plan_factory(... required=[...], base_rev=, save_as=)` call that would do it.
+It journals `plan.view` with `args {"view": "alternates", "item": <class id>}` and text
+`looked at recipes for <item>`. No tool was added.
+
+**Track and asks** (Planner P4, [planner_p4.md](planner_p4.md)). A stored plan carries a
+startup headroom, `headroom_mw` (a plan scalar the page sets; `null` is the save's measured
+headroom, source `measured from the save`, the page's default too).
+`diff_vs_save(plan=)` and `commission_plan(plan=)` both use it, so the stage numbers chat reads
+are the page's; `commission_plan(headroom_mw=)` still overrides it for one call (source `given
+by caller`). Headroom sources read `stored on the plan`, `measured from the save`, `nameplate from
+the save` or `given by caller` in every tool; `commission_plan` names the nameplate figure as the
+safe bound when it used measured, and `diff_vs_save` notes the headroom its stages used. Both journal `plan.view` with `args {"view": "track", "stage": n|null, "section":
+"stages"|"startup"}`, which the page follows into its Track tab. Each process remembers the
+partition it last printed per plan; when a later read partitions differently, the first note is
+`the stages changed since you last read this plan (v14 -> v15): you were in stage 2 of 4, now
+stage 2 of 5`. A `commission_plan` with an explicit `headroom_mw` neither prints nor records it.
+`plan_factory save_as` never writes `headroom_mw`, so a chat save keeps the page's value.
+
+**Power priority** ([planner-power-priority_contract.md](planner-power-priority_contract.md)).
+`plan_factory` and `plan_layout` take `power_priority` (0–4): no production machine runs above
+100%, 75%, 50%, 33% or 25%, so rows are split into more, slower machines to save power. It is
+a stored `PlanArgs` scalar that both chat and page write; `power_priority=0` resets a recalled
+plan. `plan_factory` notes what the current step saves against step 0 and what the next adds.
+
+The page queues **asks** (`ask:N`, a question about a plan, process, stage, item or pin) and
+the player pastes one into chat. `ui_context` prints `asks (N waiting): ...`, the newest six open
+or seen asks with what each is about, then a hint line; every listed open ask is marked seen
+(`seen_by` the client name) and journalled as `ask.seen`. `ui_context(answered=["ask:7"])` marks
+asks answered first (journal `ask.answered`) and prints `marked answered: ask:7` as the line
+after the header; an unknown or deleted id is refused on its own line and the rest still apply.
+An id may carry one line of answer after it (`"ask:7 it makes the diluted fuel"`, also `ask:7:`
+or `ask:7 -`): it is stored on the ask (`answer`, ≤ 200 characters, whitespace folded), shown on
+the page beside the ask, and quoted in the journal text; passing a new line replaces it.
+The server's `instructions` add "or quotes an ask: or pin: id". No tool was added.
+
+### 10.1l `settings` — what the page and chat share
+
+`settings()` prints every shared setting as `setting · value · takes · means`, marking a value
+nobody set `(default)`, with the last writer in the header. `settings(change={...})` writes as
+`chat`, last writer wins, and `null` resets a setting. The description tells the model to change
+one only when the user asks. `diff_vs_save` and `commission_plan` stage against
+`stage_headroom`, and `biomass=` on the four power tools defaults to `None`, meaning the shared
+value. An unreadable file falls back to the default with a note. Tool count 55.
+[shared-settings.md](shared-settings.md) is the specification.
 
 ### 10.2 Context budget
 

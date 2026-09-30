@@ -9,7 +9,14 @@ from typing import ClassVar
 from ..spatial import geo
 from .table import CollectibleTable, _class_of_removed, _leaf, _name_stem
 
-__all__ = ["RemovedActors"]
+__all__ = ["RemovedActors", "observed_session"]
+
+
+def observed_session(table: CollectibleTable | None) -> str | None:
+    """The session whose saves the table's seen/unseen states were read from."""
+    if table is None:
+        return None
+    return ((table.meta.get("source") or {}).get("status") or {}).get("session") or None
 
 
 @dataclass
@@ -23,6 +30,8 @@ class RemovedActors:
 
     projection: dict
     table: CollectibleTable | None
+    #: False when the table's seen/unseen states were read from another world's saves.
+    observed: bool = True
 
     @cached_property
     def destroyed_keys(self) -> frozenset[tuple[str, str]]:
@@ -73,7 +82,11 @@ class RemovedActors:
                     "pos": (row["x"], row["y"], row["z"]),
                     "collected": collected,
                     #: ``None`` on a state this code does not know, never a nearest guess.
-                    "observed": None if collected else self.OBSERVED.get(row.get("state") or ""),
+                    "observed": (
+                        None
+                        if collected or not self.observed
+                        else self.OBSERVED.get(row.get("state") or "")
+                    ),
                     "looted": row.get("looted"),
                     "contents": row.get("contents"),
                     "unlock_cost": row.get("unlock_cost"),

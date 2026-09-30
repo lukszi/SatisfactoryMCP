@@ -1,16 +1,18 @@
 /* The dashboard shell: the tabs, the routing on the fragment's `dash=` key and the pieces the
  * tab modules share. See docs/frontend_vision.md §8. */
 
-import { button, empty, fieldError, link, note } from "./dashkit";
+import { button, choice as choiceBox, empty, fieldError, link, note } from "./dashkit";
 import { el, keepFocus, make } from "./dom";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
-import { onVitals, showFactory, showPoint, vitals } from "./panel";
-import { renderPlanner } from "./planner";
+import { onVitals, showFactory, showMachine, showPoint, vitals } from "./panel";
+import { renderPlanner, viewFocus } from "./planner";
+import { bench, onBench } from "./planner-core";
+import { planTitle } from "./planner-list";
 import { onProgress, renderProgress } from "./progress";
 import { renderRecipes } from "./recipes";
 import { cancelRename, editName, renamingIn } from "./rename";
-import { amount, choice, resetSettings, setSetting, setting, SETTINGS } from "./settings";
+import { amount, choice, onSetting, resetSettings, setSetting, setting, SETTINGS } from "./settings";
 import type { Setting } from "./settings";
 import { state } from "./state";
 import { renderFactories, renderFactory, wireDetect } from "./factories";
@@ -21,6 +23,7 @@ import { circuitName } from "./powerview";
 import { dashParts } from "./nav";
 import { drawRail } from "./rail";
 import { select } from "./selection";
+import { renderWorld, worldTitle } from "./world";
 import { W } from "./words";
 
 import type { FactoryHealthRow } from "./api-shapes";
@@ -31,6 +34,7 @@ type Tab =
   | "power"
   | "progress"
   | "inventory"
+  | "world"
   | "recipes"
   | "planner"
   | "settings";
@@ -41,6 +45,7 @@ export var TABS: [Tab, string][] = [
   ["power", "Power"],
   ["progress", "Progress"],
   ["inventory", "Inventory"],
+  ["world", "World"],
   ["recipes", "Recipes"],
   ["planner", "Planner"],
   ["settings", "Settings"],
@@ -75,7 +80,8 @@ export function toMap(action: () => void): void {
   show();
   action();
   writeHash();
-  if (keyed) el("map").focus({ preventScroll: true });
+  var now = document.activeElement;
+  if (keyed && (!now || now === document.body || el("dash").contains(now))) el("map").focus({ preventScroll: true });
 }
 
 export function mapButton(title: string, action: () => void, label?: string): HTMLButtonElement {
@@ -107,13 +113,15 @@ export function pointButton(
   },
   label?: string
 ): HTMLElement {
-  var shown = { label: row.name || row.what, layers: row.instance ? ["machines"] : undefined };
+  var instance = row.instance;
+  var shown = { label: row.name || row.what, layers: instance ? ["machines"] : undefined };
   if (!located(row)) return make("span", "dash-muted", "–");
   var at = row;
   return mapButton(
     "fly the map to it",
     function () {
-      showPoint(at.x_m, at.y_m, shown);
+      if (instance) showMachine(instance, shown.label || "a machine", at.x_m, at.y_m, shown);
+      else showPoint(at.x_m, at.y_m, shown);
     },
     label || (shown.label ? "show " + shown.label + " on the map" : undefined)
   );
@@ -160,17 +168,16 @@ function settingRow(s: Setting): HTMLElement {
     };
     row.appendChild(box);
   } else if (s.kind === "choice") {
-    var pick = make("select", "dash-select");
-    s.options.forEach(function (o) {
-      var option = make("option", "", o[1]);
-      option.value = o[0];
-      pick.appendChild(option);
-    });
-    pick.value = choice(s.key);
-    pick.onchange = function () {
-      setSetting(s.key, pick.value);
-    };
-    row.appendChild(pick);
+    row.appendChild(
+      choiceBox(
+        s.options,
+        choice(s.key),
+        function (value) {
+          setSetting(s.key, value);
+        },
+        { label: s.label }
+      )
+    );
   } else {
     var least = s.min;
     var most = s.max;
@@ -203,7 +210,7 @@ function renderSettings(body: HTMLElement): void {
     render();
   }, { title: "put every setting back to its default" }));
   card.appendChild(bar);
-  note(card, "kept in this browser only");
+  note(card, "kept in this browser, except those chat uses too: those every tab and chat share");
   var group = "";
   SETTINGS.forEach(function (s) {
     if (s.group !== group) {
@@ -232,6 +239,11 @@ function knownFactory(name: string): boolean {
 
 function subjectName(tab: Tab, subject: string): string {
   if (tab === "factories") return factoryAddress(subject, knownFactory).name;
+  if (tab === "world") return worldTitle(subject);
+  if (tab === "planner") {
+    var key = dashParts("planner/" + subject).rest[0] || "";
+    return key ? planTitle(key) || (bench.key === key && bench.plan ? bench.plan.name : "") : "";
+  }
   if (tab !== "power" || !subject) return "";
   var circuits = vitals().circuits;
   var row = circuits ? circuits.circuits[+subject - 1] : undefined;
@@ -249,6 +261,10 @@ function retitle(): void {
   }
   document.title = parts.join(" · ");
 }
+
+onBench(function () {
+  if (state.dash.indexOf("planner/") === 0) retitle();
+});
 
 function forgetVitals(): void {
   if (state.epoch === shownEpoch) return;
@@ -286,6 +302,7 @@ export function render(): void {
   forgetVitals();
   relink();
   retitle();
+  viewFocus();
   if (!state.dash) return;
   if (renamingIn(el("dash"))) {
     missed = true;
@@ -317,6 +334,7 @@ export function render(): void {
       else renderPower(body);
     } else if (at.tab === "progress") renderProgress(body, at.subject, pointButton);
     else if (at.tab === "inventory") renderInventory(body, { toMap: toMap, render: render });
+    else if (at.tab === "world") renderWorld(body);
     else if (at.tab === "recipes") renderRecipes(body, at.subject, render);
     else renderSettings(body);
     if (!body.querySelector("h1")) body.insertBefore(make("h1", "dk-hidden", tabLabel(at.tab)), body.firstChild);
@@ -381,6 +399,9 @@ function wire(): void {
   new MutationObserver(mirrorBusy).observe(el("map"), { attributes: true, attributeFilter: ["class"] });
   onVitals(render);
   onProgress(render);
+  onSetting(function () {
+    if (state.dash && address().tab === "settings") render();
+  });
   wireDetect();
 }
 

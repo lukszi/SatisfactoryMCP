@@ -150,13 +150,13 @@ tool table.
 | `unlocked_recipes` | Recipes > Unlocked | alternates-only toggle | sortable table | **built** `/api/gamedata/unlocked` (§12) |
 | `power_report` | Power (step 0) | none | capacity vs draw, nameplate + measured, per generator kind | new (step 0 may add it) |
 | `factory_sites` | Factory detail > Sites (world list: open) | none | cluster list; map clusters | **built** `/api/factories/sites` (§17) |
-| `whereami` | Header "me" button; World > Here | radius slider | player marker + nearby list | exists (`/api/summary.player`) + new for the nearby list |
-| `list_regions` | World > Regions; region picker in every sources form | resource filter | list; region layer highlights | exists `/api/regions` (add resource filter) |
-| `describe_location` | Map click inspector | click point, radius | popup: region, elevation, nodes, conduits, buildings | exists `/api/inspect` (same default radius); add conduits/buildings counts |
-| `search_conduits` | World > Conduits; context menu "conduits here" | near (click), radius, to (second click), belt/pipe, runs/networks | run list; runs highlighted on the map | new (geometry exists in `/api/belts`, `/api/pipes`) |
-| `search_resource_nodes` | World > Nodes | sources builder, resource, purity, kind, free only, view fields/nodes/nearest, near | field clusters or node rows; map filters to the result | partial `/api/nodes`; new for fields and nearest |
-| `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick | exists (fragment); the tool's local link follows the configured port (§13) |
-| `rank_build_sites` | Planner > Site > "where to mine X"; World > Nodes | resource, sources | ranked fields with raw components; numbered pins on map | new |
+| `whereami` | World > Here (§18) | radius | position, region, grid, save age, nodes within the radius | **built** `/api/world/here` (§18) |
+| `list_regions` | World > Regions; region picker in every sources form | resource filter | list; region layer highlights | **built** `/api/world/regions` (§18); `/api/regions` stays the painted grid |
+| `describe_location` | Map click inspector | click point, radius | popup: region, elevation, grid, nearest node, fields, conduits, pickups | **built** `/api/inspect` (`place.describe`, §18) |
+| `search_conduits` | World > Conduits; inspector "conduits here" | near, radius, to, belt/pipe, runs/networks, network | run list; runs drawn in the finder pane | **built** `/api/world/conduits` (§18) |
+| `search_resource_nodes` | World > Nodes and Fields | sources, resource, purity, kind, status free/tapped/all, view fields/nodes/nearest, near | field clusters or node rows; finder pane | **built** `/api/world/nodes` (§18); `/api/nodes` stays the layer |
+| `show_on_map` | Built in: every *fly to* and the URL fragment | n/a | map moves, layers tick; `show=node:`/`chain:`/`pipe:` ring the place | exists (fragment); the tool's local link follows the configured port (§13) and carries `show=` (§18) |
+| `rank_build_sites` | World > Rank | resource, sources | ranked fields with raw components | **built** `/api/world/sites` (§18) |
 | `list_plans` | Planner > Plans list | name filter | table: sited, world moved, field moved | exists `/api/plans` (siting only) + new for status |
 | `forget_plan` | Plans list row menu | confirm | row gone | new, W |
 | `rename_plan` | Plans list row menu | text | row renamed | new, W |
@@ -177,7 +177,7 @@ tool table.
 | `somersloops` | Power > Sloops | none | held / slotted / owned; where slotted | **built** `/api/progress/sloops`, Progress > Somersloops (§11) |
 | `mam_research` | Progress > MAM | show todo/affordable/all, query | tree or table with cost, have, affordable | **built** `/api/progress/mam` (§11) |
 | `milestones` | Progress > Milestones | show, tier, query | per tier cost / have / short / grants | **built** `/api/progress/milestones` (§8, §11) |
-| `collected_from_world` | World > Collectibles | group, show census/collected/remaining/nearest, near | census + list; pickups layer | exists `/api/collectibles` |
+| `collected_from_world` | World > Pickups | group, show census/collected/remaining/nearest, near | census + list; pickups layer | **built** `/api/collectibles` + census, spoiler flags (§18) |
 | `list_pending_hard_drive_choices` | Progress > Hard drives | none | per drive: two options, rerolls, recipes granted | **built** `/api/progress/harddrives` (§11) |
 | `advise_hard_drive_pick` | Progress > Hard drives > "rank options" | drive, sources | options by marginal value | new (slow: counterfactual LPs) |
 | `search_items` | Search box; Recipes > Items | query | list: form, energy, sink points | **built** `/api/gamedata/items`, `/api/search` (§12) |
@@ -344,7 +344,7 @@ Smallest useful slice first. Each phase ships on its own. Reads before writes.
 | 3 | **Inventory:** stock, containers, crates. **Built 2026-09-27** (§10) | `stock`, `storage`, `crates` | 1 | no |
 | 4 | **Progress (read):** milestones, MAM, elevator, shards, sloops, drives list. **Built 2026-09-27** (§11) | 6 tools | 5 | no |
 | 5 | **Recipes codex + search box**. **Built 2026-09-27** (§12; `list_buildings` still open) | 5 game-data tools, `unlocked_recipes` | 6 | no |
-| 6 | **World finders:** nodes, fields, conduits, collectibles, whereami, inspector upgrade | 7 spatial tools, `collected_from_world` | 3 | no |
+| 6 | **World finders:** nodes, fields, conduits, collectibles, whereami, inspector upgrade. **Backend built 2026-09-27** (§18) | 7 spatial tools, `collected_from_world` | 5 + 3 changed | no |
 | 7 | **Trace:** upstream/downstream drawn on the map — **built** (§13) | `trace_upstream` | 1 | no |
 | 8 | **Planner (stateless):** solve, bill, compare, byproducts | 4 planning tools | 4 POST | no |
 | 9 | **Write guard + Plans:** save, rename, forget, site by dragging | 4 plan tools | CRUD | **yes** |
@@ -529,8 +529,9 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   default was on until 2026-09-27. A browser that never set the switch gets a one-time notice
   saying locked content is now hidden, with a button that shows it. `settings.ts` keeps
   the values in `localStorage` under `settings`, wrapped in try/catch, so the page still works
-  without storage. Settings have no write route (labels have had one since 2026-09-27, §9). A
-  new setting is one more entry in `SETTINGS`.
+  without storage. A new setting is one more entry in `SETTINGS`. Since 2026-09-30 the settings
+  chat computes with (stage headroom, biomass) live on the server instead, through
+  `/api/settings` ([shared-settings.md](shared-settings.md)).
 - **The page lands on the dashboard.** A fragment with no `dash=` and none of the map's keys
   (`z`, `c`, `floor`, `mode`, `pickups`) opens the Overview (`dashOf` in `state.ts`, used at
   boot and by `fragment.ts`). A map deep link still opens the map, because the page writes `z`
@@ -556,10 +557,10 @@ has no automated way to supply either, so their MW lasts as long as someone keep
   stay under `unmodellable` in both modes, and a HUB-only circuit reads the same either way.
 - **One rule on both surfaces.** `/api/power/circuits` and `/api/summary` take
   `?biomass=exclude|include`; absent means exclude. The MCP tools that print headroom
-  (`power_report`, `world_summary`, `commission_plan`, `diff_vs_save`) take `biomass=`, default
-  false. The same save and the same choice give the same figures in chat and on the page.
-- **One setting.** Settings > power > "count biomass burners in headroom", off by default. It
-  refetches both routes. Overview, Power, the circuit detail and the map panel show the
+  (`power_report`, `world_summary`, `commission_plan`, `diff_vs_save`) take `biomass=`, which
+  defaults to the shared setting ([shared-settings.md](shared-settings.md)). The same save and the same choice give the same figures in chat and on the page.
+- **One setting.** Settings > power > "count biomass burners in headroom", off by default,
+  shared with chat. It refetches both routes. Overview, Power, the circuit detail and the map panel show the
   left-out MW as one line, "+N MW biomass not counted"; the header shows it in its tooltip.
 - **The timeline keeps installed capacity.** Its `installed_mw` counts burners, as it always
   has, so the rows cached before this decision stay comparable with the new ones.
@@ -832,6 +833,12 @@ the shared domain code. The new name is free text (the naming style does not app
 trimmed. `test_the_page_and_the_tool_rename_to_the_same_files` compares both label and plan
 files after each path.
 
+**Following a rename.** Both paths journal `label.rename` with `args {was, to}`. Every page gets
+it as `activity` and `rename.onRenameActivity` records the new name, so an open factory detail
+or dashboard row moves to it. This replaced a guess from geometry (same centroid and machine
+count, one candidate), which missed a rename that landed with a save changing that factory's
+machine count.
+
 **Names.** `LabelStore._free` refuses a blank name, a name with `/` in it, and a name over 60
 characters (`NAME_MAX`), for `POST` and `PATCH` alike. The `PATCH` and `DELETE` routes take
 the name as the rest of the path (`{name:path}`), so a label named with a `/` before the rule
@@ -926,8 +933,9 @@ me that graph for a detected factory".
   mode, as_of, version, dry_run: true}`. `area` is the drawn polygon in metres. The reply lists
   the machines it would add (green rings) or remove (red rings), the anchor count before and
   after, and any other label that already holds an added machine. **apply** sends the same body
-  with `dry_run: false`; **discard** or a new drag starts again. Switching add/remove re-checks
-  the same area.
+  with `dry_run: false`; **discard** or a new drag starts again. Shift-drag, or **+ area** and a
+  drag on a touch screen, adds another area to the same preview instead (`extra_areas` in the
+  body; a machine inside any area counts). Switching add/remove re-checks the same areas.
 - **Same path as the tool.** The route picks the machines inside the area (`geo.inside`, an
   even-odd test on the machine positions), then calls `edits.plan_amend`, the dry run that
   `amend_factory` now uses too, and `edits.amend`, now under `LabelStore.editing` with
@@ -937,8 +945,7 @@ me that graph for a detected factory".
   missing label, 400 for a bad mode or an area under three corners. Removing every machine is
   a 409 with no flag set, and the page shows its words: `forget` deletes a label. A stale or
   moved refusal reloads the rings and asks for the area again.
-- **Choices left open.** One area per preview (no adding several strokes before applying); a
-  lasso only, with no separate box tool; added machines another label already holds stay in
+- **Choices left open.** A lasso only, with no separate box tool; added machines another label already holds stay in
   both labels, as `amend_factory` does, with a warning in the preview. A trace started while
   the amend card is open is not closed by it.
 
@@ -1318,11 +1325,14 @@ built on top of it.
   `dashkit.link`, so its address is rebuilt on click and never carries a stale viewport.
   The rail replaces the dashboard's own tab row at that width; the header's **Map | Dashboard**
   stays as it was.
-- **Narrow widths (T6):** below 900 px the rail is hidden and the header's **Map |
-  Dashboard** plus the dashboard's tab row are the navigation, as before. Nothing scrolls
-  sideways at 390 px.
-- **Selection** (`selection.ts`): one selected thing, a factory, a circuit or a point. The
-  map sets it (a factory label click, a panel row, a map fly-to), the side panel follows it
+- **Narrow widths (T6):** below 900 px the rail is a drawer behind the header's **sections**
+  button (`aria-expanded`). Opening it focuses the current entry; Escape, a click outside,
+  focus leaving it or picking an entry closes it, and Escape or a pick returns focus to the
+  button. The header's **Map | Dashboard** and the dashboard's tab row are hidden there, so
+  each section is listed once, in the drawer (§16.4). Nothing scrolls sideways at 390 px.
+- **Selection** (`selection.ts`): one selected thing, a factory, a circuit, a machine, a
+  point or a world row. The map sets it (a factory label click, a machine click, a panel row,
+  a map fly-to), the side panel follows it
   (row highlight and the dashed outline, without flying), and the dashboard sets it when a
   factory or circuit detail opens. A factory that disappears from the health reply clears it.
 - **Status strip** (`status.ts`, `#status`): one line under the header. It shows the
@@ -1346,7 +1356,10 @@ built on top of it.
 - The selection is not written into the fragment. Links are built with the fragment of the
   moment, so a stale `sel=` in an older link would undo a newer selection; the dashboard
   address (`factories/<name>`, `power/<n>`) already deep-links the two kinds that matter.
-- A machine clicked on the map opens its popup and does not become the selection.
+  It lives in `localStorage` and is shared by every open tab (§16.4); a stored factory the
+  health reply does not know is dropped.
+- A machine clicked on the map opens its popup and becomes the selection as a machine with
+  the building's name and a ring, the same as its **map** button in a table, without flying.
 - Writes keep their own checks: `as_of` in a request body (naming) and 409 conflicts are
   untouched by the middleware, which only reads GET, HEAD and OPTIONS.
 
@@ -1354,12 +1367,32 @@ built on top of it.
 
 - Should the selection chip offer more than **map**: trace supply, plan here, open in
   dashboard as buttons (§2.3)?
-- Should a point or a machine be selectable from the map by a plain click, and should the
-  selection survive a reload through the fragment?
-- Should the rail open as a drawer on phones rather than hand over to the header and the tab
-  row?
 - The panel beside the map still shows only Factories and Power; §2.1's panel with every
   rail section is not built. The rail sends the other sections to the dashboard.
+- No planner context claims empty clicks yet: the siting screen (planner_vision.md §4.7) is
+  not built, so `clicksPickPoints` has no caller.
+- Tabs on two different worlds share one selection; a factory one world does not know is
+  dropped by that tab's next health reply, for both.
+
+### 16.4 Decided 2026-09-30
+
+- **Shared selection.** `localStorage`, every access in `try`/`catch`. The `storage` event
+  carries a change to every other open tab live: the status strip, the panel row and the
+  ring follow without a reload.
+- **Drawer only below 900 px.** Where the drawer exists, the header's **Map | Dashboard**
+  and the dashboard's tab row are hidden; from 900 px the rail stands and the tab row is
+  hidden as before.
+- **Machine is a selection kind.** Key and ref are the instance leaf, the ref spelled
+  `machine:<leaf>` (docs/selectors.md: a machine-select term, a place and a trace seed).
+  A map click on a machine and a table **map** button on a row with an instance select it.
+  The status strip says "selected machine" and offers **map**, **trace** (for a machine or
+  a factory) and **clear**; chat's `ui_context` prints the ref and names a matching pin.
+- **Empty map ground deselects** (`mapclick.ts`). A plain click that no layer took clears
+  the selection. A click on a machine, node, label or any other interactive layer is that
+  layer's; a drag, a lasso stroke (amend mode swallows the click) and the World Rank
+  **pick on map** mode are untouched. A planner context that wants a point instead calls
+  `clicksPickPoints(owner, true)`; while any owner holds it, the click selects that spot
+  as a point.
 
 ---
 
@@ -1405,4 +1438,69 @@ Phase 2 of §6. The factory page gains level-2 tabs past its overview.
   graph and nothing else.
 - **Open: long machine lists.** A factory of several hundred machines renders every row;
   there is no paging or grouping by recipe yet.
+
+---
+
+## 18. World finders (2026-09-27)
+
+Phase 6 of §6. The contract is [world-finders_contract.md](world-finders_contract.md); this
+section records what the backend built and what it decided on the way.
+
+### 18.1 What was built
+
+- **One domain function per question** (§5.1). `domain/spatial/finder.py` holds the node
+  search (`find_nodes`: selection, status, distance, totals, notes, water block), the fields
+  (`fields`) and the site ranking (`rank`, `site_view`). `domain/spatial/place.py` holds
+  `here` and `describe`. `domain/world/conduits.py` gained `search` and `networks`,
+  `domain/spatial/regions.py` `region_rows`, `domain/spatial/nodes.py` `table_age` and
+  `drifted`, and `domain/collectibles/service.py` `census_rows`, `found`, `is_spoiler`,
+  `label`/`LABELS` and `table_age`. Each tool body is now that call plus its text; the tool
+  text is byte-identical to before on the fixture world except where the contract adds a
+  line (§18.2).
+- **Routes** under `/api/world/` in `routers/finders.py`: `here`, `nodes`, `sites`,
+  `conduits`, `regions`. `/api/inspect` gained `radius_m`, `grid`, `direction`, `conduits`,
+  `fields`, `pickups` and `stale`; `/api/nodes` gained `spoiler`; `/api/collectibles`
+  gained `spoilers`, `spoiler` per row, `census`, `found`, `hidden_spoilers` and `stale`.
+  `tests/test_world_parity.py` holds each route against its tool.
+- **Tool changes.** `search_resource_nodes` takes `status` (free, tapped, all);
+  `search_conduits` takes `network`; `describe_location` prints `nearest_node`, `fields` and
+  `pickups`; `show_on_map` writes `show=node:<leaf>`, `chain:<n>` or `pipe:<n>` into the
+  local link; `ui_context` prints the selection's `ref` after its label.
+
+### 18.2 Decided here, smallest option
+
+- **Locked nodes fade, they are never dropped.** The node routes take no `spoilers`; every
+  locked node is sent flagged, counted, clustered and searchable, and the page draws it
+  faded. `hidden_spoilers` exists only on `/api/collectibles`, where it counts categories
+  (the page's line is "N kinds not found yet are hidden").
+- **A node is a spoiler when it is locked**: untapped and unworkable with what this world
+  has unlocked. `/api/nodes` uses the same rule, so a node an extractor already stands on is
+  never faded. With no readable save nothing is a spoiler.
+- **A field's `distance_m` is to its nearest member**, not its centre, so "fields within
+  500 m" in the inspector means a member within 500 m.
+- **`network=` ignores the radii** and lists every pipe of that network, longest first, with
+  distances still measured from `near`. `run=` does the same for one run.
+- **The collectible table's age** compares the save's `build_version` with the `CL-<n>` of
+  the table's `game_build`; `observed_from` is the session the generator read.
+- **Schema names.** `SiteRow` and `SitesResponse` were taken by `/api/factories/sites`, so
+  the ranking's shapes are `RankedSite` and `RankedSitesResponse`. `CollectibleRow` and
+  `FoundField` moved to `serial.py`, since `/api/inspect` sends them too.
+- **A geyser search no longer raises.** `show=nodes kind=geyser` hit a `KeyError` on the
+  geyser's missing item; the unit now falls back to `/min`.
+- **Rank is its own World tab** (2026-09-30), `world/rank?…`, beside fields; old
+  `world/fields?…&rank=1` links redirect to it and chat's `rank_build_sites` opens it. A run
+  of chat finder calls is one Activity row with a count (contract §17).
+
+### 18.3 Measured
+
+On the reference save (Han Solo), in-process, warm, median of 7: `/api/world/here` 3 ms,
+`/api/world/nodes` 8 ms and 281 kB for every node, fields view 57 ms, `/api/world/sites`
+107 ms, `/api/world/conduits` 6 ms, `/api/world/regions` 10 ms, `/api/inspect` 29 ms,
+`/api/nodes` 6 ms and 258 kB (+4%), `/api/collectibles?mode=remaining` 23-32 ms and 637 kB
+(+10%). No cache was added.
+
+### 18.4 Open
+
+The contract's §17 questions stand. The page (World section, finder card, inspector
+actions) is the frontend half of this phase.
 

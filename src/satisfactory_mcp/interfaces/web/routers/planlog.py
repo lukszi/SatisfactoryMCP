@@ -3,7 +3,8 @@
 Every write goes through ``domain/planning/planlog.py``, as the MCP tools do, past the write
 guard (``guard.py``), and carries the ``base_rev`` it was read at. A conflict is a 409 whose
 body says what changed since, so the page can put a chip on the control that collided.
-docs/planner_slice_contract.md §11 is the specification.
+docs/planner_slice_contract.md §11 is the specification; ``pin:`` members are rewritten to
+what they stand for before the store (docs/planner-p3_contract.md §7.2).
 
 WARNING: the function name is the operation_id -- renaming it churns the committed schema.
 
@@ -22,7 +23,7 @@ from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....core.gamedata.model import GameData
-from ....domain.planning import journal, manage, summary
+from ....domain.planning import journal, manage, pins, summary, swaps
 from ....domain.planning.planlog import (
     Actor,
     AlreadyUndone,
@@ -39,7 +40,7 @@ from ....domain.planning.planlog import (
     UnknownPlan,
 )
 from ....domain.world import pin
-from ..serial import ActorBody, _actor_json, _fail, _state
+from ..serial import ActorBody, PlanOpBody, _actor_json, _fail, _state
 
 __all__ = ["router"]
 
@@ -48,18 +49,6 @@ router = APIRouter(prefix="/api")
 _logger = logging.getLogger(__name__)
 
 _KEY = re.compile(r"[0-9a-f]{8}")
-
-
-class PlanOpBody(TypedDict, total=False):
-    """One op as the log holds it; which keys are present depends on ``op`` (contract §3)."""
-
-    op: str
-    field: str
-    value: Any
-    item: str
-    member: Any
-    name: str
-    was: Any
 
 
 class CommitBody(TypedDict):
@@ -100,6 +89,7 @@ class PlanArgsBody(TypedDict):
     recycle_once: list[str]
     supplied: dict[str, float]
     logistics_items: list[str]
+    power_priority: int
 
 
 class PlanStateBody(TypedDict):
@@ -115,6 +105,7 @@ class PlanStateBody(TypedDict):
     plan_id: str
     siting: dict | None
     args: PlanArgsBody
+    headroom_mw: float | None
     names: dict[str, str]
     head: int
     text: str
@@ -180,9 +171,13 @@ class PlanOpsResponse(TypedDict):
 
 
 class PushBody(TypedDict):
+    """``require_item``: the item class id a drawer require is for; the server then also
+    removes every other required recipe for it that the head holds (contract C3)."""
+
     base_rev: int
     ops: list[dict]
     sav: NotRequired[str]
+    require_item: NotRequired[str | None]
 
 
 class PushArgsBody(TypedDict):
@@ -362,7 +357,11 @@ def create_plan(
         return _fail(f"could not read save: {exc}", 404)
     log = _log(st)
     try:
-        args = PlanArgs.from_dict(body["args"])
+        canon, _said = pins.canonical_args(st, body["args"])
+    except pins.PinError as exc:
+        return _fail(str(exc), 400)
+    try:
+        args = PlanArgs.from_dict(canon)
         draft = PlanState(key="", rev=1, name=body["name"], args=args)
         try:
             stamped = summary.stamp_for(st.game, st)(draft)
@@ -445,13 +444,26 @@ def push_ops(
         return log
     sav = _token(st, body.get("sav"))
     try:
+        ops, _said = pins.canonical_ops(st, body["ops"])
+    except pins.PinError as exc:
+        return _fail(str(exc), 400)
+    item = body.get("require_item")
+    extend = None
+    if item:
+        game = st.game
+
+        def extend(head):
+            return swaps.replaced_required(game, head, item, ops)
+
+    try:
         pushed = log.push(
             key,
             body["base_rev"],
-            body["ops"],
+            ops,
             actor=_page(),
             sav=sav,
             stamp=summary.stamp_for(st.game, st),
+            extend=extend,
         )
     except _ERRORS as exc:
         _reject(st, key, sav, exc)
@@ -477,10 +489,14 @@ def push_args(
         return log
     sav = _token(st, body.get("sav"))
     try:
+        args, _said = pins.canonical_args(st, body["args"])
+    except pins.PinError as exc:
+        return _fail(str(exc), 400)
+    try:
         pushed = log.push_args(
             key,
             body["base_rev"],
-            body["args"],
+            args,
             actor=_page(),
             sav=sav,
             stamp=summary.stamp_for(st.game, st),

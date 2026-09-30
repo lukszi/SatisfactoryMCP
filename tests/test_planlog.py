@@ -84,7 +84,9 @@ def test_a_created_plan_is_v1_with_every_field_present(plans, plan):
         "provenance",
         "siting",
         "args",
+        "headroom_mw",
     }
+    assert state.headroom_mw is None
     assert (plans.root / plan / "snap" / "1.json").is_file()
 
 
@@ -503,6 +505,33 @@ def test_undoing_something_changed_again_since_is_outdated(plans, plan):
         plans.undo(plan, 3, 2, actor=CHAT)
 
 
+def test_undo_twice_walks_back_like_a_stack(plans, plan):
+    plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=PAGE)
+    plans.push(plan, 2, [{"op": "set", "field": "sloops", "value": 6}], actor=PAGE)
+    assert plans.undo(plan, 3, 3, actor=PAGE).state.args.sloops == 4
+    assert plans.undo(plan, 4, 2, actor=PAGE).state.args.sloops == 0
+    assert plans.undo(plan, 5, 5, actor=PAGE).state.args.sloops == 4
+    assert plans.undo(plan, 6, 4, actor=PAGE).state.args.sloops == 6
+
+
+def test_a_redone_commit_still_blocks_undoing_what_it_changed(plans, plan):
+    plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=PAGE)
+    plans.push(plan, 2, [{"op": "set", "field": "sloops", "value": 6}], actor=CHAT)
+    plans.undo(plan, 3, 3, actor=CHAT)
+    plans.undo(plan, 4, 4, actor=CHAT)
+    with pytest.raises(Outdated):
+        plans.undo(plan, 5, 2, actor=PAGE)
+
+
+def test_an_undone_pair_does_not_hide_a_later_change(plans, plan):
+    plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 4}], actor=PAGE)
+    plans.push(plan, 2, [{"op": "set", "field": "sloops", "value": 6}], actor=PAGE)
+    plans.undo(plan, 3, 3, actor=PAGE)
+    plans.push(plan, 4, [{"op": "set", "field": "sloops", "value": 8}], actor=CHAT)
+    with pytest.raises(Outdated):
+        plans.undo(plan, 5, 2, actor=PAGE)
+
+
 def test_undo_restores_the_exact_previous_value_of_every_kind(plans, plan):
     ops = [
         {"op": "set", "field": "target_item", "value": "Wire"},
@@ -627,6 +656,41 @@ def test_describe_op_uses_the_contract_words():
     assert describe_op({"op": "site", "was": {"x": 0}, "value": None}) == "site cleared"
     assert describe_op({"op": "rename", "was": "a", "name": "b"}) == 'renamed "a"→"b"'
     assert describe_op({"op": "record", "field": "plan_id", "value": "x"}) == ""
+
+
+def test_factory_takes_a_name_or_a_sentinel_and_says_so(plans, plan):
+    for value, words in (
+        ("oil setup", "count as built: oil setup"),
+        ("/world", "count as built: whole world"),
+        ("/none", "count as built: nothing yet"),
+        ("", "count as built: found automatically"),
+    ):
+        state = plans.state(plan)
+        pushed = plans.push(
+            plan, state.rev, [{"op": "set", "field": "factory", "value": value}], actor=PAGE
+        )
+        assert pushed.state.factory == value
+        assert describe_op({"op": "set", "field": "factory", "was": "x", "value": value}) == words
+    with pytest.raises(InvalidOp):
+        plans.push(
+            plan,
+            plans.state(plan).rev,
+            [{"op": "set", "field": "factory", "value": "/all"}],
+            actor=PAGE,
+        )
+
+
+def test_recipe_members_read_as_names_once_a_namer_is_set(monkeypatch):
+    op = {"op": "add", "field": "banned", "member": "Recipe_UnpackageOilResidue_C"}
+    assert describe_op(op) == "+banned Recipe_UnpackageOilResidue_C"
+    monkeypatch.setattr(
+        planlog, "_namer", [lambda: {"Recipe_UnpackageOilResidue_C": "Unpackage Heavy Oil Residue"}]
+    )
+    assert describe_op(op) == "+banned Unpackage Heavy Oil Residue"
+    assert describe_op({**op, "member": "Recycled"}) == "+banned Recycled"
+    assert describe_op({**op, "field": "sources", "member": "Recipe_UnpackageOilResidue_C"}) == (
+        "+sources Recipe_UnpackageOilResidue_C"
+    )
 
 
 def test_actor_words():
@@ -856,3 +920,96 @@ def test_a_large_rate_reads_as_a_number_not_an_exponent():
         "was": 2.5,
     }
     assert planlog.describe_op(op) == "rate Plastic 2.5→9,201,000/min"
+
+
+# ------------------------------------------------------------------ startup headroom (P4)
+
+
+def _headroom(value):
+    return {"op": "set", "field": "headroom_mw", "value": value}
+
+
+@pytest.mark.parametrize("value", [0, -1, 1_000_001, "2000", True, float("inf")])
+def test_headroom_must_be_a_positive_number_up_to_a_million(plans, plan, value):
+    with pytest.raises(InvalidOp, match="headroom_mw"):
+        plans.push(plan, 1, [_headroom(value)], actor=PAGE)
+    assert plans.head_rev(plan) == 1
+
+
+def test_headroom_is_a_plan_scalar_outside_plan_id(plans, plan):
+    before = plans.state(plan)
+    pushed = plans.push(plan, 1, [_headroom(2000)], actor=PAGE, stamp=lambda s: {"plan_id": "x"})
+    assert pushed.state.headroom_mw == 2000.0 and pushed.state.args == before.args
+    assert pushed.applied[0] == {**_headroom(2000.0), "was": None}
+    assert plans.push(plan, 2, [_headroom(1_000_000)], actor=PAGE).state.headroom_mw == 1e6
+    cleared = plans.push(plan, 3, [_headroom(None)], actor=PAGE)
+    assert cleared.state.headroom_mw is None
+    assert "headroom_mw" not in plans.state(plan).kwargs()
+
+
+def test_headroom_conflicts_only_with_itself(plans, plan):
+    plans.push(plan, 1, [_headroom(2000)], actor=CHAT)
+    with pytest.raises(Outdated) as caught:
+        plans.push(plan, 1, [_headroom(3000)], actor=PAGE)
+    assert caught.value.conflicts[0].key == "headroom_mw"
+    assert caught.value.conflicts[0].text().startswith("startup headroom: you 3,000 MW, ")
+    assert "set 2,000 MW in v2" in caught.value.conflicts[0].text()
+    assert plans.push(plan, 1, [_headroom(2000)], actor=PAGE).noop
+    merged = plans.push(plan, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
+    assert merged.state.headroom_mw == 2000.0 and merged.state.args.sloops == 2
+
+
+def test_headroom_undoes_to_its_previous_value(plans, plan):
+    plans.push(plan, 1, [_headroom(2000)], actor=PAGE)
+    plans.push(plan, 2, [_headroom(500)], actor=PAGE)
+    assert inverse(plans.commits(plan)[2].ops) == [_headroom(2000.0)]
+    assert plans.undo(plan, 3, 3, actor=PAGE).state.headroom_mw == 2000.0
+    restored = plans.restore_to(plan, 4, 1, actor=PAGE)
+    assert restored.state.headroom_mw is None
+    assert plans.restore_to(plan, 5, 3, actor=PAGE).state.headroom_mw == 500.0
+
+
+def test_measured_then_given_then_two_undos_lands_on_the_default(plans, plan):
+    plans.push(plan, 1, [_headroom(6370)], actor=PAGE)
+    plans.push(plan, 2, [_headroom(2000)], actor=PAGE)
+    assert plans.undo(plan, 3, 3, actor=PAGE).state.headroom_mw == 6370.0
+    assert plans.undo(plan, 4, 2, actor=PAGE).state.headroom_mw is None
+
+
+def test_a_refused_undo_back_to_the_default_names_it_not_none(plans, plan):
+    plans.push(plan, 1, [_headroom(500)], actor=PAGE)
+    plans.push(plan, 2, [_headroom(700)], actor=CHAT)
+    with pytest.raises(Outdated) as caught:
+        plans.undo(plan, 3, 2, actor=PAGE)
+    text = caught.value.conflicts[0].text()
+    assert text.startswith("startup headroom: you save default, ") and "none" not in text
+
+
+def test_headroom_in_words():
+    assert describe_op({**_headroom(2000.0), "was": None}) == "startup headroom 2,000 MW"
+    assert describe_op({**_headroom(None), "was": 2000.0}) == "startup headroom: save default"
+    assert describe_op({**_headroom(1234.5), "was": None}) == "startup headroom 1,234.5 MW"
+
+
+def test_an_older_snapshot_without_headroom_reads_none(plans, plan):
+    snap = plans.root / plan / "snap" / "1.json"
+    raw = json.loads(snap.read_text(encoding="utf-8"))
+    del raw["state"]["headroom_mw"]
+    snap.write_text(json.dumps(raw), encoding="utf-8")
+    assert plans.state(plan).headroom_mw is None
+    raw["state"]["headroom_mw"] = "junk"
+    snap.write_text(json.dumps(raw), encoding="utf-8")
+    assert plans.state(plan, 1).headroom_mw is None
+
+
+def test_a_cleared_headroom_reads_save_default_in_a_conflict(plans, plan):
+    plans.push(plan, 1, [_headroom(400)], actor=CHAT)
+    plans.push(plan, 2, [_headroom(500)], actor=CHAT)
+    with pytest.raises(Outdated) as caught:
+        plans.push(plan, 2, [_headroom(None)], actor=PAGE)
+    assert caught.value.conflicts[0].text().startswith("startup headroom: you save default, ")
+
+
+def test_a_boolean_is_named_in_json_words(plans, plan):
+    with pytest.raises(InvalidOp, match="must be a number, not true"):
+        plans.push(plan, 1, [_headroom(True)], actor=PAGE)

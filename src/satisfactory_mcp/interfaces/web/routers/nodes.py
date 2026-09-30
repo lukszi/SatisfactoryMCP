@@ -41,6 +41,9 @@ class NodeRow(TypedDict):
     surface prints as ``LOCKED`` and excludes from free capacity. It is null, never true, when
     the save could not be read: reachability is a fact about what this world has researched,
     and with no world there is nothing to have researched it.
+
+    ``spoiler`` is an unoccupied node with ``reachable`` false, the rows the text surface
+    marks ``LOCKED``: the page draws those dots faded.
     """
 
     id: str
@@ -57,6 +60,7 @@ class NodeRow(TypedDict):
     occupant_name: str | None
     reachable: bool | None
     region: Region | None
+    spoiler: bool
 
 
 class NodesResponse(TypedDict):
@@ -121,6 +125,7 @@ def nodes(
     for n in rows:
         held = taken.get(n["instance"])
         occupant = held["extractor"] if held else None
+        reachable = None if unlocked is None else spatial_nodes.reachable(n, unlocked)
         out.append(
             {
                 "id": n["instance"],
@@ -136,10 +141,9 @@ def nodes(
                 # Not `reachable(n, unlocked)`: the domain reads a null unlock set as "no
                 # world to judge against, so assume yes", which is the right default for a
                 # capacity sum and the wrong one for a dot somebody plans around.
-                "reachable": (
-                    None if unlocked is None else spatial_nodes.reachable(n, unlocked)
-                ),
+                "reachable": reachable,
                 "region": _label_json(rmap.label_for_node(n)),
+                "spoiler": reachable is False and held is None,
             }
         )
     return {
