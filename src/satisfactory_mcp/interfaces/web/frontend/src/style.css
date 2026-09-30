@@ -2432,8 +2432,8 @@ body.dash-on .mapcard {
   font-size: var(--fs-s);
 }
 
-.mapcard-note.bad {
-  color: var(--bad);
+.mapcard-note.blocked {
+  color: var(--blocked);
 }
 
 

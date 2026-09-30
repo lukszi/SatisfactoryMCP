@@ -147,7 +147,7 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
           return counted(held[k]!, "machine") + " already in “" + k + "”; both factories will hold them";
         })
         .join(" · "),
-      "bad"
+      "blocked"
     );
   }
   var acts = cardRow();
@@ -186,7 +186,7 @@ function render(): void {
   box.appendChild(head);
   cardSubject(box, view.title);
   if (view.error) {
-    cardLine(box, view.error, "bad");
+    cardLine(box, view.error, "blocked");
     return;
   }
   if (!view.members) {
