@@ -9,11 +9,13 @@ import { resourceOptions, worldUrl } from "./finder";
 import { coords, count, metres, num, regionLine, rounded } from "./format";
 import { loadOne } from "./load";
 import { hashFor, writeHash } from "./map";
-import { dashParts, subjectQuery, withQuery } from "./nav";
+import { dashParts, go, subjectQuery, withQuery } from "./nav";
 import { showPoint } from "./panel";
 import { registerFetch } from "./registry";
-import { onSetting } from "./settings";
+import { actorWord } from "./planner-core";
+import { choice as followMode, onSetting } from "./settings";
 import { state } from "./state";
+import { note as toast, offer } from "./toast";
 import { renderConduits } from "./world-conduits";
 import { nodeTable, renderNodes } from "./world-nodes";
 import { renderPickups } from "./world-pickups";
@@ -22,6 +24,7 @@ import { counted, gapText, W } from "./words";
 import type { ApiError, ApiPath, ApiUrl } from "./api";
 import type { Column, SortState } from "./dashkit";
 import type { HereResponse, Region, RegionRow, RegionTableResponse, TableAge } from "./api-shapes";
+import type { ActivityEvent } from "./planner-core";
 
 var VIEWS: [string, string][] = [
   ["", "here"],
@@ -496,3 +499,26 @@ registerFetch<HereResponse>({
 });
 
 onSetting(redraw);
+
+function busy(): boolean {
+  var active = document.activeElement;
+  return !!active && /^(INPUT|TEXTAREA)$/.test(active.tagName);
+}
+
+export function onFindActivity(entry: ActivityEvent): void {
+  if (entry.kind !== "world.find" || entry.world !== state.world || entry.actor.kind === "page") return;
+  var mode = followMode("follow");
+  var args = (entry.args || {}) as { view?: string; params?: Record<string, string> };
+  if (mode === "off" || typeof args.view !== "string") return;
+  var there = viewDash(args.view, args.params || {});
+  if (state.dash === there) return;
+  var who = actorWord(entry.actor);
+  if (mode === "toasts" || busy()) {
+    offer(who + " " + entry.text, "open", function () {
+      go(there);
+    });
+    return;
+  }
+  toast(who + " " + entry.text + " (Settings, follow chat)");
+  go(there);
+}

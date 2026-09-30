@@ -124,3 +124,63 @@ def test_the_census_numbers_match_collected_from_world(tools, client, state):
         assert int(row[1]) == c["placed"] and int(row[2]) == c["collected"]
     collected = sum(c["collected"] for c in body["census"])
     assert f"whole_world_collected={collected}" in text
+
+
+@pytest.fixture
+def followed(tools, tmp_path, monkeypatch):
+    from satisfactory_mcp.domain.planning import journal
+
+    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path)
+    monkeypatch.setattr(journal, "_seq", {})
+    journal.set_writer("chat")
+    return lambda: journal.read(tools._state().world_id, limit=50)
+
+
+def test_finder_calls_tell_a_following_page_where_to_go(tools, followed):
+    tools.search_resource_nodes(resource="Iron Ore", show="nodes", only_free=True, near="me")
+    tools.rank_build_sites(resource="Copper Ore", sources=["near:hub@1500", "purity:pure"])
+    tools.rank_build_sites(resource="Copper Ore", sources=["region:Grass Fields"])
+    tools.search_conduits(near="me", conduit_kind="pipe")
+    tools.whereami()
+    progression.collected_from_world(show="nearest", group="somersloop")
+    found = [(e["kind"], e["tool"], e["args"]) for e in followed()]
+    assert found == [
+        (
+            "world.find",
+            "search_resource_nodes",
+            {
+                "view": "nodes",
+                "params": {"resource": "Desc_OreIron_C", "status": "free", "near": "me"},
+            },
+        ),
+        (
+            "world.find",
+            "rank_build_sites",
+            {
+                "view": "fields",
+                "params": {
+                    "resource": "Desc_OreCopper_C",
+                    "rank": "1",
+                    "at": "hub",
+                    "within_m": "1500",
+                    "pure": "1",
+                },
+            },
+        ),
+        (
+            "world.find",
+            "rank_build_sites",
+            {"view": "fields", "params": {"resource": "Desc_OreCopper_C", "rank": "1"}},
+        ),
+        (
+            "world.find",
+            "search_conduits",
+            {"view": "conduits", "params": {"near": "me", "conduit_kind": "pipe"}},
+        ),
+        ("world.find", "whereami", {"view": "", "params": {}}),
+        (
+            "world.find",
+            "collected_from_world",
+            {"view": "pickups", "params": {"view": "nearest", "group": "somersloop"}},
+        ),
+    ]

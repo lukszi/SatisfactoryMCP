@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
+from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....domain.spatial import finder, geo, heightfield, place
@@ -19,6 +20,7 @@ from ..app import (
     Limit,
     _item_id,
     _state,
+    follow,
     game,
     mcp,
     retired,
@@ -355,6 +357,7 @@ def search_conduits(
     limit: Limit = 12,
     offset: int = 0,
     kind: Annotated[str | None, Field(description="retired -- write conduit_kind= instead")] = None,
+    ctx: Context | None = None,
 ) -> str:
     """Belt and pipe runs near a point or between two areas: ends, length, elevation.
 
@@ -396,6 +399,22 @@ def search_conduits(
     view = (show or "runs").strip().casefold()
     if view not in ("runs", "networks"):
         return f"! unknown show {show!r}. Choose from: runs, networks"
+    follow(
+        st,
+        ctx,
+        "search_conduits",
+        "conduits",
+        {
+            "near": near,
+            "radius_m": None if radius_m == conduits_mod.NEAR_RADIUS_M else f"{radius_m:g}",
+            "to": to,
+            "to_radius_m": None if to_radius_m is None else f"{to_radius_m:g}",
+            "conduit_kind": want,
+            "view": "networks" if view == "networks" else None,
+            "network": network,
+        },
+        f"searched belts and pipes near {near}",
+    )
 
     if view == "networks":
         try:
@@ -525,6 +544,52 @@ def _occupant(row: dict, g) -> str:
     return " ".join(parts)
 
 
+def _follow_nodes(st, ctx, view, resource, purity, kind, status, near, where) -> None:
+    def given(value: str | None) -> str | None:
+        return None if not value or value.strip().casefold() == "all" else value
+
+    rid = _item_id(resource) if given(resource) else None
+    name = game().item_name(rid) if rid else "every"
+    shown = "fields" if view == "fields" else "nodes"
+    follow(
+        st,
+        ctx,
+        "search_resource_nodes",
+        shown,
+        {
+            "resource": rid,
+            "purity": given(purity),
+            "kind": given(kind),
+            "status": given(status),
+            "near": near,
+        },
+        f"searched {name} {shown}" + (f" near {where}" if where else ""),
+    )
+
+
+def _slider(radius: str) -> bool:
+    try:
+        return 500.0 <= float(radius) <= 5000.0
+    except ValueError:
+        return False
+
+
+def _rank_pane(sources: list[str] | None) -> dict:
+    """The rank pane's settings, when ``sources`` says no more than it can."""
+    out: dict = {}
+    for term in sources or []:
+        head, _, body = term.partition(":")
+        head = head.strip().casefold()
+        place, at, radius = body.rpartition("@")
+        if head == "near" and at and "at" not in out and _slider(radius):
+            out["at"], out["within_m"] = place.strip(), radius.strip()
+        elif head == "purity" and body.strip().casefold() == "pure":
+            out["pure"] = 1
+        else:
+            return {}
+    return out
+
+
 @mcp.tool(structured_output=False)
 def search_resource_nodes(
     sources: list[str] | None = None,
@@ -547,6 +612,7 @@ def search_resource_nodes(
     as_of: AsOf = None,
     limit: Limit = 25,
     offset: int = 0,
+    ctx: Context | None = None,
 ) -> str:
     """Resource nodes, in one of three views.
 
@@ -613,6 +679,8 @@ def search_resource_nodes(
         return found.error
     if found.unselected:
         return render.envelope("# no nodes selected", "", [*found.errors, SELECTOR_HELP])
+    if st is not None:
+        _follow_nodes(st, ctx, view, resource, purity, kind, wanted, near, found.where)
     rows_all = found.rows
     if not rows_all:
         return render.envelope(
@@ -885,6 +953,7 @@ def rank_build_sites(
     save: str | None = None,
     world: str | None = None,
     as_of: AsOf = None,
+    ctx: Context | None = None,
 ) -> str:
     """Rank candidate fields for a new extraction site, best first.
 
@@ -915,6 +984,14 @@ def rank_build_sites(
     sel = ranked.selection
     if ranked.unselected:
         return render.envelope("# no candidates", "", [*sel.errors, SELECTOR_HELP])
+    follow(
+        st,
+        ctx,
+        "rank_build_sites",
+        "fields",
+        {"resource": rid, "rank": 1, **_rank_pane(sources)},
+        f"ranked build sites for {g.item_name(rid)}",
+    )
     scored = ranked.scored
     if not scored:
         return render.envelope(
@@ -1012,6 +1089,7 @@ def whereami(
     world: str | None = None,
     as_of: AsOf = None,
     limit: Limit = 8,
+    ctx: Context | None = None,
 ) -> str:
     """Where the player is standing, and what is around them.
 
@@ -1027,6 +1105,7 @@ def whereami(
         return f"could not read save: {exc}"
 
     found = place.here(st, g, radius_m)
+    follow(st, ctx, "whereami", "", {}, "looked where the player is")
     if found.player is None:
         return "no player pawn in this save, so there is no position to report"
     x, y, z = found.player

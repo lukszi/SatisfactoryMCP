@@ -27,7 +27,7 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 | `rank_build_sites` as the fields view's **rank** toggle | A pickup route planner (vision Q13 is open) |
 | Spoiler flag on nodes and pickups; locked nodes are drawn faded, the pickup layers follow the switch | Items as spoilers (§12.4, still open) |
 | Staleness of the node table, the collectible table and the save, said where it applies | Regenerating either table (tools/gen_*.py) |
-| `show_on_map` links that ring a node or a run; the page's selection reported to `ui_context` | Chat moving the page on a finder call (§17 Q4) |
+| `show_on_map` links that ring a node or a run; the page's selection reported to `ui_context`; a finder call in chat moves a page that follows chat | — |
 | Moving tool-body logic into the domain (vision §5.1) | Changing any tool's text beyond §6 |
 
 ---
@@ -119,7 +119,9 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 - The page reports its selection in the focus heartbeat on every view (not only the planner),
   as `{kind, label, ref}` with `ref` the selector. `ui_context` prints it, so chat can resolve
   "the selected node" with `node:<id>`.
-- Finder tool calls in chat do not move the page (§17 Q4).
+- A finder tool call in chat (`search_resource_nodes`, `rank_build_sites`, `search_conduits`,
+  `whereami`, `collected_from_world`) journals `world.find`, and a page set to follow chat (the
+  default) opens the same World view; "toasts only" offers it (docs/web-wire.md, World).
 
 ---
 
@@ -346,7 +348,8 @@ None new. Behaviour on the existing ones:
 | `collected_from_world` | census built by `service.census_rows`; labels from `service.LABELS` | unchanged |
 | `ui_context` | prints `ref` after a selection label when present: `selected: node "Iron Ore, pure" (node:BP_...)` | one line |
 
-No tool gains a spoiler filter: spoilers are a page setting (§12.3 precedent). `docs/mcp-surface.md`
+The finder tools and `collected_from_world` also journal `world.find` (§2.7); their text is
+unchanged. No tool gains a spoiler filter: spoilers are a page setting (§12.3 precedent). `docs/mcp-surface.md`
 and `test_surface.py` follow the signature changes.
 
 ---
@@ -479,7 +482,7 @@ adding one.
 
 | Direction | What happens |
 |---|---|
-| chat → page | `show_on_map` links open the page on the thing, ringed and selected (§2.7). Nothing else moves the page. |
+| chat → page | `show_on_map` links open the page on the thing, ringed and selected; a finder call opens its World view under follow chat (§2.7). |
 | page → chat | every row shows its selector (`node:`, `near:x,y@r`, `chain:`, `pipe:`, `region:`) as a copyable `code` cell; the shared selection reaches `ui_context` as `{kind, label, ref}` |
 | same answer | a route and its tool call one domain function; `test_world_parity.py` compares them on one save |
 | page prompts agent | never |
