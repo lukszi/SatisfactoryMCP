@@ -2957,6 +2957,10 @@ path.lasso-area {
   gap: var(--sp-1);
 }
 
+.dash-table tr.world-locked td:not(.dt-acts) {
+  opacity: 0.55;
+}
+
 
 .dk-table tr.on > td {
   background: color-mix(in srgb, var(--select) 12%, var(--surface));

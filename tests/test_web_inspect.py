@@ -229,11 +229,9 @@ def test_inspect_without_a_save_keeps_nodes_and_nulls_conduits(game):
     assert body["pickups_within"] is None
 
 
-def test_spoilers_off_fills_nearest_with_nodes_an_extractor_can_work(client):
+def test_locked_nodes_stay_in_nearest_flagged_for_the_page_to_fade(client):
     at = {"x_m": -430.0, "y_m": -66.0}
-    every = client.get("/api/inspect", params=at).json()["nearest"]
-    kept = client.get("/api/inspect", params={**at, "spoilers": 0}).json()["nearest"]
-    assert any(n["spoiler"] for n in every)
-    assert len(kept) == web_inspect.INSPECT_NEAREST
-    assert not any(n["spoiler"] for n in kept)
-    assert [n["distance_m"] for n in kept] == sorted(n["distance_m"] for n in kept)
+    nearest = client.get("/api/inspect", params=at).json()["nearest"]
+    assert any(n["spoiler"] for n in nearest)
+    assert len(nearest) == web_inspect.INSPECT_NEAREST
+    assert [n["distance_m"] for n in nearest] == sorted(n["distance_m"] for n in nearest)

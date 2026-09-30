@@ -131,8 +131,7 @@ export interface paths {
          *
          *     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
          *     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-         *     elevation reach; conduits count within 250 m, fields and pickups look 500 m out. ``spoilers=0`` skips
-         *     locked nodes so that ``nearest`` still holds the closest ones some extractor can work.
+         *     elevation reach; conduits count within 250 m, fields and pickups look 500 m out.
          *
          *     **A failed save is not a failed answer.** The node table is static, covers the whole map
          *     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -1622,7 +1621,7 @@ export interface paths {
          *     ``resource`` is a name or class id; ``purity`` and ``kind`` take ``all`` for no filter;
          *     ``status`` is ``free`` (untapped), ``tapped`` or ``all``. ``source`` repeats and takes
          *     the tool's selectors. With ``near`` every row carries ``distance_m`` and the page sorts
-         *     by it. ``spoilers=0`` drops locked nodes before anything is counted. A save that will
+         *     by it. Locked nodes stay in, flagged ``spoiler``; the page fades them. A save that will
          *     not load still answers from the node table, with ``save_error`` set.
          */
         get: operations["world_nodes_api_world_nodes_get"];
@@ -1707,9 +1706,6 @@ export interface paths {
         /**
          * World Regions
          * @description Named regions with their node counts, as ``list_regions`` lists them.
-         *
-         *     ``spoilers=0`` counts only nodes some unlocked extractor can work; with no readable
-         *     save every node counts.
          */
         get: operations["world_regions_api_world_regions_get"];
         put?: never;
@@ -4006,8 +4002,6 @@ export interface components {
             choices: components["schemas"]["NodeChoices"];
             /** Notes */
             notes: string[];
-            /** Hidden Spoilers */
-            hidden_spoilers: number;
             stale: components["schemas"]["TableAge"] | null;
             /** Save Error */
             save_error: string | null;
@@ -4033,7 +4027,7 @@ export interface components {
          *     and with no world there is nothing to have researched it.
          *
          *     ``spoiler`` is an unoccupied node with ``reachable`` false, the rows the text surface
-         *     marks ``LOCKED``: the page hides those dots while spoilers are off.
+         *     marks ``LOCKED``: the page draws those dots faded.
          */
         NodeRow: {
             /** Id */
@@ -5171,8 +5165,6 @@ export interface components {
             rows: components["schemas"]["RegionRow"][];
             /** Accuracy M */
             accuracy_m: number;
-            /** Hidden Spoilers */
-            hidden_spoilers: number;
         };
         /**
          * RegionsResponse
@@ -6772,7 +6764,6 @@ export interface operations {
                 x_m: number;
                 y_m: number;
                 radius_m?: number;
-                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };
@@ -9036,7 +9027,6 @@ export interface operations {
                 status?: string;
                 source?: string[] | null;
                 near?: string | null;
-                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };
@@ -9147,7 +9137,6 @@ export interface operations {
         parameters: {
             query?: {
                 radius_m?: number;
-                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };
@@ -9181,7 +9170,6 @@ export interface operations {
         parameters: {
             query?: {
                 resource?: string | null;
-                spoilers?: number | null;
                 save?: string | null;
                 world?: string | null;
             };

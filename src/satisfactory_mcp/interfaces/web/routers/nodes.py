@@ -43,7 +43,7 @@ class NodeRow(TypedDict):
     and with no world there is nothing to have researched it.
 
     ``spoiler`` is an unoccupied node with ``reachable`` false, the rows the text surface
-    marks ``LOCKED``: the page hides those dots while spoilers are off.
+    marks ``LOCKED``: the page draws those dots faded.
     """
 
     id: str

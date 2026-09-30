@@ -52,8 +52,6 @@ INSPECT_RADIUS_M = 200.0
 #: the popup a second copy of the node table.
 INSPECT_NEAREST = 5
 
-NEAREST_WIDE = 60
-
 
 class InspectAt(TypedDict):
     """The coordinate that was asked about, rounded to the decimetre it was answered at.
@@ -265,7 +263,6 @@ def inspect(
     x_m: float,
     y_m: float,
     radius_m: Annotated[float, Query(ge=1, le=2000)] = INSPECT_RADIUS_M,
-    spoilers: Annotated[int | None, Query(ge=0, le=1)] = None,
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
@@ -273,8 +270,7 @@ def inspect(
 
     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-    elevation reach; conduits count within 250 m, fields and pickups look 500 m out. ``spoilers=0`` skips
-    locked nodes so that ``nearest`` still holds the closest ones some extractor can work.
+    elevation reach; conduits count within 250 m, fields and pickups look 500 m out.
 
     **A failed save is not a failed answer.** The node table is static, covers the whole map
     and needs no ``.sav`` at all, so a world whose save will not load still gets its region,
@@ -308,9 +304,6 @@ def inspect(
     x, y = x_m * 100.0, y_m * 100.0
     found = place.describe(st, game, x, y, radius_m, terrain_field=terrain.field())
     nearest = found.nearest
-    if spoilers == 0:
-        wide = place.nearest_nodes(st, game, x, y, limit=NEAREST_WIDE)
-        nearest = [n for n in wide if n["tapped"] or n["reachable"]][:INSPECT_NEAREST]
     stale = []
     if st is not None:
         nodes_age = spatial_nodes.table_age(

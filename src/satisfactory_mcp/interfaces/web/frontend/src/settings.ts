@@ -37,7 +37,7 @@ export var SETTINGS: Setting[] = [
     key: "spoilers",
     group: "spoilers",
     label: "show what is not unlocked yet",
-    hint: "later tiers, MAM trees, phases, locked recipes, locked nodes and unfound pickups",
+    hint: "later tiers, MAM trees, phases, locked recipes and unfound pickups",
     fallback: false,
   },
   {

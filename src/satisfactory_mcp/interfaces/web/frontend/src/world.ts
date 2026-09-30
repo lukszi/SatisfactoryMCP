@@ -12,7 +12,7 @@ import { hashFor, writeHash } from "./map";
 import { dashParts, subjectQuery, withQuery } from "./nav";
 import { showPoint } from "./panel";
 import { registerFetch } from "./registry";
-import { onSetting, spoilerFlag } from "./settings";
+import { onSetting } from "./settings";
 import { state } from "./state";
 import { renderConduits } from "./world-conduits";
 import { nodeTable, renderNodes } from "./world-nodes";
@@ -282,7 +282,7 @@ export function distanceColumn<R extends { distance_m: number | null }>(label?: 
 }
 
 function hereQuery(): string {
-  return withQuery("", { radius_m: String(HERE_RADIUS_M), spoilers: spoilerFlag() }).slice(1);
+  return withQuery("", { radius_m: String(HERE_RADIUS_M) }).slice(1);
 }
 
 function renderHere(body: HTMLElement): void {
@@ -361,11 +361,10 @@ function renderRegions(body: HTMLElement, params: Record<string, string>): void 
       edit({ resource: v });
     })
   );
-  want("world-regions", regionsBox, worldUrl("/api/world/regions", { resource: params.resource || "", spoilers: spoilerFlag() }));
+  want("world-regions", regionsBox, worldUrl("/api/world/regions", { resource: params.resource || "" }));
   if (waiting(card, regionsBox, "regions")) return;
   var data = regionsBox.data!;
   note(card, "region names are good to about " + num(data.accuracy_m, 0) + " m" + (data.resource_name ? " · nodes counted: " + data.resource_name : ""));
-  hiddenLine(card, data.hidden_spoilers, "locked node");
   if (!data.rows.length) {
     empty(card, "no region holds a matching node");
     return;
@@ -457,7 +456,4 @@ registerFetch<HereResponse>({
   },
 });
 
-onSetting(function () {
-  loadOne(HERE_PATH);
-  redraw();
-});
+onSetting(redraw);

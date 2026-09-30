@@ -15,7 +15,7 @@ import { L } from "./leaflet";
 import { hashFor, map, MAP_SQUARE_M, NARROW } from "./map";
 import { withQuery } from "./nav";
 import { pinButtons } from "./pins";
-import { setting, spoilerQuery } from "./settings";
+import { setting } from "./settings";
 import { friendly } from "./toast";
 import { counted, gapText, W } from "./words";
 
@@ -84,7 +84,7 @@ function elevationLine(e: Elevation): string {
 }
 
 function nearestText(n: InspectResponse["nearest"][number]): string {
-  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + (n.occupied ? " (occupied)" : "");
+  return n.resource_name + " " + n.purity + " · " + metres(n.distance_m) + (n.occupied ? " (occupied)" : n.spoiler ? " (" + W.locked + ")" : "");
 }
 
 var PICKUPS_NEAR_M = 500;
@@ -153,9 +153,9 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
     rows.push(["machine", machine.name]);
     rows.push(["trace", traceButtons(machine.leaf)]);
   }
-  var nearest = shown(d.nearest);
+  var nearest = d.nearest;
   var pickups = shown(d.pickups);
-  var fields = shown(d.fields);
+  var fields = d.fields;
   var targets: PinTarget[] = [{ kind: "point", ref: { x_m: d.at.x_m, y_m: d.at.y_m }, text: "point" }];
   if (machine) targets.push({ kind: "machine", ref: { machine: machine.leaf }, text: "machine" });
   var near = nearest[0];
@@ -230,7 +230,7 @@ export function inspect(e: L.LeafletMouseEvent): void {
     .setLatLng(e.latlng)
     .setContent("inspecting " + x + ", " + y + " m&hellip;")
     .openOn(map);
-  get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y + "&" + spoilerQuery()) as `/api/inspect?${string}`)
+  get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y) as `/api/inspect?${string}`)
     .then(function (d) {
       if (!map.hasLayer(card)) return;
       var body = document.createElement("div");

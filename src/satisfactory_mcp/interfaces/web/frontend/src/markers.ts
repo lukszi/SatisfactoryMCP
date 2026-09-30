@@ -109,10 +109,8 @@ export function drawNodes(data: NodesResponse): void {
 }
 
 function paintNodes(data: NodesResponse): void {
-  var spoilers = setting("spoilers");
   var byResource: Record<string, NodeRow[]> = {};
   data.nodes.forEach(function (n) {
-    if (n.spoiler && !spoilers) return;
     (byResource[n.resource] = byResource[n.resource] || []).push(n);
   });
   Object.keys(state.layers).forEach(function (name) {

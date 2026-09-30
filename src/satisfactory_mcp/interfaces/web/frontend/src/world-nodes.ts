@@ -17,7 +17,6 @@ import {
 } from "./finder";
 import { count, measured, metres, num, perMin, rounded, signed } from "./format";
 import { isSelected, select } from "./selection";
-import { spoilerFlag } from "./settings";
 import { state } from "./state";
 import {
   capped,
@@ -26,7 +25,6 @@ import {
   distanceColumn,
   edit,
   filterBar,
-  hiddenLine,
   loaded,
   regionCell,
   selectField,
@@ -184,7 +182,7 @@ export function nodeTable(rows: FoundNode[], near: boolean, stale?: TableAge | n
     caption: "resource nodes",
     onRow: pickNode,
     rowClass: function (n) {
-      return isSelected("node", n.id) ? "on" : "";
+      return (isSelected("node", n.id) ? "on " : "") + (n.spoiler ? "world-locked" : "");
     },
   });
 }
@@ -271,7 +269,7 @@ function fieldTable(rows: FoundField[], near: boolean): HTMLElement {
       render();
     },
     rowClass: function (f) {
-      return isSelected("field", f.key) ? "on" : "";
+      return (isSelected("field", f.key) ? "on " : "") + (f.spoiler ? "world-locked" : "");
     },
   });
 }
@@ -405,7 +403,6 @@ function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
   caveats = caveats.concat(d.notes);
   if (d.save_error) caveats.push(d.save_error + "; occupancy unknown");
   if (caveats.length) note(card, caveats.join(" · "));
-  hiddenLine(card, d.hidden_spoilers, "locked node");
   staleLine(card, d.stale);
 }
 
@@ -465,7 +462,6 @@ export function renderNodes(body: HTMLElement, view: "nodes" | "fields", params:
       kind: params.kind || "",
       status: params.status || "",
       near: params.near || "",
-      spoilers: spoilerFlag(),
     })
   );
   if (waiting(card, nodesBox, view)) return;

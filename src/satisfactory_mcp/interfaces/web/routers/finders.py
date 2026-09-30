@@ -40,8 +40,6 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/api/world")
 
-Spoilers = Annotated[int | None, Query(ge=0, le=1)]
-
 PAGE_VIEWS = ("nodes", "fields")
 
 
@@ -109,7 +107,6 @@ class NodeFindResponse(TypedDict):
     water: WaterBlock | None
     choices: NodeChoices
     notes: list[str]
-    hidden_spoilers: int
     stale: TableAge | None
     save_error: str | None
 
@@ -251,7 +248,6 @@ class RegionTableResponse(TypedDict):
     resource_name: str | None
     rows: list[RegionRow]
     accuracy_m: int
-    hidden_spoilers: int
 
 
 def _found_node(r: dict, game, rm, drifted: set[str]) -> FoundNode:
@@ -303,7 +299,6 @@ def world_nodes(
     status: str = "all",
     source: Annotated[list[str] | None, Query()] = None,
     near: str | None = None,
-    spoilers: Spoilers = None,
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
@@ -312,7 +307,7 @@ def world_nodes(
     ``resource`` is a name or class id; ``purity`` and ``kind`` take ``all`` for no filter;
     ``status`` is ``free`` (untapped), ``tapped`` or ``all``. ``source`` repeats and takes
     the tool's selectors. With ``near`` every row carries ``distance_m`` and the page sorts
-    by it. ``spoilers=0`` drops locked nodes before anything is counted. A save that will
+    by it. Locked nodes stay in, flagged ``spoiler``; the page fades them. A save that will
     not load still answers from the node table, with ``save_error`` set.
     """
     game = request.app.state.game()
@@ -354,7 +349,6 @@ def world_nodes(
         view=view,
         near=near,
         resolve_resource=_resolver(game),
-        hide_locked=spoilers == 0,
     )
     if found.error:
         return _fail(found.error)
@@ -383,7 +377,6 @@ def world_nodes(
         else {k: water[k] for k in ("bodies", "pumps", "per_pump_m3_min", "sea_level_m")},
         "choices": finder.choices(game),
         "notes": finder.page_notes(found, st),
-        "hidden_spoilers": found.hidden,
         "stale": spatial_nodes.table_age(
             st.header if st else None, None, [r["instance"] for r in found.rows]
         ),
@@ -590,7 +583,6 @@ def world_conduits(
 def world_here(
     request: Request,
     radius_m: Annotated[float, Query(ge=1, le=5000)] = 500.0,
-    spoilers: Spoilers = None,
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
@@ -601,7 +593,7 @@ def world_here(
         return _fail(f"could not read save: {exc}", 404)
     game = request.app.state.game()
     found = place.here(st, game, radius_m)
-    rows = [r for r in found.nodes if not (spoilers == 0 and finder.status_of(r) == "locked")]
+    rows = found.nodes
     instances = [r["instance"] for r in rows]
     drifted = spatial_nodes.drifted(found.skew, instances)
     rm = spatial_regions.load_regions()
@@ -638,32 +630,15 @@ def world_here(
 def world_regions(
     request: Request,
     resource: str | None = None,
-    spoilers: Spoilers = None,
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
-    """Named regions with their node counts, as ``list_regions`` lists them.
-
-    ``spoilers=0`` counts only nodes some unlocked extractor can work; with no readable
-    save every node counts.
-    """
+    """Named regions with their node counts, as ``list_regions`` lists them."""
     game = request.app.state.game()
     rid = resolve_item(game, resource) if resource else None
     if resource and rid is None:
         return _fail(f"unknown resource {resource!r}")
     table = spatial_nodes.load_nodes()
-    pool = None
-    hidden = 0
-    if spoilers == 0:
-        try:
-            st = _state(request, save, world)
-        except Exception:
-            st = None
-        if st is not None:
-            candidates = table.by_resource(rid) if rid else table.nodes
-            rows = spatial_nodes.annotate(candidates, game, st.projection, st.unlocked_building_ids)
-            pool = [r for r in rows if finder.status_of(r) != "locked"]
-            hidden = len(rows) - len(pool)
     rm = spatial_regions.load_regions()
     return {
         "resource": rid,
@@ -677,8 +652,7 @@ def world_regions(
                 "area_km2": r["area_km2"],
                 "nodes": r["nodes"],
             }
-            for r in spatial_regions.region_rows(table, rid, pool)
+            for r in spatial_regions.region_rows(table, rid)
         ],
         "accuracy_m": rm.accuracy_m,
-        "hidden_spoilers": hidden,
     }
