@@ -647,10 +647,13 @@ It journals `plan.view` with `args {"view": "alternates", "item": <class id>}` a
 `looked at recipes for <item>`. No tool was added.
 
 **Track and asks** (Planner P4, [planner_p4.md](planner_p4.md)). A stored plan carries a
-startup headroom, `headroom_mw` (a plan scalar the page sets; `null` is the save's nameplate).
+startup headroom, `headroom_mw` (a plan scalar the page sets; `null` is the save's measured
+headroom, source `measured from the save`, the page's default too).
 `diff_vs_save(plan=)` and `commission_plan(plan=)` both use it, so the stage numbers chat reads
 are the page's; `commission_plan(headroom_mw=)` still overrides it for one call (source `given
-by caller`). Both journal `plan.view` with `args {"view": "track", "stage": n|null, "section":
+by caller`). Headroom sources read `stored on the plan`, `measured from the save`, `nameplate from
+the save` or `given by caller` in every tool; `commission_plan` names the nameplate figure as the
+safe bound when it used measured, and `diff_vs_save` notes the headroom its stages used. Both journal `plan.view` with `args {"view": "track", "stage": n|null, "section":
 "stages"|"startup"}`, which the page follows into its Track tab. Each process remembers the
 partition it last printed per plan; when a later read partitions differently, the first note is
 `the stages changed since you last read this plan (v14 -> v15): you were in stage 2 of 4, now

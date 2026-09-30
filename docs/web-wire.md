@@ -76,11 +76,14 @@ named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes a
 
 ## Track and asks
 
-`GET /api/plan/track?key=&rev=&biomass=` (`routers/planner.py`) builds its whole reply from one
+`GET /api/plan/track?key=&rev=&biomass=&headroom=` (`routers/planner.py`) builds its whole reply from one
 solve (`domain/planning/track.py`). Not feasible, empty, and a count-as-built factory with no
 machines left are all 200s that say so (`feasible`, `empty`, `scope_error`) with empty lists;
 a 400 is only a solve that refuses its arguments. `biomass` is `include` or `exclude`, the
-spelling every power route uses. `GET /api/plan/feeders` is the ~0.7 s
+spelling every power route uses. `headroom` is `measured` (the default) or `nameplate`: the
+save's figure a plan with no stored headroom is staged against, from the page's *stage headroom*
+setting. `written_ago` is the save's age alone (`12 min ago`, null with no mtime); `age_note`
+keeps the full line for a tooltip. `GET /api/plan/feeders` is the ~0.7 s
 extractor walk, never run per save.
 
 `/api/asks` (`routers/asks.py`) follows the pins rules: the guard on every method, a delete
@@ -89,4 +92,5 @@ ask}`, a newer asks file is a 503 `{error, newer_schema: true}`. `about.plan` mu
 key (404 otherwise). Ask numbers are never reused. Unlike pins, the store has writers in every
 MCP process (seen, answered), so every write holds the file lock.
 
-`PlanStateBody.headroom_mw` is the stored startup headroom, `null` for the nameplate.
+`PlanStateBody.headroom_mw` is the stored startup headroom, `null` for the save's own figure
+(measured by default, see `headroom` above).

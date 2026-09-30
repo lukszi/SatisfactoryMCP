@@ -36,7 +36,7 @@ what was measured.
 |---|---|---|---|
 | B1 | `stage_text` = `Tracking.headline()` | `Tracking.headline(brief=True)`; the text tool keeps the long form | F2 shows the short sentence; the text output had to stay unchanged |
 | B2 | `?biomass=` a bool | `include`/`exclude` only | The page's `powerview.biomassQuery` already sends that spelling to every power route; one spelling, one helper |
-| B3 | Headroom source `"nameplate from the save"` | used by Track and `diff_vs_save`; `commission_plan` keeps printing `power_report, nameplate` | The commission text is unchanged; its measured-headroom note keys on that source |
+| B3 | Nameplate is the default headroom (§15 C2) | **measured** is the default for the page and every tool: `diff_service.default_headroom`, source `measured from the save`. The page has a *stage headroom* setting (measured / nameplate) and sends it as `?headroom=`; chat always uses measured. Every tool words the save's figures `measured from the save` / `nameplate from the save` (the old `power_report, nameplate` is gone) | Owner decision 2026-09-30: with nameplate the reference save has no stages at all (116 MW free against a 392 MW minimum slice). `commission_plan` names nameplate as the safe bound beside a measured order |
 | B4 | `AskError`, `AskMissing`, `AskStale` | adds `AboutMissing(AskError)` and `asks.row`/`asks.state_of` | A 404 for an unknown `about.plan` needs its own type; the routes and the tool build rows the same way |
 | B5 | `scope_error` text | `“<name>” has no machines in this save` | The F4 wording, so the page can show it as it comes |
 | B6 | Renumber note on every `commission_plan(plan=)` | not when the call passes its own `headroom_mw` | That call deliberately partitions differently; recording it would announce a renumbering on the next ordinary read |
@@ -60,11 +60,12 @@ what was measured.
 ## Open
 
 - `manage.duplicate` builds the copy field by field and does not carry `headroom_mw`; a
-  duplicate starts at the nameplate.
+  duplicate starts at the default headroom.
+- The *stage headroom* setting is per browser. With it on nameplate, a plan with no stored
+  headroom is staged differently on the page than in chat, which always uses measured.
 - A refused undo still words the conflict as `you <value>, <actor> set <value> in vN`, the
-  grammar shared with chat; for the page both sides can be the page.
-- Undo of a headroom change is refused once a later version changed the headroom again, even
-  when that later version was itself undone: the P1 conflict window (slice contract §4.3).
+  grammar shared with chat; for the page both sides can be the page. A cleared headroom reads
+  `nameplate` there, never `none`.
 - The `nodes` layer passed to `showBox` for rows with targets names no layer; node layers are
   per resource and on by default.
 - Not checked in a browser: a game save re-requesting Track (A11) needs a writable save

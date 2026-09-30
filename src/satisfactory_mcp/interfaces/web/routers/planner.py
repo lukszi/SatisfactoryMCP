@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 import time
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
 
@@ -398,6 +398,7 @@ class TrackResponse(TypedDict):
     cause: str
     save_id: str
     age_note: str
+    written_ago: str | None
     plan_id: str
     scope: str
     scope_note: str
@@ -628,10 +629,12 @@ def plan_track(
     key: str,
     rev: int | None = None,
     biomass: Biomass = "exclude",
+    headroom: Literal["measured", "nameplate"] = "measured",
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
-    """One plan version (the head when ``rev`` is omitted) diffed and staged against this save."""
+    """One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
+    ``headroom`` is the save's figure a plan with no stored headroom is staged against."""
     if not _KEY.fullmatch(key):
         return _fail(f"no plan “{key}” in this world", 404)
     try:
@@ -645,7 +648,9 @@ def plan_track(
     except InvalidOp as exc:
         return _fail(str(exc), 404)
     try:
-        return track.track_view(st.game, st, state, biomass=biomass == "include")
+        return track.track_view(
+            st.game, st, state, biomass=biomass == "include", default=headroom
+        )
     except ValueError as exc:
         return _fail(str(exc), 400)
 

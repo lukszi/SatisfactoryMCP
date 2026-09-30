@@ -169,7 +169,9 @@ each; `selectors` names the same members. `bbox_m` = bounding box of `act`, else
 machines, plus `targets`; `null` when none has a position.
 
 **Headroom source**: `headroom_mw` stored on the plan → `"stored on the plan"`; otherwise the
-save's nameplate headroom → `"nameplate from the save"`. Biomass follows `?biomass=`.
+save's measured headroom → `"measured from the save"`, or with `?headroom=nameplate` its
+nameplate → `"nameplate from the save"` (decided 2026-09-30, §15 C2). Biomass follows
+`?biomass=`.
 
 ---
 
@@ -225,8 +227,8 @@ writes). Newer-schema files are a 503 `{error, newer_schema: true}`.
 
 | Handler (operation id) | Method, path | Body / query | 2xx | Errors |
 |---|---|---|---|---|
-| `plan_track` (new, `planner.py`) | GET `/api/plan/track` | `key` (8 hex), `rev?` (default head), `biomass?: bool` | `TrackResponse` | 404 unknown key/rev, save unreadable; 400 `ValueError` from the solve |
-| `plan_feeders` (new, `planner.py`) | GET `/api/plan/feeders` | `biomass?` | `FeedersResponse` | 404 save unreadable |
+| `plan_track` (new, `planner.py`) | GET `/api/plan/track` | `key` (8 hex), `rev?` (default head), `biomass?: include\|exclude`, `headroom?: measured\|nameplate` (default measured) | `TrackResponse` | 404 unknown key/rev, save unreadable; 400 `ValueError` from the solve |
+| `plan_feeders` (new, `planner.py`) | GET `/api/plan/feeders` | `biomass?: include\|exclude` | `FeedersResponse` | 404 save unreadable |
 | `push_ops` (unchanged route) | POST `/api/plans/{key}/ops` | now also `set headroom_mw` | `PushedResponse` (`state.headroom_mw`) | as P1: 400, 404, **409 `OutdatedResponse`** |
 | `asks` (new, `asks.py`) | GET `/api/asks` | – | `AsksResponse` | 404 save unreadable; 503 |
 | `create_ask` | POST `/api/asks` | `AskCreateBody {text, about}` | 201 `AskRow` | 400 `AskError` (blank, too long, bad about, 200 live); 404 plan in `about` unknown; 503 lock/schema |
@@ -496,8 +498,9 @@ autosave), warm process, median of 5 (max in brackets). Route budgets are in-pro
 | Track render | unmeasured | ≤ 30 ms at 40 job rows (the verifier measures it, A20) |
 
 Reference-save fact that shapes F4: nameplate headroom is **116 MW** while the three plans'
-minimum slices are 392–644 MW, so with the default no plan has a startup order; measured
-headroom is 6,372 MW (one stage each), and a given 2,000 MW gives 2–3 stages. Not measured: a
+minimum slices are 392–644 MW, so with nameplate no plan has a startup order; measured
+headroom is 6,372 MW (one stage each), and a given 2,000 MW gives 2–3 stages. That is why
+measured became the default (§15 C2). Not measured: a
 sited plan (on-site census), a plan above 40 jobs.
 
 ---
@@ -571,7 +574,7 @@ copy. Never ports 8712/8713.
 | # | Choice | Alternative |
 |---|---|---|
 | C1 | Only the page writes `headroom_mw`; chat reads it and can still pass `headroom_mw=` to `commission_plan` for one call | A `plan_factory` parameter |
-| C2 | Nameplate stays the default headroom | Measured by default |
+| C2 | ~~Nameplate stays the default headroom~~ **Decided 2026-09-30: measured by default**, page and tools; the page's *stage headroom* setting can pick nameplate | Nameplate by default |
 | C3 | The last-seen partition lives in page memory (and per MCP process) | Stored in focus or per plan |
 | C4 | Asks carry no answer text; `answered` is a flag | An answer note shown on the page |
 | C5 | Ask buttons only in the planner (Track, build list, node card, header, pins card) | Map popups, factory detail, dashboard rows |
