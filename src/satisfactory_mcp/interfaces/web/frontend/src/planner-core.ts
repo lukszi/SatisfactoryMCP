@@ -3,7 +3,7 @@
 import { get, latest, missing, push, send } from "./api";
 import { go } from "./nav";
 import { biomassQuery } from "./powerview";
-import { spoilerQuery } from "./settings";
+import { choice, spoilerQuery } from "./settings";
 import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 import { W } from "./words";
@@ -78,6 +78,7 @@ export interface Partition {
   rev: number;
   save_id: string;
   headroom_mw: number | null;
+  headroom_source: string;
 }
 
 export interface FeedersView {
@@ -357,6 +358,7 @@ function partition(data: TrackResponse): Partition {
     rev: data.rev,
     save_id: data.save_id,
     headroom_mw: data.headroom_mw,
+    headroom_source: data.headroom_mw === null ? data.startup.headroom_source : "",
   };
 }
 
@@ -385,12 +387,16 @@ function renumber(data: TrackResponse): void {
   bench.seen[data.key] = now;
   if (!was || was.partition_id === now.partition_id) return;
   var who =
-    was.rev !== now.rev ? "v" + now.rev : was.headroom_mw !== now.headroom_mw ? "the new headroom" : was.save_id !== now.save_id ? "the new save" : "";
+    was.rev !== now.rev ? "v" + now.rev : was.headroom_mw !== now.headroom_mw || was.headroom_source !== now.headroom_source ? "the new headroom" : was.save_id !== now.save_id ? "the new save" : "";
   if (was.current === now.current && was.count === now.count) {
     bench.track.notice = (who || "the plan") + " moved machines between stages; " + stillWords(now);
     return;
   }
   bench.track.notice = (who ? who + " changed the stages" : "the stages changed") + ": " + wasWords(was) + ", " + nowWords(now);
+}
+
+export function stageHeadroom(): string {
+  return choice("stageHeadroom") || "measured";
 }
 
 export function loadTrack(): void {
@@ -402,7 +408,7 @@ export function loadTrack(): void {
   view.seq++;
   view.asked = plan.rev;
   changed();
-  get<TrackResponse>(`${TRACK}?key=${encodeURIComponent(key)}&${biomassQuery()}` as ApiUrl)
+  get<TrackResponse>(`${TRACK}?key=${encodeURIComponent(key)}&${biomassQuery()}&headroom=${stageHeadroom()}` as ApiUrl)
     .then(function (data) {
       if (!ticket.fresh() || bench.key !== key || bench.track !== view) return;
       renumber(data);
