@@ -291,7 +291,13 @@ def test_pins_are_listed_and_a_pinned_selection_names_its_pin(ctx, monkeypatch):
 
 def test_a_machine_selection_prints_its_selector(ctx, monkeypatch):
     ref = "machine:Build_ConstructorMk1_C_7"
-    _focus(monkeypatch, 2, True, view="map", selection={"kind": "machine", "label": "Constructor", "ref": ref})
+    _focus(
+        monkeypatch,
+        2,
+        True,
+        view="map",
+        selection={"kind": "machine", "label": "Constructor", "ref": ref},
+    )
     line = srv.ui_context().splitlines()[1]
     assert line.endswith(f'selected: machine "Constructor" ({ref})')
 
