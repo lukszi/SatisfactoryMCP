@@ -305,3 +305,8 @@ export type SitesResponse = Body<"SitesResponse">;
 export type FloorPlatform = Schema["FloorPlatform"];
 export type FloorBand = Schema["FloorBand"];
 export type FactoryFloorsResponse = Body<"FloorsResponse">;
+
+/* ---------------------------------------------------------------- /api/settings */
+
+export type SettingsResponse = Body<"SettingsResponse">;
+export type SettingsStaleResponse = Body<"SettingsStaleResponse">;

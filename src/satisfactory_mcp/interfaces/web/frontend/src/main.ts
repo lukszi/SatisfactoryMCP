@@ -35,6 +35,7 @@ import { listenForPins } from "./pins";
 import { noteRegionChoice, updateRegionBlend } from "./regions";
 import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
 import { wireSearch } from "./search";
+import { syncSharedSettings } from "./shared-settings";
 import { listen } from "./sse";
 import { BOOT, BOOT_GARBLED, garbledNote, state } from "./state";
 import { wireStatus } from "./status";
@@ -149,6 +150,7 @@ el("world").addEventListener("change", fitWorld);
 /* In this order and not in parallel: the base map's mode decides whether the region tint
  * starts on, so the group it decides about has to exist by then. */
 loadRegions().then(loadBaseMap);
+syncSharedSettings();
 
 if (!("z" in BOOT)) fitWorld();
 

@@ -1,6 +1,6 @@
 /* Per-browser preferences, kept in localStorage; a route whose answer depends on one takes it
  * as a query. The page works without storage: a setting then lasts until reload. See
- * docs/frontend_vision.md §8.6. */
+ * docs/frontend_vision.md §8.6. A `shared` one lives on the server (shared-settings.ts). */
 
 import { W } from "./words";
 
@@ -9,6 +9,7 @@ interface Base {
   group: string;
   label: string;
   hint: string;
+  shared?: string;
 }
 
 export interface Switch extends Base {
@@ -75,8 +76,9 @@ export var SETTINGS: Setting[] = [
     key: "biomass",
     group: "power",
     label: "count biomass burners in headroom",
-    hint: "hand-fed, so left out of generation and headroom by default",
+    hint: "hand-fed, so left out of generation and headroom by default; chat uses the same",
     fallback: false,
+    shared: "biomass",
   },
   {
     kind: "choice",
@@ -96,12 +98,13 @@ export var SETTINGS: Setting[] = [
     key: "stageHeadroom",
     group: "planner",
     label: "stage headroom",
-    hint: "for a plan with no startup headroom of its own; chat uses measured",
+    hint: "for a plan with no startup headroom of its own; chat uses the same",
     options: [
       ["measured", "measured: what the grid has free now"],
       ["nameplate", "nameplate: every built machine running at once"],
     ],
     fallback: "measured",
+    shared: "stage_headroom",
   },
 ];
 
@@ -112,6 +115,10 @@ var NOTICE_KEY = "spoilers-off-notice";
 var values: Record<string, boolean | string | number> = {};
 
 var listeners: Array<() => void> = [];
+
+type Changes = Record<string, boolean | string | number | null>;
+
+var sharedWriter: ((changes: Changes) => void) | null = null;
 
 function valid(s: Setting, value: unknown): boolean {
   if (s.kind === "switch") return typeof value === "boolean";
@@ -184,9 +191,15 @@ export function setSetting(key: string, value: boolean | string | number): void 
   listeners.forEach(function (listener) {
     listener();
   });
+  if (found.shared && sharedWriter) sharedWriter({ [found.shared]: value });
 }
 
 export function resetSettings(): void {
+  var cleared: Changes = {};
+  SETTINGS.forEach(function (s) {
+    if (s.shared) cleared[s.shared] = null;
+  });
+  if (sharedWriter) sharedWriter(cleared);
   values = {};
   remember();
   listeners.forEach(function (listener) {
@@ -207,6 +220,35 @@ export function spoilerNotice(): boolean {
 
 export function onSetting(listener: () => void): void {
   listeners.push(listener);
+}
+
+export function writeSharedWith(writer: (changes: Changes) => void): void {
+  sharedWriter = writer;
+}
+
+/* The shared settings this browser set itself, by server name. */
+export function sharedLocal(): Changes {
+  var out: Changes = {};
+  SETTINGS.forEach(function (s) {
+    if (s.shared && s.key in values) out[s.shared] = values[s.key]!;
+  });
+  return out;
+}
+
+/* The server's values replace this browser's; listeners hear it only when one moved. */
+export function adoptShared(server: Record<string, unknown>): void {
+  var moved = false;
+  SETTINGS.forEach(function (s) {
+    if (!s.shared || !valid(s, server[s.shared])) return;
+    var value = server[s.shared] as boolean | string | number;
+    if (read(s.key) !== value) moved = true;
+    values[s.key] = value;
+  });
+  remember();
+  if (moved)
+    listeners.forEach(function (listener) {
+      listener();
+    });
 }
 
 recall();
