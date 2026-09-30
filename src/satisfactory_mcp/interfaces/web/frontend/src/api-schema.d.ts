@@ -1044,49 +1044,6 @@ export interface paths {
         patch: operations["rename_label_api_labels__name__patch"];
         trace?: never;
     };
-    "/api/factories/graph": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Factory Graph
-         * @description The recipe-group production graph of a named factory, or of a detected candidate.
-         *
-         *     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
-         *     written since then is refused (409), since the index may now name another cluster.
-         */
-        get: operations["factory_graph_api_factories_graph_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/factories/machines": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Factory Machines
-         * @description Where each standing machine of a named factory, or of a detected candidate, stands.
-         */
-        get: operations["factory_machines_api_factories_machines_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/labels/amend": {
         parameters: {
             query?: never;
@@ -1204,47 +1161,6 @@ export interface paths {
          * @description Every recipe making ``item``, each with what requiring it would change in the plan.
          */
         post: operations["plan_alternates_api_plan_alternates_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/plan/track": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Plan Track
-         * @description One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
-         *     ``headroom`` is the save's figure a plan with no stored headroom is staged against.
-         */
-        get: operations["plan_track_api_plan_track_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/plan/feeders": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Plan Feeders
-         * @description Built extractors whose output reaches a running generator: what startup waves stand on.
-         */
-        get: operations["plan_feeders_api_plan_feeders_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1805,6 +1721,90 @@ export interface paths {
          * @description Delete one ask, refused with a 409 when ``rev`` is not its current one.
          */
         delete: operations["drop_ask_api_asks__n__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/factories/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Graph
+         * @description The recipe-group production graph of a named factory, or of a detected candidate.
+         *
+         *     A candidate is its ``proposal:N`` selector plus the ``token`` it was detected at; a save
+         *     written since then is refused (409), since the index may now name another cluster.
+         */
+        get: operations["factory_graph_api_factories_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/factories/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory Machines
+         * @description Where each standing machine of a named factory, or of a detected candidate, stands.
+         */
+        get: operations["factory_machines_api_factories_machines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Track
+         * @description One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
+         *     ``headroom`` is the save's figure a plan with no stored headroom is staged against.
+         */
+        get: operations["plan_track_api_plan_track_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/feeders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Feeders
+         * @description Built extractors whose output reaches a running generator: what startup waves stand on.
+         */
+        get: operations["plan_feeders_api_plan_feeders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -8024,76 +8024,6 @@ export interface operations {
             };
         };
     };
-    factory_graph_api_factories_graph_get: {
-        parameters: {
-            query?: {
-                factory?: string | null;
-                candidate?: string | null;
-                token?: string | null;
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FactoryGraphResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    factory_machines_api_factories_machines_get: {
-        parameters: {
-            query?: {
-                factory?: string | null;
-                candidate?: string | null;
-                token?: string | null;
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FactoryMachinesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     amend_label_api_labels_amend_post: {
         parameters: {
             query?: {
@@ -8322,75 +8252,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanAlternatesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    plan_track_api_plan_track_get: {
-        parameters: {
-            query: {
-                key: string;
-                rev?: number | null;
-                biomass?: "exclude" | "include";
-                headroom?: "measured" | "nameplate";
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TrackResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    plan_feeders_api_plan_feeders_get: {
-        parameters: {
-            query?: {
-                biomass?: "exclude" | "include";
-                save?: string | null;
-                world?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FeedersResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9538,6 +9399,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AskStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_graph_api_factories_graph_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                candidate?: string | null;
+                token?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_machines_api_factories_machines_get: {
+        parameters: {
+            query?: {
+                factory?: string | null;
+                candidate?: string | null;
+                token?: string | null;
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryMachinesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_track_api_plan_track_get: {
+        parameters: {
+            query: {
+                key: string;
+                rev?: number | null;
+                biomass?: "exclude" | "include";
+                headroom?: "measured" | "nameplate";
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_feeders_api_plan_feeders_get: {
+        parameters: {
+            query?: {
+                biomass?: "exclude" | "include";
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedersResponse"];
                 };
             };
             /** @description Validation Error */
