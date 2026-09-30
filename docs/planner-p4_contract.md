@@ -83,7 +83,7 @@ Top to bottom, one `dash-card` each (§9.2):
 ### F3 Show a job or stage on the map
 
 1. **[map]** on a job or stage: `nav.onMap` switches to the map, reveals the **machines**
-   layer (and **nodes** when the row has targets), then `panel.showBox(bbox_m)` flies and
+   layer (and each target's `node: <resource>` layer), then `panel.showBox(bbox_m)` flies and
    outlines. Stopped machines are already red and blocked yellow on that layer.
 2. **[copy ids]** copies `machine:<a>,machine:<b>` (the verb's machines, else the matched
    ones) or `node:<id>,…` (build targets), ≤ 50 members; toast `copied N ids`.
@@ -445,7 +445,7 @@ No new colour, no new dependency, no `declareColours` entry. Planner modules nev
 
 | Layer / interaction | Behaviour |
 |---|---|
-| **[map]** on a job row | `onMap` → `showBox(row.bbox_m, {layers: ["machines"]})` (+ `"nodes"` when the row has targets); outline as factory fly-to |
+| **[map]** on a job row | `onMap` → `showBox(row.bbox_m, {layers: ["machines"]})` (+ the targets' `"node: <resource>"` layers); outline as factory fly-to |
 | **[map]** on a stage | same with `stage.bbox_m` (the stage's matched machines) |
 | Machine colours | Unchanged **machines** layer: stopped red, blocked yellow, the map's rule |
 | Plan pad | Unchanged **plans** layer; the on-site census reads the same siting |

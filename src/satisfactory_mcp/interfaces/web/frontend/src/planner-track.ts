@@ -7,6 +7,7 @@ import { copyText } from "./copy";
 import { button, chip, empty, error, fieldError, idChip, loading, pressed, table } from "./dashkit";
 import { make } from "./dom";
 import { count, mw, num, range, signed } from "./format";
+import { nodeLayers } from "./markers";
 import { onMap } from "./nav";
 import { showBox, showPoint, vitals } from "./panel";
 import { bench, changed, gesture, loadFeeders, loadTrack, pickStage } from "./planner-core";
@@ -42,7 +43,7 @@ function box(b: number[] | null): Box | null {
   return b && b.length === 4 ? (b as Box) : null;
 }
 
-function mapButton(bbox: number[] | null, what: string, nodes: boolean): HTMLButtonElement | null {
+function mapButton(bbox: number[] | null, what: string, nodes: string[]): HTMLButtonElement | null {
   var at = box(bbox);
   if (!at) return null;
   var target = at;
@@ -50,7 +51,7 @@ function mapButton(bbox: number[] | null, what: string, nodes: boolean): HTMLBut
     "map",
     function () {
       onMap(function () {
-        showBox(target, { layers: nodes ? ["machines", "nodes"] : ["machines"] });
+        showBox(target, { layers: ["machines"].concat(nodeLayers(nodes)) });
       });
     },
     { map: true, title: "fly the map to " + what + " and outline it", label: "show " + what + " on the map" }
@@ -297,7 +298,7 @@ function stateCell(s: TrackStage): HTMLElement {
 function stageActions(s: TrackStage, total: number): HTMLElement {
   var acts = make("span", "dash-acts");
   var label = W.stage(s.index, total);
-  var there = mapButton(s.bbox_m, label, false);
+  var there = mapButton(s.bbox_m, label, []);
   if (there) acts.appendChild(there);
   if (!bench.gone) acts.appendChild(askButton(about("stage", label, String(s.index)), "stage:" + s.index));
   return acts;
@@ -398,7 +399,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
 
 function jobActions(row: TrackRow): HTMLElement {
   var acts = make("span", "dash-acts");
-  var there = mapButton(row.bbox_m, row.process, row.targets.length > 0);
+  var there = mapButton(row.bbox_m, row.process, row.targets.map(function (t) { return t.node; }));
   if (there) acts.appendChild(there);
   var ids = copyIds(row);
   if (ids) acts.appendChild(ids);

@@ -91,6 +91,15 @@ export function knownNodes(): NodeRow[] {
   return drawn.nodes ? drawn.nodes.nodes : [];
 }
 
+export function nodeLayers(names: string[]): string[] {
+  var out: string[] = [];
+  knownNodes().forEach(function (n) {
+    var name = "node: " + shortResource(n.resource);
+    if (names.indexOf(n.name) >= 0 && out.indexOf(name) < 0) out.push(name);
+  });
+  return out;
+}
+
 export function drawNodes(data: NodesResponse): void {
   drawn.nodes = data;
   paintNodes(data);
