@@ -49,8 +49,16 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
   nothing old. A file that appears later is read from its start, which is how a new plan's
   `create` arrives. A line without its newline yet waits for the next tick.
 - A new stream is replayed the newest event of each kind, in the order above. The page treats
-  a replayed `plans`/`activity` event as news only when its `ts` is newer than page open
+  a replayed `save`/`notes` event as news only when its `mtime` is newer than page open
   minus 2 s.
+- `?since=` is the page's open time in epoch seconds, and the page always sends it. A `plans`
+  or `activity` event whose `ts` is at or before it is history: the stream withholds it from
+  the replay and from the live fan-out alike. Live matters as much as replay, because the tail
+  can publish an entry up to 0.5 s after it was written, and a new chat process's journal file
+  is read from its start the first time the tail sees it. Without `since` (the default 0) every
+  event goes out. No grace applies: an `activity` entry can move the page, and a find chat made
+  a second before the page opened must not. A reconnect's replay of missed entries is
+  `GET /api/activity?since=` from the newest entry heard, or page open, whichever is later.
 - Only the served instance tails (`create_app(tail=True)`), and it is also what names the
   process the `web` journal writer. Test apps leave both off.
 - Pin writes (`/api/pins`, Planner P3) add no event name: each appends one journal entry,

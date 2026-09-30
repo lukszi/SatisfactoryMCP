@@ -96,7 +96,7 @@ export function listen() {
 
   function connect() {
     showLive("", "connecting…", "connecting to the save watcher…");
-    source = new EventSource("/api/events");
+    source = new EventSource(`/api/events?since=${state.opened / 1000}`);
     wire(source);
   }
 

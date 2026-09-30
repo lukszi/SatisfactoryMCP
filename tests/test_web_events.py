@@ -31,7 +31,7 @@ from satisfactory_mcp.interfaces.web.watch import WatchEvent
 # --------------------------------------------------------------------- events
 
 
-def _first_sse_chunk(app) -> bytes:
+def _first_sse_chunk(app, since: float = 0.0) -> bytes:
     """Open the event stream, take one chunk, hang up.
 
     Driven through the endpoint rather than through ``TestClient``: an SSE response is
@@ -53,7 +53,7 @@ def _first_sse_chunk(app) -> bytes:
                     "app": app,
                 }
             )
-            response = await web_events.events(request)
+            response = await web_events.events(request, since=since)
             assert response.media_type == "text/event-stream"
             async for chunk in response.body_iterator:
                 return chunk  # closes the generator, which unsubscribes
@@ -157,7 +157,9 @@ def test_a_stream_whose_queue_overflowed_drains_and_then_ends(game, tmp_path, mo
     event = WatchEvent("notes", "a.json", 1.0)
 
     async def pull() -> list[bytes]:
-        request = Request({"type": "http", "method": "GET", "path": "/api/events", "headers": [], "app": app})
+        request = Request(
+            {"type": "http", "method": "GET", "path": "/api/events", "headers": [], "app": app}
+        )
         response = await web_events.events(request)
         for _ in range(3):
             watcher._publish(event)
@@ -187,3 +189,76 @@ def test_a_plan_commit_becomes_a_plans_event_carrying_its_summary(game, tmp_path
     assert (data["from_rev"], data["rev"]) == (1, 2)
     assert data["text"] == "v2 Claude Code: sloops 0→4"
     assert data["actors"] == [{**chat.to_dict(), "display": "Claude Code"}]
+
+
+def _find(path, n: int, ts: float) -> None:
+    row = {
+        "id": f"{path.stem}:{n}",
+        "seq": n,
+        "ts": ts,
+        "actor": {"kind": "chat", "client": "claude-code", "pid": 7},
+        "kind": "world.find",
+        "args": {"view": "nodes", "params": {}},
+        "text": f"find {n}",
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row) + "\n")
+
+
+def test_a_new_chat_journal_read_from_its_start_replays_only_after_since(
+    game, tmp_path, monkeypatch
+):
+    """The page's open time is the cursor: a find chat made before it is history.
+
+    The journal file is new to the tail, so the tail reads it from its start and holds its
+    newest entry for the replay, however old that entry is.
+    """
+    _empty_roots(monkeypatch, tmp_path)
+    monkeypatch.setattr(web_events, "PING_SECONDS", 0.05)
+    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
+    asyncio.run(app.state.watcher.tail_once())
+    _find(config.activity_dir() / "W" / "chat-7.jsonl", 1, 1000.0)
+    [held] = asyncio.run(app.state.watcher.tail_once())
+    assert held.kind == "activity" and held.mtime == 1000.0
+
+    assert _first_sse_chunk(app, since=1000.5) == b": ping\n\n"
+    assert _first_sse_chunk(app, since=1000.0) == b": ping\n\n"
+    chunk = _first_sse_chunk(app, since=999.0).decode()
+    assert chunk.startswith("event: activity\ndata: ")
+    assert json.loads(chunk.split("data: ", 1)[1])["id"] == "chat-7:1"
+    assert _first_sse_chunk(app).startswith(b"event: activity\n")
+
+
+def test_the_live_stream_withholds_entries_stamped_before_since(game, tmp_path, monkeypatch):
+    """The tail publishes up to a tick after the write, so an entry written just before the
+    page opened can arrive after it subscribed; it is history all the same."""
+    _empty_roots(monkeypatch, tmp_path)
+    monkeypatch.setattr(web_events, "PING_SECONDS", 5.0)
+    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
+    watcher = app.state.watcher
+    asyncio.run(watcher.tail_once())
+    path = config.activity_dir() / "W" / "chat-7.jsonl"
+
+    async def pull() -> dict:
+        request = Request(
+            {"type": "http", "method": "GET", "path": "/api/events", "headers": [], "app": app}
+        )
+        response = await web_events.events(request, since=2000.0)
+        stream = response.body_iterator
+        _find(path, 1, 1999.5)
+        _find(path, 2, 2000.5)
+        await watcher.tail_once()
+        try:
+            chunk = await asyncio.wait_for(stream.__anext__(), timeout=3.0)
+        finally:
+            await stream.aclose()
+        return json.loads(chunk.decode().split("data: ", 1)[1])
+
+    assert asyncio.run(pull())["id"] == "chat-7:2"
+
+
+def test_since_is_a_documented_query_parameter(game):
+    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
+    params = app.openapi()["paths"]["/api/events"]["get"]["parameters"]
+    assert [(p["name"], p["in"]) for p in params] == [("since", "query")]

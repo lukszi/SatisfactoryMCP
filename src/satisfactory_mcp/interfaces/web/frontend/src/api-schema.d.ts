@@ -690,6 +690,9 @@ export interface paths {
          *     ``save`` and ``notes`` carry the trigger, never the payload: the page decides what to
          *     refetch. ``plans`` and ``activity`` carry the commit summary or the entry itself, as
          *     docs/web-wire.md lists.
+         *
+         *     ``since`` is the page's open time: a ``plans`` or ``activity`` event stamped at or before
+         *     it is history, withheld from the replay and from the live stream alike.
          */
         get: operations["events_api_events_get"];
         put?: never;
@@ -7557,7 +7560,9 @@ export interface operations {
     };
     events_api_events_get: {
         parameters: {
-            query?: never;
+            query?: {
+                since?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7571,6 +7576,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

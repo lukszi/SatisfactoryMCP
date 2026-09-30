@@ -418,7 +418,7 @@ export function resyncPlanner(replay: (entries: ActivityEvent[]) => void): void 
   }
   resyncHead();
   if (trackShowing()) loadTrack();
-  var since = Math.max(heard, state.opened / 1000 - 2);
+  var since = Math.max(heard, state.opened / 1000);
   get<ActivityResponse>(`/api/activity?since=${since}`)
     .then(function (body) {
       replay(
