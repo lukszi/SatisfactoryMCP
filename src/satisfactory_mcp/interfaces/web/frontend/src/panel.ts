@@ -652,6 +652,8 @@ registerFetch<FactoryHealthResponse>({
       mark.clearLayers();
       select(null);
     }
+    var s = selected();
+    if (s && s.kind === "factory" && !factoryNamed(s.key)) select(null);
     follow();
     changed();
     if (view.pending) showFactory(view.pending);
