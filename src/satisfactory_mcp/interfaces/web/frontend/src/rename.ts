@@ -9,7 +9,7 @@ import { state } from "./state";
 import { fail, friendly, note } from "./toast";
 
 import type { StatusError } from "./api";
-import type { FactoryRow, LabelRefused, RenamedResponse } from "./api-shapes";
+import type { LabelRefused, RenamedResponse } from "./api-shapes";
 
 export var NAME_MAX = 60;
 
@@ -57,43 +57,20 @@ export function renamedTo(name: string): string | undefined {
   return now;
 }
 
-var spots: Record<string, Record<string, string>> = {};
-
 var renamedListeners: Array<() => void> = [];
 
 export function onRenamed(listener: () => void): void {
   renamedListeners.push(listener);
 }
 
-function spot(row: FactoryRow): string {
-  return row.centroid_m.join(",") + "|" + row.machines;
-}
-
-export function noticeRenames(rows: FactoryRow[]): void {
-  var before = spots[state.world];
-  var now: Record<string, string> = {};
-  rows.forEach(function (row) {
-    now[row.name] = spot(row);
+export function onRenameActivity(entry: { kind: string; args?: unknown }): void {
+  if (entry.kind !== "label.rename") return;
+  var args = (entry.args || {}) as { was?: unknown; to?: unknown };
+  if (typeof args.was !== "string" || typeof args.to !== "string" || formerly[args.was] === args.to) return;
+  formerly[args.was] = args.to;
+  renamedListeners.forEach(function (listener) {
+    listener();
   });
-  spots[state.world] = now;
-  if (!before) return;
-  var appeared: Record<string, string[]> = {};
-  Object.keys(now).forEach(function (name) {
-    if (before![name] === undefined) (appeared[now[name]!] = appeared[now[name]!] || []).push(name);
-  });
-  var learned = false;
-  Object.keys(before).forEach(function (was) {
-    if (now[was] !== undefined) return;
-    var to = appeared[before![was]!];
-    if (to && to.length === 1 && formerly[was] !== to[0]) {
-      formerly[was] = to[0]!;
-      learned = true;
-    }
-  });
-  if (learned)
-    renamedListeners.forEach(function (listener) {
-      listener();
-    });
 }
 
 export function refreshLabels(): void {

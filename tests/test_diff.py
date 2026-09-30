@@ -169,11 +169,10 @@ def test_the_range_only_appears_where_identity_is_actually_missing(spire):
         (0.375, True),
     ],
 )
-def test_reclock_compares_against_100_percent_when_the_plan_budgets_100(clock, expected):
-    """A plan clock within tolerance of 100% is a DERIVED RATIO -- 53 machines carrying
-    52.8 machines worth of throughput renders as 99.43% -- and budgets 100%, so a machine
-    is only worth a note when its own clock is off 100%."""
-    assert bool(_reclock_note([{"clock": clock}], 1.0)) is expected
+def test_reclock_compares_the_total_against_the_plans_total(clock, expected):
+    """One machine planned at 100%: only a clock that changes the job's total is noted."""
+    group = {"machines": 1, "clock": 1.0}
+    assert bool(_reclock_note([{"clock": clock}], 0, group)) is expected
 
 
 def test_a_ratio_clock_plan_row_asks_nobody_to_reclock(spire):
@@ -184,7 +183,7 @@ def test_a_ratio_clock_plan_row_asks_nobody_to_reclock(spire):
         p["clock"] for p in sol.processes if p["building_id"] == "Build_GeneratorFuel_C"
     )
     assert plan_clock < 1.0
-    assert "budgets 100%" not in _row(rep, "Fuel-Powered Generator").note
+    assert "planned rate" not in _row(rep, "Fuel-Powered Generator").note
 
 
 def test_an_overclocked_machine_is_noted_but_never_becomes_the_action(spire):
@@ -195,7 +194,7 @@ def test_an_overclocked_machine_is_noted_but_never_becomes_the_action(spire):
     nodes, with the 250% mentioned in the note and nowhere else."""
     _req, _sol, rep = spire
     row = _row(rep, "impure Crude Oil")
-    assert "250%" in row.note
+    assert "of the planned rate" in row.note
     assert row.verb == "OK"
     assert not any(r.verb == "RECLOCK" for r in rep.rows)
 

@@ -29,6 +29,7 @@ import {
   resyncHead,
   sav,
   showAlternates,
+  stageHeadroom,
   trackDash,
   undoLast,
   viewRev,
@@ -479,6 +480,12 @@ function wire(): void {
   onAsks(later);
   onBiomass(function () {
     dropFeeders();
+    if (trackShowing()) loadTrack();
+  });
+  var headroomWas = stageHeadroom();
+  onSetting(function () {
+    if (stageHeadroom() === headroomWas) return;
+    headroomWas = stageHeadroom();
     if (trackShowing()) loadTrack();
   });
   onVitals(function () {

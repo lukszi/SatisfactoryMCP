@@ -1,7 +1,7 @@
 /* The dashboard shell: the tabs, the routing on the fragment's `dash=` key and the pieces the
  * tab modules share. See docs/frontend_vision.md §8. */
 
-import { button, empty, fieldError, link, note } from "./dashkit";
+import { button, choice as choiceBox, empty, fieldError, link, note } from "./dashkit";
 import { el, keepFocus, make } from "./dom";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
@@ -166,17 +166,16 @@ function settingRow(s: Setting): HTMLElement {
     };
     row.appendChild(box);
   } else if (s.kind === "choice") {
-    var pick = make("select", "dash-select");
-    s.options.forEach(function (o) {
-      var option = make("option", "", o[1]);
-      option.value = o[0];
-      pick.appendChild(option);
-    });
-    pick.value = choice(s.key);
-    pick.onchange = function () {
-      setSetting(s.key, pick.value);
-    };
-    row.appendChild(pick);
+    row.appendChild(
+      choiceBox(
+        s.options,
+        choice(s.key),
+        function (value) {
+          setSetting(s.key, value);
+        },
+        { label: s.label }
+      )
+    );
   } else {
     var least = s.min;
     var most = s.max;

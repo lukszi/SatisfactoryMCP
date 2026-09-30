@@ -30,6 +30,7 @@ from ....domain.factories.labels import (
 )
 from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
+from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
@@ -333,18 +334,20 @@ def rename_label(
         st = _state(request, save, world)
     except Exception as exc:
         return _fail(f"could not read save: {exc}", 404)
+    page = Actor("page", "", os.getpid())
     try:
         done = edits.rename(
-            st.world_id,
-            _session(st),
-            name,
-            to,
-            actor=Actor("page", "", os.getpid()),
-            exact=True,
-            expect=version,
+            st.world_id, _session(st), name, to, actor=page, exact=True, expect=version
         )
     except (StaleStore, LabelError, LockTimeout) as exc:
         return _refused(exc)
+    journal.append(
+        st.world_id,
+        "label.rename",
+        actor=page,
+        args={"was": done.was, "to": done.name},
+        text=f"renamed factory “{done.was}” to “{done.name}”",
+    )
     return {
         "name": done.name,
         "was": done.was,

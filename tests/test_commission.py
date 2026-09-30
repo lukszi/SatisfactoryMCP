@@ -321,7 +321,7 @@ def test_headroom_is_printed_as_a_labelled_input(game):
     than quietly wrong."""
     out = srv.commission_plan(**SPIRE)
     assert "headroom_MW=" in out
-    assert "source: power_report" in out
+    assert "source: measured from the save" in out
     given = srv.commission_plan(headroom_mw=5000.0, **SPIRE)
     assert "source: given by caller" in given
 

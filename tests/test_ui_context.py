@@ -361,8 +361,8 @@ def test_asks_are_listed_with_what_they_are_about_and_marked_seen(ctx):
     )
     hint = lines[lines.index(line) + 1]
     assert (
-        hint
-        == 'answer them, then ui_context(answered=["ask:1", "ask:2"]) marks them done on the page'
+        hint == 'answer them, then ui_context(answered=["ask:1 <answer>", "ask:2 <answer>"]) marks '
+        "them done on the page with that one-line answer"
     )
     rows = asks.live(WORLD)
     assert [r["state"] for r in rows] == ["seen", "seen"]
@@ -406,6 +406,16 @@ def test_answered_marks_them_done_and_says_so_first(ctx):
     [entry] = [e for e in journal.read(WORLD) if e["kind"] == "ask.answered"]
     assert entry["args"] == {"n": [1]} and entry["text"] == "chat answered ask:1"
     assert next(x for x in lines if x.startswith("asks")).startswith("asks (1 waiting): ask:2 ")
+
+
+def test_answered_keeps_the_line_after_the_id(ctx):
+    journal.set_writer("chat")
+    asks.create(WORLD, "why a Blender?", ABOUT)
+    lines = srv.ui_context(answered=["ask:1 it makes the diluted fuel"]).splitlines()
+    assert lines[1] == "marked answered: ask:1"
+    assert asks.live(WORLD)[0]["answer"] == "it makes the diluted fuel"
+    [entry] = [e for e in journal.read(WORLD) if e["kind"] == "ask.answered"]
+    assert entry["text"] == "chat answered ask:1: it makes the diluted fuel"
 
 
 def test_many_long_asks_stay_inside_the_budget(ctx):

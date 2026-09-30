@@ -26,7 +26,7 @@ from .commission import (
     partition_id,
 )
 from .diff import _save_id
-from .diff_service import NAMEPLATE_SOURCE, STORED_SOURCE, build_diff_report
+from .diff_service import DEFAULT_HEADROOM, STORED_SOURCE, build_diff_report, default_headroom
 from .planlog import PlanState
 
 __all__ = [
@@ -272,13 +272,16 @@ def _power(pw: dict, biomass: bool) -> dict:
     }
 
 
-def _startup(run, pw: dict, state: PlanState) -> dict:
+def _startup(run, pw: dict, state: PlanState, default: str) -> dict:
     if run is None:
-        stored = state.headroom_mw is not None
+        if state.headroom_mw is not None:
+            head, source = float(state.headroom_mw), STORED_SOURCE
+        else:
+            head, source = default_headroom(pw, default)
         return {
             "ok": False,
-            "headroom_mw": float(state.headroom_mw if stored else pw.get("headroom_mw", 0.0)),
-            "headroom_source": STORED_SOURCE if stored else NAMEPLATE_SOURCE,
+            "headroom_mw": head,
+            "headroom_source": source,
             "plant_draw_mw": 0.0,
             "plant_generation_mw": 0.0,
             "minimum_slice_mw": 0.0,
@@ -302,7 +305,7 @@ def _cause(prepared) -> str:
     return summary._cause(failure.headline, failure.notes, errors or list(failure.notes), required)
 
 
-def _blank(st: WorldState, state: PlanState, biomass: bool) -> dict:
+def _blank(st: WorldState, state: PlanState, biomass: bool, default: str) -> dict:
     pw = st.power_report(biomass=biomass)
     return {
         "key": state.key,
@@ -314,6 +317,7 @@ def _blank(st: WorldState, state: PlanState, biomass: bool) -> dict:
         "cause": "",
         "save_id": _save_id(st),
         "age_note": save_line(st),
+        "written_ago": ago(st.projection.get("header", {}).get("mtime_ns")),
         "plan_id": state.plan_id,
         "scope": state.factory,
         "scope_note": "",
@@ -331,7 +335,7 @@ def _blank(st: WorldState, state: PlanState, biomass: bool) -> dict:
         "setrecipe": 0,
         "rows": [],
         "stages": [],
-        "startup": _startup(None, pw, state),
+        "startup": _startup(None, pw, state, default),
         "power": _power(pw, biomass),
         "cost": [],
         "neighbours": [],
@@ -342,11 +346,19 @@ def _blank(st: WorldState, state: PlanState, biomass: bool) -> dict:
     }
 
 
-def track_view(g: GameData, st: WorldState, state: PlanState, *, biomass: bool = False) -> dict:
-    """The whole ``TrackResponse`` for one plan version, from one solve."""
+def track_view(
+    g: GameData,
+    st: WorldState,
+    state: PlanState,
+    *,
+    biomass: bool = False,
+    default: str = DEFAULT_HEADROOM,
+) -> dict:
+    """The whole ``TrackResponse`` for one plan version, from one solve. ``default`` is the
+    save's headroom (measured or nameplate) a plan with none stored is partitioned against."""
     kwargs = state.kwargs()
     objective = kwargs.get("objective") or state.args.objective
-    out = _blank(st, state, biomass)
+    out = _blank(st, state, biomass, default)
     try:
         report = build_diff_report(
             g,
@@ -358,6 +370,7 @@ def track_view(g: GameData, st: WorldState, state: PlanState, *, biomass: bool =
             biomass=biomass,
             headroom_mw=state.headroom_mw,
             stored=state,
+            default=default,
         )
     except SelectorError:
         out["scope_error"] = f"“{state.factory}” has no machines in this save"
@@ -431,7 +444,7 @@ def track_view(g: GameData, st: WorldState, state: PlanState, *, biomass: bool =
         setrecipe=sum(r["count"] for r in rows if r["verb"] == "setrecipe"),
         rows=rows,
         stages=stages,
-        startup=_startup(report.run, report.power, state),
+        startup=_startup(report.run, report.power, state, default),
         power=_power(report.power, biomass),
         cost=[
             {

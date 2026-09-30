@@ -366,6 +366,11 @@ def render_diff(
         if block:
             parts.append(block)
         notes += stage_notes
+        if report.run is not None and report.run.headroom_source:
+            notes.append(
+                f"stages use {render.num(report.run.headroom_mw)} MW of headroom, "
+                f"{report.run.headroom_source}"
+            )
 
     if plan_name:
         plan_notes = [f"recalled saved plan {plan_name!r}", *plan_notes]

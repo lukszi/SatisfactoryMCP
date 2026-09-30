@@ -21,6 +21,7 @@ from ....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from ....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
 from ....domain.factories.select import SelectorError
 from ....domain.factories.trace import power_at_risk, resolve_seeds, trace
+from ....domain.planning import journal
 from ....domain.spatial import nodes as nodes_mod
 from ....presenters.text import primitives as render
 from ..app import AsOf, Limit, _state, actor, game, mcp, retired
@@ -1437,10 +1438,18 @@ def rename_factory(
         return f"! no label named {name!r}. Known: {known}"
     if label.name == to.strip():
         return f"factory {label.name!r} already has that name"
+    who = actor(ctx)
     try:
-        done = edits.rename(st.world_id, _session(st), label.name, to, actor=actor(ctx), exact=True)
+        done = edits.rename(st.world_id, _session(st), label.name, to, actor=who, exact=True)
     except LABEL_REFUSALS as exc:
         return _label_refused(exc)
+    journal.append(
+        st.world_id,
+        "label.rename",
+        actor=who,
+        args={"was": done.was, "to": done.name},
+        text=f'renamed factory "{done.was}" to "{done.name}"',
+    )
     notes = [
         (
             f"recall it as factory={done.name!r}; its {done.machines} anchor "

@@ -4,13 +4,13 @@
 import { askButton, askMarks } from "./asks";
 import { renderAsks } from "./asks-card";
 import { copyText } from "./copy";
-import { button, chip, empty, error, fieldError, idChip, loading, pressed, table } from "./dashkit";
+import { button, chip, choice, empty, error, fieldError, idChip, loading, pressed, table } from "./dashkit";
 import { make } from "./dom";
 import { count, mw, num, range, signed } from "./format";
 import { nodeLayers } from "./markers";
 import { onMap } from "./nav";
 import { showBox, showPoint, vitals } from "./panel";
-import { bench, changed, gesture, loadFeeders, loadTrack, pickStage } from "./planner-core";
+import { bench, changed, gesture, loadFeeders, loadTrack, pickStage, stageHeadroom } from "./planner-core";
 import { recipesButton } from "./planner-result";
 import { headroom } from "./powerview";
 import { actionTone, tone } from "./states";
@@ -131,10 +131,10 @@ function headline(parent: HTMLElement, d: TrackResponse, asked: number): void {
   card.appendChild(title);
   var text = d.scope_error ? "" : d.stage_text || (d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom");
   if (text) card.appendChild(make("p", "plan-headline", text));
-  var facts = ["save " + d.age_note];
+  var facts = [d.written_ago ? "save written " + d.written_ago : "as of the save shown in the header"];
   if (d.scope_note) facts.push(d.scope_note);
   if (d.drift_note) facts.push(d.drift_note);
-  card.appendChild(make("p", "dash-note", facts.join(" · ")));
+  card.appendChild(make("p", "dash-note", facts.join(" · "))).title = d.age_note;
   d.notes.forEach(function (n) {
     card.appendChild(make("p", "dash-note", n));
   });
@@ -147,12 +147,12 @@ function setHeadroom(value: number | null): void {
   gesture([{ op: "set", field: "headroom_mw", value: value }]);
 }
 
-function givenField(parent: HTMLElement, stored: number | null, measured: number): void {
+function givenField(parent: HTMLElement, stored: number | null, pressable: number[]): void {
   var field = make("input", "dash-number");
   field.type = "number";
   field.step = "any";
   field.min = "0";
-  var shown = stored !== null && stored !== measured ? String(stored) : "";
+  var shown = stored !== null && pressable.indexOf(stored) < 0 ? String(stored) : "";
   var key = bench.key;
   var kept = headroomProblem.key === key && headroomProblem.text ? headroomProblem.raw : shown;
   field.value = kept;
@@ -190,6 +190,35 @@ function givenField(parent: HTMLElement, stored: number | null, measured: number
   if (headroomProblem.key === key && headroomProblem.text) fieldError(field, headroomProblem.text);
 }
 
+var HEADROOM_WHAT: Record<string, string> = {
+  measured: "what the grid has free now",
+  nameplate: "generation minus every built machine running at once",
+};
+
+function floorTen(value: number): number {
+  return Math.floor(value / 10) * 10;
+}
+
+function headroomButton(parent: HTMLElement, which: string, value: number, stored: number | null): void {
+  var fallback = which === stageHeadroom();
+  var kept = floorTen(value);
+  var title = fallback
+    ? "use the save's " + which + " headroom, " + HEADROOM_WHAT[which] + ": the stage headroom setting"
+    : kept > 0
+      ? "store the " + which + " headroom, " + mw(kept)
+      : "the " + which + " headroom is not above 0 MW in this save";
+  parent.appendChild(
+    pressed(
+      which + " " + mw(value),
+      stored === null ? fallback : stored === kept,
+      function () {
+        setHeadroom(fallback ? null : kept);
+      },
+      { title: title, disabled: bench.gone || (!fallback && kept <= 0) }
+    )
+  );
+}
+
 function factoryNames(current: string): string[] {
   var health = vitals().health;
   var names = health
@@ -211,30 +240,10 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
   row.appendChild(make("span", "plan-label", W.startupHeadroom));
   var body = make("div", "plan-controls");
   var measured = d.power.measured_headroom_mw;
-  body.appendChild(
-    pressed(
-      "nameplate " + mw(d.power.headroom_mw),
-      stored === null,
-      function () {
-        setHeadroom(null);
-      },
-      { title: "use the save's nameplate headroom: generation minus nameplate draw", disabled: bench.gone }
-    )
-  );
-  body.appendChild(
-    pressed(
-      "measured " + mw(measured),
-      stored !== null && stored === measured,
-      function () {
-        setHeadroom(measured);
-      },
-      {
-        title: measured > 0 ? "store the measured headroom, " + mw(measured) : "the measured headroom is not above 0 MW in this save",
-        disabled: bench.gone || measured <= 0,
-      }
-    )
-  );
-  givenField(body, stored, measured);
+  var plate = d.power.headroom_mw;
+  headroomButton(body, "measured", measured, stored);
+  headroomButton(body, "nameplate", plate, stored);
+  givenField(body, stored, [floorTen(measured), floorTen(plate)]);
   row.appendChild(body);
   card.appendChild(row);
   card.appendChild(make("p", "dash-note", "startup order uses " + mw(d.startup.headroom_mw) + ", " + d.startup.headroom_source));
@@ -246,22 +255,19 @@ function controls(parent: HTMLElement, d: TrackResponse): void {
     bad.setAttribute("role", "alert");
     pickBox.appendChild(bad);
   }
-  var pick = make("select", "dash-select");
-  pick.setAttribute("data-ctl", "track-scope");
-  pick.setAttribute("aria-label", W.countAsBuilt);
-  pick.disabled = bench.gone;
-  var whole = make("option", "", W.wholeWorld);
-  whole.value = "";
-  pick.appendChild(whole);
+  var scopes: [string, string][] = [["", W.wholeWorld]];
   factoryNames(plan.factory).forEach(function (name) {
-    var option = make("option", "", name);
-    option.value = name;
-    pick.appendChild(option);
+    scopes.push([name, name]);
   });
-  pick.value = plan.factory;
-  pick.onchange = function () {
-    if (pick.value !== plan.factory) gesture([{ op: "set", field: "factory", value: pick.value }]);
-  };
+  var pick = choice(
+    scopes,
+    plan.factory,
+    function (value) {
+      if (value !== plan.factory) gesture([{ op: "set", field: "factory", value: value }]);
+    },
+    { label: W.countAsBuilt, disabled: bench.gone }
+  );
+  pick.setAttribute("data-ctl", "track-scope");
   pickBox.appendChild(pick);
   scope.appendChild(pickBox);
   card.appendChild(scope);
@@ -315,7 +321,7 @@ function stages(parent: HTMLElement, d: TrackResponse): void {
   card.appendChild(make("h2", "dash-h", d.count ? W.stages + " · " + counted(d.count, W.stageUnit) : W.stages));
   notice(card);
   if (!d.stages.length) {
-    empty(card, "no " + W.stages + ": see the headline above", "pick the measured headroom or give one above");
+    empty(card, "no " + W.stages + ": see the headline above", "pick another headroom or give one above");
     parent.appendChild(card);
     return;
   }

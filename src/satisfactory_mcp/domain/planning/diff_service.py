@@ -21,15 +21,31 @@ from .planlog import PlanState
 from .prepare import PreparedPlan, prepare
 
 __all__ = [
+    "DEFAULT_HEADROOM",
+    "HEADROOM_DEFAULTS",
+    "MEASURED_SOURCE",
     "NAMEPLATE_SOURCE",
     "STORED_SOURCE",
     "DiffVsSaveReport",
     "build_diff_report",
+    "default_headroom",
     "match_scope",
 ]
 
 NAMEPLATE_SOURCE = "nameplate from the save"
+MEASURED_SOURCE = "measured from the save"
 STORED_SOURCE = "stored on the plan"
+
+#: What a plan with no stored headroom is partitioned against (docs/planner_p4.md, B3).
+HEADROOM_DEFAULTS = ("measured", "nameplate")
+DEFAULT_HEADROOM = "measured"
+
+
+def default_headroom(power: dict, which: str = DEFAULT_HEADROOM) -> tuple[float, str]:
+    """The save's headroom a plan without a stored one uses, and its source words."""
+    if which == "nameplate":
+        return float(power.get("headroom_mw", 0.0)), NAMEPLATE_SOURCE
+    return float(power.get("measured_headroom_mw", 0.0)), MEASURED_SOURCE
 
 
 @dataclass
@@ -97,12 +113,13 @@ def build_diff_report(
     biomass: bool = False,
     headroom_mw: float | None = None,
     stored: PlanState | None = None,
+    default: str = DEFAULT_HEADROOM,
 ) -> DiffVsSaveReport:
     """Solve ``plan_kwargs`` and match it against the save under an optional scope.
 
     ``stored`` is the recalled plan version: scope, siting and plan_id come from it rather
-    than from ``st.plans``. ``headroom_mw`` replaces the save's nameplate headroom for the
-    startup partition.
+    than from ``st.plans``. ``headroom_mw`` replaces the save's headroom (``default``:
+    measured or nameplate) for the startup partition.
     """
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
     report = DiffVsSaveReport(prepared=prepared)
@@ -135,7 +152,7 @@ def build_diff_report(
     # Off unless asked for: the stage numbering is only stable for a STORED plan.
     if plan or stored is not None or stage is not None:
         if headroom_mw is None:
-            head, source = pw["headroom_mw"], NAMEPLATE_SOURCE
+            head, source = default_headroom(pw, default)
         else:
             head, source = float(headroom_mw), STORED_SOURCE
         report.run = run = commission(prepared, g, head, source)

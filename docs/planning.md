@@ -1343,10 +1343,17 @@ Generators at 887–1060 m) and a shared-item test — without it, one matched A
 base swept in 22 Iron Ingot Smelters and 19 Iron Rod Constructors. What survives is the right answer: the
 Diluted Packaged Fuel route the 37 Blenders replace.
 
-**Clocks.** A reclock is proposed only when a machine's **own** clock is off 100%, never by comparing
-against the plan's clock — 99.43% is a derived ratio (§8.4), and comparing against it renders an ordinary
-plan as hundreds of slider adjustments. An overclocked machine is *noted* and never actioned: the oil pump
-at 250% means the plan understates what the player already extracts.
+**Clocks.** The plan's clock is the budget, and the note compares **totals**: the built machines'
+clocks added up, plus the machines still to build at the plan's clock, against the plan's machines
+× clock. Only a total more than 2% off gets `clocks give 52% of the planned rate (plan: 1 at
+95.24%)`. A player may clock down to the exact rate or spread one rate over more machines at a
+lower clock, which saves power (the game's exponent is 1.3219, so n machines at 1/n clock draw
+n^-0.32 of the power). So a water row planned as 1 pump at 95.24% and built as 2 at 47.62% says
+nothing, and neither the machine count nor one machine's clock ever fires the note on its own. A
+total above the plan is noted only when there are no more machines than the plan needs, since
+extra machines in the scope may belong to another plant. Rows without node identity (water) use
+the pumps within 200 m of the plant. The note never becomes the action: the oil pump at 250% still
+leaves its row `ok`.
 
 **Ordering** reuses the layout's SCC-condensed `chain_depth`, so extractors fall out at stage 1 and
 generators last with nothing special-cased. Power is **incremental** — charging the plan's total would

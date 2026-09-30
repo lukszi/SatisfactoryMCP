@@ -2107,17 +2107,18 @@ def _asks_lines(world_id: str, who: str, me) -> list[str]:
             args={"n": seen},
             text="chat saw " + ", ".join(f"ask:{n}" for n in seen),
         )
-    ids = ", ".join(f'"{r["id"]}"' for r in shown[:2])
+    ids = ", ".join(f'"{r["id"]} <answer>"' for r in shown[:2])
     more = ", …" if len(shown) > 2 else ""
-    return [
-        line,
-        f"answer them, then ui_context(answered=[{ids}{more}]) marks them done on the page",
-    ]
+    hint = (
+        f"answer them, then ui_context(answered=[{ids}{more}]) marks them done on the page "
+        "with that one-line answer"
+    )
+    return [line, hint]
 
 
 def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
     """Mark ``answered`` asks done; the ``marked answered`` line and one line per refusal."""
-    lines, wanted = [], []
+    lines, wanted, said = [], [], {}
     try:
         data = asks.read(world_id)
     except NewerSchema as exc:
@@ -2125,7 +2126,8 @@ def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
     top = data["next"] - 1
     by_n = {a["n"]: a for a in data["asks"]}
     for raw in answered:
-        n = asks.parse(raw)
+        hit = asks.parse_answer(raw)
+        n = hit[0] if hit else None
         if n is None:
             lines.append(f"! {raw!r} is not an ask id (ask:N)")
         elif n not in by_n:
@@ -2134,8 +2136,10 @@ def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
             lines.append(f"! {asks.AskMissing(n, deleted=True)}")
         else:
             wanted.append(n)
+            if hit[1]:
+                said[n] = hit[1]
     try:
-        asks.mark_answered(world_id, wanted, who)
+        asks.mark_answered(world_id, wanted, who, said)
     except asks.AskMissing as exc:
         return [f"! {exc}; nothing marked", *lines]
     except (LockTimeout, NewerSchema, OSError) as exc:
@@ -2146,7 +2150,8 @@ def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
             "ask.answered",
             actor=me,
             args={"n": wanted},
-            text="chat answered " + ", ".join(f"ask:{n}" for n in wanted),
+            text="chat answered "
+            + ", ".join(f"ask:{n}" + (f": {said[n]}" if n in said else "") for n in wanted),
         )
         lines.insert(0, "marked answered: " + ", ".join(f"ask:{n}" for n in wanted))
     return lines
@@ -2181,7 +2186,7 @@ def ui_context(
     world: str | None = None,
     answered: Annotated[
         list[str] | None,
-        Field(description="ask:N ids you have answered"),
+        Field(description='ask:N ids you have answered, each may add a line: "ask:7 <answer>"'),
     ] = None,
     ctx: Context | None = None,
 ) -> str:

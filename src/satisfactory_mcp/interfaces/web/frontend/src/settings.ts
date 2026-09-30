@@ -91,6 +91,18 @@ export var SETTINGS: Setting[] = [
     ],
     fallback: "follow",
   },
+  {
+    kind: "choice",
+    key: "stageHeadroom",
+    group: "planner",
+    label: "stage headroom",
+    hint: "for a plan with no startup headroom of its own; chat uses measured",
+    options: [
+      ["measured", "measured: what the grid has free now"],
+      ["nameplate", "nameplate: every built machine running at once"],
+    ],
+    fallback: "measured",
+  },
 ];
 
 var STORE_KEY = "settings";

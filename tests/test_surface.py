@@ -126,10 +126,19 @@ def test_ui_context_takes_answered_asks_without_a_new_tool():
     tools = {t.name: t for t in _run(srv.mcp.list_tools())}
     props = tools["ui_context"].inputSchema["properties"]
     assert set(props) == {"save", "world", "answered"}
-    assert props["answered"]["description"] == "ask:N ids you have answered"
+    assert props["answered"]["description"] == (
+        'ask:N ids you have answered, each may add a line: "ask:7 <answer>"'
+    )
     assert "ask:" in srv.mcp.instructions and "pin:" in srv.mcp.instructions
     first = tools["ui_context"].description.strip().splitlines()[0]
     assert len(first) <= 120
+
+
+def test_show_on_map_pins_with_a_flag_rather_than_a_tool():
+    tools = {t.name: t for t in _run(srv.mcp.list_tools())}
+    pin = tools["show_on_map"].inputSchema["properties"]["pin"]
+    assert pin["default"] is False and "pin:N" in pin["description"]
+    assert "pin" not in tools
 
 
 def test_alternates_for_item_takes_a_plan_without_a_second_tool():

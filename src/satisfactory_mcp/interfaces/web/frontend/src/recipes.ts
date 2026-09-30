@@ -1,7 +1,7 @@
 /* The Recipes codex: the dashboard's `dash=recipes…` section. See docs/frontend_vision.md §10. */
 
 import { get, latest, missing } from "./api";
-import { empty, error, link, loading, note, table, tabs2 } from "./dashkit";
+import { choice, empty, error, link, loading, note, table, tabs2 } from "./dashkit";
 import { el, make } from "./dom";
 import { count, num, perMin } from "./format";
 import { hashFor, writeHash } from "./map";
@@ -457,19 +457,16 @@ function renderItems(card: HTMLElement, b: Browse): boolean {
 
 function renderRecipeSearch(card: HTMLElement, b: Browse): boolean {
   var controls = make("div", "rx-controls");
-  var kind = make("select", "dash-select");
-  kind.setAttribute("aria-label", "recipe kind");
-  kind.setAttribute("data-candidate", "recipes-kind");
-  KINDS.forEach(function (k) {
-    var option = make("option", "", k[1]);
-    option.value = k[0];
-    kind.appendChild(option);
-  });
-  kind.value = b.kind;
-  kind.onchange = function () {
-    go(browseDash({ mode: b.mode, q: b.q, kind: kind.value, alt: b.alt, all: b.all }));
-  };
-  controls.appendChild(kind);
+  controls.appendChild(
+    choice(
+      KINDS,
+      b.kind,
+      function (value) {
+        go(browseDash({ mode: b.mode, q: b.q, kind: value, alt: b.alt, all: b.all }));
+      },
+      { label: "recipe kind", candidate: "recipes-kind" }
+    )
+  );
   controls.appendChild(
     checkbox("alternates only", b.alt, "recipes-alt", function (on) {
       go(browseDash({ mode: b.mode, q: b.q, kind: b.kind, alt: on, all: b.all }));

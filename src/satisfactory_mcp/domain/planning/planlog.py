@@ -436,7 +436,7 @@ def describe_op(op: dict) -> str:
         if name == "headroom_mw":
             value = op.get("value")
             if value is None:
-                return "startup headroom: nameplate"
+                return "startup headroom: save default"
             return f"startup headroom {_fmt(float(value))} MW"
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
     if kind in ("put", "del"):
@@ -730,7 +730,7 @@ def _label(op: dict) -> str:
 def _value_word(op: dict) -> str:
     if op.get("field") == "headroom_mw":
         value = op.get("value")
-        return "nameplate" if value is None else f"{_fmt(float(value))} MW"
+        return "save default" if value is None else f"{_fmt(float(value))} MW"
     return _fmt(op["value"])
 
 
@@ -941,6 +941,16 @@ def _chain(commits: list[Commit], rev: int) -> set[int]:
     for commit in commits:
         if commit.undoes in out:
             out.add(commit.rev)
+    return out
+
+
+def _skipped(commits: list[Commit], rev: int) -> set[int]:
+    """Revs an undo of ``rev`` ignores: its own chain, and every later commit that stands
+    undone together with its chain, since the two cancel out (docs/plan_log.md, Undo)."""
+    out = _chain(commits, rev)
+    for commit in commits[rev:]:
+        if commit.rev not in out and _undoers(commits, commit.rev) is not None:
+            out |= _chain(commits, commit.rev)
     return out
 
 
@@ -1172,15 +1182,27 @@ class PlanLog:
         sav: str = "",
         stamp: Stamp | None = None,
         note: str = "",
+        extend: Callable[[PlanState], list[dict]] | None = None,
     ) -> Pushed:
+        """``extend`` adds ops worked out from the head under the plan lock; they merge by
+        M1 like the rest, so one that clashes with a commit since ``base_rev`` refuses."""
         mine = [_check_op(op) for op in ops]
-        return self._locked(
-            _names(mine),
-            key,
-            lambda commits: self._merge(
-                key, commits, base_rev, mine, actor, sav, stamp, note, None
-            ),
-        )
+
+        def run(commits: list[Commit]) -> Pushed:
+            more = [_check_op(op) for op in extend(self._state(key, commits))] if extend else []
+            return self._merge(
+                key,
+                commits,
+                base_rev,
+                mine + [op for op in more if op not in mine],
+                actor,
+                sav,
+                stamp,
+                note,
+                None,
+            )
+
+        return self._locked(_names(mine), key, run)
 
     def push_args(
         self,
@@ -1224,7 +1246,7 @@ class PlanLog:
             if by is not None:
                 raise AlreadyUndone(rev, by.rev)
             mine = inverse([op for op in target.ops if op.get("op") != "record"])
-            window = _chain(current, rev)
+            window = _skipped(current, rev)
             return self._merge(key, current, base_rev, mine, actor, sav, stamp, "", rev, window)
 
         return self._locked(renames, key, run)

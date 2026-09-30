@@ -832,6 +832,12 @@ the shared domain code. The new name is free text (the naming style does not app
 trimmed. `test_the_page_and_the_tool_rename_to_the_same_files` compares both label and plan
 files after each path.
 
+**Following a rename.** Both paths journal `label.rename` with `args {was, to}`. Every page gets
+it as `activity` and `rename.onRenameActivity` records the new name, so an open factory detail
+or dashboard row moves to it. This replaced a guess from geometry (same centroid and machine
+count, one candidate), which missed a rename that landed with a save changing that factory's
+machine count.
+
 **Names.** `LabelStore._free` refuses a blank name, a name with `/` in it, and a name over 60
 characters (`NAME_MAX`), for `POST` and `PATCH` alike. The `PATCH` and `DELETE` routes take
 the name as the rest of the path (`{name:path}`), so a label named with a `/` before the rule

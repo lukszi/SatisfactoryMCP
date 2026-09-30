@@ -229,3 +229,28 @@ def test_a_site_at_a_pin_stores_the_place_not_the_pin(world):
     site = resolve_plan_site(world, point["id"])
     assert site.describe().startswith(f"origin -7.9,-5.5m (from {point['id']} = -7.9,-5.5 (point))")
     assert site.to_dict()["origin_label"] == "-7.9,-5.5 (point)"
+
+
+def test_show_on_map_pins_what_it_shows_once(world, tmp_path, monkeypatch):
+    from satisfactory_mcp.domain.planning import journal
+    from satisfactory_mcp.interfaces.mcp.tools import spatial
+
+    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
+    monkeypatch.setattr(journal, "_writer", "")
+    monkeypatch.setattr(journal, "_seq", {})
+    journal.set_writer("chat")
+    monkeypatch.setattr(spatial, "_state", lambda *a, **k: world)
+    out = spatial.show_on_map("120,-340", pin=True)
+    assert "pin: pinned as pin:1 point" in out
+    assert "pin: already pin:1 point" in spatial.show_on_map("120,-340", pin=True)
+    assert "pin: pinned as pin:2 node" in spatial.show_on_map(f"node:{OIL}", pin=True)
+    name = world.labels.labels[0].name
+    assert "pin: pinned as pin:3 factory" in spatial.show_on_map(name, pin=True)
+    assert "pin: already pin:2" in spatial.show_on_map("pin:2", pin=True)
+    assert "not pinned: a whole resource" in spatial.show_on_map("resource:Crude Oil", pin=True)
+    assert "pin:" not in spatial.show_on_map("1,2")
+    [row] = [p for p in pins.live(world) if p["n"] == 1]
+    assert (row["x_m"], row["y_m"]) == (120.0, -340.0)
+    added = [e for e in journal.read(WORLD) if e["kind"] == "pin.add"]
+    assert [e["args"]["n"] for e in added] == [1, 2, 3]
+    assert all(e["actor"]["kind"] == "chat" for e in added)

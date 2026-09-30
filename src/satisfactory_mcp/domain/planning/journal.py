@@ -26,6 +26,7 @@ KINDS = (
     "ask.seen",
     "ask.answered",
     "world.find",
+    "label.rename",
 )
 MAX_LINE = 1000
 MAX_TEXT = 200

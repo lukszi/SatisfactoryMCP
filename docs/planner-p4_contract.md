@@ -54,7 +54,8 @@ out of headroom by default; transport deferred; local only; the page never promp
 Top to bottom, one `dash-card` each (§9.2):
 
 1. **Headline**: `you are in stage 2 of 4: 76% built (13/17), 13 proven running` (server
-   text), then `save <age_note>`, the scope note and the world-moved note when present.
+   text), then `save written <written_ago>` (the full `age_note` on hover; one line, decided
+   2026-09-30), the scope note and the world-moved note when present.
 2. **Renumber notice** when the partition changed since the page last showed this plan (F5).
 3. **Startup headroom** and **count as built** controls (F4).
 4. **Stages** table: stage · on · built · running · MW draw / gen · free after · state ·
@@ -92,8 +93,7 @@ Top to bottom, one `dash-card` each (§9.2):
 
 | Control | Gesture | Op pushed (one version) |
 |---|---|---|
-| Startup headroom: `pressed("nameplate <mw>")` | click | `set headroom_mw null` |
-| `pressed("measured <mw>")` | click | `set headroom_mw <floor(measured, 10)>` |
+| Startup headroom: `pressed("measured <mw>")`, `pressed("nameplate <mw>")` | click | the one the *stage headroom* setting names (measured by default): `set headroom_mw null`; the other: `set headroom_mw <floor(figure, 10)>` |
 | number field `given … MW` (> 0, ≤ 1,000,000) | Enter / blur | `set headroom_mw <n>` |
 | Count as built: `<select>` *whole world* + every named factory | change | `set factory ""` / `set factory "<name>"` |
 | Any bench control above the tabs | as P1 | as P1 |
@@ -156,7 +156,7 @@ feed it:
 
 | Where | Change |
 |---|---|
-| `planlog.py` | `headroom_mw` joins `PLAN_SCALARS`; `_SCALAR_CHECK["headroom_mw"]` = optional number, > 0, ≤ 1e6, `null` clears. `PlanState.headroom_mw: float \| None = None`, in `to_dict`/`from_dict` (absent reads as `None`, schema stays 1). Merge key `headroom_mw` (scalar, M1). `describe_op`: `startup headroom 2,000 MW` / `startup headroom: nameplate`. Not part of `plan_id` |
+| `planlog.py` | `headroom_mw` joins `PLAN_SCALARS`; `_SCALAR_CHECK["headroom_mw"]` = optional number, > 0, ≤ 1e6, `null` clears. `PlanState.headroom_mw: float \| None = None`, in `to_dict`/`from_dict` (absent reads as `None`, schema stays 1). Merge key `headroom_mw` (scalar, M1). `describe_op`: `startup headroom 2,000 MW` / `startup headroom: save default` (null follows the save's default, measured since 2026-09-30). Not part of `plan_id` |
 | `diff_service.build_diff_report` | New kwargs `headroom_mw: float \| None = None` (used for `commission` when given; source `"stored on the plan"`), `stored: PlanState \| None = None` (scope, siting and plan_id come from it instead of `st.plans.find`). Keeps the `Commissioning` it computes as `report.run` |
 | `commission.py` | `StageRow.key` (the `group_key`), `StageRow.states` via the same health pass; `Stage.describe()` (the words of today's `presenters/text/diff._stage_state`, moved so text and web share them); `Tracking.headline()` (today's `_stage_overview` headline); `partition_id(tracking) -> str` = first 10 hex of sha1 over `[[stage.index, [[repr(row.key), row.machines], …]], …]`; `""` when there are no stages |
 | `presenters/text/diff.py` | Uses `Stage.describe` / `Tracking.headline`; output unchanged apart from §6.2 |
@@ -169,7 +169,9 @@ each; `selectors` names the same members. `bbox_m` = bounding box of `act`, else
 machines, plus `targets`; `null` when none has a position.
 
 **Headroom source**: `headroom_mw` stored on the plan → `"stored on the plan"`; otherwise the
-save's nameplate headroom → `"nameplate from the save"`. Biomass follows `?biomass=`.
+save's measured headroom → `"measured from the save"`, or with `?headroom=nameplate` its
+nameplate → `"nameplate from the save"` (decided 2026-09-30, §15 C2). Biomass follows
+`?biomass=`.
 
 ---
 
@@ -187,7 +189,7 @@ save's nameplate headroom → `"nameplate from the save"`. Biomass follows `?bio
                      "ref": "job:recipe|Build_Blender_C|Recipe_Alternate_DilutedFuel_C",
                      "plan": "a1b2c3d4", "rev": 14},
            "rev": 2, "created": 1790000000.1, "seen": 1790000060.0, "seen_by": "Claude Code",
-           "answered": null, "answered_by": "", "deleted": false}]}
+           "answered": null, "answered_by": "", "answer": "", "deleted": false}]}
 ```
 
 - `n` starts at 1 and is never reused; delete sets `deleted: true`. `version` counts every
@@ -208,7 +210,8 @@ def read(world_id: str) -> dict: ...
 def create(world_id: str, text: str, about: dict) -> dict: ...
 def drop(world_id: str, n: int, rev: int) -> dict: ...
 def mark_seen(world_id: str, ns: list[int], who: str) -> list[int]: ...      # newly seen only
-def mark_answered(world_id: str, ns: list[int], who: str) -> list[int]: ...  # AskMissing
+def mark_answered(world_id: str, ns: list[int], who: str,
+                  answers: dict[int, str] | None = None) -> list[int]: ...  # AskMissing
 def live(world_id: str) -> list[dict]: ...     # AskRow (§5.2), newest last
 def parse(text: str) -> int | None: ...        # "ask:7" -> 7, case-insensitive
 ```
@@ -225,8 +228,8 @@ writes). Newer-schema files are a 503 `{error, newer_schema: true}`.
 
 | Handler (operation id) | Method, path | Body / query | 2xx | Errors |
 |---|---|---|---|---|
-| `plan_track` (new, `planner.py`) | GET `/api/plan/track` | `key` (8 hex), `rev?` (default head), `biomass?: bool` | `TrackResponse` | 404 unknown key/rev, save unreadable; 400 `ValueError` from the solve |
-| `plan_feeders` (new, `planner.py`) | GET `/api/plan/feeders` | `biomass?` | `FeedersResponse` | 404 save unreadable |
+| `plan_track` (new, `planner.py`) | GET `/api/plan/track` | `key` (8 hex), `rev?` (default head), `biomass?: include\|exclude`, `headroom?: measured\|nameplate` (default measured) | `TrackResponse` | 404 unknown key/rev, save unreadable; 400 `ValueError` from the solve |
+| `plan_feeders` (new, `planner.py`) | GET `/api/plan/feeders` | `biomass?: include\|exclude` | `FeedersResponse` | 404 save unreadable |
 | `push_ops` (unchanged route) | POST `/api/plans/{key}/ops` | now also `set headroom_mw` | `PushedResponse` (`state.headroom_mw`) | as P1: 400, 404, **409 `OutdatedResponse`** |
 | `asks` (new, `asks.py`) | GET `/api/asks` | – | `AsksResponse` | 404 save unreadable; 503 |
 | `create_ask` | POST `/api/asks` | `AskCreateBody {text, about}` | 201 `AskRow` | 400 `AskError` (blank, too long, bad about, 200 live); 404 plan in `about` unknown; 503 lock/schema |
@@ -279,7 +282,7 @@ class TrackSite(TypedDict): text: str; planned_total: int; standing_total: int; 
 class TrackResponse(TypedDict):
     key: str; rev: int; name: str
     feasible: bool; empty: bool; headline: str; cause: str   # headline/cause: the solve's, when not feasible
-    save_id: str; age_note: str; plan_id: str
+    save_id: str; age_note: str; written_ago: str | None; plan_id: str
     scope: str; scope_note: str; scope_error: str; drift_note: str
     headroom_mw: float | None                                # as stored on the plan
     current: int; count: int; partition_id: str; stage_text: str   # Tracking.headline(); "" when no stages
@@ -298,6 +301,7 @@ class AskRow(TypedDict):
     text: str; about: AskAbout; state: str # "open" | "seen" | "answered"
     rev: int; created: float
     seen: float | None; seen_by: str; answered: float | None; answered_by: str
+    answer: str                            # chat's one-line answer, "" for none (C4)
     plan_name: str | None                  # about.plan resolved at read time
     copy: str                              # "ask:7 why does this need a Blender?"
 class AsksResponse(TypedDict): version: int; asks: list[AskRow]
@@ -368,7 +372,8 @@ since you last looked: … · journal: 14:06 page queued ask:7
 - Every listed `open` ask becomes `seen` (`mark_seen`, `seen_by` = client display name) and
   one journal `ask.seen` entry is written with `args {"n": [7]}`.
 - `answered=`: each id marked answered first (`ask.answered` journal, `args {"n": [...]}`),
-  then the normal reply, whose first line after the header is `marked answered: ask:7`.
+  then the normal reply, whose first line after the header is `marked answered: ask:7`. An id
+  may carry one line after it, `"ask:7 <answer>"`, stored as the ask's `answer` (C4).
   Unknown or deleted ids: `! ask:9 does not exist (asks run to ask:8)` / `! ask:3 was
   deleted`; the others still apply.
 - The whole reply stays under `CONTEXT_BUDGET` (3800).
@@ -490,14 +495,16 @@ autosave), warm process, median of 5 (max in brackets). Route budgets are in-pro
 | `power_report` (warm) | 0.5 ms | – |
 | `live_feeders` (world-only) | 636–673 ms | on demand only, never per save |
 | job rows payload (matched instances 66–76) | 4.2–5.8 kB | – |
+| whole Track payload | up to 51 kB for a 33-job plan (the matched-machine `selectors` of rows with no action dominate) | ≤ 64 kB, accepted 2026-09-30; the selectors are not capped below 50, since a cap would change what **[copy ids]** copies. The page is local, so no gzip |
 | game save → Track redrawn | save poll 3 s + projection parse ~4 s (pre-existing, per process) + route | ≤ poll + parse + 150 ms |
 | page edit / chat edit → Track redrawn | – | ≤ 1 s |
 | asks write → other tab / `ui_context` seen → page | – | ≤ 1 s |
 | Track render | unmeasured | ≤ 30 ms at 40 job rows (the verifier measures it, A20) |
 
 Reference-save fact that shapes F4: nameplate headroom is **116 MW** while the three plans'
-minimum slices are 392–644 MW, so with the default no plan has a startup order; measured
-headroom is 6,372 MW (one stage each), and a given 2,000 MW gives 2–3 stages. Not measured: a
+minimum slices are 392–644 MW, so with nameplate no plan has a startup order; measured
+headroom is 6,372 MW (one stage each), and a given 2,000 MW gives 2–3 stages. That is why
+measured became the default (§15 C2). Not measured: a
 sited plan (on-site census), a plan above 40 jobs.
 
 ---
@@ -571,9 +578,9 @@ copy. Never ports 8712/8713.
 | # | Choice | Alternative |
 |---|---|---|
 | C1 | Only the page writes `headroom_mw`; chat reads it and can still pass `headroom_mw=` to `commission_plan` for one call | A `plan_factory` parameter |
-| C2 | Nameplate stays the default headroom | Measured by default |
+| C2 | ~~Nameplate stays the default headroom~~ **Decided 2026-09-30: measured by default**, page and tools; the page's *stage headroom* setting can pick nameplate | Nameplate by default |
 | C3 | The last-seen partition lives in page memory (and per MCP process) | Stored in focus or per plan |
-| C4 | Asks carry no answer text; `answered` is a flag | An answer note shown on the page |
+| C4 | ~~Asks carry no answer text~~ **Decided 2026-09-30: a one-line answer**: `ui_context(answered=["ask:7 <answer>"])` stores it and the page shows it beside the ask, truncated, full text on hover | Flag only |
 | C5 | Ask buttons only in the planner (Track, build list, node card, header, pins card) | Map popups, factory detail, dashboard rows |
 | C6 | Answered asks stay until deleted | Auto-hide after a day |
 | C7 | Only `plan=` calls open Track | Ad-hoc diffs open a from-chat card |

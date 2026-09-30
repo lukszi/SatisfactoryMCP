@@ -1219,6 +1219,7 @@ export interface paths {
         /**
          * Plan Track
          * @description One plan version (the head when ``rev`` is omitted) diffed and staged against this save.
+         *     ``headroom`` is the save's figure a plan with no stored headroom is staged against.
          */
         get: operations["plan_track_api_plan_track_get"];
         put?: never;
@@ -1991,8 +1992,9 @@ export interface components {
         };
         /**
          * AskRow
-         * @description One ask. ``state`` is open, seen or answered; ``copy`` is what the page puts on the
-         *     clipboard; ``plan_name`` is ``about.plan`` resolved when read.
+         * @description One ask. ``state`` is open, seen or answered; ``answer`` is the one line chat left
+         *     with it ("" for none); ``copy`` is what the page puts on the clipboard; ``plan_name`` is
+         *     ``about.plan`` resolved when read.
          */
         AskRow: {
             /** N */
@@ -2016,6 +2018,8 @@ export interface components {
             answered: number | null;
             /** Answered By */
             answered_by: string;
+            /** Answer */
+            answer: string;
             /** Plan Name */
             plan_name: string | null;
             /** Copy */
@@ -4890,7 +4894,11 @@ export interface components {
             /** From Entry */
             from_entry?: string;
         };
-        /** PushBody */
+        /**
+         * PushBody
+         * @description ``require_item``: the item class id a drawer require is for; the server then also
+         *     removes every other required recipe for it that the head holds (contract C3).
+         */
         PushBody: {
             /** Base Rev */
             base_rev: number;
@@ -4900,6 +4908,8 @@ export interface components {
             }[];
             /** Sav */
             sav?: string;
+            /** Require Item */
+            require_item?: string | null;
         };
         /**
          * PushedResponse
@@ -6246,6 +6256,8 @@ export interface components {
             save_id: string;
             /** Age Note */
             age_note: string;
+            /** Written Ago */
+            written_ago: string | null;
             /** Plan Id */
             plan_id: string;
             /** Scope */
@@ -8276,6 +8288,7 @@ export interface operations {
                 key: string;
                 rev?: number | null;
                 biomass?: "exclude" | "include";
+                headroom?: "measured" | "nameplate";
                 save?: string | null;
                 world?: string | null;
             };
