@@ -36,7 +36,7 @@ what was measured.
 |---|---|---|---|
 | B1 | `stage_text` = `Tracking.headline()` | `Tracking.headline(brief=True)`; the text tool keeps the long form | F2 shows the short sentence; the text output had to stay unchanged |
 | B2 | `?biomass=` a bool | `include`/`exclude` only | The page's `powerview.biomassQuery` already sends that spelling to every power route; one spelling, one helper |
-| B3 | Nameplate is the default headroom (§15 C2) | **measured** is the default for the page and every tool: `diff_service.default_headroom`, source `measured from the save`. The page has a *stage headroom* setting (measured / nameplate) and sends it as `?headroom=`; chat always uses measured. Every tool words the save's figures `measured from the save` / `nameplate from the save` (the old `power_report, nameplate` is gone) | Owner decision 2026-09-30: with nameplate the reference save has no stages at all (116 MW free against a 392 MW minimum slice). `commission_plan` names nameplate as the safe bound beside a measured order |
+| B3 | Nameplate is the default headroom (§15 C2) | **measured** is the default for the page and every tool: `diff_service.default_headroom`, source `measured from the save`. The *stage headroom* setting (measured / nameplate) is shared: the page sends it as `?headroom=`, and chat's tools read it ([shared-settings.md](shared-settings.md)). Every tool words the save's figures `measured from the save` / `nameplate from the save` (the old `power_report, nameplate` is gone) | Owner decision 2026-09-30: with nameplate the reference save has no stages at all (116 MW free against a 392 MW minimum slice). `commission_plan` names nameplate as the safe bound beside a measured order |
 | B4 | `AskError`, `AskMissing`, `AskStale` | adds `AboutMissing(AskError)` and `asks.row`/`asks.state_of` | A 404 for an unknown `about.plan` needs its own type; the routes and the tool build rows the same way |
 | B5 | `scope_error` text | `“<name>” has no machines in this save` | The F4 wording, so the page can show it as it comes |
 | B6 | Renumber note on every `commission_plan(plan=)` | not when the call passes its own `headroom_mw` | That call deliberately partitions differently; recording it would announce a renumbering on the next ordinary read |
@@ -61,8 +61,8 @@ what was measured.
 
 - `manage.duplicate` builds the copy field by field and does not carry `headroom_mw`; a
   duplicate starts at the default headroom.
-- The *stage headroom* setting is per browser. With it on nameplate, a plan with no stored
-  headroom is staged differently on the page than in chat, which always uses measured.
+- ~~The *stage headroom* setting is per browser.~~ Shared since 2026-09-30: the page and chat
+  read one server-side value ([shared-settings.md](shared-settings.md)).
 - A refused undo still words the conflict as `you <value>, <actor> set <value> in vN`, the
   grammar shared with chat; for the page both sides can be the page. A cleared headroom reads
   `save default` there, never `none`.

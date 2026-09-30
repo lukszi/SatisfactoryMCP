@@ -578,7 +578,7 @@ copy. Never ports 8712/8713.
 | # | Choice | Alternative |
 |---|---|---|
 | C1 | Only the page writes `headroom_mw`; chat reads it and can still pass `headroom_mw=` to `commission_plan` for one call | A `plan_factory` parameter |
-| C2 | ~~Nameplate stays the default headroom~~ **Decided 2026-09-30: measured by default**, page and tools; the page's *stage headroom* setting can pick nameplate | Nameplate by default |
+| C2 | ~~Nameplate stays the default headroom~~ **Decided 2026-09-30: measured by default**, page and tools; the shared *stage headroom* setting (page and chat, [shared-settings.md](shared-settings.md)) can pick nameplate | Nameplate by default |
 | C3 | The last-seen partition lives in page memory (and per MCP process) | Stored in focus or per plan |
 | C4 | ~~Asks carry no answer text~~ **Decided 2026-09-30: a one-line answer**: `ui_context(answered=["ask:7 <answer>"])` stores it and the page shows it beside the ask, truncated, full text on hover | Flag only |
 | C5 | Ask buttons only in the planner (Track, build list, node card, header, pins card) | Map popups, factory detail, dashboard rows |

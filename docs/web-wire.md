@@ -30,10 +30,10 @@ routers point at this file instead of re-telling them.
 
 ## The event stream
 
-`/api/events` sends four event names. `save` and `notes` are triggers: they say a file moved
+`/api/events` sends five event names. `save` and `notes` are triggers: they say a file moved
 and the page decides what to refetch. `plans` and `activity` carry data, because they are
 tailed line by line from the plan logs and the activity journal every 0.5 s rather than
-stat-compared every 3 s.
+stat-compared every 3 s. `settings` carries data too: the tail stats the shared settings file.
 
 | Event | Source | Data |
 |---|---|---|
@@ -41,6 +41,7 @@ stat-compared every 3 s.
 | `notes` | newest `labels/**/*.json`, or the legacy top-level `plans/<world>.json` | `{filename, mtime}` |
 | `plans` | new commits in one `plans/<world>/<key>/ops.jsonl`, one event per plan per tick | `{world, key, name, rev, from_rev, actors, text, ts, forgotten}` |
 | `activity` | each new line of `activity/<world>/<writer>.jsonl` | `{world, id, ts, actor, kind, plan, rev, text, args}` |
+| `settings` | `settings.json` in the user data dir, when its mtime or size moves | `SettingsResponse {version, values, stored, updated, by}` |
 
 - `actors` and `actor` are `ActorBody` (`kind`, `client`, `pid`, `display`). `text` is the
   newest commit's `describe_commit` words; `from_rev` is the rev before the first new commit.
@@ -100,8 +101,9 @@ solve (`domain/planning/track.py`). Not feasible, empty, and a count-as-built fa
 machines left are all 200s that say so (`feasible`, `empty`, `scope_error`) with empty lists;
 a 400 is only a solve that refuses its arguments. `biomass` is `include` or `exclude`, the
 spelling every power route uses. `headroom` is `measured` (the default) or `nameplate`: the
-save's figure a plan with no stored headroom is staged against, from the page's *stage headroom*
-setting. `written_ago` is the save's age alone (`12 min ago`, null with no mtime); `age_note`
+save's figure a plan with no stored headroom is staged against. The page sends the shared
+*stage headroom* setting, and `biomass` the shared biomass setting; the routes keep their own
+defaults when the query is absent. `written_ago` is the save's age alone (`12 min ago`, null with no mtime); `age_note`
 keeps the full line for a tooltip. `GET /api/plan/feeders` is the ~0.7 s
 extractor walk, never run per save.
 
@@ -110,6 +112,15 @@ carries the `rev` it read and a different one is a 409 `AskStaleResponse {error,
 ask}`, a newer asks file is a 503 `{error, newer_schema: true}`. `about.plan` must be a live plan
 key (404 otherwise). Ask numbers are never reused. Unlike pins, the store has writers in every
 MCP process (seen, answered), so every write holds the file lock.
+
+## Settings
+
+`/api/settings` (`routers/settings.py`) reads and writes the settings the page and chat share:
+`GET` sends `SettingsResponse`, `PATCH {values, version?, only_unset?}` changes some. A write
+passes the guard. A different `version` is a 409 `SettingsStaleResponse {error, stale: true,
+settings}` and writes nothing, a newer file is a 503 `{error, newer_schema: true}`, and the route
+takes no `?save=`/`?world=`. Every write arrives on every page as the `settings` event.
+[shared-settings.md](shared-settings.md) is the specification.
 
 `PlanStateBody.headroom_mw` is the stored startup headroom, `null` for the save's own figure
 (measured by default, see `headroom` above).

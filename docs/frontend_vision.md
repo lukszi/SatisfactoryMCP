@@ -529,8 +529,9 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   default was on until 2026-09-27. A browser that never set the switch gets a one-time notice
   saying locked content is now hidden, with a button that shows it. `settings.ts` keeps
   the values in `localStorage` under `settings`, wrapped in try/catch, so the page still works
-  without storage. Settings have no write route (labels have had one since 2026-09-27, §9). A
-  new setting is one more entry in `SETTINGS`.
+  without storage. A new setting is one more entry in `SETTINGS`. Since 2026-09-30 the settings
+  chat computes with (stage headroom, biomass) live on the server instead, through
+  `/api/settings` ([shared-settings.md](shared-settings.md)).
 - **The page lands on the dashboard.** A fragment with no `dash=` and none of the map's keys
   (`z`, `c`, `floor`, `mode`, `pickups`) opens the Overview (`dashOf` in `state.ts`, used at
   boot and by `fragment.ts`). A map deep link still opens the map, because the page writes `z`
@@ -556,10 +557,10 @@ has no automated way to supply either, so their MW lasts as long as someone keep
   stay under `unmodellable` in both modes, and a HUB-only circuit reads the same either way.
 - **One rule on both surfaces.** `/api/power/circuits` and `/api/summary` take
   `?biomass=exclude|include`; absent means exclude. The MCP tools that print headroom
-  (`power_report`, `world_summary`, `commission_plan`, `diff_vs_save`) take `biomass=`, default
-  false. The same save and the same choice give the same figures in chat and on the page.
-- **One setting.** Settings > power > "count biomass burners in headroom", off by default. It
-  refetches both routes. Overview, Power, the circuit detail and the map panel show the
+  (`power_report`, `world_summary`, `commission_plan`, `diff_vs_save`) take `biomass=`, which
+  defaults to the shared setting ([shared-settings.md](shared-settings.md)). The same save and the same choice give the same figures in chat and on the page.
+- **One setting.** Settings > power > "count biomass burners in headroom", off by default,
+  shared with chat. It refetches both routes. Overview, Power, the circuit detail and the map panel show the
   left-out MW as one line, "+N MW biomass not counted"; the header shows it in its tooltip.
 - **The timeline keeps installed capacity.** Its `installed_mw` counts burners, as it always
   has, so the rows cached before this decision stay comparable with the new ones.
