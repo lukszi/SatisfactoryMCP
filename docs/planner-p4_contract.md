@@ -611,3 +611,116 @@ its final notes.
 **Rules for both:** no code comments beyond a 1–2 line header on new files; `var`/`function`
 style; no new dependencies; impersonal repo text; conventional commits without trailers; never
 touch `%LOCALAPPDATA%/satisfactory-mcp` or the saves.
+
+---
+
+## 17. Built detection (Q7)
+
+Supersedes F2 item 3 (the **count as built** control), the count-as-built row of F4, A7 and
+C10. How detection works, its thresholds and what was measured is in
+[planner_p4.md](planner_p4.md), "How built is found".
+
+### 17.1 What `factory` means now
+
+| Stored value | Meaning | Words (`describe_op`) |
+|---|---|---|
+| `""` (every existing plan) | **auto**: found at the plan's site on every request | `count as built: found automatically` |
+| `"<factory name>"` | picked: that named factory counts, whatever detection says | `count as built: <name>` |
+| `"/world"` | the whole world, the old default, kept for any one plan | `count as built: whole world` |
+| `"/none"` | nothing built yet: nothing counts | `count as built: nothing yet` |
+
+Factory names cannot contain `/`, so the two sentinels never clash with a name; any other
+`/`-value is refused. The picked value always wins the count; detection then speaks only as a
+`hint`. A picked factory with no machines left falls back to auto with a `fallback` line
+instead of the old `scope_error` (which stays in the response, always empty). Renaming a
+factory re-points the plans that name it (`edits.repoint_plans`, one head op per plan).
+
+Detection writes nothing: it is a function of the plan version, the save and the labels.
+
+### 17.2 Where a plan stands
+
+| Plan carries | Search area |
+|---|---|
+| a siting with a footprint | the pad plus 50 m |
+| a siting without one | a circle round the origin |
+| only `near:` sources | a circle round each place |
+| only `node:` sources | a circle round each node (never better than `likely`) |
+| anything else (`region:`, `grid:`, compass, whole map) | none: **not placed**, no progress |
+
+A circle's radius scales with the plan: the square its machines' footprints need, twice over
+for belts and walkways, its half diagonal plus 50 m, never under 100 m. The radius only seeds;
+the coherence clusters decide what belongs.
+
+### 17.3 `TrackResponse.built_at` (`TrackBuiltAt`)
+
+```python
+class TrackBuiltCandidate(TypedDict):
+    kind: str            # "factory" | "cluster"
+    name: str            # factory name, or the unnamed cluster's suggested name
+    proposal: int | None # cluster index, this save only
+    machines: int
+    rate_share: float    # share of the plan's rate it holds
+    bbox_m: list[float] | None
+
+class TrackBuiltAt(TypedDict):
+    mode: str            # "auto" | "picked" | "world" | "none"
+    confidence: str      # auto only: "sure" | "likely" | "unsure" | "nothing" | "no site"
+    text: str            # the page line: "built at “oil setup”", "which factory is this plan?", …
+    figure: str          # "12 / 16", "12–16 / 20" (unsure) or "–" (not placed)
+    hint: str; fallback: str; area: str; picked: str
+    built: int | None; built_max: int | None; total: int
+    percent: float | None; percent_max: float | None   # of the planned rate
+    candidates: list[TrackBuiltCandidate]
+    missing: list[str]; also_here: list[str]; foreign: list[str]; node_owner: str
+    labels_version: int; token: str                   # for naming a cluster from Track
+```
+
+`built`/`total` are machines at the plan's clock, capped per job at the plan's need; `percent`
+is the covered share of the planned rate. When unsure, the jobs and stages come from the wider
+set and `built`..`built_max` is the range. Not placed: `built` is null, the stage headline is
+empty and the jobs table's column reads `anywhere` (world-wide counts, not progress).
+
+### 17.4 `GET /api/plan/built`
+
+`PlansBuiltResponse {rows: PlanBuiltRow[]}`, one row per live plan at its head: `key`, `rev`,
+`mode`, `confidence`, `built`, `built_max`, `total`, `percent`, `percent_max`, `figure` (`?`
+when unsure or when the plan does not solve), `text`. One solve per plan, cached in process per
+(world, plan, rev, save, labels version). The plans list loads it after `/api/plans`.
+
+### 17.5 Page
+
+- Track headline card: one **built line** under the stage sentence: the figure (a button that
+  switches machines and percent), the `text`, and the answers:
+  sure `[map] [change]`; likely `[name it]` (unnamed cluster) `[not this]` `[map] [change]`;
+  unsure one button per candidate plus `[nothing built yet]`; nothing `[change]`; not placed
+  `[place]` (copies a `site_plan` call for chat) `[change]`; picked, whole world or nothing
+  `[auto] [change]`. A second line lists `missing`, `also here`, foreign machines and the node
+  owner; the hint carries `[use it]` / `[count them]`.
+- `[change]` opens the old select (`data-ctl=track-scope`): found automatically, the unnamed
+  clusters at the site, every named factory, whole world, nothing built yet.
+- Picking an unnamed cluster names it: a one-field name bar (`data-ctl=built-name`) pre-filled
+  with the suggested name posts `/api/labels`, then sets `factory` to the new name. A refused
+  name leaves the plan alone.
+- The **built progress** setting (planner group, `machines` or `percent`, kept in the browser)
+  sets the figure on Track and in the plans list's new **built** column; `?` there links to
+  the plan's Track.
+
+### 17.6 Chat
+
+- `diff_vs_save plan=` and `commission_plan plan=` print the built line after the save line,
+  with the hint, fallback, missing and foreign lines, and one instruction line: unsure names
+  `factory='<name>'` for one call or `plan_factory … for_factory='<name>'` to keep it; not
+  placed names `site_plan`; an unnamed cluster names `name_factory select=['proposal:N']`.
+- `factory=` on `diff_vs_save` and `for_factory=` on `plan_factory` also take `auto`,
+  `whole world` (`world`) and `none`. A diff without `plan=` still counts the whole world.
+- `list_plans`: the `factory` column is now `built`: `12/16 @oil setup`, `? which factory`,
+  `not placed`.
+
+### 17.7 Choices made here
+
+| # | Chosen | Alternative left open |
+|---|---|---|
+| Q1 | Two plans on one site are detected independently; a machine may count for both | The nearest-site allocation pass (design §3.8) |
+| Q2 | The unsure low end is the unnamed machines only | Only the machines inside the search area |
+| Q3 | `[not this]` stores `/none` | A per-plan list of rejected clusters |
+| Q4 | `[place]` copies a `site_plan` call | Siting from the map |

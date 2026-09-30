@@ -18,6 +18,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.planning import track
 from ....domain.planning.planlog import InvalidOp, PlanLog, UnknownPlan
+from ....domain.world import pin
 from ..serial import Biomass, _fail, _state
 
 __all__ = ["router"]
@@ -158,6 +159,45 @@ class TrackSite(TypedDict):
     rows: list[TrackSiteRow]
 
 
+class TrackBuiltCandidate(TypedDict):
+    """One owner of matching machines at the plan's site: a named factory or an unnamed
+    cluster (``proposal`` is its index in this save only)."""
+
+    kind: str
+    name: str
+    proposal: int | None
+    machines: int
+    rate_share: float
+    bbox_m: list[float] | None
+
+
+class TrackBuiltAt(TypedDict):
+    """Where the plan's built machines were found and the progress figure
+    (docs/planner-p4_contract.md §5.2, ``built_at``). ``built`` is null when the plan has no
+    site; ``built_max`` differs from ``built`` only when the finding is unsure."""
+
+    mode: str
+    confidence: str
+    text: str
+    figure: str
+    hint: str
+    fallback: str
+    area: str
+    picked: str
+    built: int | None
+    built_max: int | None
+    total: int
+    percent: float | None
+    percent_max: float | None
+    candidates: list[TrackBuiltCandidate]
+    missing: list[str]
+    also_here: list[str]
+    foreign: list[str]
+    node_owner: str
+    labels_version: int
+    token: str
+
+
 class TrackResponse(TypedDict):
     """One plan version's diff and startup stages against this save, from one solve.
 
@@ -199,6 +239,7 @@ class TrackResponse(TypedDict):
     notes: list[str]
     caveats: list[str]
     monitored: int
+    built_at: TrackBuiltAt
 
 
 class Feeder(TypedDict):
@@ -241,9 +282,13 @@ def plan_track(
     except InvalidOp as exc:
         return _fail(str(exc), 404)
     try:
-        return track.track_view(st.game, st, state, biomass=biomass == "include", default=headroom)
+        out = track.track_view(
+            st.game, st, state, biomass=biomass == "include", default=headroom
+        )
     except ValueError as exc:
         return _fail(str(exc), 400)
+    out["built_at"]["token"] = pin.check(st.header, None)
+    return out
 
 
 @router.get("/plan/feeders", response_model=FeedersResponse)

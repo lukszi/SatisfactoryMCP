@@ -14,6 +14,7 @@ from ...core.gamedata.model import GameData
 from ..factories.resolve import resolve_factory
 from ..factories.select import SelectorError
 from ..world.state import WorldState
+from . import built
 from . import siting as siting_mod
 from .commission import Commissioning, Tracking, commission, machine_states, track
 from .diff import DiffReport, build_diff
@@ -30,6 +31,7 @@ __all__ = [
     "build_diff_report",
     "default_headroom",
     "match_scope",
+    "plan_progress",
 ]
 
 NAMEPLATE_SOURCE = "nameplate from the save"
@@ -76,15 +78,47 @@ class DiffVsSaveReport:
 
 
 def match_scope(
-    g: GameData, st: WorldState, prepared: PreparedPlan, scope_name: str | None, biomass: bool
+    g: GameData,
+    st: WorldState,
+    prepared: PreparedPlan,
+    scope_name: str | None,
+    biomass: bool,
+    stored: PlanState | None = None,
 ) -> tuple[DiffReport, str]:
     """The diff of a solved plan under an optional factory scope, and the scope's note.
 
-    A ``SelectorError`` propagates when the named factory has no machines left: an empty
-    scope is the caller's mistake, not a diff saying the plan is unbuilt.
+    With ``stored``, the plan's built machines are found at its site (``built.detect``)
+    unless ``scope_name`` or the plan picks a factory, the whole world or nothing; the
+    result rides on ``DiffReport.built_at``. Without it, a ``SelectorError`` propagates
+    when the named factory has no machines left: an empty scope is the caller's mistake,
+    not a diff saying the plan is unbuilt.
     """
+    if stored is not None:
+        found = built.detect(g, st, stored, prepared, scope_name)
+        rep = build_diff(
+            g, st, prepared.solution, prepared.request, scope=found.scope, biomass=biomass
+        )
+        low = None
+        if found.scope_low is not None:
+            low = build_diff(
+                g, st, prepared.solution, prepared.request, scope=found.scope_low, biomass=biomass
+            )
+        built.fill_progress(found, rep, low)
+        rep.built_at = found
+        note = ""
+        if found.mode == "picked":
+            note = (
+                f"scoped to {found.picked!r} ({len(found.scope or ())} machines): everything "
+                "outside it counts as not built, and nodes tapped by other factories are "
+                "unavailable"
+            )
+        return rep, note
     scope = None
     note = ""
+    if scope_name and built.mode_of(scope_name) == "world":
+        scope_name = None
+    if scope_name and built.mode_of(scope_name) == "none":
+        scope, scope_name = set(), None
     if scope_name:
         resolved_name, machines = resolve_factory(st, scope_name)
         if not machines:
@@ -98,6 +132,16 @@ def match_scope(
         )
     rep = build_diff(g, st, prepared.solution, prepared.request, scope=scope, biomass=biomass)
     return rep, note
+
+
+def plan_progress(g: GameData, st: WorldState, state) -> built.BuiltAt | None:
+    """A stored plan's ``built_at`` alone, for a list of plans: one solve and one match, no
+    startup order. None when the plan does not solve or builds nothing."""
+    prepared = prepare(g, st, state.kwargs(), diagnose=False)
+    if prepared.failure or not prepared.solution.processes:
+        return None
+    rep, _ = match_scope(g, st, prepared, None, False, stored=state)
+    return rep.built_at
 
 
 def build_diff_report(
@@ -132,11 +176,7 @@ def build_diff_report(
         return report
 
     recalled = stored if stored is not None else (st.plans.find(plan) if plan else None)
-    scope_name = factory
-    if scope_name is None and recalled is not None:
-        scope_name = recalled.factory or None
-
-    rep, report.scope_note = match_scope(g, st, prepared, scope_name, biomass)
+    rep, report.scope_note = match_scope(g, st, prepared, factory, biomass, stored=recalled)
     report.rep = rep
     report.power = pw = st.power_report(biomass=biomass)
 

@@ -208,3 +208,19 @@ def test_a_hand_edited_siting_that_will_not_parse_costs_one_row(plans_dir, proje
         body = c.get("/api/plans").json()
     assert [row["name"] for row in body["plans"]] == ["Aluminium"]
     assert body["stored"] == 2
+
+
+def test_progress_is_one_row_per_live_plan_and_cached_per_version(planned):
+    from satisfactory_mcp.interfaces.web.routers import plans as plans_router
+
+    reply = planned.get("/api/plan/built")
+    assert reply.status_code == 200, reply.text
+    rows = reply.json()["rows"]
+    index = planned.get("/api/plans").json()["index"]
+    assert [r["key"] for r in rows] == [r["key"] for r in index]
+    for row in rows:
+        assert row["figure"] in ("?", "–") or " / " in row["figure"]
+        assert row["built"] is None or 0 <= row["built"] <= row["total"]
+    cached = len(plans_router._BUILT)
+    planned.get("/api/plan/built")
+    assert len(plans_router._BUILT) == cached

@@ -619,7 +619,8 @@ def test_track_of_an_infeasible_plan_or_an_empty_scope_is_a_200(client):
     other = _create(client, name="scoped")["key"]
     _push(client, other, 1, {"op": "set", "field": "factory", "value": "nowhere"})
     body = client.get(f"/api/plan/track?key={other}").json()
-    assert body["scope"] == "nowhere" and body["scope_error"] and body["rows"] == []
+    assert body["scope"] == "nowhere" and body["scope_error"] == "" and body["rows"]
+    assert body["built_at"]["fallback"].startswith("“nowhere” has no machines left")
 
 
 def test_feeders_answer_on_demand(client):

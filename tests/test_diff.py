@@ -113,15 +113,16 @@ def test_extractors_match_through_the_node_they_occupy(spire):
     On this save every crude node the plan uses already carries a pump -- 7 impure, 4
     normal, 2 pure, the whole 13 -- so all three rows read OK with nothing to build. That
     is the join's strongest form: purity-by-purity equality, which a proximity guess would
-    have to hit three times in a row by luck."""
+    have to hit three times in a row by luck. ``have`` is by rate: the seven impure pumps
+    are clocked to eight pumps' worth."""
     _req, _sol, rep = spire
     by_purity = {p: _row(rep, f"{p} Crude Oil") for p in ("impure", "normal", "pure")}
     assert [(r.have, r.need, r.build) for r in by_purity.values()] == [
-        (7, 7, 0),
+        (8, 7, 0),
         (4, 4, 0),
         (2, 2, 0),
     ]
-    assert sum(r.have for r in by_purity.values()) == 13
+    assert sum(len(r.have_instances) for r in by_purity.values()) == 13
     assert all(r.verb == "OK" for r in by_purity.values())
     # A row that DOES ask for extractors names the nodes, and the ids must paste straight
     # back in as node: selectors.
@@ -136,15 +137,16 @@ def test_unmatchable_extractors_report_a_range_not_a_number(spire):
     are not node keys (OQ5), so they cannot be attributed to a plant at all. 4 stand at
     the oil plant, 13 at the main base and 6 two and a half kilometres away, almost
     certainly feeding the coal generators. Both 8 and 27 are defensible and both are
-    wrong to assert, so the answer is the interval."""
+    wrong to assert, so the answer is the interval. Counted by rate, the 23 pumps' clocks
+    add up to 24 pumps at the plan's 100%."""
     _req, _sol, rep = spire
     row = _row(rep, "normal Water")
-    assert row.have == 23
+    assert len(row.have_instances) == 23 and row.have == 24
     assert row.build_max is not None
-    assert (row.build, row.build_max) == (8, 27)
+    assert (row.build, row.build_max) == (7, 28)
     # Lower bound counts every pump in the world; the upper counts only those standing
     # among the plan machines.
-    assert row.build == row.need - 23
+    assert row.build == row.need - row.have
     assert render.where_bands(row.have_distances).count("@") == 3
 
 
@@ -222,8 +224,8 @@ def test_paused_machines_count_as_built_and_are_unpaused_not_rebuilt(spire):
     row = _row(rep, "normal Water")
     assert row.verb == "UNPAUSE"
     assert row.count == 3
-    assert row.have == 23  # paused machines are still built
-    assert "then BUILD 8..27" in row.note
+    assert len(row.have_instances) == 23  # paused machines are still built
+    assert "then BUILD 7..28" in row.note
 
 
 def test_an_action_names_the_machines_it_applies_to(spire, state):

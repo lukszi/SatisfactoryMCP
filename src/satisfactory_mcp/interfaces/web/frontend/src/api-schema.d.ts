@@ -806,6 +806,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan/built": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plans Built
+         * @description Every live plan's built progress, for the Planner's list: a solve per plan, cached
+         *     per plan version, save and factory names.
+         */
+        get: operations["plans_built_api_plan_built_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/factories/health": {
         parameters: {
             query?: never;
@@ -4518,6 +4539,37 @@ export interface components {
             /** Power Priority */
             power_priority: number;
         };
+        /**
+         * PlanBuiltRow
+         * @description One live plan's progress at its head: ``built_at`` without the startup order.
+         *
+         *     ``figure`` is ``12 / 16``, ``12–16 / 20`` (unsure), ``–`` (not placed) or ``?`` (the
+         *     plan does not solve or builds nothing).
+         */
+        PlanBuiltRow: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Mode */
+            mode: string;
+            /** Confidence */
+            confidence: string;
+            /** Built */
+            built: number | null;
+            /** Built Max */
+            built_max: number | null;
+            /** Total */
+            total: number;
+            /** Percent */
+            percent: number | null;
+            /** Percent Max */
+            percent_max: number | null;
+            /** Figure */
+            figure: string;
+            /** Text */
+            text: string;
+        };
         /** PlanGraph */
         PlanGraph: {
             /** Nodes */
@@ -4709,6 +4761,11 @@ export interface components {
             head: number;
             /** Text */
             text: string;
+        };
+        /** PlansBuiltResponse */
+        PlansBuiltResponse: {
+            /** Rows */
+            rows: components["schemas"]["PlanBuiltRow"][];
         };
         /**
          * PlansResponse
@@ -6241,6 +6298,73 @@ export interface components {
                 number
             ][][];
         };
+        /**
+         * TrackBuiltAt
+         * @description Where the plan's built machines were found and the progress figure
+         *     (docs/planner-p4_contract.md §5.2, ``built_at``). ``built`` is null when the plan has no
+         *     site; ``built_max`` differs from ``built`` only when the finding is unsure.
+         */
+        TrackBuiltAt: {
+            /** Mode */
+            mode: string;
+            /** Confidence */
+            confidence: string;
+            /** Text */
+            text: string;
+            /** Figure */
+            figure: string;
+            /** Hint */
+            hint: string;
+            /** Fallback */
+            fallback: string;
+            /** Area */
+            area: string;
+            /** Picked */
+            picked: string;
+            /** Built */
+            built: number | null;
+            /** Built Max */
+            built_max: number | null;
+            /** Total */
+            total: number;
+            /** Percent */
+            percent: number | null;
+            /** Percent Max */
+            percent_max: number | null;
+            /** Candidates */
+            candidates: components["schemas"]["TrackBuiltCandidate"][];
+            /** Missing */
+            missing: string[];
+            /** Also Here */
+            also_here: string[];
+            /** Foreign */
+            foreign: string[];
+            /** Node Owner */
+            node_owner: string;
+            /** Labels Version */
+            labels_version: number;
+            /** Token */
+            token: string;
+        };
+        /**
+         * TrackBuiltCandidate
+         * @description One owner of matching machines at the plan's site: a named factory or an unnamed
+         *     cluster (``proposal`` is its index in this save only).
+         */
+        TrackBuiltCandidate: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Proposal */
+            proposal: number | null;
+            /** Machines */
+            machines: number;
+            /** Rate Share */
+            rate_share: number;
+            /** Bbox M */
+            bbox_m: number[] | null;
+        };
         /** TrackCost */
         TrackCost: {
             /** Item */
@@ -6360,6 +6484,7 @@ export interface components {
             caveats: string[];
             /** Monitored */
             monitored: number;
+            built_at: components["schemas"]["TrackBuiltAt"];
         };
         /**
          * TrackRow
@@ -7527,6 +7652,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NameTakenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plans_built_api_plan_built_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlansBuiltResponse"];
                 };
             };
             /** @description Validation Error */

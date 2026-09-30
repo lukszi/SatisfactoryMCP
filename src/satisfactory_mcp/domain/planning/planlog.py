@@ -22,6 +22,7 @@ from ...core import atomic, filelock, schema
 from .store import PLAN_ARGS, Plan, PlanStore
 
 __all__ = [
+    "FACTORY_SENTINELS",
     "OBJECTIVES",
     "POWER",
     "SNAPSHOT_EVERY",
@@ -45,6 +46,7 @@ __all__ = [
     "describe_commit",
     "describe_op",
     "diff_args",
+    "factory_words",
     "inverse",
     "is_power",
     "merge_key",
@@ -182,6 +184,17 @@ def _text(name: str, value, optional: bool = False) -> str | None:
     return value
 
 
+#: ``factory`` values that are not a factory name: count the whole world, or nothing yet.
+FACTORY_SENTINELS = ("/world", "/none")
+
+
+def _factory(name: str, value) -> str:
+    text = _text(name, value)
+    if text.startswith("/") and text not in FACTORY_SENTINELS:
+        raise _fail(f"{name} is a factory name, {' or '.join(FACTORY_SENTINELS)}, not {text!r}")
+    return text
+
+
 def _flag(name: str, value) -> bool:
     if not isinstance(value, bool):
         raise _fail(f"{name} must be true or false, not {value!r}")
@@ -219,7 +232,7 @@ _SCALAR_CHECK: dict[str, Callable] = {
     "belt_ipm": lambda n, v: _number(n, v, optional=True),
     "pipe_m3min": lambda n, v: _number(n, v, optional=True),
     "notes": _text,
-    "factory": _text,
+    "factory": _factory,
     "headroom_mw": _headroom,
     "power_priority": _priority,
 }
@@ -441,6 +454,14 @@ def _member_name(field_name: str, member) -> str:
         return _fmt(member)
 
 
+def factory_words(value) -> str:
+    """A stored ``factory`` value in words."""
+    text = str(value or "")
+    return {"": "found automatically", "/world": "whole world", "/none": "nothing yet"}.get(
+        text, text
+    )
+
+
 def _priority_words(value) -> str:
     step = value if isinstance(value, int) and 0 < value < len(POWER_PRIORITY_PERCENT) else 0
     if not step:
@@ -453,6 +474,8 @@ def describe_op(op: dict) -> str:
     if kind == "set":
         if name == "notes":
             return "notes changed"
+        if name == "factory":
+            return "count as built: " + factory_words(op.get("value"))
         if name == "headroom_mw":
             value = op.get("value")
             if value is None:

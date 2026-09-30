@@ -90,7 +90,7 @@ def test_act_and_targets_are_capped(world, monkeypatch):
 
 
 def test_stages_name_their_rows_and_the_partition_is_stable(world):
-    state = _plan(world, headroom_mw=2000)
+    state = _plan(world, headroom_mw=2000, factory="/world")
     out = track_mod.track_view(world.game, world, state)
     assert out["headroom_mw"] == 2000.0
     assert out["startup"]["headroom_source"] == "stored on the plan"
@@ -153,12 +153,23 @@ def test_tools_and_track_share_one_partition(world):
     assert partition_id(report.tracking) == out["partition_id"]
 
 
-def test_a_factory_with_no_machines_is_a_scope_error(world):
+def test_a_factory_with_no_machines_falls_back_to_detection(world):
     state = _plan(world, factory="nowhere at all")
     out = track_mod.track_view(world.game, world, state)
-    assert out["scope"] == "nowhere at all"
-    assert out["scope_error"] == "“nowhere at all” has no machines in this save"
-    assert out["rows"] == [] and out["stages"] == [] and out["cost"] == []
+    assert out["scope"] == "nowhere at all" and out["scope_error"] == ""
+    built = out["built_at"]
+    assert built["mode"] == "auto" and built["confidence"] == "no site"
+    assert built["fallback"] == "“nowhere at all” has no machines left: showing what stands at the site"
+    assert out["rows"] and built["built"] is None and built["figure"] == "–"
+
+
+def test_an_unplaced_plan_shows_no_progress_but_keeps_its_jobs(world):
+    out = track_mod.track_view(world.game, world, _plan(world, headroom_mw=2000))
+    built = out["built_at"]
+    assert built["confidence"] == "no site" and built["built"] is None
+    assert built["text"].startswith("not placed")
+    assert out["stage_text"] == "" and out["stages"] and out["rows"]
+    assert built["total"] == sum(r["need"] for r in out["rows"])
 
 
 def test_an_infeasible_plan_is_a_shape_not_an_error(world):

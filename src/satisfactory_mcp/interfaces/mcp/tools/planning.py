@@ -27,7 +27,7 @@ from ....domain.planning import siting as siting_mod
 from ....domain.planning.carrier import resolve_tiers
 from ....domain.planning.commission import partition_id
 from ....domain.planning.commission_service import build_commission_report
-from ....domain.planning.diff_service import build_diff_report
+from ....domain.planning.diff_service import build_diff_report, plan_progress
 from ....domain.planning.layout_service import LayoutReport, build_layout_report
 from ....domain.planning.planlog import (
     Actor,
@@ -43,6 +43,7 @@ from ....domain.planning.planlog import (
     Pushed,
     describe_commit,
     describe_op,
+    factory_words,
 )
 from ....domain.planning.power_priority import STEPS
 from ....domain.planning.prepare import prepare
@@ -211,7 +212,7 @@ def _plan_detail(st, stored) -> str:
             [
                 ("plan_id", stored.plan_id or "(none)"),
                 ("saved_against", stored.created),
-                ("for_factory", stored.factory),
+                ("for_factory", factory_words(stored.factory)),
             ]
         ),
     ]
@@ -327,7 +328,7 @@ def list_plans(
                 args.get("objective", "max_mw"),
                 args.get("target_item") or "-",
                 _cut(",".join(args.get("sources") or []), 36) or "whole map",
-                stored.factory or "-",
+                _built_cell(st, stored),
                 sited,
                 "; ".join(status),
                 _cut(stored.notes, 36),
@@ -367,7 +368,7 @@ def list_plans(
                 "objective",
                 "target",
                 "sources",
-                "factory",
+                "built",
                 "sited(m)",
                 "status",
                 "notes",
@@ -757,6 +758,43 @@ def _renumbered(st, stored, tracking) -> str:
     )
 
 
+#: What ``factory=`` and ``for_factory=`` take besides a factory name.
+_FACTORY_WORDS = {
+    "auto": "",
+    "automatic": "",
+    "world": "/world",
+    "whole world": "/world",
+    "none": "/none",
+    "nothing": "/none",
+    "nothing built yet": "/none",
+}
+
+
+def _factory_value(text: str | None) -> str | None:
+    """A ``factory`` argument as the stored value, or None when it was left blank."""
+    if text is None or not text.strip():
+        return None
+    return _FACTORY_WORDS.get(text.strip().casefold(), text.strip())
+
+
+def _built_cell(st, stored) -> str:
+    """``12/16 @oil setup``, ``?`` or ``not placed`` for the plans table."""
+    try:
+        found = plan_progress(game(), st, stored)
+    except Exception:  # a stored plan can outlive the thing it referenced
+        return "?"
+    if found is None:
+        return "?"
+    if found.confidence == "unsure":
+        return "? which factory"
+    if found.built is None:
+        return "not placed"
+    where = found.picked or (found.top.name if found.top is not None else "")
+    if found.mode == "world":
+        where = "whole world"
+    return f"{found.figure().replace(' ', '')}" + (f" @{where}" if where else "")
+
+
 def _save_new(st, name, plan_kwargs, logistics, labels, field, plan_id, sit, ctx) -> Pushed:
     notes, factory, when = labels
     args = dict(plan_kwargs)
@@ -822,7 +860,9 @@ def _save_over(st, existing, base_rev, plan_kwargs, logistics, labels, sit, ctx,
             list(logistics) if logistics is not None else list(base.args.logistics_items)
         )
         extra = [{"op": "set", "field": "notes", "value": notes}] if notes else []
-        extra += [{"op": "set", "field": "factory", "value": factory}] if factory else []
+        extra += (
+            [{"op": "set", "field": "factory", "value": factory}] if factory is not None else []
+        )
         extra += [{"op": "site", "value": sit.to_dict()}] if sit is not None else []
         return log.push_args(
             existing.key,
@@ -893,7 +933,10 @@ def plan_factory(
         Field(description="the plan version you read; needed to save over an existing plan"),
     ] = None,
     plan_notes_text: Annotated[str, Field(description="note stored with save_as")] = "",
-    for_factory: Annotated[str, Field(description="factory label this plan is for")] = "",
+    for_factory: Annotated[
+        str,
+        Field(description="factory this plan is built at; also 'auto', 'whole world', 'none'"),
+    ] = "",
     site_at: Annotated[
         str | None,
         Field(
@@ -1109,7 +1152,7 @@ def plan_factory(
                     save_as,
                     plan_kwargs,
                     logistics_items,
-                    (plan_notes_text, for_factory, when),
+                    (plan_notes_text, _factory_value(for_factory) or "", when),
                     field,
                     plan_id,
                     sit,
@@ -1134,7 +1177,7 @@ def plan_factory(
                 base_rev,
                 plan_kwargs,
                 logistics_items,
-                (plan_notes_text, for_factory),
+                (plan_notes_text, _factory_value(for_factory)),
                 sit,
                 ctx,
                 overrides_of(supplied) if same else None,
@@ -1381,7 +1424,7 @@ def diff_vs_save(
     ] = None,
     factory: Annotated[
         str | None,
-        Field(description="only count this factory's machines as already built"),
+        Field(description="count this factory as built; also 'auto', 'world' or 'none'"),
     ] = None,
     biomass: Biomass = False,
     ctx: Context | None = None,
@@ -1456,7 +1499,7 @@ def diff_vs_save(
             plan=plan,
             plan_name=plan_name,
             stage=stage,
-            factory=factory,
+            factory=_factory_value(factory),
             biomass=biomass,
             headroom_mw=stored.headroom_mw if stored is not None else None,
             stored=stored,

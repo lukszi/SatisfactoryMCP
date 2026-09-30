@@ -37,6 +37,8 @@ class CommissionReport:
     live: list[tuple[str, float]] = field(default_factory=list)
     #: The same waves matched against the save, only for a stored plan.
     tracking: Tracking | None = None
+    #: Where the stored plan's built machines were found (``built.BuiltAt``).
+    built_at: object | None = None
 
 
 def build_commission_report(
@@ -84,8 +86,9 @@ def build_commission_report(
         report.live = live_feeders(g, st)
     if stored is not None and prepared.solution.processes:
         try:
-            rep, _ = match_scope(g, st, prepared, stored.factory or None, biomass)
+            rep, _ = match_scope(g, st, prepared, None, biomass, stored=stored)
         except SelectorError:
             return report
+        report.built_at = rep.built_at
         report.tracking = track(prepared, plan_run, rep, g, st, plan_name=stored.name)
     return report

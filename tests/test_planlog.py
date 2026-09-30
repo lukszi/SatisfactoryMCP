@@ -658,6 +658,28 @@ def test_describe_op_uses_the_contract_words():
     assert describe_op({"op": "record", "field": "plan_id", "value": "x"}) == ""
 
 
+def test_factory_takes_a_name_or_a_sentinel_and_says_so(plans, plan):
+    for value, words in (
+        ("oil setup", "count as built: oil setup"),
+        ("/world", "count as built: whole world"),
+        ("/none", "count as built: nothing yet"),
+        ("", "count as built: found automatically"),
+    ):
+        state = plans.state(plan)
+        pushed = plans.push(
+            plan, state.rev, [{"op": "set", "field": "factory", "value": value}], actor=PAGE
+        )
+        assert pushed.state.factory == value
+        assert describe_op({"op": "set", "field": "factory", "was": "x", "value": value}) == words
+    with pytest.raises(InvalidOp):
+        plans.push(
+            plan,
+            plans.state(plan).rev,
+            [{"op": "set", "field": "factory", "value": "/all"}],
+            actor=PAGE,
+        )
+
+
 def test_recipe_members_read_as_names_once_a_namer_is_set(monkeypatch):
     op = {"op": "add", "field": "banned", "member": "Recipe_UnpackageOilResidue_C"}
     assert describe_op(op) == "+banned Recipe_UnpackageOilResidue_C"

@@ -1355,6 +1355,13 @@ extra machines in the scope may belong to another plant. Rows without node ident
 the pumps within 200 m of the plant. The note never becomes the action: the oil pump at 250% still
 leaves its row `ok`.
 
+**Counting by rate.** What stands is counted in rate as well, never in machines: a job's `have`
+is the counted machines' clocks added up, divided by the plan's clock and rounded down, and
+`build` is the rate still missing at the plan's clock, rounded up. Eight Constructors at 50%
+are four at 100%, so a plan for four reads `4 / 4` and `ok`; three at 66.7% cover a job of two.
+The startup stages fill the same way, taking machines until their clocks reach the stage's
+machines × the plan's clock, so a stage built from spread machines is not over-counted.
+
 **Ordering** reuses the layout's SCC-condensed `chain_depth`, so extractors fall out at stage 1 and
 generators last with nothing special-cased. Power is **incremental** — charging the plan's total would
 double-count the 20 Fuel Generators that already draw. "Power first?" then becomes a number: 4,655 MW of

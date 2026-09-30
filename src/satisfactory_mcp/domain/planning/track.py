@@ -15,6 +15,7 @@ from ..power.report import biomass_note
 from ..spatial import nodes as nodes_mod
 from ..spatial.regions import load_regions
 from ..world.state import WorldState
+from . import built as built_mod
 from . import summary
 from .commission import (
     ENERGISED_CAVEAT,
@@ -305,6 +306,43 @@ def _cause(prepared) -> str:
     return summary._cause(failure.headline, failure.notes, errors or list(failure.notes), required)
 
 
+def built_view(found: built_mod.BuiltAt | None, st: WorldState, state: PlanState) -> dict:
+    """``TrackResponse.built_at``: where the plan's built machines were found, and progress."""
+    if found is None:
+        found = built_mod.BuiltAt(mode=built_mod.mode_of(state.factory))
+    return {
+        "mode": found.mode,
+        "confidence": found.confidence,
+        "text": found.where() if found.mode != "auto" or found.confidence else "",
+        "figure": found.figure(),
+        "hint": found.hint,
+        "fallback": found.fallback,
+        "area": found.area.words if found.area is not None else "",
+        "picked": found.picked,
+        "built": found.built,
+        "built_max": found.built_max,
+        "total": found.total,
+        "percent": found.percent,
+        "percent_max": found.percent_max,
+        "candidates": [
+            {
+                "kind": c.kind,
+                "name": c.name,
+                "proposal": c.proposal,
+                "machines": len(c.machines),
+                "rate_share": c.rate_share,
+                "bbox_m": c.bbox_m,
+            }
+            for c in found.candidates[:6]
+        ],
+        "missing": list(found.missing),
+        "also_here": list(found.also_here),
+        "foreign": [f"{n} matching nearby belong to “{name}”" for name, n in found.foreign],
+        "node_owner": found.node_owner,
+        "labels_version": st.labels.version,
+    }
+
+
 def _blank(st: WorldState, state: PlanState, biomass: bool, default: str) -> dict:
     pw = st.power_report(biomass=biomass)
     return {
@@ -343,6 +381,7 @@ def _blank(st: WorldState, state: PlanState, biomass: bool, default: str) -> dic
         "notes": [],
         "caveats": [PAGE_ENERGISED],
         "monitored": 0,
+        "built_at": built_view(None, st, state),
     }
 
 
@@ -388,6 +427,9 @@ def track_view(
         return out
 
     rep, tracking, health = report.rep, report.tracking, report.health
+    found = rep.built_at if isinstance(rep.built_at, built_mod.BuiltAt) else None
+    placed = found is None or found.built is not None
+    out["built_at"] = built_view(found, st, state)
     where = _positions(st)
     nodes = _node_positions() if any(r.targets for r in rep.rows) else {}
     stages_of: dict[tuple, list[int]] = {}
@@ -427,16 +469,16 @@ def track_view(
     out.update(
         save_id=rep.save_id,
         scope_note=(
-            f"only machines in “{state.factory}” count as built, and nodes other factories "
+            f"only machines in “{found.picked}” count as built, and nodes other factories "
             "tap are taken"
-            if report.scope_note
+            if report.scope_note and found is not None
             else ""
         ),
         drift_note=PAGE_DRIFT if report.drift_note else "",
         current=tracking.current if tracking is not None and tracking.ok else 0,
         count=len(stages),
         partition_id=partition_id(tracking) if tracking is not None else "",
-        stage_text=tracking.headline(brief=True) if tracking is not None else "",
+        stage_text=tracking.headline(brief=True) if tracking is not None and placed else "",
         to_build=rep.to_build,
         to_build_max=rep.to_build_max,
         actionable=sum(1 for r in rep.rows if r.actionable),
