@@ -81,6 +81,34 @@ class PlanGraph(TypedDict):
     edges: list[PlanGraphEdge]
 
 
+class BuildAmount(TypedDict):
+    item: str
+    amount: float
+
+
+class PowerStep(TypedDict):
+    """The plan at one power-priority step. ``extra_machines``, ``saved_mw``, ``cost`` and
+    ``foundations`` are against step 0; ``cost`` is what the extra machines take to build."""
+
+    step: int
+    max_clock: float
+    machines: int
+    mw_draw: float
+    extra_machines: int
+    saved_mw: float
+    cost: list[BuildAmount]
+    foundations: int
+
+
+class PowerPriority(TypedDict):
+    """``step`` is the plan's; ``splits`` is false when no step changes a row, and ``steps``
+    is empty when the plan did not solve."""
+
+    step: int
+    splits: bool
+    steps: list[PowerStep]
+
+
 class SolveResponse(TypedDict):
     """A solve's facts. Infeasible is a 200 with ``feasible: false`` and a player ``cause``."""
 
@@ -102,6 +130,7 @@ class SolveResponse(TypedDict):
     graph: PlanGraph
     shards: int | None
     sloops_used: int
+    power: PowerPriority
     blockers: list[str]
     token: str
 

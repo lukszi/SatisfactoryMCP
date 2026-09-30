@@ -89,6 +89,7 @@ class PlanArgsBody(TypedDict):
     recycle_once: list[str]
     supplied: dict[str, float]
     logistics_items: list[str]
+    power_priority: int
 
 
 class PlanStateBody(TypedDict):
