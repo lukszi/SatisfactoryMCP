@@ -273,7 +273,7 @@ def inspect(
 
     Every answer comes out of ``place.describe``, the function ``describe_location`` calls;
     this endpoint converts metres to the save's centimetres and rounds. ``radius_m`` is the
-    elevation and conduit reach; fields and pickups look 500 m out. ``spoilers=0`` skips
+    elevation reach; conduits count within 250 m, fields and pickups look 500 m out. ``spoilers=0`` skips
     locked nodes so that ``nearest`` still holds the closest ones some extractor can work.
 
     **A failed save is not a failed answer.** The node table is static, covers the whole map
@@ -330,7 +330,7 @@ def inspect(
         "nearest": [_nearest_json(n, game) for n in nearest],
         "grid": geo.grid_cell(x, y),
         "direction": geo.direction_of(x, y),
-        "conduits": None if counted is None else {**counted, "radius_m": radius_m},
+        "conduits": None if counted is None else {**counted, "radius_m": found.conduit_radius_m},
         "fields": [_field_json(f, game) for f in found.fields],
         "pickups": [{**_pickup_json(p, p["spoiler"]), "label": p["label"]} for p in found.pickups],
         "pickups_within": found.pickups_total,

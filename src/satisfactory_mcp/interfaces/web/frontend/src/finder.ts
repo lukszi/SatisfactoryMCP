@@ -51,7 +51,9 @@ var ALL_ZOOM = 1;
 
 var ALL_PAD = 0.05;
 
-var RADII = ["100", "250", "500", "1000"];
+export var CONDUIT_RADIUS_M = "250";
+
+var RADII = ["100", CONDUIT_RADIUS_M, "500", "1000"];
 
 var pane = map.createPane("finder");
 pane.style.zIndex = "445";
@@ -73,7 +75,7 @@ var view = {
   busy: false,
   world: "",
   epoch: 0,
-  filter: { resource: "", free: false, conduitKind: "all", radius: "250", group: "" },
+  filter: { resource: "", free: false, conduitKind: "all", radius: CONDUIT_RADIUS_M, group: "" },
   groups: [] as string[],
   beyond: 0,
   focus: false,

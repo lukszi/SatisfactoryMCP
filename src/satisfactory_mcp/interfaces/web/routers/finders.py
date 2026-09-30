@@ -477,7 +477,7 @@ def _run_row(run, origin, game) -> RunRow:
 def world_conduits(
     request: Request,
     near: str = "me",
-    radius_m: Annotated[float, Query(ge=1, le=2000)] = 250.0,
+    radius_m: Annotated[float, Query(ge=1, le=2000)] = conduits_mod.NEAR_RADIUS_M,
     to: str | None = None,
     to_radius_m: Annotated[float | None, Query(ge=1, le=2000)] = None,
     conduit_kind: str = "all",

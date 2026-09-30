@@ -222,7 +222,7 @@ def describe_location(
                 "conduits",
                 (
                     f"{counted['belt']} belt run(s), {counted['pipe']} pipe run(s) "
-                    f"within {radius_m:g}m"
+                    f"within {found.conduit_radius_m:g}m"
                 ),
             )
         )
@@ -336,7 +336,7 @@ def search_conduits(
             "from this tool ('chain:7', 'pipe:333')"
         ),
     ],
-    radius_m: float = 250.0,
+    radius_m: float = conduits_mod.NEAR_RADIUS_M,
     to: Annotated[
         str | None,
         Field(description="second area: list only runs passing near BOTH, same forms as near"),

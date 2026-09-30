@@ -134,7 +134,7 @@ there is no guard change and no 409 besides the pinning middleware's.
 | `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `SitesResponse` | 200, 400 unknown resource, 404 no save | `finder.rank` |
 | `/api/world/conduits` | `near` (me); `radius_m` (250, 1–2000); `to`; `to_radius_m`; `conduit_kind` belt\|pipe\|all; `view` runs\|networks; `network`; `run`; `offset` (0); `limit` (200, 1–500) | `ConduitsResponse` | 200, 400 bad value / unresolvable place / networks with belt, 404 no save | `conduits.search`, `conduits.networks` |
 | `/api/world/regions` | `resource`; `spoilers` 0\|1 | `RegionTableResponse` | 200, 400 unknown resource | `regions.region_rows` |
-| `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new | `InspectResponse` + fields in §3.2 | as today | `place.describe` |
+| `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new, the elevation reach | `InspectResponse` + fields in §3.2 | as today | `place.describe` |
 | `/api/nodes` (changed) | as today | `NodeRow` + `spoiler` | as today | as today |
 | `/api/collectibles` (changed) | as today + `spoilers` 0\|1 | `CollectiblesResponse` + fields in §3.2 | as today | `collect_view` + `service.census_rows` |
 
@@ -268,7 +268,8 @@ class RegionRow(TypedDict):           # RegionTableResponse = {resource, resourc
 # NearestNode gains `spoiler: bool` (the page hides those rows by the flag).
 # InspectResponse gains, after `nearest`:
     grid: str; direction: str
-    conduits: ConduitCount | None     # {belt, pipe, radius_m}; null without a save
+    conduits: ConduitCount | None     # {belt, pipe, radius_m}; null without a save; radius_m is
+                                      #  conduits.NEAR_RADIUS_M (250), the finders' default too
     fields: list[FoundField]          # up to 3: per-resource fields with a member within 500 m
     pickups: list[NearPickup]         # up to 5 remaining within 500 m, nearest first
     pickups_within: int | None        # how many remain within 500 m; null with no save
