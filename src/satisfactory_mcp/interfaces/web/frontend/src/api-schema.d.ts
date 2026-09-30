@@ -1098,7 +1098,8 @@ export interface paths {
         put?: never;
         /**
          * Amend Label
-         * @description Add the machines inside ``area`` (metres, map frame) to a label, or drop them from it.
+         * @description Add the machines inside ``area`` or ``extra_areas`` (metres, map frame) to a label, or
+         *     drop them from it.
          *
          *     The same ``plan_amend`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
          */
@@ -1903,7 +1904,8 @@ export interface components {
         };
         /**
          * AmendBody
-         * @description ``area`` is a polygon of ``[x_m, y_m]`` corners; ``mode`` is ``add`` or ``drop``.
+         * @description ``area`` is a polygon of ``[x_m, y_m]`` corners and ``extra_areas`` any further ones; a
+         *     machine inside any of them counts. ``mode`` is ``add`` or ``drop``.
          */
         AmendBody: {
             /** Name */
@@ -1913,6 +1915,11 @@ export interface components {
                 number,
                 number
             ][];
+            /** Extra Areas */
+            extra_areas?: [
+                number,
+                number
+            ][][];
             /** Mode */
             mode: string;
             /** As Of */

@@ -2762,6 +2762,47 @@ a.status-name:hover,
   display: none;
 }
 
+#rail-open {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  #rail-open {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  #rail-open:hover,
+  #rail-open[aria-expanded="true"] {
+    color: var(--ink-hi);
+  }
+
+  #rail.rail-drawer-open {
+    display: block;
+    position: fixed;
+    top: calc(40px + var(--strip-h));
+    bottom: 0;
+    left: 0;
+    width: min(200px, 80vw);
+    overflow-y: auto;
+    padding: var(--sp-2) 0;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.4);
+    z-index: var(--z-dropdown);
+  }
+}
+
 .rail-list {
   margin: 0;
   padding: 0;

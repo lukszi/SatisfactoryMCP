@@ -616,10 +616,12 @@ AMEND_MODES = ("add", "drop")
 
 
 class AmendBody(TypedDict):
-    """``area`` is a polygon of ``[x_m, y_m]`` corners; ``mode`` is ``add`` or ``drop``."""
+    """``area`` is a polygon of ``[x_m, y_m]`` corners and ``extra_areas`` any further ones; a
+    machine inside any of them counts. ``mode`` is ``add`` or ``drop``."""
 
     name: str
     area: list[tuple[float, float]]
+    extra_areas: NotRequired[list[list[tuple[float, float]]]]
     mode: str
     as_of: str
     version: int
@@ -633,14 +635,16 @@ def amend_label(
     save: str | None = None,
     world: str | None = None,
 ) -> Any:
-    """Add the machines inside ``area`` (metres, map frame) to a label, or drop them from it.
+    """Add the machines inside ``area`` or ``extra_areas`` (metres, map frame) to a label, or
+    drop them from it.
 
     The same ``plan_amend`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
     """
     name, dry_run = body["name"], body.get("dry_run", False)
     if body["mode"] not in AMEND_MODES:
         return _fail(f"mode is one of {', '.join(AMEND_MODES)}", 400)
-    if len(body["area"]) < 3:
+    areas = [body["area"], *body.get("extra_areas", [])]
+    if any(len(a) < 3 for a in areas):
         return _fail("an area needs at least three corners", 400)
     try:
         st = _state(request, save, world)
@@ -655,8 +659,12 @@ def amend_label(
         return _fail(f"no factory named “{name}” in this world", 404)
     alive = set(st.graph.machines())
     placed = fidentity.positions(st.projection)
-    corners = [(x * geo.CM_PER_M, y * geo.CM_PER_M) for x, y in body["area"]]
-    within = sorted(m for m in alive if m in placed and geo.inside(placed[m][:2], corners))
+    polygons = [[(x * geo.CM_PER_M, y * geo.CM_PER_M) for x, y in a] for a in areas]
+    within = sorted(
+        m
+        for m in alive
+        if m in placed and any(geo.inside(placed[m][:2], corners) for corners in polygons)
+    )
     wanted, going = (within, set()) if body["mode"] == "add" else ([], set(within))
     try:
         plan = edits.plan_amend(st.labels, label, wanted, going, alive)
