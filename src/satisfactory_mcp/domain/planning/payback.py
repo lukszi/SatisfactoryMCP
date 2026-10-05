@@ -121,6 +121,8 @@ def no_overclock(on: bool) -> dict:
         "extra_mw": 0.0,
         "without": [],
         "unused": [],
+        "pinned_last": 0,
+        "pinned_spread": 0,
     }
 
 
@@ -167,21 +169,44 @@ def stock_text(oc: dict) -> str:
     return f" ({free:,.0f} in hand + {oc.get('shards_craftable') or 0:,.0f} craftable)"
 
 
+def _sums(rows: list[dict]) -> tuple[int, int, float]:
+    return (
+        sum(r["shards"] for r in rows),
+        sum(r["instead"] - r["machines"] for r in rows),
+        sum(r["extra_mw"] for r in rows),
+    )
+
+
 def _overclock_words(oc: dict) -> list[str]:
     hand = stock_text(oc)
     lines = []
     rows = len(oc["rows"])
+    own = [r for r in oc["rows"] if r.get("applied") and r.get("pinned") == "last"]
+    spare = [r for r in oc["rows"] if not r.get("applied", oc["on"])]
     if oc["on"] and rows:
         lines.append(
             f"overclock last machine: {rows} row(s), {oc['shards']} shard(s){hand}: "
             f"−{oc['machines_saved']} machines, +{oc['extra_mw']:,.1f} MW"
         )
-    elif rows:
+    elif own:
+        shards, saved, extra = _sums(own)
+        names = ", ".join(r["label"] for r in own)
         lines.append(
-            f"overclock_last=true would save {oc['machines_saved']} machine(s) for "
-            f"{oc['shards']} shard(s){hand}, +{oc['extra_mw']:,.1f} MW"
+            f"overclock last set on its row: {names}: {shards} shard(s){hand}, "
+            f"−{saved} machines, +{extra:,.1f} MW"
         )
-    if oc["on"] and oc["without"]:
+    if not oc["on"] and spare:
+        shards, saved, extra = _sums(spare)
+        lines.append(
+            f"overclock_last=true would save {saved} machine(s) for "
+            f"{shards} shard(s){hand}, +{extra:,.1f} MW"
+        )
+    if oc.get("pinned_spread"):
+        lines.append(
+            f"one more underclocked machine set on {oc['pinned_spread']} row(s), "
+            "whatever overclock_last says"
+        )
+    if (oc["on"] or oc.get("pinned_last")) and oc["without"]:
         lines.append(f"overclock last machine: {len(oc['without'])} row(s) went without shards")
     if oc["on"] and oc["unused"]:
         names = ", ".join(sorted({u["label"] for u in oc["unused"]}))

@@ -51,7 +51,31 @@ PLAN_DEFAULTS: dict = {
     "payback_hours": None,
     "overclock_last": None,
     "power_price": None,
+    # Per recipe id: "last" or "spread". A call names only the rows it changes and
+    # "default" puts one back on the plan's switch (``merge_rows``).
+    "row_overclock": None,
 }
+
+
+def merge_rows(stored: dict | None, given: dict | None) -> dict | None:
+    """``row_overclock`` after a call: the rows it names replace or, as "default", drop theirs."""
+    out = dict(stored or {})
+    for row, choice in (given or {}).items():
+        if choice is None or choice == "default":
+            out.pop(row, None)
+        else:
+            out[row] = choice
+    return out or None
+
+
+def with_overrides(stored: dict, overrides: dict) -> dict:
+    """A stored plan's arguments with this call's overrides laid over them."""
+    merged = {**PLAN_DEFAULTS, **stored, **overrides}
+    if "row_overclock" in overrides:
+        merged["row_overclock"] = merge_rows(
+            stored.get("row_overclock"), overrides["row_overclock"]
+        )
+    return merged
 
 
 def overrides_of(supplied: dict) -> dict:
@@ -82,6 +106,8 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
     Returns (kwargs, resolved plan name, notes).
     """
     clean = {k: v for k, v in supplied.items() if k in PLAN_DEFAULTS}
+    if clean.get("row_overclock"):
+        clean["row_overclock"] = merge_rows(None, clean["row_overclock"])
     if not plan:
         return clean, "", []
     plan, echo = plan_ref(st, plan)
@@ -90,8 +116,8 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
         known = ", ".join(x.name for x in st.plans.plans) or "(none saved yet)"
         raise KeyError(f"no saved plan named {plan!r}. Saved: {known}")
 
-    overrides = overrides_of(clean)
-    merged = {**PLAN_DEFAULTS, **stored.kwargs(), **overrides}
+    overrides = overrides_of({**clean, "row_overclock": supplied.get("row_overclock")})
+    merged = with_overrides(stored.kwargs(), overrides)
     notes = [f'recalled plan "{stored.name}" v{stored.rev}']
     if echo:
         notes.append(echo)
@@ -102,7 +128,7 @@ def recall_plan(st, plan: str | None, supplied: dict) -> tuple[dict, str, list[s
     sit = siting_mod.parse(stored)
     if sit is not None:
         notes.append(f"sited: {sit.describe()}")
-    changed = sorted(k for k, v in overrides.items() if stored.kwargs().get(k) != v)
+    changed = sorted(k for k in overrides if stored.kwargs().get(k) != merged.get(k))
     if changed:
         notes.append(
             f"plan {stored.name!r} overridden this call: {', '.join(changed)} {UNSAVED_OVERRIDE}"

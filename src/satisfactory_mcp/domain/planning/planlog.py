@@ -25,6 +25,7 @@ __all__ = [
     "FACTORY_SENTINELS",
     "OBJECTIVES",
     "POWER",
+    "ROW_CHOICES",
     "SNAPSHOT_EVERY",
     "Actor",
     "AlreadyUndone",
@@ -88,6 +89,7 @@ KINDS: dict[str, str] = {
     "payback_hours": "scalar",
     "overclock_last": "scalar",
     "power_price": "scalar",
+    "row_overclock": "map",
 }
 FLOAT_SETS = frozenset({"clocks", "extractor_clocks"})
 PLAN_SCALARS = ("notes", "factory", "headroom_mw")
@@ -97,6 +99,9 @@ PRICE_MAX = 100_000.0
 #: A stored ``power_priority`` step as the horizon where a Refinery's best clock equals the
 #: old cap (docs/planner-payback-horizon_contract.md §8); step 0 inherits.
 LEGACY_PRIORITY_HOURS = (None, 4.0, 7.0, 11.0, 17.0)
+#: A row's own overclock-last choice, keyed by recipe id: overclock the last machine, or one
+#: more underclocked machine. Absent follows the plan's ``overclock_last``.
+ROW_CHOICES = {"last": "overclock last", "spread": "one more underclocked machine"}
 KWARG_NAME = {"banned": "exclude_recipes"}
 
 
@@ -240,6 +245,20 @@ def _switch(name: str, value) -> bool | None:
     return None if _inherits(value) else _flag(name, value)
 
 
+def _row_choice(name: str, value) -> str:
+    if value not in ROW_CHOICES:
+        raise _fail(f"{name} must be {' or '.join(map(repr, ROW_CHOICES))}, not {value!r}")
+    return value
+
+
+#: What a map field's values are; a rate per minute unless named here.
+_MAP_VALUE: dict[str, Callable] = {"row_overclock": _row_choice}
+
+
+def _map_value(fieldname: str, item: str, value):
+    return _MAP_VALUE.get(fieldname, _number)(f"{fieldname}[{item}]", value)
+
+
 def legacy_hours(step) -> float | None:
     """A stored ``power_priority`` step read as its payback horizon."""
     if isinstance(step, bool) or not isinstance(step, int | float) or step != int(step):
@@ -317,7 +336,7 @@ def _check_field(name: str, value):
         return out
     if not isinstance(value, dict):
         raise _fail(f"{name} must be a mapping, not {value!r}")
-    return {_item(name, k): _number(f"{name}[{k}]", v) for k, v in value.items()}
+    return {_item(name, k): _map_value(name, k, v) for k, v in value.items()}
 
 
 @dataclass
@@ -345,6 +364,7 @@ class PlanArgs:
     payback_hours: float | None = None
     overclock_last: bool | None = None
     power_price: float | None = None
+    row_overclock: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, raw: dict | None, lenient: list | None = None) -> PlanArgs:
@@ -496,7 +516,7 @@ def use_recipe_names(source: Callable[[], dict[str, str]] | None) -> None:
 
 
 def _member_name(field_name: str, member) -> str:
-    if not _namer or field_name not in ("banned", "required"):
+    if not _namer or field_name not in ("banned", "required", "row_overclock"):
         return _fmt(member)
     try:
         return _namer[0]().get(member, _fmt(member))
@@ -540,6 +560,11 @@ def describe_op(op: dict) -> str:
         if name in _POWER_WORDS:
             return _power_words(name, op.get("value"))
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
+    if kind in ("put", "del") and name == "row_overclock":
+        row = _member_name(name, op.get("item", ""))
+        if kind == "del":
+            return f"{row}: follows the plan's overclock setting"
+        return f"{row}: {ROW_CHOICES.get(op.get('value'), _fmt(op.get('value')))}"
     if kind in ("put", "del"):
         word = "rate" if name == "export_minimums" else name
         item = op.get("item", "")
@@ -681,7 +706,7 @@ def _check_op(op: dict) -> dict:
             raise _fail(f"{kind} does not apply to {name!r}")
         out = {"op": kind, "field": name, "item": _item(name, op.get("item"))}
         if kind == "put":
-            out["value"] = _number(f"{name}[{out['item']}]", op.get("value"))
+            out["value"] = _map_value(name, out["item"], op.get("value"))
         return out
     if kind in ("add", "remove"):
         if KINDS.get(name) != "set":
@@ -815,6 +840,8 @@ def _clash(mine: dict, theirs: dict) -> str | None:
 
 def _label(op: dict) -> str:
     kind, name = op["op"], op.get("field", "")
+    if kind in ("put", "del") and name == "row_overclock":
+        return f"overclock on {_member_name(name, op['item'])}"
     if kind in ("put", "del"):
         return f"{'rate' if name == 'export_minimums' else name} {op['item']}"
     if kind in ("add", "remove"):
@@ -829,6 +856,8 @@ def _label(op: dict) -> str:
 
 
 def _value_word(op: dict) -> str:
+    if op.get("field") == "row_overclock":
+        return ROW_CHOICES.get(op.get("value"), _fmt(op.get("value")))
     if op.get("field") in _POWER_WORDS:
         return _power_words(op["field"], op.get("value")).split(": ")[-1]
     if op.get("field") == "headroom_mw":
@@ -841,6 +870,8 @@ def _did(op: dict) -> str:
     kind = op["op"]
     if kind in ("set", "put"):
         return f"set {_value_word(op)}"
+    if kind == "del" and op.get("field") == "row_overclock":
+        return "put it back on the plan's setting"
     if kind == "del":
         return "removed it"
     if kind == "add":

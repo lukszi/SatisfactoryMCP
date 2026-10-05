@@ -48,7 +48,13 @@ from ....domain.planning.planlog import (
     factory_words,
 )
 from ....domain.planning.prepare import prepare
-from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of, plan_ref
+from ....domain.planning.recall import (
+    PLAN_DEFAULTS,
+    UNSAVED_OVERRIDE,
+    overrides_of,
+    plan_ref,
+    with_overrides,
+)
 from ....domain.planning.recall import recall_plan as _plan_kwargs
 from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
@@ -676,6 +682,24 @@ def _resolve_required(entries: list[str] | None) -> tuple[list[str] | None, str]
     return out, ""
 
 
+def _resolve_rows(rows: dict | None) -> tuple[dict | None, str]:
+    """``row_overclock`` keyed by recipe class id, as ``required`` resolves, or a refusal."""
+    if not rows:
+        return rows, ""
+    out = {}
+    for name, choice in rows.items():
+        if choice not in ("last", "spread", "default", None):
+            return None, (
+                f"! row_overclock[{name!r}] must be 'last', 'spread' or 'default', not "
+                f"{choice!r}; nothing solved"
+            )
+        ids, refused = _resolve_required([name])
+        if refused:
+            return None, refused.replace("! required:", "! row_overclock:", 1)
+        out[ids[0]] = choice
+    return out, ""
+
+
 def _journal_args(plan_kwargs: dict, logistics_items: list[str] | None) -> dict | None:
     raw = {k: v for k, v in plan_kwargs.items() if v is not None}
     if logistics_items:
@@ -876,7 +900,7 @@ def _save_over(st, existing, base_rev, plan_kwargs, logistics, labels, sit, ctx,
         if overrides is None:
             args = dict(plan_kwargs)
         else:
-            args = {**PLAN_DEFAULTS, **base.kwargs(), **overrides}
+            args = with_overrides(base.kwargs(), overrides)
         args["logistics_items"] = (
             list(logistics) if logistics is not None else list(base.args.logistics_items)
         )
@@ -961,6 +985,15 @@ def plan_factory(
         Field(
             description="points per MWh the horizon prices power at; omit for the save's "
             "grid mix, 'default' puts a stored plan back on it"
+        ),
+    ] = None,
+    row_overclock: Annotated[
+        dict[str, Literal["last", "spread", "default"]] | None,
+        Field(
+            description="per recipe (exact name or class id): 'last' overclocks that row's last "
+            "machine, 'spread' builds one more underclocked machine instead, 'default' follows "
+            "overclock_last again. Overrides overclock_last for that row; rows not named keep "
+            "their stored choice"
         ),
     ] = None,
     plan: Annotated[str | None, Field(description="recall a saved plan by name")] = None,
@@ -1049,7 +1082,8 @@ def plan_factory(
     while the power saved repays their build points within that many hours of play, at
     ``power_price`` points per MWh (the save's grid mix unless given). 0 is the plain build.
     ``overclock_last`` builds a row one machine short with the last one overclocked, weighed
-    against the horizon and the shards in hand plus those craftable from slugs. Above 0 h,
+    against the horizon and the shards in hand plus those craftable from slugs;
+    ``row_overclock`` overrides it per row. Above 0 h,
     max_mw and min_power price each machine at its build points over the horizon instead of
     ``machine_cost_mw``, so they may switch recipes away from scarce buildings. Both are
     stored with the plan and follow the
@@ -1099,6 +1133,9 @@ def plan_factory(
     required_ids, refused = _resolve_required(required)
     if refused:
         return refused
+    row_overclock, refused = _resolve_rows(row_overclock)
+    if refused:
+        return refused
 
     existing, refusal = _save_target(st, save_as, base_rev) if save_as else (None, "")
     if refusal:
@@ -1128,6 +1165,7 @@ def plan_factory(
         recycle_once=recycle_once,
         supplied=supplied,
         **_power_args(payback_hours, overclock_last, power_price),
+        row_overclock=row_overclock,
     )
     if refused := _power_refusal(supplied):
         return refused
@@ -1318,6 +1356,15 @@ def plan_layout(
             "grid mix, 'default' puts a stored plan back on it"
         ),
     ] = None,
+    row_overclock: Annotated[
+        dict[str, Literal["last", "spread", "default"]] | None,
+        Field(
+            description="per recipe (exact name or class id): 'last' overclocks that row's last "
+            "machine, 'spread' builds one more underclocked machine instead, 'default' follows "
+            "overclock_last again. Overrides overclock_last for that row; rows not named keep "
+            "their stored choice"
+        ),
+    ] = None,
     sites: Annotated[
         dict[str, list[str]] | None,
         Field(
@@ -1375,6 +1422,9 @@ def plan_layout(
     except Exception as exc:
         return f"could not read save: {exc}"
 
+    row_overclock, refused = _resolve_rows(row_overclock)
+    if refused:
+        return refused
     tiers = resolve_tiers(g, st, belt_tier, pipe_tier)
     if tiers.errors:
         return render_layout(
@@ -1415,6 +1465,7 @@ def plan_layout(
         belt_ipm=tiers.belt_ipm if tiers.asked_belt else None,
         pipe_m3min=tiers.pipe_m3min if tiers.asked_pipe else None,
         **_power_args(payback_hours, overclock_last, power_price),
+        row_overclock=row_overclock,
     )
     if refused := _power_refusal(supplied):
         return refused

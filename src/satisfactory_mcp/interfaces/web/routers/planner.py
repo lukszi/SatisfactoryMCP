@@ -37,9 +37,28 @@ class SolveRate(TypedDict):
     per_min: float
 
 
+class OverclockOption(TypedDict):
+    """A row's two builds: ``machines`` with the last at ``last_clock`` for ``shards``, or
+    ``spread_machines`` at ``spread_clock``. ``pinned`` is the row's own choice ("last",
+    "spread") or null to follow the plan; ``applied`` says the overclocked build is the one
+    listed. ``without``: no shards were left; ``unused``: it costs more than spreading."""
+
+    pinned: str | None
+    applied: bool
+    machines: int
+    last_clock: float
+    shards: int
+    extra_mw: float
+    spread_machines: int
+    spread_clock: float
+    without: bool
+    unused: bool
+
+
 class SolveRow(TypedDict):
     """One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
-    ``last_clock`` is set when every machine but the last runs at 100% (overclock-last).
+    ``last_clock`` is set when every machine but the last runs at 100% (overclock-last), and
+    ``overclock_option`` on every row that could run that way.
 
     ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth."""
 
@@ -52,6 +71,7 @@ class SolveRow(TypedDict):
     machines: int
     clock: float
     last_clock: float | None
+    overclock_option: OverclockOption | None
     mw: float
     inputs: list[SolveRate]
     outputs: list[SolveRate]
@@ -122,6 +142,8 @@ class OverclockRow(TypedDict):
     last_clock: float
     shards: int
     extra_mw: float
+    pinned: str | None
+    applied: bool
 
 
 class RowName(TypedDict):
@@ -130,8 +152,9 @@ class RowName(TypedDict):
 
 
 class OverclockView(TypedDict):
-    """The overclock-last pick at the plan's horizon, made whether or not ``on``.
-    ``without`` ran short of shards; ``unused`` would cost more than spreading."""
+    """The overclock-last pick at the plan's horizon, made whether or not ``on``; the totals
+    are what the switch builds when on. ``without`` ran short of shards; ``unused`` would cost
+    more than spreading. ``pinned_last``/``pinned_spread`` count rows with their own choice."""
 
     on: bool
     inherited: bool
@@ -141,6 +164,8 @@ class OverclockView(TypedDict):
     extra_mw: float
     without: list[RowName]
     unused: list[RowName]
+    pinned_last: int
+    pinned_spread: int
     shards_free: float | None
     shards_craftable: float | None
 

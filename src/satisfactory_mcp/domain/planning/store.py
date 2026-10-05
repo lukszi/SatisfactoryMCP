@@ -46,6 +46,7 @@ PLAN_ARGS = (
     "payback_hours",
     "overclock_last",
     "power_price",
+    "row_overclock",
 )
 
 
