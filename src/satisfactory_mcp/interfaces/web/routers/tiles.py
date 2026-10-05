@@ -5,12 +5,12 @@ every route answers either "here is the file you generated" or "here is the exac
 would write it" -- which is why the 404s are long: they are the whole of the documentation a
 reader gets at the moment they need it.
 
-Three layers, one grid. ``map`` is the game's own artwork under ``local/tiles/``; ``terrain``
-and ``satellite`` are renders drawn from the 1 m heightfield under ``local/renders/<layer>/``.
+Many layers, one grid. A layer is a map type in the registry (``domain.maps.registry``):
+``map`` is the game's own artwork under ``local/tiles/``, ``terrain`` and ``satellite`` the
+renders under ``local/renders/<layer>/``, and every generated type has an id of its own.
 Every one is cut on the same frame at the same tile size into the same ``{z}/{x}_{y}.png``,
-so switching layers is switching a directory. The names and the layout are
-``core.gameassets.pyramid``'s, imported rather than retyped; what this side owns is the
-bounds check, because only a server has requests to refuse.
+so switching layers is switching a directory. The layout is ``core.gameassets.pyramid``'s;
+what this side owns is the bounds check, because only a server has requests to refuse.
 
 WARNING: the function names are the operation_ids -- renaming one churns the committed
 schema. These three routes carry EXPLICIT ids; see ``OPERATION_MAPIMAGE``.
@@ -36,6 +36,7 @@ from ....core.gameassets.pyramid import (
     TILES_DIR_NAME,
     tile_relpath,
 )
+from ....domain.maps import registry
 from ..serial import _fail
 
 __all__ = ["DEFAULT_MAP_BOUNDS_M", "router"]
@@ -80,17 +81,11 @@ MAP_TILE_2X_PX = PYRAMID_TILE_2X_PX
 #: spelling. A density this server has no tree for falls back to the 1x tile.
 MAP_TILE_PX_PARAM = "px"
 
-#: Which picture of the world a tile is from. ``map`` is the game's own artwork under
-#: ``local/tiles/``, where ``/api/maptiles/{z}/{x}/{y}`` still finds it; ``terrain`` is a
-#: hypsometric relief map drawn by ``tools/gen_map_renders.py`` from the 1 m heightfield and
-#: ``satellite`` the same relief coloured from the game's own biome raster, both one
-#: directory down with their own sidecars naming their own depth and build. A layer that has
-#: never been generated answers the way an absent ``map`` does.
+#: The type ``/api/maptiles/{z}/{x}/{y}`` serves: the game's own artwork under ``local/tiles/``.
+#: Every other type is a registry id, each with its own sidecar naming its depth and build.
 MAP_LAYER_DEFAULT = "map"
 MAP_RENDERS_DIR_NAME = "renders"
 MAP_RENDER_SIDECAR_NAME = "meta.json"
-MAP_RENDER_LAYERS = ("terrain", "satellite")
-MAP_LAYERS = (MAP_LAYER_DEFAULT, *MAP_RENDER_LAYERS)
 
 #: What a pyramid looks like when the sidecar does not say: 256 px tiles, z0 (the world in
 #: one tile) through z5 (the full 8192 in 32x32). Both are read back from ``_meta.tiles``
@@ -117,24 +112,17 @@ def _local_dir() -> Path:
 
 
 def _layer_dir(layer: str) -> Path | None:
-    """Where one layer's ``tiles/`` tree and sidecar live, or ``None`` for an unknown layer."""
-    if layer == MAP_LAYER_DEFAULT:
-        return _local_dir()
-    if layer in MAP_RENDER_LAYERS:
-        return _local_dir() / MAP_RENDERS_DIR_NAME / layer
-    return None
+    """Where one ready type's ``tiles/`` tree and sidecar live, or ``None``."""
+    return registry.directory(layer)
 
 
 def _layer_sidecar(layer: str) -> Path | None:
-    """The JSON beside one layer's pyramid. ``map.json`` for the artwork, ``meta.json`` else.
-
-    Two names because ``map.json`` is also the corners file a reader may have written by hand
-    for their own ``map.png``; a render's sidecar is generated and never hand-edited.
-    """
-    directory = _layer_dir(layer)
-    if directory is None:
+    """The JSON beside one type's pyramid, named by its registry entry: ``map.json`` for the
+    artwork, whose corners a reader may have written by hand, and ``meta.json`` for a render."""
+    entry, directory = registry.lookup(layer)
+    if entry is None or directory is None:
         return None
-    return directory / (MAP_BOUNDS_NAME if layer == MAP_LAYER_DEFAULT else MAP_RENDER_SIDECAR_NAME)
+    return directory / entry["sidecar"]
 
 
 def _map_bounds(layer: str = MAP_LAYER_DEFAULT) -> dict[str, float]:
@@ -219,9 +207,9 @@ def map_tile_path(
     **Nothing here joins a string a caller supplied.** The three coordinates arrive as ints
     -- FastAPI answers anything else with a 422 before this runs -- and are range-checked
     against the ``2**z`` grid of their own level before they become a filename. ``layer`` is
-    the one segment that IS a string, and it never reaches a path: it is looked up in
-    ``_layer_dir``, which answers ``None`` for anything not written down in this module, so a
-    layer segment shaped like an escape is an unknown layer and nothing else. ``tree`` is
+    the one segment that IS a string, and it never reaches a path: it is a key into the
+    registry, whose ``dir`` only the server writes and which is checked to resolve inside
+    ``data/local``, so a layer segment shaped like an escape is an unknown layer. ``tree`` is
     chosen by ``_tile_tree`` from the two names above and is never a request's string.
     """
     directory = _layer_dir(layer)
@@ -301,9 +289,7 @@ def mapimage(request: Request) -> Any:
 # ------------------------------------------------------------------- maptiles
 
 
-#: Which tool writes which layer, so an absent pyramid can say what would fill it. One
-#: sentence per layer, because "run the generator" is not help when there are three trees and
-#: two generators.
+#: Which tool writes which painter's layers, so an absent pyramid can say what would fill it.
 _LAYER_TOOLS = {
     MAP_LAYER_DEFAULT: (
         "tools/gen_map_image.py, which cuts it out of your own installed game beside map.png"
@@ -356,8 +342,11 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     if not path.is_file():
         if request.method == "HEAD":
             return Response(status_code=204)
+        entry, _where = registry.lookup(layer)
+        painter = (entry or {}).get("layer", layer)
+        tool = _LAYER_TOOLS.get(painter, "the Maps tab of the Settings page")
         return _fail(
-            f"no {layer} tiles: {path.parent.parent} is written by {_LAYER_TOOLS[layer]}. "
+            f"no {layer} tiles: {path.parent.parent} is written by {tool}. "
             "Like the map image, it is only ever read locally, never uploaded and never "
             "committed.",
             404,
@@ -410,20 +399,24 @@ def maptiles(request: Request, z: int, x: int, y: int) -> Any:
     "/maptiles/{layer}/{z}/{x}/{y}", methods=["GET", "HEAD"], operation_id=OPERATION_MAPTILES_LAYER
 )
 def maptiles_layer(request: Request, layer: str, z: int, x: int, y: int) -> Any:
-    """One tile of a named base layer: ``map``, ``terrain`` or ``satellite``.
+    """One tile of a named base layer: a map type id from ``/api/maps``.
 
     Four segments where the alias above has three, so the two routes cannot collide.
 
     An unknown layer is a 404 that lists the ones there are, rather than a 422 about a path
-    parameter: asking for a layer this build does not have is asking for a picture that is
-    not there, and a page probing for layers it might find deserves to be told which names
-    exist rather than which types were expected.
+    parameter: a page probing for layers it might find deserves to be told which names exist.
+    A type still being generated, or one whose job failed, is not served: HEAD says 204 and
+    GET says which.
     """
-    if layer not in MAP_LAYERS:
+    entry, _where = registry.lookup(layer)
+    if entry is None:
         return _fail(
-            f"no base layer {layer!r}: this server serves {', '.join(MAP_LAYERS)}. "
-            f"{MAP_LAYER_DEFAULT} is the game's own artwork; the rest are renders drawn "
-            "from your heightfield by tools/gen_map_renders.py.",
+            f"no base layer {layer!r}: this server serves {', '.join(registry.known_ids())}. "
+            f"{MAP_LAYER_DEFAULT} is the game's own artwork; the rest are listed by /api/maps.",
             404,
         )
+    if entry.get("status") != "ready":
+        if request.method == "HEAD":
+            return Response(status_code=204)
+        return _fail(f"{layer} is {entry.get('status')}, not ready to be served", 404)
     return _serve_tile(request, layer, z, x, y)

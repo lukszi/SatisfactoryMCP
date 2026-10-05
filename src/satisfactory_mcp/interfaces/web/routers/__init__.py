@@ -26,6 +26,7 @@ from . import (
     health,
     icons,
     inspect,
+    maps,
     naming,
     nodes,
     pins,
@@ -90,4 +91,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     plan_site.router,
     settings.router,
     advice.router,
+    maps.router,
 )

@@ -36,6 +36,7 @@ from .serial import _actor_json, _settings_json
 __all__ = [
     "KINDS",
     "KIND_ACTIVITY",
+    "KIND_MAPS",
     "KIND_NOTES",
     "KIND_PLANS",
     "KIND_SAVE",
@@ -74,8 +75,12 @@ KIND_ACTIVITY = "activity"
 #: The shared settings file changed.
 KIND_SETTINGS = "settings"
 
+#: A map generation job moved, or the map registry did. State rather than a journal: the
+#: newest one is all a page needs, and it is replayed to every new subscriber.
+KIND_MAPS = "maps"
+
 #: Every kind, in the order a newly connected browser is told about them.
-KINDS = (KIND_SAVE, KIND_NOTES, KIND_PLANS, KIND_ACTIVITY, KIND_SETTINGS)
+KINDS = (KIND_SAVE, KIND_NOTES, KIND_PLANS, KIND_ACTIVITY, KIND_SETTINGS, KIND_MAPS)
 
 
 @dataclass(frozen=True)
@@ -219,6 +224,11 @@ class SaveWatcher:
     def cut(self, q: asyncio.Queue) -> bool:
         """Whether ``q`` overflowed and was dropped: its stream ends so the browser resyncs."""
         return q in self._cut
+
+    def publish(self, event: WatchEvent) -> None:
+        """Hold ``event`` as its kind's newest and fan it out, for a publisher outside the poll."""
+        self.latest[event.kind] = event
+        self._publish(event)
 
     def _publish(self, event: WatchEvent) -> None:
         for q in list(self._subscribers):

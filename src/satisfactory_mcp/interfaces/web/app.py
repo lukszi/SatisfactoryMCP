@@ -29,6 +29,7 @@ from ...domain.planning import journal, planlog, siting
 from ...domain.world.state import WorldState, load_state
 from . import terrain
 from .guard import guard
+from .mapjobs import MapJobRunner
 from .pinning import pinning
 from .routers import ALL_ROUTERS
 from .watch import SaveWatcher
@@ -106,9 +107,11 @@ def create_app(
             planlog.use_recipe_names(_recipe_names(load_game))
             siting.set_ground_z(siting.terrain_provider(terrain.field))
         await instance.state.watcher.start()
+        await instance.state.mapjobs.start()
         try:
             yield
         finally:
+            await instance.state.mapjobs.stop()
             await instance.state.watcher.stop()
             if tail:
                 planlog.use_recipe_names(None)
@@ -122,6 +125,8 @@ def create_app(
     instance.state.load_state = load
     instance.state.game = load_game
     instance.state.watcher = SaveWatcher(prewarm=prewarm, tail=tail)
+    # Only the served instance reads and re-adopts the jobs on disk; test apps start empty.
+    instance.state.mapjobs = MapJobRunner(instance.state.watcher, recover=tail)
     instance.middleware("http")(pinning)
     instance.middleware("http")(guard)
     instance.add_exception_handler(NewerSchema, _newer)

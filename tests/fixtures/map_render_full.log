@@ -1,0 +1,118 @@
+field: 7500x7500 at 1 m, build buildVersion 502094 (engine branch ++FactoryGame+rel-main-anniversary-2026), the installed build
+  a measurement where at least 1 source vertex under an output texel of 0.2289 m, i.e. density >= 19.09 per 1 m texel -- 2.117% of the field, 10.05% of its cliff province. Provenance, not a gate: the rocks are drawn wherever they cover a pixel
+  fill terraces: 13.96% of the field low-passed at 3.6621 m, moving it a median 0.0 m, p99 3.8966 m, clamped at one 3.8966 m step on 2.334% of the province
+  landscape from terrain.u16.z: 25568753 texels plus 10945142 under the cliff province
+  the lattice under the rocks: 59.41% of the field, with 21.06% of it -- the cliff province -- taken out so the rocks are composited over the ground rather than over their own 1 m fold
+reading the game's own assets from <install>\FactoryGame\Content\Paks with pyooz 0.0.8
+  artwork sheet 8192x8192 from 4 BC1 slices; luminance high pass at sigma 8.0 px, std 6.5198
+  coarse provenance (cliff, cliff, direct, fill) is 35.01% of the field, feathered 6 m
+  water: waterq.u8.z: dry / depth measured against 1 m terrain / level known and depth not
+  4096x4096 palette indices, 37 entries, 17 named areas
+  calibration: edge ratio 1.9692 at the pin against 1.333 for the best shift and {'x0.95': 1.2432, 'x1.05': 1.2778} at other scales -- margin 1.4773x over +-600 m in 200 m steps at true scale, plus x0.95, x1.05
+  region table: 768 of 768 committed cells match this raster (100.0%)
+decoding the cliff geometry and rasterising it at 0.2289 m
+  0/4521 packages, 0 landscape components, 236 placements, 2s
+  500/4521 packages, 208 landscape components, 2485 placements, 3s
+  1000/4521 packages, 524 landscape components, 4936 placements, 5s
+  1500/4521 packages, 754 landscape components, 7470 placements, 7s
+  2000/4521 packages, 922 landscape components, 10453 placements, 8s
+  2500/4521 packages, 1211 landscape components, 13119 placements, 10s
+  3000/4521 packages, 1451 landscape components, 15849 placements, 12s
+  3500/4521 packages, 1663 landscape components, 18689 placements, 14s
+  4000/4521 packages, 2065 landscape components, 21359 placements, 16s
+  4500/4521 packages, 2289 landscape components, 24358 placements, 18s
+  0/130 rock meshes, 0s
+  25/130 rock meshes, 5s
+  75/130 rock meshes, 11s
+  100/130 rock meshes, 13s
+  125/130 rock meshes, 17s
+  108 rock meshes, 1.79 M triangles {'nanite': 90, 'lod0': 18, 'hull': 0}, swept in 18.0s and decoded in 17.3s
+  19857 placements rasterised, dropped {'owner': 841, 'no_geometry': 2610, 'arch': 1075, 'oversize': 46}
+  direct.cache:  0.8% of 32768x32768 at 0.2289 m, 1.1 M texels,   4.2s
+  direct.cache:  7.0% of 32768x32768 at 0.2289 m, 11.0 M texels,  21.2s
+  direct.cache: 13.3% of 32768x32768 at 0.2289 m, 30.8 M texels,  66.6s
+  direct.cache: 19.5% of 32768x32768 at 0.2289 m, 44.8 M texels,  95.8s
+  direct.cache: 25.8% of 32768x32768 at 0.2289 m, 66.7 M texels, 134.0s
+  direct.cache: 32.0% of 32768x32768 at 0.2289 m, 100.7 M texels, 196.5s
+  direct.cache: 38.3% of 32768x32768 at 0.2289 m, 131.7 M texels, 248.3s
+  direct.cache: 44.5% of 32768x32768 at 0.2289 m, 160.3 M texels, 297.7s
+  direct.cache: 50.8% of 32768x32768 at 0.2289 m, 187.1 M texels, 347.4s
+  direct.cache: 57.0% of 32768x32768 at 0.2289 m, 212.5 M texels, 395.6s
+  direct.cache: 63.3% of 32768x32768 at 0.2289 m, 236.6 M texels, 454.9s
+  direct.cache: 69.5% of 32768x32768 at 0.2289 m, 268.8 M texels, 525.0s
+  direct.cache: 75.8% of 32768x32768 at 0.2289 m, 291.8 M texels, 573.0s
+  direct.cache: 82.0% of 32768x32768 at 0.2289 m, 309.3 M texels, 608.1s
+  direct.cache: 88.3% of 32768x32768 at 0.2289 m, 323.5 M texels, 640.0s
+  direct.cache: 94.5% of 32768x32768 at 0.2289 m, 329.6 M texels, 654.3s
+  direct raster: 331.0 M texels (30.829% of the sheet) in 692.2s
+rasterising the arches and foliage boulders at 0.2289 m
+  1076 arches, 41351 boulders {'/Game/FactoryGame/World/Environment/Rock/Boulder/Mesh/SM_Boulder_02': 'nanite', '/Game/FactoryGame/World/Environment/Rock/Boulder/Mesh/SM_Boulder_03': 'nanite', '/Game/FactoryGame/World/Environment/Rock/Boulder/Mesh/SM_Boulder_01': 'nanite', '/Game/FactoryGame/World/Environment/Rock/Boulder/Mesh/SM_Boulder_04': 'nanite', '/Game/FactoryGame/World/Environment/Rock/Boulder/Mesh/SM_Boulder_06': 'nanite', '/Game/FactoryGame/World/Environment/Rock/SeaRock/Mesh/SM_SeaRock_06': 'lod0'}
+  top.cache:  0.8% of 32768x32768 at 0.2289 m, 0.0 M texels,   0.0s
+  top.cache:  7.0% of 32768x32768 at 0.2289 m, 0.0 M texels,   0.4s
+  top.cache: 13.3% of 32768x32768 at 0.2289 m, 0.7 M texels,   2.3s
+  top.cache: 19.5% of 32768x32768 at 0.2289 m, 1.3 M texels,   9.0s
+  top.cache: 25.8% of 32768x32768 at 0.2289 m, 2.6 M texels,  21.1s
+  top.cache: 32.0% of 32768x32768 at 0.2289 m, 4.5 M texels,  33.3s
+  top.cache: 38.3% of 32768x32768 at 0.2289 m, 5.4 M texels,  40.7s
+  top.cache: 44.5% of 32768x32768 at 0.2289 m, 6.7 M texels,  49.2s
+  top.cache: 50.8% of 32768x32768 at 0.2289 m, 7.4 M texels,  53.9s
+  top.cache: 57.0% of 32768x32768 at 0.2289 m, 8.5 M texels,  58.4s
+  top.cache: 63.3% of 32768x32768 at 0.2289 m, 9.6 M texels,  63.2s
+  top.cache: 69.5% of 32768x32768 at 0.2289 m, 10.3 M texels,  69.1s
+  top.cache: 75.8% of 32768x32768 at 0.2289 m, 10.5 M texels,  71.3s
+  top.cache: 82.0% of 32768x32768 at 0.2289 m, 10.7 M texels,  72.9s
+  top.cache: 88.3% of 32768x32768 at 0.2289 m, 11.0 M texels,  76.6s
+  top.cache: 94.5% of 32768x32768 at 0.2289 m, 11.2 M texels,  80.7s
+  top raster: 11.2 M texels in 119.4s
+drawing terrain at 32768x32768
+  terrain:  0.8% of 32768x32768 in   3.4s
+  terrain: 13.3% of 32768x32768 in  49.1s
+  terrain: 25.8% of 32768x32768 in 100.5s
+  terrain: 38.3% of 32768x32768 in 147.3s
+  terrain: 50.8% of 32768x32768 in 195.6s
+  terrain: 63.3% of 32768x32768 in 237.2s
+  terrain: 75.8% of 32768x32768 in 278.0s
+  terrain: 88.3% of 32768x32768 in 318.9s
+  seam trace: p99 |d2z/dx2| 3637.52832 over the blend against 3077.79175 for the hard max on the same texels -- the fade spends 1.1819 of that ceiling; against the terrain beside the join it reads 23.2296, which is the design's own reference and is measuring the silhouette
+  regimes: {'direct_measured': 2.1094, 'direct_facet': 28.7194, 'faded': 0.0, 'kernel': 69.1712, 'mean_w': 0.30829}
+  pyramid z0: 256x256, 1 tiles, 0.10 MB
+  pyramid z1: 512x512, 4 tiles, 0.36 MB
+  pyramid z2: 1024x1024, 16 tiles, 1.28 MB
+  pyramid z3: 2048x2048, 64 tiles, 4.38 MB
+  pyramid z4: 4096x4096, 256 tiles, 14.41 MB
+  pyramid z5: 8192x8192, 1024 tiles, 47.98 MB
+  pyramid z6: 16384x16384, 4096 tiles, 151.16 MB
+  pyramid z7: 32768x32768, 16384 tiles, 402.04 MB
+  pyramid z0: 512x512, 1 tiles, 0.36 MB
+  pyramid z1: 1024x1024, 4 tiles, 1.29 MB
+  pyramid z2: 2048x2048, 16 tiles, 4.40 MB
+  pyramid z3: 4096x4096, 64 tiles, 14.55 MB
+  pyramid z4: 8192x8192, 256 tiles, 49.44 MB
+  pyramid z5: 16384x16384, 1024 tiles, 151.12 MB
+wrote data\local\maps\j1\terrain  21845 tiles over z0..z7 (621.7 MB) plus 1365 @2x over z0..z5 (221.2 MB)  (drew 355s, cut 141s)
+drawing satellite at 32768x32768
+  satellite:  0.8% of 32768x32768 in   3.2s
+  satellite: 13.3% of 32768x32768 in  43.3s
+  satellite: 25.8% of 32768x32768 in 103.8s
+  satellite: 38.3% of 32768x32768 in 150.3s
+  satellite: 50.8% of 32768x32768 in 191.8s
+  satellite: 63.3% of 32768x32768 in 232.4s
+  satellite: 75.8% of 32768x32768 in 272.2s
+  satellite: 88.3% of 32768x32768 in 315.8s
+  pyramid z0: 256x256, 1 tiles, 0.08 MB
+  pyramid z1: 512x512, 4 tiles, 0.32 MB
+  pyramid z2: 1024x1024, 16 tiles, 1.18 MB
+  pyramid z3: 2048x2048, 64 tiles, 4.14 MB
+  pyramid z4: 4096x4096, 256 tiles, 13.90 MB
+  pyramid z5: 8192x8192, 1024 tiles, 46.35 MB
+  pyramid z6: 16384x16384, 4096 tiles, 145.33 MB
+  pyramid z7: 32768x32768, 16384 tiles, 389.55 MB
+  pyramid z0: 512x512, 1 tiles, 0.32 MB
+  pyramid z1: 1024x1024, 4 tiles, 1.18 MB
+  pyramid z2: 2048x2048, 16 tiles, 4.16 MB
+  pyramid z3: 4096x4096, 64 tiles, 13.99 MB
+  pyramid z4: 8192x8192, 256 tiles, 47.45 MB
+  pyramid z5: 16384x16384, 1024 tiles, 145.14 MB
+wrote data\local\maps\j1\satellite  21845 tiles over z0..z7 (600.9 MB) plus 1365 @2x over z0..z5 (212.2 MB)  (drew 354s, cut 103s)
+done in 958s
+none of it is committed: data/local/ is gitignored and stays that way.

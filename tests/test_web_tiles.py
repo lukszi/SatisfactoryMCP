@@ -25,7 +25,11 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp import config
+from satisfactory_mcp.domain.maps import registry
 from satisfactory_mcp.interfaces.web.routers import tiles as web_tiles
+
+#: The three ids the page used before the registry, which it still answers unregistered.
+LEGACY_LAYERS = tuple(registry.LEGACY)
 
 
 def test_the_map_image_is_a_loader_and_says_where_the_file_goes(client, tmp_path, monkeypatch):
@@ -282,7 +286,7 @@ def test_a_layer_that_does_not_exist_and_one_that_was_never_generated_are_told_a
     assert unknown.status_code == 404
     message = unknown.json()["error"]
     assert "bathymetry" in message
-    for layer in web_tiles.MAP_LAYERS:
+    for layer in LEGACY_LAYERS:
         assert layer in message
 
     for layer, tool in (
@@ -342,7 +346,7 @@ def test_every_layer_answers_with_its_own_depth_build_and_corners(client, tmp_pa
         },
     )
 
-    heads = {layer: client.head(f"/api/maptiles/{layer}/0/0/0") for layer in web_tiles.MAP_LAYERS}
+    heads = {layer: client.head(f"/api/maptiles/{layer}/0/0/0") for layer in LEGACY_LAYERS}
     assert [
         heads[layer].headers["x-map-tile-max-z"] for layer in ("map", "terrain", "satellite")
     ] == ["1", "1", "3"]
