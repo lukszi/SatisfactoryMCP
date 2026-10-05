@@ -430,45 +430,177 @@ def test_a_rock_pixel_is_its_own_triangle_and_never_leaks_across_the_silhouette(
     assert quarter.tolist() == [[0.25, 1.0]]
 
 
-def test_the_fill_province_is_de_terraced_by_no_more_than_one_of_its_own_steps():
-    """``deterraced_height``: the terraces go, the scarp stays, and nothing else moves.
+def test_pchip_is_exact_at_the_vertices_and_never_overshoots_a_step():
+    """The sampler: through every 1 m sample, and never outside a cell's own range.
 
-    The fill raster quantises Z to 3.9 m, so it draws the ocean shelf as flat plateaus that
-    no kernel can un-terrace. What makes the low pass safe is the clamp: an artifact is at
-    most one quantisation step tall, so a correction larger than one step is not
-    de-terracing, it is a blur erasing a scarp the raster really did resolve -- and this
-    province holds a 300 m drop at the map's edge.
-
-    The landscape beside it must not move at all, and no-data must survive as itself.
+    Catmull-Rom over the same step rings, which is what makes the second claim a test.
     """
     numpy = pytest.importorskip("numpy")
     pytest.importorskip("scipy")
 
-    step = gen_map_renders.FILL_QUANTISATION_M * hf.DM_PER_M
-    rows = 81
-    stair = (numpy.arange(rows) // 8) * step  # a terraced ramp, one step every 8 texels
-    height = numpy.tile(stair[:, None], (1, rows)).astype(numpy.int16)
-    height[:, -1] = hf.NODATA
-    prov = numpy.full((rows, rows), hf.PROV_FILL, numpy.uint8)
-    prov[:, :8] = hf.PROV_LANDSCAPE
-    prov[:, -1] = hf.PROV_NODATA
-    out, meta = gen_map_renders.deterraced_height(_Field(height, prov))
+    size = 12
+    lattice = numpy.zeros((size, size), numpy.float32)
+    lattice[:, 6:] = 400.0  # a 40 m cliff, in decimetres
+    lattice[3, 2] = 55.0  # and a lone bump on the low side
+    vertex = numpy.arange(size, dtype=numpy.float64)
+    vlinear = (gen_map_renders.taps_linear(vertex, size),) * 2
+    vtaps = (gen_map_renders.taps_pchip(vertex, size),) * 2
+    at_vertex, missing = gen_map_renders.sample_surface(lattice, vtaps, vlinear, hf.NODATA)
+    assert not missing.any() and numpy.array_equal(at_vertex, lattice), "exact at every vertex"
 
-    assert out[:, -1] == pytest.approx(hf.NODATA), "no data stays no data"
-    assert out[:, 2] == pytest.approx(height[:, 2]), "the landscape province is untouched"
-    middle = slice(20, 60)
-    # The terrace risers are gone: inside the province the step-to-step difference is
-    # spread over the cells instead of standing in one row.
-    before = numpy.diff(height[middle, 40].astype(float))
-    after = numpy.diff(out[middle, 40].astype(float))
-    assert before.max() == pytest.approx(step, abs=1.0)
-    assert after.max() < 0.55 * step, "a riser is now a ramp"
-    assert meta["moved_max_m"] <= gen_map_renders.FILL_QUANTISATION_M + 1e-6
-    assert 0.0 <= meta["clamped_share_of_the_province"] <= 100.0
-    # And it did not move the mean: a low pass that shifted the province would be a
-    # datum change dressed as an antialias.
-    inside = prov == hf.PROV_FILL
-    assert out[inside].mean() == pytest.approx(height[inside].mean(), abs=0.05 * step)
+    fine = numpy.linspace(0.0, size - 1.0, 4 * size + 1)
+    linear = (gen_map_renders.taps_linear(fine, size),) * 2
+    cell = numpy.clip(numpy.floor(fine).astype(int), 0, size - 2)
+    r, c = cell[:, None], cell[None, :]
+    corners = numpy.stack(
+        [lattice[r, c], lattice[r, c + 1], lattice[r + 1, c], lattice[r + 1, c + 1]]
+    )
+    for kernel, rings in ((gen_map_renders.taps_pchip, False), (gen_map_renders.taps_cubic, True)):
+        taps = (kernel(fine, size),) * 2
+        values, _missing = gen_map_renders.sample_surface(lattice, taps, linear, hf.NODATA)
+        over = numpy.maximum(values - corners.max(0), corners.min(0) - values)
+        assert bool(over.max() > 1.0) == rings, kernel.__name__
+    # And it is still a ramp through the riser, not a staircase of flat cells.
+    taps = (gen_map_renders.taps_pchip(fine, size),) * 2
+    values, _missing = gen_map_renders.sample_surface(lattice, taps, linear, hf.NODATA)
+    across = values[0, (fine > 5) & (fine < 6)]
+    assert numpy.all(numpy.diff(across) > 0), "monotone through the riser"
+
+
+def _fill_fixture():
+    """A 121 m square: landscape west, raster fill east, a rock, a hole, and open sea."""
+    numpy = pytest.importorskip("numpy")
+    size = 121
+    y, x = numpy.mgrid[0:size, 0:size].astype(numpy.float64)
+
+    def truth(xm, ym):
+        return 20.0 + 6.0 * numpy.sin(xm / 17.0) + 4.0 * numpy.cos(ym / 23.0) + 0.05 * xm
+
+    land = truth(x, y)
+    prov = numpy.full((size, size), hf.PROV_LANDSCAPE, numpy.uint8)
+    prov[:, 60:] = hf.PROV_FILL
+    prov[:, 112:] = hf.PROV_NODATA  # the open sea, touching the field's edge
+    prov[20:30, 20:30] = hf.PROV_CLIFF_DIRECT  # a rock with no landscape under it
+    prov[80:88, 30:38] = hf.PROV_NODATA  # an interior hole
+    # What the field stores on the fill province: the nearest raster texel, 1 m low.
+    stored = land.copy()
+    stored[:, 60:] = numpy.round(land[:, 60:] / 3.0) * 3.0 - 1.0
+    height = numpy.round(stored * 10).astype(numpy.int16)
+    height[prov == hf.PROV_CLIFF_DIRECT] = 900  # 90 m of rock
+    height[prov == hf.PROV_NODATA] = hf.NODATA
+    ground = numpy.where(prov == hf.PROV_LANDSCAPE, land * 10, hf.NODATA).astype(numpy.float32)
+    ground[prov == hf.PROV_FILL] = height[prov == hf.PROV_FILL]
+    # The raster: 3 m texels over the same square, holding the surface 1 m low.
+    px = 40
+    centres = (numpy.arange(px) + 0.5) * (size * 100.0 / px) / 100.0 - 0.5
+    raster = truth(centres[None, :], centres[:, None]) - 1.0
+    kwargs = {
+        "ground_dm": ground,
+        "height_dm": height,
+        "prov": prov,
+        "water_quality": numpy.zeros((size, size), numpy.uint8),
+        "water_dm": numpy.full((size, size), hf.NODATA, numpy.int16),
+        "raster_m": raster,
+        "raster_ok": numpy.ones((px, px), bool),
+        "field_origin_cm": (0.0, 0.0),
+        "spacing_cm": 100.0,
+        "raster_box_cm": (-50.0, size * 100.0 - 50.0, -50.0, size * 100.0 - 50.0),
+        "nodata": hf.NODATA,
+        "fill_value": hf.PROV_FILL,
+        "rock_values": hf.PROV_CLIFF_VALUES,
+    }
+    return kwargs, land, prov
+
+
+def test_the_fill_is_rebuilt_from_the_raster_and_meets_the_landscape_without_a_step():
+    """``map_fill.fill_field`` on a fixture whose truth is known everywhere.
+
+    The rebuilt fill beats the stored nearest texel, the seam column jumps by about what the
+    truth does, and the hole is filled close to the hidden surface.
+    """
+    numpy = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from tools import map_fill
+
+    kwargs, land, prov = _fill_fixture()
+    heights, ground, source, meta = map_fill.fill_field(**kwargs)
+    fill = prov == hf.PROV_FILL
+    rebuilt = numpy.median(numpy.abs(ground[fill] / 10.0 - land[fill]))
+    stored = numpy.median(numpy.abs(kwargs["height_dm"][fill] / 10.0 - land[fill]))
+    assert rebuilt < 0.25 and rebuilt < stored / 3
+
+    rows = slice(5, 115)
+    jump = numpy.abs(ground[rows, 60] - ground[rows, 59]) / 10.0
+    true_jump = numpy.abs(land[rows, 60] - land[rows, 59])
+    assert numpy.median(numpy.abs(jump - true_jump)) < 0.05, "the seam is not a step"
+    assert (source[fill] == map_fill.SOURCE_SEAM).any()
+
+    hole = numpy.zeros_like(fill)
+    hole[80:88, 30:38] = True
+    assert (source[hole] == map_fill.SOURCE_HOLE).all()
+    assert numpy.abs(ground[hole] / 10.0 - land[hole]).mean() < 0.2
+    assert meta["holes"]["holes"] == 2, "the hole and the ground under the rock"
+    landscape = prov == hf.PROV_LANDSCAPE
+    assert numpy.array_equal(ground[landscape], kwargs["ground_dm"][landscape])
+    assert numpy.array_equal(heights[landscape], kwargs["ground_dm"][landscape])
+
+
+def test_rock_is_copied_unchanged_and_never_smoothed_into_the_ground():
+    """Rock heights pass through the fill untouched, and none of them reach the ground."""
+    numpy = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from tools import map_fill
+
+    kwargs, land, prov = _fill_fixture()
+    heights, ground, source, _meta = map_fill.fill_field(**kwargs)
+    rock = prov == hf.PROV_CLIFF_DIRECT
+    assert numpy.array_equal(heights[rock], kwargs["height_dm"][rock].astype(numpy.float32))
+    assert (source[rock] == map_fill.SOURCE_ROCK).all()
+    # The ground under the rock is filled from the ground around it, not from the rock.
+    assert numpy.abs(ground[rock] / 10.0 - land[rock]).max() < 3.0
+    beside = numpy.zeros_like(rock)
+    beside[18:32, 18:32] = True
+    beside &= ~rock
+    assert numpy.array_equal(ground[beside], kwargs["ground_dm"][beside])
+
+
+def test_the_open_sea_past_the_data_stays_the_page_s_colour():
+    """Nothing is invented where the field has no data out to its edge.
+
+    The texels stay no-data in both lattices, the sampler calls them missing, and the
+    painter draws the page's sea there, not water over an invented bed.
+    """
+    numpy = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from tools import map_fill
+
+    kwargs, _land, prov = _fill_fixture()
+    heights, ground, source, meta = map_fill.fill_field(**kwargs)
+    sea = numpy.zeros(prov.shape, bool)
+    sea[:, 112:] = True
+    assert (heights[sea] == hf.NODATA).all() and (ground[sea] == hf.NODATA).all()
+    assert (source[sea] == map_fill.SOURCE_NONE).all()
+    assert "no depth is invented" in meta["open_sea"]
+
+    size = prov.shape[0]
+    positions = numpy.arange(size, dtype=numpy.float64)
+    linear = (gen_map_renders.taps_linear(positions, size),) * 2
+    smooth = (gen_map_renders.taps_pchip(positions, size),) * 2
+    z_dm, missing = gen_map_renders.sample_surface(heights, smooth, linear, hf.NODATA)
+    assert missing[:, 112:].all() and not missing[:, :112].any()
+    z_m = numpy.where(missing, 0.0, z_dm / hf.DM_PER_M).astype(numpy.float32)
+    ones = numpy.ones(z_m.shape, numpy.float32)
+    rgb = gen_map_renders.terrain_colours(
+        depth=numpy.zeros_like(z_m),
+        wet=numpy.zeros_like(z_m),
+        missing=missing,
+        shade=ones,
+        borrow=ones,
+        z_m=z_m,
+        ramp_lo=0.0,
+        ramp_hi=100.0,
+    )
+    assert (rgb[missing] == gen_map_renders.SEA_RGB).all()
 
 
 def test_the_seam_trace_measures_the_join_and_says_what_it_cannot_measure():
