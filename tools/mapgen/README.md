@@ -88,6 +88,8 @@ as the artwork. The main options:
 - `--layer L`, repeatable, picks the layers. The default is all three.
 - `--size` takes 1024 to 32768. The smaller sizes are previews.
 - `--renders-name` writes beside the current renders instead of over them.
+- `--unlit` draws the colour without light, bakes the lighting pyramid into
+  `<renders>/light/`, and keeps a default-sun copy in each layer's `tiles/`. See §28.
 - `--cache-dir` with `--keep-direct` keeps the geometry rasters, so a later run at the same
   size and build reuses them.
 
@@ -130,6 +132,11 @@ be traced to the axis it should move.
 | `palette/painted.py` | style | The game-painted ground |
 | `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
 | `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
+| `lighting/sun.py`, `model.py` | light | The game's sun path and default; the live-light model and its reference |
+| `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the stage that writes the lighting pyramid |
+| `palette/lightparams.py` | style | What the page's shader reads from a style |
+| `tiles/lit.py` | | Installing a layer drawn unlit: `unlit/` and the default-sun copy |
+| `tiles/borrowmeta.py` | | The sidecar record of the artwork borrow |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |
 | `tiles/pyramid.py` | | Installing a layer and cutting its pyramid |

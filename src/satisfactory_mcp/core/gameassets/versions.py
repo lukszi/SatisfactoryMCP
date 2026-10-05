@@ -12,6 +12,7 @@ __all__ = [
     "ARTWORK_RECIPES",
     "CAVES_VERSION",
     "HEIGHTFIELD_GENERATOR_VERSION",
+    "LIGHTS",
     "PAINT_GENERATOR_VERSION",
     "PROVENANCE_SCHEMA",
     "READER_VERSIONS",
@@ -80,4 +81,10 @@ STYLES: dict[str, dict] = {
     "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 2},
     "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 1},
     "artwork": {"label": "artwork", "layer": "map", "version": 1},
+}
+
+#: Light models. A render drawn unlit names the one its lighting pyramid was baked for; a
+#: version bump offers a relight, never a stale chip.
+LIGHTS: dict[str, dict] = {
+    "sun": {"label": "live sun", "version": 1},
 }

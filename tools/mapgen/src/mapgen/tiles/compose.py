@@ -14,6 +14,7 @@ from mapgen.lighting.hillshade import (
     BORROW_CLAMP,
     BORROW_GAIN,
     SUN_ALTITUDE_DEG,
+    flat_shade,
     hillshade,
     slope_degrees,
     sun_dot,
@@ -136,6 +137,14 @@ def blend_regimes(base_m, missing, direct, linear, subsamples):
     )
 
 
+def _capture(surface, rows, z_m, missing, cover) -> None:
+    """Hand one band's drawn heights and land weight, halo cropped, to the lighting stage."""
+    top, lo, bottom, c0, c1 = rows
+    keep = slice(top - lo, bottom - lo)
+    dry = np.where(missing, 0.0, 1.0 - cover)
+    surface.put(top, z_m[keep], dry[keep], slice(c0, c1))
+
+
 def render_layer(
     layer,
     field,
@@ -155,15 +164,12 @@ def render_layer(
     reach=None,
     painted=None,
     window=None,
+    unlit=False,
+    surface=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
-    Banded because the sheet is a billion pixels at 32768 and this recipe holds a dozen
-    float32 intermediates over it, four gigabytes apiece whole. Each band is computed with
-    BAND_HALO extra rows on both sides and cropped afterwards, so neither the hillshade's
-    gradient nor the cubic sampler's stencil nor the water blur's kernel ever sees a band
-    edge: a one-sided difference at every 256th row would
-    draw 127 horizontal lines across the world.
+    Banded, each band with BAND_HALO extra rows cropped after, so no kernel sees a band edge.
 
     ``direct`` is the pair of memory maps the direct pass wrote, with the weight plane and
     the sub-sampling beside them; ``None`` draws the single-regime picture. ``seam`` and
@@ -174,6 +180,7 @@ def render_layer(
     ocean's crossing rule applies, ``None`` for recipe 5's water everywhere; ``painted`` the
     ``palette.painted.PaintedGround`` the painted layer samples. ``window`` draws only rows
     ``[r0, r1)`` and columns ``[c0, c1)`` of the sheet, with every raster passed in cut to it.
+    ``unlit`` draws the sun term flat; ``surface`` receives the drawn heights and land weight.
     """
     kernel = taps_pchip if kernel is None else kernel
     painter = LAYER_PAINTERS.get(layer)
@@ -310,6 +317,8 @@ def render_layer(
                 shore_terms(z_m, spacing_m),
                 WATER_DEPTH_FULL_M,
             )
+        if surface is not None:
+            _capture(surface, (top, lo, bottom, c0, c1), z_m, missing, water_terms["cover"])
         scene: dict = {
             "z_m": z_m,
             "borrow": np.clip(lift, *BORROW_CLAMP),
@@ -324,9 +333,10 @@ def render_layer(
             rock_weight = np.zeros(z_m.shape, np.float32) if weight is None else rock_seen
             if top_weight is not None:
                 rock_weight = np.maximum(rock_weight, top_weight)
+            flat = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
             scene.update(
-                ndl=sun_dot(z_m, spacing_m),
-                ndl_flat=np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG))),
+                ndl=np.full(z_m.shape, flat) if unlit else sun_dot(z_m, spacing_m),
+                ndl_flat=flat,
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
@@ -338,7 +348,7 @@ def render_layer(
                 lambda plane, taps=(rock_rows, rock_cols): sample_plain(plane, taps),
             )
         else:
-            scene["shade"] = hillshade(z_m, spacing_m)
+            scene["shade"] = flat_shade(z_m.shape) if unlit else hillshade(z_m, spacing_m)
             if layer == "satellite":
                 scene["slope"] = slope_degrees(z_m, spacing_m)
                 biome_rows = biome_index(
