@@ -189,6 +189,21 @@ def test_the_delta_is_what_makes_the_raster_small():
     assert np.array_equal(hf.decode_i16(hf.encode_i16(grid), 300, 500), grid)
 
 
+def test_decoding_does_not_widen_the_raster():
+    """The real field decodes in every xdist worker; a wider accumulator ran them out of memory."""
+    import tracemalloc
+
+    grid = np.zeros((1000, 2000), np.int16)
+    blob = hf.encode_i16(grid)
+    tracemalloc.start()
+    try:
+        hf.decode_i16(blob, 1000, 2000)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak <= 3 * grid.nbytes, f"decode peaked at {peak / grid.nbytes:.1f}x the raster"
+
+
 def test_the_codec_refuses_a_raster_that_does_not_match_its_sidecar():
     """A shape mismatch is a mismatched pair, not a raster to reshape into whatever fits."""
     blob = hf.encode_i16(np.zeros((4, 5), np.int16))

@@ -668,9 +668,12 @@ stage 2 of 5`. A `commission_plan` with an explicit `headroom_mw` neither prints
 `power_price` (points per MWh, default the save's grid mix). A row is spread over more, slower
 machines while the power saved repays their build points within that many hours of play;
 `overclock_last` builds a row one machine short with the last one overclocked, weighed against
-the same horizon and the shards in hand. They are stored `PlanArgs` scalars that both chat and
-page write; unset, a plan follows the shared `payback_hours` and `overclock_last` settings, and
-`"default"` puts a recalled plan back on them. The notes say what the plan spreads against 0 h,
+the same horizon and the shards in hand plus those craftable from slugs. `row_overclock`
+(`{recipe: "last" | "spread" | "default"}`) overrides the switch for one row; a call names only
+the rows it changes. Above 0 h, `max_mw` and `min_power` price each machine at its build points
+over the horizon instead of `machine_cost_mw`. They are stored `PlanArgs` fields that both chat
+and page write; unset, a plan follows the shared `payback_hours` and `overclock_last` settings,
+and `"default"` puts a recalled plan back on them. The notes say what the plan spreads against 0 h,
 what the next stop would change, and what the overclock saves or would save.
 
 The page queues **asks** (`ask:N`, a question about a plan, process, stage, item or pin) and

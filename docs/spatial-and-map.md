@@ -920,18 +920,21 @@ from 1.24 GB to 227 MB.
 
 ### The site's z
 
-`site_plan`, `plan_factory`'s `site_at` and a `site` op pushed from the page all settle a
-site's z the same way (`siting.settle_z`):
+Both servers install `siting.TerrainGround` as P5's ground-height provider
+(docs/planner-p5_contract.md §6) when they start. Through it:
 
 1. A z typed as `x,y,z`, or the player's own z for `me`, wins.
-2. Otherwise the median of the pad on `ground`, or on the surface a hint picks. The hint is
-   the median z of what already stands on the pad.
-3. No data under the pad, or no field on the machine: `z = None` with the reason. Save
+2. A pad dragged on the page arrives with a null z, and `check` fills it with the pad's
+   median on `ground`.
+3. Chat's `site_plan` and `site_at` go through `siting.settle_z`, which reads the same
+   installed field and can pick another surface by hint: the median z of what already stands
+   on the pad. The reply carries the reading in words: surface, pad min and max, bare
+   terrain, ambiguous share, provenance and its accuracy, coarse, water.
+4. No data under the pad, or no field on the machine: `z = None`, and chat says why. Save
    objects are never interpolated into a terrain answer; that measured 100x worse.
 
-The siting records `z_source` (`given`, `you`, `terrain`) and the reading itself: surface,
-pad min and max, bare terrain, ambiguous share, provenance and its accuracy, coarse, water.
-A terrain z is re-read when the pad moves; a typed one is kept.
+The stored record stays `check`'s canonical one: the reading is for the reply, not the plan
+file. A stored z is kept when a pad is resized in place; a moved pad is read again.
 
 ### Measured (build 502094, 5,956 save ground-truth points)
 

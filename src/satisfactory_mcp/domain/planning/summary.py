@@ -18,7 +18,7 @@ from . import payback, provenance
 from .layout import chain_depth
 from .optimize import MW
 from .report import build_plan_report
-from .scenario import build_scenario
+from .scenario import build_scenario, shard_stock
 
 __all__ = ["names_for", "production_graph", "solve_summary", "stamp_for"]
 
@@ -56,6 +56,7 @@ def _row(g: GameData, row: dict, required: set[str]) -> dict:
         "machines": int(row["machines"]),
         "clock": float(row["clock"]),
         "last_clock": row.get("last_clock"),
+        "overclock_option": row.get("overclock_option"),
         "mw": float(row["mw"]),
         "inputs": _rates(g, row["rates"], -1),
         "outputs": _rates(g, row["rates"], 1),
@@ -214,7 +215,7 @@ def _blockers(errors: list[str], failure_notes: list[str]) -> list[str]:
 def names_for(g: GameData, args) -> dict[str, str]:
     """Display names for the ids a request can hold: recipes, node instances and items."""
     out: dict[str, str] = {}
-    for member in [*args.required, *args.banned, *args.only_recipes]:
+    for member in [*args.required, *args.banned, *args.only_recipes, *args.row_overclock]:
         recipe = g.recipes.get(member)
         if recipe is not None:
             out[member] = recipe.name
@@ -305,7 +306,7 @@ def power_view(g: GameData, st: WorldState, req, sol, machines: int, draw_mw: fl
         price_source=info.get("price_source", "grid mix"),
         mix=info.get("mix", []),
         overclock_inherited=info.get("overclock_inherited", True),
-        shards=st.shard_budget(),
+        shards=shard_stock(st),
     )
 
 

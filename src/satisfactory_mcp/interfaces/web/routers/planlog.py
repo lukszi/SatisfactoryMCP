@@ -92,6 +92,7 @@ class PlanArgsBody(TypedDict):
     payback_hours: float | None
     overclock_last: bool | None
     power_price: float | None
+    row_overclock: dict[str, str]
 
 
 class PlanStateBody(TypedDict):

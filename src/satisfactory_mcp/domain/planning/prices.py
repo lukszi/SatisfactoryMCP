@@ -1,16 +1,21 @@
 """What a machine costs to build and what a MWh costs to run, read from one save.
 
-docs/planner-payback-horizon_contract.md §3 is the specification. Nothing here is stored:
-the prices are derived per save and handed to the solver as plain numbers.
+docs/planner-payback-horizon_contract.md §3 is the specification. The prices are derived per
+save and handed to the solver as plain numbers; only the last scarcity tiers are stored.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 
+from ...core import atomic, filelock, schema
 from ...core.gamedata.model import GameData
 from ..power.report import BIOMASS_BURNERS, generator_building
+from .store import PlanStore
 
 __all__ = [
     "AREA_POINTS_M2",
@@ -30,8 +35,39 @@ SURPLUS_MINUTES = 60.0
 #: 1,000 points per 8 x 8 m foundation, plus that foundation's own 5 Concrete.
 AREA_POINTS_M2 = 1000 / 64 + 60 / 64
 
-#: Last tiers per world, for the hysteresis band. Process memory only.
-_last_tiers: dict[str, dict[tuple[str, str], float]] = {}
+TIER_SCHEMA = 1
+
+_log = logging.getLogger(__name__)
+
+
+def tiers_path(world: str) -> Path:
+    """The last tiers of ``world``, beside its plan log, shared by every process (contract §3.1)."""
+    return PlanStore.path_for(world).with_suffix("") / "tiers.json"
+
+
+def _read_tiers(path: Path) -> dict[tuple[str, str], float]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        schema.check(raw, TIER_SCHEMA, path)
+        lines = raw.get("tiers") or {}
+        return {
+            tuple(key.split("|", 1)): float(tier)
+            for key, tier in lines.items()
+            if "|" in key and float(tier) in TIERS
+        }
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, TypeError, AttributeError):
+        _log.warning("could not read %s; scarcity tiers start afresh", path, exc_info=True)
+        return {}
+
+
+def _write_tiers(path: Path, tiers: dict[tuple[str, str], float]) -> None:
+    payload = {
+        "schema": TIER_SCHEMA,
+        "tiers": {f"{b}|{i}": t for (b, i), t in sorted(tiers.items())},
+    }
+    atomic.write_text(path, json.dumps(payload, ensure_ascii=False))
 
 
 @dataclass(frozen=True)
@@ -82,8 +118,31 @@ def _tier(available: float, per_machine: float, before: float | None) -> float:
 def material_tiers(
     g: GameData, stock: dict[str, float], surplus: dict[str, float], world: str = ""
 ) -> dict[tuple[str, str], float]:
-    """``{(building, item): tier}`` for every build-cost line of every building."""
-    before = _last_tiers.get(world, {}) if world else {}
+    """``{(building, item): tier}`` for every build-cost line of every building.
+
+    With ``world`` the last tiers are read from and written back to ``tiers_path`` under its
+    lock, so the web server and the MCP server hold the same band."""
+    if not world:
+        return _tiers(g, stock, surplus, {})
+    path = tiers_path(world)
+    try:
+        with filelock.held(path):
+            before = _read_tiers(path)
+            out = _tiers(g, stock, surplus, before)
+            if out != before:
+                _write_tiers(path, out)
+            return out
+    except schema.NewerSchema:
+        _log.warning("%s is from a newer version; scarcity tiers are not stored", path)
+        return _tiers(g, stock, surplus, {})
+    except OSError:
+        _log.warning("scarcity tiers for %s not stored", world, exc_info=True)
+        return _tiers(g, stock, surplus, _read_tiers(path))
+
+
+def _tiers(
+    g: GameData, stock: dict[str, float], surplus: dict[str, float], before: dict
+) -> dict[tuple[str, str], float]:
     out: dict[tuple[str, str], float] = {}
     for cls, b in g.buildings.items():
         for f in b.build_cost:
@@ -93,8 +152,6 @@ def material_tiers(
                 0.0, surplus.get(f.item, 0.0)
             )
             out[(cls, f.item)] = _tier(available, f.amount, before.get((cls, f.item)))
-    if world:
-        _last_tiers[world] = dict(out)
     return out
 
 
