@@ -14,11 +14,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from mapgen.gamedata.caves import CAVE_BUFFER_CELLS, CAVE_CELL_CM, CAVE_MASK_PX, build_caves
+from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.test_heightfield import build_field, build_layered_field
-from tools import gen_world_heightmap as gen
 
 CELL_CM = 200.0
 #: x0, y0, z0, x1, y1, z1 in cm: 2..9 m under a ramp standing 4..6 m high.
@@ -200,11 +201,11 @@ def test_the_generator_builds_a_mask_the_reader_answers_from(tmp_path):
     corners = np.array(
         [[x, y, z] for x in (0.0, 4000.0) for y in (0.0, 4000.0) for z in (-6000.0, -1000.0)]
     )
-    centre = gen.ORIGIN_X_CM + 380.5 * gen.CAVE_CELL_CM
+    centre = ORIGIN_X_CM + 380.5 * CAVE_CELL_CM
     markers = np.array([[centre, centre, 0.0], [20000.0, 20000.0, 900.0]])
     found = {"hulls": [corners], "volumes": 1, "volumes_without_hull": 0, "markers": markers}
-    ground_dm = np.broadcast_to(np.int16(100), (gen.GRID_PX, gen.GRID_PX))
-    arrays, counts = gen.build_caves(found, ground_dm)
+    ground_dm = np.broadcast_to(np.int16(100), (GRID_PX, GRID_PX))
+    arrays, counts = build_caves(found, ground_dm)
     assert counts["markers_under_ground"] == 1, "a marker 1 m under the ground is not a cave"
     assert counts["hulls"] == 1
 
@@ -212,18 +213,18 @@ def test_the_generator_builds_a_mask_the_reader_answers_from(tmp_path):
     directory.mkdir()
     np.savez_compressed(directory / caves.DATA_NAME, **arrays)
     grid = {
-        "width": gen.CAVE_MASK_PX,
-        "height": gen.CAVE_MASK_PX,
-        "cell_cm": gen.CAVE_CELL_CM,
-        "x0_cm": gen.ORIGIN_X_CM,
-        "y0_cm": gen.ORIGIN_Y_CM,
+        "width": CAVE_MASK_PX,
+        "height": CAVE_MASK_PX,
+        "cell_cm": CAVE_CELL_CM,
+        "x0_cm": ORIGIN_X_CM,
+        "y0_cm": ORIGIN_Y_CM,
     }
     (directory / caves.META_NAME).write_text(json.dumps({"grid": grid}))
     loaded = caves.load_caves(directory)
     assert loaded.classify(2000, 2000, -3000) == caves.INSIDE
     assert loaded.classify(2000, 2000, 1000) == caves.BELOW
     assert loaded.classify(centre, centre) == caves.BELOW
-    buffer_cm = gen.CAVE_BUFFER_CELLS * gen.CAVE_CELL_CM
+    buffer_cm = CAVE_BUFFER_CELLS * CAVE_CELL_CM
     assert loaded.classify(centre + buffer_cm, centre) == caves.BELOW, "the buffer"
-    assert loaded.classify(centre + buffer_cm + gen.CAVE_CELL_CM, centre) == caves.NONE
+    assert loaded.classify(centre + buffer_cm + CAVE_CELL_CM, centre) == caves.NONE
     assert loaded.classify(20000, 20000) == caves.NONE

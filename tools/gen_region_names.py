@@ -26,10 +26,16 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "tools" / "mapgen" / "src"))
 
-from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
+# The corners and the edge-ratio statistic come from the generators that measured them, so
+# three artifacts cannot drift into three opinions about where the world is.
+from mapgen.common import base_parser, require_gen
+from mapgen.gamedata.biome import calibrate_biome
+from mapgen.gamedata.frame import BOUNDS_M
+from satisfactory_mcp.core.gameassets.container import open_container, read_artwork_sheet
+from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.maparea import (
     MAP_AREA_CLASS,
     MAP_AREA_PATH,
@@ -44,12 +50,6 @@ from satisfactory_mcp.core.gameassets.provenance import (
     read_path,
 )
 from satisfactory_mcp.domain.spatial import geo
-from tools._common import base_parser, require_gen
-
-# The corners and the edge-ratio statistic come from the generators that measured them, so
-# three artifacts cannot drift into three opinions about where the world is.
-from tools.gen_map_image import BOUNDS_M
-from tools.gen_map_renders import calibrate_biome, read_artwork_sheet
 
 DEST = ROOT / "data" / "region_names.json"
 
@@ -347,7 +347,7 @@ def main() -> int:
         print(f"no FactoryGame-Windows.utoc under {paks}")
         return 1
     print(f"reading the game's own assets from {paks} with pyooz {versions['pyooz']}")
-    store = IoStore(paks, "FactoryGame-Windows", oodle_decompress)
+    store = open_container(args.game)
     scripts = ScriptObjects(paks, oodle_decompress)
     try:
         areas = read_map_areas(store, scripts)

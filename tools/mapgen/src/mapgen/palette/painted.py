@@ -3,7 +3,7 @@
 Ground colour is the paint-layer weights of ``data/local/paint/`` times each layer's albedo,
 tinted by the PigmentMap, under the tree canopy; rocks, arches and the render-only meshes take
 their own colours; then a sky-and-sun light, a highlight shoulder and Beer-Lambert water.
-Every number is in ``tools/palettes/satellite-painted.json``. docs/spatial-and-map.md
+Every number is in ``palette/palettes/satellite-painted.json``. docs/spatial-and-map.md
 section 27 explains each step and the weak spots it addresses.
 """
 
@@ -15,9 +15,27 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
+from mapgen.gamedata.paint import CANOPY_NAME, META_NAME, PIGMENT_NAME
+from mapgen.palette.shore import add_foam, wet_band
+from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL
 from satisfactory_mcp.domain.spatial import heightfield as hf
-from tools import gen_paint_layers as paint
-from tools import map_shore
+
+__all__ = [
+    "ROCK_GRID_M",
+    "PaintedGround",
+    "biome_grid",
+    "dry_land_range",
+    "layer_table",
+    "linear_from_oklab",
+    "linear_to_srgb",
+    "load_paint_meta",
+    "mix_layers",
+    "oklab",
+    "painted_colours",
+    "ramp_position",
+    "seam_blend",
+    "srgb_to_linear",
+]
 
 #: OKLab, Björn Ottosson's matrices.
 _M1 = np.array(
@@ -85,7 +103,7 @@ def dry_land_range(field, lo_pct: float, hi_pct: float) -> tuple[float, float, n
 
 def load_paint_meta(paint_dir: Path) -> dict | None:
     try:
-        return json.loads((paint_dir / paint.META_NAME).read_text(encoding="utf-8"))
+        return json.loads((paint_dir / META_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
@@ -202,13 +220,13 @@ class PaintedGround:
         self.albedo = [albedo[..., k].astype(np.float16) for k in range(3)]
         self.rock = self._rock(albedo)
         del albedo
-        self.canopy = _plane(paint_dir, meta, paint.CANOPY_NAME)
+        self.canopy = _plane(paint_dir, meta, CANOPY_NAME)
         self.canopy_rgb = np.asarray(meta["albedo_linear"]["canopy"], np.float32) * np.float32(
             palette["canopy_dark"]
         )
         self.mesh_rgb = {
-            map_shore.MESH_CORAL: srgb_to_linear(palette["mesh_colours"]["coral"]),
-            map_shore.MESH_SHELL: srgb_to_linear(palette["mesh_colours"]["shell"]),
+            MESH_CORAL: srgb_to_linear(palette["mesh_colours"]["coral"]),
+            MESH_SHELL: srgb_to_linear(palette["mesh_colours"]["shell"]),
         }
         self.seabed_coral = srgb_to_linear(palette["mesh_colours"]["coral_seabed"])
         water = palette["water"]
@@ -227,7 +245,7 @@ class PaintedGround:
         strength = np.float32(self.palette["pigment"])
         if not strength:
             return albedo
-        texture = srgb_to_linear(_plane(paint_dir, self.meta, paint.PIGMENT_NAME))
+        texture = srgb_to_linear(_plane(paint_dir, self.meta, PIGMENT_NAME))
         side = texture.shape[0]
         coords = (np.arange(rows, dtype=np.float32) + 0.5) * side / rows - 0.5
         rr, cc = np.meshgrid(
@@ -322,7 +340,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
         colour = rock_rgb.copy()
         for which, rgb in ground.mesh_rgb.items():
             colour = np.where((cls == which)[..., None], rgb, colour)
-        under = (cls == map_shore.MESH_CORAL) & (scene["water"]["depth_m"] > 0)
+        under = (cls == MESH_CORAL) & (scene["water"]["depth_m"] > 0)
         colour = np.where(under[..., None], ground.seabed_coral, colour)
         g = g * (1.0 - mesh_w[..., None]) + colour * mesh_w[..., None]
 
@@ -345,7 +363,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     lit = g * light * (exposure * borrow)[..., None]
 
     water = scene["water"]
-    lit = map_shore.wet_band(lit, water, p["shore"].get("wet_band"))
+    lit = wet_band(lit, water, p["shore"].get("wet_band"))
     w = ground.water
     depth = water["depth_m"][..., None]
     transmit = np.exp(-w["k"] * depth)
@@ -358,7 +376,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     stroke = np.float32(p["shore"]["stroke"])
     if stroke:
         out = out * (1.0 - stroke * water["edge"][..., None])
-    out = map_shore.add_foam(out, water, p["shore"].get("foam"), np.float32(1.0))
+    out = add_foam(out, water, p["shore"].get("foam"), np.float32(1.0))
 
     shoulder = np.float32(p["shoulder"])
     over = np.maximum(out - shoulder, 0.0)

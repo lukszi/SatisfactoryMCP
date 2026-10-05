@@ -72,7 +72,8 @@ ARTWORK_RECIPES: dict[int, dict] = {
     2: {"label": "ESRGAN", "version": 1, "requires": {}},
 }
 
-#: Palettes. A render's style ``id`` is its palette file's name under ``tools/palettes/``,
+#: Palettes. A render's style ``id`` is its palette file's name under
+#: ``tools/mapgen/src/mapgen/palette/palettes/``,
 #: and the version is bumped when a palette changes on purpose; the file's hash is the digest.
 STYLES: dict[str, dict] = {
     "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 2},

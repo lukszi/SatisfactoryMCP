@@ -15,12 +15,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from mapgen.gamedata.mesh import winding_sign
+from mapgen.gamedata.rocks import _element_points, build_rock_pack
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.spatial import caves, rocks
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.test_caves import HULL, fixture_mask, write_caves
 from tests.test_heightfield import build_layered_field
-from tools import gen_world_heightmap as gen
 
 ROCK = "/Game/FactoryGame/World/Environment/Rock/Slab"
 ARCH = "/Game/FactoryGame/World/Environment/Rock/ArcStone"
@@ -56,7 +57,7 @@ def pack_arrays() -> tuple[dict, dict]:
             ROCK: {
                 "verts": slab[0],
                 "tris": slab[1],
-                "winding": gen.winding_sign(*slab),
+                "winding": winding_sign(*slab),
                 "source": "trimesh",
                 "render_lod_triangles": 12,
                 "cooked_triangles": 12,
@@ -64,7 +65,7 @@ def pack_arrays() -> tuple[dict, dict]:
             ARCH: {
                 "verts": arch[0],
                 "tris": arch[1],
-                "winding": gen.winding_sign(*arch),
+                "winding": winding_sign(*arch),
                 "source": "trimesh",
                 "render_lod_triangles": 12,
                 "cooked_triangles": 12,
@@ -93,7 +94,7 @@ def pack_arrays() -> tuple[dict, dict]:
         [[400, 200, -500], [600, 200, -500], [600, 400, -500], [400, 400, -500]], float
     )
     floors = {"pieces": [(sheet, np.array([[0, 1, 2], [0, 2, 3]]))], "actors": 1, "undecoded": 0}
-    return gen.build_rock_pack(sweep, collision, floors)
+    return build_rock_pack(sweep, collision, floors)
 
 
 def write_pack(directory: Path, build: str = BUILD) -> None:
@@ -184,12 +185,12 @@ def test_the_simple_elements_become_closed_outward_hulls():
     def d3(*v: float) -> bytes:
         return struct.pack("<3d", *v)
 
-    cube = gen._element_points(
+    cube = _element_points(
         "BoxElems",
         {"Center": d3(10, 0, 0), "Rotation": d3(0, 0, 0), "X": f32(4), "Y": f32(6), "Z": f32(8)},
     )
     assert cube.min(0) == pytest.approx([8, -3, -4]) and cube.max(0) == pytest.approx([12, 3, 4])
-    capsule = gen._element_points(
+    capsule = _element_points(
         "SphylElems",
         {"Center": d3(0, 0, 0), "Rotation": d3(0, 0, 0), "Radius": f32(10), "Length": f32(40)},
     )

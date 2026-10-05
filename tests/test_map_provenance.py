@@ -9,9 +9,22 @@ from __future__ import annotations
 
 import json
 
+from mapgen.artwork import ENHANCE_RECIPE, ENHANCE_RECIPES, artwork_provenance
+from mapgen.heightmap import GENERATOR_VERSION
+from mapgen.palette.styles import (
+    BIOME_COLOURS,
+    LAYER_STYLES,
+    PALETTE_DIR,
+    RAMP_STOPS,
+    SATELLITE_PALETTE,
+    TERRAIN_PALETTE,
+    load_palette,
+)
+from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY, RECIPES
+from mapgen.tiles.sidecar import build_sidecar
 from satisfactory_mcp.core.gameassets import provenance, versions
+from satisfactory_mcp.core.gameassets.versions import CAVES_VERSION
 from satisfactory_mcp.domain.maps import axes as ax
-from tools import gen_map_image, gen_map_renders, gen_world_heightmap
 
 GAME_RAW = {
     "Changelist": 502094,
@@ -21,30 +34,26 @@ GAME_RAW = {
 
 
 def test_the_tools_take_their_versions_from_the_shared_table():
-    assert gen_world_heightmap.GENERATOR_VERSION == versions.HEIGHTFIELD_GENERATOR_VERSION
-    assert gen_world_heightmap.CAVES_VERSION == versions.CAVES_VERSION
-    assert gen_map_renders.RECIPE == versions.RENDER_RECIPE_CURRENT
-    assert gen_map_renders.RECIPE_KERNEL_ONLY == versions.RENDER_RECIPE_KERNEL_ONLY
-    assert set(gen_map_renders.RECIPES) == set(versions.RENDER_RECIPES)
-    assert set(gen_map_image.ENHANCE_RECIPES) == set(versions.ARTWORK_RECIPES)
+    assert GENERATOR_VERSION == versions.HEIGHTFIELD_GENERATOR_VERSION
+    assert CAVES_VERSION == versions.CAVES_VERSION
+    assert RECIPE == versions.RENDER_RECIPE_CURRENT
+    assert RECIPE_KERNEL_ONLY == versions.RENDER_RECIPE_KERNEL_ONLY
+    assert set(RECIPES) == set(versions.RENDER_RECIPES)
+    assert set(ENHANCE_RECIPES) == set(versions.ARTWORK_RECIPES)
     assert versions.READER_VERSIONS["cliff_geometry"] == versions.HEIGHTFIELD_GENERATOR_VERSION
 
 
 def test_palettes_are_files_and_the_digest_is_their_content():
-    for layer, style in gen_map_renders.LAYER_STYLES.items():
+    for layer, style in LAYER_STYLES.items():
         assert style in versions.STYLES
         assert versions.STYLES[style]["layer"] == layer
         assert ax.LAYER_STYLE[layer] == style
-        palette, digest = gen_map_renders.load_palette(style)
+        palette, digest = load_palette(style)
         assert digest.startswith("sha256:") and len(digest) == 71
-        assert palette == json.loads(
-            (gen_map_renders.PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8")
-        )
+        assert palette == json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
     # The constants the painters draw with are the file's numbers, not a copy of them.
-    assert gen_map_renders.RAMP_STOPS.tolist() == gen_map_renders.TERRAIN_PALETTE["ramp_stops"]
-    assert gen_map_renders.BIOME_COLOURS["Area_Swamp"] == tuple(
-        gen_map_renders.SATELLITE_PALETTE["biome_colours"]["Area_Swamp"]
-    )
+    assert RAMP_STOPS.tolist() == TERRAIN_PALETTE["ramp_stops"]
+    assert BIOME_COLOURS["Area_Swamp"] == tuple(SATELLITE_PALETTE["biome_colours"]["Area_Swamp"])
 
 
 def test_a_directory_digest_is_order_free_and_moves_with_any_file():
@@ -74,7 +83,7 @@ def test_a_render_sidecar_carries_the_block_and_the_registry_reads_it_back():
          "two_regime": True, "size_px": 4096, "subsamples": 1},
         {"id": "terrain-hypsometric", "version": 1, "label": "terrain", "digest": "sha256:bb"},
     )  # fmt: skip
-    sidecar = gen_map_renders.build_sidecar(
+    sidecar = build_sidecar(
         layer="terrain",
         field_meta={"generator": "tools/gen_world_heightmap.py", "generator_version": 5},
         tiles={"count": 1},
@@ -92,19 +101,19 @@ def test_a_render_sidecar_carries_the_block_and_the_registry_reads_it_back():
     assert read["renderer"]["recipe"] == 5 and read["style"]["digest"] == "sha256:bb"
     assert ax.display_name(read) == "terrain · PCHIP r5 · data 502094/hf v5"
     # And the existing keys are untouched: the change is additive.
-    assert sidecar["_meta"]["recipe"] == gen_map_renders.RECIPE
+    assert sidecar["_meta"]["recipe"] == RECIPE
     assert "staleness" in sidecar["_meta"]
 
 
 def test_the_artwork_sidecar_names_its_sheet_and_its_cutting_recipe():
-    block = gen_map_image.artwork_provenance(GAME_RAW, "sha256:cc", True, 8192)
+    block = artwork_provenance(GAME_RAW, "sha256:cc", True, 8192)
     assert block["inputs"]["artwork_sheet"] == {
         "cl": 502094,
         "reader_version": versions.READER_VERSIONS["artwork_sheet"],
         "digest": "sha256:cc",
     }
     assert block["renderer"]["family"] == "artwork"
-    assert block["renderer"]["recipe"] == gen_map_image.ENHANCE_RECIPE
-    plain = gen_map_image.artwork_provenance(GAME_RAW, "sha256:cc", False, 8192)
+    assert block["renderer"]["recipe"] == ENHANCE_RECIPE
+    plain = artwork_provenance(GAME_RAW, "sha256:cc", False, 8192)
     assert plain["renderer"]["recipe"] == 0
     assert ax.display_name({**plain, "inferred": False}) == "artwork · plain · data 502094"

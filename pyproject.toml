@@ -61,7 +61,9 @@ packages = ["src/satisfactory_mcp", "src/pioneersav"]
 exclude = ["src/satisfactory_mcp/interfaces/web/frontend"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "tools/mapgen/tests"]
+# mapgen is a workspace member; this finds it before `uv sync --all-packages` has run.
+pythonpath = ["tools/mapgen/src"]
 markers = [
     "integration: requires the real game install / save files",
     # Hoisted to the front of the run by ``pytest_collection_modifyitems`` in
