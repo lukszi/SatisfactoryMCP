@@ -415,7 +415,7 @@ dashboard counts the same tuple (docs/frontend_vision.md §8.6), and so does the
 `frontend/src/placements.ts` keeps no list of its own.
 
 **How the map marks a machine.** The fill stays the kind's hue (machines blue, extractors
-amber, generators tan); the outline carries the state:
+ultramarine, generators mint); the outline carries the state:
 
 | mark | meaning |
 |---|---|
@@ -429,13 +429,14 @@ machine runs again as soon as its output is emptied, so it is waiting on downstr
 than broken. It still counts as `actionable`.
 
 The outline red is `placements/stopped` (`#d9534f`); the page's CSS problem colour is `--bad`.
-Generators moved off that red to a warm tan (`placements/generators`, `#b89a70`), so a
-generator no longer reads as a fault, and a stopped one is the only generator drawn in red.
+Generators moved off that red to a warm tan, so a generator no longer reads as a fault, and
+a stopped one is the only generator drawn in red. On 2026-10-05 the tan became pale mint
+(`#a3f5b4`) and the extractor amber became ultramarine (`#19039c`), see frontend_vision.md T2.
 
 The yellow is `placements/blocked`, `#ffd000`, a new colour: the palette had no yellow free.
 The ore and pickup yellows are node dots, and an equal hex in another module is dE 0 and
 fails the audit. Measured CIE76 distances: gold dot 23.4, yellow slug 26.9, sulfur 27.0,
-extractor amber 33.0 (same owner, so the audit does not compare it; measured by hand) and
+the then extractor amber 33.0 (same owner, so the audit does not compare it; measured by hand) and
 loot cache 46.7. A darker ochre landed within 16–19 of the extractor amber, and a paler butter
 yellow within 10–15 of gold and sulfur.
 
