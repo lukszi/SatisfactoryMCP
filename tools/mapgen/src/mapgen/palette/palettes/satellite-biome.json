@@ -152,5 +152,40 @@
    "white": 0.85,
    "width_m": 1.0
   }
+ },
+ "falls": {
+  "about": "foam streak at the lip, foam ring and mist where it lands; raise-only",
+  "foam": [
+   234,
+   239,
+   240
+  ],
+  "mist_rgb": [
+   212,
+   222,
+   226
+  ],
+  "streak": 0.85,
+  "streak_end": 0.55,
+  "pool": 0.55,
+  "core": 0.8,
+  "ring_width": 0.6,
+  "mist": 0.28,
+  "mist_reach": 1.8,
+  "edge_m": 0.6,
+  "spread": [
+   0.05,
+   2.0,
+   9.0
+  ],
+  "pool_radius": [
+   0.08,
+   3.0,
+   10.0
+  ],
+  "top": 0.45,
+  "above_m": 3.0,
+  "strands": 0.35,
+  "pool_below": 0.4
  }
 }

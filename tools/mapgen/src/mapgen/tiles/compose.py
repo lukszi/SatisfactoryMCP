@@ -18,6 +18,7 @@ from mapgen.lighting.hillshade import (
     slope_degrees,
     sun_dot,
 )
+from mapgen.palette.falls import draw_falls
 from mapgen.palette.painted import ROCK_GRID_M, painted_colours
 from mapgen.palette.rivers import water_sources
 from mapgen.palette.shore import MESH_FULL_LIFT_M, blend_water, composite_meshes, shore_terms
@@ -168,6 +169,7 @@ def render_layer(
     overlay=None,
     kernel=None,
     meshes=None,
+    falls=None,
     reach=None,
     painted=None,
     window=None,
@@ -179,18 +181,17 @@ def render_layer(
     float32 intermediates over it, four gigabytes apiece whole. Each band is computed with
     BAND_HALO extra rows on both sides and cropped afterwards, so neither the hillshade's
     gradient nor the cubic sampler's stencil nor the water blur's kernel ever sees a band
-    edge: a one-sided difference at every 256th row would
-    draw 127 horizontal lines across the world.
+    edge: a one-sided difference at every 256th row would draw 127 lines across the world.
 
     ``direct`` is the pair of memory maps the direct pass wrote, with the weight plane and
     the sub-sampling beside them; ``None`` draws the single-regime picture. ``seam`` and
     ``regimes`` are accumulators, passed for the first layer only, both layers drawing the
     identical surface. ``overlay`` is the arch-and-boulder pair of maps and its sub-sampling,
-    composited last. ``kernel`` builds the smooth taps: ``taps_pchip`` unless told otherwise.
-    ``meshes`` is the render-only mesh raster (z, class); ``reach`` the 1 m plane where the
-    ocean's crossing rule applies, ``None`` for recipe 5's water everywhere; ``painted`` the
-    ``palette.painted.PaintedGround`` the painted layer samples. ``window`` draws only rows
-    ``[r0, r1)`` and columns ``[c0, c1)`` of the sheet, with every raster passed in cut to it.
+    composited last. ``kernel`` builds the smooth taps, ``taps_pchip`` by default.
+    ``meshes`` is the render-only mesh raster (z, class); ``falls`` the prepared waterfalls;
+    ``reach`` the 1 m plane of the ocean's crossing rule, ``None`` for recipe 5's water;
+    ``painted`` the ``PaintedGround`` the painted layer samples. ``window`` draws rows
+    ``[r0, r1)`` and columns ``[c0, c1)`` only, every raster passed in cut to it.
     ``rivers`` is the ``palette.rivers.RiverWater`` whose ribbons and reconciled water are
     drawn in place of the field's river water; ``None`` draws the field's water alone.
     """
@@ -358,6 +359,7 @@ def render_layer(
                 scene["noise"] = sample_noise(noise, np.arange(lo, hi), column_index, size)
             rgb = painter(scene)
         rgb = with_sea(rgb, missing)
+        rgb = draw_falls(rgb, falls, layer, x_cm, y_cm[lo:hi], z_m, spacing_m)
         out[top - r0 : bottom - r0] = np.clip(rgb[top - lo : bottom - lo], 0, 255).astype(np.uint8)
         if progress and (top // BAND_ROWS) % 16 == 0:
             done = (bottom - r0) / (r1 - r0)

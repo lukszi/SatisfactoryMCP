@@ -68,6 +68,7 @@ INPUT_NAMES = {
     "cliff_geometry": "cliff geometry reader",
     "render_meshes": "render mesh reader",
     "river_splines": "river spline reader",
+    "waterfalls": "waterfall reader",
 }
 
 

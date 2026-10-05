@@ -1,6 +1,6 @@
 """Recipe 7: the rivers drawn from the game's own river splines.
 
-docs/spatial-and-map.md section 28. Synthetic fixtures throughout: no install, no field.
+docs/spatial-and-map.md section 29. Synthetic fixtures throughout: no install, no field.
 """
 
 from __future__ import annotations
@@ -149,7 +149,7 @@ def test_a_shallow_river_still_reads_as_water_once_in_from_its_bank():
 
 
 def test_without_rivers_the_shore_composite_is_unchanged():
-    z, spacing = _valley()
+    z, _spacing = _valley()
     land = np.full((*z.shape, 3), 120.0, np.float32)
     terms = _flat_terms(z.shape, cover=0.5, depth_m=1.0)
     legacy = {k: v for k, v in terms.items() if k not in ("banks", "river", "river_below_m")}

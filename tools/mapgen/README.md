@@ -129,6 +129,7 @@ be traced to the axis it should move.
 | `terrain/validate.py` | data | Heightfield gates (nodes, bare terrain, water), per-layer accuracy, the water block |
 | `terrain/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `gamedata/rivers.py` | data | River splines (`BP_River_PROT_C`), sampling, the 1 m ribbon planes |
+| `gamedata/waterfalls.py` | data | Waterfall records from the `BP_WaterFallTool_02` actors, and their cache |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid, render-only meshes |
@@ -138,6 +139,7 @@ be traced to the axis it should move.
 | `palette/painted.py` | style | The game-painted ground |
 | `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
 | `palette/rivers.py` | style | River water: reconciled with the field's, laid over each band |
+| `palette/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
 | `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |

@@ -72,6 +72,7 @@ from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, base_parser, require_gen
 from mapgen.gamedata.biome import calibrate_biome, read_biome, region_table_is_current
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.gamedata.paint import PAINT_DIR
+from mapgen.gamedata.waterfalls import FALLS_CACHE_DIR_NAME, falls_input
 from mapgen.lighting.hillshade import (
     BORROW_CLAMP,
     BORROW_DETAIL_SIGMA_PX,
@@ -84,6 +85,7 @@ from mapgen.lighting.hillshade import (
     artwork_detail,
     coarse_province,
 )
+from mapgen.palette.falls import prepare_falls
 from mapgen.palette.painted import PaintedGround, load_paint_meta
 from mapgen.palette.rivers import load_rivers
 from mapgen.palette.shore import OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
@@ -279,7 +281,7 @@ def main() -> int:
     parser.add_argument(
         "--no-meshes",
         action="store_true",
-        help="leave out the render-only coral, shell and pillar meshes",
+        help="leave out the render-only meshes and the waterfalls",
     )
     parser.add_argument(
         "--paint-dir",
@@ -760,7 +762,7 @@ def main() -> int:
                 return 7
             top = (top_maps[0], top_maps[1], args.direct_subsamples)
 
-    meshes = None
+    meshes = falls = None
     mesh_source: dict = {}
     if weight_plane is not None and not args.no_meshes:
         cache_root = args.cache_dir or out_dir / args.renders_name
@@ -789,10 +791,11 @@ def main() -> int:
                     )
                 }
             }
-        inputs["render_meshes"] = {
-            "cl": changelist(field_build),
-            "reader_version": READER_VERSIONS["render_meshes"],
-        }
+        records, falls_source = falls_input(cache_root, field_build, sweep_once)
+        falls, mesh_source = prepare_falls(records, field), {**mesh_source, **falls_source}
+        falls_source["waterfalls"]["drawable"] = len(falls)
+        for name in ("render_meshes", "waterfalls"):
+            inputs[name] = {"cl": changelist(field_build), "reader_version": READER_VERSIONS[name]}
     rivers, river_meta = (None, {}) if args.kernel_only else load_rivers(
         (args.cache_dir or out_dir / args.renders_name) / RIVER_CACHE_DIR_NAME,
         field_build, sweep_once, field,
@@ -848,6 +851,7 @@ def main() -> int:
             overlay=top,
             kernel=taps_cubic if args.kernel_only else taps_pchip,
             meshes=meshes,
+            falls=falls,
             reach=reach,
             painted=painted if layer == "painted" else None,
             rivers=rivers,
@@ -1023,7 +1027,7 @@ def main() -> int:
         direct = maps = top = top_maps = meshes = None
         if not args.keep_direct:
             kept_dirs = (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME)
-            for kept in (*kept_dirs, RIVER_CACHE_DIR_NAME):
+            for kept in (*kept_dirs, RIVER_CACHE_DIR_NAME, FALLS_CACHE_DIR_NAME):
                 root = args.cache_dir or out_dir / args.renders_name
                 shutil.rmtree(root / kept, ignore_errors=True)
     print(f"done in {time.time() - total_started:.0f}s")

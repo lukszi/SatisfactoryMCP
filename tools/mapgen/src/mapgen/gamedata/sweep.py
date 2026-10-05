@@ -261,14 +261,33 @@ def foliage_instances(
     return mesh, world
 
 
+def _placement(view, slot) -> tuple | None:
+    """``(mesh path, x, y, z, pitch, yaw, roll, sx, sy, sz)`` of a root mesh component."""
+    props = view.props(slot)
+    reference = props.get("StaticMesh")
+    location = props.get("RelativeLocation")
+    if reference is None or location is None or len(location) != 24:
+        return None
+    mesh = view.import_path(reference)
+    if not mesh:
+        return None
+    rotation = props.get("RelativeRotation")
+    scale = props.get("RelativeScale3D")
+    turn = struct.unpack("<3d", rotation) if rotation and len(rotation) == 24 else (0.0,) * 3
+    size = struct.unpack("<3d", scale) if scale and len(scale) == 24 else (1.0,) * 3
+    return (mesh, *struct.unpack("<3d", location), *turn, *size)
+
+
 def sweep_levels(
-    store, scripts, classes, meshes, progress: bool = True, extra_foliage=None
+    store, scripts, classes, meshes, progress: bool = True, extra_foliage=None, read_actor=None
 ) -> dict:
     """One pass over every ``*.umap`` of the world: landscape, placements, water actors.
 
     All three harvests need the same ``PackageView`` of the same 4,521 packages, and
     building that view is the whole cost of the pass, so they share it. Returns raw material
-    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in ``extra_foliage``.
+    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in ``extra_foliage``;
+    whatever ``read_actor(view, slot, class path, classes)`` returns for a level actor, in
+    ``actors``.
     """
     components: list[tuple[int, int, np.ndarray]] = []
     proxies: list[tuple[float, float, float, float, float, float]] = []
@@ -284,6 +303,7 @@ def sweep_levels(
     owner_ids: dict[str, int] = {}
     foliage: dict[str, list[np.ndarray]] = {}
     extra: dict[str, list[np.ndarray]] = {}
+    actors: list = []
     unreadable = 0
     malformed = 0
     started = time.time()
@@ -306,6 +326,10 @@ def sweep_levels(
                 root_owner[root] = class_name_of(class_path)
 
         for slot, class_path in view.class_of.items():
+            if read_actor is not None and view.outer_of.get(slot) in view.level_slots:
+                found = read_actor(view, slot, class_path, classes)
+                if found is not None:
+                    actors.append(found)
             name = class_name_of(class_path)
             if name == "LandscapeStreamingProxy":
                 props = view.props(slot)
@@ -333,30 +357,12 @@ def sweep_levels(
                     continue
                 components.append((base_x, base_y, heights))
             elif name == "StaticMeshComponent":
-                if slot not in root_owner:
+                placed = _placement(view, slot) if slot in root_owner else None
+                if placed is None:
                     continue
-                props = view.props(slot)
-                reference = props.get("StaticMesh")
-                location = props.get("RelativeLocation")
-                if reference is None or location is None or len(location) != 24:
-                    continue
-                mesh = view.import_path(reference)
-                if not mesh:
-                    continue
-                rotation = props.get("RelativeRotation")
-                scale = props.get("RelativeScale3D")
-                x, y, z = struct.unpack("<3d", location)
-                turn = (0.0, 0.0, 0.0)
-                if rotation and len(rotation) == 24:
-                    turn = struct.unpack("<3d", rotation)
-                size = (1.0, 1.0, 1.0)
-                if scale and len(scale) == 24:
-                    size = struct.unpack("<3d", scale)
-                pitch, yaw, roll = turn
-                sx, sy, sz = size
-                mesh_id = mesh_ids.setdefault(mesh, len(mesh_ids))
+                mesh_id = mesh_ids.setdefault(placed[0], len(mesh_ids))
                 owner_id = owner_ids.setdefault(root_owner[slot], len(owner_ids))
-                placements.append((mesh_id, owner_id, x, y, z, pitch, yaw, roll, sx, sy, sz))
+                placements.append((mesh_id, owner_id, *placed[1:]))
             elif name in FOLIAGE_CLASSES:
                 found = foliage_instances(
                     view,
@@ -404,6 +410,7 @@ def sweep_levels(
         "rivers": rivers,
         "foliage": {mesh: np.concatenate(parts) for mesh, parts in foliage.items()},
         "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in extra.items()},
+        "actors": actors,
         "seconds": time.time() - started,
     }
 

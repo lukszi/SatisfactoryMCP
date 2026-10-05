@@ -31,6 +31,7 @@ from mapgen.gamedata.mesh import (
     winding_sign,
 )
 from mapgen.gamedata.sweep import is_top_foliage, sweep_levels
+from mapgen.gamedata.waterfalls import read_fall
 from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.packages import PackageView
 
@@ -42,8 +43,10 @@ __all__ = [
     "MESH_FOLIAGE_BATCH",
     "MESH_ROCK",
     "MESH_SHELL",
+    "MESH_TERRACE",
     "RENDER_ONLY_DIRS",
     "RENDER_ONLY_FOLIAGE_MARKS",
+    "RENDER_ONLY_FOLIAGE_MESHES",
     "RENDER_ONLY_MESHES",
     "TOP_FOLIAGE_BATCH",
     "add_placements",
@@ -85,13 +88,24 @@ TOP_FOLIAGE_BATCH = 512
 
 
 #: Which meshes are drawn on the map and never enter the heightfield.
-RENDER_ONLY_DIRS = ("/World/Environment/Foliage/Coral/", "/World/Environment/UnderWater/")
+RENDER_ONLY_DIRS = (
+    "/World/Environment/Foliage/Coral/",
+    "/World/Environment/UnderWater/",
+    "/World/Environment/HotSpring/",
+)
 RENDER_ONLY_FOLIAGE_MARKS = ("/Rubble/", "SeaRock")
+RENDER_ONLY_FOLIAGE_MESHES = frozenset({"SmoothRock_03", "SnakeStone_01"})
 RENDER_ONLY_MESHES = EXCLUDED_MESHES
+ROCK_CLASS_MARKS = ("CliffPillar", "Rubble", "RockPile", "SeaRock", "SmoothRock", "SnakeStone")
 
 #: Mesh classes, as stored in the cache's class plane. 0 is nothing.
-MESH_CORAL, MESH_SHELL, MESH_ROCK = 1, 2, 3
-MESH_CLASS_NAMES = {MESH_CORAL: "coral", MESH_SHELL: "shell", MESH_ROCK: "rock"}
+MESH_CORAL, MESH_SHELL, MESH_ROCK, MESH_TERRACE = 1, 2, 3, 4
+MESH_CLASS_NAMES = {
+    MESH_CORAL: "coral",
+    MESH_SHELL: "shell",
+    MESH_ROCK: "rock",
+    MESH_TERRACE: "terrace",
+}
 
 
 MESH_FOLIAGE_BATCH = 512
@@ -150,6 +164,7 @@ def sweep_world(store, scripts, index, classes, progress: bool = True) -> dict:
         MeshBounds(store, scripts, index),
         progress,
         extra_foliage=is_render_only_foliage,
+        read_actor=read_fall,
     )
 
 
@@ -430,6 +445,8 @@ def is_render_only_static(mesh: str) -> bool:
 def is_render_only_foliage(mesh: str) -> bool:
     if is_top_foliage(mesh):
         return False
+    if mesh.rsplit("/", 1)[-1] in RENDER_ONLY_FOLIAGE_MESHES:
+        return True
     return any(d in mesh for d in RENDER_ONLY_DIRS) or any(
         m in mesh for m in RENDER_ONLY_FOLIAGE_MARKS
     )
@@ -439,7 +456,9 @@ def mesh_class(mesh: str) -> int:
     name = mesh.rsplit("/", 1)[-1]
     if "Shell" in name:
         return MESH_SHELL
-    if any(mark in name for mark in ("CliffPillar", "Rubble", "RockPile", "SeaRock")):
+    if "/HotSpring/" in mesh:
+        return MESH_TERRACE
+    if any(mark in name for mark in ROCK_CLASS_MARKS):
         return MESH_ROCK
     return MESH_CORAL
 
