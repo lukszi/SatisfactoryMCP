@@ -14,10 +14,14 @@ what a reader can check against their own install without trusting this file's f
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import shutil
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+
+from .versions import PROVENANCE_SCHEMA
 
 #: The engine's own version file, the one the build system writes beside the executable.
 VERSION_GLOB = "Engine/Binaries/Win64/*-Win64-Shipping.version"
@@ -155,6 +159,49 @@ def stale_artifacts(game: Path, data: Path) -> list[str]:
         "different one, so positions and names taken from them may not be where the game now "
         "puts them: " + "; ".join(drifted) + ". Re-run the generators in tools/"
     ]
+
+
+def sha256_hex(*blobs: bytes | memoryview) -> str:
+    """``sha256:<hex>`` over the blobs in order, the spelling every ``digest`` field uses."""
+    digest = hashlib.sha256()
+    for blob in blobs:
+        digest.update(blob)
+    return "sha256:" + digest.hexdigest()
+
+
+def files_digest(hashes: Mapping[str, str]) -> str:
+    """One digest for a directory: sha256 over the sorted ``name:sha256`` lines."""
+    lines = "".join(f"{name}:{hashes[name]}\n" for name in sorted(hashes))
+    return sha256_hex(lines.encode("utf-8"))
+
+
+def changelist(raw: object) -> int | None:
+    """The build number out of a raw version JSON or a pin string, or ``None``."""
+    if isinstance(raw, dict):
+        value = raw.get("Changelist")
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+    if isinstance(raw, str):
+        found = re.search(r"buildVersion (\d+)", raw)
+        return int(found.group(1)) if found else None
+    return None
+
+
+def provenance_block(game_raw: Mapping, inputs: dict, renderer: dict, style: dict) -> dict:
+    """The ``_meta.provenance`` block every map generator writes (docs/maps_contract.md §3).
+
+    ``inputs`` lists only what this map read; each entry carries its own ``cl``.
+    """
+    return {
+        "schema": PROVENANCE_SCHEMA,
+        "game": {
+            "cl": changelist(dict(game_raw)),
+            "branch": game_raw.get("BranchName"),
+            "game_version": game_raw.get("GameVersion"),
+        },
+        "inputs": inputs,
+        "renderer": renderer,
+        "style": style,
+    }
 
 
 def install_directory(out_dir: Path, payload: Mapping[str, bytes]) -> dict[str, int]:

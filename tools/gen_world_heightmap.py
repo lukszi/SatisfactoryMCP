@@ -74,11 +74,17 @@ from satisfactory_mcp.core.gameassets.packages import (
 )
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
+    files_digest,
     install_directory,
     installed_build,
     read_str_path,
+    sha256_hex,
 )
 from satisfactory_mcp.core.gameassets.textures import decode_bc1_rgba, raw_mip_sizes
+from satisfactory_mcp.core.gameassets.versions import (
+    CAVES_VERSION,
+    HEIGHTFIELD_GENERATOR_VERSION,
+)
 from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tools._common import base_parser, require_gen
@@ -265,7 +271,8 @@ LOCAL_DIR = ROOT / "data" / "local"
 #: plane, and the provenance value that says which side of one sample per texel a cliff
 #: texel is on. 4 adds ``terrain.u16.z`` and ``top.i16.z`` beside an unchanged ground. 5
 #: samples the rock and top rasters at the vertex the reader reads, not the texel centre.
-GENERATOR_VERSION = 5
+#: The number lives in ``core.gameassets.versions``, where the server reads it too.
+GENERATOR_VERSION = HEIGHTFIELD_GENERATOR_VERSION
 
 #: ``LandscapeSectionOffset - location / scale`` on every proxy, in landscape quads. The
 #: terrain plane's georeference is derived from it, so a cook that moves it must fail here.
@@ -2044,6 +2051,7 @@ def build_meta(
         "units": "decimetres above sea level, int16",
         "nodata": hf.NODATA,
         "files": files,
+        "digest": files_digest({name: entry["sha256"] for name, entry in files.items()}),
         "provenance": accuracy_block(validation),
         "coverage": {
             **{k: round(v, 6) for k, v in field["coverage"].items()},
@@ -2377,8 +2385,6 @@ def pinned_build(meta: dict) -> str | None:
 # The cave masks (``--caves``): their own directory, read beside any field version.
 # --------------------------------------------------------------------------------------
 
-CAVES_VERSION = 1
-
 #: Foliage under these mesh trees is cave decoration. ``SM_NonCave_*`` stalactites hang
 #: under open-air overhangs, a median 12 m below the surface, and would flag cliffs.
 CAVE_MARKER_DIRS = ("/Caves/", "/CaveFloor/")
@@ -2602,6 +2608,7 @@ def write_caves(args, build_pin: str, build_raw) -> int:
         ),
         "counts": counts,
         "seconds": seconds,
+        "digest": sha256_hex(buffer.getvalue()),
     }
     written = install_directory(
         out_dir,
@@ -2984,6 +2991,7 @@ def rock_pack(store, scripts, index, classes, sweep: dict, build_pin: str, build
         ),
         "counts": counts,
         "seconds": round(time.time() - started, 1),
+        "digest": sha256_hex(buffer.getvalue()),
     }
     return {
         rocks.DATA_NAME: buffer.getvalue(),
@@ -3365,6 +3373,9 @@ def main() -> int:
             "bytes": len(payload[hf.TOP_NAME]),
         },
     }
+    hashes = {name: sha256_hex(payload[name]) for name in files}
+    for name, entry in files.items():
+        entry["sha256"] = hashes[name]
     meta = build_meta(
         build_pin=build_pin,
         build_raw=build_raw,
