@@ -157,6 +157,7 @@ be traced to the axis it should move.
 | `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
 | `palette/rivers.py` | style | River water: reconciled with the field's, laid over each band |
 | `palette/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
+| `palette/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
 | `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
 | `lighting/sun.py`, `model.py` | light | The game's sun path and default; the live-light model and its reference |
 | `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the stage that writes the lighting pyramid |
@@ -288,6 +289,10 @@ shade for any sun.
   level-only water stands over the fill province and 98% of its surface levels lie inside a
   0.7 m band around the ocean's -16.99 m. Drawing it shallow would paint the open ocean the
   pale green of an ankle-deep sheet.
+- **Perched water**: a sloped river's box top is its upstream end, and one body's box can
+  cover a lower body. `palette/perched.py` re-levels such water from its own shoreline
+  before it is drawn. The thresholds are measured in
+  [spatial-and-map.md](../../docs/spatial-and-map.md) §38.
 - **A field without `waterq.u8.z`** falls back to "a water surface stands above the ground".
   That reads the open ocean as dry, because over the fill province the ground is a 3.9 m
   raster that rounds above a sea surface 17 m down, so the missing byte is reported in the

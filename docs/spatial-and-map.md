@@ -2465,7 +2465,8 @@ pixel, these rules decide.
 | Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid. It blocks under `OCCLUDER_FADE_M` and receives on the crown top. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 5 (the per-area targets of section 31 on top of sections 32 to 36). Recipe 7. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
+| Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 5 (the per-area targets of section 31 on top of sections 32 to 36). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
+| Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. The water classes and the relief tint read that result, not the field's box levels. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
 
 ### Known limits
@@ -2474,3 +2475,62 @@ pixel, these rules decide.
   caches. A restyle without them sweeps the game again rather than refusing.
 - The crown domes are not in the lighting stage's normal pyramid.
 - No combination has been compared against an in-game top-down view.
+
+## 38. Perched water: a box top that is not the surface (2026-10-05)
+
+The field levels each wet texel at the highest water-box top over it (section 19). Two
+kinds of box break that rule:
+
+- **A sloped river.** `BP_River_PROT_C` and some `FGWaterVolume` boxes span a whole reach,
+  so the box top is the river's upstream end. `BP_River_PROT_2` at (314, -1489) runs north
+  down a desert channel from about +18 m to the sea at -17 m. Its box spans -22.8 to
+  +22.0 m, so the whole channel was levelled at +22 m, 39 m above the bed at the mouth.
+- **A box over another body.** Where one body's axis-aligned box covers part of a lower
+  body, the higher top wins. At (831, -353) a 131 m box sits over a lake at 58 m.
+
+The renderer then drew tens of metres of water. In the painted style that is opaque
+Beer-Lambert water blended almost fully to the open-sea colour, in a flat shape with the
+artwork mask's 3.66 m block edges, because the depth feather never fades out on a 40 m
+depth. Every recipe since 2 has drawn it.
+
+`palette/perched.py` re-levels these bodies before drawing. The field is not changed. It
+runs on the water the rivers left (section 34), and the painted style's water classes
+(section 33) and the relief styles' water tint are taken from its result, so every consumer
+draws one surface. Part of recipe 7.
+
+- **Bodies.** Measured water, split into connected texels of one level. The ocean level
+  (within 0.5 m of -17 m) is exempt.
+- **Banks.** Dry ground at its height, and other water at its level. Dry ground the water
+  encloses is not a bank: the artwork draws deep water too dark for its blue test.
+- **The test.** A body is perched when its level stands more than 2 m above any bank, and
+  more than 25% of the banks 6 to 24 m from it stand more than 2 m below the level, which is
+  where still water at that level would run to. The ring test is what separates this from
+  a lake drawn smaller than its water: there the dry ground below the level is a thin rim
+  and the banks rise beyond it.
+- **The surface.** Each shoreline texel takes the highest level its neighbours allow:
+  `min(level, bank)`, never below its own ground. A harmonic membrane spans the shoreline,
+  so a river's surface runs downhill with its banks. A texel keeps the box level within
+  2 m of the membrane, takes the membrane at 4 m, and is handed over linearly between.
+  The result is never above the box top.
+
+Depth is then measured as for any other water, so the colour is a river's and the edge is
+the usual depth feather, which follows the ground rather than the mask blocks.
+
+### Measured (build 502094)
+
+591 bodies stand more than 2 m above a bank; 380 pass the ring test. 168,925 texels
+(0.17 km²) are re-levelled, in about 4 s. Their median depth goes from 18.3 m to 1.1 m, and
+the 90th percentile from 75.8 m to 8.2 m. Merged at 100 m, 38 places lose more than 5 m of
+drawn depth. The largest are at (-822, 201), (-612, 772), (624, -505), (-375, -895),
+(-1227, -278) and (-146, 961). Lakes whose banks stand above their level, the ocean, and
+level-only water are byte-identical.
+
+### Known limits
+
+- Where a river spline speaks, its ribbon (section 34) has already taken the box's water
+  back before this runs, so the spline's own surface replaces the membrane there. The
+  membrane is left for boxes without a spline.
+- A box piece over another body passes the ring test only when enough of its ring is below
+  it. Rectangles of a higher box inside a lake whose ring is mostly cliffs still draw
+  deep: around (1920, -1897), (1846, -2152) and (2077, -1933).
+- Level-only water keeps its own rule, so the open sea's deep rectangles are unchanged.

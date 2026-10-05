@@ -81,8 +81,8 @@ from mapgen.lighting.hillshade import (
     coarse_province,
 )
 from mapgen.palette.painted import PaintedGround, load_paint_meta
+from mapgen.palette.perched import water_surfaces
 from mapgen.palette.relief import ReliefGround
-from mapgen.palette.shore import OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
 from mapgen.palette.styles import (
     BIOME_BLEND_TEXELS,
     BIOME_COLOURS,
@@ -623,18 +623,6 @@ def main() -> int:
             }
         }
         print(f"  paint layers prepared in {time.time() - started:.0f}s")
-    relief = {
-        layer: ReliefGround(RELIEF_PALETTES[layer][0], field, biome, list(drawn))
-        for layer in layers
-        if layer in RELIEF_PALETTES
-    }
-
-    reach, reach_meta = (None, {}) if args.kernel_only else ocean_reach(field)
-    if reach is not None:
-        print(
-            f"  ocean shore at {OCEAN_LEVEL_M} m: {reach_meta['ocean_texels']} ocean "
-            f"texels, {reach_meta['reach_texels']} within {OCEAN_REACH_M:g} m"
-        )
 
     # ---- the cliff geometry and the top overlay, rasterised into this render's own grid
     direct = None
@@ -805,6 +793,14 @@ def main() -> int:
         paint_source.update(extras.titan_source)
     for name in extras.readers:
         inputs[name] = {"cl": changelist(field_build), "reader_version": READER_VERSIONS[name]}
+    water = water_surfaces(field, args.kernel_only, extras.rivers)
+    if painted is not None:
+        paint_source["paint"]["water_classes"] = painted.classify_water(field, water.planes)
+    relief = {
+        layer: ReliefGround(RELIEF_PALETTES[layer][0], field, biome, list(drawn), water.planes)
+        for layer in layers
+        if layer in RELIEF_PALETTES
+    }
     loaded.clear()
 
     # ---- draw and cut ----------------------------------------------------------------
@@ -834,7 +830,8 @@ def main() -> int:
             kernel=taps_cubic if args.kernel_only else taps_pchip,
             meshes=meshes,
             falls=extras.falls,
-            reach=reach,
+            reach=water.reach,
+            water_level=water.level,
             painted=painted if layer == "painted" else None,
             rivers=extras.rivers,
             relief=relief.get(layer),
@@ -911,7 +908,7 @@ def main() -> int:
                 "edge_blur_px": round(WATER_EDGE_BLUR_M / spacing_m, 3),
                 "shore": (
                     {
-                        **reach_meta,
+                        **water.reach_meta,
                         "rule": (
                             "within reach_m of measured ocean water, coverage is the drawn "
                             "surface crossing level_m, antialiased to one pixel; elsewhere "
@@ -919,9 +916,10 @@ def main() -> int:
                         ),
                         "optics": SHORE_OPTICS[layer],
                     }
-                    if reach is not None
+                    if water.reach is not None
                     else None
                 ),
+                "perched": water.perched,
                 "level_only": LEVEL_ONLY_TEXT,
                 "rivers": extras.river_meta or None,
             },

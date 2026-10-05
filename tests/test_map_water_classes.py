@@ -25,6 +25,7 @@ from mapgen.gamedata.waterbodies import (  # noqa: E402
 )
 from mapgen.palette.painted import (  # noqa: E402
     WATER_TABLE_COLUMNS,
+    PaintedGround,
     load_water_bodies,
     painted_colours,
     srgb_to_linear,
@@ -231,3 +232,25 @@ def test_the_ocean_row_draws_exactly_what_the_ocean_always_drew():
     np.testing.assert_array_equal(plain, rowed)
     swamp = painted_colours(_scene(n, _optics(ground, "swamp", n)), ground, sample, sample)
     assert (swamp[0, -1, 0] > swamp[0, -1, 2]) and (plain[0, -1, 2] > plain[0, -1, 0])
+
+
+def test_the_classes_are_read_off_the_water_as_drawn_not_the_fields_box_levels():
+    """Classification runs after rivers and perched water: given planes win over the field's."""
+    from satisfactory_mcp.domain.spatial import heightfield as hf
+
+    shape = (4, 6)
+    dry = np.full(shape, hf.NODATA, np.int16)
+    field = SimpleNamespace(
+        _water_raster=lambda: dry, _water_quality_raster=lambda: np.zeros(shape, np.uint8)
+    )
+    ground = object.__new__(PaintedGround)
+    ground.water_class, ground.source = None, {}
+    ground._bodies = {"actors": []}
+    ground._biome = ({"width": 1, "area": np.zeros((1, 1), np.uint8)}, ["Area_Ocean"])
+    sea = np.full(shape, round(OCEAN_LEVEL_M * hf.DM_PER_M), np.int16)
+    grades = np.full(shape, hf.WATER_MEASURED, np.uint8)
+    found = ground.classify_water(field, (sea, grades))
+    assert (ground.water_class == OCEAN).all()
+    assert found is ground.source["water_classes"] and found["classes"] == {"ocean": sea.size}
+    ground.classify_water(field)
+    assert not ground.water_class.any(), "the field's own planes hold no water"

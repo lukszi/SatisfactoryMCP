@@ -418,22 +418,32 @@ class PaintedGround:
         self.ramp = (lo, hi, cdf)
         self.water_class, self.water_rows = None, water_table(palette)
         self.source = {"seam_texels_blended": self.seam_texels}
-        self.water_source = "a paint store without water bodies: all water draws as the ocean"
-        bodies = load_water_bodies(paint_dir, meta)
-        if bodies is not None:
-            self._classify_water(bodies, field, (index, area_names))
-        self.source["water_classes"] = self.water_source
+        self.source["water_classes"] = "not classified: all water draws as the ocean"
+        self._bodies = load_water_bodies(paint_dir, meta)
+        self._biome = (biome, area_names)
 
-    def _classify_water(self, bodies: dict, field, biome: tuple) -> None:
-        water, grades = field._water_raster(), field._water_quality_raster()
-        if water is None or grades is None:
-            self.water_source = "the field has no water level or quality plane"
-            return
-        level = np.where(water == hf.NODATA, np.nan, water / np.float32(hf.DM_PER_M))
-        wet = grades != hf.WATER_DRY
-        level = level.astype(np.float32)
-        self.water_class, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
-        self.water_source = {"source": f"paint/{WATER_BODIES_NAME}", **counts}
+    def classify_water(self, field, planes=None):
+        """The class plane from the water as it will be drawn, and what the sidecar records.
+
+        ``planes`` is ``(level_dm, grades)`` after rivers and perched water took their share;
+        the field's own planes when None.
+        """
+        water, grades = planes or (field._water_raster(), field._water_quality_raster())
+        if self._bodies is None:
+            found = "a paint store without water bodies: all water draws as the ocean"
+        elif water is None or grades is None:
+            found = "the field has no water level or quality plane"
+        else:
+            level = np.where(water == hf.NODATA, np.nan, water / np.float32(hf.DM_PER_M))
+            biome, names = self._biome
+            index = biome_grid(biome, *grades.shape)
+            wet = grades != hf.WATER_DRY
+            self.water_class, counts = classify(
+                level.astype(np.float32), wet, self._bodies, (index, names), OCEAN_LEVEL_M
+            )
+            found = {"source": f"paint/{WATER_BODIES_NAME}", **counts}
+        self.source["water_classes"] = found
+        return found
 
     def water_optics(self, taps, river=None) -> dict | None:
         """Per-pixel optics for a band with inland water; None draws every pixel as the ocean.

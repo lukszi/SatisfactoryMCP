@@ -50,13 +50,14 @@ def ramp_lut(stops, steps: int = LUT_STEPS) -> np.ndarray:
     return np.stack([np.interp(u, arc, path[:, k]) for k in range(3)], -1).astype(np.float32)
 
 
-def water_tint_plane(field, water: dict) -> np.ndarray | None:
+def water_tint_plane(field, water: dict, planes=None) -> np.ndarray | None:
     """How far each 1 m water texel is towards the deep colour, blurred, as uint8.
 
     Measured water by ``1 - exp(-depth / tau)``; level-only water at ``level_only``. The blur is
     normalised by the wet mask, so a shore takes the colour of the water beside it.
+    ``planes`` is ``(level_dm, grades)`` as drawn; the field's own when None.
     """
-    surface, grades = field._water_raster(), field._water_quality_raster()
+    surface, grades = planes or (field._water_raster(), field._water_quality_raster())
     if surface is None or grades is None:
         return None
     wet = (grades != hf.WATER_DRY).astype(np.float32)
@@ -92,12 +93,12 @@ def _biome_planes(palette: dict, biome: dict, area_names: list[str]) -> np.ndarr
 class ReliefGround:
     """What a relief style samples per band, built once per run."""
 
-    def __init__(self, palette: dict, field, biome: dict | None, area_names: list[str]):
+    def __init__(self, palette: dict, field, biome, area_names: list[str], water=None):
         p = self.palette = palette
         self.ramp = dry_land_range(field, p["ramp_lo_pct"], p["ramp_hi_pct"])
         self.lut = ramp_lut(p["ramp_lch"])
         self.biome = None if biome is None else _biome_planes(p, biome, area_names)
-        self.water = water_tint_plane(field, p["water"])
+        self.water = water_tint_plane(field, p["water"], water)
         w, s, rock = p["water"], p["shade"], p["rock"]
         self.shallow, self.deep = lch(w["shallow_lch"]), lch(w["deep_lch"])
         self.stroke = lch(w["stroke_lch"])

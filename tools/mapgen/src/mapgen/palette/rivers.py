@@ -188,13 +188,19 @@ def river_terms(terms: dict, z_m, river_m, presence, spacing_m: float) -> dict:
     return out
 
 
-def water_sources(field, rivers: RiverWater | None):
-    """``(water level plane, wet, measured)``: the field's, or the reconciled ones."""
+def water_sources(field, rivers: RiverWater | None, level=None):
+    """``(water level plane, wet, measured)``: the field's, or the reconciled ones.
+
+    ``level`` replaces the level plane: the same water, re-levelled where it was perched.
+    """
     if rivers is None:
         wet, measured, _source = water_planes(field)
-        return field._water_raster(), wet, measured
-    wet = (rivers.grades != hf.WATER_DRY).astype(np.uint8)
-    return rivers.water_dm, wet, (rivers.grades == hf.WATER_MEASURED).astype(np.uint8)
+        plane = field._water_raster()
+    else:
+        wet = (rivers.grades != hf.WATER_DRY).astype(np.uint8)
+        measured = (rivers.grades == hf.WATER_MEASURED).astype(np.uint8)
+        plane = rivers.water_dm
+    return (plane if level is None else level), wet, measured
 
 
 def load_rivers(cache_root: Path, build, sweep_once, field) -> tuple[RiverWater, dict]:
