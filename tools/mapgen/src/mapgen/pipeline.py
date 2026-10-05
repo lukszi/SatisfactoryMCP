@@ -587,7 +587,7 @@ def main() -> int:
                 "generator": paint_meta.get("generator"),
                 "generator_version": paint_meta.get("generator_version"),
                 "digest": paint_meta.get("digest"),
-                "seam_texels_blended": painted.seam_texels,
+                **painted.provenance(),
                 "seconds_to_prepare": round(time.time() - started, 1),
             }
         }
