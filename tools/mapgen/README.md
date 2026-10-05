@@ -72,7 +72,8 @@ without `--force`. See §24.
 Extracts the landscape's paint layers once per game build: one weight plane per layer on
 the 1 m grid, the tree canopy cover and crown tops, the PigmentMap tint, each layer's albedo,
 the landscape's baked ground colour with the layer albedos refitted to it, and the cliff
-families' tints and top layers. Only the `painted` render layer reads them. See §27, §30 and §31.
+families' tints and top layers, and the seabed coral carpet's cover and top. Only the
+`painted` render layer reads them. See §27 and §30 to §32.
 
 ### artwork
 
@@ -128,6 +129,7 @@ be traced to the axis it should move.
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
 | `gamedata/bake.py` | data | The landscape's baked ground colour and the layer refit |
 | `gamedata/rockfamily.py` | data | Cliff material families: per placement, tint and top layer |
+| `gamedata/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
 | `gamedata/water.py` | data | The heightfield's water channel: artwork mask, box levels, region masks |

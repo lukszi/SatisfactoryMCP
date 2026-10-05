@@ -195,7 +195,8 @@ A `paint` input reads `data/local/paint/meta.json` (`generator_version`, `cl` or
 rules. `python -m mapgen paint` writes it (the `paint` preset, through
 `tools/gen_paint_layers.py`); only the game-painted layer
 lists it. spatial-and-map.md sections 27 and 30 describe the planes. Generator version 2 added
-the baked ground colour, the crown tops and the cliff families.
+the baked ground colour, the crown tops, the cliff families and the seabed coral carpet planes
+(section 32), so a version 1 store reads as stale.
 
 The game-painted layer also lists two readers, `rock_families` (each rock's cliff family, in
 the direct raster) and `titan_trees` (the Titan forest raster), compared like any reader

@@ -6,8 +6,9 @@ each layer's albedo, tinted by the PigmentMap; a per-layer colour transfer to ca
 targets; under the tree canopy; rocks take their cliff family's tint and top layer, trees stand
 over them where their crowns reach, arches and the render-only meshes take their own colours,
 and the Titan trees can be laid over everything; then a sky-and-sun light, an exposure gain
-with a soft shoulder and Beer-Lambert water. Every number is in
-``palette/palettes/satellite-painted.json``. docs/spatial-and-map.md sections 27, 30 and 31.
+with a soft shoulder and Beer-Lambert water over a seabed that carries the coral carpet. Every
+number is in ``palette/palettes/satellite-painted.json``. docs/spatial-and-map.md sections 27
+and 30 to 32.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.bake import BAKE_NAME, bake_have
+from mapgen.gamedata.carpet import COVER_NAME, TOP_NAME
 from mapgen.gamedata.paint import CANOPY_NAME, CROWN_NAME, META_NAME, PIGMENT_NAME
 from mapgen.gamedata.rockfamily import FAMILIES
 from mapgen.lighting.hillshade import sun_dot
@@ -41,6 +43,7 @@ __all__ = [
     "layer_transfer",
     "linear_from_oklab",
     "linear_to_srgb",
+    "load_carpet",
     "load_paint_meta",
     "mix_layers",
     "oklab",
@@ -143,6 +146,27 @@ def bake_table(meta: dict) -> dict[str, np.ndarray] | None:
     if not fit or BAKE_NAME not in meta["files"]:
         return None
     return {name: np.asarray(value, np.float32) for name, value in fit.items()}
+
+
+def load_carpet(paint_dir: Path, meta: dict, palette: dict):
+    """The seabed carpet's cover (u8) and top (metres, float16), or ``None`` without it.
+
+    The rosettes are spread into patches, ``1 - exp(-gain * blurred share)``. No-data tops take
+    the highest top within the blur, so the sampler never blends a sentinel into a patch edge.
+    """
+    style = palette.get("carpet", {})
+    if COVER_NAME not in meta["files"] or not style.get("strength"):
+        return None
+    share = _plane(paint_dir, meta, COVER_NAME).astype(np.float32) / np.float32(255.0)
+    spread = ndimage.gaussian_filter(share, style["blur_m"])
+    cover = np.round((1.0 - np.exp(-style["gain"] * spread)) * 255).astype(np.uint8)
+    top = _plane(paint_dir, meta, TOP_NAME)
+    reach = 2 * int(np.ceil(2 * style["blur_m"])) + 1
+    near = ndimage.grey_dilation(top, size=reach)
+    missing = top == hf.NODATA
+    top = np.where(missing, near, top).astype(np.float32) / np.float32(hf.DM_PER_M)
+    top[missing & (near == hf.NODATA)] = np.float32(-1000.0)
+    return cover, top.astype(np.float16)
 
 
 def layer_table(meta: dict, palette: dict) -> dict[str, np.ndarray]:
@@ -387,6 +411,7 @@ class PaintedGround:
         for name, hex_colour in targets.get("meshes", {}).items():
             colours[name] = self._target(hex_colour)
         self.mesh_rgb = {MESH_CORAL: colours["coral"], MESH_SHELL: colours["shell"]}
+        self.carpet = load_carpet(paint_dir, meta, palette)
         water = palette["water"]
         self.seabed_coral = colours["coral_seabed"] / np.float32(water["bed_wet"])
         self.water = {
@@ -644,6 +669,20 @@ def titan_over(out, scene: dict, ground: PaintedGround) -> np.ndarray:
     return out * (1.0 - alpha) + lit * alpha
 
 
+def _carpet_bed(under, scene, ground: PaintedGround, sample):
+    """``under`` with the seabed carpet seen through the water above its own top."""
+    p, w = ground.palette["carpet"], ground.water
+    depth = scene["water"]["depth_m"]
+    top = sample(ground.carpet[1])
+    above = np.clip(scene["z_m"] + depth - top, 0.0, None) * np.float32(p["depth_scale"])
+    cover = sample(ground.carpet[0]) / np.float32(255.0) * np.float32(p["strength"])
+    cover = np.where(depth > 0.0, np.clip(cover, 0.0, 1.0), 0.0)[..., None]
+    transmit = np.exp(-w["k"] * above[..., None])
+    rgb = srgb_to_linear(p["colour"])
+    seen = rgb * transmit + w["body"] * (1.0 - transmit) + w["sky"]
+    return under * (1.0 - cover) + seen * cover
+
+
 def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> np.ndarray:
     """One band of the painted layer, sRGB 0..255.
 
@@ -692,6 +731,8 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     transmit = np.exp(-w["k"] * depth) * (1.0 - floor)
     bed = g * exposure * w["bed"]
     under = bed * transmit + w["body"] * (1.0 - transmit) + w["sky"]
+    if ground.carpet is not None:
+        under = _carpet_bed(under, scene, ground, sample)
     open_sea = 1.0 - np.exp(-depth / w["deep_tau_m"])
     under = under * (1.0 - open_sea) + w["deep"] * open_sea
     cover = water["cover"][..., None]

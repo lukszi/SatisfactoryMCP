@@ -126,6 +126,17 @@
    81
   ]
  },
+ "carpet": {
+  "colour": [
+   108,
+   158,
+   190
+  ],
+  "strength": 1.0,
+  "depth_scale": 0.2,
+  "blur_m": 1.25,
+  "gain": 3.0
+ },
  "chroma_gain": 1.2,
  "altitude_lift": 0.03,
  "ramp_lo_pct": 1.0,

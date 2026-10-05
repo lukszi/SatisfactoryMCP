@@ -22,6 +22,7 @@ from scipy import ndimage
 
 from mapgen.common import LOCAL_DIR, ROOT, base_parser, require_gen
 from mapgen.gamedata.bake import BAKE_NAME, fit_layer_table, read_bake
+from mapgen.gamedata.carpet import is_carpet, write_carpet
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.rockfamily import FAMILIES, family_sources
 from mapgen.gamedata.sweep import (
@@ -520,6 +521,7 @@ def sweep(store, scripts, classes, progress: bool) -> dict:
     planes: dict[str, np.ndarray] = {}
     origins: list[tuple[int, int]] = []
     trees: dict[str, list[np.ndarray]] = {}
+    carpet: dict[str, list[np.ndarray]] = {}
     unreadable, failed = 0, 0
     started = time.time()
 
@@ -543,8 +545,12 @@ def sweep(store, scripts, classes, progress: bool) -> dict:
             for slot, class_path in view.class_of.items():
                 if class_name_of(class_path) not in FOLIAGE_CLASSES:
                     continue
-                found = foliage_instances(view, slot, classes, wanted=is_tree)
-                if found is not None:
+                found = foliage_instances(
+                    view, slot, classes, wanted=lambda m: is_tree(m) or is_carpet(m)
+                )
+                if found is not None and is_carpet(found[0]):
+                    carpet.setdefault(found[0], []).append(found[1].astype(np.float32))
+                elif found is not None:
                     trees.setdefault(found[0], []).append(found[1][:, 3, :3].astype(np.float32))
         if progress and index % 500 == 0:
             print(
@@ -556,6 +562,7 @@ def sweep(store, scripts, classes, progress: bool) -> dict:
         "planes": planes,
         "origins": origins,
         "trees": {mesh: np.concatenate(parts) for mesh, parts in trees.items()},
+        "carpet": {mesh: np.concatenate(parts) for mesh, parts in carpet.items()},
         "unreadable": unreadable,
         "failed_packages": failed,
         "seconds": round(time.time() - started, 1),
@@ -585,7 +592,8 @@ def main() -> int:
     paks = args.game / "FactoryGame" / "Content" / "Paks"
     store = open_container(args.game)
     scripts = ScriptObjects(paks, oodle_decompress)
-    classes = ClassFacts(store, AssetIndex(store))
+    index = AssetIndex(store)
+    classes = ClassFacts(store, index)
     started = time.time()
 
     vectors = material_vectors(
@@ -639,6 +647,11 @@ def main() -> int:
         "srgb": True,
         "placement": "the render frame, texel centres",
     }
+    carpet_blobs, carpet = write_carpet(
+        found["carpet"], store, scripts, index, GRID, (ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM)
+    )
+    payload.update(carpet_blobs)
+    files.update(carpet["files"])
     for name, blob in payload.items():
         files[name]["sha256"] = sha256_hex(blob)
         files[name]["bytes"] = len(blob)
@@ -677,6 +690,7 @@ def main() -> int:
         "component_px": WEIGHTMAP_PX,
         "trees": tree_counts,
         **extra_meta,
+        "carpet": carpet["meta"],
         "counts": {"unreadable": found["unreadable"], "failed_packages": found["failed_packages"]},
         "seconds": round(time.time() - started, 1),
     }
