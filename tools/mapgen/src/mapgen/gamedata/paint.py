@@ -21,6 +21,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.common import LOCAL_DIR, ROOT, base_parser, require_gen
+from mapgen.gamedata import crowns as crown_data
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.sweep import (
     FOLIAGE_CLASSES,
@@ -69,6 +70,7 @@ __all__ = [
     "PIGMENT",
     "PIGMENT_MAX_PX",
     "PIGMENT_NAME",
+    "RADIUS_BINS_M",
     "ROCK_TEXTURES",
     "TEXTURES",
     "TILES",
@@ -81,6 +83,7 @@ __all__ = [
     "canopy_cover",
     "component_layers",
     "component_origin",
+    "crown_payload",
     "crown_radius",
     "decode_texture",
     "is_tree",
@@ -197,6 +200,8 @@ CROWN_M = (
     ("Bamboo", 1.5),
 )
 CROWN_DEFAULT_M = 4.0
+#: Measured radii are snapped to these, so the canopy costs one blur per bin.
+RADIUS_BINS_M = np.array([0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 11.0, 15.0, 20.0])
 PIGMENT_MAX_PX = 2048
 
 WEIGHTMAP_PX = 128
@@ -352,8 +357,10 @@ def material_vectors(view) -> dict[str, tuple[float, float, float]]:
     return out
 
 
-def decode_texture(store, scripts, decoder, asset: str, want_max: int) -> np.ndarray:
-    """The largest mip no wider than ``want_max`` as (H, W, 3) uint8 RGB. Square only."""
+def decode_texture(
+    store, scripts, decoder, asset: str, want_max: int, channels: int = 3
+) -> np.ndarray:
+    """The largest mip no wider than ``want_max`` as (H, W, channels) uint8 RGB(A). Square."""
     blocks = {
         "PF_DXT1": (8, decoder.decode_bc1),
         "PF_DXT5": (16, decoder.decode_bc3),
@@ -393,7 +400,7 @@ def decode_texture(store, scripts, decoder, asset: str, want_max: int) -> np.nda
     else:
         out = blocks[fmt][1](raw, side, side)
         rgba = np.frombuffer(out, np.uint8).reshape(side, side, 4)[..., [2, 1, 0, 3]]
-    return np.ascontiguousarray(rgba[..., :3])
+    return np.ascontiguousarray(rgba[..., :channels])
 
 
 def layer_albedo(layers: dict, means: dict, vectors: dict) -> dict[str, list[float]]:
@@ -412,11 +419,27 @@ def layer_albedo(layers: dict, means: dict, vectors: dict) -> dict[str, list[flo
 # ----------------------------------------------------------------------- canopy
 
 
-def canopy_cover(trees: dict[str, np.ndarray], grid: int) -> tuple[np.ndarray, dict]:
-    """Crown cover in [0, 1]: ``1 - exp(-crown area per m^2)``, crowns blurred by radius."""
+def canopy_cover(
+    trees: dict[str, np.ndarray], grid: int, radii: dict[str, float] | None = None
+) -> tuple[np.ndarray, dict]:
+    """Crown cover in [0, 1]: ``1 - exp(-crown area per m^2)``, crowns blurred by radius.
+
+    ``trees`` holds each mesh's 4x4 matrices. ``radii`` is the measured crown radius per
+    mesh, scaled per tree; a mesh without one keeps the guessed ``crown_radius``.
+    """
     by_radius: dict[float, list[np.ndarray]] = {}
-    for mesh, points in trees.items():
-        by_radius.setdefault(crown_radius(mesh), []).append(points)
+    for mesh, mats in trees.items():
+        mats = np.asarray(mats)
+        measured = (radii or {}).get(mesh)
+        if measured is None:
+            by_radius.setdefault(crown_radius(mesh), []).append(mats[:, 3, :3])
+            continue
+        scale = np.linalg.norm(mats[:, :3, :3][:, :2], axis=2).mean(1)
+        snapped = RADIUS_BINS_M[
+            np.abs(np.subtract.outer(measured * scale, RADIUS_BINS_M)).argmin(1)
+        ]
+        for radius in np.unique(snapped):
+            by_radius.setdefault(float(radius), []).append(mats[snapped == radius, 3, :3])
     area = np.zeros((grid, grid), np.float32)
     counts = {}
     for radius, parts in sorted(by_radius.items()):
@@ -464,7 +487,7 @@ def sweep(store, scripts, classes, progress: bool) -> dict:
                     continue
                 found = foliage_instances(view, slot, classes, wanted=is_tree)
                 if found is not None:
-                    trees.setdefault(found[0], []).append(found[1][:, 3, :3].astype(np.float32))
+                    trees.setdefault(found[0], []).append(found[1].astype(np.float32))
         if progress and index % 500 == 0:
             print(
                 f"  {index}/{total} packages, {len(origins)} components, "
@@ -479,6 +502,52 @@ def sweep(store, scripts, classes, progress: bool) -> dict:
         "failed_packages": failed,
         "seconds": round(time.time() - started, 1),
     }
+
+
+def crown_payload(store, scripts, index, decoder, trees: dict) -> tuple[dict, dict, dict]:
+    """The crown files ``{name: (bytes, files entry)}``, their meta block, measured radii."""
+    started = time.time()
+
+    def texture_rgba(path: str) -> np.ndarray:
+        asset = path.split(".")[0].removeprefix("/Game/FactoryGame/")
+        return decode_texture(store, scripts, decoder, asset, 256, channels=4)
+
+    built = crown_data.build_crowns(store, scripts, index, trees, texture_rgba)
+    sprite_blob, sprite_index = crown_data.encode_sprites(built["sprites"])
+    half = SPACING_CM / 2
+    top_cm = crown_data.stamp_tops(
+        built["records"], built["sprites"], GRID, ORIGIN_X_CM - half, ORIGIN_Y_CM - half, SPACING_CM
+    )
+    top_dm = np.where(np.isfinite(top_cm), np.round(top_cm / 10.0), hf.NODATA).astype(np.int16)
+    files = {
+        crown_data.CROWNS_NAME: (
+            crown_data.encode_records(built["records"]),
+            {"kind": "records", "count": len(built["records"]),
+             "dtype": [list(f) for f in crown_data.CROWN_RECORD.descr]},
+        ),
+        crown_data.SPRITES_NAME: (
+            sprite_blob, {"kind": "sprites", "texel_m": crown_data.SPRITE_M}
+        ),
+        crown_data.CROWN_TOP_NAME: (
+            hf.encode_i16(top_dm), {"shape": [GRID, GRID], "kind": "i16", "unit": "dm"}
+        ),
+    }  # fmt: skip
+    for entry, sprite in zip(built["species"], sprite_index, strict=True):
+        entry["sprite"] = sprite
+    radii = {e["mesh"]: e["radius_m"] for e in built["species"]}
+    meta = {
+        "species": built["species"],
+        "skipped": built["skipped"],
+        "instances": built["instances"],
+        "tilt_max_deg": built["tilt_max_deg"],
+        "top_texels": int(np.isfinite(top_cm).sum()),
+        "seconds": round(time.time() - started, 1),
+    }
+    print(
+        f"  {len(built['species'])} crown sprites, {built['instances']} trees, "
+        f"{len(sprite_blob) / 1e6:.1f} MB of sprites in {meta['seconds']}s"
+    )
+    return files, meta, radii
 
 
 def main() -> int:
@@ -503,7 +572,8 @@ def main() -> int:
     paks = args.game / "FactoryGame" / "Content" / "Paks"
     store = open_container(args.game)
     scripts = ScriptObjects(paks, oodle_decompress)
-    classes = ClassFacts(store, AssetIndex(store))
+    index = AssetIndex(store)
+    classes = ClassFacts(store, index)
     started = time.time()
 
     vectors = material_vectors(
@@ -527,14 +597,15 @@ def main() -> int:
         print("no LandscapeComponent was read; the landscape moved or the format changed")
         return 1
     unknown = sorted(set(planes) - set(LAYERS) - set(OVERLAYS))
-    canopy, tree_counts = canopy_cover(found["trees"], GRID)
+    crown_files, crown_meta, radii = crown_payload(store, scripts, index, decoder, found["trees"])
+    canopy, tree_counts = canopy_cover(found["trees"], GRID, radii)
     print(
         f"  {len(found['origins'])} components, layers {sorted(planes)}, "
         f"{sum(tree_counts.values())} trees, swept in {found['seconds']}s"
     )
 
-    payload: dict[str, bytes] = {}
-    files: dict[str, dict] = {}
+    payload: dict[str, bytes] = {name: blob for name, (blob, _e) in crown_files.items()}
+    files: dict[str, dict] = {name: entry for name, (_b, entry) in crown_files.items()}
     for name, plane in sorted(planes.items()):
         payload[WEIGHT_PREFIX + name + WEIGHT_SUFFIX] = hf.encode_u8(plane)
         files[WEIGHT_PREFIX + name + WEIGHT_SUFFIX] = {
@@ -587,6 +658,7 @@ def main() -> int:
         "components": sorted(found["origins"]),
         "component_px": WEIGHTMAP_PX,
         "trees": tree_counts,
+        "crowns": crown_meta,
         "counts": {"unreadable": found["unreadable"], "failed_packages": found["failed_packages"]},
         "seconds": round(time.time() - started, 1),
     }
