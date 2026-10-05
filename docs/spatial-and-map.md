@@ -1003,6 +1003,13 @@ before and after, and measured where a number exists. Build 502094.
 - The artwork borrow still multiplies the drawn map's arch strokes into the shading, so a
   faint ghost stripe can sit beside an arch where the drawing and the mesh disagree.
 
+### Cost
+
+A full run of both layers took 30.5 min wall time on 2026-10-05: the rock pass about
+14 min, the arch-and-boulder pass 2 min, then about 6 min to draw and 2 min to cut each
+layer. It wrote 1,656 MB of tiles (terrain 843 MB, satellite 812 MB), against 1,943 MB for
+recipe 3: smoother ground compresses better.
+
 ### Output and switching
 
 `--renders-name renders-v2` writes to `data/local/renders-v2/<layer>/` and leaves
