@@ -152,7 +152,13 @@ def slice_of(
         for item, rate in row["rates"].items():
             out.flows[item] = out.flows.get(item, 0.0) + rate
 
-        if row["clock"] > 1.0 + 1e-9 and per_shard:
+        last = row.get("last_clock")
+        if last is not None and per_shard:
+            # Overclock-last: only the one machine carries shards.
+            each = shards_for_clock(last, per_shard)
+            if each:
+                out.shard_rows.append(ShardRow(row["label"] + " (last machine)", 1, last, each))
+        elif row["clock"] > 1.0 + 1e-9 and per_shard:
             each = shards_for_clock(row["clock"], per_shard)
             if each:
                 out.shard_rows.append(ShardRow(row["label"], row["machines"], row["clock"], each))

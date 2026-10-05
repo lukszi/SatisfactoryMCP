@@ -39,6 +39,10 @@ Planned as 0.2.0.
 - Web: an inventory section (stock, containers, crates), a progress section (MAM, space
   elevator, hard drives, power shards, somersloops), a recipes codex with a header search
   box, and a supply-path trace drawn on the map for a machine or factory.
+- Planner: a payback horizon per plan spreads rows over more, slower machines while the
+  saved power, priced at the save's grid mix, repays them; an overclock-last switch builds a
+  row one machine short. Both default from shared settings and are on `plan_factory` and
+  `plan_layout`.
 
 ### Fixed
 

@@ -58,7 +58,8 @@ def settings(
     """The settings the page and chat share. Change one only when the user asks you to.
 
     ``stage_headroom`` is what ``diff_vs_save`` and ``commission_plan`` stage a plan with no
-    stored headroom against; ``biomass`` is the default of every ``biomass=`` parameter. The
+    stored headroom against; ``biomass`` is the default of every ``biomass=`` parameter.
+    ``payback_hours`` and ``overclock_last`` are what a plan that sets neither follows. The
     page's Settings tab reads and writes the same file, and an open page follows a change.
     """
     try:

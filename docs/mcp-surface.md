@@ -663,11 +663,15 @@ partition it last printed per plan; when a later read partitions differently, th
 stage 2 of 5`. A `commission_plan` with an explicit `headroom_mw` neither prints nor records it.
 `plan_factory save_as` never writes `headroom_mw`, so a chat save keeps the page's value.
 
-**Power priority** ([planner-power-priority_contract.md](planner-power-priority_contract.md)).
-`plan_factory` and `plan_layout` take `power_priority` (0–4): no production machine runs above
-100%, 75%, 50%, 33% or 25%, so rows are split into more, slower machines to save power. It is
-a stored `PlanArgs` scalar that both chat and page write; `power_priority=0` resets a recalled
-plan. `plan_factory` notes what the current step saves against step 0 and what the next adds.
+**Payback horizon** ([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md)).
+`plan_factory` and `plan_layout` take `payback_hours` (0–100), `overclock_last` and
+`power_price` (points per MWh, default the save's grid mix). A row is spread over more, slower
+machines while the power saved repays their build points within that many hours of play;
+`overclock_last` builds a row one machine short with the last one overclocked, weighed against
+the same horizon and the shards in hand. They are stored `PlanArgs` scalars that both chat and
+page write; unset, a plan follows the shared `payback_hours` and `overclock_last` settings, and
+`"default"` puts a recalled plan back on them. The notes say what the plan spreads against 0 h,
+what the next stop would change, and what the overclock saves or would save.
 
 The page queues **asks** (`ask:N`, a question about a plan, process, stage, item or pin) and
 the player pastes one into chat. `ui_context` prints `asks (N waiting): ...`, the newest six open

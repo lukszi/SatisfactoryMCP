@@ -2538,6 +2538,10 @@ body.dash-on .mapcard {
   align-items: flex-start;
 }
 
+.plan-overclock .dash-toggle {
+  margin-left: 0;
+}
+
 .plan-export {
   display: flex;
   flex-wrap: wrap;

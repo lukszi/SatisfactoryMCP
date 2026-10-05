@@ -43,7 +43,9 @@ PLAN_ARGS = (
     "pipe_m3min",
     "recycle_once",
     "supplied",
-    "power_priority",
+    "payback_hours",
+    "overclock_last",
+    "power_price",
 )
 
 

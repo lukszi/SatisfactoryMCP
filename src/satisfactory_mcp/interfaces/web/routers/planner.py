@@ -39,6 +39,7 @@ class SolveRate(TypedDict):
 
 class SolveRow(TypedDict):
     """One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
+    ``last_clock`` is set when every machine but the last runs at 100% (overclock-last).
 
     ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth."""
 
@@ -50,6 +51,7 @@ class SolveRow(TypedDict):
     item: str | None
     machines: int
     clock: float
+    last_clock: float | None
     mw: float
     inputs: list[SolveRate]
     outputs: list[SolveRate]
@@ -86,27 +88,78 @@ class BuildAmount(TypedDict):
     amount: float
 
 
-class PowerStep(TypedDict):
-    """The plan at one power-priority step. ``extra_machines``, ``saved_mw``, ``cost`` and
-    ``foundations`` are against step 0; ``cost`` is what the extra machines take to build."""
+class PaybackStop(TypedDict):
+    """The plan at one payback horizon, same recipes. ``extra_machines``, ``saved_mw``,
+    ``cost``, ``area_m2`` and ``points`` are against the plain build (0 h, no overclock);
+    ``cost`` is what the extra machines take to build and ``points`` their build points.
+    ``average_payback_h`` is null when nothing is saved."""
 
-    step: int
-    max_clock: float
+    hours: float
     machines: int
     mw_draw: float
     extra_machines: int
     saved_mw: float
     cost: list[BuildAmount]
-    foundations: int
+    area_m2: float
+    points: int
+    average_payback_h: float | None
+    shards: int
 
 
-class PowerPriority(TypedDict):
-    """``step`` is the plan's; ``splits`` is false when no step changes a row, and ``steps``
-    is empty when the plan did not solve."""
+class PowerSource(TypedDict):
+    """One source of the grid mix: running MW and its price in points per MWh."""
 
-    step: int
+    source: str
+    mw: float
+    price: float
+
+
+class OverclockRow(TypedDict):
+    label: str
+    building: str
+    machines: int
+    instead: int
+    last_clock: float
+    shards: int
+    extra_mw: float
+
+
+class RowName(TypedDict):
+    label: str
+    building: str
+
+
+class OverclockView(TypedDict):
+    """The overclock-last pick at the plan's horizon, made whether or not ``on``.
+    ``without`` ran short of shards; ``unused`` would cost more than spreading."""
+
+    on: bool
+    inherited: bool
+    rows: list[OverclockRow]
+    shards: int
+    machines_saved: int
+    extra_mw: float
+    without: list[RowName]
+    unused: list[RowName]
+    shards_free: float | None
+    shards_craftable: float | None
+
+
+class PaybackView(TypedDict):
+    """``hours`` is the plan's horizon, ``inherited`` when it follows the shared default.
+    ``price`` is points per MWh from ``price_source`` (grid mix or plan). ``splits`` is false
+    when no stop changes a row, with ``reason``; ``stops`` is empty when nothing solved."""
+
+    hours: float
+    inherited: bool
+    default_hours: float
+    price: float
+    price_source: str
+    mix: list[PowerSource]
     splits: bool
-    steps: list[PowerStep]
+    reason: str
+    stops: list[PaybackStop]
+    overclock: OverclockView
 
 
 class SolveResponse(TypedDict):
@@ -130,7 +183,7 @@ class SolveResponse(TypedDict):
     graph: PlanGraph
     shards: int | None
     sloops_used: int
-    power: PowerPriority
+    power: PaybackView
     blockers: list[str]
     token: str
 

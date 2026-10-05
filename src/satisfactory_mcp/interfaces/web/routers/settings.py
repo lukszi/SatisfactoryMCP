@@ -33,6 +33,8 @@ class SettingsValues(TypedDict):
 
     stage_headroom: StageHeadroom
     biomass: bool
+    payback_hours: float
+    overclock_last: bool
 
 
 class SettingsResponse(TypedDict):
@@ -51,6 +53,8 @@ class SettingsChanges(TypedDict):
 
     stage_headroom: NotRequired[StageHeadroom | None]
     biomass: NotRequired[bool | None]
+    payback_hours: NotRequired[float | None]
+    overclock_last: NotRequired[bool | None]
 
 
 class SettingsPatchBody(TypedDict):

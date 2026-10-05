@@ -136,5 +136,7 @@ takes no `?save=`/`?world=`. Every write arrives on every page as the `settings`
 
 `PlanStateBody.headroom_mw` is the stored startup headroom, `null` for the save's own figure
 (measured by default, see `headroom` above).
-`SolveResponse.power` is the power-priority ladder: the same solve read out at all five steps
-([planner-power-priority_contract.md](planner-power-priority_contract.md) §5).
+`SolveResponse.power` is the payback view: the same recipes read out at every horizon stop,
+the price used and the overclock-last pick
+([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md) §7).
+`SolveRow.last_clock` is set on a row whose last machine is overclocked.

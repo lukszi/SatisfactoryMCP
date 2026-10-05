@@ -14,7 +14,7 @@ from ...core.gamedata.model import GameData
 from ..spatial import nodes as nodes_mod
 from ..world import pin
 from ..world.state import WorldState
-from . import power_priority, provenance
+from . import payback, provenance
 from .layout import chain_depth
 from .optimize import MW
 from .report import build_plan_report
@@ -55,6 +55,7 @@ def _row(g: GameData, row: dict, required: set[str]) -> dict:
         "item": _main_item(g, row),
         "machines": int(row["machines"]),
         "clock": float(row["clock"]),
+        "last_clock": row.get("last_clock"),
         "mw": float(row["mw"]),
         "inputs": _rates(g, row["rates"], -1),
         "outputs": _rates(g, row["rates"], 1),
@@ -290,6 +291,46 @@ def _warnings(g: GameData, st: WorldState, report, objective: str) -> list[str]:
     return out
 
 
+def power_view(g: GameData, st: WorldState, req, sol, machines: int, draw_mw: float) -> dict:
+    """``SolveResponse.power`` for a solved request: the horizon's stops and the overclock."""
+    info = req.payback
+    return payback.view(
+        g,
+        sol,
+        req.scenario,
+        machines,
+        draw_mw,
+        inherited=info.get("inherited", True),
+        default_hours=info.get("default_hours", 0.0),
+        price_source=info.get("price_source", "grid mix"),
+        mix=info.get("mix", []),
+        overclock_inherited=info.get("overclock_inherited", True),
+        shards=st.shard_budget(),
+    )
+
+
+def _no_power(req) -> dict:
+    sc = req.scenario if req is not None else None
+    info = req.payback if req is not None else {}
+    return {
+        "hours": sc.payback_hours if sc else 0.0,
+        "inherited": info.get("inherited", True),
+        "default_hours": info.get("default_hours", 0.0),
+        "price": sc.power_price if sc else 0.0,
+        "price_source": info.get("price_source", "grid mix"),
+        "mix": info.get("mix", []),
+        "splits": False,
+        "reason": "",
+        "stops": [],
+        "overclock": {
+            **payback.no_overclock(bool(sc and sc.overclock_last)),
+            "inherited": info.get("overclock_inherited", True),
+            "shards_free": None,
+            "shards_craftable": None,
+        },
+    }
+
+
 def solve_summary(
     g: GameData, st: WorldState, kwargs: dict, required: list[str] | None = None
 ) -> dict:
@@ -318,7 +359,7 @@ def solve_summary(
         "graph": {"nodes": [], "edges": []},
         "shards": None,
         "sloops_used": 0,
-        "power": {"step": int(kwargs.get("power_priority") or 0), "splits": False, "steps": []},
+        "power": _no_power(req),
         "token": token,
     }
     errors = [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
@@ -349,7 +390,7 @@ def solve_summary(
     notes = [*errors, *prepared.notes]
     machines = round(sol.machines_total)
     mw_draw = round(bill.draw_mw + bill.sink_mw, 2)
-    power = power_priority.ladder(g, sol, req.scenario.power_priority, machines, mw_draw)
+    power = power_view(g, st, req, sol, machines, mw_draw)
     if req.excluded:
         notes.append("excluded by request: " + ", ".join(req.excluded))
     return {

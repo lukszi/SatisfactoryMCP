@@ -85,7 +85,9 @@ and **drops values at their default**.
 | `recycle_once` | list[str] | [] | set | same |
 | `supplied` | dict[str, float] | {} | map | same |
 | `logistics_items` | list[str] | [] | set | not a solve kwarg; presentation only |
-| `power_priority` | int 0–4 | 0 | scalar | same ([planner-power-priority_contract.md](planner-power-priority_contract.md)) |
+| `payback_hours` | float 0–100 \| null | null | scalar | same ([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md)) |
+| `overclock_last` | bool \| null | null | scalar | same |
+| `power_price` | float \| null | null | scalar | same |
 
 Sets keep insertion order for display and have set semantics for merging. A float member of
 `clocks`/`extractor_clocks` is compared by `f"{x:g}"`. Map keys are item names as typed.

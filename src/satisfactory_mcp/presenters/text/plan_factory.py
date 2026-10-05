@@ -8,14 +8,21 @@ hundreds of MW, and none of that is visible in the numbers themselves.
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ...domain.planning import power_priority
+from ...domain.planning import payback
 from ...domain.planning.optimize import MW
 from ...domain.planning.report import PlanFactoryReport
 from ...domain.planning.slice import grid_import_mw, linear_gap_note
+from ...domain.planning.summary import power_view
 from ...domain.world.state import WorldState
 from . import primitives as render
 
 __all__ = ["render_plan_factory"]
+
+
+def _clock(row: dict) -> str:
+    if row.get("last_clock") is None:
+        return f"{row['clock'] * 100:.4g}%"
+    return f"100%, last {row['last_clock'] * 100:.4g}%"
 
 
 def _water_bound(report: PlanFactoryReport) -> str:
@@ -115,7 +122,7 @@ def render_plan_factory(
     rows_out = [
         (
             p["machines"],
-            f"{p['clock'] * 100:.4g}%",
+            _clock(p),
             p["label"][:42],
             p["building"][:20],
             render.num(p["mw"]),
@@ -384,17 +391,9 @@ def render_plan_factory(
     if plan_name:
         summary = f"# recalled plan {plan_name!r}\n" + summary
     notes = [*(plan_notes or []), *notes]
-    trade = power_priority.trade_text(
-        power_priority.ladder(
-            g,
-            sol,
-            req.scenario.power_priority,
-            round(sol.machines_total),
-            bill.draw_mw + bill.sink_mw,
-        )
+    notes += payback.trade_text(
+        power_view(g, st, req, sol, round(sol.machines_total), bill.draw_mw + bill.sink_mw)
     )
-    if trade:
-        notes.append(trade)
     if save_as_note:
         notes.append(save_as_note)
 

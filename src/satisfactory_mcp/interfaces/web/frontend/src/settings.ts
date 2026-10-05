@@ -118,6 +118,26 @@ export var SETTINGS: Setting[] = [
     fallback: "measured",
     shared: "stage_headroom",
   },
+  {
+    kind: "number",
+    key: "paybackHours",
+    group: "planner",
+    label: "payback horizon, hours",
+    hint: "for a plan that sets none: extra, slower machines must repay their build in saved power within this many hours of play; 0 builds plainly; chat uses the same",
+    min: 0,
+    max: 100,
+    fallback: 0,
+    shared: "payback_hours",
+  },
+  {
+    kind: "switch",
+    key: "overclockLast",
+    group: "planner",
+    label: "overclock the last machine",
+    hint: "for a plan that sets none: a row is built one machine short, its last machine overclocked with 1–2 Power Shards; chat uses the same",
+    fallback: false,
+    shared: "overclock_last",
+  },
 ];
 
 var STORE_KEY = "settings";

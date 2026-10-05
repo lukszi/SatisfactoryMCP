@@ -48,6 +48,16 @@ SPECS: dict[str, Spec] = {
         options=("measured", "nameplate"),
     ),
     "biomass": Spec("switch", False, "count hand-fed biomass burners as generation and headroom"),
+    "payback_hours": Spec(
+        "number",
+        0.0,
+        "hours of play a plan's extra machines must pay back in saved power; 0 builds plainly",
+        low=0.0,
+        high=100.0,
+    ),
+    "overclock_last": Spec(
+        "switch", False, "build a row one machine short and overclock its last machine"
+    ),
 }
 
 

@@ -4165,6 +4165,106 @@ export interface components {
             conflicts: components["schemas"]["ConflictBody"][];
             state: components["schemas"]["PlanStateBody"];
         };
+        /** OverclockRow */
+        OverclockRow: {
+            /** Label */
+            label: string;
+            /** Building */
+            building: string;
+            /** Machines */
+            machines: number;
+            /** Instead */
+            instead: number;
+            /** Last Clock */
+            last_clock: number;
+            /** Shards */
+            shards: number;
+            /** Extra Mw */
+            extra_mw: number;
+        };
+        /**
+         * OverclockView
+         * @description The overclock-last pick at the plan's horizon, made whether or not ``on``.
+         *     ``without`` ran short of shards; ``unused`` would cost more than spreading.
+         */
+        OverclockView: {
+            /** On */
+            on: boolean;
+            /** Inherited */
+            inherited: boolean;
+            /** Rows */
+            rows: components["schemas"]["OverclockRow"][];
+            /** Shards */
+            shards: number;
+            /** Machines Saved */
+            machines_saved: number;
+            /** Extra Mw */
+            extra_mw: number;
+            /** Without */
+            without: components["schemas"]["RowName"][];
+            /** Unused */
+            unused: components["schemas"]["RowName"][];
+            /** Shards Free */
+            shards_free: number | null;
+            /** Shards Craftable */
+            shards_craftable: number | null;
+        };
+        /**
+         * PaybackStop
+         * @description The plan at one payback horizon, same recipes. ``extra_machines``, ``saved_mw``,
+         *     ``cost``, ``area_m2`` and ``points`` are against the plain build (0 h, no overclock);
+         *     ``cost`` is what the extra machines take to build and ``points`` their build points.
+         *     ``average_payback_h`` is null when nothing is saved.
+         */
+        PaybackStop: {
+            /** Hours */
+            hours: number;
+            /** Machines */
+            machines: number;
+            /** Mw Draw */
+            mw_draw: number;
+            /** Extra Machines */
+            extra_machines: number;
+            /** Saved Mw */
+            saved_mw: number;
+            /** Cost */
+            cost: components["schemas"]["BuildAmount"][];
+            /** Area M2 */
+            area_m2: number;
+            /** Points */
+            points: number;
+            /** Average Payback H */
+            average_payback_h: number | null;
+            /** Shards */
+            shards: number;
+        };
+        /**
+         * PaybackView
+         * @description ``hours`` is the plan's horizon, ``inherited`` when it follows the shared default.
+         *     ``price`` is points per MWh from ``price_source`` (grid mix or plan). ``splits`` is false
+         *     when no stop changes a row, with ``reason``; ``stops`` is empty when nothing solved.
+         */
+        PaybackView: {
+            /** Hours */
+            hours: number;
+            /** Inherited */
+            inherited: boolean;
+            /** Default Hours */
+            default_hours: number;
+            /** Price */
+            price: number;
+            /** Price Source */
+            price_source: string;
+            /** Mix */
+            mix: components["schemas"]["PowerSource"][];
+            /** Splits */
+            splits: boolean;
+            /** Reason */
+            reason: string;
+            /** Stops */
+            stops: components["schemas"]["PaybackStop"][];
+            overclock: components["schemas"]["OverclockView"];
+        };
         /**
          * PhaseResponse
          * @description ``deliverable`` is null when no row belongs to the target phase.
@@ -4563,8 +4663,12 @@ export interface components {
             };
             /** Logistics Items */
             logistics_items: string[];
-            /** Power Priority */
-            power_priority: number;
+            /** Payback Hours */
+            payback_hours: number | null;
+            /** Overclock Last */
+            overclock_last: boolean | null;
+            /** Power Price */
+            power_price: number | null;
         };
         /**
          * PlanBuiltRow
@@ -4858,19 +4962,6 @@ export interface components {
             connections: number;
         };
         /**
-         * PowerPriority
-         * @description ``step`` is the plan's; ``splits`` is false when no step changes a row, and ``steps``
-         *     is empty when the plan did not solve.
-         */
-        PowerPriority: {
-            /** Step */
-            step: number;
-            /** Splits */
-            splits: boolean;
-            /** Steps */
-            steps: components["schemas"]["PowerStep"][];
-        };
-        /**
          * PowerResponse
          * @description The two lists and the three counts.
          *
@@ -4892,27 +4983,16 @@ export interface components {
             edge_count: number;
         };
         /**
-         * PowerStep
-         * @description The plan at one power-priority step. ``extra_machines``, ``saved_mw``, ``cost`` and
-         *     ``foundations`` are against step 0; ``cost`` is what the extra machines take to build.
+         * PowerSource
+         * @description One source of the grid mix: running MW and its price in points per MWh.
          */
-        PowerStep: {
-            /** Step */
-            step: number;
-            /** Max Clock */
-            max_clock: number;
-            /** Machines */
-            machines: number;
-            /** Mw Draw */
-            mw_draw: number;
-            /** Extra Machines */
-            extra_machines: number;
-            /** Saved Mw */
-            saved_mw: number;
-            /** Cost */
-            cost: components["schemas"]["BuildAmount"][];
-            /** Foundations */
-            foundations: number;
+        PowerSource: {
+            /** Source */
+            source: string;
+            /** Mw */
+            mw: number;
+            /** Price */
+            price: number;
         };
         /**
          * PowerSummary
@@ -5424,6 +5504,13 @@ export interface components {
             /** Clock After */
             clock_after: number;
         };
+        /** RowName */
+        RowName: {
+            /** Label */
+            label: string;
+            /** Building */
+            building: string;
+        };
         /** RunEnd */
         RunEnd: {
             /** X M */
@@ -5543,6 +5630,10 @@ export interface components {
             stage_headroom?: ("measured" | "nameplate") | null;
             /** Biomass */
             biomass?: boolean | null;
+            /** Payback Hours */
+            payback_hours?: number | null;
+            /** Overclock Last */
+            overclock_last?: boolean | null;
         };
         /** SettingsPatchBody */
         SettingsPatchBody: {
@@ -5590,6 +5681,10 @@ export interface components {
             stage_headroom: "measured" | "nameplate";
             /** Biomass */
             biomass: boolean;
+            /** Payback Hours */
+            payback_hours: number;
+            /** Overclock Last */
+            overclock_last: boolean;
         };
         /** ShardHolder */
         ShardHolder: {
@@ -5809,7 +5904,7 @@ export interface components {
             shards: number | null;
             /** Sloops Used */
             sloops_used: number;
-            power: components["schemas"]["PowerPriority"];
+            power: components["schemas"]["PaybackView"];
             /** Blockers */
             blockers: string[];
             /** Token */
@@ -5818,6 +5913,7 @@ export interface components {
         /**
          * SolveRow
          * @description One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
+         *     ``last_clock`` is set when every machine but the last runs at 100% (overclock-last).
          *
          *     ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth.
          */
@@ -5838,6 +5934,8 @@ export interface components {
             machines: number;
             /** Clock */
             clock: number;
+            /** Last Clock */
+            last_clock: number | null;
             /** Mw */
             mw: number;
             /** Inputs */

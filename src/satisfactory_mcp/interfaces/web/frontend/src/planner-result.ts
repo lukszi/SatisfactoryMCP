@@ -45,6 +45,12 @@ var TABS: { id: ResultTab; label: string }[] = [
   { id: "track", label: W.track },
 ];
 
+function clockText(row: { machines: number; clock: number; last_clock?: number | null }): string {
+  if (row.last_clock === null || row.last_clock === undefined) return pct(row.clock, 1);
+  if (row.machines === 1) return pct(row.last_clock, 1);
+  return "100%, last " + pct(row.last_clock, 1);
+}
+
 function rates(rows: SolveRate[]): string {
   return (
     rows
@@ -309,7 +315,7 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
         return r.clock;
       },
       render: function (r) {
-        return pct(r.clock, 1);
+        return clockText(r);
       },
     },
     {
@@ -497,7 +503,7 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
   if (row) {
     var power = row.mw ? " · " + mw(row.mw, { signed: true }) : "";
     card.appendChild(title);
-    card.appendChild(make("p", "plan-facts", row.building + " ×" + count(row.machines) + " · " + pct(row.clock, 1) + power));
+    card.appendChild(make("p", "plan-facts", row.building + " ×" + count(row.machines) + " · " + clockText(row) + power));
     card.appendChild(make("p", "dash-sub", "in: " + rates(items(row.inputs))));
     card.appendChild(make("p", "dash-sub", "out: " + rates(items(row.outputs))));
     if (!bench.gone) {

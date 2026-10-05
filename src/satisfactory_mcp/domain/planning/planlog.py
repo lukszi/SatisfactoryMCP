@@ -85,14 +85,18 @@ KINDS: dict[str, str] = {
     "recycle_once": "set",
     "supplied": "map",
     "logistics_items": "set",
-    "power_priority": "scalar",
+    "payback_hours": "scalar",
+    "overclock_last": "scalar",
+    "power_price": "scalar",
 }
 FLOAT_SETS = frozenset({"clocks", "extractor_clocks"})
 PLAN_SCALARS = ("notes", "factory", "headroom_mw")
 HEADROOM_MAX_MW = 1_000_000.0
-#: Percent clock cap per power-priority step, for words; optimize.POWER_PRIORITY_CLOCKS is
-#: the source, repeated here because the plan log needs no solver.
-POWER_PRIORITY_PERCENT = ("100%", "75%", "50%", "33%", "25%")
+PAYBACK_MAX_H = 100.0
+PRICE_MAX = 100_000.0
+#: A stored ``power_priority`` step as the horizon where a Refinery's best clock equals the
+#: old cap (docs/planner-payback-horizon_contract.md §8); step 0 inherits.
+LEGACY_PRIORITY_HOURS = (None, 4.0, 7.0, 11.0, 17.0)
 KWARG_NAME = {"banned": "exclude_recipes"}
 
 
@@ -208,11 +212,49 @@ def _headroom(name: str, value) -> float | None:
     return number
 
 
-def _priority(name: str, value) -> int:
-    step = _count(name, value)
-    if step >= len(POWER_PRIORITY_PERCENT):
-        raise _fail(f"{name} must be 0 to {len(POWER_PRIORITY_PERCENT) - 1}, not {value!r}")
-    return step
+def _inherits(value) -> bool:
+    return value is None or value == "default"
+
+
+def _hours(name: str, value) -> float | None:
+    if _inherits(value):
+        return None
+    number = _number(name, value)
+    if not 0 <= number <= PAYBACK_MAX_H:
+        raise _fail(f"{name} must be 0 to {PAYBACK_MAX_H:g} hours or default, not {value!r}")
+    return number
+
+
+def _price(name: str, value) -> float | None:
+    if _inherits(value):
+        return None
+    number = _number(name, value)
+    if not 0 <= number <= PRICE_MAX:
+        raise _fail(
+            f"{name} must be 0 to {PRICE_MAX:,.0f} points per MWh or default, not {value!r}"
+        )
+    return number
+
+
+def _switch(name: str, value) -> bool | None:
+    return None if _inherits(value) else _flag(name, value)
+
+
+def legacy_hours(step) -> float | None:
+    """A stored ``power_priority`` step read as its payback horizon."""
+    if isinstance(step, bool) or not isinstance(step, int | float) or step != int(step):
+        return None
+    return LEGACY_PRIORITY_HOURS[int(step)] if 0 <= step < len(LEGACY_PRIORITY_HOURS) else None
+
+
+def _legacy_op(op):
+    """An old ``set power_priority`` op as the ``set payback_hours`` it now means."""
+    if not isinstance(op, dict) or op.get("field") != "power_priority" or op.get("op") != "set":
+        return op
+    out = {"op": "set", "field": "payback_hours", "value": legacy_hours(op.get("value"))}
+    if "was" in op:
+        out["was"] = legacy_hours(op.get("was"))
+    return out
 
 
 def _objective(name: str, value) -> str:
@@ -234,7 +276,9 @@ _SCALAR_CHECK: dict[str, Callable] = {
     "notes": _text,
     "factory": _factory,
     "headroom_mw": _headroom,
-    "power_priority": _priority,
+    "payback_hours": _hours,
+    "overclock_last": _switch,
+    "power_price": _price,
 }
 
 
@@ -298,13 +342,18 @@ class PlanArgs:
     recycle_once: list = field(default_factory=list)
     supplied: dict = field(default_factory=dict)
     logistics_items: list = field(default_factory=list)
-    power_priority: int = 0
+    payback_hours: float | None = None
+    overclock_last: bool | None = None
+    power_price: float | None = None
 
     @classmethod
     def from_dict(cls, raw: dict | None, lenient: list | None = None) -> PlanArgs:
         """Absent, None, [] and {} mean the default. ``lenient`` collects refused fields
         as ``(name, value)`` instead of raising, for migration."""
         raw = dict(raw or {})
+        step = raw.pop("power_priority", None)
+        if raw.get("payback_hours") is None and step is not None:
+            raw["payback_hours"] = legacy_hours(step)
         if "exclude_recipes" in raw:
             spelled = raw.pop("exclude_recipes")
             if raw.get("banned") in (None, [], {}):
@@ -439,6 +488,7 @@ def _fmt(value) -> str:
 
 
 _namer: list[Callable[[], dict[str, str]]] = []
+_POWER_WORDS = ("payback_hours", "overclock_last", "power_price")
 
 
 def use_recipe_names(source: Callable[[], dict[str, str]] | None) -> None:
@@ -462,11 +512,17 @@ def factory_words(value) -> str:
     )
 
 
-def _priority_words(value) -> str:
-    step = value if isinstance(value, int) and 0 < value < len(POWER_PRIORITY_PERCENT) else 0
-    if not step:
-        return "power priority off: machines at full clock"
-    return f"power priority {step}: machines at most {POWER_PRIORITY_PERCENT[step]}"
+def _hours_text(value: float) -> str:
+    return f"{value:,.1f}".rstrip("0").rstrip(".") + " h"
+
+
+def _power_words(name: str, value) -> str:
+    if name == "payback_hours":
+        return "payback: shared default" if value is None else "payback " + _hours_text(value)
+    if name == "overclock_last":
+        word = "shared default" if value is None else _fmt(value)
+        return "overclock last machine: " + word
+    return "power price: grid mix" if value is None else f"power price {_fmt(value)} pts/MWh"
 
 
 def describe_op(op: dict) -> str:
@@ -481,8 +537,8 @@ def describe_op(op: dict) -> str:
             if value is None:
                 return "startup headroom: save default"
             return f"startup headroom {_fmt(float(value))} MW"
-        if name == "power_priority":
-            return _priority_words(op.get("value"))
+        if name in _POWER_WORDS:
+            return _power_words(name, op.get("value"))
         return f"{name} {_fmt(op.get('was'))}{ARROW}{_fmt(op.get('value'))}"
     if kind in ("put", "del"):
         word = "rate" if name == "export_minimums" else name
@@ -544,7 +600,7 @@ class Commit:
             ts=float(raw.get("ts") or 0.0),
             actor=Actor.from_dict(raw.get("actor")),
             sav=str(raw.get("sav") or ""),
-            ops=list(raw["ops"]),
+            ops=[_legacy_op(op) for op in raw["ops"]],
             merged_over=[int(r) for r in raw.get("merged_over") or ()],
             undoes=raw.get("undoes"),
             note=str(raw.get("note") or ""),
@@ -773,6 +829,8 @@ def _label(op: dict) -> str:
 
 
 def _value_word(op: dict) -> str:
+    if op.get("field") in _POWER_WORDS:
+        return _power_words(op["field"], op.get("value")).split(": ")[-1]
     if op.get("field") == "headroom_mw":
         value = op.get("value")
         return "save default" if value is None else f"{_fmt(float(value))} MW"
