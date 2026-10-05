@@ -2207,16 +2207,24 @@ render (about 5 s):
 2. A lake box at most 150 m on a side with a hot-spring terrace inside it (within 1 m of its z
    range) is a hot spring.
 3. Boxes paint wet texels whose level lies within 1 m of the box's z range, largest box
-   first, so a pond inside a big box keeps its own class.
+   first, so a pond inside a big box keeps its own class. No box but the ocean's claims the
+   open sea: water within 1 m of the ocean level that the map's edge reaches through
+   channels at least 96 m wide (a 48 m opening on a 4 m grid, kept where it comes within
+   three radii of the edge). The swamp's `MI_WaterSwamp_Muddy` boxes are 230 m squares at
+   the sea's level and reach past its coast, to x 3250 against the swamp area's 3040; they
+   painted the open sea mauve in straight steps. A lagoon behind a narrower mouth keeps its
+   box.
 4. Unclaimed wet texels within 1 m of the ocean level are ocean. That includes the level-only
    water around the frame at about -16.3 m.
 5. The rest of an inland body (8-connected) takes the body's majority class when that class
    covers at least a quarter of it.
 6. What is left is swamp in `Area_Swamp` and lake everywhere else.
 
-Build 502094: ocean 15.97 M texels, lake 1.20 M, swamp 0.62 M, river 0.38 M, turquoise 53 k,
+Build 502094: ocean 16.23 M texels, lake 1.20 M, swamp 0.35 M, river 0.38 M, turquoise 53 k,
 hot spring 15 k, sulfur 9.7 k, cave 5.3 k, blue lake 5.2 k; 312 bodies claimed by
-material, 0.28 M texels by the biome fallback.
+material, 0.28 M texels by the biome fallback. The open sea is 14.92 M texels; it took
+264,581 texels from the swamp and 16 from a river, and nothing from any other class.
+Seeding it from the texels with no ground as well would add 2 k, so the edge alone does.
 
 The renderer samples the plane bilinearly with the dry taps dropped
 (`terrain/sample.py` `ClassMix`), so a shore pixel takes its water's class rather than half
@@ -2263,6 +2271,9 @@ distance 1 to 3), not the lightness.
   come from material parameters, not from pictures.
 - Classes change at box edges. Where the water channel is itself built from boxes, as in the
   Red Bamboo terrace lakes near (420, 560), a chain of pools reads as a mosaic of classes.
+- Where the swamp's lagoons open onto the sea, swamp turns to ocean along the edge of the
+  opening: a line of 48 m arcs across one sheet of water, with nothing in the game to place
+  it better.
 - The hot-spring rule finds terraces in lake boxes near the sulfur ponds and in the Red Bamboo
   terraces. Whether those pools are milky in game is unchecked.
 - The satellite and terrain styles still draw one water colour.
@@ -2571,6 +2582,7 @@ pixel, these rules decide.
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid. It blocks under `OCCLUDER_FADE_M` and receives on the crown top. Only a run that draws the painted layer has it. |
 | Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 5 (the per-area targets of section 31 on top of sections 32 to 36). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. The water classes and the relief tint read that result, not the field's box levels. |
+| Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, so a renderer reading those grades draws them. Section 33's open sea is found on that same water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
 | Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes). |
 
@@ -2630,12 +2642,50 @@ drawn depth. The largest are at (-822, 201), (-612, 772), (624, -505), (-375, -8
 (-1227, -278) and (-146, 961). Lakes whose banks stand above their level, the ocean, and
 level-only water are byte-identical.
 
+### Holes in a lake
+
+The artwork's blue test also reads a lake's deep middle as dry, and the water under an arch
+or bridge it draws across a lake. The field keeps those texels dry, so the renderer drew
+the lake bed there: dark-middle blobs, and in the cliff-ringed lakes near (1980, -1890) a
+straight strip 18 m wide and 220 m long under the arch, and the spokes of the star-shaped
+rock beside it. `wet_holes` fills them after the re-levelling, on the same bodies:
+
+- **Inside.** The measured water at the body's level, and other inland measured water
+  within 2 m of it, closed over gaps up to 24 m wide (`HOLE_BRIDGE_M` 12), with what that
+  encloses.
+- **Below.** Dry ground standing below the surface of the body's nearest texel.
+- **Not where it spills.** Nothing within 12 m of ground outside that shape standing more
+  than 2 m below the surface and running on past 12 m from the water, where still water
+  would run to. The rounded ends of a bridged gap are not a spill.
+- **Deep, but not a drop.** A connected part reaching the body, more than 2 m deep at its
+  deepest and nowhere deeper than 15 m (`HOLE_DEPTH_MAX_M`). A sandbar awash stays as the
+  artwork drew it. Without the cap 172 parts (6,700 texels) go deeper, up to 181 m: the
+  wide fall at (1791, 553), cliff feet at (470, -563) and (-1916, 345), and the drop east
+  of the arch lake. A real lake middle deeper than 15 m would stay dry too.
+
+A hole takes the surface of its body's nearest texel and the measured grade; where two
+bodies close over one gap, the lower surface. Water the river reconcile dropped stays
+dropped, the ocean is never a body, and every texel that was water is byte-identical. The
+class plane (section 33) and the relief tint read the result.
+
+Measured on the field's own planes: 54,733 texels in 394 bodies, about 4.5 s and 760 MB
+at peak (the re-levelling peaks at 1.1 GB). Median depth 2.0 m, 99th percentile 9.2 m.
+The largest are the arch lake at (1979, -1889) with 5,062 texels, (3596, -2139),
+(2245, 741), (3149, -606) and the arch lake's east arm at (2026, -1904). In a render, on
+the water the river reconcile leaves: 37,947 texels in 304 bodies.
+
 ### Known limits
 
 - Where a river spline speaks, its ribbon (section 34) has already taken the box's water
   back before this runs, so the spline's own surface replaces the membrane there. The
   membrane is left for boxes without a spline.
 - A box piece over another body passes the ring test only when enough of its ring is below
-  it. Rectangles of a higher box inside a lake whose ring is mostly cliffs still draw
-  deep: around (1920, -1897), (1846, -2152) and (2077, -1933).
+  it.
+- The arch lake near (1980, -1890) ends in a straight line at y -1733, the edge of its
+  `FGWaterVolume`. South of it the only box is the ocean spline's at -17 m, so the field's
+  water rule (section 19) drops the artwork's water there as ground standing out of the
+  sea. That is the field's level rule, not a hole, and this section leaves it.
+- The wide fall at (1790, 520): the 95 m lake's box reaches past the lip, to x 1863, over
+  the swamp 112 m below, at the lake's level. The re-levelling leaves that strip at the
+  lake's level, so it still draws as the lake, 112 m deep.
 - Level-only water keeps its own rule, so the open sea's deep rectangles are unchanged.
