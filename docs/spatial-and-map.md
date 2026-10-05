@@ -1399,6 +1399,17 @@ tiles to mean 0.0 and p99 0 per channel (max 1 to 4). Drawing an 8 Mpx crop took
 terrain, 3.0 s for satellite and 4.1 s for painted, against 2.35 and 2.56 s for recipe 5 and
 3.86 and 4.07 s for the two-pass prototype.
 
+### Cost and output
+
+A full run of all three layers took 60 min wall time on 2026-10-05, against about 37 min for
+two layers of recipe 5: lattice 11 s, paint preparation 78 s, sweep and decode 47 s, rock pass
+10.5 min, arch-and-boulder pass 1.7 min, render-only mesh pass 6.4 min (42.6 M texels). Drawing
+and cutting took 11 min for terrain, 13 min for satellite and 15 min for painted. The
+render-only mesh cache is 5.4 GB at 32768 and is deleted with the others unless
+`--keep-direct`. Tile output was 2,523 MB: terrain 863 MB, satellite 838 MB and painted
+822 MB. `--renders-name renders-v4` writes to `data/local/renders-v4/<layer>/`; the registry
+adopts the painted layer as `game-painted-r6-502094`.
+
 ### Known limits
 
 - Lakes and rivers keep recipe 5's edge. Their banks need sloped surfaces from the river
