@@ -788,6 +788,10 @@ convolution, **the same array** as smoothing the level field itself — so the t
 operation, and the one that is here is the one that does not need polylines extracted from
 56 million texels.
 
+**Superseded by section 26.** The 3.9 m step assumes an 8-bit raster. The raster is float16,
+with steps of 0.24–0.49 m, so this removed a quantisation that does not exist; the blocks
+on screen were nearest-neighbour 3.66 m cells. Recipe 5 re-reads the raster instead.
+
 ### z7: what it is, and what it is not
 
 The measurement that stopped these renders at 16384 was re-run on the v3 field and came out
@@ -1185,3 +1189,83 @@ recipe 3: smoother ground compresses better.
 rename while the server is stopped: move `renders` to `renders-v1`, then `renders-v2` to
 `renders`. The tile URLs carry a build tag derived from the sidecar, so browsers fetch the new
 tiles without a cache flush.
+
+## 26. Rebuilt base data and a PCHIP sampler: recipe 5 (2026-10-05)
+
+Recipe 4 drew its gentle ground from `terrain.u16.z`. Recipe 5 rebuilds the rest of the
+lattice the kernel reads, and swaps the kernel. Rocks, arches and boulders are drawn exactly as
+in section 25. Build 502094.
+
+### What changed
+
+`tools/map_fill.py` builds the lattice once per run, in about 13 s, before any band is drawn:
+
+| Texels | Source | Share of the field |
+| --- | --- | --- |
+| Landscape | `terrain.u16.z`, unchanged | 45.46% |
+| Cliff province | the field's own heights, copied unchanged | 21.06% |
+| Fill | the float16 interface raster: Gaussian with sigma 1 texel, then cubic, then +1.0 m | 13.64% |
+| Fill within 48 m of the landscape | as above, plus the landscape's residual carried in by a harmonic solve and a cosine taper | 0.32% |
+| Interior holes | biharmonic fill, or harmonic where the biharmonic leaves its border's range by more than 2 m | 0.16% (26 holes, 11 harmonic) |
+| No data out to the field's edge | left empty: the page's sea colour | 19.37% |
+
+- **The de-terracing is gone.** `FILL_VERTICAL_M = 3.9` assumes an 8-bit raster. The raster
+  is float16, with steps of 0.24–0.49 m, so there was nothing to de-terrace.
+- **Rock is never a constraint.** A hole next to a rock, or the ground under a rock with no
+  landscape sample, is filled from the ground around it. The rock's own heights stay in the
+  cliff province and are composited by coverage, as before.
+- **The open sea stays the page's colour.** The prototype drew the sea past the data as water
+  over an invented bed. That was declined: nothing is drawn where the field has no data.
+- **Water over the fill province** is drawn as before: level known, depth not, full alpha and
+  the deep tint. The raster stores the water surface there, so the ground under it is not a
+  sea bed and is not read as one.
+- **Holes under water** stand at least 0.5 m below their own water surface.
+
+The **sampler** is tensor-product PCHIP with Fritsch-Butland slopes: the harmonic mean of the
+two secants, or zero where they disagree in sign. It uses the same 4x4 stencil and the same
+separable passes as Catmull-Rom. Each 1-D pass stays inside its interval's endpoints, so the
+result never leaves the range of its own 2x2 cell. Where the stencil is not whole, the bilinear
+fallback is unchanged. The water level is sampled the same way, and the satellite layer's slope
+rule reads the same heights. `--kernel-only` (recipe 2) still uses Catmull-Rom.
+
+### Measured
+
+`tools/check_map_fill.py` runs these checks through the shipped functions. Only the baselines
+are emulated.
+
+| Check | Before | After |
+| --- | --- | --- |
+| Fill, median absolute error on held-out dry landscape (532,633 texels, east half) | 1.079 m (nearest texel, what the field stores) | 0.519 m |
+| Seam, median jump at a fake seam through dry landscape (60 windows) | 0.813 m (nearest raster, recipe 4 de-terracing) | 0.072 m |
+| Holes, median MAE over the field's 12 interior hole shapes on known landscape (68 placements) | 0.400 m (nearest neighbour) | 0.101 m |
+
+The sampler was measured on the rebuilt lattice over six 256 m crops: a cliff, rolling ground,
+a coast, a boulder-and-arch site, the dry frame edge and the crater hole.
+
+| | PCHIP | Catmull-Rom |
+| --- | --- | --- |
+| Largest error at the 1 m vertices | 0.0 m | 0.0 m |
+| Overshoot outside the 2x2 cell, largest | 0.0 m on every crop | 8.61 m (cliff), 3.90 m (frame edge), 3.29 m (crater hole) |
+
+The fill keeps a median bias of +0.08 m against the landscape. The bias was picked on the west
+half and is scored on the east.
+
+### Known limits
+
+- The 1 m staircase along the water edge is unchanged, because the water quality plane is 1 m.
+- The rebuilt lattice is not stored. The server's height lookups still read the field as
+  generated.
+
+### Cost and output
+
+A full run of both layers took about 37 min wall time on 2026-10-05. The lattice rebuild took
+13 s, the geometry sweep and decode 35 s, the rock pass 13 min and the arch-and-boulder pass 2 min. Drawing and cutting took
+11 min for terrain and 10 min for satellite. Tile output was 1,640 MB: terrain 835 MB and
+satellite 805 MB, against 1,656 MB for recipe 4.
+
+The seam trace's share of a hard switch is 1.22, against 1.18 for recipe 4. It is above 1
+on both because the smoothed lift is not a convex blend. The seam's own p99 curvature fell
+from 3,638 to 3,554, and the pure-kernel p99 fell from 2.11 to 1.24.
+
+`--renders-name renders-v3` writes to `data/local/renders-v3/<layer>/`. Switching works as in
+section 25.

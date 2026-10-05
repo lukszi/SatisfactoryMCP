@@ -15,13 +15,13 @@ The height under a pixel comes from two regimes and a cross-fade between them. W
 the cliff geometry is rasterised into this grid at 0.229 m -- by ``gen_world_heightmap.py``'s
 own sweep, mesh decode, cull rules and ``MaxZRaster``, imported and called here so the only
 thing that differs is the grid they are pointed at. Everywhere else, which is the great
-majority of the sheet, a Catmull-Rom kernel over the 1 m field answers. The join is a blend
+majority of the sheet, a PCHIP kernel over the 1 m lattice answers. The join is a blend
 and never a switch: the hillshade is a function of the derivative, so a hard switch between
 a rasterised surface and a C1 interpolant would draw the density plane's own boundaries into
 the relief as ridges. ``SeamTrace`` measures that along the seam on every run. The lattice
-under the kernel takes its landscape from ``terrain.u16.z`` at 7.8 mm, and the arches and
-foliage boulders of ``top.i16.z`` are rasterised the same way and composited last
-(docs/spatial-and-map.md section 25).
+under the kernel takes its landscape from ``terrain.u16.z`` at 7.8 mm and its fill and holes
+from ``tools/map_fill.py``, and the arches and foliage boulders of ``top.i16.z`` are
+rasterised the same way and composited last (docs/spatial-and-map.md sections 25 and 26).
 
 The frame and the artwork slices come from ``tools/gen_map_image.py``, which measured them;
 the codec from ``domain.spatial.heightfield``, the pyramid cutter from
@@ -88,6 +88,7 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 # The generator that WRITES the field, for the direct regime: its sweep, its mesh decode,
 # its cull rules and its rasteriser, called rather than reimplemented.
 from tools import gen_world_heightmap as gen
+from tools import map_fill
 from tools._common import base_parser, require_gen
 
 # The corners every layer is drawn on, the sheet the ARTWORK is drawn at, and how to read
@@ -160,8 +161,15 @@ RECIPES = {
         "arches and foliage boulders the field keeps in top.i16.z rasterised at 0.229 m and "
         "composited over everything by the same coverage-and-lift rule as the rocks"
     ),
+    5: (
+        "recipe 4 over a rebuilt lattice, sampled with tensor-product PCHIP instead of "
+        "Catmull-Rom: the fill province re-read from the float16 interface raster "
+        "(Gaussian, cubic, +1 m), blended into the landscape across a 48 m harmonic seam "
+        "band, and interior holes filled biharmonically. Rock texels unchanged; the open "
+        "sea past the data stays the page's colour"
+    ),
 }
-RECIPE = 4
+RECIPE = 5
 
 #: What ``--kernel-only`` draws, and it is a whole recipe rather than recipe 3 with a stage
 #: switched off: no geometry opened, no direct regime, no cross-fade and no de-terracing.
@@ -386,13 +394,6 @@ SEAM_NEAR_TEXELS = 32
 #: How many texels of each pool one band contributes. A systematic sample rather than the
 #: whole pool, whose percentile moves in the fourth decimal over tens of millions of texels.
 SEAM_SAMPLE_MAX_PER_BAND = 200_000
-
-#: How the fill province stops being terraces. Its cells are 3.66 m and its Z step 3.9 m, so
-#: it draws the ocean shelf as flat plateaus with blocky outlines; the low pass is one cell
-#: wide, the scale below which that raster says nothing at all. Both numbers come from the
-#: generator that decoded the raster.
-FILL_DETERRACE_SIGMA_M = gen.FILL_HORIZONTAL_M
-FILL_QUANTISATION_M = gen.FILL_VERTICAL_M
 
 # --------------------------------------------------------------------------------------
 # The satellite layer's own rules.
@@ -755,7 +756,7 @@ def terrain_lattice(field, ground: np.ndarray) -> tuple[np.ndarray, dict]:
 
     Written wherever the bare landscape has a sample and the province is landscape or
     cliff, so the lattice under a rock is the real terrain rather than a hole. Fill keeps
-    its de-terraced value. A field without the plane comes back unchanged and says so.
+    its value for ``map_fill`` to rebuild. A field without the plane comes back unchanged.
     """
     plane = field._plane(hf.TERRAIN_NAME) if hasattr(field, "_plane") else None
     grid = getattr(field, "_terrain_grid", None)
@@ -786,69 +787,33 @@ def terrain_lattice(field, ground: np.ndarray) -> tuple[np.ndarray, dict]:
     }
 
 
-def deterraced_height(field) -> tuple[np.ndarray, dict]:
-    """The field's heights in decimetres, with the fill province's terraces low-passed out.
+def fill_from_raster(field, ground, raster_m, raster_ok) -> tuple[np.ndarray, np.ndarray, dict]:
+    """``map_fill.fill_field`` on this field: ``(heights_dm, ground_dm, meta)``."""
+    shape = field._height_dm.shape
+    quality = field._water_quality_raster()
+    water = field._water_raster()
+    heights, rebuilt, _source, meta = map_fill.fill_field(
+        ground_dm=ground,
+        height_dm=np.asarray(field._height_dm),
+        prov=np.asarray(field._prov),
+        water_quality=np.zeros(shape, np.uint8) if quality is None else np.asarray(quality),
+        water_dm=np.full(shape, hf.NODATA, np.int16) if water is None else np.asarray(water),
+        raster_m=raster_m,
+        raster_ok=raster_ok,
+        field_origin_cm=(field.x0_cm, field.y0_cm),
+        spacing_cm=field.spacing_cm,
+        raster_box_cm=gen.BASELINE_BOX_CM,
+        nodata=hf.NODATA,
+        fill_value=hf.PROV_FILL,
+        rock_values=hf.PROV_CLIFF_VALUES,
+    )
+    return heights, rebuilt, {"raster": gen.BASELINE_PATH.rsplit("/", 1)[-1], **meta}
 
-    Returned as float32 rather than int16: the terracing this removes is 3.9 m tall and the
-    decimetre container would put it straight back as a 0.1 m staircase under a hillshade
-    computed at 0.229 m. ``hf.NODATA`` survives as itself, so every sampler below reads this
-    raster with the test it read the int16 one with.
 
-    The low pass is **normalised over the province and faded by its own weight**, and both
-    halves are load-bearing: a Gaussian that ran over the landscape beside a fill texel would
-    drag a 1 m measurement into a 3.9 m raster's answer, and a hard edge at the province
-    boundary is the artifact this removes, one province over.
-
-    One convolution rather than a contour trace, because smoothing every level's indicator
-    with one kernel and summing is, by the linearity of a convolution, the same array as
-    smoothing the level field itself.
-    """
-    height = field._height_dm.astype(np.float32)
-    known = field._height_dm != hf.NODATA
-    fill = (field._prov == hf.PROV_FILL) & known
-    sigma = FILL_DETERRACE_SIGMA_M * 100.0 / field.spacing_cm
-    weight = ndimage.gaussian_filter(fill.astype(np.float32), sigma, mode="nearest")
-    total = ndimage.gaussian_filter(np.where(fill, height, 0.0), sigma, mode="nearest")
-    smooth = total / np.maximum(weight, 1e-6)
-    alpha = np.where(fill, np.clip(weight, 0.0, 1.0), 0.0)
-    # Clamped to one quantisation step, and that bound is the definition of the artifact
-    # rather than a safety margin. A terrace is a 3.9 m step where the world has a ramp, so
-    # un-terracing moves a texel by at most one step; a correction larger than that is not
-    # de-terracing, it is a low pass erasing a scarp the fill raster really did resolve --
-    # and the fill province holds a 300 m drop at the map's edge that would otherwise be
-    # rounded off by half of itself.
-    limit = FILL_QUANTISATION_M * hf.DM_PER_M
-    moved = np.clip(alpha * (smooth - height), -limit, limit)
-    out = np.where(known, height + moved, np.float32(hf.NODATA)).astype(np.float32)
-    shifted = np.abs(moved[fill]) / hf.DM_PER_M if fill.any() else np.zeros(1, np.float32)
-    clamped = float((shifted >= FILL_QUANTISATION_M - 1e-6).mean()) if fill.any() else 0.0
-    return out, {
-        "province": hf.PROV_NAMES[hf.PROV_FILL],
-        "share_of_the_field": round(100 * float(fill.mean()), 2),
-        "cell_m": round(FILL_DETERRACE_SIGMA_M, 4),
-        "quantisation_m": round(FILL_QUANTISATION_M, 4),
-        "sigma_field_texels": round(sigma, 3),
-        "moved_median_m": round(float(np.median(shifted)), 4),
-        "moved_p99_m": round(float(np.percentile(shifted, 99)), 4),
-        "moved_max_m": round(float(shifted.max()), 4),
-        "clamped_share_of_the_province": round(100 * clamped, 3),
-        "clamp_m": round(FILL_QUANTISATION_M, 4),
-        "role": (
-            "the interface raster is 3.66 m cells quantised to 3.9 m in Z, so it draws the "
-            "ocean shelf and the map's edge as terraces -- flat plateaus with blocky "
-            "outlines that no kernel can un-terrace, because those steps are real in the "
-            "data and are not in the world. Low-passed at its own cell size, normalised "
-            "over the province so no landscape measurement is dragged into it, and faded by "
-            "its own weight so the province boundary is not drawn either."
-        ),
-        "why_not_marching_squares": (
-            "smoothing each level's indicator by one kernel and summing them is, by the "
-            "linearity of a convolution, the same array as smoothing the level field "
-            "itself. The spline along the marching-squares contour and this convolution are "
-            "the same operation, and only one of them needs a polyline extracted from "
-            "56 million texels."
-        ),
-    }
+def rebuild_lattice(field, ground, store) -> tuple[np.ndarray, np.ndarray, dict]:
+    """The interface raster read out of the container, then ``fill_from_raster``."""
+    z_cm, ok = gen.read_baseline(store)
+    return fill_from_raster(field, ground, z_cm / np.float32(100.0), ok)
 
 
 # --------------------------------------------------------------------------------------
@@ -1100,6 +1065,68 @@ def taps_cubic(position: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarray
     return index, weight
 
 
+class PchipTaps(tuple):
+    """``(index, t)``: the four clamped indices around each position and its cell fraction.
+
+    A type of its own because PCHIP's weights depend on the data, so ``sample_surface`` has
+    to know it was handed positions rather than weights.
+    """
+
+    __slots__ = ()
+
+    def __new__(cls, index, t):
+        return super().__new__(cls, (index, t))
+
+
+def taps_pchip(position: np.ndarray, limit: int) -> PchipTaps:
+    """The same four indices as ``taps_cubic``, with the fraction instead of weights."""
+    base = np.floor(position).astype(np.int64)
+    t = (position - base).astype(np.float32)
+    index = np.stack([np.clip(base + offset, 0, limit - 1) for offset in (-1, 0, 1, 2)])
+    return PchipTaps(index, t)
+
+
+def pchip_slope(left: np.ndarray, right: np.ndarray) -> np.ndarray:
+    """Fritsch-Butland: the harmonic mean of two secants, zero unless they agree in sign."""
+    agree = left * right > 0
+    total = np.where(agree, left + right, np.float32(1.0))
+    return np.where(agree, 2.0 * left * right / total, np.float32(0.0)).astype(np.float32)
+
+
+def pchip_1d(p0, p1, p2, p3, t):
+    """Cubic Hermite between ``p1`` and ``p2``; never leaves ``[min, max]`` of the two."""
+    middle = p2 - p1
+    d1 = pchip_slope(p1 - p0, middle)
+    d2 = pchip_slope(middle, p3 - p2)
+    t2 = t * t
+    t3 = t2 * t
+    return (
+        (2.0 * t3 - 3.0 * t2 + 1.0) * p1
+        + (t3 - 2.0 * t2 + t) * d1
+        + (3.0 * t2 - 2.0 * t3) * p2
+        + (t3 - t2) * d2
+    )
+
+
+def resample_pchip(raster: np.ndarray, rows: PchipTaps, cols: PchipTaps, nodata: int):
+    """Separable PCHIP onto the output grid. Returns ``(values, whole)``.
+
+    x first over the contiguous slab of source rows, then y, as ``resample`` does.
+    ``whole`` is true where all sixteen texels under the stencil have a value.
+    """
+    (row_index, row_t), (col_index, col_t) = rows, cols
+    low, high = int(row_index.min()), int(row_index.max())
+    slab = raster[low : high + 1]
+    known = slab != nodata
+    values = np.where(known, slab, 0).astype(np.float32)
+    across = pchip_1d(*(values[:, col_index[tap]] for tap in range(4)), col_t[None, :])
+    across_whole = np.logical_and.reduce([known[:, col_index[tap]] for tap in range(4)])
+    picked = [row_index[tap] - low for tap in range(4)]
+    total = pchip_1d(*(across[index] for index in picked), row_t[:, None])
+    whole = np.logical_and.reduce([across_whole[index] for index in picked])
+    return total.astype(np.float32), whole
+
+
 def resample(raster: np.ndarray, rows, cols, nodata: int | None):
     """Separable interpolation of ``raster`` onto the output grid. Returns (sum, weight).
 
@@ -1147,19 +1174,23 @@ def resample(raster: np.ndarray, rows, cols, nodata: int | None):
 STENCIL_WHOLE = 1.0 - 1e-4
 
 
-def sample_surface(raster: np.ndarray, cubic, linear, nodata: int):
-    """A height raster on the output grid: cubic inside the data, bilinear at its edge.
+def sample_surface(raster: np.ndarray, smooth_taps, linear, nodata: int):
+    """A height raster on the output grid: the smooth kernel inside the data, bilinear at its edge.
 
-    Returns ``(values, missing)``. Where the 4x4 stencil is whole the C1 answer is used;
-    where it is not -- a fifth of this field is no-data, so that boundary is long -- the 2x2
-    answer is, because a cubic kernel has negative lobes and one straddling a hole
-    overshoots; and where even that has nothing under it the caller paints the page's sea.
+    Returns ``(values, missing)``. ``smooth_taps`` is a ``(rows, cols)`` pair of
+    ``taps_pchip`` or of ``taps_cubic``. Where the 4x4 stencil is whole the C1 answer is
+    used; where it is not the 2x2 answer is; and where even that has nothing under it the
+    caller paints the page's sea.
     """
-    smooth, smooth_weight = resample(raster, *cubic, nodata)
+    if isinstance(smooth_taps[0], PchipTaps):
+        smooth, whole = resample_pchip(raster, *smooth_taps, nodata)
+    else:
+        smooth, smooth_weight = resample(raster, *smooth_taps, nodata)
+        whole = smooth_weight >= STENCIL_WHOLE
     flat, flat_weight = resample(raster, *linear, nodata)
     missing = flat_weight <= 0.0
     near = flat / np.where(missing, 1.0, flat_weight)
-    return np.where(smooth_weight >= STENCIL_WHOLE, smooth, near), missing
+    return np.where(whole, smooth, near), missing
 
 
 def sample_plain(raster: np.ndarray, taps) -> np.ndarray:
@@ -2013,6 +2044,7 @@ def render_layer(
     regimes=None,
     measured_plane_u8=None,
     overlay=None,
+    kernel=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
@@ -2027,8 +2059,9 @@ def render_layer(
     the sub-sampling beside them; ``None`` draws the single-regime picture. ``seam`` and
     ``regimes`` are accumulators, passed for the first layer only, both layers drawing the
     identical surface. ``overlay`` is the arch-and-boulder pair of maps and its sub-sampling,
-    composited last.
+    composited last. ``kernel`` builds the smooth taps: ``taps_pchip`` unless told otherwise.
     """
+    kernel = taps_pchip if kernel is None else kernel
     painter = LAYER_PAINTERS[layer]
     x_cm, y_cm = frame_coordinates(size)
     spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
@@ -2045,7 +2078,7 @@ def render_layer(
     # The column taps are the same for every band, on both grids the bands sample: the
     # field's 1 m lattice and the artwork's 8192 sheet. Built once.
     field_x = grid_position(x_cm, field.x0_cm, field.spacing_cm, field.width)
-    cols_cubic = taps_cubic(field_x, field.width)
+    cols_smooth = kernel(field_x, field.width)
     cols_linear = taps_linear(field_x, field.width)
     art_step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / SHEET_PX
     art_x0_cm = BOUNDS_M["x_min_m"] * 100 + art_step_cm / 2
@@ -2063,10 +2096,10 @@ def render_layer(
         lo = max(top - BAND_HALO, 0)
         hi = min(bottom + BAND_HALO, size)
         field_y = grid_position(y_cm[lo:hi], field.y0_cm, field.spacing_cm, field.height)
-        cubic = (taps_cubic(field_y, field.height), cols_cubic)
+        smooth = (kernel(field_y, field.height), cols_smooth)
         linear = (taps_linear(field_y, field.height), cols_linear)
 
-        z_dm, missing = sample_surface(heights, cubic, linear, hf.NODATA)
+        z_dm, missing = sample_surface(heights, smooth, linear, hf.NODATA)
         z_m = z_dm / np.float32(hf.DM_PER_M)
         weight = None
         if direct is not None:
@@ -2074,7 +2107,7 @@ def render_layer(
             # The base the rocks are composited onto is the lattice UNDERNEATH them, not the
             # field's own fold -- see ``ground_lattice``. Where that lattice knows nothing
             # the fold stands in, which is inside a formation the rock covers anyway.
-            ground_dm, ground_missing = sample_surface(ground, cubic, linear, hf.NODATA)
+            ground_dm, ground_missing = sample_surface(ground, smooth, linear, hf.NODATA)
             base_m = np.where(ground_missing, z_m, ground_dm / np.float32(hf.DM_PER_M))
             z_m, missing, weight, switched = blend_regimes(
                 base_m,
@@ -2116,7 +2149,7 @@ def render_layer(
             wet = measured = np.zeros(z_m.shape, np.float32)
             water_m = z_m
         else:
-            water_dm, _dry = sample_surface(water, cubic, linear, hf.NODATA)
+            water_dm, _dry = sample_surface(water, smooth, linear, hf.NODATA)
             water_m = water_dm / np.float32(hf.DM_PER_M)
             wet = sample_coverage(wet_plane, linear)
             measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
@@ -2478,17 +2511,9 @@ def main() -> int:
             "pixel"
         )
     recipe = RECIPE_KERNEL_ONLY if args.kernel_only else RECIPE
-    heights, deterrace_meta = (None, {}) if args.kernel_only else deterraced_height(field)
+    heights = None if args.kernel_only else field._height_dm.astype(np.float32)
     if heights is None:
         print(f"  --kernel-only: drawing recipe {recipe}, the picture before the two regimes")
-    else:
-        print(
-            f"  fill terraces: {deterrace_meta['share_of_the_field']}% of the field low-passed "
-            f"at {deterrace_meta['cell_m']} m, moving it a median "
-            f"{deterrace_meta['moved_median_m']} m, p99 {deterrace_meta['moved_p99_m']} m, "
-            f"clamped at one {deterrace_meta['clamp_m']} m step on "
-            f"{deterrace_meta['clamped_share_of_the_province']}% of the province"
-        )
     ground, ground_meta = (None, {}) if heights is None else ground_lattice(field, heights)
     terrain_meta: dict = {}
     if ground is not None:
@@ -2554,6 +2579,14 @@ def main() -> int:
     borrow = (detail, province)
     _wet_plane, _measured_plane, water_source = water_planes(field)
     print(f"  water: {water_source}")
+    fill_meta: dict = {}
+    if ground is not None:
+        heights, ground, fill_meta = rebuild_lattice(field, ground, store)
+        print(
+            f"  lattice rebuilt in {sum(fill_meta['seconds'].values()):.0f}s: "
+            f"{fill_meta['share_of_the_field_pct']}; {fill_meta['holes']['holes']} holes "
+            f"filled ({fill_meta['holes']['harmonic_fallback']} harmonic)"
+        )
 
     # The check cuts the ARTWORK: a real picture with real entropy, so the PNGs are real
     # PNGs rather than a run-length of one colour that compares equal whatever happened.
@@ -2828,6 +2861,7 @@ def main() -> int:
             direct=direct,
             measured_plane_u8=weight_plane,
             overlay=top,
+            kernel=taps_cubic if args.kernel_only else taps_pchip,
             # Both layers draw the identical surface, so the seam and the regime table are
             # measured on the first one and quoted for both.
             seam=seam if not measured else None,
@@ -2864,9 +2898,10 @@ def main() -> int:
             "metres_per_pixel": round(spacing_m, 4),
             "sampling": (
                 "the field's own composition rule, at this render's spacing. KERNEL: "
-                "Catmull-Rom (cubic convolution, a = -1/2) over the LANDSCAPE AND FILL "
-                "lattices -- the cliff province taken out, because interpolating the "
-                "composed field reconstructs its own 1 m fold and a rim reconstructed from "
+                "tensor-product PCHIP (Fritsch-Butland slopes: exact at the 1 m vertices, "
+                "never outside a cell's own range) over the LANDSCAPE AND FILL lattices, "
+                "rebuilt by tools/map_fill.py -- the cliff province taken out, because "
+                "interpolating the composed field reconstructs its own 1 m fold and a rim reconstructed from "
                 "a fold is a 1 m staircase at any output resolution -- falling back to "
                 "bilinear where the 4x4 stencil straddles no data and to nothing where no "
                 "texel under it has a value. DIRECT: the cliff geometry rasterised into "
@@ -2911,7 +2946,7 @@ def main() -> int:
                 "top_overlay": top is not None,
                 "measurement_rule": weight_meta,
                 "lift_knee_m": DIRECT_LIFT_KNEE_M,
-                "fill_deterrace": deterrace_meta,
+                "fill_rebuild": fill_meta,
                 **measured,
             },
             "z7": (
