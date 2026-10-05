@@ -38,7 +38,7 @@ def _flat_forward(p: dict, lab: np.ndarray) -> np.ndarray:
     lab = np.array(lab, np.float32)
     lab[1:] *= p["chroma_gain"]
     lab[0] += p["altitude_lift"] * 0.5
-    unit = lambda c: np.asarray(c, np.float32) / (np.asarray(c, np.float32) @ LUMA)  # noqa: E731
+    unit = lambda c: np.asarray(c, np.float32) / (np.asarray(c, np.float32) @ LUMA)
     light = p["ambient"] * unit(p["sky"]) + (1 - p["ambient"]) * unit(p["sun"])
     out = linear_from_oklab(lab) * light * p["exposure"] * p["tone"]["gain"]
     y = float(out @ LUMA)
