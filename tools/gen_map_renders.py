@@ -15,6 +15,14 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
         sys.path.insert(0, str(_path))
 
 if __name__ == "__main__":
+    import warnings
+
+    warnings.warn(
+        "tools/gen_map_renders.py is deprecated and will be removed in 0.3.0; "
+        "use `python -m mapgen renders`",
+        DeprecationWarning,
+        stacklevel=1,
+    )
     from mapgen.cli import main
 
     raise SystemExit(main(["renders", *sys.argv[1:]]))

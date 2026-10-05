@@ -15,6 +15,14 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
         sys.path.insert(0, str(_path))
 
 if __name__ == "__main__":
+    import warnings
+
+    warnings.warn(
+        "tools/check_map_fill.py is deprecated and will be removed in 0.3.0; "
+        "use `python -m mapgen check-fill`",
+        DeprecationWarning,
+        stacklevel=1,
+    )
     from mapgen.cli import main
 
     raise SystemExit(main(["check-fill", *sys.argv[1:]]))
