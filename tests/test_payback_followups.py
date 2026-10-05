@@ -8,7 +8,13 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import payback, prices
-from satisfactory_mcp.domain.planning.optimize import PAYBACK_STOPS, Scenario, machine_mw, solve
+from satisfactory_mcp.domain.planning.optimize import (
+    PAYBACK_STOPS,
+    POWER_GOAL_BUILD_COST_FROM_H,
+    Scenario,
+    machine_mw,
+    solve,
+)
 from satisfactory_mcp.domain.planning.planlog import (
     PAYBACK_MAX_H,
     Actor,
@@ -89,6 +95,8 @@ SPIRE = {
 def test_a_machine_costs_its_points_over_the_horizon_in_mw(game):
     sc = Scenario(game=game, recipes=[], build_points={REFINERY: 9000.0}, power_price=250.0)
     assert machine_mw(sc, REFINERY) == 5.0
+    sc.payback_hours = 2.0
+    assert machine_mw(sc, REFINERY) == 5.0
     sc.payback_hours = 10.0
     assert machine_mw(sc, REFINERY) == pytest.approx(9000 / 2500)
     assert machine_mw(sc, "Build_Unknown_C") == 5.0
@@ -108,13 +116,25 @@ def test_a_horizon_prices_the_power_goal_in_build_points(game, state):
         sol = solve(build_scenario(game, state, payback_hours=hours, **SPIRE).scenario)
         return sol, {p["label"] for p in sol.processes}
 
-    plain, before = used(0.0)
-    short, after = used(1.0)
-    # The 32 Blenders cost 146,162 points each (Heavy Modular Frames are scarce here): at 1 h
-    # that is ~580 MW a machine, so the packaged route through Refineries replaces them.
+    _plain, before = used(0.0)
+    priced, after = used(POWER_GOAL_BUILD_COST_FROM_H)
+    # The 32 Blenders cost 146,162 points each (Heavy Modular Frames are scarce here): at 5 h
+    # that is ~117 MW a machine, so the packaged route through Refineries replaces them.
     assert "Alternate: Diluted Fuel" in before and "Alternate: Diluted Fuel" not in after
     assert "Alternate: Diluted Packaged Fuel" in after
-    assert short.net_mw < plain.net_mw
+    assert priced.net_mw == pytest.approx(28447.7, abs=0.1)
+    assert round(priced.machines_total) == 545
+
+
+@pytest.mark.parametrize("hours", [1.0, 2.0])
+def test_short_horizons_keep_the_power_goal_and_the_recipes(game, state, hours):
+    """Ruling 3b: below 5 h a dismantle refunds the materials, so a power plan does not give
+    up MW for cheaper machines; only the clock spread of the horizon applies."""
+    plain = solve(build_scenario(game, state, **SPIRE).scenario)
+    short = solve(build_scenario(game, state, payback_hours=hours, **SPIRE).scenario)
+    assert short.net_mw == pytest.approx(plain.net_mw, abs=0.1)
+    assert {p["label"] for p in short.processes} == {p["label"] for p in plain.processes}
+    assert round(short.machines_total) == 289
 
 
 # ------------------------------------------------------------------ F3b: craftable shards count
@@ -374,7 +394,7 @@ def test_a_release_that_switches_recipes_shows_in_the_two_solves(world, projecti
         before = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
         client.post(
             f"/api/plans/{key}/ops",
-            json={"base_rev": 1, "ops": [_set("payback_hours", 1)]},
+            json={"base_rev": 1, "ops": [_set("payback_hours", 5)]},
             headers=ORIGIN,
         )
         after = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()

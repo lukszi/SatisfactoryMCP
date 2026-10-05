@@ -8,8 +8,8 @@ import { L } from "./leaflet";
 import { map } from "./map";
 import { bench, changed, gesture, stageHeadroom } from "./planner-core";
 import { biomassQuery } from "./powerview";
-import { choice } from "./settings";
-import { busy, corners, crossCancel, crossDrop, crossing, crossOn, crossTurn, edit, ghost, nodes, outsideMap, same, setPad, stop, useSnap } from "./sitedrag";
+import { choice, onSetting } from "./settings";
+import { busy, corners, crossCancel, crossDrop, crossing, crossOn, crossTurn, edit, ghost, nodes, outsideMap, same, setPad, stop, useSnap, yawStep } from "./sitedrag";
 import { state } from "./state";
 import { friendly } from "./toast";
 import { counted, W } from "./words";
@@ -62,6 +62,12 @@ var pumpTimer = 0;
 
 useSnap(function () {
   return choice("siteSnap") || "fine";
+});
+var snapWas = choice("siteSnap");
+onSetting(function () {
+  if (choice("siteSnap") === snapWas) return;
+  snapWas = choice("siteSnap");
+  if (showing()) paint();
 });
 
 function padOf(raw: unknown): Pad | null {
@@ -405,8 +411,9 @@ function paintFields(): void {
 function actions(parent: HTMLElement): void {
   var row = make("div", "site-actions");
   if (crossing()) {
-    row.appendChild(button("⟲ 15°", function () { crossTurn(-15); }, { label: "turn the pad 15° anticlockwise" }));
-    row.appendChild(button("⟳ 15°", function () { crossTurn(15); }, { label: "turn the pad 15° clockwise" }));
+    var deg = yawStep() + "°";
+    row.appendChild(button("⟲ " + deg, function () { crossTurn(-1); }, { label: "turn the pad " + deg + " anticlockwise" }));
+    row.appendChild(button("⟳ " + deg, function () { crossTurn(1); }, { label: "turn the pad " + deg + " clockwise" }));
     var drop = button(W.dropHere, function () { crossDrop(); paint(); });
     drop.classList.add("site-drop");
     drop.setAttribute("data-ctl", "site-drop");
@@ -490,8 +497,9 @@ function paint(): void {
   actions(card);
   card.appendChild(feedback);
   paintLines();
-  var hint = COARSE.matches ? "move, pan the map under the pad, then " + W.dropHere : "drag the square to move, the circle to turn; Shift moves freely; arrows nudge 8 m, Shift+arrows 1 m, [ and ] turn 15°; Esc puts it back";
-  card.appendChild(make("p", "dash-note", hint + " · snap: " + (choice("siteSnap") === "grid8" ? "8 m world grid" : "1 m and 15°") + " (Settings)"));
+  var deg = yawStep() + "°";
+  var hint = COARSE.matches ? "move, pan the map under the pad, then " + W.dropHere : "drag the square to move, the circle to turn; Shift moves freely; arrows nudge 8 m, Shift+arrows 1 m, [ and ] turn " + deg + ", Shift+[ and ] 15° freely; Esc puts it back";
+  card.appendChild(make("p", "dash-note", hint + " · snap: " + (choice("siteSnap") === "grid8" ? "8 m world grid and " + deg : "1 m and " + deg) + " (Settings)"));
 }
 
 /* ---------------------------------------------------------------- the split */

@@ -48,17 +48,35 @@ average too.
   count and minimises `Σ (K_b + H · r · draw) · v` in points. For `max_item`, `min_raw` and
   `min_machines`, phase 1 (the goal) is untouched, so recipe choice moves only among routes
   that tie on the goal.
-- **Power goals (F1a).** `max_mw` and `min_power` already trade machines against MW in
-  phase 1. At `H > 0` each column's machine price there is its building's
-  `K_b / (H · r)` MW (`optimize.machine_mw`) instead of the flat `machine_cost_mw`. At 0 h,
-  or with no running price, the flat 5 MW stays, so today's results are unchanged.
-  What changes: a power plan now avoids machines that are dear in this save, not just
-  machines in general. On the fixture's Spire Coast plan (`max_mw`, Plastic 600 and Rubber
-  250) at 1 h, the 32 Blenders on Diluted Fuel (146,162 points each, ~580 MW a machine at
-  1 h, because Heavy Modular Frames are scarce) give way to Diluted Packaged Fuel in
-  Refineries plus Packagers: 397 machines and 27,757 MW instead of 286 and 28,253 MW. Short
-  horizons price machines high, so a power plan can give up some MW to build cheaper ones.
-  `machine_cost_mw` now applies only at 0 h.
+- **Power goals (F1a, 3b).** `max_mw` and `min_power` already trade machines against MW in
+  phase 1. From **5 h** (`optimize.POWER_GOAL_BUILD_COST_FROM_H`) each column's machine price
+  there is its building's `K_b / (H · r)` MW (`optimize.machine_mw`) instead of the flat
+  `machine_cost_mw`. Below 5 h, at 0 h, or with no running price, the flat 5 MW stays; the
+  horizon still sets column clocks and phase 2. At 0 h the LP is the one from before F1a.
+  Why a threshold (ruling 3b): a short horizon on a power plan means a temporary build, and a
+  dismantle refunds its materials in full, so its build cost is not a cost yet. Why 5 h:
+  measured on the fixture's Spire Coast plan (`max_mw`, Plastic 600 and Rubber 250, grid mix
+  250.6 pts/MWh), the build-point price lost MW against the flat price at every horizon up to
+  4.5 h (−495 MW at 1 h, −89 MW at 4 h, −19 MW at 4.5 h) and gained from 5 h on (+42 MW at 5 h,
+  +409 MW at 10 h). From 5 h it also builds for fewer points, so it is a win on both
+  counts. 5 h is the first stop past the crossover. Short horizons price machines high:
+  the 32 Blenders cost 146,162 points each, because Heavy Modular Frames are scarce, which is
+  ~580 MW a machine at 1 h.
+
+  | Horizon | Before 3b: MW / machines | After 3b: MW / machines |
+  |---|---|---|
+  | 0 h | 28,252.5 / 286 | 28,252.5 / 286 (unchanged) |
+  | 1 h | 27,757.1 / 396 | 28,252.5 / 286 |
+  | 2 h | 27,819.1 / 399 | 28,252.5 / 286 |
+  | 5 h | 28,447.7 / 544 | 28,447.7 / 544 |
+  | 10 h | 29,139.7 / 796 | 29,139.7 / 796 |
+  | 20 h | 29,724.1 / 1,219 | 29,724.1 / 1,219 |
+  | 100 h | 30,754.7 / 3,682 | 30,754.7 / 3,682 |
+
+  Machines are the built rows. Before 3b the plan dropped the Blenders on Diluted Fuel for
+  Diluted Packaged Fuel in Refineries plus Packagers from 1 h on; now it keeps them below 5 h
+  and switches at 5 h, where the switch also gives more MW.
+  Normal plans are unchanged: they keep their build cost at every horizon (§10).
 - **Required and banned always win.** `build_scenario` removes banned recipes and every rival
   of a required one before the LP exists. The horizon changes column clocks and costs, never
   the column set (`test_required_and_banned_hold_at_every_horizon`).
@@ -308,7 +326,9 @@ Every question this section once held is answered. Each answer is built and test
 
 | # | Question | Answer | Where |
 |---|---|---|---|
-| F1a | Should `max_mw`/`min_power` phase 1 keep the flat `machine_cost_mw`? | **No.** Above 0 h each machine costs `K_b / (H · r)` MW there; at 0 h the flat 5 MW stays, so today's results hold | §2 |
+| F1a | Should `max_mw`/`min_power` phase 1 keep the flat `machine_cost_mw`? | **No.** From 5 h each machine costs `K_b / (H · r)` MW there; below it the flat 5 MW stays, so today's results hold | §2 |
+| 3b | Should build cost count for power plans at short horizons? | **No.** Only from 5 h: a short horizon means a temporary build, and a dismantle refunds its materials. Threshold measured in §2 | §2 |
+| 3b extra | Does the refund argument apply to normal plans' build cost? | **No.** A short horizon on a power plan implies a temporary setup that is dismantled, so its materials come back; a normal plan is a factory that stays, and its materials stay tied up. Normal plans keep their build cost at every horizon | §2 |
 | F2a | Where does the scarcity-tier memory live? | **Beside the plan log**, `<plans>/<world>/tiers.json`, under a file lock, so page and chat agree | §3.1 |
 | F3b | Which shards may overclock-last spend? | **In hand plus craftable** from slugs in hand whose shard recipe is unlocked; shown as `N shards (H in hand + C craftable)` | §5 |
 | F3 extra | Can one row differ from the plan's switch? | **Yes**: `row_overclock`, "overclock last" or "one more underclocked machine" per row, through the op log, from the page and from chat | §5.1 |

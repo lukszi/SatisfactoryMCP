@@ -18,7 +18,7 @@ open questions are in §13.
 |---|---|
 | P5-1a | Touch: **crosshair mode** (the map pans under a fixed pad, then **[drop here]**). Desktop: drag handles, plus **[move by panning]**. Keyboard works too |
 | P5-2a | A drop outside the **map square** is refused: a 400 on the write, a refusal line on the page. Outside the playable content box it is only a muted line |
-| P5-3 | Snapping is a **shared setting** `site_snap`: `fine` (1 m, 15° steps, the default) or `grid8` (8 m world grid, 15° steps). Shift moves freely |
+| P5-3 | Snapping is a **shared setting** `site_snap`: `fine` (1 m, 15° steps, the default) or `grid8` (8 m world grid, 90° steps; owner ruling). Shift moves freely |
 | P5-4 | The ground height comes from a **provider** (§6). Until one is installed `z` stays null and the page says `terrain height: pending` |
 | P5-5b | Moving a plan off machines that count as built asks first, inline, never a browser dialog: `28 of 133 built here → 0 at the new spot · [move anyway] [cancel]`. Ctrl+Z still undoes the move |
 | P5-6a | W×D is typed. No edge handles |
@@ -70,7 +70,8 @@ open questions are in §13.
 
 - The move handle is focusable: `aria-label="pad of “<plan>”, move with arrow keys, turn with
   [ and ]"`, `data-ctl="site-move"`.
-- Arrows nudge 8 m and land on the snap; Shift+arrows nudge 1 m freely; `[` and `]` turn 15°.
+- Arrows nudge 8 m and land on the snap; Shift+arrows nudge 1 m freely; `[` and `]` turn one
+  snap step (15° on `fine`, 90° on `grid8`) to the next step angle; Shift+`[`/`]` turn 15° freely.
   North is up (−y).
 - A burst is one gesture: it commits 600 ms after the last key, on Enter, or on blur. Escape
   restores the pad from before the burst.
@@ -80,7 +81,8 @@ open questions are in §13.
 - On a coarse pointer the handles are not drawn and the card offers **[move]**.
 - The pad jumps under a fixed cross at the centre of the **visible** map (the part the column
   or the sheet does not cover). Panning the map moves the pad; each `move` event is a step.
-- **[⟲ 15°] [⟳ 15°]** turn it; **[drop here]** commits; **[cancel]** puts it back. Buttons are
+- **[⟲ 15°] [⟳ 15°]** turn it (the label and the step read **90°** on `grid8`), landing on the
+  next step angle; **[drop here]** commits; **[cancel]** puts it back. Buttons are
   44 px on a coarse pointer.
 
 ### F5 Typed fields
@@ -189,7 +191,11 @@ so they cannot store different shapes. Undo does not: it replays the stored inve
 - `fine`: the centre rounds to 1 m.
 - `grid8`: the pad's west and north edges land on the 8 m world grid (`x − w/2` and `y − d/2`
   are multiples of 8).
-- Yaw rounds to 15° in both. Shift (page only) skips the snap.
+- Yaw rounds to 15° on `fine` and to 90° on `grid8` (`siting.yaw_step`, `sitedrag.ts` `yawStep`).
+  On `grid8` yaw snaps first; at 90° or 270° the pad's extent along x is its depth, so the
+  grid rule uses `x − d/2` and `y − w/2`. Shift (page only) skips the snap.
+- A stored yaw off the `grid8` lattice (set on `fine`, or typed) moves to the nearest quarter
+  turn on the next snapped write, including a chat write that does not name a yaw.
 - Chat's `site_plan` writes and previews are snapped with the shared value; the page's typed
   fields are not.
 
@@ -306,7 +312,7 @@ scroll at either width.
 ## 13. Open
 
 - **Pin snap** (design §6: snap within 24 px of a located pin, label `pin:N`) is not built.
-- Should `grid8` also step yaw by 90°? Both modes use 15° today.
+- ~~Should `grid8` also step yaw by 90°?~~ Decided: yes (owner ruling); see P5-3 and §5.2.
 - Chat's writes are snapped too. A typed coordinate from chat moves by up to half a cell in
   `grid8`.
 - The ground provider is a hook only; `z` stays null until the terrain-height work installs it.
