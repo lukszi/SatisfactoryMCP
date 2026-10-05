@@ -110,9 +110,9 @@
    156
   ],
   "shell": [
-   214,
-   204,
-   186
+   88,
+   85,
+   83
   ],
   "coral_seabed": [
    95,
@@ -450,8 +450,8 @@
   ],
   "strength": 1.0,
   "depth_scale": 0.2,
-  "blur_m": 1.25,
-  "gain": 3.0
+  "blur_m": 3.0,
+  "gain": 8.0
  },
  "tone": {
   "gain": 1.6,
@@ -475,7 +475,6 @@
   "rock_keeps_exposure": true,
   "meshes": {
    "coral": "#99868e",
-   "shell": "#d6ccba",
    "coral_seabed": "#5f8899"
   },
   "areas": [
@@ -569,7 +568,8 @@
     "areas": [
      "Area_Swamp"
     ],
-    "water": "#7e7372"
+    "water": "#7e7372",
+    "water_class": "swamp"
    }
   ]
  }
