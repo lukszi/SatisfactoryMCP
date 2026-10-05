@@ -2,7 +2,7 @@
  * tab modules share. See docs/frontend_vision.md §8. */
 
 import { onAdvice } from "./advice";
-import { button, choice as choiceBox, empty, fieldError, link, note } from "./dashkit";
+import { button, choice as choiceBox, empty, fieldError, link, note, tabs2 } from "./dashkit";
 import { el, keepFocus, make } from "./dom";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "./map";
@@ -21,7 +21,9 @@ import { factoryAddress } from "./factory-detail";
 import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
 import { circuitName } from "./powerview";
-import { dashParts } from "./nav";
+import { mapPickerRow, renderMaps } from "./maps";
+import { onMaps } from "./mapstore";
+import { dashParts, go } from "./nav";
 import { drawRail } from "./rail";
 import { select } from "./selection";
 import { renderWorld, worldTitle } from "./world";
@@ -202,7 +204,29 @@ function settingRow(s: Setting): HTMLElement {
   return row;
 }
 
-function renderSettings(body: HTMLElement): void {
+var SETTINGS_SUBS: [string, string][] = [
+  ["", "general"],
+  ["maps", "maps"],
+];
+
+function renderSettings(body: HTMLElement, subject: string): void {
+  var sub = subject === "maps" ? "maps" : "";
+  body.appendChild(
+    tabs2(
+      SETTINGS_SUBS.map(function (s) {
+        return { id: s[0], label: s[1], href: hashFor(s[0] ? "settings/" + s[0] : "settings") };
+      }),
+      sub,
+      function (id) {
+        go(id ? "settings/" + id : "settings");
+      },
+      "Settings sections"
+    )
+  );
+  if (sub === "maps") {
+    renderMaps(body, { toMap: toMap, render: render });
+    return;
+  }
   var card = make("section", "dash-card");
   var bar = make("div", "dash-title");
   bar.appendChild(make("h2", "dash-h", "settings"));
@@ -220,6 +244,8 @@ function renderSettings(body: HTMLElement): void {
     }
     card.appendChild(settingRow(s));
   });
+  card.appendChild(make("h3", "dash-setting-group", "map"));
+  card.appendChild(mapPickerRow());
   body.appendChild(card);
 }
 
@@ -337,7 +363,7 @@ export function render(): void {
     else if (at.tab === "inventory") renderInventory(body, { toMap: toMap, render: render });
     else if (at.tab === "world") renderWorld(body);
     else if (at.tab === "recipes") renderRecipes(body, at.subject, render);
-    else renderSettings(body);
+    else renderSettings(body, at.subject);
     if (!body.querySelector("h1")) body.insertBefore(make("h1", "dk-hidden", tabLabel(at.tab)), body.firstChild);
   });
   el("dash").scrollTop = scroll;
@@ -406,6 +432,9 @@ function wire(): void {
   });
   onSetting(function () {
     if (state.dash && address().tab === "settings") render();
+  });
+  onMaps(function (listed) {
+    if (listed && state.dash && address().tab === "settings") render();
   });
   wireDetect();
 }

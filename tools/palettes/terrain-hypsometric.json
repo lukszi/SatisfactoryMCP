@@ -1,0 +1,53 @@
+{
+ "id": "terrain-hypsometric",
+ "about": "a hypsometric ramp over the land's 1st to 99.5th height percentile, water tinted by depth",
+ "ramp_lo_pct": 1.0,
+ "ramp_hi_pct": 99.5,
+ "ramp_stops": [
+  [
+   46,
+   74,
+   44
+  ],
+  [
+   86,
+   116,
+   56
+  ],
+  [
+   140,
+   148,
+   78
+  ],
+  [
+   176,
+   152,
+   108
+  ],
+  [
+   190,
+   170,
+   150
+  ],
+  [
+   226,
+   226,
+   226
+  ],
+  [
+   255,
+   255,
+   255
+  ]
+ ],
+ "water_shallow": [
+  100,
+  190,
+  230
+ ],
+ "water_deep": [
+  40,
+  110,
+  170
+ ]
+}

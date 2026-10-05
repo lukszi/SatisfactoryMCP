@@ -11,6 +11,7 @@ import { onActivity as onAskActivity, refetchAsks } from "./asks";
 import { onActivity as onPinActivity, onPlanChange, refetchPins } from "./pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
 import { onRenameActivity } from "./rename";
+import { fetchMaps, onMapsEvent } from "./mapstore";
 import { onSettingsEvent, refetchSharedSettings } from "./shared-settings";
 import { state } from "./state";
 import { fail } from "./toast";
@@ -18,6 +19,7 @@ import { onFindActivity } from "./world";
 import { refreshWorlds } from "./worlds";
 
 import type { SettingsResponse } from "./api-shapes";
+import type { MapsEvent } from "./mapstore";
 import type { ActivityEvent, PlansEvent } from "./planner-core";
 
 /* The stream replays the newest event of every kind to each new subscriber, so the first one
@@ -131,6 +133,7 @@ export function listen() {
       refetchAsks();
       refetchAdvice();
       refetchSharedSettings();
+      fetchMaps();
       resyncPlanner(dispatchActivity);
     };
     var blink = function () {
@@ -183,6 +186,11 @@ export function listen() {
     es.addEventListener("settings", function (event) {
       var data = parsed<SettingsResponse>(event);
       if (data) onSettingsEvent(data);
+    });
+    /* State rather than news: the replay of the newest one is how a reload sees a running job. */
+    es.addEventListener("maps", function (event) {
+      var data = parsed<MapsEvent>(event);
+      if (data) onMapsEvent(data);
     });
   }
 }

@@ -24,6 +24,13 @@ headroom* moved with it, because chat's power tools take the same switch.
 The rule: a setting is shared when chat computes with it. A setting that only changes how
 one viewer sees the page stays in the browser.
 
+One shared choice is not in this file: the **default base map**, Settings → general → map. It
+is shared by every browser on the machine, because the maps it names are files in
+`data/local/` beside it, so it lives in `data/local/maps/manifest.json` as `default`
+([maps_contract.md](maps_contract.md) §2). Its options are the registry's types, which a `SPECS`
+entry cannot list, and chat does not compute with it: `show_on_map(mode=)` only links to a type.
+The map's own switcher stays a per-view choice in the fragment's `mode=`.
+
 ## 2. The store
 
 `domain/settings.py`, file `settings.json` in the user data dir (`config.settings_path()`),

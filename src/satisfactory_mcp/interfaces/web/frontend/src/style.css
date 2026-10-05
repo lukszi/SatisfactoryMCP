@@ -477,6 +477,20 @@ select {
   cursor: help;
 }
 
+/* A map type's second line, and the amber word on one whose data is outdated. */
+.layer-mode-sub {
+  display: block;
+  padding-left: 20px;
+  color: var(--dim);
+  font-size: var(--fs-s);
+}
+
+.layer-mode-flag {
+  margin-left: var(--sp-1);
+  color: var(--flash);
+  font-size: var(--fs-s);
+}
+
 /* What a fold head says without being opened: how many of a folded family are drawn, or --
    for the modes, where one of four is always the answer -- which one. */
 .layer-count {
@@ -1932,6 +1946,7 @@ a.dash-where:hover {
 }
 
 .dash-select,
+.dash-input,
 .dash-number {
   padding: 2px var(--sp-2);
   border: 1px solid var(--line);
@@ -3614,5 +3629,237 @@ body.site-on #dash {
   .advice-link,
   .advice-menu-item {
     min-height: 44px;
+  }
+}
+
+/* Settings -> maps (maps.ts). One card per block; the type list stacks under 600 px. */
+.maps-status-line,
+.maps-setup,
+.maps-job-head,
+.maps-job-queued,
+.maps-job-offer,
+.maps-confirm,
+.maps-input,
+.maps-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+}
+
+.maps-setup,
+.maps-job-queued,
+.maps-job-offer,
+.maps-confirm {
+  margin-top: var(--sp-2);
+}
+
+.maps-jobs[hidden] {
+  display: none;
+}
+
+.maps-job-what {
+  overflow-wrap: anywhere;
+}
+
+.maps-job-head .btn {
+  margin-left: auto;
+}
+
+.maps-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.maps-bar {
+  flex: 0 0 min(320px, 50%);
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--r);
+  background: var(--line);
+}
+
+.maps-bar-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.maps-bar-busy .maps-bar-fill {
+  opacity: 0.5;
+}
+
+.maps-progress-words {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.maps-last-line {
+  margin-top: var(--sp-1);
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--fs-s);
+}
+
+.maps-log {
+  max-height: 240px;
+  margin: var(--sp-1) 0 0;
+  padding: var(--sp-2);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg-deep);
+  color: var(--ink-soft);
+  font-size: var(--fs-s);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.maps-fold summary,
+.maps-summary {
+  cursor: pointer;
+}
+
+.maps-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+
+.maps-options .dash-toggle,
+.maps-actions .dash-toggle {
+  margin-left: 0;
+  align-self: flex-start;
+}
+
+.maps-options .dash-toggle {
+  color: var(--ink);
+  font-size: inherit;
+}
+
+.maps-form > .maps-inline {
+  margin-top: var(--sp-2);
+}
+
+.maps-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.chip.maps-stale {
+  border-color: color-mix(in srgb, var(--flash) 60%, transparent);
+  color: var(--flash);
+}
+
+.maps-estimate.maps-short {
+  color: var(--flash);
+}
+
+.maps-inline .dash-input {
+  width: 22em;
+  max-width: 100%;
+}
+
+.maps-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.maps-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 7.5em minmax(0, 12em) auto;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.maps-row:first-child {
+  border-top: 0;
+}
+
+.maps-thumb {
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--sea);
+  cursor: pointer;
+}
+
+.maps-thumb:disabled {
+  cursor: default;
+}
+
+.maps-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.maps-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  overflow-wrap: anywhere;
+}
+
+.maps-meta {
+  display: flex;
+  flex-direction: column;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.maps-fresh {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.maps-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+}
+
+.maps-input {
+  padding: var(--sp-1) 0;
+}
+
+@media (max-width: 599px) {
+  .maps-row {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .maps-row > .maps-meta,
+  .maps-row > .maps-fresh,
+  .maps-row > .maps-actions {
+    grid-column: 1 / -1;
+  }
+
+  .maps-meta {
+    flex-direction: row;
+    gap: var(--sp-3);
+  }
+
+  .maps-actions {
+    justify-content: flex-start;
+  }
+
+  .maps-actions .btn {
+    min-height: 44px;
+  }
+
+  .maps-bar {
+    flex-basis: 40%;
   }
 }

@@ -108,7 +108,7 @@ def test_the_watcher_announces_a_settings_write_with_its_state():
     assert watcher.settings_scan() == []
     settings.write({"stage_headroom": "nameplate"}, Actor("chat", "claude-code", 3))
     [event] = watcher.settings_scan()
-    assert event.kind == KIND_SETTINGS and KINDS[-1] == KIND_SETTINGS
+    assert event.kind == KIND_SETTINGS and KINDS[-2] == KIND_SETTINGS
     data = event.as_dict()
     assert data["version"] == 1 and data["values"]["stage_headroom"] == "nameplate"
     assert data["by"]["kind"] == "chat"

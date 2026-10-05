@@ -60,9 +60,12 @@ sys.path.insert(0, str(ROOT / "src"))
 from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
+    changelist,
     installed_build,
+    provenance_block,
     read_path,
     read_str_path,
+    sha256_hex,
 )
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
@@ -77,6 +80,7 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     tile_relpath,
 )
 from satisfactory_mcp.core.gameassets.textures import bc1_mip_sizes, decode_bc1_rgba
+from satisfactory_mcp.core.gameassets.versions import ARTWORK_RECIPES, READER_VERSIONS, STYLES
 from tools._common import base_parser, require_gen
 
 #: The mount-relative directory holding the four slices, inside FactoryGame-Windows.utoc.
@@ -1198,6 +1202,7 @@ def build_sidecar(
     versions: dict[str, str],
     tiles: dict | None = None,
     tiles_2x: dict | None = None,
+    provenance: dict | None = None,
 ) -> dict:
     """The file the web API reads, plus the provenance a reader needs to date it.
 
@@ -1252,6 +1257,7 @@ def build_sidecar(
             # here saying the tree is missing would be a block, and a block means there is a
             # tree. Same shape gen_map_renders.py writes, for the same reason.
             **({"tiles_2x": tiles_2x} if tiles_2x else {}),
+            **({"provenance": provenance} if provenance else {}),
             "integrity": integrity,
             "layout": layout,
             "calibration": calibration,
@@ -1298,6 +1304,29 @@ def build_sidecar(
             ),
         },
     }
+
+
+def artwork_provenance(build_raw: dict, sheet_digest: str, enhanced: bool, size: int) -> dict:
+    """``_meta.provenance`` for the artwork: one input, the sheet, and the cutting recipe."""
+    recipe = ENHANCE_RECIPE if enhanced else 0
+    return provenance_block(
+        build_raw,
+        {
+            "artwork_sheet": {
+                "cl": changelist(build_raw),
+                "reader_version": READER_VERSIONS["artwork_sheet"],
+                "digest": sheet_digest,
+            }
+        },
+        {
+            "family": "artwork",
+            "recipe": recipe,
+            "version": ARTWORK_RECIPES[recipe]["version"],
+            "label": ARTWORK_RECIPES[recipe]["label"],
+            "size_px": size,
+        },
+        {"id": "artwork", "version": STYLES["artwork"]["version"], "label": "artwork"},
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -1491,6 +1520,7 @@ def main() -> int:
         alpha_note = f"alpha varies ({alpha_min}..{alpha_max}) and is kept; the PNG is RGBA"
     print(f"  {alpha_note}")
 
+    sheet_digest = sha256_hex(sheet.tobytes())
     calibration = calibrate(sheet, image_mod, BOUNDS_M)
     if "skipped" in calibration:
         print(f"  calibration skipped: {calibration['skipped']}")
@@ -1618,6 +1648,7 @@ def main() -> int:
         versions=versions,
         tiles=tiles,
         tiles_2x=tiles_2x,
+        provenance=artwork_provenance(build_raw, sheet_digest, args.enhance, args.size),
     )
     sidecar_path.write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
     print(f"wrote {sidecar_path}  {sidecar_path.stat().st_size} B")

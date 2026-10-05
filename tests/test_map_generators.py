@@ -41,6 +41,7 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     pyramid_top_z,
     tile_relpath,
 )
+from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from satisfactory_mcp.interfaces.web.routers import tiles as web_tiles
 from tools import gen_map_image, gen_map_renders
@@ -56,7 +57,11 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
     """
     assert gen_map_renders.RENDERS_DIR_NAME == web_tiles.MAP_RENDERS_DIR_NAME
     assert gen_map_renders.RENDER_SIDECAR_NAME == web_tiles.MAP_RENDER_SIDECAR_NAME
-    assert set(gen_map_renders.LAYERS) == set(web_tiles.MAP_RENDER_LAYERS)
+    assert (
+        set(gen_map_renders.LAYERS)
+        == set(presets.RENDER_LAYERS)
+        == {layer for layer in registry.LEGACY if layer != web_tiles.MAP_LAYER_DEFAULT}
+    )
     assert gen_map_renders.BOUNDS_M == web_tiles.DEFAULT_MAP_BOUNDS_M
     # The tile grid is the cutter's, not this generator's: it hands its sheet to
     # ``core.gameassets.pyramid`` and the endpoint has to be configured for what THAT cuts.

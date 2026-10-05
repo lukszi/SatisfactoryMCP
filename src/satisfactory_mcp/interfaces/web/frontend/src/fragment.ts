@@ -19,24 +19,10 @@ import { map, writeHash, writtenHash } from "./map";
 import { applyPickupFragment } from "./markers";
 import { showSelector } from "./panel";
 import { dashOf, garbledNote, parseHash, pinnedPath, state } from "./state";
-import { setMode } from "./tiles";
+import { askMode, knownMode } from "./tiles";
 import { fail } from "./toast";
 import { syncPickers } from "./worlds";
 
-import type { BaseMode } from "./state";
-
-/** The four modes, as the set a typed fragment is checked against. A fragment naming
- *  something else is ignored rather than resolved to plain: `mode=terrian` is a typo, and
- *  silently switching the base map off is a strange answer to one. */
-var MODES: BaseMode[] = ["artwork", "terrain", "satellite", "plain"];
-
-function askedMode(raw: string | undefined): BaseMode | null {
-  var found: BaseMode | null = null;
-  MODES.forEach(function (mode) {
-    if (mode === raw) found = mode;
-  });
-  return found;
-}
 
 /* The subject half: which world and which save.
  *
@@ -102,10 +88,12 @@ function apply(hash: string): void {
   // viewport thrown away by the flight. Same reasoning, one level down, as the world switch
   // coming before the flight.
   var floored = applyFloorFragment(asked.floor);
-  var mode = askedMode(asked.mode);
+  // Checked against the registry; a name it does not have is ignored rather than resolved
+  // to plain: `mode=terrian` is a typo, and switching the base map off is a strange answer.
+  var mode = knownMode(asked.mode);
   // `false` because the write it would do here is the write two lines down, and one
   // normalising write beats two.
-  if (mode && mode !== state.mode) setMode(mode, false);
+  if (mode && mode !== state.mode) askMode(mode, false);
   applyPickupFragment(asked.pickups);
   applyDash(dashOf(asked));
   // Not while the floor half is still moving: `enterFloors` is a fetch and a flight, and it

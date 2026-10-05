@@ -71,7 +71,14 @@ from satisfactory_mcp.core.gameassets.maparea import (
     read_map_areas,
 )
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
-from satisfactory_mcp.core.gameassets.provenance import read_str_path
+from satisfactory_mcp.core.gameassets.provenance import (
+    InstallNotFound,
+    changelist,
+    installed_build,
+    provenance_block,
+    read_str_path,
+    sha256_hex,
+)
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
     PYRAMID_TILE_PX,
@@ -83,6 +90,13 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     install_pyramid,
 )
 from satisfactory_mcp.core.gameassets.textures import decode_bc1_rgba
+from satisfactory_mcp.core.gameassets.versions import (
+    READER_VERSIONS,
+    RENDER_RECIPE_CURRENT,
+    RENDER_RECIPE_KERNEL_ONLY,
+    RENDER_RECIPES,
+    STYLES,
+)
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 # The generator that WRITES the field, for the direct regime: its sweep, its mesh decode,
@@ -169,12 +183,12 @@ RECIPES = {
         "sea past the data stays the page's colour"
     ),
 }
-RECIPE = 5
+RECIPE = RENDER_RECIPE_CURRENT
 
 #: What ``--kernel-only`` draws, and it is a whole recipe rather than recipe 3 with a stage
 #: switched off: no geometry opened, no direct regime, no cross-fade and no de-terracing.
 #: The sidecar records this number, so a layer drawn that way never claims the recipe above.
-RECIPE_KERNEL_ONLY = 2
+RECIPE_KERNEL_ONLY = RENDER_RECIPE_KERNEL_ONLY
 
 # --------------------------------------------------------------------------------------
 # The biome raster.
@@ -220,31 +234,35 @@ SUN_ALTITUDE_DEG = 45.0
 SHADE_FLOOR = 0.45
 SHADE_RANGE = 0.55
 
+#: The palettes are files, one per style id, and a style's digest is the hash of its file's
+#: canonical JSON, so an edit without a version bump still reads as a different style.
+PALETTE_DIR = Path(__file__).resolve().parent / "palettes"
+LAYER_STYLES = {"terrain": "terrain-hypsometric", "satellite": "satellite-biome"}
+
+
+def load_palette(style: str) -> tuple[dict, str]:
+    """One palette file and its digest."""
+    palette = json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
+    canonical = json.dumps(palette, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return palette, sha256_hex(canonical)
+
+
+TERRAIN_PALETTE, TERRAIN_DIGEST = load_palette(LAYER_STYLES["terrain"])
+SATELLITE_PALETTE, SATELLITE_DIGEST = load_palette(LAYER_STYLES["satellite"])
+
 #: The height band the hypsometric ramp is stretched over, as percentiles of the land. Not
 #: min and max: a single 400 m spire would flatten the ramp over the whole rest of the world.
-RAMP_LO_PCT = 1.0
-RAMP_HI_PCT = 99.5
+RAMP_LO_PCT = float(TERRAIN_PALETTE["ramp_lo_pct"])
+RAMP_HI_PCT = float(TERRAIN_PALETTE["ramp_hi_pct"])
 
-#: The ramp itself: dark green lowland, olive, tan, rock, snow. Straight off the preview the
-#: owner approved.
-RAMP_STOPS = np.array(
-    [
-        [46, 74, 44],
-        [86, 116, 56],
-        [140, 148, 78],
-        [176, 152, 108],
-        [190, 170, 150],
-        [226, 226, 226],
-        [255, 255, 255],
-    ],
-    np.float32,
-)
+#: The ramp itself: dark green lowland, olive, tan, rock, snow.
+RAMP_STOPS = np.array(TERRAIN_PALETTE["ramp_stops"], np.float32)
 
 #: Water, tinted by how deep it is: shallow reads pale and green, deep reads dark blue. The
 #: depth is clipped at this many metres, past which more depth is not more colour.
 WATER_DEPTH_FULL_M = 40.0
-WATER_SHALLOW = np.array([100, 190, 230], np.float32)
-WATER_DEEP = np.array([40, 110, 170], np.float32)
+WATER_SHALLOW = np.array(TERRAIN_PALETTE["water_shallow"], np.float32)
+WATER_DEEP = np.array(TERRAIN_PALETTE["water_deep"], np.float32)
 
 #: How deep the water has to be before it is drawn as water and nothing else; under this the
 #: two are mixed. The field is a 1 m grid and "is this texel under water" is a step function
@@ -402,27 +420,9 @@ SEAM_SAMPLE_MAX_PER_BAND = 200_000
 #: One colour per named area, chosen by eye against crops of this world. NOT the asset's own
 #: ``mColorPalette``, which is a UI legend of flat primaries, cyan, magenta and pure white:
 #: a satellite render drawn from those would be a highlighter drawing of a world. The scheme
-#: here is desaturated, nothing is brighter than about 220, and the greens run from bleached
+#: is desaturated, nothing is brighter than about 220, and the greens run from bleached
 #: olive on the dry forests to near-black on the canopy that is near-black from above.
-BIOME_COLOURS = {
-    "Area_DuneDesert": (200, 178, 138),
-    "Area_RockyDesert": (166, 138, 102),
-    "Area_DesertCanyons": (150, 114, 84),
-    "Area_MazeCanyons": (142, 126, 106),
-    "Area_AbyssCliffs": (112, 108, 102),
-    "Area_crater": (124, 128, 114),
-    "Area_Savanna": (148, 142, 94),
-    "Area_GrassFields": (110, 128, 76),
-    "Area_SpireCoast": (124, 132, 102),
-    "Area_LakeForest": (68, 94, 62),
-    "Area_NorthernForest": (58, 82, 52),
-    "Area_SouthernForest": (62, 86, 54),
-    "Area_TitanForest": (46, 68, 46),
-    "Area_WesternDuneForest": (120, 124, 84),
-    "Area_RedBambooFields": (124, 92, 62),
-    "Area_RedJungle": (102, 78, 54),
-    "Area_Swamp": (74, 84, 56),
-}
+BIOME_COLOURS = {name: tuple(colour) for name, colour in SATELLITE_PALETTE["biome_colours"].items()}
 
 #: How far a biome's colour bleeds into its neighbour's, in texels of the raster (1.83 m
 #: each). The game's areas are minimap polygons with mathematically hard edges and nothing
@@ -432,7 +432,7 @@ BIOME_BLEND_TEXELS = 24.0
 
 #: What the outer coast is drawn as. The game names no biome there, so neither does this: a
 #: neutral bleached ground that reads as beach and shelf and lets the relief carry it.
-NO_MANS_LAND_RGB = (124, 122, 108)
+NO_MANS_LAND_RGB = tuple(SATELLITE_PALETTE["no_mans_land"])
 
 #: And what an index this file has never heard of resolves to -- a new area in a later
 #: build. The same neutral rather than a guessed green, so an unrecognised biome looks
@@ -442,27 +442,29 @@ UNKNOWN_BIOME_RGB = NO_MANS_LAND_RGB
 #: Bare rock, and the slope band over which the biome's own colour gives way to it: below
 #: ROCK_LO_DEG nothing is exposed, above ROCK_HI_DEG the ground is rock whatever grows near
 #: it.
-ROCK_RGB = np.array([132, 122, 108], np.float32)
-ROCK_LO_DEG = 20.0
-ROCK_HI_DEG = 42.0
+ROCK_RGB = np.array(SATELLITE_PALETTE["rock"], np.float32)
+ROCK_LO_DEG = float(SATELLITE_PALETTE["rock_lo_deg"])
+ROCK_HI_DEG = float(SATELLITE_PALETTE["rock_hi_deg"])
 
 #: The high ground: sun-bleached, thin soil, and pale in imagery. Blended in linearly over
 #: this band of metres, to at most HIGH_LIFT of the way to HIGH_RGB.
-HIGH_RGB = np.array([206, 200, 184], np.float32)
-HIGH_LO_M = 340.0
-HIGH_HI_M = 580.0
-HIGH_LIFT = 0.20
+HIGH_RGB = np.array(SATELLITE_PALETTE["high"], np.float32)
+HIGH_LO_M = float(SATELLITE_PALETTE["high_lo_m"])
+HIGH_HI_M = float(SATELLITE_PALETTE["high_hi_m"])
+HIGH_LIFT = float(SATELLITE_PALETTE["high_lift"])
 
 #: Water seen from above rather than drawn on a map: dark, desaturated, green in the
 #: shallows and near-black in the deep. The terrain layer's blue is a cartographer's.
-SATELLITE_WATER_SHALLOW = np.array([76, 108, 104], np.float32)
-SATELLITE_WATER_DEEP = np.array([22, 44, 62], np.float32)
+SATELLITE_WATER_SHALLOW = np.array(SATELLITE_PALETTE["water_shallow"], np.float32)
+SATELLITE_WATER_DEEP = np.array(SATELLITE_PALETTE["water_deep"], np.float32)
 
 #: Two octaves of value noise, so a flat biome is not a flat fill. Sampled bilinearly out of
 #: two small fixed-seed fields rather than generated per band, so the noise is a property of
 #: the world position and no band boundary is visible.
-NOISE_SEED = 20260731
-NOISE_OCTAVES = ((256, 0.055), (1024, 0.035))
+NOISE_SEED = int(SATELLITE_PALETTE["noise_seed"])
+NOISE_OCTAVES = tuple(
+    (int(size), float(amount)) for size, amount in SATELLITE_PALETTE["noise_octaves"]
+)
 NOISE_SMOOTH = 1.0
 
 #: Rows of the output drawn at a time. 256 rows of 16384 costs about 17 MB of float32 per
@@ -2218,6 +2220,7 @@ def build_sidecar(
     extra: dict,
     recipe: int = RECIPE,
     tiles_2x: dict | None = None,
+    provenance: dict | None = None,
 ) -> dict:
     """The file the web API reads for this layer, plus the provenance to date it by.
 
@@ -2259,6 +2262,7 @@ def build_sidecar(
             "render": render,
             "tiles": tiles,
             **({"tiles_2x": tiles_2x} if tiles_2x else {}),
+            **({"provenance": provenance} if provenance else {}),
             "staleness": (
                 "sources.heightfield.game_version_pinned is the build the field under these "
                 "pixels was cut from. tools/gen_map_renders.py refuses to replace this layer "
@@ -2394,10 +2398,11 @@ def main() -> int:
         "--size",
         type=int,
         default=RENDER_PX,
-        choices=[RENDER_PX, RENDER_PX // 2, RENDER_PX // 4, RENDER_PX // 8],
+        choices=[RENDER_PX >> shift for shift in range(6)],
         help=(
             f"square edge of each render (default {RENDER_PX}, which is 0.229 m to the "
-            "pixel -- see the module docstring for what that is and is not a claim about)"
+            "pixel -- see the module docstring for what that is and is not a claim about). "
+            f"{RENDER_PX >> 4} and {RENDER_PX >> 5} are previews: minutes, not half an hour"
         ),
     )
     parser.add_argument(
@@ -2424,6 +2429,15 @@ def main() -> int:
         "--keep-direct",
         action="store_true",
         help="leave the direct.cache/ and top.cache/ rasters behind so the next run reuses them",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help=(
+            "where direct.cache/ and top.cache/ live (default: beside the renders). A cache "
+            "here is reused by any run whose size, sub-samples and build match it"
+        ),
     )
     parser.add_argument(
         "--no-top",
@@ -2565,6 +2579,25 @@ def main() -> int:
     store = IoStore(paks, "FactoryGame-Windows", oodle_decompress)
     scripts = ScriptObjects(paks, oodle_decompress)
     artwork = read_artwork_sheet(store, decoder, image_mod)
+    try:
+        _pin, game_raw = installed_build(args.game)
+    except (InstallNotFound, OSError, ValueError):
+        game_raw = {}
+    game_cl = changelist(game_raw)
+    inputs = {
+        "heightfield": {
+            "cl": changelist(field_build),
+            "generator_version": field_meta.get("generator_version"),
+            "planes": ["height", "prov", "water", "waterq"]
+            + ([] if args.kernel_only else ["density", "terrain"]),
+            "digest": field_meta.get("digest"),
+        },
+        "artwork_sheet": {
+            "cl": game_cl,
+            "reader_version": READER_VERSIONS["artwork_sheet"],
+            "digest": sha256_hex(np.ascontiguousarray(np.asarray(artwork, np.uint8)).data),
+        },
+    }
     detail, detail_meta = artwork_detail(artwork)
     print(
         f"  artwork sheet {SHEET_PX}x{SHEET_PX} from {len(SLICES)} BC1 slices; luminance "
@@ -2648,6 +2681,14 @@ def main() -> int:
                     "      uv run --extra gen python tools/gen_region_names.py"
                 )
         table, drawn = biome_lookup(biome)
+        inputs["biome_raster"] = {
+            "cl": game_cl,
+            "reader_version": READER_VERSIONS["biome_raster"],
+            "digest": sha256_hex(
+                np.ascontiguousarray(biome["area"]).data,
+                json.dumps(biome["assets_by_index"]).encode("utf-8"),
+            ),
+        }
         biome_rgb = biome_colour_field(biome, table)
         biome_source = {
             "biome_raster": {
@@ -2709,7 +2750,11 @@ def main() -> int:
         return loaded["geometry"]
 
     if weight_plane is not None:
-        cache = direct_cache_dir(out_dir, args.renders_name)
+        cache = (
+            args.cache_dir / DIRECT_CACHE_DIR_NAME
+            if args.cache_dir
+            else direct_cache_dir(out_dir, args.renders_name)
+        )
         stamp = direct_cache_stamp(args.size, args.direct_subsamples, field_build)
         maps = cached_direct(cache, stamp)
         if maps is None:
@@ -2774,9 +2819,17 @@ def main() -> int:
             print(f"the direct raster in {cache} could not be read back after writing it")
             return 7
         direct = (maps[0], maps[1], ground, args.direct_subsamples)
+        inputs["cliff_geometry"] = {
+            "cl": changelist(stamp["game_version_pinned"]),
+            "reader_version": READER_VERSIONS["cliff_geometry"],
+        }
 
         if not args.no_top:
-            top_cache = top_cache_dir(out_dir, args.renders_name)
+            top_cache = (
+                args.cache_dir / TOP_CACHE_DIR_NAME
+                if args.cache_dir
+                else top_cache_dir(out_dir, args.renders_name)
+            )
             top_maps = cached_direct(top_cache, stamp)
             if top_maps is None:
                 print(f"rasterising the arches and foliage boulders at {spacing_m:.4f} m")
@@ -2988,6 +3041,8 @@ def main() -> int:
             **({"parallel_cutter_check": parallel_check} if parallel_check else {}),
             "imaging": {"name": "pillow", "version": pillow_version},
         }
+        style_id = LAYER_STYLES[layer]
+        recipe_row = RENDER_RECIPES[recipe]
         sidecar = build_sidecar(
             layer=layer,
             recipe=recipe,
@@ -2995,6 +3050,30 @@ def main() -> int:
             tiles=stats,
             tiles_2x=dense,
             render=render,
+            provenance=provenance_block(
+                game_raw,
+                {
+                    key: value
+                    for key, value in inputs.items()
+                    if key != "biome_raster" or layer == "satellite"
+                },
+                {
+                    "family": "render",
+                    "recipe": recipe,
+                    "version": recipe_row["version"],
+                    "label": recipe_row["label"],
+                    "sampler": "catmull-rom" if args.kernel_only else recipe_row["sampler"],
+                    "two_regime": direct is not None,
+                    "size_px": args.size,
+                    "subsamples": args.direct_subsamples,
+                },
+                {
+                    "id": style_id,
+                    "version": STYLES[style_id]["version"],
+                    "label": STYLES[style_id]["label"],
+                    "digest": TERRAIN_DIGEST if layer == "terrain" else SATELLITE_DIGEST,
+                },
+            ),
             extra={
                 **borrow_source,
                 **direct_source,
@@ -3015,8 +3094,9 @@ def main() -> int:
         # mapping refuses the unlink outright.
         direct = maps = top = top_maps = None
         if not args.keep_direct:
-            shutil.rmtree(direct_cache_dir(out_dir, args.renders_name), ignore_errors=True)
-            shutil.rmtree(top_cache_dir(out_dir, args.renders_name), ignore_errors=True)
+            for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME):
+                root = args.cache_dir or out_dir / args.renders_name
+                shutil.rmtree(root / kept, ignore_errors=True)
     print(f"done in {time.time() - total_started:.0f}s")
     print("none of it is committed: data/local/ is gitignored and stays that way.")
     return 0

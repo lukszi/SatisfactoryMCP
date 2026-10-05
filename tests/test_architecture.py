@@ -291,16 +291,6 @@ COPIED_VERBATIM = "vendor/LEAFLET-LICENSE"
 #: covering the directory while this test keeps passing.
 STATIC_IGNORE_LINE = "src/satisfactory_mcp/interfaces/web/static/"
 
-#: The frontend's claim about which base layers the server serves, and the server's own list.
-#: The tile path is built from a hand-written union in ``api.ts`` because the generated
-#: OpenAPI schema cannot supply it -- ``layer`` is a plain ``str`` path parameter, so the names
-#: live only in ``MAP_LAYERS`` in ``routers/tiles.py`` and never reach the document
-#: ``npm run typegen`` reads. Two lists in two languages with nothing between them is exactly
-#: the drift this file exists to catch, and the cost of getting it wrong is a 404 per tile
-#: with a map that simply stays blank.
-FRONTEND_API_TS = FRONTEND / "src" / "api.ts"
-MAP_LAYER_UNION = "export type MapTileLayer ="
-WEB_TILES_PY = WEB / "routers" / "tiles.py"
 
 #: The page's TypeScript, and the files the registry rules are about.
 FRONTEND_SRC = FRONTEND / "src"
@@ -1097,73 +1087,41 @@ def test_the_frontend_sources_are_not_reachable_from_python():
     )
 
 
-def _literal_strings(tree: ast.AST, name: str) -> list[str] | None:
-    """The string members of a module-level ``NAME = (...)`` tuple or list, by AST.
+#: The page's names for the base map before there was a registry, and the registry's own.
+#: The ids are data now, so the compiler checks none of them; the old ones survive only as
+#: what ``registry.LEGACY`` keeps serving unregistered and the one alias tiles.ts keeps.
+REGISTRY_PY = PKG / "domain" / "maps" / "registry.py"
+FRONTEND_TILES_TS = FRONTEND / "src" / "tiles.ts"
 
-    By AST because importing ``interfaces/web/routers/tiles.py`` would need FastAPI, and this
-    module's first promise is that it runs on stdlib alone.
+
+def test_the_page_and_the_registry_agree_on_the_old_base_map_names():
+    """Old ``#mode=`` links keep working only while both sides keep the same three names.
+
+    ``registry.LEGACY`` is what the server serves before anything is registered, and the
+    switcher in ``tiles.ts`` offers the same three when ``/api/maps`` cannot be read; the
+    artwork's page-side alias ``artwork`` must resolve to the registry's id for it. Read by
+    AST and regex, because importing either side would need FastAPI or a browser.
     """
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
-            continue
-        if not isinstance(node.value, (ast.Tuple, ast.List)):
-            return None
-        return [
-            e.value
-            for e in node.value.elts
-            if isinstance(e, ast.Constant) and isinstance(e.value, str)
-        ]
-    return None
-
-
-def test_the_page_and_the_server_agree_on_the_base_layer_names():
-    """``MapTileLayer`` in api.ts against ``MAP_LAYERS`` in tiles.py, which nothing else joins.
-
-    Every other response shape the page claims is checked by ``npm run typegen`` against the
-    server's own OpenAPI document. This one cannot be: ``layer`` is a plain ``str`` path
-    parameter, so the generated schema says ``string`` and the three names exist only in a
-    Python tuple the document never sees. The frontend therefore hand-writes the union, and
-    two hand-written lists in two languages with nothing between them is the exact drift this
-    file exists to catch.
-
-    Getting it wrong is quiet: a layer renamed server-side leaves the radio in the control,
-    the probe answers 404 rather than 204 -- "not generated" and "no such layer" stop being
-    told apart -- and the mode simply greys out with a tooltip naming a generator that would
-    not fix it.
-    """
-    served = _literal_strings(
-        ast.parse(WEB_TILES_PY.read_text(encoding="utf-8"), filename=str(WEB_TILES_PY)),
-        "MAP_RENDER_LAYERS",
+    tree = ast.parse(REGISTRY_PY.read_text(encoding="utf-8"), filename=str(REGISTRY_PY))
+    legacy = next(
+        [k.value for k in node.value.keys if isinstance(k, ast.Constant)]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "LEGACY" for t in node.targets)
+        and isinstance(node.value, ast.Dict)
     )
-    assert served is not None, "MAP_RENDER_LAYERS is no longer a literal tuple in routers/tiles.py"
-    # ``MAP_LAYERS = (MAP_LAYER_DEFAULT, *MAP_RENDER_LAYERS)`` -- the default is the artwork
-    # and is spelled separately there because it is the path the three-segment alias serves.
-    default = _literal_strings(
-        ast.parse(WEB_TILES_PY.read_text(encoding="utf-8"), filename=str(WEB_TILES_PY)),
-        "MAP_LAYERS",
+    tiles = FRONTEND_TILES_TS.read_text(encoding="utf-8")
+    artwork = re.search(r'var ARTWORK = "([^"]+)";', tiles)
+    assert artwork, "tiles.ts no longer names the artwork's registry id"
+    assert artwork.group(1) == legacy[0], (artwork.group(1), legacy)
+    assert re.search(r"var ALIASES[^=]*= \{ artwork: ARTWORK \}", tiles), (
+        "the artwork alias is gone"
     )
-    assert default is None or default == [], (
-        "MAP_LAYERS is now a literal list -- read it directly instead of rebuilding it here"
+    offered = re.findall(r'legacy\((ARTWORK|"[a-z]+")', tiles)
+    names = [legacy[0] if name == "ARTWORK" else name.strip('"') for name in offered]
+    assert names == legacy, (
+        f"tiles.ts offers {names} before the registry answers; it serves {legacy}"
     )
-
-    line = next(
-        (
-            row
-            for row in FRONTEND_API_TS.read_text(encoding="utf-8").splitlines()
-            if row.startswith(MAP_LAYER_UNION)
-        ),
-        None,
-    )
-    assert line is not None, f"{MAP_LAYER_UNION} is gone from api.ts"
-    claimed = re.findall(r'"([^"]+)"', line)
-    assert claimed[1:] == served, (
-        "the page's MapTileLayer union has drifted from MAP_LAYERS in routers/tiles.py:\n"
-        f"  tiles.py serves: map, {', '.join(served)}\n"
-        f"  api.ts claims:   {', '.join(claimed)}"
-    )
-    assert claimed[0] == "map", f"the artwork layer is not first in the union: {claimed}"
 
 
 def _ts_imports(path: Path) -> set[str]:
@@ -1389,9 +1347,8 @@ def test_a_router_sees_the_domain_and_its_own_two_helpers_and_nothing_else():
 def _all_routers_declared() -> list[str]:
     """The module names in ``ALL_ROUTERS``, in order, read off the AST.
 
-    By AST rather than by import for the reason ``_literal_strings`` gives next door: this
-    module's first promise is that it runs on the standard library alone, and importing
-    ``routers/__init__.py`` would need FastAPI installed.
+    By AST rather than by import: this module's first promise is that it runs on the
+    standard library alone, and importing ``routers/__init__.py`` would need FastAPI installed.
     """
     path = WEB_ROUTERS / "__init__.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

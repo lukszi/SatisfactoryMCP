@@ -27,15 +27,10 @@ export interface ApiError {
   error?: string;
 }
 
-/* The base layers `/api/maptiles/{layer}/…` serves, as the frontend's claim.
- *
- * Hand-written because the generated schema cannot supply it: `layer` is a plain `str` path
- * parameter, so `api-schema.d.ts` types it `string`, and the names live in `MAP_LAYERS` in
- * routers/tiles.py, which the document never sees. The check is therefore by construction --
- * `tilePath` is the only place a tile URL is built and `ModeSpec.layer` in tiles.ts is typed
- * by this union, so a mode naming a layer this server does not serve is a compile error.
- * test_architecture.py pins the union against `MAP_LAYERS` itself. */
-export type MapTileLayer = "map" | "terrain" | "satellite";
+/* A base layer `/api/maptiles/{layer}/…` serves: a map type id out of `/api/maps`. The ids
+ * are data, so the compiler cannot check one; the server answers an unknown id with a 404
+ * that lists the ones it has. */
+export type MapTileLayer = string;
 
 /* One tile's path, or the template Leaflet fills in. The coordinates are `string | number`
  * so that both callers go through here: the probe asks for `0, 0, 0` and the TileLayer asks
@@ -46,7 +41,7 @@ export function tilePath(
   x: string | number,
   y: string | number
 ): string {
-  return "/api/maptiles/" + layer + "/" + z + "/" + x + "/" + y;
+  return "/api/maptiles/" + encodeURIComponent(layer) + "/" + z + "/" + x + "/" + y;
 }
 
 /* A path plus a query string, which is what the two callers that take one pass -- spelled

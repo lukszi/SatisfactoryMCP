@@ -1,0 +1,132 @@
+{
+ "id": "satellite-biome",
+ "about": "one colour per named biome, bare rock on steep slopes, the high ground bleached, water seen from above",
+ "biome_colours": {
+  "Area_DuneDesert": [
+   200,
+   178,
+   138
+  ],
+  "Area_RockyDesert": [
+   166,
+   138,
+   102
+  ],
+  "Area_DesertCanyons": [
+   150,
+   114,
+   84
+  ],
+  "Area_MazeCanyons": [
+   142,
+   126,
+   106
+  ],
+  "Area_AbyssCliffs": [
+   112,
+   108,
+   102
+  ],
+  "Area_crater": [
+   124,
+   128,
+   114
+  ],
+  "Area_Savanna": [
+   148,
+   142,
+   94
+  ],
+  "Area_GrassFields": [
+   110,
+   128,
+   76
+  ],
+  "Area_SpireCoast": [
+   124,
+   132,
+   102
+  ],
+  "Area_LakeForest": [
+   68,
+   94,
+   62
+  ],
+  "Area_NorthernForest": [
+   58,
+   82,
+   52
+  ],
+  "Area_SouthernForest": [
+   62,
+   86,
+   54
+  ],
+  "Area_TitanForest": [
+   46,
+   68,
+   46
+  ],
+  "Area_WesternDuneForest": [
+   120,
+   124,
+   84
+  ],
+  "Area_RedBambooFields": [
+   124,
+   92,
+   62
+  ],
+  "Area_RedJungle": [
+   102,
+   78,
+   54
+  ],
+  "Area_Swamp": [
+   74,
+   84,
+   56
+  ]
+ },
+ "no_mans_land": [
+  124,
+  122,
+  108
+ ],
+ "rock": [
+  132,
+  122,
+  108
+ ],
+ "rock_lo_deg": 20.0,
+ "rock_hi_deg": 42.0,
+ "high": [
+  206,
+  200,
+  184
+ ],
+ "high_lo_m": 340.0,
+ "high_hi_m": 580.0,
+ "high_lift": 0.2,
+ "water_shallow": [
+  76,
+  108,
+  104
+ ],
+ "water_deep": [
+  22,
+  44,
+  62
+ ],
+ "noise_seed": 20260731,
+ "noise_octaves": [
+  [
+   256,
+   0.055
+  ],
+  [
+   1024,
+   0.035
+  ]
+ ]
+}
