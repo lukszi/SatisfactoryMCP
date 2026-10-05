@@ -192,8 +192,8 @@ class Scenario:
     #: throughput via 50% clocks was measured to gain +1140 MW for +441 machines,
     #: i.e. 2.58 MW per extra machine. A default above that rejects marginal
     #: spreading while still accepting a genuinely good trade. Set to 0 to reproduce
-    #: an unpriced (ill-posed) max-power solve. At a payback horizon each building's
-    #: ``K / (H r)`` replaces it (``machine_mw``).
+    #: an unpriced (ill-posed) max-power solve. From a 5 h payback horizon each
+    #: building's ``K / (H r)`` replaces it (``machine_mw``).
     machine_cost_mw: float = 5.0
     belt_ipm: float = 780.0  # Mk5; used to price sinks and to count logistics lines
     pipe_m3min: float = 600.0
@@ -466,12 +466,18 @@ def best_clock(sc: Scenario, b, draw_full: float) -> float:
     )
 
 
+#: Shortest horizon at which a power goal prices its machines in build points (ruling 3b).
+#: Below it a dismantle refunds the materials before the price could be earned back.
+#: The value is measured, docs/planner-payback-horizon_contract.md §2.
+POWER_GOAL_BUILD_COST_FROM_H = 5.0
+
+
 def machine_mw(sc: Scenario, building: str | None) -> float:
-    """What one machine costs in MW when the goal is power: ``K / (H r)`` at a horizon (F1a),
-    else the flat ``machine_cost_mw``."""
+    """What one machine costs in MW when the goal is power: ``K / (H r)`` from
+    ``POWER_GOAL_BUILD_COST_FROM_H`` up (F1a, 3b), else the flat ``machine_cost_mw``."""
     per_mw = sc.payback_hours * sc.power_price
     points = sc.build_points.get(building or "")
-    if per_mw > 0 and points is not None:
+    if per_mw > 0 and points is not None and sc.payback_hours >= POWER_GOAL_BUILD_COST_FROM_H:
         return max(points, 1.0) / per_mw
     return max(0.0, sc.machine_cost_mw)
 

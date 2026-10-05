@@ -1168,7 +1168,7 @@ def plan_factory(
     ``power_price`` points per MWh (the save's grid mix unless given). 0 is the plain build.
     ``overclock_last`` builds a row one machine short with the last one overclocked, weighed
     against the horizon and the shards in hand plus those craftable from slugs;
-    ``row_overclock`` overrides it per row. Above 0 h,
+    ``row_overclock`` overrides it per row. From 5 h,
     max_mw and min_power price each machine at its build points over the horizon instead of
     ``machine_cost_mw``, so they may switch recipes away from scarce buildings. Both are
     stored with the plan and follow the
