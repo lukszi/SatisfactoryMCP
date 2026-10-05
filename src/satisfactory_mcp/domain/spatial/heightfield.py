@@ -96,6 +96,14 @@ SURFACES: tuple[str, ...] = ("ground", "terrain", "top")
 #: may be a roof. Also the slack a hint gets: a thing rests on a surface at or below it.
 AMBIGUOUS_M = 2.0
 
+#: Four vertices spanning more than this are a cliff edge, not a slope: the point reads the
+#: nearest one instead of a blend of rock top and the ground below it.
+BLEND_MAX_STEP_M = 2.0
+
+#: A landscape ground reading this close to the terrain plane is that plane rounded to
+#: decimetres, so the terrain's 7.8 mm value answers instead.
+REFINE_M = 0.1
+
 #: The int16 value that means "nothing is known here". Not zero: zero is sea level and a
 #: real answer, so a no-data texel read as zero is a flat sea at the map's edge.
 NODATA = -32768
@@ -595,6 +603,10 @@ class Field:
         tg["row_off"] = round(dr) if aligned else None
         return tg
 
+    def accuracy_m(self, provenance: int) -> float | None:
+        """What the generator measured for one layer, or ``None`` where it recorded nothing."""
+        return self._accuracy.get(provenance, UNKNOWN_ACCURACY_M)
+
     @property
     def has_terrain(self) -> bool:
         return self._plane(TERRAIN_NAME) is not None
@@ -681,11 +693,12 @@ class Field:
         x_cm: float,
         y_cm: float,
         bilinear: bool,
+        max_step: float = math.inf,
     ) -> tuple[float, tuple[int, int]] | None:
         """Raw value at a point and the vertex that dominated it, or ``None``.
 
-        Bilinear over the vertices with non-zero weight; if any of those is no data, the
-        heaviest valid one answers alone rather than blending a sentinel in.
+        Bilinear over the vertices with non-zero weight; if any of those is no data, or they
+        span more than ``max_step`` (a cliff edge), the heaviest valid one answers alone.
         """
         x0, y0, spacing = grid
         fx, fy = (x_cm - x0) / spacing, (y_cm - y0) / spacing
@@ -713,7 +726,8 @@ class Field:
         if not good:
             return None
         lead = max(good, key=lambda t: t[0])
-        if len(good) < len(taps):
+        values = [t[3] for t in taps]
+        if len(good) < len(taps) or max(values) - min(values) > max_step:
             return float(lead[3]), (lead[1], lead[2])
         return sum(t[0] * t[3] for t in taps), (lead[1], lead[2])
 
@@ -723,7 +737,13 @@ class Field:
         if plane is None:
             return None
         got = self._sample(
-            plane, NODATA, (self.x0_cm, self.y0_cm, self.spacing_cm), x_cm, y_cm, bilinear
+            plane,
+            NODATA,
+            (self.x0_cm, self.y0_cm, self.spacing_cm),
+            x_cm,
+            y_cm,
+            bilinear,
+            BLEND_MAX_STEP_M * DM_PER_M,
         )
         return None if got is None else (got[0] / DM_PER_M, got[1])
 
@@ -733,20 +753,29 @@ class Field:
         if plane is None or tg is None:
             return None
         got = self._sample(
-            plane, 0, (tg["x0_cm"], tg["y0_cm"], tg["spacing_cm"]), x_cm, y_cm, bilinear
+            plane,
+            0,
+            (tg["x0_cm"], tg["y0_cm"], tg["spacing_cm"]),
+            x_cm,
+            y_cm,
+            bilinear,
+            BLEND_MAX_STEP_M * tg["units_per_m"],
         )
         if got is None:
             return None
         return (got[0] - tg["zero"]) / tg["units_per_m"] + tg["offset_m"]
 
-    def surfaces(self, x_cm: float, y_cm: float, *, bilinear: bool = True) -> Surfaces | None:
+    def surfaces(
+        self, x_cm: float, y_cm: float, *, bilinear: bool = True, top: bool = True
+    ) -> Surfaces | None:
         """Every surface at a point, or ``None`` off the grid or where none has data."""
         x_cm, y_cm = float(x_cm), float(y_cm)
         where = self.texel(x_cm, y_cm)
         if where is None:
             return None
         ground = self._ground_m(self._height_dm, x_cm, y_cm, bilinear)
-        top = self._ground_m(self._plane(TOP_NAME), x_cm, y_cm, bilinear)
+        top_plane = self._plane(TOP_NAME) if top else None
+        top = self._ground_m(top_plane, x_cm, y_cm, bilinear)
         terrain = self._terrain_m(x_cm, y_cm, bilinear)
         if ground is None and top is None and terrain is None:
             return None
@@ -775,7 +804,9 @@ class Field:
         if surface not in SURFACES:
             raise ValueError(f"surface {surface!r} is not one of {', '.join(SURFACES)}")
         x_cm, y_cm = float(x_cm), float(y_cm)
-        found = self.surfaces(x_cm, y_cm, bilinear=bilinear)
+        found = self.surfaces(
+            x_cm, y_cm, bilinear=bilinear, top=surface == "top" or hint_z_cm is not None
+        )
         if found is None:
             return None
         if hint_z_cm is not None:
@@ -790,6 +821,13 @@ class Field:
             if value is None:
                 return None
             z_m = value
+        if (
+            surface == "ground"
+            and found.provenance == PROV_LANDSCAPE
+            and found.terrain_m is not None
+            and abs(z_m - found.terrain_m) <= REFINE_M
+        ):
+            z_m = found.terrain_m
         provenance = PROV_LANDSCAPE if surface == "terrain" else found.provenance
         if self.has_terrain:
             ambiguous = found.ground_m is not None and (
@@ -850,6 +888,7 @@ class Field:
         max_texels: int = 1_000_000,
         *,
         surface: str = "ground",
+        shape: bool = True,
     ) -> Area:
         """The terrain over a rectangle, as the facts a build decision reads.
 
@@ -866,7 +905,8 @@ class Field:
         strides too.
 
         ``surface`` picks the plane the statistics are over; a plane this field lacks is a
-        ``ValueError``, never a silent fall back to another surface.
+        ``ValueError``, never a silent fall back to another surface. ``shape=False`` skips
+        slope and roughness, which are most of the cost.
         """
         if surface not in SURFACES:
             raise ValueError(f"surface {surface!r} is not one of {', '.join(SURFACES)}")
@@ -939,7 +979,7 @@ class Field:
             z_max_m=round(float(z_valid.max()), 1),
             z_mean_m=round(float(z_valid.mean()), 1),
             z_median_m=round(float(np.median(z_valid)), 1),
-            **_area_shape(z, good, self.spacing_cm * stride / 100.0),
+            **(_area_shape(z, good, self.spacing_cm * stride / 100.0) if shape else {}),
             submerged_pct=round(submerged, 1),
             water_level_m=water_level,
             water_below_ground_m=water_drop,

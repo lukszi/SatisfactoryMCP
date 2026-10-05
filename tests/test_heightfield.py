@@ -986,3 +986,20 @@ def test_a_cache_that_cannot_be_written_falls_back_to_decoding(tmp_path):
     field = hf.Field(_meta(directory), directory)
     assert field.cache_events[hf.HEIGHT_NAME] == "failed, decoded"
     assert field.z(125.0, 100.0).z_m == pytest.approx(1.25)
+
+
+def test_a_cliff_edge_reads_the_nearest_vertex_rather_than_a_blend(tmp_path):
+    field = hf.load_field(build_layered_field(tmp_path))
+    assert field.z(240.0, 200.0).z_m == pytest.approx(2.0)
+    assert field.z(260.0, 200.0).z_m == pytest.approx(50.0)
+    assert field.z(225.0, 100.0).z_m == pytest.approx(2.25), "a gentle slope still blends"
+
+
+def test_a_landscape_reading_takes_the_terrain_planes_finer_value(tmp_path):
+    directory = build_layered_field(tmp_path)
+    terrain = _terrain_raw(np.tile(np.arange(1, 7, dtype=float), (6, 1)))
+    terrain[0, 0] = _terrain_raw(np.array([1.04]))[0]
+    (directory / hf.TERRAIN_NAME).write_bytes(hf.encode_u16(terrain))
+    field = hf.load_field(directory)
+    assert field.z(100.0, 0.0).z_m == pytest.approx(1.04, abs=0.008)
+    assert field.at(100.0, 0.0).z_m == pytest.approx(1.0)
