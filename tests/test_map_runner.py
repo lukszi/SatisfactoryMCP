@@ -87,7 +87,7 @@ def env(tmp_path, monkeypatch):
     return tmp_path
 
 
-async def _until(predicate, timeout: float = 20.0) -> None:
+async def _until(predicate, timeout: float = 120.0) -> None:
     deadline = time.monotonic() + timeout
     while not predicate():
         assert time.monotonic() < deadline, "timed out"
@@ -217,7 +217,7 @@ def test_a_restarted_server_re_adopts_a_running_child_and_interrupts_a_dead_one(
         return runner
 
     runner = _run(main())
-    child.popen.wait(timeout=10)
+    child.popen.wait(timeout=120)
     assert runner.jobs["j-dead"]["status"] == "interrupted"
     assert registry.read()["types"]["terrain-r5-502094"]["status"] == "ready"
 

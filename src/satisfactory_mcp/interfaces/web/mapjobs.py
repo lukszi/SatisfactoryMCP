@@ -238,8 +238,7 @@ class MapJobRunner:
         cost = await asyncio.to_thread(presets.estimate, job["preset"], job["options"])
         if not cost["ok"]:
             job["error_line"] = cost["reason"]
-            await asyncio.to_thread(self._finish, job, "failed", None)
-            self.announce(job)
+            await self._end(job, "failed", None)
             return
         child = await asyncio.to_thread(self._spawn, job)
         job.update(status="running", started=time.time(), pid=child.pid, pid_created=child.created)
@@ -292,6 +291,7 @@ class MapJobRunner:
                 job["peak_rss"] = max(rss, job.get("peak_rss") or 0)
             code = run.child.exit_code()
             if code is not None:
+                await asyncio.to_thread(self._read_log, run)
                 if run.partial:
                     run.progress.feed(run.partial.decode("utf-8", "replace"))
                 run.child.close()
@@ -302,8 +302,7 @@ class MapJobRunner:
                     status = "done"
                 else:
                     status = "failed"
-                await asyncio.to_thread(self._finish, job, status, code)
-                self.announce(job)
+                await self._end(job, status, code)
                 return
             now = time.monotonic()
             if job["stage"] != run.stage or now - run.published >= PUBLISH_EVERY_S:
@@ -311,7 +310,15 @@ class MapJobRunner:
                 self.announce(job)
             await asyncio.sleep(TICK_S)
 
-    def _finish(self, job: dict, status: str, code: int | None) -> None:
+    async def _end(self, job: dict, status: str, code: int | None) -> None:
+        """Finish off the loop, then show the final state and announce it in one step.
+
+        Waiters poll ``status``; it must not turn final before the save and the event.
+        """
+        job.update(await asyncio.to_thread(self._finish, dict(job), status, code))
+        self.announce(job)
+
+    def _finish(self, job: dict, status: str, code: int | None) -> dict:
         """Record how a job ended and register or discard what it wrote; blocking, unannounced."""
         job["exit_code"] = code
         job["ended"] = time.time()
@@ -341,3 +348,4 @@ class MapJobRunner:
         job["stage_words"] = status
         job["eta_s"] = None
         store.save(job)
+        return job
