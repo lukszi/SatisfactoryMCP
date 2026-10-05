@@ -37,8 +37,9 @@ class PlanSiting(TypedDict):
     ``Siting`` records metres because a player typed them, so ``serial._m`` has nothing to
     do here -- see ``domain/planning/siting.py``.
 
-    ``z_m`` is null wherever the origin was named by something with no height (a factory
-    centroid, a bare ``x,y``); the pad is still a rectangle on the ground. ``source`` is
+    ``z_m`` is null only where nothing gave a height: a typed or player z wins, else the
+    heightfield's median under the pad, and ``z_source`` says which ("given", "you",
+    "terrain", or "" for none); ``terrain_line`` is that reading in words. ``source`` is
     ``"given"`` for a footprint the player measured and ``"layout"`` for the square
     ``plan_layout`` budgeted, which is the difference between a pad and an estimate.
     """
@@ -48,6 +49,8 @@ class PlanSiting(TypedDict):
     x_m: float
     y_m: float
     z_m: float | None
+    z_source: str
+    terrain_line: str | None
     yaw_deg: float
     width_m: float
     depth_m: float
@@ -154,6 +157,8 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
                 "x_m": sit.x_m,
                 "y_m": sit.y_m,
                 "z_m": sit.z_m,
+                "z_source": sit.z_source,
+                "terrain_line": sit.terrain_line(),
                 "yaw_deg": sit.yaw_deg,
                 "width_m": sit.width_m,
                 "depth_m": sit.depth_m,

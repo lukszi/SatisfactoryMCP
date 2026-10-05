@@ -99,6 +99,8 @@ def test_a_sited_plan_is_sent_as_the_rectangle_it_recorded(planned):
         "x_m",
         "y_m",
         "z_m",
+        "z_source",
+        "terrain_line",
         "yaw_deg",
         "width_m",
         "depth_m",
