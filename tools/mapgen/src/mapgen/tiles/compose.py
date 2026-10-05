@@ -330,6 +330,7 @@ def render_layer(
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
+                water_optics=painted.water_optics(linear),
             )
             rgb = painted_colours(
                 scene,
