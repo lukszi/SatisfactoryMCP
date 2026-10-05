@@ -78,6 +78,6 @@ ARTWORK_RECIPES: dict[int, dict] = {
 STYLES: dict[str, dict] = {
     "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 2},
     "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 2},
-    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 1},
+    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 2},
     "artwork": {"label": "artwork", "layer": "map", "version": 1},
 }
