@@ -56,6 +56,12 @@ export var W = {
   startupHeadroom: "startup headroom",
   stageUnit: "stage",
   stages: "stages",
+  site: "site",
+  dropHere: "drop here",
+  moveByPanning: "move by panning",
+  fitPad: function (name: string): string {
+    return "fit pad to “" + name + "”";
+  },
   stage: function (n: number, of: number): string {
     return W.stageUnit + " " + count(n) + " of " + count(of);
   },
