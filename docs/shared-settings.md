@@ -11,6 +11,7 @@ headroom* moved with it, because chat's power tools take the same switch.
 |---|---|---|
 | stage headroom (`stageHeadroom`) | **server**, `stage_headroom` | `diff_vs_save` and `commission_plan` stage a plan with it. Kept per browser, the page and chat staged one plan two ways. |
 | count biomass burners in headroom (`biomass`) | **server**, `biomass` | The same kind of setting: it changes generation and headroom, and `power_report`, `world_summary`, `diff_vs_save` and `commission_plan` all take it. |
+| note emptied hand-fed boxes (`adviceBoxFed`) | **server**, `advice_box_fed` | Turns on the `box_empty` advisory ([advisors_contract.md](advisors_contract.md) §2), which chat's `ui_context` and `world_summary` list too. Off by default: hand-fed boxes are temporary setups. |
 | name suggestions (`naming`) | browser, **candidate** | Only the page's Detect uses it today. It becomes shared if chat's `propose_factories` ever suggests names in a style. |
 | show what is not unlocked yet (`spoilers`) | browser, **candidate** | A choice about the player, not about one screen, but chat does not filter spoilers today. Share it when chat's progress tools do. Its one-time notice stays per browser either way. |
 | only fed clusters (`fedOnly`) | browser | A view filter on Detect. |

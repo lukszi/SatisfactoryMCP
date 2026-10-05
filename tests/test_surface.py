@@ -125,9 +125,12 @@ def test_tool_descriptions_stay_short():
 def test_ui_context_takes_answered_asks_without_a_new_tool():
     tools = {t.name: t for t in _run(srv.mcp.list_tools())}
     props = tools["ui_context"].inputSchema["properties"]
-    assert set(props) == {"save", "world", "answered"}
+    assert set(props) == {"save", "world", "answered", "dismissed"}
     assert props["answered"]["description"] == (
         'ask:N ids you have answered, each may add a line: "ask:7 <answer>"'
+    )
+    assert props["dismissed"]["description"] == (
+        'adv: ids to hide on the page; "adv:3f9a snooze" hides for 1 h of play'
     )
     assert "ask:" in srv.mcp.instructions and "pin:" in srv.mcp.instructions
     first = tools["ui_context"].description.strip().splitlines()[0]

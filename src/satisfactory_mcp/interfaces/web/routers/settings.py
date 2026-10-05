@@ -35,6 +35,7 @@ class SettingsValues(TypedDict):
     biomass: bool
     payback_hours: float
     overclock_last: bool
+    advice_box_fed: bool
 
 
 class SettingsResponse(TypedDict):
@@ -55,6 +56,7 @@ class SettingsChanges(TypedDict):
     biomass: NotRequired[bool | None]
     payback_hours: NotRequired[float | None]
     overclock_last: NotRequired[bool | None]
+    advice_box_fed: NotRequired[bool | None]
 
 
 class SettingsPatchBody(TypedDict):

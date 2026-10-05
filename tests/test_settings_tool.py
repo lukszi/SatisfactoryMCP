@@ -79,8 +79,11 @@ def test_power_tools_take_biomass_from_the_shared_setting(monkeypatch, state, to
     monkeypatch.setattr(state, "power_report", recorded)
     monkeypatch.setattr(world, "_state", lambda *a, **k: state)
     fn = getattr(srv, tool)
-    fn()
-    settings.write({"biomass": True}, Actor("page", "", 1))
-    fn()
-    fn(biomass=False)
-    assert asked == [False, True, False]
+    seen = []
+    for step in ("shared", "changed", "override"):
+        if step == "changed":
+            settings.write({"biomass": True}, Actor("page", "", 1))
+        fn(biomass=False) if step == "override" else fn()
+        seen.append(set(asked))
+        asked.clear()
+    assert seen == [{False}, {True}, {False}]

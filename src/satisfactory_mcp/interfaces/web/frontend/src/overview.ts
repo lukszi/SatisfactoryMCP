@@ -1,6 +1,7 @@
 /* The dashboard's Overview tab: headline tiles, the factories and machines that need action,
  * power problems and power per circuit, addressed as `dash=overview`. */
 
+import { adviceCard } from "./advice";
 import { empty, error, heading, issueCount, issueGroups, issueTable, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
 import { count, pct, spoken } from "./format";
@@ -292,6 +293,7 @@ function circuitsCard(parent: HTMLElement): void {
 
 export function renderOverview(body: HTMLElement): void {
   tiles(body);
+  adviceCard(body);
   var split = make("div", "dash-split");
   var h = vitals().health;
   factoriesCard(split);

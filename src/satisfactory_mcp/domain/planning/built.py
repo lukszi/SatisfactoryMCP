@@ -458,7 +458,8 @@ def _auto(g: GameData, st: WorldState, prepared: PreparedPlan, area: SearchArea)
     resource = {_leaf(row["instance"]): row["resource"] for row in prepared.request.node_rows}
     out.node_owner = "; ".join(
         f"its {len(rows)} {(g.item_name(resource.get(rows[0].node, '')) or 'resource').lower()} "
-        f"{plural('node', len(rows))} already feed “{display(o)}”"
+        f"{plural('node', len(rows))} already {'feeds' if len(rows) == 1 else 'feed'} "
+        f"“{display(o)}”"
         for o, rows in sorted(fed.items(), key=lambda kv: (-len(kv[1]), str(kv[0][1])))
     )
     if not kept:

@@ -58,6 +58,9 @@ SPECS: dict[str, Spec] = {
     "overclock_last": Spec(
         "switch", False, "build a row one machine short and overclock its last machine"
     ),
+    "advice_box_fed": Spec(
+        "switch", False, "advise when a machine fed only from a storage box has emptied it"
+    ),
 }
 
 
