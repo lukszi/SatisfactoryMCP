@@ -1258,7 +1258,14 @@ half and is scored on the east.
 
 ### Cost and output
 
-RENDER_COST_PLACEHOLDER
+A full run of both layers took about 21 min wall time on 2026-10-05. The lattice rebuild took
+13 s, the rock pass 13 min and the arch-and-boulder pass 2 min. Drawing and cutting took
+11 min for terrain and 10 min for satellite. Tile output was 1,640 MB: terrain 835 MB and
+satellite 805 MB, against 1,656 MB for recipe 4.
+
+The seam trace's share of a hard switch is 1.22, against 1.18 for recipe 4. It is above 1
+on both because the smoothed lift is not a convex blend. The seam's own p99 curvature fell
+from 3,638 to 3,554, and the pure-kernel p99 fell from 2.11 to 1.24.
 
 `--renders-name renders-v3` writes to `data/local/renders-v3/<layer>/`. Switching works as in
 section 25.
