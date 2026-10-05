@@ -70,8 +70,9 @@ without `--force`. See §24.
 ### paint
 
 Extracts the landscape's paint layers once per game build: one weight plane per layer on
-the 1 m grid, the tree canopy cover, the PigmentMap tint and each layer's albedo. Only the
-`painted` render layer reads them. See §27.
+the 1 m grid, the tree canopy cover, the PigmentMap tint, each layer's albedo, and the
+seabed coral carpet's cover and top. Only the `painted` render layer reads them. See §27
+and §28.
 
 ### artwork
 
@@ -119,6 +120,7 @@ be traced to the axis it should move.
 | `gamedata/sweep.py` | data | Level sweep, foliage, landscape frame, baseline |
 | `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
+| `gamedata/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |

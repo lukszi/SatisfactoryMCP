@@ -1437,3 +1437,83 @@ adopts the painted layer as `game-painted-r6-502094`.
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
   did.
+
+## 28. The seabed coral carpet (2026-10-05)
+
+In the Spire Coast shallows the game shows patches of blue on the seabed: blue fans with pale
+rims under turquoise water (owner screenshots and the wiki's Spire Coast shot). The painted
+style drew none of it. Build 502094.
+
+### What it is
+
+Checked one candidate at a time against the game files:
+
+- **Not a paint layer.** The `CoralRock` layer (`TX_SeaRocks_01_Alb`, linear albedo 0.171,
+  0.173, 0.235) covers 0.62 km² of seabed at weight above 30, most of it on the Spire Coast.
+  It is already drawn, and the HLOD BaseColor bake over the spiral sandbars' seabed, which
+  carries it, is brown-grey, not blue.
+- **Not the layer's grass type.** `LandscapeGrassType` `CoralRock` spawns crater grass, Grass_03,
+  lichen and pebbles at runtime, culled at 150 m, so it never reaches a map view.
+- **Not decals or spline meshes.** None of the 105 `DecalActor`s stands in the Spire Coast box
+  (1 m grid rows 700 to 2400, columns 2500 to 4800), and the 19 spline meshes over its water
+  are all `SM_RiverPlane`.
+- **Placed foliage: `SM_CraterGrass_01`.** 112,525 instances map-wide. 48,145 have their origin
+  under water, and 47,118 of those stand on `CoralRock` paint. Median origin depth 1.41 m. They
+  form the clustered patches in the channels, where the screenshots show the carpet. The mesh is
+  a 1.3 x 1.0 m rosette of upright cards, 0.53 m tall. Its albedo
+  (`TX_CraterBush_01_Alb1`) is purple-pink with blue-white rims; the master material
+  (`MM_Grass_Master`, SSS 0.8) is stripped, and through the water the game draws it blue.
+
+Other coral foliage under water (barnacles, crater coral roots, coral formations) is grey-green,
+pink or beige in its textures and stays with the render-only meshes of section 27.
+
+### The input
+
+`python -m mapgen paint` harvests the carpet in the same level walk as the canopy trees
+(`gamedata/carpet.py`) and writes two more planes into the paint store, so they carry the paint
+input's digest and build. Paint generator version 2.
+
+| File | What |
+| --- | --- |
+| `carpet.u8.z` | Share of each 1 m texel under a rosette's plan, 0..255. The footprint is the convex hull of the mesh's plan view, sampled at 10 cm, times the instance's XY scale: 0.93 m² at scale 1. The blades are upright cards, so the triangles' own plan area (0.04 m²) would draw specks. |
+| `carpet_top.i16.z` | The highest rosette top over the texel, decimetres, no-data elsewhere: origin z plus the mesh top times the Z scale. |
+
+`meta.json` gains a `carpet` block: instances per mesh, the decode route, the footprint area and
+the covered texels (166,056 on this build). Every instance is kept, wet or dry; the renderer
+decides where water covers them.
+
+### Drawing it
+
+Style `satellite-painted` version 2, palette key `carpet`. In `palette/painted.py`:
+
+1. **Patches.** The cover is blurred by `blur_m` (1.25 m) and mapped through
+   `1 - exp(-gain * share)` with `gain` 3, so a cluster of rosettes reads as one patch with a
+   mottled edge. Top no-data texels take the highest top within the blur.
+2. **In the bed, under the water.** Only where the pixel is under water. The carpet replaces the
+   bed by its cover, and is seen through the water above its own top: depth
+   `level - top`, with `level = z + depth`. Then the same Beer-Lambert as the bed, before the
+   open-sea term: `carpet * T + W (1 - T) + sky`.
+3. **`depth_scale` 0.2.** The water's fitted `k` saturates by about 1 m, and the median carpet
+   top is 0.8 m down (origins at 1.4 m). With the bed's own `k` the carpet would vanish, yet the
+   screenshots show it clearly through the channels. The carpet's depth is scaled by 0.2; the
+   water fit's depths were matched, not measured, so this is the weaker number of the two.
+4. **Colour** `#6c9ebe` (linear-light carpet albedo at map exposure). Drawn over the channels it
+   comes out at median `#5e8a9c`, against the calibration target `#5f8899` (the reference's
+   `#6493a6` at map exposure).
+
+`strength` 0 switches it off; a version 1 paint store has no carpet planes and draws none.
+
+### Measured
+
+On five 1280 px crops of the z7 grid through `render_layer`: the carpet changes 5.6% of the
+pixels of a dense Spire Coast channel by more than 40 (summed over RGB), and nothing on the
+spiral sandbars, where no crater grass grows. Its cost was not measured separately: one
+7500² blur and one dilation at load, two plane samples per band.
+
+### Known limits
+
+- The blue is matched to screenshots, not read from the material: the grass master material is
+  stripped, so in-game tint and subsurface scattering cannot be checked.
+- Rosettes above the water line (in the Crater biome) are not drawn; they are ordinary land
+  foliage, which the understory item covers.
+- The pale rims the screenshots show inside the patches are not drawn.
