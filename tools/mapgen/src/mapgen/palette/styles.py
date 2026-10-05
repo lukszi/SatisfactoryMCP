@@ -36,6 +36,7 @@ __all__ = [
     "RAMP_HI_PCT",
     "RAMP_LO_PCT",
     "RAMP_STOPS",
+    "RELIEF_PALETTES",
     "ROCK_HI_DEG",
     "ROCK_LO_DEG",
     "ROCK_RGB",
@@ -72,6 +73,8 @@ LAYER_STYLES = {
     "terrain": "terrain-hypsometric",
     "satellite": "satellite-biome",
     "painted": "satellite-painted",
+    "relief": "relief-muted",
+    "relief-dark": "relief-night",
 }
 
 
@@ -85,17 +88,21 @@ def load_palette(style: str) -> tuple[dict, str]:
 TERRAIN_PALETTE, TERRAIN_DIGEST = load_palette(LAYER_STYLES["terrain"])
 SATELLITE_PALETTE, SATELLITE_DIGEST = load_palette(LAYER_STYLES["satellite"])
 PAINTED_PALETTE, PAINTED_DIGEST = load_palette(LAYER_STYLES["painted"])
+#: The relief layers share one painter (``palette.relief``), one palette each.
+RELIEF_PALETTES = {layer: load_palette(LAYER_STYLES[layer]) for layer in ("relief", "relief-dark")}
 STYLE_DIGESTS = {
     "terrain": TERRAIN_DIGEST,
     "satellite": SATELLITE_DIGEST,
     "painted": PAINTED_DIGEST,
+    **{layer: digest for layer, (_palette, digest) in RELIEF_PALETTES.items()},
 }
 
 #: The ocean shore's optics per style (recipe 6): opacity at the line, depth fade, wet ground.
 TERRAIN_SHORE = TERRAIN_PALETTE["shore"]
 SATELLITE_SHORE = SATELLITE_PALETTE["shore"]
 SHORE_OPTICS = {"terrain": TERRAIN_SHORE, "satellite": SATELLITE_SHORE,
-                "painted": PAINTED_PALETTE["shore"]}  # fmt: skip
+                "painted": PAINTED_PALETTE["shore"],
+                **{layer: palette["shore"] for layer, (palette, _d) in RELIEF_PALETTES.items()}}  # fmt: skip
 
 #: The ramp's height band, as land percentiles: one spire must not flatten it.
 RAMP_LO_PCT = float(TERRAIN_PALETTE["ramp_lo_pct"])

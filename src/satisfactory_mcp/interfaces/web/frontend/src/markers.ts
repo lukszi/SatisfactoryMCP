@@ -19,6 +19,7 @@ import { registerFetch } from "./registry";
 import { onSetting, setting } from "./settings";
 import { parseList, state } from "./state";
 import { fail } from "./toast";
+import { onTone, toned } from "./tone";
 
 import type { LayerInput, OnMap } from "./leaflet-private";
 
@@ -85,6 +86,16 @@ export var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
  * node, not how much room it takes up. */
 var PURITY_RADIUS: Record<string, number> = { impure: 3, normal: 4.5, pure: 6 };
 
+/* Tone values (docs/frontend_vision.md §19). On a dark base near-black coal vanishes, so it
+ * turns light grey. A locked dot keeps its ore colour, hollow and dashed, on a dark ring: at 35%
+ * opacity it was invisible on every base. */
+var TONED = declareColours("markers", { "coal dark": "#8c8f96", "locked casing": "#262040" });
+
+function nodeColour(resource: string): string {
+  if (resource === "Desc_Coal_C") return toned(RESOURCE_COLOUR[resource]!, TONED["coal dark"]);
+  return RESOURCE_COLOUR[resource] || "#888";
+}
+
 var drawn = { nodes: null as NodesResponse | null, pickups: null as CollectiblesResponse | null };
 
 export function knownNodes(): NodeRow[] {
@@ -124,7 +135,7 @@ function paintNodes(data: NodesResponse): void {
     .sort()
     .forEach(function (resource) {
       var short = shortResource(resource);
-      var colour = RESOURCE_COLOUR[resource] || "#888";
+      var colour = nodeColour(resource);
       // Slot 0 for every member, so the band's whole ordering is the name: these rows are
       // DATA -- one per resource this world has -- and there is no editorial order to give
       // fourteen of them that a reader could predict. Alphabetical is predictable.
@@ -133,15 +144,20 @@ function paintNodes(data: NodesResponse): void {
       byResource[resource]!.forEach(function (n) {
         // Null is "no save read", which is not a claim either way; only false is LOCKED.
         var locked = n.reachable === false;
+        if (locked) {
+          L.circleMarker(xy(n), {
+            radius: PURITY_RADIUS[n.purity] || 4,
+            color: TONED["locked casing"],
+            weight: 3,
+            fillOpacity: 0,
+            interactive: false,
+          }).addTo(group);
+        }
         var dot = L.circleMarker(xy(n), {
           radius: PURITY_RADIUS[n.purity] || 4,
           color: colour,
           weight: n.occupied ? 2 : 1,
-          // A locked dot is faded and hollow rather than grey: every neutral grey is within
-          // dE 15 of a biome ground or the belt steel, so a grey here would be a colour that
-          // cannot be told from the ground under it. See palette.ts. Keeping the ore colour
-          // also keeps the dot inside the layer whose name says what it is.
-          opacity: locked ? 0.35 : 1,
+          // Locked keeps the ore colour, hollow and dashed: a grey would sink into the ground.
           fillOpacity: locked ? 0 : n.occupied ? 0.15 : 0.75,
           dashArray: locked ? "2 3" : undefined,
         }).bindPopup(
@@ -338,6 +354,16 @@ var POD_CATEGORY = "crashed_drop_pod";
  *
  * Fill and not a dash: dashed already means locked, paused or planned on this page, and an
  * emptied pod is none of those. */
+/* The X over a collected pickup: dark on a light base, light on a dark one. */
+var PICKUP_X = declareColours("markers", {
+  "pickup collected": "#2a3147",
+  "pickup collected dark": "#9aa0a8",
+});
+
+function pickupX(): string {
+  return toned(PICKUP_X["pickup collected"], PICKUP_X["pickup collected dark"]);
+}
+
 function pickupDot(here: L.LatLngTuple, colour: string, r: CollectibleRow): L.CircleMarker {
   var pod = r.category === POD_CATEGORY;
   var hollow = pod && r.looted === true;
@@ -413,7 +439,7 @@ function paintPickups(data: CollectiblesResponse): void {
                   [here[0] + 4, here[1] - 4],
                 ],
               ],
-              { color: "#6b7078", weight: 1 }
+              { color: pickupX(), weight: 1 }
             )
           : pickupDot(here, colour, r);
         mark
@@ -438,6 +464,7 @@ function repaint(): void {
 }
 
 onSetting(repaint);
+onTone(repaint);
 new MutationObserver(markHiddenRows).observe(control.getContainer()!, { childList: true, subtree: true });
 
 /* The `pickup: ` rows as a family, on the same terms as the node one above and shut for the

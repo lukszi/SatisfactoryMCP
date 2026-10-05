@@ -26,7 +26,7 @@ import { listenToFragment } from "./fragment";
 import { inspect } from "./inspector";
 import { declutter } from "./labels";
 import { isBatching, onSettled } from "./layercontrol";
-import { loadLive, loadRegions, loadStatic } from "./load";
+import { loadLive, loadOne, loadRegions, loadStatic } from "./load";
 import { rememberTick } from "./layers";
 import { fitWorld, map, padPopups, writeHash } from "./map";
 import { listenForEmptyClicks } from "./mapclick";
@@ -41,6 +41,7 @@ import { listen } from "./sse";
 import { BOOT, BOOT_GARBLED, garbledNote, state } from "./state";
 import { wireStatus } from "./status";
 import { loadBaseMap } from "./tiles";
+import { onTone } from "./tone";
 import { fail } from "./toast";
 import { listenForTraces } from "./trace";
 import { loadWorlds } from "./worlds";
@@ -124,6 +125,14 @@ map.on("zoomend overlayadd overlayremove", function () {
 });
 onSettled(declutter);
 map.on("zoomend", markHiddenRows);
+
+/* The layers whose colours follow the base map's tone and keep no copy of their data to repaint
+ * from; the node dots and pickups repaint themselves. */
+onTone(function () {
+  if (!state.worlds.length) return;
+  loadOne("/api/belts");
+  loadOne("/api/power");
+});
 
 map.on("preclick contextmenu", padPopups);
 map.on("contextmenu", inspect);

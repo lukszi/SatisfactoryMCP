@@ -81,15 +81,17 @@ cache folder once. `--no-tiles-2x` skips the high-density pyramid. See §17.
 
 ### renders
 
-Draws the `terrain`, `satellite` and `painted` layers from the heightfield, the game's biome
-raster and, for `painted`, the paint layers. Each layer is cut into the same 256 px pyramid
+Draws the `terrain`, `satellite`, `painted`, `relief` and `relief-dark` layers from the
+heightfield, the game's biome raster and, for `painted`, the paint layers. Each layer is cut into the same 256 px pyramid
 as the artwork. The main options:
 
-- `--layer L`, repeatable, picks the layers. The default is all three.
+- `--layer L`, repeatable, picks the layers. The default is all five.
 - `--size` takes 1024 to 32768. The smaller sizes are previews.
 - `--renders-name` writes beside the current renders instead of over them.
 - `--cache-dir` with `--keep-direct` keeps the geometry rasters, so a later run at the same
   size and build reuses them.
+- `--restyle` draws only from those kept caches and exits with code 9 when one is missing or
+  was cut for another size or build, so a palette change never turns into a full render.
 
 A full-size run needs about 10.7 GB of scratch space for those caches. See §25 to §27, and
 [maps_contract.md](../../docs/maps_contract.md) for how the server registers the result.
@@ -133,13 +135,15 @@ be traced to the axis it should move.
 | `palette/styles.py` | style | Palette loading, digests and the colour painters |
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
 | `palette/painted.py` | style | The game-painted ground |
+| `palette/relief.py` | style | The relief styles' painter (light and dark palettes) |
 | `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
 | `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |
 | `tiles/pyramid.py` | | Installing a layer and cutting its pyramid |
 | `tiles/sidecar.py` | | The render sidecar |
-| `tiles/recipes.py` | | The recipe numbers and the text each sidecar records, renders and artwork |
+| `tiles/recipes.py` | | The recipe numbers and their words, renders and artwork |
+| `tiles/rendertext.py` | | The render sidecar's sampling, composition, z7 and level-only text |
 | `tiles/artwork_output.py` | | The artwork's `tiles/` and `tiles@2x/` trees, its `map.json`, and the staleness guard that reads it back |
 | `enhance/upscaler.py` | recipe | The Real-ESRGAN binary: one-time download into the user cache, digest, smoke test |
 | `enhance/pixels.py` | recipe | Pre-sharpen, faint-mark repair and colour fix around the model |
@@ -155,6 +159,19 @@ The container opener and the artwork sheet's slice reader are game readers, so t
 
 Why some constants have the values they have. The code keeps a one-line comment and points
 here.
+
+### The band loop (`tiles/compose.py`)
+
+`render_layer` draws a sheet 256 rows at a time; at 32768 a whole-sheet float32 intermediate
+is four gigabytes. Each band carries `BAND_HALO` rows either side and crops them, because a
+one-sided difference at every band edge would draw a line across the world. `direct` is the
+rock raster's memory maps with the ground lattice and the sub-sampling, and `overlay` the
+arch-and-boulder pair; without them the picture is one regime. `seam` and `regimes` are the
+measuring accumulators, passed for the first layer only since every layer draws one surface.
+`meshes` is the render-only mesh raster, `reach` the plane where the ocean's crossing rule
+applies (`None` keeps recipe 5's water). `painted` and `relief` are the prepared grounds of
+those styles, built once per run. `window` draws part of the sheet, which is how crops are
+compared.
 
 ### Light (`lighting/hillshade.py`)
 

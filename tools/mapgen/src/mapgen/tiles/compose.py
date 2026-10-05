@@ -19,6 +19,7 @@ from mapgen.lighting.hillshade import (
     sun_dot,
 )
 from mapgen.palette.painted import ROCK_GRID_M, painted_colours
+from mapgen.palette.relief import relief_colours
 from mapgen.palette.shore import MESH_FULL_LIFT_M, blend_water, composite_meshes, shore_terms
 from mapgen.palette.styles import (
     LAYER_PAINTERS,
@@ -155,25 +156,13 @@ def render_layer(
     reach=None,
     painted=None,
     window=None,
+    relief=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
-    Banded because the sheet is a billion pixels at 32768 and this recipe holds a dozen
-    float32 intermediates over it, four gigabytes apiece whole. Each band is computed with
-    BAND_HALO extra rows on both sides and cropped afterwards, so neither the hillshade's
-    gradient nor the cubic sampler's stencil nor the water blur's kernel ever sees a band
-    edge: a one-sided difference at every 256th row would
-    draw 127 horizontal lines across the world.
-
-    ``direct`` is the pair of memory maps the direct pass wrote, with the weight plane and
-    the sub-sampling beside them; ``None`` draws the single-regime picture. ``seam`` and
-    ``regimes`` are accumulators, passed for the first layer only, both layers drawing the
-    identical surface. ``overlay`` is the arch-and-boulder pair of maps and its sub-sampling,
-    composited last. ``kernel`` builds the smooth taps: ``taps_pchip`` unless told otherwise.
-    ``meshes`` is the render-only mesh raster (z, class); ``reach`` the 1 m plane where the
-    ocean's crossing rule applies, ``None`` for recipe 5's water everywhere; ``painted`` the
-    ``palette.painted.PaintedGround`` the painted layer samples. ``window`` draws only rows
-    ``[r0, r1)`` and columns ``[c0, c1)`` of the sheet, with every raster passed in cut to it.
+    Each band carries BAND_HALO extra rows, cropped after, so no stencil sees a band edge.
+    ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. The other
+    arguments: tools/mapgen/README.md, "Design notes", "The band loop".
     """
     kernel = taps_pchip if kernel is None else kernel
     painter = LAYER_PAINTERS.get(layer)
@@ -336,6 +325,17 @@ def render_layer(
                 painted,
                 lambda plane, taps=linear: sample_plain(plane, taps),
                 lambda plane, taps=(rock_rows, rock_cols): sample_plain(plane, taps),
+            )
+        elif relief is not None:
+            scene["spacing_m"] = spacing_m
+            rows = biome_index(
+                y_cm[lo:hi], BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], biome["width"]
+            )
+            rgb = relief_colours(
+                scene,
+                relief,
+                lambda plane, taps=linear: sample_plain(plane, taps),
+                lambda plane, rows=rows: plane[np.ix_(rows, biome_cols)],
             )
         else:
             scene["shade"] = hillshade(z_m, spacing_m)

@@ -4254,6 +4254,8 @@ export interface components {
             game: boolean;
             /** Heightfield */
             heightfield: boolean;
+            /** Vulkan */
+            vulkan: boolean;
             /** Ok */
             ok: boolean;
             /** Reason */
@@ -4392,7 +4394,7 @@ export interface components {
         /** MapJobOptions */
         MapJobOptions: {
             /** Layers */
-            layers?: ("terrain" | "satellite" | "painted")[];
+            layers?: ("terrain" | "satellite" | "painted" | "relief" | "relief-dark")[];
             /** Size */
             size?: number;
             /**
@@ -4404,6 +4406,8 @@ export interface components {
             top?: boolean;
             /** Keep Cache */
             keep_cache?: boolean;
+            /** Restyle */
+            restyle?: boolean;
             /** Enhance */
             enhance?: boolean;
             /** Tiles 2X */
@@ -4460,6 +4464,23 @@ export interface components {
             text: string;
         };
         /**
+         * MapStyleBody
+         * @description A render layer the generate form offers, and the tone of the base it draws.
+         */
+        MapStyleBody: {
+            /** Layer */
+            layer: string;
+            /** Style */
+            style: string;
+            /** Label */
+            label: string;
+            /**
+             * Tone
+             * @enum {string}
+             */
+            tone: "light" | "dark";
+        };
+        /**
          * MapTypeBody
          * @description One map type. ``name`` is derived from its axes; ``label`` is the player's, or null.
          */
@@ -4480,6 +4501,11 @@ export interface components {
             kind: string;
             /** Layer */
             layer: string;
+            /**
+             * Tone
+             * @enum {string}
+             */
+            tone: "light" | "dark";
             /** Size Px */
             size_px: number | null;
             /** Dir */
@@ -4536,6 +4562,15 @@ export interface components {
             queue_max: number;
             /** Sizes */
             sizes: number[];
+            /** Styles */
+            styles: components["schemas"]["MapStyleBody"][];
+            /** Cached Sizes */
+            cached_sizes: number[];
+            /**
+             * Plain Tone
+             * @enum {string}
+             */
+            plain_tone: "light" | "dark";
         };
         /**
          * MapsStaleResponse
@@ -11118,6 +11153,7 @@ export interface operations {
                 recipe?: "current" | "kernel-only";
                 top?: boolean;
                 keep_cache?: boolean;
+                restyle?: boolean;
                 enhance?: boolean;
                 tiles_2x?: boolean;
             };
