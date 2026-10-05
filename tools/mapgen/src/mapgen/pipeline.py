@@ -84,7 +84,7 @@ from mapgen.lighting.hillshade import (
     coarse_province,
 )
 from mapgen.palette.painted import PaintedGround, load_paint_meta
-from mapgen.palette.shore import OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
+from mapgen.palette.perched import water_surfaces
 from mapgen.palette.styles import (
     BIOME_BLEND_TEXELS,
     BIOME_COLOURS,
@@ -593,12 +593,7 @@ def main() -> int:
         }
         print(f"  paint layers prepared in {time.time() - started:.0f}s")
 
-    reach, reach_meta = (None, {}) if args.kernel_only else ocean_reach(field)
-    if reach is not None:
-        print(
-            f"  ocean shore at {OCEAN_LEVEL_M} m: {reach_meta['ocean_texels']} ocean "
-            f"texels, {reach_meta['reach_texels']} within {OCEAN_REACH_M:g} m"
-        )
+    reach, reach_meta, water_level, perched_meta = water_surfaces(field, args.kernel_only)
 
     # ---- the cliff geometry and the top overlay, rasterised into this render's own grid
     direct = None
@@ -834,6 +829,7 @@ def main() -> int:
             kernel=taps_cubic if args.kernel_only else taps_pchip,
             meshes=meshes,
             reach=reach,
+            water_level=water_level,
             painted=painted if layer == "painted" else None,
             # Both layers draw the identical surface, so the seam and the regime table are
             # measured on the first one and quoted for both.
@@ -960,6 +956,7 @@ def main() -> int:
                     if reach is not None
                     else None
                 ),
+                "perched": perched_meta,
                 "level_only": (
                     "full alpha and the deep end of the ramp. 95.2% of level-only water "
                     "stands over the fill province and 98% of its surface levels lie in a "

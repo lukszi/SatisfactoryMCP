@@ -155,6 +155,7 @@ def render_layer(
     reach=None,
     painted=None,
     window=None,
+    water_level=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
@@ -187,7 +188,7 @@ def render_layer(
     ramp_lo, ramp_hi = ramp_range(field)
     noise = noise_fields(NOISE_SEED) if layer == "satellite" else None
     wet_plane, measured_plane, _source = water_planes(field)
-    water = field._water_raster()
+    water = field._water_raster() if water_level is None else water_level
     out = np.empty((r1 - r0, c1 - c0, 3), np.uint8)
     column_index = np.arange(c0, c1)
 
