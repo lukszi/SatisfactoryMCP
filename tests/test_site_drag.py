@@ -168,8 +168,20 @@ def test_snap_fine_rounds_the_centre_and_turns_in_15_degree_steps():
 
 def test_snap_grid8_puts_the_west_and_north_edges_on_the_world_grid():
     x, y, yaw = siting.snap(103.0, -197.0, 8.0, 100.0, 60.0, "grid8")
-    assert ((x - 50.0) % 8, (y - 30.0) % 8, yaw) == (0.0, 0.0, 15.0)
+    assert ((x - 50.0) % 8, (y - 30.0) % 8, yaw) == (0.0, 0.0, 0.0)
     assert abs(x - 103.0) <= 4 and abs(y + 197.0) <= 4
+
+
+def test_snap_grid8_turns_in_90_degree_steps():
+    assert siting.yaw_step("grid8") == 90.0 and siting.yaw_step("fine") == 15.0
+    turns = [siting.snap(0.0, 0.0, a, 96.0, 64.0, "grid8")[2] for a in (30, 44, 46, 120, 300, 316)]
+    assert turns == [0.0, 0.0, 90.0, 90.0, 270.0, 0.0]
+
+
+def test_snap_grid8_a_quarter_turn_lines_the_turned_edges_up():
+    """At 90° the pad's extent along x is its depth, so that edge goes on the grid."""
+    x, y, yaw = siting.snap(103.0, -197.0, 85.0, 100.0, 60.0, "grid8")
+    assert yaw == 90.0 and ((x - 30.0) % 8, (y - 50.0) % 8) == (0.0, 0.0)
 
 
 def test_fit_to_bbox_covers_the_machines_with_a_margin():

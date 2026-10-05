@@ -165,5 +165,12 @@ def test_chat_writes_snap_to_the_shared_lattice(client):
     out = srv.site_plan(plan="rip 5", at="100.4,-200.6", yaw_deg=37, footprint="96", base_rev=1)
     assert "origin 100,-201m" in out and "yaw 30deg" in out
     client.patch("/api/settings", json={"values": {"site_snap": "grid8"}}, headers=ORIGIN)
-    out = srv.site_plan(plan="rip 5", at="103,-197", footprint="96", base_rev=2)
-    assert "origin 104,-200m" in out
+    out = srv.site_plan(plan="rip 5", at="103,-197", yaw_deg=50, footprint="96", base_rev=2)
+    assert "origin 104,-200m" in out and "yaw 90deg" in out
+
+
+def test_chat_preview_on_grid8_turns_in_quarter_turns(client):
+    _plan(client)
+    client.patch("/api/settings", json={"values": {"site_snap": "grid8"}}, headers=ORIGIN)
+    out = srv.site_plan(plan="rip 5", at="-238.4,-1466.2", yaw_deg=50, preview=True)
+    assert out.startswith("# preview of plan 'rip 5' v1 at ") and ", yaw 90°" in out.splitlines()[0]

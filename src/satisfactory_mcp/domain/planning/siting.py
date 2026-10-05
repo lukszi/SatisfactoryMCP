@@ -180,7 +180,12 @@ def check(value) -> dict:
 
 SNAP_MODES = ("fine", "grid8")
 GRID_M = 8.0
-YAW_STEP_DEG = 15.0
+YAW_STEP_DEG = {"fine": 15.0, "grid8": 90.0}
+
+
+def yaw_step(mode: str) -> float:
+    """Degrees a snapped turn moves by under ``site_snap`` ``mode``."""
+    return YAW_STEP_DEG.get(mode, YAW_STEP_DEG["fine"])
 
 
 def snap(
@@ -188,15 +193,17 @@ def snap(
 ) -> tuple[float, float, float]:
     """The ``site_snap`` rule the page's drag also applies (``sitedrag.ts`` ``snap``).
 
-    ``fine`` rounds the centre to 1 m; ``grid8`` puts the pad's west and north edges on the
-    8 m world grid. Yaw goes to 15° steps in both.
+    ``fine`` rounds the centre to 1 m and yaw to 15°; ``grid8`` turns yaw to 90° and puts
+    the pad's west and north edges on the 8 m world grid (a quarter turn swaps W and D).
     """
+    step = yaw_step(mode)
+    yaw = (round(yaw_deg / step) * step) % 360.0
     if mode == "grid8":
-        x = round((x_m - width_m / 2) / GRID_M) * GRID_M + width_m / 2
-        y = round((y_m - depth_m / 2) / GRID_M) * GRID_M + depth_m / 2
+        across, along = (depth_m, width_m) if yaw % 180.0 == 90.0 else (width_m, depth_m)
+        x = round((x_m - across / 2) / GRID_M) * GRID_M + across / 2
+        y = round((y_m - along / 2) / GRID_M) * GRID_M + along / 2
     else:
         x, y = float(round(x_m)), float(round(y_m))
-    yaw = (round(yaw_deg / YAW_STEP_DEG) * YAW_STEP_DEG) % 360.0
     return x, y, yaw
 
 

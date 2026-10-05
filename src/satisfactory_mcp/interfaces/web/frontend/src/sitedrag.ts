@@ -27,6 +27,7 @@ export interface Spot {
 
 var GRID_M = 8;
 var YAW_STEP = 15;
+var GRID_YAW_STEP = 90;
 var NUDGE_M = 8;
 var FINE_M = 1;
 var BURST_MS = 600;
@@ -67,19 +68,36 @@ function norm(yaw: number): number {
   return ((yaw % 360) + 360) % 360;
 }
 
+/** Degrees one snapped turn moves by: 90° on the 8 m grid, else 15°. */
+export function yawStep(): number {
+  return snapMode() === "grid8" ? GRID_YAW_STEP : YAW_STEP;
+}
+
+/** The next lattice angle from `yaw` in direction `dir` (±1), so an off-lattice pad lands on it. */
+function turned(yaw: number, dir: number): number {
+  var s = yawStep();
+  var k = yaw / s;
+  return norm((dir > 0 ? Math.floor(k + 1e-6) + 1 : Math.ceil(k - 1e-6) - 1) * s);
+}
+
 /** The `site_snap` rule; `siting.snap` on the server is the same. */
 export function snap(p: Pad, free: boolean): Pad {
   if (free) return { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100, yaw: norm(Math.round(p.yaw * 10) / 10), w: p.w, d: p.d };
+  var s = yawStep();
+  var yaw = norm(Math.round(p.yaw / s) * s);
   var x: number;
   var y: number;
   if (snapMode() === "grid8") {
-    x = Math.round((p.x - p.w / 2) / GRID_M) * GRID_M + p.w / 2;
-    y = Math.round((p.y - p.d / 2) / GRID_M) * GRID_M + p.d / 2;
+    var quarter = yaw % 180 === 90;
+    var across = quarter ? p.d : p.w;
+    var along = quarter ? p.w : p.d;
+    x = Math.round((p.x - across / 2) / GRID_M) * GRID_M + across / 2;
+    y = Math.round((p.y - along / 2) / GRID_M) * GRID_M + along / 2;
   } else {
     x = Math.round(p.x);
     y = Math.round(p.y);
   }
-  return { x: x, y: y, yaw: norm(Math.round(p.yaw / YAW_STEP) * YAW_STEP), w: p.w, d: p.d };
+  return { x: x, y: y, yaw: yaw, w: p.w, d: p.d };
 }
 
 export function corners(p: Pad): L.LatLngTuple[] {
@@ -154,8 +172,8 @@ function keyed(event: KeyboardEvent): void {
   else if (event.key === "ArrowRight") dx = by;
   else if (event.key === "ArrowUp") dy = -by;
   else if (event.key === "ArrowDown") dy = by;
-  else if (event.key === "[") turn = -YAW_STEP;
-  else if (event.key === "]") turn = YAW_STEP;
+  else if (event.key === "[") turn = -1;
+  else if (event.key === "]") turn = 1;
   else if (event.key === "Enter" && gesture === "keys") {
     event.preventDefault();
     event.stopPropagation();
@@ -175,7 +193,8 @@ function keyed(event: KeyboardEvent): void {
     gesture = "keys";
     held = pad;
   }
-  var next = snap({ x: pad.x + dx, y: pad.y + dy, yaw: pad.yaw + turn, w: pad.w, d: pad.d }, event.shiftKey);
+  var yaw = !turn ? pad.yaw : event.shiftKey ? pad.yaw + turn * YAW_STEP : turned(pad.yaw, turn);
+  var next = snap({ x: pad.x + dx, y: pad.y + dy, yaw: yaw, w: pad.w, d: pad.d }, event.shiftKey);
   draw(next, true);
   hooks.step(next);
   clearTimeout(burstTimer);
@@ -343,10 +362,10 @@ export function crossing(): boolean {
   return gesture === "cross";
 }
 
-/** One 15° step while crossing; committed with the drop, not per tap. */
-export function crossTurn(by: number): void {
+/** One snap step (`yawStep`) towards `dir` (±1) while crossing; committed with the drop. */
+export function crossTurn(dir: number): void {
   if (gesture !== "cross" || !pad) return;
-  step({ x: pad.x, y: pad.y, yaw: norm(pad.yaw + by), w: pad.w, d: pad.d });
+  step(snap({ x: pad.x, y: pad.y, yaw: turned(pad.yaw, dir), w: pad.w, d: pad.d }, false));
 }
 
 export function crossDrop(): void {

@@ -61,7 +61,8 @@ SPECS: dict[str, Spec] = {
     "site_snap": Spec(
         "choice",
         "fine",
-        "how a moved plan pad snaps: fine is 1 m and 15° steps, grid8 the 8 m world grid",
+        "how a moved plan pad snaps: fine is 1 m and 15° steps, "
+        "grid8 the 8 m world grid and 90° steps",
         options=("fine", "grid8"),
     ),
     "advice_box_fed": Spec(
