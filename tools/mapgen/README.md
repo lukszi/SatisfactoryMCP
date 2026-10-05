@@ -121,6 +121,7 @@ be traced to the axis it should move.
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
+| `gamedata/trees.py` | data | Tree instances as crowns: species bounds, instance scale, the tree table |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid, render-only meshes |
@@ -130,6 +131,8 @@ be traced to the axis it should move.
 | `palette/painted.py` | style | The game-painted ground |
 | `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
 | `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
+| `lighting/horizon.py` | light | Faded horizons per direction, their byte encoding, shadow and light floor |
+| `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |
 | `tiles/pyramid.py` | | Installing a layer and cutting its pyramid |
@@ -185,6 +188,45 @@ here.
   where a collision hull stops being eight flat plates and starts being rock.
 - **`BORROW_LUMA`** is Rec. 601, the weighting that matches how a person sees light. Colour
   never crosses: an ocean drawn blue contributes its brightness and nothing else.
+
+### Horizons and tree shadows (`lighting/horizon.py`, `lighting/occluders.py`)
+
+Shadows are not baked into colour. The horizon pass stores, per texel and per compass
+direction, how high the faded skyline stands; the viewer's sun picks two directions and
+compares. Trees join that pass as an occluder raster, so they shade for any sun.
+
+- **Encoding.** 32 directions, 11.25 degrees apart, at half the z7 resolution; a byte is
+  `255 * sqrt(deg / 90)`, finer near the ground where low suns need it. The shadow is
+  `clamp((horizon - elevation) / 2 deg + 0.5, 0, 1)`, the shader's own rule.
+- **`FADE_M`**: a ground blocker counts fully to 40 m and not at all past 150 m. Without
+  the fade a low sun shadows a third to a half of the land.
+- **The occluder hook.** `faded_horizon(..., occluder=...)` takes a height raster in world
+  metres, `nan` where nothing stands. Blockers are the ground under `FADE_M`, and the
+  ground with the occluder on it under `OCCLUDER_FADE_M`. Receivers are the top surface by
+  default; `receiver=` overrides that.
+- **`OCCLUDER_FADE_M` (25 m, 80 m)**: a crown is porous and its far shadow diffuse. With
+  the ground's fade, a Mangrove_Tall_01 at the 80 m cap lays a column-shaped shadow about
+  93 m long under the 16:00 sun (24 degrees). With this fade it is about 61 m, and a 20 m
+  tree's shadow shortens from 44 m to 36 m.
+- **Receivers on the crown top.** Receiving on the ground under the crowns put 71-86% of two
+  forest crops in shadow at every sun, which reads as black forest. On the top, the
+  forest-edge crop keeps a mean light of 0.61-0.78 under the canopy for the 09:00, noon
+  and 16:00 suns. The cost is that a crown the colour layer does not draw,
+  chiefly Mangrove_Tall_01, shows as a lit disc with a shaded flank until crowns are drawn.
+- **`LIGHT_FLOOR` (0.38)**: the darkest light anything gets, within the 0.35-0.40 the
+  sun-shading decision set. Shadowed flat ground sits at the ambient share (0.4) times the
+  sky view, so the floor binds in pits and under crowns.
+- **Crown shape.** A heightfield cannot hold the air under a crown, so each tree is a
+  column whose top is a dome. `CROWN_RIM` (0.3) puts the rim at 30% of the height: at 0.7
+  every crown edge was a cliff and overlapping crowns drew hard arcs (fish scale); at 0
+  the shadow share grew another 3-4 points with little visual gain.
+- **Sizes.** Species come from the foliage mesh; top and radius from its
+  `ExtendedBounds`, which match the LOD0 geometry for all 53 tree meshes (top within
+  0.6 m). Each instance's scale comes from its world matrix. `CROWN_TOP_MAX_M` (80 m)
+  caps the column under a lifted crown; `CROWN_MIN_RADIUS_M` drops trunks and bulbs.
+- **Where the trees come from.** `terrain.rasters.sweep_world` already walks every level;
+  it now also harvests `is_tree` foliage into `sweep["trees"]` (93,375 instances on build
+  502094) and keeps `extra_foliage` to the render-only meshes it always held.
 
 ### Water (`palette/water.py`)
 
