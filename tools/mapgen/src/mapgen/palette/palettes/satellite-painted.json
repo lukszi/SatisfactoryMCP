@@ -123,7 +123,38 @@
   0.93
  ],
  "exposure": 1.12,
- "shoulder": 0.72,
+ "tone": {
+  "gain": 1.6,
+  "knee": 0.6,
+  "white": 1.6
+ },
+ "calibration": {
+  "about": "display sRGB targets from Spire Coast and desert screenshots; docs/spatial-and-map.md section 28",
+  "pure_share": 0.7,
+  "min_texels": 200,
+  "layers": {
+   "Sand_LayerInfo": "#d5cbb6",
+   "WetSand_LayerInfo": "#b8a083",
+   "SandRipples_LayerInfo": "#d07756",
+   "Grass_LayerInfo": "#83986e",
+   "Forest_LayerInfo": "#558653"
+  },
+  "canopy": "#558653",
+  "rock_keeps_exposure": true,
+  "desert_rock": {
+   "target": "#ae8271",
+   "areas": [
+    "Area_DuneDesert",
+    "Area_DesertCanyons",
+    "Area_RockyDesert"
+   ]
+  },
+  "meshes": {
+   "coral": "#99868e",
+   "shell": "#d6ccba",
+   "coral_seabed": "#5f8899"
+  }
+ },
  "borrow_ink_damp": 0.25,
  "shore": {
   "stroke": 0.0,
