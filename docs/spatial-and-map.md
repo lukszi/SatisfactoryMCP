@@ -1811,6 +1811,12 @@ small edge cells (512 and 256 px) have another layout and are left out, and the 
 them. The bake covers 63.7% of the grid and 97% of the painted land. Black texels are its own
 holes and count as no bake.
 
+A hole the bake encloses on every side is ground the game hides: a crater's pit, the abyss
+pits, a cave's mouth. The paint under it is never seen and is one solid layer per landscape
+component, so it drew as squares. Since style version 6 the paint is dropped there and the
+biome fallback (the area's median ground, blurred over `fallback_blur_m`) draws instead;
+`paint.hidden_ground_texels` in the sidecar counts them (238,054 on build 502094).
+
 Beside it the store keeps `layers_bake_fit`: each paint layer's albedo refitted to the bake by
 a non-negative least squares per channel, over 400,000 texels sampled every fourth texel where
 the layers' weights sum above one half. A layer dominant on fewer than 200 sampled texels keeps
@@ -1844,9 +1850,18 @@ version), so a cache from before this change is rebuilt once.
 (linear 0.624, 0.545, 0.471 for every family on this build), and its top layer, the mean of the
 family root's `Far Albedo` texture or else its `Albedo`: forest and grass from their far
 textures, red grass from `TX_GrassRed_01_Alb`, sand from `TX_Sand_BC`. Plain cliff, wet sand and
-red jungle have none. Per pixel, rock is multiplied by its family's tint and then blended to the
-top layer by an up-facing ramp on the drawn surface's normal, `nz` from 0.60 to 0.85, boxed over
-3 pixels. That ramp is a guess: the `CliffTopMaterial` function is not decoded.
+red jungle have none. Per pixel, rock is multiplied by its family's tint relative to the
+median tint of all families, then blended to the top layer by an up-facing ramp on the drawn
+surface's normal, `nz` from 0.60 to 0.85, boxed over 3 pixels. That ramp is a guess: the
+`CliffTopMaterial` function is not decoded.
+
+The rock targets of section 31 are measured on rock that already wears the common tint, so
+only a family's departure from it is applied (`palette/surfaces.py` `family_tables`). With one
+tint for every family, as on this build, rock stays on its target. Through style version 5 the
+whole tint was multiplied on after the target was set, which drew every rock 44% darker in
+linear light and warmer than its target. A render-only rock (sea rocks, rubble, rock piles)
+has no family: it takes the area's calibrated rock, never the family or top layer of a cliff
+whose footprint it happens to overlap.
 
 **Trees over rock.** Rock used to hide the canopy: 86 to 97% of tree cover above 0.5 in the
 forest and ivy crops. The store's `crown.i16.z` holds, per 1 m texel, the highest crown top over
@@ -1864,7 +1879,8 @@ draws them at twice the render's pixel into `titan.cache` (stamp: half the size,
 `titan_trees` reader). The painter samples that raster bilinearly, lights the crowns by their
 own relief, and lays them over the finished pixel, water included, at `titan_trees.opacity`
 (0.8), leaves sRGB (77, 90, 48), trunks (99, 88, 81). They cover about 0.9 km² of ground that
-was mostly drawn bare.
+was mostly drawn bare. Since style version 6 they are exposed like everything else, by
+`exposure` times `tone.gain`; before, the plain exposure drew them 1.6 times too dark.
 
 Players build under these trees, so they are a style toggle. `--no-titan-trees` renders with
 opacity 0, skips the raster and records its own style digest; the Maps tab's generate form has
@@ -1909,9 +1925,11 @@ not been measured.
 
 The painted style is calibrated against in-game screenshots: first the Spire Coast, the Dune
 Desert, the Western Beaches and the Eastern Dune Forest, then a second pass over the biomes
-those left out (see "Area targets"). Style `satellite-painted` version 3. Code:
-`palette/painted.py` and `palette/calibration.py`. Numbers: the `tone` and `calibration`
-blocks of `palette/palettes/satellite-painted.json`.
+those left out (see "Area targets"). Style `satellite-painted` version 3; the crowns, the
+gated swamp water and the mesh colours below are version 6. Code: `palette/painted.py`,
+`palette/calibration.py`, `palette/trees.py` (crowns), `palette/optics.py` (water) and
+`palette/surfaces.py` (rock and meshes). Numbers: the `tone` and `calibration` blocks of
+`palette/palettes/satellite-painted.json`.
 
 ### The ground albedo source
 
@@ -1980,9 +1998,14 @@ blurred over `area_blur_m` (25 m) on the 4 m rock grid. An entry can carry:
   measured on its own side, on pure texels as above.
 - **`rock`.** As the desert rock below.
 - **`canopy`** and **`meshes`** (coral, shell). The colour becomes a plane on the rock grid:
-  the global colour outside, the entry's inside.
-- **`water`.** An opaque display colour. Under water it replaces the Beer-Lambert result by
-  `1 - exp(-depth / water.opaque_tau_m)`, with the tau 0.3 m, so only the edge shows the bed.
+  the global colour outside, the entry's inside. The canopy targets also move the tree crowns
+  (see "Crowns" below).
+- **`water`** with **`water_class`.** An opaque display colour for the water of one class of
+  section 33 (`swamp` for the Swamp). Under that class's share of a pixel's water it replaces
+  the Beer-Lambert result by `1 - exp(-depth / water.opaque_tau_m)`, with the tau 0.3 m, so
+  only the edge shows the bed. Ocean inside the area keeps the sea; through style version 5 the
+  colour went on every water texel of the area, sea included. A store without a class plane
+  gives it the water off the ocean's reach.
 
 No two entries scope the same material to the same area; a test checks this.
 
@@ -2024,11 +2047,64 @@ Two readings in these references:
 
 ### Other colours
 
-- **Meshes.** Coral-tree caps are #99868e, replacing the pink placeholder, and shells stay
-  #d6ccba; both are display targets, so the gain does not brighten them. Seabed coral
-  #5f8899 is a bed colour, as in the water fit, so it is also divided by the 0.8 wet factor.
-  It is still composited into the bed before Beer-Lambert, with the depth measured to the
-  coral top, so shallow reefs stay visible: #628b9b at the surface, #5a8286 at 0.5 m.
+- **Meshes.** Coral-tree caps are #99868e, replacing the pink placeholder; a display target,
+  so the gain does not brighten it. Seabed coral #5f8899 is a bed colour, as in the water
+  fit, so it is also divided by the 0.8 wet factor. It is still composited into the bed
+  before Beer-Lambert, with the depth measured to the coral top, so shallow reefs stay
+  visible: #628b9b at the surface, #5a8286 at 0.5 m.
+- **Which coral is under water.** Coral takes the seabed colour by the pixel's water cover.
+  Through style version 5 it was `depth_m > 0`, which off the ocean's reach is the 40 m depth
+  fraction of dry land, so 4,023 px of coral on dry land drew seabed blue.
+- **Coral specks.** The mesh raster takes one sample per pixel, so coral narrower than a
+  pixel standing in the sea fills a whole 3.66 m preview pixel and drew as a pink dot. A
+  coral pixel whose eight neighbours are at least 60% water (`SPECK_WATER`) is drawn as that
+  water, at their mean depth, with the coral as its bed. Coral wider than a pixel keeps its
+  cap colour, and so does coral on land: the Spire Coast's coral trees stand a median 23 m
+  above the sea and are the caps the #99868e target was measured on. At 2048 px this sinks
+  823 coral pixels of the sheet, 260 of them in the Spire Coast crop at (16, -2137), whose
+  median goes from mauve #898189 to the water's #56787d.
+- **Shells** (`SM_BigShell_01`, `PlateauShell`, `SmallShell`: everything the `Shell` class
+  takes) wear their own material's colour: the mean of their BaseColor textures in linear
+  light is 0.08 to 0.11 neutral grey, kept as the albedo sRGB (88, 85, 83). The #d6ccba cream
+  was a placeholder. Their materials also carry a cyan emissive, not drawn. The Blue Crater
+  keeps its #747b85 target.
+
+### Crowns
+
+With crowns drawn the soft canopy is off (`canopy_kept` 0), so through style version 5 the
+canopy targets coloured nothing and the crowns drew their texture means: the Red Jungle a
+saturated red against its #7c4955. The targets now move the crowns (`palette/trees.py`
+`crown_ops`, applied in `over_crowns`):
+
+- **Scopes.** Each area entry with a `canopy` target is one, holding the trees where its area
+  share is at least 0.5; the global `canopy` target holds the trees no entry does.
+- **Source.** The per-channel weighted median of the scope's crown colours as drawn: the
+  texture mean times `darkening`, at the style's `chroma`. A tree counts by the ground its
+  crown hides, its species' sprite cover times its scale squared.
+- **Step.** As for the layers: a lightness step, a chroma scale and a hue turn to the
+  target, taken back through the flat light without the altitude lift a crown does not get
+  (`display_to_crown`). Per pixel the ops are mixed by the area weights on the 4 m grid, as
+  the canopy colour planes were.
+- **Hue gate.** A target was measured on canopy of one hue. A crown takes all of its scope's
+  step within 20 degrees of the target's hue and none past 40 (`HUE_GATE_DEG`), and greys
+  under chroma 0.02 never move; the source median is taken over the gated crowns only. Pink
+  bamboo, blue palms, coral trees and the yellow pines of the Northern and Lake Forests keep
+  their texture colours. Without the gate one step over every species drew the Red Bamboo
+  orange: a per-channel median over mixed hues has almost no chroma, so the global scale came
+  out x1.7.
+
+Measured at 2048 px on build 502094: the median of crown pixels at least 95% covered and dry,
+per area, Delta E (OKLab x100) to the target before and after.
+
+| Scope | Trees measured | Step (dL, chroma) | Area | Before | After |
+| --- | --- | --- | --- | --- | --- |
+| Red Jungle #7c4955 | 10,312 | -0.035, x0.65 | Red Jungle | 6.2 | 0.4 |
+| Jungle Spires #6c7f5b | 2,170 | +0.037, x0.71 | Jungle Spires | 5.7 | 1.0 |
+| Western Dune Forest #7c9573 | 3,070 | +0.094, x0.71 | Western Dune Forest | 12.1 | 1.0 |
+| Global #558653 | 20,540 | +0.037, x1.14 | Swamp | 5.2 | 0.3 |
+| | | | Titan Forest | 8.5 | 2.6 |
+| | | | Spire Coast | 6.5 | 3.6 |
+| | | | Northern Forest (pines, gated out) | 6.9 | 7.2 |
 
 ### Measured
 
@@ -2148,11 +2224,16 @@ decides where water covers them.
 
 ### Drawing it
 
-Style `satellite-painted` version 2, palette key `carpet`. In `palette/painted.py`:
+Style `satellite-painted` version 2, palette key `carpet`. In `palette/optics.py`:
 
-1. **Patches.** The cover is blurred by `blur_m` (1.25 m) and mapped through
-   `1 - exp(-gain * share)` with `gain` 3, so a cluster of rosettes reads as one patch with a
-   mottled edge. Top no-data texels take the highest top within the blur.
+1. **Patches.** The cover is blurred by `blur_m` (3 m) and mapped through
+   `1 - exp(-gain * share)` with `gain` 8, so a cluster of rosettes reads as one patch with a
+   soft edge and a lone rosette as a faint tint (0.12 at most). Top no-data texels take the
+   highest top within the blur. Through style version 5 it was 1.25 m and 3: the rosettes cover
+   0.3% of the grid, 2.4% of the Spire Coast, and drew one blue dot each, a stipple, not a
+   carpet. Measured on the Spire Coast box, a 3 m blur leaves the cluster share at 0.13
+   (median) to 0.37 (90th percentile) where there is any, which the gain maps to 0.65 to
+   0.95.
 2. **In the bed, under the water.** Only where the pixel is under water. The carpet replaces the
    bed by its cover, and is seen through the water above its own top: depth
    `level - top`, with `level = z + depth`. Then the same Beer-Lambert as the bed, before the
@@ -2557,9 +2638,17 @@ which took 65 to 108 s in all on a loaded machine; the store grows from 54 to 66
 
 ### Known limits
 
-- **No colour has been checked against the game.** The texture means are the raw albedo:
-  bamboo is a saturated pink-red, the tall mangroves' tops are their bark texture. The style's
-  `chroma` of 0.8 is a taste call.
+- **Colours are the textures', moved by the canopy targets.** Crowns of a target's own hue
+  are calibrated (section 31, "Crowns"); every other crown keeps its texture mean: bamboo is a
+  saturated pink-red, the tall mangroves' tops are their bark texture. The style's `chroma`
+  of 0.8 is a taste call.
+- **Blue palms are blue.** `BluePalm_01` and `_02` (3,332 trees: 1,747 in the Rocky Desert,
+  768 in the Savanna, 344 on the Spire Coast) draw pale blue. Their leaf colour is the leaf
+  half of `TX_BluePalm_01_Alb`, light blue with white midribs, linear (0.27, 0.40, 0.46).
+  Their instances `MI_BluePalm_03` and `_04` carry no vector parameter but the wind pivot,
+  and the parent `MM_WindPlants` is cooked without its graph, so no tint is skipped that could
+  be read. The wiki's Rocky Desert area, Rocky Desert river and Spire Coast shots show blue
+  palms in both biomes, so they stay blue.
 - A crown is lit by the fixed north-west sun of the painted style. The live sun shading takes
   the crown tops as its occluder (section 29); the crown domes are not yet in its normal
   pyramid.
@@ -2574,13 +2663,16 @@ pixel, these rules decide.
 | Where | Rule |
 | --- | --- |
 | Inland water opacity | Section 31's `inland_floor` (0.35) and a water class's `turbidity` (section 33) both say how much body colour inland water keeps. The larger applies, never both, so the swamp (0.45) keeps its own and the lake (0.1) gets the floor. The ocean row has turbidity 0 and draws exactly as before. |
-| Swamp water | Section 31's opaque swamp colour is applied last, over whatever the swamp class's optics (section 33) drew, so its 0.3 m tau decides everywhere but the very edge. |
+| Swamp water | Section 31's opaque swamp colour is applied last, over whatever the swamp class's optics (section 33) drew, so its 0.3 m tau decides everywhere but the very edge. It goes only on the swamp class's share of a pixel's water: ocean inside `Area_Swamp` keeps the sea. Which texels the swamp class claims is section 33's rule. |
 | River ribbons | A pixel's share of ribbon water (section 34) takes the `river` class's optics, whatever the class plane says under it. The class plane was built from the field's water, which the ribbon partly replaces. |
 | Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`. Section 30's estimate from the radius is gone. Section 30's trees-over-rock reads the same plane. |
 | Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
+| Canopy targets | Section 31's canopy targets move the crowns of section 36, each scope's step taken by the crowns near the target's hue; the soft canopy they used to colour stays off. |
+| Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. Render-only rocks take the area's rock. |
+| Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid. It blocks under `OCCLUDER_FADE_M` and receives on the crown top. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 5 (the per-area targets of section 31 on top of sections 32 to 36). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
+| Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 6 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. The water classes and the relief tint read that result, not the field's box levels. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, so a renderer reading those grades draws them. Section 33's open sea is found on that same water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |

@@ -270,7 +270,8 @@ def test_the_titan_trees_follow_the_style_toggle():
     drawn = titan_over(out, scene, ground)
     opacity = palette["titan_trees"]["opacity"]
     assert 0 < opacity < 1
-    expected = 0.3 * (1 - opacity) + leaves * palette["exposure"] * opacity
+    exposure = palette["exposure"] * palette["tone"]["gain"]
+    expected = 0.3 * (1 - opacity) + leaves * exposure * opacity
     np.testing.assert_allclose(drawn[4, 4], expected, rtol=0.05)
     palette["titan_trees"]["opacity"] = 0
     assert titan_over(out, scene, ground) is out

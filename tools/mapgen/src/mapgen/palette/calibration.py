@@ -12,6 +12,7 @@ from mapgen.palette.colour import LUMA, linear_from_oklab, oklab, srgb_to_linear
 
 __all__ = [
     "area_ids",
+    "display_to_crown",
     "display_to_ground",
     "display_to_linear",
     "flat_ground_light",
@@ -22,6 +23,7 @@ __all__ = [
     "split_weight",
     "tone",
     "transfer_op",
+    "weighted_median",
 ]
 
 
@@ -114,8 +116,26 @@ def split_weight(weight: np.ndarray, share_u8: np.ndarray) -> tuple[np.ndarray, 
     return inside, weight - inside
 
 
+def display_to_crown(p: dict, hex_colour: str) -> np.ndarray:
+    """A display target as a tree crown's OKLab: the ground's, without the altitude lift."""
+    lab = display_to_ground(p, hex_colour)
+    lab[0] += np.float32(p["altitude_lift"] * 0.5)
+    return lab
+
+
+def weighted_median(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """The per-column median of ``values`` (n, k), each row counted by its weight."""
+    out = np.empty(values.shape[1], np.float32)
+    for k in range(values.shape[1]):
+        order = np.argsort(values[:, k])
+        cum = np.cumsum(weights[order])
+        out[k] = values[order[np.searchsorted(cum, 0.5 * cum[-1])], k]
+    return out
+
+
 def scoped_planes(default, scoped: list) -> np.ndarray | list:
-    """``default`` where no area entry reaches, each entry's colour by its weight: 3 planes."""
+    """``default`` where no area entry reaches, each entry's value by its weight: one plane
+    per component of ``default``."""
     if not scoped:
         return default
     total = np.zeros(scoped[0][0].shape, np.float32)
@@ -123,7 +143,7 @@ def scoped_planes(default, scoped: list) -> np.ndarray | list:
         total += weight
     norm = np.maximum(total, 1.0)
     planes = []
-    for k in range(3):
+    for k in range(len(default)):
         plane = np.float32(default[k]) * (1.0 - np.minimum(total, 1.0))
         for weight, rgb in scoped:
             plane = plane + weight / norm * np.float32(rgb[k])

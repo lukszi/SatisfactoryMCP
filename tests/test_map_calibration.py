@@ -13,6 +13,7 @@ np = pytest.importorskip("numpy")
 pytest.importorskip("scipy")
 
 from mapgen.gamedata.paint import LAYERS  # noqa: E402
+from mapgen.gamedata.waterbodies import CLASSES  # noqa: E402
 from mapgen.palette.calibration import scoped_planes  # noqa: E402
 from mapgen.palette.painted import (  # noqa: E402
     ROCK_GRID_M,
@@ -36,6 +37,7 @@ from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
 from satisfactory_mcp.core.gameassets import versions  # noqa: E402
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
+SWAMP = CLASSES.index("swamp")
 
 
 def _hex(colour: str) -> np.ndarray:
@@ -134,7 +136,8 @@ def test_a_bake_from_srgb_is_linear_and_drops_black_holes():
 def test_the_calibration_names_real_layers_and_the_style_was_bumped():
     cal = PAINTED_PALETTE["calibration"]
     assert set(cal["layers"]) <= set(LAYERS)
-    assert {"coral", "shell", "coral_seabed"} <= set(cal["meshes"])
+    assert {"coral", "coral_seabed"} <= set(cal["meshes"])
+    assert "shell" not in cal["meshes"], "a shell wears its own material's grey"
     assert "shoulder" not in PAINTED_PALETTE, "the tone replaced it"
     assert versions.STYLES["satellite-painted"]["version"] >= 3
     seabed = srgb_to_linear(_hex(cal["meshes"]["coral_seabed"]))
@@ -294,7 +297,9 @@ def test_swamp_water_is_its_opaque_colour_and_other_water_is_untouched():
         "rock_weight": np.zeros(shape, np.float32),
     }
     target = next(e["water"] for e in PAINTED_PALETTE["calibration"]["areas"] if "water" in e)
-    swamp = [(np.array([[1.0, 0.0]], np.float32), display_to_linear(PAINTED_PALETTE, target))]
+    swamp = [
+        (np.array([[1.0, 0.0]], np.float32), display_to_linear(PAINTED_PALETTE, target), SWAMP)
+    ]
     same = lambda plane: np.asarray(plane, np.float32)
     got = painted_colours(scene, _water_ground(swamp), same, same)
     plain = painted_colours(scene, _water_ground([]), same, same)

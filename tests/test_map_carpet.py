@@ -20,7 +20,8 @@ from mapgen.gamedata.carpet import (  # noqa: E402
     footprint,
     is_carpet,
 )
-from mapgen.palette.painted import _carpet_bed, load_carpet, srgb_to_linear  # noqa: E402
+from mapgen.palette.optics import carpet_bed, load_carpet  # noqa: E402
+from mapgen.palette.painted import srgb_to_linear  # noqa: E402
 from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
 from satisfactory_mcp.core.gameassets import versions  # noqa: E402
 from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
@@ -138,7 +139,7 @@ def test_the_carpet_shows_through_shallow_water_and_fades_with_depth():
         "water": {"depth_m": np.array([[1.4, 1.4, 1.4, 0.0]], np.float32)},
     }
     under = np.full((1, 4, 3), 0.1, np.float32)
-    out = _carpet_bed(under, scene, ground, lambda plane: plane.astype(np.float32))
+    out = carpet_bed(under, scene, ground, lambda plane: plane.astype(np.float32))
     colour = srgb_to_linear(CARPET["colour"])
     near = np.abs(out[0] - colour).sum(1)
     assert near[2] < near[0] < near[1], "a top above the surface is seen whole, a deep one barely"
