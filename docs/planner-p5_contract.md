@@ -49,6 +49,7 @@ open questions are in §13.
   **[move]** in a pad's popup on the main map.
 - The dashboard narrows to a column on the right (`body.site-on`, 440 px or 46 vw) and the
   page's own map shows on the left. Below 700 px the column becomes a bottom sheet, 48 vh.
+  Leaving the tab (any address change) drops the class, the handles and the ghost.
 - The map frames the pad (and chat's ghost, when there is one). The bench controls are hidden
   on this tab; the header, versions, strip and conflict chips stay.
 - A never-sited plan starts at its `near:` centre, else its nodes' centroid, else the map
@@ -69,7 +70,8 @@ open questions are in §13.
 
 - The move handle is focusable: `aria-label="pad of “<plan>”, move with arrow keys, turn with
   [ and ]"`, `data-ctl="site-move"`.
-- Arrows nudge 8 m, Shift+arrows 1 m; `[` and `]` turn 15°. North is up (−y).
+- Arrows nudge 8 m and land on the snap; Shift+arrows nudge 1 m freely; `[` and `]` turn 15°.
+  North is up (−y).
 - A burst is one gesture: it commits 600 ms after the last key, on Enter, or on blur. Escape
   restores the pad from before the burst.
 

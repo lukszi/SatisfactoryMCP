@@ -175,7 +175,7 @@ function keyed(event: KeyboardEvent): void {
     gesture = "keys";
     held = pad;
   }
-  var next = { x: pad.x + dx, y: pad.y + dy, yaw: norm(pad.yaw + turn), w: pad.w, d: pad.d };
+  var next = snap({ x: pad.x + dx, y: pad.y + dy, yaw: pad.yaw + turn, w: pad.w, d: pad.d }, event.shiftKey);
   draw(next, true);
   hooks.step(next);
   clearTimeout(burstTimer);
