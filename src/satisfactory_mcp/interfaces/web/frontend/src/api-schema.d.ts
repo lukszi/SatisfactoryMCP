@@ -3074,6 +3074,13 @@ export interface components {
             terrain_bare_m: number | null;
             /** Terrain Ambiguous */
             terrain_ambiguous: boolean;
+            /**
+             * Terrain Cave
+             * @enum {string}
+             */
+            terrain_cave: "none" | "below" | "inside";
+            /** Terrain Cave Note */
+            terrain_cave_note: string | null;
             /** Terrain Water M */
             terrain_water_m: number | null;
             /** Terrain Water Depth M */
@@ -6189,6 +6196,8 @@ export interface components {
             water_m: number | null;
             /** Water Below M */
             water_below_m: number | null;
+            /** Cave Pct */
+            cave_pct: number;
         };
         /**
          * SiteTrunk

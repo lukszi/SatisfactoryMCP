@@ -246,6 +246,23 @@ def test_water_depth_is_quoted_only_where_the_bed_was_measured(game, monkeypatch
     assert "water_depth_m=15.0" in srv.describe_location(_at(OPEN_OCEAN))
 
 
+@pytest.mark.parametrize("cave", ["below", "inside"])
+def test_a_cave_point_says_so_and_inside_withholds_the_surface(game, monkeypatch, cave):
+    reading = heightfield.Reading(
+        z_m=233.4, provenance=heightfield.PROV_LANDSCAPE, accuracy_m=0.2, cave=cave
+    )
+    monkeypatch.setattr(heightfield, "load_field", lambda: _OneTexel(reading))
+    out = srv.describe_location(_at(ON_PLATFORM))
+    if cave == "inside":
+        assert "terrain_m=unknown" in out
+        assert "cave=in a cave: ground height unknown here (the surface above is 233 m)" in out
+    else:
+        assert "terrain_m=233.4" in out
+        assert "cave=a cave lies under this point" in out
+    whereami = srv.whereami()
+    assert ("cave=in a cave" in whereami) == (cave == "inside")
+
+
 def test_without_a_field_it_names_the_gap_rather_than_denying_terrain_exists(game, monkeypatch):
     """The standing rule: name what the data cannot do. What it must NOT do any more is
     state that no terrain data exists -- it exists, this machine has not extracted it."""

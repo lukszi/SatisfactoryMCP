@@ -147,17 +147,18 @@ def probe(
     samples: list[Sample],
     radius_m: float = 200.0,
     terrain_field: heightfield.Field | None = None,
+    hint_z_cm: float | None = None,
 ) -> Elevation:
     """Elevation samples within ``radius_m`` of a point. Coordinates in centimetres.
 
     ``terrain_field`` is passed in, and its ``None`` default means "no field was consulted"
     rather than "look one up": reaching for ``data/local/`` here would make every caller's
     answer depend on whether somebody had run a generator. The interface layer decides
-    whether to offer one.
+    whether to offer one. ``hint_z_cm`` is a known z at the point, the player's own.
     """
     out = Elevation(x=x, y=y, radius_m=radius_m)
     if terrain_field is not None:
-        out.terrain = terrain_field.z(x, y)
+        out.terrain = terrain_field.z(x, y, hint_z_cm=hint_z_cm)
     for s in samples:
         d = geo.distance_m((x, y), (s.x, s.y))
         if d <= radius_m:

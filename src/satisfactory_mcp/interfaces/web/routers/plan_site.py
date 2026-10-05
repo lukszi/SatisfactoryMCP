@@ -65,6 +65,7 @@ class SiteTerrain(TypedDict):
     stride: int
     water_m: float | None
     water_below_m: float | None
+    cave_pct: float
 
 
 class SiteCandidate(TypedDict):

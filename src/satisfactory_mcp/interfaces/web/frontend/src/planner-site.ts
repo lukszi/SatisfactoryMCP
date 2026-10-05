@@ -334,6 +334,7 @@ function paintLines(): void {
     line(feedback, "ground " + t.z_min_m + "…" + t.z_max_m + " m · slope " + (t.slope_mean_deg || 0) + "° (p90 " + (t.slope_p90_deg || 0) + "°) · rough " + (t.roughness_m || 0) + " m · " + (t.submerged_pct < 1 ? t.submerged_pct : Math.round(t.submerged_pct)) + " % under water");
     if (t.water_m === 0) line(feedback, "water on the pad");
     else if (t.water_m !== null) line(feedback, "water " + m(t.water_m) + " m" + (t.water_below_m !== null ? ", " + m(t.water_below_m) + " m below" : ""));
+    if (t.cave_pct) line(feedback, "a cave lies under " + Math.max(1, Math.round(t.cave_pct)) + " % of the pad: heights are the surface");
   }
   line(feedback, data.slabs.length ? "on " + data.slabs.join("; ") : "bare ground");
   if (data.failure) {
