@@ -95,7 +95,7 @@ def test_sweep_world_splits_trees_from_the_render_only_foliage(monkeypatch):
     shell = "/Game/FactoryGame/World/Environment/UnderWater/SM_Shell"
     seen = {}
 
-    def fake_sweep(store, scripts, classes, meshes, progress, extra_foliage):
+    def fake_sweep(store, scripts, classes, meshes, progress, extra_foliage, read_actor=None):
         seen["asked"] = {m: extra_foliage(m) for m in (OAK, coral, shell, "/Game/Rock/X")}
         return {"extra_foliage": {OAK: 1, coral: 2, shell: 3}}
 
