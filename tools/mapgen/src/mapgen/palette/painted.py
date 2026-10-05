@@ -16,7 +16,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.paint import CANOPY_NAME, META_NAME, PIGMENT_NAME
-from mapgen.palette.shore import add_foam, wet_band
+from mapgen.palette.shore import add_foam, optical_depth, wet_band
 from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -365,7 +365,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     water = scene["water"]
     lit = wet_band(lit, water, p["shore"].get("wet_band"))
     w = ground.water
-    depth = water["depth_m"][..., None]
+    depth = optical_depth(water, p["shore"].get("river"))[..., None]
     transmit = np.exp(-w["k"] * depth)
     bed = g * exposure * w["bed"]
     under = bed * transmit + w["body"] * (1.0 - transmit) + w["sky"]

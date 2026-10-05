@@ -59,6 +59,7 @@ from mapgen.cache import (
     DIRECT_CACHE_SIDECAR,
     MESH_CACHE_DIR_NAME,
     MESH_CACHE_SIDECAR,
+    RIVER_CACHE_DIR_NAME,
     TOP_CACHE_DIR_NAME,
     cached_direct,
     cached_meshes,
@@ -85,6 +86,7 @@ from mapgen.lighting.hillshade import (
     coarse_province,
 )
 from mapgen.palette.painted import PaintedGround, load_paint_meta
+from mapgen.palette.rivers import load_rivers
 from mapgen.palette.shore import OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
 from mapgen.palette.styles import (
     BIOME_BLEND_TEXELS,
@@ -123,7 +125,13 @@ from mapgen.tiles.pyramid import (
     install_layer,
     layer_dir,
 )
-from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
+from mapgen.tiles.recipes import (
+    COMPOSITION_NOTE,
+    LEVEL_ONLY_NOTE,
+    RECIPE,
+    RECIPE_KERNEL_ONLY,
+    Z7_NOTE,
+)
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, build_sidecar, pinned_field_build
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
@@ -785,6 +793,13 @@ def main() -> int:
             "cl": changelist(field_build),
             "reader_version": READER_VERSIONS["render_meshes"],
         }
+    rivers, river_meta = (None, {}) if args.kernel_only else load_rivers(
+        (args.cache_dir or out_dir / args.renders_name) / RIVER_CACHE_DIR_NAME,
+        field_build, sweep_once, field,
+    )  # fmt: skip
+    if rivers is not None:
+        inputs["river_splines"] = {"cl": changelist(field_build),
+                                   "reader_version": READER_VERSIONS["river_splines"]}  # fmt: skip
     loaded.clear()
 
     # ---- draw and cut ----------------------------------------------------------------
@@ -835,6 +850,7 @@ def main() -> int:
             meshes=meshes,
             reach=reach,
             painted=painted if layer == "painted" else None,
+            rivers=rivers,
             # Both layers draw the identical surface, so the seam and the regime table are
             # measured on the first one and quoted for both.
             seam=seam if not measured else None,
@@ -906,14 +922,7 @@ def main() -> int:
                     f"{args.direct_subsamples}x{args.direct_subsamples} sub-samples per output "
                     "texel, box-folded"
                 ),
-                "composition": (
-                    "the field's own rule at this render's spacing: the landscape and fill "
-                    "lattices interpolated with the C1 kernel, and the cliff geometry "
-                    "rasterised at 0.229 m composited over them by its own coverage, raising "
-                    "the ground and never lowering it. What this replaced was interpolating "
-                    "the 1 m FOLD of that composition, which reconstructs a rim as the 1 m "
-                    "staircase the fold put it on however fine the output grid is"
-                ),
+                "composition": COMPOSITION_NOTE,
                 "ground_lattice": ground_meta,
                 "terrain_lattice": terrain_meta,
                 "top_overlay": top is not None,
@@ -922,20 +931,7 @@ def main() -> int:
                 "fill_rebuild": fill_meta,
                 **measured,
             },
-            "z7": (
-                "interpolated-smooth. 32768 px is NOT a claim that the field has more to "
-                "say -- that was measured twice on this pipeline and refused twice, and the "
-                "high-frequency energy per pixel falls at every doubling. What z7 is, is the "
-                "same surface evaluated by the same C1 kernel at half the spacing, which a "
-                "client cannot produce for itself: a browser shown z6 at twice its scale "
-                "upsamples it BILINEARLY, and bilinear is C0, so the relief it draws is "
-                "ruled into 0.458 m squares. The exception is the direct regime, where the "
-                "pixels are triangles rather than an interpolation and z7 genuinely resolves "
-                "geometry the 1 m field folds away -- see two_regime.regimes for how much of "
-                "the sheet that is."
-            )
-            if args.size >= RENDER_PX
-            else None,
+            "z7": Z7_NOTE if args.size >= RENDER_PX else None,
             "hillshade": (
                 f"sun at azimuth {SUN_AZIMUTH_DEG} deg, altitude {SUN_ALTITUDE_DEG} deg, "
                 f"shade in [{SHADE_FLOOR}, {SHADE_FLOOR + SHADE_RANGE}], computed at the "
@@ -960,13 +956,8 @@ def main() -> int:
                     if reach is not None
                     else None
                 ),
-                "level_only": (
-                    "full alpha and the deep end of the ramp. 95.2% of level-only water "
-                    "stands over the fill province and 98% of its surface levels lie in a "
-                    "0.7 m band around the ocean's own -16.99 m, so it is the ocean, and a "
-                    "depth ramp run on a 3.9 m raster's rounding error is what used to draw "
-                    "3.572 km2 of it as land"
-                ),
+                "level_only": LEVEL_ONLY_NOTE,
+                "rivers": river_meta or None,
             },
             "seconds_to_draw": round(drew, 1),
             "seconds_to_cut": round(cut, 1),
@@ -1031,7 +1022,8 @@ def main() -> int:
         # mapping refuses the unlink outright.
         direct = maps = top = top_maps = meshes = None
         if not args.keep_direct:
-            for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME):
+            kept_dirs = (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME)
+            for kept in (*kept_dirs, RIVER_CACHE_DIR_NAME):
                 root = args.cache_dir or out_dir / args.renders_name
                 shutil.rmtree(root / kept, ignore_errors=True)
     print(f"done in {time.time() - total_started:.0f}s")

@@ -114,13 +114,14 @@ be traced to the axis it should move.
 | `heightmap.py` | data | The heightmap, caves and rocks command: composition, water production, validation, the field sidecar |
 | `artwork.py` | data | The artwork command: sheet decode, calibration, enhance, pyramid |
 | `check_fill.py` | | The check-fill command |
-| `cache.py` | | The stamped raster caches (direct, top, meshes). The on-disk names are unchanged. |
+| `cache.py` | | The stamped caches (direct, top, meshes, rivers). The on-disk names are unchanged. |
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, heightfield grid |
 | `gamedata/sweep.py` | data | Level sweep, foliage, landscape frame, baseline |
 | `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
+| `gamedata/rivers.py` | data | River splines (`BP_River_PROT_C`), sampling, the 1 m ribbon planes |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid, render-only meshes |
@@ -129,6 +130,7 @@ be traced to the axis it should move.
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
 | `palette/painted.py` | style | The game-painted ground |
 | `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
+| `palette/rivers.py` | style | River water: reconciled with the field's, laid over each band |
 | `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |
@@ -206,6 +208,22 @@ here.
   That reads the open ocean as dry, because over the fill province the ground is a 3.9 m
   raster that rounds above a sea surface 17 m down, so the missing byte is reported in the
   sidecar.
+
+### Rivers (`gamedata/rivers.py`, `palette/rivers.py`)
+
+- **The plane is the water.** A river is `SM_RiverPlane` bent along Hermite sections, so its
+  surface is a height and a half width per point. The depth is that height minus the drawn
+  ground.
+- **`RIVER_LEVEL_MATCH_M`**: the field levelled river water on the top of the river actor's
+  AABB. A texel within 5 cm of that top, with no other box as high, came from it.
+- **`RIVER_MAX_DEPTH_M`**: wide sections hang tens of metres over waterfall pits. Past 8 m the
+  plane is not over its own channel.
+- **`RIVER_OVER_WATER_M`**, **`RIVER_STEP_M`**: a plane hanging over a lake would draw water
+  in the air, and a jump between two planes would draw a line along the join.
+- **`shore.river`** in each palette: the minimum depth the optics see once in from the bank.
+  Without it, a shallow bed reads as a pale path.
+
+spatial-and-map.md section 28 has the measurements.
 
 ### Satellite colours (`palette/styles.py`)
 

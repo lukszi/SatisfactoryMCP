@@ -127,6 +127,10 @@
  "borrow_ink_damp": 0.25,
  "shore": {
   "stroke": 0.0,
+  "river": {
+   "min_depth_m": 0.6,
+   "bank_m": 2.5
+  },
   "wet_band": {
    "m": 3.0,
    "tint": [

@@ -108,8 +108,8 @@ def test_the_view_names_sorts_and_judges_each_type(local):
         {"axis": "heightfield", "text": "newer heightfield (v3 → v5)"}
     ]
     assert rows["terrain-r4-502094"]["freshness"]["stale"] == []
-    assert rows["terrain-r4-502094"]["freshness"]["rerender"]["label"] == "crisp shore r6"
-    assert rows["terrain"]["freshness"]["rerender"]["label"] == "crisp shore r6"
+    assert rows["terrain-r4-502094"]["freshness"]["rerender"]["label"] == "river splines r7"
+    assert rows["terrain"]["freshness"]["rerender"]["label"] == "river splines r7"
     order = [row["id"] for row in registry.view()["types"]]
     assert (
         order.index("terrain") < order.index("terrain-r4-502094") < order.index("terrain-r3-502094")

@@ -54,6 +54,10 @@
   "clarity_m": 0.6,
   "edge_alpha": 0.3,
   "wet_darken": 0.82,
-  "stroke": 0.0
+  "stroke": 0.0,
+  "river": {
+   "min_depth_m": 0.6,
+   "bank_m": 2.5
+  }
  }
 }

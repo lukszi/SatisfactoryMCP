@@ -40,6 +40,7 @@ READER_VERSIONS = {
     "artwork_sheet": 1,
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
     "render_meshes": 1,
+    "river_splines": 1,
 }
 
 #: ``tools/gen_map_renders.py`` recipes. ``requires`` names the heightfield the recipe needs:
@@ -61,8 +62,12 @@ RENDER_RECIPES: dict[int, dict] = {
         "requires": {"heightfield": {"min_version": 4,
                                      "planes": ["height", "density", "terrain", "top",
                                                 "water", "waterq"]}}},
+    7: {"label": "river splines", "sampler": "pchip", "two_regime": True, "version": 1,
+        "requires": {"heightfield": {"min_version": 4,
+                                     "planes": ["height", "density", "terrain", "top",
+                                                "water", "waterq"]}}},
 }  # fmt: skip
-RENDER_RECIPE_CURRENT = 6
+RENDER_RECIPE_CURRENT = 7
 RENDER_RECIPE_KERNEL_ONLY = 2
 
 #: ``tools/gen_map_image.py``'s enhancement recipes: 0 is the game's own sheet, cut plainly.
@@ -76,8 +81,8 @@ ARTWORK_RECIPES: dict[int, dict] = {
 #: ``tools/mapgen/src/mapgen/palette/palettes/``,
 #: and the version is bumped when a palette changes on purpose; the file's hash is the digest.
 STYLES: dict[str, dict] = {
-    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 2},
-    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 2},
-    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 1},
+    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 3},
+    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 3},
+    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 2},
     "artwork": {"label": "artwork", "layer": "map", "version": 1},
 }
