@@ -26,6 +26,7 @@ __all__ = ["router"]
 router = APIRouter(prefix="/api")
 
 StageHeadroom = Literal["measured", "nameplate"]
+SiteSnap = Literal["fine", "grid8"]
 
 
 class SettingsValues(TypedDict):
@@ -35,6 +36,7 @@ class SettingsValues(TypedDict):
     biomass: bool
     payback_hours: float
     overclock_last: bool
+    site_snap: SiteSnap
 
 
 class SettingsResponse(TypedDict):
@@ -55,6 +57,7 @@ class SettingsChanges(TypedDict):
     biomass: NotRequired[bool | None]
     payback_hours: NotRequired[float | None]
     overclock_last: NotRequired[bool | None]
+    site_snap: NotRequired[SiteSnap | None]
 
 
 class SettingsPatchBody(TypedDict):

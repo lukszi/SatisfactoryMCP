@@ -24,6 +24,7 @@ def test_an_absent_file_reads_every_default():
             "biomass": False,
             "payback_hours": 0.0,
             "overclock_last": False,
+            "site_snap": "fine",
         },
         "stored": [],
         "updated": None,
