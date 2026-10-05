@@ -14,6 +14,7 @@ from mapgen.lighting.hillshade import (
     BORROW_CLAMP,
     BORROW_GAIN,
     SUN_ALTITUDE_DEG,
+    flat_shade,
     hillshade,
     slope_degrees,
     sun_dot,
@@ -137,6 +138,28 @@ def blend_regimes(base_m, missing, direct, linear, subsamples):
     )
 
 
+def _capture(surface, rows, z_m, missing, cover) -> None:
+    """Hand one band's drawn heights and land weight, halo cropped, to the lighting stage."""
+    top, lo, bottom, c0, c1 = rows
+    keep = slice(top - lo, bottom - lo)
+    dry = np.where(missing, 0.0, 1.0 - cover)
+    surface.put(top, z_m[keep], dry[keep], slice(c0, c1))
+
+
+def _band_water(z_m, planes, smooth, linear):
+    """One band's water surface, level (NaN where none), wet cover and measured share."""
+    water, wet_plane, measured_plane = planes
+    if wet_plane is None:
+        wet = measured = np.zeros(z_m.shape, np.float32)
+        return z_m, np.full(z_m.shape, np.nan, np.float32), wet, measured
+    water_dm, water_missing = sample_surface(water, smooth, linear, hf.NODATA)
+    water_m = water_dm / np.float32(hf.DM_PER_M)
+    level_m = np.where(water_missing, np.nan, water_m)
+    wet = sample_coverage(wet_plane, linear)
+    measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
+    return water_m, level_m, wet, np.clip(measured, 0.0, 1.0)
+
+
 def render_layer(
     layer,
     field,
@@ -157,11 +180,14 @@ def render_layer(
     painted=None,
     window=None,
     relief=None,
+    unlit=False,
+    surface=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
     Each band carries BAND_HALO extra rows, cropped after, so no stencil sees a band edge.
-    ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. The other
+    ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``unlit`` draws
+    the sun term flat; ``surface`` receives the drawn heights and land weight. The other
     arguments: tools/mapgen/README.md, "Design notes", "The band loop".
     """
     kernel = taps_pchip if kernel is None else kernel
@@ -260,17 +286,9 @@ def render_layer(
                 top_subsamples,
             )
             top_weight = np.clip((z_m - below) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
-        if wet_plane is None:
-            wet = measured = np.zeros(z_m.shape, np.float32)
-            water_m = z_m
-            level_m = np.full(z_m.shape, np.nan, np.float32)
-        else:
-            water_dm, water_missing = sample_surface(water, smooth, linear, hf.NODATA)
-            water_m = water_dm / np.float32(hf.DM_PER_M)
-            level_m = np.where(water_missing, np.nan, water_m)
-            wet = sample_coverage(wet_plane, linear)
-            measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
-            measured = np.clip(measured, 0.0, 1.0)
+        water_m, level_m, wet, measured = _band_water(
+            z_m, (water, wet_plane, measured_plane), smooth, linear
+        )
         mesh_weight = mesh_class = None
         if meshes is not None:
             z_m, mesh_weight, mesh_class = composite_meshes(
@@ -299,6 +317,8 @@ def render_layer(
                 shore_terms(z_m, spacing_m),
                 WATER_DEPTH_FULL_M,
             )
+        if surface is not None:
+            _capture(surface, (top, lo, bottom, c0, c1), z_m, missing, water_terms["cover"])
         scene: dict = {
             "z_m": z_m,
             "borrow": np.clip(lift, *BORROW_CLAMP),
@@ -313,9 +333,10 @@ def render_layer(
             rock_weight = np.zeros(z_m.shape, np.float32) if weight is None else rock_seen
             if top_weight is not None:
                 rock_weight = np.maximum(rock_weight, top_weight)
+            flat = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
             scene.update(
-                ndl=sun_dot(z_m, spacing_m),
-                ndl_flat=np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG))),
+                ndl=np.full(z_m.shape, flat) if unlit else sun_dot(z_m, spacing_m),
+                ndl_flat=flat,
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
@@ -327,7 +348,7 @@ def render_layer(
                 lambda plane, taps=(rock_rows, rock_cols): sample_plain(plane, taps),
             )
         elif relief is not None:
-            scene["spacing_m"] = spacing_m
+            scene.update(spacing_m=spacing_m, unlit=unlit)
             rows = biome_index(
                 y_cm[lo:hi], BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], biome["width"]
             )
@@ -338,7 +359,7 @@ def render_layer(
                 lambda plane, rows=rows: plane[np.ix_(rows, biome_cols)],
             )
         else:
-            scene["shade"] = hillshade(z_m, spacing_m)
+            scene["shade"] = flat_shade(z_m.shape) if unlit else hillshade(z_m, spacing_m)
             if layer == "satellite":
                 scene["slope"] = slope_degrees(z_m, spacing_m)
                 biome_rows = biome_index(

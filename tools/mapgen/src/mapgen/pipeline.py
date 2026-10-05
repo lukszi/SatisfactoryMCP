@@ -73,10 +73,8 @@ from mapgen.gamedata.biome import calibrate_biome, read_biome, region_table_is_c
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.gamedata.paint import PAINT_DIR
 from mapgen.lighting.hillshade import (
-    BORROW_CLAMP,
     BORROW_DETAIL_SIGMA_PX,
     BORROW_FEATHER_M,
-    BORROW_GAIN,
     SHADE_FLOOR,
     SHADE_RANGE,
     SUN_ALTITUDE_DEG,
@@ -118,7 +116,9 @@ from mapgen.terrain.rasters import (
 )
 from mapgen.terrain.sample import direct_weight, taps_cubic, taps_pchip
 from mapgen.terrain.sidecar import GENERATOR_VERSION
+from mapgen.tiles.borrowmeta import borrow_metadata
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
+from mapgen.tiles.lit import UnlitRun
 from mapgen.tiles.pyramid import (
     CHECK_PARALLEL_Z,
     DEFAULT_WORKERS,
@@ -323,6 +323,11 @@ def main() -> int:
         "--force",
         action="store_true",
         help="replace layers this run cannot show were drawn from the field now on disk",
+    )
+    parser.add_argument(
+        "--unlit",
+        action="store_true",
+        help="draw colour unlit beside a default-sun copy, and bake the lighting pyramid",
     )
     parser.add_argument("--quiet", action="store_true", help="no per-band progress lines")
     args = parser.parse_args()
@@ -817,29 +822,10 @@ def main() -> int:
     loaded.clear()
 
     # ---- draw and cut ----------------------------------------------------------------
-    borrow_source = {
-        "artwork_detail": {
-            "name": f"the game's own {SHEET_PX} px map sheet, from its four BC1 slices",
-            "licence": (
-                "Coffee Stain Studios' own artwork, read out of the reader's installed copy "
-                "of the game. Its LUMINANCE only, high-passed, and multiplied into shading "
-                "-- no pixel of it is drawn and no colour of it crosses. Not committed, not "
-                "redistributed, and served to localhost only."
-            ),
-            **detail_meta,
-            "applied_where": province_meta,
-            "gain": BORROW_GAIN,
-            "clamp": list(BORROW_CLAMP),
-            "reading": (
-                "the field is one resolution but not one accuracy. Over the landscape "
-                "province -- 45.3% of it -- the geometry is continuous and its own shading "
-                "is the best there is, so nothing is borrowed. Over cliff and fill it is "
-                "rasterised hulls and 3.9 m blocks, which is why those provinces read as "
-                "melted wax when drawn from the field alone, and the artwork drew the same "
-                "ground at 0.92 m."
-            ),
-        }
-    }
+    borrow_source = borrow_metadata(detail_meta, province_meta)
+    light = (
+        UnlitRun(args.cache_dir or out_dir / args.renders_name, args.size) if args.unlit else None
+    )
     total_started = time.time()
     seam = SeamTrace() if direct is not None else None
     regimes = RegimeCoverage() if direct is not None else None
@@ -869,6 +855,8 @@ def main() -> int:
             # measured on the first one and quoted for both.
             seam=seam if not measured else None,
             regimes=regimes if not measured else None,
+            unlit=light is not None,
+            surface=light.surface_for() if light else None,
         )
         drew = time.time() - started
         if seam is not None and not measured:
@@ -885,7 +873,7 @@ def main() -> int:
                 )
             print(f"  regimes: {measured['regimes']['sheet_pct']}")
         try:
-            stats, dense, cut = install_layer(
+            stats, dense, cut = (light.install if light else install_layer)(
                 sheet, image_mod, out_dir, layer, workers, recipe, args.renders_name
             )
         except PyramidError as exc:
@@ -999,6 +987,8 @@ def main() -> int:
                 **(paint_source if layer == "painted" else {}),
             },
         )
+        if light is not None:
+            light.decorate(sidecar, layer)
         path = layer_dir(out_dir, layer, args.renders_name) / RENDER_SIDECAR_NAME
         path.write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
         print(
@@ -1016,6 +1006,8 @@ def main() -> int:
             for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME):
                 root = args.cache_dir or out_dir / args.renders_name
                 shutil.rmtree(root / kept, ignore_errors=True)
+    if light is not None:
+        light.close()
     print(f"done in {time.time() - total_started:.0f}s")
     print("none of it is committed: data/local/ is gitignored and stays that way.")
     return 0

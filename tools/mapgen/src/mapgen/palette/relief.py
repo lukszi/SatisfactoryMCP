@@ -116,10 +116,13 @@ def _lambert(z_m, spacing_m: float, azimuth: float, altitude: float) -> np.ndarr
     return np.clip(lit, 0.0, 1.0).astype(np.float32)
 
 
-def _shade(lab, z_m, spacing_m: float, ground: ReliefGround):
+def _shade(lab, z_m, spacing_m: float, ground: ReliefGround, unlit: bool = False):
     """Flat ground unchanged; shadow darker, cooler and greyer, sunlit slopes a little warm."""
     p = ground.palette["shade"]
-    lit = sum(w * _lambert(z_m, spacing_m, az, alt) for az, alt, w in p["suns"])
+    if unlit:
+        lit = np.full(z_m.shape, FLAT_LIT, np.float32)
+    else:
+        lit = sum(w * _lambert(z_m, spacing_m, az, alt) for az, alt, w in p["suns"])
     d = (lit - FLAT_LIT).astype(np.float32)
     if p["mode"] == "add":
         lab[..., 0] += np.float32(p["k"]) * d
@@ -161,7 +164,7 @@ def relief_colours(scene: dict, ground: ReliefGround, sample, sample_biome) -> n
         lab[..., 0] += tint[..., 0]
         lab[..., 1:] = lab[..., 1:] * (1.0 - tint[..., 3:]) + tint[..., 1:3]
     lab = _slope_rock(lab, z_m, spacing_m, ground)
-    lab, lit = _shade(lab, z_m, spacing_m, ground)
+    lab, lit = _shade(lab, z_m, spacing_m, ground, scene.get("unlit", False))
     borrow = scene["borrow"] - 1.0
     borrow = np.where(borrow < 0.0, borrow * np.float32(p["borrow_ink_damp"]), borrow)
     lab[..., 0] *= np.cbrt(1.0 + borrow)

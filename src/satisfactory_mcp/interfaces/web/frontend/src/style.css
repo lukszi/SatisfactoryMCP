@@ -3863,3 +3863,122 @@ body.site-on #dash {
     flex-basis: 40%;
   }
 }
+
+/* Live light: the WebGL canvas a lit base layer draws on, and the sun control (suncontrol.ts). */
+.lit-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.sun-control {
+  background: var(--panel);
+}
+
+.sun-control .sun-button {
+  font-size: 16px;
+}
+
+.sun-panel {
+  width: 236px;
+  padding: var(--sp-2);
+  color: var(--ink);
+  font-size: var(--fs-m);
+  border-top: 1px solid var(--line);
+}
+
+.sun-head,
+.sun-row,
+.sun-presets,
+.sun-checks {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0;
+}
+
+.sun-presets {
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.sun-title {
+  font-weight: 600;
+}
+
+.sun-readout {
+  flex: 1;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sun-panel button {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 2px 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sun-panel button:hover {
+  border-color: var(--accent);
+}
+
+.sun-k {
+  width: 62px;
+  color: var(--muted);
+}
+
+.sun-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.sun-v {
+  width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sun-more summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.sun-compass {
+  display: block;
+  margin: var(--sp-1) auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.sun-ring {
+  fill: var(--bg-deep);
+  stroke: var(--line);
+}
+
+.sun-ring-in {
+  fill: none;
+  stroke: var(--line);
+}
+
+.sun-path {
+  fill: none;
+  stroke: var(--flash);
+  stroke-opacity: 0.5;
+  stroke-width: 1.5;
+}
+
+.sun-cardinal {
+  fill: var(--muted);
+  font-size: 8px;
+  text-anchor: middle;
+}
+
+.sun-dot {
+  fill: var(--flash);
+}

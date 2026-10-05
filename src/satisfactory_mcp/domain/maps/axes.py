@@ -1,4 +1,4 @@
-"""A map's provenance as three axes -- data inputs, renderer, style -- and the verdicts on them.
+"""A map's provenance axes -- data inputs, renderer, style, light -- and the verdicts on them.
 
 Stale means the DATA under a picture is outdated; a newer renderer or palette is only an
 offer. Every verdict is computed on read from the sidecar and the inputs on disk, never
@@ -328,9 +328,17 @@ def data_label(axes: dict) -> str:
     return text + (f"/hf v{hf}" if hf is not None else "")
 
 
+def light_label(axes: dict) -> str | None:
+    """The light model a layer drawn unlit is relit with; ``None`` for one drawn lit."""
+    light = axes.get("light") if isinstance(axes.get("light"), dict) else None
+    return str(light.get("label") or light.get("id") or "lit") if light else None
+
+
 def display_name(axes: dict, with_size: bool = False) -> str:
-    """``{style} · {renderer} · data {cl}/hf v{n}``, plus the size when it alone differs."""
+    """``{style} · {renderer} · data {cl}/hf v{n}``, then the light and the size when present."""
     parts = [style_label(axes), renderer_label(axes), data_label(axes)]
+    if light_label(axes):
+        parts.append(str(light_label(axes)))
     size = _int(read_path(axes, ("renderer", "size_px")))
     if with_size and size:
         parts.append(f"{size} px")

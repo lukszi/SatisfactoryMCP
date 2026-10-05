@@ -12,6 +12,7 @@ __all__ = [
     "ARTWORK_RECIPES",
     "CAVES_VERSION",
     "HEIGHTFIELD_GENERATOR_VERSION",
+    "LIGHTS",
     "PAINT_GENERATOR_VERSION",
     "PLAIN_TONE",
     "PROVENANCE_SCHEMA",
@@ -89,3 +90,9 @@ STYLES: dict[str, dict] = {
 
 #: The tone of no imagery at all: the page's own dark sea.
 PLAIN_TONE = "dark"
+
+#: Light models. A render drawn unlit names the one its lighting pyramid was baked for; a
+#: version bump offers a relight, never a stale chip.
+LIGHTS: dict[str, dict] = {
+    "sun": {"label": "live sun", "version": 1},
+}

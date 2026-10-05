@@ -35,6 +35,7 @@ var form = {
   layers: { terrain: true, satellite: true, painted: false } as Record<string, boolean>,
   size: 4096,
   top: true,
+  light: true,
   recipe: "current",
   keepCache: false,
   restyle: false,
@@ -153,6 +154,7 @@ function presetWords(job: MapJobBody): string {
     if (o.top === false) parts.push("no arches");
     if (o.keep_cache) parts.push("keeps the raster cache");
     if (o.restyle) parts.push("palette only");
+    if (o.light) parts.push("live sun");
     return parts.join(" · ");
   }
   if (job.preset === "artwork") return o.enhance ? "artwork, upscaled" : "artwork";
@@ -369,6 +371,7 @@ function formOptions(): Record<string, unknown> {
       top: form.top,
       keep_cache: form.keepCache,
       restyle: restyle,
+      light: form.light,
     };
   }
   if (form.preset === "artwork") return { enhance: form.enhance && !!mapState.body && mapState.body.can_generate.vulkan };
@@ -499,6 +502,12 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
         refresh();
       })
     );
+    var lit = checkbox("live sun", form.light, function (on) {
+      form.light = on;
+      refresh();
+    });
+    lit.title = "draws colour unlit and bakes a lighting pyramid, so the map is relit in the browser by any sun";
+    opts.appendChild(lit);
     var recipe = make("label", "maps-inline");
     recipe.appendChild(make("span", "", "recipe "));
     recipe.appendChild(
@@ -592,7 +601,7 @@ function rerender(row: MapTypeBody): void {
   var options =
     row.kind === "artwork"
       ? { enhance: !!body && body.can_generate.vulkan }
-      : { layers: [row.layer], size: size, recipe: "current", top: true, restyle: !r && !row.freshness.stale.length && row.freshness.restyle && !!body && body.cached_sizes.indexOf(size) >= 0 };
+      : { layers: [row.layer], size: size, recipe: "current", top: true, light: !!row.axes.light, restyle: !r && !row.freshness.stale.length && row.freshness.restyle && !!body && body.cached_sizes.indexOf(size) >= 0 };
   chain.then(function () {
     return submit(row.kind === "artwork" ? "artwork" : "render", options, row.label || "", row.id);
   });

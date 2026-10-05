@@ -51,7 +51,7 @@ MODULE_MAX_LINES = 800
 #: ``CEILING_SLACK`` above the file is stale. Measured after the move.
 MODULE_CEILINGS: dict[str, int] = {
     "gamedata/mesh.py": 825,
-    "pipeline.py": 1039,
+    "pipeline.py": 1013,
     "heightmap.py": 310,
     # A thin command, held at its size so the stages stay in their modules.
     "artwork.py": 298,

@@ -1584,3 +1584,106 @@ of it the fixed preparation (field, lattice, artwork sheet, biome raster, the re
 about 20 s); a restyle at a size with no cache refused in 3.6 s with exit 9. At full size the
 draw and cut dominate instead: from the recipe 5 stage times one layer is about 8.5 min against
 about 37 min for a full two-layer render. The full-size figure is an estimate, not a run.
+
+## 29. Live sun light (2026-10-05)
+
+A render drawn with `--unlit` (the Maps tab's "live sun" box) stores its colour without light
+and adds a lighting pyramid, and the page relights it in the browser for any sun. One light,
+the sun; the page picks where it stands.
+
+### The model
+
+`light = amb · sky · SVF + (1 − amb) · sun · max(n·L, 0) · (1 − shadow) / sin(max(el, 35°))`,
+divided by the same expression for flat ground in the open, so flat ground at any sun is 1.
+
+- **Lambert** is the shipped hillshade's own term. Relit at 315° / 45° with shadows and sky
+  off, unlit terrain reproduces the baked hillshade to 2 levels (a test holds it).
+- **Cast shadows** come from 32 stored horizon angles per pixel, interpolated between the two
+  directions either side of the sun, with a 2° soft edge. A blocker counts fully up to 40 m
+  away and not at all past 150 m (`FADE_M`): without the fade a low sun shadows a third to a
+  half of the land. A 100 m fade was tried at 16:00 on the four shared crops and reads almost
+  the same, so 150 m stays.
+- **Sky view** within 10 m darkens the foot of a cliff and the floor of a gully. Larger radii
+  grey whole valleys.
+- **Normalisation** by `sin(max(el, 35°))`: without the clamp a fifth to a third of the
+  pixels blow out at 20°.
+- **Shadow floor.** The light passes through a soft maximum with 0.36 at a knee of 0.1
+  (`SHADOW_FLOOR`, `SHADOW_FLOOR_KNEE`), so the darkest light lands at 0.36 to 0.40 instead of
+  the 0.2 the bare model reaches in a shadowed gully.
+- **Water** stays unlit: the land weight (one minus the water cover) blends the light out.
+- **Per style.** The painted style lights in linear light under its highlight shoulder with
+  its own ambient, sky and sun colours. Terrain and satellite multiply into sRGB, as their
+  hillshade always did: ambient `SHADE_FLOOR / (SHADE_FLOOR + SHADE_RANGE · sin 45°)`, white
+  light, no shoulder (`palette/lightparams.py`). One lighting pyramid serves every style.
+
+The default sun is game noon, 225° / 62.25°. The game turns its sun about one fixed tilted
+axis (`AFGSkySphere`, pitch `30 + 15 h`); `lighting/sun.py` and the page's `sun.ts` both
+compute that path. The cartographic 315° / 45° is a one-click preset, not the default: the
+artwork has no light direction to inherit.
+
+### What is written
+
+| Where | What |
+| --- | --- |
+| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | 32 horizons at half resolution, an 8 × 4 grey atlas of 128 px cells, `255 · sqrt(deg / 90)`, WebP q75 |
+| `<renders>/light/meta.json` | The light axis (model constants and their digest), tile counts, timings |
+| `<layer>/unlit/` | The unlit colour, 1x only |
+| `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
+
+Coarser levels are computed from the coarser surface, not by averaging encoded tiles: normals
+from the downsampled heights, sky view and horizons by mean.
+
+### The stage
+
+`render_layer` hands the first layer's drawn heights and land weight to a `Surface` (two
+memory maps beside the raster caches, 5.4 GB at 32768). After that layer is drawn,
+`lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
+halo, and a process pool computes per block: horizons at half resolution, sky view, normals,
+the native tiles, and the light at the default sun for the baked copy. A block whose core is
+all water skips the horizon march. Each layer then installs `unlit/`, is lit in place by the
+default sun, and installs `tiles/` and `tiles@2x/` as before (`tiles/lit.py`).
+
+**Horizon cost.** The march takes bilinear samples up to 16 px and the nearest pixel beyond,
+with in-place arithmetic: 0.14 µs per half-resolution pixel and direction, 6.3 times faster
+than the all-bilinear reference, which it matches to a mean 0.10 to 0.17° and a 0.1 to 0.3%
+difference in which pixels are shadowed at 25°. A rotated row sweep was built and measured at
+1.7 times slower than the reference: rotating the block grows it, and every pixel of the
+rotated square is computed. One full-size block of the steepest 2 km box took 121 s on two
+threads of a shared machine, 69 s of it light terms and 52 s WebP encoding; 64 blocks project
+to 2.2 CPU-hours, about 8 minutes on 16 workers, before water blocks are skipped. The
+research estimate for the ray march was 72 minutes.
+
+**Bytes.** The steepest 2 km box writes 78 KB of lighting per z7 tile, so a full map is at
+most about 1.3 GB at z7 and less in practice, because open water compresses to almost
+nothing. The unlit colour adds about half the colour pyramid again.
+
+### Hooks
+
+`bake_light` takes two optional rasters on the sheet's grid, both of which only cast:
+
+- `occluder`: absolute heights in metres, NaN where empty, that raise the blockers and never
+  the receivers. Tree crowns feed it.
+- `slabs = (ground, min_z, max_z)`: the surface without the floating geometry, and that
+  geometry's underside and top. A slab extends a horizon only where its underside is below
+  the horizon already reached, so an arch stops casting a curtain to the ground. On the arch
+  crop at 16:00 the curtains go; the pipeline does not yet rasterise the arches' min-Z.
+
+### The page
+
+`litlayer.ts` draws a lit layer on one WebGL2 canvas in the base-map pane: per tile the unlit
+colour, normals and horizons, relit by the shader with the arithmetic of `lighting/model.py`.
+The z0 probe's `X-Map-Light` header carries the shader's numbers. Without WebGL2, or when the
+context or the tiles fail, the layer falls back to the baked `tiles/` with a toast. Settings →
+map holds the default sun (game noon, 09:00, 16:00 or map north-west) and the shadow and sky
+switches. The sun button on the map opens a time-of-day slider on the game's path, the
+presets, the switches and, under "advanced", a free compass with azimuth and elevation. The
+button moves the sun for the visit; Settings keeps the default.
+
+### Open
+
+- The arches' min-Z raster, so `slabs` is fed by the pipeline.
+- The sun in the fragment, so a link carries it.
+- Faint diagonal bands at low sun from the q75 horizon encoding and the direction
+  interpolation.
+- Sun colour along the day, and whether the artwork style gets any light at all.
