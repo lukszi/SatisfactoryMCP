@@ -86,3 +86,19 @@ def test_sheet_crowns_keeps_a_crown_a_coarse_pixel_would_miss():
     assert np.nanmax(sheet) == pytest.approx(25.0)
     assert np.isfinite(sheet).sum() >= 1
     assert np.isnan(sheet[-1, -1])
+
+
+def test_an_unlit_run_deletes_its_crown_occluder_with_the_light_cache(tmp_path):
+    from types import SimpleNamespace
+
+    from mapgen.tiles.lit import LIGHT_CACHE_DIR_NAME, UnlitRun, crown_occluder
+
+    grid = {"x0_cm": BOUNDS_M["x_min_m"] * 100.0, "y0_cm": BOUNDS_M["y_min_m"] * 100.0,
+            "spacing_cm": 100.0}  # fmt: skip
+    painted = SimpleNamespace(crown=np.full((8, 8), 120, np.int16), meta={"grid": grid})
+    run = UnlitRun(tmp_path, 16, crown_occluder(painted, tmp_path, 16))
+
+    assert (tmp_path / LIGHT_CACHE_DIR_NAME / "crowns.npy").is_file()
+    run.close()
+    assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
+    assert crown_occluder(SimpleNamespace(), tmp_path, 16) is None

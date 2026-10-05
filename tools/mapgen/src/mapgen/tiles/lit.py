@@ -115,6 +115,8 @@ class UnlitRun:
             meta["provenance"]["light"] = self.meta["light"]
 
     def close(self) -> None:
+        # The occluder is a memory map in the light cache; Windows will not delete it while open.
+        self.occluder = None
         self.surface.close()
         discard(self.surface)
         shutil.rmtree(self.surface.directory, ignore_errors=True)
