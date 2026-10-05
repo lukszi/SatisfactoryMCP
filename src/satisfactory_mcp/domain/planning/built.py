@@ -320,7 +320,11 @@ def _bbox_m(recs: list[_Rec]) -> list[float] | None:
 def _cluster_names(st: WorldState, wanted: set[int]) -> dict[int, str]:
     if not wanted:
         return {}
-    names = naming.proposal_names(st, st.proposals)
+    # Every proposal is named at once (~300 ms); kept per state and labels version.
+    memo = st.__dict__.setdefault("_proposal_names", {})
+    names = memo.get(st.labels.version)
+    if names is None:
+        names = memo[st.labels.version] = naming.proposal_names(st, st.proposals)
     return {i: names.get(i, f"cluster {i}") for i in wanted}
 
 
