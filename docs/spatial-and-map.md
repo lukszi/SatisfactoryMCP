@@ -968,3 +968,45 @@ file. A stored z is kept when a pad is resized in place; a moved pad is read aga
 The tail is which surface is meant, never resolution. Caves stay open: no one- or
 two-valued plane can hold a cave floor.
 
+## 23. Renders after the terrain work: recipe 4 (2026-10-05)
+
+Four ideas from the terrain study (section 22) were tried on the map renders. Each was
+rendered as 176 m crops of a cliff, a boulder field, two arch sites and sloped landscape,
+before and after, and measured where a number exists. Build 502094.
+
+| Idea | Verdict | Evidence |
+| --- | --- | --- |
+| Read the landscape from `terrain.u16.z` (7.8 mm) instead of the decimetre ground plane | **Adopted** | The 0.1 m steps drew contour-like terraces on every gentle slope. On five crops the slope error against the exact surface fell from a median of 2.6° to 0.2–0.3°, p99 from 6.6–29° to 1.6–4.9° |
+| Use the engine's two triangles per quad instead of Catmull-Rom | **Rejected** | Exact in height, but the hillshade shows every 1 m triangle as a flat facet. Catmull-Rom over the same samples departs from the triangles by a median 0.9–1.6 mm (p99 13–35 mm), so it does not round creases off visibly. Shading with the game's interpolated vertex normals removes the facets but softens every ridge; it is not used either |
+| Draw the arches and foliage boulders the field keeps in `top.i16.z` | **Adopted** | 1,076 arches and 41,351 boulders were missing. The artwork borrow drew the arches as faint ghost stripes with nothing under them. With the overlay drawn, the render's correlation with the game's own map sheet rises from 0.18 to 0.33 and 0.22 to 0.30 on the two arch crops, and is unchanged elsewhere |
+| Check the render's cliff raster for the half-texel bug fixed in generator v5 | **Already correct** | The direct pass samples at `col + 0.5` on the frame's corner, which is the pixel centre; `test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says` pins it. The v3 field's shifted planes only moved the ground lattice's holes: drawing from the v5 field changes 4–6% of cliff-crop pixels by over 0.5 m, with no visible difference |
+
+### What recipe 4 draws
+
+- **The lattice under the kernel is the bare landscape**, wherever the landscape has a sample
+  and the province is landscape or cliff. Under a rock this replaces the hole that recipe 3
+  left, which used to fall back to the 1 m fold and drew a dark staircase ring around every
+  formation. The fill province keeps its de-terraced value.
+- **Rock pixels are gated on triangle coverage at the pixel centre**, never on the density
+  plane, which only labels the regime statistics. A covered pixel is the triangle's own height
+  even where the triangle is wider than the pixel. Recipe 3 then ran a 3x3 tent over heights
+  and coverage, which spread rock heights up to 0.23 m across every silhouette and blurred rock
+  detail; that tent is gone. Sub-samples (`--direct-subsamples`) are the only antialiasing.
+- **Arches and boulders are a second direct pass**, at their finest decoded geometry (Nanite
+  for five of the six boulder meshes, LOD 0 for the sea rock), composited last by the same
+  coverage and smoothed lift as the rocks. These are the visible meshes; planning heights use
+  the collision surface instead.
+
+### Known limits
+
+- The water edge is still a 1 m staircase, because the water quality plane is 1 m.
+- The artwork borrow still multiplies the drawn map's arch strokes into the shading, so a
+  faint ghost stripe can sit beside an arch where the drawing and the mesh disagree.
+
+### Output and switching
+
+`--renders-name renders-v2` writes to `data/local/renders-v2/<layer>/` and leaves
+`data/local/renders/` alone. The server reads only `data/local/renders/`, so switching is a
+rename while the server is stopped: move `renders` to `renders-v1`, then `renders-v2` to
+`renders`. The tile URLs carry a build tag derived from the sidecar, so browsers fetch the new
+tiles without a cache flush.

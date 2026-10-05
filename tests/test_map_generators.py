@@ -400,32 +400,34 @@ def test_the_kernel_interpolates_the_lattice_and_not_the_fold_it_produced():
     assert missing[:, 2:4].all(), "and under the rock the lattice says nothing, not zero"
 
 
-def test_the_silhouette_is_carried_by_its_own_coverage_and_not_by_zeros():
-    """``tent_coverage``: the one kernel that must not be a plain blur.
+def test_a_rock_pixel_is_its_own_triangle_and_never_leaks_across_the_silhouette():
+    """Rock heights are gated on triangle coverage per pixel and never blurred.
 
-    A texel just outside a rock has no height of its own -- the raster stores zero there --
-    so blurring the heights and the coverage separately would give it a fraction of zero and
-    draw a trench around every silhouette on the map. Weighted by the coverage it gets the
-    rock's own edge height at a fraction of a weight, which is what a partly covered texel
-    is. Asserted against the trench, because the trench is what the bug looks like.
+    A covered pixel is the exact surface even where the triangle is wider than the pixel,
+    and an uncovered neighbour stays ground: spreading a rock's height across its own
+    silhouette is the smear this render exists to avoid. Sub-samples are the only
+    antialiasing, as a share of hits.
     """
     numpy = pytest.importorskip("numpy")
     pytest.importorskip("scipy")
 
-    z_cm = numpy.zeros((5, 5), numpy.float32)
-    coverage = numpy.zeros((5, 5), numpy.uint8)
-    z_cm[2, 2] = 5000.0
-    coverage[2, 2] = 1
-    height, fraction = gen_map_renders.tent_coverage(z_cm, coverage.astype(numpy.float32))
-    assert height[2, 2] == pytest.approx(5000.0), "the covered texel keeps its own height"
-    assert height[2, 1] == pytest.approx(5000.0), "and its neighbour borrows it, not a zero"
-    assert 0.0 < fraction[2, 1] < fraction[2, 2] <= 1.0
-    assert fraction[0, 0] == pytest.approx(0.0), "two texels away is still outside"
-    # And a covered region much larger than the kernel keeps its weight in the middle: the
-    # tent sums to one, so it antialiases an edge without diluting an interior.
-    solid = numpy.ones((9, 9), numpy.float32)
-    _height, whole = gen_map_renders.tent_coverage(numpy.full((9, 9), 100.0, numpy.float32), solid)
-    assert whole[4, 4] == pytest.approx(1.0)
+    size = 5
+    z_cm = numpy.zeros((size, size), numpy.float32)
+    coverage = numpy.zeros((size, size), numpy.uint8)
+    z_cm[2, 2], z_cm[2, 3] = 5000.0, 4100.0
+    coverage[2, 2] = coverage[2, 3] = 1
+    taps = (
+        gen_map_renders.taps_linear(numpy.arange(size, dtype=numpy.float64), size),
+        gen_map_renders.taps_linear(numpy.arange(size, dtype=numpy.float64), size),
+    )
+    ground = numpy.full((size, size), 10.0, numpy.float32)
+    blank = numpy.zeros((size, size), bool)
+    z_m, _missing, w, _s = gen_map_renders.blend_regimes(ground, blank, (z_cm, coverage), taps, 1)
+    assert z_m[2, 2] == pytest.approx(50.0, abs=1e-3) and z_m[2, 3] == pytest.approx(41.0, abs=1e-3)
+    assert (z_m[coverage == 0] == 10.0).all(), "no neighbour borrows a rock height"
+    assert set(numpy.unique(w)) == {0.0, 1.0}
+    quarter = gen_map_renders.pixel_coverage(numpy.array([[1, 4]], numpy.uint8), 2)
+    assert quarter.tolist() == [[0.25, 1.0]]
 
 
 def test_the_fill_province_is_de_terraced_by_no_more_than_one_of_its_own_steps():
@@ -649,6 +651,109 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     assert coverage[:, first:last].all(), "every texel centred inside the slab is covered"
     assert not coverage[:, :first].any() and not coverage[:, last:].any(), "and none outside"
     assert z_cm[coverage > 0] == pytest.approx(500.0)
+
+
+class _TerrainField(_Field):
+    """``_Field`` plus a bare-landscape plane on its own grid, one row and column in."""
+
+    def __init__(self, height_dm, prov, raw):
+        super().__init__(height_dm, prov)
+        numpy = pytest.importorskip("numpy")
+        self._raw = numpy.asarray(raw, numpy.uint16)
+        self._terrain_grid = {"zero": 32768.0, "units_per_m": 128.0, "offset_m": 1.0}
+        self._terrain_grid.update(row_off=1, col_off=1)
+
+    def _plane(self, name):
+        return self._raw if name == hf.TERRAIN_NAME else None
+
+
+def test_the_kernel_reads_the_landscape_at_its_own_vertical_step_under_the_rocks_too():
+    """``terrain_lattice``: the decimetre plane draws contours on gentle ground.
+
+    A 0.1 m step across a 1 m texel is a 5.7 degree facet, so the kernel has to be handed
+    the raw uint16 landscape at 7.8 mm. Under the cliff province the real terrain replaces
+    the hole the rocks left; fill and landscape holes keep what they had.
+    """
+    numpy = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+
+    height = numpy.full((4, 4), 103, numpy.int16)
+    prov = numpy.full((4, 4), hf.PROV_LANDSCAPE, numpy.uint8)
+    prov[1, 2] = hf.PROV_CLIFF_DIRECT
+    prov[2, 1] = hf.PROV_FILL
+    ground, _meta = gen_map_renders.ground_lattice(
+        _Field(height, prov), height.astype(numpy.float32)
+    )
+    assert ground[1, 2] == hf.NODATA
+
+    raw = numpy.full((3, 3), 32768 + 128 * 9 + 37, numpy.uint16)  # 10.289 m, between dm
+    raw[2, 2] = 0  # a hole in the landscape
+    out, meta = gen_map_renders.terrain_lattice(_TerrainField(height, prov, raw), ground)
+
+    exact_dm = (9 + 37 / 128 + 1.0) * 10
+    assert out[1, 1] == pytest.approx(exact_dm, abs=1e-4), "landscape at 7.8 mm, not 0.1 m"
+    assert out[1, 2] == pytest.approx(exact_dm, abs=1e-4), "and under the rock as well"
+    assert out[2, 1] == ground[2, 1], "fill keeps its own value"
+    assert out[3, 3] == ground[3, 3], "a landscape hole keeps the decimetre plane"
+    assert out[0, 0] == ground[0, 0], "outside the terrain grid nothing changes"
+    assert ground[1, 1] == 103, "the caller's lattice is not written through"
+    assert (meta["landscape_texels"], meta["under_cliff_texels"]) == (6, 1)
+
+    same, absent = gen_map_renders.terrain_lattice(_Field(height, prov), ground)
+    assert same is ground and "absent" in absent
+
+
+def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres():
+    """Arches and boulders: drawn on the render's own grid and composited like the rocks.
+
+    The overlay only ever raises the surface, through the same knee the rocks use. A foliage
+    instance lands on the pixel centres its footprint covers, and an arch keeps triangles a
+    facing cull would drop, because its deck is often an open shell.
+    """
+    numpy = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+
+    z_m = numpy.full((9, 9), 10.0, numpy.float32)
+    top_z = numpy.zeros((9, 9), numpy.float32)
+    coverage = numpy.zeros((9, 9), numpy.uint8)
+    assert numpy.array_equal(gen_map_renders.composite_top(z_m, top_z, coverage), z_m)
+    top_z[:, :5] = 1500.0
+    top_z[:, 5:] = 500.0  # below the ground: must not dig
+    coverage[:] = 1
+    raised = gen_map_renders.composite_top(z_m, top_z, coverage)
+    assert raised[:, 1] == pytest.approx(15.0, abs=0.01)
+    assert (raised >= z_m).all()
+    assert raised[:, -1].max() <= 10.0 + gen_map_renders.DIRECT_LIFT_KNEE_M / 2 + 1e-4
+
+    step_cm = 750000.0 / 32768
+    flat = numpy.array([[0, 0, 300], [100, 0, 300], [100, 100, 300], [0, 100, 300]], numpy.float32)
+    up = numpy.array([[0, 1, 2], [0, 2, 3]], numpy.int64)
+    matrix = numpy.eye(4, dtype=numpy.float32)
+    matrix[3, :3] = (1000.0, 0.0, 0.0)
+    items = {
+        "arches": [
+            (
+                "Arc",
+                0,
+                numpy.eye(3, dtype=numpy.float32),
+                numpy.ones(3, numpy.float32),
+                numpy.array([3000.0, 0.0, 200.0], numpy.float32),
+                0.0,
+                0.0,
+                100.0,
+            )
+        ],
+        "boulders": {"Boulder": (matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
+        "shapes": {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
+    }
+    band = gen_map_renders.rasterise_top_band(items, 0.0, 0.0, step_cm, 4, 160, 1)
+    z_cm, cover = gen_map_renders.reduce_direct(band, 4, 160, 1)
+    first = int(numpy.ceil(1000.0 / step_cm - 0.5))
+    last = int(numpy.ceil(1100.0 / step_cm - 0.5))
+    assert cover[:, first:last].all() and not cover[:, last : last + 2].any()
+    assert z_cm[:, first] == pytest.approx(300.0)
+    arch = int(numpy.ceil(3000.0 / step_cm - 0.5))
+    assert cover[:, arch].all() and z_cm[0, arch] == pytest.approx(500.0)
 
 
 def test_the_biome_palette_is_this_file_s_own_and_covers_what_the_game_ships():

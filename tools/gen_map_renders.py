@@ -18,7 +18,10 @@ thing that differs is the grid they are pointed at. Everywhere else, which is th
 majority of the sheet, a Catmull-Rom kernel over the 1 m field answers. The join is a blend
 and never a switch: the hillshade is a function of the derivative, so a hard switch between
 a rasterised surface and a C1 interpolant would draw the density plane's own boundaries into
-the relief as ridges. ``SeamTrace`` measures that along the seam on every run.
+the relief as ridges. ``SeamTrace`` measures that along the seam on every run. The lattice
+under the kernel takes its landscape from ``terrain.u16.z`` at 7.8 mm, and the arches and
+foliage boulders of ``top.i16.z`` are rasterised the same way and composited last
+(docs/spatial-and-map.md section 23).
 
 The frame and the artwork slices come from ``tools/gen_map_image.py``, which measured them;
 the codec from ``domain.spatial.heightfield``, the pyramid cutter from
@@ -49,6 +52,7 @@ import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -150,8 +154,14 @@ RECIPES = {
         "province boundary is ever a derivative discontinuity. Plus the fill province "
         "low-passed at its own 3.66 m cell so its 3.9 m terraces stop being contours"
     ),
+    4: (
+        "recipe 3 with the landscape under the kernel read from terrain.u16.z at 7.8 mm "
+        "instead of the decimetre ground plane, under the cliff province as well, and the "
+        "arches and foliage boulders the field keeps in top.i16.z rasterised at 0.229 m and "
+        "composited over everything by the same coverage-and-lift rule as the rocks"
+    ),
 }
-RECIPE = 3
+RECIPE = 4
 
 #: What ``--kernel-only`` draws, and it is a whole recipe rather than recipe 3 with a stage
 #: switched off: no geometry opened, no direct regime, no cross-fade and no de-terracing.
@@ -311,19 +321,11 @@ BORROW_LUMA = np.array([0.299, 0.587, 0.114], np.float32)
 DIRECT_SAMPLES_PER_TEXEL = gen.DIRECT_SAMPLES_MIN
 
 #: How many sub-samples per output texel per axis the direct pass rasterises at. The pass
-#: costs 4x per doubling and the silhouette it antialiases is already at 0.229 m, an eighth
-#: of the 1 m staircase this regime exists to remove; ``COVERAGE_TENT`` below reconstructs
-#: the same fractional edge from the binary mask for two separable 3-taps. Raise it with
-#: ``--direct-subsamples`` and the sidecar records what was run.
+#: costs 4x per doubling and the silhouette is already at 0.229 m, an eighth of the 1 m
+#: staircase this regime exists to remove. Raise it with ``--direct-subsamples`` and the
+#: sidecar records what was run. A silhouette is antialiased only by these sub-samples:
+#: rock heights are never blurred across one.
 DIRECT_SUBSAMPLES = 1
-
-#: The tent the direct raster's own coverage is reconstructed with: the antialiasing on the
-#: direct silhouettes. A 3-tap 1-2-1 in each axis over the binary coverage turns a hard
-#: per-texel in/out decision into a fraction over one texel, and the heights go through the
-#: same kernel WEIGHTED BY THAT COVERAGE, so a texel just outside the rock is a fraction of
-#: the rock's own edge height rather than a fraction of zero. Off with
-#: ``--direct-subsamples`` above 1, where the supersample has already done it.
-COVERAGE_TENT = np.array([0.25, 0.5, 0.25], np.float32)
 
 #: The knee of the smoothed positive part that lets a rock raise the ground and never lower
 #: it, in metres: the field's own hard ``max`` with its corner rounded. A hard max puts a
@@ -347,6 +349,12 @@ DIRECT_CACHE_DIR_NAME = "direct.cache"
 DIRECT_Z_NAME = "direct.z.f32"
 DIRECT_COVERAGE_NAME = "direct.cov.u8"
 DIRECT_CACHE_SIDECAR = "meta.json"
+
+#: The arch-and-boulder raster, cached the same way and under the same file names.
+TOP_CACHE_DIR_NAME = "top.cache"
+
+#: Foliage instances transformed per batch in the top pass.
+TOP_FOLIAGE_BATCH = 512
 
 #: What the seam trace calls "at the seam" and "in a pure regime". The statistic is the p99
 #: of the second difference of the drawn height along a row, at the seam against the pure
@@ -739,6 +747,42 @@ def ground_lattice(field, heights: np.ndarray) -> tuple[np.ndarray, dict]:
             "the whole field's own fold stands in, and the rock's coverage is 1, so the rock "
             "is the answer either way"
         ),
+    }
+
+
+def terrain_lattice(field, ground: np.ndarray) -> tuple[np.ndarray, dict]:
+    """``ground`` with its landscape replaced by ``terrain.u16.z``, in float decimetres.
+
+    Written wherever the bare landscape has a sample and the province is landscape or
+    cliff, so the lattice under a rock is the real terrain rather than a hole. Fill keeps
+    its de-terraced value. A field without the plane comes back unchanged and says so.
+    """
+    plane = field._plane(hf.TERRAIN_NAME) if hasattr(field, "_plane") else None
+    grid = getattr(field, "_terrain_grid", None)
+    if plane is None or grid is None or grid.get("row_off") is None:
+        return ground, {"absent": f"no usable {hf.TERRAIN_NAME}; the decimetre plane is drawn"}
+    rows, cols = plane.shape
+    window = (
+        slice(grid["row_off"], grid["row_off"] + rows),
+        slice(grid["col_off"], grid["col_off"] + cols),
+    )
+    raw = np.asarray(plane)
+    z_dm = ((raw.astype(np.float32) - grid["zero"]) / grid["units_per_m"] + grid["offset_m"]) * (
+        hf.DM_PER_M
+    )
+    prov = np.asarray(field._prov)[window]
+    use = (raw != 0) & np.isin(prov, (hf.PROV_LANDSCAPE, *hf.PROV_CLIFF_VALUES))
+    out = ground.copy()
+    target = out[window]
+    target[use] = z_dm[use]
+    landscape = use & (prov == hf.PROV_LANDSCAPE)
+    moved = np.abs(z_dm[landscape] - np.asarray(field._height_dm)[window][landscape])
+    return out, {
+        "plane": hf.TERRAIN_NAME,
+        "vertical_step_m": round(1.0 / grid["units_per_m"], 5),
+        "landscape_texels": int(landscape.sum()),
+        "under_cliff_texels": int((use & ~landscape).sum()),
+        "landscape_moved_max_m": round(float(moved.max()) / hf.DM_PER_M, 4) if moved.size else 0.0,
     }
 
 
@@ -1261,8 +1305,12 @@ def rasterise_direct_band(
     raster = gen.MaxZRaster(
         cols * subsamples, rows * subsamples, x0_cm, y0_cm, scale_cm / subsamples, sample=0.5
     )
-    y_lo = y0_cm
-    y_hi = y0_cm + rows * scale_cm
+    add_placements(raster, prepared, geometry, y0_cm, y0_cm + rows * scale_cm)
+    return raster.result()[0]
+
+
+def add_placements(raster, prepared: list, geometry: dict, y_lo: float, y_hi: float) -> None:
+    """Every prepared placement whose Y span reaches ``[y_lo, y_hi]``, into ``raster``."""
     for mesh, mesh_id, matrix, scale, offset, facing, span_lo, span_hi in prepared:
         if span_hi < y_lo or span_lo > y_hi:
             continue
@@ -1279,7 +1327,91 @@ def rasterise_direct_band(
         if not tris.size:
             continue
         raster.add(world[tris], mesh_id + 1)
+
+
+def top_items(store, scripts, index, sweep: dict, geometry: dict) -> tuple[dict, dict]:
+    """The arches and foliage boulders ``top.i16.z`` carries, at their finest geometry.
+
+    Arches are placements, prepared like rocks but never culled by facing: an arch is an
+    open shell often enough that a winding guess would drop its deck. Boulders are foliage
+    instances with their own 4x4 matrices. Both fall back to the collision trimesh the
+    field rasterised when no finer source decodes.
+    """
+    meshes, owners = sweep["meshes"], sweep["owners"]
+    arch_ids = {i for i, m in enumerate(meshes) if gen.ARCH_MARK in m.rsplit("/", 1)[-1]}
+    shapes: dict[str, tuple[np.ndarray, np.ndarray] | None] = dict(geometry)
+    finest = gen.read_mesh_geometry(store, scripts, index, list(sweep["foliage"]), False)
+    for mesh, (verts, tris, low, high) in finest["geometry"].items():
+        keep = ((verts >= low) & (verts <= high)).all(axis=1)
+        shapes[mesh] = (verts, tris[keep[tris].all(axis=1)])
+
+    def shape(mesh):
+        if mesh not in shapes:
+            shapes[mesh] = gen.read_hull(store, scripts, index, mesh)
+        return shapes[mesh]
+
+    corners = np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], np.float32)
+    arches, skipped = [], set()
+    for row in sweep["placements"]:
+        mesh_id = int(row[0])
+        if mesh_id not in arch_ids or owners[int(row[1])] in gen.EXCLUDED_OWNERS:
+            continue
+        mesh = meshes[mesh_id]
+        if shape(mesh) is None:
+            skipped.add(mesh.rsplit("/", 1)[-1])
+            continue
+        verts = shapes[mesh][0]
+        matrix = gen.rotation_matrix(*row[5:8]).astype(np.float32)
+        scale, offset = row[8:11].astype(np.float32), row[2:5].astype(np.float32)
+        low, high = verts.min(0), verts.max(0)
+        world_y = (((low + corners * (high - low)) * scale) @ matrix + offset)[:, 1]
+        arches.append(
+            (mesh, mesh_id, matrix, scale, offset, 0.0, float(world_y.min()), float(world_y.max()))
+        )
+    boulders = {}
+    for mesh, mats in sweep["foliage"].items():
+        if shape(mesh) is None:
+            skipped.add(mesh.rsplit("/", 1)[-1])
+            continue
+        mats = np.asarray(mats, np.float32)
+        reach = float(np.linalg.norm(shapes[mesh][0], axis=1).max())
+        reach *= np.linalg.norm(mats[:, :3, :3], axis=2).max(1)
+        boulders[mesh] = (mats, mats[:, 3, 1] - reach, mats[:, 3, 1] + reach)
+    items = {"arches": arches, "boulders": boulders, "shapes": shapes}
+    return items, {
+        "arch_placements": len(arches),
+        "foliage_instances": int(sum(len(v[0]) for v in boulders.values())),
+        "foliage_sources": finest["sources"],
+        "meshes_skipped": sorted(skipped),
+    }
+
+
+def rasterise_top_band(
+    items: dict, x0_cm: float, y0_cm: float, scale_cm: float, rows: int, cols: int, subsamples: int
+) -> np.ndarray:
+    """One band of arches and boulders, max-Z on the render's pixel centres."""
+    raster = gen.MaxZRaster(
+        cols * subsamples, rows * subsamples, x0_cm, y0_cm, scale_cm / subsamples, sample=0.5
+    )
+    y_hi = y0_cm + rows * scale_cm
+    add_placements(raster, items["arches"], items["shapes"], y0_cm, y_hi)
+    for mesh, (mats, span_lo, span_hi) in items["boulders"].items():
+        verts, tris = items["shapes"][mesh]
+        picked = mats[(span_hi >= y0_cm) & (span_lo <= y_hi)]
+        for start in range(0, len(picked), TOP_FOLIAGE_BATCH):
+            chunk = picked[start : start + TOP_FOLIAGE_BATCH]
+            world = np.einsum("vi,nij->nvj", verts, chunk[:, :3, :3]) + chunk[:, None, 3, :3]
+            raster.add(world[:, tris].reshape(-1, 3, 3), 1)
     return raster.result()[0]
+
+
+def composite_top(z_m, top_z_cm, top_coverage, subsamples: int = 1) -> np.ndarray:
+    """``z_m`` raised by the top raster through the same coverage and smoothed lift as rocks."""
+    z_cm, fraction = top_z_cm, pixel_coverage(top_coverage, subsamples)
+    w = np.clip(fraction, 0.0, 1.0)
+    delta = z_cm / np.float32(100.0) - z_m
+    knee = np.float32(DIRECT_LIFT_KNEE_M)
+    return (z_m + w * 0.5 * (delta + np.sqrt(delta * delta + knee * knee))).astype(np.float32)
 
 
 def reduce_direct(sub_z: np.ndarray, rows: int, cols: int, subsamples: int):
@@ -1299,25 +1431,17 @@ def reduce_direct(sub_z: np.ndarray, rows: int, cols: int, subsamples: int):
     return (total / np.maximum(count, 1)).astype(np.float32), count
 
 
-def tent_coverage(z_cm: np.ndarray, coverage: np.ndarray):
-    """The 3x3 tent that antialiases a direct silhouette, heights carried by coverage.
-
-    Separable 1-2-1 in each axis over the coverage, and the same kernel over ``z*coverage``
-    divided back by it. The division is load-bearing: a plain blur of the heights pulls zeros
-    in from outside the rock and draws a trench around every silhouette.
-
-    The band arrives with ``BAND_HALO`` rows on each side, so the 3-tap in Y never sees a
-    band edge.
-    """
-    weighted = z_cm * coverage
-    for axis in (0, 1):
-        coverage = ndimage.convolve1d(coverage, COVERAGE_TENT, axis=axis, mode="nearest")
-        weighted = ndimage.convolve1d(weighted, COVERAGE_TENT, axis=axis, mode="nearest")
-    return weighted / np.maximum(coverage, 1e-6), coverage
+def pixel_coverage(coverage: np.ndarray, subsamples: int) -> np.ndarray:
+    """The share of a pixel's sub-samples a triangle hit, in [0, 1]. No neighbour is read."""
+    return coverage.astype(np.float32) / np.float32(subsamples * subsamples)
 
 
-def direct_cache_dir(out_dir: Path) -> Path:
-    return out_dir / RENDERS_DIR_NAME / DIRECT_CACHE_DIR_NAME
+def direct_cache_dir(out_dir: Path, name: str = RENDERS_DIR_NAME) -> Path:
+    return out_dir / name / DIRECT_CACHE_DIR_NAME
+
+
+def top_cache_dir(out_dir: Path, name: str = RENDERS_DIR_NAME) -> Path:
+    return out_dir / name / TOP_CACHE_DIR_NAME
 
 
 def direct_cache_stamp(size: int, subsamples: int, build: str | None) -> dict:
@@ -1349,8 +1473,7 @@ def cached_direct(directory: Path, stamp: dict) -> tuple[np.ndarray, np.ndarray]
 
 
 def rasterise_direct(
-    prepared: list,
-    geometry: dict,
+    band_raster,
     directory: Path,
     size: int,
     subsamples: int,
@@ -1376,9 +1499,7 @@ def rasterise_direct(
     for band, top in enumerate(range(0, size, DIRECT_BAND_ROWS)):
         bottom = min(top + DIRECT_BAND_ROWS, size)
         rows = bottom - top
-        sub = rasterise_direct_band(
-            prepared,
-            geometry,
+        sub = band_raster(
             x0_cm,
             BOUNDS_M["y_min_m"] * 100 + top * step_cm,
             step_cm,
@@ -1392,7 +1513,7 @@ def rasterise_direct(
         covered += int(np.count_nonzero(band_coverage))
         if progress and band % 8 == 0:
             print(
-                f"  direct: {bottom / size:5.1%} of {size}x{size} at "
+                f"  {directory.name}: {bottom / size:5.1%} of {size}x{size} at "
                 f"{step_cm / 100 / subsamples:.4f} m, {covered / 1e6:.1f} M texels, "
                 f"{time.time() - started:5.1f}s",
                 flush=True,
@@ -1441,8 +1562,8 @@ class SeamTrace:
     that ceiling the fade spends (0.5 on the shipped render).
 
     The smoothness itself is guaranteed by the arithmetic rather than by this statistic:
-    ``blend_regimes`` is a convex combination in a coverage the tent reconstructs
-    continuously, plus a positive part smoothed by ``DIRECT_LIFT_KNEE_M``.
+    ``blend_regimes`` is a convex combination in the pixel's coverage, plus a positive part
+    smoothed by ``DIRECT_LIFT_KNEE_M``.
     """
 
     def __init__(self) -> None:
@@ -1840,8 +1961,9 @@ def blend_regimes(base_m, missing, direct, linear, subsamples):
     rasterised at 0.229 m rather than folded onto a metre first.
 
     ``z = base + w * lift(z_direct - base)``. ``w`` is the direct raster's **coverage** of
-    the pixel, reconstructed by the tent above and never a threshold, so a rock's silhouette
-    fades over one texel instead of stepping over one. ``lift`` is a **smoothed positive
+    the pixel: the share of its sub-samples a triangle covered, so at one sub-sample a pixel
+    is rock at the triangle's own height or ground, and no rock height is ever spread to a
+    neighbour across a silhouette. ``lift`` is a **smoothed positive
     part**, which is the other half of the field's rule -- a rock may raise the ground and
     may never lower it -- without the first-derivative discontinuity a hard ``max`` would put
     exactly where the rock meets the ground. It is never negative and sits at most
@@ -1852,12 +1974,7 @@ def blend_regimes(base_m, missing, direct, linear, subsamples):
     the coverage is 1 and the rock is the answer either way.
     """
     z_cm, coverage = direct
-    coverage = coverage.astype(np.float32)
-    if subsamples > 1:
-        coverage /= float(subsamples * subsamples)
-        fraction = coverage
-    else:
-        z_cm, fraction = tent_coverage(z_cm, coverage)
+    fraction = pixel_coverage(coverage, subsamples)
     w = np.clip(fraction, 0.0, 1.0).astype(np.float32)
     z_direct_m = z_cm / np.float32(100.0)
     delta = z_direct_m - base_m
@@ -1895,20 +2012,22 @@ def render_layer(
     seam=None,
     regimes=None,
     measured_plane_u8=None,
+    overlay=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
     Banded because the sheet is a billion pixels at 32768 and this recipe holds a dozen
     float32 intermediates over it, four gigabytes apiece whole. Each band is computed with
     BAND_HALO extra rows on both sides and cropped afterwards, so neither the hillshade's
-    gradient nor the cubic sampler's stencil nor the water blur's kernel nor the direct
-    coverage's tent ever sees a band edge: a one-sided difference at every 256th row would
+    gradient nor the cubic sampler's stencil nor the water blur's kernel ever sees a band
+    edge: a one-sided difference at every 256th row would
     draw 127 horizontal lines across the world.
 
     ``direct`` is the pair of memory maps the direct pass wrote, with the weight plane and
     the sub-sampling beside them; ``None`` draws the single-regime picture. ``seam`` and
     ``regimes`` are accumulators, passed for the first layer only, both layers drawing the
-    identical surface.
+    identical surface. ``overlay`` is the arch-and-boulder pair of maps and its sub-sampling,
+    composited last.
     """
     painter = LAYER_PAINTERS[layer]
     x_cm, y_cm = frame_coordinates(size)
@@ -1985,6 +2104,14 @@ def render_layer(
                     weight[top - lo : bottom - lo],
                     measured_plane_u8[picked] > 0,
                 )
+        if overlay is not None:
+            top_z, top_coverage, top_subsamples = overlay
+            z_m = composite_top(
+                z_m,
+                np.asarray(top_z[lo:hi], np.float32),
+                np.asarray(top_coverage[lo:hi]),
+                top_subsamples,
+            )
         if wet_plane is None:
             wet = measured = np.zeros(z_m.shape, np.float32)
             water_m = z_m
@@ -2036,8 +2163,8 @@ def render_layer(
 # --------------------------------------------------------------------------------------
 
 
-def layer_dir(out_dir: Path, layer: str) -> Path:
-    return out_dir / RENDERS_DIR_NAME / layer
+def layer_dir(out_dir: Path, layer: str, name: str = RENDERS_DIR_NAME) -> Path:
+    return out_dir / name / layer
 
 
 #: Where a layer sidecar records the heightfield build it was drawn from.
@@ -2111,7 +2238,13 @@ def build_sidecar(
 
 
 def install_layer(
-    sheet_rgb, image_mod, out_dir: Path, layer: str, workers: int, recipe: int = RECIPE
+    sheet_rgb,
+    image_mod,
+    out_dir: Path,
+    layer: str,
+    workers: int,
+    recipe: int = RECIPE,
+    name: str = RENDERS_DIR_NAME,
 ) -> tuple[dict, dict, float]:
     """Cut one layer's two pyramids into place, and say what they wrote and how long it took.
 
@@ -2123,7 +2256,7 @@ def install_layer(
     from the full sheet it would gain a z6 of 512 px tiles weighing as much as the whole 1x
     pyramid, for pixels a hi-DPI client already gets by asking for ``z + 1`` at 1x.
     """
-    directory = layer_dir(out_dir, layer)
+    directory = layer_dir(out_dir, layer, name)
     directory.mkdir(parents=True, exist_ok=True)
     sheet = image_mod.fromarray(sheet_rgb)
     source = f"tools/gen_map_renders.py, {layer} recipe {recipe}, Lanczos"
@@ -2241,8 +2374,8 @@ def main() -> int:
         choices=[1, 2, 4],
         help=(
             f"sub-samples per output texel per axis in the direct pass (default "
-            f"{DIRECT_SUBSAMPLES}; each doubling costs 4x the rasterising and the silhouette "
-            "is already reconstructed by a coverage tent)"
+            f"{DIRECT_SUBSAMPLES}; each doubling costs 4x the rasterising and is the only "
+            "antialiasing a silhouette gets)"
         ),
     )
     parser.add_argument(
@@ -2257,7 +2390,20 @@ def main() -> int:
     parser.add_argument(
         "--keep-direct",
         action="store_true",
-        help="leave renders/direct.cache/ behind so the next run reuses it",
+        help="leave the direct.cache/ and top.cache/ rasters behind so the next run reuses them",
+    )
+    parser.add_argument(
+        "--no-top",
+        action="store_true",
+        help="leave out the arches and foliage boulders the field keeps in top.i16.z",
+    )
+    parser.add_argument(
+        "--renders-name",
+        default=RENDERS_DIR_NAME,
+        help=(
+            f"directory under --out-dir to write into (default {RENDERS_DIR_NAME}, the one the "
+            "server reads); a new name keeps the current renders untouched"
+        ),
     )
     parser.add_argument(
         "--workers",
@@ -2344,6 +2490,16 @@ def main() -> int:
             f"{deterrace_meta['clamped_share_of_the_province']}% of the province"
         )
     ground, ground_meta = (None, {}) if heights is None else ground_lattice(field, heights)
+    terrain_meta: dict = {}
+    if ground is not None:
+        ground, terrain_meta = terrain_lattice(field, ground)
+        if "absent" in terrain_meta:
+            print(f"  {terrain_meta['absent']}")
+        else:
+            print(
+                f"  landscape from {hf.TERRAIN_NAME}: {terrain_meta['landscape_texels']} texels "
+                f"plus {terrain_meta['under_cliff_texels']} under the cliff province"
+            )
     if ground is not None:
         print(
             f"  the lattice under the rocks: {ground_meta['lattice_share_of_the_field']}% of "
@@ -2355,8 +2511,8 @@ def main() -> int:
     out_dir: Path = args.out_dir
     if not args.force:
         for layer in layers:
-            sidecar_path = layer_dir(out_dir, layer) / RENDER_SIDECAR_NAME
-            if not (layer_dir(out_dir, layer) / TILES_DIR_NAME).is_dir():
+            sidecar_path = layer_dir(out_dir, layer, args.renders_name) / RENDER_SIDECAR_NAME
+            if not (layer_dir(out_dir, layer, args.renders_name) / TILES_DIR_NAME).is_dir():
                 continue
             try:
                 existing = json.loads(sidecar_path.read_text(encoding="utf-8"))
@@ -2365,7 +2521,7 @@ def main() -> int:
             pinned = pinned_field_build(existing if isinstance(existing, dict) else {})
             if pinned != field_build:
                 print(
-                    f"{layer_dir(out_dir, layer)} already holds a {layer} pyramid and this "
+                    f"{layer_dir(out_dir, layer, args.renders_name)} already holds a {layer} pyramid and this "
                     "run cannot show it was drawn from the field now on disk.\n"
                     f"  field on disk: {field_build}\n"
                     f"  those tiles:   {pinned or 'no meta.json, or no build recorded in it'}\n"
@@ -2497,11 +2653,30 @@ def main() -> int:
     else:
         biome_rgb, biome_source = None, {}
 
-    # ---- the cliff geometry, rasterised into this render's own grid -------------------
+    # ---- the cliff geometry and the top overlay, rasterised into this render's own grid
     direct = None
+    top = None
     direct_source: dict = {}
+    top_source: dict = {}
+    loaded: dict = {}
+
+    def geometry_once() -> dict:
+        if not loaded:
+            index = AssetIndex(store)
+            loaded["index"] = index
+            loaded["geometry"] = read_cliff_geometry(
+                store, scripts, index, ClassFacts(store, index), not args.quiet
+            )
+            got = loaded["geometry"]
+            print(
+                f"  {got['meshes']} rock meshes, {got['tris'] / 1e6:.2f} M triangles "
+                f"{got['by_source']}, swept in {got['seconds_sweep']}s and decoded "
+                f"in {got['seconds_decode']}s"
+            )
+        return loaded["geometry"]
+
     if weight_plane is not None:
-        cache = direct_cache_dir(out_dir)
+        cache = direct_cache_dir(out_dir, args.renders_name)
         stamp = direct_cache_stamp(args.size, args.direct_subsamples, field_build)
         maps = cached_direct(cache, stamp)
         if maps is None:
@@ -2513,20 +2688,11 @@ def main() -> int:
                     else ""
                 )
             )
-            index = AssetIndex(store)
-            geometry = read_cliff_geometry(
-                store, scripts, index, ClassFacts(store, index), not args.quiet
-            )
-            print(
-                f"  {geometry['meshes']} rock meshes, {geometry['tris'] / 1e6:.2f} M triangles "
-                f"{geometry['by_source']}, swept in {geometry['seconds_sweep']}s and decoded "
-                f"in {geometry['seconds_decode']}s"
-            )
+            geometry = geometry_once()
             prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"])
             print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
             cache_stats = rasterise_direct(
-                prepared,
-                geometry["geometry"],
+                partial(rasterise_direct_band, prepared, geometry["geometry"]),
                 cache,
                 args.size,
                 args.direct_subsamples,
@@ -2563,7 +2729,7 @@ def main() -> int:
                 }
             }
             maps = cached_direct(cache, stamp)
-            del geometry, prepared
+            del prepared
         else:
             print(f"reusing the direct raster already in {cache}")
             direct_source = {
@@ -2575,6 +2741,49 @@ def main() -> int:
             print(f"the direct raster in {cache} could not be read back after writing it")
             return 7
         direct = (maps[0], maps[1], ground, args.direct_subsamples)
+
+        if not args.no_top:
+            top_cache = top_cache_dir(out_dir, args.renders_name)
+            top_maps = cached_direct(top_cache, stamp)
+            if top_maps is None:
+                print(f"rasterising the arches and foliage boulders at {spacing_m:.4f} m")
+                geometry = geometry_once()
+                items, top_meta = top_items(
+                    store, scripts, loaded["index"], geometry["sweep"], geometry["geometry"]
+                )
+                print(
+                    f"  {top_meta['arch_placements']} arches, "
+                    f"{top_meta['foliage_instances']} boulders {top_meta['foliage_sources']}"
+                )
+                top_stats = rasterise_direct(
+                    partial(rasterise_top_band, items),
+                    top_cache,
+                    args.size,
+                    args.direct_subsamples,
+                    stamp,
+                    not args.quiet,
+                )
+                print(
+                    f"  top raster: {top_stats['texels_with_geometry'] / 1e6:.1f} M texels in "
+                    f"{top_stats['seconds']}s"
+                )
+                top_source = {"top_overlay": {**top_meta, "raster": top_stats}}
+                del items
+                top_maps = cached_direct(top_cache, stamp)
+            else:
+                print(f"reusing the top raster already in {top_cache}")
+                top_source = {
+                    "top_overlay": {
+                        "reused": json.loads(
+                            (top_cache / DIRECT_CACHE_SIDECAR).read_text(encoding="utf-8")
+                        )
+                    }
+                }
+            if top_maps is None:
+                print(f"the top raster in {top_cache} could not be read back after writing it")
+                return 7
+            top = (top_maps[0], top_maps[1], args.direct_subsamples)
+    loaded.clear()
 
     # ---- draw and cut ----------------------------------------------------------------
     borrow_source = {
@@ -2618,6 +2827,7 @@ def main() -> int:
             height_dm=heights,
             direct=direct,
             measured_plane_u8=weight_plane,
+            overlay=top,
             # Both layers draw the identical surface, so the seam and the regime table are
             # measured on the first one and quoted for both.
             seam=seam if not measured else None,
@@ -2638,7 +2848,9 @@ def main() -> int:
                 )
             print(f"  regimes: {measured['regimes']['sheet_pct']}")
         try:
-            stats, dense, cut = install_layer(sheet, image_mod, out_dir, layer, workers, recipe)
+            stats, dense, cut = install_layer(
+                sheet, image_mod, out_dir, layer, workers, recipe, args.renders_name
+            )
         except PyramidError as exc:
             print(exc)
             return 1
@@ -2677,10 +2889,9 @@ def main() -> int:
                 "enabled": direct is not None,
                 "subsamples_per_axis": args.direct_subsamples if direct is not None else None,
                 "silhouette_antialiasing": (
-                    "a 3x3 1-2-1 tent over the direct raster's binary coverage, with the "
-                    "heights carried through the same kernel weighted by that coverage, so a "
-                    "quarter-covered texel is a quarter of the rock's own edge height rather "
-                    "than a quarter of zero"
+                    "none: a pixel is rock where a triangle covers its centre, at the "
+                    "triangle's own height, and ground where none does. Rock heights are "
+                    "never blurred across a silhouette"
                 )
                 if args.direct_subsamples == 1
                 else (
@@ -2696,6 +2907,8 @@ def main() -> int:
                     "staircase the fold put it on however fine the output grid is"
                 ),
                 "ground_lattice": ground_meta,
+                "terrain_lattice": terrain_meta,
+                "top_overlay": top is not None,
                 "measurement_rule": weight_meta,
                 "lift_knee_m": DIRECT_LIFT_KNEE_M,
                 "fill_deterrace": deterrace_meta,
@@ -2750,13 +2963,14 @@ def main() -> int:
             extra={
                 **borrow_source,
                 **direct_source,
+                **top_source,
                 **(biome_source if layer == "satellite" else {}),
             },
         )
-        path = layer_dir(out_dir, layer) / RENDER_SIDECAR_NAME
+        path = layer_dir(out_dir, layer, args.renders_name) / RENDER_SIDECAR_NAME
         path.write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
         print(
-            f"wrote {layer_dir(out_dir, layer)}  {stats['count']} tiles over "
+            f"wrote {layer_dir(out_dir, layer, args.renders_name)}  {stats['count']} tiles over "
             f"z0..z{stats['max_z']} ({stats['bytes'] / 1e6:.1f} MB) plus {dense['count']} "
             f"@2x over z0..z{dense['max_z']} ({dense['bytes'] / 1e6:.1f} MB)  "
             f"(drew {drew:.0f}s, cut {cut:.0f}s)"
@@ -2764,9 +2978,10 @@ def main() -> int:
     if direct is not None:
         # Let the memory maps go before removing the files under them: on Windows an open
         # mapping refuses the unlink outright.
-        direct = maps = None
+        direct = maps = top = top_maps = None
         if not args.keep_direct:
-            shutil.rmtree(direct_cache_dir(out_dir), ignore_errors=True)
+            shutil.rmtree(direct_cache_dir(out_dir, args.renders_name), ignore_errors=True)
+            shutil.rmtree(top_cache_dir(out_dir, args.renders_name), ignore_errors=True)
     print(f"done in {time.time() - total_started:.0f}s")
     print("none of it is committed: data/local/ is gitignored and stays that way.")
     return 0
