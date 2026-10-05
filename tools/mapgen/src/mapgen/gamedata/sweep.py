@@ -10,6 +10,7 @@ from scipy import ndimage
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.mesh import is_water_class, water_actor_box
+from mapgen.gamedata.rivers import RIVER_CLASS, river_actor
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
 from satisfactory_mcp.core.gameassets.packages import (
     class_name_of,
@@ -277,6 +278,7 @@ def sweep_levels(
     water: list[tuple[str, tuple[float, ...]]] = []
     water_actors: dict[str, int] = {}
     water_boxless: list[tuple[str, str, str]] = []
+    rivers: list[dict] = []
     box_sources: dict[str, int] = {}
     mesh_ids: dict[str, int] = {}
     owner_ids: dict[str, int] = {}
@@ -376,6 +378,8 @@ def sweep_levels(
                     )
                 else:
                     water.append((name, box))
+                if name == RIVER_CLASS:
+                    rivers.append(river_actor(view, slot, classes, meshes))
 
         if progress and index % 500 == 0:
             print(
@@ -397,6 +401,7 @@ def sweep_levels(
         "water_actors": water_actors,
         "water_boxless": water_boxless,
         "water_box_sources": box_sources,
+        "rivers": rivers,
         "foliage": {mesh: np.concatenate(parts) for mesh, parts in foliage.items()},
         "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in extra.items()},
         "seconds": time.time() - started,
