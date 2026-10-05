@@ -305,10 +305,12 @@ shade for any sun.
   doubling the sheet does not halve how much ground it means.
 - **Level-only water** (level known, depth not) is drawn at full alpha: on a 3.9 m block
   raster's rounding error the depth ramp would erase three and a half square kilometres of
-  ocean. It is drawn at the deep end of the colour ramp, because on the shipped field 95.2% of
-  level-only water stands over the fill province and 98% of its surface levels lie inside a
-  0.7 m band around the ocean's -16.99 m. Drawing it shallow would paint the open ocean the
-  pale green of an ankle-deep sheet.
+  ocean. On the shipped field 95.2% of level-only water stands over the fill province and 98%
+  of its surface levels lie inside a 0.7 m band around the ocean's -16.99 m, so it is the
+  ocean. There `palette/water.py` draws it over a bed of its own, continued from the measured
+  bed beside it and settling to 60 m offshore, so every style reads one seabed and the colour
+  does not step at the data edge. Level-only water away from the ocean's level, and
+  `--kernel-only`, keep the deep end of the ramp.
 - **Perched water**: a sloped river's box top is its upstream end, and one body's box can
   cover a lower body. `palette/perched.py` re-levels such water from its own shoreline
   before it is drawn. The thresholds are measured in

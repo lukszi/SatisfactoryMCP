@@ -2717,8 +2717,8 @@ pixel, these rules decide.
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
 | Versions | Paint generator version 3. Styles: terrain 4, satellite 4, relief 2, relief dark 2 (the open sea, void and pits below), game-painted 6 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, and the open sea below). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
-| Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. The water classes and the relief tint read that result, not the field's box levels. |
-| Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, so a renderer reading those grades draws them. Section 33's open sea is found on that same water, so a box at the sea's level stops at the sea's reach. |
+| Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. |
+| Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
 | Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes). |
 
@@ -2801,8 +2801,9 @@ rock beside it. `wet_holes` fills them after the re-levelling, on the same bodie
 
 A hole takes the surface of its body's nearest texel and the measured grade; where two
 bodies close over one gap, the lower surface. Water the river reconcile dropped stays
-dropped, the ocean is never a body, and every texel that was water is byte-identical. The
-class plane (section 33) and the relief tint read the result.
+dropped, the ocean is never a body, and every texel that was water is byte-identical. Every
+style draws the result: the open sea (section 26) is laid on these planes, and the renderer's
+wet and measured planes, the class plane (section 33) and the relief tint read them.
 
 Measured on the field's own planes: 54,733 texels in 394 bodies, about 4.5 s and 760 MB
 at peak (the re-levelling peaks at 1.1 GB). Median depth 2.0 m, 99th percentile 9.2 m.
@@ -2824,4 +2825,5 @@ the water the river reconcile leaves: 37,947 texels in 304 bodies.
 - The wide fall at (1790, 520): the 95 m lake's box reaches past the lip, to x 1863, over
   the swamp 112 m below, at the lake's level. The re-levelling leaves that strip at the
   lake's level, so it still draws as the lake, 112 m deep.
-- Level-only water keeps its own rule, so the open sea's deep rectangles are unchanged.
+- This section leaves level-only water alone. At the ocean's level it draws on section 26's
+  open-sea bed; away from it, it keeps the deep tint.
