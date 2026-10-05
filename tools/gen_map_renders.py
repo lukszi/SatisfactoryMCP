@@ -1251,15 +1251,15 @@ def rasterise_direct_band(
 
     The rasteriser is ``gen_world_heightmap.MaxZRaster`` itself, pointed at a grid whose
     origin is this band's north-west corner and whose spacing is this render's, divided by
-    the sub-sampling. Its convention -- sample at ``col + 0.5`` in grid units, write to
-    ``col`` -- is exactly ``frame_coordinates``' pixel centres when the origin is the frame's
+    the sub-sampling. Sampled at ``col + 0.5`` in grid units and written to ``col``
+    (``sample=0.5``), which is exactly ``frame_coordinates``' pixel centres when the origin is the frame's
     own corner, so nothing is half a texel out.
 
     The facing cull runs per placement as it does in the generator, and then the triangles
     are cut down to the ones whose own Y interval reaches this band.
     """
     raster = gen.MaxZRaster(
-        cols * subsamples, rows * subsamples, x0_cm, y0_cm, scale_cm / subsamples
+        cols * subsamples, rows * subsamples, x0_cm, y0_cm, scale_cm / subsamples, sample=0.5
     )
     y_lo = y0_cm
     y_hi = y0_cm + rows * scale_cm

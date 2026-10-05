@@ -903,6 +903,25 @@ vertices spanning more than 2 m (a cliff edge), hand the answer to the heaviest 
 On landscape texels the ground reading is replaced by the terrain plane's value when the two
 agree within 0.1 m, which is the decimetre rounding of the same sample.
 
+The `terrain` plane is read differently: as the engine's own surface. UE Landscape renders
+and collides each 1 m quad as two flat triangles split on the diagonal from vertex
+(r, c) to (r+1, c+1); with `tx`, `ty` the position inside the quad, `tx >= ty` reads
+triangle (r,c)-(r,c+1)-(r+1,c+1) and the rest (r,c)-(r+1,c)-(r+1,c+1). The landscape is one
+continuous heightfield, so the 2 m step guard does not apply to it: a steep quad is a steep
+triangle in game. Measured on 130 power poles standing on bare landscape, the triangles
+match the saved z to a median under 0.1 mm (81.5% within 1 mm, the reading's own rounding);
+bilinear 0.6 mm, the other diagonal 1.3 mm, bicubic 1.3 mm. Over all 2,910 landscape truth
+points the gain is under 1 mm, because the remaining ~1.7 cm is where objects keep their
+pivot, not terrain. The cooked collision is the same 1 m grid at mip 0 (2,289 components,
+`CollisionSizeQuads` 127, scale 1.0), and no Nanite, virtual-texture or displacement data
+exists, so nothing finer than 1 m horizontal and 7.8 mm vertical is in the game files.
+
+The rock and top rasters are sampled at the vertex, where the reader puts every value.
+Generator v4 sampled them at the texel centre, half a metre east and south of where they
+were read. On the save truth, v5 moves the bilinear `ground` median from 0.088 m to 0.052 m
+on cliff (prov 4) and from 0.161 m to 0.097 m on cliff direct (prov 5); landscape is unchanged
+and the roof tail (p90 about 50-90 m) does not move, because that is which surface, not where.
+
 Every reading carries `terrain_z_m` (the bare landscape under the point) and `ambiguous`:
 ground more than 2 m above terrain, or rock over a landscape hole, so the answer may be a
 rock top or a roof. A field without a terrain plane calls every cliff texel ambiguous.
@@ -944,6 +963,7 @@ file. A stored z is kept when a pad is resized in place; a moved pad is read aga
 | bilinear `ground` with refine | 0.055 m | 83.2 m | 81.9% | 0.024 m |
 | `terrain` alone | 0.119 m | 122.5 m | 61.9% | 0.024 m |
 | hint = truth z (oracle) | 0.045 m | 43.3 m | 88.5% | 0.024 m |
+| bilinear `ground`, generator v5 | 0.041 m | 83.0 m | 82.1% | 0.024 m |
 
 The tail is which surface is meant, never resolution. Caves stay open: no one- or
 two-valued plane can hold a cave floor.
