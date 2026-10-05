@@ -39,6 +39,10 @@ web = ["fastapi>=0.115", "uvicorn>=0.30"]
 # every previous run of every generator used, recorded off those runs' environments.
 gen = ["pyooz==0.0.8", "texture2ddecoder==1.0.6", "pillow==12.3.0"]
 
+[tool.uv.workspace]
+# The map generators: not shipped in the wheel below, run as `python -m mapgen <command>`.
+members = ["tools/mapgen"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -161,4 +165,4 @@ ignore = [
 # ``satisfactory_mcp.planning.*`` line in the test suite for as long as the shims stand --
 # reclassifies as third-party and reorders the whole block. Naming the two packages makes
 # the sections depend on what the code IS, not on where it happens to sit today.
-known-first-party = ["satisfactory_mcp", "pioneersav"]
+known-first-party = ["satisfactory_mcp", "pioneersav", "mapgen"]

@@ -467,7 +467,8 @@ RESPONSE_MODEL_EXEMPT: dict[str, str] = {
 #:
 #: ``core`` is the point of the arrangement: ``core/gameassets`` exists to be read by these
 #: generators, and ``core`` may import only ``core``, so the whole reachable set stays small.
-TOOLS_ALLOWED_PREFIXES: tuple[str, ...] = ("tools", "satisfactory_mcp.core")
+#: ``mapgen`` is tools/mapgen/src/mapgen, the generators' own package: itself, by import name.
+TOOLS_ALLOWED_PREFIXES: tuple[str, ...] = ("tools", "mapgen", "satisfactory_mcp.core")
 
 #: MEASURED, not assumed. Walking every import in ``tools/`` found exactly four things
 #: outside the set above, and each is here by name with the reason it is allowed to stay:
