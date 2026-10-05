@@ -4347,6 +4347,35 @@ export interface components {
             conflicts: components["schemas"]["ConflictBody"][];
             state: components["schemas"]["PlanStateBody"];
         };
+        /**
+         * OverclockOption
+         * @description A row's two builds: ``machines`` with the last at ``last_clock`` for ``shards``, or
+         *     ``spread_machines`` at ``spread_clock``. ``pinned`` is the row's own choice ("last",
+         *     "spread") or null to follow the plan; ``applied`` says the overclocked build is the one
+         *     listed. ``without``: no shards were left; ``unused``: it costs more than spreading.
+         */
+        OverclockOption: {
+            /** Pinned */
+            pinned: string | null;
+            /** Applied */
+            applied: boolean;
+            /** Machines */
+            machines: number;
+            /** Last Clock */
+            last_clock: number;
+            /** Shards */
+            shards: number;
+            /** Extra Mw */
+            extra_mw: number;
+            /** Spread Machines */
+            spread_machines: number;
+            /** Spread Clock */
+            spread_clock: number;
+            /** Without */
+            without: boolean;
+            /** Unused */
+            unused: boolean;
+        };
         /** OverclockRow */
         OverclockRow: {
             /** Label */
@@ -4363,11 +4392,16 @@ export interface components {
             shards: number;
             /** Extra Mw */
             extra_mw: number;
+            /** Pinned */
+            pinned: string | null;
+            /** Applied */
+            applied: boolean;
         };
         /**
          * OverclockView
-         * @description The overclock-last pick at the plan's horizon, made whether or not ``on``.
-         *     ``without`` ran short of shards; ``unused`` would cost more than spreading.
+         * @description The overclock-last pick at the plan's horizon, made whether or not ``on``; the totals
+         *     are what the switch builds when on. ``without`` ran short of shards; ``unused`` would cost
+         *     more than spreading. ``pinned_last``/``pinned_spread`` count rows with their own choice.
          */
         OverclockView: {
             /** On */
@@ -4386,6 +4420,10 @@ export interface components {
             without: components["schemas"]["RowName"][];
             /** Unused */
             unused: components["schemas"]["RowName"][];
+            /** Pinned Last */
+            pinned_last: number;
+            /** Pinned Spread */
+            pinned_spread: number;
             /** Shards Free */
             shards_free: number | null;
             /** Shards Craftable */
@@ -4851,6 +4889,10 @@ export interface components {
             overclock_last: boolean | null;
             /** Power Price */
             power_price: number | null;
+            /** Row Overclock */
+            row_overclock: {
+                [key: string]: string;
+            };
         };
         /**
          * PlanBuiltRow
@@ -6099,7 +6141,8 @@ export interface components {
         /**
          * SolveRow
          * @description One build row. ``clock`` is a fraction (1.0 = 100%) and ``mw`` is signed: negative draws.
-         *     ``last_clock`` is set when every machine but the last runs at 100% (overclock-last).
+         *     ``last_clock`` is set when every machine but the last runs at 100% (overclock-last), and
+         *     ``overclock_option`` on every row that could run that way.
          *
          *     ``id`` is the join key for the graph, pins and chat badges; ``depth`` its chain depth.
          */
@@ -6122,6 +6165,7 @@ export interface components {
             clock: number;
             /** Last Clock */
             last_clock: number | null;
+            overclock_option: components["schemas"]["OverclockOption"] | null;
             /** Mw */
             mw: number;
             /** Inputs */

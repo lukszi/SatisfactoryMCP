@@ -2542,6 +2542,18 @@ body.dash-on .mapcard {
   margin-left: 0;
 }
 
+.plan-clock {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.plan-row-oc {
+  max-width: 15em;
+  font-size: var(--fs-s);
+}
+
 .plan-export {
   display: flex;
   flex-wrap: wrap;
