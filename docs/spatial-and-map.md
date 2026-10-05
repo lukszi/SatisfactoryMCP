@@ -1437,3 +1437,78 @@ adopts the painted layer as `game-painted-r6-502094`.
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
   did.
+
+## 28. Relief styles, tones and the palette-only restyle (2026-10-05)
+
+Two styles were added to the three drawn ones, from the colour study's directions A (muted
+cartographic) and C (dark). Terrain and satellite stay selectable unchanged. Build 502094.
+
+| Layer | Style | Tone | Palette |
+|---|---|---|---|
+| `relief` | `relief-muted` | light | `palette/palettes/relief-muted.json` |
+| `relief-dark` | `relief-night` | dark | `palette/palettes/relief-night.json` |
+
+### What the relief painter does
+
+`palette/relief.py`, one painter for both palettes, all mixing in OKLab:
+
+1. **Ramp.** Height to `t` over dry land only (`waterq` dry, p1 to p99.5): `0.35·linear +
+   0.65·equalised` for the light style, `0.4/0.6` for the dark one. The stops are OKLCh; they are
+   joined in OKLab, lightly smoothed, and re-spaced so equal steps of `t` are equal OKLab steps
+   (largest step within 5% of the mean, checked by a test).
+2. **Biome tints** (light only): per biome `(dL, C, h, w)`, blurred 24 biome texels (44 m) like
+   the satellite's biome colours. Crater, Red Bamboo, Maze Canyons and Abyss Cliffs were pulled to
+   C ≤ 0.036 and away from pink and lavender hues, which read as a fault on the gentle and arch
+   crops.
+3. **Rock**: smoothstep over 32–52° slope, towards `L + dl` at the rock hue.
+4. **Shade**, measured from flat ground's n·L (sin 45°), so flat ground keeps its ramp colour
+   exactly. Light: three suns (NW 0.5, W 0.25, N 0.25), `L += 0.30·d`, chroma ×
+   `(1 + 0.35·min(d, 0))`. Dark: the NW sun, `L × clip(1 + 0.95·d, 0.42, 1.30)`. Both push the
+   shadow side towards a cool hue and the sunlit side a little warm.
+5. **Borrow**: the artwork's high pass rides on L only, as the cube root of the luminance
+   multiplier the other styles use, with its dark (ink) side damped to 0.25.
+6. **Water**: a 1 m tint plane built once per run, `1 − exp(−depth/τ)` for measured water and
+   0.85 for level-only water, blurred (12 m light, 6 m dark) and normalised by the wet mask, so a
+   shore takes the colour of the water beside it and no tint step follows the data edge. Over the
+   sea the opacity rises from 0.45 at the line with a 0.8 m depth fade; the light style strokes
+   the shoreline. No data stays the page's sea colour, as in every style.
+
+The dark ramp's top two stops were `(.480 .040 40)` and `(.530 .038 285)`, which made high ground
+mauve-grey mud (92% on the gentle crop in the study). They are now `(.480 .055 70)` and
+`(.530 .045 85)`, ending warm; the two lowest stops moved from teal to green so lowland no longer
+matches the shallow water.
+
+### Measured
+
+On z7 crops through `render_layer` itself (rock, arch and mesh rasters for all but the arch crop,
+which is drawn from the lattice alone). Mud is CIELAB C* < 12 with 25 < L* < 60, near-white
+L* > 78 with C* < 4, as in the colour study.
+
+| Crop | relief: mud / near-white | relief dark: mud |
+|---|---|---|
+| gentle | 0.2% / 15.4% | 5.4% |
+| arch | 2.8% / 0.1% | 4.7% |
+| boulders | 9.2% / 0% | 1.8% |
+| coast | 1.4% / 0% | 0% |
+| desert lake | 1.1% / 0% | 6.6% |
+
+The gentle crop is the central plateau, near the top of the ramp; its near-white share is down
+from 64% on today's terrain. Drawing a 1.3 Mpx crop takes 1.2 to 2 s per style, about as long as
+terrain.
+
+### The palette-only restyle
+
+A full render spends most of its time on geometry that does not depend on the palette: the sweep,
+the rock pass, the arch-and-boulder pass and the render-only mesh pass. `--restyle` draws only
+from the caches a render kept with `--cache-dir` and `--keep-direct`, and exits 9 when one is
+missing or was cut for another size, sub-sampling or build, so a palette change never turns into
+a full render. The caches are kept afterwards. The job preset is `restyle` on a render
+(maps_contract.md §4).
+
+Measured at `--size 1024` on 2026-10-05, with other renders running on the machine: the run that
+built the caches (terrain only) took 8 min 41 s, most of it the sweep, the rock pass and the mesh
+pass; a restyle drawing `relief` and `relief-dark` from those caches took 1 min 40 s, nearly all
+of it the fixed preparation (field, lattice, artwork sheet, biome raster, the relief grounds at
+about 20 s); a restyle at a size with no cache refused in 3.6 s with exit 9. At full size the
+draw and cut dominate instead: from the recipe 5 stage times one layer is about 8.5 min against
+about 37 min for a full two-layer render. The full-size figure is an estimate, not a run.
