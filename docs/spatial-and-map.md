@@ -14,7 +14,7 @@ live here:
 
 | Named below | Now |
 | --- | --- |
-| `tools/gen_world_heightmap.py` (`--caves`, `--rocks`) | `mapgen heightmap` (`caves`, `rocks`): `heightmap.py`, `gamedata/sweep.py`, `gamedata/mesh.py`, `gamedata/caves.py`, `gamedata/rocks.py` |
+| `tools/gen_world_heightmap.py` (`--caves`, `--rocks`) | `mapgen heightmap` (`caves`, `rocks`): `heightmap.py`, `gamedata/sweep.py`, `gamedata/mesh.py`, `gamedata/water.py`, `gamedata/caves.py`, `gamedata/rocks.py`, `terrain/field.py`, `terrain/validate.py`, `terrain/sidecar.py` |
 | `tools/gen_map_renders.py` | `mapgen renders`: `pipeline.py`, with `terrain/`, `palette/`, `lighting/` and `tiles/` |
 | `tools/gen_map_image.py` | `mapgen artwork`: `artwork.py`; the frame and slice reader in `gamedata/frame.py` |
 | `tools/gen_paint_layers.py` | `mapgen paint`: `gamedata/paint.py` |

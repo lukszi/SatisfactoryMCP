@@ -31,11 +31,11 @@ ALLOWED: dict[str, frozenset[str]] = {
     "lighting": frozenset({"common", "gamedata", "terrain", "lighting"}),
     "palette": frozenset({"common", "cache", "gamedata", "terrain", "lighting", "palette"}),
     "tiles": frozenset({"common", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}),
-    "heightmap": frozenset({"common", "gamedata"}),
+    "heightmap": frozenset({"common", "gamedata", "terrain"}),
     "artwork": frozenset({"common", "gamedata"}),
-    "check_fill": frozenset({"common", "cache", "gamedata", "terrain", "heightmap"}),
+    "check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),
     "pipeline": frozenset(
-        {"common", "cache", "gamedata", "terrain", "lighting", "palette", "tiles", "heightmap"}
+        {"common", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
     ),
     "cli": frozenset(),
     "__main__": frozenset({"cli"}),
@@ -45,13 +45,13 @@ ALLOWED: dict[str, frozenset[str]] = {
 #: flat layout; 800 here because a subpackage module carries its own import block).
 MODULE_MAX_LINES = 800
 
-#: Modules allowed over the cap, at their measured size. Shrink-only: a ceiling may be
-#: lowered, never raised, and one more than ``CEILING_SLACK`` above the file is stale.
-#: Measured after the move.
+#: Modules with their own ceiling at their measured size: over the cap, or a command held
+#: thin under it. Shrink-only: a ceiling may be lowered, never raised, and one more than
+#: ``CEILING_SLACK`` above the file is stale. Measured after the move.
 MODULE_CEILINGS: dict[str, int] = {
     "gamedata/mesh.py": 825,
     "pipeline.py": 1039,
-    "heightmap.py": 1513,
+    "heightmap.py": 310,
     "artwork.py": 1670,
 }
 CEILING_SLACK = 25
@@ -61,8 +61,7 @@ CEILING_SLACK = 25
 FUNCTION_MAX_LINES = 150
 FUNCTION_CEILINGS: dict[str, int] = {
     "pipeline.py::main": 840,
-    "heightmap.py::main": 391,
-    "heightmap.py::build_meta": 370,
+    "terrain/sidecar.py::build_meta": 156,
     "artwork.py::main": 327,
     "artwork.py::enhance_levels": 252,
     "tiles/compose.py::render_layer": 222,

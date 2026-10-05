@@ -71,7 +71,6 @@ from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, base_parser, require_gen
 from mapgen.gamedata.biome import calibrate_biome, read_biome, region_table_is_current
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.gamedata.paint import PAINT_DIR
-from mapgen.heightmap import GENERATOR_VERSION
 from mapgen.lighting.hillshade import (
     BORROW_CLAMP,
     BORROW_DETAIL_SIGMA_PX,
@@ -115,6 +114,7 @@ from mapgen.terrain.rasters import (
     top_items,
 )
 from mapgen.terrain.sample import direct_weight, taps_cubic, taps_pchip
+from mapgen.terrain.sidecar import GENERATOR_VERSION
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
 from mapgen.tiles.pyramid import (
     CHECK_PARALLEL_Z,
