@@ -159,12 +159,16 @@ def _next_words(v: dict) -> str:
     )
 
 
-def _overclock_words(oc: dict) -> list[str]:
+def stock_text(oc: dict) -> str:
+    """`` (19 in hand + 411 craftable)``, or nothing when the save was not read."""
     free = oc.get("shards_free")
-    hand = "" if free is None else f" ({free:,.0f} in hand"
-    if hand and oc.get("shards_craftable"):
-        hand += f", {oc['shards_craftable']:,.0f} more from slugs"
-    hand += ")" if hand else ""
+    if free is None:
+        return ""
+    return f" ({free:,.0f} in hand + {oc.get('shards_craftable') or 0:,.0f} craftable)"
+
+
+def _overclock_words(oc: dict) -> list[str]:
+    hand = stock_text(oc)
     lines = []
     rows = len(oc["rows"])
     if oc["on"] and rows:

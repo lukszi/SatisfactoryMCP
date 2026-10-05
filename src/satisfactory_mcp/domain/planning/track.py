@@ -108,7 +108,9 @@ def site_line(site) -> str:
     if not site.has_footprint:
         return where + ", no footprint recorded"
     size = f"{_metres(site.width_m)} × {_metres(site.depth_m)} m"
-    source = {"layout": "from the plan layout", "given": "as given", "default": "by default"}.get(site.source, "")
+    source = {"layout": "from the plan layout", "given": "as given", "default": "by default"}.get(
+        site.source, ""
+    )
     return where + f", footprint {size}" + (f" {source}" if source else "")
 
 
@@ -532,7 +534,8 @@ def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
                 "x_m": _m(pos[0]) if pos else None,
                 "y_m": _m(pos[1]) if pos else None,
                 "mw": round(mw, 1),
-                "region": (regions.label_for(pos[0], pos[1]).name if regions and pos else None) or "",
+                "region": (regions.label_for(pos[0], pos[1]).name if regions and pos else None)
+                or "",
             }
         )
     if not found:

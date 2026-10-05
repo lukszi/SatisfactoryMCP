@@ -35,6 +35,7 @@ __all__ = [
     "match_recipes",
     "resolve_item",
     "select_for",
+    "shard_stock",
 ]
 
 #: Quoted verbatim whenever an export token is refused.
@@ -175,19 +176,38 @@ def _shared() -> dict:
         return {k: spec.default for k, spec in settings.SPECS.items()}
 
 
+def shard_stock(state) -> dict:
+    """Power Shards overclock-last may spend: ``free`` in hand plus ``craftable`` from slugs
+    in hand whose shard recipe this save has unlocked (contract §5)."""
+    budget = state.shard_budget()
+    shards = set(state.game.clock_shards())
+    unlocked = {r.cls for r in state.unlocked_recipes("part")}
+    best: dict[str, float] = {}
+    for rid in unlocked:
+        recipe = state.game.recipes.get(rid)
+        if recipe is None or len(recipe.ingredients) != 1 or not recipe.ingredients[0].amount:
+            continue
+        made = sum(f.amount for f in recipe.products if f.item in shards)
+        slug = recipe.ingredients[0].item
+        if made and slug not in shards:
+            best[slug] = max(best.get(slug, 0.0), made / recipe.ingredients[0].amount)
+    craftable = sum(row["held"] * best.get(row["item"], 0.0) for row in budget["slugs"])
+    return {"free": budget["free"], "craftable": craftable}
+
+
 def _payback(state, hours, overclock, price) -> tuple[dict, dict]:
     """Scenario fields for the horizon, and how each was resolved (contract §6)."""
     shared = _shared()
     resolved_hours = float(shared["payback_hours"] if _inherits(hours) else hours)
     on = bool(shared["overclock_last"] if _inherits(overclock) else overclock)
     found = prices_mod.prices_for(state, bool(shared["biomass"]))
-    budget = state.shard_budget() if on else None
+    stock = shard_stock(state) if on else None
     fields = {
         "payback_hours": resolved_hours,
         "power_price": found.price if _inherits(price) else float(price),
         "build_points": found.points,
         "overclock_last": on,
-        "overclock_shards": budget["free"] if budget else None,
+        "overclock_shards": stock["free"] + stock["craftable"] if stock else None,
     }
     info = {
         "inherited": _inherits(hours),

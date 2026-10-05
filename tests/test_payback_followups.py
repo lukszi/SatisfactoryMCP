@@ -7,11 +7,11 @@ import json
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import prices
+from satisfactory_mcp.domain.planning import payback, prices
 from satisfactory_mcp.domain.planning.optimize import Scenario, machine_mw, solve
 from satisfactory_mcp.domain.planning.planlog import PlanLog
 from satisfactory_mcp.domain.planning.prices import tiers_path as real_tiers_path
-from satisfactory_mcp.domain.planning.scenario import build_scenario
+from satisfactory_mcp.domain.planning.scenario import build_scenario, shard_stock
 
 CONSTRUCTOR = "Build_ConstructorMk1_C"
 REFINERY = "Build_OilRefinery_C"
@@ -105,3 +105,34 @@ def test_a_horizon_prices_the_power_goal_in_build_points(game, state):
     assert "Alternate: Diluted Fuel" in before and "Alternate: Diluted Fuel" not in after
     assert "Alternate: Diluted Packaged Fuel" in after
     assert short.net_mw < plain.net_mw
+
+
+# ------------------------------------------------------------------ F3b: craftable shards count
+
+
+def test_craftable_shards_count_toward_overclock_last(game, state):
+    assert shard_stock(state) == {"free": 19.0, "craftable": 411.0}
+    req = build_scenario(game, state, overclock_last=True, exports=["Plastic"])
+    assert req.scenario.overclock_shards == 430.0
+
+
+def test_only_slugs_with_an_unlocked_shard_recipe_are_craftable(game, projection, monkeypatch):
+    from satisfactory_mcp.domain.world.state import WorldState
+
+    st = WorldState(projection=projection, game=game)
+    every = st.unlocked_recipes("part")
+    purple = [r for r in every if r.cls != "Recipe_PowerCrystalShard_3_C"]
+    monkeypatch.setattr(st, "unlocked_recipes", lambda kind="part": purple)
+    held = {s["item"]: s["held"] for s in st.shard_budget()["slugs"]}
+    assert shard_stock(st)["craftable"] == 411.0 - 5 * held["Desc_Crystal_mk3_C"]
+
+
+def test_the_shard_line_shows_hand_plus_craftable():
+    oc = {**payback.no_overclock(True), "shards_free": 19.0, "shards_craftable": 411.0}
+    oc["rows"] = [{"label": "Residual Fuel"}]
+    oc["shards"], oc["machines_saved"], oc["extra_mw"] = 2, 1, 11.8
+    line = payback._overclock_words(oc)[0]
+    assert line == (
+        "overclock last machine: 1 row(s), 2 shard(s) (19 in hand + 411 craftable): "
+        "−1 machines, +11.8 MW"
+    )

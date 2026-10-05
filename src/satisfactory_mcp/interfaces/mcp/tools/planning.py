@@ -952,7 +952,8 @@ def plan_factory(
         bool | Literal["default"] | None,
         Field(
             description="build a row one machine short, the last one overclocked (1-2 Power "
-            "Shards, checked against shards in hand); 'default' follows the shared setting"
+            "Shards, checked against shards in hand plus those craftable from slugs); 'default' "
+            "follows the shared setting"
         ),
     ] = None,
     power_price: Annotated[
@@ -1048,9 +1049,10 @@ def plan_factory(
     while the power saved repays their build points within that many hours of play, at
     ``power_price`` points per MWh (the save's grid mix unless given). 0 is the plain build.
     ``overclock_last`` builds a row one machine short with the last one overclocked, weighed
-    against the horizon and the shards in hand. Above 0 h, max_mw and min_power price each machine at
-    its build points over the horizon instead of ``machine_cost_mw``, so they may switch
-    recipes away from scarce buildings. Both are stored with the plan and follow the
+    against the horizon and the shards in hand plus those craftable from slugs. Above 0 h,
+    max_mw and min_power price each machine at its build points over the horizon instead of
+    ``machine_cost_mw``, so they may switch recipes away from scarce buildings. Both are
+    stored with the plan and follow the
     shared settings until set; "default" puts a recalled plan back on them. The notes say
     what the next stop would change. Extractors, generators and somersloop rows never move.
 
@@ -1305,7 +1307,8 @@ def plan_layout(
         bool | Literal["default"] | None,
         Field(
             description="build a row one machine short, the last one overclocked (1-2 Power "
-            "Shards, checked against shards in hand); 'default' follows the shared setting"
+            "Shards, checked against shards in hand plus those craftable from slugs); 'default' "
+            "follows the shared setting"
         ),
     ] = None,
     power_price: Annotated[

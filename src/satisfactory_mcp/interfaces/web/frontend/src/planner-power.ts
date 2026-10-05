@@ -55,8 +55,7 @@ function priceWords(view: Payback | null): string {
 }
 
 function shardWords(oc: Payback["overclock"]): string {
-  var hand = oc.shards_free === null ? "" : num(oc.shards_free, 0) + " in hand";
-  if (oc.shards_free !== null && oc.shards_free < oc.shards && oc.shards_craftable) hand += ", " + num(oc.shards_craftable, 0) + " more from slugs";
+  var hand = oc.shards_free === null ? "" : num(oc.shards_free, 0) + " in hand + " + num(oc.shards_craftable || 0, 0) + " craftable";
   return count(oc.shards) + (oc.shards === 1 ? " shard" : " shards") + (hand ? " (" + hand + ")" : "");
 }
 

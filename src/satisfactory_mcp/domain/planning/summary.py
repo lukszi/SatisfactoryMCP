@@ -18,7 +18,7 @@ from . import payback, provenance
 from .layout import chain_depth
 from .optimize import MW
 from .report import build_plan_report
-from .scenario import build_scenario
+from .scenario import build_scenario, shard_stock
 
 __all__ = ["names_for", "production_graph", "solve_summary", "stamp_for"]
 
@@ -305,7 +305,7 @@ def power_view(g: GameData, st: WorldState, req, sol, machines: int, draw_mw: fl
         price_source=info.get("price_source", "grid mix"),
         mix=info.get("mix", []),
         overclock_inherited=info.get("overclock_inherited", True),
-        shards=st.shard_budget(),
+        shards=shard_stock(st),
     )
 
 

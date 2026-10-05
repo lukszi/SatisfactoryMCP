@@ -443,7 +443,7 @@ def test_a_plan_that_inherits_follows_the_shared_default(game, state):
     )
     assert plain.scenario.payback_hours == 0 and moved.scenario.payback_hours == 10.0
     assert moved.payback["inherited"] and not pinned.payback["inherited"]
-    assert moved.scenario.overclock_last and moved.scenario.overclock_shards == 19
+    assert moved.scenario.overclock_last and moved.scenario.overclock_shards == 430
     assert pinned.scenario.payback_hours == 0 and plain.plan_id != moved.plan_id
 
 
@@ -513,7 +513,7 @@ def test_chat_overclock_and_price_override(world):
     from satisfactory_mcp import server as srv
 
     told = srv.plan_factory(overclock_last=True, limit=5, **PLASTIC20)
-    assert "overclock last machine:" in told and "(19 in hand, 411 more from slugs)" in told
+    assert "overclock last machine:" in told and "(19 in hand + 411 craftable)" in told
     assert "last " in told
     priced = srv.plan_factory(payback_hours=10, power_price=36, limit=2, **PLASTIC20)
     assert "36 pts/MWh set on the plan" in priced
