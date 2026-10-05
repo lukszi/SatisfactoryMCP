@@ -129,31 +129,119 @@
   "white": 1.6
  },
  "calibration": {
-  "about": "display sRGB targets from Spire Coast and desert screenshots; docs/spatial-and-map.md section 28",
+  "about": "display sRGB targets from in-game screenshots; docs/spatial-and-map.md section 28",
   "pure_share": 0.7,
   "min_texels": 200,
+  "area_blur_m": 25.0,
   "layers": {
    "Sand_LayerInfo": "#d5cbb6",
-   "WetSand_LayerInfo": "#b8a083",
+   "WetSand_LayerInfo": "#b1a09e",
    "SandRipples_LayerInfo": "#d07756",
    "Grass_LayerInfo": "#83986e",
    "Forest_LayerInfo": "#558653"
   },
   "canopy": "#558653",
+  "rock": "#85816c",
   "rock_keeps_exposure": true,
-  "desert_rock": {
-   "target": "#ae8271",
-   "areas": [
-    "Area_DuneDesert",
-    "Area_DesertCanyons",
-    "Area_RockyDesert"
-   ]
-  },
   "meshes": {
    "coral": "#99868e",
    "shell": "#d6ccba",
    "coral_seabed": "#5f8899"
-  }
+  },
+  "areas": [
+   {
+    "areas": [
+     "Area_DuneDesert",
+     "Area_DesertCanyons",
+     "Area_RockyDesert",
+     "Area_Savanna"
+    ],
+    "layers": {
+     "Sand_LayerInfo": "#c4ab8b",
+     "Gravel_WeightLayerInfo": "#8f8373"
+    }
+   },
+   {
+    "areas": [
+     "Area_DuneDesert",
+     "Area_DesertCanyons",
+     "Area_RockyDesert"
+    ],
+    "rock": "#ae8271"
+   },
+   {
+    "areas": [
+     "Area_GrassFields",
+     "Area_NorthernForest",
+     "Area_WesternDuneForest"
+    ],
+    "rock": "#7e7868"
+   },
+   {
+    "areas": [
+     "Area_GrassFields"
+    ],
+    "layers": {
+     "Grass_LayerInfo": "#9dad70"
+    }
+   },
+   {
+    "areas": [
+     "Area_WesternDuneForest"
+    ],
+    "canopy": "#7c9573"
+   },
+   {
+    "areas": [
+     "Area_RedJungle",
+     "Area_RedBambooFields"
+    ],
+    "rock": "#877e6e",
+    "layers": {
+     "Cliff_LayerInfo": "#877e6e"
+    }
+   },
+   {
+    "areas": [
+     "Area_RedJungle_2"
+    ],
+    "canopy": "#6c7f5b"
+   },
+   {
+    "areas": [
+     "Area_RedJungle_1"
+    ],
+    "canopy": "#7c4955"
+   },
+   {
+    "areas": [
+     "Area_SpireCoast"
+    ],
+    "rock": "#51524d"
+   },
+   {
+    "areas": [
+     "Area_crater"
+    ],
+    "layers": {
+     "CoralRock_LayerInfo": "#6c7386"
+    }
+   },
+   {
+    "areas": [
+     "Area_crater_1"
+    ],
+    "meshes": {
+     "shell": "#747b85"
+    }
+   },
+   {
+    "areas": [
+     "Area_Swamp"
+    ],
+    "water": "#7e7372"
+   }
+  ]
  },
  "borrow_ink_damp": 0.25,
  "shore": {
@@ -197,6 +285,7 @@
    104
   ],
   "deep_tau_m": 12.0,
-  "bed_wet": 0.8
+  "bed_wet": 0.8,
+  "opaque_tau_m": 0.3
  }
 }
