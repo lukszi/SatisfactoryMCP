@@ -3049,6 +3049,10 @@ export interface components {
             terrain_source: string | null;
             /** Terrain Accuracy M */
             terrain_accuracy_m: number | null;
+            /** Terrain Bare M */
+            terrain_bare_m: number | null;
+            /** Terrain Ambiguous */
+            terrain_ambiguous: boolean;
             /** Terrain Water M */
             terrain_water_m: number | null;
             /** Terrain Water Depth M */
@@ -5009,8 +5013,9 @@ export interface components {
          *     ``Siting`` records metres because a player typed them, so ``serial._m`` has nothing to
          *     do here -- see ``domain/planning/siting.py``.
          *
-         *     ``z_m`` is null wherever the origin was named by something with no height (a factory
-         *     centroid, a bare ``x,y``); the pad is still a rectangle on the ground. ``source`` is
+         *     ``z_m`` is null only where nothing gave a height: a typed or player z wins, else the
+         *     heightfield's median under the pad, and ``z_source`` says which ("given", "you",
+         *     "terrain", or "" for none); ``terrain_line`` is that reading in words. ``source`` is
          *     ``"given"`` for a footprint the player measured and ``"layout"`` for the square
          *     ``plan_layout`` budgeted, which is the difference between a pad and an estimate.
          */
@@ -5025,6 +5030,10 @@ export interface components {
             y_m: number;
             /** Z M */
             z_m: number | null;
+            /** Z Source */
+            z_source: string;
+            /** Terrain Line */
+            terrain_line: string | null;
             /** Yaw Deg */
             yaw_deg: number;
             /** Width M */

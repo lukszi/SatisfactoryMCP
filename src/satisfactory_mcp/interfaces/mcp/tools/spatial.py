@@ -161,6 +161,13 @@ def describe_location(
     if reading is not None:
         accuracy = "" if reading.accuracy_m is None else f", +-{reading.accuracy_m:g}m"
         fields.append(("terrain_m", f"{reading.z_m:.1f} ({reading.source}{accuracy})"))
+        if reading.ambiguous:
+            bare = reading.terrain_z_m
+            fields.append(("terrain_bare_m", "unknown" if bare is None else f"{bare:.1f}"))
+            notes.append(
+                "terrain_m here may be a rock top or roof rather than the floor beneath it"
+                + ("" if bare is None else "; terrain_bare_m is the sculpted ground under it")
+            )
         if reading.submerged:
             depth = reading.water_depth_m
             fields.append(("water_surface_m", f"{reading.water_m:.1f}"))
