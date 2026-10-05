@@ -1398,8 +1398,8 @@ coral whose top is under water the seabed blue #5f8899, rock class takes the roc
 along a dry-land ramp. That ramp follows the recommended construction: heights over dry land
 only (`waterq` dry, p1 to p99.5), position `0.35 * linear + 0.65 * equalised`, applied as an
 even OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, times
-exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. A highlight shoulder
-at 0.72, then sRGB.
+exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. The gain and shoulder
+of section 28, then sRGB.
 
 **Water** is Beer-Lambert, calibrated against Spire Coast screenshots:
 `bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` = (4.08, 3.53, 3.53) per metre and
@@ -1437,3 +1437,85 @@ adopts the painted layer as `game-painted-r6-502094`.
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
   did.
+
+## 28. Colour calibration of the game-painted style (2026-10-05)
+
+The painted style is calibrated against in-game screenshots of the Spire Coast, the Dune
+Desert and the Western Dune Forest. Style `satellite-painted` version 2. Code:
+`palette/painted.py`. Numbers: the `tone` and `calibration` blocks of
+`palette/palettes/satellite-painted.json`.
+
+### The ground albedo source
+
+`PaintedGround(..., bake=GroundBake(linear, have))` takes the game's baked ground colour (the
+landscape HLOD BaseColor) as an optional input. `linear` is linear RGB, `(rows, cols, 3)`
+float32, on the paint store's 1 m grid. `have` is a bool plane of the same shape; `GroundBake.from_srgb(rgb, have)` builds one from 8-bit sRGB and drops black holes. Where `have`
+is set, the bake replaces the paint mix, feathered over `have_blur_m` inside its own edge, and
+the biome tint is skipped. Elsewhere the paint table, pigment and biome tint stand as in
+section 27. With no bake the style draws from the paint table alone. Every later step works
+on whichever albedo arrived.
+
+### Tone
+
+- **Gain.** The ground's exposure is multiplied by `tone.gain` = 1.6, for both lit land and
+  the bed under water. On land layers the bake fitted best at ×1.6 to ×2.1 linear. The water
+  body, sky and deep colours are not scaled, so the calibrated water is unchanged.
+- **Shoulder.** It replaces the per-channel highlight shoulder. On luminance, the curve is
+  the identity below `knee` 0.6. Above it, a Reinhard curve takes `white` 1.6 to 1, scaled
+  to join the identity with slope 1.
+
+### Per-layer colour transfer
+
+The targets are display sRGB colours, at map exposure:
+
+| Target | Colour |
+| --- | --- |
+| Sand | #d5cbb6 |
+| WetSand | #b8a083 |
+| SandRipples (the Dune Desert) | #d07756 |
+| Grass | #83986e |
+| Forest and the canopy | #558653 |
+
+Each target is taken back through the flat-ground pipeline into ground OKLab: the inverse
+shoulder, divided by exposure times gain and by the flat sky-and-sun light, then half the
+altitude lift and the chroma gain undone. For each layer, the median colour of its pure
+texels (at least 0.7 of the weight) is measured on the albedo as it arrived. The step from
+that median to the target has three parts: a lightness offset, a chroma scale (clipped to
+0.25 to 4) and a hue turn. Each texel moves by its layers' steps, mixed by their normalised
+weights. Because the transfer measures its own source, the same targets work on the bake
+and on the paint table.
+
+### Other colours
+
+- **Desert rock.** In Area_DuneDesert, Area_DesertCanyons and Area_RockyDesert (mask blurred
+  25 m), the rock's chroma and hue are set to the target #ae8271. Its lightness keeps its
+  variation around the target. Everywhere else, rock keeps its section 27 colour at the old
+  exposure (`rock_keeps_exposure`). The Spire Coast rock in the references is mossy dark
+  grey and was not sampled.
+- **Meshes.** Coral-tree caps are #99868e, replacing the pink placeholder. Shells stay
+  #d6ccba and seabed coral #5f8899. All three are display targets, so the gain does not
+  brighten them. Seabed coral is still composited into the bed before Beer-Lambert, so
+  shallow reefs stay visible.
+
+### Measured
+
+Crops through `render_layer`, with the scratch bake extraction as the `GroundBake`. Each
+value is the median of the material's pixels (dry ground, no rock or mesh cover), as
+ΔE (OKLab ×100) to its target, before → after:
+
+| Material | Crop | Before | After (bake) | After (no bake) |
+| --- | --- | --- | --- | --- |
+| Dry sand | Western Dune Forest | 10.9 | 0.3 | 1.2 |
+| Dunes | Dune Desert | 7.3 | 0.2 | 1.4 |
+| Canopy | Western Dune Forest | 13.6 | 1.4 | 2.2 |
+| Desert rock | desert lake | 1.8 | 0.4 | 0.5 |
+| Coral-tree cap | Spire Coast | 5.6 | 3.4 (chroma and hue 0.5) | 3.4 |
+
+Wet sand and grass had no pure dry patches in these crops, so they are unmeasured here.
+
+### Known limits
+
+- The SandRock, SandCracks and DesertRock layers have no target. Under the bake they take
+  the bake's own salmon after the gain.
+- Rock outside the deserts is uncalibrated.
+- Every target comes from tonemapped perspective screenshots, not a top-down capture.
