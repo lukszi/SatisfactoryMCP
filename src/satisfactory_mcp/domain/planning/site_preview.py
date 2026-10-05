@@ -9,6 +9,7 @@ import math
 from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData
+from ...core.text import plural
 from ..spatial import geo
 from ..spatial.origin import parse_near
 from ..world.state import WorldState
@@ -430,9 +431,8 @@ def preview_lines(out: dict) -> list[str]:
     lines.append("floors: " + ("; ".join(out["slabs"]) or "bare ground"))
     if out["failure"]:
         return lines + [f"plan: {out['failure']}"]
-    lines.append(
-        f"on the pad now: {out['on_pad']} machines (plan: {out['planned']}), by class only"
-    )
+    on_pad = f"{out['on_pad']} {plural('machine', out['on_pad'])}"
+    lines.append(f"on the pad now: {on_pad} (plan: {out['planned']}), by class only")
     if out["trunks"]:
         run = sum(t["run_m"] for t in out["trunks"])
         leg = sum(t["to_site_m"] for t in out["trunks"])
