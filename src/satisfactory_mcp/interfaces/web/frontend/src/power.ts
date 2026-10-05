@@ -52,9 +52,9 @@ import type { Point3M } from "./geometry";
  * this is not. */
 var CASING_COLOUR = declareColours("power", { casing: "#1c1550" }).casing;
 
-/* The core. Violet is this layer's free hue -- blue is the machines, amber the extractors, red
- * the stopped outline, tan the generators, blue-violet the storage, steel the belts, rust the
- * pipes.
+/* The core. Violet is this layer's free hue -- blue is the machines, ultramarine the
+ * extractors, red the stopped outline, mint the generators, blue-violet the storage, steel the
+ * belts, rust the pipes.
  *
  * Nearest cross-owner neighbour is the raw-quartz dot at dE 22.8, then the storage blue-violet
  * at 23.9, the water dot at 28.2 and the machine blue at 28.3. The belts are the comparison

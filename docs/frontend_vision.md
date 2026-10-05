@@ -1221,6 +1221,9 @@ Decided 2026-09-27, binding for the design-system work and the page batches afte
   badges carry no colour. Tones (`:root` in style.css, dark only): `--bad` red is broken or
   stopped, errors and "this won't work" warnings; `--blocked` yellow is a blocked machine
   and soft warnings (incomplete, not broken); `--remove` amber is a pending lasso removal.
+  Revised 2026-10-05: generators are pale mint `#a3f5b4` (tan vanished on sand) and extractors
+  ultramarine `#19039c`, so no fill is amber; worst OKLab dE×100 over normal, deutan, protan and
+  tritan is 10.2 to any overlay (coal dot) and 7.8 p10 to any base (recipe-5 satellite).
 - **T3 Spoilers** default to off, with a one-time notice. When off, counts and search
   results follow the rows, and the item list follows too (§12.3).
 - **T4 Tiles.** At most one row of tiles per view. Progress keeps its next-up strip on the

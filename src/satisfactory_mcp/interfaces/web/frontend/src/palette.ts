@@ -90,8 +90,8 @@ export function declareColours<T extends Record<string, string>>(owner: string, 
  * CIE76 rather than the later and better CIEDE2000, and that is a compatibility fact rather
  * than a preference. Every dE already written down on this page was computed this way: the
  * numbers quoted in the feature files reproduce to the decimal under this function and under
- * no other. CIEDE2000 would put the chevron cream 18.7 from the extractor amber where the
- * warrant says 45.5 -- so adopting it would mean re-deriving every published number and
+ * no other. CIEDE2000 put the chevron cream 18.7 from the old extractor amber where the
+ * warrant said 45.5 -- so adopting it would mean re-deriving every published number and
  * throwing away the only record of what anybody actually measured. The threshold below is
  * calibrated against those numbers, so the formula and the threshold travel together.
  */
@@ -250,8 +250,8 @@ var DISCHARGED: Exception[] = [
     why:
       "a disc on open water against a rectangle in a factory, and at the one place the two " +
       "could share a square metre -- a water extractor standing on a water node -- the " +
-      "machine actually drawn there belongs to the extractors layer and is amber, dE 101.3 " +
-      "from the dot, with raiseNodeDots() keeping the dot on top of it. The water tint is the " +
+      "machine actually drawn there belongs to the extractors layer and is ultramarine, " +
+      "dE 76.5 from the dot, with raiseNodeDots() keeping the dot on top of it. The water tint is the " +
       "game's and the machine blue is the page's oldest colour, with three warrants measured " +
       "against it. See KIND_COLOUR in placements.ts.",
   },
@@ -263,7 +263,7 @@ var DISCHARGED: Exception[] = [
       "a filled disc against a stroked line -- the shape split the chevron discharge above " +
       "rests on, at a distance those composites never reach. The two meet where a Mk4+ belt " +
       "leaves a limestone miner, and there the dot is raised, stroked at full opacity and " +
-      "standing beside an amber extractor; the belts' other tones are 19.3 and 26.4 from the " +
+      "standing beside an ultramarine extractor; the belts' other tones are 19.3 and 26.4 from the " +
       "dot. The limestone tint is the game's, and the fast tone is one end of the belts' " +
       "published ramp -- moving it re-derives the house step every family here is measured " +
       "against.",
