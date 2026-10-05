@@ -704,6 +704,14 @@ one only when the user asks. `diff_vs_save` and `commission_plan` stage against
 value. An unreadable file falls back to the default with a note. Tool count 55.
 [shared-settings.md](shared-settings.md) is the specification.
 
+The header also carries one read-only line naming the base map types the page can show:
+`# base maps (show_on_map mode=): map (default), terrain, …, terrain-r3-502094 -- stale: newer
+heightfield (v3 → v5)`. `show_on_map(mode=)` takes one of those ids, `artwork` (read as `map`)
+or `plain`, and puts `mode=` in the local link, after `world=` as the page writes it; an unknown
+id is refused with the list. Chat cannot generate or delete a map: the runner lives in the web
+process and a job wants a visible confirm. [maps_contract.md](maps_contract.md) §7. No tool was
+added.
+
 ### 10.1m The cave flag on every height
 
 `describe_location`, `whereami` and the siting z (`siting.settle_z`, which `site_plan` prints) read

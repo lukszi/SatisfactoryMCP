@@ -525,6 +525,11 @@ tiles. The 16384² numbers that replaced them are in the table above.
 
 ## 18. One base map at a time, and the page says which (2026-07-31)
 
+> Since 2026-10-05 the modes are the map types of the registry rather than these four names,
+> `mode=` holds a type id (`artwork` still reads as `map`), and a shared default chosen in
+> Settings can open a render. [maps_contract.md](maps_contract.md) §6.3 has the current rules;
+> the rest of this section stands.
+
 Three pyramids on the server were three pictures the page could not ask for: the client
 addressed the artwork alias and nothing else. What it now has is the Google Earth split —
 **modes**, which are one question with one answer, kept apart from **overlays**, which are

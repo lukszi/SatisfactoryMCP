@@ -30,10 +30,11 @@ routers point at this file instead of re-telling them.
 
 ## The event stream
 
-`/api/events` sends five event names. `save` and `notes` are triggers: they say a file moved
+`/api/events` sends six event names. `save` and `notes` are triggers: they say a file moved
 and the page decides what to refetch. `plans` and `activity` carry data, because they are
 tailed line by line from the plan logs and the activity journal every 0.5 s rather than
 stat-compared every 3 s. `settings` carries data too: the tail stats the shared settings file.
+`maps` is published by the map job runner rather than found by a poll.
 
 | Event | Source | Data |
 |---|---|---|
@@ -42,6 +43,7 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
 | `plans` | new commits in one `plans/<world>/<key>/ops.jsonl`, one event per plan per tick | `{world, key, name, rev, from_rev, actors, text, ts, forgotten}` |
 | `activity` | each new line of `activity/<world>/<writer>.jsonl` | `{world, id, ts, actor, kind, plan, rev, text, args}` |
 | `settings` | `settings.json` in the user data dir, when its mtime or size moves | `SettingsResponse {version, values, stored, updated, by}` |
+| `maps` | the map job runner: every job state change, at most one progress update per 2 s, and every registry write | `{job: MapJobBody \| null, queued: [job id], registry_version}` |
 
 - `actors` and `actor` are `ActorBody` (`kind`, `client`, `pid`, `display`). `text` is the
   newest commit's `describe_commit` words; `from_rev` is the rev before the first new commit.
@@ -60,7 +62,11 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
   a second before the page opened must not. A reconnect's replay of missed entries is
   `GET /api/activity?since=` from the newest entry heard, or page open, whichever is later.
 - Only the served instance tails (`create_app(tail=True)`), and it is also what names the
-  process the `web` journal writer. Test apps leave both off.
+  process the `web` journal writer. Test apps leave both off. The same flag decides whether the
+  map job runner reads and re-adopts the jobs on disk at start.
+- `maps` is state, not a journal: `since` does not apply, and the replay of the newest one is
+  how a reloaded page sees a running job. A `registry_version` other than the page's means the
+  list changed and the page refetches `/api/maps`.
 - Pin writes (`/api/pins`, Planner P3) add no event name: each appends one journal entry,
   `pin.add`, `pin.edit` or `pin.drop`, which reaches every page as `activity` within the 0.5 s
   tail. `plan` is the plan key for plan and process pins, else null. Chat's
@@ -166,3 +172,15 @@ takes no `?save=`/`?world=`. Every write arrives on every page as the `settings`
 the price used and the overclock-last pick
 ([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md) §7).
 `SolveRow.last_clock` is set on a row whose last machine is overclocked.
+
+## Maps
+
+`/api/maps` (`routers/maps.py`) lists the base map types and runs the jobs that make them;
+[maps_contract.md](maps_contract.md) is the specification. The writes (`PUT /api/maps/default`,
+`PATCH` and `DELETE /api/maps/{id}`, `POST /api/maps/adopt`, `POST` and `DELETE /api/maps/jobs…`,
+`DELETE /api/maps/cache`) pass the guard. A registry write carries the list `version` it read;
+another is a 409 `MapsStaleResponse {error, stale: true, version}` and nothing is written. The
+registry writes answer with the whole `MapsResponse`, so the page redraws from the reply. A job
+is queued with 202; a full queue is 409 and a short disk 507. Routes take no `?save=`/`?world=`.
+`/api/maptiles/{layer}/…` takes a registry id as `layer`; `map`, `terrain` and `satellite` are
+served even before the manifest exists.
