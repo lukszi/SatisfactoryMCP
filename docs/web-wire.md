@@ -91,6 +91,16 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
   newest, before it applies `limit`. Every row carries `count`: the entries it stands for,
   1 unless collapsed. A collapsed `plan.view` run counts the same way.
 
+## Terrain
+
+- `/api/inspect` `elevation.terrain_cave` is `none`, `below` or `inside`
+  (spatial-and-map.md §23). Under `below`, `terrain_m` is the surface and
+  `terrain_cave_note` is the line the page shows beside it. Under `inside`, `terrain_m` is
+  null, the note travels as `terrain_note` and `terrain_cave_note` is null. A map click
+  carries no z, so the inspector sees `below` at most.
+- The site preview's `terrain.cave_pct` is the pad's share with a cave under it, 0 without
+  cave masks. The page prints it when it is not 0.
+
 ## Pins
 
 `/api/pins` (`routers/pins.py`) follows the rules above: `?save=`/`?world=`, the guard on

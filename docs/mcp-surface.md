@@ -704,6 +704,16 @@ one only when the user asks. `diff_vs_save` and `commission_plan` stage against
 value. An unreadable file falls back to the default with a note. Tool count 55.
 [shared-settings.md](shared-settings.md) is the specification.
 
+### 10.1m The cave flag on every height
+
+`describe_location`, `whereami` and the siting z (`siting.settle_z`, which `site_plan` prints) read
+`Reading.cave` from the cave masks (spatial-and-map.md §23). A point with a cave under it gets
+one `cave=` line, and the height stays the surface. A point inside a cave (the player's z for
+`me` and `whereami`, the typed or built-median z for a site) gets
+`cave=in a cave: ground height unknown here (the surface above is 233 m)`: `terrain_m=unknown`
+in `describe_location`, and no site z. A ceiling is never printed. Without
+`data/local/caves/` nothing changes.
+
 ### 10.2 Context budget
 
 The binding constraint. All 291 automatable recipes in optimal TSV = 25,313 chars (~7k tokens). **No tool
