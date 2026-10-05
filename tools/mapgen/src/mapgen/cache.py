@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.common import RENDERS_DIR_NAME
+from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 
 #: Where the direct raster is kept between the two layers. Rasterising 216 M triangles is
 #: twenty minutes and the answer does not depend on which layer is being coloured, so it is
@@ -22,6 +23,10 @@ DIRECT_Z_NAME = "direct.z.f32"
 
 
 DIRECT_COVERAGE_NAME = "direct.cov.u8"
+
+
+#: The cliff family of each texel's winning rock (``gamedata.rockfamily.FAMILIES``).
+DIRECT_FAMILY_NAME = "direct.family.u8"
 
 
 DIRECT_CACHE_SIDECAR = "meta.json"
@@ -39,14 +44,24 @@ def top_cache_dir(out_dir: Path, name: str = RENDERS_DIR_NAME) -> Path:
     return out_dir / name / TOP_CACHE_DIR_NAME
 
 
-def direct_cache_stamp(size: int, subsamples: int, build: str | None) -> dict:
+def direct_cache_stamp(
+    size: int, subsamples: int, build: str | None, families: int | None = None
+) -> dict:
     """What a cached direct raster has to agree with before it is drawn from.
 
     Three things, each of which is a different picture if it moves: the grid it was
     rasterised onto, how finely it sampled each texel of that grid, and the build of the game
     whose rocks it is. Everything else in the sidecar is a record rather than a key.
+    The fourth, ``families``, is the rock family reader that wrote the family plane beside
+    them; it defaults to the current one.
     """
-    return {"size": int(size), "subsamples": int(subsamples), "game_version_pinned": build}
+    families = READER_VERSIONS["rock_families"] if families is None else families
+    return {
+        "size": int(size),
+        "subsamples": int(subsamples),
+        "game_version_pinned": build,
+        "families": int(families),
+    }
 
 
 def cached_direct(directory: Path, stamp: dict) -> tuple[np.ndarray, np.ndarray] | None:
@@ -67,6 +82,17 @@ def cached_direct(directory: Path, stamp: dict) -> tuple[np.ndarray, np.ndarray]
         return None
 
 
+def cached_family(directory: Path, stamp: dict) -> np.ndarray | None:
+    """The direct cache's family plane, when it is this cache and was written."""
+    if "families" not in stamp or cached_direct(directory, stamp) is None:
+        return None
+    size = stamp["size"]
+    try:
+        return np.memmap(directory / DIRECT_FAMILY_NAME, np.uint8, "r", shape=(size, size))
+    except (OSError, ValueError):
+        return None
+
+
 MESH_CACHE_DIR_NAME = "meshes.cache"
 
 
@@ -77,6 +103,19 @@ MESH_CLASS_NAME = "meshes.class.u8"
 
 
 MESH_CACHE_SIDECAR = "meta.json"
+
+
+#: The Titan trees, a mesh raster at ``TITAN_FACTOR`` times the render's pixel.
+TITAN_CACHE_DIR_NAME = "titan.cache"
+TITAN_FACTOR = 2
+
+#: Every raster cache a run deletes at its end unless ``--keep-direct``.
+RASTER_CACHE_DIRS = (
+    DIRECT_CACHE_DIR_NAME,
+    TOP_CACHE_DIR_NAME,
+    MESH_CACHE_DIR_NAME,
+    TITAN_CACHE_DIR_NAME,
+)
 
 
 def mesh_stamp(size: int, build: str | None, reader_version: int) -> dict:

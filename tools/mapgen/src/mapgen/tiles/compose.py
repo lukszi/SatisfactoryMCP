@@ -330,6 +330,7 @@ def render_layer(
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
+                grid=(band, lo, hi, c0, c1, spacing_m),
             )
             rgb = painted_colours(
                 scene,

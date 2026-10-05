@@ -11,10 +11,13 @@ import numpy as np
 from mapgen.cache import (
     DIRECT_CACHE_SIDECAR,
     DIRECT_COVERAGE_NAME,
+    DIRECT_FAMILY_NAME,
     DIRECT_Z_NAME,
     MESH_CACHE_SIDECAR,
     MESH_CLASS_NAME,
     MESH_Z_NAME,
+    cached_meshes,
+    mesh_stamp,
 )
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.mesh import (
@@ -33,6 +36,7 @@ from mapgen.gamedata.mesh import (
 from mapgen.gamedata.sweep import is_top_foliage, sweep_levels
 from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.packages import PackageView
+from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 
 __all__ = [
     "DIRECT_BAND_ROWS",
@@ -45,6 +49,9 @@ __all__ = [
     "RENDER_ONLY_DIRS",
     "RENDER_ONLY_FOLIAGE_MARKS",
     "RENDER_ONLY_MESHES",
+    "TITAN_LEAVES",
+    "TITAN_MARK",
+    "TITAN_TRUNK",
     "TOP_FOLIAGE_BATCH",
     "add_placements",
     "direct_placements",
@@ -52,6 +59,7 @@ __all__ = [
     "is_render_only_static",
     "mesh_class",
     "mesh_items",
+    "mesh_pass",
     "pixel_coverage",
     "rasterise_direct",
     "rasterise_direct_band",
@@ -61,7 +69,10 @@ __all__ = [
     "read_cliff_geometry",
     "read_shape",
     "reduce_direct",
+    "reduce_source",
     "sweep_world",
+    "titan_class",
+    "titan_items",
     "top_items",
 ]
 
@@ -92,6 +103,10 @@ RENDER_ONLY_MESHES = EXCLUDED_MESHES
 #: Mesh classes, as stored in the cache's class plane. 0 is nothing.
 MESH_CORAL, MESH_SHELL, MESH_ROCK = 1, 2, 3
 MESH_CLASS_NAMES = {MESH_CORAL: "coral", MESH_SHELL: "shell", MESH_ROCK: "rock"}
+
+#: The Titan forest's static trees, drawn by the painted layer only, in a raster of their own.
+TITAN_MARK = "TitanTree"
+TITAN_TRUNK, TITAN_LEAVES = 4, 5
 
 
 MESH_FOLIAGE_BATCH = 512
@@ -153,12 +168,14 @@ def sweep_world(store, scripts, index, classes, progress: bool = True) -> dict:
     )
 
 
-def direct_placements(sweep: dict, geometry: dict) -> tuple[list, dict]:
+def direct_placements(sweep: dict, geometry: dict, families=None) -> tuple[list, dict]:
     """Every placement the field's own cliff layer rasterises, with its world Y span.
 
     The four culls are the generator's, in the generator's order: an excluded owner, a mesh
     with no cooked geometry, an arch, an oversized shell. Any of them applied differently
     here would draw a render of a different world from the field it is blended with.
+
+    ``families``, one code per placement row, is carried as each entry's raster source id.
 
     What is added is the **Y span**, in world centimetres, of the placement's transformed
     vertex box. That is the whole of the band selection: a bounding-interval test over
@@ -170,7 +187,7 @@ def direct_placements(sweep: dict, geometry: dict) -> tuple[list, dict]:
     corners = np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], np.float32)
     prepared: list[tuple] = []
     dropped = {"owner": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
-    for row in sweep["placements"]:
+    for i, row in enumerate(sweep["placements"]):
         mesh_id, owner_id = int(row[0]), int(row[1])
         mesh = meshes[mesh_id]
         if owners[owner_id] in EXCLUDED_OWNERS:
@@ -203,6 +220,7 @@ def direct_placements(sweep: dict, geometry: dict) -> tuple[list, dict]:
                 facing,
                 float(world_y.min()),
                 float(world_y.max()),
+                *(() if families is None else (int(families[i]),)),
             )
         )
     return prepared, dropped
@@ -217,8 +235,12 @@ def rasterise_direct_band(
     rows: int,
     cols: int,
     subsamples: int,
-) -> np.ndarray:
+    with_source: bool = False,
+):
     """One band of the output, max-Z rasterised from the triangles. ``nan`` where none fell.
+
+    ``with_source`` also returns the winning triangle's source id: the placement's family
+    when ``direct_placements`` was given families.
 
     The rasteriser is ``gen_world_heightmap.MaxZRaster`` itself, pointed at a grid whose
     origin is this band's north-west corner and whose spacing is this render's, divided by
@@ -233,12 +255,17 @@ def rasterise_direct_band(
         cols * subsamples, rows * subsamples, x0_cm, y0_cm, scale_cm / subsamples, sample=0.5
     )
     add_placements(raster, prepared, geometry, y0_cm, y0_cm + rows * scale_cm)
-    return raster.result()[0]
+    z, source, _density = raster.result()
+    return (z, source) if with_source else z
 
 
 def add_placements(raster, prepared: list, geometry: dict, y_lo: float, y_hi: float) -> None:
-    """Every prepared placement whose Y span reaches ``[y_lo, y_hi]``, into ``raster``."""
-    for mesh, mesh_id, matrix, scale, offset, facing, span_lo, span_hi in prepared:
+    """Every prepared placement whose Y span reaches ``[y_lo, y_hi]``, into ``raster``.
+
+    The source id is an entry's ninth field when it has one, else its mesh id plus one.
+    """
+    for entry in prepared:
+        mesh, mesh_id, matrix, scale, offset, facing, span_lo, span_hi = entry[:8]
         if span_hi < y_lo or span_lo > y_hi:
             continue
         verts, tris = geometry[mesh]
@@ -253,7 +280,7 @@ def add_placements(raster, prepared: list, geometry: dict, y_lo: float, y_hi: fl
         tris = tris[(ty.max(1) >= y_lo) & (ty.min(1) <= y_hi)]
         if not tris.size:
             continue
-        raster.add(world[tris], mesh_id + 1)
+        raster.add(world[tris], entry[8] if len(entry) > 8 else mesh_id + 1)
 
 
 def top_items(store, scripts, index, sweep: dict, geometry: dict) -> tuple[dict, dict]:
@@ -349,6 +376,19 @@ def reduce_direct(sub_z: np.ndarray, rows: int, cols: int, subsamples: int):
     return (total / np.maximum(count, 1)).astype(np.float32), count
 
 
+def reduce_source(sub_z: np.ndarray, sub_source: np.ndarray, rows: int, cols: int, subsamples: int):
+    """The source id of each output texel's highest sub-sample; 0 where nothing fell."""
+    hit = np.isfinite(sub_z)
+    if subsamples == 1:
+        return np.where(hit, sub_source, 0).astype(np.uint8)
+    z = np.where(hit, sub_z, -np.inf).reshape(rows, subsamples, cols, subsamples)
+    src = np.where(hit, sub_source, 0).reshape(rows, subsamples, cols, subsamples)
+    z = z.transpose(0, 2, 1, 3).reshape(rows, cols, -1)
+    src = src.transpose(0, 2, 1, 3).reshape(rows, cols, -1)
+    best = np.take_along_axis(src, z.argmax(-1)[..., None], -1)[..., 0]
+    return best.astype(np.uint8)
+
+
 def pixel_coverage(coverage: np.ndarray, subsamples: int) -> np.ndarray:
     """The share of a pixel's sub-samples a triangle hit, in [0, 1]. No neighbour is read."""
     return coverage.astype(np.float32) / np.float32(subsamples * subsamples)
@@ -369,11 +409,14 @@ def rasterise_direct(
     rasterising 216 M triangles is twenty minutes. The two maps are written beside a sidecar
     naming what they are of, and ``cached_direct`` refuses anything that does not match
     rather than drawing last week's rocks under this week's field.
+
+    A ``band_raster`` that returns ``(z, source)`` also writes the family plane.
     """
     directory.mkdir(parents=True, exist_ok=True)
     (directory / DIRECT_CACHE_SIDECAR).unlink(missing_ok=True)
     z = np.memmap(directory / DIRECT_Z_NAME, np.float32, "w+", shape=(size, size))
     coverage = np.memmap(directory / DIRECT_COVERAGE_NAME, np.uint8, "w+", shape=(size, size))
+    family = None
     step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / size
     x0_cm = BOUNDS_M["x_min_m"] * 100
     covered = 0
@@ -389,6 +432,13 @@ def rasterise_direct(
             size,
             subsamples,
         )
+        if isinstance(sub, tuple):
+            if family is None:
+                family = np.memmap(
+                    directory / DIRECT_FAMILY_NAME, np.uint8, "w+", shape=(size, size)
+                )
+            family[top:bottom] = reduce_source(*sub, rows, size, subsamples)
+            sub = sub[0]
         band_z, band_coverage = reduce_direct(sub, rows, size, subsamples)
         z[top:bottom] = band_z
         coverage[top:bottom] = band_coverage
@@ -402,7 +452,9 @@ def rasterise_direct(
             )
     z.flush()
     coverage.flush()
-    del z, coverage
+    if family is not None:
+        family.flush()
+    del z, coverage, family
     stats = {
         **stamp,
         "sub_texel_m": round(step_cm / 100 / subsamples, 5),
@@ -461,6 +513,40 @@ def read_shape(store, scripts, index, mesh: str):
         return (np.asarray(verts, np.float32), np.asarray(tris, np.int64)), source
     hull = read_hull(store, scripts, index, mesh)
     return hull, "hull" if hull is not None else "none"
+
+
+def titan_class(mesh: str) -> int:
+    name = mesh.rsplit("/", 1)[-1]
+    if TITAN_MARK not in name:
+        return 0
+    return TITAN_LEAVES if "Leaves" in name else TITAN_TRUNK
+
+
+def titan_items(store, scripts, index, sweep: dict) -> tuple[dict, dict]:
+    """The Titan trees' placements in ``rasterise_mesh_band``'s format, at their finest mesh."""
+    meshes = sweep["meshes"]
+    groups: dict[str, list[np.ndarray]] = {}
+    for row in sweep["placements"]:
+        mesh = meshes[int(row[0])]
+        if not titan_class(mesh):
+            continue
+        matrix = np.eye(4, dtype=np.float64)
+        matrix[:3, :3] = rotation_matrix(*row[5:8]) * row[8:11][:, None]
+        matrix[3, :3] = row[2:5]
+        groups.setdefault(mesh, []).append(matrix)
+    items, shapes, sources = {}, {}, {}
+    for mesh, mats in groups.items():
+        shape, source = read_shape(store, scripts, index, mesh)
+        sources[mesh.rsplit("/", 1)[-1]] = source
+        if shape is None or not len(shape[1]):
+            continue
+        shapes[mesh] = shape
+        mats = np.asarray(mats, np.float32)
+        reach = float(np.linalg.norm(shape[0], axis=1).max())
+        reach = reach * np.linalg.norm(mats[:, :3, :3], axis=2).max(1)
+        items[mesh] = (titan_class(mesh), mats, mats[:, 3, 1] - reach, mats[:, 3, 1] + reach)
+    counts = {mesh.rsplit("/", 1)[-1]: len(item[1]) for mesh, item in items.items()}
+    return {"items": items, "shapes": shapes}, {"placements": counts, "sources": sources}
 
 
 def mesh_items(store, scripts, index, sweep: dict) -> tuple[dict, dict]:
@@ -559,3 +645,24 @@ def rasterise_meshes(
     stats = {**stamp, "texels": covered, "seconds": round(time.time() - started, 1)}
     (directory / MESH_CACHE_SIDECAR).write_text(json.dumps(stats, indent=1), encoding="utf-8")
     return stats
+
+
+def mesh_pass(cache: Path, size: int, build, reader: str, build_items, label: str, quiet: bool):
+    """A mesh raster of ``size`` px in ``cache``, reused when its stamp matches.
+
+    ``build_items`` returns ``(prepared, meta)`` for ``rasterise_meshes``. Returns the
+    ``(z cm, class)`` maps and the sidecar's source block, keyed by ``reader``.
+    """
+    stamp = mesh_stamp(size, build, READER_VERSIONS[reader])
+    maps = cached_meshes(cache, stamp)
+    if maps is not None:
+        print(f"reusing the {label} raster already in {cache}")
+        recorded = json.loads((cache / MESH_CACHE_SIDECAR).read_text(encoding="utf-8"))
+        return maps, {reader: {"reused": recorded}}
+    spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
+    print(f"rasterising the {label} at {spacing_m:.4f} m")
+    prepared, meta = build_items()
+    print(f"  {label}: {meta.get('instances', meta.get('placements'))}")
+    stats = rasterise_meshes(prepared, cache, stamp, BOUNDS_M, DIRECT_BAND_ROWS, not quiet)
+    print(f"  {label} raster: {stats['texels'] / 1e6:.2f} M texels in {stats['seconds']}s")
+    return cached_meshes(cache, stamp), {reader: {**meta, "raster": stats}}
