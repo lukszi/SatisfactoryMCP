@@ -13,6 +13,9 @@ type Payback = SolveResponse["power"];
 type Stop = Payback["stops"][number];
 type Option = NonNullable<SolveRow["overclock_option"]>;
 
+/* The recipes before a slider release, kept until the re-solve lands (F5a). */
+var switched = { key: "", from: -1, before: {} as Record<string, string>, rev: 0, text: "" };
+
 var HOURS = [0, 1, 2, 5, 10, 20, 50, 100];
 var STOPS = HOURS.map(hours);
 
@@ -128,6 +131,47 @@ function followDefault(field: "payback_hours" | "overclock_last"): HTMLElement {
   );
 }
 
+function recipes(data: SolveResponse | null): Record<string, string> {
+  var out: Record<string, string> = {};
+  if (data && data.feasible)
+    data.rows.forEach(function (r) {
+      out[r.recipe_id || r.recipe] = r.recipe;
+    });
+  return out;
+}
+
+function missing(a: Record<string, string>, b: Record<string, string>): string[] {
+  return Object.keys(a)
+    .filter(function (id) {
+      return !(id in b);
+    })
+    .map(function (id) {
+      return a[id]!;
+    })
+    .sort();
+}
+
+export function switchWords(before: Record<string, string>, after: Record<string, string>): string {
+  var added = missing(after, before);
+  var dropped = missing(before, after);
+  if (!added.length) return dropped.length ? "dropped " + dropped.join(", ") : "";
+  return "switched to " + added.join(", ") + (dropped.length ? ", from " + dropped.join(", ") : "");
+}
+
+function released(): void {
+  switched = { key: bench.key, from: bench.resultRev, before: recipes(bench.result), rev: 0, text: "" };
+}
+
+function switchLine(): string {
+  if (switched.key !== bench.key) return "";
+  if (switched.from >= 0 && bench.resultRev > switched.from && bench.result) {
+    switched.text = bench.result.feasible ? switchWords(switched.before, recipes(bench.result)) : "";
+    switched.rev = bench.resultRev;
+    switched.from = -1;
+  }
+  return switched.rev === bench.resultRev ? switched.text : "";
+}
+
 function optionWords(o: Option): string {
   var last = count(o.machines) + (o.machines === 1 ? " machine" : " machines") + ", the last at " + pct(o.last_clock, 1) + ", " + count(o.shards) + (o.shards === 1 ? " shard" : " shards");
   var spread = count(o.spread_machines) + " at " + pct(o.spread_clock, 1);
@@ -186,7 +230,9 @@ export function powerRow(body: HTMLElement): void {
         if (!still) line.textContent = stopWords(view, HOURS[i]!);
       },
       function (i) {
-        if (HOURS[i] !== plan.args.payback_hours) gesture([{ op: "set", field: "payback_hours", value: HOURS[i]! }]);
+        if (HOURS[i] === plan.args.payback_hours) return;
+        released();
+        gesture([{ op: "set", field: "payback_hours", value: HOURS[i]! }]);
       },
       { label: "payback horizon in hours of play", ends: ["fewer machines", "less power"], disabled: still, title: "hours of play the saved power must repay the extra machines in" }
     )
@@ -194,5 +240,11 @@ export function powerRow(body: HTMLElement): void {
   if (plan.args.payback_hours !== null) row.appendChild(followDefault("payback_hours"));
   body.appendChild(row);
   body.appendChild(line);
+  var change = switchLine();
+  if (change) {
+    var note = make("span", "plan-sub plan-switch", change);
+    note.setAttribute("role", "status");
+    body.appendChild(note);
+  }
   overclockRow(body, view);
 }

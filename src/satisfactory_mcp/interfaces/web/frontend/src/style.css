@@ -2542,6 +2542,10 @@ body.dash-on .mapcard {
   margin-left: 0;
 }
 
+.plan-switch {
+  color: var(--ink);
+}
+
 .plan-clock {
   display: inline-flex;
   flex-direction: column;
