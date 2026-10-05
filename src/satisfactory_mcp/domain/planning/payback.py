@@ -131,10 +131,14 @@ def _price_words(v: dict) -> str:
     return f"grid mix {v['price']:,.0f} pts/MWh" + (f": {sources}" if sources else "")
 
 
+def _signed(value: float, fmt: str) -> str:
+    return ("−" if value < 0 else "+") + format(abs(value), fmt)
+
+
 def _change(a: dict, b: dict) -> str:
     more = b["extra_machines"] - a["extra_machines"]
     saved = b["saved_mw"] - a["saved_mw"]
-    return f"{more:+,} machines, {-saved:+,.1f} MW"
+    return f"{_signed(more, ',')} machines, {_signed(-saved, ',.1f')} MW"
 
 
 def _next_words(v: dict) -> str:
@@ -176,13 +180,16 @@ def _overclock_words(oc: dict) -> list[str]:
     if oc["on"] and oc["without"]:
         lines.append(f"overclock last machine: {len(oc['without'])} row(s) went without shards")
     if oc["on"] and oc["unused"]:
-        names = ", ".join(sorted({u["building"] or u["label"] for u in oc["unused"]}))
-        lines.append(f"overclock unused on {names}: at this horizon the extra MW costs more")
+        names = ", ".join(sorted({u["label"] for u in oc["unused"]}))
+        lines.append(
+            f"overclock unused on {names}: at this horizon its extra MW costs more than the "
+            "machine it saves"
+        )
     return lines
 
 
 def trade_text(v: dict) -> list[str]:
-    """Chat lines: this horizon against 0 h, what the next stop changes, and the overclock."""
+    """Chat lines: this horizon against the plain build, the next stop, and the overclock."""
     lines = _overclock_words(v["overclock"])
     if not v["stops"]:
         return lines
@@ -194,8 +201,10 @@ def trade_text(v: dict) -> list[str]:
         return lines
     now = next(s for s in v["stops"] if s["hours"] == v["hours"])
     if now["extra_machines"]:
+        more = _signed(now["extra_machines"], ",")
+        saved = _signed(-now["saved_mw"], ",.1f")
         head += (
-            f": {now['extra_machines']:+,} machines, −{now['saved_mw']:,.1f} MW against 0 h; "
+            f": {more} machines, {saved} MW against the plain build; "
             f"the last pays back within {hours_text(v['hours'])}"
         )
         if now["average_payback_h"] is not None:

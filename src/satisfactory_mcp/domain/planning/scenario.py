@@ -19,6 +19,7 @@ from ...core.gamedata.constants import WATER_EXTRACTOR_CAP_ASSUMED
 from ...core.gamedata.model import GameData, Recipe
 from ..spatial import nodes as nodes_mod
 from ..spatial.select import Selection, select_nodes
+from . import prices as prices_mod
 from . import siting as siting_mod
 from .optimize import MW, Scenario
 from .planlog import is_power
@@ -156,6 +157,46 @@ class PlanRequest:
     #: A ``site_at`` that would not resolve. Reported, never raised: a bad coordinate must
     #: not take down a plan whose numbers do not depend on one.
     site_errors: list[str] = field(default_factory=list)
+    #: How the horizon, price and overclock switch were resolved: ``inherited``,
+    #: ``default_hours``, ``price_source``, ``mix``, ``overclock_inherited``, ``shards``.
+    payback: dict = field(default_factory=dict)
+
+
+def _inherits(value) -> bool:
+    return value is None or value == "default"
+
+
+def _shared() -> dict:
+    from .. import settings
+
+    try:
+        return settings.read()["values"]
+    except Exception:
+        return {k: spec.default for k, spec in settings.SPECS.items()}
+
+
+def _payback(state, hours, overclock, price) -> tuple[dict, dict]:
+    """Scenario fields for the horizon, and how each was resolved (contract §6)."""
+    shared = _shared()
+    resolved_hours = float(shared["payback_hours"] if _inherits(hours) else hours)
+    on = bool(shared["overclock_last"] if _inherits(overclock) else overclock)
+    found = prices_mod.prices_for(state, bool(shared["biomass"]))
+    budget = state.shard_budget() if on else None
+    fields = {
+        "payback_hours": resolved_hours,
+        "power_price": found.price if _inherits(price) else float(price),
+        "build_points": found.points,
+        "overclock_last": on,
+        "overclock_shards": budget["free"] if budget else None,
+    }
+    info = {
+        "inherited": _inherits(hours),
+        "default_hours": float(shared["payback_hours"]),
+        "price_source": "grid mix" if _inherits(price) else "plan",
+        "mix": found.mix,
+        "overclock_inherited": _inherits(overclock),
+    }
+    return fields, info
 
 
 def build_scenario(
@@ -182,8 +223,11 @@ def build_scenario(
     recycle_once: list[str] | None = None,
     supplied: dict[str, float] | None = None,
     required: list[str] | None = None,
-    #: Index into ``optimize.POWER_PRIORITY_CLOCKS``; None is 0, the plain build.
-    power_priority: int | None = None,
+    #: Hours, a switch and points per MWh; None or "default" follows the shared settings
+    #: and the save's grid mix.
+    payback_hours: float | str | None = None,
+    overclock_last: bool | str | None = None,
+    power_price: float | str | None = None,
     #: Where the factory will stand, in any spelling ``spatial.origin`` takes. It buys the
     #: plan a MEASURED water assumption instead of an assumed one; it changes no number the
     #: LP sees, because how much water a site yields is placement geometry no data here has.
@@ -310,6 +354,7 @@ def build_scenario(
         recipes += [rid for rid in in_force if rid not in recipes]
 
     buildings = state.unlocked_building_ids
+    power, payback = _payback(state, payback_hours, overclock_last, power_price)
     sc = Scenario(
         game=game,
         recipes=recipes,
@@ -333,7 +378,7 @@ def build_scenario(
         # Without this the power row forces generation == consumption. Ignored when MW
         # is exported, since a power plant that imports power to export it is unbounded.
         grid_import_mw=None if MW in export_ids else 1e6,
-        power_priority=int(power_priority or 0),
+        **power,
     )
 
     if recycle_once:
@@ -383,6 +428,7 @@ def build_scenario(
         site=site,
         site_errors=site_errors,
         required=in_force,
+        payback=payback,
     )
 
 
@@ -429,8 +475,12 @@ def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = N
     yield the SAME id, or the id stops meaning "same plan" and starts meaning "same second".
     """
     fields: dict = {"required": sorted(required)} if required else {}
-    if sc.power_priority:
-        fields["power_priority"] = sc.power_priority
+    if sc.payback_hours > 0:
+        fields["payback_hours"] = sc.payback_hours
+        fields["power_price"] = round(sc.power_price, 1)
+        fields["build_points"] = sorted((k, round(v)) for k, v in sc.build_points.items())
+    if sc.overclock_last:
+        fields["overclock_last"] = sc.overclock_shards
     payload = json.dumps(
         {
             **fields,

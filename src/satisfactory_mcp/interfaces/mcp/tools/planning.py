@@ -11,7 +11,7 @@ import os
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server.fastmcp import Context
 from pydantic import Field
@@ -20,7 +20,7 @@ from ....core.filelock import LockTimeout
 from ....core.gamedata.unlocks import granted_by_label
 from ....core.schema import NewerSchema
 from ....domain.factories.select import SelectorError
-from ....domain.planning import asks, compare, journal, manage, pins, summary
+from ....domain.planning import asks, compare, journal, manage, payback, pins, summary
 from ....domain.planning import bom as bom_mod
 from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
@@ -45,7 +45,6 @@ from ....domain.planning.planlog import (
     describe_op,
     factory_words,
 )
-from ....domain.planning.power_priority import STEPS
 from ....domain.planning.prepare import prepare
 from ....domain.planning.recall import PLAN_DEFAULTS, UNSAVED_OVERRIDE, overrides_of, plan_ref
 from ....domain.planning.recall import recall_plan as _plan_kwargs
@@ -814,6 +813,25 @@ def _save_new(st, name, plan_kwargs, logistics, labels, field, plan_id, sit, ctx
     )
 
 
+def _power_args(hours, overclock, price) -> dict:
+    return {"payback_hours": hours, "overclock_last": overclock, "power_price": price}
+
+
+def _payback_notes(g, st, prepared) -> list[str]:
+    sol = prepared.solution
+    draw = sum(-p["mw"] for p in sol.processes if p["mw"] < 0)
+    view = summary.power_view(g, st, prepared.request, sol, round(sol.machines_total), draw)
+    return payback.trade_text(view)
+
+
+def _power_refusal(supplied: dict) -> str:
+    try:
+        PlanArgs.from_dict({k: supplied.get(k) for k in _power_args(0, 0, 0)})
+    except InvalidOp as exc:
+        return f"! {exc}; nothing solved"
+    return ""
+
+
 def _save_target(st, save_as: str, base_rev):
     """The stored plan ``save_as`` writes over, or None for a new one; or a refusal.
 
@@ -919,11 +937,26 @@ def plan_factory(
         list[str] | None,
         Field(description="recipes that must make their item; others for it are excluded"),
     ] = None,
-    power_priority: Annotated[
-        int | None,
+    payback_hours: Annotated[
+        float | Literal["default"] | None,
         Field(
-            description="0-4: how far to split production rows into more, slower machines to "
-            "save power; 0 full clock, 1 at most 75%, 2 50%, 3 33%, 4 25%. Stored per plan"
+            description="hours of play extra, slower machines must repay in saved power: 0 "
+            "builds plainly; stops 1, 2, 5, 10, 20, 50, 100; 'default' follows the shared "
+            "setting. Stored per plan"
+        ),
+    ] = None,
+    overclock_last: Annotated[
+        bool | Literal["default"] | None,
+        Field(
+            description="build a row one machine short, the last one overclocked (1-2 Power "
+            "Shards, checked against shards in hand); 'default' follows the shared setting"
+        ),
+    ] = None,
+    power_price: Annotated[
+        float | Literal["default"] | None,
+        Field(
+            description="points per MWh the horizon prices power at; omit for the save's "
+            "grid mix, 'default' puts a stored plan back on it"
         ),
     ] = None,
     plan: Annotated[str | None, Field(description="recall a saved plan by name")] = None,
@@ -1008,11 +1041,13 @@ def plan_factory(
     its machine, so they are placed one at a time across many machines rather than
     filling one -- output is linear in sloops and power is quadratic, so spreading wins.
 
-    ``power_priority`` (0-4) trades machines for power without changing the solve: each
-    production row is split so no machine runs above 100%, 75%, 50%, 33% or 25%. Power goes
-    as clock**1.32, so twice the machines at half clock draw 20% less. Extractors,
-    generators and somersloop rows are never split. It is stored with the plan; the notes
-    say what the current step saves and what the next would. 0 resets a recalled plan.
+    ``payback_hours`` trades machines for power: a row is spread over more, slower machines
+    while the power saved repays their build points within that many hours of play, at
+    ``power_price`` points per MWh (the save's grid mix unless given). 0 is the plain build.
+    ``overclock_last`` builds a row one machine short with the last one overclocked, weighed
+    against the horizon and the shards in hand. Both are stored with the plan and follow the
+    shared settings until set; "default" puts a recalled plan back on them. The notes say
+    what the next stop would change. Extractors, generators and somersloop rows never move.
 
     ``required`` names recipes (exact name or class id) that must make their item: every
     other recipe whose main product is that item is excluded. A locked or banned one is
@@ -1085,10 +1120,10 @@ def plan_factory(
         sloops=sloops,
         recycle_once=recycle_once,
         supplied=supplied,
-        power_priority=power_priority,
+        **_power_args(payback_hours, overclock_last, power_price),
     )
-    if power_priority is not None and not 0 <= power_priority < STEPS:
-        return f"! power_priority must be 0 to {STEPS - 1}, not {power_priority}; nothing solved"
+    if refused := _power_refusal(supplied):
+        return refused
     try:
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
     except KeyError as exc:
@@ -1253,11 +1288,26 @@ def plan_layout(
         int,
         Field(description="Somersloops the plan may spend; 0 spends none"),
     ] = 0,
-    power_priority: Annotated[
-        int | None,
+    payback_hours: Annotated[
+        float | Literal["default"] | None,
         Field(
-            description="0-4: how far to split production rows into more, slower machines to "
-            "save power; 0 full clock, 1 at most 75%, 2 50%, 3 33%, 4 25%. Stored per plan"
+            description="hours of play extra, slower machines must repay in saved power: 0 "
+            "builds plainly; stops 1, 2, 5, 10, 20, 50, 100; 'default' follows the shared "
+            "setting. Stored per plan"
+        ),
+    ] = None,
+    overclock_last: Annotated[
+        bool | Literal["default"] | None,
+        Field(
+            description="build a row one machine short, the last one overclocked (1-2 Power "
+            "Shards, checked against shards in hand); 'default' follows the shared setting"
+        ),
+    ] = None,
+    power_price: Annotated[
+        float | Literal["default"] | None,
+        Field(
+            description="points per MWh the horizon prices power at; omit for the save's "
+            "grid mix, 'default' puts a stored plan back on it"
         ),
     ] = None,
     sites: Annotated[
@@ -1356,10 +1406,10 @@ def plan_layout(
         # noise that trains a reader to skip the override line that does matter.
         belt_ipm=tiers.belt_ipm if tiers.asked_belt else None,
         pipe_m3min=tiers.pipe_m3min if tiers.asked_pipe else None,
-        power_priority=power_priority,
+        **_power_args(payback_hours, overclock_last, power_price),
     )
-    if power_priority is not None and not 0 <= power_priority < STEPS:
-        return f"! power_priority must be 0 to {STEPS - 1}, not {power_priority}; nothing solved"
+    if refused := _power_refusal(supplied):
+        return refused
     try:
         plan, pin_notes = _plan_pin(st, plan)
         plan_kwargs, plan_name, plan_notes = _plan_kwargs(st, plan, supplied)
@@ -1385,6 +1435,8 @@ def plan_layout(
     except SelectorError as exc:
         return f"! {exc}"
     _journal_view(st, plan, "plan_layout", ctx)
+    if report.prepared is not None and report.prepared.ok:
+        plan_notes += _payback_notes(g, st, report.prepared)
 
     return render_layout(
         g,

@@ -138,9 +138,10 @@ def build_plan_report(
 
     # A POWER-BLIND objective drives clocks up and hides the cost: phase 2 pins the goal and
     # minimises MACHINE COUNT, so it picks the highest clocks, and power goes as clock**1.32.
-    report.overclocked = [
-        p for p in sol.processes if p["clock"] > 1.01 and p["kind"] != "extractor"
-    ] + [p for p in sol.processes if p["clock"] > 1.01 and p["kind"] == "extractor"]
+    pushed = [p for p in sol.processes if p["clock"] > 1.01 and "last_clock" not in p]
+    report.overclocked = [p for p in pushed if p["kind"] != "extractor"] + [
+        p for p in pushed if p["kind"] == "extractor"
+    ]
 
     report.needed_buildings = {
         p["building_id"]

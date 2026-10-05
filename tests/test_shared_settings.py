@@ -19,7 +19,12 @@ def test_an_absent_file_reads_every_default():
     view = settings.read()
     assert view == {
         "version": 0,
-        "values": {"stage_headroom": "measured", "biomass": False},
+        "values": {
+            "stage_headroom": "measured",
+            "biomass": False,
+            "payback_hours": 0.0,
+            "overclock_last": False,
+        },
         "stored": [],
         "updated": None,
         "by": None,
