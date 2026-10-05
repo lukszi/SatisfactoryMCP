@@ -48,6 +48,7 @@ export var W = {
   },
   track: "track",
   askChat: "ask chat",
+  worthALook: "worth a look",
   countAsBuilt: "count as built",
   wholeWorld: "whole world",
   nothingBuiltYet: "nothing built yet",
@@ -82,6 +83,20 @@ export var ASK_KIND: Record<string, string> = {
   stage: "stage",
   item: "item",
   pin: "pin",
+  advice: "advisory",
+};
+
+export var ADVICE_WORD: Record<string, string> = {
+  unconnected: "unconnected",
+  dead_node: "no node",
+  starved: "starved",
+  power: "power",
+  underclock: "underclock",
+  headroom: "headroom",
+  no_recipe: "no recipe",
+  plan: "plan",
+  pickups: "pickups",
+  box_empty: "box empty",
 };
 
 export var PIN_KIND: Record<string, string> = {

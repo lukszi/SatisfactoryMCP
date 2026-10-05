@@ -259,6 +259,13 @@ export type AskDropBody = Schema["AskDropBody"];
 export type AskDropped = Body<"AskDropped">;
 export type AskStaleResponse = Body<"AskStaleResponse">;
 
+/* ---------------------------------------------------------------- /api/advice */
+
+export type AdviceRow = Schema["AdviceRow"];
+export type AdviceResponse = Body<"AdviceResponse">;
+export type AdviceRestored = Body<"AdviceRestored">;
+export type AdviceStaleResponse = Body<"AdviceStaleResponse">;
+
 /* ---------------------------------------------------------- /api/collectibles */
 
 export type CollectibleRow = Schema["CollectibleRow"];

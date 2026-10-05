@@ -1,6 +1,7 @@
 /* The dashboard's Factories tab: the named factories, unnamed-cluster detection and the
  * production graph, addressed as `dash=factories[/<name>]`. */
 
+import { adviceCard } from "./advice";
 import { get, latest, send } from "./api";
 import { button, empty, error, fieldError, heading, issueCount, issueGroups, issueTable, link, loading, note, table, tile } from "./dashkit";
 import { make } from "./dom";
@@ -902,6 +903,7 @@ export function renderFactory(body: HTMLElement, subject: string): void {
     )
   );
   body.appendChild(tiles);
+  adviceCard(body, { factory: row.name });
 
   var split = make("div", "dash-split");
   statesTable(split, row);
