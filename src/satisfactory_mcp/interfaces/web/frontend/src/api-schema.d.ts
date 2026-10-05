@@ -273,14 +273,14 @@ export interface paths {
         };
         /**
          * Maptiles Layer
-         * @description One tile of a named base layer: ``map``, ``terrain`` or ``satellite``.
+         * @description One tile of a named base layer: a map type id from ``/api/maps``.
          *
          *     Four segments where the alias above has three, so the two routes cannot collide.
          *
          *     An unknown layer is a 404 that lists the ones there are, rather than a 422 about a path
-         *     parameter: asking for a layer this build does not have is asking for a picture that is
-         *     not there, and a page probing for layers it might find deserves to be told which names
-         *     exist rather than which types were expected.
+         *     parameter: a page probing for layers it might find deserves to be told which names exist.
+         *     A type still being generated, or one whose job failed, is not served: HEAD says 204 and
+         *     GET says which.
          */
         get: operations["maptiles_layer"];
         put?: never;
@@ -289,14 +289,14 @@ export interface paths {
         options?: never;
         /**
          * Maptiles Layer
-         * @description One tile of a named base layer: ``map``, ``terrain`` or ``satellite``.
+         * @description One tile of a named base layer: a map type id from ``/api/maps``.
          *
          *     Four segments where the alias above has three, so the two routes cannot collide.
          *
          *     An unknown layer is a 404 that lists the ones there are, rather than a 422 about a path
-         *     parameter: asking for a layer this build does not have is asking for a picture that is
-         *     not there, and a page probing for layers it might find deserves to be told which names
-         *     exist rather than which types were expected.
+         *     parameter: a page probing for layers it might find deserves to be told which names exist.
+         *     A type still being generated, or one whose job failed, is not served: HEAD says 204 and
+         *     GET says which.
          */
         head: operations["maptiles_layer"];
         patch?: never;
@@ -1938,6 +1938,174 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Maps Index
+         * @description Every base-map type with its computed freshness, the jobs, and whether generation can run.
+         */
+        get: operations["maps_index_api_maps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maps/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Map Estimate
+         * @description What a job with these options would cost, and whether the disk has room for it now.
+         */
+        get: operations["map_estimate_api_maps_estimate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maps/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Default Map
+         * @description Set the type every fresh page opens on, for every browser on this machine.
+         */
+        put: operations["default_map_api_maps_default_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maps/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Maps
+         * @description Register pyramids lying under ``data/local`` that the list does not know, where they lie.
+         */
+        post: operations["adopt_maps_api_maps_adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maps/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear Map Cache
+         * @description Delete the rasters kept for fast re-renders; refused while a job is running.
+         */
+        delete: operations["clear_map_cache_api_maps_cache_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maps/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Map Job
+         * @description Queue a generation job. 409 when four are queued already, 507 when the disk is short.
+         */
+        post: operations["start_map_job_api_maps_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maps/jobs/{job}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Map Job
+         * @description One job and the end of its log.
+         */
+        get: operations["map_job_api_maps_jobs__job__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Cancel Map Job
+         * @description Cancel a running job, its partial output going to the trash, or take a queued one off.
+         */
+        delete: operations["cancel_map_job_api_maps_jobs__job__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maps/{ident}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Map
+         * @description Move a type's files to the trash and forget it. Refuses the default (409).
+         */
+        delete: operations["delete_map_api_maps__ident__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Map
+         * @description Rename a type or show or hide it in the map's switcher.
+         */
+        patch: operations["change_map_api_maps__ident__patch"];
         trace?: never;
     };
 }
@@ -4070,6 +4238,316 @@ export interface components {
             blocked_by: string[];
             /** Spoiler */
             spoiler: boolean;
+        };
+        /** MapCacheResponse */
+        MapCacheResponse: {
+            /** Freed Bytes */
+            freed_bytes: number;
+        };
+        /** MapCanGenerate */
+        MapCanGenerate: {
+            /** Gen */
+            gen: boolean;
+            /** Tools */
+            tools: boolean;
+            /** Game */
+            game: boolean;
+            /** Heightfield */
+            heightfield: boolean;
+            /** Ok */
+            ok: boolean;
+            /** Reason */
+            reason: string | null;
+        };
+        /**
+         * MapDefaultBody
+         * @description A type id, or ``plain`` for no imagery.
+         */
+        MapDefaultBody: {
+            /** Id */
+            id: string;
+            /** Version */
+            version?: number | null;
+        };
+        /** MapDisk */
+        MapDisk: {
+            /** Free Bytes */
+            free_bytes: number;
+            /** Maps Bytes */
+            maps_bytes: number;
+            /** Cache Bytes */
+            cache_bytes: number;
+        };
+        /**
+         * MapEstimateResponse
+         * @description What a job would cost: wall time, disk kept, disk needed while it runs.
+         */
+        MapEstimateResponse: {
+            /** Seconds */
+            seconds: number;
+            /** Keep Bytes */
+            keep_bytes: number;
+            /** Transient Bytes */
+            transient_bytes: number;
+            /** Free Bytes */
+            free_bytes: number;
+            /** Needs Bytes */
+            needs_bytes: number;
+            /** Ok */
+            ok: boolean;
+            /** Reason */
+            reason: string | null;
+            /** Measured */
+            measured: boolean;
+        };
+        /**
+         * MapFreshness
+         * @description ``stale`` is outdated DATA (amber); ``rerender`` and ``restyle`` are offers (neutral).
+         */
+        MapFreshness: {
+            /** Stale */
+            stale: components["schemas"]["MapStaleAxis"][];
+            rerender: components["schemas"]["MapRerender"] | null;
+            /** Restyle */
+            restyle: boolean;
+            /** Incomplete */
+            incomplete: boolean;
+        };
+        /**
+         * MapInputBody
+         * @description An input directory maps are drawn from; ``present`` false when it was never built.
+         */
+        MapInputBody: {
+            /** Name */
+            name: string;
+            /** Present */
+            present: boolean;
+            /** Version */
+            version: number | null;
+            /** Cl */
+            cl: number | null;
+            /** Transcribed */
+            transcribed: string | null;
+        };
+        /**
+         * MapJobBody
+         * @description One generation job. ``pct`` is 0..1, null when the generator's lines say nothing of it.
+         */
+        MapJobBody: {
+            /** Id */
+            id: string;
+            /** Preset */
+            preset: string;
+            /** Options */
+            options: {
+                [key: string]: unknown;
+            };
+            /** Label */
+            label: string | null;
+            /** Produces */
+            produces: string[];
+            /** Replaces */
+            replaces: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted";
+            /** Created */
+            created: number;
+            /** Started */
+            started: number | null;
+            /** Ended */
+            ended: number | null;
+            /** Stage */
+            stage: string;
+            /** Stage Words */
+            stage_words: string;
+            /** Pct */
+            pct: number | null;
+            /** Eta S */
+            eta_s: number | null;
+            /** Elapsed S */
+            elapsed_s: number | null;
+            /** Estimate S */
+            estimate_s: number | null;
+            /** Exit Code */
+            exit_code: number | null;
+            /** Peak Rss */
+            peak_rss: number | null;
+            /** Error Line */
+            error_line: string | null;
+            /** Last Line */
+            last_line: string | null;
+        };
+        /**
+         * MapJobDetailResponse
+         * @description The job and the last 200 lines of its log.
+         */
+        MapJobDetailResponse: {
+            job: components["schemas"]["MapJobBody"];
+            /** Log Tail */
+            log_tail: string[];
+        };
+        /** MapJobOptions */
+        MapJobOptions: {
+            /** Layers */
+            layers?: ("terrain" | "satellite")[];
+            /** Size */
+            size?: number;
+            /**
+             * Recipe
+             * @enum {string}
+             */
+            recipe?: "current" | "kernel-only";
+            /** Top */
+            top?: boolean;
+            /** Keep Cache */
+            keep_cache?: boolean;
+            /** Enhance */
+            enhance?: boolean;
+            /** Tiles 2X */
+            tiles_2x?: boolean;
+        };
+        /** MapJobRequest */
+        MapJobRequest: {
+            /**
+             * Preset
+             * @enum {string}
+             */
+            preset: "render" | "artwork" | "heightmap" | "caves" | "rocks";
+            options?: components["schemas"]["MapJobOptions"];
+            /** Label */
+            label?: string | null;
+            /** Replaces */
+            replaces?: string | null;
+        };
+        /** MapJobResponse */
+        MapJobResponse: {
+            job: components["schemas"]["MapJobBody"];
+        };
+        /**
+         * MapPatchBody
+         * @description ``label`` "" clears it; ``version`` is the list version the page holds.
+         */
+        MapPatchBody: {
+            /** Label */
+            label?: string | null;
+            /** In Switcher */
+            in_switcher?: boolean | null;
+            /** Version */
+            version?: number | null;
+        };
+        /**
+         * MapRerender
+         * @description A newer renderer this map could be drawn with; ``needs`` are inputs to rebuild first.
+         */
+        MapRerender: {
+            /** Recipe */
+            recipe: number;
+            /** Label */
+            label: string;
+            /** Needs */
+            needs: string[];
+            /** Text */
+            text: string;
+        };
+        /** MapStaleAxis */
+        MapStaleAxis: {
+            /** Axis */
+            axis: string;
+            /** Text */
+            text: string;
+        };
+        /**
+         * MapTypeBody
+         * @description One map type. ``name`` is derived from its axes; ``label`` is the player's, or null.
+         */
+        MapTypeBody: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string | null;
+            /** Name */
+            name: string;
+            /** Style */
+            style: string;
+            /** Renderer */
+            renderer: string;
+            /** Data */
+            data: string;
+            /** Kind */
+            kind: string;
+            /** Layer */
+            layer: string;
+            /** Size Px */
+            size_px: number | null;
+            /** Dir */
+            dir: string;
+            /** Bytes */
+            bytes: number;
+            /** Max Z */
+            max_z: number | null;
+            /** Created */
+            created: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "building" | "ready" | "failed" | "missing";
+            /** Origin */
+            origin: string;
+            /** In Switcher */
+            in_switcher: boolean;
+            /** Default */
+            default: boolean;
+            /** Replaces */
+            replaces: string | null;
+            /** Job */
+            job: string | null;
+            freshness: components["schemas"]["MapFreshness"];
+            /** Axes */
+            axes: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * MapsResponse
+         * @description Every type in display order, the jobs (running, queued, last ten), and what can run.
+         */
+        MapsResponse: {
+            /** Version */
+            version: number;
+            /** Default */
+            default: string | null;
+            /** Types */
+            types: components["schemas"]["MapTypeBody"][];
+            /** Jobs */
+            jobs: components["schemas"]["MapJobBody"][];
+            can_generate: components["schemas"]["MapCanGenerate"];
+            /** Inputs */
+            inputs: components["schemas"]["MapInputBody"][];
+            disk: components["schemas"]["MapDisk"];
+            /** Game Cl */
+            game_cl: number | null;
+            /** Unregistered */
+            unregistered: string[];
+            /** Queue Max */
+            queue_max: number;
+            /** Sizes */
+            sizes: number[];
+        };
+        /**
+         * MapsStaleResponse
+         * @description The 409 of a write whose ``version`` is not the current one: nothing was written.
+         */
+        MapsStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            /** Version */
+            version: number;
         };
         /**
          * MilestoneRow
@@ -10598,6 +11076,336 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdviceStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    maps_index_api_maps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsResponse"];
+                };
+            };
+        };
+    };
+    map_estimate_api_maps_estimate_get: {
+        parameters: {
+            query: {
+                preset: "render" | "artwork" | "heightmap" | "caves" | "rocks";
+                layers?: string;
+                size?: number;
+                recipe?: "current" | "kernel-only";
+                top?: boolean;
+                keep_cache?: boolean;
+                enhance?: boolean;
+                tiles_2x?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapEstimateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    default_map_api_maps_default_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapDefaultBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adopt_maps_api_maps_adopt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsResponse"];
+                };
+            };
+        };
+    };
+    clear_map_cache_api_maps_cache_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapCacheResponse"];
+                };
+            };
+        };
+    };
+    start_map_job_api_maps_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapJobResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    map_job_api_maps_jobs__job__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapJobDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_map_job_api_maps_jobs__job__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_map_api_maps__ident__delete: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                ident: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_map_api_maps__ident__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ident: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapPatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsStaleResponse"];
                 };
             };
             /** @description Validation Error */

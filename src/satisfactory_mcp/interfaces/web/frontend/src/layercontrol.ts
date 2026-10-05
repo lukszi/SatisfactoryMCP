@@ -380,6 +380,11 @@ function dockLegend(list: HTMLElement): void {
 export interface ModeChoice {
   key: string;
   label: string;
+  /** A second, smaller line: what the type is when the player has renamed it. */
+  sub?: string;
+  /** An amber word for a type whose data is outdated, and why. */
+  flag?: string;
+  flagTitle?: string;
   /** false greys the row out; `note` then says which generator would fill it. */
   ready: boolean;
   /** The row's tooltip either way: what this picture is, or what would draw it. */
@@ -447,6 +452,12 @@ function buildModes(list: HTMLElement): HTMLElement {
     input.value = choice.key;
     var text = L.DomUtil.create("span", "", holder);
     text.innerHTML = " " + esc(choice.label);
+    if (choice.flag) {
+      var flag = L.DomUtil.create("span", "layer-mode-flag", holder);
+      flag.textContent = choice.flag;
+      flag.title = choice.flagTitle || "";
+    }
+    if (choice.sub) L.DomUtil.create("span", "layer-mode-sub", row).textContent = choice.sub;
     // `change`, not `click`: inside a radio group an arrow key moves the selection, and
     // that is a pick like any other. A disabled radio fires neither, which is exactly what
     // greying a mode out is supposed to mean.
@@ -467,7 +478,7 @@ function modeContainer(): HTMLElement | null {
   if (!list) return null;
   var keys = choices
     .map(function (choice) {
-      return choice.key;
+      return [choice.key, choice.label, choice.sub || "", choice.flag || ""].join("|");
     })
     .join(",");
   if (modeBox && modeBox.parentNode === list && modeBuilt === keys) return modeBox;

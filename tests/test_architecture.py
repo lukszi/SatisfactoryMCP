@@ -1087,6 +1087,43 @@ def test_the_frontend_sources_are_not_reachable_from_python():
     )
 
 
+#: The page's names for the base map before there was a registry, and the registry's own.
+#: The ids are data now, so the compiler checks none of them; the old ones survive only as
+#: what ``registry.LEGACY`` keeps serving unregistered and the one alias tiles.ts keeps.
+REGISTRY_PY = PKG / "domain" / "maps" / "registry.py"
+FRONTEND_TILES_TS = FRONTEND / "src" / "tiles.ts"
+
+
+def test_the_page_and_the_registry_agree_on_the_old_base_map_names():
+    """Old ``#mode=`` links keep working only while both sides keep the same three names.
+
+    ``registry.LEGACY`` is what the server serves before anything is registered, and the
+    switcher in ``tiles.ts`` offers the same three when ``/api/maps`` cannot be read; the
+    artwork's page-side alias ``artwork`` must resolve to the registry's id for it. Read by
+    AST and regex, because importing either side would need FastAPI or a browser.
+    """
+    tree = ast.parse(REGISTRY_PY.read_text(encoding="utf-8"), filename=str(REGISTRY_PY))
+    legacy = next(
+        [k.value for k in node.value.keys if isinstance(k, ast.Constant)]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "LEGACY" for t in node.targets)
+        and isinstance(node.value, ast.Dict)
+    )
+    tiles = FRONTEND_TILES_TS.read_text(encoding="utf-8")
+    artwork = re.search(r'var ARTWORK = "([^"]+)";', tiles)
+    assert artwork, "tiles.ts no longer names the artwork's registry id"
+    assert artwork.group(1) == legacy[0], (artwork.group(1), legacy)
+    assert re.search(r"var ALIASES[^=]*= \{ artwork: ARTWORK \}", tiles), (
+        "the artwork alias is gone"
+    )
+    offered = re.findall(r'legacy\((ARTWORK|"[a-z]+")', tiles)
+    names = [legacy[0] if name == "ARTWORK" else name.strip('"') for name in offered]
+    assert names == legacy, (
+        f"tiles.ts offers {names} before the registry answers; it serves {legacy}"
+    )
+
+
 def _ts_imports(path: Path) -> set[str]:
     """Every sibling module a ``.ts`` file imports -- bare, named, value or type.
 

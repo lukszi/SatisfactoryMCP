@@ -1,10 +1,10 @@
 /* The base map: which picture of this world everything else stands on.
  *
- * Four MODES with radio semantics -- the game's own artwork, a hypsometric terrain render, a
- * biome-coloured satellite render, and plain, which is no imagery at all and is the shipped
- * state rather than an error. Every pyramid is cut on the same frame, at the same tile size,
- * into the same grid, so a mode is at most one L.TileLayer against
- * `/api/maptiles/{layer}/{z}/{x}/{y}` and a switch changes one path segment and nothing else.
+ * The MODES are the map types of the registry (`/api/maps`, held by mapstore.ts) that are
+ * ticked for the switcher, plus plain, which is no imagery at all and is the shipped state
+ * rather than an error. Every pyramid is cut on the same frame, at the same tile size, into
+ * the same grid, so a mode is at most one L.TileLayer against
+ * `/api/maptiles/{id}/{z}/{x}/{y}` and a switch changes one path segment and nothing else.
  * Each pyramid does declare its own DEPTH, so `maxNativeZoom` comes from that layer's own
  * probe headers. `onModePick` is the seam to layercontrol.ts, which draws the radios and
  * knows nothing about tiles; the arrow points this way because an import back would be a ring.
@@ -13,75 +13,137 @@
 import { tilePath } from "./api";
 import { onModePick, showModes } from "./layercontrol";
 import { L } from "./leaflet";
+import { fetchMaps, mapState, mapTitle, onMaps, staleWhy, staleWord } from "./mapstore";
 import { MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
 import { regionsUnderMode, updateRegionBlend } from "./regions";
 import { BOOT, state } from "./state";
-import { fail } from "./toast";
+import { fail, offer } from "./toast";
 
-import type { MapTileLayer } from "./api";
+import type { MapTypeBody } from "./api-shapes";
 import type { ModeChoice } from "./layercontrol";
 import type { BaseMode } from "./state";
 
 /** One base-map mode: a radio in the control, and at most one layer on the map. */
 interface ModeSpec {
   key: BaseMode;
-  /* The path segment `/api/maptiles/{layer}/` answers on. "" is Plain, the one mode that is
-   * not a pyramid, which is why this is a union with the empty string rather than an optional
-   * field. Everything else has to be a layer this server serves; see MapTileLayer in api.ts. */
-  layer: MapTileLayer | "";
+  /* The registry id `/api/maptiles/{id}/` answers on; "" is plain, the one mode that is not a
+   * pyramid. */
+  layer: string;
   label: string;
+  /** A second line under the label: the axes name when the player renamed the type. */
+  sub: string;
   /** The row's tooltip when the mode can be picked: what this picture actually is. */
   about: string;
   /* ...and what it says when it cannot: which tool writes that tree. Repeated here rather
    * than read off the wire, because the page probes with HEAD and HEAD answers 204 with no
-   * body -- an absent optional render is the ordinary state, and asking for the sentence
-   * would mean asking for the 404 the server goes out of its way not to raise. */
+   * body -- an absent optional render is the ordinary state. */
   generator: string;
+  /** "older build" or "older data" for a stale type, with why as its tooltip. */
+  flag: string;
+  flagTitle: string;
 }
 
 /* A mode that IS a pyramid: the same row with the "no imagery" half of `layer` ruled out, so
  * "plain has no tiles" is a thing the compiler knows rather than a thing the call order
  * arranges. */
-type PyramidSpec = ModeSpec & { layer: MapTileLayer };
+type PyramidSpec = ModeSpec & { layer: string };
 
 function isPyramid(spec: ModeSpec): spec is PyramidSpec {
   return !!spec.layer;
 }
 
-var MODES: ModeSpec[] = [
-  {
-    key: "artwork",
-    layer: "map",
-    label: "artwork",
-    about: "the game's own map artwork",
-    generator: "tools/gen_map_image.py, which cuts it out of the installed game",
-  },
-  {
-    key: "terrain",
-    layer: "terrain",
-    label: "terrain",
-    about: "a hypsometric relief map of this world, drawn from its own heightfield",
-    generator:
-      "tools/gen_map_renders.py, which draws a hypsometric relief map of this world from " +
-      "the 1 m heightfield in data/local/heightmap/",
-  },
-  {
-    key: "satellite",
-    layer: "satellite",
-    label: "satellite",
-    about: "the same relief, coloured from the game's own biome raster",
-    generator:
-      "tools/gen_map_renders.py, which draws the same relief coloured from the game's own " +
-      "biome raster, from the 1 m heightfield in data/local/heightmap/",
-  },
-  {
-    key: "plain",
-    layer: "",
-    label: "plain",
-    about: "no base imagery: the biome regions on the page's own sea",
-    generator: "",
-  },
+/** Which tool writes each painter's pyramids, for the tooltip of one that is not there. */
+var GENERATORS: Record<string, string> = {
+  map: "tools/gen_map_image.py, which cuts it out of the installed game",
+  terrain: "tools/gen_map_renders.py, from the 1 m heightfield in data/local/heightmap/",
+  satellite: "tools/gen_map_renders.py, from the heightfield and the game's own biome raster",
+};
+
+/** The id the artwork has always had in the registry, and the page's old name for it. */
+var ARTWORK = "map";
+var ALIASES: Record<string, string> = { artwork: ARTWORK };
+
+var PLAIN: ModeSpec = {
+  key: "plain",
+  layer: "",
+  label: "plain",
+  sub: "",
+  about: "no base imagery: the biome regions on the page's own sea",
+  generator: "",
+  flag: "",
+  flagTitle: "",
+};
+
+function legacy(key: string, label: string, about: string): ModeSpec {
+  return { key: key, layer: key, label: label, sub: "", about: about, generator: GENERATORS[key] || "", flag: "", flagTitle: "" };
+}
+
+/* What the switcher offers before the registry answers, or when it cannot: the three names the
+ * page had before there was a registry, which the server still serves unregistered. */
+var LEGACY: ModeSpec[] = [
+  legacy(ARTWORK, "artwork", "the game's own map artwork"),
+  legacy("terrain", "terrain", "a hypsometric relief map of this world, drawn from its own heightfield"),
+  legacy("satellite", "satellite", "the same relief, coloured from the game's own biome raster"),
 ];
+
+var MODES: ModeSpec[] = LEGACY.concat([PLAIN]);
+
+function specOf(row: MapTypeBody): ModeSpec {
+  return {
+    key: row.id,
+    layer: row.id,
+    label: mapTitle(row),
+    sub: row.label ? row.name : "",
+    about: row.name + (row.freshness.stale.length ? " -- " + staleWhy(row) : ""),
+    generator: GENERATORS[row.layer] || "the Maps tab in Settings",
+    flag: staleWord(row),
+    flagTitle: staleWhy(row),
+  };
+}
+
+/** A fragment's `mode=` as an id: the old `artwork` is the registry's `map`. */
+export function aliasMode(raw: string): string {
+  return ALIASES[raw] || raw;
+}
+
+/* The modes the switcher lists: every ticked type that can be served, the default first, and
+ * also whatever is on screen or was asked for by the address, ticked or not. */
+function wantedModes(): ModeSpec[] {
+  var body = mapState.body;
+  if (!body) return LEGACY.concat([PLAIN]);
+  var chosen = body.default;
+  var keep: Record<string, boolean> = {};
+  keep[aliasMode(BOOT.mode || "")] = true;
+  if (state.mode) keep[state.mode] = true;
+  if (chosen) keep[chosen] = true;
+  var rows = body.types.filter(function (row) {
+    return (row.status === "ready" || row.status === "missing") && (row.in_switcher || !!keep[row.id]);
+  });
+  rows.sort(function (a, b) {
+    return (b.id === chosen ? 1 : 0) - (a.id === chosen ? 1 : 0);
+  });
+  return rows.map(specOf).concat([PLAIN]);
+}
+
+/** Whether `raw` names a mode this page can be asked for: plain, or a type the server serves. */
+export function knownMode(raw: string | undefined): BaseMode | null {
+  if (!raw) return null;
+  var id = aliasMode(raw);
+  if (id === "plain") return id;
+  var body = mapState.body;
+  if (!body) {
+    return LEGACY.some(function (spec) {
+      return spec.key === id;
+    })
+      ? id
+      : null;
+  }
+  return body.types.some(function (row) {
+    return row.id === id && (row.status === "ready" || row.status === "missing");
+  })
+    ? id
+    : null;
+}
 
 /* How to build each mode's layer, decided once by the probes and never again.
  *
@@ -343,6 +405,9 @@ function modeChoices(): ModeChoice[] {
     return {
       key: spec.key,
       label: spec.label,
+      sub: spec.sub,
+      flag: spec.flag,
+      flagTitle: spec.flagTitle,
       ready: ready,
       note: ready
         ? spec.about
@@ -378,31 +443,104 @@ export function setMode(key: BaseMode, pinned: boolean): void {
 }
 
 /* Which mode a fresh page opens in: the fragment's, if that mode can actually be drawn here,
- * otherwise the artwork if it is there and plain if it is not.
- *
- * Terrain and satellite are never chosen FOR you, even when they are the only pictures on
- * disk. They are interpretations of this world rather than the map of it, so the page opens
- * on the one picture that is not an opinion and the radios say what else there is. */
+ * then the default every browser here shares (Settings -> general), then the artwork if it is
+ * there and plain if it is not. A render is opened on only when someone made it the default:
+ * the page does not choose an interpretation of the world for anyone. */
 function bootMode(): BaseMode {
-  var asked = specFor(BOOT.mode || "");
-  if (asked && (asked.key === "plain" || makers[asked.key])) return asked.key;
-  return makers.artwork ? "artwork" : "plain";
+  var asked = aliasMode(BOOT.mode || "");
+  if (asked && (asked === "plain" || makers[asked])) return asked;
+  var chosen = mapState.body ? mapState.body.default : null;
+  if (chosen && (chosen === "plain" || makers[chosen])) return chosen;
+  return makers[ARTWORK] ? ARTWORK : "plain";
 }
 
-/* Probe every pyramid once, then open on a mode. Three HEADs in parallel -- they are
- * independent questions about three independent directories, and the artwork's own fallback
- * is the only thing that has to wait for an answer. */
+/* Probe these pyramids, in parallel, then the artwork's single-image fallback if its
+ * pyramid did not answer. A probe is per id, so a type that was recut gets its new tag. */
+function probeAll(specs: ModeSpec[]): Promise<void> {
+  return Promise.all(specs.filter(isPyramid).map(probePyramid)).then(function () {
+    var artwork = specFor(ARTWORK);
+    if (!artwork || makers[ARTWORK]) return;
+    return probeMapImage(artwork);
+  });
+}
+
+var booted = false;
+var readyBefore: Record<string, boolean> = {};
+
+function readyIds(): Record<string, boolean> {
+  var out: Record<string, boolean> = {};
+  (mapState.body ? mapState.body.types : []).forEach(function (row) {
+    if (row.status === "ready") out[row.id] = true;
+  });
+  return out;
+}
+
+/* The registry moved: a job finished, a type was renamed, ticked, deleted or made default.
+ * The switcher is rebuilt from it and every pyramid re-probed; a type that has just become
+ * ready is offered with a toast rather than switched to. */
+function rebuildModes(): void {
+  var before = readyBefore;
+  readyBefore = readyIds();
+  MODES = wantedModes();
+  makers = {};
+  refusals = {};
+  probeAll(MODES).then(function () {
+    if (state.mode && state.mode !== "plain" && !makers[state.mode]) setMode("plain", false);
+    else {
+      if (state.mode && drawn === null && makers[state.mode]) setMode(state.mode, false);
+      showModes(modeChoices(), state.mode || "plain");
+    }
+    Object.keys(readyBefore).forEach(function (id) {
+      if (before[id]) return;
+      var spec = specFor(id);
+      offer((spec ? spec.label : id) + " is ready", "show", function () {
+        askMode(id, true);
+      });
+    });
+  });
+}
+
+/** Switch to a mode a link or the Maps tab asked for, probing it first when the switcher does
+ *  not list it. */
+export function askMode(key: BaseMode, pinned: boolean): void {
+  if (key === "plain" || makers[key] || !knownMode(key)) {
+    setMode(key, pinned);
+    return;
+  }
+  var row = mapState.body
+    ? mapState.body.types.filter(function (t) {
+        return t.id === key;
+      })[0]
+    : undefined;
+  var spec = row ? specOf(row) : specFor(key);
+  if (!spec || !isPyramid(spec)) {
+    setMode(key, pinned);
+    return;
+  }
+  var known = spec;
+  if (!specFor(key)) MODES.splice(MODES.length - 1, 0, known);
+  probePyramid(known).then(function () {
+    setMode(key, pinned);
+  });
+}
+
+/* Ask the registry which types there are, probe the ones the switcher lists, then open on a
+ * mode. Without a registry answer the three old names are probed instead. */
 export function loadBaseMap(): Promise<void> {
   onModePick(function (key) {
     setMode(key as BaseMode, true);
   });
-  return Promise.all(MODES.filter(isPyramid).map(probePyramid))
+  onMaps(function (listed) {
+    if (listed && booted) rebuildModes();
+  });
+  return fetchMaps()
     .then(function () {
-      var artwork = specFor("artwork");
-      if (!artwork || makers.artwork) return;
-      return probeMapImage(artwork);
+      MODES = wantedModes();
+      readyBefore = readyIds();
+      return probeAll(MODES);
     })
     .then(function () {
+      booted = true;
       setMode(bootMode(), false);
     });
 }

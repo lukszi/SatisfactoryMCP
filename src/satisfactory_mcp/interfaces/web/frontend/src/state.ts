@@ -24,9 +24,9 @@ export interface PanelState {
   sections: Record<string, boolean>;
 }
 
-/* Which picture of this world the base map is: the modes tiles.ts offers, as radio semantics
- * -- exactly one, and `plain` is a real answer rather than the absence of one. */
-export type BaseMode = "artwork" | "terrain" | "satellite" | "plain";
+/* Which picture of this world the base map is: a map type id from the registry, or `plain`,
+ * which is a real answer rather than the absence of one. tiles.ts offers them as radios. */
+export type BaseMode = string;
 
 /* Which storey of which platform the page is slicing, and nothing else about it: everything
  * else about the view -- which ids are on which band, which runs leave it -- is floors.ts's,

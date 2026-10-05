@@ -322,3 +322,14 @@ export type FactoryFloorsResponse = Body<"FloorsResponse">;
 
 export type SettingsResponse = Body<"SettingsResponse">;
 export type SettingsStaleResponse = Body<"SettingsStaleResponse">;
+
+/* -------------------------------------------------------------------- /api/maps */
+
+export type MapTypeBody = Schema["MapTypeBody"];
+export type MapJobBody = Schema["MapJobBody"];
+export type MapInputBody = Schema["MapInputBody"];
+export type MapsResponse = Body<"MapsResponse">;
+export type MapJobResponse = Body<"MapJobResponse">;
+export type MapJobDetailResponse = Body<"MapJobDetailResponse">;
+export type MapEstimateResponse = Body<"MapEstimateResponse">;
+export type MapCacheResponse = Body<"MapCacheResponse">;
