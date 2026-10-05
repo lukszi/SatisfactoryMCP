@@ -17,7 +17,8 @@ export interface LightParams {
   ambient: number;
   sky: number[];
   sun: number[];
-  shoulder: number;
+  tone_knee: number;
+  tone_white: number;
 }
 
 /** The `X-Map-Light` header of a lit layer's z0 probe. */
@@ -70,7 +71,7 @@ precision highp float;
 in vec2 vUV; out vec4 o;
 uniform sampler2D tCol, tNrm, tHz;
 uniform vec3 uL, uSky, uSun, uF;
-uniform float uEl, uInvNorm, uAmb, uSh, uSoft, uShadowOn, uSkyOn, uW, uFloor, uKnee, uLinear;
+uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uShadowOn, uSkyOn, uW, uFloor, uKnee, uLinear;
 uniform int uI0, uI1;
 float s2l(float c){ return c<=0.04045? c/12.92 : pow((c+0.055)/1.055,2.4); }
 float l2s(float c){ c=clamp(c,0.0,1.0); return c<=0.0031308? c*12.92 : 1.055*pow(c,1.0/2.4)-0.055; }
@@ -80,11 +81,14 @@ float hz(int i){
   float q=texture(tHz,(cell+uv)*vec2(0.125,0.25)).r;
   return q*q*90.0;
 }
-vec3 shoulder(vec3 x){ if(uSh>=1.0) return x; vec3 ov=max(x-uSh,0.0); return mix(x, uSh+(1.0-uSh)*(1.0-exp(-ov/(1.0-uSh))), step(uSh,x)); }
-vec3 unshoulder(vec3 y){ if(uSh>=1.0) return y; vec3 ov=clamp(y-uSh,0.0,(1.0-uSh)*0.999); return mix(y, uSh-(1.0-uSh)*log(1.0-ov/(1.0-uSh)), step(uSh,y)); }
+const vec3 LUMA=vec3(0.2126,0.7152,0.0722);
+float tone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float x=(y-uTK)/sp; float t=(uTW-uTK)/sp; return uTK+sp*x*(1.0+x/(t*t))/(1.0+x); }
+float untone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float u=min((y-uTK)/sp,0.999); float t=(uTW-uTK)/sp; float a=1.0/(t*t); float b=1.0-u; return uTK+sp*(sqrt(b*b+4.0*a*u)-b)/(2.0*a); }
+vec3 tone(vec3 x){ float y=max(dot(x,LUMA),1e-7); return x*(tone1(y)/y); }
+vec3 untone(vec3 x){ float y=max(dot(x,LUMA),1e-7); return x*(untone1(y)/y); }
 void main(){
   vec3 c=texture(tCol,vUV).rgb; vec4 n4=texture(tNrm,vUV);
-  vec3 base= uLinear>0.5 ? unshoulder(vec3(s2l(c.r),s2l(c.g),s2l(c.b))) : c;
+  vec3 base= uLinear>0.5 ? untone(vec3(s2l(c.r),s2l(c.g),s2l(c.b))) : c;
   vec2 nxy=n4.rg*2.0-1.0; vec3 nn=vec3(nxy, sqrt(max(1.0-dot(nxy,nxy),0.0)));
   float ndl=max(dot(nn,uL),0.0);
   float sh=uShadowOn*clamp((mix(hz(uI0),hz(uI1),uW)-uEl)/uSoft+0.5,0.0,1.0);
@@ -92,11 +96,12 @@ void main(){
   vec3 rel=(uAmb*uSky*svf+(1.0-uAmb)*uSun*ndl*(1.0-sh)*uInvNorm)/uF;
   rel=0.5*(rel+uFloor+sqrt((rel-uFloor)*(rel-uFloor)+uKnee*uKnee));
   vec3 x=base*mix(vec3(1.0),rel,n4.a);
-  o = uLinear>0.5 ? vec4(l2s(shoulder(x).r),l2s(shoulder(x).g),l2s(shoulder(x).b),1.0) : vec4(clamp(x,0.0,1.0),1.0);
+  vec3 t=tone(x);
+  o = uLinear>0.5 ? vec4(l2s(t.r),l2s(t.g),l2s(t.b),1.0) : vec4(clamp(x,0.0,1.0),1.0);
 }`;
 
 var UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm", "uAmb",
-  "uSh", "uSoft", "uShadowOn", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1"];
+  "uTK", "uTW", "uSoft", "uShadowOn", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1"];
 var KINDS = ["unlit", "nrm", "hz"];
 var CACHE_TILES = 120;
 var IN_FLIGHT = 8;
@@ -362,7 +367,8 @@ export function makeLitLayer(layer: string, light: LightHeader, onFail: (why: st
     g.uniform3f(U.uF!, p.ambient * sky[0]! + (1 - p.ambient) * sun[0]!, p.ambient * sky[1]! + (1 - p.ambient) * sun[1]!,
       p.ambient * sky[2]! + (1 - p.ambient) * sun[2]!);
     g.uniform1f(U.uAmb!, p.ambient);
-    g.uniform1f(U.uSh!, p.shoulder);
+    g.uniform1f(U.uTK!, p.tone_knee);
+    g.uniform1f(U.uTW!, p.tone_white);
     g.uniform1f(U.uLinear!, p.space === "linear" ? 1 : 0);
     g.uniform1f(U.uSoft!, light.model.shadow_soft_deg);
     g.uniform1f(U.uFloor!, light.model.shadow_floor);

@@ -14,7 +14,7 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from satisfactory_mcp import config  # noqa: E402
+from satisfactory_mcp import config
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQ=="
@@ -35,7 +35,7 @@ def _lit_layer(local: Path, light_dir: str = "../light") -> None:
     layer = local / "renders" / "terrain"
     _tree(layer / "tiles", 1, ".png", PNG)
     _tree(layer / "unlit", 1, ".png", PNG)
-    params = {"space": "srgb", "ambient": 0.54, "sky": [1, 1, 1], "sun": [1, 1, 1], "shoulder": 1.0}
+    params = {"space": "srgb", "ambient": 0.54, "sky": [1, 1, 1], "sun": [1, 1, 1], "tone_knee": 1.0, "tone_white": 1.0}
     sidecar = {
         "_meta": {
             "generator": "tools/gen_map_renders.py",

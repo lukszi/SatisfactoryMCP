@@ -72,7 +72,7 @@ without `--force`. See §24.
 Extracts the landscape's paint layers once per game build: one weight plane per layer on
 the 1 m grid, the tree canopy cover and crown tops, the PigmentMap tint, each layer's albedo,
 the landscape's baked ground colour with the layer albedos refitted to it, and the cliff
-families' tints and top layers. Only the `painted` render layer reads them. See §27 and §30.
+families' tints and top layers. Only the `painted` render layer reads them. See §27, §30 and §31.
 
 ### artwork
 

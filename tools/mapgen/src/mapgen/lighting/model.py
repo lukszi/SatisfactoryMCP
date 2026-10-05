@@ -97,17 +97,31 @@ def _l2s(c):
     return np.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1 / 2.4) - 0.055)
 
 
-def _shoulder(x, s):
-    if s >= 1.0:
-        return x
-    return np.where(x < s, x, s + (1 - s) * (1 - np.exp(-np.maximum(x - s, 0) / (1 - s))))
+_LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
 
 
-def _unshoulder(y, s):
-    if s >= 1.0:
+def _tone(y, knee: float, white: float):
+    """The painted style's luminance shoulder (``palette.painted.tone``); knee 1 is none."""
+    if knee >= 1.0:
         return y
-    over = np.clip(y - s, 0.0, (1 - s) * 0.999)
-    return np.where(y < s, y, s - (1 - s) * np.log(1 - over / (1 - s)))
+    span = 1.0 - knee
+    x = np.maximum(y - knee, 0.0) / span
+    top = (white - knee) / span
+    return np.where(y > knee, knee + span * x * (1 + x / (top * top)) / (1 + x), y)
+
+
+def _untone(o, knee: float, white: float):
+    if knee >= 1.0:
+        return o
+    span = 1.0 - knee
+    u = np.clip((o - knee) / span, 0.0, 0.999)
+    a, b = 1.0 / ((white - knee) / span) ** 2, 1.0 - u
+    return np.where(o > knee, knee + span * (np.sqrt(b * b + 4 * a * u) - b) / (2 * a), o)
+
+
+def _by_luminance(c, curve, knee: float, white: float):
+    y = np.maximum(c @ _LUMA, 1e-7)
+    return c * (curve(y, knee, white) / y)[..., None]
 
 
 def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True) -> np.ndarray:
@@ -143,8 +157,9 @@ def apply_terms(rgb_u8, svf, direct, land, params: dict) -> np.ndarray:
     rel = 1 + (rel - 1) * land[..., None]
     c = rgb_u8.astype(np.float32) / 255.0
     if params["space"] == "linear":
-        s = float(params["shoulder"])
-        out = _l2s(_shoulder(_unshoulder(_s2l(c), s) * rel, s))
+        knee, white = float(params["tone_knee"]), float(params["tone_white"])
+        base = _by_luminance(_s2l(c), _untone, knee, white)
+        out = _l2s(_by_luminance(base * rel, _tone, knee, white))
     else:
         out = np.clip(c * rel, 0, 1)
     return np.round(out * 255).astype(np.uint8)

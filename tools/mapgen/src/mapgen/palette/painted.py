@@ -1,17 +1,19 @@
 """The game-painted satellite style: the landscape's own paint, lit and coloured in linear light.
 
-Ground colour is the game's baked landscape colour where it has one, else the paint-layer
-weights of ``data/local/paint/`` times each layer's albedo, under the tree canopy; rocks take
-their cliff family's tint and top layer, trees stand over them where their crowns reach,
-arches and the render-only meshes take their own colours, and the Titan trees can be laid
-over everything; then a sky-and-sun light, a highlight shoulder and Beer-Lambert water.
-Every number is in ``palette/palettes/satellite-painted.json``. docs/spatial-and-map.md
-sections 27 and 28 explain each step and the weak spots it addresses.
+Ground colour is the game's baked landscape colour where it has one (the paint store's bake,
+or a ``GroundBake`` handed in), else the paint-layer weights of ``data/local/paint/`` times
+each layer's albedo, tinted by the PigmentMap; a per-layer colour transfer to calibrated
+targets; under the tree canopy; rocks take their cliff family's tint and top layer, trees stand
+over them where their crowns reach, arches and the render-only meshes take their own colours,
+and the Titan trees can be laid over everything; then a sky-and-sun light, an exposure gain
+with a soft shoulder and Beer-Lambert water. Every number is in
+``palette/palettes/satellite-painted.json``. docs/spatial-and-map.md sections 27, 30 and 31.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -27,12 +29,16 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "ROCK_GRID_M",
+    "GroundBake",
     "PaintedGround",
     "bake_table",
     "biome_grid",
     "canopy_over_rock",
+    "display_to_ground",
     "dry_land_range",
+    "ground_albedo",
     "layer_table",
+    "layer_transfer",
     "linear_from_oklab",
     "linear_to_srgb",
     "load_paint_meta",
@@ -45,6 +51,8 @@ __all__ = [
     "seam_blend",
     "srgb_to_linear",
     "titan_over",
+    "tone",
+    "transfer_op",
 ]
 
 #: OKLab, Björn Ottosson's matrices.
@@ -69,6 +77,8 @@ _M2_INV = np.linalg.inv(_M2).astype(np.float32)
 
 #: The rock colour's grid, coarser than the paint: it is a 25 m blur of it.
 ROCK_GRID_M = 4
+
+_LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
 
 
 def srgb_to_linear(values) -> np.ndarray:
@@ -207,10 +217,115 @@ def biome_grid(biome: dict, rows: int, cols: int) -> np.ndarray:
     return biome["area"][np.ix_(r, c)]
 
 
+@dataclass(frozen=True)
+class GroundBake:
+    """The game's baked ground colour on the paint grid: linear RGB and where it exists."""
+
+    linear: np.ndarray
+    have: np.ndarray
+
+    @classmethod
+    def from_srgb(cls, rgb, have) -> GroundBake:
+        """From 8-bit sRGB; black texels inside ``have`` are holes in the bake, not ground."""
+        rgb = np.asarray(rgb)
+        linear = np.empty(rgb.shape, np.float32)
+        for k in range(3):
+            linear[..., k] = srgb_to_linear(rgb[..., k])
+        return cls(linear, np.asarray(have, bool) & (rgb.astype(np.uint16).sum(-1) >= 3))
+
+
+def ground_albedo(paint, have, bake: GroundBake | None, feather_m: float) -> tuple:
+    """The ground albedo source: the bake where it exists, else the paint mix.
+
+    Returns ``(albedo, have, bake_weight)``; ``bake_weight`` is None without a bake.
+    """
+    if bake is None:
+        return paint, have, None
+    inside = bake.have.astype(np.float32)
+    weight = np.clip(ndimage.gaussian_filter(inside, feather_m) * 2.0 - 1.0, 0.0, 1.0) * inside
+    w = weight[..., None]
+    return paint * (1.0 - w) + bake.linear.astype(np.float32) * w, have | bake.have, weight
+
+
+def tone(luminance, knee: float, white: float):
+    """Identity below ``knee``; above it a Reinhard shoulder that takes ``white`` to 1."""
+    y = np.asarray(luminance, np.float32)
+    span = np.float32(1.0 - knee)
+    x = np.maximum(y - knee, 0.0) / span
+    top = np.float32((white - knee) / span)
+    shoulder = knee + span * x * (1.0 + x / (top * top)) / (1.0 + x)
+    return np.where(y > knee, shoulder, y).astype(np.float32)
+
+
+def _flat_light(p: dict) -> np.ndarray:
+    a = np.float32(p["ambient"])
+    return a * _unit_luminance(p["sky"]) + (1 - a) * _unit_luminance(p["sun"])
+
+
+def display_to_ground(p: dict, hex_colour: str) -> np.ndarray:
+    """A display sRGB target back through flat light, exposure, tone and chroma: OKLab."""
+    rgb = srgb_to_linear([int(hex_colour[i : i + 2], 16) for i in (1, 3, 5)])
+    t = p["tone"]
+    y = float(rgb @ _LUMA)
+    grid = np.linspace(0.0, t["white"], 4097, dtype=np.float32)
+    y0 = float(np.interp(min(y, 0.999), tone(grid, t["knee"], t["white"]), grid))
+    rgb = rgb * np.float32(y0 / max(y, 1e-6)) / np.float32(p["exposure"] * t["gain"])
+    lab = oklab(rgb / _flat_light(p))
+    lab[0] -= np.float32(p["altitude_lift"] * 0.5)
+    lab[1:] /= np.float32(p["chroma_gain"])
+    return lab
+
+
+def transfer_op(source_lab, target_lab) -> tuple[float, np.ndarray]:
+    """The lightness step and (a, b) matrix, chroma scale times hue turn, source to target."""
+    s, t = np.asarray(source_lab, np.float64), np.asarray(target_lab, np.float64)
+    scale = np.clip(np.hypot(*t[1:]) / max(np.hypot(*s[1:]), 1e-4), 0.25, 4.0)
+    turn = np.arctan2(t[2], t[1]) - np.arctan2(s[2], s[1])
+    c, si = np.cos(turn) * scale, np.sin(turn) * scale
+    return float(t[0] - s[0]), np.array([[c, -si], [si, c]], np.float32)
+
+
+def layer_transfer(albedo, weights: dict, ops: dict, rows_per_block: int = 512) -> np.ndarray:
+    """Each texel moved by its layers' ops, mixed by their normalised weights."""
+    out = np.empty_like(albedo)
+    for start in range(0, albedo.shape[0], rows_per_block):
+        block = slice(start, start + rows_per_block)
+        total = np.zeros(albedo[block].shape[:2], np.float32)
+        for weight in weights.values():
+            total += weight[block]
+        total = np.maximum(total, np.float32(1e-6))
+        lab = oklab(np.clip(albedo[block], 1e-7, None))
+        d_l = np.zeros(lab.shape[:2], np.float32)
+        m = np.zeros((*lab.shape[:2], 2, 2), np.float32)
+        m[..., 0, 0] = m[..., 1, 1] = 1.0
+        for name, (step, matrix) in ops.items():
+            if name not in weights:
+                continue
+            w = weights[name][block] / total
+            d_l += w * np.float32(step)
+            m += w[..., None, None] * (matrix - np.eye(2, dtype=np.float32))
+        lab[..., 0] += d_l
+        lab[..., 1:] = np.einsum("...ij,...j->...i", m, lab[..., 1:])
+        out[block] = np.clip(linear_from_oklab(lab), 0.0, 1.0)
+    return out
+
+
+def _median_lab(colours: np.ndarray) -> np.ndarray:
+    return np.median(oklab(np.clip(colours, 1e-7, None)), axis=0)
+
+
 class PaintedGround:
     """Everything the painted style samples per band, built once from the paint store."""
 
-    def __init__(self, paint_dir: Path, palette: dict, field, biome: dict, area_names: list[str]):
+    def __init__(
+        self,
+        paint_dir: Path,
+        palette: dict,
+        field,
+        biome: dict,
+        area_names: list[str],
+        bake: GroundBake | None = None,
+    ):
         meta = load_paint_meta(paint_dir)
         if meta is None:
             raise FileNotFoundError(f"no paint store at {paint_dir}")
@@ -231,21 +346,24 @@ class PaintedGround:
             if name in weights:
                 w = (weights[name].astype(np.float32) / 255.0)[..., None]
                 albedo = albedo * (1.0 - w) + np.asarray(value, np.float32) * darkening * w
-        del weights
         if not self.baked:
             albedo = self._pigment(paint_dir, albedo, rows, cols)
         albedo, self.seam_texels = seam_blend(
             albedo, meta["components"], meta["component_px"], palette
         )
+        if self.baked and bake is None:
+            albedo, have, self.bake_weight = self._bake(paint_dir, albedo, have)
+        else:
+            blur = palette["have_blur_m"]
+            albedo, have, self.bake_weight = ground_albedo(albedo, have, bake, blur)
+        self.albedo_source = "paint" if self.bake_weight is None else "bake"
+        albedo = self._calibrate(albedo, weights)
+        del weights
         index = biome_grid(biome, rows, cols)
-        bake_w = None
-        if self.baked:
-            albedo, have, bake_w = self._bake(paint_dir, albedo, have)
         albedo = self._fallback(albedo, have, index, len(area_names))
-        albedo = self._biome_tint(albedo, index, area_names, bake_w)
-        del bake_w
+        albedo = self._biome_tint(albedo, index, area_names)
         self.albedo = [albedo[..., k].astype(np.float16) for k in range(3)]
-        self.rock = self._rock(albedo)
+        self.rock = self._rock(albedo, index, area_names)
         del albedo
         self.canopy = _plane(paint_dir, meta, CANOPY_NAME)
         self.crown = _plane(paint_dir, meta, CROWN_NAME) if CROWN_NAME in meta["files"] else None
@@ -262,12 +380,15 @@ class PaintedGround:
         self.canopy_rgb = np.asarray(meta["albedo_linear"]["canopy"], np.float32) * np.float32(
             palette["canopy_dark"]
         )
-        self.mesh_rgb = {
-            MESH_CORAL: srgb_to_linear(palette["mesh_colours"]["coral"]),
-            MESH_SHELL: srgb_to_linear(palette["mesh_colours"]["shell"]),
-        }
-        self.seabed_coral = srgb_to_linear(palette["mesh_colours"]["coral_seabed"])
+        colours = {k: srgb_to_linear(v) for k, v in palette["mesh_colours"].items()}
+        targets = palette["calibration"]
+        if "canopy" in targets:
+            self.canopy_rgb = self._target(targets["canopy"])
+        for name, hex_colour in targets.get("meshes", {}).items():
+            colours[name] = self._target(hex_colour)
+        self.mesh_rgb = {MESH_CORAL: colours["coral"], MESH_SHELL: colours["shell"]}
         water = palette["water"]
+        self.seabed_coral = colours["coral_seabed"] / np.float32(water["bed_wet"])
         self.water = {
             "k": np.asarray(water["k_per_m"], np.float32),
             "body": srgb_to_linear(water["body"]),
@@ -342,10 +463,10 @@ class PaintedGround:
         weight = ndimage.gaussian_filter(have.astype(np.float32), p["have_blur_m"])[..., None]
         return albedo * weight + fallback * (1.0 - weight)
 
-    def _biome_tint(self, albedo, index, area_names: list[str], keep=None):
+    def _biome_tint(self, albedo, index, area_names: list[str]):
         """A subtle per-biome OKLab hue offset, so biomes painted with one layer separate.
 
-        ``keep`` is where the colour is the game's own bake, which is left as it is.
+        Where the colour is the game's own bake (``bake_weight``) it is left as it is.
         """
         p = self.palette
         strength = np.float32(p["biome_tint_strength"])
@@ -361,12 +482,33 @@ class PaintedGround:
             lab = oklab(np.clip(albedo[block], 1e-7, None))
             lab[..., 1:] += shift[block]
             out[block] = np.clip(linear_from_oklab(lab), 0.0, 1.0)
-            if keep is not None:
-                weight = keep[block][..., None]
-                out[block] = out[block] * (1.0 - weight) + albedo[block] * weight
+        if self.bake_weight is not None:
+            w = self.bake_weight[..., None]
+            out = out * (1.0 - w) + albedo * w
         return out
 
-    def _rock(self, albedo):
+    def _target(self, hex_colour: str) -> np.ndarray:
+        return np.clip(linear_from_oklab(display_to_ground(self.palette, hex_colour)), 0.0, 1.0)
+
+    def _calibrate(self, albedo, weights):
+        """Move each layer's median colour onto its target, measured on whatever albedo came."""
+        cal = self.palette["calibration"]
+        sample = (slice(None, None, 4), slice(None, None, 4))
+        total = sum(w[sample].astype(np.float32) for w in weights.values())
+        flat = albedo[sample]
+        ops, self.calibration = {}, {}
+        for name, hex_colour in cal["layers"].items():
+            if name not in weights:
+                continue
+            pure = weights[name][sample] >= cal["pure_share"] * np.maximum(total, 1.0)
+            if pure.sum() < cal["min_texels"]:
+                continue
+            source = _median_lab(flat[pure])
+            ops[name] = transfer_op(source, display_to_ground(self.palette, hex_colour))
+            self.calibration[name] = {"texels": int(pure.sum()), "dL": round(ops[name][0], 4)}
+        return layer_transfer(albedo, weights, ops) if ops else albedo
+
+    def _rock(self, albedo, index, area_names: list[str]):
         """Rock colour on a coarse grid: the game's rock albedo, tinted by the ground around."""
         p = self.palette
         step = ROCK_GRID_M
@@ -386,13 +528,28 @@ class PaintedGround:
         lab[..., 1:] = (
             rock_lab[1:] * (1 - p["rock_tint_chroma"]) + lab[..., 1:] * p["rock_tint_chroma"]
         )
+        cal = p["calibration"]
+        mask = np.zeros(lab.shape[:2], np.float32)
+        desert = cal.get("desert_rock")
+        if desert:
+            wanted = [i for i, n in enumerate(area_names) if n in desert["areas"]]
+            mask = np.isin(index[::step, ::step], wanted).astype(np.float32)
+            mask = ndimage.gaussian_filter(mask, p["rock_tint_blur_m"] / step)
+        if (mask > 0.5).any():
+            target = display_to_ground(p, desert["target"])
+            moved = np.empty_like(lab)
+            moved[..., 0] = lab[..., 0] + (target[0] - np.median(lab[mask > 0.5][:, 0]))
+            moved[..., 1:] = target[1:]
+            lab = lab + (moved - lab) * mask[..., None]
         rock = np.clip(linear_from_oklab(lab), 0.0, 1.0)
+        if cal.get("rock_keeps_exposure"):
+            rock *= (mask + (1.0 - mask) / np.float32(p["tone"]["gain"]))[..., None]
         return [rock[..., k].astype(np.float32) for k in range(3)]
 
 
 def _unit_luminance(colour) -> np.ndarray:
     c = np.asarray(colour, np.float32)
-    return c / (c @ np.array([0.2126, 0.7152, 0.0722], np.float32))
+    return c / (c @ _LUMA)
 
 
 def _light(p: dict, ndl, ndl_flat) -> np.ndarray:
@@ -524,7 +681,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     borrow = scene["borrow"]
     borrow = np.where(borrow < 1.0, 1.0 + (borrow - 1.0) * np.float32(p["borrow_ink_damp"]), borrow)
     light = _light(p, scene["ndl"], scene["ndl_flat"])
-    exposure = np.float32(p["exposure"])
+    exposure = np.float32(p["exposure"] * p["tone"]["gain"])
     lit = g * light * (exposure * borrow)[..., None]
 
     water = scene["water"]
@@ -545,9 +702,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     out = add_foam(out, water, p["shore"].get("foam"), np.float32(1.0))
     out = titan_over(out, scene, ground)
 
-    shoulder = np.float32(p["shoulder"])
-    over = np.maximum(out - shoulder, 0.0)
-    out = np.where(
-        out < shoulder, out, shoulder + (1 - shoulder) * (1 - np.exp(-over / (1 - shoulder)))
-    )
+    y = np.maximum(out @ _LUMA, 1e-7)
+    t = p["tone"]
+    out = out * (tone(y, t["knee"], t["white"]) / y)[..., None]
     return linear_to_srgb(out)
