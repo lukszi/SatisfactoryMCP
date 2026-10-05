@@ -226,7 +226,7 @@ def test_a_site_at_a_pin_stores_the_place_not_the_pin(world):
     from satisfactory_mcp.domain.planning.siting import resolve_plan_site
 
     point, _ = pins.create(world, "point", {"x_m": -7.9, "y_m": -5.5})
-    site = resolve_plan_site(world, point["id"])
+    site = resolve_plan_site(world, point["id"], terrain_field=None)
     assert site.describe().startswith(f"origin -7.9,-5.5m (from {point['id']} = -7.9,-5.5 (point))")
     assert site.to_dict()["origin_label"] == "-7.9,-5.5 (point)"
 

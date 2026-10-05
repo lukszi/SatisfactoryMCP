@@ -5,24 +5,29 @@ writes it to the gitignored ``data/local/heightmap/``; this module is the byte f
 sides agree on and a reader over it. **Absent is the normal case** -- the repository ships
 no terrain, so ``load_field()`` returns ``None`` on any machine where nobody ran the
 generator, and every caller carries on without one. A raster is ``zlib`` over raw bytes,
-the two int16 ones row-delta first, and a texel read costs a full decode of its plane, so
-each plane is decoded lazily and cached. What each plane means is stated at the constant
-that names it; the georeference is in ``meta.json`` and is never assumed.
+the int16 ones row-delta first; each plane is decoded once into a memory-mapped ``.npy``
+under ``cache/``. What each plane means is stated at the constant that names it; the
+georeference is in ``meta.json``. Surfaces and hints: docs/spatial-and-map.md section 22.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
+import os
 import zlib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
 from ... import config
 
 __all__ = [
+    "AMBIGUOUS_M",
+    "CACHE_DIR_NAME",
     "DENSITY_NAME",
     "DIR_NAME",
     "HEIGHT_NAME",
@@ -37,6 +42,9 @@ __all__ = [
     "PROV_NAMES",
     "PROV_NODATA",
     "PROV_WATER_NAME",
+    "SURFACES",
+    "TERRAIN_NAME",
+    "TOP_NAME",
     "WATER_DRY",
     "WATER_LEVEL_ONLY",
     "WATER_MEASURED",
@@ -47,10 +55,14 @@ __all__ = [
     "Field",
     "NearWater",
     "Reading",
+    "Surface",
+    "Surfaces",
     "decode_i16",
     "decode_u8",
+    "decode_u16",
     "encode_i16",
     "encode_u8",
+    "encode_u16",
     "field_dir",
     "load_field",
 ]
@@ -66,6 +78,31 @@ WATER_NAME = "water.i16.z"
 WATER_QUALITY_NAME = "waterq.u8.z"
 DENSITY_NAME = "density.u8.z"
 META_NAME = "meta.json"
+
+#: The bare sculpted landscape, raw uint16 on its own grid (``meta.json`` ``terrain_grid``);
+#: 0 is a hole. Rocks and cliffs are meshes and are not in it.
+TERRAIN_NAME = "terrain.u16.z"
+#: ``height.i16.z`` max-folded with arches and foliage boulders: the highest thing standing.
+TOP_NAME = "top.i16.z"
+
+#: Decoded planes as ``.npy`` beside the ``.z`` files, memory-mapped on later loads.
+CACHE_DIR_NAME = "cache"
+
+#: Which surface a lookup reads. ``ground`` is the fused field and the default.
+Surface = Literal["ground", "terrain", "top"]
+SURFACES: tuple[str, ...] = ("ground", "terrain", "top")
+
+#: Ground above the bare landscape by more than this is a rock or overhang, so the answer
+#: may be a roof. Also the slack a hint gets: a thing rests on a surface at or below it.
+AMBIGUOUS_M = 2.0
+
+#: Four vertices spanning more than this are a cliff edge, not a slope: the point reads the
+#: nearest one instead of a blend of rock top and the ground below it.
+BLEND_MAX_STEP_M = 2.0
+
+#: A landscape ground reading this close to the terrain plane is that plane rounded to
+#: decimetres, so the terrain's 7.8 mm value answers instead.
+REFINE_M = 0.1
 
 #: The int16 value that means "nothing is known here". Not zero: zero is sea level and a
 #: real answer, so a no-data texel read as zero is a flat sea at the map's edge.
@@ -164,6 +201,18 @@ def decode_i16(blob: bytes, height: int, width: int) -> np.ndarray:
     return np.cumsum(delta.reshape(height, width), axis=1, dtype=np.int16)
 
 
+def encode_u16(grid: np.ndarray) -> bytes:
+    """One uint16 raster to bytes: the int16 codec over the same bits, so the wrap is exact."""
+    if grid.dtype != np.uint16:
+        raise TypeError(f"expected a uint16 raster, got {grid.dtype}")
+    return encode_i16(np.ascontiguousarray(grid).view(np.int16))
+
+
+def decode_u16(blob: bytes, height: int, width: int) -> np.ndarray:
+    """The inverse of ``encode_u16``."""
+    return decode_i16(blob, height, width).view(np.uint16)
+
+
 def encode_u8(grid: np.ndarray) -> bytes:
     """One uint8 raster to bytes: plain zlib, no delta."""
     if grid.dtype != np.uint8:
@@ -180,6 +229,17 @@ def decode_u8(blob: bytes, height: int, width: int) -> np.ndarray:
             f"= {height * width} -- the sidecar and the raster are not from one run"
         )
     return flat.reshape(height, width)
+
+
+_DECODERS = {"i16": decode_i16, "u8": decode_u8, "u16": decode_u16}
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 # --------------------------------------------------------------------------------------
@@ -201,6 +261,13 @@ class Reading:
     accuracy_m: float | None
     water_m: float | None = None
     water_quality: int = WATER_DRY
+    #: Which of ``SURFACES`` answered.
+    surface: str = "ground"
+    #: The bare landscape under the point, where the field carries that plane.
+    terrain_z_m: float | None = None
+    #: The answer may be a rock top or roof rather than the floor beneath it. Without a
+    #: terrain plane this is every cliff texel, since nothing else can tell them apart.
+    ambiguous: bool = False
 
     @property
     def source(self) -> str:
@@ -239,6 +306,34 @@ class Reading:
         if not self.submerged or not self.depth_known or self.water_m is None:
             return None
         return max(self.water_m - self.z_m, 0.0)
+
+
+@dataclass(frozen=True)
+class Surfaces:
+    """Every surface the field holds at one point, in metres; ``None`` where a plane is absent."""
+
+    ground_m: float | None
+    terrain_m: float | None
+    top_m: float | None
+    provenance: int
+
+    def candidates(self) -> list[tuple[str, float]]:
+        return [
+            (name, value)
+            for name, value in (
+                ("ground", self.ground_m),
+                ("terrain", self.terrain_m),
+                ("top", self.top_m),
+            )
+            if value is not None
+        ]
+
+    def pick(self, hint_m: float) -> tuple[str, float] | None:
+        """The candidate nearest ``hint_m``, preferring one at or below hint + ``AMBIGUOUS_M``."""
+        found = self.candidates()
+        below = [c for c in found if c[1] <= hint_m + AMBIGUOUS_M]
+        pool = below or found
+        return min(pool, key=lambda c: abs(c[1] - hint_m)) if pool else None
 
 
 @dataclass(frozen=True)
@@ -290,6 +385,10 @@ class Area:
     #: layer is a 3.9 m-quantised stand-in, so a pad that is mostly fill has numbers whose
     #: error bars swamp the roughness they report -- that is what this is for.
     provenance_pct: dict[int, float] = field(default_factory=dict)
+    surface: str = "ground"
+    #: Share of the rectangle where ground stands over the bare landscape by more than
+    #: ``AMBIGUOUS_M``; without a terrain plane, the cliff share.
+    ambiguous_pct: float = 0.0
 
     @property
     def z_range_m(self) -> float | None:
@@ -374,35 +473,164 @@ def _area_shape(z: np.ndarray, good: np.ndarray, spacing_m: float) -> dict[str, 
 class Field:
     """A loaded heightmap: its rasters, a georeference, and the accuracy it measured.
 
-    Constructed by ``load_field``. Height and provenance are decoded when the object is
-    built, since there is no answer without both; the water and density planes only when
-    something asks, because a decoded plane is tens of MB resident.
+    Constructed by ``load_field``. Height and provenance are opened when the object is
+    built, since there is no answer without both; every other plane on first use. With
+    ``cache`` on, a plane is decoded once into ``cache/<name>.npy`` and memory-mapped after.
     """
 
-    def __init__(self, meta: dict[str, Any], directory: Path) -> None:
+    def __init__(self, meta: dict[str, Any], directory: Path, *, cache: bool = True) -> None:
         self.meta = meta
         self.directory = directory
+        self.cache = cache
         grid = meta["grid"]
         self.width = int(grid["width"])
         self.height = int(grid["height"])
         self.x0_cm = float(grid["x0_cm"])
         self.y0_cm = float(grid["y0_cm"])
         self.spacing_cm = float(grid["spacing_cm"])
-        self._height_dm = decode_i16(
-            (directory / HEIGHT_NAME).read_bytes(), self.height, self.width
-        )
-        self._prov = decode_u8((directory / PROV_NAME).read_bytes(), self.height, self.width)
-        self._water_dm: np.ndarray | None = None
-        self._water_tried = False
-        self._water_quality: np.ndarray | None = None
-        self._water_quality_tried = False
-        self._density: np.ndarray | None = None
-        self._density_tried = False
+        self._planes: dict[str, np.ndarray | None] = {}
+        self.cache_events: dict[str, str] = {}
+        self._height_dm = self._plane(HEIGHT_NAME)
+        self._prov = self._plane(PROV_NAME)
+        if self._height_dm is None or self._prov is None:
+            raise FileNotFoundError("height or provenance plane missing")
         self._accuracy = {
             int(key): value.get("accuracy_m")
             for key, value in (meta.get("provenance") or {}).items()
             if str(key).lstrip("-").isdigit()
         }
+        self._terrain_grid = self._read_terrain_grid(meta.get("terrain_grid"))
+
+    # -- planes ------------------------------------------------------------------------
+
+    def _plane_shape(self, name: str) -> tuple[int, int, str]:
+        if name == TERRAIN_NAME:
+            tg = self._terrain_grid
+            return tg["height"], tg["width"], "u16"
+        kind = "u8" if name.endswith(".u8.z") else "i16"
+        return self.height, self.width, kind
+
+    def _plane(self, name: str) -> np.ndarray | None:
+        """A decoded plane, or ``None`` when this field was written without it."""
+        if name in self._planes:
+            return self._planes[name]
+        path = self.directory / name
+        if not path.is_file() or (name == TERRAIN_NAME and self._terrain_grid is None):
+            self._planes[name] = None
+            return None
+        height, width, kind = self._plane_shape(name)
+        array = self._cached(path, height, width, kind) if self.cache else None
+        if array is None:
+            array = _DECODERS[kind](path.read_bytes(), height, width)
+            failed = self.cache_events.get(name)
+            self.cache_events[name] = f"{failed}, decoded" if failed else "decoded"
+        self._planes[name] = array
+        return array
+
+    def _cached(self, path: Path, height: int, width: int, kind: str) -> np.ndarray | None:
+        """The plane from its ``.npy`` cache, writing the cache first if it is missing or stale.
+
+        Any failure -- a read-only medium, a cache file another process holds mapped --
+        returns ``None`` and the caller decodes in memory.
+        """
+        cache_dir = self.directory / CACHE_DIR_NAME
+        npy = cache_dir / (path.name + ".npy")
+        stamp_path = cache_dir / (path.name + ".stamp.json")
+        try:
+            source = path.stat()
+            want = {
+                "source": path.name,
+                "bytes": source.st_size,
+                "shape": [height, width],
+                "dtype": kind,
+                "generator_version": self.meta.get("generator_version"),
+            }
+            try:
+                have = json.loads(stamp_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                have = {}
+            current = (
+                isinstance(have, dict)
+                and npy.is_file()
+                and all(have.get(k) == v for k, v in want.items())
+                and (
+                    have.get("mtime_ns") == source.st_mtime_ns
+                    or have.get("sha256") == _sha256(path)
+                )
+            )
+            if current:
+                array = np.load(npy, mmap_mode="r", allow_pickle=False)
+                if array.shape == (height, width):
+                    self.cache_events[path.name] = "mapped"
+                    return array
+            array = _DECODERS[kind](path.read_bytes(), height, width)
+            cache_dir.mkdir(exist_ok=True)
+            tmp = npy.with_name(npy.name + f".{os.getpid()}.tmp")
+            with open(tmp, "wb") as handle:
+                np.save(handle, array, allow_pickle=False)
+            os.replace(tmp, npy)
+            stamp = {**want, "mtime_ns": source.st_mtime_ns, "sha256": _sha256(path)}
+            tmp_stamp = stamp_path.with_name(stamp_path.name + f".{os.getpid()}.tmp")
+            tmp_stamp.write_text(json.dumps(stamp), encoding="utf-8")
+            os.replace(tmp_stamp, stamp_path)
+            self.cache_events[path.name] = "written"
+            del array
+            return np.load(npy, mmap_mode="r", allow_pickle=False)
+        except (OSError, ValueError):
+            self.cache_events[path.name] = "failed"
+            return None
+
+    def _read_terrain_grid(self, raw: Any) -> dict[str, Any] | None:
+        """``terrain_grid`` with its offset into the main grid, or ``None`` if unusable."""
+        if not isinstance(raw, dict):
+            return None
+        try:
+            tg = {
+                "width": int(raw["width"]),
+                "height": int(raw["height"]),
+                "x0_cm": float(raw["x0_cm"]),
+                "y0_cm": float(raw["y0_cm"]),
+                "spacing_cm": float(raw["spacing_cm"]),
+                "zero": float(raw.get("zero", 32768.0)),
+                "units_per_m": float(raw.get("units_per_m", 128.0)),
+                "offset_m": float(raw.get("offset_m", 1.0)),
+            }
+        except (KeyError, TypeError, ValueError):
+            return None
+        dc = (tg["x0_cm"] - self.x0_cm) / self.spacing_cm
+        dr = (tg["y0_cm"] - self.y0_cm) / self.spacing_cm
+        aligned = tg["spacing_cm"] == self.spacing_cm and dc == round(dc) and dr == round(dr)
+        tg["col_off"] = round(dc) if aligned else None
+        tg["row_off"] = round(dr) if aligned else None
+        return tg
+
+    def accuracy_m(self, provenance: int) -> float | None:
+        """What the generator measured for one layer, or ``None`` where it recorded nothing."""
+        return self._accuracy.get(provenance, UNKNOWN_ACCURACY_M)
+
+    @property
+    def has_terrain(self) -> bool:
+        return self._plane(TERRAIN_NAME) is not None
+
+    @property
+    def has_top(self) -> bool:
+        return self._plane(TOP_NAME) is not None
+
+    def _water_raster(self) -> np.ndarray | None:
+        return self._plane(WATER_NAME)
+
+    def _water_quality_raster(self) -> np.ndarray | None:
+        """``waterq.u8.z``, or ``None`` for a field written before it existed."""
+        return self._plane(WATER_QUALITY_NAME)
+
+    def density_raster(self) -> np.ndarray | None:
+        """``density.u8.z``, or ``None`` for a field written before it existed.
+
+        How many source vertices landed in each texel, clamped at 255 and zero wherever the
+        cliff layer did not answer. ``None`` is not zero: a field predating the plane knows
+        nothing about its own density.
+        """
+        return self._plane(DENSITY_NAME)
 
     # -- geometry ----------------------------------------------------------------------
 
@@ -425,40 +653,6 @@ class Field:
         if not (0 <= col < self.width and 0 <= row < self.height):
             return None
         return row, col
-
-    def _water_raster(self) -> np.ndarray | None:
-        if not self._water_tried:
-            self._water_tried = True
-            path = self.directory / WATER_NAME
-            if path.is_file():
-                self._water_dm = decode_i16(path.read_bytes(), self.height, self.width)
-        return self._water_dm
-
-    def _water_quality_raster(self) -> np.ndarray | None:
-        """``waterq.u8.z``, or ``None`` for a field written before it existed."""
-        if not self._water_quality_tried:
-            self._water_quality_tried = True
-            path = self.directory / WATER_QUALITY_NAME
-            if path.is_file():
-                self._water_quality = decode_u8(path.read_bytes(), self.height, self.width)
-        return self._water_quality
-
-    def density_raster(self) -> np.ndarray | None:
-        """``density.u8.z``, or ``None`` for a field written before it existed.
-
-        How many source vertices landed in each texel, clamped at 255 and zero wherever the
-        cliff layer did not answer -- the landscape and the fill are lattices, so "samples
-        per texel" is not a question either has. It is the only plane that can tell a
-        renderer asking for a sub-metre pixel whether it is reading a measurement or an
-        interpolant. ``None`` is not zero: a field predating the plane knows nothing about
-        its own density, and that must not be read as "no samples anywhere".
-        """
-        if not self._density_tried:
-            self._density_tried = True
-            path = self.directory / DENSITY_NAME
-            if path.is_file():
-                self._density = decode_u8(path.read_bytes(), self.height, self.width)
-        return self._density
 
     def at(self, x_cm: float, y_cm: float) -> Reading | None:
         """The terrain at one world coordinate, or ``None`` where the field knows nothing.
@@ -492,6 +686,178 @@ class Field:
             water_quality=quality,
         )
 
+    def _sample(
+        self,
+        plane: np.ndarray,
+        nodata: int,
+        grid: tuple[float, float, float],
+        x_cm: float,
+        y_cm: float,
+        bilinear: bool,
+        max_step: float = math.inf,
+    ) -> tuple[float, tuple[int, int]] | None:
+        """Raw value at a point and the vertex that dominated it, or ``None``.
+
+        Bilinear over the vertices with non-zero weight; if any of those is no data, or they
+        span more than ``max_step`` (a cliff edge), the heaviest valid one answers alone.
+        """
+        x0, y0, spacing = grid
+        fx, fy = (x_cm - x0) / spacing, (y_cm - y0) / spacing
+        h, w = plane.shape
+        if not (0 <= round(fx) < w and 0 <= round(fy) < h):
+            return None
+        if not bilinear:
+            r, c = round(fy), round(fx)
+            v = int(plane[r, c])
+            return None if v == nodata else (float(v), (r, c))
+        c0, r0 = math.floor(fx), math.floor(fy)
+        tx, ty = fx - c0, fy - r0
+        block = np.asarray(plane[max(r0, 0) : r0 + 2, max(c0, 0) : c0 + 2]).tolist()
+        taps = []
+        for dr, wy in ((0, 1.0 - ty), (1, ty)):
+            for dc, wx in ((0, 1.0 - tx), (1, tx)):
+                weight = wy * wx
+                if weight <= 0.0:
+                    continue
+                r, c = r0 + dr, c0 + dc
+                inside = 0 <= r < h and 0 <= c < w
+                v = block[r - max(r0, 0)][c - max(c0, 0)] if inside else nodata
+                taps.append((weight, r, c, v))
+        good = [t for t in taps if t[3] != nodata]
+        if not good:
+            return None
+        lead = max(good, key=lambda t: t[0])
+        values = [t[3] for t in taps]
+        if len(good) < len(taps) or max(values) - min(values) > max_step:
+            return float(lead[3]), (lead[1], lead[2])
+        return sum(t[0] * t[3] for t in taps), (lead[1], lead[2])
+
+    def _ground_m(
+        self, plane: np.ndarray | None, x_cm: float, y_cm: float, bilinear: bool
+    ) -> tuple[float, tuple[int, int]] | None:
+        if plane is None:
+            return None
+        got = self._sample(
+            plane,
+            NODATA,
+            (self.x0_cm, self.y0_cm, self.spacing_cm),
+            x_cm,
+            y_cm,
+            bilinear,
+            BLEND_MAX_STEP_M * DM_PER_M,
+        )
+        return None if got is None else (got[0] / DM_PER_M, got[1])
+
+    def _terrain_m(self, x_cm: float, y_cm: float, bilinear: bool) -> float | None:
+        plane = self._plane(TERRAIN_NAME)
+        tg = self._terrain_grid
+        if plane is None or tg is None:
+            return None
+        got = self._sample(
+            plane,
+            0,
+            (tg["x0_cm"], tg["y0_cm"], tg["spacing_cm"]),
+            x_cm,
+            y_cm,
+            bilinear,
+            BLEND_MAX_STEP_M * tg["units_per_m"],
+        )
+        if got is None:
+            return None
+        return (got[0] - tg["zero"]) / tg["units_per_m"] + tg["offset_m"]
+
+    def surfaces(
+        self, x_cm: float, y_cm: float, *, bilinear: bool = True, top: bool = True
+    ) -> Surfaces | None:
+        """Every surface at a point, or ``None`` off the grid or where none has data."""
+        x_cm, y_cm = float(x_cm), float(y_cm)
+        where = self.texel(x_cm, y_cm)
+        if where is None:
+            return None
+        ground = self._ground_m(self._height_dm, x_cm, y_cm, bilinear)
+        top_plane = self._plane(TOP_NAME) if top else None
+        top = self._ground_m(top_plane, x_cm, y_cm, bilinear)
+        terrain = self._terrain_m(x_cm, y_cm, bilinear)
+        if ground is None and top is None and terrain is None:
+            return None
+        row, col = ground[1] if ground is not None else where
+        return Surfaces(
+            ground_m=None if ground is None else round(ground[0], 3),
+            terrain_m=None if terrain is None else round(terrain, 3),
+            top_m=None if top is None else round(top[0], 3),
+            provenance=int(self._prov[row, col]),
+        )
+
+    def z(
+        self,
+        x_cm: float,
+        y_cm: float,
+        *,
+        surface: str = "ground",
+        hint_z_cm: float | None = None,
+        bilinear: bool = True,
+    ) -> Reading | None:
+        """The height at a point on one surface, or ``None`` where that surface knows nothing.
+
+        With ``hint_z_cm`` the surface is chosen by ``Surfaces.pick`` instead of by
+        ``surface``, and ``Reading.surface`` says which answered.
+        """
+        if surface not in SURFACES:
+            raise ValueError(f"surface {surface!r} is not one of {', '.join(SURFACES)}")
+        x_cm, y_cm = float(x_cm), float(y_cm)
+        found = self.surfaces(
+            x_cm, y_cm, bilinear=bilinear, top=surface == "top" or hint_z_cm is not None
+        )
+        if found is None:
+            return None
+        if hint_z_cm is not None:
+            picked = found.pick(hint_z_cm / 100.0)
+            if picked is None:
+                return None
+            surface, z_m = picked
+        else:
+            value = {"ground": found.ground_m, "terrain": found.terrain_m, "top": found.top_m}[
+                surface
+            ]
+            if value is None:
+                return None
+            z_m = value
+        if (
+            surface == "ground"
+            and found.provenance == PROV_LANDSCAPE
+            and found.terrain_m is not None
+            and abs(z_m - found.terrain_m) <= REFINE_M
+        ):
+            z_m = found.terrain_m
+        provenance = PROV_LANDSCAPE if surface == "terrain" else found.provenance
+        if self.has_terrain:
+            ambiguous = found.ground_m is not None and (
+                found.terrain_m is None
+                and found.provenance in PROV_CLIFF_VALUES
+                or found.terrain_m is not None
+                and found.ground_m - found.terrain_m > AMBIGUOUS_M
+            )
+        else:
+            ambiguous = found.provenance in PROV_CLIFF_VALUES
+        row, col = self.texel(x_cm, y_cm)  # type: ignore[misc]
+        water_m, quality = None, WATER_DRY
+        water = self._water_raster()
+        if water is not None and int(water[row, col]) != NODATA:
+            water_m = int(water[row, col]) / DM_PER_M
+            grades = self._water_quality_raster()
+            if grades is not None:
+                quality = int(grades[row, col])
+        return Reading(
+            z_m=z_m,
+            provenance=provenance,
+            accuracy_m=self._accuracy.get(provenance, UNKNOWN_ACCURACY_M),
+            water_m=water_m,
+            water_quality=quality,
+            surface=surface,
+            terrain_z_m=found.terrain_m,
+            ambiguous=bool(ambiguous),
+        )
+
     def _rows_cols(
         self, x0_cm: float, y0_cm: float, x1_cm: float, y1_cm: float
     ) -> tuple[int, int, int, int]:
@@ -521,6 +887,9 @@ class Field:
         x1_cm: float,
         y1_cm: float,
         max_texels: int = 1_000_000,
+        *,
+        surface: str = "ground",
+        shape: bool = True,
     ) -> Area:
         """The terrain over a rectangle, as the facts a build decision reads.
 
@@ -535,7 +904,17 @@ class Field:
         is reported -- decimation lowers roughness and slope, because it cannot see detail
         finer than the new spacing, so a caller comparing two areas must compare their
         strides too.
+
+        ``surface`` picks the plane the statistics are over; a plane this field lacks is a
+        ``ValueError``, never a silent fall back to another surface. ``shape=False`` skips
+        slope and roughness, which are most of the cost.
         """
+        if surface not in SURFACES:
+            raise ValueError(f"surface {surface!r} is not one of {', '.join(SURFACES)}")
+        if surface == "terrain" and not self.has_terrain:
+            raise ValueError("this field has no terrain plane (regenerate with generator v4)")
+        if surface == "top" and not self.has_top:
+            raise ValueError("this field has no top plane (regenerate with generator v4)")
         row_lo, row_hi, col_lo, col_hi = self._rows_cols(x0_cm, y0_cm, x1_cm, y1_cm)
         span_cols = round(abs(x1_cm - x0_cm) / self.spacing_cm) + 1
         span_rows = round(abs(y1_cm - y0_cm) / self.spacing_cm) + 1
@@ -549,6 +928,7 @@ class Field:
             requested_texels=requested,
             texels=0,
             nodata_pct=100.0,
+            surface=surface,
         )
         if row_lo >= row_hi or col_lo >= col_hi:
             return empty
@@ -559,29 +939,31 @@ class Field:
             stride = int(np.ceil(np.sqrt(inside / max_texels)))
         cut = (slice(row_lo, row_hi, stride), slice(col_lo, col_hi, stride))
 
-        raw = self._height_dm[cut]
-        good = raw != NODATA
+        z, good = self._surface_cut(surface, cut)
         n_good = int(good.sum())
         # The percentages are over the REQUESTED rectangle, so a pad hanging off the grid
         # edge reports the part nobody measured instead of a confident answer about the
         # rest. Scaled by stride^2 because a decimated view stands for the whole area.
-        seen = float(raw.size) * stride * stride
+        seen = float(z.size) * stride * stride
         outside = max(requested - seen, 0.0)
         denom = float(requested) if requested else 1.0
-        nodata_pct = 100.0 * ((raw.size - n_good) * stride * stride + outside) / denom
+        nodata_pct = 100.0 * ((z.size - n_good) * stride * stride + outside) / denom
         if n_good == 0:
             return replace(empty, stride=stride)
 
-        z = np.where(good, raw, 0).astype(np.float32) / np.float32(DM_PER_M)
         z_valid = z[good]
 
-        prov = self._prov[cut]
-        counts = np.bincount(prov.ravel(), minlength=PROV_CLIFF_DIRECT + 1)
+        if surface == "terrain":
+            counts = np.zeros(PROV_CLIFF_DIRECT + 1, np.int64)
+            counts[PROV_LANDSCAPE] = n_good
+        else:
+            counts = np.bincount(self._prov[cut].ravel(), minlength=PROV_CLIFF_DIRECT + 1)
         provenance_pct = {
             int(code): round(100.0 * float(counts[code]) * stride * stride / denom, 1)
             for code in range(len(counts))
             if counts[code]
         }
+        ambiguous = 100.0 * self._ambiguous_count(cut) * stride * stride / denom
 
         submerged, water_level, water_drop = self._area_water(cut, z, good, z_valid, stride, denom)
 
@@ -598,12 +980,60 @@ class Field:
             z_max_m=round(float(z_valid.max()), 1),
             z_mean_m=round(float(z_valid.mean()), 1),
             z_median_m=round(float(np.median(z_valid)), 1),
-            **_area_shape(z, good, self.spacing_cm * stride / 100.0),
+            **(_area_shape(z, good, self.spacing_cm * stride / 100.0) if shape else {}),
             submerged_pct=round(submerged, 1),
             water_level_m=water_level,
             water_below_ground_m=water_drop,
             provenance_pct=provenance_pct,
+            surface=surface,
+            ambiguous_pct=round(ambiguous, 1),
         )
+
+    def _surface_cut(self, surface: str, cut: tuple[slice, slice]) -> tuple[np.ndarray, np.ndarray]:
+        """``(z in metres as float32, has-data mask)`` for one surface over a cut of the grid."""
+        if surface == "terrain":
+            return self._terrain_cut(cut)
+        plane = self._height_dm if surface == "ground" else self._plane(TOP_NAME)
+        raw = plane[cut]  # type: ignore[index]
+        good = raw != NODATA
+        return np.where(good, raw, 0).astype(np.float32) / np.float32(DM_PER_M), good
+
+    def _terrain_cut(self, cut: tuple[slice, slice]) -> tuple[np.ndarray, np.ndarray]:
+        """The terrain plane resampled-free onto a cut of the main grid; off its frame is no data."""
+        plane = self._plane(TERRAIN_NAME)
+        tg = self._terrain_grid
+        rows = np.arange(cut[0].start, cut[0].stop, cut[0].step)
+        cols = np.arange(cut[1].start, cut[1].stop, cut[1].step)
+        z = np.zeros((rows.size, cols.size), np.float32)
+        good = np.zeros((rows.size, cols.size), bool)
+        if plane is None or tg is None or tg["row_off"] is None:
+            return z, good
+        tr, tc = rows - tg["row_off"], cols - tg["col_off"]
+        ok_r = np.nonzero((tr >= 0) & (tr < tg["height"]))[0]
+        ok_c = np.nonzero((tc >= 0) & (tc < tg["width"]))[0]
+        if ok_r.size == 0 or ok_c.size == 0:
+            return z, good
+        step = cut[0].step or 1
+        raw = plane[tr[ok_r[0]] : tr[ok_r[-1]] + 1 : step, tc[ok_c[0]] : tc[ok_c[-1]] + 1 : step]
+        place = np.ix_(ok_r, ok_c)
+        good[place] = raw != 0
+        z[place] = np.where(
+            raw != 0,
+            (raw.astype(np.float32) - np.float32(tg["zero"])) / np.float32(tg["units_per_m"])
+            + np.float32(tg["offset_m"]),
+            0,
+        )
+        return z, good
+
+    def _ambiguous_count(self, cut: tuple[slice, slice]) -> int:
+        """Texels of a cut where the ground may be a roof: over terrain by ``AMBIGUOUS_M``."""
+        ground, has_ground = self._surface_cut("ground", cut)
+        if not self.has_terrain:
+            return int((has_ground & np.isin(self._prov[cut], PROV_CLIFF_VALUES)).sum())
+        terrain, has_terrain = self._terrain_cut(cut)
+        over = has_terrain & (ground - terrain > AMBIGUOUS_M)
+        hole = ~has_terrain & np.isin(self._prov[cut], PROV_CLIFF_VALUES)
+        return int((has_ground & (over | hole)).sum())
 
     def _area_water(
         self,
@@ -702,7 +1132,7 @@ class Field:
 
 #: Loaded fields, keyed by the directory and its sidecar's mtime, so a regenerated field is
 #: picked up without a restart while a repeated question costs a dictionary lookup.
-_CACHE: dict[tuple[str, int], Field] = {}
+_CACHE: dict[tuple[str, int, bool], Field] = {}
 
 
 def field_dir(local_dir: Path | None = None) -> Path:
@@ -712,7 +1142,7 @@ def field_dir(local_dir: Path | None = None) -> Path:
     return config.data_dir() / "local" / DIR_NAME
 
 
-def load_field(local_dir: Path | None = None) -> Field | None:
+def load_field(local_dir: Path | None = None, *, cache: bool = True) -> Field | None:
     """The terrain field, or ``None`` if this machine has none.
 
     Every failure mode -- no directory, no sidecar, a sidecar that will not parse, a raster
@@ -726,7 +1156,7 @@ def load_field(local_dir: Path | None = None) -> Field | None:
         stamp = meta_path.stat().st_mtime_ns
     except OSError:
         return None
-    key = (str(directory), stamp)
+    key = (str(directory), stamp, cache)
     cached = _CACHE.get(key)
     if cached is not None:
         return cached
@@ -734,7 +1164,7 @@ def load_field(local_dir: Path | None = None) -> Field | None:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if not isinstance(meta, dict):
             return None
-        field = Field(meta, directory)
+        field = Field(meta, directory, cache=cache)
     except (OSError, ValueError, TypeError, KeyError, zlib.error):
         return None
     _CACHE.clear()

@@ -79,6 +79,8 @@ class Elevation(TypedDict):
     terrain_m: float | None
     terrain_source: str | None
     terrain_accuracy_m: float | None
+    terrain_bare_m: float | None
+    terrain_ambiguous: bool
     terrain_water_m: float | None
     terrain_water_depth_m: float | None
     terrain_water_note: str | None
@@ -160,9 +162,10 @@ class InspectResponse(TypedDict):
 def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     """A probe as JSON, with the reason for every number it declines to give.
 
-    Four sources, each labelled as what it is. ``terrain_m`` is one texel of the extracted
-    heightfield read at exactly the coordinate asked about; ground and built are populations
-    of things standing nearby. They stay apart all the way out to the page: a node rests on
+    Four sources, each labelled as what it is. ``terrain_m`` is the extracted heightfield
+    read bilinearly at exactly the coordinate asked about; ``terrain_ambiguous`` says it may
+    be a rock top or roof, with ``terrain_bare_m`` the landscape under it. Ground and built
+    are populations of things standing nearby. They stay apart out to the page: a node rests on
     terrain, a foundation is wherever the player put it, and one median over the three would
     be a number describing none of them. ``terrain_source`` says which layer of the field
     answered and ``terrain_accuracy_m`` what the generator measured for that layer, because
@@ -224,6 +227,8 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
         "terrain_m": _round(near.terrain_m),
         "terrain_source": terrain_probe.source if terrain_probe else None,
         "terrain_accuracy_m": terrain_probe.accuracy_m if terrain_probe else None,
+        "terrain_bare_m": _round(terrain_probe.terrain_z_m) if terrain_probe else None,
+        "terrain_ambiguous": bool(terrain_probe and terrain_probe.ambiguous),
         "terrain_water_m": (
             _round(terrain_probe.water_m) if terrain_probe and terrain_probe.submerged else None
         ),

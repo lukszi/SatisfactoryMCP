@@ -152,6 +152,23 @@ def test_the_codec_round_trips_a_raster_exactly_including_the_wrap():
     assert np.array_equal(hf.decode_u8(hf.encode_u8(grade), 37, 61), grade)
 
 
+def test_the_int16_accumulator_decodes_exactly_what_the_int32_one_did():
+    """The decoder sums in int16 to halve its peak; the wrap must land on the same raster."""
+    rng = np.random.default_rng(20261005)
+    grid = rng.integers(-32768, 32768, size=(23, 41)).astype(np.int16)
+    grid[3, ::2] = hf.NODATA
+    grid[3, 1::2] = 32767
+    blob = hf.encode_i16(grid)
+    import zlib
+
+    delta = np.frombuffer(zlib.decompress(blob), dtype="<i2").reshape(23, 41)
+    reference = np.cumsum(delta.astype(np.int32), axis=1).astype(np.int16)
+    decoded = hf.decode_i16(blob, 23, 41)
+    assert decoded.dtype == np.int16
+    assert np.array_equal(decoded, reference)
+    assert np.array_equal(decoded, grid)
+
+
 def test_the_delta_is_what_makes_the_raster_small():
     """Not decoration: on the real field it is 16.45 MB against 26.72 MB, 38% of the file.
 
@@ -809,3 +826,195 @@ def test_the_generator_and_the_loader_agree_on_the_file_names_and_the_grid():
         np.array([origin_y] * 3),
     )
     assert got[0] == 1.0 and got[1] == 2.0 and np.isnan(got[2])
+
+
+# --------------------------------------------------------------------------------------
+# Surfaces, bilinear reads and the plane cache.
+# --------------------------------------------------------------------------------------
+
+#: The terrain plane stores z_m = (raw - ZERO) / UNITS + OFFSET, as the cook does.
+T_ZERO, T_UNITS, T_OFFSET = 32768.0, 128.0, 1.0
+
+
+def _terrain_raw(z_m: np.ndarray) -> np.ndarray:
+    return np.rint((z_m - T_OFFSET) * T_UNITS + T_ZERO).astype(np.uint16)
+
+
+def build_layered_field(tmp_path: Path) -> Path:
+    """A 7x6 ramp (z = col metres) with one rock texel standing on it.
+
+    The terrain plane sits one column east of the main grid, as the real one is offset by
+    whole texels, and covers columns 1..6. At row 2, col 3 the ground is a 50 m rock top,
+    the bare terrain under it 3 m and the top plane a 60 m arch over both.
+    """
+    directory = build_shaped_field(tmp_path, np.tile(np.arange(7, dtype=float), (6, 1)))
+    ground = np.tile(np.arange(7, dtype=np.int16) * 10, (6, 1))
+    ground[2, 3] = 500
+    prov = np.full((6, 7), hf.PROV_LANDSCAPE, np.uint8)
+    prov[2, 3] = hf.PROV_CLIFF_DIRECT
+    top = ground.copy()
+    top[2, 3] = 600
+    terrain = _terrain_raw(np.tile(np.arange(1, 7, dtype=float), (6, 1)))
+    terrain[5, 5] = 0  # a hole
+    (directory / hf.HEIGHT_NAME).write_bytes(hf.encode_i16(ground))
+    (directory / hf.PROV_NAME).write_bytes(hf.encode_u8(prov))
+    (directory / hf.TOP_NAME).write_bytes(hf.encode_i16(top))
+    (directory / hf.TERRAIN_NAME).write_bytes(hf.encode_u16(terrain))
+    meta = json.loads((directory / hf.META_NAME).read_text(encoding="utf-8"))
+    meta["provenance"]["5"] = {"name": "cliff, direct", "accuracy_m": 0.17}
+    meta["generator_version"] = 4
+    meta["terrain_grid"] = {
+        "width": 6,
+        "height": 6,
+        "spacing_cm": 100.0,
+        "x0_cm": 100.0,
+        "y0_cm": 0.0,
+        "zero": T_ZERO,
+        "units_per_m": T_UNITS,
+        "offset_m": T_OFFSET,
+    }
+    (directory / hf.META_NAME).write_text(json.dumps(meta), encoding="utf-8")
+    return directory
+
+
+def _meta(directory: Path) -> dict:
+    return json.loads((directory / hf.META_NAME).read_text(encoding="utf-8"))
+
+
+def test_the_u16_codec_round_trips_every_value():
+    grid = np.array([[0, 1, 65535, 32768, 0, 65535]], np.uint16)
+    assert np.array_equal(hf.decode_u16(hf.encode_u16(grid), 1, 6), grid)
+
+
+def test_a_bilinear_read_on_a_ramp_lands_between_the_vertices(tmp_path):
+    field = hf.load_field(build_layered_field(tmp_path))
+    reading = field.z(125.0, 100.0)
+    assert reading.z_m == pytest.approx(1.25)
+    assert reading.surface == "ground"
+    assert field.z(125.0, 100.0, bilinear=False).z_m == pytest.approx(1.0)
+    assert field.at(125.0, 100.0).z_m == pytest.approx(1.0)
+    assert field.z(125.0, 100.0, surface="terrain").z_m == pytest.approx(1.25, abs=0.01)
+
+
+def test_a_bilinear_read_beside_no_data_uses_the_nearest_valid_vertex(tmp_path):
+    field = hf.load_field(build_layered_field(tmp_path))
+    # Between the hole at x 600 and its western neighbour at x 500.
+    assert field.z(560.0, 500.0, surface="terrain").z_m == pytest.approx(5.0, abs=0.01)
+    assert field.z(540.0, 500.0, surface="terrain").z_m == pytest.approx(5.0, abs=0.01)
+    assert field.z(600.0, 500.0, surface="terrain") is None
+    assert field.z(0.0, 0.0, surface="terrain") is None, "west of the terrain frame"
+    assert field.z(-500.0, 0.0) is None, "off the grid"
+
+
+def test_a_rock_texel_is_ambiguous_and_carries_the_terrain_under_it(tmp_path):
+    field = hf.load_field(build_layered_field(tmp_path))
+    rock = field.z(300.0, 200.0)
+    assert rock.z_m == pytest.approx(50.0)
+    assert rock.terrain_z_m == pytest.approx(3.0, abs=0.01)
+    assert rock.ambiguous
+    assert not field.z(100.0, 100.0).ambiguous
+    surfaces = field.surfaces(300.0, 200.0)
+    assert (surfaces.ground_m, surfaces.top_m) == (50.0, 60.0)
+
+
+def test_a_hint_picks_the_surface_at_or_below_it(tmp_path):
+    field = hf.load_field(build_layered_field(tmp_path))
+    on_floor = field.z(300.0, 200.0, hint_z_cm=400.0)
+    assert (on_floor.surface, on_floor.provenance) == ("terrain", hf.PROV_LANDSCAPE)
+    assert on_floor.z_m == pytest.approx(3.0, abs=0.01)
+    on_rock = field.z(300.0, 200.0, hint_z_cm=5100.0)
+    assert (on_rock.surface, on_rock.z_m) == ("ground", 50.0)
+    # 58.5 m is within the 2 m slack below the arch at 60 m, so the arch is the floor.
+    assert field.z(300.0, 200.0, hint_z_cm=5850.0).surface == "top"
+    # Above everything: the highest surface below the hint, not the nearest roof.
+    assert field.z(300.0, 200.0, hint_z_cm=9000.0).surface == "top"
+
+
+def test_a_window_reads_the_surface_it_is_asked_for(tmp_path):
+    field = hf.load_field(build_layered_field(tmp_path))
+    ground = field.window(200.0, 100.0, 400.0, 300.0)
+    terrain = field.window(200.0, 100.0, 400.0, 300.0, surface="terrain")
+    assert ground.z_max_m == 50.0 and terrain.z_max_m == pytest.approx(4.0, abs=0.05)
+    assert ground.ambiguous_pct == pytest.approx(100.0 / 9, abs=0.1)
+    assert terrain.provenance_pct == {hf.PROV_LANDSCAPE: 100.0}
+    edge = field.window(0.0, 0.0, 100.0, 0.0, surface="terrain")
+    assert edge.nodata_pct == 50.0, "column 0 lies west of the terrain frame"
+    with pytest.raises(ValueError):
+        hf.load_field(build_field(tmp_path / "old")).window(0, 0, 100, 100, surface="terrain")
+
+
+def test_without_a_terrain_plane_every_cliff_texel_is_ambiguous(tmp_path):
+    field = hf.load_field(build_field(tmp_path))
+    assert field.z(FAKE_X0, FAKE_Y0 + FAKE_SPACING).ambiguous
+    assert not field.z(FAKE_X0, FAKE_Y0).ambiguous
+    assert field.z(FAKE_X0, FAKE_Y0).terrain_z_m is None
+
+
+def test_the_mapped_cache_matches_the_in_memory_decode(tmp_path):
+    directory = build_layered_field(tmp_path)
+    fresh = hf.Field(_meta(directory), directory)
+    assert fresh.cache_events[hf.HEIGHT_NAME] == "written"
+    mapped = hf.Field(_meta(directory), directory)
+    plain = hf.Field(_meta(directory), directory, cache=False)
+    assert mapped.cache_events[hf.HEIGHT_NAME] == "mapped"
+    assert isinstance(mapped._height_dm, np.memmap)
+    for name in (hf.HEIGHT_NAME, hf.PROV_NAME, hf.TERRAIN_NAME, hf.TOP_NAME):
+        assert np.array_equal(mapped._plane(name), plain._plane(name)), name
+    assert mapped.z(125.0, 100.0) == plain.z(125.0, 100.0)
+
+
+def _bump_mtime(path: Path) -> None:
+    import os
+
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10_000_000))
+
+
+def test_a_changed_source_invalidates_the_cache(tmp_path):
+    directory = build_layered_field(tmp_path)
+    hf.Field(_meta(directory), directory)
+    changed = np.full((6, 7), 70, np.int16)
+    (directory / hf.HEIGHT_NAME).write_bytes(hf.encode_i16(changed))
+    _bump_mtime(directory / hf.HEIGHT_NAME)
+    again = hf.Field(_meta(directory), directory)
+    assert again.cache_events[hf.HEIGHT_NAME] == "written"
+    assert np.array_equal(again._height_dm, changed)
+
+
+def test_a_new_generator_version_invalidates_the_cache(tmp_path):
+    directory = build_layered_field(tmp_path)
+    hf.Field(_meta(directory), directory)
+    meta = {**_meta(directory), "generator_version": 5}
+    assert hf.Field(meta, directory).cache_events[hf.HEIGHT_NAME] == "written"
+
+
+def test_an_untouched_source_with_a_new_mtime_is_still_mapped(tmp_path):
+    directory = build_layered_field(tmp_path)
+    hf.Field(_meta(directory), directory)
+    _bump_mtime(directory / hf.HEIGHT_NAME)
+    assert hf.Field(_meta(directory), directory).cache_events[hf.HEIGHT_NAME] == "mapped"
+
+
+def test_a_cache_that_cannot_be_written_falls_back_to_decoding(tmp_path):
+    directory = build_layered_field(tmp_path)
+    (directory / hf.CACHE_DIR_NAME).write_text("not a directory", encoding="utf-8")
+    field = hf.Field(_meta(directory), directory)
+    assert field.cache_events[hf.HEIGHT_NAME] == "failed, decoded"
+    assert field.z(125.0, 100.0).z_m == pytest.approx(1.25)
+
+
+def test_a_cliff_edge_reads_the_nearest_vertex_rather_than_a_blend(tmp_path):
+    field = hf.load_field(build_layered_field(tmp_path))
+    assert field.z(240.0, 200.0).z_m == pytest.approx(2.0)
+    assert field.z(260.0, 200.0).z_m == pytest.approx(50.0)
+    assert field.z(225.0, 100.0).z_m == pytest.approx(2.25), "a gentle slope still blends"
+
+
+def test_a_landscape_reading_takes_the_terrain_planes_finer_value(tmp_path):
+    directory = build_layered_field(tmp_path)
+    terrain = _terrain_raw(np.tile(np.arange(1, 7, dtype=float), (6, 1)))
+    terrain[0, 0] = _terrain_raw(np.array([1.04]))[0]
+    (directory / hf.TERRAIN_NAME).write_bytes(hf.encode_u16(terrain))
+    field = hf.load_field(directory)
+    assert field.z(100.0, 0.0).z_m == pytest.approx(1.04, abs=0.008)
+    assert field.at(100.0, 0.0).z_m == pytest.approx(1.0)

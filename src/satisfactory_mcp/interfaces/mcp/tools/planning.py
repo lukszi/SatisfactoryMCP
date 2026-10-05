@@ -606,7 +606,6 @@ def site_plan(
             sit = siting_mod.Siting(
                 x_m=existing.x_m,
                 y_m=existing.y_m,
-                z_m=existing.z_m,
                 yaw_deg=yaw_deg if yaw_deg is not None else existing.yaw_deg,
                 width_m=width,
                 depth_m=depth,
@@ -614,10 +613,17 @@ def site_plan(
                 origin_label=existing.origin_label,
                 when=when,
             )
+            # The stored z stays; a missing one is read from the terrain under the pad.
+            sit = siting_mod.settle_z(st, sit, existing.z_m, "stored", siting_mod.LOAD_FIELD)
     except ValueError as exc:
         return f"! {exc}"
 
     sit = _snapped(sit)
+    if sit.z_source == "terrain":
+        # Snapping moved the pad, so its terrain z is read again where it now stands.
+        sit = siting_mod.settle_z(
+            st, dataclasses.replace(sit, z_m=None), None, "", siting_mod.LOAD_FIELD
+        )
     pushed, text = push(sit.to_dict(), "not sited")
     if pushed is None:
         return text
@@ -630,7 +636,8 @@ def site_plan(
     return render.envelope(
         f"# {verb} plan {stored.name!r}: {sit.describe()}\n"
         f"# region: {label.describe()}\n"
-        f"stored in {path}\n{text}",
+        + (f"# {sit.terrain_line()}\n" if sit.terrain_line() else "")
+        + f"stored in {path}\n{text}",
         "map: "
         + maplink.local_map_url(sit.x_m, sit.y_m, world=st.plans.world_id)
         + "\n"

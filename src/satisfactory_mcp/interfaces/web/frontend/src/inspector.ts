@@ -34,6 +34,13 @@ function elevationRows(e: Elevation): Row[] {
   if (measured) {
     var acc = e.terrain_accuracy_m === null ? "" : " ±" + e.terrain_accuracy_m + " m";
     rows.push(["terrain", e.terrain_m + " m (" + e.terrain_source + acc + ")"]);
+    if (e.terrain_ambiguous) {
+      var bare =
+        e.terrain_bare_m === null || e.terrain_bare_m === undefined
+          ? "bare ground under it not known"
+          : "bare ground " + e.terrain_bare_m + " m";
+      rows.push(["under rock", "may be a rock top; " + bare]);
+    }
     // Water is information, never a correction: gating terrain on it makes the terrain
     // worse, so it is shown beside the ground and never instead of it. The level and the
     // DEPTH are separate claims and the depth is the weaker one -- over the fill layer there

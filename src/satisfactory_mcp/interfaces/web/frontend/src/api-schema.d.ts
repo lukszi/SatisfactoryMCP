@@ -3070,6 +3070,10 @@ export interface components {
             terrain_source: string | null;
             /** Terrain Accuracy M */
             terrain_accuracy_m: number | null;
+            /** Terrain Bare M */
+            terrain_bare_m: number | null;
+            /** Terrain Ambiguous */
+            terrain_ambiguous: boolean;
             /** Terrain Water M */
             terrain_water_m: number | null;
             /** Terrain Water Depth M */

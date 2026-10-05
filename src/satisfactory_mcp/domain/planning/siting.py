@@ -31,11 +31,12 @@ reader treats as the feature simply being absent.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+import statistics
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ...core.gamedata.model import GameData
-from ..spatial import geo
+from ..spatial import geo, heightfield
 from ..spatial.origin import PLAYER_WORDS, resolve_origin
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -50,6 +51,7 @@ __all__ = [
     "SiteSurvey",
     "Siting",
     "SurveyRow",
+    "TerrainGround",
     "build_siting",
     "check",
     "fit_to_bbox",
@@ -61,9 +63,15 @@ __all__ = [
     "resolve_plan_site",
     "resolve_site_origin",
     "set_ground_z",
+    "settle_z",
     "snap",
     "survey",
+    "terrain_provider",
+    "terrain_z",
 ]
+
+#: ``terrain_field`` left at this means "the installed provider's field"; ``None``, "none".
+LOAD_FIELD = object()
 
 #: Shape of the recorded block, so a later reader can tell this record's vintage apart
 #: from a future one rather than guessing from which keys happen to be present.
@@ -257,6 +265,12 @@ class Siting:
     origin_label: str = ""
     #: Save timestamp when this was recorded, same field ``Plan.created`` uses.
     when: str = ""
+    #: Where ``z_m`` came from: "given" (typed x,y,z), "you" (the player pawn), "stored"
+    #: (kept from the record), "terrain" (the heightfield under the footprint), or "". Not stored: the
+    #: canonical record is ``check``'s, and this and ``terrain`` live for one reply.
+    z_source: str = ""
+    #: The heightfield's reading of the site, beside whatever z won; see ``terrain_z``.
+    terrain: dict | None = None
 
     @property
     def has_footprint(self) -> bool:
@@ -280,13 +294,47 @@ class Siting:
 
     def describe(self) -> str:
         z = f",{self.z_m:g}" if self.z_m is not None else ""
+        tag = ""
+        if self.z_source == "terrain" and self.terrain:
+            tag = f" (terrain z, {self.terrain.get('surface', 'ground')})"
         fp = (
             f"{self.width_m:g}x{self.depth_m:g}m ({self.source or 'unrecorded'})"
             if self.has_footprint
             else "none recorded"
         )
         via = f" (from {self.origin_label})" if self.origin_label else ""
-        return f"origin {self.x_m:g},{self.y_m:g}{z}m{via}, yaw {self.yaw_deg:g}deg, footprint {fp}"
+        return f"origin {self.x_m:g},{self.y_m:g}{z}m{tag}{via}, yaw {self.yaw_deg:g}deg, footprint {fp}"
+
+    def terrain_line(self) -> str | None:
+        """The heightfield's reading of the site as one line, or ``None`` if none was taken."""
+        t = self.terrain
+        if not t:
+            return None
+        if t.get("z_m") is None:
+            return f"terrain z: none -- {t.get('reason') or 'no data'}"
+        acc = t.get("accuracy_m")
+        parts = [
+            f"terrain z {t['z_m']:g}m ({t.get('surface', 'ground')}, {t.get('provenance')}"
+            + (f", +-{acc:g}m" if isinstance(acc, (int, float)) else "")
+            + ")"
+        ]
+        if t.get("z_min_m") is not None:
+            parts.append(f"pad {t['z_min_m']:g}..{t['z_max_m']:g}m")
+        if t.get("ambiguous"):
+            bare = t.get("bare_m")
+            parts.append(
+                "may be a rock top"
+                + (f" (bare ground {bare:g}m)" if isinstance(bare, (int, float)) else "")
+            )
+        if t.get("coarse"):
+            parts.append("coarse fill layer, metre-level")
+        if t.get("water_level_m") is not None:
+            parts.append(f"water surface {t['water_level_m']:g}m")
+        if t.get("hint_from"):
+            parts.append(f"surface picked by the {t['hint_from']} z {t['hint_m']:g}m")
+        if self.z_source and self.z_source != "terrain":
+            parts.append(f"z kept from {self.z_source}")
+        return "; ".join(parts)
 
     def contains_cm(self, x_cm: float, y_cm: float) -> bool:
         """Whether a save coordinate falls inside the sited rectangle.
@@ -384,6 +432,190 @@ def resolve_site_origin(st: WorldState, at: str) -> tuple[float, float, float | 
     return origin_cm[0] / 100.0, origin_cm[1] / 100.0, None, label
 
 
+#: A pad is flagged ambiguous when at least this share of it may be a roof over the floor.
+AMBIGUOUS_PAD_PCT = 10.0
+
+NO_FIELD = "no terrain field on this machine -- run tools/gen_world_heightmap.py"
+
+
+def _footprint_box_cm(
+    x_m: float, y_m: float, width_m: float, depth_m: float, yaw_deg: float
+) -> tuple[float, float, float, float]:
+    a = math.radians(yaw_deg)
+    ex = abs(width_m / 2 * math.cos(a)) + abs(depth_m / 2 * math.sin(a))
+    ey = abs(width_m / 2 * math.sin(a)) + abs(depth_m / 2 * math.cos(a))
+    return (x_m - ex) * 100, (y_m - ey) * 100, (x_m + ex) * 100, (y_m + ey) * 100
+
+
+def _built_hint_m(st: WorldState | None, probe: Siting) -> float | None:
+    """Median z of what already stands on the footprint, in metres."""
+    if st is None or not probe.has_footprint:
+        return None
+    zs = [
+        record["pos"][2] / 100.0
+        for record in st._all_records()
+        if record.get("pos")
+        and len(record["pos"]) > 2
+        and probe.contains_cm(record["pos"][0], record["pos"][1])
+    ]
+    return statistics.median(zs) if zs else None
+
+
+def terrain_z(
+    field: heightfield.Field | None,
+    x_m: float,
+    y_m: float,
+    *,
+    width_m: float = 0.0,
+    depth_m: float = 0.0,
+    yaw_deg: float = 0.0,
+    hint_m: float | None = None,
+    hint_from: str = "",
+) -> dict[str, Any]:
+    """The ground under a site from the heightfield, with what that number is worth.
+
+    Over a footprint the answer is the pad's median on one surface -- ground unless a hint
+    picks another -- with its min and max for foundation planning; without one, a bilinear
+    point read. ``z_m`` is ``None`` with a ``reason`` where the field has no data; nothing
+    here falls back to interpolating save objects.
+    """
+    if field is None:
+        return {"z_m": None, "reason": NO_FIELD}
+    out: dict[str, Any] = {
+        "hint_m": None if hint_m is None else round(hint_m, 2),
+        "hint_from": hint_from or None,
+        "build": field.build,
+    }
+    if width_m <= 0 or depth_m <= 0:
+        reading = field.z(x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100)
+        if reading is None:
+            return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
+        return {
+            **out,
+            "z_m": round(reading.z_m, 2),
+            "surface": reading.surface,
+            "bare_m": None if reading.terrain_z_m is None else round(reading.terrain_z_m, 2),
+            "ambiguous": reading.ambiguous,
+            "provenance": reading.source,
+            "accuracy_m": reading.accuracy_m,
+            "coarse": reading.provenance == heightfield.PROV_FILL,
+            "water_level_m": reading.water_m if reading.submerged else None,
+        }
+    box = _footprint_box_cm(x_m, y_m, width_m, depth_m, yaw_deg)
+    areas = {"ground": field.window(*box)}
+    if field.has_terrain:
+        areas["terrain"] = field.window(*box, surface="terrain", shape=False)
+    if field.has_top:
+        areas["top"] = field.window(*box, surface="top", shape=False)
+    ground = areas["ground"]
+    if ground.z_median_m is None:
+        return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
+    surface = "ground"
+    if hint_m is not None:
+        medians = {name: area.z_median_m for name, area in areas.items()}
+        picked = heightfield.Surfaces(
+            ground_m=medians["ground"],
+            terrain_m=medians.get("terrain"),
+            top_m=medians.get("top"),
+            provenance=heightfield.PROV_NODATA,
+        ).pick(hint_m)
+        surface = picked[0] if picked else "ground"
+    area = areas[surface]
+    dominant = max(ground.provenance_pct.items(), key=lambda kv: kv[1])[0]
+    terrain_area = areas.get("terrain")
+    return {
+        **out,
+        "z_m": area.z_median_m,
+        "surface": surface,
+        "z_min_m": area.z_min_m,
+        "z_max_m": area.z_max_m,
+        "bare_m": None if terrain_area is None else terrain_area.z_median_m,
+        "ambiguous": ground.ambiguous_pct >= AMBIGUOUS_PAD_PCT,
+        "ambiguous_pct": ground.ambiguous_pct,
+        "provenance": heightfield.PROV_NAMES.get(dominant, f"layer {dominant}"),
+        "accuracy_m": field.accuracy_m(dominant),
+        "coarse": ground.coarse_pct > 0,
+        "coarse_pct": ground.coarse_pct,
+        "nodata_pct": ground.nodata_pct,
+        "submerged_pct": ground.submerged_pct,
+        "water_level_m": ground.water_level_m,
+        "slope_mean_deg": ground.slope_mean_deg,
+        "roughness_m": ground.roughness_m,
+    }
+
+
+def _silence(field: heightfield.Field, x_m: float, y_m: float) -> str:
+    if field.texel(x_m * 100, y_m * 100) is None:
+        return "outside the map"
+    return "the terrain field has no data here -- open ocean, or a cave mouth"
+
+
+def settle_z(
+    st: WorldState | None,
+    sit: Siting,
+    at_z_m: float | None,
+    label: str,
+    terrain_field: Any,
+) -> Siting:
+    """``sit`` with its z settled: a typed or player z wins, else the terrain's."""
+    field = _installed_field() if terrain_field is LOAD_FIELD else terrain_field
+    if at_z_m is not None:
+        z_source = label if label in ("you", "stored") else "given"
+        hint_m, hint_from = at_z_m, z_source
+    else:
+        z_source = ""
+        hint_m = _built_hint_m(st, sit)
+        hint_from = "built" if hint_m is not None else ""
+    reading = terrain_z(
+        field,
+        sit.x_m,
+        sit.y_m,
+        width_m=sit.width_m,
+        depth_m=sit.depth_m,
+        yaw_deg=sit.yaw_deg,
+        hint_m=hint_m,
+        hint_from=hint_from,
+    )
+    z_m = at_z_m
+    if z_m is None and reading.get("z_m") is not None:
+        z_m, z_source = float(reading["z_m"]), "terrain"
+    return replace(
+        sit,
+        z_m=None if z_m is None else round(z_m, 2),
+        z_source=z_source,
+        terrain=reading,
+    )
+
+
+class TerrainGround:
+    """The ``GroundZ`` the servers install: the pad's median on ``ground``, from ``load()``.
+
+    ``load`` is also what ``settle_z`` reads its fuller answer from, so a chat write and a
+    dragged pad go through one installed source.
+    """
+
+    def __init__(self, load) -> None:
+        self.load = load
+
+    def __call__(
+        self, x_m: float, y_m: float, yaw_deg: float, width_m: float, depth_m: float
+    ) -> float | None:
+        reading = terrain_z(
+            self.load(), x_m, y_m, width_m=width_m, depth_m=depth_m, yaw_deg=yaw_deg
+        )
+        return reading.get("z_m")
+
+
+def terrain_provider(load=heightfield.load_field) -> TerrainGround:
+    return TerrainGround(load)
+
+
+def _installed_field():
+    """The field behind the installed provider, or ``None`` with no terrain provider."""
+    load = getattr(_ground[0], "load", None)
+    return load() if load is not None else None
+
+
 def plan_site_args(st: WorldState, plan: str | None, at: str, footprint: str) -> tuple[str, str]:
     """The site a planning call should MEASURE at: this call's, else the recalled plan's.
 
@@ -401,7 +633,14 @@ def plan_site_args(st: WorldState, plan: str | None, at: str, footprint: str) ->
     return f"{sit.x_m:g},{sit.y_m:g}", footprint
 
 
-def resolve_plan_site(st: WorldState, at: str, footprint: str = "", when: str = "") -> Siting:
+def resolve_plan_site(
+    st: WorldState,
+    at: str,
+    footprint: str = "",
+    when: str = "",
+    *,
+    terrain_field: Any = LOAD_FIELD,
+) -> Siting:
     """A site for a plan being BUILT, resolved before there is a solution to size it from.
 
     ``build_siting`` is the other half of this and derives a blank footprint from the
@@ -418,16 +657,16 @@ def resolve_plan_site(st: WorldState, at: str, footprint: str = "", when: str = 
     else:
         width = depth = SITE_PAD_M
         source = "default"
-    return Siting(
+    sit = Siting(
         x_m=round(x_m, 2),
         y_m=round(y_m, 2),
-        z_m=None if z_m is None else round(z_m, 2),
         width_m=width,
         depth_m=depth,
         source=source,
         origin_label=label,
         when=when,
     )
+    return settle_z(st, sit, z_m, label, terrain_field)
 
 
 def build_siting(
@@ -440,6 +679,7 @@ def build_siting(
     solution=None,
     plan_kwargs: dict | None = None,
     when: str = "",
+    terrain_field: Any = LOAD_FIELD,
 ) -> Siting:
     """Turn tool arguments into a Siting, deriving the footprint when none was given.
 
@@ -491,10 +731,9 @@ def build_siting(
         width = depth = side
         source = "layout"
 
-    return Siting(
+    sit = Siting(
         x_m=round(x_m, 2),
         y_m=round(y_m, 2),
-        z_m=None if z_m is None else round(z_m, 2),
         yaw_deg=float(yaw_deg or 0.0),
         width_m=width,
         depth_m=depth,
@@ -502,6 +741,7 @@ def build_siting(
         origin_label=label,
         when=when,
     )
+    return settle_z(st, sit, z_m, label, terrain_field)
 
 
 # ------------------------------------------------------------------- the survey

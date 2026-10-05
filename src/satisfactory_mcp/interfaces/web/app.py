@@ -25,8 +25,9 @@ from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...core.schema import NewerSchema
-from ...domain.planning import journal, planlog
+from ...domain.planning import journal, planlog, siting
 from ...domain.world.state import WorldState, load_state
+from . import terrain
 from .guard import guard
 from .pinning import pinning
 from .routers import ALL_ROUTERS
@@ -103,6 +104,7 @@ def create_app(
         if tail:
             journal.set_writer("web")
             planlog.use_recipe_names(_recipe_names(load_game))
+            siting.set_ground_z(siting.terrain_provider(terrain.field))
         await instance.state.watcher.start()
         try:
             yield
@@ -110,6 +112,7 @@ def create_app(
             await instance.state.watcher.stop()
             if tail:
                 planlog.use_recipe_names(None)
+                siting.set_ground_z(None)
 
     instance = FastAPI(
         title="Satisfactory MCP web",

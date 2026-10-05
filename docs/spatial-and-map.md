@@ -878,3 +878,73 @@ folded, and opening one of the panel, the layer control or a trace folds the oth
 - **Machine rows name their factory.** `/api/machines` sends `factory`, the label whose
   anchors hold the machine, so a machine popup can link to that factory's dashboard page.
 - **The marker key** lives at the bottom of the layer control and folds with it.
+
+## 22. Terrain z: three surfaces, a mapped cache, and the site's height (2026-10-05)
+
+The game ships its terrain in the cooked `LandscapeComponent`s: 2289 components of 128x128
+uint16 samples, 1 m apart, 7.8 mm vertical. `tools/gen_world_heightmap.py` has always fused
+them with the rock meshes and the 2048 px interface raster into `height.i16.z`. Generator v4
+writes two more planes beside it and changes nothing in the existing five.
+
+| Surface | File | What it is |
+| --- | --- | --- |
+| `ground` | `height.i16.z` | The fused field: landscape, rock max-Z, fill. The default everywhere. |
+| `terrain` | `terrain.u16.z` | The bare sculpted landscape, raw uint16 on its own grid (`meta.json` `terrain_grid`), 0 = hole. Rocks and cliffs are meshes and are not in it. |
+| `top` | `top.i16.z` | `ground` max-folded with the 1,076 arch placements and 41,351 foliage boulders, from their collision trimeshes. |
+
+**Ground stays the default** because it wins on every independent ground-truth set; `terrain`
+alone puts a factory under a mesa, and folding arches into `ground` puts it on a roof.
+
+### Reading a point
+
+`Field.z(x_cm, y_cm, surface=..., hint_z_cm=None)` reads bilinear over the four vertices
+around the point. Two guards keep a blend from inventing ground: a no-data vertex, or four
+vertices spanning more than 2 m (a cliff edge), hand the answer to the heaviest valid vertex.
+On landscape texels the ground reading is replaced by the terrain plane's value when the two
+agree within 0.1 m, which is the decimetre rounding of the same sample.
+
+Every reading carries `terrain_z_m` (the bare landscape under the point) and `ambiguous`:
+ground more than 2 m above terrain, or rock over a landscape hole, so the answer may be a
+rock top or a roof. A field without a terrain plane calls every cliff texel ambiguous.
+
+A **hint** picks the surface: among the surfaces with data, the one nearest the hint,
+preferring one at or below hint + 2 m, because a thing rests on a surface below it.
+
+### The cache
+
+Each plane decodes once into `cache/<plane>.npy` beside the `.z` files and is memory-mapped
+after. The stamp beside it holds the source's size, mtime, sha256 and the generator version;
+a changed mtime with an unchanged sha256 still maps. Any failure to write decodes in memory.
+The int16 decoder sums in int16, which is exact under wraparound and drops the decode peak
+from 1.24 GB to 227 MB.
+
+### The site's z
+
+Both servers install `siting.TerrainGround` as P5's ground-height provider
+(docs/planner-p5_contract.md §6) when they start. Through it:
+
+1. A z typed as `x,y,z`, or the player's own z for `me`, wins.
+2. A pad dragged on the page arrives with a null z, and `check` fills it with the pad's
+   median on `ground`.
+3. Chat's `site_plan` and `site_at` go through `siting.settle_z`, which reads the same
+   installed field and can pick another surface by hint: the median z of what already stands
+   on the pad. The reply carries the reading in words: surface, pad min and max, bare
+   terrain, ambiguous share, provenance and its accuracy, coarse, water.
+4. No data under the pad, or no field on the machine: `z = None`, and chat says why. Save
+   objects are never interpolated into a terrain answer; that measured 100x worse.
+
+The stored record stays `check`'s canonical one: the reading is for the reply, not the plan
+file. A stored z is kept when a pad is resized in place; a moved pad is read again.
+
+### Measured (build 502094, 5,956 save ground-truth points)
+
+| Lookup | All: median | All: p95 | Within 1 m | Landscape: median |
+| --- | --- | --- | --- | --- |
+| nearest vertex (`at`, before) | 0.084 m | 83.3 m | 81.7% | 0.058 m |
+| bilinear `ground` with refine | 0.055 m | 83.2 m | 81.9% | 0.024 m |
+| `terrain` alone | 0.119 m | 122.5 m | 61.9% | 0.024 m |
+| hint = truth z (oracle) | 0.045 m | 43.3 m | 88.5% | 0.024 m |
+
+The tail is which surface is meant, never resolution. Caves stay open: no one- or
+two-valued plane can hold a cave floor.
+
