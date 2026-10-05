@@ -152,6 +152,7 @@ def local_map_url(
     world: str = "",
     pickups: list[str] | None = None,
     show: str = "",
+    mode: str = "",
 ) -> str:
     """A deep link into this project's own web map, centred on a coordinate in METRES.
 
@@ -167,10 +168,14 @@ def local_map_url(
     ``show`` is a selector the page opens once it has loaded -- ``label:<name>`` selects that
     factory in the side panel, outlines it and turns its layers on; ``node:``, ``chain:`` and
     ``pipe:`` ring that node or run in the finder pane (``show_ref`` spells all four).
+
+    ``mode`` is a base map type id (``/api/maps``); absent, the page opens on the shared default.
     """
     parts = []
     if world:
         parts.append("world=" + quote(world, safe=""))
+    if mode:
+        parts.append("mode=" + quote(mode, safe=""))
     if pickups:
         parts.append("pickups=" + quote(",".join(pickups), safe=","))
     if show:

@@ -856,6 +856,10 @@ def show_on_map(
     world: str | None = None,
     as_of: AsOf = None,
     pin: Annotated[bool, Field(description="also pin it on the page (pin:N)")] = False,
+    mode: Annotated[
+        str | None,
+        Field(description="base map type for the local link, an id settings() lists, or plain"),
+    ] = None,
     ctx: Context | None = None,
 ) -> str:
     """Map links centred on something: this project's own map, and the public one.
@@ -876,8 +880,17 @@ def show_on_map(
 
     ``pin=True`` also pins the place for the page (a node, factory, sited plan or point;
     pinning it twice returns the pin it already has), and the page shows it at once.
+    ``mode`` opens the local link on that base map instead of the shared default.
     """
+    from ....domain.maps import registry as maps
     from ....domain.spatial import maplink
+
+    if mode:
+        mode = "map" if mode.strip() == "artwork" else mode.strip()
+        entry, _where = maps.lookup(mode)
+        if mode != maps.PLAIN and (entry is None or entry.get("status") != "ready"):
+            known = ", ".join([*maps.known_ids(), maps.PLAIN])
+            return f"! no base map {mode!r}; known: {known}"
 
     g = game()
     try:
@@ -956,6 +969,7 @@ def show_on_map(
             run=text if kind.casefold() in RUN_PREFIXES else None,
             label=label.name if label is not None and label.name == where else None,
         ),
+        mode=mode or "",
     )
     body = f"local map: {local}\npublic map: {maplink.map_url(*origin, tokens, zoom=zoom)}"
     if tokens:

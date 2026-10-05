@@ -11,6 +11,7 @@ from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
 from ....core.text import ago
 from ....domain import settings as store
+from ....domain.maps import registry as maps
 from ....domain.planning.planlog import Actor
 from ....presenters.text import primitives as render
 from ..app import actor, mcp
@@ -30,6 +31,27 @@ def _choices(spec: store.Spec) -> str:
     return f"{spec.low:g}..{spec.high:g}"
 
 
+def _maps_line() -> str:
+    """One line naming the base map types the page can show, the shared default marked."""
+    try:
+        view = maps.view()
+    except Exception as exc:
+        return f"# base maps: unreadable ({exc})"
+    shown = []
+    for row in view["types"]:
+        if row["status"] != "ready":
+            continue
+        word = row["id"] + (" (default)" if row["id"] == view["default"] else "")
+        if row["freshness"]["stale"]:
+            word += " -- stale: " + "; ".join(s["text"] for s in row["freshness"]["stale"])
+        shown.append(word)
+    if view["default"] == maps.PLAIN:
+        shown.append("plain (default)")
+    if not shown:
+        return "# base maps: none generated; the page's Settings > maps tab makes them"
+    return "# base maps (show_on_map mode=): " + ", ".join(shown)
+
+
 def _render(view: dict, head: str) -> str:
     rows = [
         (
@@ -44,6 +66,7 @@ def _render(view: dict, head: str) -> str:
         who = Actor.from_dict(view["by"]).display()
         when = ago(int(float(view["updated"] or 0) * 1e9)) or "at an unknown time"
         head += f"\n# last changed by {who} {when}"
+    head += "\n" + _maps_line()
     return render.envelope(head, render.table(("setting", "value", "takes", "means"), rows))
 
 
@@ -61,6 +84,7 @@ def settings(
     stored headroom against; ``biomass`` is the default of every ``biomass=`` parameter.
     ``payback_hours`` and ``overclock_last`` are what a plan that sets neither follows. The
     page's Settings tab reads and writes the same file, and an open page follows a change.
+    The base map types are listed read-only; generating one is the page's job.
     """
     try:
         if change:
