@@ -31,6 +31,7 @@ from mapgen.gamedata.mesh import (
     winding_sign,
 )
 from mapgen.gamedata.sweep import is_top_foliage, sweep_levels
+from mapgen.gamedata.trees import is_tree
 from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.packages import PackageView
 
@@ -142,15 +143,19 @@ def read_cliff_geometry(
 
 
 def sweep_world(store, scripts, index, classes, progress: bool = True) -> dict:
-    """The field generator's sweep, also harvesting the render-only foliage."""
-    return sweep_levels(
+    """The field generator's sweep, also harvesting the render-only foliage and the trees."""
+    sweep = sweep_levels(
         store,
         scripts,
         classes,
         MeshBounds(store, scripts, index),
         progress,
-        extra_foliage=is_render_only_foliage,
+        extra_foliage=lambda mesh: is_render_only_foliage(mesh) or is_tree(mesh),
     )
+    extra = sweep["extra_foliage"]
+    sweep["trees"] = {m: mats for m, mats in extra.items() if is_tree(m)}
+    sweep["extra_foliage"] = {m: mats for m, mats in extra.items() if is_render_only_foliage(m)}
+    return sweep
 
 
 def direct_placements(sweep: dict, geometry: dict) -> tuple[list, dict]:
