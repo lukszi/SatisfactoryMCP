@@ -167,14 +167,14 @@ def describe_location(
     ]
     notes: list[str] = []
     reading = near.terrain
-    if reading is not None and reading.cave == caves.INSIDE:
+    if reading is not None and not reading.height_known:
         fields.append(("terrain_m", "unknown"))
-        fields.append(("cave", caves.note(reading.cave, reading.z_m)))
+        fields.append(("cave", reading.cave_note))
     elif reading is not None:
         accuracy = "" if reading.accuracy_m is None else f", +-{reading.accuracy_m:g}m"
         fields.append(("terrain_m", f"{reading.z_m:.1f} ({reading.source}{accuracy})"))
-        if reading.cave == caves.BELOW:
-            fields.append(("cave", caves.note(reading.cave, reading.z_m)))
+        if reading.cave != caves.NONE:
+            fields.append(("cave", reading.cave_note))
         if reading.ambiguous:
             bare = reading.terrain_z_m
             fields.append(("terrain_bare_m", "unknown" if bare is None else f"{bare:.1f}"))
@@ -1197,7 +1197,7 @@ def whereami(
     notes += found.notes
     field = heightfield.load_field()
     reading = field.z(x, y, hint_z_cm=z) if field is not None else None
-    cave_line = caves.note(reading.cave, reading.z_m) if reading is not None else None
+    cave_line = reading.cave_note if reading is not None else None
     if found.nearest_building is not None:
         name, d = found.nearest_building
         notes.append(f"nearest building: {name} at {d:.0f}m")

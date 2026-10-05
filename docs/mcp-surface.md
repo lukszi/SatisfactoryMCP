@@ -714,6 +714,20 @@ one `cave=` line, and the height stays the surface. A point inside a cave (the p
 in `describe_location`, and no site z. A ceiling is never printed. Without
 `data/local/caves/` nothing changes.
 
+### 10.1n Rock heights from the collision surface
+
+With `rocks.npz` beside the field (spatial-and-map.md §24), every height on rock is the
+surface the player and the build gun stand on: `describe_location`'s `terrain_m`, `whereami`,
+the inspector and the siting z. No tool or argument changed. Two things read differently:
+
+- A hint can pick a surface no plane holds: a lower shelf, a ledge under an overhang, a cave
+  floor. The siting reply names it `surface floor`.
+- Inside a cave with a hint, a collision floor at most 3 m under the hint (and not more than
+  2 m above it) is the answer: `terrain_m` is that floor and the line is
+  `cave=in a cave: floor -9.2 m, the rock collision just under the given height`. A site there
+  gets that z, with `in a cave: z is the rock collision just under the hint` on its terrain
+  line. With no floor in reach the answer stays `unknown`, as in §10.1m. No ceiling is printed.
+
 ### 10.2 Context budget
 
 The binding constraint. All 291 automatable recipes in optimal TSV = 25,313 chars (~7k tokens). **No tool

@@ -7,7 +7,8 @@ no terrain, so ``load_field()`` returns ``None`` on any machine where nobody ran
 generator, and every caller carries on without one. A raster is ``zlib`` over raw bytes,
 the int16 ones row-delta first; each plane is decoded once into a memory-mapped ``.npy``
 under ``cache/``. What each plane means is stated at the constant that names it; the
-georeference is in ``meta.json``. Surfaces and hints: docs/spatial-and-map.md section 22.
+georeference is in ``meta.json``. Surfaces and hints: docs/spatial-and-map.md section 22;
+rock heights from the collision pack beside the planes: section 24.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ import numpy as np
 
 from ... import config
 from . import caves as cave_masks
+from . import rocks as rock_pack
 
 __all__ = [
     "AMBIGUOUS_M",
@@ -158,6 +160,9 @@ ZLIB_LEVEL = 6
 
 CAVES_RECHECK_S = 1.0
 
+#: Under ``inside``, a collision surface at most this far under the hint is the cave floor.
+CAVE_FLOOR_REACH_M = 3.0
+
 DM_PER_M = 10.0
 
 #: What a caller is told when the sidecar records no measured accuracy for a layer. Only
@@ -275,6 +280,8 @@ class Reading:
     #: ``caves.CAVE_VALUES``. Separate from ``ambiguous``: under ``inside`` ``z_m`` is the
     #: surface above the point and must not be presented as its height.
     cave: str = cave_masks.NONE
+    #: Under ``inside``: ``z_m`` is a collision floor just under the hint, not the surface above.
+    cave_floor: bool = False
 
     @property
     def source(self) -> str:
@@ -295,6 +302,18 @@ class Reading:
         if self.water_quality != WATER_DRY:
             return True
         return self.water_m > self.z_m
+
+    @property
+    def height_known(self) -> bool:
+        """Whether ``z_m`` is this point's height: false only in a cave with no floor found."""
+        return self.cave != cave_masks.INSIDE or self.cave_floor
+
+    @property
+    def cave_note(self) -> str | None:
+        """The one cave line for this reading, or ``None`` where no cave is known."""
+        if self.cave_floor:
+            return rock_pack.floor_note(self.z_m)
+        return cave_masks.note(self.cave, self.z_m)
 
     @property
     def depth_known(self) -> bool:
@@ -323,6 +342,8 @@ class Surfaces:
     terrain_m: float | None
     top_m: float | None
     provenance: int
+    #: Further collision surfaces under ``top``, highest first: shelves, overhangs, cave floors.
+    floors: tuple[float, ...] = ()
 
     def candidates(self) -> list[tuple[str, float]]:
         return [
@@ -331,6 +352,7 @@ class Surfaces:
                 ("ground", self.ground_m),
                 ("terrain", self.terrain_m),
                 ("top", self.top_m),
+                *(("floor", z) for z in self.floors),
             )
             if value is not None
         ]
@@ -501,6 +523,8 @@ class Field:
         self.caves_dir = caves_dir
         self._caves: tuple[int, cave_masks.Caves | None] | None = None
         self._caves_checked = 0.0
+        self._rocks: tuple[int, rock_pack.RockIndex | None] | None = None
+        self._rocks_checked = 0.0
         grid = meta["grid"]
         self.width = int(grid["width"])
         self.height = int(grid["height"])
@@ -662,6 +686,55 @@ class Field:
         if self._caves is None or self._caves[0] != stamp:
             self._caves = (stamp, cave_masks.load_caves(self.caves_dir))
         return self._caves[1]
+
+    def rocks(self) -> rock_pack.RockIndex | None:
+        """The collision pack beside the planes, loaded on first use and again when rewritten."""
+        now = time.monotonic()
+        if self._rocks is not None and now - self._rocks_checked < CAVES_RECHECK_S:
+            return self._rocks[1]
+        self._rocks_checked = now
+        try:
+            stamp = (self.directory / rock_pack.META_NAME).stat().st_mtime_ns
+        except OSError:
+            self._rocks = (0, None)
+            return None
+        if self._rocks is None or self._rocks[0] != stamp:
+            self._rocks = (stamp, rock_pack.load_rocks(self.directory, self.build))
+        return self._rocks[1]
+
+    def near_rock(self, x_cm: float, y_cm: float) -> bool:
+        """Whether any vertex of the quad holding a point is cliff."""
+        c0 = math.floor((x_cm - self.x0_cm) / self.spacing_cm)
+        r0 = math.floor((y_cm - self.y0_cm) / self.spacing_cm)
+        block = self._prov[max(r0, 0) : r0 + 2, max(c0, 0) : c0 + 2]
+        return bool(np.isin(block, PROV_CLIFF_VALUES).any())
+
+    def collision(self, x_cm: float, y_cm: float, found: Surfaces) -> Surfaces | None:
+        """``found`` with its rock surfaces read off the collision pack, or ``None``.
+
+        ``ground`` is the highest of the landscape and the cliff set, ``top`` the highest of
+        everything, and every other up-facing surface on the line is a floor. ``None`` where
+        there is no pack, or neither a hit nor landscape under the point.
+        """
+        index = self.rocks()
+        if index is None:
+            return None
+        hits = index.hits(float(x_cm), float(y_cm))
+        base = [] if found.terrain_m is None else [found.terrain_m]
+        ground_hits = hits.standing(rock_pack.GROUND_KINDS)
+        every = hits.standing()
+        if not base and not every:
+            return None
+        ground = max(base + ground_hits) if base or ground_hits else found.ground_m
+        top = max(v for v in (ground, *every) if v is not None)
+        named = {round(v, 2) for v in (ground, top, found.terrain_m) if v is not None}
+        return Surfaces(
+            ground_m=None if ground is None else round(ground, 3),
+            terrain_m=found.terrain_m,
+            top_m=round(top, 3),
+            provenance=found.provenance,
+            floors=tuple(round(z, 3) for z in every if round(z, 2) not in named),
+        )
 
     def cave_at(
         self,
@@ -875,18 +948,34 @@ class Field:
         )
         if found is None:
             return None
+        lowest = min(v for _, v in found.candidates())
+        cave = self.cave_at(x_cm, y_cm, hint_z_cm, lowest)
+        exact = None
+        if surface != "terrain" and (
+            hint_z_cm is not None or surface == "top" or self.near_rock(x_cm, y_cm)
+        ):
+            exact = self.collision(x_cm, y_cm, found)
+        cave_floor = False
         if hint_z_cm is not None:
-            picked = found.pick(hint_z_cm / 100.0)
+            hint_m = hint_z_cm / 100.0
+            picked = (exact or found).pick(hint_m)
+            if cave == cave_masks.INSIDE:
+                cave_floor = (
+                    exact is not None
+                    and picked is not None
+                    and -AMBIGUOUS_M <= hint_m - picked[1] <= CAVE_FLOOR_REACH_M
+                )
+                if not cave_floor:
+                    picked, exact = found.pick(hint_m), None
             if picked is None:
                 return None
             surface, z_m = picked
         else:
-            value = {"ground": found.ground_m, "terrain": found.terrain_m, "top": found.top_m}[
-                surface
-            ]
-            if value is None:
+            value = {"ground": "ground_m", "terrain": "terrain_m", "top": "top_m"}[surface]
+            z_m = getattr(exact or found, value)
+            if z_m is None:
                 return None
-            z_m = value
+        found = exact or found
         if (
             surface == "ground"
             and found.provenance == PROV_LANDSCAPE
@@ -921,7 +1010,8 @@ class Field:
             surface=surface,
             terrain_z_m=found.terrain_m,
             ambiguous=bool(ambiguous),
-            cave=self.cave_at(x_cm, y_cm, hint_z_cm, min(v for _, v in found.candidates())),
+            cave=cave,
+            cave_floor=cave_floor,
         )
 
     def _rows_cols(

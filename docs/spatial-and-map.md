@@ -966,7 +966,8 @@ file. A stored z is kept when a pad is resized in place; a moved pad is read aga
 | bilinear `ground`, generator v5 | 0.041 m | 83.0 m | 82.1% | 0.024 m |
 
 The tail is which surface is meant, never resolution. No one- or two-valued plane can hold
-a cave floor; section 23 flags where one is missing.
+a cave floor; section 23 flags where one is missing, and section 24 reads every surface on rock
+off the rocks' own collision meshes.
 
 
 ## 23. The cave flag (2026-10-05)
@@ -1039,5 +1040,98 @@ On 218 cave points (more than 3 m under every surface) and 4,885 open-ground poi
 The 9.4% of open ground flagged `below` mostly stands over a real cave; the wording says so
 rather than calling it a fault. Eleven cave points are missed, six of them mushrooms
 (`BP_Shroom_01_C`). The measuring scripts are kept out of the repository with the truth set.
-Floors, ceilings and the underground map are not part of this; they wait for cave building to
-be real.
+Ceilings and the underground map are not part of this; they wait for cave building to be real.
+Section 24 adds cave floors where a hint exists.
+
+
+## 24. Rock heights from the collision surface (2026-10-05)
+
+Two surfaces, two jobs. The map draws the visible rock (the Nanite surface, `gen_map_renders`).
+Every programmatic height reads the **collision** surface, the one the player and the build gun
+stand on: the siting z, `describe_location`, `whereami`, the inspector. The two differ by more
+than 0.5 m on 12.5% of rock-top, and by more than that at cliff edges, where a 1 m raster of
+either smears.
+
+### The collision pack
+
+`tools/gen_world_heightmap.py --rocks` adds `rocks.npz` and `rocks.json` to the field at
+`--field` (default `data/local/heightmap/`) and touches nothing else there; a full run writes
+them with the planes. It refuses a field cut from another build, and an existing pack without
+`--force`. On build 502094: 24 s, 15.4 MB.
+
+| What | Count | Collision taken from |
+| --- | --- | --- |
+| Rock meshes with `CTF_UseComplexAsSimple` | 110 | the cooked Chaos trimesh: render LOD `LODForCollision` (1-3), triangle for triangle on every one |
+| Rock meshes without | 21 | `AggGeom` simple elements: convex hulls, boxes, spheres and capsules, as closed hulls wound outward; elements with `NoCollision` are skipped |
+| `BP_CaveFloor_C` spline components | 173 (61 actors) | each component's own cooked trimesh, already bent along its spline |
+
+Placements follow the cliff pass: the same sweep, the same owner, name, bounds and oversize
+culls. What the cliff pass drops is kept under a kind instead: `rock` (19,857, the `ground`
+set), `rock, simple collision` (575), `arch` (1,076), `foliage boulder` (41,351), `cave floor`
+(173). Two meshes ship no collision at all (`ArcMerge1`, `SM_Rubble_Small_01`, 12 placements).
+Each mesh is stored once in mesh-local cm with its winding (+1 outward, -1 inward, 0 an open
+shell); each placement as a row-vector matrix, an origin, a kind and a world box. The sidecar
+records the counts.
+
+### The index
+
+`rocks.RockIndex` cuts the pack into 64 m world tiles the first time a point in one is asked
+about: the placements whose box overlaps, transformed to world, kept per triangle where the
+triangle's plan overlaps the tile, flagged up-facing from the winding and the placement's
+handedness (an open shell counts both ways), and binned into 1 m cells. Tiles live in an LRU
+of 64 MB, about 35 dense cliff tiles. `hits(x, y)` intersects the vertical line with the cell's
+triangles and returns every surface, highest first; two hits within 1 cm of one kind are one.
+
+### Reading a point
+
+The planes keep every job they had; the pack only answers on rock.
+
+- **Landscape** (no cliff vertex in the point's quad, no hint, `ground`): the fast path of
+  section 22, untouched.
+- **Rock, `top`, or any hint:** `Field.collision` reads the hits. `ground` is the highest of the
+  landscape (on the engine's triangles) and the up-facing `rock` hits; `top` the highest of
+  every up-facing hit; every other up-facing hit is a `floor`. Without a hint the answer is
+  `ground`, and `ambiguous` keeps its meaning: more than 2 m over the landscape.
+- A **hint** picks with `Surfaces.pick` as before, over the floors too, so a shelf, a ledge
+  under an overhang or a cave floor can answer. `Reading.surface` is then `floor`.
+- No pack, a pack from another build, or no hit and no landscape: the planes answer as before.
+
+**Caves.** The flag of section 23 is computed exactly as before, on the planes. Under `inside`,
+the hint's pick is kept only when it is a collision surface no more than 3 m under the hint and
+no more than 2 m above it; the reading is then `cave_floor` and its line is
+`in a cave: floor -9.2 m, the rock collision just under the given height`. Otherwise the height
+stays unknown. No ceiling is printed. Pads keep their 1 m statistics; only the point reader
+and the siting point z changed.
+
+### Measured (build 502094, 5,956 save ground-truth points)
+
+Median absolute error and share within 1 m, before (v5 planes) and after (planes plus pack).
+Rock is a point with a cliff vertex in its quad; "on top" within 2 m of either answer; an edge
+has more than 2 m of collision relief within 0.5 m; a cave point lies more than 3 m under
+every plane.
+
+| Population | n | No hint | Hint = truth | Hint = truth + 1.5 m |
+| --- | --- | --- | --- | --- |
+| All | 5,956 | 0.041 → 0.047 m, 82.1 → 82.0% | 0.033 → 0.032 m, 88.5 → 96.8% | 88.5 → 96.6% |
+| Landscape | 3,204 | 0.023 → 0.023 m, 95.1 → 95.1% | 95.1 → 98.0% | 95.1 → 97.9% |
+| Rock | 2,752 | 0.084 → 0.105 m, 66.9 → 66.9% | 0.050 → 0.044 m, 80.9 → 95.3% | 80.8 → 95.1% |
+| Rock top, open | 1,796 | 0.035 → 0.048 m, 99.2 → 99.2% | 99.2 → 99.2% | 99.2 → 99.2% |
+| Rock top, edge | 76 | 0.100 → 0.052 m, 77.6 → 77.6% | 0.059 → 0.034 m, 86.8 → 100% | 86.8 → 98.7% |
+| Cave | 219 | 91 m either way | 76 m → 0.092 m, 0 → 87.2% | 0 → 85.4% |
+
+- **Hints are where the pack pays.** The p90 with a hint falls from 2.8 m to 0.26 m; the tail of
+  section 22 was which surface, and the floors hold the missing ones.
+- **Caves:** with the true z as hint, 87% of cave points get a floor and 84% are within 1 m;
+  3.7% get a floor more than 1 m off (mostly mushrooms, which stand on foliage the pack does
+  not hold). The 63 points inside a sound volume but less than 3 m under the planes (cave
+  mouths) all get a floor within 1 m, against 32% before.
+- **The open rock-top median rises by 13 mm.** Most truth objects are placed by designers on the
+  visible surface, and collision is LOD 1-3 of it. Physics-settled pickups should rest on
+  collision, but on the 8 of them where the two surfaces differ by more than 0.2 m, 7 sit within
+  5 cm of the visible surface (median 1.8 cm, collision 23 cm). Creature drops go the other way
+  (5 of 6 closer to collision). Too few to overturn the decision; worth an in-game check.
+
+Timings on the reference machine, `Field.z` end to end: landscape 27 µs median (unchanged);
+rock warm 62 µs median, 75 µs p95 (24 µs before); `hits` alone 26 µs. A tile's first touch
+costs 22 ms median, 37 ms p95 in a dense cliff area (1.9 MB a tile), 9 ms median over scattered
+points. Loading the pack takes 0.1 s and 25 MB.
