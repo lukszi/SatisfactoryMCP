@@ -175,7 +175,12 @@ A `paint` input reads `data/local/paint/meta.json` (`generator_version`, `cl` or
 `digest`) exactly as the heightfield does, and a map that lists `paint` goes stale on the same
 rules. `python -m mapgen paint` writes it (the `paint` preset, through
 `tools/gen_paint_layers.py`); only the game-painted layer
-lists it. spatial-and-map.md section 27 describes the planes.
+lists it. spatial-and-map.md sections 27 and 28 describe the planes. Generator version 2 added
+the baked ground colour, the crown tops and the cliff families.
+
+The game-painted layer also lists two readers, `rock_families` (each rock's cliff family, in
+the direct raster) and `titan_trees` (the Titan forest raster), compared like any reader
+version. A render with `--no-titan-trees` omits the second and records its own style digest.
 
 ### 3.5 Names and order
 
