@@ -73,6 +73,9 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
   `commission_plan(plan=)` journal `plan.view` with `args.view = "track"`.
 - `GET /api/activity` keeps one row for a run of the same `plan.view` (same plan, actor, view
   and item, stage or section), the newest, before it applies `limit`.
+- Advisory writes (`/api/advice/hidden`) add no event name either: the web appends
+  `advice.hide` and `advice.restore`, and chat's `ui_context(dismissed=)` appends `advice.hide`
+  to its own journal file. Any `advice.*` entry refetches `/api/advice` on every page.
 
 ## World
 
@@ -124,6 +127,14 @@ carries the `rev` it read and a different one is a 409 `AskStaleResponse {error,
 ask}`, a newer asks file is a 503 `{error, newer_schema: true}`. `about.plan` must be a live plan
 key (404 otherwise). Ask numbers are never reused. Unlike pins, the store has writers in every
 MCP process (seen, answered), so every write holds the file lock.
+
+## Advice
+
+`/api/advice` (`routers/advice.py`) follows the asks rules: the guard on every write, a write
+carries the `rev` it read (0 for a row never hidden) and a different one is a 409
+`AdviceStaleResponse {error, stale: true, row}` with the row as it stands, a newer file is a 503
+`{error, newer_schema: true}`. A hide names the row by `key`, a restore by `adv:` id in the
+path. [advisors_contract.md](advisors_contract.md) is the specification.
 
 ## Settings
 
