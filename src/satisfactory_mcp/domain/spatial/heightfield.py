@@ -151,6 +151,9 @@ def decode_i16(blob: bytes, height: int, width: int) -> np.ndarray:
     The shape lives in ``meta.json`` beside the georeference and not in the stream, so a
     raster whose length disagrees with it is a mismatched pair rather than a raster to
     reshape into whatever fits.
+
+    Summed in int16 on purpose: the wrap is the inverse of ``encode_i16``'s truncation, and a
+    wider accumulator peaked at 1.2 GB per decode, enough to exhaust memory under ``-n auto``.
     """
     delta = np.frombuffer(zlib.decompress(blob), dtype="<i2")
     if delta.size != height * width:
@@ -158,8 +161,7 @@ def decode_i16(blob: bytes, height: int, width: int) -> np.ndarray:
             f"height raster is {delta.size} texels, but meta.json says {height}x{width} "
             f"= {height * width} -- the sidecar and the raster are not from one run"
         )
-    running = np.cumsum(delta.reshape(height, width).astype(np.int32), axis=1)
-    return running.astype(np.int16)
+    return np.cumsum(delta.reshape(height, width), axis=1, dtype=np.int16)
 
 
 def encode_u8(grid: np.ndarray) -> bytes:
