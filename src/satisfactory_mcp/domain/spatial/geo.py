@@ -18,6 +18,7 @@ __all__ = [
     "CM_PER_M",
     "DIRECTIONS",
     "GRID_CELL",
+    "MAP_SQUARE_M",
     "Cluster",
     "bbox",
     "bearing_deg",
@@ -43,6 +44,9 @@ GRID_Y0_SOUTH = 302_800.0  # south edge of row Y0
 #: ``data/world_resource_nodes.json`` and ``data/world_collectibles.json``, and
 #: reproducible from those two files alone.
 CONTENT_BBOX = (-298_838.0, -314_104.0, 406_564.0, 304_196.0)  # minx, miny, maxx, maxy
+
+#: The in-game map square in metres (minx, miny, maxx, maxy); ``tiles.DEFAULT_MAP_BOUNDS_M``.
+MAP_SQUARE_M = (-3247.0, -3750.0, 4253.0, 3750.0)
 
 #: Compass bearings in degrees, clockwise from north.
 DIRECTIONS: dict[str, float] = {

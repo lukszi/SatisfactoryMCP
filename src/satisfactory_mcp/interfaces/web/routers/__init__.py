@@ -30,6 +30,7 @@ from . import (
     nodes,
     pins,
     placements,
+    plan_site,
     plan_track,
     planlog,
     planner,
@@ -86,6 +87,7 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     asks.router,
     factory_graph.router,
     plan_track.router,
+    plan_site.router,
     settings.router,
     advice.router,
 )

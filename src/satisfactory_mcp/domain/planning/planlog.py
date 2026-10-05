@@ -580,12 +580,35 @@ def describe_op(op: dict) -> str:
         sign = "+" if kind == "add" else MINUS
         return f"{sign}{name} {_member_name(name, op.get('member'))}"
     if kind == "site":
-        if not op.get("value"):
-            return "site cleared"
-        return "site moved" if op.get("was") else "site set"
+        return "site " + _site_words(op)
     if kind == "rename":
         return f'renamed "{op.get("was", "")}"{ARROW}"{op.get("name", "")}"'
     return {"create": "created", "forget": "forgotten", "restore": "restored"}.get(kind, "")
+
+
+def _site_words(op: dict) -> str:
+    """``set at 1,476, -2,098 (Rocky Desert)``, ``moved 1,503 m west, turned 30°``, ``cleared``."""
+    from . import siting
+
+    value, was = op.get("value"), op.get("was")
+    if not value:
+        return "cleared"
+    sit = siting.parse(siting._Raw(value))
+    if not was:
+        if sit is None:
+            return "set"
+        return f"set at {sit.x_m:,.0f}, {sit.y_m:,.0f}" + _region(sit.x_m, sit.y_m)
+    return siting.move_words(was, value) or "moved"
+
+
+def _region(x_m: float, y_m: float) -> str:
+    try:
+        from ..spatial.regions import load_regions
+
+        name = load_regions().label_for(x_m * 100.0, y_m * 100.0).name
+    except Exception:
+        return ""
+    return f" ({name})" if name else ""
 
 
 def _ops_text(ops: list[dict]) -> str:
@@ -713,10 +736,15 @@ def _check_op(op: dict) -> dict:
             raise _fail(f"{kind} does not apply to {name!r}")
         return {"op": kind, "field": name, "member": _member(name, op.get("member"))}
     if kind == "site":
+        from . import siting
+
         value = op.get("value")
-        if value is not None and not isinstance(value, dict):
-            raise _fail(f"site takes a siting object or null, not {value!r}")
-        return {"op": "site", "value": copy.deepcopy(value) or None}
+        if value is None:
+            return {"op": "site", "value": None}
+        try:
+            return {"op": "site", "value": siting.check(value)}
+        except ValueError as exc:
+            raise _fail(str(exc)) from None
     if kind == "rename":
         wanted = op.get("name")
         if not isinstance(wanted, str) or not wanted.strip():
@@ -879,7 +907,9 @@ def _did(op: dict) -> str:
     if kind == "remove":
         return f"removed {op['field']} {_fmt(op['member'])}"
     if kind == "site":
-        return "moved the site" if op.get("value") else "cleared the site"
+        words = _site_words(op)
+        verb, _, rest = words.partition(" ")
+        return f"{verb} the site" + (f" {rest}" if rest else "")
     if kind == "rename":
         return f'renamed it "{op["name"]}"'
     return {"forget": "forgot the plan", "restore": "restored the plan"}.get(kind, kind)

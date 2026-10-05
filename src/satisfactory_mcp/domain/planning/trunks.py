@@ -96,6 +96,19 @@ class Trunk:
             for a, b in zip(self.members, self.members[1:], strict=False)
         )
 
+    def to_site_m(self, dest_cm: tuple[float, float]) -> float:
+        """Straight line from the chain's last node to the site, metres: a lower bound."""
+        if not self.members:
+            return 0.0
+        last = self.members[-1]
+        return geo.distance_m((last.x, last.y), dest_cm)
+
+    def lift_to_site_m(self, dest_z_m: float | None) -> float | None:
+        """The last node's height over the site's ground, metres; positive flows downhill."""
+        if not self.members or dest_z_m is None:
+            return None
+        return round(self.members[-1].z / 100.0 - dest_z_m, 1)
+
     @property
     def head_m(self) -> float:
         """Elevation span across the trunk's nodes, in metres."""

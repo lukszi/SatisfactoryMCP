@@ -11,6 +11,7 @@ import { renderAlternates } from "./planner-alternates";
 import { askButton, askMarks } from "./asks";
 import { bench, changed, gesture, pendingFocus, pickTab, showAlternates, undoRev } from "./planner-core";
 import { rowOverclock } from "./planner-power";
+import { renderSite } from "./planner-site";
 import { renderTrack } from "./planner-track";
 import { pinsFor, pinThis } from "./pins";
 import { headroom, LEDGER } from "./powerview";
@@ -44,6 +45,7 @@ var TABS: { id: ResultTab; label: string }[] = [
   { id: "build list", label: "build list" },
   { id: "graph", label: "graph" },
   { id: "track", label: W.track },
+  { id: "site", label: W.site },
 ];
 
 function clockText(row: { machines: number; clock: number; last_clock?: number | null }): string {
@@ -563,7 +565,25 @@ export function clearPick(): boolean {
   return true;
 }
 
+function resultTabs(parent: HTMLElement): void {
+  parent.appendChild(
+    tabs2(
+      TABS,
+      bench.tab,
+      function (id) {
+        pickTab(id as ResultTab);
+      },
+      "result view"
+    )
+  );
+}
+
 export function renderResult(parent: HTMLElement, select: (s: Selection) => void, close: () => void): void {
+  if (bench.tab === "site") {
+    resultTabs(parent);
+    renderSite(parent);
+    return;
+  }
   if (bench.solveError) error(parent, "the result", bench.solveError);
   var data = bench.result;
   if (!data) {
@@ -583,16 +603,7 @@ export function renderResult(parent: HTMLElement, select: (s: Selection) => void
     parent.appendChild(grey);
     return;
   }
-  parent.appendChild(
-    tabs2(
-      TABS,
-      bench.tab,
-      function (id) {
-        pickTab(id as ResultTab);
-      },
-      "result view"
-    )
-  );
+  resultTabs(parent);
   var beside = !!bench.alt && bench.tab === "graph" && WIDE.matches;
   var split = make("div", "plan-result" + (beside ? " beside" : ""));
   var dim = bench.tab !== "track" && bench.solving && bench.solving !== bench.resultRev;

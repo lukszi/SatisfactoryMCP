@@ -35,6 +35,13 @@ from satisfactory_mcp.domain.planning.planlog import (
 )
 
 PAGE = Actor("page", "", 1)
+
+
+def _site(x: float) -> dict:
+    """A valid site op value at ``x`` metres east."""
+    return {"origin_m": [float(x), 0.0, None], "footprint_m": [40.0, 40.0]}
+
+
 CHAT = Actor("chat", "claude-code", 2)
 BOLTED = "Recipe_Alternate_BoltedFrame_C"
 
@@ -220,7 +227,7 @@ def _random_ops(rng: random.Random) -> list[dict]:
             }
         ]
     if pick == 5:
-        return [{"op": "site", "value": rng.choice([None, {"x_m": rng.randrange(99)}])}]
+        return [{"op": "site", "value": rng.choice([None, _site(rng.randrange(99))])}]
     if pick == 6:
         return [{"op": "set", "field": "notes", "value": f"n{rng.randrange(5)}"}]
     return [{"op": "set", "field": "objective", "value": rng.choice(planlog.OBJECTIVES)}]
@@ -347,8 +354,8 @@ CONFLICTS = {
         [{"op": "add", "field": "banned", "member": BOLTED}],
     ),
     "site against site": (
-        [{"op": "site", "value": {"x_m": 1.0}}],
-        [{"op": "site", "value": {"x_m": 2.0}}],
+        [{"op": "site", "value": _site(1.0)}],
+        [{"op": "site", "value": _site(2.0)}],
     ),
     "rename against rename": (
         [{"op": "rename", "name": "south hmf"}],
@@ -540,7 +547,7 @@ def test_undo_restores_the_exact_previous_value_of_every_kind(plans, plan):
         {"op": "del", "field": "export_minimums", "item": "Heavy Modular Frame"},
         {"op": "remove", "field": "exports", "member": "Heavy Modular Frame"},
         {"op": "add", "field": "extractor_clocks", "member": 2.5},
-        {"op": "site", "value": {"x_m": 3.0}},
+        {"op": "site", "value": _site(3.0)},
         {"op": "rename", "name": "renamed"},
     ]
     before = plans.state(plan).to_dict()
@@ -606,7 +613,7 @@ def test_restore_to_makes_the_head_equal_an_old_version(plans, plan):
     plans.push(
         plan,
         2,
-        [{"op": "rename", "name": "renamed"}, {"op": "site", "value": {"x_m": 1.0}}],
+        [{"op": "rename", "name": "renamed"}, {"op": "site", "value": _site(1.0)}],
         actor=PAGE,
     )
     pushed = plans.restore_to(plan, 3, 1, actor=CHAT)
