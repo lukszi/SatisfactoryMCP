@@ -37,6 +37,7 @@ from ....core.gameassets.pyramid import (
     tile_relpath,
 )
 from ....domain.maps import registry
+from ....domain.spatial import geo
 from ..serial import _fail
 
 __all__ = ["DEFAULT_MAP_BOUNDS_M", "router"]
@@ -98,12 +99,8 @@ MAP_TILE_MAX_Z = 5
 #: inside it -- ``geo.CONTENT_BBOX`` is x [-2988.4, 4065.6], y [-3141.0, 3042.0] -- so an
 #: image pinned here cannot clip anything the map draws. Also the frame the map-area raster
 #: is pinned on.
-DEFAULT_MAP_BOUNDS_M = {
-    "x_min_m": -3247.0,
-    "x_max_m": 4253.0,
-    "y_min_m": -3750.0,
-    "y_max_m": 3750.0,
-}
+_X0, _Y0, _X1, _Y1 = geo.MAP_SQUARE_M
+DEFAULT_MAP_BOUNDS_M = {"x_min_m": _X0, "x_max_m": _X1, "y_min_m": _Y0, "y_max_m": _Y1}
 
 
 def _local_dir() -> Path:

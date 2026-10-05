@@ -1,8 +1,9 @@
 """Generation jobs on disk, and how far one has got, read from the lines its generator prints.
 
 One JSON file per job under ``data/local/maps/jobs/``, rewritten atomically on every state
-change, beside the job's log. The progress regexes read lines written for humans; a test
-pins them against a recorded log, so rewording one of those lines fails there first.
+change, beside the job's log. Progress comes from the ``::stage`` lines of
+``core.mapprogress`` first; the regexes over the human lines are the fallback for a log
+without them, pinned by a test against a recorded log.
 docs/maps_contract.md §5.
 """
 
@@ -14,7 +15,7 @@ import re
 import time
 from pathlib import Path
 
-from ...core import atomic
+from ...core import atomic, mapprogress
 from . import registry
 
 __all__ = [
@@ -128,7 +129,15 @@ class Progress:
         self.fraction = min(max(fraction, 0.0), 1.0)
 
     def feed(self, line: str) -> None:
-        if (m := SWEEP.search(line)) and int(m.group(2)):
+        event = mapprogress.decode(line)
+        if isinstance(event, mapprogress.StageEvent):
+            kind, _, layer = event.id.partition(":")
+            if kind == "draw" and layer != self.layer:
+                self.layer, self.cuts = layer, 0
+            self._enter(event.id, event.done)
+        elif event is not None:
+            return
+        elif (m := SWEEP.search(line)) and int(m.group(2)):
             self._enter("sweep", int(m.group(1)) / int(m.group(2)))
         elif MESHES.search(line):
             self._enter("sweep", 1.0)

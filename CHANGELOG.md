@@ -44,6 +44,12 @@ Planned as 0.2.0.
   row one machine short. Both default from shared settings and are on `plan_factory` and
   `plan_layout`.
 
+### Deprecated
+
+- The map generator scripts `tools/gen_map_renders.py`, `gen_map_image.py`,
+  `gen_world_heightmap.py`, `gen_paint_layers.py` and `check_map_fill.py` are now shims for
+  `python -m mapgen <command>` and warn when run. They will be removed in 0.3.0.
+
 ### Fixed
 
 - Chat saves merge against their base revision and across renames.

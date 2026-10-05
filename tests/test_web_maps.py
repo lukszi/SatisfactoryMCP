@@ -14,7 +14,7 @@ fastapi = pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 from test_map_registry import local  # noqa: F401  (the fixture)
-from test_map_runner import FAKE
+from test_map_runner import install_fake
 
 from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.interfaces.web.app import create_app
@@ -110,7 +110,7 @@ def test_an_estimate_says_whether_the_disk_has_room(client):
 def test_a_job_queued_from_the_page_runs_and_its_type_appears(client, local, tmp_path, monkeypatch):  # noqa: F811
     tools = tmp_path / "tools"
     tools.mkdir()
-    (tools / "gen_map_renders.py").write_text(FAKE, encoding="utf-8")
+    install_fake(tools)
     monkeypatch.setattr(presets, "tools_dir", lambda: tools)
     monkeypatch.setattr(presets.config, "game_root", lambda: tmp_path / "game")
     monkeypatch.setattr(

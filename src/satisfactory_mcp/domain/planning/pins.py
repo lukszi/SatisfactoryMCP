@@ -50,7 +50,7 @@ LABEL_MAX = 80
 KINDS = ("plan", "process", "machine", "factory", "field", "node", "point")
 LOCATED = ("point", "node", "field", "machine", "factory", "plan")
 FIELD_LINK_M = 200.0
-MAP_SQUARE_M = (-3247.0, -3750.0, 4253.0, 3750.0)
+MAP_SQUARE_M = geo.MAP_SQUARE_M
 GRAMMARS = {
     "nodes": ("node", "field"),
     "machines": ("machine", "factory"),

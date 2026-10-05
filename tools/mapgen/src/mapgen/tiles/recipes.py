@@ -1,0 +1,61 @@
+"""Which recipe drew a render layer's pixels: the number and the words the sidecar records."""
+
+from __future__ import annotations
+
+from satisfactory_mcp.core.gameassets.versions import (
+    RENDER_RECIPE_CURRENT,
+    RENDER_RECIPE_KERNEL_ONLY,
+)
+
+__all__ = ["RECIPE", "RECIPES", "RECIPE_KERNEL_ONLY"]
+
+#: Which recipe drew the pixels, recorded per layer so a reader looking at a tile can find
+#: out which set of rules made it.
+RECIPES = {
+    1: (
+        "terrain: hypsometric ramp over the 1st..99.5th height percentile, NW hillshade at "
+        "45 deg, water tinted by depth. satellite: biome palette, slope-driven rock, "
+        "elevation lightening, two octaves of noise, the same hillshade and water"
+    ),
+    2: (
+        "recipe 1 at 16384 px, sampled with a C1 Catmull-Rom kernel so the hillshade has no "
+        "cell structure; submersion read from waterq.u8.z rather than inferred from a "
+        "comparison, level-only water at full alpha and the deep end of the ramp; and the "
+        "artwork sheet's luminance high-pass borrowed into the shading wherever the "
+        "provenance byte says cliff or fill, faded out towards landscape"
+    ),
+    3: (
+        "recipe 2 at 32768 px, with a two-regime sampler: the cliff geometry decoded from "
+        "the container and rasterised into this grid at 0.229 m wherever density.u8.z says "
+        "a source vertex landed under the output texel, the Catmull-Rom kernel over the 1 m "
+        "field everywhere else, and a density-weighted cross-fade between them so no "
+        "province boundary is ever a derivative discontinuity. Plus the fill province "
+        "low-passed at its own 3.66 m cell so its 3.9 m terraces stop being contours"
+    ),
+    4: (
+        "recipe 3 with the landscape under the kernel read from terrain.u16.z at 7.8 mm "
+        "instead of the decimetre ground plane, under the cliff province as well, and the "
+        "arches and foliage boulders the field keeps in top.i16.z rasterised at 0.229 m and "
+        "composited over everything by the same coverage-and-lift rule as the rocks"
+    ),
+    5: (
+        "recipe 4 over a rebuilt lattice, sampled with tensor-product PCHIP instead of "
+        "Catmull-Rom: the fill province re-read from the float16 interface raster "
+        "(Gaussian, cubic, +1 m), blended into the landscape across a 48 m harmonic seam "
+        "band, and interior holes filled biharmonically. Rock texels unchanged; the open "
+        "sea past the data stays the page's colour"
+    ),
+    6: (
+        "recipe 5 with a crisp shore: near the sea, water coverage is the drawn surface "
+        "crossing the ocean level, antialiased to one pixel, under an exponential "
+        "shallow-water fade, where recipe 5 read the artwork's 3.66 m water mask; rivers and "
+        "lakes unchanged. Coral, shells, CliffPillar_03 and rubble rasterised for the map "
+        "only and composited raise-only where they stand near or above the water"
+    ),
+}
+RECIPE = RENDER_RECIPE_CURRENT
+
+#: What ``--kernel-only`` draws, and it is a whole recipe rather than recipe 3 with a stage
+#: switched off: no geometry opened, no direct regime, no cross-fade and no de-terracing.
+#: The sidecar records this number, so a layer drawn that way never claims the recipe above.
+RECIPE_KERNEL_ONLY = RENDER_RECIPE_KERNEL_ONLY

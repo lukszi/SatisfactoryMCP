@@ -1,6 +1,7 @@
 """The map job runner, against a fake generator: queue, progress, cancel, and re-adoption.
 
-The fake is a script written into a scratch ``tools/`` that prints the real generator's
+The fake is a ``mapgen`` package written into a scratch ``tools/`` (the runner starts
+``python -m mapgen renders``, and the shim path runs the same file) that prints the real generator's
 progress lines and writes a one-tile pyramid, so the runner, the registry and the event
 stream are exercised end to end in a second or two per job. Nothing touches the game.
 """
@@ -26,6 +27,7 @@ FAKE = r"""
 import argparse, json, os, sys, time
 from pathlib import Path
 p = argparse.ArgumentParser()
+p.add_argument("command", nargs="?")
 p.add_argument("--game"); p.add_argument("--field"); p.add_argument("--out-dir")
 p.add_argument("--renders-name"); p.add_argument("--size", type=int)
 p.add_argument("--layer", action="append"); p.add_argument("--kernel-only", action="store_true")
@@ -64,6 +66,15 @@ print("done in 1s", flush=True)
 """
 
 
+def install_fake(tools: Path) -> None:
+    """The fake as the shim path and as the ``mapgen`` package the runner starts."""
+    (tools / "gen_map_renders.py").write_text(FAKE, encoding="utf-8")
+    package = tools / "mapgen" / "src" / "mapgen"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__main__.py").write_text(FAKE, encoding="utf-8")
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path / "data")
@@ -73,7 +84,7 @@ def env(tmp_path, monkeypatch):
     )
     tools = tmp_path / "tools"
     tools.mkdir()
-    (tools / "gen_map_renders.py").write_text(FAKE, encoding="utf-8")
+    install_fake(tools)
     monkeypatch.setattr(presets, "tools_dir", lambda: tools)
     monkeypatch.setattr(config, "game_root", lambda: tmp_path / "game")
     monkeypatch.setattr(registry, "game_cl", lambda: 502094)
@@ -260,3 +271,20 @@ def test_progress_reads_a_recorded_full_render_log():
     halfway = dict(seen)["draw:terrain"]
     assert 0.4 < halfway < 0.8
     assert progress.eta(100.0) is None
+
+
+def test_stage_lines_drive_progress_where_the_regexes_cannot():
+    """``painted`` has no human-line pattern; its ``::stage`` lines carry it draw to cut."""
+    from satisfactory_mcp.core import mapprogress
+
+    progress = store.Progress({"prep": 1.0, "draw:painted": 1.0, "cut:painted": 1.0}, size=1024)
+    progress.feed(mapprogress.encode_stage("draw:painted", 0.0))
+    progress.feed(mapprogress.encode_stage("draw:painted", 0.5))
+    assert (progress.stage, progress.fraction) == ("draw:painted", 0.5)
+    assert progress.stage_words() == "drawing painted"
+    progress.feed("  pyramid z0: 256x256, 1 tiles, 0.10 MB")
+    assert progress.stage == "cut:painted"
+    progress.feed(mapprogress.encode_stage("cut:painted", 1.0))
+    assert progress.pct() == 1.0
+    assert mapprogress.decode("::stage {not json") is None
+    assert mapprogress.decode(mapprogress.encode_plan([("sweep", 36)])).steps == (("sweep", 36.0),)

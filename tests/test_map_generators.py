@@ -26,7 +26,94 @@ fastapi = pytest.importorskip("fastapi")
 
 from test_web_tiles import _PNG, _fake_pyramid
 
+from mapgen import artwork
+from mapgen.artwork import (
+    COLOUR_FIX_SIGMA,
+    ENHANCE_MODEL,
+    ENHANCE_OVERLAP_PX,
+    ENHANCE_RECIPE,
+    ENHANCE_RECIPES,
+    ENHANCE_SCALE,
+    ENHANCE_SHA256,
+    ENHANCE_TILE_PX,
+    ENHANCE_URL,
+    FAINT_HI,
+    FAINT_LO,
+    IMAGE_NAME,
+    PRESHARPEN_AMOUNT,
+    PRESHARPEN_HI,
+    PRESHARPEN_ROUNDS,
+    SIDECAR_NAME,
+    UNNUMBERED_RECIPE,
+    colour_fix_pixels,
+    enhancement_downgrades,
+    faint_band,
+    faint_depth,
+    faint_mask,
+    pinned_build,
+    pinned_enhanced,
+    pinned_recipe,
+    presharpen_mask,
+    presharpen_pixels,
+)
+from mapgen.cache import (
+    DIRECT_CACHE_SIDECAR,
+    DIRECT_COVERAGE_NAME,
+    DIRECT_Z_NAME,
+    cached_direct,
+    direct_cache_stamp,
+)
+from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME
+from mapgen.gamedata.frame import BOUNDS_M, RENDER_2X_PX, RENDER_PX
+from mapgen.gamedata.mesh import EXCLUDED_OWNERS
+from mapgen.lighting.hillshade import (
+    SHADE_FLOOR,
+    SHADE_RANGE,
+    WATER_SHADE_FLOOR,
+    WATER_SHADE_RANGE,
+    hillshade,
+)
+from mapgen.palette.styles import (
+    BIOME_COLOURS,
+    NO_MANS_LAND_RGB,
+    SEA_RGB,
+    UNKNOWN_BIOME_RGB,
+    WATER_DEEP,
+    WATER_SHALLOW,
+    terrain_colours,
+    with_sea,
+)
+from mapgen.palette.water import (
+    WATER_EDGE_M,
+    water_alpha,
+    water_depth_fraction,
+    water_over,
+    water_planes,
+)
+from mapgen.pipeline import LAYERS
+from mapgen.terrain.fill import (
+    SOURCE_HOLE,
+    SOURCE_NONE,
+    SOURCE_ROCK,
+    SOURCE_SEAM,
+    fill_field,
+    ground_lattice,
+    terrain_lattice,
+)
+from mapgen.terrain.measure import SEAM_MID, SEAM_SWITCH_CEILING, RegimeCoverage, SeamTrace
+from mapgen.terrain.rasters import (
+    direct_placements,
+    pixel_coverage,
+    rasterise_direct_band,
+    rasterise_top_band,
+    reduce_direct,
+)
+from mapgen.terrain.sample import direct_weight, sample_surface, taps_cubic, taps_linear, taps_pchip
+from mapgen.tiles import sidecar as render_sidecar
+from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, blend_regimes, composite_top
+from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, pinned_field_build
 from satisfactory_mcp import config
+from satisfactory_mcp.core.gameassets.container import SHEET_PX, UBULK_BYTES
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
     PYRAMID_TILE_PX,
@@ -44,7 +131,6 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from satisfactory_mcp.interfaces.web.routers import tiles as web_tiles
-from tools import gen_map_image, gen_map_renders
 
 
 def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, monkeypatch):
@@ -55,13 +141,13 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
     Four names have to match, and the shape of the record the endpoint reads back has to be
     the one the tool actually writes rather than a hand-typed sample that could drift.
     """
-    assert gen_map_renders.RENDERS_DIR_NAME == web_tiles.MAP_RENDERS_DIR_NAME
-    assert gen_map_renders.RENDER_SIDECAR_NAME == web_tiles.MAP_RENDER_SIDECAR_NAME
-    assert set(gen_map_renders.LAYERS) == set(presets.RENDER_LAYERS)
+    assert RENDERS_DIR_NAME == web_tiles.MAP_RENDERS_DIR_NAME
+    assert RENDER_SIDECAR_NAME == web_tiles.MAP_RENDER_SIDECAR_NAME
+    assert set(LAYERS) == set(presets.RENDER_LAYERS)
     assert {layer for layer in registry.LEGACY if layer != web_tiles.MAP_LAYER_DEFAULT} <= set(
-        gen_map_renders.LAYERS
+        LAYERS
     )
-    assert gen_map_renders.BOUNDS_M == web_tiles.DEFAULT_MAP_BOUNDS_M
+    assert BOUNDS_M == web_tiles.DEFAULT_MAP_BOUNDS_M
     # The tile grid is the cutter's, not this generator's: it hands its sheet to
     # ``core.gameassets.pyramid`` and the endpoint has to be configured for what THAT cuts.
     # The tile SIZE and the directory names are no longer asserted equal, because the
@@ -70,20 +156,20 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
     # about two different sheets: the default depth stays z5, which is what an 8192 sheet
     # divides into and what a pyramid whose sidecar says nothing is assumed to be, while
     # the renders are 32768 and say so in their own sidecar.
-    assert pyramid_top_z(gen_map_renders.SHEET_PX) == web_tiles.MAP_TILE_MAX_Z == 5
-    assert pyramid_top_z(gen_map_renders.RENDER_PX) == 7
+    assert pyramid_top_z(SHEET_PX) == web_tiles.MAP_TILE_MAX_Z == 5
+    assert pyramid_top_z(RENDER_PX) == 7
     # And the @2x tree is NOT simply one level shallower any more, which is the one place
     # the two trees stopped being the same arithmetic. 512 * 2**z runs out of a 32768 sheet
     # at z6, and cutting it there would cost as much again as the whole 1x pyramid for
     # pixels a retina client gets by asking for the 1x tile one level deeper -- so the dense
     # tree is cut from RENDER_2X_PX and stays exactly where it has always been, at z5.
     assert PYRAMID_TILE_2X_PX == 2 * PYRAMID_TILE_PX
-    assert gen_map_renders.RENDER_2X_PX == gen_map_renders.RENDER_PX // 2
-    assert pyramid_top_z(gen_map_renders.RENDER_2X_PX, PYRAMID_TILE_2X_PX) == 5
-    assert pyramid_top_z(gen_map_renders.RENDER_PX, PYRAMID_TILE_2X_PX) == 6
+    assert RENDER_2X_PX == RENDER_PX // 2
+    assert pyramid_top_z(RENDER_2X_PX, PYRAMID_TILE_2X_PX) == 5
+    assert pyramid_top_z(RENDER_PX, PYRAMID_TILE_2X_PX) == 6
 
     pin = "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build"
-    sidecar = gen_map_renders.build_sidecar(
+    sidecar = render_sidecar.build_sidecar(
         layer="terrain",
         field_meta={
             "generator": "tools/gen_world_heightmap.py",
@@ -100,9 +186,9 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
         render={"width_px": 32768},
         extra={},
     )
-    assert gen_map_renders.pinned_field_build(sidecar) == pin
-    assert gen_map_renders.pinned_field_build({}) is None
-    assert gen_map_renders.pinned_field_build({"_meta": {"sources": {}}}) is None
+    assert pinned_field_build(sidecar) == pin
+    assert pinned_field_build({}) is None
+    assert pinned_field_build({"_meta": {"sources": {}}}) is None
 
     # The endpoint reads that file, unmodified, out of the place the tool writes it to.
     directory = tmp_path / web_tiles.LOCAL_DIR_NAME / web_tiles.MAP_RENDERS_DIR_NAME / "terrain"
@@ -145,21 +231,17 @@ def test_the_sun_is_in_the_north_west_and_the_shore_is_not_a_staircase():
     pytest.importorskip("scipy")
 
     rows, cols = numpy.mgrid[0:9, 0:9].astype(numpy.float32)
-    flat = gen_map_renders.hillshade(numpy.zeros((9, 9), numpy.float32), 1.0)
+    flat = hillshade(numpy.zeros((9, 9), numpy.float32), 1.0)
     # Ground falling away to the north-west: high in the south-east, so the face looks at
     # the sun. The opposite sign is the same slope turned away from it.
-    toward = gen_map_renders.hillshade(rows + cols, 1.0)
-    away = gen_map_renders.hillshade(-(rows + cols), 1.0)
+    toward = hillshade(rows + cols, 1.0)
+    away = hillshade(-(rows + cols), 1.0)
     assert toward.mean() > flat.mean() > away.mean()
-    assert away.min() >= gen_map_renders.SHADE_FLOOR, (
-        "a shadowed face keeps its colour, it does not go black"
-    )
-    assert toward.max() <= gen_map_renders.SHADE_FLOOR + gen_map_renders.SHADE_RANGE + 1e-6
+    assert away.min() >= SHADE_FLOOR, "a shadowed face keeps its colour, it does not go black"
+    assert toward.max() <= SHADE_FLOOR + SHADE_RANGE + 1e-6
     # A north-facing slope and a west-facing one are lit alike; north-east and south-west
     # are the two the azimuth has to separate.
-    assert gen_map_renders.hillshade(rows, 1.0).mean() == pytest.approx(
-        gen_map_renders.hillshade(cols, 1.0).mean()
-    )
+    assert hillshade(rows, 1.0).mean() == pytest.approx(hillshade(cols, 1.0).mean())
 
     # And the shore. A wide lake with a beach on one side: the depth feather has a band to
     # work in, so the coverage climbs through it rather than switching.
@@ -168,18 +250,18 @@ def test_the_sun_is_in_the_north_west_and_the_shore_is_not_a_staircase():
     water = numpy.broadcast_to(depth, (7, 40)).copy()
     wet = (water > ground).astype(numpy.float32)
     measured = numpy.ones_like(wet)
-    alpha = gen_map_renders.water_alpha(ground, water, wet, measured, 0.8)
+    alpha = water_alpha(ground, water, wet, measured, 0.8)
     assert alpha.min() == pytest.approx(0.0, abs=0.02), "dry ground is not tinted"
     assert alpha.max() == pytest.approx(1.0, abs=0.02), "open water is not half-painted"
     assert numpy.all(numpy.diff(alpha[3]) >= -1e-6), "coverage rises with depth, never falls"
-    assert 0.05 < alpha[3][numpy.argmin(numpy.abs(depth - gen_map_renders.WATER_EDGE_M / 2))] < 0.95
+    assert 0.05 < alpha[3][numpy.argmin(numpy.abs(depth - WATER_EDGE_M / 2))] < 0.95
 
     # A cliff into deep water has no depth band at all, and the spatial blur is what keeps
     # that edge from being a staircase: the pixels either side of it are partial.
     cliff = numpy.zeros((7, 40), numpy.float32)
     cliff[:, :20] = 50.0
     level = numpy.full((7, 40), 20.0, numpy.float32)
-    hard = gen_map_renders.water_alpha(
+    hard = water_alpha(
         cliff, level, (cliff < 20.0).astype(numpy.float32), numpy.ones((7, 40), numpy.float32), 0.8
     )
     assert set(numpy.round(hard[3, :14], 3)) == {0.0} and hard[3, -1] == pytest.approx(
@@ -189,12 +271,12 @@ def test_the_sun_is_in_the_north_west_and_the_shore_is_not_a_staircase():
 
     dry_rgb = numpy.full((7, 40, 3), 200.0, numpy.float32)
     shade = numpy.ones((7, 40), numpy.float32)
-    shallow_rgb, deep_rgb = gen_map_renders.WATER_SHALLOW, gen_map_renders.WATER_DEEP
-    tint = gen_map_renders.water_depth_fraction(ground, water, measured)
-    out = gen_map_renders.water_over(dry_rgb, tint, alpha, shade, shallow_rgb, deep_rgb)
+    shallow_rgb, deep_rgb = WATER_SHALLOW, WATER_DEEP
+    tint = water_depth_fraction(ground, water, measured)
+    out = water_over(dry_rgb, tint, alpha, shade, shallow_rgb, deep_rgb)
     assert (out[3, 0] == 200.0).all(), "ground above the water is untouched"
     # And where it IS water it is water and only water, tinted by its own depth.
-    shallow = shallow_rgb * (gen_map_renders.WATER_SHADE_FLOOR + gen_map_renders.WATER_SHADE_RANGE)
+    shallow = shallow_rgb * (WATER_SHADE_FLOOR + WATER_SHADE_RANGE)
     assert out[3, -1] == pytest.approx(shallow, abs=12.0)
 
 
@@ -222,20 +304,18 @@ def test_water_whose_depth_was_never_measured_is_still_drawn_as_water():
     wet = numpy.ones((7, 40), numpy.float32)
     unknown = numpy.zeros((7, 40), numpy.float32)
 
-    drowned = gen_map_renders.water_alpha(ground, surface, wet, unknown, 0.8)
+    drowned = water_alpha(ground, surface, wet, unknown, 0.8)
     assert drowned.min() == pytest.approx(1.0, abs=1e-3), (
         "water whose depth is unknown is fully water; the comparison that says otherwise is "
         "the arithmetic the quality byte was added to stop being the answer"
     )
-    assert gen_map_renders.water_depth_fraction(ground, surface, unknown).min() == pytest.approx(
-        1.0
-    ), "and it is tinted deep, not the pale green of an ankle-deep sheet"
+    assert water_depth_fraction(ground, surface, unknown).min() == pytest.approx(1.0), (
+        "and it is tinted deep, not the pale green of an ankle-deep sheet"
+    )
 
     # The same texels with the depth MEASURED are the old behaviour exactly: dry.
     known = numpy.ones((7, 40), numpy.float32)
-    assert gen_map_renders.water_alpha(ground, surface, wet, known, 0.8).max() == pytest.approx(
-        0.0, abs=1e-3
-    )
+    assert water_alpha(ground, surface, wet, known, 0.8).max() == pytest.approx(0.0, abs=1e-3)
 
     # And a field with no quality byte at all falls back to the comparison rather than
     # reading missing as dry -- which is all such a field can say.
@@ -249,7 +329,7 @@ def test_water_whose_depth_was_never_measured_is_still_drawn_as_water():
         def _water_quality_raster(self):
             return None
 
-    plane, measured, note = gen_map_renders.water_planes(_Old())
+    plane, measured, note = water_planes(_Old())
     assert plane.tolist() == [[1, 0], [1, 1]] and measured is plane
     assert "predates the quality byte" in note
 
@@ -296,8 +376,8 @@ def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent(
     prov = numpy.full((41, 41), hf.PROV_CLIFF_DIRECT, numpy.uint8)
     field = _Field(numpy.zeros((41, 41), numpy.int16), prov, density)
 
-    coarse, coarse_meta = gen_map_renders.direct_weight(field, 0.4578)  # a z6 texel
-    fine, fine_meta = gen_map_renders.direct_weight(field, 0.2289)  # a z7 texel
+    coarse, coarse_meta = direct_weight(field, 0.4578)  # a z6 texel
+    fine, fine_meta = direct_weight(field, 0.2289)  # a z7 texel
     assert coarse_meta["density_min_per_field_texel"] == pytest.approx(4.77, abs=0.01)
     assert fine_meta["density_min_per_field_texel"] == pytest.approx(19.09, abs=0.01)
     # Ten vertices is enough for a z6 texel and not for a z7 one, from the same plane.
@@ -308,7 +388,7 @@ def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent(
     assert set(numpy.unique(coarse)) == {0, 255}
     assert coarse[20, 20] == 255 and coarse[20, 27] == 0
 
-    absent, absent_meta = gen_map_renders.direct_weight(_Field(field._height_dm, prov), 0.2289)
+    absent, absent_meta = direct_weight(_Field(field._height_dm, prov), 0.2289)
     assert absent is None and hf.DENSITY_NAME in absent_meta["absent"]
 
 
@@ -334,14 +414,12 @@ def test_the_rocks_are_composited_onto_the_lattice_and_can_only_raise_it():
     z_cm[:, : size // 2] = 20000.0
     coverage = numpy.ones((size, size), numpy.uint8)
     taps = (
-        gen_map_renders.taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-        gen_map_renders.taps_linear(numpy.arange(size, dtype=numpy.float64), size),
+        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
+        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
     )
     missing = numpy.zeros((size, size), bool)
 
-    z_m, still_missing, w, switched = gen_map_renders.blend_regimes(
-        ground, missing, (z_cm, coverage), taps, 1
-    )
+    z_m, still_missing, w, switched = blend_regimes(ground, missing, (z_cm, coverage), taps, 1)
     assert 0.0 <= w.min() and w.max() <= 1.0, "a coverage outside [0, 1] is not a coverage"
     assert z_m[:, 0] == pytest.approx(200.0, abs=0.2), "the rock stands where it stands"
     assert z_m[:, -1] == pytest.approx(100.0, abs=0.2), "and never digs below the ground"
@@ -350,7 +428,7 @@ def test_the_rocks_are_composited_onto_the_lattice_and_can_only_raise_it():
 
     # The lift is smooth: across the step from 200 m of rock to 50 m of underside, the
     # drawn height must not be the hard max, which has a corner exactly where they cross.
-    knee = gen_map_renders.DIRECT_LIFT_KNEE_M
+    knee = DIRECT_LIFT_KNEE_M
     interior = slice(2, size // 2 - 2)
     hard = numpy.maximum(z_cm / 100.0, ground)
     delta = (z_m - hard)[:, interior]
@@ -363,11 +441,9 @@ def test_the_rocks_are_composited_onto_the_lattice_and_can_only_raise_it():
     # and the pixel stops being no-data; where neither has anything, it stays so.
     blank = numpy.ones((size, size), bool)
     none = numpy.zeros((size, size), numpy.uint8)
-    z_m, still_missing, w, _switch = gen_map_renders.blend_regimes(
-        ground, blank, (z_cm, coverage), taps, 1
-    )
+    z_m, still_missing, w, _switch = blend_regimes(ground, blank, (z_cm, coverage), taps, 1)
     assert z_m[:, 0] == pytest.approx(200.0) and not still_missing.any()
-    _z, all_missing, _w, _s = gen_map_renders.blend_regimes(ground, blank, (z_cm, none), taps, 1)
+    _z, all_missing, _w, _s = blend_regimes(ground, blank, (z_cm, none), taps, 1)
     assert all_missing.all()
 
 
@@ -389,17 +465,17 @@ def test_the_kernel_interpolates_the_lattice_and_not_the_fold_it_produced():
     prov = numpy.full((6, 6), hf.PROV_LANDSCAPE, numpy.uint8)
     prov[:, 2:4] = hf.PROV_CLIFF
     field = _Field(height, prov)
-    ground, meta = gen_map_renders.ground_lattice(field, height.astype(numpy.float32))
+    ground, meta = ground_lattice(field, height.astype(numpy.float32))
 
     assert (ground[:, 2:4] == hf.NODATA).all(), "the cliff province is not the ground"
     assert (ground[:, :2] == 100).all() and (ground[:, 4:] == 100).all()
     assert meta["removed_share_of_the_field"] == pytest.approx(100 * 2 / 6, abs=0.01)
     # And the whole point of it: a stencil just outside the rock now reads only ground.
     taps = (
-        gen_map_renders.taps_linear(numpy.arange(6, dtype=numpy.float64), 6),
-        gen_map_renders.taps_linear(numpy.arange(6, dtype=numpy.float64), 6),
+        taps_linear(numpy.arange(6, dtype=numpy.float64), 6),
+        taps_linear(numpy.arange(6, dtype=numpy.float64), 6),
     )
-    values, missing = gen_map_renders.sample_surface(ground, taps, taps, hf.NODATA)
+    values, missing = sample_surface(ground, taps, taps, hf.NODATA)
     assert values[:, 1] == pytest.approx(100.0), "no cliff-top height leaks into the ground"
     assert missing[:, 2:4].all(), "and under the rock the lattice says nothing, not zero"
 
@@ -421,16 +497,16 @@ def test_a_rock_pixel_is_its_own_triangle_and_never_leaks_across_the_silhouette(
     z_cm[2, 2], z_cm[2, 3] = 5000.0, 4100.0
     coverage[2, 2] = coverage[2, 3] = 1
     taps = (
-        gen_map_renders.taps_linear(numpy.arange(size, dtype=numpy.float64), size),
-        gen_map_renders.taps_linear(numpy.arange(size, dtype=numpy.float64), size),
+        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
+        taps_linear(numpy.arange(size, dtype=numpy.float64), size),
     )
     ground = numpy.full((size, size), 10.0, numpy.float32)
     blank = numpy.zeros((size, size), bool)
-    z_m, _missing, w, _s = gen_map_renders.blend_regimes(ground, blank, (z_cm, coverage), taps, 1)
+    z_m, _missing, w, _s = blend_regimes(ground, blank, (z_cm, coverage), taps, 1)
     assert z_m[2, 2] == pytest.approx(50.0, abs=1e-3) and z_m[2, 3] == pytest.approx(41.0, abs=1e-3)
     assert (z_m[coverage == 0] == 10.0).all(), "no neighbour borrows a rock height"
     assert set(numpy.unique(w)) == {0.0, 1.0}
-    quarter = gen_map_renders.pixel_coverage(numpy.array([[1, 4]], numpy.uint8), 2)
+    quarter = pixel_coverage(numpy.array([[1, 4]], numpy.uint8), 2)
     assert quarter.tolist() == [[0.25, 1.0]]
 
 
@@ -447,26 +523,26 @@ def test_pchip_is_exact_at_the_vertices_and_never_overshoots_a_step():
     lattice[:, 6:] = 400.0  # a 40 m cliff, in decimetres
     lattice[3, 2] = 55.0  # and a lone bump on the low side
     vertex = numpy.arange(size, dtype=numpy.float64)
-    vlinear = (gen_map_renders.taps_linear(vertex, size),) * 2
-    vtaps = (gen_map_renders.taps_pchip(vertex, size),) * 2
-    at_vertex, missing = gen_map_renders.sample_surface(lattice, vtaps, vlinear, hf.NODATA)
+    vlinear = (taps_linear(vertex, size),) * 2
+    vtaps = (taps_pchip(vertex, size),) * 2
+    at_vertex, missing = sample_surface(lattice, vtaps, vlinear, hf.NODATA)
     assert not missing.any() and numpy.array_equal(at_vertex, lattice), "exact at every vertex"
 
     fine = numpy.linspace(0.0, size - 1.0, 4 * size + 1)
-    linear = (gen_map_renders.taps_linear(fine, size),) * 2
+    linear = (taps_linear(fine, size),) * 2
     cell = numpy.clip(numpy.floor(fine).astype(int), 0, size - 2)
     r, c = cell[:, None], cell[None, :]
     corners = numpy.stack(
         [lattice[r, c], lattice[r, c + 1], lattice[r + 1, c], lattice[r + 1, c + 1]]
     )
-    for kernel, rings in ((gen_map_renders.taps_pchip, False), (gen_map_renders.taps_cubic, True)):
+    for kernel, rings in ((taps_pchip, False), (taps_cubic, True)):
         taps = (kernel(fine, size),) * 2
-        values, _missing = gen_map_renders.sample_surface(lattice, taps, linear, hf.NODATA)
+        values, _missing = sample_surface(lattice, taps, linear, hf.NODATA)
         over = numpy.maximum(values - corners.max(0), corners.min(0) - values)
         assert bool(over.max() > 1.0) == rings, kernel.__name__
     # And it is still a ramp through the riser, not a staircase of flat cells.
-    taps = (gen_map_renders.taps_pchip(fine, size),) * 2
-    values, _missing = gen_map_renders.sample_surface(lattice, taps, linear, hf.NODATA)
+    taps = (taps_pchip(fine, size),) * 2
+    values, _missing = sample_surface(lattice, taps, linear, hf.NODATA)
     across = values[0, (fine > 5) & (fine < 6)]
     assert numpy.all(numpy.diff(across) > 0), "monotone through the riser"
 
@@ -524,10 +600,9 @@ def test_the_fill_is_rebuilt_from_the_raster_and_meets_the_landscape_without_a_s
     """
     numpy = pytest.importorskip("numpy")
     pytest.importorskip("scipy")
-    from tools import map_fill
 
     kwargs, land, prov = _fill_fixture()
-    heights, ground, source, meta = map_fill.fill_field(**kwargs)
+    heights, ground, source, meta = fill_field(**kwargs)
     fill = prov == hf.PROV_FILL
     rebuilt = numpy.median(numpy.abs(ground[fill] / 10.0 - land[fill]))
     stored = numpy.median(numpy.abs(kwargs["height_dm"][fill] / 10.0 - land[fill]))
@@ -537,11 +612,11 @@ def test_the_fill_is_rebuilt_from_the_raster_and_meets_the_landscape_without_a_s
     jump = numpy.abs(ground[rows, 60] - ground[rows, 59]) / 10.0
     true_jump = numpy.abs(land[rows, 60] - land[rows, 59])
     assert numpy.median(numpy.abs(jump - true_jump)) < 0.05, "the seam is not a step"
-    assert (source[fill] == map_fill.SOURCE_SEAM).any()
+    assert (source[fill] == SOURCE_SEAM).any()
 
     hole = numpy.zeros_like(fill)
     hole[80:88, 30:38] = True
-    assert (source[hole] == map_fill.SOURCE_HOLE).all()
+    assert (source[hole] == SOURCE_HOLE).all()
     assert numpy.abs(ground[hole] / 10.0 - land[hole]).mean() < 0.2
     assert meta["holes"]["holes"] == 2, "the hole and the ground under the rock"
     landscape = prov == hf.PROV_LANDSCAPE
@@ -553,13 +628,12 @@ def test_rock_is_copied_unchanged_and_never_smoothed_into_the_ground():
     """Rock heights pass through the fill untouched, and none of them reach the ground."""
     numpy = pytest.importorskip("numpy")
     pytest.importorskip("scipy")
-    from tools import map_fill
 
     kwargs, land, prov = _fill_fixture()
-    heights, ground, source, _meta = map_fill.fill_field(**kwargs)
+    heights, ground, source, _meta = fill_field(**kwargs)
     rock = prov == hf.PROV_CLIFF_DIRECT
     assert numpy.array_equal(heights[rock], kwargs["height_dm"][rock].astype(numpy.float32))
-    assert (source[rock] == map_fill.SOURCE_ROCK).all()
+    assert (source[rock] == SOURCE_ROCK).all()
     # The ground under the rock is filled from the ground around it, not from the rock.
     assert numpy.abs(ground[rock] / 10.0 - land[rock]).max() < 3.0
     beside = numpy.zeros_like(rock)
@@ -576,21 +650,20 @@ def test_the_open_sea_past_the_data_stays_the_page_s_colour():
     """
     numpy = pytest.importorskip("numpy")
     pytest.importorskip("scipy")
-    from tools import map_fill
 
     kwargs, _land, prov = _fill_fixture()
-    heights, ground, source, meta = map_fill.fill_field(**kwargs)
+    heights, ground, source, meta = fill_field(**kwargs)
     sea = numpy.zeros(prov.shape, bool)
     sea[:, 112:] = True
     assert (heights[sea] == hf.NODATA).all() and (ground[sea] == hf.NODATA).all()
-    assert (source[sea] == map_fill.SOURCE_NONE).all()
+    assert (source[sea] == SOURCE_NONE).all()
     assert "no depth is invented" in meta["open_sea"]
 
     size = prov.shape[0]
     positions = numpy.arange(size, dtype=numpy.float64)
-    linear = (gen_map_renders.taps_linear(positions, size),) * 2
-    smooth = (gen_map_renders.taps_pchip(positions, size),) * 2
-    z_dm, missing = gen_map_renders.sample_surface(heights, smooth, linear, hf.NODATA)
+    linear = (taps_linear(positions, size),) * 2
+    smooth = (taps_pchip(positions, size),) * 2
+    z_dm, missing = sample_surface(heights, smooth, linear, hf.NODATA)
     assert missing[:, 112:].all() and not missing[:, :112].any()
     z_m = numpy.where(missing, 0.0, z_dm / hf.DM_PER_M).astype(numpy.float32)
     ones = numpy.ones(z_m.shape, numpy.float32)
@@ -598,8 +671,8 @@ def test_the_open_sea_past_the_data_stays_the_page_s_colour():
     water = {"cover": zeros, "depth": zeros, "depth_m": zeros, "ocean": zeros, "edge": zeros}
     scene = {"z_m": z_m, "shade": ones, "borrow": ones, "ramp_lo": 0.0, "ramp_hi": 100.0,
              "water": water}  # fmt: skip
-    rgb = gen_map_renders.with_sea(gen_map_renders.terrain_colours(scene), missing)
-    assert (rgb[missing] == gen_map_renders.SEA_RGB).all()
+    rgb = with_sea(terrain_colours(scene), missing)
+    assert (rgb[missing] == SEA_RGB).all()
 
 
 def test_the_seam_trace_measures_the_join_and_says_what_it_cannot_measure():
@@ -627,16 +700,16 @@ def test_the_seam_trace_measures_the_join_and_says_what_it_cannot_measure():
     delta = rock - lattice
 
     def measure(w):
-        trace = gen_map_renders.SeamTrace()
+        trace = SeamTrace()
         drawn = w * rock + (1.0 - w) * lattice
-        switched = numpy.where(w >= gen_map_renders.SEAM_MID, rock, lattice)
+        switched = numpy.where(w >= SEAM_MID, rock, lattice)
         trace.add(drawn, switched, w, spacing, delta)
         return trace.result()
 
     t = numpy.clip((numpy.arange(cols) - 180) / 40.0, 0.0, 1.0)
     faded = measure(numpy.tile(t * t * (3.0 - 2.0 * t), (rows, 1)).astype(numpy.float32))
     assert faded["measured"], faded
-    ceiling = gen_map_renders.SEAM_SWITCH_CEILING
+    ceiling = SEAM_SWITCH_CEILING
     assert faded["share_of_a_hard_switch"] < 0.1, faded
     assert faded["share_of_a_hard_switch"] <= ceiling
     # The reference the design named is still computed and still reported beside it, with
@@ -675,7 +748,7 @@ def test_the_regime_table_counts_by_province_and_reports_the_unbucketed_weight()
     # The first cliff column is a measurement, the second is a facet the rasteriser
     # interpolated -- both fully covered, and the table has to tell them apart.
     measured = numpy.array([[True, True, False, False]] * 2)
-    table = gen_map_renders.RegimeCoverage()
+    table = RegimeCoverage()
     table.add(prov, w, measured)
     out = table.result()
     cliff = out["per_province_pct_of_sheet"][hf.PROV_NAMES[hf.PROV_CLIFF_DIRECT]]
@@ -698,21 +771,21 @@ def test_a_direct_cache_from_another_render_is_rebuilt_rather_than_drawn_from(tm
     """
     numpy = pytest.importorskip("numpy")
 
-    stamp = gen_map_renders.direct_cache_stamp(8, 1, "build 495413")
+    stamp = direct_cache_stamp(8, 1, "build 495413")
     tmp_path.mkdir(parents=True, exist_ok=True)
-    numpy.zeros((8, 8), numpy.float32).tofile(tmp_path / gen_map_renders.DIRECT_Z_NAME)
-    numpy.zeros((8, 8), numpy.uint8).tofile(tmp_path / gen_map_renders.DIRECT_COVERAGE_NAME)
-    (tmp_path / gen_map_renders.DIRECT_CACHE_SIDECAR).write_text(
+    numpy.zeros((8, 8), numpy.float32).tofile(tmp_path / DIRECT_Z_NAME)
+    numpy.zeros((8, 8), numpy.uint8).tofile(tmp_path / DIRECT_COVERAGE_NAME)
+    (tmp_path / DIRECT_CACHE_SIDECAR).write_text(
         json.dumps({**stamp, "seconds": 1.0}), encoding="utf-8"
     )
-    assert gen_map_renders.cached_direct(tmp_path, stamp) is not None
+    assert cached_direct(tmp_path, stamp) is not None
     for other in (
-        gen_map_renders.direct_cache_stamp(16, 1, "build 495413"),
-        gen_map_renders.direct_cache_stamp(8, 2, "build 495413"),
-        gen_map_renders.direct_cache_stamp(8, 1, "build 500000"),
+        direct_cache_stamp(16, 1, "build 495413"),
+        direct_cache_stamp(8, 2, "build 495413"),
+        direct_cache_stamp(8, 1, "build 500000"),
     ):
-        assert gen_map_renders.cached_direct(tmp_path, other) is None
-    assert gen_map_renders.cached_direct(tmp_path / "nowhere", stamp) is None
+        assert cached_direct(tmp_path, other) is None
+    assert cached_direct(tmp_path / "nowhere", stamp) is None
 
 
 def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(tmp_path):
@@ -739,14 +812,14 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     }
     identity = (0.0, 0.0, 0.0)
     unit = (1.0, 1.0, 1.0)
-    x0, y0 = gen_map_renders.BOUNDS_M["x_min_m"] * 100, gen_map_renders.BOUNDS_M["y_min_m"] * 100
+    x0, y0 = BOUNDS_M["x_min_m"] * 100, BOUNDS_M["y_min_m"] * 100
     sweep = {
         "meshes": [
             "/World/Environment/Rock/Slab",
             "/World/Environment/Rock/Arc_Slab",
             "/World/Environment/Rock/Missing",
         ],
-        "owners": ["RockActor_C", next(iter(gen_map_renders.gen.EXCLUDED_OWNERS))],
+        "owners": ["RockActor_C", next(iter(EXCLUDED_OWNERS))],
         "placements": numpy.array(
             [
                 (0, 0, x0 + 1000, y0 + 1000, 0, *identity, *unit),  # drawn
@@ -758,7 +831,7 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
             numpy.float64,
         ),
     }
-    prepared, dropped = gen_map_renders.direct_placements(sweep, geometry)
+    prepared, dropped = direct_placements(sweep, geometry)
     assert len(prepared) == 1
     assert dropped == {"owner": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
 
@@ -766,19 +839,15 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     # placed 10 m east of the frame's western edge covers exactly the z7 texels whose own
     # centres fall in that metre, and no others -- which is the claim a half-texel offset
     # would break invisibly, since a rim drawn one texel out still looks like a rim.
-    step_cm = (
-        (gen_map_renders.BOUNDS_M["x_max_m"] - gen_map_renders.BOUNDS_M["x_min_m"]) * 100 / 32768
-    )
+    step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / 32768
     # Four rows, because a 1 m slab is 4.4 texels of 0.229 m tall and the band is anchored
     # at its northern edge: asking about a fifth row would be asking about ground the slab
     # does not stand on.
     rows, cols = 4, 64
     first = int(numpy.ceil(1000.0 / step_cm - 0.5))
     last = int(numpy.ceil(1100.0 / step_cm - 0.5))
-    band = gen_map_renders.rasterise_direct_band(
-        prepared, geometry, x0, y0 + 1000, step_cm, rows, cols, 1
-    )
-    z_cm, coverage = gen_map_renders.reduce_direct(band, rows, cols, 1)
+    band = rasterise_direct_band(prepared, geometry, x0, y0 + 1000, step_cm, rows, cols, 1)
+    z_cm, coverage = reduce_direct(band, rows, cols, 1)
     assert coverage[:, first:last].all(), "every texel centred inside the slab is covered"
     assert not coverage[:, :first].any() and not coverage[:, last:].any(), "and none outside"
     assert z_cm[coverage > 0] == pytest.approx(500.0)
@@ -812,14 +881,12 @@ def test_the_kernel_reads_the_landscape_at_its_own_vertical_step_under_the_rocks
     prov = numpy.full((4, 4), hf.PROV_LANDSCAPE, numpy.uint8)
     prov[1, 2] = hf.PROV_CLIFF_DIRECT
     prov[2, 1] = hf.PROV_FILL
-    ground, _meta = gen_map_renders.ground_lattice(
-        _Field(height, prov), height.astype(numpy.float32)
-    )
+    ground, _meta = ground_lattice(_Field(height, prov), height.astype(numpy.float32))
     assert ground[1, 2] == hf.NODATA
 
     raw = numpy.full((3, 3), 32768 + 128 * 9 + 37, numpy.uint16)  # 10.289 m, between dm
     raw[2, 2] = 0  # a hole in the landscape
-    out, meta = gen_map_renders.terrain_lattice(_TerrainField(height, prov, raw), ground)
+    out, meta = terrain_lattice(_TerrainField(height, prov, raw), ground)
 
     exact_dm = (9 + 37 / 128 + 1.0) * 10
     assert out[1, 1] == pytest.approx(exact_dm, abs=1e-4), "landscape at 7.8 mm, not 0.1 m"
@@ -830,7 +897,7 @@ def test_the_kernel_reads_the_landscape_at_its_own_vertical_step_under_the_rocks
     assert ground[1, 1] == 103, "the caller's lattice is not written through"
     assert (meta["landscape_texels"], meta["under_cliff_texels"]) == (6, 1)
 
-    same, absent = gen_map_renders.terrain_lattice(_Field(height, prov), ground)
+    same, absent = terrain_lattice(_Field(height, prov), ground)
     assert same is ground and "absent" in absent
 
 
@@ -847,14 +914,14 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
     z_m = numpy.full((9, 9), 10.0, numpy.float32)
     top_z = numpy.zeros((9, 9), numpy.float32)
     coverage = numpy.zeros((9, 9), numpy.uint8)
-    assert numpy.array_equal(gen_map_renders.composite_top(z_m, top_z, coverage), z_m)
+    assert numpy.array_equal(composite_top(z_m, top_z, coverage), z_m)
     top_z[:, :5] = 1500.0
     top_z[:, 5:] = 500.0  # below the ground: must not dig
     coverage[:] = 1
-    raised = gen_map_renders.composite_top(z_m, top_z, coverage)
+    raised = composite_top(z_m, top_z, coverage)
     assert raised[:, 1] == pytest.approx(15.0, abs=0.01)
     assert (raised >= z_m).all()
-    assert raised[:, -1].max() <= 10.0 + gen_map_renders.DIRECT_LIFT_KNEE_M / 2 + 1e-4
+    assert raised[:, -1].max() <= 10.0 + DIRECT_LIFT_KNEE_M / 2 + 1e-4
 
     step_cm = 750000.0 / 32768
     flat = numpy.array([[0, 0, 300], [100, 0, 300], [100, 100, 300], [0, 100, 300]], numpy.float32)
@@ -877,8 +944,8 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
         "boulders": {"Boulder": (matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
         "shapes": {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
     }
-    band = gen_map_renders.rasterise_top_band(items, 0.0, 0.0, step_cm, 4, 160, 1)
-    z_cm, cover = gen_map_renders.reduce_direct(band, 4, 160, 1)
+    band = rasterise_top_band(items, 0.0, 0.0, step_cm, 4, 160, 1)
+    z_cm, cover = reduce_direct(band, 4, 160, 1)
     first = int(numpy.ceil(1000.0 / step_cm - 0.5))
     last = int(numpy.ceil(1100.0 / step_cm - 0.5))
     assert cover[:, first:last].all() and not cover[:, last : last + 2].any()
@@ -901,7 +968,7 @@ def test_the_biome_palette_is_this_file_s_own_and_covers_what_the_game_ships():
     # list is gone with the wiki trace, and what replaces it is the stronger claim: these
     # are the seventeen area stems build 495413 names, and every one of them has a colour.
     # ``tests/test_gameassets_maparea.py`` pins the same seventeen against the container.
-    assert set(gen_map_renders.BIOME_COLOURS) == {
+    assert set(BIOME_COLOURS) == {
         "Area_AbyssCliffs",
         "Area_DesertCanyons",
         "Area_DuneDesert",
@@ -920,13 +987,13 @@ def test_the_biome_palette_is_this_file_s_own_and_covers_what_the_game_ships():
         "Area_WesternDuneForest",
         "Area_crater",
     }
-    for name, colour in gen_map_renders.BIOME_COLOURS.items():
+    for name, colour in BIOME_COLOURS.items():
         assert len(colour) == 3 and all(0 <= c <= 255 for c in colour), name
         assert max(colour) - min(colour) <= 110, f"{name} is more saturated than imagery gets"
         assert max(colour) <= 220, f"{name} is brighter than imagery gets"
     # The fallbacks are the same kind of colour, so an area a later build adds looks
     # unremarkable rather than wrong.
-    for colour in (gen_map_renders.NO_MANS_LAND_RGB, gen_map_renders.UNKNOWN_BIOME_RGB):
+    for colour in (NO_MANS_LAND_RGB, UNKNOWN_BIOME_RGB):
         assert max(colour) - min(colour) <= 40
 
 
@@ -1001,17 +1068,17 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     has to walk past rather than trip over.
     """
     pin = "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build"
-    sidecar = gen_map_image.build_sidecar(
+    sidecar = artwork.build_sidecar(
         build_pin=pin,
         build_raw={"Changelist": 495413, "BranchName": "++FactoryGame+rel-main-1.2.0"},
-        image={"file": gen_map_image.IMAGE_NAME, "width_px": gen_map_image.SHEET_PX},
-        integrity={"ubulk_bytes_expected": gen_map_image.UBULK_BYTES},
+        image={"file": IMAGE_NAME, "width_px": SHEET_PX},
+        integrity={"ubulk_bytes_expected": UBULK_BYTES},
         layout={"layout_holds": True},
         calibration={"pin_holds": True},
         versions={"pyooz": "0.0.8", "texture2ddecoder": "1.0.6", "pillow": "12.3.0"},
         tiles={
             "tile_px": PYRAMID_TILE_PX,
-            "max_z": pyramid_top_z(gen_map_image.SHEET_PX),
+            "max_z": pyramid_top_z(SHEET_PX),
             "count": 1365,
             "bytes": 21_000_000,
             "game_version_pinned": pin,
@@ -1028,18 +1095,18 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     assert client.head("/api/mapimage").headers["x-map-bounds-m"] == "-3247.0,-3750.0,4253.0,3750.0"
 
     # The tool writes where this endpoint looks, under the names it looks for.
-    assert gen_map_image.LOCAL_DIR.name == web_tiles.LOCAL_DIR_NAME
-    assert gen_map_image.IMAGE_NAME == web_tiles.MAP_IMAGE_NAME
-    assert gen_map_image.SIDECAR_NAME == web_tiles.MAP_BOUNDS_NAME
+    assert LOCAL_DIR.name == web_tiles.LOCAL_DIR_NAME
+    assert IMAGE_NAME == web_tiles.MAP_IMAGE_NAME
+    assert SIDECAR_NAME == web_tiles.MAP_BOUNDS_NAME
     # And it pins the same square, rather than holding a second opinion about it.
-    assert gen_map_image.BOUNDS_M == web_tiles.DEFAULT_MAP_BOUNDS_M
+    assert BOUNDS_M == web_tiles.DEFAULT_MAP_BOUNDS_M
 
     # The build survives the round trip through JSON, which is the whole of what lets a
     # stale picture be announced instead of silently drawn.
     written = json.loads((local / web_tiles.MAP_BOUNDS_NAME).read_text(encoding="utf-8"))
-    assert gen_map_image.pinned_build(written) == pin
-    assert gen_map_image.pinned_build({}) is None
-    assert gen_map_image.pinned_build({"_meta": {"sources": {}}}) is None
+    assert pinned_build(written) == pin
+    assert pinned_build({}) is None
+    assert pinned_build({"_meta": {"sources": {}}}) is None
 
     # The pyramid half of the same join. The names and the arithmetic belong to the cutter
     # in ``core.gameassets.pyramid`` -- what the tool contributes is the sheet and the
@@ -1048,7 +1115,7 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     # The names are now IMPORTED by the endpoint rather than retyped, so the two assertions
     # that used to check them agreed have gone: they compared a name with itself. The
     # arithmetic is the part that is still a claim.
-    assert pyramid_top_z(gen_map_image.SHEET_PX) == web_tiles.MAP_TILE_MAX_Z
+    assert pyramid_top_z(SHEET_PX) == web_tiles.MAP_TILE_MAX_Z
     assert tile_relpath(3, 5, 6) == "3/5_6.png"
     assert web_tiles.map_tile_path(3, 5, 6, 5) == local / TILES_DIR_NAME / tile_relpath(3, 5, 6)
 
@@ -1086,14 +1153,14 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
     common = {
         "build_pin": pin,
         "build_raw": {"Changelist": 495413},
-        "image": {"file": gen_map_image.IMAGE_NAME, "width_px": gen_map_image.SHEET_PX},
+        "image": {"file": IMAGE_NAME, "width_px": SHEET_PX},
         "integrity": {},
         "layout": {},
         "calibration": {},
         "versions": {},
         "tiles": {
             "tile_px": PYRAMID_TILE_PX,
-            "max_z": pyramid_top_z(gen_map_image.SHEET_PX),
+            "max_z": pyramid_top_z(SHEET_PX),
             "count": 1365,
             "bytes": 21_000_000,
             "game_version_pinned": pin,
@@ -1102,15 +1169,15 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
 
     # The arithmetic the tool leans on rather than typing in: the same sheet, cut into tiles
     # twice the size, is exactly one level shallower.
-    dense_top = pyramid_top_z(gen_map_image.SHEET_PX, PYRAMID_TILE_2X_PX)
-    assert dense_top == pyramid_top_z(gen_map_image.SHEET_PX) - 1 == 4
+    dense_top = pyramid_top_z(SHEET_PX, PYRAMID_TILE_2X_PX)
+    assert dense_top == pyramid_top_z(SHEET_PX) - 1 == 4
 
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
     local = tmp_path / web_tiles.LOCAL_DIR_NAME
     local.mkdir()
     _fake_pyramid(local, max_z=0)  # something for the probe to answer about
 
-    with_dense = gen_map_image.build_sidecar(
+    with_dense = artwork.build_sidecar(
         **common,
         tiles_2x={
             "tile_px": PYRAMID_TILE_2X_PX,
@@ -1128,7 +1195,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
 
     # ...and the same run with the tree skipped writes no key, which is what makes the
     # endpoint fall back rather than advertise a depth for a directory that is not there.
-    without = gen_map_image.build_sidecar(**common, tiles_2x=None)
+    without = artwork.build_sidecar(**common, tiles_2x=None)
     assert "tiles_2x" not in without["_meta"]
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(json.dumps(without), encoding="utf-8")
     bare = web_tiles._map_pyramid()
@@ -1178,14 +1245,14 @@ def test_the_enhanced_pyramid_is_two_levels_deeper_and_the_server_follows_it_the
     the column past its edge both refused.
     """
     # Two levels for 4x, none for 1x, and a scale that is not a power of two divides no grid.
-    assert enhanced_top_z(gen_map_image.SHEET_PX) == pyramid_top_z(gen_map_image.SHEET_PX) + 2 == 7
-    assert enhanced_top_z(gen_map_image.SHEET_PX, 1) == 5
+    assert enhanced_top_z(SHEET_PX) == pyramid_top_z(SHEET_PX) + 2 == 7
+    assert enhanced_top_z(SHEET_PX, 1) == 5
     assert enhanced_top_z(2048, 4) == 5
     with pytest.raises(PyramidError):
-        enhanced_top_z(gen_map_image.SHEET_PX, 3)
+        enhanced_top_z(SHEET_PX, 3)
 
     # z7 is 128 tiles a side of the 32768 px sheet, and the whole tree is (4**8 - 1) / 3.
-    assert (1 << 7) * PYRAMID_TILE_PX == gen_map_image.SHEET_PX * gen_map_image.ENHANCE_SCALE
+    assert (1 << 7) * PYRAMID_TILE_PX == SHEET_PX * ENHANCE_SCALE
     assert (1 << 6) ** 2 == 4096
     assert (1 << 7) ** 2 == 16384
     assert sum(4**z for z in range(8)) == 21845
@@ -1203,12 +1270,12 @@ def test_the_enhanced_pyramid_is_two_levels_deeper_and_the_server_follows_it_the
         plain,
         {
             "levels": [{"z": 6, "tiles": 4096, "bytes": 40}, {"z": 7, "tiles": 16384, "bytes": 50}],
-            "enhancement": {"model": gen_map_image.ENHANCE_MODEL},
+            "enhancement": {"model": ENHANCE_MODEL},
         },
     )
     assert (merged["max_z"], merged["enhanced"], merged["count"]) == (7, True, 21845)
     assert merged["bytes"] == 60 + 90
-    assert merged["enhancement"]["model"] == gen_map_image.ENHANCE_MODEL
+    assert merged["enhancement"]["model"] == ENHANCE_MODEL
     assert plain["max_z"] == 5, "the plain record is not mutated under the caller"
 
     # The layout at the new depth, on both sides of the wire.
@@ -1251,12 +1318,12 @@ def test_the_faint_mask_covers_weak_strokes_and_leaves_everything_else_to_the_ai
     numpy = pytest.importorskip("numpy")
 
     flat = numpy.full((48, 48), 200.0, numpy.float32)
-    assert gen_map_image.faint_mask(flat).max() == 0.0, "there is nothing to protect on flat fill"
+    assert faint_mask(flat).max() == 0.0, "there is nothing to protect on flat fill"
 
     faint = flat.copy()
-    band_middle = (gen_map_image.FAINT_LO + gen_map_image.FAINT_HI) / 2
+    band_middle = (FAINT_LO + FAINT_HI) / 2
     faint[:, 24] = 200.0 - band_middle  # squarely inside the band
-    weights = gen_map_image.faint_mask(faint)
+    weights = faint_mask(faint)
     assert weights.min() >= 0.0 and weights.max() <= 1.0, "a blend weight, or it is not one"
     assert weights.max() > 0.0, "a faint stroke is exactly what the mask exists for"
     assert weights[:, 24].max() == weights.max(), "and it is centred on the stroke"
@@ -1264,12 +1331,12 @@ def test_the_faint_mask_covers_weak_strokes_and_leaves_everything_else_to_the_ai
 
     strong = flat.copy()
     strong[:, 24] = 40.0  # far past FAINT_HI: the AI renders this better than Lanczos does
-    assert gen_map_image.faint_mask(strong).max() == 0.0
+    assert faint_mask(strong).max() == 0.0
 
     # The band is a band, not a threshold: the same stroke at both ends of it is out.
     below = flat.copy()
-    below[:, 24] = 200.0 - gen_map_image.FAINT_LO / 2
-    assert gen_map_image.faint_mask(below).max() == 0.0
+    below[:, 24] = 200.0 - FAINT_LO / 2
+    assert faint_mask(below).max() == 0.0
 
 
 def test_the_presharpen_raises_the_weak_band_and_nothing_else():
@@ -1303,31 +1370,21 @@ def test_the_presharpen_raises_the_weak_band_and_nothing_else():
 
     # The band is a blend weight wherever it is used, so it is bounded like one.
     for page in (weak, mid, strong):
-        band = gen_map_image.faint_band(
-            gen_map_image.faint_depth(page.mean(2)), gen_map_image.PRESHARPEN_HI
-        )
+        band = faint_band(faint_depth(page.mean(2)), PRESHARPEN_HI)
         assert band.min() >= 0.0 and band.max() <= 1.0, "a blend weight, or it is not one"
 
-    assert not gen_map_image.presharpen_mask(numpy.full((64, 64), 200.0, numpy.float32)).any(), (
+    assert not presharpen_mask(numpy.full((64, 64), 200.0, numpy.float32)).any(), (
         "there is nothing to lift on flat fill"
     )
-    assert gen_map_image.presharpen_mask(weak.mean(2))[:, 32].all(), (
-        "the weak band is what this exists for"
-    )
-    assert not gen_map_image.presharpen_mask(strong.mean(2)).any(), (
-        "the model renders a strong stroke well"
-    )
+    assert presharpen_mask(weak.mean(2))[:, 32].all(), "the weak band is what this exists for"
+    assert not presharpen_mask(strong.mean(2)).any(), "the model renders a strong stroke well"
 
     # The two ceilings, and the gap between them that only one mask covers.
-    assert gen_map_image.PRESHARPEN_HI < gen_map_image.FAINT_HI
-    assert gen_map_image.faint_mask(mid.mean(2)).max() > 0.0, (
-        "the repair still protects a mid stroke"
-    )
-    assert not gen_map_image.presharpen_mask(mid.mean(2)).any(), (
-        "and the pre-sharpen leaves it alone"
-    )
+    assert PRESHARPEN_HI < FAINT_HI
+    assert faint_mask(mid.mean(2)).max() > 0.0, "the repair still protects a mid stroke"
+    assert not presharpen_mask(mid.mean(2)).any(), "and the pre-sharpen leaves it alone"
 
-    lifted, mask = gen_map_image.presharpen_pixels(weak)
+    lifted, mask = presharpen_pixels(weak)
     assert lifted.min() >= 0.0 and lifted.max() <= 255.0
     assert lifted[:, 32, 0].max() < weak[:, 32, 0].min(), "the mark it fires on comes out deeper"
     assert 0.0 < mask.mean() < 0.25, "and on a small part of the square, not most of it"
@@ -1338,7 +1395,7 @@ def test_the_presharpen_raises_the_weak_band_and_nothing_else():
     assert far.sum() > 40, "and there is a real fill left over to check that on"
     assert numpy.array_equal(lifted[:, far], weak[:, far])
 
-    untouched, empty = gen_map_image.presharpen_pixels(strong)
+    untouched, empty = presharpen_pixels(strong)
     assert not empty.any()
     assert numpy.array_equal(untouched, strong), "an empty mask blends nothing at all"
 
@@ -1360,7 +1417,7 @@ def test_the_colour_fix_hands_the_flat_fills_back_to_the_source():
     drifted = source + 9.0  # the whole fill has wandered nine levels of grey
     drifted[:, 60:68] = 100.0  # and the model has deepened the stroke, which is its business
 
-    fixed = gen_map_image.colour_fix_pixels(drifted, source)
+    fixed = colour_fix_pixels(drifted, source)
     assert fixed.min() >= 0.0 and fixed.max() <= 255.0
 
     # Well away from the stroke and from the edges -- further than the blur reaches -- the
@@ -1373,10 +1430,10 @@ def test_the_colour_fix_hands_the_flat_fills_back_to_the_source():
     # The stroke is still deeper than the source drew it: the fix protects the sharpening
     # rather than blurring it back, which is what sigma exceeding a stroke's width buys.
     assert fixed[:, 64, 0].max() < source[:, 64, 0].min()
-    assert gen_map_image.COLOUR_FIX_SIGMA > 4.0, "or the blur would sit inside a stroke at 4x"
+    assert COLOUR_FIX_SIGMA > 4.0, "or the blur would sit inside a stroke at 4x"
 
     # A source that never drifted is left where it is, to within rounding.
-    assert float(numpy.abs(gen_map_image.colour_fix_pixels(source, source) - source).max()) < 1e-3
+    assert float(numpy.abs(colour_fix_pixels(source, source) - source).max()) < 1e-3
 
 
 def test_an_enhanced_pyramid_is_not_quietly_replaced_by_a_plain_one(tmp_path):
@@ -1395,104 +1452,94 @@ def test_an_enhanced_pyramid_is_not_quietly_replaced_by_a_plain_one(tmp_path):
     common = dict(
         build_pin=pin,
         build_raw={"Changelist": 495413},
-        image={"file": gen_map_image.IMAGE_NAME},
+        image={"file": IMAGE_NAME},
         integrity={},
         layout={"layout_holds": True},
         calibration={"pin_holds": True},
         versions={"pillow": "12.3.0"},
     )
     enhancement = {
-        "recipe": gen_map_image.ENHANCE_RECIPE,
-        "recipe_name": gen_map_image.ENHANCE_RECIPES[gen_map_image.ENHANCE_RECIPE],
-        "model": gen_map_image.ENHANCE_MODEL,
-        "scale": gen_map_image.ENHANCE_SCALE,
-        "source_tile_px": gen_map_image.ENHANCE_TILE_PX,
-        "overlap_px": gen_map_image.ENHANCE_OVERLAP_PX,
-        "binary": {"url": gen_map_image.ENHANCE_URL, "sha256": gen_map_image.ENHANCE_SHA256},
+        "recipe": ENHANCE_RECIPE,
+        "recipe_name": ENHANCE_RECIPES[ENHANCE_RECIPE],
+        "model": ENHANCE_MODEL,
+        "scale": ENHANCE_SCALE,
+        "source_tile_px": ENHANCE_TILE_PX,
+        "overlap_px": ENHANCE_OVERLAP_PX,
+        "binary": {"url": ENHANCE_URL, "sha256": ENHANCE_SHA256},
         "presharpen": {
-            "rounds": gen_map_image.PRESHARPEN_ROUNDS,
-            "amount": gen_map_image.PRESHARPEN_AMOUNT,
-            "band": [gen_map_image.FAINT_LO, gen_map_image.PRESHARPEN_HI],
+            "rounds": PRESHARPEN_ROUNDS,
+            "amount": PRESHARPEN_AMOUNT,
+            "band": [FAINT_LO, PRESHARPEN_HI],
             "mask_coverage": 0.0431,
         },
         "hybrid": {
-            "band": [gen_map_image.FAINT_LO, gen_map_image.FAINT_HI],
+            "band": [FAINT_LO, FAINT_HI],
             "mask_coverage": 0.0355,
         },
-        "colour_fix": {"sigma_px": gen_map_image.COLOUR_FIX_SIGMA},
+        "colour_fix": {"sigma_px": COLOUR_FIX_SIGMA},
         "timings_s": {"upscale": 66.7, "colour_fix": 320.4, "total": 400.0},
     }
-    sharp = gen_map_image.build_sidecar(
+    sharp = artwork.build_sidecar(
         tiles={"tile_px": 256, "max_z": 7, "enhanced": True, "enhancement": enhancement},
         **common,
     )
-    plain = gen_map_image.build_sidecar(
-        tiles={"tile_px": 256, "max_z": 5, "enhanced": False}, **common
-    )
+    plain = artwork.build_sidecar(tiles={"tile_px": 256, "max_z": 5, "enhanced": False}, **common)
 
-    path = tmp_path / gen_map_image.SIDECAR_NAME
+    path = tmp_path / SIDECAR_NAME
     path.write_text(json.dumps(sharp, indent=1, allow_nan=False), encoding="utf-8")
     read_back = json.loads(path.read_text(encoding="utf-8"))
-    assert gen_map_image.pinned_enhanced(read_back) is True
+    assert pinned_enhanced(read_back) is True
     # Everything the sidecar promised about that stage is still in it, and pinned.
     written = read_back["_meta"]["tiles"]["enhancement"]
-    assert written["binary"]["sha256"] == gen_map_image.ENHANCE_SHA256
+    assert written["binary"]["sha256"] == ENHANCE_SHA256
     assert written["binary"]["url"].endswith(".zip")
-    assert (written["model"], written["scale"]) == (gen_map_image.ENHANCE_MODEL, 4)
+    assert (written["model"], written["scale"]) == (ENHANCE_MODEL, 4)
     assert (written["source_tile_px"], written["overlap_px"]) == (1024, 96)
     assert written["timings_s"]["total"] == 400.0
     # Both new stages, with the parameters that make them reproducible, and the recipe that
     # names the whole of it -- a reader must be able to tell which pipeline cut these tiles.
-    assert written["recipe"] == gen_map_image.ENHANCE_RECIPE
-    assert written["recipe_name"] == gen_map_image.ENHANCE_RECIPES[gen_map_image.ENHANCE_RECIPE]
+    assert written["recipe"] == ENHANCE_RECIPE
+    assert written["recipe_name"] == ENHANCE_RECIPES[ENHANCE_RECIPE]
     assert (written["presharpen"]["rounds"], written["presharpen"]["amount"]) == (3, 0.14)
-    assert written["presharpen"]["band"] == [gen_map_image.FAINT_LO, gen_map_image.PRESHARPEN_HI]
-    assert written["hybrid"]["band"] == [gen_map_image.FAINT_LO, gen_map_image.FAINT_HI]
+    assert written["presharpen"]["band"] == [FAINT_LO, PRESHARPEN_HI]
+    assert written["hybrid"]["band"] == [FAINT_LO, FAINT_HI]
     assert written["presharpen"]["band"][1] < written["hybrid"]["band"][1]
-    assert written["colour_fix"]["sigma_px"] == gen_map_image.COLOUR_FIX_SIGMA
+    assert written["colour_fix"]["sigma_px"] == COLOUR_FIX_SIGMA
     # The build pin still reads through the same file, so the two guards do not shadow.
-    assert gen_map_image.pinned_build(read_back) == pin
+    assert pinned_build(read_back) == pin
 
     # Anything that is not a literal true is a plain pyramid, including every sidecar
     # written before this stage existed.
-    assert gen_map_image.pinned_enhanced(plain) is False
-    assert gen_map_image.pinned_enhanced({}) is False
-    assert gen_map_image.pinned_enhanced({"_meta": {"tiles": {}}}) is False
-    assert gen_map_image.pinned_enhanced({"_meta": {"tiles": {"enhanced": "yes"}}}) is False
-    assert gen_map_image.pinned_enhanced({"_meta": {"tiles": "not a mapping"}}) is False
+    assert pinned_enhanced(plain) is False
+    assert pinned_enhanced({}) is False
+    assert pinned_enhanced({"_meta": {"tiles": {}}}) is False
+    assert pinned_enhanced({"_meta": {"tiles": {"enhanced": "yes"}}}) is False
+    assert pinned_enhanced({"_meta": {"tiles": "not a mapping"}}) is False
 
     # The recipe survives the same round trip, and a sidecar from before recipes existed
     # reads as the one pipeline the bare boolean can have meant.
-    older = json.loads(json.dumps(gen_map_image.build_sidecar(tiles={"enhanced": True}, **common)))
-    assert gen_map_image.pinned_recipe(read_back) == gen_map_image.ENHANCE_RECIPE
-    assert gen_map_image.pinned_recipe(older) == gen_map_image.UNNUMBERED_RECIPE == 1
-    assert gen_map_image.pinned_recipe(plain) == 0
-    assert gen_map_image.pinned_recipe({}) == 0
+    older = json.loads(json.dumps(artwork.build_sidecar(tiles={"enhanced": True}, **common)))
+    assert pinned_recipe(read_back) == ENHANCE_RECIPE
+    assert pinned_recipe(older) == UNNUMBERED_RECIPE == 1
+    assert pinned_recipe(plain) == 0
+    assert pinned_recipe({}) == 0
     # Nothing but a whole number above zero is believed; the boolean decides the rest.
     for junk in (True, "2", 2.0, 0, -1, None):
-        assert (
-            gen_map_image.pinned_recipe({"_meta": {"tiles": {"enhancement": {"recipe": junk}}}})
-            == 0
-        )
+        assert pinned_recipe({"_meta": {"tiles": {"enhancement": {"recipe": junk}}}}) == 0
 
     # And the rule itself, which compares recipes rather than a flag: only a run BEHIND
     # what is on disk is refused.
-    assert gen_map_image.enhancement_downgrades(read_back, enhance_now=False) is True
-    assert gen_map_image.enhancement_downgrades(read_back, enhance_now=True) is False
-    assert gen_map_image.enhancement_downgrades(plain, enhance_now=False) is False
-    assert gen_map_image.enhancement_downgrades(plain, enhance_now=True) is False
-    assert gen_map_image.enhancement_downgrades({}, enhance_now=False) is False
+    assert enhancement_downgrades(read_back, enhance_now=False) is True
+    assert enhancement_downgrades(read_back, enhance_now=True) is False
+    assert enhancement_downgrades(plain, enhance_now=False) is False
+    assert enhancement_downgrades(plain, enhance_now=True) is False
+    assert enhancement_downgrades({}, enhance_now=False) is False
     # An amended pipeline over the recipe it amends is an upgrade, and must not be called
     # a downgrade -- that refusal is what a re-cut with this file would otherwise hit.
-    assert gen_map_image.ENHANCE_RECIPE > gen_map_image.UNNUMBERED_RECIPE
-    assert gen_map_image.enhancement_downgrades(older, enhance_now=True) is False
-    assert gen_map_image.enhancement_downgrades(older, enhance_now=False) is True
+    assert ENHANCE_RECIPE > UNNUMBERED_RECIPE
+    assert enhancement_downgrades(older, enhance_now=True) is False
+    assert enhancement_downgrades(older, enhance_now=False) is True
     # ... and the same tiles re-cut by the recipe that drew them is a refresh, not a loss.
-    assert (
-        gen_map_image.enhancement_downgrades(
-            read_back, enhance_now=True, recipe=gen_map_image.ENHANCE_RECIPE
-        )
-        is False
-    )
+    assert enhancement_downgrades(read_back, enhance_now=True, recipe=ENHANCE_RECIPE) is False
     # The one case the number adds: an older checkout over a newer recipe's tiles.
-    assert gen_map_image.enhancement_downgrades(read_back, enhance_now=True, recipe=1) is True
+    assert enhancement_downgrades(read_back, enhance_now=True, recipe=1) is True

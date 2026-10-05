@@ -9,17 +9,25 @@ spatial-and-map.md section 27 has the measurements behind every constant here.
 
 from __future__ import annotations
 
-import json
-import time
-from pathlib import Path
-
 import numpy as np
 from scipy import ndimage
 
-from satisfactory_mcp.core.gameassets import staticmesh
-from satisfactory_mcp.core.gameassets.packages import PackageView
 from satisfactory_mcp.domain.spatial import heightfield as hf
-from tools import gen_world_heightmap as gen
+
+__all__ = [
+    "MESH_FULL_LIFT_M",
+    "MESH_REACH_M",
+    "OCEAN_LEVEL_BAND_M",
+    "OCEAN_LEVEL_M",
+    "OCEAN_REACH_M",
+    "add_foam",
+    "blend_water",
+    "composite_meshes",
+    "ocean_reach",
+    "shore_terms",
+    "water_composite",
+    "wet_band",
+]
 
 #: The sea surface the coast is drawn at, metres. The one number to change if the sandbars
 #: turn out dry in game (-17.4 is what the artwork, the paint and the foliage agree on).
@@ -37,21 +45,6 @@ MESH_REACH_M = 0.6
 
 #: The lift over which a pixel counts as wholly covered by a render-only mesh, metres.
 MESH_FULL_LIFT_M = 0.25
-
-#: Which meshes are drawn on the map and never enter the heightfield.
-RENDER_ONLY_DIRS = ("/World/Environment/Foliage/Coral/", "/World/Environment/UnderWater/")
-RENDER_ONLY_FOLIAGE_MARKS = ("/Rubble/", "SeaRock")
-RENDER_ONLY_MESHES = gen.EXCLUDED_MESHES
-
-#: Mesh classes, as stored in the cache's class plane. 0 is nothing.
-MESH_CORAL, MESH_SHELL, MESH_ROCK = 1, 2, 3
-MESH_CLASS_NAMES = {MESH_CORAL: "coral", MESH_SHELL: "shell", MESH_ROCK: "rock"}
-
-MESH_CACHE_DIR_NAME = "meshes.cache"
-MESH_Z_NAME = "meshes.z.f32"
-MESH_CLASS_NAME = "meshes.class.u8"
-MESH_CACHE_SIDECAR = "meta.json"
-MESH_FOLIAGE_BATCH = 512
 
 
 # ----------------------------------------------------------------------- the shore
@@ -172,169 +165,6 @@ def add_foam(rgb, water: dict, foam: dict | None, white):
     shallow = shallow * np.clip(1.0 - water["below_m"] / np.float32(foam["width_m"]), 0.0, 1.0)
     weight = (np.float32(foam["strength"]) * shallow * water["cover"] * water["ocean"])[..., None]
     return rgb * (1.0 - weight) + white * np.float32(foam.get("white", 1.0)) * weight
-
-
-# ----------------------------------------------------------------------- render-only meshes
-
-
-def is_render_only_static(mesh: str) -> bool:
-    return any(d in mesh for d in RENDER_ONLY_DIRS) or mesh.rsplit("/", 1)[-1] in RENDER_ONLY_MESHES
-
-
-def is_render_only_foliage(mesh: str) -> bool:
-    if gen.is_top_foliage(mesh):
-        return False
-    return any(d in mesh for d in RENDER_ONLY_DIRS) or any(
-        m in mesh for m in RENDER_ONLY_FOLIAGE_MARKS
-    )
-
-
-def mesh_class(mesh: str) -> int:
-    name = mesh.rsplit("/", 1)[-1]
-    if "Shell" in name:
-        return MESH_SHELL
-    if any(mark in name for mark in ("CliffPillar", "Rubble", "RockPile", "SeaRock")):
-        return MESH_ROCK
-    return MESH_CORAL
-
-
-def read_shape(store, scripts, index, mesh: str):
-    """The finest geometry a mesh ships, falling back to its collision hull, or ``None``."""
-    package = index.path_for(mesh)
-    if not package:
-        return None, "none"
-    try:
-        view = PackageView(store.read_path(package), scripts)
-        export = staticmesh.static_mesh_export(view)
-        bounds = staticmesh.extended_bounds(view, export) if export is not None else None
-        found = gen.finer_source(store, package, view, export, *bounds) if bounds else None
-    except Exception:  # a mesh this reader cannot open is one mesh fewer on the map
-        found = None
-    if found is not None:
-        source, (verts, tris) = found
-        return (np.asarray(verts, np.float32), np.asarray(tris, np.int64)), source
-    hull = gen.read_hull(store, scripts, index, mesh)
-    return hull, "hull" if hull is not None else "none"
-
-
-def mesh_items(store, scripts, index, sweep: dict) -> tuple[dict, dict]:
-    """Every render-only placement and foliage instance as ``(class, matrix, offset)`` groups."""
-    started = time.time()
-    meshes = sweep["meshes"]
-    wanted = sorted(
-        {
-            meshes[int(row[0])]
-            for row in sweep["placements"]
-            if is_render_only_static(meshes[int(row[0])])
-        }
-        | set(sweep.get("extra_foliage", {}))
-    )
-    shapes, sources = {}, {}
-    for mesh in wanted:
-        shape, source = read_shape(store, scripts, index, mesh)
-        sources[mesh.rsplit("/", 1)[-1]] = source
-        if shape is not None and len(shape[1]):
-            shapes[mesh] = shape
-    groups: dict[str, list[np.ndarray]] = {}
-    for row in sweep["placements"]:
-        mesh = meshes[int(row[0])]
-        if mesh not in shapes or not is_render_only_static(mesh):
-            continue
-        matrix = np.eye(4, dtype=np.float64)
-        matrix[:3, :3] = gen.rotation_matrix(*row[5:8]) * row[8:11][:, None]
-        matrix[3, :3] = row[2:5]
-        groups.setdefault(mesh, []).append(matrix)
-    for mesh, mats in sweep.get("extra_foliage", {}).items():
-        if mesh in shapes:
-            groups.setdefault(mesh, []).extend(np.asarray(mats))
-    items = {}
-    for mesh, mats in groups.items():
-        mats = np.asarray(mats, np.float32)
-        reach = float(np.linalg.norm(shapes[mesh][0], axis=1).max())
-        reach = reach * np.linalg.norm(mats[:, :3, :3], axis=2).max(1)
-        items[mesh] = (mesh_class(mesh), mats, mats[:, 3, 1] - reach, mats[:, 3, 1] + reach)
-    counts = {MESH_CLASS_NAMES[c]: 0 for c in MESH_CLASS_NAMES}
-    for cls, mats, _lo, _hi in items.values():
-        counts[MESH_CLASS_NAMES[cls]] += len(mats)
-    return {"items": items, "shapes": shapes}, {
-        "meshes": len(items),
-        "instances": counts,
-        "sources": sources,
-        "seconds": round(time.time() - started, 1),
-    }
-
-
-def rasterise_mesh_band(prepared: dict, x0_cm, y0_cm, scale_cm, rows, cols):
-    """One band: max-Z in world cm (nan where empty) and the class of the winning mesh."""
-    raster = gen.MaxZRaster(cols, rows, x0_cm, y0_cm, scale_cm, sample=0.5)
-    y_hi = y0_cm + rows * scale_cm
-    for mesh, (cls, mats, span_lo, span_hi) in prepared["items"].items():
-        picked = mats[(span_hi >= y0_cm) & (span_lo <= y_hi)]
-        if not len(picked):
-            continue
-        verts, tris = prepared["shapes"][mesh]
-        for start in range(0, len(picked), MESH_FOLIAGE_BATCH):
-            chunk = picked[start : start + MESH_FOLIAGE_BATCH]
-            world = np.einsum("vi,nij->nvj", verts, chunk[:, :3, :3]) + chunk[:, None, 3, :3]
-            raster.add(world[:, tris].reshape(-1, 3, 3), cls)
-    z, src, _density = raster.result()
-    return z, np.where(np.isfinite(z), src, 0).astype(np.uint8)
-
-
-def mesh_stamp(size: int, build: str | None, reader_version: int) -> dict:
-    return {"size": int(size), "game_version_pinned": build, "reader_version": int(reader_version)}
-
-
-def cached_meshes(directory: Path, stamp: dict):
-    """``(z cm, class)`` memory maps if the cache is this one, else ``None``."""
-    try:
-        recorded = json.loads((directory / MESH_CACHE_SIDECAR).read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return None
-    if not isinstance(recorded, dict) or {k: recorded.get(k) for k in stamp} != stamp:
-        return None
-    size = stamp["size"]
-    try:
-        return (
-            np.memmap(directory / MESH_Z_NAME, np.float32, "r", shape=(size, size)),
-            np.memmap(directory / MESH_CLASS_NAME, np.uint8, "r", shape=(size, size)),
-        )
-    except (OSError, ValueError):
-        return None
-
-
-def rasterise_meshes(
-    prepared, directory: Path, stamp: dict, bounds_m: dict, band_rows: int, progress: bool
-) -> dict:
-    """Rasterise the render-only meshes into the render's grid, banded, onto disk."""
-    size = stamp["size"]
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / MESH_CACHE_SIDECAR).unlink(missing_ok=True)
-    z_map = np.memmap(directory / MESH_Z_NAME, np.float32, "w+", shape=(size, size))
-    class_map = np.memmap(directory / MESH_CLASS_NAME, np.uint8, "w+", shape=(size, size))
-    step_cm = (bounds_m["x_max_m"] - bounds_m["x_min_m"]) * 100 / size
-    covered, started = 0, time.time()
-    for band, top in enumerate(range(0, size, band_rows)):
-        bottom = min(top + band_rows, size)
-        y0 = bounds_m["y_min_m"] * 100 + top * step_cm
-        z, cls = rasterise_mesh_band(
-            prepared, bounds_m["x_min_m"] * 100, y0, step_cm, bottom - top, size
-        )
-        z_map[top:bottom] = np.where(cls > 0, z, 0.0)
-        class_map[top:bottom] = cls
-        covered += int(np.count_nonzero(cls))
-        if progress and band % 16 == 0:
-            print(
-                f"  {directory.name}: {bottom / size:5.1%}, {covered / 1e6:.2f} M texels, "
-                f"{time.time() - started:5.1f}s",
-                flush=True,
-            )
-    z_map.flush()
-    class_map.flush()
-    del z_map, class_map
-    stats = {**stamp, "texels": covered, "seconds": round(time.time() - started, 1)}
-    (directory / MESH_CACHE_SIDECAR).write_text(json.dumps(stats, indent=1), encoding="utf-8")
-    return stats
 
 
 def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite):

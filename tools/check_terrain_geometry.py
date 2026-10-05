@@ -41,12 +41,18 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "tools" / "mapgen" / "src"))
 
+from mapgen.common import LOCAL_DIR, base_parser, require_gen
+from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from mapgen.gamedata.mesh import ROCK_DIRS, MeshBounds, rasterise_cliffs
+from mapgen.gamedata.sweep import drop_offsets, landscape_frame, sweep_levels
+from mapgen.heightmap import NODE_TABLE
 from satisfactory_mcp.core.gameassets import nanite as nan
 from satisfactory_mcp.core.gameassets import staticmesh as sm
-from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
+from satisfactory_mcp.core.gameassets.container import open_container
+from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.packages import (
     AssetIndex,
     ClassFacts,
@@ -54,8 +60,6 @@ from satisfactory_mcp.core.gameassets.packages import (
     ScriptObjects,
 )
 from satisfactory_mcp.domain.spatial import heightfield as hf
-from tools import gen_world_heightmap as gen
-from tools._common import base_parser, require_gen
 
 #: The rungs, in the order the table prints them. ``hull`` first because it is what ships.
 RUNGS = ("hull", "lod0", "best")
@@ -73,7 +77,7 @@ def read_rungs(store, scripts, index, meshes: list[str], progress: bool = True) 
     One read, three answers, so the three rungs cannot disagree about which asset they
     were looking at.
     """
-    wanted = [m for m in meshes if any(d in m for d in gen.ROCK_DIRS)]
+    wanted = [m for m in meshes if any(d in m for d in ROCK_DIRS)]
     out: dict[str, dict] = {}
     notes: dict[str, str] = {}
     started = time.time()
@@ -205,10 +209,10 @@ def row(tag: str, s: dict) -> str:
 
 def sample(grid_cm: np.ndarray, x_cm, y_cm) -> np.ndarray:
     """The candidate raster read in metres at world coordinates, NaN where it is silent."""
-    col = np.round((np.asarray(x_cm) - gen.ORIGIN_X_CM) / gen.SPACING_CM).astype(np.int64)
-    row_i = np.round((np.asarray(y_cm) - gen.ORIGIN_Y_CM) / gen.SPACING_CM).astype(np.int64)
-    on = (col >= 0) & (col < gen.GRID_PX) & (row_i >= 0) & (row_i < gen.GRID_PX)
-    value = grid_cm[np.clip(row_i, 0, gen.GRID_PX - 1), np.clip(col, 0, gen.GRID_PX - 1)]
+    col = np.round((np.asarray(x_cm) - ORIGIN_X_CM) / SPACING_CM).astype(np.int64)
+    row_i = np.round((np.asarray(y_cm) - ORIGIN_Y_CM) / SPACING_CM).astype(np.int64)
+    on = (col >= 0) & (col < GRID_PX) & (row_i >= 0) & (row_i < GRID_PX)
+    value = grid_cm[np.clip(row_i, 0, GRID_PX - 1), np.clip(col, 0, GRID_PX - 1)]
     return np.where(on & np.isfinite(value), value / 100.0, np.nan)
 
 
@@ -312,7 +316,7 @@ def main() -> int:
     parser.add_argument(
         "--field",
         type=Path,
-        default=gen.LOCAL_DIR / hf.DIR_NAME,
+        default=LOCAL_DIR / hf.DIR_NAME,
         help="the shipped field, whose provenance byte defines 'the cliff province'",
     )
     parser.add_argument("-o", "--out", type=Path, help="write the whole table as JSON here")
@@ -326,14 +330,14 @@ def main() -> int:
         return 1
     loud = not args.quiet
 
-    store = IoStore(paks, "FactoryGame-Windows", oodle_decompress)
+    store = open_container(args.game)
     scripts = ScriptObjects(paks, oodle_decompress)
     index = AssetIndex(store)
     classes = ClassFacts(store, index)
 
     print("sweeping the world for placements and the landscape frame")
-    sweep = gen.sweep_levels(store, scripts, classes, gen.MeshBounds(store, scripts, index), loud)
-    frame = gen.landscape_frame(sweep)
+    sweep = sweep_levels(store, scripts, classes, MeshBounds(store, scripts, index), loud)
+    frame = landscape_frame(sweep)
 
     print("reading every rock mesh's hull, LOD0 and Nanite leaf")
     read = read_rungs(store, scripts, index, sweep["meshes"], loud)
@@ -362,7 +366,7 @@ def main() -> int:
     if field is None:
         print(f"no shipped field at {args.field}; the cliff province cannot be defined")
         return 2
-    nodes = json.loads(gen.NODE_TABLE.read_text(encoding="utf-8"))["nodes"]
+    nodes = json.loads(NODE_TABLE.read_text(encoding="utf-8"))["nodes"]
     node_pts = np.array([[n["x"], n["y"], n["z"]] for n in nodes], float)
 
     probes = {"nodes": node_pts}
@@ -373,8 +377,8 @@ def main() -> int:
         probes["foliage"] = points
     province = {}
     for name, pts in probes.items():
-        col = np.clip(np.round((pts[:, 0] - gen.ORIGIN_X_CM) / 100.0).astype(int), 0, 7499)
-        row_i = np.clip(np.round((pts[:, 1] - gen.ORIGIN_Y_CM) / 100.0).astype(int), 0, 7499)
+        col = np.clip(np.round((pts[:, 0] - ORIGIN_X_CM) / 100.0).astype(int), 0, 7499)
+        row_i = np.clip(np.round((pts[:, 1] - ORIGIN_Y_CM) / 100.0).astype(int), 0, 7499)
         # Both cliff values: testing ``== PROV_CLIFF`` scores a v3 field on a quarter of
         # the probes and calls it the same measurement.
         province[name] = np.isin(field._prov[row_i, col], hf.PROV_CLIFF_VALUES)
@@ -389,9 +393,9 @@ def main() -> int:
         geometry = geometry_for(rung, read)
         triangles = sum(len(t) for _v, t, _lo, _hi in geometry.values())
         print(f"\nrung {rung}: {len(geometry)} meshes, {triangles} source triangles")
-        cliffs = gen.rasterise_cliffs(sweep, geometry, frame, loud)
-        whole = np.full((gen.GRID_PX, gen.GRID_PX), np.nan, np.float32)
-        dx, dy = gen.drop_offsets(frame)
+        cliffs = rasterise_cliffs(sweep, geometry, frame, loud)
+        whole = np.full((GRID_PX, GRID_PX), np.nan, np.float32)
+        dx, dy = drop_offsets(frame)
         whole[dy : dy + frame["height"], dx : dx + frame["width"]] = cliffs["z_cm"]
         entry = {
             "meshes": len(geometry),

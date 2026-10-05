@@ -6,6 +6,24 @@ map's base layers and the mode model that lets a reader pick one; §19 is the wa
 one of those layers draws. Section numbers are continuous with the rest of the spec;
 [DESIGN.md](../DESIGN.md) indexes it.
 
+The dated sections below name the generator files as they were when each section was written.
+Since 2026-10-05 the map generators are one package, `tools/mapgen/`, run as
+`python -m mapgen <command>`, and the old entry scripts are thin shims that keep their paths.
+Its [README](../tools/mapgen/README.md) has the full package map. The names used below now
+live here:
+
+| Named below | Now |
+| --- | --- |
+| `tools/gen_world_heightmap.py` (`--caves`, `--rocks`) | `mapgen heightmap` (`caves`, `rocks`): `heightmap.py`, `gamedata/sweep.py`, `gamedata/mesh.py`, `gamedata/caves.py`, `gamedata/rocks.py` |
+| `tools/gen_map_renders.py` | `mapgen renders`: `pipeline.py`, with `terrain/`, `palette/`, `lighting/` and `tiles/` |
+| `tools/gen_map_image.py` | `mapgen artwork`: `artwork.py`; the frame and slice reader in `gamedata/frame.py` |
+| `tools/gen_paint_layers.py` | `mapgen paint`: `gamedata/paint.py` |
+| `tools/check_map_fill.py` | `mapgen check-fill`: `check_fill.py` |
+| `tools/map_fill.py` | `terrain/fill.py` |
+| `tools/map_shore.py` | `palette/shore.py` for the optics, `terrain/rasters.py` for the render-only meshes, `cache.py` for their cache |
+| `tools/map_painted.py` | `palette/painted.py` |
+| `tools/palettes/*.json` | `palette/palettes/*.json`, byte for byte, so no digest moved |
+
 ---
 
 ## 7. Spatial model
@@ -1203,7 +1221,7 @@ in section 25. Build 502094.
 
 ### What changed
 
-`tools/map_fill.py` builds the lattice once per run, in about 13 s, before any band is drawn:
+`terrain/fill.py` (then `tools/map_fill.py`) builds the lattice once per run, in about 13 s, before any band is drawn:
 
 | Texels | Source | Share of the field |
 | --- | --- | --- |
@@ -1235,7 +1253,8 @@ rule reads the same heights. `--kernel-only` (recipe 2) still uses Catmull-Rom.
 
 ### Measured
 
-`tools/check_map_fill.py` runs these checks through the shipped functions. Only the baselines
+`python -m mapgen check-fill` (then `tools/check_map_fill.py`) runs these checks through the
+shipped functions. Only the baselines
 are emulated.
 
 | Check | Before | After |
@@ -1286,7 +1305,7 @@ mask: 3.66 m BC1 blocks copied nearest-neighbour to 1 m. Its 0.9 m depth feather
 beach with a median slope of 0.067, smearing the edge over about 13 m. Nothing finer than the
 1 m landscape exists in the game files, so the coast is now drawn from it.
 
-- **Where.** `tools/map_shore.py` `ocean_reach`: measured water whose level is within 0.5 m
+- **Where.** `ocean_reach` in `palette/shore.py` (then `tools/map_shore.py`): measured water whose level is within 0.5 m
   of `OCEAN_LEVEL_M`, and every texel within 48 m of it that is not level-only water. Rivers,
   lakes and all level-only water keep recipe 5's rule, unchanged to the byte. Level-only
   water stands over the fill, whose raster holds the surface (about -16.3 m off the
@@ -1320,7 +1339,7 @@ beach with a median slope of 0.067, smearing the edge over about 13 m. Nothing f
 ### Render-only meshes
 
 Coral trees, big, plateau and small shells, `CliffPillar_03` and rubble are drawn by the
-artwork as land and are absent from the heightfield. `map_shore.mesh_items` takes the statics
+artwork as land and are absent from the heightfield. `mesh_items` (now in `terrain/rasters.py`) takes the statics
 under `/Foliage/Coral/` and `/UnderWater/` plus `CliffPillar_03` from the same placement sweep,
 and the foliage instances of the same directories and of `/Rubble/` and `SeaRock` (minus the
 top-layer boulders) through a new `extra_foliage` harvest of `sweep_levels`. Each mesh is read
@@ -1338,7 +1357,7 @@ ground. The provenance input is `render_meshes`, reader version 1.
 
 ### The paint input
 
-`tools/gen_paint_layers.py` (preset `paint`) writes `data/local/paint/` once per game build,
+`python -m mapgen paint` (preset `paint`, then `tools/gen_paint_layers.py`) writes `data/local/paint/` once per game build,
 in about 25 s, 54 MB:
 
 | File | What |
@@ -1354,8 +1373,8 @@ graph that wires them is stripped. Extracted planes reproduce the prototype's pa
 
 ### The game-painted style
 
-Layer `painted`, style `satellite-painted`, palette `tools/palettes/satellite-painted.json`,
-in `tools/map_painted.py`. Once per run, on the 1 m grid (about 80 s):
+Layer `painted`, style `satellite-painted`, palette `palette/palettes/satellite-painted.json`,
+in `palette/painted.py` (both under `tools/mapgen/src/mapgen/`). Once per run, on the 1 m grid (about 80 s):
 
 1. Paint weights times layer albedo times 0.95, normalised by total weight; Puddles lerped on
    top. WetSand's OKLab lightness is set to 0.9 of Sand's: as shipped it is lighter than the

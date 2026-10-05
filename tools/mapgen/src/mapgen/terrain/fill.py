@@ -1,6 +1,6 @@
 """The render's base heights, rebuilt where the field is coarse or empty.
 
-Imported by ``tools/gen_map_renders.py`` and ``tools/check_map_fill.py``; nothing here reads
+Imported by ``mapgen.pipeline`` and ``mapgen.check_fill``; nothing here reads
 the game or writes a file. Three steps on the 1 m lattice the kernel samples:
 
 1. the fill province is re-read from the float16 interface raster: Gaussian, then cubic,
@@ -23,6 +23,43 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy import ndimage
+
+from mapgen.gamedata.frame import BASELINE_BOX_CM
+from mapgen.gamedata.sweep import BASELINE_PATH, read_baseline
+from satisfactory_mcp.domain.spatial import heightfield as hf
+
+__all__ = [
+    "HOLE_FALLBACK_M",
+    "HOLE_MAX_TEXELS",
+    "HOLE_RING_TEXELS",
+    "RASTER_BIAS_M",
+    "RASTER_SIGMA_TEXELS",
+    "SEAM_BAND_M",
+    "SOLVE_HALO",
+    "SOLVE_TILE",
+    "SOURCE_HOLE",
+    "SOURCE_LAND",
+    "SOURCE_NAMES",
+    "SOURCE_NONE",
+    "SOURCE_RASTER",
+    "SOURCE_ROCK",
+    "SOURCE_SEAM",
+    "WET_BELOW_M",
+    "WET_IGNORE_M",
+    "blend_seam",
+    "cosine_taper",
+    "fill_field",
+    "fill_from_raster",
+    "fill_holes",
+    "ground_lattice",
+    "nearest_fill",
+    "raster_positions",
+    "rebuild_lattice",
+    "reconstruct_raster",
+    "solve",
+    "terrain_lattice",
+    "tiled_harmonic",
+]
 
 #: The interface raster's reconstruction, chosen on held-out landscape.
 RASTER_SIGMA_TEXELS = 1.0
@@ -298,3 +335,104 @@ def fill_field(
         "open_sea": "left empty: the render paints the page's sea, and no depth is invented",
     }
     return heights_dm, ground_out, source, meta
+
+
+def ground_lattice(field, heights: np.ndarray) -> tuple[np.ndarray, dict]:
+    """The same heights with the CLIFF province removed, which is the surface underneath.
+
+    This is the kernel regime's real input. Interpolating the whole field over a rim
+    reconstructs the **fold**: a texel just outside a rock is still a cliff-top height,
+    because a cliff-top texel is one of the four the stencil reads, so the drop stays where
+    the 1 m lattice put it at any output resolution. Interpolating the lattice UNDERNEATH --
+    the landscape and the fill, which are continuous surfaces the game evaluates itself --
+    puts the ground where the ground is and lets the rasterised rock decide its own
+    silhouette on top of it.
+
+    The holes this leaves are handled by the sampler: where the 4x4 stencil is not whole it
+    falls back to 2x2, where nothing under it is known it says so, and the caller
+    substitutes the whole field's fold there -- inside a formation, where the rock covers the
+    pixel and answers it anyway.
+    """
+    cliff = np.isin(field._prov, hf.PROV_CLIFF_VALUES)
+    ground = np.where(cliff, np.float32(hf.NODATA), heights).astype(np.float32)
+    known = field._height_dm != hf.NODATA
+    return ground, {
+        "role": (
+            "the landscape and fill lattices with the cliff province removed, which is what "
+            "the kernel regime interpolates. Interpolating the composed field instead "
+            "reconstructs its 1 m fold, and a rim reconstructed from a fold is a 1 m "
+            "staircase at any output resolution."
+        ),
+        "removed_share_of_the_field": round(100 * float(cliff.mean()), 2),
+        "lattice_share_of_the_field": round(100 * float((known & ~cliff).mean()), 2),
+        "where_it_knows_nothing": (
+            "inside a formation big enough that no landscape texel survives under it. There "
+            "the whole field's own fold stands in, and the rock's coverage is 1, so the rock "
+            "is the answer either way"
+        ),
+    }
+
+
+def terrain_lattice(field, ground: np.ndarray) -> tuple[np.ndarray, dict]:
+    """``ground`` with its landscape replaced by ``terrain.u16.z``, in float decimetres.
+
+    Written wherever the bare landscape has a sample and the province is landscape or
+    cliff, so the lattice under a rock is the real terrain rather than a hole. Fill keeps
+    its value for ``map_fill`` to rebuild. A field without the plane comes back unchanged.
+    """
+    plane = field._plane(hf.TERRAIN_NAME) if hasattr(field, "_plane") else None
+    grid = getattr(field, "_terrain_grid", None)
+    if plane is None or grid is None or grid.get("row_off") is None:
+        return ground, {"absent": f"no usable {hf.TERRAIN_NAME}; the decimetre plane is drawn"}
+    rows, cols = plane.shape
+    window = (
+        slice(grid["row_off"], grid["row_off"] + rows),
+        slice(grid["col_off"], grid["col_off"] + cols),
+    )
+    raw = np.asarray(plane)
+    z_dm = ((raw.astype(np.float32) - grid["zero"]) / grid["units_per_m"] + grid["offset_m"]) * (
+        hf.DM_PER_M
+    )
+    prov = np.asarray(field._prov)[window]
+    use = (raw != 0) & np.isin(prov, (hf.PROV_LANDSCAPE, *hf.PROV_CLIFF_VALUES))
+    out = ground.copy()
+    target = out[window]
+    target[use] = z_dm[use]
+    landscape = use & (prov == hf.PROV_LANDSCAPE)
+    moved = np.abs(z_dm[landscape] - np.asarray(field._height_dm)[window][landscape])
+    return out, {
+        "plane": hf.TERRAIN_NAME,
+        "vertical_step_m": round(1.0 / grid["units_per_m"], 5),
+        "landscape_texels": int(landscape.sum()),
+        "under_cliff_texels": int((use & ~landscape).sum()),
+        "landscape_moved_max_m": round(float(moved.max()) / hf.DM_PER_M, 4) if moved.size else 0.0,
+    }
+
+
+def fill_from_raster(field, ground, raster_m, raster_ok) -> tuple[np.ndarray, np.ndarray, dict]:
+    """``fill_field`` on this field: ``(heights_dm, ground_dm, meta)``."""
+    shape = field._height_dm.shape
+    quality = field._water_quality_raster()
+    water = field._water_raster()
+    heights, rebuilt, _source, meta = fill_field(
+        ground_dm=ground,
+        height_dm=np.asarray(field._height_dm),
+        prov=np.asarray(field._prov),
+        water_quality=np.zeros(shape, np.uint8) if quality is None else np.asarray(quality),
+        water_dm=np.full(shape, hf.NODATA, np.int16) if water is None else np.asarray(water),
+        raster_m=raster_m,
+        raster_ok=raster_ok,
+        field_origin_cm=(field.x0_cm, field.y0_cm),
+        spacing_cm=field.spacing_cm,
+        raster_box_cm=BASELINE_BOX_CM,
+        nodata=hf.NODATA,
+        fill_value=hf.PROV_FILL,
+        rock_values=hf.PROV_CLIFF_VALUES,
+    )
+    return heights, rebuilt, {"raster": BASELINE_PATH.rsplit("/", 1)[-1], **meta}
+
+
+def rebuild_lattice(field, ground, store) -> tuple[np.ndarray, np.ndarray, dict]:
+    """The interface raster read out of the container, then ``fill_from_raster``."""
+    z_cm, ok = read_baseline(store)
+    return fill_from_raster(field, ground, z_cm / np.float32(100.0), ok)
