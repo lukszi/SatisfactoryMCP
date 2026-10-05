@@ -102,5 +102,5 @@ PLAIN_TONE = "dark"
 #: Light models. A render drawn unlit names the one its lighting pyramid was baked for; a
 #: version bump offers a relight, never a stale chip.
 LIGHTS: dict[str, dict] = {
-    "sun": {"label": "live sun", "version": 1},
+    "sun": {"label": "live sun", "version": 2},
 }

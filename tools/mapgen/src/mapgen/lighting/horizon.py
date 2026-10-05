@@ -18,6 +18,9 @@ __all__ = [
     "SKY_RADIUS_M",
     "SKY_STEPS",
     "STEP_GROWTH",
+    "crown_horizon",
+    "crown_horizons",
+    "crown_surface",
     "decode_horizon",
     "encode_horizon",
     "fade_weight",
@@ -39,7 +42,7 @@ OCCLUDER_FADE_M = (25.0, 80.0)
 
 #: Single-pixel steps up to this distance, then steps growing by STEP_GROWTH.
 FINE_M = 44.0
-STEP_GROWTH = 0.03
+STEP_GROWTH = 0.01
 
 #: The sky-view term: radius, directions and geometric steps.
 SKY_RADIUS_M = 10.0
@@ -106,8 +109,15 @@ def sky_view(z: np.ndarray, halo: int, spacing_m: float, radius_m: float = SKY_R
     return (1.0 - acc / SKY_DIRS).astype(np.float32)
 
 
-def _blockers(z, occluder):
-    return z if occluder is None else np.fmax(z, occluder)
+def crown_surface(z, top, cover=None) -> np.ndarray:
+    """The ground with its crowns stood on it, each lift scaled by the pixel's crown cover.
+
+    ``top`` is the crown top in metres, NaN where none; ``cover`` the covered share, 0 to 1,
+    or None for a whole pixel wherever ``top`` is set.
+    """
+    z = np.asarray(z, np.float32)
+    lift = np.maximum(np.nan_to_num(np.asarray(top, np.float32) - z, nan=0.0), 0.0)
+    return z + (lift if cover is None else lift * np.asarray(cover, np.float32))
 
 
 def _nearest(z, r0, r1, c0, c1, oy, ox):
@@ -118,20 +128,34 @@ def _nearest(z, r0, r1, c0, c1, oy, ox):
 def march_horizon(z, halo, az_deg, spacing_m, occluder=None, slabs=None, fade=FADE_M):
     """The faded horizon toward one azimuth for the core of ``z``, in degrees.
 
-    Bilinear samples up to ``BILINEAR_PX``, nearest beyond, where half a pixel is a small
-    share of the distance. ``occluder`` (tree crowns) blocks under ``OCCLUDER_FADE_M`` and
-    lifts the receivers to its top, so a crown is lit or shaded where it is drawn. ``slabs``
-    is ``(ground, min_z, max_z)``: the surface without what floats, which then blocks in
-    place of ``z``, and the floating geometry's underside and top, NaN where nothing floats.
+    ``occluder`` (tree crowns, NaN where none) adds ``crown_horizon`` on top of the ground's,
+    which is what a style that draws the crowns sees. ``slabs`` is ``(ground, min_z,
+    max_z)``: the surface without what floats, which then blocks in place of ``z``, and the
+    floating geometry's underside and top, NaN where nothing floats.
     """
     z = np.asarray(z, np.float32)
     core = (slice(halo, z.shape[0] - halo), slice(halo, z.shape[1] - halo))
-    zc = z[core] if occluder is None else _blockers(z, occluder)[core]
     solid = z if slabs is None else np.asarray(slabs[0], np.float32)
-    best = np.zeros(zc.shape, np.float32)
-    _march(solid, zc, halo, az_deg, spacing_m, fade, best, slabs)
-    if occluder is not None:
-        _march(_blockers(solid, occluder), zc, halo, az_deg, spacing_m, OCCLUDER_FADE_M, best)
+    best = np.zeros(z[core].shape, np.float32)
+    _march(solid, z[core], halo, az_deg, spacing_m, fade, best, slabs)
+    out = np.degrees(np.arctan(best)).astype(np.float32)
+    if occluder is None:
+        return out
+    crowns = crown_horizon(crown_surface(z, occluder), halo, az_deg, spacing_m,
+                           crown_surface(solid, occluder))  # fmt: skip
+    return np.maximum(out, crowns)
+
+
+def crown_horizon(crown_z, halo, az_deg, spacing_m, blockers=None) -> np.ndarray:
+    """The horizon of a ``crown_surface`` under ``OCCLUDER_FADE_M``, received on it, degrees.
+
+    The receivers stand on the crown tops, so a crown is lit or shaded where it is drawn.
+    """
+    crown_z = np.asarray(crown_z, np.float32)
+    core = (slice(halo, crown_z.shape[0] - halo), slice(halo, crown_z.shape[1] - halo))
+    solid = crown_z if blockers is None else np.asarray(blockers, np.float32)
+    best = np.zeros(crown_z[core].shape, np.float32)
+    _march(solid, crown_z[core], halo, az_deg, spacing_m, OCCLUDER_FADE_M, best)
     return np.degrees(np.arctan(best)).astype(np.float32)
 
 
@@ -170,6 +194,13 @@ def faded_horizons(z, halo, spacing_m, occluder=None, slabs=None, dirs=HORIZON_D
             march_horizon(z, halo, k * 360.0 / dirs, spacing_m, occluder, slabs, fade)
             for k in range(dirs)
         ]
+    )
+
+
+def crown_horizons(crown_z, halo, spacing_m, blockers=None, dirs=HORIZON_DIRS) -> np.ndarray:
+    """Every direction's ``crown_horizon``: ``(dirs, h, w)`` degrees."""
+    return np.stack(
+        [crown_horizon(crown_z, halo, k * 360.0 / dirs, spacing_m, blockers) for k in range(dirs)]
     )
 
 

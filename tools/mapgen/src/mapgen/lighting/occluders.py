@@ -8,7 +8,6 @@ picks. Why the crown has this shape: the README's "Horizons and tree shadows".
 from __future__ import annotations
 
 import numpy as np
-from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.mesh import MeshBounds
@@ -58,27 +57,62 @@ def canopy_top(
     return out
 
 
-def sheet_crowns(top_dm: np.ndarray, grid: dict, size: int, out: np.ndarray) -> np.ndarray:
+def _at(running: np.ndarray, x: np.ndarray, axis: int) -> np.ndarray:
+    """A running sum read at fractional corner positions ``x`` along ``axis``, linearly."""
+    i = np.minimum(np.floor(x).astype(np.int64), running.shape[axis] - 2)
+    t = (x - i).astype(np.float64)
+    lo, hi = np.take(running, i, axis), np.take(running, i + 1, axis)
+    t = t[:, None] if axis == 0 else t
+    return lo * (1.0 - t) + hi * t
+
+
+def _running(a: np.ndarray, axis: int) -> np.ndarray:
+    pad = [(0, 0), (0, 0)]
+    pad[axis] = (1, 0)
+    return np.pad(np.cumsum(a, axis=axis, dtype=np.float64), pad)
+
+
+def _box(slab, rows, cols) -> np.ndarray:
+    """Each sheet pixel's sum over its box of ``slab``: corners ``(lo, hi)`` per axis."""
+    (r_lo, r_hi), (c_lo, c_hi) = rows, cols
+    across = _running(np.asarray(slab, np.float64), 1)
+    down = _running(_at(across, c_hi, 1) - _at(across, c_lo, 1), 0)
+    return _at(down, r_hi, 0) - _at(down, r_lo, 0)
+
+
+def _corners(position: np.ndarray, width: float, n: int):
+    """The texel-edge coordinates of a box ``width`` wide on each centre, inside the plane."""
+    edge = position + 0.5
+    return np.clip(edge - width / 2, 0, n), np.clip(edge + width / 2, 0, n)
+
+
+def sheet_crowns(top_dm, grid: dict, size: int, out: np.ndarray, cover=None) -> np.ndarray:
     """The paint store's 1 m crown-top plane on a ``size`` px sheet, into ``out``.
 
-    World metres, ``nan`` where no crown stands. A sheet pixel coarser than the plane takes
-    the highest crown in its footprint, so no crown drops out of the shadows.
+    World metres: the mean crown top over the share of the pixel that crowns cover, ``nan``
+    where none does. ``cover`` receives that share as a byte. Each pixel averages a box of
+    its own width, or of one texel on a sheet finer than the plane, which is the bilinear
+    sample: a crown keeps its area and its round edge, and a small one casts a small shadow.
     """
     step_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
     grid_m = grid["spacing_cm"] / 100.0
-    top = np.where(top_dm == hf.NODATA, -np.inf, top_dm / np.float32(hf.DM_PER_M))
-    reach = int(np.ceil(step_m / grid_m))
-    if reach > 1:
-        top = ndimage.maximum_filter(top.astype(np.float32), size=reach)
+    width = max(step_m / grid_m, 1.0)
+    n_rows, n_cols = top_dm.shape
     centre = (np.arange(size) + 0.5) * step_m
-    cols = np.rint((BOUNDS_M["x_min_m"] + centre - grid["x0_cm"] / 100.0) / grid_m)
-    rows = np.rint((BOUNDS_M["y_min_m"] + centre - grid["y0_cm"] / 100.0) / grid_m)
-    col_ok = (cols >= 0) & (cols < top.shape[1])
-    cols = np.clip(cols, 0, top.shape[1] - 1).astype(np.int64)
-    for start in range(0, size, 512):
-        band = slice(start, start + 512)
-        row = rows[band]
-        ok = ((row >= 0) & (row < top.shape[0]))[:, None] & col_ok[None, :]
-        cut = top[np.clip(row, 0, top.shape[0] - 1).astype(np.int64)][:, cols]
-        out[band] = np.where(ok & np.isfinite(cut), cut, np.nan)
+    cols = _corners((BOUNDS_M["x_min_m"] + centre - grid["x0_cm"] / 100.0) / grid_m, width, n_cols)
+    rows = (BOUNDS_M["y_min_m"] + centre - grid["y0_cm"] / 100.0) / grid_m
+    area = width * width
+    for start in range(0, size, 256):
+        band = slice(start, start + 256)
+        corners = _corners(rows[band], width, n_rows)
+        lo = min(int(np.floor(corners[0].min())), n_rows - 1)
+        dm = np.asarray(top_dm[lo : max(int(np.ceil(corners[1].max())), lo + 1)])
+        have = dm != hf.NODATA
+        local = (corners[0] - lo, corners[1] - lo)
+        share = _box(have, local, cols) / area
+        mean = _box(np.where(have, dm / hf.DM_PER_M, 0.0), local, cols) / area
+        seen = share >= 0.5 / 255.0
+        out[band] = np.where(seen, mean / np.maximum(share, 1e-9), np.nan)
+        if cover is not None:
+            cover[band] = np.where(seen, np.round(np.clip(share, 0.0, 1.0) * 255.0), 0)
     return out

@@ -1,7 +1,8 @@
 /* A base layer drawn unlit, lit live by the sun on one WebGL canvas over the map.
  *
  * Per tile it fetches three images of one square: the unlit colour (`?kind=unlit`), the
- * normals with sky view and land weight (`?kind=nrm`) and 32 horizons (`?kind=hz`), and the
+ * normals with sky view and land weight (`?kind=nrm`) and the horizons (`?kind=hz`: the
+ * ground's, then the tree crowns', which only a style that draws the crowns reads), and the
  * shader multiplies the colour by the light. One canvas for the whole view, not one context
  * per tile. The arithmetic is mapgen's lighting/model.py; docs/spatial-and-map.md §29. */
 
@@ -19,6 +20,8 @@ export interface LightParams {
   sun: number[];
   tone_knee: number;
   tone_white: number;
+  /** Whether this style draws the tree crowns, and so reads their horizons. */
+  crowns?: boolean;
 }
 
 /** The `X-Map-Light` header of a lit layer's z0 probe. */
@@ -34,6 +37,10 @@ export interface LightHeader {
     shadow_soft_deg: number;
     shadow_floor: number;
     shadow_floor_knee: number;
+    /* Absent on a pyramid baked before the crowns had cells of their own. */
+    shadow_fill?: number;
+    hz_cells?: number;
+    crown_cell?: number;
   };
 }
 
@@ -72,14 +79,20 @@ in vec2 vUV; out vec4 o;
 uniform sampler2D tCol, tNrm, tHz;
 uniform vec3 uL, uSky, uSun, uF;
 uniform float uEl, uInvNorm, uAmb, uTK, uTW, uSoft, uShadowOn, uSkyOn, uW, uFloor, uKnee, uLinear;
-uniform int uI0, uI1;
+uniform float uFill, uRows, uCrownOn;
+uniform int uI0, uI1, uCrown;
 float s2l(float c){ return c<=0.04045? c/12.92 : pow((c+0.055)/1.055,2.4); }
 float l2s(float c){ c=clamp(c,0.0,1.0); return c<=0.0031308? c*12.92 : 1.055*pow(c,1.0/2.4)-0.055; }
 float hz(int i){
   vec2 cell=vec2(float(i%8), float(i/8));
   vec2 uv=clamp(vUV, vec2(0.5/128.0), vec2(1.0-0.5/128.0));
-  float q=texture(tHz,(cell+uv)*vec2(0.125,0.25)).r;
+  float q=texture(tHz,(cell+uv)*vec2(0.125,1.0/uRows)).r;
   return q*q*90.0;
+}
+float horizon(){
+  float h=mix(hz(uI0),hz(uI1),uW);
+  if(uCrownOn>0.5) h=max(h,mix(hz(uI0+uCrown),hz(uI1+uCrown),uW));
+  return h;
 }
 const vec3 LUMA=vec3(0.2126,0.7152,0.0722);
 float tone1(float y){ if(uTK>=1.0||y<=uTK) return y; float sp=1.0-uTK; float x=(y-uTK)/sp; float t=(uTW-uTK)/sp; return uTK+sp*x*(1.0+x/(t*t))/(1.0+x); }
@@ -91,9 +104,9 @@ void main(){
   vec3 base= uLinear>0.5 ? untone(vec3(s2l(c.r),s2l(c.g),s2l(c.b))) : c;
   vec2 nxy=n4.rg*2.0-1.0; vec3 nn=vec3(nxy, sqrt(max(1.0-dot(nxy,nxy),0.0)));
   float ndl=max(dot(nn,uL),0.0);
-  float sh=uShadowOn*clamp((mix(hz(uI0),hz(uI1),uW)-uEl)/uSoft+0.5,0.0,1.0);
+  float sh=uShadowOn*clamp((horizon()-uEl)/uSoft+0.5,0.0,1.0);
   float svf=mix(1.0,n4.b,uSkyOn);
-  vec3 rel=(uAmb*uSky*svf+(1.0-uAmb)*uSun*ndl*(1.0-sh)*uInvNorm)/uF;
+  vec3 rel=(uAmb*uSky*svf+(1.0-uAmb)*uSun*ndl*(1.0-sh*(1.0-uFill))*uInvNorm)/uF;
   rel=0.5*(rel+uFloor+sqrt((rel-uFloor)*(rel-uFloor)+uKnee*uKnee));
   vec3 x=base*mix(vec3(1.0),rel,n4.a);
   vec3 t=tone(x);
@@ -101,7 +114,8 @@ void main(){
 }`;
 
 var UNIFORMS = ["uRect", "uVP", "tCol", "tNrm", "tHz", "uL", "uSky", "uSun", "uF", "uEl", "uInvNorm", "uAmb",
-  "uTK", "uTW", "uSoft", "uShadowOn", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1"];
+  "uTK", "uTW", "uSoft", "uShadowOn", "uSkyOn", "uW", "uFloor", "uKnee", "uLinear", "uI0", "uI1", "uFill", "uRows",
+  "uCrownOn", "uCrown"];
 var KINDS = ["unlit", "nrm", "hz"];
 var CACHE_TILES = 120;
 var IN_FLIGHT = 8;
@@ -370,9 +384,14 @@ export function makeLitLayer(layer: string, light: LightHeader, onFail: (why: st
     g.uniform1f(U.uTK!, p.tone_knee);
     g.uniform1f(U.uTW!, p.tone_white);
     g.uniform1f(U.uLinear!, p.space === "linear" ? 1 : 0);
-    g.uniform1f(U.uSoft!, light.model.shadow_soft_deg);
-    g.uniform1f(U.uFloor!, light.model.shadow_floor);
-    g.uniform1f(U.uKnee!, light.model.shadow_floor_knee);
+    var m = light.model;
+    g.uniform1f(U.uSoft!, m.shadow_soft_deg);
+    g.uniform1f(U.uFill!, m.shadow_fill || 0);
+    g.uniform1f(U.uFloor!, m.shadow_floor);
+    g.uniform1f(U.uKnee!, m.shadow_floor_knee);
+    g.uniform1f(U.uRows!, Math.ceil((m.hz_cells || m.dirs) / 8));
+    g.uniform1i(U.uCrown!, m.crown_cell || 0);
+    g.uniform1f(U.uCrownOn!, p.crowns && m.crown_cell ? 1 : 0);
     canvas.addEventListener("webglcontextlost", function (event) {
       event.preventDefault();
       if (gl) onFail("the graphics context was lost");

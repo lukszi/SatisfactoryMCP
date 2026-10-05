@@ -16,6 +16,7 @@ from scipy import ndimage
 from mapgen.lighting.horizon import (
     FADE_M,
     HORIZON_DIRS,
+    OCCLUDER_FADE_M,
     SKY_RADIUS_M,
     decode_horizon,
 )
@@ -24,8 +25,10 @@ from satisfactory_mcp.core.gameassets.versions import LIGHTS
 
 __all__ = [
     "DIRECT_SCALE",
+    "HZ_CELLS",
     "LIGHT_ID",
     "NORMALISE_MIN_EL_DEG",
+    "SHADOW_FILL",
     "SHADOW_FLOOR",
     "SHADOW_FLOOR_KNEE",
     "SHADOW_SOFT_DEG",
@@ -38,11 +41,17 @@ __all__ = [
 
 LIGHT_ID = "sun"
 
+#: Atlas cells per tile: the ground's horizons, then the crowns'.
+HZ_CELLS = 2 * HORIZON_DIRS
+
 #: Below this elevation the sun term is normalised as if the sun stood here.
 NORMALISE_MIN_EL_DEG = 35.0
 
 #: Degrees over which a horizon goes from lit to shadowed.
-SHADOW_SOFT_DEG = 2.0
+SHADOW_SOFT_DEG = 6.0
+
+#: The share of the sun's Lambert term a cast shadow keeps: sky and bounce from the sun's side.
+SHADOW_FILL = 0.35
 
 #: The darkest light, reached through a soft knee rather than a hard clip.
 SHADOW_FLOOR = 0.36
@@ -55,17 +64,24 @@ DIRECT_SCALE = 127.0
 def model_block() -> dict:
     """Every constant the shader reads, as the light pyramid's ``meta.json`` carries it."""
     return {
-        "model": "lambert+shadow+sky",
+        "model": "lambert+shadow+fill+sky",
         "dirs": HORIZON_DIRS,
         "fade_m": list(FADE_M),
+        "occluder_fade_m": list(OCCLUDER_FADE_M),
         "sky_radius_m": SKY_RADIUS_M,
         "normalise_min_el": NORMALISE_MIN_EL_DEG,
         "shadow_soft_deg": SHADOW_SOFT_DEG,
+        "shadow_fill": SHADOW_FILL,
         "shadow_floor": SHADOW_FLOOR,
         "shadow_floor_knee": SHADOW_FLOOR_KNEE,
         "default_sun": list(DEFAULT_SUN),
         "default_hour": NOON_HOUR,
-        "hz_encoding": "atlas of 8 x 4 cells, u8 = 255 * sqrt(deg / 90)",
+        "hz_cells": HZ_CELLS,
+        "crown_cell": HORIZON_DIRS,
+        "hz_encoding": (
+            "atlas of 8 x 8 cells, u8 = 255 * sqrt(deg / 90): the ground's horizons, then the "
+            "crowns' where they stand above the ground's, else 0"
+        ),
         "nrm_encoding": "RGBA: east and south normal as (v + 1) / 2, sky view, land weight",
     }
 
@@ -124,8 +140,20 @@ def _by_luminance(c, curve, knee: float, white: float):
     return c * (curve(y, knee, white) / y)[..., None]
 
 
-def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True) -> np.ndarray:
-    """``ndl * (1 - shadow) / sin(max(el, 35))`` per pixel; ``hz_deg`` is ``(dirs, h, w)``."""
+def _toward(hz_deg, az: float, first: int = 0) -> np.ndarray:
+    """The horizon toward ``az``, between the two stored directions either side of it."""
+    f = (az % 360.0) / (360.0 / HORIZON_DIRS)
+    i0 = int(np.floor(f)) % HORIZON_DIRS
+    w = np.float32(f - np.floor(f))
+    return hz_deg[first + i0] * (1 - w) + hz_deg[first + (i0 + 1) % HORIZON_DIRS] * w
+
+
+def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True, crowns: bool = False) -> np.ndarray:
+    """``ndl * (1 - shadow * (1 - fill)) / sin(max(el, 35))`` per pixel.
+
+    ``hz_deg`` is ``(cells, h, w)``: the ground's ``HORIZON_DIRS`` horizons, then, when
+    ``crowns`` and the atlas has them, the crowns', which shade where they stand higher.
+    """
     az, el = sun
     nx = nrm_u8[..., 0].astype(np.float32) / 127.5 - 1
     ny = nrm_u8[..., 1].astype(np.float32) / 127.5 - 1
@@ -134,16 +162,14 @@ def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True) -> np.ndarray:
     ndl = np.maximum(nx * lx + ny * ly + nz * lz, 0.0)
     shade = np.zeros_like(ndl)
     if shadows and hz_deg is not None:
-        dirs = hz_deg.shape[0]
-        f = (az % 360.0) / (360.0 / dirs)
-        i0 = int(np.floor(f)) % dirs
-        w = np.float32(f - np.floor(f))
-        hz = hz_deg[i0] * (1 - w) + hz_deg[(i0 + 1) % dirs] * w
+        hz = _toward(hz_deg, az)
+        if crowns and hz_deg.shape[0] >= HZ_CELLS:
+            hz = np.maximum(hz, _toward(hz_deg, az, HORIZON_DIRS))
         if hz.shape != ndl.shape:
             hz = ndimage.zoom(hz, np.array(ndl.shape) / np.array(hz.shape), order=1)
         shade = np.clip((hz - el) / SHADOW_SOFT_DEG + 0.5, 0, 1)
     inv = 1.0 / max(np.sin(np.radians(el)), np.sin(np.radians(NORMALISE_MIN_EL_DEG)))
-    return (ndl * (1 - shade) * inv).astype(np.float32)
+    return (ndl * (1 - shade * (1 - SHADOW_FILL)) * inv).astype(np.float32)
 
 
 def apply_terms(rgb_u8, svf, direct, land, params: dict) -> np.ndarray:
@@ -166,9 +192,12 @@ def apply_terms(rgb_u8, svf, direct, land, params: dict) -> np.ndarray:
 
 
 def relight(rgb_u8, nrm_u8, hz_u8, sun, params, shadows: bool = True, sky: bool = True):
-    """The shader's answer in numpy: unlit colour, the light tile, a sun."""
+    """The shader's answer in numpy: unlit colour, the light tile, a sun.
+
+    ``params`` is ``shader_light``'s; its ``crowns`` says whether the crown horizons count.
+    """
     hz_deg = decode_horizon(hz_u8) if (shadows and hz_u8 is not None) else None
-    direct = direct_term(nrm_u8, hz_deg, sun, shadows)
+    direct = direct_term(nrm_u8, hz_deg, sun, shadows, bool(params.get("crowns")))
     svf = nrm_u8[..., 2].astype(np.float32) / 255.0 if sky else np.ones(direct.shape, np.float32)
     land = nrm_u8[..., 3].astype(np.float32) / 255.0
     return apply_terms(rgb_u8, svf, direct, land, params)

@@ -18,6 +18,7 @@ from mapgen.lighting.occluders import sheet_crowns
 from mapgen.lighting.stage import LIGHT_DIR_NAME, Surface, bake_light, default_terms, discard
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.palette.lightparams import shader_light
+from mapgen.palette.styles import LAYER_STYLES
 from mapgen.tiles.pyramid import install_layer, layer_dir
 from satisfactory_mcp.core.gameassets.pyramid import install_pyramid
 
@@ -25,6 +26,7 @@ __all__ = [
     "LIGHT_CACHE_DIR_NAME",
     "UNLIT_DIR_NAME",
     "UnlitRun",
+    "crown_layers",
     "crown_occluder",
     "relight_in_place",
 ]
@@ -35,26 +37,37 @@ RELIGHT_ROWS = 512
 
 
 def relight_in_place(sheet: np.ndarray, surface: Surface, params: dict) -> None:
-    """Light an unlit sheet by the default sun, a band of rows at a time."""
+    """Light an unlit sheet by the default sun, a band of rows at a time.
+
+    A style that draws the crowns (``params["crowns"]``) takes the direct term with their
+    shadows; every other style the ground's alone.
+    """
     terms = default_terms(surface)
+    which = 2 if params.get("crowns") else 1
     for top in range(0, sheet.shape[0], RELIGHT_ROWS):
         rows = slice(top, top + RELIGHT_ROWS)
         svf = terms[rows, :, 0].astype(np.float32) / 255.0
-        direct = terms[rows, :, 1].astype(np.float32) / DIRECT_SCALE
+        direct = terms[rows, :, which].astype(np.float32) / DIRECT_SCALE
         land = surface.land[rows].astype(np.float32) / 255.0
         sheet[rows] = apply_terms(sheet[rows], svf, direct, land, params)
     del terms
 
 
+def crown_layers() -> list[str]:
+    """The layers that draw the tree crowns, so read the crown horizons."""
+    return [layer for layer in LAYER_STYLES if shader_light(layer).get("crowns")]
+
+
 def crown_occluder(painted, cache_root: Path, size: int):
-    """The painted ground's crown tops as the lighting stage's occluder; None without them."""
+    """The painted ground's crown tops and cover as the stage's occluder; None without them."""
     crown = getattr(painted, "crown", None)
     if crown is None:
         return None
     directory = cache_root / LIGHT_CACHE_DIR_NAME
     directory.mkdir(parents=True, exist_ok=True)
-    out = np.lib.format.open_memmap(directory / "crowns.npy", "w+", np.float32, (size, size))
-    return sheet_crowns(crown, painted.meta["grid"], size, out)
+    top = np.lib.format.open_memmap(directory / "crowns.npy", "w+", np.float32, (size, size))
+    cover = np.lib.format.open_memmap(directory / "crown_cover.npy", "w+", np.uint8, (size, size))
+    return sheet_crowns(crown, painted.meta["grid"], size, top, cover), cover
 
 
 class UnlitRun:
@@ -79,7 +92,8 @@ class UnlitRun:
         """``install_layer``'s contract, plus ``unlit/``; the first call bakes the light."""
         if self.meta is None:
             print("baking the lighting pyramid", flush=True)
-            self.meta = bake_light(self.surface, out_dir / name, workers, self.occluder, self.slabs)
+            self.meta = bake_light(self.surface, out_dir / name, workers, self.occluder,
+                                   self.slabs, occluder_layers=crown_layers())  # fmt: skip
             done = self.meta["tiles"]
             print(
                 f"  light: {done['count']} tiles over z0..z{done['max_z']} "
