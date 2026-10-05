@@ -45,6 +45,7 @@ __all__ = [
     "TRANSFORM_TOLERANCE",
     "decode_baseline",
     "drop_offsets",
+    "first_override",
     "flagged_tags",
     "foliage_instances",
     "instance_matrices",
@@ -223,6 +224,18 @@ def instance_matrices(tail: bytes, expect: int | None) -> np.ndarray | None:
     return None
 
 
+def first_override(view, payload: bytes | None) -> str | None:
+    """The first non-empty entry of a component's ``OverrideMaterials``, as a package path."""
+    if not payload or len(payload) < 4:
+        return None
+    count = struct.unpack_from("<i", payload, 0)[0]
+    for i in range(max(0, min(count, (len(payload) - 4) // 4))):
+        path = view.import_path(payload[4 + 4 * i : 8 + 4 * i])
+        if path:
+            return path
+    return None
+
+
 def is_top_foliage(mesh: str) -> bool:
     return mesh.rsplit("/", 1)[-1] in TOP_FOLIAGE_MESHES
 
@@ -301,6 +314,9 @@ def sweep_levels(
     box_sources: dict[str, int] = {}
     mesh_ids: dict[str, int] = {}
     owner_ids: dict[str, int] = {}
+    #: Each placement's first override material, as an index into ``materials``; -1 for none.
+    material_ids: dict[str, int] = {}
+    chosen: list[int] = []
     foliage: dict[str, list[np.ndarray]] = {}
     extra: dict[str, list[np.ndarray]] = {}
     actors: list = []
@@ -363,6 +379,10 @@ def sweep_levels(
                 mesh_id = mesh_ids.setdefault(placed[0], len(mesh_ids))
                 owner_id = owner_ids.setdefault(root_owner[slot], len(owner_ids))
                 placements.append((mesh_id, owner_id, *placed[1:]))
+                material = first_override(view, view.props(slot).get("OverrideMaterials"))
+                chosen.append(
+                    material_ids.setdefault(material, len(material_ids)) if material else -1
+                )
             elif name in FOLIAGE_CLASSES:
                 found = foliage_instances(
                     view,
@@ -403,6 +423,8 @@ def sweep_levels(
         "placements": np.array(placements, dtype=np.float64) if placements else np.zeros((0, 11)),
         "meshes": [m for m, _ in sorted(mesh_ids.items(), key=lambda kv: kv[1])],
         "owners": [o for o, _ in sorted(owner_ids.items(), key=lambda kv: kv[1])],
+        "placement_materials": np.array(chosen, dtype=np.int32),
+        "materials": [m for m, _ in sorted(material_ids.items(), key=lambda kv: kv[1])],
         "water": water,
         "water_actors": water_actors,
         "water_boxless": water_boxless,

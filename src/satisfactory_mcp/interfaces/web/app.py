@@ -9,6 +9,7 @@ dependency of the HTTP server.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -24,6 +25,7 @@ from ... import config
 from ...core.gamedata.loader import load_docs
 from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
+from ...core.gpu import vulkan_available
 from ...core.schema import NewerSchema
 from ...domain.planning import journal, planlog, siting
 from ...domain.world.state import WorldState, load_state
@@ -106,6 +108,8 @@ def create_app(
             journal.set_writer("web")
             planlog.use_recipe_names(_recipe_names(load_game))
             siting.set_ground_z(siting.terrain_provider(terrain.field))
+            # Once per process, off the event loop: the Maps tab offers the upscaler by it.
+            asyncio.get_running_loop().run_in_executor(None, vulkan_available)
         await instance.state.watcher.start()
         await instance.state.mapjobs.start()
         try:

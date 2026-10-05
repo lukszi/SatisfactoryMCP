@@ -2,7 +2,7 @@
 
 Each tree stamps its species' sprite, turned and scaled, at the mip whose texel is closest
 to the output pixel. Taller crowns are laid over lower ones. docs/spatial-and-map.md
-section 31 describes the planes a band returns.
+section 36 describes the planes a band returns.
 """
 
 from __future__ import annotations

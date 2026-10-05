@@ -139,60 +139,55 @@ def test_canopy_top_keeps_the_taller_of_two_crowns():
 
 
 def _flat_with_tree(height=20.0, radius=3.0):
-    halo = hz.halo_px(STEP)
+    halo = hz.horizon_reach_px(STEP)
     n = 2 * halo + 41
     z = np.zeros((n, n), np.float32)
     x0 = -(n * STEP) / 2
     occ = oc.canopy_top(_one_tree(height=height, radius=radius), x0, x0, STEP, (n, n))
-    core = (slice(halo, halo + 41), slice(halo, halo + 41))
-    return z, occ, core
+    return z, occ, halo
 
 
 def test_flat_ground_has_no_horizon_and_no_shadow():
-    z, _occ, core = _flat_with_tree()
+    z, _occ, halo = _flat_with_tree()
 
-    out = hz.faded_horizons(z, core, STEP, dirs=8)
+    out = hz.faded_horizons(z, halo, STEP, dirs=8)
 
-    assert out.shape == (41, 41, 8)
+    assert out.shape == (8, 41, 41)
     assert float(out.max()) == 0.0
 
 
 def test_a_tree_shadows_the_ground_away_from_the_sun_and_follows_it():
-    z, occ, core = _flat_with_tree()
-    four = hz.faded_horizons(z, core, STEP, dirs=4, occluder=occ)
-    morning = hz.shadow(four, 90.0, 30.0)
-    evening = hz.shadow(four, 270.0, 30.0)
+    z, occ, halo = _flat_with_tree()
+    toward_east = hz.march_horizon(z, halo, 90.0, STEP, occluder=occ)
+    toward_west = hz.march_horizon(z, halo, 270.0, STEP, occluder=occ)
 
     # the tree stands at the core's centre, column 20; column 4 is 8 m west of it
-    assert morning[20, 4] == 1.0 and morning[20, 36] == 0.0
-    assert evening[20, 36] == 1.0 and evening[20, 4] == 0.0
+    assert toward_east[20, 4] > 30.0 and toward_east[20, 36] == 0.0
+    assert toward_west[20, 36] > 30.0 and toward_west[20, 4] == 0.0
 
 
 def test_occluders_fade_sooner_than_the_ground():
-    halo = hz.halo_px(STEP)
+    halo = hz.horizon_reach_px(STEP)
     n = 2 * halo + 1
     z = np.zeros((n, n), np.float32)
     far = int(60.0 / STEP)
     wall = np.full((n, n), np.nan, np.float32)
     wall[:, halo + far : halo + far + 10] = 20.0
     ground = np.fmax(z, wall)
-    core = (slice(halo, halo + 1), slice(halo, halo + 1))
 
-    as_tree = hz.faded_horizon(z, core, 90.0, STEP, wall)
-    as_rock = hz.faded_horizon(ground, core, 90.0, STEP)
+    as_tree = hz.march_horizon(z, halo, 90.0, STEP, occluder=wall)
+    as_rock = hz.march_horizon(ground, halo, 90.0, STEP)
 
     assert 0.0 < float(as_tree[0, 0]) < float(as_rock[0, 0])
 
 
-def test_a_receiver_on_the_crown_top_is_lit():
-    z, occ, core = _flat_with_tree(radius=6.0)
-    ground_receiver = z[core]
+def test_a_crown_top_receives_and_the_ground_beside_it_is_shaded():
+    z, occ, halo = _flat_with_tree(radius=6.0)
 
-    on_top = hz.faded_horizon(z, core, 0.0, STEP, occ)
-    on_ground = hz.faded_horizon(z, core, 0.0, STEP, occ, receiver=ground_receiver)
+    toward_north = hz.march_horizon(z, halo, 0.0, STEP, occluder=occ)
 
-    assert on_top[20, 20] == 0.0
-    assert on_ground[22, 20] > 60.0
+    assert toward_north[20, 20] == 0.0
+    assert toward_north[34, 20] > 45.0
 
 
 def test_horizon_bytes_round_trip_finer_near_the_ground():
@@ -202,25 +197,6 @@ def test_horizon_bytes_round_trip_finer_near_the_ground():
 
     assert np.abs(back - deg).max() < 0.75
     assert abs(float(back[1]) - 1.0) < 0.1
-
-
-def test_direction_pair_and_soft_shadow():
-    assert hz.direction_pair(0.0) == (0, 1, 0.0)
-    assert hz.direction_pair(-5.625) == (31, 0, pytest.approx(0.5))
-    edge = np.full((1, 1, hz.DIRS), 30.0, np.float32)
-
-    assert float(hz.shadow(edge, 100.0, 30.0)[0, 0]) == pytest.approx(0.5)
-    assert float(hz.shadow(edge, 100.0, 40.0)[0, 0]) == 0.0
-    assert float(hz.shadow(edge, 100.0, 20.0)[0, 0]) == 1.0
-
-
-def test_light_is_one_on_open_flat_ground_and_never_below_the_floor():
-    el = 62.25
-    flat = np.array([np.sin(np.deg2rad(el))], np.float32)
-
-    assert hz.light(flat, np.zeros(1), 1.0, 0.4, el)[0] == pytest.approx(1.0)
-    assert hz.light(flat, np.ones(1), 0.5, 0.4, el)[0] == pytest.approx(hz.LIGHT_FLOOR)
-    assert 0.35 <= hz.LIGHT_FLOOR <= 0.40
 
 
 # ---------------------------------------------------------------------- the game itself

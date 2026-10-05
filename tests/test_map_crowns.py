@@ -1,6 +1,6 @@
 """Tree crowns: the sprites and records in the paint store, their stamping, their colour.
 
-docs/spatial-and-map.md section 31. Synthetic fixtures throughout: no install, no field.
+docs/spatial-and-map.md section 36. Synthetic fixtures throughout: no install, no field.
 """
 
 from __future__ import annotations

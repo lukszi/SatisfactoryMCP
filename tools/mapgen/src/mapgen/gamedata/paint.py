@@ -22,8 +22,11 @@ from scipy import ndimage
 
 from mapgen.common import LOCAL_DIR, ROOT, base_parser, require_gen
 from mapgen.gamedata import crowns as crown_data
+from mapgen.gamedata.bake import BAKE_NAME, fit_layer_table, read_bake
+from mapgen.gamedata.carpet import is_carpet, write_carpet
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.mesh import MeshBounds
+from mapgen.gamedata.rockfamily import FAMILIES, family_sources
 from mapgen.gamedata.sweep import (
     FOLIAGE_CLASSES,
     LANDSCAPE_SECTION_ORIGIN,
@@ -59,6 +62,7 @@ __all__ = [
     "CANOPY_TEXTURE",
     "CROWN_DEFAULT_M",
     "CROWN_M",
+    "CROWN_NAME",
     "GAME_ROOT",
     "GENERATOR_VERSION",
     "GRID",
@@ -93,6 +97,8 @@ __all__ = [
     "main",
     "material_vectors",
     "place",
+    "rock_family_colours",
+    "satellite_inputs",
     "srgb_to_linear",
     "sweep",
     "weightmap_channels",
@@ -104,6 +110,7 @@ GENERATOR_VERSION = PAINT_GENERATOR_VERSION
 PAINT_DIR_NAME = "paint"
 META_NAME = "meta.json"
 CANOPY_NAME = "canopy.u8.z"
+CROWN_NAME = crown_data.CROWN_TOP_NAME
 PIGMENT_NAME = "pigment.rgb.u8.z"
 WEIGHT_PREFIX = "w."
 WEIGHT_SUFFIX = ".u8.z"
@@ -456,6 +463,48 @@ def canopy_cover(
     return 1.0 - np.exp(-area), counts
 
 
+def rock_family_colours(store, scripts, index, decoder) -> dict:
+    """Each cliff family's ``Color Tint`` and its top layer's mean linear albedo."""
+    out = {}
+    for family, source in family_sources(store, scripts, index).items():
+        top = source["top_texture"]
+        mean = None
+        if top:
+            asset = top.split("/Game/FactoryGame/", 1)[-1]
+            mean = srgb_to_linear(decode_texture(store, scripts, decoder, asset, 512))
+            mean = [round(float(v), 5) for v in mean.reshape(-1, 3).mean(0)]
+        tint = source["tint"]
+        out[family] = {
+            "code": FAMILIES.index(family),
+            "material": source["material"],
+            "tint": [round(v, 5) for v in tint] if tint else None,
+            "top_texture": top,
+            "top": mean,
+        }
+    return out
+
+
+def satellite_inputs(store, scripts, decoder, image_mod, planes, table) -> tuple:
+    """The baked ground colour, its refitted layer table and the rock families.
+
+    Returns ``(payload, files, meta)`` to merge into the store. The crown tops come from
+    ``crown_payload``.
+    """
+    started = time.time()
+    bake, bake_stats = read_bake(store, scripts, decoder, image_mod, GRID)
+    blended = {name: plane for name, plane in planes.items() if name in table}
+    fit, fit_stats = fit_layer_table(blended, table, bake)
+    families = rock_family_colours(store, scripts, AssetIndex(store), decoder)
+    payload = {BAKE_NAME: hf.encode_u8(bake.reshape(GRID, -1))}
+    files = {BAKE_NAME: {"shape": [GRID, GRID, 3], "kind": "u8", "srgb": True, "role": "bake"}}
+    meta = {
+        "bake": {**bake_stats, "fit": fit_stats, "seconds": round(time.time() - started, 1)},
+        "layers_bake_fit": fit,
+        "rock_families": families,
+    }
+    return payload, files, meta
+
+
 # ----------------------------------------------------------------------- the pass
 
 
@@ -465,6 +514,7 @@ def sweep(store, scripts, classes, progress: bool, meshes=None) -> dict:
     bodies: dict[str, list] = {"actors": [], "hot_springs": []}
     origins: list[tuple[int, int]] = []
     trees: dict[str, list[np.ndarray]] = {}
+    carpet: dict[str, list[np.ndarray]] = {}
     unreadable, failed = 0, 0
     started = time.time()
 
@@ -488,8 +538,12 @@ def sweep(store, scripts, classes, progress: bool, meshes=None) -> dict:
             for slot, class_path in view.class_of.items():
                 if class_name_of(class_path) not in FOLIAGE_CLASSES:
                     continue
-                found = foliage_instances(view, slot, classes, wanted=is_tree)
-                if found is not None:
+                found = foliage_instances(
+                    view, slot, classes, wanted=lambda m: is_tree(m) or is_carpet(m)
+                )
+                if found is not None and is_carpet(found[0]):
+                    carpet.setdefault(found[0], []).append(found[1].astype(np.float32))
+                elif found is not None:
                     trees.setdefault(found[0], []).append(found[1].astype(np.float32))
         if meshes is not None:
             harvest(view, classes, meshes, bodies)
@@ -504,6 +558,7 @@ def sweep(store, scripts, classes, progress: bool, meshes=None) -> dict:
         "origins": origins,
         "trees": {mesh: np.concatenate(parts) for mesh, parts in trees.items()},
         "water_bodies": bodies,
+        "carpet": {mesh: np.concatenate(parts) for mesh, parts in carpet.items()},
         "unreadable": unreadable,
         "failed_packages": failed,
         "seconds": round(time.time() - started, 1),
@@ -535,7 +590,7 @@ def crown_payload(store, scripts, index, decoder, trees: dict) -> tuple[dict, di
             sprite_blob, {"kind": "sprites", "texel_m": crown_data.SPRITE_M}
         ),
         crown_data.CROWN_TOP_NAME: (
-            hf.encode_i16(top_dm), {"shape": [GRID, GRID], "kind": "i16", "unit": "dm"}
+            hf.encode_i16(top_dm), {"shape": [GRID, GRID], "kind": "i16", "unit": "dm", "role": "crown top"}
         ),
     }  # fmt: skip
     for entry, sprite in zip(built["species"], sprite_index, strict=True):
@@ -567,8 +622,9 @@ def main() -> int:
     )
     parser.add_argument("--quiet", action="store_true", help="no progress lines")
     args = parser.parse_args()
-    versions = require_gen("ooz", "texture2ddecoder")
+    versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
     import texture2ddecoder as decoder
+    from PIL import Image as image_mod
 
     try:
         pin, raw = installed_build(args.game)
@@ -621,6 +677,12 @@ def main() -> int:
         }
     payload[CANOPY_NAME] = hf.encode_u8(np.round(canopy * 255).astype(np.uint8))
     files[CANOPY_NAME] = {"shape": [GRID, GRID], "kind": "u8", "scale": 255}
+    layers = layer_albedo(LAYERS, means, vectors)
+    extra_payload, extra_files, extra_meta = satellite_inputs(
+        store, scripts, decoder, image_mod, planes, layers
+    )
+    payload.update(extra_payload)
+    files.update(extra_files)
     payload[PIGMENT_NAME] = hf.encode_u8(pigment.reshape(pigment.shape[0], -1))
     files[PIGMENT_NAME] = {
         "shape": list(pigment.shape),
@@ -635,6 +697,11 @@ def main() -> int:
         "actors": len(bodies["actors"]),
         "hot_springs": len(bodies["hot_springs"]),
     }
+    carpet_blobs, carpet = write_carpet(
+        found["carpet"], store, scripts, index, GRID, (ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM)
+    )
+    payload.update(carpet_blobs)
+    files.update(carpet["files"])
     for name, blob in payload.items():
         files[name]["sha256"] = sha256_hex(blob)
         files[name]["bytes"] = len(blob)
@@ -660,7 +727,8 @@ def main() -> int:
         "files": files,
         "digest": files_digest({name: entry["sha256"] for name, entry in files.items()}),
         "albedo_linear": {
-            "layers": layer_albedo(LAYERS, means, vectors),
+            "layers": layers,
+            "layers_bake_fit": extra_meta.pop("layers_bake_fit"),
             "overlays": layer_albedo(OVERLAYS, means, vectors),
             "rock": np.mean([means[t] for t in ROCK_TEXTURES], axis=0).round(5).tolist(),
             "canopy": [round(v, 5) for v in means[CANOPY_TEXTURE]],
@@ -672,6 +740,8 @@ def main() -> int:
         "component_px": WEIGHTMAP_PX,
         "trees": tree_counts,
         "crowns": crown_meta,
+        **extra_meta,
+        "carpet": carpet["meta"],
         "counts": {"unreadable": found["unreadable"], "failed_packages": found["failed_packages"]},
         "seconds": round(time.time() - started, 1),
     }

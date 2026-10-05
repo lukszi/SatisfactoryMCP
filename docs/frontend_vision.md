@@ -1509,3 +1509,30 @@ On the reference save (Han Solo), in-process, warm, median of 7: `/api/world/her
 The contract's §17 questions stand. The page (World section, finder card, inspector
 actions) is the frontend half of this phase.
 
+
+## 19. Map tones (2026-10-05)
+
+Every map type declares a tone, `light` or `dark` (`STYLES[id].tone` in
+`core/gameassets/versions.py`, carried on each `/api/maps` type as `tone`; no imagery is
+`plain_tone`, dark). `tiles.ts` sets it on every base switch through `tone.ts`, which mirrors it
+to `<html data-map-tone>` and tells its listeners. Overlays that cannot clear both kinds of ground
+take one value per tone; the state colours (stopped red, blocked yellow, removal amber) never
+change.
+
+| Mark | Light base | Dark base | Why |
+|---|---|---|---|
+| Collected pickup X (`markers.ts`) | `#2a3147` | `#9aa0a8` | the old `#6b7078` was 2.2–4.5 from the ground on every base. The light value is the colour study's `#30374d` nudged 2.7 to clear the foundations by 16.5 |
+| Coal node | `#4c4c4c` | `#8c8f96` | near-black coal vanished on the dark relief (2.0) |
+| Power casing | `#1c1550` | `#08060f` | the indigo was 18 from the dark ground |
+| Belts | casing in the lift fill `#0e1116`, 2 px | no casing | mid steel was 4.8 from bare ground on the artwork |
+| Locked node | ore colour at full opacity, hollow, dashed, on a 3 px `#262040` ring | same | 35% opacity was invisible on every base |
+| Fluid storage | `#253496` | `#253496` | `#4a5596` was 3.2 from the foundations on the bases |
+
+The dark-tone values sit close to the belt steel in the page's own CIE76 audit (5.7 to 10.0),
+because both are chosen to read against near-black ground; each pair is a different kind of mark
+and is listed in `DISCHARGED` in `palette.ts`. The node dots and pickups repaint from the data
+they hold; the belts and power layers are fetched again when the tone changes.
+
+Not done: a 1 px light outline on fluid storage and a lighter foundation edge on dark bases, and
+a pipe casing on dark bases, all named by the colour study without a measured value; and a
+check of overlays against each type's ground swatches.

@@ -41,7 +41,7 @@ estimate assumes before a job of that kind has run once.
 | `heightmap` | `gen_world_heightmap.py` | `data/local/heightmap/` (planes, `meta.json`, and the rock pack) | 4–6 min; budget 15 min |
 | `caves` | `gen_world_heightmap.py --caves` | `data/local/caves/` (`caves.npz`, `meta.json`) | sweep 6 s; budget 2 min |
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
-| `paint` | `gen_paint_layers.py` | `data/local/paint/` (66 MB) | about 1.5 min with the crowns; budget 2.5 min |
+| `paint` | `gen_paint_layers.py` | `data/local/paint/` (PAINT_MB MB) | PAINT_TIME; budget 2.5 min |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` | 3 min at `--size 1024`; about 30 min for two layers at full size |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
@@ -70,11 +70,13 @@ without `--force`. See §24.
 ### paint
 
 Extracts the landscape's paint layers once per game build: one weight plane per layer on
-the 1 m grid, the tree canopy cover, the PigmentMap tint and each layer's albedo, plus
-`water_bodies.json`: every water actor's box and materials and the hot-spring terraces. It also
-writes the tree crowns: a top-down sprite per tree species, a record per tree (position, yaw,
-scale, lean, species) and the crown top on the 1 m grid. Only the `painted` render layer reads
-them. See §27, §28 and §31.
+the 1 m grid, the tree canopy cover, the PigmentMap tint, each layer's albedo, the
+landscape's baked ground colour with the layer albedos refitted to it, the cliff families'
+tints and top layers, and the seabed coral carpet's cover and top. It also writes
+`water_bodies.json` (every water actor's box and materials and the hot-spring terraces) and
+the tree crowns: a top-down sprite per tree species, a record per tree (position, yaw, scale,
+lean, species) and the crown top on the 1 m grid. Only the `painted` render layer reads them.
+See §27, §30 to §33 and §36.
 
 ### artwork
 
@@ -84,15 +86,21 @@ cache folder once. `--no-tiles-2x` skips the high-density pyramid. See §17.
 
 ### renders
 
-Draws the `terrain`, `satellite` and `painted` layers from the heightfield, the game's biome
-raster and, for `painted`, the paint layers. Each layer is cut into the same 256 px pyramid
+Draws the `terrain`, `satellite`, `painted`, `relief` and `relief-dark` layers from the
+heightfield, the game's biome raster and, for `painted`, the paint layers. Each layer is cut into the same 256 px pyramid
 as the artwork. The main options:
 
-- `--layer L`, repeatable, picks the layers. The default is all three.
+- `--layer L`, repeatable, picks the layers. The default is all five.
 - `--size` takes 1024 to 32768. The smaller sizes are previews.
 - `--renders-name` writes beside the current renders instead of over them.
+- `--unlit` draws the colour without light, bakes the lighting pyramid into
+  `<renders>/light/`, and keeps a default-sun copy in each layer's `tiles/`. See §29.
 - `--cache-dir` with `--keep-direct` keeps the geometry rasters, so a later run at the same
   size and build reuses them.
+- `--restyle` draws only from those kept caches and exits with code 9 when one is missing or
+  was cut for another size or build, so a palette change never turns into a full render.
+- `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
+  with its own digest (§30).
 
 A full-size run needs about 10.7 GB of scratch space for those caches. See §25 to §27, and
 [maps_contract.md](../../docs/maps_contract.md) for how the server registers the result.
@@ -117,11 +125,14 @@ be traced to the axis it should move.
 | `heightmap.py` | data | The heightmap, caves and rocks command: arguments, refusals, stage order |
 | `artwork.py` | data | The artwork command: arguments, stage order, refusals |
 | `check_fill.py` | | The check-fill command |
-| `cache.py` | | The stamped caches (direct, top, meshes, rivers). The on-disk names are unchanged. |
+| `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers). The on-disk names are unchanged. |
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, heightfield grid |
 | `gamedata/sweep.py` | data | Level sweep, foliage, landscape frame, baseline |
 | `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
+| `gamedata/bake.py` | data | The landscape's baked ground colour and the layer refit |
+| `gamedata/rockfamily.py` | data | Cliff material families: per placement, tint and top layer |
+| `gamedata/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
 | `gamedata/crowns.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/waterbodies.py` | data | Water actors' materials, hot-spring terraces, the water class plane |
@@ -142,17 +153,23 @@ be traced to the axis it should move.
 | `palette/styles.py` | style | Palette loading, digests and the colour painters |
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
 | `palette/painted.py` | style | The game-painted ground |
+| `palette/relief.py` | style | The relief styles' painter (light and dark palettes) |
 | `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
 | `palette/rivers.py` | style | River water: reconciled with the field's, laid over each band |
 | `palette/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
 | `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
-| `lighting/horizon.py` | light | Faded horizons per direction, their byte encoding, shadow and light floor |
+| `lighting/sun.py`, `model.py` | light | The game's sun path and default; the live-light model and its reference |
+| `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the stage that writes the lighting pyramid |
+| `palette/lightparams.py` | style | What the page's shader reads from a style |
+| `tiles/lit.py` | | Installing a layer drawn unlit: `unlit/` and the default-sun copy |
+| `tiles/borrowmeta.py` | | The sidecar record of the artwork borrow |
 | `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |
 | `tiles/pyramid.py` | | Installing a layer and cutting its pyramid |
 | `tiles/sidecar.py` | | The render sidecar |
-| `tiles/recipes.py` | | The recipe numbers and the text each sidecar records, renders and artwork |
+| `tiles/recipes.py` | | The recipe numbers and their words, renders and artwork |
+| `tiles/rendertext.py` | | The render sidecar's sampling, composition, z7 and level-only text |
 | `tiles/artwork_output.py` | | The artwork's `tiles/` and `tiles@2x/` trees, its `map.json`, and the staleness guard that reads it back |
 | `enhance/upscaler.py` | recipe | The Real-ESRGAN binary: one-time download into the user cache, digest, smoke test |
 | `enhance/pixels.py` | recipe | Pre-sharpen, faint-mark repair and colour fix around the model |
@@ -168,6 +185,20 @@ The container opener and the artwork sheet's slice reader are game readers, so t
 
 Why some constants have the values they have. The code keeps a one-line comment and points
 here.
+
+### The band loop (`tiles/compose.py`)
+
+`render_layer` draws a sheet 256 rows at a time; at 32768 a whole-sheet float32 intermediate
+is four gigabytes. Each band carries `BAND_HALO` rows either side and crops them, because a
+one-sided difference at every band edge would draw a line across the world. `direct` is the
+rock raster's memory maps with the ground lattice and the sub-sampling, and `overlay` the
+arch-and-boulder pair; without them the picture is one regime. `seam` and `regimes` are the
+measuring accumulators, passed for the first layer only since every layer draws one surface.
+`meshes` is the render-only mesh raster, `reach` the plane where the ocean's crossing rule
+applies (`None` keeps recipe 5's water). `painted` and `relief` are the prepared grounds of
+those styles, built once per run. `falls` are the prepared waterfalls and `rivers` the
+`RiverWater` whose ribbons replace the field's river water. `window` draws part of the sheet,
+which is how crops are compared.
 
 ### Light (`lighting/hillshade.py`)
 
@@ -208,44 +239,38 @@ here.
 - **`BORROW_LUMA`** is Rec. 601, the weighting that matches how a person sees light. Colour
   never crosses: an ocean drawn blue contributes its brightness and nothing else.
 
-### Horizons and tree shadows (`lighting/horizon.py`, `lighting/occluders.py`)
+### Tree shadows (`lighting/horizon.py`, `lighting/occluders.py`, `tiles/lit.py`)
 
-Shadows are not baked into colour. The horizon pass stores, per texel and per compass
-direction, how high the faded skyline stands; the viewer's sun picks two directions and
-compares. Trees join that pass as an occluder raster, so they shade for any sun.
+Shadows are not baked into colour: the lighting stage of section 29 stores faded horizons
+and the page's sun picks two directions. Trees join that pass as its `occluder`, so they
+shade for any sun.
 
-- **Encoding.** 32 directions, 11.25 degrees apart, at half the z7 resolution; a byte is
-  `255 * sqrt(deg / 90)`, finer near the ground where low suns need it. The shadow is
-  `clamp((horizon - elevation) / 2 deg + 0.5, 0, 1)`, the shader's own rule.
-- **`FADE_M`**: a ground blocker counts fully to 40 m and not at all past 150 m. Without
-  the fade a low sun shadows a third to a half of the land.
-- **The occluder hook.** `faded_horizon(..., occluder=...)` takes a height raster in world
-  metres, `nan` where nothing stands. Blockers are the ground under `FADE_M`, and the
-  ground with the occluder on it under `OCCLUDER_FADE_M`. Receivers are the top surface by
-  default; `receiver=` overrides that.
-- **`OCCLUDER_FADE_M` (25 m, 80 m)**: a crown is porous and its far shadow diffuse. With
-  the ground's fade, a Mangrove_Tall_01 at the 80 m cap lays a column-shaped shadow about
-  93 m long under the 16:00 sun (24 degrees). With this fade it is about 61 m, and a 20 m
-  tree's shadow shortens from 44 m to 36 m.
-- **Receivers on the crown top.** Receiving on the ground under the crowns put 71-86% of two
-  forest crops in shadow at every sun, which reads as black forest. On the top, the
-  forest-edge crop keeps a mean light of 0.61-0.78 under the canopy for the 09:00, noon
-  and 16:00 suns. The cost is that a crown the colour layer does not draw,
-  chiefly Mangrove_Tall_01, shows as a lit disc with a shaded flank until crowns are drawn.
-- **`LIGHT_FLOOR` (0.38)**: the darkest light anything gets, within the 0.35-0.40 the
-  sun-shading decision set. Shadowed flat ground sits at the ambient share (0.4) times the
-  sky view, so the floor binds in pits and under crowns.
-- **Crown shape.** A heightfield cannot hold the air under a crown, so each tree is a
-  column whose top is a dome. `CROWN_RIM` (0.3) puts the rim at 30% of the height: at 0.7
-  every crown edge was a cliff and overlapping crowns drew hard arcs (fish scale); at 0
-  the shadow share grew another 3-4 points with little visual gain.
-- **Sizes.** Species come from the foliage mesh; top and radius from its
-  `ExtendedBounds`, which match the LOD0 geometry for all 53 tree meshes (top within
-  0.6 m). Each instance's scale comes from its world matrix. `CROWN_TOP_MAX_M` (80 m)
-  caps the column under a lifted crown; `CROWN_MIN_RADIUS_M` drops trunks and bulbs.
-- **Where the trees come from.** `terrain.rasters.sweep_world` already walks every level;
-  it now also harvests `is_tree` foliage into `sweep["trees"]` (93,375 instances on build
-  502094) and keeps `extra_foliage` to the render-only meshes it always held.
+- **Where the occluder comes from.** A run drawn with `--unlit` and the painted layer hands
+  the paint store's 1 m crown-top plane (`crown.i16.z`, section 36) to the stage, sampled on
+  the sheet's grid (`occluders.sheet_crowns`); a sheet pixel coarser than 1 m takes the
+  highest crown in its footprint. It is written as a memory map in the light cache. A run
+  without the painted layer bakes no tree shadows; the light sidecar's `occluder` says which.
+- **`OCCLUDER_FADE_M` (25 m, 80 m)**: a crown is porous and its far shadow diffuse, so the
+  occluder blocks under its own, shorter fade, beside the ground's `FADE_M`. With the
+  ground's fade a Mangrove_Tall_01 at the 80 m cap lays a shadow about 93 m long under the
+  16:00 sun (24 degrees); with this fade about 61 m, and a 20 m tree's shrinks from 44 m to
+  36 m.
+- **Receivers on the crown top.** Where a crown stands, the horizon is measured from its top,
+  because that is the surface the painted layer draws there. Receiving on the ground under
+  the crowns put 71-86% of two forest crops in shadow at every sun, which reads as black
+  forest; on the top the forest-edge crop keeps a mean light of 0.61-0.78 under the canopy.
+- **Crown shape** (`canopy_top`, for a tree table rather than the paint store). A heightfield
+  cannot hold the air under a crown, so each tree is a column whose top is a dome.
+  `CROWN_RIM` (0.3) puts the rim at 30% of the height: at 0.7 every crown edge was a cliff
+  and overlapping crowns drew hard arcs; at 0 the shadow share grew 3-4 points with little
+  visual gain.
+- **Sizes.** `gamedata/trees.py` takes species from the foliage mesh and top and radius from
+  its `ExtendedBounds`, which match the LOD0 geometry for all 53 tree meshes (top within
+  0.6 m). `CROWN_TOP_MAX_M` (80 m) caps the column under a lifted crown;
+  `CROWN_MIN_RADIUS_M` drops trunks and bulbs. `terrain.rasters.sweep_world` harvests
+  `is_tree` foliage into `sweep["trees"]` (93,375 instances on build 502094).
+- **Not yet:** the crown domes are not in the normal pyramid, so a crown is lit by the ground's
+  normal under it.
 
 ### Water (`palette/water.py`)
 
@@ -282,7 +307,7 @@ compares. Trees join that pass as an occluder raster, so they shade for any sun.
 - **`shore.river`** in each palette: the minimum depth the optics see once in from the bank.
   Without it, a shallow bed reads as a pale path.
 
-spatial-and-map.md section 29 has the measurements.
+spatial-and-map.md section 34 has the measurements.
 
 ### Satellite colours (`palette/styles.py`)
 

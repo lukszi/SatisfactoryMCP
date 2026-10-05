@@ -14,12 +14,14 @@ from mapgen.lighting.hillshade import (
     BORROW_CLAMP,
     BORROW_GAIN,
     SUN_ALTITUDE_DEG,
+    flat_shade,
     hillshade,
     slope_degrees,
     sun_dot,
 )
 from mapgen.palette.falls import draw_falls
 from mapgen.palette.painted import ROCK_GRID_M, painted_colours
+from mapgen.palette.relief import relief_colours
 from mapgen.palette.rivers import water_sources
 from mapgen.palette.shore import MESH_FULL_LIFT_M, blend_water, composite_meshes, shore_terms
 from mapgen.palette.styles import (
@@ -155,7 +157,7 @@ def band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m) -
     )
 
 
-def crowns_in_band(painted, x_cm, y_cm, spacing_m) -> dict | None:
+def crowns_in_band(painted, x_cm, y_cm, spacing_m, unlit=False) -> dict | None:
     """The crowns over these pixel centres, with their domes lit by the shared sun."""
     if painted.crowns is None:
         return None
@@ -164,8 +166,32 @@ def crowns_in_band(painted, x_cm, y_cm, spacing_m) -> dict | None:
         painted.crowns, x_cm[0] - step_cm / 2, y_cm[0] - step_cm / 2, step_cm, len(y_cm), len(x_cm)
     )
     gain = np.float32(painted.palette["crowns"]["dome_gain"])
-    band["ndl"] = sun_dot(band["dome_m"] * gain, spacing_m)
+    flat = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
+    dome = band["dome_m"] * gain
+    band["ndl"] = np.full(dome.shape, flat) if unlit else sun_dot(dome, spacing_m)
     return band
+
+
+def _capture(surface, rows, z_m, missing, cover) -> None:
+    """Hand one band's drawn heights and land weight, halo cropped, to the lighting stage."""
+    top, lo, bottom, c0, c1 = rows
+    keep = slice(top - lo, bottom - lo)
+    dry = np.where(missing, 0.0, 1.0 - cover)
+    surface.put(top, z_m[keep], dry[keep], slice(c0, c1))
+
+
+def _band_water(z_m, planes, smooth, linear):
+    """One band's water surface, level (NaN where none), wet cover and measured share."""
+    water, wet_plane, measured_plane = planes
+    if wet_plane is None:
+        wet = measured = np.zeros(z_m.shape, np.float32)
+        return z_m, np.full(z_m.shape, np.nan, np.float32), wet, measured
+    water_dm, water_missing = sample_surface(water, smooth, linear, hf.NODATA)
+    water_m = water_dm / np.float32(hf.DM_PER_M)
+    level_m = np.where(water_missing, np.nan, water_m)
+    wet = sample_coverage(wet_plane, linear)
+    measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
+    return water_m, level_m, wet, np.clip(measured, 0.0, 1.0)
 
 
 def render_layer(
@@ -189,26 +215,16 @@ def render_layer(
     painted=None,
     window=None,
     rivers=None,
+    relief=None,
+    unlit=False,
+    surface=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
-    Banded because the sheet is a billion pixels at 32768 and this recipe holds a dozen
-    float32 intermediates over it, four gigabytes apiece whole. Each band is computed with
-    BAND_HALO extra rows on both sides and cropped afterwards, so neither the hillshade's
-    gradient nor the cubic sampler's stencil nor the water blur's kernel ever sees a band
-    edge: a one-sided difference at every 256th row would draw 127 lines across the world.
-
-    ``direct`` is the pair of memory maps the direct pass wrote, with the weight plane and
-    the sub-sampling beside them; ``None`` draws the single-regime picture. ``seam`` and
-    ``regimes`` are accumulators, passed for the first layer only, both layers drawing the
-    identical surface. ``overlay`` is the arch-and-boulder pair of maps and its sub-sampling,
-    composited last. ``kernel`` builds the smooth taps, ``taps_pchip`` by default.
-    ``meshes`` is the render-only mesh raster (z, class); ``falls`` the prepared waterfalls;
-    ``reach`` the 1 m plane of the ocean's crossing rule, ``None`` for recipe 5's water;
-    ``painted`` the ``PaintedGround`` the painted layer samples. ``window`` draws rows
-    ``[r0, r1)`` and columns ``[c0, c1)`` only, every raster passed in cut to it.
-    ``rivers`` is the ``palette.rivers.RiverWater`` whose ribbons and reconciled water are
-    drawn in place of the field's river water; ``None`` draws the field's water alone.
+    Each band carries BAND_HALO extra rows, cropped after, so no stencil sees a band edge.
+    ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``unlit`` draws
+    the sun term flat; ``surface`` receives the drawn heights and land weight. The other
+    arguments: tools/mapgen/README.md, "Design notes", "The band loop".
     """
     kernel = taps_pchip if kernel is None else kernel
     painter = LAYER_PAINTERS.get(layer)
@@ -305,17 +321,9 @@ def render_layer(
                 top_subsamples,
             )
             top_weight = np.clip((z_m - below) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
-        if wet_plane is None:
-            wet = measured = np.zeros(z_m.shape, np.float32)
-            water_m = z_m
-            level_m = np.full(z_m.shape, np.nan, np.float32)
-        else:
-            water_dm, water_missing = sample_surface(water, smooth, linear, hf.NODATA)
-            water_m = water_dm / np.float32(hf.DM_PER_M)
-            level_m = np.where(water_missing, np.nan, water_m)
-            wet = sample_coverage(wet_plane, linear)
-            measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
-            measured = np.clip(measured, 0.0, 1.0)
+        water_m, level_m, wet, measured = _band_water(
+            z_m, (water, wet_plane, measured_plane), smooth, linear
+        )
         mesh_weight = mesh_class = None
         if meshes is not None:
             z_m, mesh_weight, mesh_class = composite_meshes(
@@ -335,6 +343,8 @@ def render_layer(
         water_terms = band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m)
         if rivers is not None:
             water_terms = rivers.over(water_terms, z_m, linear, spacing_m)
+        if surface is not None:
+            _capture(surface, (top, lo, bottom, c0, c1), z_m, missing, water_terms["cover"])
         scene: dict = {
             "z_m": z_m,
             "borrow": np.clip(lift, *BORROW_CLAMP),
@@ -349,14 +359,16 @@ def render_layer(
             rock_weight = np.zeros(z_m.shape, np.float32) if weight is None else rock_seen
             if top_weight is not None:
                 rock_weight = np.maximum(rock_weight, top_weight)
-            scene["crowns"] = crowns_in_band(painted, x_cm, y_cm[lo:hi], spacing_m)
+            flat = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
+            scene["crowns"] = crowns_in_band(painted, x_cm, y_cm[lo:hi], spacing_m, unlit)
             scene.update(
-                ndl=sun_dot(z_m, spacing_m),
-                ndl_flat=np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG))),
+                ndl=np.full(z_m.shape, flat) if unlit else sun_dot(z_m, spacing_m),
+                ndl_flat=flat,
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
                 water_optics=painted.water_optics(linear, water_terms.get("river")),
+                grid=(band, lo, hi, c0, c1, spacing_m),
             )
             rgb = painted_colours(
                 scene,
@@ -364,8 +376,19 @@ def render_layer(
                 lambda plane, taps=linear: sample_plain(plane, taps),
                 lambda plane, taps=(rock_rows, rock_cols): sample_plain(plane, taps),
             )
+        elif relief is not None:
+            scene.update(spacing_m=spacing_m, unlit=unlit)
+            rows = biome_index(
+                y_cm[lo:hi], BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], biome["width"]
+            )
+            rgb = relief_colours(
+                scene,
+                relief,
+                lambda plane, taps=linear: sample_plain(plane, taps),
+                lambda plane, rows=rows: plane[np.ix_(rows, biome_cols)],
+            )
         else:
-            scene["shade"] = hillshade(z_m, spacing_m)
+            scene["shade"] = flat_shade(z_m.shape) if unlit else hillshade(z_m, spacing_m)
             if layer == "satellite":
                 scene["slope"] = slope_degrees(z_m, spacing_m)
                 biome_rows = biome_index(

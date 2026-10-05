@@ -1,6 +1,6 @@
 """Per-class inland water in the game-painted style: the class plane, its sampling, its optics.
 
-docs/spatial-and-map.md section 28. Synthetic fixtures throughout: no install, no field.
+docs/spatial-and-map.md section 33. Synthetic fixtures throughout: no install, no field.
 """
 
 from __future__ import annotations
@@ -167,6 +167,10 @@ def _ground(n):
         canopy=np.zeros((1, n), np.float32),
         canopy_rgb=np.zeros(3, np.float32),
         rock=rock,
+        rock_family=None,
+        crown=None,
+        titan=None,
+        carpet=None,
         mesh_rgb={},
         seabed_coral=np.zeros(3, np.float32),
         water={
@@ -176,6 +180,7 @@ def _ground(n):
             "deep": srgb_to_linear(water["deep"]),
             "deep_tau_m": np.float32(water["deep_tau_m"]),
             "bed": np.float32(water["bed_wet"]),
+            "inland_floor": np.float32(water.get("inland_floor", 0.0)),
         },
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
     )

@@ -2,7 +2,7 @@
 
 A river is a chain of ``SplineMeshComponent`` sections bending the flat ``SM_RiverPlane``
 along a cubic Hermite curve. Its water surface is that plane: a centreline height and a
-half width along the curve, nothing else. docs/spatial-and-map.md section 29.
+half width along the curve, nothing else. docs/spatial-and-map.md section 34.
 """
 
 from __future__ import annotations

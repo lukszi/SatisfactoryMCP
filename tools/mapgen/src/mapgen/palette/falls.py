@@ -1,18 +1,19 @@
 """Waterfalls in the colour step: a foam streak at the lip and a foam ring where it lands.
 
 Drawn over the finished colour, raise-only: a pixel only ever moves towards the foam colour
-and is never darkened. See docs/spatial-and-map.md section 30.
+and is never darkened. See docs/spatial-and-map.md section 35.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
+from mapgen.gamedata.waterfalls import falls_input
 from mapgen.palette.shore import OCEAN_LEVEL_M
 from mapgen.palette.styles import PAINTED_PALETTE, SATELLITE_PALETTE
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
-__all__ = ["FALL_STYLES", "MIN_DROP_M", "draw_falls", "prepare_falls"]
+__all__ = ["FALL_STYLES", "MIN_DROP_M", "draw_falls", "load_falls", "prepare_falls"]
 
 FALL_STYLES = {"satellite": SATELLITE_PALETTE.get("falls"), "painted": PAINTED_PALETTE.get("falls")}
 
@@ -42,6 +43,14 @@ def _surface_at(field, x_m, y_m) -> tuple[np.ndarray, np.ndarray]:
     ground = np.where(ground == hf.NODATA, np.nan, ground / hf.DM_PER_M)
     water = np.where(water == hf.NODATA, np.nan, water / hf.DM_PER_M)
     return np.where(on, ground, np.nan), np.where(on, water, np.nan)
+
+
+def load_falls(cache_root, build, sweep_once, field) -> tuple[np.ndarray, dict]:
+    """The drawable falls for this field, and the sidecar's ``waterfalls`` block."""
+    records, source = falls_input(cache_root, build, sweep_once)
+    falls = prepare_falls(records, field)
+    source["waterfalls"]["drawable"] = len(falls)
+    return falls, source
 
 
 def prepare_falls(records: list[dict] | None, field) -> np.ndarray:

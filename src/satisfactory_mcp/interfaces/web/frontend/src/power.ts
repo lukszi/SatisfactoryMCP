@@ -17,6 +17,7 @@ import { pixelsPerMetre } from "./map";
 import { declareColours } from "./palette";
 import { registerFetch } from "./registry";
 import { ROUTE_FLOOR_PX, ROUTE_WIDTH_M, routeWeight, sinkRoutes } from "./routes";
+import { toned } from "./tone";
 
 import type { Row } from "./dom";
 
@@ -50,7 +51,12 @@ import type { Point3M } from "./geometry";
  * and 54.3 on the forest, and 61.6 to 71.2 on the mean weighted by how much of the map each
  * tone covers -- which is where its whole job is done: the ground under a wire is pale, and
  * this is not. */
-var CASING_COLOUR = declareColours("power", { casing: "#1c1550" }).casing;
+var CASINGS = declareColours("power", { casing: "#1c1550", "casing dark": "#08060f" });
+
+/* On a dark base the indigo is only dE 18 from the ground; near-black keeps the rim. */
+function casingColour(): string {
+  return toned(CASINGS.casing, CASINGS["casing dark"]);
+}
 
 /* The core. Violet is this layer's free hue -- blue is the machines, ultramarine the
  * extractors, red the stopped outline, mint the generators, blue-violet the storage, steel the
@@ -244,7 +250,7 @@ export function drawPower(data: PowerResponse): void {
 
   data.wires.forEach(function (w) {
     var cased = L.polyline(chord(w), {
-      color: CASING_COLOUR,
+      color: casingColour(),
       weight: weight + WIRE_CASING_PX,
       opacity: WIRE_OPACITY,
       interactive: false,
@@ -270,7 +276,7 @@ export function drawPower(data: PowerResponse): void {
       // A DISC IS CASED BY ITS OWN OUTLINE, in the casing colour, which turns a flat dot into
       // an edged mark for no extra path. A ring cannot do that -- its stroke IS the mark -- so
       // a tower gets the second ring below instead.
-      color: tower ? POLE_COLOUR : CASING_COLOUR,
+      color: tower ? POLE_COLOUR : casingColour(),
       weight: tower ? TOWER_WEIGHT_PX : POLE_RIM_PX,
       fillColor: POLE_COLOUR,
       fillOpacity: tower ? 0 : 0.9,
@@ -283,7 +289,7 @@ export function drawPower(data: PowerResponse): void {
     if (!tower) return;
     var cased = L.circleMarker([-p.y_m, p.x_m], {
       radius: radius,
-      color: CASING_COLOUR,
+      color: casingColour(),
       weight: TOWER_WEIGHT_PX + WIRE_CASING_PX,
       fillOpacity: 0,
       interactive: false,

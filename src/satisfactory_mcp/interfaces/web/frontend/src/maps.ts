@@ -35,8 +35,11 @@ var form = {
   layers: { terrain: true, satellite: true, painted: false } as Record<string, boolean>,
   size: 4096,
   top: true,
+  light: true,
+  titanTrees: true,
   recipe: "current",
   keepCache: false,
+  restyle: false,
   enhance: false,
   label: "",
   open: false,
@@ -150,7 +153,10 @@ function presetWords(job: MapJobBody): string {
     var parts = ["render", (o.size as number) + " px"];
     if (o.recipe === "kernel-only") parts.push("kernel only");
     if (o.top === false) parts.push("no arches");
+    if (o.titan_trees === false) parts.push("no Titan trees");
     if (o.keep_cache) parts.push("keeps the raster cache");
+    if (o.restyle) parts.push("palette only");
+    if (o.light) parts.push("live sun");
     return parts.join(" · ");
   }
   if (job.preset === "artwork") return o.enhance ? "artwork, upscaled" : "artwork";
@@ -352,17 +358,26 @@ var estimateSerial = 0;
 
 function formOptions(): Record<string, unknown> {
   if (form.preset === "render") {
+    var body = mapState.body;
+    var restyle = form.restyle && !!body && body.cached_sizes.indexOf(form.size) >= 0 && form.recipe === "current";
     return {
-      layers: ["terrain", "satellite", "painted"].filter(function (l) {
-        return form.layers[l];
-      }),
+      layers: (body ? body.styles : [])
+        .map(function (s) {
+          return s.layer;
+        })
+        .filter(function (l) {
+          return form.layers[l];
+        }),
       size: form.size,
       recipe: form.recipe,
       top: form.top,
+      titan_trees: form.titanTrees,
       keep_cache: form.keepCache,
+      restyle: restyle,
+      light: form.light,
     };
   }
-  if (form.preset === "artwork") return { enhance: form.enhance };
+  if (form.preset === "artwork") return { enhance: form.enhance && !!mapState.body && mapState.body.can_generate.vulkan };
   return {};
 }
 
@@ -439,7 +454,7 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
   what.appendChild(
     choice(
       [
-        ["render", "render: terrain, satellite, game-painted"],
+        ["render", "render: a drawn style"],
         ["artwork", "artwork from the game"],
         ["inputs", "heightfield inputs"],
       ],
@@ -455,13 +470,13 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
   var opts = make("div", "maps-options");
   if (form.preset === "render") {
     var layers = make("div", "maps-checks");
-    ["terrain", "satellite", "painted"].forEach(function (layer) {
-      layers.appendChild(
-        checkbox(layer, !!form.layers[layer], function (on) {
-          form.layers[layer] = on;
-          refresh();
-        })
-      );
+    body.styles.forEach(function (style) {
+      var box = checkbox(style.label, !!form.layers[style.layer], function (on) {
+        form.layers[style.layer] = on;
+        refresh();
+      });
+      box.title = style.tone + " base";
+      layers.appendChild(box);
     });
     opts.appendChild(layers);
     var sizes = body.sizes;
@@ -490,6 +505,18 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
         refresh();
       })
     );
+    var lit = checkbox("live sun", form.light, function (on) {
+      form.light = on;
+      refresh();
+    });
+    lit.title = "draws colour unlit and bakes a lighting pyramid, so the map is relit in the browser by any sun";
+    opts.appendChild(lit);
+    opts.appendChild(
+      checkbox("Titan trees (game-painted)", form.titanTrees, function (on) {
+        form.titanTrees = on;
+        refresh();
+      })
+    );
     var recipe = make("label", "maps-inline");
     recipe.appendChild(make("span", "", "recipe "));
     recipe.appendChild(
@@ -513,14 +540,24 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
     });
     keep.title = "the next render at this size skips the slow raster passes; costs disk until cleared";
     opts.appendChild(keep);
-  } else if (form.preset === "artwork") {
-    opts.appendChild(
-      checkbox("upscale on the GPU", form.enhance, function (on) {
-        form.enhance = on;
+    if (body.cached_sizes.indexOf(form.size) >= 0 && form.recipe === "current") {
+      var fast = checkbox("palette only: draw from the kept raster cache", form.restyle, function (on) {
+        form.restyle = on;
         refresh();
-      })
-    );
-    note(opts, "downloads a 45 MB upscaler once into the user cache folder; needs a Vulkan GPU");
+      });
+      fast.title = "skips the geometry passes; only colour, compose and cut run";
+      opts.appendChild(fast);
+    }
+  } else if (form.preset === "artwork") {
+    if (body.can_generate.vulkan) {
+      opts.appendChild(
+        checkbox("upscale on the GPU", form.enhance, function (on) {
+          form.enhance = on;
+          refresh();
+        })
+      );
+      note(opts, "downloads a 45 MB upscaler once into the user cache folder");
+    } else note(opts, "no Vulkan GPU was found when the server started, so the upscaler is not offered");
   } else {
     opts.appendChild(
       choice(
@@ -568,10 +605,12 @@ function rerender(row: MapTypeBody): void {
   var r = row.freshness.rerender;
   var chain: Promise<void> = Promise.resolve();
   if (r && r.needs.indexOf("heightfield") >= 0) chain = submit("heightmap", {}, "", null);
+  var body = mapState.body;
+  var size = row.size_px || 32768;
   var options =
     row.kind === "artwork"
-      ? { enhance: true }
-      : { layers: [row.layer], size: row.size_px || 32768, recipe: "current", top: true };
+      ? { enhance: !!body && body.can_generate.vulkan }
+      : { layers: [row.layer], size: size, recipe: "current", top: true, light: !!row.axes.light, restyle: !r && !row.freshness.stale.length && row.freshness.restyle && !!body && body.cached_sizes.indexOf(size) >= 0 };
   chain.then(function () {
     return submit(row.kind === "artwork" ? "artwork" : "render", options, row.label || "", row.id);
   });

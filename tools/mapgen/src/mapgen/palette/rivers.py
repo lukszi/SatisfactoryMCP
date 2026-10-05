@@ -3,7 +3,7 @@
 The field levels a river's water on the river actor's box, one AABB around the whole river,
 so it stands metres too high and as wide as the artwork drew it. Here that water gives way
 to the spline's own sloped plane, whose banks are where it meets the ground. Why each
-constant is what it is: docs/spatial-and-map.md section 29.
+constant is what it is: docs/spatial-and-map.md section 34.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from mapgen.cache import cached_rivers, river_stamp, write_rivers
+from mapgen.cache import RIVER_CACHE_DIR_NAME, cached_rivers, river_stamp, write_rivers
 from mapgen.gamedata.rivers import box_tops, ribbon_planes, sample_rivers
 from mapgen.palette.shore import shore_terms
 from mapgen.palette.water import WATER_DEPTH_FULL_M, water_planes
@@ -197,8 +197,9 @@ def water_sources(field, rivers: RiverWater | None):
     return rivers.water_dm, wet, (rivers.grades == hf.WATER_MEASURED).astype(np.uint8)
 
 
-def load_rivers(cache_dir: Path, build, sweep_once, field) -> tuple[RiverWater, dict]:
+def load_rivers(cache_root: Path, build, sweep_once, field) -> tuple[RiverWater, dict]:
     """The rivers from the cache, or from the shared sweep into it; and what to record."""
+    cache_dir = cache_root / RIVER_CACHE_DIR_NAME
     started = time.time()
     stamp = river_stamp(build, READER_VERSIONS["river_splines"])
     cached = cached_rivers(cache_dir, stamp)

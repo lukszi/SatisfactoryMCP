@@ -8,13 +8,17 @@ picks. Why the crown has this shape: the README's "Horizons and tree shadows".
 from __future__ import annotations
 
 import numpy as np
+from scipy import ndimage
 
+from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.mesh import MeshBounds
 from mapgen.gamedata.trees import TreeTable, crown_species, tree_table
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "CROWN_RIM",
     "canopy_top",
+    "sheet_crowns",
     "sweep_trees",
 ]
 
@@ -51,4 +55,30 @@ def canopy_top(
         dome = base + height * (rim + (1 - rim) * np.sqrt(np.maximum(inside, 0.0)))
         dome = np.where(inside >= 0, dome, np.nan).astype(np.float32)
         out[r0:r1, c0:c1] = np.fmax(out[r0:r1, c0:c1], dome)
+    return out
+
+
+def sheet_crowns(top_dm: np.ndarray, grid: dict, size: int, out: np.ndarray) -> np.ndarray:
+    """The paint store's 1 m crown-top plane on a ``size`` px sheet, into ``out``.
+
+    World metres, ``nan`` where no crown stands. A sheet pixel coarser than the plane takes
+    the highest crown in its footprint, so no crown drops out of the shadows.
+    """
+    step_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
+    grid_m = grid["spacing_cm"] / 100.0
+    top = np.where(top_dm == hf.NODATA, -np.inf, top_dm / np.float32(hf.DM_PER_M))
+    reach = int(np.ceil(step_m / grid_m))
+    if reach > 1:
+        top = ndimage.maximum_filter(top.astype(np.float32), size=reach)
+    centre = (np.arange(size) + 0.5) * step_m
+    cols = np.rint((BOUNDS_M["x_min_m"] + centre - grid["x0_cm"] / 100.0) / grid_m)
+    rows = np.rint((BOUNDS_M["y_min_m"] + centre - grid["y0_cm"] / 100.0) / grid_m)
+    col_ok = (cols >= 0) & (cols < top.shape[1])
+    cols = np.clip(cols, 0, top.shape[1] - 1).astype(np.int64)
+    for start in range(0, size, 512):
+        band = slice(start, start + 512)
+        row = rows[band]
+        ok = ((row >= 0) & (row < top.shape[0]))[:, None] & col_ok[None, :]
+        cut = top[np.clip(row, 0, top.shape[0] - 1).astype(np.int64)][:, cols]
+        out[band] = np.where(ok & np.isfinite(cut), cut, np.nan)
     return out

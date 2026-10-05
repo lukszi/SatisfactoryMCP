@@ -91,9 +91,10 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(
         presets,
         "can_generate",
-        lambda: {"gen": True, "tools": True, "game": True, "heightfield": True, "ok": True,
-                 "reason": None},
+        lambda: {"gen": True, "tools": True, "game": True, "heightfield": True, "vulkan": True,
+                 "ok": True, "reason": None},
     )  # fmt: skip
+    monkeypatch.setattr(presets, "vulkan_available", lambda: True)
     monkeypatch.setenv("FAKE_PAUSE", "0.02")
     return tmp_path
 

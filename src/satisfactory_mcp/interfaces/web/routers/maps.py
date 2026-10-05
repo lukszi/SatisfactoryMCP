@@ -20,6 +20,7 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
+from ....core.gameassets.versions import PLAIN_TONE, STYLES
 from ....core.schema import NewerSchema
 from ....domain.maps import axes as ax
 from ....domain.maps import jobs as job_store
@@ -33,7 +34,8 @@ router = APIRouter(prefix="/api")
 Status = Literal["building", "ready", "failed", "missing"]
 JobStatus = Literal["queued", "running", "done", "failed", "cancelled", "interrupted"]
 Preset = Literal["render", "artwork", "heightmap", "caves", "rocks", "paint"]
-Layer = Literal["terrain", "satellite", "painted"]
+Layer = Literal["terrain", "satellite", "painted", "relief", "relief-dark"]
+Tone = Literal["light", "dark"]
 
 
 class MapStaleAxis(TypedDict):
@@ -70,6 +72,7 @@ class MapTypeBody(TypedDict):
     data: str
     kind: str
     layer: str
+    tone: Tone
     size_px: int | None
     dir: str
     bytes: int
@@ -125,8 +128,18 @@ class MapCanGenerate(TypedDict):
     tools: bool
     game: bool
     heightfield: bool
+    vulkan: bool
     ok: bool
     reason: str | None
+
+
+class MapStyleBody(TypedDict):
+    """A render layer the generate form offers, and the tone of the base it draws."""
+
+    layer: str
+    style: str
+    label: str
+    tone: Tone
 
 
 class MapDisk(TypedDict):
@@ -149,6 +162,9 @@ class MapsResponse(TypedDict):
     unregistered: list[str]
     queue_max: int
     sizes: list[int]
+    styles: list[MapStyleBody]
+    cached_sizes: list[int]
+    plain_tone: Tone
 
 
 class MapPatchBody(TypedDict):
@@ -172,8 +188,10 @@ class MapJobOptions(TypedDict):
     recipe: NotRequired[Literal["current", "kernel-only"]]
     top: NotRequired[bool]
     keep_cache: NotRequired[bool]
+    restyle: NotRequired[bool]
     enhance: NotRequired[bool]
     tiles_2x: NotRequired[bool]
+    titan_trees: NotRequired[bool]
 
 
 class MapJobRequest(TypedDict):
@@ -230,6 +248,7 @@ def _type_json(row: dict, default: str | None) -> dict:
         "data": ax.data_label(axes),
         "kind": entry.get("kind") or "render",
         "layer": entry.get("layer") or "",
+        "tone": ax.style_tone(axes),
         "size_px": (axes.get("renderer") or {}).get("size_px") or entry.get("size_px"),
         "dir": entry["dir"],
         "bytes": int(entry.get("bytes") or 0),
@@ -281,6 +300,13 @@ def _maps_json(request: Request) -> dict:
         "unregistered": registry.unregistered(),
         "queue_max": 4,
         "sizes": list(presets.RENDER_SIZES),
+        "styles": [
+            {"layer": row["layer"], "style": sid, "label": row["label"], "tone": row["tone"]}
+            for sid, row in STYLES.items()
+            if row["layer"] in presets.RENDER_LAYERS
+        ],
+        "cached_sizes": presets.cached_sizes(),
+        "plain_tone": PLAIN_TONE,
     }
 
 
@@ -328,6 +354,7 @@ def map_estimate(
     recipe: Literal["current", "kernel-only"] = "current",
     top: bool = True,
     keep_cache: bool = False,
+    restyle: bool = False,
     enhance: bool = False,
     tiles_2x: bool = True,
 ) -> Any:
@@ -338,6 +365,7 @@ def map_estimate(
         "recipe": recipe,
         "top": top,
         "keep_cache": keep_cache,
+        "restyle": restyle,
         "enhance": enhance,
         "tiles_2x": tiles_2x,
     }

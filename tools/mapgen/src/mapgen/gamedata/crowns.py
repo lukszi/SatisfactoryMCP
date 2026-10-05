@@ -2,7 +2,7 @@
 
 A sprite is the species' LOD 0 rasterised from above: leaf cover, the top of the crown and
 which material is on top, at ``SPRITE_M``. A record is a tree's position, yaw, scale and
-species. docs/spatial-and-map.md section 31 describes both and how they are drawn.
+species. docs/spatial-and-map.md section 36 describes both and how they are drawn.
 """
 
 from __future__ import annotations

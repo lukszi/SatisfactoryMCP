@@ -1,6 +1,6 @@
 {
  "id": "satellite-painted",
- "about": "the landscape's own paint layers times their albedo, pigment, canopy, rock and coral meshes, sky and sun light, Beer-Lambert water",
+ "about": "the game's baked ground colour, else the paint layers times their albedo; canopy, rock with its cliff family's top layer, coral meshes, Titan trees, sky and sun light, Beer-Lambert water",
  "albedo_darkening": 0.95,
  "wet_sand_lightness_of_sand": 0.9,
  "pigment": 0.15,
@@ -142,7 +142,6 @@
   0.93
  ],
  "exposure": 1.12,
- "shoulder": 0.72,
  "borrow_ink_damp": 0.25,
  "shore": {
   "stroke": 0.0,
@@ -189,10 +188,11 @@
    104
   ],
   "deep_tau_m": 12.0,
-  "bed_wet": 0.8
+  "bed_wet": 0.8,
+  "inland_floor": 0.35
  },
  "water_classes": {
-  "about": "inland water by class; the ocean keeps water. docs/spatial-and-map.md section 28",
+  "about": "inland water by class; the ocean keeps water. docs/spatial-and-map.md section 33",
   "river": {
    "k_per_m": [
     2.4,
@@ -420,5 +420,68 @@
   "above_m": 3.0,
   "strands": 0.35,
   "pool_below": 0.4
+ },
+ "ground": "bake",
+ "rock_top": {
+  "up": [
+   0.6,
+   0.85
+  ]
+ },
+ "titan_trees": {
+  "opacity": 0.8,
+  "leaves": [
+   77,
+   90,
+   48
+  ],
+  "trunk": [
+   99,
+   88,
+   81
+  ]
+ },
+ "carpet": {
+  "colour": [
+   108,
+   158,
+   190
+  ],
+  "strength": 1.0,
+  "depth_scale": 0.2,
+  "blur_m": 1.25,
+  "gain": 3.0
+ },
+ "tone": {
+  "gain": 1.6,
+  "knee": 0.6,
+  "white": 1.6
+ },
+ "calibration": {
+  "about": "display sRGB targets from Spire Coast and desert screenshots; docs/spatial-and-map.md section 31",
+  "pure_share": 0.7,
+  "min_texels": 200,
+  "layers": {
+   "Sand_LayerInfo": "#d5cbb6",
+   "WetSand_LayerInfo": "#b8a083",
+   "SandRipples_LayerInfo": "#d07756",
+   "Grass_LayerInfo": "#83986e",
+   "Forest_LayerInfo": "#558653"
+  },
+  "canopy": "#558653",
+  "rock_keeps_exposure": true,
+  "desert_rock": {
+   "target": "#ae8271",
+   "areas": [
+    "Area_DuneDesert",
+    "Area_DesertCanyons",
+    "Area_RockyDesert"
+   ]
+  },
+  "meshes": {
+   "coral": "#99868e",
+   "shell": "#d6ccba",
+   "coral_seabed": "#5f8899"
+  }
  }
 }

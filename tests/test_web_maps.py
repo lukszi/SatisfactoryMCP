@@ -40,7 +40,12 @@ def test_the_list_carries_every_type_its_freshness_and_what_can_run(client):
     assert terrain["status"] == "ready" and terrain["dir"] == "renders/terrain"
     old = next(t for t in body["types"] if t["id"] == "terrain-r3-502094")
     assert old["freshness"]["stale"][0]["text"] == "newer heightfield (v3 → v5)"
-    assert set(body["can_generate"]) == {"gen", "tools", "game", "heightfield", "ok", "reason"}
+    assert set(body["can_generate"]) == {
+        "gen", "tools", "game", "heightfield", "vulkan", "ok", "reason"
+    }  # fmt: skip
+    assert {row["tone"] for row in body["types"]} <= {"light", "dark"}
+    assert terrain["tone"] == "light" and body["plain_tone"] == "dark"
+    assert {"relief", "relief-dark"} <= {row["layer"] for row in body["styles"]}
     assert body["jobs"] == [] and body["queue_max"] == 4
     assert {row["name"] for row in body["inputs"]} == {"heightfield", "caves", "rocks", "paint"}
     assert KIND_MAPS in KINDS
@@ -116,8 +121,8 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(client, local, tmp
     monkeypatch.setattr(
         presets,
         "can_generate",
-        lambda: {"gen": True, "tools": True, "game": True, "heightfield": True, "ok": True,
-                 "reason": None},
+        lambda: {"gen": True, "tools": True, "game": True, "heightfield": True, "vulkan": True,
+                 "ok": True, "reason": None},
     )  # fmt: skip
     registry.ensure()
     reply = client.post(

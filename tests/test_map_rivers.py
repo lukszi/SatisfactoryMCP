@@ -1,6 +1,6 @@
 """Recipe 7: the rivers drawn from the game's own river splines.
 
-docs/spatial-and-map.md section 29. Synthetic fixtures throughout: no install, no field.
+docs/spatial-and-map.md section 34. Synthetic fixtures throughout: no install, no field.
 """
 
 from __future__ import annotations
@@ -53,13 +53,17 @@ def test_a_section_is_its_hermite_cubic_end_to_end():
 
 
 def test_samples_follow_the_curve_and_only_open_ends_get_a_cap():
-    joined = _river(_section(10, 50, 30, 5.0, 4.0, 4.0, 6.0), _section(50, 90, 30, 4.0, 3.0, 6.0, 6.0))
+    joined = _river(
+        _section(10, 50, 30, 5.0, 4.0, 4.0, 6.0), _section(50, 90, 30, 4.0, 3.0, 6.0, 6.0)
+    )
     s = sample_rivers([joined])
     assert np.diff(s["x"])[np.diff(s["section"]) == 0].max() <= 0.5 + 1e-9
     assert s["hw"].min() == pytest.approx(4.0) and s["hw"].max() == pytest.approx(6.0)
     capped = np.flatnonzero(np.abs(s["cap"]).sum(1) > 0)
     assert len(capped) == 2, "the joint between the two sections is not an end"
-    assert s["cap"][capped[0]] == pytest.approx([-1, 0]) and s["cap"][capped[-1]] == pytest.approx([1, 0])
+    assert s["cap"][capped[0]] == pytest.approx([-1, 0]) and s["cap"][capped[-1]] == pytest.approx(
+        [1, 0]
+    )
 
 
 def test_the_ribbon_is_the_plane_across_and_ends_square():
@@ -68,7 +72,9 @@ def test_the_ribbon_is_the_plane_across_and_ends_square():
     u, level = planes["u"], planes["level_m"]
     assert u[60, 60] == pytest.approx(0.0, abs=1e-6)
     assert u[63, 60] == pytest.approx(0.6, abs=1e-6) and u[65, 60] == pytest.approx(1.0, abs=1e-6)
-    assert level[60, 20] == pytest.approx(10.0, abs=0.01) and level[60, 100] == pytest.approx(6.0, abs=0.01)
+    assert level[60, 20] == pytest.approx(10.0, abs=0.01) and level[60, 100] == pytest.approx(
+        6.0, abs=0.01
+    )
     assert level[63, 60] == pytest.approx(8.0, abs=0.01), "the plane is flat across"
     assert np.isnan(u[60 + 5 + 5, 60]), "past the edge plus the reach there is no ribbon"
     assert u[60, 102] > 1.0 and u[60, 18] > 1.0, "the plane stops at its open ends, no round cap"
@@ -139,7 +145,9 @@ def test_a_higher_lake_hides_the_river_and_a_lower_one_does_not():
 
 def test_a_shallow_river_still_reads_as_water_once_in_from_its_bank():
     z, spacing = _valley(slope=0.02)
-    terms = river_terms(_flat_terms(z.shape), z, np.full(z.shape, 0.2, np.float32), np.ones_like(z), spacing)
+    terms = river_terms(
+        _flat_terms(z.shape), z, np.full(z.shape, 0.2, np.float32), np.ones_like(z), spacing
+    )
     style = {"min_depth_m": 0.6, "bank_m": 2.5}
     seen = optical_depth(terms, style)[3]
     assert seen[100] == pytest.approx(0.6) and seen[100] > terms["depth_m"][3, 100]
@@ -199,5 +207,7 @@ def test_the_river_cache_is_keyed_on_build_and_reader(tmp_path):
 def test_recipe_7_is_current_and_reads_the_river_splines():
     assert RECIPE == versions.RENDER_RECIPE_CURRENT == 7
     assert versions.READER_VERSIONS["river_splines"] == 1
-    for layer, optics in SHORE_OPTICS.items():
+    # the relief styles draw inland water opaque, so they need no minimum depth
+    for layer in ("terrain", "satellite", "painted"):
+        optics = SHORE_OPTICS[layer]
         assert optics["river"]["min_depth_m"] > 0 and optics["river"]["bank_m"] > 0, layer

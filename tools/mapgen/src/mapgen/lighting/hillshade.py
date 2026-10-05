@@ -29,6 +29,7 @@ __all__ = [
     "WATER_SHADE_RANGE",
     "artwork_detail",
     "coarse_province",
+    "flat_shade",
     "hillshade",
     "slope_degrees",
     "sun_dot",
@@ -122,6 +123,12 @@ def coarse_province(field) -> tuple[np.ndarray, dict]:
 def hillshade(z_m: np.ndarray, spacing_m: float) -> np.ndarray:
     """North-west relief in [SHADE_FLOOR, SHADE_FLOOR + SHADE_RANGE]; rows run south."""
     return sun_dot(z_m, spacing_m) * SHADE_RANGE + SHADE_FLOOR
+
+
+def flat_shade(shape) -> np.ndarray:
+    """What ``hillshade`` gives flat ground: the unlit colour's constant sun term."""
+    flat = SHADE_FLOOR + SHADE_RANGE * np.sin(np.deg2rad(SUN_ALTITUDE_DEG))
+    return np.full(shape, flat, np.float32)
 
 
 def sun_dot(z_m: np.ndarray, spacing_m: float) -> np.ndarray:

@@ -1425,7 +1425,7 @@ composited with the top layer's raise-only lift, and only where the mesh top sta
 
 **The heightfield is unchanged.** `CliffPillar_03` stays excluded there because it is passable
 in game: the map draws what the artwork draws, and height lookups keep reading the walkable
-ground. The provenance input is `render_meshes`, reader version 1 (2 since section 30).
+ground. The provenance input is `render_meshes`, reader version 1 (2 since section 35).
 
 ### The paint input
 
@@ -1470,8 +1470,8 @@ coral whose top is under water the seabed blue #5f8899, rock class takes the roc
 along a dry-land ramp. That ramp follows the recommended construction: heights over dry land
 only (`waterq` dry, p1 to p99.5), position `0.35 * linear + 0.65 * equalised`, applied as an
 even OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, times
-exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. A highlight shoulder
-at 0.72, then sRGB.
+exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. The gain and shoulder
+of section 31, then sRGB.
 
 **Water** is Beer-Lambert, calibrated against Spire Coast screenshots:
 `bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` = (4.08, 3.53, 3.53) per metre and
@@ -1503,14 +1503,485 @@ adopts the painted layer as `game-painted-r6-502094`.
 
 ### Known limits
 
-- Lakes keep recipe 5's edge. Since recipe 7 (section 29), rivers get sloped banks from
+- Lakes keep recipe 5's edge. Since recipe 7 (section 34), rivers get sloped banks from
   their splines.
 - A river whose level is within 0.5 m of the sea and that reaches within 48 m of it is drawn
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
   did.
 
-## 28. Water by class in the game-painted style (2026-10-05)
+## 28. Relief styles, tones and the palette-only restyle (2026-10-05)
+
+Two styles were added to the three drawn ones, from the colour study's directions A (muted
+cartographic) and C (dark). Terrain and satellite stay selectable unchanged. Build 502094.
+
+| Layer | Style | Tone | Palette |
+|---|---|---|---|
+| `relief` | `relief-muted` | light | `palette/palettes/relief-muted.json` |
+| `relief-dark` | `relief-night` | dark | `palette/palettes/relief-night.json` |
+
+### What the relief painter does
+
+`palette/relief.py`, one painter for both palettes, all mixing in OKLab:
+
+1. **Ramp.** Height to `t` over dry land only (`waterq` dry, p1 to p99.5): `0.35·linear +
+   0.65·equalised` for the light style, `0.4/0.6` for the dark one. The stops are OKLCh; they are
+   joined in OKLab, lightly smoothed, and re-spaced so equal steps of `t` are equal OKLab steps
+   (largest step within 5% of the mean, checked by a test).
+2. **Biome tints** (light only): per biome `(dL, C, h, w)`, blurred 24 biome texels (44 m) like
+   the satellite's biome colours. Crater, Red Bamboo, Maze Canyons and Abyss Cliffs were pulled to
+   C ≤ 0.036 and away from pink and lavender hues, which read as a fault on the gentle and arch
+   crops.
+3. **Rock**: smoothstep over 32–52° slope, towards `L + dl` at the rock hue.
+4. **Shade**, measured from flat ground's n·L (sin 45°), so flat ground keeps its ramp colour
+   exactly. Light: three suns (NW 0.5, W 0.25, N 0.25), `L += 0.30·d`, chroma ×
+   `(1 + 0.35·min(d, 0))`. Dark: the NW sun, `L × clip(1 + 0.95·d, 0.42, 1.30)`. Both push the
+   shadow side towards a cool hue and the sunlit side a little warm.
+5. **Borrow**: the artwork's high pass rides on L only, as the cube root of the luminance
+   multiplier the other styles use, with its dark (ink) side damped to 0.25.
+6. **Water**: a 1 m tint plane built once per run, `1 − exp(−depth/τ)` for measured water and
+   0.85 for level-only water, blurred (12 m light, 6 m dark) and normalised by the wet mask, so a
+   shore takes the colour of the water beside it and no tint step follows the data edge. Over the
+   sea the opacity rises from 0.45 at the line with a 0.8 m depth fade; the light style strokes
+   the shoreline. No data stays the page's sea colour, as in every style.
+
+The dark ramp's top two stops were `(.480 .040 40)` and `(.530 .038 285)`, which made high ground
+mauve-grey mud (92% on the gentle crop in the study). They are now `(.480 .055 70)` and
+`(.530 .045 85)`, ending warm; the two lowest stops moved from teal to green so lowland no longer
+matches the shallow water.
+
+### Measured
+
+On z7 crops through `render_layer` itself (rock, arch and mesh rasters for all but the arch crop,
+which is drawn from the lattice alone). Mud is CIELAB C* < 12 with 25 < L* < 60, near-white
+L* > 78 with C* < 4, as in the colour study.
+
+| Crop | relief: mud / near-white | relief dark: mud |
+|---|---|---|
+| gentle | 0.2% / 15.4% | 5.4% |
+| arch | 2.8% / 0.1% | 4.7% |
+| boulders | 9.2% / 0% | 1.8% |
+| coast | 1.4% / 0% | 0% |
+| desert lake | 1.1% / 0% | 6.6% |
+
+The gentle crop is the central plateau, near the top of the ramp; its near-white share is down
+from 64% on today's terrain. Drawing a 1.3 Mpx crop takes 1.2 to 2 s per style, about as long as
+terrain.
+
+### The palette-only restyle
+
+A full render spends most of its time on geometry that does not depend on the palette: the sweep,
+the rock pass, the arch-and-boulder pass and the render-only mesh pass. `--restyle` draws only
+from the caches a render kept with `--cache-dir` and `--keep-direct`, and exits 9 when one is
+missing or was cut for another size, sub-sampling or build, so a palette change never turns into
+a full render. The caches are kept afterwards. The job preset is `restyle` on a render
+(maps_contract.md §4).
+
+Measured at `--size 1024` on 2026-10-05, with other renders running on the machine: the run that
+built the caches (terrain only) took 8 min 41 s, most of it the sweep, the rock pass and the mesh
+pass; a restyle drawing `relief` and `relief-dark` from those caches took 1 min 40 s, nearly all
+of it the fixed preparation (field, lattice, artwork sheet, biome raster, the relief grounds at
+about 20 s); a restyle at a size with no cache refused in 3.6 s with exit 9. At full size the
+draw and cut dominate instead: from the recipe 5 stage times one layer is about 8.5 min against
+about 37 min for a full two-layer render. The full-size figure is an estimate, not a run.
+
+## 29. Live sun light (2026-10-05)
+
+A render drawn with `--unlit` (the Maps tab's "live sun" box) stores its colour without light
+and adds a lighting pyramid, and the page relights it in the browser for any sun. One light,
+the sun; the page picks where it stands.
+
+### The model
+
+`light = amb · sky · SVF + (1 − amb) · sun · max(n·L, 0) · (1 − shadow) / sin(max(el, 35°))`,
+divided by the same expression for flat ground in the open, so flat ground at any sun is 1.
+
+- **Lambert** is the shipped hillshade's own term. Relit at 315° / 45° with shadows and sky
+  off, unlit terrain reproduces the baked hillshade to 2 levels (a test holds it).
+- **Cast shadows** come from 32 stored horizon angles per pixel, interpolated between the two
+  directions either side of the sun, with a 2° soft edge. A blocker counts fully up to 40 m
+  away and not at all past 150 m (`FADE_M`): without the fade a low sun shadows a third to a
+  half of the land. A 100 m fade was tried at 16:00 on the four shared crops and reads almost
+  the same, so 150 m stays.
+- **Sky view** within 10 m darkens the foot of a cliff and the floor of a gully. Larger radii
+  grey whole valleys.
+- **Normalisation** by `sin(max(el, 35°))`: without the clamp a fifth to a third of the
+  pixels blow out at 20°.
+- **Shadow floor.** The light passes through a soft maximum with 0.36 at a knee of 0.1
+  (`SHADOW_FLOOR`, `SHADOW_FLOOR_KNEE`), so the darkest light lands at 0.36 to 0.40 instead of
+  the 0.2 the bare model reaches in a shadowed gully.
+- **Water** stays unlit: the land weight (one minus the water cover) blends the light out.
+- **Per style.** The painted style lights in linear light with its own ambient, sky and sun
+  colours; the shader undoes and reapplies the luminance tone curve of section 31
+  (`tone_knee`, `tone_white`). Terrain, satellite and both relief styles multiply into sRGB,
+  as the hillshade always did: ambient `SHADE_FLOOR / (SHADE_FLOOR + SHADE_RANGE · sin 45°)`,
+  white light, no curve (`palette/lightparams.py`). Relief drawn unlit keeps flat ground at its
+  ramp colour, so its live light is this sRGB approximation, not its own OKLab shade. One
+  lighting pyramid serves every style.
+
+The default sun is game noon, 225° / 62.25°. The game turns its sun about one fixed tilted
+axis (`AFGSkySphere`, pitch `30 + 15 h`); `lighting/sun.py` and the page's `sun.ts` both
+compute that path. The cartographic 315° / 45° is a one-click preset, not the default: the
+artwork has no light direction to inherit.
+
+### What is written
+
+| Where | What |
+| --- | --- |
+| `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | 32 horizons at half resolution, an 8 × 4 grey atlas of 128 px cells, `255 · sqrt(deg / 90)`, WebP q75 |
+| `<renders>/light/meta.json` | The light axis (model constants and their digest), tile counts, timings |
+| `<layer>/unlit/` | The unlit colour, 1x only |
+| `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
+
+Coarser levels are computed from the coarser surface, not by averaging encoded tiles: normals
+from the downsampled heights, sky view and horizons by mean.
+
+### The stage
+
+`render_layer` hands the first layer's drawn heights and land weight to a `Surface` (two
+memory maps beside the raster caches, 5.4 GB at 32768). After that layer is drawn,
+`lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
+halo, and a process pool computes per block: horizons at half resolution, sky view, normals,
+the native tiles, and the light at the default sun for the baked copy. A block whose core is
+all water skips the horizon march. Each layer then installs `unlit/`, is lit in place by the
+default sun, and installs `tiles/` and `tiles@2x/` as before (`tiles/lit.py`).
+
+**Horizon cost.** The march takes bilinear samples up to 16 px and the nearest pixel beyond,
+with in-place arithmetic: 0.14 µs per half-resolution pixel and direction, 6.3 times faster
+than the all-bilinear reference, which it matches to a mean 0.10 to 0.17° and a 0.1 to 0.3%
+difference in which pixels are shadowed at 25°. A rotated row sweep was built and measured at
+1.7 times slower than the reference: rotating the block grows it, and every pixel of the
+rotated square is computed. One full-size block of the steepest 2 km box took 121 s on two
+threads of a shared machine, 69 s of it light terms and 52 s WebP encoding; 64 blocks project
+to 2.2 CPU-hours, about 8 minutes on 16 workers, before water blocks are skipped. The
+research estimate for the ray march was 72 minutes.
+
+**Bytes.** The steepest 2 km box writes 78 KB of lighting per z7 tile, so a full map is at
+most about 1.3 GB at z7 and less in practice, because open water compresses to almost
+nothing. The unlit colour adds about half the colour pyramid again.
+
+### Hooks
+
+`bake_light` takes two optional rasters on the sheet's grid, both of which only cast:
+
+- `occluder`: absolute heights in metres, NaN where empty. It blocks under its own shorter
+  fade (`OCCLUDER_FADE_M`, 25 to 80 m) and lifts the receivers to its top, so a crown is lit
+  or shaded where the painted layer draws it. The paint store's crown tops feed it
+  (section 36; the mapgen README's "Tree shadows").
+- `slabs = (ground, min_z, max_z)`: the surface without the floating geometry, and that
+  geometry's underside and top. A slab extends a horizon only where its underside is below
+  the horizon already reached, so an arch stops casting a curtain to the ground. On the arch
+  crop at 16:00 the curtains go; the pipeline does not yet rasterise the arches' min-Z.
+
+### The page
+
+`litlayer.ts` draws a lit layer on one WebGL2 canvas in the base-map pane: per tile the unlit
+colour, normals and horizons, relit by the shader with the arithmetic of `lighting/model.py`.
+The z0 probe's `X-Map-Light` header carries the shader's numbers. Without WebGL2, or when the
+context or the tiles fail, the layer falls back to the baked `tiles/` with a toast. Settings →
+map holds the default sun (game noon, 09:00, 16:00 or map north-west) and the shadow and sky
+switches. The sun button on the map opens a time-of-day slider on the game's path, the
+presets, the switches and, under "advanced", a free compass with azimuth and elevation. The
+button moves the sun for the visit; Settings keeps the default.
+
+### Open
+
+- The arches' min-Z raster, so `slabs` is fed by the pipeline.
+- The sun in the fragment, so a link carries it.
+- Faint diagonal bands at low sun from the q75 horizon encoding and the direction
+  interpolation.
+- Sun colour along the day, and whether the artwork style gets any light at all.
+
+## 30. The game's own surface colours on the painted layer (2026-10-05)
+
+Four additions to the game-painted style of section 27, each read from the install rather than
+chosen. Style `satellite-painted` version 2, paint generator version 2, two new readers.
+Build 502094. Every number below was measured on crops of the z7 grid, not on a full sheet.
+
+### The baked ground colour
+
+Every landscape HLOD cell of `Persistent_Level.umap` ships an unlit BaseColor of its 508 m
+square: a 1024 px virtual texture of 128 px BC1 tiles with a 4 px border, in Morton order.
+`gamedata/bake.py` finds each cell's mip-0 chunk by its size and bulk flags, box-filters it to
+1 m and places it where the landscape component of the same section lands. `python -m mapgen
+paint` writes it as `bake.rgb.u8.z` (47 MB). On this build 141 of 148 cells decode; the seven
+small edge cells (512 and 256 px) have another layout and are left out, and the paint covers
+them. The bake covers 63.7% of the grid and 97% of the painted land. Black texels are its own
+holes and count as no bake.
+
+Beside it the store keeps `layers_bake_fit`: each paint layer's albedo refitted to the bake by
+a non-negative least squares per channel, over 400,000 texels sampled every fourth texel where
+the layers' weights sum above one half. A layer dominant on fewer than 200 sampled texels keeps
+its name-matched albedo; on this build that is DesertRock and PurpleForest.
+
+With `"ground": "bake"` in the palette the painted ground is the bake wherever it has one,
+faded into the paint mix over `have_blur_m` (weight `clip(2 * blur(have) - 1) * have`), and the
+paint mix elsewhere uses the refitted table. The name-matched table's corrections (the 0.95
+darkening, WetSand's lightness fix) and the PigmentMap do not apply in that mode, and the biome
+tint touches only ground off the bake. The prototype measured the albedo against the bake at a
+median Delta E of 8.9 on the dune and 10.3 on the wet-sand beach with the old table, 1.0 and 1.2
+with the refit, and 0 with the bake. Wet sand stops reading as shallow water. The ground comes
+out darker (0.69 to 0.96 of the old luminance); retuning exposure and colour targets is the
+colour calibration's job, not this one's.
+
+### Rock surfaces
+
+**Families.** The sweep now records each placement's first `OverrideMaterials` entry. A rock
+wears that material, or its mesh's own first one, and the material's parent chain is walked to
+one of the `Cliff_<Layer>` instances (`gamedata/rockfamily.py`). Rocks on this build: grass
+4,737, plain cliff 4,344, forest 1,415, sand 1,019, red jungle 582, red grass 115, wet sand 42,
+and 8,772 others (desert rock, boulders, arches) with no family.
+
+**The plane.** The direct pass already rasterises every rock with the max-Z rasteriser, which
+keeps the winning triangle's source id; the source is now the placement's family, written as
+`direct.family.u8` beside the direct cache. The stamping therefore rides the rasteriser and
+costs no pass of its own. The direct cache's stamp gains `families` (the `rock_families` reader
+version), so a cache from before this change is rebuilt once.
+
+**Colour.** The paint store records each family's `Color Tint`, the nearest one up the chain
+(linear 0.624, 0.545, 0.471 for every family on this build), and its top layer, the mean of the
+family root's `Far Albedo` texture or else its `Albedo`: forest and grass from their far
+textures, red grass from `TX_GrassRed_01_Alb`, sand from `TX_Sand_BC`. Plain cliff, wet sand and
+red jungle have none. Per pixel, rock is multiplied by its family's tint and then blended to the
+top layer by an up-facing ramp on the drawn surface's normal, `nz` from 0.60 to 0.85, boxed over
+3 pixels. That ramp is a guess: the `CliffTopMaterial` function is not decoded.
+
+**Trees over rock.** Rock used to hide the canopy: 86 to 97% of tree cover above 0.5 in the
+forest and ivy crops. The store's `crown.i16.z` holds, per 1 m texel, the highest crown top over
+it in decimetres: each tree's base height plus `max(4 m, 1.2 * radius)`, within its crown
+radius. Since generator version 3 the measured crown tops of section 36 fill it instead. The canopy is laid over rock wherever the drawn surface is no higher than that top, so
+a tree on a ledge shows and a tree below a cliff stays hidden. It is a per-pixel comparison
+against a 1 m plane; no tree is stamped at render time, which in the prototype extrapolated to
+about 7 minutes for a full sheet.
+
+### The Titan trees
+
+73 trunks (`SM_TitanTree_01`, Nanite) and 218 leaf meshes (`SM_TitanTree_Leaves_01` and `_02`)
+are StaticMeshActors the sweep already lists. `titan_items` picks them and the mesh rasteriser
+draws them at twice the render's pixel into `titan.cache` (stamp: half the size, the build, the
+`titan_trees` reader). The painter samples that raster bilinearly, lights the crowns by their
+own relief, and lays them over the finished pixel, water included, at `titan_trees.opacity`
+(0.8), leaves sRGB (77, 90, 48), trunks (99, 88, 81). They cover about 0.9 km² of ground that
+was mostly drawn bare.
+
+Players build under these trees, so they are a style toggle. `--no-titan-trees` renders with
+opacity 0, skips the raster and records its own style digest; the Maps tab's generate form has
+a "Titan trees (game-painted)" checkbox for it, the preset option `titan_trees`.
+
+### Inland water
+
+Under a few centimetres of water the Beer-Lambert model lets nearly all of the bed through, so
+shallow pools and lake rims vanished: 0.81 km² of water is under 1 m deep. Off the ocean reach
+the transmitted share is now multiplied by `1 - water.inland_floor` (0.35), so inland water
+always keeps that much of its body colour. The sea is unchanged.
+
+### Provenance
+
+| Axis | Change |
+| --- | --- |
+| data: `paint` | generator version 2: `bake.rgb.u8.z`, `crown.i16.z`, `layers_bake_fit`, `rock_families`, `bake` stats |
+| data: `rock_families` | reader version 1, painted layer only |
+| data: `titan_trees` | reader version 1, painted layer only; absent when the trees are off |
+| style | `satellite-painted` version 2 |
+
+### Measured
+
+The paint command took 68 s (25 s before): the bake read and decode 19 s, the refit, the crown
+plane and the family colours most of the rest. The store is 104 MB. At render time the family
+lookup took 1.7 s. Preparing the painted ground took 195 to 227 s with other jobs running on the
+machine, against 112 to 124 s for the prototype on an idle one. Drawing a crop through
+`render_layer` took no longer than before: 1.0 to 5.8 s per crop with everything on, against
+1.6 to 7.4 s for the shipped recipe 6 on the same crops. The Titan raster for a 1600 px crop
+of the forest took 32 s at the 2x pixel; the whole map is estimated at 1.5 to 2.5 min and has
+not been measured.
+
+### Known limits
+
+- Nothing here has been compared with an in-game top-down view.
+- The up-facing ramp is a guess, and grass tops come out a little light.
+- The Titan crowns over water let the water's blue through at 0.8 opacity.
+- Murky water (a floor of about 0.55 for swamps) needs the per-body class plane, which is not
+  built.
+
+## 31. Colour calibration of the game-painted style (2026-10-05)
+
+The painted style is calibrated against in-game screenshots of the Spire Coast, the Dune
+Desert, the Western Beaches and the Eastern Dune Forest. Style `satellite-painted` version 2. Code:
+`palette/painted.py`. Numbers: the `tone` and `calibration` blocks of
+`palette/palettes/satellite-painted.json`.
+
+### The ground albedo source
+
+`PaintedGround(..., bake=GroundBake(linear, have))` takes the game's baked ground colour (the
+landscape HLOD BaseColor) as an optional input. `linear` is linear RGB, `(rows, cols, 3)`
+float32, on the paint store's 1 m grid. `have` is a bool plane of the same shape.
+`GroundBake.from_srgb(rgb, have)` builds one from 8-bit sRGB and drops the bake's black
+holes. Without one, a palette with `"ground": "bake"` reads the paint store's own bake
+(section 30) through the same feather, block by block; a store without a bake draws from the
+paint table.
+
+One function picks the source: `ground_albedo(paint, have, bake, feather_m)` returns the paint
+mix unchanged when `bake` is None. Otherwise the bake replaces the paint mix where `have` is
+set, feathered over `have_blur_m` inside its own edge. `PaintedGround.albedo_source` records
+`"bake"` or `"paint"`. Under the bake the biome tint is skipped; elsewhere the paint table,
+pigment and biome tint stand as in section 27. Every later step works on whichever albedo
+arrived.
+
+### Tone
+
+- **Gain.** The ground's exposure is multiplied by `tone.gain` = 1.6, for both lit land and
+  the bed under water. On land layers the bake fitted best at ×1.6 to ×2.1 linear. The water
+  body, sky and deep colours are not scaled. The Beer-Lambert fit assumed a bed of the
+  displayed dry sand times 0.8, which the gain now delivers: over the Sand target the ramp is
+  0.25 m #8a9b92, 0.5 m #6d8c88 and 1 m #5a8182, against the fit's #8d9c93, #6f8e89 and
+  #5d8483.
+- **Shoulder.** It replaces the per-channel highlight shoulder. On luminance, the curve is
+  the identity below `knee` 0.6. Above it, a Reinhard curve takes `white` 1.6 to 1, scaled
+  to join the identity with slope 1.
+
+### Per-layer colour transfer
+
+The targets are display sRGB colours, at map exposure:
+
+| Target | Colour |
+| --- | --- |
+| Sand | #d5cbb6 |
+| WetSand | #b8a083 |
+| SandRipples (the Dune Desert) | #d07756 |
+| Grass | #83986e |
+| Forest and the canopy | #558653 |
+
+Each target is taken back through the flat-ground pipeline into ground OKLab: the inverse
+shoulder, divided by exposure times gain and by the flat sky-and-sun light, then half the
+altitude lift and the chroma gain undone. For each layer, the median colour of its pure
+texels (at least 0.7 of the weight) is measured on the albedo as it arrived. The step from
+that median to the target has three parts: a lightness offset, a chroma scale (clipped to
+0.25 to 4) and a hue turn. Each texel moves by its layers' steps, mixed by their normalised
+weights. Because the transfer measures its own source, the same targets work on the bake
+and on the paint table.
+
+### Other colours
+
+- **Desert rock.** In Area_DuneDesert, Area_DesertCanyons and Area_RockyDesert (mask blurred
+  25 m), the rock's chroma and hue are set to the target #ae8271. Its lightness keeps its
+  variation around the target. Everywhere else, rock keeps its section 27 colour at the old
+  exposure (`rock_keeps_exposure`). The Spire Coast rock in the references is mossy dark
+  grey and was not sampled.
+- **Meshes.** Coral-tree caps are #99868e, replacing the pink placeholder, and shells stay
+  #d6ccba; both are display targets, so the gain does not brighten them. Seabed coral
+  #5f8899 is a bed colour, as in the water fit, so it is also divided by the 0.8 wet factor.
+  It is still composited into the bed before Beer-Lambert, with the depth measured to the
+  coral top, so shallow reefs stay visible: #628b9b at the surface, #5a8286 at 0.5 m.
+
+### Measured
+
+Crops of the z7 grid through `render_layer`, with a scratch extraction of the bake as the
+`GroundBake`. Each value is the median of the material's pixels: for layers, texels with at
+least 0.7 of the weight, more than 1 m above the water and with no rock, mesh or canopy
+cover. Values are ΔE (OKLab ×100) to the target, and to the screenshot reference in
+brackets:
+
+| Material | Crop centre (m) | Before | After, bake | After, no bake |
+| --- | --- | --- | --- | --- |
+| Dry sand | forest (-1295, 826) | 10.9 (15.0) | 0.3 (4.2) | 1.2 (3.5) |
+| Dunes | Dune Desert (2700, -1700) | 7.3 (8.2) | 0.2 (4.6) | 1.4 (3.7) |
+| Canopy | forest (-1295, 826) | 13.6 (16.6) | 1.4 (2.7) | 2.2 (2.4) |
+| Desert rock | desert lake (3125, -674) | 1.8 (4.7) | 0.4 (3.1) | 0.5 (3.0) |
+| Coral-tree cap | Spire Coast (-339, -2275) | 5.6 (3.4) | 3.2 (6.5) | 3.2 (6.5) |
+
+The distance to the reference is the deliberate discount for the game's tonemap and grade,
+which the targets remove. The coral caps sit 3.2 below target because they are domes lit by
+their slope; their chroma and hue are within 0.5. Wet sand and grass had no dry, pure patches
+in these crops. On the Spire Coast the wet sand is under water, as the references show.
+
+### Known limits
+
+- The SandRock, SandCracks and DesertRock layers have no target. Under the bake they take
+  the bake's own salmon after the gain.
+- Rock outside the deserts is uncalibrated.
+- Every target comes from tonemapped perspective screenshots, not a top-down capture.
+
+## 32. The seabed coral carpet (2026-10-05)
+
+In the Spire Coast shallows the game shows patches of blue on the seabed: blue fans with pale
+rims under turquoise water (owner screenshots and the wiki's Spire Coast shot). The painted
+style drew none of it. Build 502094.
+
+### What it is
+
+Checked one candidate at a time against the game files:
+
+- **Not a paint layer.** The `CoralRock` layer (`TX_SeaRocks_01_Alb`, linear albedo 0.171,
+  0.173, 0.235) covers 0.62 km² of seabed at weight above 30, most of it on the Spire Coast.
+  It is already drawn, and the HLOD BaseColor bake over the spiral sandbars' seabed, which
+  carries it, is brown-grey, not blue.
+- **Not the layer's grass type.** `LandscapeGrassType` `CoralRock` spawns crater grass, Grass_03,
+  lichen and pebbles at runtime, culled at 150 m, so it never reaches a map view.
+- **Not decals or spline meshes.** None of the 105 `DecalActor`s stands in the Spire Coast box
+  (1 m grid rows 700 to 2400, columns 2500 to 4800), and the 19 spline meshes over its water
+  are all `SM_RiverPlane`.
+- **Placed foliage: `SM_CraterGrass_01`.** 112,525 instances map-wide. 48,145 have their origin
+  under water, and 47,118 of those stand on `CoralRock` paint. Median origin depth 1.41 m. They
+  form the clustered patches in the channels, where the screenshots show the carpet. The mesh is
+  a 1.3 x 1.0 m rosette of upright cards, 0.53 m tall. Its albedo
+  (`TX_CraterBush_01_Alb1`) is purple-pink with blue-white rims; the master material
+  (`MM_Grass_Master`, SSS 0.8) is stripped, and through the water the game draws it blue.
+
+Other coral foliage under water (barnacles, crater coral roots, coral formations) is grey-green,
+pink or beige in its textures and stays with the render-only meshes of section 27.
+
+### The input
+
+`python -m mapgen paint` harvests the carpet in the same level walk as the canopy trees
+(`gamedata/carpet.py`) and writes two more planes into the paint store, so they carry the paint
+input's digest and build. Paint generator version 2.
+
+| File | What |
+| --- | --- |
+| `carpet.u8.z` | Share of each 1 m texel under a rosette's plan, 0..255. The footprint is the convex hull of the mesh's plan view, sampled at 10 cm, times the instance's XY scale: 0.93 m² at scale 1. The blades are upright cards, so the triangles' own plan area (0.04 m²) would draw specks. |
+| `carpet_top.i16.z` | The highest rosette top over the texel, decimetres, no-data elsewhere: origin z plus the mesh top times the Z scale. |
+
+`meta.json` gains a `carpet` block: instances per mesh, the decode route, the footprint area and
+the covered texels (166,056 on this build). Every instance is kept, wet or dry; the renderer
+decides where water covers them.
+
+### Drawing it
+
+Style `satellite-painted` version 2, palette key `carpet`. In `palette/painted.py`:
+
+1. **Patches.** The cover is blurred by `blur_m` (1.25 m) and mapped through
+   `1 - exp(-gain * share)` with `gain` 3, so a cluster of rosettes reads as one patch with a
+   mottled edge. Top no-data texels take the highest top within the blur.
+2. **In the bed, under the water.** Only where the pixel is under water. The carpet replaces the
+   bed by its cover, and is seen through the water above its own top: depth
+   `level - top`, with `level = z + depth`. Then the same Beer-Lambert as the bed, before the
+   open-sea term: `carpet * T + W (1 - T) + sky`.
+3. **`depth_scale` 0.2.** The water's fitted `k` saturates by about 1 m, and the median carpet
+   top is 0.8 m down (origins at 1.4 m). With the bed's own `k` the carpet would vanish, yet the
+   screenshots show it clearly through the channels. The carpet's depth is scaled by 0.2; the
+   water fit's depths were matched, not measured, so this is the weaker number of the two.
+4. **Colour** `#6c9ebe` (linear-light carpet albedo at map exposure). Drawn over the channels it
+   comes out at median `#5e8a9c`, against the calibration target `#5f8899` (the reference's
+   `#6493a6` at map exposure).
+
+`strength` 0 switches it off; a version 1 paint store has no carpet planes and draws none.
+
+### Measured
+
+On five 1280 px crops of the z7 grid through `render_layer`: the carpet changes 5.6% of the
+pixels of a dense Spire Coast channel by more than 40 (summed over RGB), and nothing on the
+spiral sandbars, where no crater grass grows. Its cost was not measured separately: one
+7500² blur and one dilation at load, two plane samples per band.
+
+### Known limits
+
+- The blue is matched to screenshots, not read from the material: the grass master material is
+  stripped, so in-game tint and subsurface scattering cannot be checked.
+- Rosettes above the water line (in the Crater biome) are not drawn; they are ordinary land
+  foliage, which the understory item covers.
+- The pale rims the screenshots show inside the patches are not drawn.
+## 33. Water by class in the game-painted style (2026-10-05)
 
 Recipe 6 drew every water texel with one set of Beer-Lambert optics, the ones calibrated on
 the Spire Coast sea. Inland that read wrong: rivers came out sea-blue, the swamp a clear blue
@@ -1523,7 +1994,7 @@ class and each class its own optics. The ocean keeps its calibrated values uncha
 actor with a box (class, world box, the materials its export subtree assigns) and every
 root `StaticMeshComponent` whose mesh is under `/HotSpring/`. On build 502094 that is 839
 actors and 101 terraces, and it doubles the paint run to about 50 s because the water boxes
-read mesh bounds. `PAINT_GENERATOR_VERSION` is 2.
+read mesh bounds. `PAINT_GENERATOR_VERSION` is 3 (with sections 30 to 32 and 36).
 
 `gamedata/waterbodies.py` `classify` turns that into a uint8 plane on the 1 m grid, once per
 render (about 5 s):
@@ -1595,7 +2066,7 @@ distance 1 to 3), not the lightness.
 - The hot-spring rule finds terraces in lake boxes near the sulfur ponds and in the Red Bamboo
   terraces. Whether those pools are milky in game is unchecked.
 - The satellite and terrain styles still draw one water colour.
-## 29. Rivers from the game's own splines: recipe 7 (2026-10-05)
+## 34. Rivers from the game's own splines: recipe 7 (2026-10-05)
 
 Recipe 7 draws every river as a continuous ribbon at its own height. Build 502094.
 
@@ -1705,7 +2176,7 @@ Per band, through `RiverWater.over`.
 - Steps of more than 0.5 m per metre break the ribbon for a few metres. Those are
   waterfalls, which are a separate item.
 - A section bent more tightly than its half width draws the fan its mesh would.
-## 30. Waterfalls and the first small-mesh batch (2026-10-05)
+## 35. Waterfalls and the first small-mesh batch (2026-10-05)
 
 Two additions to the satellite and game-painted styles. The heightfield is unchanged, and the
 recipe number stays 6. A render records them as two provenance inputs, `waterfalls` (reader
@@ -1798,7 +2269,7 @@ other render-only meshes.
   but it can draw a straight cut across the foam.
 - A 277 m wide fall, such as the one at (1784, 559), draws a long bright bar. At z3 and below
   it is one of the brightest features in its area.
-## 31. Tree crowns (2026-10-05)
+## 36. Tree crowns (2026-10-05)
 
 The painted style drew trees as a soft canopy: one blurred disc per tree with a radius guessed
 from the mesh name, under the rocks. Bamboo was guessed at 1.5 m and measures 4.4 m, and rock
@@ -1808,7 +2279,7 @@ has. The Titan trees are static meshes, not foliage, and are left to the satelli
 
 ### The paint input
 
-`python -m mapgen paint` (generator version 2) adds three files and a `crowns` block to
+`python -m mapgen paint` (generator version 3) adds three files and a `crowns` block to
 `meta.json`:
 
 | File | What |
@@ -1875,7 +2346,31 @@ which took 65 to 108 s in all on a loaded machine; the store grows from 54 to 66
 - **No colour has been checked against the game.** The texture means are the raw albedo:
   bamboo is a saturated pink-red, the tall mangroves' tops are their bark texture. The style's
   `chroma` of 0.8 is a taste call.
-- A crown is lit by the fixed north-west sun of the painted style. The live sun shading needs
-  the crown domes in its normal pyramid and the top raster as an occluder.
+- A crown is lit by the fixed north-west sun of the painted style. The live sun shading takes
+  the crown tops as its occluder (section 29); the crown domes are not yet in its normal
+  pyramid.
 - Lean moves a crown; it does not foreshorten it.
 - `SM_Trunk_01` (6,933 logs and stumps) draws as small bark sprites.
+
+## 37. Where sections 28 to 36 meet (2026-10-05)
+
+Sections 28 to 32 and 33 to 36 were built side by side. Where two of them touch the same
+pixel, these rules decide.
+
+| Where | Rule |
+| --- | --- |
+| Inland water opacity | Section 31's `inland_floor` (0.35) and a water class's `turbidity` (section 33) both say how much body colour inland water keeps. The larger applies, never both, so the swamp (0.45) keeps its own and the lake (0.1) gets the floor. The ocean row has turbidity 0 and draws exactly as before. |
+| River ribbons | A pixel's share of ribbon water (section 34) takes the `river` class's optics, whatever the class plane says under it. The class plane was built from the field's water, which the ribbon partly replaces. |
+| Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`. Section 30's estimate from the radius is gone. Section 30's trees-over-rock reads the same plane. |
+| Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
+| Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
+| Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid. It blocks under `OCCLUDER_FADE_M` and receives on the crown top. Only a run that draws the painted layer has it. |
+| Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 4. Recipe 7. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
+| Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
+
+### Known limits
+
+- A palette-only `--restyle` checks the raster caches it needs, not the river and falls
+  caches. A restyle without them sweeps the game again rather than refusing.
+- The crown domes are not in the lighting stage's normal pyramid.
+- No combination has been compared against an in-game top-down view.

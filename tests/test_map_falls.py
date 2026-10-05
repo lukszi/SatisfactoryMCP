@@ -1,4 +1,4 @@
-"""Waterfalls and the small-mesh batch: docs/spatial-and-map.md section 30.
+"""Waterfalls and the small-mesh batch: docs/spatial-and-map.md section 35.
 
 Synthetic fixtures throughout: no install, no field.
 """
