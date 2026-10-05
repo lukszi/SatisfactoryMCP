@@ -21,6 +21,7 @@ from ...core.gameassets.versions import (
     RENDER_RECIPES,
     STYLES,
 )
+from ...core.gpu import vulkan_available
 from . import axes as ax
 from . import registry
 
@@ -29,6 +30,8 @@ __all__ = [
     "DiskShort",
     "PresetError",
     "QueueFull",
+    "cache_ready",
+    "cached_sizes",
     "can_generate",
     "estimate",
     "normalise",
@@ -87,6 +90,12 @@ FIXED = {
 }
 
 
+RESTYLE_NEEDS = (
+    "a palette-only restyle needs the raster cache a full render kept at this size; "
+    "render once with “keep the raster cache” ticked"
+)
+
+
 class PresetError(ValueError):
     """A preset or option the server will not run, worded for the player."""
 
@@ -123,18 +132,24 @@ def normalise(preset: str, options: dict | None) -> dict:
         recipe = options.get("recipe", "current")
         if recipe not in ("current", "kernel-only"):
             raise PresetError("recipe is current or kernel-only")
+        restyle = _bool(options, "restyle", False)
+        if restyle and recipe == "kernel-only":
+            raise PresetError(
+                "a palette-only restyle draws from the raster cache; kernel-only has none"
+            )
         return {
             "layers": [layer for layer in RENDER_LAYERS if layer in layers],
             "size": size,
             "recipe": recipe,
             "top": _bool(options, "top", True),
             "keep_cache": _bool(options, "keep_cache", False),
+            "restyle": restyle,
         }
     if preset == "artwork":
-        return {
-            "enhance": _bool(options, "enhance", False),
-            "tiles_2x": _bool(options, "tiles_2x", True),
-        }
+        enhance = _bool(options, "enhance", False)
+        if enhance and not vulkan_available():
+            raise PresetError("upscaling needs a Vulkan GPU, and none was found at server start")
+        return {"enhance": enhance, "tiles_2x": _bool(options, "tiles_2x", True)}
     if preset in INPUT_PRESETS:
         return {}
     raise PresetError(f"no preset “{preset}”; known: {', '.join(PRESETS)}")
@@ -148,7 +163,7 @@ def _render_seconds(options: dict) -> dict[str, float]:
     area = _area(options["size"])
     kernel = options["recipe"] == "kernel-only"
     stages = {"prep": RENDER_STAGE_S["prep"]}
-    if not kernel and not options.get("_cache_hit"):
+    if not kernel and not options.get("_cache_hit") and not options.get("restyle"):
         stages["sweep"] = RENDER_STAGE_S["sweep"]
         stages["direct"] = max(DIRECT_FLOOR_S, RENDER_STAGE_S["direct"] * area)
         if options["top"]:
@@ -178,6 +193,8 @@ def _scaled_history(preset: str, options: dict) -> float | None:
         was = row.get("options") or {}
         if was.get("recipe") != options["recipe"] or not was.get("size"):
             continue
+        if bool(was.get("restyle")) != options["restyle"]:
+            continue
         layers = max(1, len(was.get("layers") or []))
         per_layer = row["seconds"] / layers
         return (
@@ -192,12 +209,27 @@ def cache_dir(size: int) -> Path:
     return registry.maps_dir() / registry.CACHE_DIR_NAME / f"{size}"
 
 
+#: The raster caches a palette-only restyle draws from, by their directory names.
+CACHE_PARTS = ("direct.cache", "top.cache", "meshes.cache")
+
+
+def cache_ready(size: int) -> bool:
+    """Whether a full render kept every raster a restyle at this size needs."""
+    return all((cache_dir(size) / part / "meta.json").is_file() for part in CACHE_PARTS)
+
+
+def cached_sizes() -> list[int]:
+    return [size for size in RENDER_SIZES if cache_ready(size)]
+
+
 def estimate(preset: str, options: dict) -> dict:
     """``{seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason}``."""
     options = normalise(preset, options)
     if preset == "render":
         area = _area(options["size"])
-        cached = cache_dir(options["size"]).is_dir()
+        cached = cache_ready(options["size"])
+        if options["restyle"] and not cached:
+            raise PresetError(RESTYLE_NEEDS)
         seconds = sum(_render_seconds({**options, "_cache_hit": cached}).values())
         keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(RENDER_KEEP_BYTES * area))
         transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
@@ -264,6 +296,7 @@ def can_generate() -> dict:
         "tools": tools,
         "game": game,
         "heightfield": heightfield,
+        "vulkan": vulkan_available(),
         "ok": reason is None,
         "reason": reason,
     }
@@ -299,6 +332,8 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
     produces: dict[str, dict] = {}
     if preset == "render":
         recipe = _recipe(options)
+        if options["restyle"] and not cache_ready(options["size"]):
+            raise PresetError(RESTYLE_NEEDS)
         argv = [
             "--game", game,
             "--field", str(local / "heightmap"),
@@ -312,8 +347,10 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
             argv.append("--kernel-only")
         if not options["top"]:
             argv.append("--no-top")
-        if options["keep_cache"] or cache_dir(options["size"]).is_dir():
+        if options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir():
             argv += ["--cache-dir", str(cache_dir(options["size"])), "--keep-direct"]
+        if options["restyle"]:
+            argv.append("--restyle")
         for layer in options["layers"]:
             style = ax.LAYER_STYLE[layer]
             ident = ax.derive_id(STYLES[style]["label"], recipe, cl, taken | set(produces))

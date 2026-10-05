@@ -28,6 +28,7 @@ __all__ = [
     "derive_id",
     "display_name",
     "sort_key",
+    "style_tone",
     "verdict",
 ]
 
@@ -311,6 +312,13 @@ def renderer_label(axes: dict) -> str:
 def style_label(axes: dict) -> str:
     style = axes.get("style") if isinstance(axes.get("style"), dict) else {}
     return str(style.get("label") or style.get("id") or "unknown")
+
+
+def style_tone(axes: dict) -> str:
+    """``light`` or ``dark``: the sidecar's word, else the style table's, else light."""
+    style = axes.get("style") if isinstance(axes.get("style"), dict) else {}
+    tone = style.get("tone") or STYLES.get(str(style.get("id")), {}).get("tone")
+    return tone if tone in ("light", "dark") else "light"
 
 
 def data_label(axes: dict) -> str:
