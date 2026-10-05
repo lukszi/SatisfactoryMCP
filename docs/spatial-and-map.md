@@ -761,11 +761,16 @@ and that is a measurement rather than a preference: 95.2% of it stands over the 
 and 98% of its surface levels lie in a 0.7 m band around the ocean's own −16.99 m. It is the
 ocean. Running the ramp on `water_m − z_m` there would paint it the pale green of an
 ankle-deep sheet, because the number being subtracted is a 3.9 m raster's rounding error.
+Since 2026-10-05 the renders subtract a drawn bed instead, continued from the measured one
+beside it (section 26); only `--kernel-only` and level-only water away from the ocean's level
+keep the deep tint.
 
 One thing the channel still cannot fix: beyond the landscape's own extent the field has no
-height *and* no water volume, so those texels stay the page's `--sea`. Against bright water
-that edge is visible in the corners of the frame. It is the render saying nothing, which is
-the intended behaviour, and filling it would mean inventing ocean.
+height *and* no water volume, so those texels stay no-data in the field. The renders used to
+paint them the page's `--sea`, and against bright water that edge drew straight lines across
+the sea. Since 2026-10-05 the renders draw them as the artwork does instead: its water as
+the open sea over a drawn bed, the rest as the void (section 26, "The open sea, the void and
+the pits"). The field itself is unchanged.
 
 ### Four gates, each aimed at a specific silent failure
 
@@ -1297,23 +1302,30 @@ in section 25. Build 502094.
 
 | Texels | Source | Share of the field |
 | --- | --- | --- |
-| Landscape | `terrain.u16.z`, unchanged | 45.46% |
-| Cliff province | the field's own heights, copied unchanged | 21.06% |
-| Fill | the float16 interface raster: Gaussian with sigma 1 texel, then cubic, then +1.0 m | 13.64% |
-| Fill within 48 m of the landscape | as above, plus the landscape's residual carried in by a harmonic solve and a cosine taper | 0.32% |
-| Interior holes | biharmonic fill, or harmonic where the biharmonic leaves its border's range by more than 2 m | 0.16% (26 holes, 11 harmonic) |
-| No data out to the field's edge | left empty: the page's sea colour | 19.37% |
+| Landscape | `terrain.u16.z`, unchanged | 45.39% |
+| Cliff province | the field's own heights, copied unchanged | 20.97% |
+| Fill | the float16 interface raster: Gaussian with sigma 1 texel, then cubic, then +1.0 m | 13.49% |
+| Fill within 48 m of the landscape | as above, plus the landscape's residual carried in by a harmonic solve and a cosine taper | 0.25% |
+| Interior holes | biharmonic fill, or harmonic where the biharmonic leaves its border's range by more than 2 m | 0.005% outside the cliff province (35 holes, 14 harmonic, nearly all ground under rock) |
+| Pits: no data and ground below -200 m the artwork draws as void | left empty, drawn as the void | 0.55% (681 regions; 210,086 texels of ground) |
+| No data out to the field's edge | left empty: the open sea or the void, as the artwork has it | 19.35% |
+
+Shares from the 2048 preview of 2026-10-05, after the pits were taken out; before that the
+landscape was 45.46%, the cliff province 21.06%, the fill 13.64% and 0.32%, and 26 interior
+holes (0.16%, 11 harmonic) were filled, the pits among them.
 
 - **The de-terracing is gone.** `FILL_VERTICAL_M = 3.9` assumes an 8-bit raster. The raster
   is float16, with steps of 0.24–0.49 m, so there was nothing to de-terrace.
 - **Rock is never a constraint.** A hole next to a rock, or the ground under a rock with no
   landscape sample, is filled from the ground around it. The rock's own heights stay in the
   cliff province and are composited by coverage, as before.
-- **The open sea stays the page's colour.** The prototype drew the sea past the data as water
-  over an invented bed. That was declined: nothing is drawn where the field has no data.
-- **Water over the fill province** is drawn as before: level known, depth not, full alpha and
-  the deep tint. The raster stores the water surface there, so the ground under it is not a
-  sea bed and is not read as one.
+- **The open sea past the data** was left the page's colour, and the prototype's water over
+  an invented bed was declined. Its straight landscape-component edges then read as a
+  two-colour ocean in every style, so since 2026-10-05 a bed is drawn under it after all,
+  as drawing support and never as data: see "The open sea, the void and the pits" below.
+- **Water over the fill province** is not read against the raster: the raster stores the
+  water surface there, so the ground under it is not a sea bed. Until 2026-10-05 it was drawn
+  at full alpha and the deep tint; at the ocean's level it now gets the open sea's bed too.
 - **Holes under water** stand at least 0.5 m below their own water surface.
 
 The **sampler** is tensor-product PCHIP with Fritsch-Butland slopes: the harmonic mean of the
@@ -1351,6 +1363,73 @@ half and is scored on the east.
 - The 1 m staircase along the water edge is unchanged, because the water quality plane is 1 m.
 - The rebuilt lattice is not stored. The server's height lookups still read the field as
   generated.
+
+### The open sea, the void and the pits (2026-10-05)
+
+A review of the 2048 preview found the sea split into straight-edged blocks in every style.
+Four causes, all in how the shared band loop drew water and no data:
+
+- **Level-only ocean had no bed.** It covers 13.1% of the field (95% over the fill province)
+  and was drawn at the deep end of every ramp. The measured ocean beside it has its own depth:
+  61 m in the median where the two meet (the game's unsculpted floor), but in places a shelf
+  about 8 m deep runs straight up to a landscape component's edge. Every such edge was a
+  colour step.
+- **No data was sea and void at once.** Every no-data texel was the page's navy. The artwork
+  draws 86% of them black, the void past the world's edge, and 356,283 of them (the strip down
+  the west edge, among others) as sea; the water channel already calls those level-only water.
+- **Pits were filled flat.** The fill gave every interior no-data hole a membrane. The artwork
+  draws 14 of them as pits, among them the crater at (-164, 1310) (74,763 texels) and the pits
+  at (240, 1608) and (2224, 1566), the second the square notch beside the abyss. Other pits
+  are not holes but ground at the landscape's own floor, its lowest height (-254 to -258 m,
+  137,337 texels): the abyss pits around (2037, 1283) and (2107, 1485), and the fill at the
+  north-east corner (3941, -2935). They drew as flat ground at the bottom of every ramp.
+- **Render-only meshes became islands** in the styles that draw ground and water only
+  (section 27).
+
+What is drawn now, by `gamedata/water.py`, `terrain/fill.py` and `palette/water.py`:
+
+- **The artwork says sea or void.** `artwork_planes` classifies the decoded sheet on the 1 m
+  grid: water is the water channel's own test (`B - R >= 25`), void is anything else with a
+  Rec. 601 luma of 110 or less. The pits are black to a flat grey (luma 0 to about 80), the
+  ground beige or white (140 and up).
+- **A pit stays empty.** A region of no data and of ground below -200 m is a pit when at
+  least half of it is void in the artwork: 0.88 to 0.95 for the crater and the abyss pits, 0.5
+  to 0.7 for a crack under its white outline, 0.44 and less for the holes drawn as ground. Of
+  the ground below -200 m the artwork draws 93% as void, and 210,086 of its 213,306 texels lie
+  in regions that pass. A pit is taken out of both lattices, so it is drawn as the void; the
+  ground under rock beside it is still filled, bounded by it, unless the pit walls it in.
+- **The open sea gets a bed.** Under no-data texels the artwork draws as water, and under
+  level-only water within 1 m of the ocean's level, `open_sea` writes a bed into the lattice
+  the run draws. It is a screened Poisson membrane on a 4 m grid: the measured ocean's own
+  depth where the two meet, the surface at a dry coast, and settling to 60 m over about 400 m
+  away from both. A coast is dry ground standing at least 1 m above the top of the ocean's
+  band (-16 m) in the field as stored; dry ground at or under that top is sea the artwork's
+  mask left dry and joins it. The field's fill holds the sea's surface to within 0.7 m, and
+  the rebuilt fill stands 1 m above that, so only the stored heights can tell the two apart.
+  The water's depth is then read off that bed like any measured
+  water's, so every style draws one surface, the hillshade has no 60 m step to light at the
+  edge of the data, and the water classes and the relief tint read the same planes. 7.44 M
+  texels get a bed, in about 7 s, among them 53,117 dry texels at or under the band's top
+  beside the open sea, mostly the rows along the frame's edge the artwork's mask left dry.
+- **The void** is every other no-data texel, pits included: 10.84 M. It is drawn in the
+  page's navy, softened over 2 m and kept off any rock standing in it, and a pixel shared by
+  sea and void counts its water against the part that is not void, so the void's edge is
+  never drawn as land.
+
+The bed is drawing support, not a measurement: the field, its quality byte and the server's
+lookups are unchanged, and `--kernel-only` (recipe 2) still draws the page's sea past the
+data. The sidecar records the rule and the counts under `water.level_only` and the pits
+under `two_regime.fill_rebuild.pits`.
+
+Known limits:
+
+- A measured shelf that runs straight to a landscape component's edge still shows its
+  staircase, now as a soft gradient over a few hundred metres rather than a line.
+- A pit's edge is the data's: where the field has ground above -200 m beside a pit and the
+  artwork draws void, the ground is drawn.
+- 681 regions pass, many of them a few texels of deep ground; each is drawn as the void.
+- In the satellite and relief dark styles the deep sea and the void are close in colour.
+- The falls off the edge of the world are still left out (section 35).
 
 ### Cost and output
 
@@ -1422,6 +1501,14 @@ They are rasterised into `meshes.cache/` beside `direct.cache/` and `top.cache/`
 build stamp, plus the reader version), with a class plane: coral, shell or rock. They are
 composited with the top layer's raise-only lift, and only where the mesh top stands within
 0.6 m of the water surface or above it, so seabed coral roots do not speckle the sea.
+
+The terrain, satellite and relief styles draw ground and water only, so since 2026-10-05 a
+mesh never breaks the water's surface there: under water, coral, shells and terraces are
+left to the seabed, and a rock is drawn only where its top stands above the surface. Most
+coral kept by the 0.6 m rule stands well clear of the water (median 6 m), so each was a one-
+or two-pixel island in the lagoons. At 2048 px this takes the mesh pixels over water from
+4,326 to 902 on the whole sheet and from 779 to 79 on the Spire Coast crop at (16, -2137).
+The game-painted style keeps the rule above and colours the meshes itself.
 
 **The heightfield is unchanged.** `CliffPillar_03` stays excluded there because it is passable
 in game: the map draws what the artwork draws, and height lookups keep reading the walkable
@@ -1539,16 +1626,30 @@ cartographic) and C (dark). Terrain and satellite stay selectable unchanged. Bui
    shadow side towards a cool hue and the sunlit side a little warm.
 5. **Borrow**: the artwork's high pass rides on L only, as the cube root of the luminance
    multiplier the other styles use, with its dark (ink) side damped to 0.25.
-6. **Water**: a 1 m tint plane built once per run, `1 − exp(−depth/τ)` for measured water and
-   0.85 for level-only water, blurred (12 m light, 6 m dark) and normalised by the wet mask, so a
-   shore takes the colour of the water beside it and no tint step follows the data edge. Over the
-   sea the opacity rises from 0.45 at the line with a 0.8 m depth fade; the light style strokes
-   the shoreline. No data stays the page's sea colour, as in every style.
+6. **Water**: a 1 m tint plane built once per run, `1 − exp(−depth/τ)` for measured water,
+   blurred (12 m light, 6 m dark) and normalised by the wet mask, so a shore takes the colour
+   of the water beside it and no tint step follows the data edge. The depth is read off the
+   ground the run draws, so the open sea's bed (section 26) tints the open sea; level-only
+   water away from the ocean's level stays at 0.85. Over the sea the opacity rises from 0.45 at
+   the line with a 0.8 m depth fade; the light style strokes the shoreline at 0.2. The void
+   stays the page's sea colour, as in every style.
 
 The dark ramp's top two stops were `(.480 .040 40)` and `(.530 .038 285)`, which made high ground
 mauve-grey mud (92% on the gentle crop in the study). They are now `(.480 .055 70)` and
 `(.530 .045 85)`, ending warm; the two lowest stops moved from teal to green so lowland no longer
 matches the shallow water.
+
+Two changes on 2026-10-05, from a visual review of the 2048 preview:
+
+- **The light style's shoreline stroke** was 0.55, which inked a dark rim round every island
+  and rock in the water. It is 0.2.
+- **The dark style's contrast.** Its land ran from L 0.32 to 0.53 and its shallow water sat at
+  L 0.34, so the shallows read as lowland. The ramp now runs from `(.360 .056 148)` to
+  `(.600 .048 85)` with the same hues, and the water is darker and bluer: shallow
+  `(.300 .066 226)`, deep `(.215 .046 244)`. On the 2048 preview the land's median L goes
+  from 0.38 to 0.44 and water 0.5 to 4 m deep from 0.33 to 0.30, and the share of land
+  darker than that water from 20% to 8%. The mud shares in the table below are from before
+  this change and were not re-measured.
 
 ### Measured
 
@@ -2368,6 +2469,9 @@ other render-only meshes.
   but it can draw a straight cut across the foam.
 - A 277 m wide fall, such as the one at (1784, 559), draws a long bright bar. At z3 and below
   it is one of the brightest features in its area.
+- The 102 falls off the edge of the world stay out. The artwork draws them as curtains on
+  the void's edge, and since section 26's void follows the artwork they could be drawn
+  there; whether they should is still open.
 ## 36. Tree crowns (2026-10-05)
 
 The painted style drew trees as a soft canopy: one blurred disc per tree with a radius guessed
@@ -2468,6 +2572,7 @@ pixel, these rules decide.
 | Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 5 (the per-area targets of section 31 on top of sections 32 to 36). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. The water classes and the relief tint read that result, not the field's box levels. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
+| Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes). |
 
 ### Known limits
 
