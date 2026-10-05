@@ -31,7 +31,7 @@ HEIGHTFIELD_GENERATOR_VERSION = 5
 CAVES_VERSION = 1
 
 #: ``tools/gen_paint_layers.py``'s output version; ``paint/meta.json``'s ``generator_version``.
-PAINT_GENERATOR_VERSION = 1
+PAINT_GENERATOR_VERSION = 2
 
 #: How the inputs a render reads straight from the install are decoded. ``cliff_geometry``
 #: is the heightfield generator's own sweep and decode, imported by the renders.
