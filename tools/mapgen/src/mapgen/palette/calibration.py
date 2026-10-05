@@ -7,6 +7,7 @@ transfer and the area scoping. docs/spatial-and-map.md section 31.
 from __future__ import annotations
 
 import numpy as np
+from scipy import ndimage
 
 from mapgen.palette.colour import LUMA, linear_from_oklab, oklab, srgb_to_linear, unit_luminance
 
@@ -18,6 +19,7 @@ __all__ = [
     "flat_ground_light",
     "layer_transfer",
     "median_lab",
+    "rehome_offshore",
     "sampled_rgb",
     "scoped_planes",
     "split_weight",
@@ -108,6 +110,39 @@ def area_ids(area_names: list[str], assets: list, keys) -> list[int]:
         for i, name in enumerate(area_names)
         if name in keys or (i < len(assets) and assets[i] in keys)
     ]
+
+
+def rehome_offshore(index: np.ndarray, names: list[str], land: np.ndarray, sea: str) -> np.ndarray:
+    """The area raster with each area's offshore pieces handed to the area they border.
+
+    A piece of an area other than the one holding most of its land, and itself mostly sea,
+    takes the named area it borders most, else ``sea``. ``land`` is a bool plane on ``index``.
+    """
+    out = index.copy()
+    eight = np.ones((3, 3), bool)
+    seas = [i for i, name in enumerate(names) if name == sea]
+    for stem in sorted(set(names) - {sea}):
+        ids = [i for i, name in enumerate(names) if name == stem]
+        pieces, count = ndimage.label(np.isin(index, ids), eight)
+        if count < 2:
+            continue
+        cells = np.bincount(pieces.ravel(), minlength=count + 1)[1:]
+        held = np.bincount(pieces.ravel(), land.ravel().astype(np.float32), count + 1)[1:]
+        main = int(np.argmax(held))
+        for k, box in enumerate(ndimage.find_objects(pieces)):
+            if k == main or 2 * held[k] >= cells[k]:
+                continue
+            box = tuple(slice(max(s.start - 1, 0), s.stop + 1) for s in box)
+            piece = pieces[box] == k + 1
+            ring = ndimage.binary_dilation(piece, eight) & ~piece
+            border = np.bincount(index[box][ring], minlength=len(names))[: len(names)]
+            border[ids] = 0
+            named = border.copy()
+            named[seas] = 0
+            pick = named if named.any() else border
+            if pick.any():
+                out[box][piece] = np.argmax(pick)
+    return out
 
 
 def split_weight(weight: np.ndarray, share_u8: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

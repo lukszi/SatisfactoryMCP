@@ -31,6 +31,7 @@ from mapgen.palette.calibration import (
     display_to_linear,
     layer_transfer,
     median_lab,
+    rehome_offshore,
     sampled_rgb,
     scoped_planes,
     split_weight,
@@ -55,7 +56,7 @@ from mapgen.palette.optics import (
     water_table,
 )
 from mapgen.palette.optics import paint_plane as _plane
-from mapgen.palette.shore import OCEAN_LEVEL_M, add_foam, wet_band
+from mapgen.palette.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, add_foam, wet_band
 from mapgen.palette.surfaces import (
     canopy_over_rock,
     family_tables,
@@ -66,6 +67,7 @@ from mapgen.palette.surfaces import (
 from mapgen.palette.trees import IDENTITY_OP, crown_ops, over_crowns, sample_titan, titan_over
 from mapgen.terrain.crowns import load_crowns
 from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL, MESH_TERRACE, TITAN_LEAVES, TITAN_TRUNK
+from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -83,6 +85,7 @@ __all__ = [
     "dry_land_range",
     "ground_albedo",
     "hidden_ground",
+    "land_cells",
     "layer_table",
     "layer_transfer",
     "linear_from_oklab",
@@ -223,6 +226,22 @@ def biome_grid(biome: dict, rows: int, cols: int) -> np.ndarray:
     return biome["area"][np.ix_(r, c)]
 
 
+def land_cells(field, shape: tuple[int, int]) -> np.ndarray | None:
+    """Ground the sea does not cover, on a grid of ``shape`` over the field, nearest; None for a
+    field without water planes. Water at the ocean's level is sea whatever its grade, and so is
+    the void off the landscape."""
+    water, grades = field._water_raster(), field._water_quality_raster()
+    if water is None or grades is None:
+        return None
+    rows = np.minimum(np.arange(shape[0]) * field.height // shape[0], field.height - 1)
+    cols = np.minimum(np.arange(shape[1]) * field.width // shape[1], field.width - 1)
+    pick = np.ix_(rows, cols)
+    level = water[pick].astype(np.float32) / np.float32(hf.DM_PER_M)
+    sea = (grades[pick] != hf.WATER_DRY) & (water[pick] != hf.NODATA)
+    sea &= np.abs(level - OCEAN_LEVEL_M) <= OCEAN_LEVEL_BAND_M
+    return (field._height_dm[pick] != hf.NODATA) & ~sea
+
+
 @dataclass(frozen=True)
 class GroundBake:
     """The game's baked ground colour on the paint grid: linear RGB and where it exists."""
@@ -300,7 +319,7 @@ class PaintedGround:
         index = biome_grid(biome, rows, cols)
         self.area_names = area_names
         self.area_assets = list(biome.get("assets_by_index") or [])
-        self.coarse_index = index[::ROCK_GRID_M, ::ROCK_GRID_M]
+        self.coarse_index = self._coarse_areas(index, field)
         albedo = self._calibrate(albedo, weights)
         del weights
         albedo = self._fallback(albedo, have, index, len(area_names))
@@ -536,6 +555,18 @@ class PaintedGround:
         if self.bake_weight is not None:
             w = self.bake_weight[..., None]
             out = out * (1.0 - w) + albedo * w
+        return out
+
+    def _coarse_areas(self, index, field) -> np.ndarray:
+        """The area raster on the rock grid, with the areas' offshore pieces rehomed: the
+        game's map gives the sea north of the Spire Coast, islands and all, to the Rocky
+        Desert, whose rock and sand targets are not theirs."""
+        coarse = index[::ROCK_GRID_M, ::ROCK_GRID_M]
+        land = land_cells(field, coarse.shape)
+        if land is None:
+            return coarse
+        out = rehome_offshore(coarse, self.area_names, land, NO_MANS_LAND)
+        self.source["offshore_cells_rehomed"] = int((out != coarse).sum())
         return out
 
     def _target(self, hex_colour: str) -> np.ndarray:
