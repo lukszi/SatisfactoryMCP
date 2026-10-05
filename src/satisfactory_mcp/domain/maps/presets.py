@@ -71,6 +71,11 @@ GEN_MODULES = ("ooz", "texture2ddecoder", "PIL")
 #: never drops under its floor because the triangles are the same at any size.
 RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
 RENDER_LAYER_S = {"draw": 355.0, "cut": 122.0}
+#: ``--unlit``: the lighting bake once (projected, docs/spatial-and-map.md section 28), and per
+#: layer the unlit tree cut beside the baked one.
+LIGHT_STAGE_S = 600.0
+LIGHT_KEEP_BYTES = 1_000_000_000
+UNLIT_KEEP_BYTES = 420_000_000
 DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
 RENDER_KEEP_BYTES = 830_000_000
@@ -129,6 +134,7 @@ def normalise(preset: str, options: dict | None) -> dict:
             "recipe": recipe,
             "top": _bool(options, "top", True),
             "keep_cache": _bool(options, "keep_cache", False),
+            "light": _bool(options, "light", False),
         }
     if preset == "artwork":
         return {
@@ -153,9 +159,12 @@ def _render_seconds(options: dict) -> dict[str, float]:
         stages["direct"] = max(DIRECT_FLOOR_S, RENDER_STAGE_S["direct"] * area)
         if options["top"]:
             stages["top"] = max(TOP_FLOOR_S, RENDER_STAGE_S["top"] * area)
-    for layer in options["layers"]:
+    for k, layer in enumerate(options["layers"]):
         stages[f"draw:{layer}"] = RENDER_LAYER_S["draw"] * area + 2.0
-        stages[f"cut:{layer}"] = RENDER_LAYER_S["cut"] * area + 2.0
+        if options.get("light") and k == 0:
+            stages["light"] = LIGHT_STAGE_S * area + 2.0
+        cut = RENDER_LAYER_S["cut"] * (1.5 if options.get("light") else 1.0)
+        stages[f"cut:{layer}"] = cut * area + 2.0
     return stages
 
 
@@ -199,7 +208,9 @@ def estimate(preset: str, options: dict) -> dict:
         area = _area(options["size"])
         cached = cache_dir(options["size"]).is_dir()
         seconds = sum(_render_seconds({**options, "_cache_hit": cached}).values())
-        keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(RENDER_KEEP_BYTES * area))
+        per_layer = RENDER_KEEP_BYTES + (UNLIT_KEEP_BYTES if options["light"] else 0)
+        keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(per_layer * area))
+        keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
         transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
     elif preset == "artwork":
         seconds, keep = FIXED["artwork"]["enhanced" if options["enhance"] else "plain"]
@@ -312,6 +323,8 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
             argv.append("--kernel-only")
         if not options["top"]:
             argv.append("--no-top")
+        if options["light"]:
+            argv.append("--unlit")
         if options["keep_cache"] or cache_dir(options["size"]).is_dir():
             argv += ["--cache-dir", str(cache_dir(options["size"])), "--keep-direct"]
         for layer in options["layers"]:

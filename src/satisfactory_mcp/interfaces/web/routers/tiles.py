@@ -220,6 +220,93 @@ def map_tile_path(
     return directory / tree / tile_relpath(z, x, y)
 
 
+#: The query parameter that asks a lit layer for one of its lighting trees instead of its
+#: colour: the unlit colour, or the light pyramid's normals or horizons. docs/maps_contract.md
+#: section 8.1.
+MAP_TILE_KIND_PARAM = "kind"
+LIGHT_KINDS = {"unlit": ".png", "nrm": ".nrm.webp", "hz": ".hz.webp"}
+
+
+def _sidecar_meta(path: Path | None) -> dict[str, Any]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path is not None else {}
+    except (OSError, ValueError):
+        return {}
+    block = raw.get("_meta") if isinstance(raw, dict) else None
+    return block if isinstance(block, dict) else {}
+
+
+def _light(layer: str) -> dict[str, Any] | None:
+    """A lit layer's lighting: its unlit tree, the light pyramid, the shader's numbers.
+
+    ``None`` for a layer drawn lit. The light pyramid's folder comes from the sidecar and is
+    refused unless it resolves inside ``data/local``, like a registry ``dir``.
+    """
+    directory = _layer_dir(layer)
+    block = _sidecar_meta(_layer_sidecar(layer)).get("light")
+    if directory is None or not isinstance(block, dict) or not isinstance(block.get("dir"), str):
+        return None
+    root = (directory / block["dir"]).resolve()
+    if not root.is_relative_to(_local_dir().resolve()):
+        return None
+    meta = _sidecar_meta(root / MAP_RENDER_SIDECAR_NAME)
+    tiles = meta.get("tiles") if isinstance(meta.get("tiles"), dict) else {}
+    unlit = block.get("unlit_tiles") if isinstance(block.get("unlit_tiles"), dict) else {}
+    model = meta.get("light") if isinstance(meta.get("light"), dict) else {}
+    if not isinstance(tiles.get("max_z"), int) or not isinstance(unlit.get("max_z"), int):
+        return None
+    stamp = "|".join([layer, str(model.get("digest")), *(str(tiles.get(k)) for k in ("count", "bytes")),
+                      str(unlit.get("bytes"))])  # fmt: skip
+    return {
+        "root": root,
+        "unlit": directory / str(block.get("unlit_dir") or "unlit"),
+        "max_z": tiles["max_z"],
+        "unlit_max_z": unlit["max_z"],
+        "header": {
+            "build": hashlib.sha256(stamp.encode("utf-8")).hexdigest()[:12],
+            "max_z": tiles["max_z"],
+            "unlit_max_z": unlit["max_z"],
+            "params": block.get("params"),
+            "baked_sun": block.get("baked_sun"),
+            "model": {k: v for k, v in model.items() if k not in ("label", "digest")},
+        },
+    }
+
+
+def _light_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
+    """One tile of a lit layer's ``unlit``, ``nrm`` or ``hz`` tree; ``kind`` picks which."""
+    kind = request.query_params.get(MAP_TILE_KIND_PARAM, "")
+    light = _light(layer)
+    if kind not in LIGHT_KINDS or light is None:
+        return _fail(
+            f"no {kind!r} tiles for {layer}: kind is one of {', '.join(LIGHT_KINDS)}, on a "
+            "layer drawn with --unlit",
+            404,
+        )
+    depth = light["unlit_max_z"] if kind == "unlit" else light["max_z"]
+    span = 1 << z
+    if not (0 <= z <= depth and 0 <= x < span and 0 <= y < span):
+        return _fail(f"no {kind} tile {layer}/{z}/{x}/{y}: that tree runs z0..z{depth}", 404)
+    stem = tile_relpath(z, x, y)[: -len(".png")]
+    tree = light["unlit"] if kind == "unlit" else light["root"] / MAP_TILES_DIR_NAME
+    path = tree / (stem + LIGHT_KINDS[kind])
+    if not path.is_file():
+        if request.method == "HEAD":
+            return Response(status_code=204)
+        return _fail(f"no {kind} tile {layer}/{z}/{x}/{y}: {path} is not there", 404)
+    etag = f'"{light["header"]["build"]}"'
+    headers = {
+        "Cache-Control": "public, max-age=31536000, immutable"
+        if "v" in request.query_params
+        else "no-cache",
+        "ETag": etag,
+    }
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    media = "image/png" if kind == "unlit" else "image/webp"
+    return FileResponse(path, media_type=media, headers=headers)
+
+
 def _tile_tree(request: Request, pyramid: dict[str, Any]) -> tuple[str, int]:
     """Which of a layer's two trees this request asked for, and how deep that one goes.
 
@@ -327,6 +414,8 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
     names the tile size it wants. The @2x tree is one level shallower, which is why the depth
     in the headers is the depth of the tree actually being served and both are advertised.
     """
+    if MAP_TILE_KIND_PARAM in request.query_params:
+        return _light_tile(request, layer, z, x, y)
     pyramid = _map_pyramid(layer)
     tree, depth = _tile_tree(request, pyramid)
     path = map_tile_path(z, x, y, depth, layer, tree)
@@ -377,6 +466,10 @@ def _serve_tile(request: Request, layer: str, z: int, x: int, y: int) -> Any:
         "Cache-Control": "public, max-age=31536000, immutable" if versioned else "no-cache",
         "ETag": etag,
     }
+    light = _light(layer) if z == 0 else None
+    if light is not None:
+        # On the z0 probe only: what the page needs to relight this layer live.
+        headers["X-Map-Light"] = json.dumps(light["header"], separators=(",", ":"))
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
     return FileResponse(path, headers=headers)

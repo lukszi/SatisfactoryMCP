@@ -102,7 +102,7 @@ if one refuses. A folder left empty is removed unless it is a junction or a link
 
 ---
 
-## 3. Provenance: three axes, never one counter
+## 3. Provenance: four axes, never one counter
 
 Every map generator writes `_meta.provenance` through
 `core.gameassets.provenance.provenance_block`. The change is additive: no existing key moved,
@@ -126,6 +126,10 @@ and the tools' own staleness guards read what they always read.
 }
 ```
 
+- **`light`**, on a render drawn with `--unlit` only: the light model its lighting pyramid
+  was baked for, from `lighting/model.py`'s `light_axis()` (`id`, `version`, the model
+  constants, `digest`). `versions.LIGHTS` holds the current version. The name of such a type
+  ends in its label, "live sun". The sun position is a viewer setting, never provenance.
 - **Inputs list only what the map read.** Terrain has no `biome_raster`, so a new biome raster
   cannot make terrain stale.
 - **Size is a renderer parameter, not a version.** A 4096 preview and a 32768 render of one
@@ -385,6 +389,17 @@ registered type; an unknown id is a 404 listing the ids, and a `building` or `fa
 answers HEAD 204 and GET 404.
 
 ---
+
+### 8.1 Lit layers
+
+A layer drawn with `--unlit` names its lighting pyramid in its sidecar (`_meta.light.dir`,
+relative to the layer, refused unless it resolves inside `data/local`). Its z0 probe adds
+`X-Map-Light`, compact JSON: `{build, max_z, unlit_max_z, params, baked_sun, model}`.
+`?kind=unlit` serves the unlit colour (PNG), `?kind=nrm` and `?kind=hz` the lighting tiles
+(WebP); with `?v=` the light build tag they are immutable. Any other `kind`, or a layer drawn
+lit, is a 404. The `render` preset takes `light` (default false), which adds `--unlit`, a
+`light` stage after the first layer's draw, and the unlit and light trees to the estimate's
+bytes. docs/spatial-and-map.md §28 describes the light.
 
 ## 9. Verified
 
