@@ -8,8 +8,9 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import payback, prices
-from satisfactory_mcp.domain.planning.optimize import Scenario, machine_mw, solve
+from satisfactory_mcp.domain.planning.optimize import PAYBACK_STOPS, Scenario, machine_mw, solve
 from satisfactory_mcp.domain.planning.planlog import (
+    PAYBACK_MAX_H,
     Actor,
     InvalidOp,
     Outdated,
@@ -350,3 +351,41 @@ def test_the_page_pushes_a_row_choice(world, projection, game):
         row = next(r for r in after["rows"] if r["recipe_id"] == FUEL_ROW)
         assert row["overclock_option"]["applied"] and row["overclock_option"]["pinned"] == "last"
         assert row["last_clock"] > 1 and after["plan_id"] != before["plan_id"]
+
+
+# ------------------------------------------------------------------ F5a, F6a
+
+
+def test_a_release_that_switches_recipes_shows_in_the_two_solves(world, projection, game):
+    """The page names the switch from the build list before and after the release (F5a)."""
+    from fastapi.testclient import TestClient
+
+    from satisfactory_mcp.interfaces.web.app import create_app
+
+    app = create_app(
+        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
+        game_loader=lambda: game,
+    )
+    spire = {**SPIRE, "banned": SPIRE["exclude_recipes"]}
+    del spire["exclude_recipes"]
+    with TestClient(app) as client:
+        created = client.post("/api/plans", json={"name": "spire", "args": spire}, headers=ORIGIN)
+        key = created.json()["key"]
+        before = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
+        client.post(
+            f"/api/plans/{key}/ops",
+            json={"base_rev": 1, "ops": [_set("payback_hours", 1)]},
+            headers=ORIGIN,
+        )
+        after = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
+    was = {r["recipe"] for r in before["rows"]}
+    now = {r["recipe"] for r in after["rows"]}
+    assert now - was == {"Alternate: Diluted Packaged Fuel", "Packaged Water", "Unpackage Fuel"}
+    assert was - now == {"Alternate: Diluted Fuel"}
+
+
+def test_the_horizon_stays_capped_at_100_hours(plans, plan):
+    assert PAYBACK_STOPS[-1] == PAYBACK_MAX_H == 100.0
+    assert plans.push(plan, 1, [_set("payback_hours", 100)], actor=PAGE).rev == 2
+    with pytest.raises(InvalidOp, match="0 to 100 hours"):
+        plans.push(plan, 2, [_set("payback_hours", 100.5)], actor=PAGE)
