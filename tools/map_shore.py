@@ -70,7 +70,8 @@ def ocean_reach(field) -> tuple[np.ndarray, dict]:
         & (np.abs(level_m - OCEAN_LEVEL_M) <= OCEAN_LEVEL_BAND_M)
     )
     distance = ndimage.distance_transform_edt(~ocean) * (field.spacing_cm / 100.0)
-    reach = (distance <= OCEAN_REACH_M).astype(np.uint8)
+    # Level-only water stands over the fill, whose raster holds the surface, not a bed.
+    reach = ((distance <= OCEAN_REACH_M) & (grades != hf.WATER_LEVEL_ONLY)).astype(np.uint8)
     return reach, {
         "ocean_texels": int(ocean.sum()),
         "reach_texels": int(reach.sum()),

@@ -1287,8 +1287,10 @@ beach with a median slope of 0.067, smearing the edge over about 13 m. Nothing f
 1 m landscape exists in the game files, so the coast is now drawn from it.
 
 - **Where.** `tools/map_shore.py` `ocean_reach`: measured water whose level is within 0.5 m
-  of `OCEAN_LEVEL_M`, and every texel within 48 m of it. Rivers, lakes and level-only water
-  elsewhere keep recipe 5's rule, unchanged to the byte. Applying the crossing to all measured
+  of `OCEAN_LEVEL_M`, and every texel within 48 m of it that is not level-only water. Rivers,
+  lakes and all level-only water keep recipe 5's rule, unchanged to the byte. Level-only
+  water stands over the fill, whose raster holds the surface (about -16.3 m off the
+  landscape frame) rather than a bed; read as ground it drew a dry strip around the frame. Applying the crossing to all measured
   water would newly wet about 1 M texels of river and lake bank, because their box tops are
   flat while their banks are not.
 - **Coverage.** `cover = clip((L - z) / (|grad z| * px) + 0.5, 0, 1)`, with `z` the final

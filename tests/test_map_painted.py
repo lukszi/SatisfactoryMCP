@@ -72,6 +72,9 @@ def test_the_crossing_reaches_only_near_measured_ocean_and_never_a_lake():
     assert reach[:, : 20 + int(map_shore.OCEAN_REACH_M)].all()
     assert not reach[:, 20 + int(map_shore.OCEAN_REACH_M) + 1 :].any(), "the lake is untouched"
     assert meta["ocean_texels"] == 20 * n
+    grades[:, 20:30] = hf.WATER_LEVEL_ONLY
+    reach, _ = map_shore.ocean_reach(_field(water, grades, np.zeros((n, n), np.int16)))
+    assert not reach[:, 20:30].any(), "level-only water keeps recipe 5: its raster is the surface"
 
 
 def test_rivers_and_lakes_keep_recipe_5_exactly():
