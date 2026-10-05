@@ -4392,7 +4392,7 @@ export interface components {
         /** MapJobOptions */
         MapJobOptions: {
             /** Layers */
-            layers?: ("terrain" | "satellite")[];
+            layers?: ("terrain" | "satellite" | "painted")[];
             /** Size */
             size?: number;
             /**
@@ -4415,7 +4415,7 @@ export interface components {
              * Preset
              * @enum {string}
              */
-            preset: "render" | "artwork" | "heightmap" | "caves" | "rocks";
+            preset: "render" | "artwork" | "heightmap" | "caves" | "rocks" | "paint";
             options?: components["schemas"]["MapJobOptions"];
             /** Label */
             label?: string | null;
@@ -11112,7 +11112,7 @@ export interface operations {
     map_estimate_api_maps_estimate_get: {
         parameters: {
             query: {
-                preset: "render" | "artwork" | "heightmap" | "caves" | "rocks";
+                preset: "render" | "artwork" | "heightmap" | "caves" | "rocks" | "paint";
                 layers?: string;
                 size?: number;
                 recipe?: "current" | "kernel-only";

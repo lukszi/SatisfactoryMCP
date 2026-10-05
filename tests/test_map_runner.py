@@ -108,9 +108,9 @@ def test_a_job_runs_reports_progress_and_registers_what_it_wrote(env):
         runner = MapJobRunner(watcher)
         await runner.start()
         job = runner.submit("render", PREVIEW, "a preview", None)
-        assert job["status"] == "queued" and job["produces"] == ["terrain-r5-502094"]
-        assert registry.read()["types"]["terrain-r5-502094"]["status"] == "building"
-        assert registry.directory("terrain-r5-502094") is None
+        assert job["status"] == "queued" and job["produces"] == ["terrain-r6-502094"]
+        assert registry.read()["types"]["terrain-r6-502094"]["status"] == "building"
+        assert registry.directory("terrain-r6-502094") is None
         await _until(lambda: job["status"] not in ("queued", "running"))
         await runner.stop()
         seen = []
@@ -125,10 +125,10 @@ def test_a_job_runs_reports_progress_and_registers_what_it_wrote(env):
     assert job["pct"] == 1.0 and job["exit_code"] == 0
     assert seen[0] == "running" and seen[-1] == "done"
     assert watcher.latest[KIND_MAPS].data["job"]["status"] == "done"
-    entry = registry.read()["types"]["terrain-r5-502094"]
+    entry = registry.read()["types"]["terrain-r6-502094"]
     assert entry["status"] == "ready" and entry["label"] == "a preview"
     assert entry["dir"] == f"maps/{job['id']}/terrain"
-    assert registry.directory("terrain-r5-502094") is not None
+    assert registry.directory("terrain-r6-502094") is not None
     assert registry.read()["history"][-1]["preset"] == "render"
     on_disk = json.loads((store.jobs_dir() / f"{job['id']}.json").read_text(encoding="utf-8"))
     assert on_disk["status"] == "done"
@@ -180,7 +180,7 @@ def test_a_failing_generator_leaves_a_failed_job_and_no_type(env, monkeypatch):
     job = _run(main())
     assert job["status"] == "failed" and job["exit_code"] == 3
     assert job["error_line"] == "something broke in the cutter"
-    assert "terrain-r5-502094" not in registry.read()["types"]
+    assert "terrain-r6-502094" not in registry.read()["types"]
 
 
 def test_a_restarted_server_re_adopts_a_running_child_and_interrupts_a_dead_one(env, monkeypatch):
@@ -219,7 +219,7 @@ def test_a_restarted_server_re_adopts_a_running_child_and_interrupts_a_dead_one(
     runner = _run(main())
     child.popen.wait(timeout=10)
     assert runner.jobs["j-dead"]["status"] == "interrupted"
-    assert registry.read()["types"]["terrain-r5-502094"]["status"] == "ready"
+    assert registry.read()["types"]["terrain-r6-502094"]["status"] == "ready"
 
 
 def test_every_preset_writes_only_under_data_local(env):

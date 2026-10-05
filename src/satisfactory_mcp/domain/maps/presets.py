@@ -35,10 +35,12 @@ __all__ = [
     "plan",
 ]
 
-RENDER_LAYERS = ("terrain", "satellite")
+RENDER_LAYERS = ("terrain", "satellite", "painted")
+#: What a render job draws when it names no layers: the painted one needs the paint input.
+DEFAULT_LAYERS = ("terrain", "satellite")
 RENDER_SIZES = (1024, 2048, 4096, 8192, 16384, 32768)
 FULL_PX = 32768
-INPUT_PRESETS = ("heightmap", "caves", "rocks")
+INPUT_PRESETS = ("heightmap", "caves", "rocks", "paint")
 PRESETS = ("render", "artwork", *INPUT_PRESETS)
 
 SCRIPTS = {
@@ -47,6 +49,7 @@ SCRIPTS = {
     "heightmap": "gen_world_heightmap.py",
     "caves": "gen_world_heightmap.py",
     "rocks": "gen_world_heightmap.py",
+    "paint": "gen_paint_layers.py",
 }
 
 #: The modules the generators need from the ``gen`` extra.
@@ -69,6 +72,7 @@ FIXED = {
     "heightmap": (900.0, 700_000_000),
     "caves": (120.0, 2_000_000),
     "rocks": (300.0, 60_000_000),
+    "paint": (60.0, 60_000_000),
 }
 
 
@@ -95,7 +99,7 @@ def normalise(preset: str, options: dict | None) -> dict:
     """``options`` as the preset takes them, every value checked against its whitelist."""
     options = dict(options or {})
     if preset == "render":
-        layers = options.get("layers", list(RENDER_LAYERS))
+        layers = options.get("layers", list(DEFAULT_LAYERS))
         if (
             not isinstance(layers, list)
             or not layers
@@ -317,6 +321,8 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
         entry.update(status="building", job=job_id, size_px=8192)
         entry["axes"] = _planned_axes("artwork", recipe, "artwork", cl, 8192)
         produces[ident] = entry
+    elif preset == "paint":
+        argv = ["--game", game, "--out-dir", str(local / "paint")]
     else:
         argv = ["--game", game, "--force"]
         if preset == "caves":

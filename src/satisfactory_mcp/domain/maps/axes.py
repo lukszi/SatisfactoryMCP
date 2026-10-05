@@ -43,7 +43,12 @@ LEGACY_PLANES = {
     5: ["height", "prov", "water", "waterq", "density", "terrain"],
 }
 
-LAYER_STYLE = {"terrain": "terrain-hypsometric", "satellite": "satellite-biome", "map": "artwork"}
+LAYER_STYLE = {
+    "terrain": "terrain-hypsometric",
+    "satellite": "satellite-biome",
+    "painted": "satellite-painted",
+    "map": "artwork",
+}
 
 #: The inputs with a directory of their own under ``data/local``, as (dir, sidecar, version key).
 INPUT_DIRS = {
@@ -61,6 +66,7 @@ INPUT_NAMES = {
     "biome_raster": "biome raster reader",
     "artwork_sheet": "artwork sheet reader",
     "cliff_geometry": "cliff geometry reader",
+    "render_meshes": "render mesh reader",
 }
 
 

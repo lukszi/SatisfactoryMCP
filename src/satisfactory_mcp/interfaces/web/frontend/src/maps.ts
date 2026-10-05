@@ -32,7 +32,7 @@ export interface MapsHost {
 var form = {
   preset: "render",
   input: "heightmap",
-  layers: { terrain: true, satellite: true } as Record<string, boolean>,
+  layers: { terrain: true, satellite: true, painted: false } as Record<string, boolean>,
   size: 4096,
   top: true,
   recipe: "current",
@@ -353,7 +353,7 @@ var estimateSerial = 0;
 function formOptions(): Record<string, unknown> {
   if (form.preset === "render") {
     return {
-      layers: ["terrain", "satellite"].filter(function (l) {
+      layers: ["terrain", "satellite", "painted"].filter(function (l) {
         return form.layers[l];
       }),
       size: form.size,
@@ -439,7 +439,7 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
   what.appendChild(
     choice(
       [
-        ["render", "render: terrain, satellite"],
+        ["render", "render: terrain, satellite, game-painted"],
         ["artwork", "artwork from the game"],
         ["inputs", "heightfield inputs"],
       ],
@@ -455,7 +455,7 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
   var opts = make("div", "maps-options");
   if (form.preset === "render") {
     var layers = make("div", "maps-checks");
-    ["terrain", "satellite"].forEach(function (layer) {
+    ["terrain", "satellite", "painted"].forEach(function (layer) {
       layers.appendChild(
         checkbox(layer, !!form.layers[layer], function (on) {
           form.layers[layer] = on;
@@ -528,6 +528,7 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
           ["heightmap", "heightfield (replaces data/local/heightmap)"],
           ["caves", "cave masks"],
           ["rocks", "rock collision"],
+          ["paint", "paint layers (for game-painted)"],
         ],
         form.input,
         function (v) {
@@ -737,7 +738,12 @@ function inputLine(row: MapInputBody): string {
   return parts.join(" · ");
 }
 
-var INPUT_PRESET: Record<string, string> = { heightfield: "heightmap", caves: "caves", rocks: "rocks" };
+var INPUT_PRESET: Record<string, string> = {
+  heightfield: "heightmap",
+  caves: "caves",
+  rocks: "rocks",
+  paint: "paint",
+};
 
 function renderInputs(parent: HTMLElement, body: MapsResponse): void {
   var fold = make("details", "dash-card maps-inputs");

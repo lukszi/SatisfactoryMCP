@@ -12,6 +12,7 @@ __all__ = [
     "ARTWORK_RECIPES",
     "CAVES_VERSION",
     "HEIGHTFIELD_GENERATOR_VERSION",
+    "PAINT_GENERATOR_VERSION",
     "PROVENANCE_SCHEMA",
     "READER_VERSIONS",
     "RENDER_RECIPES",
@@ -29,12 +30,16 @@ HEIGHTFIELD_GENERATOR_VERSION = 5
 #: ``caves/meta.json``'s ``caves_version``.
 CAVES_VERSION = 1
 
+#: ``tools/gen_paint_layers.py``'s output version; ``paint/meta.json``'s ``generator_version``.
+PAINT_GENERATOR_VERSION = 1
+
 #: How the inputs a render reads straight from the install are decoded. ``cliff_geometry``
 #: is the heightfield generator's own sweep and decode, imported by the renders.
 READER_VERSIONS = {
     "biome_raster": 1,
     "artwork_sheet": 1,
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
+    "render_meshes": 1,
 }
 
 #: ``tools/gen_map_renders.py`` recipes. ``requires`` names the heightfield the recipe needs:
@@ -52,8 +57,12 @@ RENDER_RECIPES: dict[int, dict] = {
     5: {"label": "PCHIP", "sampler": "pchip", "two_regime": True, "version": 1,
         "requires": {"heightfield": {"min_version": 4,
                                      "planes": ["height", "density", "terrain", "top"]}}},
+    6: {"label": "crisp shore", "sampler": "pchip", "two_regime": True, "version": 1,
+        "requires": {"heightfield": {"min_version": 4,
+                                     "planes": ["height", "density", "terrain", "top",
+                                                "water", "waterq"]}}},
 }  # fmt: skip
-RENDER_RECIPE_CURRENT = 5
+RENDER_RECIPE_CURRENT = 6
 RENDER_RECIPE_KERNEL_ONLY = 2
 
 #: ``tools/gen_map_image.py``'s enhancement recipes: 0 is the game's own sheet, cut plainly.
@@ -66,7 +75,8 @@ ARTWORK_RECIPES: dict[int, dict] = {
 #: Palettes. A render's style ``id`` is its palette file's name under ``tools/palettes/``,
 #: and the version is bumped when a palette changes on purpose; the file's hash is the digest.
 STYLES: dict[str, dict] = {
-    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 1},
-    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 1},
+    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 2},
+    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 2},
+    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 1},
     "artwork": {"label": "artwork", "layer": "map", "version": 1},
 }

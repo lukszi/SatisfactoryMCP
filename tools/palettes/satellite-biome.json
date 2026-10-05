@@ -128,5 +128,11 @@
    1024,
    0.035
   ]
- ]
+ ],
+ "shore": {
+  "clarity_m": 1.1,
+  "edge_alpha": 0.38,
+  "wet_darken": 0.82,
+  "stroke": 0.0
+ }
 }

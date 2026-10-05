@@ -32,8 +32,8 @@ router = APIRouter(prefix="/api")
 
 Status = Literal["building", "ready", "failed", "missing"]
 JobStatus = Literal["queued", "running", "done", "failed", "cancelled", "interrupted"]
-Preset = Literal["render", "artwork", "heightmap", "caves", "rocks"]
-Layer = Literal["terrain", "satellite"]
+Preset = Literal["render", "artwork", "heightmap", "caves", "rocks", "paint"]
+Layer = Literal["terrain", "satellite", "painted"]
 
 
 class MapStaleAxis(TypedDict):
