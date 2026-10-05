@@ -1274,3 +1274,119 @@ from 3,638 to 3,554, and the pure-kernel p99 fell from 2.11 to 1.24.
 
 `--renders-name renders-v3` writes to `data/local/renders-v3/<layer>/`. Switching works as in
 section 25.
+
+## 27. A crisp shore, render-only meshes and the game-painted satellite: recipe 6 (2026-10-05)
+
+Recipe 6 fixes the north beach in every style and adds a third style. Build 502094.
+
+### The ocean shore
+
+Recipe 5 took the ocean's plan shape from `waterq.u8.z`, which inherits the artwork's water
+mask: 3.66 m BC1 blocks copied nearest-neighbour to 1 m. Its 0.9 m depth feather then ran on a
+beach with a median slope of 0.067, smearing the edge over about 13 m. Nothing finer than the
+1 m landscape exists in the game files, so the coast is now drawn from it.
+
+- **Where.** `tools/map_shore.py` `ocean_reach`: measured water whose level is within 0.5 m
+  of `OCEAN_LEVEL_M`, and every texel within 48 m of it. Rivers, lakes and level-only water
+  elsewhere keep recipe 5's rule, unchanged to the byte. Applying the crossing to all measured
+  water would newly wet about 1 M texels of river and lake bank, because their box tops are
+  flat while their banks are not.
+- **Coverage.** `cover = clip((L - z) / (|grad z| * px) + 0.5, 0, 1)`, with `z` the final
+  drawn surface (terrain, rocks, arches, render-only meshes). The edge is one antialiased
+  pixel at every zoom. The two rules are blended by the reach plane's bilinear coverage.
+- **Optics.** Over the sea the water's opacity is `a0 + (1 - a0)(1 - exp(-d / c))` over ground
+  darkened by `wet_darken`; the deep tint still uses `WATER_DEPTH_FULL_M`. A non-zero `a0` keeps
+  the line visible where the beach is flat, as the game draws it. Terrain: `a0` 0.62,
+  `c` 0.45 m. Satellite: 0.38 and 1.1 m. Wet darkening 0.82.
+- **The stroke.** A dark line where the crossing passes through a pixel is a style constant,
+  `shore.stroke`, and is 0 (off) in every palette.
+- **The level** is one constant, `OCEAN_LEVEL_M = -17.0`, the water boxes' and ocean tiles'
+  own level. The artwork, the paint's Sand/WetSand crossover and the lowest land plants agree
+  on about -17.4 instead. At -17.0 the spiral sandbars near (-339, -2275) read as shallows;
+  whether they are dry in game decides the constant.
+- **One pass.** Each painter now returns its ground and `water_composite` lays water over it
+  once; outside the reach it is exactly recipe 5's `water_over`. The prototype drew the painter
+  twice.
+
+### Render-only meshes
+
+Coral trees, big, plateau and small shells, `CliffPillar_03` and rubble are drawn by the
+artwork as land and are absent from the heightfield. `map_shore.mesh_items` takes the statics
+under `/Foliage/Coral/` and `/UnderWater/` plus `CliffPillar_03` from the same placement sweep,
+and the foliage instances of the same directories and of `/Rubble/` and `SeaRock` (minus the
+top-layer boulders) through a new `extra_foliage` harvest of `sweep_levels`. Each mesh is read
+at its finest source, falling back to its collision hull. On this build: 57,294 coral, 4,223
+shell and 38,009 rock instances.
+
+They are rasterised into `meshes.cache/` beside `direct.cache/` and `top.cache/` (same size and
+build stamp, plus the reader version), with a class plane: coral, shell or rock. They are
+composited with the top layer's raise-only lift, and only where the mesh top stands within
+0.6 m of the water surface or above it, so seabed coral roots do not speckle the sea.
+
+**The heightfield is unchanged.** `CliffPillar_03` stays excluded there because it is passable
+in game: the map draws what the artwork draws, and height lookups keep reading the walkable
+ground. The provenance input is `render_meshes`, reader version 1.
+
+### The paint input
+
+`tools/gen_paint_layers.py` (preset `paint`) writes `data/local/paint/` once per game build,
+in about 25 s, 54 MB:
+
+| File | What |
+| --- | --- |
+| `w.<Layer>.u8.z` | One weight plane per paint layer on the heightfield's 1 m grid, from each `LandscapeComponent`'s `WeightmapLayerAllocations` and its BGRA weightmap textures (17 layers on 2,289 components) |
+| `canopy.u8.z` | Tree crown cover, `1 - exp(-crown area per m^2)`, from 99,045 tree foliage instances with a crown radius per species |
+| `pigment.rgb.u8.z` | The `PigmentMap` texture, 1024 px, placed on the render frame |
+| `meta.json` | `generator_version`, `cl`, the game pin, file sha256s and `digest`; each layer's linear albedo (texture mean times `FG_Landscape_Inst` vector), the rock and canopy albedos, and the component origins |
+
+The layer-to-texture pairing is by name (`LAYERS` in the tool), because the cooked material
+graph that wires them is stripped. Extracted planes reproduce the prototype's painted raster to
+0.5% in linear light.
+
+### The game-painted style
+
+Layer `painted`, style `satellite-painted`, palette `tools/palettes/satellite-painted.json`,
+in `tools/map_painted.py`. Once per run, on the 1 m grid (about 80 s):
+
+1. Paint weights times layer albedo times 0.95, normalised by total weight; Puddles lerped on
+   top. WetSand's OKLab lightness is set to 0.9 of Sand's: as shipped it is lighter than the
+   sand it wets.
+2. Times `(0.85 + 0.15 * PigmentMap)`.
+3. **Component seams.** A component painted solid with one layer meets its neighbour in a
+   straight 127 m line. Where the jump across a component edge is a step (above 0.03 in
+   square-root linear), the colour is blended towards a 6 m blur of itself. 154,401 edge
+   texels qualify on this build.
+4. Off the landscape: the median paint of the biome, blurred 44 m, faded in over 6 m.
+5. **Biome tint.** Biomes painted with the same Grass layer merged. Each biome gets a small
+   OKLab `(a, b)` offset, 0.35 of its hue offset in the satellite-biome palette, blurred 44 m.
+6. Rock colour on a 4 m grid: the game's cliff albedo, taking 0.3 of the lightness and 0.5 of
+   the chroma of the ground around it (25 m blur), plus 0.02 L. Grey rock read as mud at the
+   prototype's settings; this reads as stone.
+
+Per pixel: canopy over the ground (0.85 times cover, Forest_Far albedo times 0.85); rock where
+a rock, arch or boulder raises the surface (by its lift, not its coverage, so a buried mesh is
+never coloured); the render-only meshes in their own colours (coral #b08a9c, shell #d6ccba,
+rock class takes the rock colour); OKLab chroma times 1.2; then an altitude lift of 0.03 L
+along a dry-land ramp. That ramp follows the recommended construction: heights over dry land
+only (`waterq` dry, p1 to p99.5), position `0.35 * linear + 0.65 * equalised`, applied as an
+even OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, times
+exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. Water is Beer-Lambert
+over the wet bed (extinction 1.6, 3.5, 5.5 m per channel, River_Inst_01's body colour,
+darkening with depth). A highlight shoulder at 0.72, then sRGB.
+
+### Measured
+
+On crops of the z7 grid, through `render_layer` itself (a `window` argument draws part of the
+sheet): with recipe 6 switched off the refactored painters reproduce the shipped recipe 5
+tiles to mean 0.0 and p99 0 per channel (max 1 to 4). Drawing an 8 Mpx crop took 2.8 s for
+terrain, 3.0 s for satellite and 4.1 s for painted, against 2.35 and 2.56 s for recipe 5 and
+3.86 and 4.07 s for the two-pass prototype.
+
+### Known limits
+
+- Lakes and rivers keep recipe 5's edge. Their banks need sloped surfaces from the river
+  splines, which is a separate item.
+- A river whose level is within 0.5 m of the sea and that reaches within 48 m of it is drawn
+  by the ocean rule.
+- Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
+  did.
