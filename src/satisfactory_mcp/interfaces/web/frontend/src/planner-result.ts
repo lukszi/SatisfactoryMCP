@@ -10,6 +10,7 @@ import { vitals } from "./panel";
 import { renderAlternates } from "./planner-alternates";
 import { askButton, askMarks } from "./asks";
 import { bench, changed, gesture, pendingFocus, pickTab, showAlternates, undoRev } from "./planner-core";
+import { rowOverclock } from "./planner-power";
 import { renderSite } from "./planner-site";
 import { renderTrack } from "./planner-track";
 import { pinsFor, pinThis } from "./pins";
@@ -51,6 +52,15 @@ function clockText(row: { machines: number; clock: number; last_clock?: number |
   if (row.last_clock === null || row.last_clock === undefined) return pct(row.clock, 1);
   if (row.machines === 1) return pct(row.last_clock, 1);
   return "100%, last " + pct(row.last_clock, 1);
+}
+
+function clockCell(row: SolveRow, live: boolean): string | HTMLElement {
+  var pick = live && !bench.gone ? rowOverclock(row) : null;
+  if (!pick) return clockText(row);
+  var cell = make("span", "plan-clock");
+  cell.appendChild(make("span", "", clockText(row)));
+  cell.appendChild(pick);
+  return cell;
 }
 
 function rates(rows: SolveRate[]): string {
@@ -317,7 +327,7 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
         return r.clock;
       },
       render: function (r) {
-        return clockText(r);
+        return clockCell(r, live);
       },
     },
     {

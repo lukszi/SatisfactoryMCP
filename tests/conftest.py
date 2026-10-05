@@ -140,6 +140,18 @@ def _own_shared_settings(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "settings_path", lambda: path)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _own_scarcity_tiers(tmp_path_factory):
+    """Pricing writes the last scarcity tiers per world; never into the reader's plans.
+    Session-wide, because module fixtures price the save before any function fixture runs."""
+    from satisfactory_mcp.domain.planning import prices
+
+    root = tmp_path_factory.mktemp("tiers")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(prices, "tiers_path", lambda world: root / f"{world}.json")
+        yield
+
+
 @pytest.fixture(scope="session")
 def game():
     if not _docs_available():

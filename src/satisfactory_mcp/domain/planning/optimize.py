@@ -192,7 +192,8 @@ class Scenario:
     #: throughput via 50% clocks was measured to gain +1140 MW for +441 machines,
     #: i.e. 2.58 MW per extra machine. A default above that rejects marginal
     #: spreading while still accepting a genuinely good trade. Set to 0 to reproduce
-    #: an unpriced (ill-posed) max-power solve.
+    #: an unpriced (ill-posed) max-power solve. At a payback horizon each building's
+    #: ``K / (H r)`` replaces it (``machine_mw``).
     machine_cost_mw: float = 5.0
     belt_ipm: float = 780.0  # Mk5; used to price sinks and to count logistics lines
     pipe_m3min: float = 600.0
@@ -223,6 +224,9 @@ class Scenario:
     overclock_last: bool = False
     #: Power Shards that candidate may spend; None is no limit.
     overclock_shards: float | None = None
+    #: Per recipe id, a row's own choice over ``overclock_last``: ``"last"`` builds the
+    #: overclocked candidate whatever it costs, ``"spread"`` never does.
+    row_overclock: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.objective = normalise_objective(self.objective)
@@ -462,6 +466,16 @@ def best_clock(sc: Scenario, b, draw_full: float) -> float:
     )
 
 
+def machine_mw(sc: Scenario, building: str | None) -> float:
+    """What one machine costs in MW when the goal is power: ``K / (H r)`` at a horizon (F1a),
+    else the flat ``machine_cost_mw``."""
+    per_mw = sc.payback_hours * sc.power_price
+    points = sc.build_points.get(building or "")
+    if per_mw > 0 and points is not None:
+        return max(points, 1.0) / per_mw
+    return max(0.0, sc.machine_cost_mw)
+
+
 def _clock_at(points: float, per_mw: float, draw: float, e: float, floor: float) -> float:
     if points <= 0 or per_mw <= 0 or draw <= 0 or e <= 1:
         return 1.0
@@ -508,12 +522,27 @@ class _Row:
         return self.draw * ((n - 1) + clock**self.p.power_exponent)
 
 
+def _pinned(sc: Scenario, row: _Row) -> str | None:
+    """The row's own choice, ``"last"`` or ``"spread"``, or None to follow the plan."""
+    return sc.row_overclock.get(row.p.recipe or "")
+
+
+def _applies(sc: Scenario, row: _Row, on: bool | None) -> bool:
+    """Whether a row's overclock pick is built: its own choice wins over the plan's switch;
+    ``on`` None is the plain build, which never overclocks (contract §4)."""
+    if on is None:
+        return False
+    pinned = _pinned(sc, row)
+    return pinned == "last" or (on and pinned is None)
+
+
 def _readout(sc: Scenario, rows: list[_Row], hours: float, per_shard: float) -> dict:
     """Machines per row at ``hours``: the cheapest spread, or one fewer with the last machine
-    overclocked where that is cheaper still and shards last (contract §4-§5)."""
+    overclocked where that is cheaper still and shards last (contract §4-§5). A row set to
+    ``last`` takes its shards first whatever it costs; one set to ``spread`` is never picked."""
     per_mw = hours * sc.power_price
-    spread, picks, without, unused = [], {}, [], []
-    candidates = []
+    spread, picks, without, unused, options = [], {}, [], [], {}
+    forced, candidates = [], []
     for i, row in enumerate(rows):
         b = row.building
         points = sc.build_points.get(row.p.building or "", 0.0)
@@ -525,24 +554,56 @@ def _readout(sc: Scenario, rows: list[_Row], hours: float, per_shard: float) -> 
         last = row.last(per_shard)
         if last is None:
             continue
+        options[i] = last
+        pinned = _pinned(sc, row)
+        if pinned == "spread":
+            continue
         machines, top, shards = last
         price = max(points, 1.0)
         saving = price * (n - machines) - per_mw * (row.last_power(machines, top) - row.power(n))
-        if saving > 1e-9:
+        if pinned == "last":
+            forced.append((math.inf, i, machines, top, shards))
+        elif saving > 1e-9:
             candidates.append((saving / max(shards, 1), i, machines, top, shards))
         else:
             unused.append(i)
     left = math.inf if sc.overclock_shards is None else sc.overclock_shards
-    for _, i, machines, top, shards in sorted(candidates, key=lambda c: (-c[0], c[1])):
+    ranked = forced + sorted(candidates, key=lambda c: (-c[0], c[1]))
+    for _, i, machines, top, shards in ranked:
         if shards > left + 1e-9:
             without.append(i)
             continue
         left -= shards
         picks[i] = (machines, top, shards)
-    return {"spread": spread, "picks": picks, "without": without, "unused": unused}
+    return {
+        "spread": spread,
+        "picks": picks,
+        "without": without,
+        "unused": unused,
+        "options": options,
+    }
 
 
-def _overclock_view(rows: list[_Row], game: GameData, out: dict, on: bool) -> dict:
+def _option(sc: Scenario, row: _Row, i: int, read: dict) -> dict:
+    """A row's two builds, for the per-row choice: one fewer with the last overclocked, or
+    the spread; ``applied`` says which is built."""
+    machines, top, shards = read["options"][i]
+    n, power = read["spread"][i]
+    return {
+        "pinned": _pinned(sc, row),
+        "applied": i in read["picks"] and _applies(sc, row, sc.overclock_last),
+        "machines": machines,
+        "last_clock": round(top, 6),
+        "shards": shards,
+        "extra_mw": round(row.last_power(machines, top) - power, 4),
+        "spread_machines": n,
+        "spread_clock": round(row.units / n, 6),
+        "without": i in read["without"],
+        "unused": i in read["unused"],
+    }
+
+
+def _overclock_view(sc: Scenario, rows: list[_Row], out: dict) -> dict:
     picked = []
     for i, (machines, top, shards) in sorted(out["picks"].items()):
         row = rows[i]
@@ -556,6 +617,8 @@ def _overclock_view(rows: list[_Row], game: GameData, out: dict, on: bool) -> di
                 "last_clock": round(top, 6),
                 "shards": shards,
                 "extra_mw": round(row.last_power(machines, top) - power, 4),
+                "pinned": _pinned(sc, row),
+                "applied": _applies(sc, row, sc.overclock_last),
             }
         )
 
@@ -568,14 +631,17 @@ def _overclock_view(rows: list[_Row], game: GameData, out: dict, on: bool) -> di
             for i in idx
         ]
 
+    pinned = [_pinned(sc, rows[i]) for i in out["options"]]
     return {
-        "on": on,
+        "on": sc.overclock_last,
         "rows": picked,
         "shards": sum(r["shards"] for r in picked),
         "machines_saved": sum(r["instead"] - r["machines"] for r in picked),
         "extra_mw": round(sum(r["extra_mw"] for r in picked), 4),
         "without": names(out["without"]),
         "unused": names(out["unused"]),
+        "pinned_last": pinned.count("last"),
+        "pinned_spread": pinned.count("spread"),
     }
 
 
@@ -586,13 +652,13 @@ def _payback_curve(
     machines_fixed, draw_fixed = fixed
     out = []
     stops = [(h, sc.overclock_last) for h in sorted({*PAYBACK_STOPS, float(sc.payback_hours)})]
-    for hours, overclock in [*stops, (0.0, False)]:
+    for hours, on in [*stops, (0.0, None)]:
         read = _readout(sc, rows, hours, per_shard)
         machines, draw, buildings = machines_fixed, draw_fixed, {}
         shards = 0
         for i, row in enumerate(rows):
             n, power = read["spread"][i]
-            if overclock and i in read["picks"]:
+            if i in read["picks"] and _applies(sc, row, on):
                 n, top, used = read["picks"][i]
                 power = row.last_power(n, top)
                 shards += used
@@ -852,15 +918,14 @@ def solve(sc: Scenario) -> Solution:
     # Applied only to the power objectives: for max_item / min_raw, underclocking
     # gives no benefit at all (throughput is linear in machines x clock), so it is
     # never selected and needs no penalty.
-    machine_priced = sc.machine_cost_mw > 0 and sc.objective in ("max_mw", "min_power")
     # Keep the pure goal so the reported objective_value is not contaminated by the
     # penalty. Reading the penalised value as the objective understated max_mw by
     # ~5000 MW and made a per-unit cost derived from it wrong -- two separate tools
     # tripped on exactly this.
     c_goal = c.copy()
-    if machine_priced:
-        for i in range(nP):
-            c[col_p(i)] += sc.machine_cost_mw
+    if sc.objective in ("max_mw", "min_power"):
+        for i, p in enumerate(procs):
+            c[col_p(i)] += machine_mw(sc, p.building)
 
     res = solverlane.run(
         lambda: milp(c=c, constraints=constraints, integrality=integrality, bounds=(lb, ub))
@@ -949,6 +1014,7 @@ def solve(sc: Scenario) -> Solution:
         rate_scale: float,
         listed: bool = True,
         last_clock: float | None = None,
+        option: dict | None = None,
     ):
         """One build row.
 
@@ -1001,6 +1067,8 @@ def solve(sc: Scenario) -> Solution:
         )
         if last_clock is not None:
             out_procs[-1]["last_clock"] = round(last_clock, 6)
+        if option is not None:
+            out_procs[-1]["overclock_option"] = option
 
     for i, p in enumerate(procs):
         v = float(x[col_p(i)])
@@ -1051,12 +1119,13 @@ def solve(sc: Scenario) -> Solution:
     per_shard = max(g.clock_shards().values(), default=0.0)
     read = _readout(sc, spread, sc.payback_hours, per_shard)
     for i, (row, v) in enumerate(zip(spread, deferred, strict=True)):
-        if sc.overclock_last and i in read["picks"]:
+        option = _option(sc, row, i, read) if i in read["options"] else None
+        if option is not None and option["applied"]:
             built, top, _ = read["picks"][i]
-            emit(row.p, built, row.units / built, v, v, last_clock=top)
+            emit(row.p, built, row.units / built, v, v, last_clock=top, option=option)
         else:
             built = max(1, math.ceil(v - 1e-9))
-            emit(row.p, built, row.units / built, v, v)
+            emit(row.p, built, row.units / built, v, v, option=option)
     out_procs.sort(key=lambda d: -abs(d["mw"]))
 
     raw_used = {raw_items[j]: round(float(x[col_r(j)]), 4) for j in range(nR) if x[col_r(j)] > _EPS}
@@ -1139,10 +1208,14 @@ def solve(sc: Scenario) -> Solution:
     if min(sc.clocks) < 1.0:
         used_low = [p for i, p in enumerate(procs) if p.clock < 1.0 and x[col_p(i)] > _EPS]
         if used_low:
+            price = (
+                f"the {sc.payback_hours:g} h payback horizon"
+                if sc.payback_hours * sc.power_price > 0
+                else f"{sc.machine_cost_mw:g} MW/machine"
+            )
             warnings.append(
                 f"{len(used_low)} process(es) use a sub-100% clock MODE: this spreads "
-                "throughput over more machines to save power, priced at "
-                f"{sc.machine_cost_mw:g} MW/machine"
+                f"throughput over more machines to save power, priced at {price}"
             )
 
     return Solution(
@@ -1160,7 +1233,7 @@ def solve(sc: Scenario) -> Solution:
         warnings=warnings,
         binding=binding,
         payback_curve=_payback_curve(sc, (fixed_machines, fixed_draw), spread, per_shard),
-        overclock=_overclock_view(spread, g, read, sc.overclock_last),
+        overclock=_overclock_view(sc, spread, read),
     )
 
 

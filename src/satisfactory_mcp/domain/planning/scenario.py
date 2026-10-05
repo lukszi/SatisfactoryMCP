@@ -35,6 +35,7 @@ __all__ = [
     "match_recipes",
     "resolve_item",
     "select_for",
+    "shard_stock",
 ]
 
 #: Quoted verbatim whenever an export token is refused.
@@ -175,19 +176,39 @@ def _shared() -> dict:
         return {k: spec.default for k, spec in settings.SPECS.items()}
 
 
-def _payback(state, hours, overclock, price) -> tuple[dict, dict]:
+def shard_stock(state) -> dict:
+    """Power Shards overclock-last may spend: ``free`` in hand plus ``craftable`` from slugs
+    in hand whose shard recipe this save has unlocked (contract §5)."""
+    budget = state.shard_budget()
+    shards = set(state.game.clock_shards())
+    unlocked = {r.cls for r in state.unlocked_recipes("part")}
+    best: dict[str, float] = {}
+    for rid in unlocked:
+        recipe = state.game.recipes.get(rid)
+        if recipe is None or len(recipe.ingredients) != 1 or not recipe.ingredients[0].amount:
+            continue
+        made = sum(f.amount for f in recipe.products if f.item in shards)
+        slug = recipe.ingredients[0].item
+        if made and slug not in shards:
+            best[slug] = max(best.get(slug, 0.0), made / recipe.ingredients[0].amount)
+    craftable = sum(row["held"] * best.get(row["item"], 0.0) for row in budget["slugs"])
+    return {"free": budget["free"], "craftable": craftable}
+
+
+def _payback(state, hours, overclock, price, rows: dict) -> tuple[dict, dict]:
     """Scenario fields for the horizon, and how each was resolved (contract §6)."""
     shared = _shared()
     resolved_hours = float(shared["payback_hours"] if _inherits(hours) else hours)
     on = bool(shared["overclock_last"] if _inherits(overclock) else overclock)
     found = prices_mod.prices_for(state, bool(shared["biomass"]))
-    budget = state.shard_budget() if on else None
+    stock = shard_stock(state) if on or "last" in rows.values() else None
     fields = {
         "payback_hours": resolved_hours,
         "power_price": found.price if _inherits(price) else float(price),
         "build_points": found.points,
         "overclock_last": on,
-        "overclock_shards": budget["free"] if budget else None,
+        "overclock_shards": stock["free"] + stock["craftable"] if stock else None,
+        "row_overclock": rows,
     }
     info = {
         "inherited": _inherits(hours),
@@ -228,6 +249,8 @@ def build_scenario(
     payback_hours: float | str | None = None,
     overclock_last: bool | str | None = None,
     power_price: float | str | None = None,
+    #: Per recipe id, ``"last"`` or ``"spread"``: a row's own overclock-last choice.
+    row_overclock: dict[str, str] | None = None,
     #: Where the factory will stand, in any spelling ``spatial.origin`` takes. It buys the
     #: plan a MEASURED water assumption instead of an assumed one; it changes no number the
     #: LP sees, because how much water a site yields is placement geometry no data here has.
@@ -354,7 +377,9 @@ def build_scenario(
         recipes += [rid for rid in in_force if rid not in recipes]
 
     buildings = state.unlocked_building_ids
-    power, payback = _payback(state, payback_hours, overclock_last, power_price)
+    power, payback = _payback(
+        state, payback_hours, overclock_last, power_price, dict(row_overclock or {})
+    )
     sc = Scenario(
         game=game,
         recipes=recipes,
@@ -481,6 +506,8 @@ def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = N
         fields["build_points"] = sorted((k, round(v)) for k, v in sc.build_points.items())
     if sc.overclock_last:
         fields["overclock_last"] = sc.overclock_shards
+    if sc.row_overclock:
+        fields["row_overclock"] = [sorted(sc.row_overclock.items()), sc.overclock_shards]
     payload = json.dumps(
         {
             **fields,

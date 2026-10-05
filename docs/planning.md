@@ -526,7 +526,8 @@ infeasible, since every item balance is an equality.
 lets the solver *spread* a fixed throughput over more machines purely to save power — measured at
 +1140 MW for +441 machines, i.e. 2.58 MW per extra machine. That is a real option, so each machine costs
 `machine_cost_mw` (default **5 MW**, set just above that measured figure) whenever the objective is
-`max_mw` or `min_power`. For `max_item` / `min_raw` no penalty is applied because underclocking gives no
+`max_mw` or `min_power`. Above a 0 h payback horizon each building's own price, its build points
+over the horizon (`K / (H r)`), replaces it ([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md) §2). For `max_item` / `min_raw` no penalty is applied because underclocking gives no
 throughput benefit at all and is never selected.
 
 The warning fires **only** for genuine spreading, never for a derived ratio clock. An earlier version
