@@ -64,6 +64,9 @@ SPECS: dict[str, Spec] = {
         "how a moved plan pad snaps: fine is 1 m and 15° steps, grid8 the 8 m world grid",
         options=("fine", "grid8"),
     ),
+    "advice_box_fed": Spec(
+        "switch", False, "advise when a machine fed only from a storage box has emptied it"
+    ),
 }
 
 

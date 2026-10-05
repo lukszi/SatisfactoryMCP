@@ -20,6 +20,8 @@ from pydantic import Field
 from ....core.filelock import LockTimeout
 from ....core.gamedata.unlocks import granted_by_label
 from ....core.schema import NewerSchema
+from ....domain import advice
+from ....domain.advice import store as advice_store
 from ....domain.factories.select import SelectorError
 from ....domain.planning import asks, compare, journal, manage, payback, pins, summary
 from ....domain.planning import bom as bom_mod
@@ -54,6 +56,7 @@ from ....domain.planning.scenario import build_scenario
 from ....domain.planning.sensitivity import sweep_unlocks
 from ....domain.planning.store import PLAN_ARGS
 from ....domain.world import pin
+from ....presenters.text import advice as advice_text
 from ....presenters.text import byproducts as byproducts_text
 from ....presenters.text import primitives as render
 from ....presenters.text.bom import render_bom
@@ -2291,9 +2294,11 @@ def _quoted(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _ask_text(row: dict) -> str:
+def _ask_text(row: dict, adv_ids: dict[str, str] | None = None) -> str:
     about = row["about"]
     text = f"{row['id']} {_quoted(row['text'])} about {about['kind']} {_quoted(about['label'])}"
+    if about["kind"] == "advice" and (adv_ids or {}).get(about["ref"]):
+        text += f" ({adv_ids[about['ref']]})"
     if row["plan_name"] and about["kind"] != "plan":
         text += f" in {_quoted(row['plan_name'])}"
     if about.get("rev"):
@@ -2303,7 +2308,7 @@ def _ask_text(row: dict) -> str:
     return _cut(text, CONTEXT_ASK_WIDTH)
 
 
-def _asks_lines(world_id: str, who: str, me) -> list[str]:
+def _asks_lines(world_id: str, who: str, me, adv_ids: dict[str, str] | None = None) -> list[str]:
     """The ``asks`` line and its hint, marking every listed open ask seen."""
     try:
         waiting = [r for r in asks.live(world_id) if r["state"] in ("open", "seen")]
@@ -2312,7 +2317,7 @@ def _asks_lines(world_id: str, who: str, me) -> list[str]:
     if not waiting:
         return ["asks: none waiting"]
     shown = waiting[-CONTEXT_ASKS:]
-    line = f"asks ({len(waiting)} waiting): " + " · ".join(_ask_text(r) for r in shown)
+    line = f"asks ({len(waiting)} waiting): " + " · ".join(_ask_text(r, adv_ids) for r in shown)
     if len(waiting) > CONTEXT_ASKS:
         line += f" (+{len(waiting) - CONTEXT_ASKS} more)"
     fresh = [r["n"] for r in shown if r["state"] == "open"]
@@ -2378,6 +2383,60 @@ def _answer(world_id: str, answered: list[str], who: str, me) -> list[str]:
     return lines
 
 
+def _hide_advice(st, dismissed: list[str], me) -> list[str]:
+    """Hide the advisories chat was asked to; one line for what was hidden, one per refusal."""
+    lines, done = [], []
+    try:
+        cur = advice.current(st)
+    except NewerSchema as exc:
+        return [f"! hidden advisories were saved by a newer version (schema {exc.found})"]
+    for raw in dismissed:
+        hit = advice_text.parse_hide(raw)
+        adv = cur.find(hit[0]) if hit else None
+        if hit is None:
+            lines.append(f'! {raw!r} is not an advisory id ("adv:3f9a" or "adv:3f9a snooze")')
+            continue
+        if adv is None:
+            lines.append(f"! {hit[0]} does not fire on this save")
+            continue
+        _id, mode, hours = hit
+        try:
+            advice_store.hide(
+                st.world_id,
+                adv,
+                mode,
+                play_s=cur.play_s,
+                by=me.to_dict(),
+                hours=hours,
+                firing=[a.key for a in cur.items],
+            )
+        except (advice_store.AdviceError, LockTimeout, NewerSchema, OSError) as exc:
+            lines.append(f"! {adv.id} not hidden: {exc}")
+            continue
+        verb = "dismissed" if mode == "dismiss" else "snoozed"
+        what = verb if mode == "dismiss" else f"{verb} for {hours:g} h of play"
+        journal.append(
+            st.world_id,
+            "advice.hide",
+            actor=me,
+            args={"id": adv.id, "key": adv.key, "mode": mode},
+            text=f"chat {verb} {adv.id} {advice.WORDS[adv.kind]}: {adv.text}",
+        )
+        done.append(f"{adv.id} ({what})")
+    if done:
+        lines.insert(0, "hidden on the page: " + ", ".join(done))
+    return lines
+
+
+def _advice_lines(st) -> tuple[list[str], dict[str, str]]:
+    """The ``advice`` line and its hint, and every advisory key's id for the asks line."""
+    try:
+        cur = advice.current(st)
+    except Exception as exc:
+        return [f"advice: unavailable ({type(exc).__name__})"], {}
+    return advice_text.context_lines(cur), {a.key: a.id for a in cur.items}
+
+
 def _journal_who(raw: dict | None) -> str:
     who = Actor.from_dict(raw)
     return f"{who.display()} (other session)" if who.kind == "chat" else who.display()
@@ -2409,6 +2468,10 @@ def ui_context(
         list[str] | None,
         Field(description='ask:N ids you have answered, each may add a line: "ask:7 <answer>"'),
     ] = None,
+    dismissed: Annotated[
+        list[str] | None,
+        Field(description='adv: ids to hide on the page; "adv:3f9a snooze" hides for 1 h of play'),
+    ] = None,
     ctx: Context | None = None,
 ) -> str:
     """What the web page has open, and what changed in plans since this session last looked.
@@ -2417,7 +2480,8 @@ def ui_context(
     ask: or pin: id: it names the page's view, plan and version, tab and selection, whether
     the page reads the same save as you, the asks queued for you, and every plan version
     and chat solve by someone else since your last look. Asks it lists are marked seen on
-    the page; pass ``answered`` once you have answered them.
+    the page; pass ``answered`` once you have answered them. It lists the advisories worth a
+    look (adv: ids); ``dismissed`` hides one on the page, only when the user asks.
     """
     try:
         st = _state(save, world)
@@ -2447,6 +2511,8 @@ def ui_context(
     chat = actor(ctx)
     if answered:
         lines += _answer(world_id, list(answered), chat.display(), chat)
+    if dismissed:
+        lines += _hide_advice(st, list(dismissed), chat)
     try:
         pin_rows = pins.live(st)
         pin_line = _pins_line(pin_rows)
@@ -2457,7 +2523,9 @@ def ui_context(
         lines.append(line if is_open else "last " + line)
         lines.append(f"follow: {focus.get('follow') or 'follow'}")
     lines.append(pin_line)
-    lines += _asks_lines(world_id, chat.display(), chat)
+    advice_lines, adv_ids = _advice_lines(st)
+    lines += _asks_lines(world_id, chat.display(), chat, adv_ids)
+    lines += advice_lines
 
     cursor = _cursor.get(world_id)
     try:

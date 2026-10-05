@@ -59,6 +59,7 @@ import { loadWorlds } from "./worlds";
  * against the set of modules that call `registerFetch`, in both directions. Three of these are
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
+import "./advice";
 import "./crates";
 import "./header";
 import "./inventory";

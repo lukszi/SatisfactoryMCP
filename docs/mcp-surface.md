@@ -684,6 +684,13 @@ or `ask:7 -`): it is stored on the ask (`answer`, ≤ 200 characters, whitespace
 the page beside the ask, and quoted in the journal text; passing a new line replaces it.
 The server's `instructions` add "or quotes an ask: or pin: id". No tool was added.
 
+**Advisors** ([advisors_contract.md](advisors_contract.md) §6). `ui_context` prints an
+`advice (N, M hidden): ...` line after the asks: the first three rows the page's card shows,
+`adv:` id first, then a hint line. `ui_context(dismissed=["adv:3f9a", "adv:91c2 snooze 4h"])`
+hides rows on the page as chat (journal `advice.hide`), only when the user asks; the page can
+restore them. `world_summary` ends with a `## worth a look` block, every active row with its
+`next:` call, at most twelve. An ask about an advisory prints its `adv:` id. No tool was added.
+
 ### 10.1l `settings` — what the page and chat share
 
 `settings()` prints every shared setting as `setting · value · takes · means`, marking a value

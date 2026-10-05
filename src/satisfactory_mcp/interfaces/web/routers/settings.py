@@ -37,6 +37,7 @@ class SettingsValues(TypedDict):
     payback_hours: float
     overclock_last: bool
     site_snap: SiteSnap
+    advice_box_fed: bool
 
 
 class SettingsResponse(TypedDict):
@@ -58,6 +59,7 @@ class SettingsChanges(TypedDict):
     payback_hours: NotRequired[float | None]
     overclock_last: NotRequired[bool | None]
     site_snap: NotRequired[SiteSnap | None]
+    advice_box_fed: NotRequired[bool | None]
 
 
 class SettingsPatchBody(TypedDict):

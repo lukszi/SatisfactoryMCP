@@ -151,6 +151,15 @@ export var SETTINGS: Setting[] = [
     fallback: "fine",
     shared: "site_snap",
   },
+  {
+    kind: "switch",
+    key: "adviceBoxFed",
+    group: "advisors",
+    label: "note emptied hand-fed boxes",
+    hint: "a machine fed only from a storage box that ran dry; off, as hand-fed boxes are temporary; chat uses the same",
+    fallback: false,
+    shared: "advice_box_fed",
+  },
 ];
 
 var STORE_KEY = "settings";

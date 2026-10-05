@@ -1879,6 +1879,67 @@ export interface paths {
         patch: operations["change_settings_api_settings_patch"];
         trace?: never;
     };
+    "/api/advice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Advice List
+         * @description Every advisory firing on this save, active and hidden. ``biomass`` overrides the
+         *     shared setting for this read; ``spoilers=1`` counts pickups not found yet.
+         */
+        get: operations["advice_list_api_advice_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/advice/hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hide Advice
+         * @description Dismiss an advisory until it gets worse, or snooze it for hours of play time.
+         */
+        post: operations["hide_advice_api_advice_hidden_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/advice/hidden/{adv_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Restore Advice
+         * @description Show a hidden advisory again; a ``rev`` that is not its current one is a 409.
+         */
+        delete: operations["restore_advice_api_advice_hidden__adv_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1932,6 +1993,127 @@ export interface components {
             pid: number;
             /** Display */
             display: string;
+        };
+        /**
+         * AdviceHideBody
+         * @description ``hours`` is play time, 0.5 to 24, for a snooze; ``rev`` 0 means "not hidden yet".
+         */
+        AdviceHideBody: {
+            /** Key */
+            key: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "dismiss" | "snooze";
+            /** Hours */
+            hours?: number | null;
+            /** Rev */
+            rev?: number | null;
+        };
+        /**
+         * AdviceMachine
+         * @description A place the row names: a machine leaf, or "" for a pickup; metres on save axes.
+         */
+        AdviceMachine: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+        };
+        /**
+         * AdviceResponse
+         * @description ``active`` is every row not hidden, ranked; the page applies the visible caps.
+         */
+        AdviceResponse: {
+            /** Save Token */
+            save_token: string;
+            /** Play S */
+            play_s: number;
+            /** Version */
+            version: number;
+            /** Active */
+            active: components["schemas"]["AdviceRow"][];
+            /** Hidden */
+            hidden: components["schemas"]["AdviceRow"][];
+        };
+        /** AdviceRestoreBody */
+        AdviceRestoreBody: {
+            /** Rev */
+            rev: number;
+        };
+        /** AdviceRestored */
+        AdviceRestored: {
+            /** Ok */
+            ok: boolean;
+            /** Id */
+            id: string;
+        };
+        /**
+         * AdviceRow
+         * @description One advisory. ``tone`` is blocked, mid or muted; ``state`` is active, dismissed or
+         *     snoozed; ``back`` is true when it resurfaced because it got worse; ``rev`` is its hidden
+         *     entry's, 0 when never hidden. ``reveal`` names the map layers its map action shows.
+         */
+        AdviceRow: {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Severity */
+            severity: string;
+            /** Tone */
+            tone: string;
+            /** Subject Kind */
+            subject_kind: string;
+            /** Subject */
+            subject: string;
+            /** Text */
+            text: string;
+            /** Lines */
+            lines: string[];
+            /** Weight */
+            weight: number;
+            /** Machines */
+            machines: components["schemas"]["AdviceMachine"][];
+            /** Bbox M */
+            bbox_m: number[] | null;
+            /** Seed */
+            seed: string | null;
+            /** Plan */
+            plan: string | null;
+            /** Reveal */
+            reveal: string[];
+            /** Next Call */
+            next_call: string;
+            /** State */
+            state: string;
+            /** Back */
+            back: boolean;
+            /** Rev */
+            rev: number;
+            /** Until Play S */
+            until_play_s: number | null;
+            /** By */
+            by: string;
+        };
+        /**
+         * AdviceStaleResponse
+         * @description The 409 of a hide or restore: nothing was written; ``row`` is the row as it stands,
+         *     null when it no longer fires.
+         */
+        AdviceStaleResponse: {
+            /** Error */
+            error: string;
+            /** Stale */
+            stale: boolean;
+            row: components["schemas"]["AdviceRow"] | null;
         };
         /** AlreadyUndoneResponse */
         AlreadyUndoneResponse: {
@@ -5657,6 +5839,8 @@ export interface components {
             overclock_last?: boolean | null;
             /** Site Snap */
             site_snap?: ("fine" | "grid8") | null;
+            /** Advice Box Fed */
+            advice_box_fed?: boolean | null;
         };
         /** SettingsPatchBody */
         SettingsPatchBody: {
@@ -5713,6 +5897,8 @@ export interface components {
              * @enum {string}
              */
             site_snap: "fine" | "grid8";
+            /** Advice Box Fed */
+            advice_box_fed: boolean;
         };
         /** ShardHolder */
         ShardHolder: {
@@ -10228,6 +10414,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    advice_list_api_advice_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+                biomass?: ("include" | "exclude") | null;
+                spoilers?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdviceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hide_advice_api_advice_hidden_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+                spoilers?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdviceHideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdviceRow"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdviceStaleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_advice_api_advice_hidden__adv_id__delete: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path: {
+                adv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdviceRestoreBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdviceRestored"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdviceStaleResponse"];
                 };
             };
             /** @description Validation Error */

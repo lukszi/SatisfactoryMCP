@@ -91,6 +91,10 @@ export function askOpen(): boolean {
   return !!bar.about;
 }
 
+export function askOpener(): string {
+  return bar.about ? bar.opener : bar.back;
+}
+
 export function closeBar(): void {
   if (!bar.about) return;
   bar.back = bar.opener;

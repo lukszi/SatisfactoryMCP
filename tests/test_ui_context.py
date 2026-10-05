@@ -455,3 +455,100 @@ def test_many_long_asks_stay_inside_the_budget(ctx):
     assert line.startswith("asks (200 waiting): ") and line.endswith(" (+194 more)")
     parts = line.removeprefix("asks (200 waiting): ").removesuffix(" (+194 more)").split(" · ")
     assert len(parts) == 6 and all(len(p) <= planning.CONTEXT_ASK_WIDTH for p in parts)
+
+
+def _advisory(kind: str, subject: str, members=("M_1",)):
+    from satisfactory_mcp.domain.advice import rules
+
+    return rules.Advisory(
+        key=rules.key_for(kind, "factory", subject),
+        id="",
+        kind=kind,
+        severity=rules.SEVERITY[kind],
+        subject_kind="factory",
+        subject=subject,
+        text=f"3 machines in “{subject}” starve of Coal",
+        tool_text=f"3 machines in “{subject}” starve of Coal " + "x" * 200,
+        weight=3.0,
+        members=tuple(members),
+        spots=(),
+        bbox_m=None,
+        lines=(),
+        next_call=f'factory_health factory="{subject}"',
+        seed=None,
+        reveal=(),
+        plan=None,
+        source="test",
+    )
+
+
+@pytest.fixture
+def advised(ctx, monkeypatch):
+    from satisfactory_mcp.domain import advice
+    from satisfactory_mcp.domain.advice import rules
+
+    monkeypatch.setattr(journal.config, "advice_dir", lambda: ctx / "advice")
+    rows = [_advisory("starved", f"f{n}") for n in range(9)]
+
+    def current(st, **kw):
+        data = advice.store.read(WORLD)
+        items = rules.with_ids(rows, data["hidden"].keys())
+        active, hidden = advice.store.split(items, data, 3600.0)
+        return advice.Current(items, active, hidden, data["version"], 3600.0, [])
+
+    monkeypatch.setattr(planning.advice, "current", current)
+    return current(None)
+
+
+def _advice_line(out: str) -> str:
+    return next(x for x in out.splitlines() if x.startswith("advice ("))
+
+
+def test_the_advice_line_names_three_rows_by_id_inside_the_budget(advised):
+    out = srv.ui_context()
+    line = _advice_line(out)
+    assert line.startswith("advice (9, 0 hidden): " + advised.items[0].id + " starved: ")
+    assert line.endswith(" (+6 more: world_summary)")
+    parts = line.split(": ", 1)[1].removesuffix(" (+6 more: world_summary)").split(" · ")
+    assert len(parts) == 3 and all(len(p) <= 160 for p in parts)
+    assert 'ui_context(dismissed=["' + advised.items[0].id + '"])' in out
+    assert len(out) < planning.CONTEXT_BUDGET
+
+
+def test_dismissed_hides_on_the_page_and_journals_as_chat(advised):
+    journal.set_writer("chat")
+    first, second = advised.items[0].id, advised.items[1].id
+    out = srv.ui_context(dismissed=[first, f"{second} snooze 4h", "adv:zzzz", "adv:0000"])
+    lines = out.splitlines()
+    assert (
+        lines[1] == f"hidden on the page: {first} (dismissed), {second} (snoozed for 4 h of play)"
+    )
+    assert lines[2:4] == [
+        '! \'adv:zzzz\' is not an advisory id ("adv:3f9a" or "adv:3f9a snooze")',
+        "! adv:0000 does not fire on this save",
+    ]
+    assert _advice_line(out).startswith("advice (7, 2 hidden): ")
+    entries = [e for e in journal.read(WORLD) if e["kind"] == "advice.hide"]
+    assert [e["args"]["mode"] for e in entries] == ["dismiss", "snooze"]
+    assert entries[0]["actor"]["kind"] == "chat" and entries[0]["text"].startswith(
+        f"chat dismissed {first}"
+    )
+
+
+def test_an_ask_about_an_advisory_carries_its_id(advised):
+    adv = advised.items[2]
+    asks.create(
+        WORLD, "why is this starving?", {"kind": "advice", "label": adv.text, "ref": adv.key}
+    )
+    line = _asks_line(srv.ui_context())
+    assert f"about advice {json.dumps(adv.text, ensure_ascii=False)} ({adv.id})" in line
+
+
+def test_the_hide_grammar():
+    from satisfactory_mcp.presenters.text.advice import parse_hide
+
+    assert parse_hide("adv:3f9a") == ("adv:3f9a", "dismiss", None)
+    assert parse_hide(" ADV:3F9A snooze ") == ("adv:3f9a", "snooze", 1.0)
+    assert parse_hide("adv:3f9a snooze 30m") == ("adv:3f9a", "snooze", 0.5)
+    assert parse_hide("adv:3f9a01 snooze 10h") == ("adv:3f9a01", "snooze", 10.0)
+    assert parse_hide("ask:3") is None and parse_hide(3) is None

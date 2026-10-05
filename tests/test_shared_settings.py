@@ -25,6 +25,7 @@ def test_an_absent_file_reads_every_default():
             "payback_hours": 0.0,
             "overclock_last": False,
             "site_snap": "fine",
+            "advice_box_fed": False,
         },
         "stored": [],
         "updated": None,

@@ -1,6 +1,7 @@
 /* The dashboard shell: the tabs, the routing on the fragment's `dash=` key and the pieces the
  * tab modules share. See docs/frontend_vision.md §8. */
 
+import { onAdvice } from "./advice";
 import { button, choice as choiceBox, empty, fieldError, link, note } from "./dashkit";
 import { el, keepFocus, make } from "./dom";
 import { renderInventory } from "./inventory";
@@ -399,6 +400,10 @@ function wire(): void {
   new MutationObserver(mirrorBusy).observe(el("map"), { attributes: true, attributeFilter: ["class"] });
   onVitals(render);
   onProgress(render);
+  onAdvice(function () {
+    var tab = address().tab;
+    if (state.dash && (tab === "overview" || tab === "factories")) render();
+  });
   onSetting(function () {
     if (state.dash && address().tab === "settings") render();
   });

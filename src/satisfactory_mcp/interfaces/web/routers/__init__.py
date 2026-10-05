@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from . import (
+    advice,
     asks,
     collectibles,
     crates,
@@ -88,4 +89,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     plan_track.router,
     plan_site.router,
     settings.router,
+    advice.router,
 )

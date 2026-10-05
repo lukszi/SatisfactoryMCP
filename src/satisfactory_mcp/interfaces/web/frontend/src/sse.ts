@@ -6,6 +6,7 @@
 
 import { el } from "./dom";
 import { loadLive, loadOne } from "./load";
+import { onActivity as onAdviceActivity, refetchAdvice } from "./advice";
 import { onActivity as onAskActivity, refetchAsks } from "./asks";
 import { onActivity as onPinActivity, onPlanChange, refetchPins } from "./pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "./planner";
@@ -58,6 +59,7 @@ function dispatchActivity(entries: ActivityEvent[]): void {
     dispatched[entry.id] = true;
     onPinActivity(entry);
     onAskActivity(entry);
+    onAdviceActivity(entry);
     if (entry.kind !== "world.find" || i === lastFind) onFindActivity(entry);
     onRenameActivity(entry);
     onActivityEvent(entry);
@@ -127,6 +129,7 @@ export function listen() {
       loadOne("/api/plans");
       refetchPins();
       refetchAsks();
+      refetchAdvice();
       refetchSharedSettings();
       resyncPlanner(dispatchActivity);
     };
@@ -160,6 +163,7 @@ export function listen() {
       loadOne("/api/power/circuits");
       loadOne("/api/plans");
       refetchPins();
+      refetchAdvice();
       onNotesEvent();
     });
     es.addEventListener("plans", function (event) {
@@ -167,6 +171,7 @@ export function listen() {
       if (!data || !isNews(event)) return;
       blink();
       loadOne("/api/plans");
+      refetchAdvice();
       onPlanChange(data);
       onPlansEvent(data);
     });
