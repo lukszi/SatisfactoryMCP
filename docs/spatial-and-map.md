@@ -1687,3 +1687,114 @@ button moves the sun for the visit; Settings keeps the default.
 - Faint diagonal bands at low sun from the q75 horizon encoding and the direction
   interpolation.
 - Sun colour along the day, and whether the artwork style gets any light at all.
+
+## 30. The game's own surface colours on the painted layer (2026-10-05)
+
+Four additions to the game-painted style of section 27, each read from the install rather than
+chosen. Style `satellite-painted` version 2, paint generator version 2, two new readers.
+Build 502094. Every number below was measured on crops of the z7 grid, not on a full sheet.
+
+### The baked ground colour
+
+Every landscape HLOD cell of `Persistent_Level.umap` ships an unlit BaseColor of its 508 m
+square: a 1024 px virtual texture of 128 px BC1 tiles with a 4 px border, in Morton order.
+`gamedata/bake.py` finds each cell's mip-0 chunk by its size and bulk flags, box-filters it to
+1 m and places it where the landscape component of the same section lands. `python -m mapgen
+paint` writes it as `bake.rgb.u8.z` (47 MB). On this build 141 of 148 cells decode; the seven
+small edge cells (512 and 256 px) have another layout and are left out, and the paint covers
+them. The bake covers 63.7% of the grid and 97% of the painted land. Black texels are its own
+holes and count as no bake.
+
+Beside it the store keeps `layers_bake_fit`: each paint layer's albedo refitted to the bake by
+a non-negative least squares per channel, over 400,000 texels sampled every fourth texel where
+the layers' weights sum above one half. A layer dominant on fewer than 200 sampled texels keeps
+its name-matched albedo; on this build that is DesertRock and PurpleForest.
+
+With `"ground": "bake"` in the palette the painted ground is the bake wherever it has one,
+faded into the paint mix over `have_blur_m` (weight `clip(2 * blur(have) - 1) * have`), and the
+paint mix elsewhere uses the refitted table. The name-matched table's corrections (the 0.95
+darkening, WetSand's lightness fix) and the PigmentMap do not apply in that mode, and the biome
+tint touches only ground off the bake. The prototype measured the albedo against the bake at a
+median Delta E of 8.9 on the dune and 10.3 on the wet-sand beach with the old table, 1.0 and 1.2
+with the refit, and 0 with the bake. Wet sand stops reading as shallow water. The ground comes
+out darker (0.69 to 0.96 of the old luminance); retuning exposure and colour targets is the
+colour calibration's job, not this one's.
+
+### Rock surfaces
+
+**Families.** The sweep now records each placement's first `OverrideMaterials` entry. A rock
+wears that material, or its mesh's own first one, and the material's parent chain is walked to
+one of the `Cliff_<Layer>` instances (`gamedata/rockfamily.py`). Rocks on this build: grass
+4,737, plain cliff 4,344, forest 1,415, sand 1,019, red jungle 582, red grass 115, wet sand 42,
+and 8,772 others (desert rock, boulders, arches) with no family.
+
+**The plane.** The direct pass already rasterises every rock with the max-Z rasteriser, which
+keeps the winning triangle's source id; the source is now the placement's family, written as
+`direct.family.u8` beside the direct cache. The stamping therefore rides the rasteriser and
+costs no pass of its own. The direct cache's stamp gains `families` (the `rock_families` reader
+version), so a cache from before this change is rebuilt once.
+
+**Colour.** The paint store records each family's `Color Tint`, the nearest one up the chain
+(linear 0.624, 0.545, 0.471 for every family on this build), and its top layer, the mean of the
+family root's `Far Albedo` texture or else its `Albedo`: forest and grass from their far
+textures, red grass from `TX_GrassRed_01_Alb`, sand from `TX_Sand_BC`. Plain cliff, wet sand and
+red jungle have none. Per pixel, rock is multiplied by its family's tint and then blended to the
+top layer by an up-facing ramp on the drawn surface's normal, `nz` from 0.60 to 0.85, boxed over
+3 pixels. That ramp is a guess: the `CliffTopMaterial` function is not decoded.
+
+**Trees over rock.** Rock used to hide the canopy: 86 to 97% of tree cover above 0.5 in the
+forest and ivy crops. The store's `crown.i16.z` holds, per 1 m texel, the highest crown top over
+it in decimetres: each tree's base height plus `max(4 m, 1.2 * radius)`, within its crown
+radius. The canopy is laid over rock wherever the drawn surface is no higher than that top, so
+a tree on a ledge shows and a tree below a cliff stays hidden. It is a per-pixel comparison
+against a 1 m plane; no tree is stamped at render time, which in the prototype extrapolated to
+about 7 minutes for a full sheet.
+
+### The Titan trees
+
+73 trunks (`SM_TitanTree_01`, Nanite) and 218 leaf meshes (`SM_TitanTree_Leaves_01` and `_02`)
+are StaticMeshActors the sweep already lists. `titan_items` picks them and the mesh rasteriser
+draws them at twice the render's pixel into `titan.cache` (stamp: half the size, the build, the
+`titan_trees` reader). The painter samples that raster bilinearly, lights the crowns by their
+own relief, and lays them over the finished pixel, water included, at `titan_trees.opacity`
+(0.8), leaves sRGB (77, 90, 48), trunks (99, 88, 81). They cover about 0.9 km² of ground that
+was mostly drawn bare.
+
+Players build under these trees, so they are a style toggle. `--no-titan-trees` renders with
+opacity 0, skips the raster and records its own style digest; the Maps tab's generate form has
+a "Titan trees (game-painted)" checkbox for it, the preset option `titan_trees`.
+
+### Inland water
+
+Under a few centimetres of water the Beer-Lambert model lets nearly all of the bed through, so
+shallow pools and lake rims vanished: 0.81 km² of water is under 1 m deep. Off the ocean reach
+the transmitted share is now multiplied by `1 - water.inland_floor` (0.35), so inland water
+always keeps that much of its body colour. The sea is unchanged.
+
+### Provenance
+
+| Axis | Change |
+| --- | --- |
+| data: `paint` | generator version 2: `bake.rgb.u8.z`, `crown.i16.z`, `layers_bake_fit`, `rock_families`, `bake` stats |
+| data: `rock_families` | reader version 1, painted layer only |
+| data: `titan_trees` | reader version 1, painted layer only; absent when the trees are off |
+| style | `satellite-painted` version 2 |
+
+### Measured
+
+The paint command took 68 s (25 s before): the bake read and decode 19 s, the refit, the crown
+plane and the family colours most of the rest. The store is 104 MB. At render time the family
+lookup took 1.7 s. Preparing the painted ground took 195 to 227 s with other jobs running on the
+machine, against 112 to 124 s for the prototype on an idle one. Drawing a crop through
+`render_layer` took no longer than before: 1.0 to 5.8 s per crop with everything on, against
+1.6 to 7.4 s for the shipped recipe 6 on the same crops. The Titan raster for a 1600 px crop
+of the forest took 32 s at the 2x pixel; the whole map is estimated at 1.5 to 2.5 min and has
+not been measured.
+
+### Known limits
+
+- Nothing here has been compared with an in-game top-down view.
+- The up-facing ramp is a guess, and grass tops come out a little light.
+- The Titan crowns over water let the water's blue through at 0.8 opacity.
+- Murky water (a floor of about 0.55 for swamps) needs the per-body class plane, which is not
+  built.

@@ -42,7 +42,9 @@ def test_the_generate_form_can_ask_for_every_style(maps_home):
     for layer in presets.RENDER_LAYERS:
         options = presets.normalise("render", {"layers": [layer], "size": 1024})
         assert options["layers"] == [layer]
-    plan = presets.plan("render", {"layers": ["relief", "relief-dark"], "size": 1024}, "j1", 1, set())
+    plan = presets.plan(
+        "render", {"layers": ["relief", "relief-dark"], "size": 1024}, "j1", 1, set()
+    )
     assert sorted(plan["produces"]) == ["relief-dark-r6-1", "relief-r6-1"]
     assert plan["argv"].count("--layer") == 2
 

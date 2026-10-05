@@ -191,6 +191,7 @@ class MapJobOptions(TypedDict):
     restyle: NotRequired[bool]
     enhance: NotRequired[bool]
     tiles_2x: NotRequired[bool]
+    titan_trees: NotRequired[bool]
 
 
 class MapJobRequest(TypedDict):

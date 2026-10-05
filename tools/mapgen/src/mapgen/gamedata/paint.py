@@ -21,7 +21,9 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.common import LOCAL_DIR, ROOT, base_parser, require_gen
+from mapgen.gamedata.bake import BAKE_NAME, fit_layer_table, read_bake
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from mapgen.gamedata.rockfamily import FAMILIES, family_sources
 from mapgen.gamedata.sweep import (
     FOLIAGE_CLASSES,
     LANDSCAPE_SECTION_ORIGIN,
@@ -55,7 +57,10 @@ __all__ = [
     "CANOPY_NAME",
     "CANOPY_TEXTURE",
     "CROWN_DEFAULT_M",
+    "CROWN_HEIGHT_MIN_M",
+    "CROWN_HEIGHT_PER_RADIUS",
     "CROWN_M",
+    "CROWN_NAME",
     "GAME_ROOT",
     "GENERATOR_VERSION",
     "GRID",
@@ -82,12 +87,15 @@ __all__ = [
     "component_layers",
     "component_origin",
     "crown_radius",
+    "crown_tops",
     "decode_texture",
     "is_tree",
     "layer_albedo",
     "main",
     "material_vectors",
     "place",
+    "rock_family_colours",
+    "satellite_inputs",
     "srgb_to_linear",
     "sweep",
     "weightmap_channels",
@@ -99,6 +107,7 @@ GENERATOR_VERSION = PAINT_GENERATOR_VERSION
 PAINT_DIR_NAME = "paint"
 META_NAME = "meta.json"
 CANOPY_NAME = "canopy.u8.z"
+CROWN_NAME = "crown.i16.z"
 PIGMENT_NAME = "pigment.rgb.u8.z"
 WEIGHT_PREFIX = "w."
 WEIGHT_SUFFIX = ".u8.z"
@@ -197,6 +206,9 @@ CROWN_M = (
     ("Bamboo", 1.5),
 )
 CROWN_DEFAULT_M = 4.0
+#: A crown's top above its trunk's base, metres: ``max(MIN, PER_RADIUS * radius)``.
+CROWN_HEIGHT_MIN_M = 4.0
+CROWN_HEIGHT_PER_RADIUS = 1.2
 PIGMENT_MAX_PX = 2048
 
 WEIGHTMAP_PX = 128
@@ -431,6 +443,75 @@ def canopy_cover(trees: dict[str, np.ndarray], grid: int) -> tuple[np.ndarray, d
     return 1.0 - np.exp(-area), counts
 
 
+def crown_tops(trees: dict[str, np.ndarray], grid: int) -> np.ndarray:
+    """Per 1 m texel, the highest crown top over it in decimetres; ``hf.NODATA`` for none."""
+    top = np.full(grid * grid, -np.inf, np.float32)
+    for mesh, points in trees.items():
+        radius = crown_radius(mesh)
+        height = max(CROWN_HEIGHT_MIN_M, CROWN_HEIGHT_PER_RADIUS * radius)
+        col = np.floor((points[:, 0] - ORIGIN_X_CM) / SPACING_CM).astype(np.int64)
+        row = np.floor((points[:, 1] - ORIGIN_Y_CM) / SPACING_CM).astype(np.int64)
+        z_dm = points[:, 2].astype(np.float32) / 10.0 + np.float32(height * hf.DM_PER_M)
+        reach = int(np.ceil(radius))
+        for dr in range(-reach, reach + 1):
+            for dc in range(-reach, reach + 1):
+                if dr * dr + dc * dc > radius * radius:
+                    continue
+                r, c = row + dr, col + dc
+                ok = (r >= 0) & (r < grid) & (c >= 0) & (c < grid)
+                np.maximum.at(top, r[ok] * grid + c[ok], z_dm[ok])
+    out = np.where(np.isfinite(top), np.clip(np.round(top), -32767, 32767), hf.NODATA)
+    return out.astype(np.int16).reshape(grid, grid)
+
+
+def rock_family_colours(store, scripts, index, decoder) -> dict:
+    """Each cliff family's ``Color Tint`` and its top layer's mean linear albedo."""
+    out = {}
+    for family, source in family_sources(store, scripts, index).items():
+        top = source["top_texture"]
+        mean = None
+        if top:
+            asset = top.split("/Game/FactoryGame/", 1)[-1]
+            mean = srgb_to_linear(decode_texture(store, scripts, decoder, asset, 512))
+            mean = [round(float(v), 5) for v in mean.reshape(-1, 3).mean(0)]
+        tint = source["tint"]
+        out[family] = {
+            "code": FAMILIES.index(family),
+            "material": source["material"],
+            "tint": [round(v, 5) for v in tint] if tint else None,
+            "top_texture": top,
+            "top": mean,
+        }
+    return out
+
+
+def satellite_inputs(store, scripts, decoder, image_mod, planes, trees, table) -> tuple:
+    """The baked ground colour, its refitted layer table, the crown tops and the rock families.
+
+    Returns ``(payload, files, meta)`` to merge into the store.
+    """
+    started = time.time()
+    bake, bake_stats = read_bake(store, scripts, decoder, image_mod, GRID)
+    blended = {name: plane for name, plane in planes.items() if name in table}
+    fit, fit_stats = fit_layer_table(blended, table, bake)
+    crowns = crown_tops(trees, GRID)
+    families = rock_family_colours(store, scripts, AssetIndex(store), decoder)
+    payload = {
+        BAKE_NAME: hf.encode_u8(bake.reshape(GRID, -1)),
+        CROWN_NAME: hf.encode_i16(crowns),
+    }
+    files = {
+        BAKE_NAME: {"shape": [GRID, GRID, 3], "kind": "u8", "srgb": True, "role": "bake"},
+        CROWN_NAME: {"shape": [GRID, GRID], "kind": "i16", "unit": "dm", "role": "crown top"},
+    }
+    meta = {
+        "bake": {**bake_stats, "fit": fit_stats, "seconds": round(time.time() - started, 1)},
+        "layers_bake_fit": fit,
+        "rock_families": families,
+    }
+    return payload, files, meta
+
+
 # ----------------------------------------------------------------------- the pass
 
 
@@ -492,8 +573,9 @@ def main() -> int:
     )
     parser.add_argument("--quiet", action="store_true", help="no progress lines")
     args = parser.parse_args()
-    versions = require_gen("ooz", "texture2ddecoder")
+    versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
     import texture2ddecoder as decoder
+    from PIL import Image as image_mod
 
     try:
         pin, raw = installed_build(args.game)
@@ -544,6 +626,12 @@ def main() -> int:
         }
     payload[CANOPY_NAME] = hf.encode_u8(np.round(canopy * 255).astype(np.uint8))
     files[CANOPY_NAME] = {"shape": [GRID, GRID], "kind": "u8", "scale": 255}
+    layers = layer_albedo(LAYERS, means, vectors)
+    extra_payload, extra_files, extra_meta = satellite_inputs(
+        store, scripts, decoder, image_mod, planes, found["trees"], layers
+    )
+    payload.update(extra_payload)
+    files.update(extra_files)
     payload[PIGMENT_NAME] = hf.encode_u8(pigment.reshape(pigment.shape[0], -1))
     files[PIGMENT_NAME] = {
         "shape": list(pigment.shape),
@@ -576,7 +664,8 @@ def main() -> int:
         "files": files,
         "digest": files_digest({name: entry["sha256"] for name, entry in files.items()}),
         "albedo_linear": {
-            "layers": layer_albedo(LAYERS, means, vectors),
+            "layers": layers,
+            "layers_bake_fit": extra_meta.pop("layers_bake_fit"),
             "overlays": layer_albedo(OVERLAYS, means, vectors),
             "rock": np.mean([means[t] for t in ROCK_TEXTURES], axis=0).round(5).tolist(),
             "canopy": [round(v, 5) for v in means[CANOPY_TEXTURE]],
@@ -587,6 +676,7 @@ def main() -> int:
         "components": sorted(found["origins"]),
         "component_px": WEIGHTMAP_PX,
         "trees": tree_counts,
+        **extra_meta,
         "counts": {"unreadable": found["unreadable"], "failed_packages": found["failed_packages"]},
         "seconds": round(time.time() - started, 1),
     }

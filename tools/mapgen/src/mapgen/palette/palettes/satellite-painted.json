@@ -1,6 +1,7 @@
 {
  "id": "satellite-painted",
- "about": "the landscape's own paint layers times their albedo, pigment, canopy, rock and coral meshes, sky and sun light, Beer-Lambert water",
+ "about": "the game's baked ground colour, else the paint layers times their albedo; canopy, rock with its cliff family's top layer, coral meshes, Titan trees, sky and sun light, Beer-Lambert water",
+ "ground": "bake",
  "albedo_darkening": 0.95,
  "wet_sand_lightness_of_sand": 0.9,
  "pigment": 0.15,
@@ -89,6 +90,12 @@
  "rock_tint_lightness": 0.3,
  "rock_tint_chroma": 0.5,
  "rock_lightness_add": 0.02,
+ "rock_top": {
+  "up": [
+   0.6,
+   0.85
+  ]
+ },
  "mesh_colours": {
   "coral": [
    176,
@@ -104,6 +111,19 @@
    95,
    136,
    153
+  ]
+ },
+ "titan_trees": {
+  "opacity": 0.8,
+  "leaves": [
+   77,
+   90,
+   48
+  ],
+  "trunk": [
+   99,
+   88,
+   81
   ]
  },
  "chroma_gain": 1.2,
@@ -166,6 +186,7 @@
    104
   ],
   "deep_tau_m": 12.0,
-  "bed_wet": 0.8
+  "bed_wet": 0.8,
+  "inland_floor": 0.35
  }
 }

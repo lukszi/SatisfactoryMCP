@@ -41,7 +41,7 @@ estimate assumes before a job of that kind has run once.
 | `heightmap` | `gen_world_heightmap.py` | `data/local/heightmap/` (planes, `meta.json`, and the rock pack) | 4–6 min; budget 15 min |
 | `caves` | `gen_world_heightmap.py --caves` | `data/local/caves/` (`caves.npz`, `meta.json`) | sweep 6 s; budget 2 min |
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
-| `paint` | `gen_paint_layers.py` | `data/local/paint/` (54 MB) | 25 s; budget 1 min |
+| `paint` | `gen_paint_layers.py` | `data/local/paint/` (104 MB) | 70 s; budget 1 min |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` | 3 min at `--size 1024`; about 30 min for two layers at full size |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
@@ -70,8 +70,9 @@ without `--force`. See §24.
 ### paint
 
 Extracts the landscape's paint layers once per game build: one weight plane per layer on
-the 1 m grid, the tree canopy cover, the PigmentMap tint and each layer's albedo. Only the
-`painted` render layer reads them. See §27.
+the 1 m grid, the tree canopy cover and crown tops, the PigmentMap tint, each layer's albedo,
+the landscape's baked ground colour with the layer albedos refitted to it, and the cliff
+families' tints and top layers. Only the `painted` render layer reads them. See §27 and §30.
 
 ### artwork
 
@@ -94,6 +95,8 @@ as the artwork. The main options:
   size and build reuses them.
 - `--restyle` draws only from those kept caches and exits with code 9 when one is missing or
   was cut for another size or build, so a palette change never turns into a full render.
+- `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
+  with its own digest (§30).
 
 A full-size run needs about 10.7 GB of scratch space for those caches. See §25 to §27, and
 [maps_contract.md](../../docs/maps_contract.md) for how the server registers the result.
@@ -118,11 +121,13 @@ be traced to the axis it should move.
 | `heightmap.py` | data | The heightmap, caves and rocks command: arguments, refusals, stage order |
 | `artwork.py` | data | The artwork command: arguments, stage order, refusals |
 | `check_fill.py` | | The check-fill command |
-| `cache.py` | | The stamped raster caches (direct, top, meshes). The on-disk names are unchanged. |
+| `cache.py` | | The stamped raster caches (direct, top, meshes, Titan trees). The on-disk names are unchanged. |
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, heightfield grid |
 | `gamedata/sweep.py` | data | Level sweep, foliage, landscape frame, baseline |
 | `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
+| `gamedata/bake.py` | data | The landscape's baked ground colour and the layer refit |
+| `gamedata/rockfamily.py` | data | Cliff material families: per placement, tint and top layer |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
 | `gamedata/water.py` | data | The heightfield's water channel: artwork mask, box levels, region masks |

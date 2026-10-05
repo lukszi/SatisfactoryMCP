@@ -15,18 +15,18 @@ import pytest
 
 pytest.importorskip("scipy")
 
-from mapgen.lighting import horizon as hz  # noqa: E402
-from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, flat_shade, hillshade  # noqa: E402
-from mapgen.lighting.model import (  # noqa: E402
+from mapgen.lighting import horizon as hz
+from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, flat_shade, hillshade
+from mapgen.lighting.model import (
     SHADOW_FLOOR,
     apply_terms,
     light_axis,
     model_block,
     relight,
 )
-from mapgen.lighting.sun import DEFAULT_SUN, MAP_NW_SUN, NOON_HOUR, game_sun  # noqa: E402
-from mapgen.palette.lightparams import shader_light  # noqa: E402
-from satisfactory_mcp.core.gameassets.versions import LIGHTS  # noqa: E402
+from mapgen.lighting.sun import DEFAULT_SUN, MAP_NW_SUN, NOON_HOUR, game_sun
+from mapgen.palette.lightparams import shader_light
+from satisfactory_mcp.core.gameassets.versions import LIGHTS
 
 REPO = Path(__file__).resolve().parents[1]
 SUN_TS = REPO / "src/satisfactory_mcp/interfaces/web/frontend/src/sun.ts"
@@ -95,7 +95,7 @@ def test_an_occluder_casts_and_a_floating_slab_casts_only_where_nothing_shows_be
 
 def _nrm(z, sp, svf=1.0, land=1.0):
     nx, ny = hz.normals(np.pad(z, 1, mode="edge"), sp)
-    q = lambda v: np.round((v * 0.5 + 0.5) * 255).astype(np.uint8)  # noqa: E731
+    q = lambda v: np.round((v * 0.5 + 0.5) * 255).astype(np.uint8)
     full = np.ones(nx.shape)
     return np.stack(
         [q(nx), q(ny), np.uint8(round(svf * 255)) * full, np.uint8(round(land * 255)) * full], -1
@@ -175,7 +175,7 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     for top in range(0, size, 128):
         surface.put(top, z[top : top + 128], land[top : top + 128])
     sheet = np.full((size, size, 3), 128, np.uint8)
-    stats, dense, _ = run.install(sheet, Image, tmp_path / "out", "terrain", 1, 6, "r")
+    stats, _dense, _ = run.install(sheet, Image, tmp_path / "out", "terrain", 1, 6, "r")
     root = tmp_path / "out" / "r"
     meta = json.loads((root / "light" / "meta.json").read_text(encoding="utf-8"))["_meta"]
     assert meta["tiles"]["max_z"] == 1 and meta["tiles"]["count"] == 5

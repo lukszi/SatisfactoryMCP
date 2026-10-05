@@ -58,20 +58,22 @@ from mapgen.cache import (
     DIRECT_CACHE_DIR_NAME,
     DIRECT_CACHE_SIDECAR,
     MESH_CACHE_DIR_NAME,
-    MESH_CACHE_SIDECAR,
+    RASTER_CACHE_DIRS,
+    TITAN_CACHE_DIR_NAME,
+    TITAN_FACTOR,
     TOP_CACHE_DIR_NAME,
     cached_direct,
-    cached_meshes,
+    cached_family,
     direct_cache_dir,
     direct_cache_stamp,
-    missing_caches,
+    restyle_gaps,
     top_cache_dir,
 )
-from mapgen.cache import mesh_stamp as cache_mesh_stamp
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, base_parser, require_gen
 from mapgen.gamedata.biome import calibrate_biome, read_biome, region_table_is_current
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.gamedata.paint import PAINT_DIR
+from mapgen.gamedata.rockfamily import placement_families
 from mapgen.lighting.hillshade import (
     BORROW_DETAIL_SIGMA_PX,
     BORROW_FEATHER_M,
@@ -90,28 +92,28 @@ from mapgen.palette.styles import (
     BIOME_COLOURS,
     LAYER_STYLES,
     NO_MANS_LAND_RGB,
-    PAINTED_PALETTE,
     RELIEF_PALETTES,
     SHORE_OPTICS,
     STYLE_DIGESTS,
     UNKNOWN_BIOME_RGB,
     biome_colour_field,
     biome_lookup,
+    painted_style,
 )
 from mapgen.palette.water import WATER_DEPTH_FULL_M, WATER_EDGE_BLUR_M, WATER_EDGE_M, water_planes
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import (
-    DIRECT_BAND_ROWS,
     DIRECT_SUBSAMPLES,
     direct_placements,
     mesh_items,
+    mesh_pass,
     rasterise_direct,
     rasterise_direct_band,
-    rasterise_meshes,
     rasterise_top_band,
     read_cliff_geometry,
     sweep_world,
+    titan_items,
     top_items,
 )
 from mapgen.terrain.sample import direct_weight, taps_cubic, taps_pchip
@@ -289,6 +291,11 @@ def main() -> int:
         help="leave out the render-only coral, shell and pillar meshes",
     )
     parser.add_argument(
+        "--no-titan-trees",
+        action="store_true",
+        help="leave the Titan forest's trees off the painted layer (a style variant)",
+    )
+    parser.add_argument(
         "--paint-dir",
         type=Path,
         default=PAINT_DIR,
@@ -426,9 +433,9 @@ def main() -> int:
                 return 3
     if args.restyle and weight_plane is not None:
         root = args.cache_dir or out_dir / args.renders_name
-        stamp = direct_cache_stamp(args.size, args.direct_subsamples, field_build)
-        mesh_key = cache_mesh_stamp(args.size, field_build, READER_VERSIONS["render_meshes"])
-        gaps = missing_caches(root, stamp, mesh_key, not args.no_top, not args.no_meshes)
+        titan = "painted" in layers and not args.no_titan_trees
+        gaps = restyle_gaps(root, args.size, args.direct_subsamples, field_build,
+                            not args.no_top, not args.no_meshes, titan)  # fmt: skip
         if gaps:
             print(f"--restyle: {', '.join(gaps)} under {root} is missing or for another size "
                   "or build. Draw once with --cache-dir and --keep-direct to keep it.")  # fmt: skip
@@ -604,7 +611,8 @@ def main() -> int:
             )
             return 8
         started = time.time()
-        painted = PaintedGround(args.paint_dir, PAINTED_PALETTE, field, biome, list(drawn))
+        palette, STYLE_DIGESTS["painted"] = painted_style(args.no_titan_trees)
+        painted = PaintedGround(args.paint_dir, palette, field, biome, list(drawn))
         inputs["paint"] = {
             "cl": paint_meta.get("cl"),
             "generator_version": paint_meta.get("generator_version"),
@@ -641,19 +649,18 @@ def main() -> int:
     top_source: dict = {}
     loaded: dict = {}
 
-    def sweep_once() -> dict:
+    def sweep_once() -> tuple:
         if "sweep" not in loaded:
             index = AssetIndex(store)
             loaded["index"] = index
             loaded["sweep"] = sweep_world(
                 store, scripts, index, ClassFacts(store, index), not args.quiet
             )
-        return loaded["sweep"]
+        return loaded["index"], loaded["sweep"]
 
     def geometry_once() -> dict:
         if "geometry" not in loaded:
-            sweep = sweep_once()
-            index = loaded["index"]
+            index, sweep = sweep_once()
             loaded["geometry"] = read_cliff_geometry(
                 store, scripts, index, ClassFacts(store, index), not args.quiet, sweep
             )
@@ -683,10 +690,11 @@ def main() -> int:
                 )
             )
             geometry = geometry_once()
-            prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"])
+            families = placement_families(store, scripts, loaded["index"], geometry["sweep"])
+            prepared, dropped = direct_placements(geometry["sweep"], geometry["geometry"], families)
             print(f"  {len(prepared)} placements rasterised, dropped {dropped}")
             cache_stats = rasterise_direct(
-                partial(rasterise_direct_band, prepared, geometry["geometry"]),
+                partial(rasterise_direct_band, prepared, geometry["geometry"], with_source=True),
                 cache,
                 args.size,
                 args.direct_subsamples,
@@ -739,6 +747,10 @@ def main() -> int:
             "cl": changelist(stamp["game_version_pinned"]),
             "reader_version": READER_VERSIONS["cliff_geometry"],
         }
+        if painted is not None:
+            painted.rock_family = cached_family(cache, stamp)
+            for name in ("rock_families",) + (() if args.no_titan_trees else ("titan_trees",)):
+                inputs[name] = dict(inputs["cliff_geometry"], reader_version=READER_VERSIONS[name])
 
         if not args.no_top:
             top_cache = (
@@ -788,37 +800,23 @@ def main() -> int:
 
     meshes = None
     mesh_source: dict = {}
+    cache_root = args.cache_dir or out_dir / args.renders_name
     if weight_plane is not None and not args.no_meshes:
-        cache_root = args.cache_dir or out_dir / args.renders_name
-        mesh_cache = cache_root / MESH_CACHE_DIR_NAME
-        mesh_stamp = cache_mesh_stamp(args.size, field_build, READER_VERSIONS["render_meshes"])
-        meshes = cached_meshes(mesh_cache, mesh_stamp)
-        if meshes is None:
-            print(f"rasterising the render-only meshes at {spacing_m:.4f} m")
-            sweep = sweep_once()
-            prepared, mesh_meta = mesh_items(store, scripts, loaded["index"], sweep)
-            print(f"  {mesh_meta['meshes']} meshes, {mesh_meta['instances']}")
-            mesh_stats = rasterise_meshes(
-                prepared, mesh_cache, mesh_stamp, BOUNDS_M, DIRECT_BAND_ROWS, not args.quiet
-            )
-            print(f"  mesh raster: {mesh_stats['texels'] / 1e6:.2f} M texels in "
-                  f"{mesh_stats['seconds']}s")  # fmt: skip
-            mesh_source = {"render_meshes": {**mesh_meta, "raster": mesh_stats}}
-            del prepared
-            meshes = cached_meshes(mesh_cache, mesh_stamp)
-        else:
-            print(f"reusing the render-only mesh raster already in {mesh_cache}")
-            mesh_source = {
-                "render_meshes": {
-                    "reused": json.loads(
-                        (mesh_cache / MESH_CACHE_SIDECAR).read_text(encoding="utf-8")
-                    )
-                }
-            }
+        meshes, mesh_source = mesh_pass(
+            cache_root / MESH_CACHE_DIR_NAME, args.size, field_build, "render_meshes",
+            lambda: mesh_items(store, scripts, *sweep_once()), "render-only meshes", args.quiet,
+        )  # fmt: skip
         inputs["render_meshes"] = {
             "cl": changelist(field_build),
             "reader_version": READER_VERSIONS["render_meshes"],
         }
+    if weight_plane is not None and painted is not None and not args.no_titan_trees:
+        titan, titan_source = mesh_pass(
+            cache_root / TITAN_CACHE_DIR_NAME, args.size // TITAN_FACTOR, field_build, "titan_trees",
+            lambda: titan_items(store, scripts, *sweep_once()), "Titan trees", args.quiet,
+        )  # fmt: skip
+        painted.titan = (*titan, TITAN_FACTOR, 0, 0)
+        paint_source.update(titan_source)
     loaded.clear()
 
     # ---- draw and cut ----------------------------------------------------------------
@@ -958,7 +956,7 @@ def main() -> int:
                     key: value
                     for key, value in inputs.items()
                     if (key != "biome_raster" or layer in BIOME_LAYERS)
-                    and (key != "paint" or layer == "painted")
+                    and (key not in ("paint", "rock_families", "titan_trees") or layer == "painted")
                 },
                 {
                     "family": "render",
@@ -1001,9 +999,9 @@ def main() -> int:
     if direct is not None:
         # Let the memory maps go before removing the files under them: on Windows an open
         # mapping refuses the unlink outright.
-        direct = maps = top = top_maps = meshes = None
+        direct = maps = top = top_maps = meshes = painted = None
         if not (args.keep_direct or args.restyle):
-            for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME):
+            for kept in RASTER_CACHE_DIRS:
                 root = args.cache_dir or out_dir / args.renders_name
                 shutil.rmtree(root / kept, ignore_errors=True)
     if light is not None:

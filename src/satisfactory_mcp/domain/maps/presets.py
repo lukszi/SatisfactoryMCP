@@ -150,6 +150,7 @@ def normalise(preset: str, options: dict | None) -> dict:
             "keep_cache": _bool(options, "keep_cache", False),
             "restyle": restyle,
             "light": _bool(options, "light", False),
+            "titan_trees": _bool(options, "titan_trees", True),
         }
     if preset == "artwork":
         enhance = _bool(options, "enhance", False)
@@ -360,6 +361,8 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
             argv.append("--no-top")
         if options["light"]:
             argv.append("--unlit")
+        if not options["titan_trees"]:
+            argv.append("--no-titan-trees")
         if options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir():
             argv += ["--cache-dir", str(cache_dir(options["size"])), "--keep-direct"]
         if options["restyle"]:

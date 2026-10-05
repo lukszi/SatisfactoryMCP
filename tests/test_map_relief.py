@@ -65,7 +65,9 @@ def _scene(z_m: np.ndarray) -> dict:
 
 def _ground(layer: str, biome=None, names=()) -> ReliefGround:
     ramp = np.linspace(0.0, 100.0, 64, dtype=np.float32)
-    return ReliefGround(RELIEF_PALETTES[layer][0], _field(np.tile(ramp, (64, 1))), biome, list(names))
+    return ReliefGround(
+        RELIEF_PALETTES[layer][0], _field(np.tile(ramp, (64, 1))), biome, list(names)
+    )
 
 
 def _identity(plane):

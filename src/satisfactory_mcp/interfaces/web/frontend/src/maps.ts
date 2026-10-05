@@ -36,6 +36,7 @@ var form = {
   size: 4096,
   top: true,
   light: true,
+  titanTrees: true,
   recipe: "current",
   keepCache: false,
   restyle: false,
@@ -152,6 +153,7 @@ function presetWords(job: MapJobBody): string {
     var parts = ["render", (o.size as number) + " px"];
     if (o.recipe === "kernel-only") parts.push("kernel only");
     if (o.top === false) parts.push("no arches");
+    if (o.titan_trees === false) parts.push("no Titan trees");
     if (o.keep_cache) parts.push("keeps the raster cache");
     if (o.restyle) parts.push("palette only");
     if (o.light) parts.push("live sun");
@@ -369,6 +371,7 @@ function formOptions(): Record<string, unknown> {
       size: form.size,
       recipe: form.recipe,
       top: form.top,
+      titan_trees: form.titanTrees,
       keep_cache: form.keepCache,
       restyle: restyle,
       light: form.light,
@@ -508,6 +511,12 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
     });
     lit.title = "draws colour unlit and bakes a lighting pyramid, so the map is relit in the browser by any sun";
     opts.appendChild(lit);
+    opts.appendChild(
+      checkbox("Titan trees (game-painted)", form.titanTrees, function (on) {
+        form.titanTrees = on;
+        refresh();
+      })
+    );
     var recipe = make("label", "maps-inline");
     recipe.appendChild(make("span", "", "recipe "));
     recipe.appendChild(
