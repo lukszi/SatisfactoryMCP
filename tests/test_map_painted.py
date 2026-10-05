@@ -276,3 +276,17 @@ def test_a_fresh_pyramid_rename_waits_out_a_brief_lock(tmp_path, monkeypatch):
     monkeypatch.setattr(pyramid, "RENAME_PAUSE_S", 0.0)
     pyramid.swap_into_place(staging, final, tmp_path / "tiles.retired")
     assert final.is_dir() and len(calls) == 3
+
+
+def test_foam_is_a_line_and_the_wet_band_sits_just_above_it():
+    z, spacing = _beach(slope=0.01)
+    shape = z.shape
+    ones, zeros = np.ones(shape, np.float32), np.zeros(shape, np.float32)
+    water = map_shore.blend_water(ones, zeros, zeros, map_shore.shore_terms(z, spacing), 40.0)
+    foam = {"strength": 0.4, "max_depth_m": 0.12, "width_m": 1.0, "white": 1.0}
+    grey = np.full(shape + (3,), 0.3, np.float32)
+    foamed = map_shore.add_foam(grey, water, foam, np.float32(1.0))[3, :, 0]
+    lit = np.flatnonzero(foamed > 0.301)
+    assert 0 < len(lit) <= 6, "a line of about a metre, not the whole flat sandbar"
+    banded = map_shore.wet_band(grey, water, {"m": 3.0, "tint": [0.5, 0.5, 0.5]})[3, :, 0]
+    assert banded[101] < 0.3 and banded[100 + int(3.0 / spacing) + 2] == pytest.approx(0.3)

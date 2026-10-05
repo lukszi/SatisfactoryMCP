@@ -131,8 +131,22 @@
  ],
  "shore": {
   "clarity_m": 1.1,
-  "edge_alpha": 0.38,
+  "edge_alpha": 0.15,
   "wet_darken": 0.82,
-  "stroke": 0.0
+  "stroke": 0.0,
+  "wet_band": {
+   "m": 3.0,
+   "tint": [
+    0.8,
+    0.82,
+    0.86
+   ]
+  },
+  "foam": {
+   "strength": 0.25,
+   "max_depth_m": 0.12,
+   "white": 0.85,
+   "width_m": 1.0
+  }
  }
 }

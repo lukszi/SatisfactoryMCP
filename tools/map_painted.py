@@ -210,6 +210,16 @@ class PaintedGround:
             map_shore.MESH_CORAL: srgb_to_linear(palette["mesh_colours"]["coral"]),
             map_shore.MESH_SHELL: srgb_to_linear(palette["mesh_colours"]["shell"]),
         }
+        self.seabed_coral = srgb_to_linear(palette["mesh_colours"]["coral_seabed"])
+        water = palette["water"]
+        self.water = {
+            "k": np.asarray(water["k_per_m"], np.float32),
+            "body": srgb_to_linear(water["body"]),
+            "sky": srgb_to_linear(water["sky"]) * np.float32(water["surface_r"]),
+            "deep": srgb_to_linear(water["deep"]),
+            "deep_tau_m": np.float32(water["deep_tau_m"]),
+            "bed": np.float32(water["bed_wet"]),
+        }
         lo, hi, cdf = dry_land_range(field, palette["ramp_lo_pct"], palette["ramp_hi_pct"])
         self.ramp = (lo, hi, cdf)
 
@@ -312,6 +322,8 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
         colour = rock_rgb.copy()
         for which, rgb in ground.mesh_rgb.items():
             colour = np.where((cls == which)[..., None], rgb, colour)
+        under = (cls == map_shore.MESH_CORAL) & (scene["water"]["depth_m"] > 0)
+        colour = np.where(under[..., None], ground.seabed_coral, colour)
         g = g * (1.0 - mesh_w[..., None]) + colour * mesh_w[..., None]
 
     lab = oklab(np.clip(g, 1e-7, None))
@@ -333,17 +345,20 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     lit = g * light * (exposure * borrow)[..., None]
 
     water = scene["water"]
+    lit = map_shore.wet_band(lit, water, p["shore"].get("wet_band"))
+    w = ground.water
     depth = water["depth_m"][..., None]
-    transmit = np.exp(-depth / np.asarray(p["water_tau_m"], np.float32))
-    dark = p["water_dark_min"] + (1 - p["water_dark_min"]) * np.exp(-depth / p["water_dark_m"])
-    body = np.asarray(p["water_body"], np.float32) * dark
-    bed = g * exposure * np.float32(p["water_bed_wet"])
-    under = bed * transmit + body * (1.0 - transmit)
+    transmit = np.exp(-w["k"] * depth)
+    bed = g * exposure * w["bed"]
+    under = bed * transmit + w["body"] * (1.0 - transmit) + w["sky"]
+    open_sea = 1.0 - np.exp(-depth / w["deep_tau_m"])
+    under = under * (1.0 - open_sea) + w["deep"] * open_sea
     cover = water["cover"][..., None]
     out = lit * (1.0 - cover) + under * cover
     stroke = np.float32(p["shore"]["stroke"])
     if stroke:
         out = out * (1.0 - stroke * water["edge"][..., None])
+    out = map_shore.add_foam(out, water, p["shore"].get("foam"), np.float32(1.0))
 
     shoulder = np.float32(p["shoulder"])
     over = np.maximum(out - shoulder, 0.0)

@@ -1294,10 +1294,17 @@ beach with a median slope of 0.067, smearing the edge over about 13 m. Nothing f
 - **Coverage.** `cover = clip((L - z) / (|grad z| * px) + 0.5, 0, 1)`, with `z` the final
   drawn surface (terrain, rocks, arches, render-only meshes). The edge is one antialiased
   pixel at every zoom. The two rules are blended by the reach plane's bilinear coverage.
-- **Optics.** Over the sea the water's opacity is `a0 + (1 - a0)(1 - exp(-d / c))` over ground
-  darkened by `wet_darken`; the deep tint still uses `WATER_DEPTH_FULL_M`. A non-zero `a0` keeps
-  the line visible where the beach is flat, as the game draws it. Terrain: `a0` 0.62,
-  `c` 0.45 m. Satellite: 0.38 and 1.1 m. Wet darkening 0.82.
+- **Optics.** The edge itself is one pixel, but the water fades in with depth, so the shore
+  reads as a short physical transition rather than a line. Over the sea the water's opacity is
+  `a0 + (1 - a0)(1 - exp(-d / c))` over ground darkened by `wet_darken`; the deep tint still
+  uses `WATER_DEPTH_FULL_M`. Terrain: `a0` 0.30, `c` 0.6 m. Satellite: 0.15 and 1.1 m. Wet
+  darkening 0.82. (A first cut used 0.62 and 0.38, which read as too sharp a border.)
+- **Wet sand and foam**, per style in `shore`: `wet_band` multiplies the ground within `m`
+  metres above the waterline (measured across the ground, `height / slope`) towards a darker,
+  cooler tint, fading quadratically; `foam` lays a faint line over water shallower than
+  `max_depth_m` and within `width_m` of the line, so a flat sandbar gets a line and not a
+  sheet. Satellite: 3 m band, foam 0.25. Painted: 3 m band, foam 0.4 (0.12 m deep, 1 m wide).
+  Terrain: neither.
 - **The stroke.** A dark line where the crossing passes through a pixel is a style constant,
   `shore.stroke`, and is 0 (off) in every palette.
 - **The level** is one constant, `OCEAN_LEVEL_M = -17.0`, the water boxes' and ocean tiles'
@@ -1366,13 +1373,21 @@ in `tools/map_painted.py`. Once per run, on the 1 m grid (about 80 s):
 Per pixel: canopy over the ground (0.85 times cover, Forest_Far albedo times 0.85); rock where
 a rock, arch or boulder raises the surface (by its lift, not its coverage, so a buried mesh is
 never coloured); the render-only meshes in their own colours (coral #b08a9c, shell #d6ccba,
-rock class takes the rock colour); OKLab chroma times 1.2; then an altitude lift of 0.03 L
+coral whose top is under water the seabed blue #5f8899, rock class takes the rock colour); OKLab chroma times 1.2; then an altitude lift of 0.03 L
 along a dry-land ramp. That ramp follows the recommended construction: heights over dry land
 only (`waterq` dry, p1 to p99.5), position `0.35 * linear + 0.65 * equalised`, applied as an
 even OKLab step. Light is sky plus sun (ambient 0.40), equal to 1 on flat ground, times
-exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. Water is Beer-Lambert
-over the wet bed (extinction 1.6, 3.5, 5.5 m per channel, River_Inst_01's body colour,
-darkening with depth). A highlight shoulder at 0.72, then sRGB.
+exposure 1.12 and the artwork borrow with its dark ink damped to 0.25. A highlight shoulder
+at 0.72, then sRGB.
+
+**Water** is Beer-Lambert, calibrated against Spire Coast screenshots:
+`bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` = (4.08, 3.53, 3.53) per metre and
+`W` #577f7e, then blended towards the open sea #354e68 by `1 - exp(-d / 12 m)`. The bed is the
+ground colour times exposure times 0.8 (wet). Coral and shells are part of the bed: they are
+composited into the ground colour first, and the depth `d` is measured to the drawn surface,
+which over a mesh is the mesh top, so a shallow reef stays visible. The fit is six shallow
+patches at 1.5 to 4.2 Delta E, with depths matched to the heightfield's range rather than
+measured.
 
 ### Measured
 

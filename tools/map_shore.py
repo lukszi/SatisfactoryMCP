@@ -81,14 +81,18 @@ def ocean_reach(field) -> tuple[np.ndarray, dict]:
 
 
 def shore_terms(z_m: np.ndarray, spacing_m: float) -> dict:
-    """The crossing of the ocean level through each pixel: coverage, depth and the edge."""
+    """The crossing of the ocean level through each pixel: coverage, depth, the edge, and how
+    far above the waterline a dry pixel is, in metres across the ground."""
     d_south, d_east = np.gradient(z_m, spacing_m)
-    per_px = np.maximum(np.hypot(d_east, d_south) * spacing_m, np.float32(1e-3))
+    grade = np.maximum(np.hypot(d_east, d_south), np.float32(1e-3))
+    per_px = np.maximum(grade * spacing_m, np.float32(1e-3))
     depth = np.float32(OCEAN_LEVEL_M) - z_m
     return {
         "cover": np.clip(depth / per_px + 0.5, 0.0, 1.0),
         "depth_m": np.maximum(depth, 0.0),
         "edge": np.clip(1.0 - np.abs(depth) / per_px, 0.0, 1.0),
+        "above_m": np.maximum(-depth, 0.0) / grade,
+        "below_m": np.maximum(depth, 0.0) / grade,
     }
 
 
@@ -106,6 +110,8 @@ def blend_water(reach, old_cover, old_depth_fraction, shore: dict | None, full_m
             "depth": old_depth_fraction,
             "ocean": zero,
             "edge": zero,
+            "above_m": np.full_like(old_cover, np.inf),
+            "below_m": np.full_like(old_cover, np.inf),
             "depth_m": old_depth_fraction * np.float32(full_m),
         }
     keep = 1.0 - reach
@@ -115,6 +121,8 @@ def blend_water(reach, old_cover, old_depth_fraction, shore: dict | None, full_m
         "depth_m": reach * shore["depth_m"] + keep * old_depth_fraction * np.float32(full_m),
         "ocean": reach,
         "edge": reach * shore["edge"],
+        "above_m": np.where(reach > 0, shore["above_m"], np.inf),
+        "below_m": np.where(reach > 0, shore["below_m"], np.inf),
     }
 
 
@@ -125,7 +133,10 @@ def water_composite(
 
     Over the sea the water's opacity rises from ``edge_alpha`` at the line to one with an
     exponential depth fade of e-folding ``clarity_m``, over ground darkened by ``wet_darken``.
+    Optional, per style: ``wet_band`` darkens the sand just above the line and ``foam`` lays a
+    faint line over the shallowest water.
     """
+    land = wet_band(land, water, optics.get("wet_band"))
     ocean = water["ocean"]
     fade = 1.0 - np.exp(-water["depth_m"] / np.float32(optics["clarity_m"]))
     a0 = np.float32(optics["edge_alpha"])
@@ -139,7 +150,27 @@ def water_composite(
     stroke = np.float32(optics.get("stroke", 0.0))
     if stroke:
         rgb = rgb * (1.0 - stroke * water["edge"][..., None])
-    return rgb
+    return add_foam(rgb, water, optics.get("foam"), np.float32(255.0))
+
+
+def wet_band(land, water: dict, band: dict | None):
+    """Ground within ``band["m"]`` of the waterline, multiplied towards ``band["tint"]``."""
+    if not band or not band.get("m"):
+        return land
+    reach = np.clip(1.0 - water["above_m"] / np.float32(band["m"]), 0.0, 1.0)
+    weight = (reach * reach * water["ocean"])[..., None]
+    return land * (1.0 - weight + weight * np.asarray(band["tint"], np.float32))
+
+
+def add_foam(rgb, water: dict, foam: dict | None, white):
+    """A faint line along the waterline, towards ``white``: water shallower than
+    ``max_depth_m`` and within ``width_m`` of the line across the ground."""
+    if not foam or not foam.get("strength"):
+        return rgb
+    shallow = np.clip(1.0 - water["depth_m"] / np.float32(foam["max_depth_m"]), 0.0, 1.0)
+    shallow = shallow * np.clip(1.0 - water["below_m"] / np.float32(foam["width_m"]), 0.0, 1.0)
+    weight = (np.float32(foam["strength"]) * shallow * water["cover"] * water["ocean"])[..., None]
+    return rgb * (1.0 - weight) + white * np.float32(foam.get("white", 1.0)) * weight
 
 
 # ----------------------------------------------------------------------- render-only meshes

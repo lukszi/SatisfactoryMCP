@@ -51,8 +51,8 @@
   170
  ],
  "shore": {
-  "clarity_m": 0.45,
-  "edge_alpha": 0.62,
+  "clarity_m": 0.6,
+  "edge_alpha": 0.3,
   "wet_darken": 0.82,
   "stroke": 0.0
  }

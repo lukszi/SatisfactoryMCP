@@ -99,6 +99,11 @@
    214,
    204,
    186
+  ],
+  "coral_seabed": [
+   95,
+   136,
+   153
   ]
  },
  "chroma_gain": 1.2,
@@ -120,20 +125,47 @@
  "exposure": 1.12,
  "shoulder": 0.72,
  "borrow_ink_damp": 0.25,
- "water_body": [
-  0.1097,
-  0.1953,
-  0.255
- ],
- "water_tau_m": [
-  1.6,
-  3.5,
-  5.5
- ],
- "water_bed_wet": 0.7,
- "water_dark_m": 30.0,
- "water_dark_min": 0.5,
  "shore": {
-  "stroke": 0.0
+  "stroke": 0.0,
+  "wet_band": {
+   "m": 3.0,
+   "tint": [
+    0.78,
+    0.8,
+    0.85
+   ]
+  },
+  "foam": {
+   "strength": 0.4,
+   "max_depth_m": 0.12,
+   "white": 0.85,
+   "width_m": 1.0
+  }
+ },
+ "water": {
+  "model": "beer-lambert, calibrated on Spire Coast screenshots",
+  "k_per_m": [
+   4.08,
+   3.53,
+   3.53
+  ],
+  "body": [
+   87,
+   127,
+   126
+  ],
+  "surface_r": 0.02,
+  "sky": [
+   150,
+   190,
+   230
+  ],
+  "deep": [
+   53,
+   78,
+   104
+  ],
+  "deep_tau_m": 12.0,
+  "bed_wet": 0.8
  }
 }
