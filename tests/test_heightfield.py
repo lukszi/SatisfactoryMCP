@@ -1018,3 +1018,55 @@ def test_a_landscape_reading_takes_the_terrain_planes_finer_value(tmp_path):
     field = hf.load_field(directory)
     assert field.z(100.0, 0.0).z_m == pytest.approx(1.04, abs=0.008)
     assert field.at(100.0, 0.0).z_m == pytest.approx(1.0)
+
+
+def _twisted_field(tmp_path: Path) -> hf.Field:
+    """The layered field with terrain quad (1,1)-(2,2) twisted: a = d = 0 m, b = c = 1 m."""
+    directory = build_layered_field(tmp_path)
+    terrain = _terrain_raw(np.tile(np.arange(1, 7, dtype=float), (6, 1)))
+    terrain[1, 1] = terrain[2, 2] = _terrain_raw(np.array([0.0]))[0]
+    terrain[1, 2] = terrain[2, 1] = _terrain_raw(np.array([1.0]))[0]
+    terrain[4, 4] = _terrain_raw(np.array([40.0]))[0]
+    (directory / hf.TERRAIN_NAME).write_bytes(hf.encode_u16(terrain))
+    return hf.load_field(directory)
+
+
+def test_terrain_reads_the_engines_triangles_split_on_the_a_d_diagonal(tmp_path):
+    field = _twisted_field(tmp_path)
+    # Terrain col 1 is x 200 (the frame starts at x 100); row 1 is y 100.
+    centre = field.z(250.0, 150.0, surface="terrain").z_m
+    assert centre == pytest.approx(0.0, abs=0.01), "bilinear says 0.5, the other diagonal 1"
+    upper = field.z(275.0, 125.0, surface="terrain").z_m
+    assert upper == pytest.approx(0.5, abs=0.01), "triangle a-b-d; bilinear says 0.625"
+    lower = field.z(225.0, 175.0, surface="terrain").z_m
+    assert lower == pytest.approx(0.5, abs=0.01), "triangle a-c-d"
+
+
+def test_terrain_follows_a_steep_quad_that_ground_snaps_to_a_vertex(tmp_path):
+    field = _twisted_field(tmp_path)
+    # Terrain vertex (4,4) stands 40 m up, x 500 y 400; a quarter of the way to (3,3).
+    steep = field.z(475.0, 375.0, surface="terrain").z_m
+    assert steep == pytest.approx(0.75 * 40.0 + 0.25 * 4.0, abs=0.01)
+
+
+def test_the_rock_raster_samples_at_the_vertex_the_reader_reads():
+    # One triangle whose plane is z = x, far wider than the 1 m grid.
+    tri = np.array([[[0.0, 0.0, 0.0], [1000.0, 0.0, 1000.0], [0.0, 1000.0, 0.0]]])
+    at_vertex = gen_world_heightmap.MaxZRaster(10, 10, 0.0, 0.0, 100.0)
+    at_vertex.add(tri, 1)
+    z, _src, _density = at_vertex.result()
+    assert z[2, 3] == pytest.approx(300.0) and z[0, 0] == pytest.approx(0.0)
+    at_centre = gen_world_heightmap.MaxZRaster(10, 10, 0.0, 0.0, 100.0, sample=0.5)
+    at_centre.add(tri, 1)
+    assert at_centre.result()[0][2, 3] == pytest.approx(350.0)
+
+
+def test_a_source_vertex_counts_for_the_texel_whose_sample_is_nearest():
+    points = np.array([[240.0, 160.0, 0.0], [260.0, 140.0, 0.0]])
+    raster = gen_world_heightmap.MaxZRaster(10, 10, 0.0, 0.0, 100.0)
+    raster.count_samples(points)
+    density = raster.result()[2]
+    assert density[2, 2] == 1 and density[1, 3] == 1
+    centred = gen_world_heightmap.MaxZRaster(10, 10, 0.0, 0.0, 100.0, sample=0.5)
+    centred.count_samples(points)
+    assert centred.result()[2][1, 2] == 2

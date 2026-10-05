@@ -257,8 +257,9 @@ LOCAL_DIR = ROOT / "data" / "local"
 #: Bumped when the pipeline changes what it writes, so a sidecar dates its own field. 3 is
 #: the cliff layer taking the Nanite leaf over the collision hull, the ``density.u8.z``
 #: plane, and the provenance value that says which side of one sample per texel a cliff
-#: texel is on. 4 adds ``terrain.u16.z`` and ``top.i16.z`` beside an unchanged ground.
-GENERATOR_VERSION = 4
+#: texel is on. 4 adds ``terrain.u16.z`` and ``top.i16.z`` beside an unchanged ground. 5
+#: samples the rock and top rasters at the vertex the reader reads, not the texel centre.
+GENERATOR_VERSION = 5
 
 #: ``LandscapeSectionOffset - location / scale`` on every proxy, in landscape quads. The
 #: terrain plane's georeference is derived from it, so a cook that moves it must fail here.
@@ -840,11 +841,25 @@ class MaxZRaster:
     Triangles arrive faster than they can be reduced -- 120 M of them across the placements
     -- so candidates are buffered and folded in batches by a lexsort on (texel, z) and a
     take-last.
+
+    ``sample`` is where in a texel, in texels, its value is taken: 0 at the vertex
+    ``x0 + col * scale``, which is where ``heightfield`` reads every plane; 0.5 at the
+    texel centre, which is a render's pixel.
     """
 
-    def __init__(self, width: int, height: int, x0_cm: float, y0_cm: float, scale: float) -> None:
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        x0_cm: float,
+        y0_cm: float,
+        scale: float,
+        *,
+        sample: float = 0.0,
+    ) -> None:
         self.width, self.height = width, height
         self.x0, self.y0, self.scale = x0_cm, y0_cm, scale
+        self.sample = sample
         self.z = np.full(height * width, -np.inf, dtype=np.float32)
         self.src = np.zeros(height * width, dtype=np.uint16)
         self.density = np.zeros(height * width, dtype=np.uint32)
@@ -862,12 +877,12 @@ class MaxZRaster:
         large the triangle, while this counts only the texels the geometry sampled. A texel
         with no samples still has a height, and that height is a plane interpolation.
 
-        Floored, not rounded, to match ``add``, which samples at ``col + 0.5`` and writes to
-        ``col``. Two conventions here would put the density plane half a texel away from the
-        heights it describes.
+        A vertex counts for the texel whose sample point is nearest it, the convention
+        ``add`` writes heights under; two would put density half a texel off its heights.
         """
-        col = np.floor((points[:, 0] - self.x0) / self.scale).astype(np.int64)
-        row = np.floor((points[:, 1] - self.y0) / self.scale).astype(np.int64)
+        shift = 0.5 - self.sample
+        col = np.floor((points[:, 0] - self.x0) / self.scale + shift).astype(np.int64)
+        row = np.floor((points[:, 1] - self.y0) / self.scale + shift).astype(np.int64)
         ok = (col >= 0) & (col < self.width) & (row >= 0) & (row < self.height)
         if not ok.any():
             return
@@ -927,8 +942,8 @@ class MaxZRaster:
                 continue
             steps = np.arange(size + 1, dtype=np.float32)
             ox, oy = np.meshgrid(steps, steps)
-            gx = x0[pick][:, None] + ox.ravel()[None, :] + 0.5
-            gy = y0[pick][:, None] + oy.ravel()[None, :] + 0.5
+            gx = x0[pick][:, None] + ox.ravel()[None, :] + self.sample
+            gy = y0[pick][:, None] + oy.ravel()[None, :] + self.sample
             ax, ay = fx[pick, 0][:, None], fy[pick, 0][:, None]
             bx, by = fx[pick, 1][:, None], fy[pick, 1][:, None]
             cx, cy = fx[pick, 2][:, None], fy[pick, 2][:, None]

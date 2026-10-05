@@ -695,11 +695,14 @@ class Field:
         y_cm: float,
         bilinear: bool,
         max_step: float = math.inf,
+        triangles: bool = False,
     ) -> tuple[float, tuple[int, int]] | None:
         """Raw value at a point and the vertex that dominated it, or ``None``.
 
         Bilinear over the vertices with non-zero weight; if any of those is no data, or they
         span more than ``max_step`` (a cliff edge), the heaviest valid one answers alone.
+        ``triangles`` reads the engine's landscape surface instead: each quad is two flat
+        triangles split on the (r, c)-(r+1, c+1) diagonal (docs/spatial-and-map.md).
         """
         x0, y0, spacing = grid
         fx, fy = (x_cm - x0) / spacing, (y_cm - y0) / spacing
@@ -713,16 +716,24 @@ class Field:
         c0, r0 = math.floor(fx), math.floor(fy)
         tx, ty = fx - c0, fy - r0
         block = np.asarray(plane[max(r0, 0) : r0 + 2, max(c0, 0) : c0 + 2]).tolist()
+        if not triangles:
+            weights = [
+                (dr, dc, wy * wx)
+                for dr, wy in ((0, 1.0 - ty), (1, ty))
+                for dc, wx in ((0, 1.0 - tx), (1, tx))
+            ]
+        elif tx >= ty:
+            weights = [(0, 0, 1.0 - tx), (0, 1, tx - ty), (1, 1, ty)]
+        else:
+            weights = [(0, 0, 1.0 - ty), (1, 0, ty - tx), (1, 1, tx)]
         taps = []
-        for dr, wy in ((0, 1.0 - ty), (1, ty)):
-            for dc, wx in ((0, 1.0 - tx), (1, tx)):
-                weight = wy * wx
-                if weight <= 0.0:
-                    continue
-                r, c = r0 + dr, c0 + dc
-                inside = 0 <= r < h and 0 <= c < w
-                v = block[r - max(r0, 0)][c - max(c0, 0)] if inside else nodata
-                taps.append((weight, r, c, v))
+        for dr, dc, weight in weights:
+            if weight <= 0.0:
+                continue
+            r, c = r0 + dr, c0 + dc
+            inside = 0 <= r < h and 0 <= c < w
+            v = block[r - max(r0, 0)][c - max(c0, 0)] if inside else nodata
+            taps.append((weight, r, c, v))
         good = [t for t in taps if t[3] != nodata]
         if not good:
             return None
@@ -760,7 +771,7 @@ class Field:
             x_cm,
             y_cm,
             bilinear,
-            BLEND_MAX_STEP_M * tg["units_per_m"],
+            triangles=True,
         )
         if got is None:
             return None
