@@ -8,11 +8,11 @@ the game or writes a file. Three steps on the 1 m lattice the kernel samples:
 2. the band where it meets the landscape gets the landscape's residual carried across it
    by a harmonic solve, cosine-tapered to nothing at ``SEAM_BAND_M``;
 3. interior holes get a biharmonic fill, or a harmonic one where that leaves the range of
-   its own border.
+   its own border, unless the artwork draws the hole as a pit.
 
 Rock texels are never read as a constraint and never written. Empty ground connected to
-the edge of the field stays empty, so the render paints the page's sea there. The numbers
-behind every constant are in docs/spatial-and-map.md section 26.
+the edge of the field stays empty, and so does a pit: the render draws the open sea or the
+void there. The numbers behind every constant are in docs/spatial-and-map.md section 26.
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ __all__ = [
     "HOLE_FALLBACK_M",
     "HOLE_MAX_TEXELS",
     "HOLE_RING_TEXELS",
+    "PIT_FLOOR_M",
+    "PIT_SHARE",
     "RASTER_BIAS_M",
     "RASTER_SIGMA_TEXELS",
     "SEAM_BAND_M",
@@ -41,6 +43,7 @@ __all__ = [
     "SOURCE_LAND",
     "SOURCE_NAMES",
     "SOURCE_NONE",
+    "SOURCE_PIT",
     "SOURCE_RASTER",
     "SOURCE_ROCK",
     "SOURCE_SEAM",
@@ -53,9 +56,11 @@ __all__ = [
     "fill_holes",
     "ground_lattice",
     "nearest_fill",
+    "pits",
     "raster_positions",
     "rebuild_lattice",
     "reconstruct_raster",
+    "relax",
     "solve",
     "terrain_lattice",
     "tiled_harmonic",
@@ -70,6 +75,15 @@ SEAM_BAND_M = 48
 
 #: Holes larger than this are left empty, as is anything touching the field's edge.
 HOLE_MAX_TEXELS = 200_000
+
+#: An interior no-data hole is a pit, left empty, when the artwork draws at least this share
+#: of it as void: 0.88 to 0.95 for the crater and the abyss pits, 0.5 to 0.7 for a crack
+#: under its white outline, 0.44 and less for the holes it draws as ground.
+PIT_SHARE = 0.5
+
+#: Ground lower than this is a pit's floor, not ground the map shows: the landscape's own
+#: lowest height (-254 to -258 m) and the deepest abyss walls, 93% drawn as void.
+PIT_FLOOR_M = -200.0
 
 #: Context around a hole that the solve is anchored to, in texels.
 HOLE_RING_TEXELS = 16
@@ -89,13 +103,15 @@ SOLVE_HALO = 96
 
 #: What each texel of the rebuilt lattice is, for the sidecar's tally.
 SOURCE_NONE, SOURCE_LAND, SOURCE_ROCK, SOURCE_RASTER, SOURCE_SEAM, SOURCE_HOLE = range(6)
+SOURCE_PIT = 6
 SOURCE_NAMES = {
-    SOURCE_NONE: "no data: drawn as the page's sea",
+    SOURCE_NONE: "no data: drawn as the open sea or the void, as the artwork has it",
     SOURCE_LAND: "landscape, measured",
     SOURCE_ROCK: "cliff province, copied unchanged",
     SOURCE_RASTER: "fill, rebuilt from the interface raster",
     SOURCE_SEAM: "fill inside the seam band",
     SOURCE_HOLE: "interior hole, filled",
+    SOURCE_PIT: "a hole or a pit's floor the artwork draws as void, left empty",
 }
 
 
@@ -168,6 +184,26 @@ def solve(values, known, unknown, order: int) -> np.ndarray:
     return out.reshape(values.shape)
 
 
+def relax(values, known, unknown, scale: float, far: float) -> np.ndarray:
+    """``values`` with ``unknown`` replaced by a membrane that settles towards ``far``.
+
+    The screened Poisson equation: its border's offset from ``far`` dies away over about
+    ``scale`` texels. Known texels are Dirichlet, anything else outside the domain. The
+    screening keeps the system well conditioned, so conjugate gradients solve it at any size.
+    """
+    out = values.astype(np.float64).ravel().copy()
+    u, k = unknown.ravel(), known.ravel()
+    if not u.any():
+        return out.reshape(values.shape)
+    lap = _laplacian(known | unknown)
+    screen = 1.0 / (scale * scale)
+    a_uu = (lap[u][:, u] + screen * sp.eye(int(u.sum()))).tocsr()
+    rhs = screen * far - lap[u][:, k] @ out[k]
+    jacobi = sp.diags(1.0 / a_uu.diagonal())
+    out[u], _info = spla.cg(a_uu, rhs, x0=np.full(len(rhs), far), rtol=1e-6, M=jacobi)
+    return out.reshape(values.shape)
+
+
 def tiled_harmonic(values, known, unknown) -> np.ndarray:
     """``solve(order=1)`` over the field in tiles with a halo, so each system stays small."""
     out = values.astype(np.float32).copy()
@@ -208,13 +244,29 @@ def blend_seam(rec, land_m, land, target, band_m: float = SEAM_BAND_M):
     return blended.astype(np.float32), band
 
 
-def fill_holes(ground_m, known, hole_max: int = HOLE_MAX_TEXELS):
+def pits(nodata: np.ndarray, void: np.ndarray, floor=None) -> np.ndarray:
+    """The pits: each region of no data and ``floor`` ground the artwork draws as void over
+    ``PIT_SHARE`` of. Of one that reaches the field's edge only the floor, as the rest is
+    left empty anyway."""
+    floor = np.zeros(nodata.shape, bool) if floor is None else floor
+    labels, count = ndimage.label(nodata | floor)
+    if not count:
+        return np.zeros(nodata.shape, bool)
+    share = ndimage.mean(void, labels, np.arange(1, count + 1))
+    keep = np.concatenate([[False], share >= PIT_SHARE])
+    edge = np.zeros(count + 1, bool)
+    edge[np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))] = True
+    return keep[labels] & (floor | ~edge[labels])
+
+
+def fill_holes(ground_m, known, hole_max: int = HOLE_MAX_TEXELS, keep_out=None):
     """Biharmonic fill of every unknown component that is small and off the field's edge.
 
-    Returns ``(filled copy, hole mask, stats)``. Anything else unknown stays NaN.
+    Returns ``(filled copy, hole mask, stats)``. Anything else unknown stays NaN, and so
+    does ``keep_out``, which bounds the solve like ground outside it.
     """
     out = ground_m.astype(np.float32).copy()
-    unknown = ~known
+    unknown = ~known if keep_out is None else ~known & ~keep_out
     labels, count = ndimage.label(unknown)
     holes = np.zeros(unknown.shape, bool)
     stats = {"holes": 0, "texels": 0, "harmonic_fallback": 0, "overshoot_max_m": 0.0}
@@ -231,11 +283,11 @@ def fill_holes(ground_m, known, hole_max: int = HOLE_MAX_TEXELS):
         cs = slice(max(box[1].start - ring_n, 0), min(box[1].stop + ring_n, out.shape[1]))
         hole = labels[rs, cs] == label
         anchor = known[rs, cs] & ndimage.binary_dilation(hole, iterations=ring_n)
-        if not anchor.any():
+        ring = ndimage.binary_dilation(hole, iterations=2) & anchor
+        if not ring.any():  # walled in by a pit: nothing beside it to span
             continue
         values = np.nan_to_num(out[rs, cs]).astype(np.float64)
         got = solve(values, anchor, hole, 2)
-        ring = ndimage.binary_dilation(hole, iterations=2) & anchor
         lo, hi = values[ring].min(), values[ring].max()
         if got[hole].max() > hi + HOLE_FALLBACK_M or got[hole].min() < lo - HOLE_FALLBACK_M:
             got = solve(values, anchor, hole, 1)
@@ -264,12 +316,15 @@ def fill_field(
     nodata: int,
     fill_value: int,
     rock_values: tuple[int, ...],
+    void=None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
     """The rebuilt lattices: ``(heights_dm, ground_dm, source, meta)``.
 
     ``ground_dm`` is the kernel's lattice as ``ground_lattice`` and ``terrain_lattice``
     made it (cliff removed, landscape at 7.8 mm). ``heights_dm`` is that ground with the
     cliff province's own heights put back unchanged. Both are float32 with ``nodata``.
+    ``void`` is where the artwork draws void (``gamedata.water.artwork_planes``): the
+    no-data holes and the ground below ``PIT_FLOOR_M`` it draws as pits are left empty.
     """
     timings: dict[str, float] = {}
     clock = time.perf_counter()
@@ -299,8 +354,11 @@ def fill_field(
     del blended, rec
     tick("seam")
 
+    floor = (height_dm != nodata) & (height_dm <= np.float32(PIT_FLOOR_M * 10.0))
+    pit = np.zeros(ground.shape, bool) if void is None else pits(height_dm == nodata, void, floor)
+    ground[pit] = np.nan
     known = ~np.isnan(ground)
-    ground, holes, hole_stats = fill_holes(ground, known)
+    ground, holes, hole_stats = fill_holes(ground, known, keep_out=pit)
     level = np.where(water_dm == nodata, np.nan, water_dm / 10.0).astype(np.float32)
     wet = holes & (water_quality > 0) & ~np.isnan(level)
     wet &= ground - np.nan_to_num(level) < WET_IGNORE_M
@@ -310,7 +368,9 @@ def fill_field(
     # Measured texels are copied from the inputs rather than round-tripped through metres.
     ground_out = np.where(np.isnan(ground), np.float32(nodata), ground * 10.0).astype(np.float32)
     ground_out[land] = ground_dm[land]
+    ground_out[pit] = nodata
     heights_dm = np.where(rock, height_dm, ground_out).astype(np.float32)
+    heights_dm[pit] = nodata
     source = np.zeros((rows, cols), np.uint8)
     source[land] = SOURCE_LAND
     source[fill] = SOURCE_RASTER
@@ -318,6 +378,7 @@ def fill_field(
     source[holes] = SOURCE_HOLE
     source[rock] = SOURCE_ROCK
     source[heights_dm == nodata] = SOURCE_NONE
+    source[pit] = SOURCE_PIT
     tick("compose")
     shares = {
         SOURCE_NAMES[key]: round(100 * float((source == key).mean()), 3) for key in SOURCE_NAMES
@@ -329,10 +390,20 @@ def fill_field(
         "hole_max_texels": HOLE_MAX_TEXELS,
         "hole_fallback_m": HOLE_FALLBACK_M,
         "holes": hole_stats,
+        "pits": {
+            "share": PIT_SHARE,
+            "floor_m": PIT_FLOOR_M,
+            "holes": int(ndimage.label(pit)[1]),
+            "texels": int(pit.sum()),
+            "floor_texels": int((pit & floor).sum()),
+        },
         "wet_hole_texels_clamped": int(wet.sum()),
         "share_of_the_field_pct": shares,
         "seconds": timings,
-        "open_sea": "left empty: the render paints the page's sea, and no depth is invented",
+        "open_sea": (
+            "left empty, and no depth is invented in the lattice: the render draws the "
+            "artwork's water there as the open sea and the rest as the void"
+        ),
     }
     return heights_dm, ground_out, source, meta
 
@@ -409,7 +480,7 @@ def terrain_lattice(field, ground: np.ndarray) -> tuple[np.ndarray, dict]:
     }
 
 
-def fill_from_raster(field, ground, raster_m, raster_ok) -> tuple[np.ndarray, np.ndarray, dict]:
+def fill_from_raster(field, ground, raster_m, raster_ok, void=None) -> tuple:
     """``fill_field`` on this field: ``(heights_dm, ground_dm, meta)``."""
     shape = field._height_dm.shape
     quality = field._water_quality_raster()
@@ -428,11 +499,12 @@ def fill_from_raster(field, ground, raster_m, raster_ok) -> tuple[np.ndarray, np
         nodata=hf.NODATA,
         fill_value=hf.PROV_FILL,
         rock_values=hf.PROV_CLIFF_VALUES,
+        void=void,
     )
     return heights, rebuilt, {"raster": BASELINE_PATH.rsplit("/", 1)[-1], **meta}
 
 
-def rebuild_lattice(field, ground, store) -> tuple[np.ndarray, np.ndarray, dict]:
+def rebuild_lattice(field, ground, store, void=None) -> tuple[np.ndarray, np.ndarray, dict]:
     """The interface raster read out of the container, then ``fill_from_raster``."""
     z_cm, ok = read_baseline(store)
-    return fill_from_raster(field, ground, z_cm / np.float32(100.0), ok)
+    return fill_from_raster(field, ground, z_cm / np.float32(100.0), ok, void)

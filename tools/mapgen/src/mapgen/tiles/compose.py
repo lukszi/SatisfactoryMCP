@@ -31,6 +31,7 @@ from mapgen.palette.styles import (
     noise_fields,
     ramp_range,
     with_sea,
+    with_void,
 )
 from mapgen.palette.water import (
     WATER_DEPTH_FULL_M,
@@ -181,8 +182,12 @@ def _capture(surface, rows, z_m, missing, cover) -> None:
 
 
 def _band_water(z_m, planes, smooth, linear):
-    """One band's water surface, level (NaN where none), wet cover and measured share."""
-    water, wet_plane, measured_plane = planes
+    """One band's water surface, level (NaN where none), wet cover and measured share.
+
+    ``planes`` ends with the run's ``OpenSea`` or None. With it, the wet cover counts only
+    the share of a pixel that is not void, so the void's edge is never drawn as land.
+    """
+    water, wet_plane, measured_plane, sea = planes
     if wet_plane is None:
         wet = measured = np.zeros(z_m.shape, np.float32)
         return z_m, np.full(z_m.shape, np.nan, np.float32), wet, measured
@@ -191,7 +196,21 @@ def _band_water(z_m, planes, smooth, linear):
     level_m = np.where(water_missing, np.nan, water_m)
     wet = sample_coverage(wet_plane, linear)
     measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
+    if sea is not None:
+        land = 1.0 - sample_plain(sea.void, linear) / np.float32(255.0)
+        wet = np.clip(wet / np.maximum(land, np.float32(1e-3)), 0.0, 1.0)
     return water_m, level_m, wet, np.clip(measured, 0.0, 1.0)
+
+
+def _void(rgb, missing, sea, linear, rock):
+    """A finished band under the void: no data at all, and the open sea's soft cover kept
+    off the rocks a pixel's ``rock`` coverage holds; without the open sea, no data only."""
+    if sea is None:
+        return with_sea(rgb, missing)
+    cover = sample_plain(sea.void, linear) / np.float32(255.0)
+    if rock is not None:
+        cover = cover * (1.0 - rock)
+    return with_void(rgb, np.where(missing, np.float32(1.0), np.clip(cover, 0.0, 1.0)))
 
 
 def render_layer(
@@ -219,12 +238,14 @@ def render_layer(
     unlit=False,
     surface=None,
     water_level=None,
+    sea=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
     Each band carries BAND_HALO extra rows, cropped after, so no stencil sees a band edge.
     ``window`` is ``(r0, r1, c0, c1)``, with every raster passed in cut to it. ``unlit`` draws
-    the sun term flat; ``surface`` receives the drawn heights and land weight. The other
+    the sun term flat; ``surface`` receives the drawn heights and land weight. ``sea`` is the
+    run's ``OpenSea``, whose water planes replace ``water_level``'s. The other
     arguments: tools/mapgen/README.md, "Design notes", "The band loop".
     """
     kernel = taps_pchip if kernel is None else kernel
@@ -238,7 +259,8 @@ def render_layer(
     heights = field._height_dm if height_dm is None else height_dm
     ramp_lo, ramp_hi = ramp_range(field)
     noise = noise_fields(NOISE_SEED) if layer == "satellite" else None
-    water, wet_plane, measured_plane = water_sources(field, rivers, water_level)
+    planes = (water_level, None) if sea is None else sea.planes
+    water, wet_plane, measured_plane = water_sources(field, rivers, *planes)
     out = np.empty((r1 - r0, c1 - c0, 3), np.uint8)
     column_index = np.arange(c0, c1)
 
@@ -323,7 +345,7 @@ def render_layer(
             )
             top_weight = np.clip((z_m - below) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
         water_m, level_m, wet, measured = _band_water(
-            z_m, (water, wet_plane, measured_plane), smooth, linear
+            z_m, (water, wet_plane, measured_plane, sea), smooth, linear
         )
         mesh_weight = mesh_class = None
         if meshes is not None:
@@ -333,6 +355,7 @@ def render_layer(
                 np.asarray(meshes[1][band]),
                 level_m,
                 composite_top,
+                seabed=layer != "painted",
             )
 
         art_rows = taps_linear(
@@ -398,7 +421,7 @@ def render_layer(
                 scene["biome_rgb"] = biome_rgb[np.ix_(biome_rows, biome_cols)].astype(np.float32)
                 scene["noise"] = sample_noise(noise, np.arange(lo, hi), column_index, size)
             rgb = painter(scene)
-        rgb = with_sea(rgb, missing)
+        rgb = _void(rgb, missing, sea, linear, weight)
         rgb = draw_falls(rgb, falls, layer, x_cm, y_cm[lo:hi], z_m, spacing_m)
         out[top - r0 : bottom - r0] = np.clip(rgb[top - lo : bottom - lo], 0, 255).astype(np.uint8)
         if progress and (top // BAND_ROWS) % 16 == 0:

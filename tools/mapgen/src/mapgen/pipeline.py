@@ -70,6 +70,7 @@ from mapgen.gamedata.biome import calibrate_biome, read_biome, region_table_is_c
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.gamedata.paint import PAINT_DIR
 from mapgen.gamedata.rockfamily import placement_families
+from mapgen.gamedata.water import artwork_planes
 from mapgen.lighting.hillshade import (
     BORROW_DETAIL_SIGMA_PX,
     BORROW_FEATHER_M,
@@ -81,7 +82,6 @@ from mapgen.lighting.hillshade import (
     coarse_province,
 )
 from mapgen.palette.painted import PaintedGround, load_paint_meta
-from mapgen.palette.perched import water_surfaces
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import (
     BIOME_BLEND_TEXELS,
@@ -96,7 +96,13 @@ from mapgen.palette.styles import (
     biome_lookup,
     painted_style,
 )
-from mapgen.palette.water import WATER_DEPTH_FULL_M, WATER_EDGE_BLUR_M, WATER_EDGE_M, water_planes
+from mapgen.palette.water import (
+    WATER_DEPTH_FULL_M,
+    WATER_EDGE_BLUR_M,
+    WATER_EDGE_M,
+    drawn_water,
+    water_planes,
+)
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import (
@@ -395,7 +401,6 @@ def main() -> int:
                 f"  landscape from {hf.TERRAIN_NAME}: {terrain_meta['landscape_texels']} texels "
                 f"plus {terrain_meta['under_cliff_texels']} under the cliff province"
             )
-    if ground is not None:
         print(
             f"  the lattice under the rocks: {ground_meta['lattice_share_of_the_field']}% of "
             f"the field, with {ground_meta['removed_share_of_the_field']}% of it -- the cliff "
@@ -478,12 +483,14 @@ def main() -> int:
     _wet_plane, _measured_plane, water_source = water_planes(field)
     print(f"  water: {water_source}")
     fill_meta: dict = {}
+    art_water, art_void = (None, None) if args.kernel_only else artwork_planes(artwork)
     if ground is not None:
-        heights, ground, fill_meta = rebuild_lattice(field, ground, store)
+        heights, ground, fill_meta = rebuild_lattice(field, ground, store, art_void)
         print(
             f"  lattice rebuilt in {sum(fill_meta['seconds'].values()):.0f}s: "
             f"{fill_meta['share_of_the_field_pct']}; {fill_meta['holes']['holes']} holes "
-            f"filled ({fill_meta['holes']['harmonic_fallback']} harmonic)"
+            f"filled ({fill_meta['holes']['harmonic_fallback']} harmonic), "
+            f"{fill_meta['pits']['holes']} pits left empty"
         )
 
     # The check cuts the ARTWORK: a real picture with real entropy, so the PNGs are real
@@ -625,8 +632,7 @@ def main() -> int:
         print(f"  paint layers prepared in {time.time() - started:.0f}s")
 
     # ---- the cliff geometry and the top overlay, rasterised into this render's own grid
-    direct = None
-    top = None
+    direct = top = None
     direct_source: dict = {}
     top_source: dict = {}
     loaded: dict = {}
@@ -793,11 +799,12 @@ def main() -> int:
         paint_source.update(extras.titan_source)
     for name in extras.readers:
         inputs[name] = {"cl": changelist(field_build), "reader_version": READER_VERSIONS[name]}
-    water = water_surfaces(field, args.kernel_only, extras.rivers)
+    lattice = (heights, ground)
+    water, sea, planes = drawn_water(field, args.kernel_only, extras.rivers, lattice, art_water)
     if painted is not None:
-        paint_source["paint"]["water_classes"] = painted.classify_water(field, water.planes)
+        paint_source["paint"]["water_classes"] = painted.classify_water(field, planes)
     relief = {
-        layer: ReliefGround(RELIEF_PALETTES[layer][0], field, biome, list(drawn), water.planes)
+        layer: ReliefGround(RELIEF_PALETTES[layer][0], field, biome, list(drawn), planes, heights)
         for layer in layers
         if layer in RELIEF_PALETTES
     }
@@ -832,6 +839,7 @@ def main() -> int:
             falls=extras.falls,
             reach=water.reach,
             water_level=water.level,
+            sea=sea,
             painted=painted if layer == "painted" else None,
             rivers=extras.rivers,
             relief=relief.get(layer),
@@ -866,7 +874,6 @@ def main() -> int:
         del sheet
         stats["game_version_pinned"] = field_build
         dense["game_version_pinned"] = field_build
-        spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / args.size
         render = {
             "width_px": args.size,
             "height_px": args.size,
@@ -920,7 +927,7 @@ def main() -> int:
                     else None
                 ),
                 "perched": water.perched,
-                "level_only": LEVEL_ONLY_TEXT,
+                "level_only": LEVEL_ONLY_TEXT if sea is None else sea.meta,
                 "rivers": extras.river_meta or None,
             },
             "seconds_to_draw": round(drew, 1),

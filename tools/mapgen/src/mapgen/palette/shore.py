@@ -12,6 +12,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
+from mapgen.terrain.rasters import MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -186,14 +187,21 @@ def add_foam(rgb, water: dict, foam: dict | None, white):
     return rgb * (1.0 - weight) + white * np.float32(foam.get("white", 1.0)) * weight
 
 
-def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite):
+def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite, seabed=False):
     """``z_m`` raised by the meshes standing near or above the water; and their weight.
 
     ``composite`` is the renderer's raise-only lift (``composite_top``). The weight is how
-    much of the drawn surface is the mesh: 0 where it did not raise the ground.
+    much of the drawn surface is the mesh: 0 where it did not raise the ground. With
+    ``seabed`` (the styles that draw ground and water only) nothing breaks the water's
+    surface: under water the coral, shells and terraces are left to the seabed, and a rock
+    stays only where its top stands above the surface.
     """
     level = np.where(np.isfinite(water_level_m), water_level_m, -np.inf)
-    keep = (mesh_class_band > 0) & (mesh_z_cm / np.float32(100.0) > level - MESH_REACH_M)
+    top_m = mesh_z_cm / np.float32(100.0)
+    keep = (mesh_class_band > 0) & (top_m > level - MESH_REACH_M)
+    if seabed:
+        dry = ~np.isfinite(water_level_m)
+        keep &= dry | ((mesh_class_band == MESH_ROCK) & (top_m > level))
     raised = composite(z_m, mesh_z_cm, keep.astype(np.uint8))
     weight = np.clip((raised - z_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     return raised, weight, np.where(keep, mesh_class_band, 0).astype(np.uint8)

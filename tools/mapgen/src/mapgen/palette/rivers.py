@@ -188,19 +188,23 @@ def river_terms(terms: dict, z_m, river_m, presence, spacing_m: float) -> dict:
     return out
 
 
-def water_sources(field, rivers: RiverWater | None, level=None):
+def water_sources(field, rivers: RiverWater | None, level=None, grades=None):
     """``(water level plane, wet, measured)``: the field's, or the reconciled ones.
 
     ``level`` replaces the level plane: the same water, re-levelled where it was perched.
+    ``grades`` replaces the quality plane the wet and measured planes are read from, so
+    water the run re-wet or added (``palette.perched``, ``palette.water.open_sea``) is drawn.
     """
-    if rivers is None:
+    if grades is None and rivers is not None:
+        grades = rivers.grades
+    if grades is None:
         wet, measured, _source = water_planes(field)
-        plane = field._water_raster()
     else:
-        wet = (rivers.grades != hf.WATER_DRY).astype(np.uint8)
-        measured = (rivers.grades == hf.WATER_MEASURED).astype(np.uint8)
-        plane = rivers.water_dm
-    return (plane if level is None else level), wet, measured
+        wet = (grades != hf.WATER_DRY).astype(np.uint8)
+        measured = (grades == hf.WATER_MEASURED).astype(np.uint8)
+    if level is None:
+        level = field._water_raster() if rivers is None else rivers.water_dm
+    return level, wet, measured
 
 
 def load_rivers(cache_root: Path, build, sweep_once, field) -> tuple[RiverWater, dict]:
