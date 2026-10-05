@@ -257,8 +257,39 @@ LOCAL_DIR = ROOT / "data" / "local"
 #: Bumped when the pipeline changes what it writes, so a sidecar dates its own field. 3 is
 #: the cliff layer taking the Nanite leaf over the collision hull, the ``density.u8.z``
 #: plane, and the provenance value that says which side of one sample per texel a cliff
-#: texel is on.
-GENERATOR_VERSION = 3
+#: texel is on. 4 adds ``terrain.u16.z`` and ``top.i16.z`` beside an unchanged ground.
+GENERATOR_VERSION = 4
+
+#: ``LandscapeSectionOffset - location / scale`` on every proxy, in landscape quads. The
+#: terrain plane's georeference is derived from it, so a cook that moves it must fail here.
+LANDSCAPE_SECTION_ORIGIN = 508.0
+
+#: Quads per landscape component: neighbouring components share one edge row of samples.
+LANDSCAPE_COMPONENT_QUADS = LANDSCAPE_N - 1
+
+#: Shared edge samples on which two components' GrassData disagree. 46 on build 502094;
+#: far more means the stitch is reading something other than heights.
+SEAM_DISAGREEMENT_MAX = 100
+
+#: The bare terrain against nodes standing on the landscape layer, median absolute.
+TERRAIN_NODE_MEDIAN_MAX_M = 0.3
+
+#: Foliage-painted rocks with a blocking collision trimesh. They are instances inside
+#: foliage components, so the placement sweep never sees them; only ``top.i16.z`` carries them.
+TOP_FOLIAGE_MESHES = frozenset(
+    {
+        "SM_Boulder_01",
+        "SM_Boulder_02",
+        "SM_Boulder_03",
+        "SM_Boulder_04",
+        "SM_Boulder_06",
+        "SM_SeaRock_06",
+    }
+)
+FOLIAGE_CLASSES = frozenset({"FoliageInstancedStaticMeshComponent", "FGFoliageInstancedSMC"})
+
+#: Rock meshes kept out of every layer by name. CliffPillar_03 is passable in game.
+EXCLUDED_MESHES = frozenset({"CliffPillar_03"})
 
 #: Where the sidecar records the build, and what the staleness guard reads back.
 PIN_PATH = ("sources", "game", "game_version_pinned")
@@ -311,6 +342,106 @@ def _grass_data_heights(tail: bytes) -> np.ndarray | None:
     return np.frombuffer(tail, dtype="<u2", count=num, offset=pos).reshape(LANDSCAPE_N, LANDSCAPE_N)
 
 
+def flagged_tags(body: bytes, names: list[str], pos: int = 1) -> tuple[dict[str, bytes], int]:
+    """Top-level ``{name: payload}`` of a tag stream whose tags carry the 5.x flag byte.
+
+    ``property_tags`` reads the byte after ``Size`` as a bool value; on a foliage component
+    it is a flag set that announces an array index, a GUID or an extension block, and
+    skipping those wrongly loses ``StaticMesh``. Indexed array elements are left out.
+    """
+    out: dict[str, bytes] = {}
+    limit = len(body)
+
+    def skip_type(at: int) -> int:
+        inner = struct.unpack_from("<i", body, at + 8)[0]
+        at += 12
+        for _ in range(inner):
+            at = skip_type(at)
+        return at
+
+    while pos + 8 <= limit:
+        index, number = struct.unpack_from("<II", body, pos)
+        slot = index & 0x3FFFFFFF
+        name = names[slot] if (index >> 30) == 0 and slot < len(names) else None
+        pos += 8
+        if (index == 0 and number == 0) or (name == "None" and number == 0):
+            break
+        try:
+            pos = skip_type(pos)
+            size = struct.unpack_from("<i", body, pos)[0]
+            flags = body[pos + 4]
+        except (struct.error, IndexError, RecursionError):
+            break
+        pos += 5
+        array_index = 0
+        if flags & 1:
+            array_index = struct.unpack_from("<i", body, pos)[0]
+            pos += 4
+        if flags & 2:
+            pos += 16
+        if flags & 4:
+            extension = body[pos]
+            pos += 1
+            if extension & 2:
+                pos += 2
+        if size < 0 or pos + size > limit:
+            break
+        if name and array_index == 0:
+            out[name] = body[pos : pos + size]
+        pos += size
+    return out, pos
+
+
+def instance_matrices(tail: bytes, expect: int | None) -> np.ndarray | None:
+    """``PerInstanceSMData`` as (n, 4, 4) float64 world-relative matrices, or ``None``.
+
+    Bulk-serialised as an element size of 128 (one FMatrix of doubles) and a count, found by
+    scanning the first 4 KiB past the tags; a candidate must have a unit last column.
+    """
+    for off in range(min(len(tail) - 8, 4096)):
+        element, count = struct.unpack_from("<ii", tail, off)
+        if element != 128 or count <= 0 or off + 8 + count * 128 > len(tail):
+            continue
+        if expect is not None and count != expect:
+            continue
+        mats = np.frombuffer(tail, "<f8", count=count * 16, offset=off + 8).reshape(count, 4, 4)
+        if np.allclose(mats[:, 3, 3], 1.0) and np.allclose(mats[:, :3, 3], 0.0):
+            return mats
+    return None
+
+
+def foliage_instances(view, slot: int, classes) -> tuple[str, np.ndarray] | None:
+    """One foliage component's mesh and world matrices, for ``TOP_FOLIAGE_MESHES`` only."""
+    body = view.pkg.body(view.exports[slot])
+    props, end = flagged_tags(body, view.pkg.names)
+    reference = props.get("StaticMesh")
+    mesh = view.import_path(reference) if reference else None
+    if not mesh or mesh.rsplit("/", 1)[-1] not in TOP_FOLIAGE_MESHES:
+        return None
+    built = props.get("NumBuiltInstances")
+    expect = struct.unpack("<i", built)[0] if built and len(built) == 4 else None
+    mats = instance_matrices(body[end:], expect)
+    if mats is None:
+        return None
+
+    def triple(key: str, default: tuple[float, float, float]) -> np.ndarray:
+        raw = props.get(key, b"")
+        return np.array(struct.unpack("<3d", raw) if len(raw) == 24 else default)
+
+    own = triple("RelativeLocation", (0.0, 0.0, 0.0))
+    parent = view.export_ref(props["AttachParent"]) if "AttachParent" in props else None
+    transform = world_transform(view, parent, classes)[0] if parent is not None else None
+    if transform is None:
+        transform = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0))
+    location, quat, scale = transform
+    rotation = np.stack([np.array(quat_rotate(quat, tuple(axis))) for axis in np.eye(3)])
+    size = np.array(scale)
+    world = mats.copy()
+    world[:, :3, :3] = (mats[:, :3, :3] * size[None, None, :]) @ rotation
+    world[:, 3, :3] = ((mats[:, 3, :3] + own) * size) @ rotation + np.array(location)
+    return mesh, world
+
+
 def sweep_levels(store, scripts, classes, meshes, progress: bool = True) -> dict:
     """One pass over every ``*.umap`` of the world: landscape, placements, water actors.
 
@@ -329,6 +460,7 @@ def sweep_levels(store, scripts, classes, meshes, progress: bool = True) -> dict
     box_sources: dict[str, int] = {}
     mesh_ids: dict[str, int] = {}
     owner_ids: dict[str, int] = {}
+    foliage: dict[str, list[np.ndarray]] = {}
     unreadable = 0
     malformed = 0
     started = time.time()
@@ -402,6 +534,10 @@ def sweep_levels(store, scripts, classes, meshes, progress: bool = True) -> dict
                 mesh_id = mesh_ids.setdefault(mesh, len(mesh_ids))
                 owner_id = owner_ids.setdefault(root_owner[slot], len(owner_ids))
                 placements.append((mesh_id, owner_id, x, y, z, pitch, yaw, roll, sx, sy, sz))
+            elif name in FOLIAGE_CLASSES:
+                found = foliage_instances(view, slot, classes)
+                if found is not None:
+                    foliage.setdefault(found[0], []).append(found[1])
             elif is_water_class(name):
                 water_actors[name] = water_actors.get(name, 0) + 1
                 box, sources = water_actor_box(view, slot, classes, meshes)
@@ -434,6 +570,7 @@ def sweep_levels(store, scripts, classes, meshes, progress: bool = True) -> dict
         "water_actors": water_actors,
         "water_boxless": water_boxless,
         "water_box_sources": box_sources,
+        "foliage": {mesh: np.concatenate(parts) for mesh, parts in foliage.items()},
         "seconds": time.time() - started,
     }
 
@@ -475,6 +612,8 @@ def landscape_frame(sweep: dict) -> dict:
         (scale_y, LANDSCAPE_SCALE_CM, "Y scale"),
         (scale_z, LANDSCAPE_SCALE_CM, "Z scale"),
         (origin_z, LANDSCAPE_ORIGIN_Z_CM, "Z offset"),
+        (origin_x, LANDSCAPE_SECTION_ORIGIN, "section origin in X"),
+        (origin_y, LANDSCAPE_SECTION_ORIGIN, "section origin in Y"),
     ):
         if abs(measured - expected) > TRANSFORM_TOLERANCE:
             raise SystemExit(
@@ -486,15 +625,35 @@ def landscape_frame(sweep: dict) -> dict:
     xs = [c[0] for c in components]
     ys = [c[1] for c in components]
     min_x, min_y = min(xs), min(ys)
+    off_lattice = sum(
+        1
+        for x, y in zip(xs, ys, strict=True)
+        if (x - min_x) % LANDSCAPE_COMPONENT_QUADS or (y - min_y) % LANDSCAPE_COMPONENT_QUADS
+    )
+    if off_lattice:
+        raise SystemExit(
+            f"{off_lattice} landscape components are not on the {LANDSCAPE_COMPONENT_QUADS}-quad "
+            "lattice. The component size changed, so the shared edges this stitch assumes "
+            "are not shared any more."
+        )
     width = max(xs) + LANDSCAPE_N - min_x
     height = max(ys) + LANDSCAPE_N - min_y
 
     raw = np.zeros((height, width), dtype="<u2")
     covered = np.zeros((height, width), dtype=bool)
+    seam_disagreements = 0
     for base_x, base_y, heights in components:
         row, col = base_y - min_y, base_x - min_x
-        raw[row : row + LANDSCAPE_N, col : col + LANDSCAPE_N] = heights
-        covered[row : row + LANDSCAPE_N, col : col + LANDSCAPE_N] = True
+        cut = (slice(row, row + LANDSCAPE_N), slice(col, col + LANDSCAPE_N))
+        seam_disagreements += int((covered[cut] & (raw[cut] != heights)).sum())
+        raw[cut] = heights
+        covered[cut] = True
+    if seam_disagreements > SEAM_DISAGREEMENT_MAX:
+        raise SystemExit(
+            f"{seam_disagreements} shared edge samples disagree between neighbouring "
+            f"components, against at most {SEAM_DISAGREEMENT_MAX}. The GrassData read is "
+            "off, or the cook stopped keeping it in step with the heights."
+        )
 
     # raw == 0 inside a component that IS present is a landscape hole -- a cave mouth or a
     # deliberately cut-out section -- not a height of -255 m. Left as no data for the cliff
@@ -504,7 +663,10 @@ def landscape_frame(sweep: dict) -> dict:
     _labelled, blobs = ndimage.label(hole)
 
     z_cm = (raw.astype(np.float32) - LANDSCAPE_ZERO) / LANDSCAPE_PER_UNIT * scale_z + origin_z
+    raw[~covered] = 0
     return {
+        "raw": raw,
+        "seam_disagreements": seam_disagreements,
         "z_cm": z_cm,
         "good": good,
         "width": width,
@@ -840,7 +1002,7 @@ def rasterise_cliffs(sweep: dict, geometry: dict, frame: dict, progress: bool = 
         frame["width"], frame["height"], frame["x0_cm"], frame["y0_cm"], frame["scale_cm"]
     )
     arch_ids = {i for i, m in enumerate(meshes) if ARCH_MARK in m.rsplit("/", 1)[-1]}
-    dropped = {"owner": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
+    dropped = {"owner": 0, "excluded_mesh": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
     used = 0
     triangles = 0
     samples = 0
@@ -851,6 +1013,9 @@ def rasterise_cliffs(sweep: dict, geometry: dict, frame: dict, progress: bool = 
         mesh = meshes[mesh_id]
         if owners[owner_id] in EXCLUDED_OWNERS:
             dropped["owner"] += 1
+            continue
+        if mesh.rsplit("/", 1)[-1] in EXCLUDED_MESHES:
+            dropped["excluded_mesh"] += 1
             continue
         if mesh not in geometry:
             dropped["no_geometry"] += 1
@@ -909,6 +1074,117 @@ def rasterise_cliffs(sweep: dict, geometry: dict, frame: dict, progress: bool = 
         "samples": int(samples),
         "triangles_out_of_bounds": clamped,
         "seconds": time.time() - started,
+    }
+
+
+def read_hull(store, scripts, index, mesh: str) -> tuple[np.ndarray, np.ndarray] | None:
+    """A mesh's cooked collision trimesh, mesh-local cm, or ``None`` where it ships none."""
+    package = index.path_for(mesh)
+    if not package:
+        return None
+    try:
+        view = PackageView(store.read_path(package), scripts)
+    except Exception:
+        return None
+    export = staticmesh.static_mesh_export(view)
+    bounds = staticmesh.extended_bounds(view, export) if export is not None else None
+    if bounds is None:
+        return None
+    hull, _why = staticmesh.collision_hull(view, *bounds)
+    if hull is None:
+        return None
+    return hull[0].astype(np.float32), hull[1].astype(np.int64)
+
+
+def rasterise_top(sweep: dict, frame: dict, store, scripts, index, progress: bool = True) -> dict:
+    """Arches and foliage boulders as a 1 m max-Z overlay, from their collision trimeshes.
+
+    These are what the ground deliberately leaves out: an arch is a roof over buildable
+    ground, and a boulder is painted foliage the placement sweep never sees.
+    """
+    started = time.time()
+    raster = MaxZRaster(
+        frame["width"], frame["height"], frame["x0_cm"], frame["y0_cm"], frame["scale_cm"]
+    )
+    placements, meshes, owners = sweep["placements"], sweep["meshes"], sweep["owners"]
+    arch_ids = {i for i, m in enumerate(meshes) if ARCH_MARK in m.rsplit("/", 1)[-1]}
+    hulls: dict[str, tuple[np.ndarray, np.ndarray] | None] = {}
+    arches = boulders = triangles = 0
+    missing: set[str] = set()
+    for row in placements:
+        mesh_id = int(row[0])
+        if mesh_id not in arch_ids or owners[int(row[1])] in EXCLUDED_OWNERS:
+            continue
+        mesh = meshes[mesh_id]
+        if mesh not in hulls:
+            hulls[mesh] = read_hull(store, scripts, index, mesh)
+        if hulls[mesh] is None:
+            missing.add(mesh)
+            continue
+        verts, tris = hulls[mesh]
+        matrix = rotation_matrix(*row[5:8]).astype(np.float32)
+        world = (verts * row[8:11].astype(np.float32)) @ matrix + row[2:5].astype(np.float32)
+        raster.add(world[tris], 1)
+        arches += 1
+        triangles += tris.shape[0]
+    for mesh, mats in sweep["foliage"].items():
+        if mesh not in hulls:
+            hulls[mesh] = read_hull(store, scripts, index, mesh)
+        if hulls[mesh] is None:
+            missing.add(mesh)
+            continue
+        verts, tris = hulls[mesh]
+        for start in range(0, len(mats), 512):
+            chunk = mats[start : start + 512].astype(np.float32)
+            world = np.einsum("vi,nij->nvj", verts, chunk[:, :3, :3]) + chunk[:, None, 3, :3]
+            raster.add(world[:, tris].reshape(-1, 3, 3), 2)
+        boulders += len(mats)
+        triangles += tris.shape[0] * len(mats)
+    z_cm, _src, _density = raster.result()
+    if progress:
+        print(f"  top overlay: {arches} arches, {boulders} boulders, {time.time() - started:.0f}s")
+    return {
+        "z_cm": z_cm,
+        "arch_placements": arches,
+        "foliage_instances": boulders,
+        "foliage_by_mesh": {m.rsplit("/", 1)[-1]: len(v) for m, v in sweep["foliage"].items()},
+        "meshes_without_trimesh": sorted(m.rsplit("/", 1)[-1] for m in missing),
+        "triangles": int(triangles),
+        "seconds": time.time() - started,
+    }
+
+
+def compose_top(height_dm: np.ndarray, frame: dict, top: dict) -> tuple[np.ndarray, int]:
+    """``height_dm`` max-folded with the overlay, and how many texels the overlay raised."""
+    dx, dy = drop_offsets(frame)
+    out = height_dm.copy()
+    window = out[dy : dy + frame["height"], dx : dx + frame["width"]]
+    over_dm = np.clip(np.round(np.nan_to_num(top["z_cm"], nan=-1e9) / 10.0), -32767, 32767)
+    over_dm = np.where(np.isfinite(top["z_cm"]), over_dm, hf.NODATA).astype(np.int16)
+    raise_ = (over_dm != hf.NODATA) & ((window == hf.NODATA) | (over_dm > window))
+    window[raise_] = over_dm[raise_]
+    return out, int(raise_.sum())
+
+
+def validate_terrain(frame: dict, prov: np.ndarray) -> dict:
+    """The bare terrain against the nodes standing on the landscape layer."""
+    nodes = json.loads(NODE_TABLE.read_text(encoding="utf-8"))["nodes"]
+    x = np.array([n["x"] for n in nodes], float)
+    y = np.array([n["y"] for n in nodes], float)
+    z = np.array([n["z"] for n in nodes], float) / 100.0
+    col = np.round((x - frame["x0_cm"]) / frame["scale_cm"]).astype(int)
+    row = np.round((y - frame["y0_cm"]) / frame["scale_cm"]).astype(int)
+    inside = (col >= 0) & (col < frame["width"]) & (row >= 0) & (row < frame["height"])
+    gc = np.clip(np.round((x - ORIGIN_X_CM) / SPACING_CM).astype(int), 0, GRID_PX - 1)
+    gr = np.clip(np.round((y - ORIGIN_Y_CM) / SPACING_CM).astype(int), 0, GRID_PX - 1)
+    rc, cc = np.clip(row, 0, frame["height"] - 1), np.clip(col, 0, frame["width"] - 1)
+    good = inside & frame["good"][rc, cc] & (prov[gr, gc] == hf.PROV_LANDSCAPE)
+    errors = np.abs(z[good] - frame["z_cm"][rc[good], cc[good]] / 100.0)
+    return {
+        "n": int(good.sum()),
+        "medabs_m": round(float(np.median(errors)), 4) if errors.size else None,
+        "p90_m": round(float(np.percentile(errors, 90)), 4) if errors.size else None,
+        "gate_m": TERRAIN_NODE_MEDIAN_MAX_M,
     }
 
 
@@ -2175,6 +2451,7 @@ def main() -> int:
         f"covered, {frame['hole_texels']} hole texels in {frame['hole_blobs']} blobs"
     )
     print(f"  drops into the output grid at texel ({dx}, {dy}), exactly -- no resampling")
+    print(f"  {frame['seam_disagreements']} shared edge samples disagree between components")
 
     # ---- stage 3: cliff collision ------------------------------------------------------
     print("decoding the finest geometry every placed rock ships")
@@ -2226,6 +2503,16 @@ def main() -> int:
         f"  cliff province {field['cliff_texels']} texels, "
         f"{field['cliff_direct_fraction'] * 100:.1f}% with a source vertex in them "
         f"(median {field['density_p50']} samples per cliff texel)"
+    )
+
+    # ---- the top overlay: arches and foliage boulders over the ground -------------------
+    print("rasterising arches and foliage boulders for the top plane")
+    top = rasterise_top(sweep, frame, store, scripts, index, loud)
+    timings["top"] = round(top["seconds"], 1)
+    top_dm, top_raised = compose_top(field["height_dm"], frame, top)
+    print(
+        f"  {top['arch_placements']} arch placements, {top['foliage_instances']} foliage "
+        f"instances {top['foliage_by_mesh']}; raised {top_raised} texels over the ground"
     )
 
     # ---- stage 5: water, after the terrain it is measured against ----------------------
@@ -2302,6 +2589,15 @@ def main() -> int:
         )
         return 6
 
+    terrain_check = validate_terrain(frame, field["prov"])
+    print(
+        f"  bare terrain on {terrain_check['n']} landscape nodes: median absolute "
+        f"{terrain_check['medabs_m']} m (gate {TERRAIN_NODE_MEDIAN_MAX_M} m)"
+    )
+    if terrain_check["medabs_m"] is None or terrain_check["medabs_m"] > TERRAIN_NODE_MEDIAN_MAX_M:
+        print("the bare terrain plane does not sit on the nodes. Refusing to write it.")
+        return 8
+
     started = time.time()
     water_dm = np.where(
         np.isfinite(water["level_m"]),
@@ -2314,6 +2610,8 @@ def main() -> int:
         hf.WATER_NAME: hf.encode_i16(water_dm),
         hf.WATER_QUALITY_NAME: hf.encode_u8(water["quality"]),
         hf.DENSITY_NAME: hf.encode_u8(field["density"]),
+        hf.TERRAIN_NAME: hf.encode_u16(frame["raw"]),
+        hf.TOP_NAME: hf.encode_i16(top_dm),
     }
     timings["encode"] = round(time.time() - started, 1)
     files = {
@@ -2351,6 +2649,20 @@ def main() -> int:
             ),
             "bytes": len(payload[hf.WATER_QUALITY_NAME]),
         },
+        hf.TERRAIN_NAME: {
+            "content": (
+                f"{frame['width']}x{frame['height']} uint16 raw landscape units on terrain_grid, "
+                "0 = hole or outside the landscape, row-delta over the int16 bits then zlib"
+            ),
+            "bytes": len(payload[hf.TERRAIN_NAME]),
+        },
+        hf.TOP_NAME: {
+            "content": (
+                f"{GRID_PX}x{GRID_PX} int16 decimetres: height.i16.z max-folded with arch and "
+                "foliage-boulder collision trimeshes, row-delta then zlib"
+            ),
+            "bytes": len(payload[hf.TOP_NAME]),
+        },
     }
     meta = build_meta(
         build_pin=build_pin,
@@ -2367,6 +2679,36 @@ def main() -> int:
         decoders=decoders,
         timings=timings,
     )
+    meta["planes"] = {
+        "ground": hf.HEIGHT_NAME,
+        "terrain": hf.TERRAIN_NAME,
+        "top": hf.TOP_NAME,
+    }
+    meta["terrain_grid"] = {
+        "width": frame["width"],
+        "height": frame["height"],
+        "spacing_cm": frame["scale_cm"],
+        "x0_cm": frame["x0_cm"],
+        "y0_cm": frame["y0_cm"],
+        "zero": LANDSCAPE_ZERO,
+        "units_per_m": LANDSCAPE_PER_UNIT * 100.0 / LANDSCAPE_SCALE_CM,
+        "offset_m": frame["origin_z_cm"] / 100.0,
+        "georeference": "x_cm = x0_cm + col*spacing_cm; z_m = (raw - zero) / units_per_m + offset_m",
+        "seam_disagreements": frame["seam_disagreements"],
+        "seam_rule": "stitched in sweep order; a later component overwrites the shared edge",
+        "validation": terrain_check,
+    }
+    meta["top"] = {
+        key: top[key]
+        for key in (
+            "arch_placements",
+            "foliage_instances",
+            "foliage_by_mesh",
+            "meshes_without_trimesh",
+            "triangles",
+        )
+    }
+    meta["top"]["raised_texels"] = top_raised
     payload[hf.META_NAME] = json.dumps(meta, indent=1).encode("utf-8")
     written = install_directory(out_dir, payload)
     total = sum(written.values())

@@ -62,7 +62,7 @@ Satisfactory install. Approximate runtimes on one mid-range machine:
 
 | Generator | Produces | Runtime |
 | --- | --- | --- |
-| `tools/gen_world_heightmap.py` | 1 m heightfield → `data/local/heightmap/` | ~54 s |
+| `tools/gen_world_heightmap.py` | 1 m heightfield (ground, bare terrain, top) → `data/local/heightmap/`, 75 MB | ~4 min |
 | `tools/gen_map_renders.py` | terrain/biome base-map renders → `data/local/` | ~17 min |
 | `tools/gen_map_image.py --enhance` | the game's map artwork as tiles (upscaled on a GPU) → `data/local/` | ~13.7 min |
 | `tools/gen_item_icons.py` | one PNG per item → `data/local/icons/` | ~14 s |
