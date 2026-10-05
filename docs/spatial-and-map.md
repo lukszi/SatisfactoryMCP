@@ -2106,16 +2106,24 @@ render (about 5 s):
 2. A lake box at most 150 m on a side with a hot-spring terrace inside it (within 1 m of its z
    range) is a hot spring.
 3. Boxes paint wet texels whose level lies within 1 m of the box's z range, largest box
-   first, so a pond inside a big box keeps its own class.
+   first, so a pond inside a big box keeps its own class. No box but the ocean's claims the
+   open sea: water within 1 m of the ocean level that the map's edge reaches through
+   channels at least 96 m wide (a 48 m opening on a 4 m grid, kept where it comes within
+   three radii of the edge). The swamp's `MI_WaterSwamp_Muddy` boxes are 230 m squares at
+   the sea's level and reach past its coast, to x 3250 against the swamp area's 3040; they
+   painted the open sea mauve in straight steps. A lagoon behind a narrower mouth keeps its
+   box.
 4. Unclaimed wet texels within 1 m of the ocean level are ocean. That includes the level-only
    water around the frame at about -16.3 m.
 5. The rest of an inland body (8-connected) takes the body's majority class when that class
    covers at least a quarter of it.
 6. What is left is swamp in `Area_Swamp` and lake everywhere else.
 
-Build 502094: ocean 15.97 M texels, lake 1.20 M, swamp 0.62 M, river 0.38 M, turquoise 53 k,
+Build 502094: ocean 16.23 M texels, lake 1.20 M, swamp 0.35 M, river 0.38 M, turquoise 53 k,
 hot spring 15 k, sulfur 9.7 k, cave 5.3 k, blue lake 5.2 k; 312 bodies claimed by
-material, 0.28 M texels by the biome fallback.
+material, 0.28 M texels by the biome fallback. The open sea is 14.92 M texels; it took
+264,581 texels from the swamp and 16 from a river, and nothing from any other class.
+Seeding it from the texels with no ground as well would add 2 k, so the edge alone does.
 
 The renderer samples the plane bilinearly with the dry taps dropped
 (`terrain/sample.py` `ClassMix`), so a shore pixel takes its water's class rather than half
@@ -2162,6 +2170,9 @@ distance 1 to 3), not the lightness.
   come from material parameters, not from pictures.
 - Classes change at box edges. Where the water channel is itself built from boxes, as in the
   Red Bamboo terrace lakes near (420, 560), a chain of pools reads as a mosaic of classes.
+- Where the swamp's lagoons open onto the sea, swamp turns to ocean along the edge of the
+  opening: a line of 48 m arcs across one sheet of water, with nothing in the game to place
+  it better.
 - The hot-spring rule finds terraces in lake boxes near the sulfur ponds and in the Red Bamboo
   terraces. Whether those pools are milky in game is unchecked.
 - The satellite and terrain styles still draw one water colour.

@@ -27,11 +27,14 @@ __all__ = [
     "MATERIAL_CLASS",
     "OCEAN",
     "OCEAN_BAND_M",
+    "OPEN_SEA_CELL",
+    "OPEN_SEA_RADIUS_M",
     "WATER_BODIES_NAME",
     "actor_materials",
     "body_class",
     "classify",
     "harvest",
+    "open_sea",
 ]
 
 WATER_BODIES_NAME = "water_bodies.json"
@@ -76,6 +79,13 @@ BOX_Z_TOLERANCE_M = 1.0
 
 #: A body's majority class fills the rest of it only above this share of its texels.
 MAJORITY_SHARE = 0.25
+
+#: Ocean-level water the map's edge reaches through channels at least twice this wide is
+#: the open sea, and no box's.
+OPEN_SEA_RADIUS_M = 48.0
+
+#: The open sea is found on a grid of this many texels a side.
+OPEN_SEA_CELL = 4
 
 HOT_SPRING_MARK = "/HotSpring/"
 
@@ -149,13 +159,33 @@ def body_class(name: str, materials, box, hot_springs: np.ndarray) -> str | None
     return "hot_spring" if inside.any() else found
 
 
+def open_sea(level_m: np.ndarray, wet: np.ndarray, ocean_level_m: float) -> np.ndarray:
+    """Ocean-level water the map's edge reaches without passing a channel narrower than
+    ``2 * OPEN_SEA_RADIUS_M``: a morphological opening on a coarse grid, kept where it
+    comes within three radii of the edge."""
+    sea = wet & (np.abs(level_m - ocean_level_m) <= OCEAN_BAND_M)
+    cell, (rows, cols) = OPEN_SEA_CELL, sea.shape
+    padded = np.pad(sea, ((0, -rows % cell), (0, -cols % cell)), constant_values=True)
+    coarse = padded.reshape(padded.shape[0] // cell, cell, -1, cell).all(axis=(1, 3))
+    radius = OPEN_SEA_RADIUS_M * 100.0 / (cell * SPACING_CM)
+    core = ndimage.distance_transform_edt(coarse) > radius
+    labels, _count = ndimage.label(core, structure=np.ones((3, 3), bool))
+    r, c = np.ogrid[: core.shape[0], : core.shape[1]]
+    to_edge = np.minimum(np.minimum(r, core.shape[0] - 1 - r), np.minimum(c, core.shape[1] - 1 - c))
+    edge = np.unique(labels[core & (to_edge <= 3 * radius)])
+    kept = np.isin(labels, edge[edge > 0])
+    reach = ndimage.distance_transform_edt(~kept) <= radius
+    return np.repeat(np.repeat(reach, cell, 0), cell, 1)[:rows, :cols] & sea
+
+
 def classify(
     level_m: np.ndarray, wet: np.ndarray, bodies: dict, biome: tuple, ocean_level_m: float
 ) -> tuple[np.ndarray, dict]:
     """The class plane (uint8, ``CLASSES`` index) on the 1 m grid, and counts.
 
     ``level_m`` is the water level per texel (nan where none), ``wet`` the texels the
-    channel calls water, ``biome`` the biome index grid and the names it indexes.
+    channel calls water, ``biome`` the biome index grid and the names it indexes. No box
+    but the ocean's claims the open sea.
     """
     rows, cols = wet.shape
     springs = np.asarray(bodies.get("hot_springs") or np.zeros((0, 3)), np.float64)
@@ -164,6 +194,7 @@ def classify(
         found = body_class(name, materials, box, springs)
         if found is not None:
             claims.append(((box[3] - box[0]) * (box[4] - box[1]), _ID[found], box))
+    sea = open_sea(level_m, wet, ocean_level_m)
     plane = np.zeros((rows, cols), np.uint8)
     # Big boxes first, so a small pond inside a big one keeps its own class.
     for _area, cid, (x0, y0, z0, x1, y1, z1) in sorted(claims, key=lambda c: -c[0]):
@@ -176,6 +207,8 @@ def classify(
         level = level_m[r0:r1, c0:c1]
         tol = BOX_Z_TOLERANCE_M
         hit = wet[r0:r1, c0:c1] & (level >= z0 / 100 - tol) & (level <= z1 / 100 + tol)
+        if cid != OCEAN:
+            hit &= ~sea[r0:r1, c0:c1]
         plane[r0:r1, c0:c1][hit] = cid
     unclaimed = wet & (plane == DRY)
     plane[unclaimed & (np.abs(level_m - ocean_level_m) <= OCEAN_BAND_M)] = OCEAN
@@ -191,6 +224,7 @@ def classify(
         "bodies_claimed": len(claims),
         "hot_spring_terraces": len(springs),
         "filled_by_biome": int(left.sum()),
+        "open_sea_texels": int(sea.sum()),
     }
 
 

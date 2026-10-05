@@ -22,6 +22,7 @@ from mapgen.gamedata.waterbodies import (  # noqa: E402
     WATER_BODIES_NAME,
     body_class,
     classify,
+    open_sea,
 )
 from mapgen.palette.painted import (  # noqa: E402
     WATER_TABLE_COLUMNS,
@@ -113,6 +114,44 @@ def test_a_box_claims_only_water_at_its_own_level():
     bodies["actors"].append(["BP_Water_C", _box(0, 0, 60, 60, 200.0), ["SulfurPond_Inst"]])
     plane, _ = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
     assert not (plane == ID["sulfur"]).any()
+
+
+def _sea_level(wet):
+    return np.where(wet, np.float32(OCEAN_LEVEL_M), np.nan).astype(np.float32)
+
+
+def test_a_box_at_the_ocean_level_never_claims_the_open_sea():
+    """The swamp's 230 m boxes stand at the sea's level and reach over it: the open sea
+    stays ocean, and a lagoon behind a mouth narrower than the opening keeps the box."""
+    n = 240
+    wet = np.zeros((n, n), bool)
+    wet[:, n // 2 :] = True
+    wet[100:140, 40:100] = True
+    wet[116:124, 100 : n // 2] = True
+    level = _sea_level(wet)
+    box = _box(30, 90, 200, 150, OCEAN_LEVEL_M)
+    bodies = {"actors": [["BP_Water_C", box, ["MI_WaterSwamp_Muddy"]]], "hot_springs": []}
+    sea = open_sea(level, wet, OCEAN_LEVEL_M)
+    assert sea[:, n // 2 :].all(), "water reaching the map's edge is open"
+    assert not sea[100:140, :100].any(), "a lagoon behind an 8 m mouth is not"
+    biome = (np.zeros((n, n), np.uint8), ["Area_Swamp"])
+    plane, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
+    assert (plane[90:150, n // 2 : 200] == OCEAN).all(), "the box stops at the open sea"
+    assert (plane[100:140, 40:100] == ID["swamp"]).all(), "and keeps its lagoon"
+    assert counts["open_sea_texels"] == int(sea.sum())
+
+
+def test_sea_level_water_the_map_edge_does_not_reach_keeps_its_box():
+    n = 400
+    wet = np.zeros((n, n), bool)
+    wet[120:280, 120:280] = True
+    level = _sea_level(wet)
+    assert not open_sea(level, wet, OCEAN_LEVEL_M).any()
+    box = _box(100, 100, 300, 300, OCEAN_LEVEL_M)
+    bodies = {"actors": [["BP_Water_C", box, ["MI_WaterSwamp_Muddy"]]], "hot_springs": []}
+    biome = (np.zeros((n, n), np.uint8), ["Area_Swamp"])
+    plane, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
+    assert (plane[wet] == ID["swamp"]).all() and counts["open_sea_texels"] == 0
 
 
 # ----------------------------------------------------------------------- sampling
