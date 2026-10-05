@@ -179,7 +179,7 @@ function optionWords(o: Option): string {
 }
 
 /* A build-list row's own choice: overclock its last machine, or one more underclocked machine,
- * whatever the plan's switch says; "as the plan" drops the choice. */
+ * whatever the plan's switch says; the "plan: …" option drops the choice. */
 export function rowOverclock(row: SolveRow): HTMLElement | null {
   var o = row.overclock_option;
   var id = row.recipe_id;
