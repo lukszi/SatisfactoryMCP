@@ -1258,8 +1258,8 @@ half and is scored on the east.
 
 ### Cost and output
 
-A full run of both layers took about 21 min wall time on 2026-10-05. The lattice rebuild took
-13 s, the rock pass 13 min and the arch-and-boulder pass 2 min. Drawing and cutting took
+A full run of both layers took about 37 min wall time on 2026-10-05. The lattice rebuild took
+13 s, the geometry sweep and decode 35 s, the rock pass 13 min and the arch-and-boulder pass 2 min. Drawing and cutting took
 11 min for terrain and 10 min for satellite. Tile output was 1,640 MB: terrain 835 MB and
 satellite 805 MB, against 1,656 MB for recipe 4.
 
