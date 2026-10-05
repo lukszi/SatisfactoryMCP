@@ -16,7 +16,8 @@ headroom* moved with it, because chat's power tools take the same switch.
 | only fed clusters (`fedOnly`) | browser | A view filter on Detect. |
 | minimum machines (`minMachines`) | browser | A view filter on Detect. |
 | follow chat (`follow`) | browser | How one tab reacts to chat. The page already reports it to chat through `ui_context`. |
-| planner power-vs-build weight default | **server**, when it lands | Designed separately. It is one more `SPECS` entry of kind `number` (§2). |
+| payback horizon, hours (`paybackHours`) | **server**, `payback_hours` | What a plan with no horizon of its own solves at, in chat and on the page ([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md)). Number 0–100, default 0. |
+| overclock the last machine (`overclockLast`) | **server**, `overclock_last` | The same for the overclock-last switch. Default off. |
 
 The rule: a setting is shared when chat computes with it. A setting that only changes how
 one viewer sees the page stays in the browser.
@@ -82,6 +83,9 @@ this way: the page, another tab, or chat.
   `commission_plan(headroom_mw=)`.
 - `biomass=` on `power_report`, `world_summary`, `diff_vs_save` and `commission_plan` now
   defaults to `None`, meaning the shared value. `true`/`false` still override for one call.
+  It also decides whether burners count in the grid mix that prices a payback horizon.
+- A plan whose `payback_hours` or `overclock_last` is unset solves with the shared value, in
+  every planning tool. The page drops its cached solves when either moves.
 - When the file cannot be read (newer schema, I/O), a tool uses the default and says so in a
   note (`app.shared`).
 
