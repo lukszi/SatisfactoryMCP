@@ -87,6 +87,7 @@ def log_tail(job_id: str, lines: int = LOG_TAIL_LINES) -> list[str]:
 
 SWEEP = re.compile(r"(\d+)/(\d+) packages")
 MESHES = re.compile(r"^\s*\d+ rock meshes, ")
+PLACED = re.compile(r"placements rasterised")
 DIRECT = re.compile(r"direct\.cache: ([\d.]+)% of")
 DIRECT_REUSED = re.compile(r"reusing the direct raster")
 TOP_START = re.compile(r"rasterising the arches")
@@ -131,6 +132,8 @@ class Progress:
             self._enter("sweep", int(m.group(1)) / int(m.group(2)))
         elif MESHES.search(line):
             self._enter("sweep", 1.0)
+        elif PLACED.search(line):
+            self._enter("direct")
         elif m := DIRECT.search(line):
             self._enter("direct", float(m.group(1)) / 100)
         elif DIRECT_REUSED.search(line):

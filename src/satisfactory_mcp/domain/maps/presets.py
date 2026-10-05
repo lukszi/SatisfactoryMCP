@@ -14,8 +14,11 @@ from pathlib import Path
 
 from ... import config
 from ...core.gameassets.versions import (
+    ARTWORK_RECIPES,
+    HEIGHTFIELD_GENERATOR_VERSION,
     RENDER_RECIPE_CURRENT,
     RENDER_RECIPE_KERNEL_ONLY,
+    RENDER_RECIPES,
     STYLES,
 )
 from . import axes as ax
@@ -252,6 +255,21 @@ def _recipe(options: dict) -> int:
     )
 
 
+def _planned_axes(family: str, recipe: int, style: str, cl: int | None, size: int) -> dict:
+    """What a type being built will be, until its sidecar says so itself."""
+    table = RENDER_RECIPES if family == "render" else ARTWORK_RECIPES
+    return {
+        "game": {"cl": cl},
+        "inputs": {"heightfield": {"cl": cl, "generator_version": HEIGHTFIELD_GENERATOR_VERSION}}
+        if family == "render"
+        else {"artwork_sheet": {"cl": cl}},
+        "renderer": {"family": family, "recipe": recipe, "version": table[recipe]["version"],
+                     "label": table[recipe]["label"], "size_px": size},
+        "style": {"id": style, "version": STYLES[style]["version"], "label": STYLES[style]["label"]},
+        "inferred": True,
+    }  # fmt: skip
+
+
 def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str]) -> dict:
     """``{script, argv, produces}`` for one job; ``produces`` maps new type ids to entries."""
     options = normalise(preset, options)
@@ -284,6 +302,7 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
                 "meta.json", "generated",
             )  # fmt: skip
             entry.update(status="building", job=job_id, size_px=options["size"])
+            entry["axes"] = _planned_axes("render", recipe, style, cl, options["size"])
             produces[ident] = entry
     elif preset == "artwork":
         recipe = 2 if options["enhance"] else 0
@@ -296,6 +315,7 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
             argv.append("--no-tiles-2x")
         entry = registry.new_entry(ident, "artwork", "map", rel, "map.json", "generated")
         entry.update(status="building", job=job_id, size_px=8192)
+        entry["axes"] = _planned_axes("artwork", recipe, "artwork", cl, 8192)
         produces[ident] = entry
     else:
         argv = ["--game", game, "--force"]

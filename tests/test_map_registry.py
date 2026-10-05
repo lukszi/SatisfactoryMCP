@@ -192,3 +192,13 @@ def test_a_newer_manifest_is_refused_and_left_alone(local):
 
     with pytest.raises(NewerSchema):
         registry.read()
+
+
+def test_an_emptied_set_folder_goes_and_a_linked_one_stays(local):
+    registry.ensure()
+    registry.set_default("plain")
+    for ident in ("terrain-r3-502094", "satellite-r3-502094", "terrain", "satellite"):
+        registry.delete(ident)
+    assert not (local / "renders-v1").exists()
+    assert (local / "renders").exists(), "the link to the newest set is never removed"
+    assert (local / "renders-v2" / "terrain").is_dir()

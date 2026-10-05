@@ -487,7 +487,8 @@ def _move_out(local: Path, entry: dict, ident: str) -> None:
     if entry["dir"] != ".":
         source.rename(target)
         parent = source.parent
-        linked = _resolved(local, parent.relative_to(local).as_posix()) != str(parent).casefold()
+        rel = parent.relative_to(local).as_posix()
+        linked = _resolved(local, rel) != str(local.resolve() / rel).casefold()
         if parent not in (local, maps_dir()) and not linked and not any(parent.iterdir()):
             parent.rmdir()
         return

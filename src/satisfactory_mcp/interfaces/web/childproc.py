@@ -63,6 +63,57 @@ def _created(handle) -> int | None:
     return (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
 
 
+class _ProcessEntry(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wintypes.DWORD),
+        ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD),
+        ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", wintypes.DWORD),
+        ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", wintypes.DWORD),
+        ("szExeFile", ctypes.c_char * 260),
+    ]
+
+
+def _descendants(pid: int) -> list[int]:
+    """Every process below ``pid``, from one Toolhelp snapshot."""
+    kernel = _kernel()
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snap = kernel.CreateToolhelp32Snapshot(0x2, 0)
+    if not snap or snap == wintypes.HANDLE(-1).value:
+        return []
+    parents: dict[int, list[int]] = {}
+    entry = _ProcessEntry()
+    entry.dwSize = ctypes.sizeof(entry)
+    try:
+        more = kernel.Process32First(snap, ctypes.byref(entry))
+        while more:
+            parents.setdefault(entry.th32ParentProcessID, []).append(entry.th32ProcessID)
+            more = kernel.Process32Next(snap, ctypes.byref(entry))
+    finally:
+        kernel.CloseHandle(snap)
+    found, todo = [], list(parents.get(pid, []))
+    while todo:
+        child = todo.pop()
+        if child in found or child == pid:
+            continue
+        found.append(child)
+        todo.extend(parents.get(child, []))
+    return found
+
+
+def _peak(handle) -> int | None:
+    counters = _MemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+        return None
+    return int(counters.PeakWorkingSetSize)
+
+
 def creation_time(pid: int) -> int | None:
     """When ``pid`` was created, as an opaque number; ``None`` when there is no such process."""
     if WINDOWS:
@@ -116,14 +167,18 @@ class Child:
         return None if creation_time(self.pid) is not None else -1
 
     def peak_rss(self) -> int | None:
+        """The largest peak working set in the process tree: a venv's ``python.exe`` is a
+        launcher, and the interpreter doing the work is its child."""
         if self.handle is None:
             return None
-        counters = _MemoryCounters()
-        counters.cb = ctypes.sizeof(counters)
-        psapi = ctypes.WinDLL("psapi", use_last_error=True)
-        if not psapi.GetProcessMemoryInfo(self.handle, ctypes.byref(counters), counters.cb):
-            return None
-        return int(counters.PeakWorkingSetSize)
+        peaks = [_peak(self.handle)]
+        for pid in _descendants(self.pid):
+            handle = _open(pid)
+            if handle is not None:
+                peaks.append(_peak(handle))
+                _kernel().CloseHandle(handle)
+        known = [p for p in peaks if p is not None]
+        return max(known) if known else None
 
     def close(self) -> None:
         if self.handle is not None:
