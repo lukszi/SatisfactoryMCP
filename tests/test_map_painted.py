@@ -295,7 +295,8 @@ def test_every_style_names_its_shore_optics_and_the_ocean_level_is_one_constant(
         assert "stroke" in SHORE_OPTICS[layer]
         assert SHORE_OPTICS[layer]["stroke"] == 0.0, "the stroke is off by default"
     assert OCEAN_LEVEL_M == -17.0
-    assert versions.RENDER_RECIPES[RECIPE]["label"] == "crisp shore"
+    assert versions.RENDER_RECIPES[6]["label"] == "crisp shore"
+    assert versions.RENDER_RECIPES[RECIPE]["label"] == "river splines"
 
 
 def test_a_fresh_pyramid_rename_waits_out_a_brief_lock(tmp_path, monkeypatch):

@@ -19,6 +19,7 @@ from mapgen.lighting.hillshade import (
     sun_dot,
 )
 from mapgen.palette.painted import ROCK_GRID_M, painted_colours
+from mapgen.palette.rivers import water_sources
 from mapgen.palette.shore import MESH_FULL_LIFT_M, blend_water, composite_meshes, shore_terms
 from mapgen.palette.styles import (
     LAYER_PAINTERS,
@@ -33,7 +34,6 @@ from mapgen.palette.water import (
     WATER_EDGE_BLUR_M,
     water_alpha,
     water_depth_fraction,
-    water_planes,
 )
 from mapgen.terrain.measure import SEAM_MID
 from mapgen.terrain.rasters import pixel_coverage
@@ -55,6 +55,7 @@ __all__ = [
     "BAND_HALO",
     "BAND_ROWS",
     "DIRECT_LIFT_KNEE_M",
+    "band_water",
     "blend_regimes",
     "composite_top",
     "render_layer",
@@ -136,6 +137,21 @@ def blend_regimes(base_m, missing, direct, linear, subsamples):
     )
 
 
+def band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m) -> dict:
+    """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule."""
+    old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
+    old_depth = water_depth_fraction(z_m, water_m, measured)
+    if reach is None:
+        return blend_water(None, old_cover, old_depth, None, WATER_DEPTH_FULL_M)
+    return blend_water(
+        sample_coverage(reach, linear),
+        old_cover,
+        old_depth,
+        shore_terms(z_m, spacing_m),
+        WATER_DEPTH_FULL_M,
+    )
+
+
 def render_layer(
     layer,
     field,
@@ -155,6 +171,7 @@ def render_layer(
     reach=None,
     painted=None,
     window=None,
+    rivers=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
@@ -174,6 +191,8 @@ def render_layer(
     ocean's crossing rule applies, ``None`` for recipe 5's water everywhere; ``painted`` the
     ``palette.painted.PaintedGround`` the painted layer samples. ``window`` draws only rows
     ``[r0, r1)`` and columns ``[c0, c1)`` of the sheet, with every raster passed in cut to it.
+    ``rivers`` is the ``palette.rivers.RiverWater`` whose ribbons and reconciled water are
+    drawn in place of the field's river water; ``None`` draws the field's water alone.
     """
     kernel = taps_pchip if kernel is None else kernel
     painter = LAYER_PAINTERS.get(layer)
@@ -186,8 +205,7 @@ def render_layer(
     heights = field._height_dm if height_dm is None else height_dm
     ramp_lo, ramp_hi = ramp_range(field)
     noise = noise_fields(NOISE_SEED) if layer == "satellite" else None
-    wet_plane, measured_plane, _source = water_planes(field)
-    water = field._water_raster()
+    water, wet_plane, measured_plane = water_sources(field, rivers)
     out = np.empty((r1 - r0, c1 - c0, 3), np.uint8)
     column_index = np.arange(c0, c1)
 
@@ -298,18 +316,9 @@ def render_layer(
         strength = sample_plain(province, linear) / 255.0
         lift = 1.0 + BORROW_GAIN * strength * (sample_plain(detail, (art_rows, art_cols)) / 127.0)
 
-        old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
-        old_depth = water_depth_fraction(z_m, water_m, measured)
-        if reach is None:
-            water_terms = blend_water(None, old_cover, old_depth, None, WATER_DEPTH_FULL_M)
-        else:
-            water_terms = blend_water(
-                sample_coverage(reach, linear),
-                old_cover,
-                old_depth,
-                shore_terms(z_m, spacing_m),
-                WATER_DEPTH_FULL_M,
-            )
+        water_terms = band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m)
+        if rivers is not None:
+            water_terms = rivers.over(water_terms, z_m, linear, spacing_m)
         scene: dict = {
             "z_m": z_m,
             "borrow": np.clip(lift, *BORROW_CLAMP),
@@ -330,7 +339,7 @@ def render_layer(
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,
                 mesh_class=mesh_class,
-                water_optics=painted.water_optics(linear),
+                water_optics=painted.water_optics(linear, water_terms.get("river")),
             )
             rgb = painted_colours(
                 scene,

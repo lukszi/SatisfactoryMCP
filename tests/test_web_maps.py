@@ -127,7 +127,7 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(client, local, tmp
     )
     assert reply.status_code == 202, reply.text
     job = reply.json()["job"]
-    assert job["produces"] == ["terrain-r6-502094"]
+    assert job["produces"] == ["terrain-r7-502094"]
     deadline = time.monotonic() + 20
     while True:
         detail = client.get(f"/api/maps/jobs/{job['id']}").json()
@@ -138,7 +138,7 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(client, local, tmp
     assert detail["job"]["status"] == "done", detail
     assert any("done in" in line for line in detail["log_tail"])
     body = client.get("/api/maps").json()
-    row = next(t for t in body["types"] if t["id"] == "terrain-r6-502094")
+    row = next(t for t in body["types"] if t["id"] == "terrain-r7-502094")
     assert row["status"] == "ready" and row["origin"] == "generated"
     assert body["jobs"][0]["id"] == job["id"]
     bad = client.post("/api/maps/jobs", json={"preset": "render", "options": {"size": 3}},

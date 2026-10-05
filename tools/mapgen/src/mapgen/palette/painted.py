@@ -17,7 +17,7 @@ from scipy import ndimage
 
 from mapgen.gamedata.paint import CANOPY_NAME, META_NAME, PIGMENT_NAME
 from mapgen.gamedata.waterbodies import CLASSES, OCEAN, WATER_BODIES_NAME, classify
-from mapgen.palette.shore import OCEAN_LEVEL_M, add_foam, wet_band
+from mapgen.palette.shore import OCEAN_LEVEL_M, add_foam, optical_depth, wet_band
 from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL
 from mapgen.terrain.sample import ClassMix, class_taps
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -301,14 +301,21 @@ class PaintedGround:
         self.water_class, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
         self.water_source = {"source": f"paint/{WATER_BODIES_NAME}", **counts}
 
-    def water_optics(self, taps) -> dict | None:
-        """Per-pixel optics for a band with inland water; None draws every pixel as the ocean."""
+    def water_optics(self, taps, river=None) -> dict | None:
+        """Per-pixel optics for a band with inland water; None draws every pixel as the ocean.
+
+        ``river`` is the ribbon's share of each pixel's water, drawn with the river row.
+        """
         if self.water_class is None:
             return None
         mix = ClassMix(class_taps(self.water_class, taps), OCEAN)
-        if mix.classes() <= {0, OCEAN}:
+        ribbon = river is not None and bool(np.any(river > 0))
+        if mix.classes() <= {0, OCEAN} and not ribbon:
             return None
-        parts = np.split(mix.of(self.water_rows), np.cumsum(WATER_TABLE_COLUMNS)[:-1], axis=-1)
+        rows = mix.of(self.water_rows)
+        if ribbon:
+            rows += river[..., None] * (self.water_rows[CLASSES.index("river")] - rows)
+        parts = np.split(rows, np.cumsum(WATER_TABLE_COLUMNS)[:-1], axis=-1)
         k, body, deep, tau, turbidity, tint = parts
         return {
             **self.water,
@@ -444,7 +451,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     water = scene["water"]
     lit = wet_band(lit, water, p["shore"].get("wet_band"))
     w = scene.get("water_optics") or ground.water
-    depth = water["depth_m"][..., None]
+    depth = optical_depth(water, p["shore"].get("river"))[..., None]
     transmit = np.exp(-w["k"] * depth)
     bed = g * exposure * w["bed"]
     if "turbidity" in w:

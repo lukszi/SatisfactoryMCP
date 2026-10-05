@@ -88,9 +88,9 @@ def test_a_newer_renderer_is_an_offer_and_never_stale():
     assert got["stale"] == []
     assert got["rerender"] == {
         "recipe": versions.RENDER_RECIPE_CURRENT,
-        "label": "crisp shore r6",
+        "label": "river splines r7",
         "needs": [],
-        "text": "newer renderer: crisp shore r6",
+        "text": "newer renderer: river splines r7",
     }
 
 
@@ -138,7 +138,7 @@ def test_a_legacy_render_sidecar_is_read_into_axes_and_flagged_inferred():
     assert ax.display_name(got) == "satellite · two-regime r3 · data 502094/hf v3"
     verdict = ax.verdict(got, _now())
     assert [s["axis"] for s in verdict["stale"]] == ["heightfield"]
-    assert verdict["rerender"]["label"] == "crisp shore r6"
+    assert verdict["rerender"]["label"] == "river splines r7"
     assert verdict["incomplete"] is True
 
 

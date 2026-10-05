@@ -1,4 +1,4 @@
-"""The on-disk raster caches (direct, top, meshes): their names, stamps and readers.
+"""The on-disk caches (direct, top, meshes, rivers): their names, stamps and readers.
 
 The names and stamp bytes are what existing caches were written under, so they still hit.
 """
@@ -99,3 +99,33 @@ def cached_meshes(directory: Path, stamp: dict):
         )
     except (OSError, ValueError):
         return None
+
+
+#: The river splines and the water boxes they are reconciled with: one small JSON, keyed on
+#: the build and the reader version, so a run whose raster caches hit skips the sweep.
+RIVER_CACHE_DIR_NAME = "rivers.cache"
+
+
+RIVER_CACHE_NAME = "rivers.json"
+
+
+def river_stamp(build: str | None, reader_version: int) -> dict:
+    return {"game_version_pinned": build, "reader_version": int(reader_version)}
+
+
+def cached_rivers(directory: Path, stamp: dict) -> dict | None:
+    """``{"stamp", "rivers", "boxes"}`` if the cache is this one, else ``None``."""
+    try:
+        recorded = json.loads((directory / RIVER_CACHE_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(recorded, dict) or not isinstance(recorded.get("stamp"), dict):
+        return None
+    return recorded if {k: recorded["stamp"].get(k) for k in stamp} == stamp else None
+
+
+def write_rivers(directory: Path, stamp: dict, rivers: list, boxes: list) -> dict:
+    payload = {"stamp": stamp, "rivers": rivers, "boxes": [[n, list(b)] for n, b in boxes]}
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / RIVER_CACHE_NAME).write_text(json.dumps(payload), encoding="utf-8")
+    return payload

@@ -1503,8 +1503,8 @@ adopts the painted layer as `game-painted-r6-502094`.
 
 ### Known limits
 
-- Lakes and rivers keep recipe 5's edge. Their banks need sloped surfaces from the river
-  splines, which is a separate item.
+- Lakes keep recipe 5's edge. Since recipe 7 (section 29), rivers get sloped banks from
+  their splines.
 - A river whose level is within 0.5 m of the sea and that reaches within 48 m of it is drawn
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
@@ -1595,3 +1595,113 @@ distance 1 to 3), not the lightness.
 - The hot-spring rule finds terraces in lake boxes near the sulfur ponds and in the Red Bamboo
   terraces. Whether those pools are milky in game is unchecked.
 - The satellite and terrain styles still draw one water colour.
+## 29. Rivers from the game's own splines: recipe 7 (2026-10-05)
+
+Recipe 7 draws every river as a continuous ribbon at its own height. Build 502094.
+
+### What the game ships
+
+- **The river actor is `BP_River_PROT_C`** (130 of them). There is no `WaterBodyRiver`; the one
+  `FGRiverSpline` in the world has no components.
+- Each river is a `SplineComponent` plus a chain of `SplineMeshComponent` sections (1,241
+  in all) that bend the flat `SM_RiverPlane` along a cubic Hermite curve. The plane's mesh
+  bounds are 1000 cm long, 500 cm either side of the centre and 0 cm thick.
+- **So the water surface is the plane:** a centreline height and a half width along the curve,
+  `500 cm * StartScale.X` to `500 cm * EndScale.X`. The scale's Y is 1 everywhere. 7 sections
+  carry a pitch or roll; they are read as flat across.
+- **There is no depth in the asset.** The depth along the spline is the plane minus the
+  ground under it, measured per pixel at render time.
+- The `SplineComponent`'s own scale curve has a Z of 46 to 78 on the river sampled. It does
+  not reach the spline meshes and its meaning is unknown, so it is not read.
+- The heightfield's water levelled each river on the **actor's boxes**. Their union is one
+  AABB around the whole river, rotated and 2.5 m tall, so its top is the highest point of the
+  river plus up to 2.5 m. Inside the ribbons the field's river water stood 1.8 m above the
+  plane at the median and 49 m at p90.
+
+Measured: 25.6 km of centreline, half width p10/p50/p90 3.4 / 15 / 30 m (max 113 m, at lake
+mouths). Plane footprint 0.92 km². 0.39 km² of it stands above the 1 m ground, and of that
+0.06 km² was not water in the field. Where it shows, the river is 0.91 m deep at the median;
+15% of it is under 0.3 m.
+
+### The reader
+
+`gamedata/rivers.py`, run inside the shared level sweep (`sweep_levels` keeps each river's
+sections beside the water boxes). The render caches both as `rivers.cache/rivers.json`,
+keyed on the build and the reader version `river_splines`, so a run whose raster caches hit
+skips the sweep. A standalone walk takes 9 s.
+
+### The ribbon on the 1 m grid
+
+`ribbon_planes` samples each section every 0.5 m and records three planes. Each texel takes
+the nearest centreline piece, measured exactly rather than to the nearest sample.
+
+| Plane | What it holds |
+| --- | --- |
+| `level_m` | the plane's height |
+| `half_m` | its half width |
+| `u` | distance over half width, 1 at the plane's edge |
+
+- The planes are filled 8 m past the edge (`RIBBON_REACH_M`), and NaN beyond.
+- **Open ends are square.** At an end no other section continues, the plane is cut across the
+  tangent instead of rounding off.
+- **Where two planes overlap, the higher shows**, as seen from above. Past both edges, the
+  nearer one in half widths wins.
+- The whole map takes about 1 s.
+
+### Reconciling with the field's water
+
+`palette/rivers.py`, once per run, on copies of the field's planes. The field on disk is not
+changed.
+
+- **A wet texel came from a river box** when its level equals that box's top within 5 cm and
+  no other surface box stands as high: 0.358 km².
+- **Under another surface box** (a lake the river AABB overhangs), the texel takes that box's
+  level, or goes dry where measured ground stands above it: 0.27 km². The exception is
+  inside the ribbon where the plane runs more than 1 m above that box. There the box is a
+  lake's AABB reaching over the river's valley, so it is not used.
+- **Anywhere else where the ribbon speaks**, the texel is dropped and the ribbon draws the
+  river: 0.088 km².
+- **The ribbon speaks** inside its reach, except where the plane stands more than 8 m over
+  the ground (`RIVER_MAX_DEPTH_M`) or over no ground. Those are wide sections hanging over a
+  waterfall pit or a lake below. Drawn there, they paint fans of water in the air.
+
+### Drawing
+
+Per band, through `RiverWater.over`.
+
+- **Coverage.** The plane is sampled bilinearly. The river covers a pixel where the plane
+  crosses the drawn surface: the ocean's one-pixel crossing rule (`shore_terms`) with a level
+  per pixel instead of -17 m. The banks are where the game's plane meets the terrain, not
+  where a mask ends.
+- **Presence fades** to 0 over 1.5 m inside the plane's edge, over 1.5 m before the 8 m depth
+  cut, where the plane hangs 1 to 2 m over other water (`RIVER_OVER_WATER_M`), and on
+  texels beside a jump of more than 0.5 m between neighbours. Such a jump is two planes
+  meeting, and any sampler draws a line along it.
+- **Where a river meets other water, the higher surface shows**; a tie of 5 cm goes to the
+  river. At a mouth the river plane dips under the lake or the sea, and the hand-over happens
+  where the two levels agree, so the colour is continuous.
+- **Optics.** River pixels get the shore optics: the opacity fade and wet darkening in
+  terrain and satellite, and the wet band on the banks in every style. Painted water is
+  Beer-Lambert, so the bed shows in the shallows.
+- **The pale-path fix.** In the prototype a river 0.2 to 0.9 m deep was mostly the riverbed
+  paint seen through recipe 5's 0.9 m alpha feather. Now the optics read a river at least
+  `shore.river.min_depth_m` (0.6 m) deep once `bank_m` (2.5 m) in from its waterline, a
+  taste setting per palette. At the waterline the true depth is used, so the bank stays soft.
+  The palettes gained the block, so the three style versions went up by one.
+- **Without rivers** (`--kernel-only`) the water terms are exactly recipe 6's.
+
+### Cost
+
+- `RiverWater` takes 4 to 7 s per run and about 1 GB of temporary 1 m planes.
+- Drawing a crop costs 5 to 20% more than recipe 6.
+- When the cache misses, the sweep is the shared one; the rivers add little to it.
+
+### Known limits
+
+- Nothing has been compared against an in-game top-down view of a river. The minimum
+  optical depth and the colour are a taste call.
+- Where the 8 m rule cuts a river plane, the field's river-box water stays at the box level,
+  as in recipe 6. One waterfall pool near (-1170, -240) keeps a dark rectangle.
+- Steps of more than 0.5 m per metre break the ribbon for a few metres. Those are
+  waterfalls, which are a separate item.
+- A section bent more tightly than its half width draws the fan its mesh would.

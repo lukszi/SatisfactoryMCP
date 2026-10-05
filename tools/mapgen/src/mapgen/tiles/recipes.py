@@ -8,12 +8,15 @@ from satisfactory_mcp.core.gameassets.versions import (
 )
 
 __all__ = [
+    "COMPOSITION_NOTE",
     "ENHANCE_RECIPE",
     "ENHANCE_RECIPES",
+    "LEVEL_ONLY_NOTE",
     "RECIPE",
     "RECIPES",
     "RECIPE_KERNEL_ONLY",
     "UNNUMBERED_RECIPE",
+    "Z7_NOTE",
 ]
 
 #: Which recipe drew the pixels, recorded per layer so a reader looking at a tile can find
@@ -59,6 +62,13 @@ RECIPES = {
         "lakes unchanged. Coral, shells, CliffPillar_03 and rubble rasterised for the map "
         "only and composited raise-only where they stand near or above the water"
     ),
+    7: (
+        "recipe 6 with the rivers drawn from the game's own river splines: each section of "
+        "BP_River_PROT_C's plane as a sloped ribbon on the 1 m grid, covering the drawn "
+        "ground where the plane stands above it, one pixel wide at the bank, under the same "
+        "shallow-water optics as the sea. The water the river boxes levelled is taken back "
+        "out of the field's, so a river is drawn once, at its own height"
+    ),
 }
 RECIPE = RENDER_RECIPE_CURRENT
 
@@ -88,3 +98,35 @@ ENHANCE_RECIPE = 2
 #: The boolean was introduced by recipe 1 and retired by recipe 2, so a sidecar that says
 #: ``enhanced`` and names no recipe means exactly one pipeline rather than "unknown".
 UNNUMBERED_RECIPE = 1
+#: What the sidecar records about z7.
+Z7_NOTE = (
+    "interpolated-smooth. 32768 px is NOT a claim that the field has more to "
+    "say -- that was measured twice on this pipeline and refused twice, and the "
+    "high-frequency energy per pixel falls at every doubling. What z7 is, is the "
+    "same surface evaluated by the same C1 kernel at half the spacing, which a "
+    "client cannot produce for itself: a browser shown z6 at twice its scale "
+    "upsamples it BILINEARLY, and bilinear is C0, so the relief it draws is "
+    "ruled into 0.458 m squares. The exception is the direct regime, where the "
+    "pixels are triangles rather than an interpolation and z7 genuinely resolves "
+    "geometry the 1 m field folds away -- see two_regime.regimes for how much of "
+    "the sheet that is."
+)
+
+#: What the sidecar records about the two-regime composition.
+COMPOSITION_NOTE = (
+    "the field's own rule at this render's spacing: the landscape and fill "
+    "lattices interpolated with the C1 kernel, and the cliff geometry "
+    "rasterised at 0.229 m composited over them by its own coverage, raising "
+    "the ground and never lowering it. What this replaced was interpolating "
+    "the 1 m FOLD of that composition, which reconstructs a rim as the 1 m "
+    "staircase the fold put it on however fine the output grid is"
+)
+
+#: What the sidecar records about level-only water.
+LEVEL_ONLY_NOTE = (
+    "full alpha and the deep end of the ramp. 95.2% of level-only water "
+    "stands over the fill province and 98% of its surface levels lie in a "
+    "0.7 m band around the ocean's own -16.99 m, so it is the ocean, and a "
+    "depth ramp run on a 3.9 m raster's rounding error is what used to draw "
+    "3.572 km2 of it as land"
+)
