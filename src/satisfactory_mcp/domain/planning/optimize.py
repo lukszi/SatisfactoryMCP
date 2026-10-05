@@ -192,7 +192,8 @@ class Scenario:
     #: throughput via 50% clocks was measured to gain +1140 MW for +441 machines,
     #: i.e. 2.58 MW per extra machine. A default above that rejects marginal
     #: spreading while still accepting a genuinely good trade. Set to 0 to reproduce
-    #: an unpriced (ill-posed) max-power solve.
+    #: an unpriced (ill-posed) max-power solve. At a payback horizon each building's
+    #: ``K / (H r)`` replaces it (``machine_mw``).
     machine_cost_mw: float = 5.0
     belt_ipm: float = 780.0  # Mk5; used to price sinks and to count logistics lines
     pipe_m3min: float = 600.0
@@ -460,6 +461,16 @@ def best_clock(sc: Scenario, b, draw_full: float) -> float:
         b.power_exponent,
         b.min_clock,
     )
+
+
+def machine_mw(sc: Scenario, building: str | None) -> float:
+    """What one machine costs in MW when the goal is power: ``K / (H r)`` at a horizon (F1a),
+    else the flat ``machine_cost_mw``."""
+    per_mw = sc.payback_hours * sc.power_price
+    points = sc.build_points.get(building or "")
+    if per_mw > 0 and points is not None:
+        return max(points, 1.0) / per_mw
+    return max(0.0, sc.machine_cost_mw)
 
 
 def _clock_at(points: float, per_mw: float, draw: float, e: float, floor: float) -> float:
@@ -852,15 +863,14 @@ def solve(sc: Scenario) -> Solution:
     # Applied only to the power objectives: for max_item / min_raw, underclocking
     # gives no benefit at all (throughput is linear in machines x clock), so it is
     # never selected and needs no penalty.
-    machine_priced = sc.machine_cost_mw > 0 and sc.objective in ("max_mw", "min_power")
     # Keep the pure goal so the reported objective_value is not contaminated by the
     # penalty. Reading the penalised value as the objective understated max_mw by
     # ~5000 MW and made a per-unit cost derived from it wrong -- two separate tools
     # tripped on exactly this.
     c_goal = c.copy()
-    if machine_priced:
-        for i in range(nP):
-            c[col_p(i)] += sc.machine_cost_mw
+    if sc.objective in ("max_mw", "min_power"):
+        for i, p in enumerate(procs):
+            c[col_p(i)] += machine_mw(sc, p.building)
 
     res = solverlane.run(
         lambda: milp(c=c, constraints=constraints, integrality=integrality, bounds=(lb, ub))
@@ -1139,10 +1149,14 @@ def solve(sc: Scenario) -> Solution:
     if min(sc.clocks) < 1.0:
         used_low = [p for i, p in enumerate(procs) if p.clock < 1.0 and x[col_p(i)] > _EPS]
         if used_low:
+            price = (
+                f"the {sc.payback_hours:g} h payback horizon"
+                if sc.payback_hours * sc.power_price > 0
+                else f"{sc.machine_cost_mw:g} MW/machine"
+            )
             warnings.append(
                 f"{len(used_low)} process(es) use a sub-100% clock MODE: this spreads "
-                "throughput over more machines to save power, priced at "
-                f"{sc.machine_cost_mw:g} MW/machine"
+                f"throughput over more machines to save power, priced at {price}"
             )
 
     return Solution(
