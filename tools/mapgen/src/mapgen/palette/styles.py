@@ -66,6 +66,7 @@ __all__ = [
     "satellite_colours",
     "terrain_colours",
     "with_sea",
+    "with_void",
 ]
 
 #: The palettes are files, one per style id, and a style's digest is the hash of its file's
@@ -285,6 +286,13 @@ def satellite_colours(scene: dict) -> np.ndarray:
 def with_sea(rgb: np.ndarray, missing: np.ndarray) -> np.ndarray:
     """No data in the page's own sea colour, whatever the style."""
     return np.where(missing[..., None], SEA_RGB, rgb)
+
+
+def with_void(rgb: np.ndarray, cover: np.ndarray) -> np.ndarray:
+    """The void past the world's edge and in its pits, ``cover`` in [0, 1], in the page's
+    own sea colour whatever the style, so the map's edge draws no border."""
+    weight = cover[..., None]
+    return rgb * (1.0 - weight) + SEA_RGB * weight
 
 
 LAYER_PAINTERS = {"terrain": terrain_colours, "satellite": satellite_colours}

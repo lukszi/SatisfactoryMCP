@@ -21,6 +21,32 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 #: node table's 626 rows -- all of which stand on dry ground -- water.
 WATER_ARTWORK_BLUE_OVER_RED = 25
 
+#: The artwork draws a pit, and the void past the world's edge, black to a flat grey (Rec. 601
+#: luma 0 to about 80); its ground is beige or white, 140 and up. docs/spatial-and-map.md §26.
+VOID_ARTWORK_LUMA_MAX = 110
+
+#: Rows of the 1 m grid classified at a time, so the sheet is never held as integers whole.
+_ROWS_AT_ONCE = 500
+
+
+def artwork_planes(sheet) -> tuple[np.ndarray, np.ndarray]:
+    """The decoded artwork sheet as two masks on this file's 1 m grid: ``(water, void)``.
+
+    Water is ``artwork_water_mask``'s classifier; void is ground drawn darker than
+    ``VOID_ARTWORK_LUMA_MAX`` that is not water. Nearest-neighbour, as that function.
+    """
+    pixels = np.asarray(sheet, np.uint8)
+    index = np.clip((np.arange(GRID_PX) * SHEET_PX / GRID_PX).astype(np.int32), 0, SHEET_PX - 1)
+    water = np.zeros((GRID_PX, GRID_PX), bool)
+    void = np.zeros((GRID_PX, GRID_PX), bool)
+    for start in range(0, GRID_PX, _ROWS_AT_ONCE):
+        rows = pixels[index[start : start + _ROWS_AT_ONCE]][:, index].astype(np.int32)
+        wet = rows[..., 2] - rows[..., 0] >= WATER_ARTWORK_BLUE_OVER_RED
+        luma = (299 * rows[..., 0] + 587 * rows[..., 1] + 114 * rows[..., 2]) // 1000
+        water[start : start + len(rows)] = wet
+        void[start : start + len(rows)] = ~wet & (luma <= VOID_ARTWORK_LUMA_MAX)
+    return water, void
+
 
 def artwork_water_mask(store, decoder, image_mod) -> np.ndarray:
     """The game's own map artwork, classified into water, on this file's 1 m grid.
