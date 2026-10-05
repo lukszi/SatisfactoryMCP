@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -33,5 +34,8 @@ def test_no_command_prints_usage(capsys):
 
 def test_entry_point_stays_stdlib_only():
     code = "import sys, mapgen.cli, mapgen.__main__; print('numpy' in sys.modules)"
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env
+    )
     assert out.stdout.strip() == "False"
