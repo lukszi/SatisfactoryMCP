@@ -36,7 +36,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ...core.gamedata.model import GameData
-from ..spatial import geo, heightfield
+from ..spatial import caves, geo, heightfield
 from ..spatial.origin import PLAYER_WORDS, resolve_origin
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -319,6 +319,7 @@ class Siting:
             return None
         if t.get("z_m") is None:
             return f"terrain z: none -- {t.get('reason') or 'no data'}"
+        cave_pct = t.get("cave_pct")
         acc = t.get("accuracy_m")
         parts = [
             f"terrain z {t['z_m']:g}m ({t.get('surface', 'ground')}, {t.get('provenance')}"
@@ -333,6 +334,10 @@ class Siting:
                 "may be a rock top"
                 + (f" (bare ground {bare:g}m)" if isinstance(bare, (int, float)) else "")
             )
+        if t.get("cave") == caves.BELOW:
+            parts.append(caves.note(caves.BELOW, None) or "")
+        elif cave_pct:
+            parts.append(f"a cave lies under {cave_pct:g}% of the pad: z is the surface above it")
         if t.get("coarse"):
             parts.append("coarse fill layer, metre-level")
         if t.get("water_level_m") is not None:
@@ -497,6 +502,13 @@ def terrain_z(
         reading = field.z(x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100)
         if reading is None:
             return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
+        if reading.cave == caves.INSIDE:
+            return {
+                **out,
+                "z_m": None,
+                "cave": caves.INSIDE,
+                "reason": caves.note(caves.INSIDE, reading.z_m),
+            }
         return {
             **out,
             "z_m": round(reading.z_m, 2),
@@ -507,6 +519,7 @@ def terrain_z(
             "accuracy_m": reading.accuracy_m,
             "coarse": reading.provenance == heightfield.PROV_FILL,
             "water_level_m": reading.water_m if reading.submerged else None,
+            "cave": reading.cave,
         }
     box = _footprint_box_cm(x_m, y_m, width_m, depth_m, yaw_deg)
     areas = {"ground": field.window(*box)}
@@ -528,6 +541,14 @@ def terrain_z(
         ).pick(hint_m)
         surface = picked[0] if picked else "ground"
     area = areas[surface]
+    if hint_m is not None and _pad_in_cave(field, x_m, y_m, hint_m, ground.cave_pct, areas):
+        surface_m = min(a.z_median_m for a in areas.values() if a.z_median_m is not None)
+        return {
+            **out,
+            "z_m": None,
+            "cave": caves.INSIDE,
+            "reason": caves.note(caves.INSIDE, surface_m),
+        }
     dominant = max(ground.provenance_pct.items(), key=lambda kv: kv[1])[0]
     terrain_area = areas.get("terrain")
     return {
@@ -539,6 +560,7 @@ def terrain_z(
         "bare_m": None if terrain_area is None else terrain_area.z_median_m,
         "ambiguous": ground.ambiguous_pct >= AMBIGUOUS_PAD_PCT,
         "ambiguous_pct": ground.ambiguous_pct,
+        "cave_pct": ground.cave_pct,
         "provenance": heightfield.PROV_NAMES.get(dominant, f"layer {dominant}"),
         "accuracy_m": field.accuracy_m(dominant),
         "coarse": ground.coarse_pct > 0,
@@ -549,6 +571,22 @@ def terrain_z(
         "slope_mean_deg": ground.slope_mean_deg,
         "roughness_m": ground.roughness_m,
     }
+
+
+def _pad_in_cave(
+    field: heightfield.Field,
+    x_m: float,
+    y_m: float,
+    hint_m: float,
+    cave_pct: float,
+    areas: dict[str, heightfield.Area],
+) -> bool:
+    """Whether the hint puts the pad inside a cave: in a sound volume at its centre, or
+    deeper than ``caves.INSIDE_DEPTH_M`` under every surface median over flagged ground."""
+    lowest = min((a.z_median_m for a in areas.values() if a.z_median_m is not None), default=None)
+    if field.cave_at(x_m * 100, y_m * 100, hint_m * 100, lowest) == caves.INSIDE:
+        return True
+    return bool(cave_pct) and lowest is not None and hint_m < lowest - caves.INSIDE_DEPTH_M
 
 
 def _silence(field: heightfield.Field, x_m: float, y_m: float) -> str:

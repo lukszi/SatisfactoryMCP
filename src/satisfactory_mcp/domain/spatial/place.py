@@ -159,7 +159,13 @@ class Description:
 
 
 def describe(
-    st, game, x: float, y: float, radius_m: float = 200.0, terrain_field=None
+    st,
+    game,
+    x: float,
+    y: float,
+    radius_m: float = 200.0,
+    terrain_field=None,
+    hint_z_cm: float | None = None,
 ) -> Description:
     """Region, sampled elevation, conduits, nearest nodes, fields and pickups at a point.
 
@@ -170,7 +176,12 @@ def describe(
     """
     table = nodes_mod.load_nodes()
     probe = elevation.probe(
-        x, y, elevation.sample_points(table, st), radius_m, terrain_field=terrain_field
+        x,
+        y,
+        elevation.sample_points(table, st),
+        radius_m,
+        terrain_field=terrain_field,
+        hint_z_cm=hint_z_cm,
     )
     fields = _fields_near(st, game, x, y)
     pickups = _pickups_near(st, x, y) if st is not None else []

@@ -34,6 +34,7 @@ function elevationRows(e: Elevation): Row[] {
   if (measured) {
     var acc = e.terrain_accuracy_m === null ? "" : " ±" + e.terrain_accuracy_m + " m";
     rows.push(["terrain", e.terrain_m + " m (" + e.terrain_source + acc + ")"]);
+    if (e.terrain_cave_note) rows.push(["cave", e.terrain_cave_note]);
     if (e.terrain_ambiguous) {
       var bare =
         e.terrain_bare_m === null || e.terrain_bare_m === undefined

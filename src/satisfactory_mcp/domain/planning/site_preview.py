@@ -235,6 +235,7 @@ def _terrain(sit: siting_mod.Siting, terrain, cap: int) -> tuple[dict | None, st
         "stride": pad.stride,
         "water_m": water_m,
         "water_below_m": below,
+        "cave_pct": pad.cave_pct,
     }, ""
 
 
@@ -421,6 +422,10 @@ def preview_lines(out: dict) -> list[str]:
             f"(p90 {t['slope_p90_deg'] or 0:g}°) · rough {t['roughness_m'] or 0:g} m · "
             f"{t['submerged_pct']:g}% under water"
         )
+        if t["cave_pct"]:
+            lines.append(
+                f"cave: one lies under {t['cave_pct']:g}% of the pad; heights are the surface"
+            )
         if t["water_m"] is None:
             lines.append(f"water: none within {WATER_SEARCH_M:.0f} m")
         elif t["water_m"] == 0:

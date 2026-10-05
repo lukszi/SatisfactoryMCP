@@ -965,6 +965,79 @@ file. A stored z is kept when a pad is resized in place; a moved pad is read aga
 | hint = truth z (oracle) | 0.045 m | 43.3 m | 88.5% | 0.024 m |
 | bilinear `ground`, generator v5 | 0.041 m | 83.0 m | 82.1% | 0.024 m |
 
-The tail is which surface is meant, never resolution. Caves stay open: no one- or
-two-valued plane can hold a cave floor.
+The tail is which surface is meant, never resolution. No one- or two-valued plane can hold
+a cave floor; section 23 flags where one is missing.
 
+
+## 23. The cave flag (2026-10-05)
+
+The field holds one ground per (x, y), so a point in a cave reads the surface above it: the
+218 save points more than 3 m under every surface (22 caves, two of them hold 140) are off
+by a median of 91 m. The cave flag does not fix that. It makes sure no answer presents the
+surface as a cave point's height.
+
+### The masks
+
+`tools/gen_world_heightmap.py --caves` sweeps the world once (6 s on build 502094) and writes
+`data/local/caves/`: `caves.npz` (330 kB) and `meta.json`. It is its own directory, so a field
+can be regenerated or swapped without it. It reads the field at `--field` (default
+`data/local/heightmap/`), refuses to replace an existing directory without `--force`, and is
+never committed.
+
+| Signal | What it answers | Stored as |
+| --- | --- | --- |
+| Cave sound volumes: `FGAmbientVolume` whose `mAmbientSettings` names a cave, 207 actors, 804 brush convex hulls | 3D: is this point inside a cave volume | hull planes, per-hull slices, boxes |
+| Cave decoration: foliage under `/Caves/` and `/CaveFloor/` (not `SM_NonCave_*`), 245,833 instances more than 3 m under the ground | 2D: does a cave lie under this (x, y) | bit 1 of an 8 m cell mask, buffered 2 cells (16 m) |
+
+Bit 2 of the mask is every cell a hull's plan touches, so a point read runs the 3D test only
+there. 2.37 km² of the map is flagged.
+
+### Reading
+
+`Reading.cave` is `none`, `below` or `inside`, beside `ambiguous` and never folded into it: a
+rock shelf is ambiguous, a cave is not a shelf.
+
+| Case | `cave` |
+| --- | --- |
+| No flagged cell | `none` |
+| Flagged cell, no hint, or a hint at the surface | `below` |
+| Hint inside a hull, or over a flagged cell more than 3 m under every surface | `inside` |
+
+Without a hint a read is never `inside`. `Area.cave_pct` is the share of a pad over flagged
+cells. The masks load lazily on the first cave question and are re-read when `meta.json`
+changes (checked at most once a second). No masks means `none` everywhere.
+
+### Where it shows
+
+One line, from `caves.note`. Under `inside` the surface is named as the surface, never as the
+answer: "in a cave: ground height unknown here (the surface above is 233 m)". Under `below`:
+"a cave lies under this point: the height given is the surface, not the cave floor". No
+ceiling is ever printed; nothing measured supports one.
+
+- `describe_location`: a `cave=` field. With `at=me` the player's z is the hint, and under
+  `inside` `terrain_m=unknown`.
+- `whereami`: a `cave=` field, the player's z as hint.
+- The inspector: `terrain_cave` and `terrain_cave_note`. A map click has no z, so it shows
+  `below` at most.
+- Siting (`settle_z`, `site_plan`): the hint is the typed or player z, else the median z of
+  what stands on the pad. `inside` gives `z = None` with the note as the reason. Otherwise
+  `cave_pct` rides along and the terrain line says how much of the pad has a cave under it.
+  The page's site preview shows the same share.
+
+### Measured (build 502094, save ground truth)
+
+On 218 cave points (more than 3 m under every surface) and 4,885 open-ground points (within
+1 m of the ground), field `data/local/heightmap/`:
+
+| | Cave points flagged | Open ground flagged |
+| --- | --- | --- |
+| With the true z as hint, `inside` | 95.0% (207) | 0.1% (5) |
+| No hint, `below` | 95.0% | 9.4% |
+| Sound volumes alone, 3D | 81.7% | 0.1% |
+| Decoration alone, 2D | 85.3% | 7.0% |
+
+The 9.4% of open ground flagged `below` mostly stands over a real cave; the wording says so
+rather than calling it a fault. Eleven cave points are missed, six of them mushrooms
+(`BP_Shroom_01_C`). The measuring scripts are kept out of the repository with the truth set.
+Floors, ceilings and the underground map are not part of this; they wait for cave building to
+be real.

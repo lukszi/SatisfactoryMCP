@@ -11,13 +11,13 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
 from ....domain.collectibles import service as collectibles_service
+from ....domain.spatial import caves, geo, place
 from ....domain.spatial import elevation as spatial_elevation
-from ....domain.spatial import geo, place
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world.state import WorldState
@@ -81,6 +81,8 @@ class Elevation(TypedDict):
     terrain_accuracy_m: float | None
     terrain_bare_m: float | None
     terrain_ambiguous: bool
+    terrain_cave: Literal["none", "below", "inside"]
+    terrain_cave_note: str | None
     terrain_water_m: float | None
     terrain_water_depth_m: float | None
     terrain_water_note: str | None
@@ -164,7 +166,9 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
 
     Four sources, each labelled as what it is. ``terrain_m`` is the extracted heightfield
     read bilinearly at exactly the coordinate asked about; ``terrain_ambiguous`` says it may
-    be a rock top or roof, with ``terrain_bare_m`` the landscape under it. Ground and built
+    be a rock top or roof, with ``terrain_bare_m`` the landscape under it. ``terrain_cave``
+    is ``below`` where a cave lies under the point, with ``terrain_cave_note`` the line to
+    show; under ``inside`` ``terrain_m`` is null and the note is ``terrain_note``. Ground and built
     are populations of things standing nearby. They stay apart out to the page: a node rests on
     terrain, a foundation is wherever the player put it, and one median over the three would
     be a number describing none of them. ``terrain_source`` says which layer of the field
@@ -205,7 +209,11 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
 
     terrain_probe = near.terrain
     terrain_note = None
-    if terrain_probe is None:
+    cave = terrain_probe.cave if terrain_probe else caves.NONE
+    cave_note = caves.note(cave, terrain_probe.z_m) if terrain_probe else None
+    if cave == caves.INSIDE:
+        terrain_note, cave_note = cave_note, None
+    elif terrain_probe is None:
         terrain_note = (
             "the field has no data at this point -- open ocean, or a cave mouth"
             if terrain.field() is not None
@@ -224,11 +232,13 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
 
     return {
         "radius_m": near.radius_m,
-        "terrain_m": _round(near.terrain_m),
+        "terrain_m": None if cave == caves.INSIDE else _round(near.terrain_m),
         "terrain_source": terrain_probe.source if terrain_probe else None,
         "terrain_accuracy_m": terrain_probe.accuracy_m if terrain_probe else None,
         "terrain_bare_m": _round(terrain_probe.terrain_z_m) if terrain_probe else None,
         "terrain_ambiguous": bool(terrain_probe and terrain_probe.ambiguous),
+        "terrain_cave": cave,
+        "terrain_cave_note": cave_note,
         "terrain_water_m": (
             _round(terrain_probe.water_m) if terrain_probe and terrain_probe.submerged else None
         ),

@@ -8,11 +8,17 @@ from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....domain.planning import journal, pins
-from ....domain.spatial import finder, geo, heightfield, place
+from ....domain.spatial import caves, finder, geo, heightfield, place
 from ....domain.spatial import nodes as nodes_mod
 from ....domain.spatial import ranking as ranking_mod
 from ....domain.spatial import regions as regions_mod
-from ....domain.spatial.origin import NODE_PREFIX, PLAN_PREFIX, RUN_PREFIXES, resolve_origin
+from ....domain.spatial.origin import (
+    NODE_PREFIX,
+    PLAN_PREFIX,
+    PLAYER_WORDS,
+    RUN_PREFIXES,
+    resolve_origin,
+)
 from ....domain.spatial.select import SELECTOR_HELP
 from ....domain.world import conduits as conduits_mod
 from ....presenters.text import primitives as render
@@ -140,7 +146,10 @@ def describe_location(
         return f"! {exc}"
 
     field = heightfield.load_field()
-    found = place.describe(st, game(), x, y, radius_m, terrain_field=field)
+    player = st.player_position() if st and at.strip().casefold() in PLAYER_WORDS else None
+    found = place.describe(
+        st, game(), x, y, radius_m, terrain_field=field, hint_z_cm=player[2] if player else None
+    )
     label = found.label
     near = found.probe
 
@@ -158,9 +167,14 @@ def describe_location(
     ]
     notes: list[str] = []
     reading = near.terrain
-    if reading is not None:
+    if reading is not None and reading.cave == caves.INSIDE:
+        fields.append(("terrain_m", "unknown"))
+        fields.append(("cave", caves.note(reading.cave, reading.z_m)))
+    elif reading is not None:
         accuracy = "" if reading.accuracy_m is None else f", +-{reading.accuracy_m:g}m"
         fields.append(("terrain_m", f"{reading.z_m:.1f} ({reading.source}{accuracy})"))
+        if reading.cave == caves.BELOW:
+            fields.append(("cave", caves.note(reading.cave, reading.z_m)))
         if reading.ambiguous:
             bare = reading.terrain_z_m
             fields.append(("terrain_bare_m", "unknown" if bare is None else f"{bare:.1f}"))
@@ -1181,6 +1195,9 @@ def whereami(
 
     notes = [f"use near:me@{radius_m:g} as a source selector to plan around here"]
     notes += found.notes
+    field = heightfield.load_field()
+    reading = field.z(x, y, hint_z_cm=z) if field is not None else None
+    cave_line = caves.note(reading.cave, reading.z_m) if reading is not None else None
     if found.nearest_building is not None:
         name, d = found.nearest_building
         notes.append(f"nearest building: {name} at {d:.0f}m")
@@ -1197,6 +1214,7 @@ def whereami(
                         ("region", label.describe()),
                         ("grid", geo.grid_cell(x, y)),
                         ("from_map_centre", geo.direction_of(x, y)),
+                        *([("cave", cave_line)] if cave_line else []),
                     ]
                 ),
                 f"# {len(near)} node(s) within {radius_m:g}m",
