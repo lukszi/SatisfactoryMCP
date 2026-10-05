@@ -6,6 +6,20 @@
  "pigment": 0.15,
  "canopy_gain": 0.85,
  "canopy_dark": 0.85,
+ "crowns": {
+  "draw": true,
+  "canopy_kept": 0.0,
+  "opacity": 1.0,
+  "darkening": 0.85,
+  "chroma": 0.8,
+  "over_water": 0.6,
+  "dome_gain": 0.35,
+  "shade_clamp": [
+   0.55,
+   1.2
+  ],
+  "hidden_below_m": 0.5
+ },
  "have_blur_m": 6.0,
  "fallback_blur_m": 44.0,
  "seam_blend_m": 6.0,

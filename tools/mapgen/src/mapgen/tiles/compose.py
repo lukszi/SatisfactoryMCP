@@ -36,6 +36,7 @@ from mapgen.palette.water import (
     water_alpha,
     water_depth_fraction,
 )
+from mapgen.terrain.crowns import crown_band
 from mapgen.terrain.measure import SEAM_MID
 from mapgen.terrain.rasters import pixel_coverage
 from mapgen.terrain.sample import (
@@ -59,6 +60,7 @@ __all__ = [
     "band_water",
     "blend_regimes",
     "composite_top",
+    "crowns_in_band",
     "render_layer",
 ]
 
@@ -151,6 +153,19 @@ def band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m) -
         shore_terms(z_m, spacing_m),
         WATER_DEPTH_FULL_M,
     )
+
+
+def crowns_in_band(painted, x_cm, y_cm, spacing_m) -> dict | None:
+    """The crowns over these pixel centres, with their domes lit by the shared sun."""
+    if painted.crowns is None:
+        return None
+    step_cm = spacing_m * 100.0
+    band = crown_band(
+        painted.crowns, x_cm[0] - step_cm / 2, y_cm[0] - step_cm / 2, step_cm, len(y_cm), len(x_cm)
+    )
+    gain = np.float32(painted.palette["crowns"]["dome_gain"])
+    band["ndl"] = sun_dot(band["dome_m"] * gain, spacing_m)
+    return band
 
 
 def render_layer(
@@ -334,6 +349,7 @@ def render_layer(
             rock_weight = np.zeros(z_m.shape, np.float32) if weight is None else rock_seen
             if top_weight is not None:
                 rock_weight = np.maximum(rock_weight, top_weight)
+            scene["crowns"] = crowns_in_band(painted, x_cm, y_cm[lo:hi], spacing_m)
             scene.update(
                 ndl=sun_dot(z_m, spacing_m),
                 ndl_flat=np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG))),

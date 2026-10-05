@@ -18,6 +18,7 @@ from scipy import ndimage
 from mapgen.gamedata.paint import CANOPY_NAME, META_NAME, PIGMENT_NAME
 from mapgen.gamedata.waterbodies import CLASSES, OCEAN, WATER_BODIES_NAME, classify
 from mapgen.palette.shore import OCEAN_LEVEL_M, add_foam, optical_depth, wet_band
+from mapgen.terrain.crowns import load_crowns
 from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL, MESH_TERRACE
 from mapgen.terrain.sample import ClassMix, class_taps
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -35,6 +36,7 @@ __all__ = [
     "load_water_bodies",
     "mix_layers",
     "oklab",
+    "over_crowns",
     "painted_colours",
     "ramp_position",
     "seam_blend",
@@ -263,6 +265,8 @@ class PaintedGround:
         self.rock = self._rock(albedo)
         del albedo
         self.canopy = _plane(paint_dir, meta, CANOPY_NAME)
+        drawn = palette.get("crowns", {}).get("draw", False)
+        self.crowns = load_crowns(paint_dir, meta) if drawn else None
         self.canopy_rgb = np.asarray(meta["albedo_linear"]["canopy"], np.float32) * np.float32(
             palette["canopy_dark"]
         )
@@ -327,6 +331,19 @@ class PaintedGround:
             "turbidity": turbidity,
             "tint": tint,
         }
+
+    def provenance(self) -> dict:
+        """What the sidecar records about this ground beyond the paint store's digest."""
+        crowns: dict | str = "not drawn by this palette"
+        if self.palette.get("crowns", {}).get("draw"):
+            block = self.meta.get("crowns")
+            crowns = "not in this paint store" if self.crowns is None else {
+                "species": len(block["species"]),
+                "trees": len(self.crowns.records),
+                "rule": "one top-down sprite per species from its LOD 0, per-tree yaw, "
+                "scale and lean; tallest over lowest; hidden under a higher surface",
+            }  # fmt: skip
+        return {**self.source, "crowns": crowns}
 
     def _pigment(self, paint_dir, albedo, rows, cols):
         strength = np.float32(self.palette["pigment"])
@@ -408,6 +425,31 @@ def _unit_luminance(colour) -> np.ndarray:
     return c / (c @ np.array([0.2126, 0.7152, 0.0722], np.float32))
 
 
+def over_crowns(out, crowns: dict, scene: dict, p: dict, ambient, exposure) -> np.ndarray:
+    """Tree crowns over everything below them, lit by their own domes.
+
+    A crown is hidden where the drawn surface stands above its top: a tree under an
+    overhang, or rock the tree grows beside and below.
+    """
+    style = p["crowns"]
+    cover = crowns["cover"]
+    seen = (
+        np.nan_to_num(crowns["top_cm"], nan=-1e9) / 100.0 > scene["z_m"] - style["hidden_below_m"]
+    )
+    wet = scene["water"]["cover"] * np.float32(1.0 - style["over_water"])
+    alpha = (np.clip(cover, 0.0, 1.0) * style["opacity"] * seen * (1.0 - wet))[..., None]
+    colour = crowns["rgb"] / np.maximum(cover, 1e-4)[..., None] * np.float32(style["darkening"])
+    lab = oklab(np.clip(colour, 1e-7, None))
+    lab[..., 1:] *= np.float32(p["chroma_gain"] * style["chroma"])
+    colour = np.clip(linear_from_oklab(lab), 0.0, 1.0)
+    shade = np.clip(crowns["ndl"] / scene["ndl_flat"], *style["shade_clamp"])
+    light = (
+        ambient * _unit_luminance(p["sky"])
+        + (1 - ambient) * _unit_luminance(p["sun"]) * shade[..., None]
+    )
+    return out * (1.0 - alpha) + colour * light * exposure * alpha
+
+
 def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> np.ndarray:
     """One band of the painted layer, sRGB 0..255.
 
@@ -415,8 +457,10 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     the coarse rock grid.
     """
     p = ground.palette
+    crowns = scene.get("crowns")
     albedo = np.stack([sample(plane) for plane in ground.albedo], -1)
-    canopy = np.clip(sample(ground.canopy) / 255.0 * p["canopy_gain"], 0.0, 1.0)[..., None]
+    gain = p["canopy_gain"] * (1.0 if crowns is None else p["crowns"]["canopy_kept"])
+    canopy = np.clip(sample(ground.canopy) / 255.0 * gain, 0.0, 1.0)[..., None]
     g = albedo * (1.0 - canopy) + ground.canopy_rgb * canopy
     rock_rgb = np.stack([sample_rock(plane) for plane in ground.rock], -1)
     rock = scene["rock_weight"][..., None]
@@ -467,6 +511,8 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     if stroke:
         out = out * (1.0 - stroke * water["edge"][..., None])
     out = add_foam(out, water, p["shore"].get("foam"), np.float32(1.0))
+    if crowns is not None:
+        out = over_crowns(out, crowns, scene, p, ambient, exposure)
 
     shoulder = np.float32(p["shoulder"])
     over = np.maximum(out - shoulder, 0.0)

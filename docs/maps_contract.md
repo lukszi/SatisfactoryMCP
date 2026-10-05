@@ -176,7 +176,8 @@ A `paint` input reads `data/local/paint/meta.json` (`generator_version`, `cl` or
 rules. `python -m mapgen paint` writes it (the `paint` preset, through
 `tools/gen_paint_layers.py`); only the game-painted layer
 lists it. spatial-and-map.md section 27 describes the planes; section 28 the water bodies
-(`water_bodies.json`, generator version 2) the painted style classes its water from.
+(`water_bodies.json`) the painted style classes its water from, and section 31 the tree
+crowns. Generator version 2 added both.
 
 ### 3.5 Names and order
 
