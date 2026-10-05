@@ -234,6 +234,13 @@ which is how crops are compared.
   which turns a stroke into the gradient it stands for, then squashed through `tanh`. A soft
   clip passes the mid-tones (the shading) almost linearly and saturates the outliers (the
   ink).
+- **`BORROW_INK_PX`** (7 artwork pixels, 6.4 m): the soft clip still let every outline and
+  contour line through as a dark ring around each plateau and rock, in every style; painted
+  and relief damp the dark side, terrain and satellite did not. A grey closing, then an
+  opening, with a disk this wide removes every stroke narrower than it, dark or light,
+  before the high pass; plateau steps and rock shading are wider and stay. 5 px left a
+  dotted trace of the strokes. The `tanh` scale is still the spread of the sheet as drawn
+  (6.52), so the shading lends as much as before.
 - **`BORROW_GAIN`** was picked by looking at four crops: at 0.17 the offshore cliff islands
   are still flat facets, at 0.50 the drawn map's contour rings read as rings, and 0.30 is
   where a collision hull stops being eight flat plates and starts being rock.

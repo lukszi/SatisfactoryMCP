@@ -19,6 +19,7 @@ __all__ = [
     "BORROW_DETAIL_SOFTEN_PX",
     "BORROW_FEATHER_M",
     "BORROW_GAIN",
+    "BORROW_INK_PX",
     "BORROW_LUMA",
     "BORROW_PROVENANCE",
     "SHADE_FLOOR",
@@ -60,6 +61,9 @@ BORROW_DETAIL_SIGMA_PX = 8.0
 BORROW_DETAIL_SOFTEN_PX = 1.6
 BORROW_DETAIL_SIGMAS = 1.2
 
+#: Strokes narrower than this, in artwork pixels, dark or light, are ink: gone before the high pass.
+BORROW_INK_PX = 7.0
+
 #: How much reaches the picture, and how far it may push a pixel; picked by looking.
 BORROW_GAIN = 0.30
 BORROW_CLAMP = (0.74, 1.26)
@@ -68,13 +72,32 @@ BORROW_CLAMP = (0.74, 1.26)
 BORROW_LUMA = np.array([0.299, 0.587, 0.114], np.float32)
 
 
+def _disk(diameter_px: float) -> np.ndarray:
+    r = (diameter_px - 1) / 2.0
+    yy, xx = np.mgrid[-int(r) : int(r) + 1, -int(r) : int(r) + 1]
+    return xx * xx + yy * yy <= r * r + 0.5
+
+
+def _high_pass(luma: np.ndarray) -> np.ndarray:
+    high = luma - ndimage.gaussian_filter(luma, BORROW_DETAIL_SIGMA_PX, mode="nearest")
+    return ndimage.gaussian_filter(high, BORROW_DETAIL_SOFTEN_PX, mode="nearest")
+
+
 def artwork_detail(sheet) -> tuple[np.ndarray, dict]:
-    """The artwork's luminance high pass as int8 (67 MB, not 268), and its scaling."""
+    """The artwork's luminance high pass as int8 (67 MB, not 268), and its scaling.
+
+    A grey closing, then an opening, first removes every stroke narrower than
+    ``BORROW_INK_PX``, dark or light: the ink. The scale stays the spread of the sheet as
+    drawn, so the shading lends as much as it did with the ink in.
+    """
     rgb = np.asarray(sheet, np.float32)
     luma = rgb @ BORROW_LUMA
-    high = luma - ndimage.gaussian_filter(luma, BORROW_DETAIL_SIGMA_PX, mode="nearest")
-    high = ndimage.gaussian_filter(high, BORROW_DETAIL_SOFTEN_PX, mode="nearest")
-    spread = float(high.std())
+    spread = float(_high_pass(luma).std())
+    if BORROW_INK_PX > 1:
+        disk = _disk(BORROW_INK_PX)
+        luma = ndimage.grey_closing(luma, footprint=disk, mode="nearest")
+        luma = ndimage.grey_opening(luma, footprint=disk, mode="nearest")
+    high = _high_pass(luma)
     detail = (np.tanh(high / max(spread * BORROW_DETAIL_SIGMAS, 1e-6)) * 127.0).astype(np.int8)
     return detail, {
         "role": (
@@ -86,6 +109,7 @@ def artwork_detail(sheet) -> tuple[np.ndarray, dict]:
         "sheet_px": SHEET_PX,
         "metres_per_pixel": round((BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / SHEET_PX, 4),
         "high_pass_sigma_px": BORROW_DETAIL_SIGMA_PX,
+        "ink_closing_px": BORROW_INK_PX,
         "soften_sigma_px": BORROW_DETAIL_SOFTEN_PX,
         "luma_weights": [float(value) for value in BORROW_LUMA],
         "measured_std": round(spread, 4),
