@@ -138,6 +138,19 @@ export var SETTINGS: Setting[] = [
     fallback: false,
     shared: "overclock_last",
   },
+  {
+    kind: "choice",
+    key: "siteSnap",
+    group: "planner",
+    label: "pad snap",
+    hint: "how a moved plan pad lands; Shift moves freely; chat uses the same",
+    options: [
+      ["fine", "1 m and 15° steps"],
+      ["grid8", "8 m world grid, 15° steps"],
+    ],
+    fallback: "fine",
+    shared: "site_snap",
+  },
 ];
 
 var STORE_KEY = "settings";
