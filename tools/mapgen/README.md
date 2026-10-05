@@ -111,7 +111,7 @@ be traced to the axis it should move.
 | `cli.py` | | The `python -m mapgen` command table. Standard library only, so a spawned worker does not import numpy. |
 | `common.py` | | Repository root, `data/local`, the default game path, the shared argument parser |
 | `pipeline.py` | | The renders orchestrator: arguments, refusals, stage order |
-| `heightmap.py` | data | The heightmap, caves and rocks command: composition, water production, validation, the field sidecar |
+| `heightmap.py` | data | The heightmap, caves and rocks command: arguments, refusals, stage order |
 | `artwork.py` | data | The artwork command: sheet decode, calibration, enhance, pyramid |
 | `check_fill.py` | | The check-fill command |
 | `cache.py` | | The stamped raster caches (direct, top, meshes). The on-disk names are unchanged. |
@@ -121,6 +121,10 @@ be traced to the axis it should move.
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
+| `gamedata/water.py` | data | The heightfield's water channel: artwork mask, box levels, region masks |
+| `terrain/field.py` | data | Heightfield composition, plane encoding, and each layer's sidecar block |
+| `terrain/validate.py` | data | Heightfield gates (nodes, bare terrain, water), per-layer accuracy, the water block |
+| `terrain/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid, render-only meshes |

@@ -30,7 +30,7 @@ from scipy import ndimage
 from mapgen.common import ROOT, base_parser, require_gen
 from mapgen.gamedata.frame import BASELINE_BOX_CM, ORIGIN_X_CM, ORIGIN_Y_CM, RENDER_PX
 from mapgen.gamedata.sweep import BASELINE_PX, read_baseline
-from mapgen.heightmap import FILL_HORIZONTAL_M, FILL_VERTICAL_M
+from mapgen.terrain.field import FILL_HORIZONTAL_M, FILL_VERTICAL_M
 from mapgen.terrain.fill import (
     blend_seam,
     fill_from_raster,

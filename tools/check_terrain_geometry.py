@@ -48,7 +48,7 @@ from mapgen.common import LOCAL_DIR, base_parser, require_gen
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.mesh import ROCK_DIRS, MeshBounds, rasterise_cliffs
 from mapgen.gamedata.sweep import drop_offsets, landscape_frame, sweep_levels
-from mapgen.heightmap import NODE_TABLE
+from mapgen.terrain.validate import NODE_TABLE
 from satisfactory_mcp.core.gameassets import nanite as nan
 from satisfactory_mcp.core.gameassets import staticmesh as sm
 from satisfactory_mcp.core.gameassets.container import open_container
