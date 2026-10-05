@@ -342,6 +342,7 @@ def _band_ground(floor):
                "sky": np.zeros(3, np.float32), "deep": linear(w["deep"]),
                "deep_tau_m": np.float32(12.0), "bed": np.float32(0.8),
                "inland_floor": np.float32(floor)},
+        opaque_water=[],
     )  # fmt: skip
 
 

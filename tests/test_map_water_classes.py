@@ -183,6 +183,7 @@ def _ground(n):
             "inland_floor": np.float32(water.get("inland_floor", 0.0)),
         },
         ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
+        opaque_water=[],
     )
 
 
