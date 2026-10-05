@@ -13,10 +13,12 @@
 import { tilePath } from "./api";
 import { onModePick, showModes } from "./layercontrol";
 import { L } from "./leaflet";
+import { makeLitLayer, parseLight, webglReady } from "./litlayer";
 import { fetchMaps, mapState, mapTitle, onMaps, staleWhy, staleWord } from "./mapstore";
 import { MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
 import { regionsUnderMode, updateRegionBlend } from "./regions";
 import { BOOT, state } from "./state";
+import { showSunControl } from "./suncontrol";
 import { fail, offer } from "./toast";
 
 import type { MapTypeBody } from "./api-shapes";
@@ -159,6 +161,11 @@ var refusals: Partial<Record<BaseMode, string>> = {};
 
 /** The one layer the active mode has on the map, so a switch can take it off again. */
 var drawn: L.Layer | null = null;
+
+/* Live light: whether the layer a maker just built is lit, and the modes whose live light
+ * failed and are drawn with their baked light instead. */
+var madeLit = false;
+var litOff: Partial<Record<BaseMode, string>> = {};
 
 function specFor(key: string): ModeSpec | null {
   var found: ModeSpec | null = null;
@@ -317,8 +324,24 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => L.Layer) | 
     tilePath(spec.layer, "{z}", "{x}", "{y}") + (query.length ? "?" + query.join("&") : "");
   var denseQuery = dense ? (query.length ? "&" : "?") + "px=" + densePx : "";
   var bounds = mapImageLatLngBounds(b);
+  var light = parseLight(response.headers.get("X-Map-Light"));
 
   return function () {
+    madeLit = false;
+    if (light && webglReady() && !litOff[spec.key]) {
+      try {
+        var lit = makeLitLayer(spec.layer, light, function (why) {
+          if (litOff[spec.key]) return;
+          litOff[spec.key] = why;
+          fail(spec.label + ": " + why + "; showing it with the default sun baked in");
+          if (state.mode === spec.key) setMode(spec.key, false);
+        });
+        madeLit = true;
+        return lit;
+      } catch (ignored) {
+        litOff[spec.key] = "WebGL would not start";
+      }
+    }
     var tiles = new PyramidLayer(url, {
       pane: "basemap",
       tileSize: tilePx,
@@ -430,10 +453,12 @@ export function setMode(key: BaseMode, pinned: boolean): void {
     drawn = null;
   }
   var make = makers[mode];
+  madeLit = false;
   if (make) {
     drawn = make();
     drawn.addTo(map);
   }
+  showSunControl(madeLit);
   state.mode = mode;
   state.imagery = !!drawn;
   regionsUnderMode(state.imagery);

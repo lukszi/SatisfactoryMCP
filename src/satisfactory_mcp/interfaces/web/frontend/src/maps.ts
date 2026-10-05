@@ -35,6 +35,7 @@ var form = {
   layers: { terrain: true, satellite: true, painted: false } as Record<string, boolean>,
   size: 4096,
   top: true,
+  light: true,
   recipe: "current",
   keepCache: false,
   enhance: false,
@@ -151,6 +152,7 @@ function presetWords(job: MapJobBody): string {
     if (o.recipe === "kernel-only") parts.push("kernel only");
     if (o.top === false) parts.push("no arches");
     if (o.keep_cache) parts.push("keeps the raster cache");
+    if (o.light) parts.push("live sun");
     return parts.join(" · ");
   }
   if (job.preset === "artwork") return o.enhance ? "artwork, upscaled" : "artwork";
@@ -360,6 +362,7 @@ function formOptions(): Record<string, unknown> {
       recipe: form.recipe,
       top: form.top,
       keep_cache: form.keepCache,
+      light: form.light,
     };
   }
   if (form.preset === "artwork") return { enhance: form.enhance };
@@ -490,6 +493,12 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
         refresh();
       })
     );
+    var lit = checkbox("live sun", form.light, function (on) {
+      form.light = on;
+      refresh();
+    });
+    lit.title = "draws colour unlit and bakes a lighting pyramid, so the map is relit in the browser by any sun";
+    opts.appendChild(lit);
     var recipe = make("label", "maps-inline");
     recipe.appendChild(make("span", "", "recipe "));
     recipe.appendChild(
@@ -571,7 +580,7 @@ function rerender(row: MapTypeBody): void {
   var options =
     row.kind === "artwork"
       ? { enhance: true }
-      : { layers: [row.layer], size: row.size_px || 32768, recipe: "current", top: true };
+      : { layers: [row.layer], size: row.size_px || 32768, recipe: "current", top: true, light: !!row.axes.light };
   chain.then(function () {
     return submit(row.kind === "artwork" ? "artwork" : "render", options, row.label || "", row.id);
   });

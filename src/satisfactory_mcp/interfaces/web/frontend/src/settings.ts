@@ -160,6 +160,36 @@ export var SETTINGS: Setting[] = [
     fallback: false,
     shared: "advice_box_fed",
   },
+  {
+    kind: "choice",
+    key: "sunTime",
+    group: "map",
+    label: "sun",
+    hint: "where the sun stands on a map drawn with live light; the sun button on the map moves it for this visit",
+    options: [
+      ["noon", "game noon: high, from the south-west"],
+      ["09:00", "09:00: morning, from the west"],
+      ["16:00", "16:00: afternoon, low from the south-south-east"],
+      ["nw", "map north-west, 45° (the relief-map convention)"],
+    ],
+    fallback: "noon",
+  },
+  {
+    kind: "switch",
+    key: "sunShadows",
+    group: "map",
+    label: "cast shadows",
+    hint: "rocks and cliffs shade the ground beyond them, fading out by 150 m",
+    fallback: true,
+  },
+  {
+    kind: "switch",
+    key: "sunSky",
+    group: "map",
+    label: "sky light",
+    hint: "hollows and the foot of a cliff see less sky and read darker",
+    fallback: true,
+  },
 ];
 
 var STORE_KEY = "settings";
