@@ -98,6 +98,11 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
   `terrain_cave_note` is the line the page shows beside it. Under `inside`, `terrain_m` is
   null, the note travels as `terrain_note` and `terrain_cave_note` is null. A map click
   carries no z, so the inspector sees `below` at most.
+- On rock, `terrain_m` is the collision surface from `rocks.npz` when the field has one
+  (spatial-and-map.md §24): the highest of the landscape and the rock collision, never an arch
+  or a boulder. No field was added or renamed. `inside` with a cave floor found keeps
+  `terrain_m` and sends the floor line as `terrain_cave_note`; the inspector cannot reach that
+  case without a z.
 - The site preview's `terrain.cave_pct` is the pad's share with a cave under it, 0 without
   cave masks. The page prints it when it is not 0.
 
