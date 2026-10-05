@@ -41,7 +41,7 @@ estimate assumes before a job of that kind has run once.
 | `heightmap` | `gen_world_heightmap.py` | `data/local/heightmap/` (planes, `meta.json`, and the rock pack) | 4–6 min; budget 15 min |
 | `caves` | `gen_world_heightmap.py --caves` | `data/local/caves/` (`caves.npz`, `meta.json`) | sweep 6 s; budget 2 min |
 | `rocks` | `gen_world_heightmap.py --rocks` | `rocks.npz` and `rocks.json` beside the field in `data/local/heightmap/` | 24 s; budget 5 min |
-| `paint` | `gen_paint_layers.py` | `data/local/paint/` (54 MB) | 25 s; budget 1 min |
+| `paint` | `gen_paint_layers.py` | `data/local/paint/` (66 MB) | about 1.5 min with the crowns; budget 2.5 min |
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` | 3 min at `--size 1024`; about 30 min for two layers at full size |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
@@ -70,8 +70,10 @@ without `--force`. See §24.
 ### paint
 
 Extracts the landscape's paint layers once per game build: one weight plane per layer on
-the 1 m grid, the tree canopy cover, the PigmentMap tint and each layer's albedo. Only the
-`painted` render layer reads them. See §27.
+the 1 m grid, the tree canopy cover, the PigmentMap tint and each layer's albedo. It also
+writes the tree crowns: a top-down sprite per tree species, a record per tree (position, yaw,
+scale, lean, species) and the crown top on the 1 m grid. Only the `painted` render layer reads
+them. See §27 and §28.
 
 ### artwork
 
@@ -119,11 +121,13 @@ be traced to the axis it should move.
 | `gamedata/sweep.py` | data | Level sweep, foliage, landscape frame, baseline |
 | `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
+| `gamedata/crowns.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid, render-only meshes |
+| `terrain/crowns.py` | renderer | Tree crowns stamped into a band of the output grid |
 | `terrain/measure.py` | renderer | `SeamTrace`, `RegimeCoverage` |
 | `palette/styles.py` | style | Palette loading, digests and the colour painters |
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |

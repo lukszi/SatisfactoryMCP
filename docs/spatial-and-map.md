@@ -1437,3 +1437,85 @@ adopts the painted layer as `game-painted-r6-502094`.
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
   did.
+
+## 28. Tree crowns (2026-10-05)
+
+The painted style drew trees as a soft canopy: one blurred disc per tree with a radius guessed
+from the mesh name, under the rocks. Bamboo was guessed at 1.5 m and measures 4.4 m, and rock
+hid most of the forest on cliff tops. Each tree is now drawn as its own crown: the species'
+mesh seen from above, at its own position, yaw, scale and lean, in the colour its leaf texture
+has. The Titan trees are static meshes, not foliage, and are left to the satellite additions.
+
+### The paint input
+
+`python -m mapgen paint` (generator version 2) adds three files and a `crowns` block to
+`meta.json`:
+
+| File | What |
+| --- | --- |
+| `crowns.rec.z` | One record per tree foliage instance, zlib: `x`, `y`, `z` (world cm), `yaw` (degrees), `scale`, `scale_z`, the trunk axis `axis_x`, `axis_y`, `axis_z` (a unit vector), `species` (uint16). 99,073 trees, 2.4 MB |
+| `crowns.sprites.z` | One sprite per species, zlib: cover (uint8), crown top in cm above the pivot (uint16) and the material slot on top (uint8, 255 for none), at 0.125 m per texel. 53 sprites, 0.6 MB |
+| `crown.i16.z` | The crown top on the heightfield's 1 m grid: world decimetres, `NODATA` where no crown stands. The tree-shadow builder's occluder. 10.1 MB |
+
+`meta.json` `crowns.species[]` names each species, its mesh, its sprite's place in the stream,
+its measured radius and top, its instance count, and each material slot with its kind
+(`leaf`, `bark` or `skip`), linear colour and mask cover. `crowns.tilt_max_deg` records the
+steepest lean (logs and hanging bulbs; 90% of every tree species stands within 15 degrees).
+
+**A sprite** is the species' LOD 0, rasterised from above. Each section's material decides what
+its triangles are. Imposters, billboards, lianas, ivy and `WorldGridMaterial` are dropped:
+they are flat cards for distance, or hang on vertical faces. Every other triangle adds an
+optical depth of `-ln(1 - opacity)` to the texels it covers (at most 3), and cover is
+`1 - exp(-sum)`, so three half-clear leaf cards read denser than one. The top is the highest
+triangle; the slot is that triangle's material.
+
+**A material's colour** is the mean of its albedo texture (the instance's own parameter, else
+its parent's) in linear light, under its mask, times its `Brightness` and `Saturation`
+scalars. The mask is the first alpha that varies: the `ORMA` map's, then the albedo's, unless
+the albedo parameter says its alpha is subsurface (`Albedo(RGB,SSS)`). Palms, bamboo and the
+Snake Legs leaf planes carry no mask at all and draw as solid leaves. Nothing else in the
+material graph is read, so a tint the shader applies at run time is not in the colour.
+
+**The soft canopy** keeps its plane and its rule, `1 - exp(-crown area per m^2)`, but each
+tree's radius is now its species' measured one (the disc that hides as much ground as the
+sprite) times its own scale, snapped to eleven bins from 0.5 to 20 m.
+
+### Drawing
+
+`terrain/crowns.py` stamps the crowns into each band of the render's own grid. Each tree's
+sprite is turned by its yaw, scaled, and shifted along its trunk axis by the species' mean
+crown height, so a leaning bamboo's crown stands off its base. The sprite is read through a
+mip chain (2x2 means; the top channel takes the maximum) at the level whose texel is nearest
+the output pixel, bilinearly, so a 1024 preview keeps each crown's area. Trees are laid
+lowest top first, each over the ones below. A band returns cover, cover-weighted colour, a
+dome height and the highest crown top in world cm; `crown_band(...)["top_cm"]` is the crown
+height raster on any render grid.
+
+`palette/painted.py` composites them last, over water and foam, under the highlight
+shoulder. The `crowns` block of `satellite-painted.json`:
+
+| Key | Value | What |
+| --- | --- | --- |
+| `draw` | true | Off, the soft canopy is drawn as before |
+| `canopy_kept` | 0.0 | How much of the soft canopy stays under the crowns. 0: the crowns replace it, so no tree is drawn twice |
+| `darkening`, `chroma` | 0.85, 0.8 | Times the texture colour, and times the style's own chroma gain of 1.2 |
+| `dome_gain`, `shade_clamp` | 0.35, [0.55, 1.2] | The light: the style's sky and sun over the shared sun's `sun_dot` on the crown's smoothed height (0.75 m) times 0.35, relative to flat ground and clamped |
+| `hidden_below_m` | 0.5 | A crown whose top is more than this below the drawn surface is hidden: a tree under an overhang, or beside a higher rock |
+| `over_water` | 0.6 | Crown opacity over water, so a river under bamboo still reads |
+
+### Measured
+
+Extraction adds 28 to 56 s to the paint command (sprites, records and the 1 m top plane),
+which took 65 to 108 s in all on a loaded machine; the store grows from 54 to 66 MB. Drawing a z7 crop of the painted layer with crowns took 1.8 s against 0.8 s without (forest,
+1.1 Mpx), 2.3 against 1.1 s (Red Bamboo, 1.7 Mpx) and 2.5 against 1.8 s (Titan forest,
+2.7 Mpx). Most of the sheet has no tree. A 1024 preview of the painted layer ran end to end.
+
+### Known limits
+
+- **No colour has been checked against the game.** The texture means are the raw albedo:
+  bamboo is a saturated pink-red, the tall mangroves' tops are their bark texture. The style's
+  `chroma` of 0.8 is a taste call.
+- A crown is lit by the fixed north-west sun of the painted style. The live sun shading needs
+  the crown domes in its normal pyramid and the top raster as an occluder.
+- Lean moves a crown; it does not foreshorten it.
+- `SM_Trunk_01` (6,933 logs and stumps) draws as small bark sprites.

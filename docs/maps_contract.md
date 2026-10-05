@@ -175,7 +175,8 @@ A `paint` input reads `data/local/paint/meta.json` (`generator_version`, `cl` or
 `digest`) exactly as the heightfield does, and a map that lists `paint` goes stale on the same
 rules. `python -m mapgen paint` writes it (the `paint` preset, through
 `tools/gen_paint_layers.py`); only the game-painted layer
-lists it. spatial-and-map.md section 27 describes the planes.
+lists it. spatial-and-map.md section 27 describes the planes; generator version 2 added the
+tree crowns of section 28.
 
 ### 3.5 Names and order
 
