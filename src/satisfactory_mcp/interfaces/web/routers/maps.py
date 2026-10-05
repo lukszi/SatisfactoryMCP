@@ -174,6 +174,7 @@ class MapJobOptions(TypedDict):
     keep_cache: NotRequired[bool]
     enhance: NotRequired[bool]
     tiles_2x: NotRequired[bool]
+    titan_trees: NotRequired[bool]
 
 
 class MapJobRequest(TypedDict):

@@ -4408,6 +4408,8 @@ export interface components {
             enhance?: boolean;
             /** Tiles 2X */
             tiles_2x?: boolean;
+            /** Titan Trees */
+            titan_trees?: boolean;
         };
         /** MapJobRequest */
         MapJobRequest: {

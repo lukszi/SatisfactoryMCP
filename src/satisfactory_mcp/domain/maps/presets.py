@@ -129,6 +129,7 @@ def normalise(preset: str, options: dict | None) -> dict:
             "recipe": recipe,
             "top": _bool(options, "top", True),
             "keep_cache": _bool(options, "keep_cache", False),
+            "titan_trees": _bool(options, "titan_trees", True),
         }
     if preset == "artwork":
         return {
@@ -312,6 +313,8 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
             argv.append("--kernel-only")
         if not options["top"]:
             argv.append("--no-top")
+        if not options["titan_trees"]:
+            argv.append("--no-titan-trees")
         if options["keep_cache"] or cache_dir(options["size"]).is_dir():
             argv += ["--cache-dir", str(cache_dir(options["size"])), "--keep-direct"]
         for layer in options["layers"]:

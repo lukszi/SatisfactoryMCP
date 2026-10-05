@@ -35,6 +35,7 @@ var form = {
   layers: { terrain: true, satellite: true, painted: false } as Record<string, boolean>,
   size: 4096,
   top: true,
+  titanTrees: true,
   recipe: "current",
   keepCache: false,
   enhance: false,
@@ -150,6 +151,7 @@ function presetWords(job: MapJobBody): string {
     var parts = ["render", (o.size as number) + " px"];
     if (o.recipe === "kernel-only") parts.push("kernel only");
     if (o.top === false) parts.push("no arches");
+    if (o.titan_trees === false) parts.push("no Titan trees");
     if (o.keep_cache) parts.push("keeps the raster cache");
     return parts.join(" · ");
   }
@@ -359,6 +361,7 @@ function formOptions(): Record<string, unknown> {
       size: form.size,
       recipe: form.recipe,
       top: form.top,
+      titan_trees: form.titanTrees,
       keep_cache: form.keepCache,
     };
   }
@@ -487,6 +490,12 @@ function renderForm(parent: HTMLElement, body: MapsResponse): void {
     opts.appendChild(
       checkbox("arches and boulders", form.top, function (on) {
         form.top = on;
+        refresh();
+      })
+    );
+    opts.appendChild(
+      checkbox("Titan trees (game-painted)", form.titanTrees, function (on) {
+        form.titanTrees = on;
         refresh();
       })
     );
