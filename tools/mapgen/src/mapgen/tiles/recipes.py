@@ -1,4 +1,4 @@
-"""Which recipe drew a render layer's pixels: the number and the words the sidecar records."""
+"""Which recipe drew a layer's pixels, render or artwork: the number and the sidecar's words."""
 
 from __future__ import annotations
 
@@ -7,7 +7,14 @@ from satisfactory_mcp.core.gameassets.versions import (
     RENDER_RECIPE_KERNEL_ONLY,
 )
 
-__all__ = ["RECIPE", "RECIPES", "RECIPE_KERNEL_ONLY"]
+__all__ = [
+    "ENHANCE_RECIPE",
+    "ENHANCE_RECIPES",
+    "RECIPE",
+    "RECIPES",
+    "RECIPE_KERNEL_ONLY",
+    "UNNUMBERED_RECIPE",
+]
 
 #: Which recipe drew the pixels, recorded per layer so a reader looking at a tile can find
 #: out which set of rules made it.
@@ -59,3 +66,25 @@ RECIPE = RENDER_RECIPE_CURRENT
 #: switched off: no geometry opened, no direct regime, no cross-fade and no de-terracing.
 #: The sidecar records this number, so a layer drawn that way never claims the recipe above.
 RECIPE_KERNEL_ONLY = RENDER_RECIPE_KERNEL_ONLY
+
+
+#: Which recipe cut the artwork's pixels, so that "enhanced" is not one thing forever. The
+#: no-silent-downgrade guard compares these numbers rather than a boolean: a plain run is
+#: recipe 0, and recipe 1 wrote no number, which is why ``pinned_recipe`` reads a sidecar
+#: that says only ``enhanced`` as 1 rather than as "unknown".
+ENHANCE_RECIPES = {
+    0: "no enhancement: z0..z5 cut straight from the game's own artwork, Lanczos",
+    1: "upscale, then Lanczos back over the faint marks",
+    2: (
+        "unsharp the faint marks first, then upscale, then Lanczos back over the faint "
+        "marks, then put the source's low frequencies back"
+    ),
+}
+
+
+ENHANCE_RECIPE = 2
+
+
+#: The boolean was introduced by recipe 1 and retired by recipe 2, so a sidecar that says
+#: ``enhanced`` and names no recipe means exactly one pipeline rather than "unknown".
+UNNUMBERED_RECIPE = 1

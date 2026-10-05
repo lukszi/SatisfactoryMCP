@@ -32,7 +32,8 @@ ALLOWED: dict[str, frozenset[str]] = {
     "palette": frozenset({"common", "cache", "gamedata", "terrain", "lighting", "palette"}),
     "tiles": frozenset({"common", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}),
     "heightmap": frozenset({"common", "gamedata"}),
-    "artwork": frozenset({"common", "gamedata"}),
+    "enhance": frozenset({"common", "gamedata", "tiles", "enhance"}),
+    "artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
     "check_fill": frozenset({"common", "cache", "gamedata", "terrain", "heightmap"}),
     "pipeline": frozenset(
         {"common", "cache", "gamedata", "terrain", "lighting", "palette", "tiles", "heightmap"}
@@ -52,7 +53,8 @@ MODULE_CEILINGS: dict[str, int] = {
     "gamedata/mesh.py": 825,
     "pipeline.py": 1039,
     "heightmap.py": 1513,
-    "artwork.py": 1670,
+    # A thin command, held at its size so the stages stay in their modules.
+    "artwork.py": 298,
 }
 CEILING_SLACK = 25
 
@@ -63,8 +65,8 @@ FUNCTION_CEILINGS: dict[str, int] = {
     "pipeline.py::main": 840,
     "heightmap.py::main": 391,
     "heightmap.py::build_meta": 370,
-    "artwork.py::main": 327,
-    "artwork.py::enhance_levels": 252,
+    "artwork.py::main": 119,
+    "enhance/levels.py::enhance_levels": 249,
     "tiles/compose.py::render_layer": 222,
 }
 

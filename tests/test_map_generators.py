@@ -26,36 +26,6 @@ fastapi = pytest.importorskip("fastapi")
 
 from test_web_tiles import _PNG, _fake_pyramid
 
-from mapgen import artwork
-from mapgen.artwork import (
-    COLOUR_FIX_SIGMA,
-    ENHANCE_MODEL,
-    ENHANCE_OVERLAP_PX,
-    ENHANCE_RECIPE,
-    ENHANCE_RECIPES,
-    ENHANCE_SCALE,
-    ENHANCE_SHA256,
-    ENHANCE_TILE_PX,
-    ENHANCE_URL,
-    FAINT_HI,
-    FAINT_LO,
-    IMAGE_NAME,
-    PRESHARPEN_AMOUNT,
-    PRESHARPEN_HI,
-    PRESHARPEN_ROUNDS,
-    SIDECAR_NAME,
-    UNNUMBERED_RECIPE,
-    colour_fix_pixels,
-    enhancement_downgrades,
-    faint_band,
-    faint_depth,
-    faint_mask,
-    pinned_build,
-    pinned_enhanced,
-    pinned_recipe,
-    presharpen_mask,
-    presharpen_pixels,
-)
 from mapgen.cache import (
     DIRECT_CACHE_SIDECAR,
     DIRECT_COVERAGE_NAME,
@@ -64,6 +34,28 @@ from mapgen.cache import (
     direct_cache_stamp,
 )
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME
+from mapgen.enhance.pixels import (
+    COLOUR_FIX_SIGMA,
+    FAINT_HI,
+    FAINT_LO,
+    PRESHARPEN_AMOUNT,
+    PRESHARPEN_HI,
+    PRESHARPEN_ROUNDS,
+    colour_fix_pixels,
+    faint_band,
+    faint_depth,
+    faint_mask,
+    presharpen_mask,
+    presharpen_pixels,
+)
+from mapgen.enhance.upscaler import (
+    ENHANCE_MODEL,
+    ENHANCE_OVERLAP_PX,
+    ENHANCE_SCALE,
+    ENHANCE_SHA256,
+    ENHANCE_TILE_PX,
+    ENHANCE_URL,
+)
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_2X_PX, RENDER_PX
 from mapgen.gamedata.mesh import EXCLUDED_OWNERS
 from mapgen.lighting.hillshade import (
@@ -109,8 +101,18 @@ from mapgen.terrain.rasters import (
     reduce_direct,
 )
 from mapgen.terrain.sample import direct_weight, sample_surface, taps_cubic, taps_linear, taps_pchip
+from mapgen.tiles import artwork_output
 from mapgen.tiles import sidecar as render_sidecar
+from mapgen.tiles.artwork_output import (
+    IMAGE_NAME,
+    SIDECAR_NAME,
+    enhancement_downgrades,
+    pinned_build,
+    pinned_enhanced,
+    pinned_recipe,
+)
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, blend_regimes, composite_top
+from mapgen.tiles.recipes import ENHANCE_RECIPE, ENHANCE_RECIPES, UNNUMBERED_RECIPE
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, pinned_field_build
 from satisfactory_mcp import config
 from satisfactory_mcp.core.gameassets.container import SHEET_PX, UBULK_BYTES
@@ -1068,7 +1070,7 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     has to walk past rather than trip over.
     """
     pin = "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build"
-    sidecar = artwork.build_sidecar(
+    sidecar = artwork_output.build_sidecar(
         build_pin=pin,
         build_raw={"Changelist": 495413, "BranchName": "++FactoryGame+rel-main-1.2.0"},
         image={"file": IMAGE_NAME, "width_px": SHEET_PX},
@@ -1177,7 +1179,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
     local.mkdir()
     _fake_pyramid(local, max_z=0)  # something for the probe to answer about
 
-    with_dense = artwork.build_sidecar(
+    with_dense = artwork_output.build_sidecar(
         **common,
         tiles_2x={
             "tile_px": PYRAMID_TILE_2X_PX,
@@ -1195,7 +1197,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
 
     # ...and the same run with the tree skipped writes no key, which is what makes the
     # endpoint fall back rather than advertise a depth for a directory that is not there.
-    without = artwork.build_sidecar(**common, tiles_2x=None)
+    without = artwork_output.build_sidecar(**common, tiles_2x=None)
     assert "tiles_2x" not in without["_meta"]
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(json.dumps(without), encoding="utf-8")
     bare = web_tiles._map_pyramid()
@@ -1479,11 +1481,13 @@ def test_an_enhanced_pyramid_is_not_quietly_replaced_by_a_plain_one(tmp_path):
         "colour_fix": {"sigma_px": COLOUR_FIX_SIGMA},
         "timings_s": {"upscale": 66.7, "colour_fix": 320.4, "total": 400.0},
     }
-    sharp = artwork.build_sidecar(
+    sharp = artwork_output.build_sidecar(
         tiles={"tile_px": 256, "max_z": 7, "enhanced": True, "enhancement": enhancement},
         **common,
     )
-    plain = artwork.build_sidecar(tiles={"tile_px": 256, "max_z": 5, "enhanced": False}, **common)
+    plain = artwork_output.build_sidecar(
+        tiles={"tile_px": 256, "max_z": 5, "enhanced": False}, **common
+    )
 
     path = tmp_path / SIDECAR_NAME
     path.write_text(json.dumps(sharp, indent=1, allow_nan=False), encoding="utf-8")
@@ -1518,7 +1522,7 @@ def test_an_enhanced_pyramid_is_not_quietly_replaced_by_a_plain_one(tmp_path):
 
     # The recipe survives the same round trip, and a sidecar from before recipes existed
     # reads as the one pipeline the bare boolean can have meant.
-    older = json.loads(json.dumps(artwork.build_sidecar(tiles={"enhanced": True}, **common)))
+    older = json.loads(json.dumps(artwork_output.build_sidecar(tiles={"enhanced": True}, **common)))
     assert pinned_recipe(read_back) == ENHANCE_RECIPE
     assert pinned_recipe(older) == UNNUMBERED_RECIPE == 1
     assert pinned_recipe(plain) == 0

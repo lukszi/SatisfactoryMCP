@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 
-from mapgen.artwork import ENHANCE_RECIPE, ENHANCE_RECIPES, artwork_provenance
 from mapgen.heightmap import GENERATOR_VERSION
 from mapgen.palette.styles import (
     BIOME_COLOURS,
@@ -20,7 +19,14 @@ from mapgen.palette.styles import (
     TERRAIN_PALETTE,
     load_palette,
 )
-from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY, RECIPES
+from mapgen.tiles.artwork_output import artwork_provenance
+from mapgen.tiles.recipes import (
+    ENHANCE_RECIPE,
+    ENHANCE_RECIPES,
+    RECIPE,
+    RECIPE_KERNEL_ONLY,
+    RECIPES,
+)
 from mapgen.tiles.sidecar import build_sidecar
 from satisfactory_mcp.core.gameassets import provenance, versions
 from satisfactory_mcp.core.gameassets.versions import CAVES_VERSION
