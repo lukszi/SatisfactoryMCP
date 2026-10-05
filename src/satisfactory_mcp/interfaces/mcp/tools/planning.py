@@ -6,6 +6,7 @@ versioned: docs/mcp-surface.md §10.1k."""
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import os
 import time
@@ -503,6 +504,9 @@ def site_plan(
         ),
     ] = "",
     clear: bool = False,
+    preview: Annotated[
+        bool, Field(description="show what the pad would meet there; writes nothing")
+    ] = False,
     base_rev: BaseRev = None,
     save: str | None = None,
     world: str | None = None,
@@ -561,6 +565,8 @@ def site_plan(
         return f"cleared the siting of plan {stored.name!r}. The plan itself is untouched\n{text}"
 
     existing = siting_mod.parse(stored)
+    if preview:
+        return _site_preview(g, st, stored, existing, at, yaw_deg, footprint, ctx)
     if not at and existing is None:
         return (
             f"! plan {stored.name!r} has no siting yet, so there is no origin to keep -- "
@@ -605,6 +611,7 @@ def site_plan(
     except ValueError as exc:
         return f"! {exc}"
 
+    sit = _snapped(sit)
     pushed, text = push(sit.to_dict(), "not sited")
     if pushed is None:
         return text
@@ -633,6 +640,77 @@ def site_plan(
             ),
         ],
     )
+
+
+def _snapped(sit: siting_mod.Siting) -> siting_mod.Siting:
+    """``sit`` on the shared ``site_snap`` lattice, as the page's drag places pads."""
+    mode, _note = shared("site_snap")
+    x, y, yaw = siting_mod.snap(sit.x_m, sit.y_m, sit.yaw_deg, sit.width_m, sit.depth_m, mode)
+    return dataclasses.replace(sit, x_m=x, y_m=y, yaw_deg=yaw)
+
+
+def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx) -> str:
+    """``site_plan(preview=True)``: the page's preview in words, and a ghost pad there."""
+    from ....domain.planning import site_preview
+    from ....domain.spatial import heightfield
+
+    state = _log(st).state(stored.key)
+    biomass, _n1 = shared("biomass")
+    headroom, _n2 = shared("stage_headroom")
+    sess = site_preview.open_session(g, st, state, biomass=biomass, default=headroom)
+    try:
+        if at:
+            keep = existing and existing.has_footprint
+            sit = siting_mod.build_siting(
+                g,
+                st,
+                at=at,
+                yaw_deg=yaw_deg if yaw_deg is not None else (existing.yaw_deg if existing else 0.0),
+                footprint=footprint
+                or (f"{existing.width_m:g}x{existing.depth_m:g}" if keep else ""),
+                solution=sess.prepared.solution if not sess.failure else None,
+                plan_kwargs=stored.kwargs(),
+            )
+        else:
+            base = existing or site_preview.start_siting(g, st, sess)
+            width, depth = base.width_m, base.depth_m
+            if footprint:
+                width, depth = siting_mod.parse_footprint(footprint)
+            sit = siting_mod.Siting(
+                base.x_m,
+                base.y_m,
+                None,
+                yaw_deg if yaw_deg is not None else base.yaw_deg,
+                width,
+                depth,
+                base.source,
+            )
+    except ValueError as exc:
+        return f"! {exc}"
+    sit = _snapped(sit)
+    try:
+        field = heightfield.load_field()
+    except MemoryError:
+        field = None
+    out = site_preview.preview(g, st, sess, sit, terrain=field)
+    args = {
+        "view": "site",
+        "x_m": sit.x_m,
+        "y_m": sit.y_m,
+        "yaw_deg": sit.yaw_deg,
+        "w_m": sit.width_m,
+        "d_m": sit.depth_m,
+    }
+    _journal_view(st, stored.name, "site_plan", ctx, args)
+    head = (
+        f"# preview of plan {stored.name!r} v{stored.rev} at {sit.x_m:,.0f}, {sit.y_m:,.0f}, "
+        f"yaw {sit.yaw_deg:g}°, {sit.width_m:g}×{sit.depth_m:g} m -- nothing written"
+    )
+    nxt = (
+        f"to keep it: site_plan plan={stored.name!r} at='{sit.x_m:g},{sit.y_m:g}' "
+        f"base_rev={stored.rev}, or [use it] on the page"
+    )
+    return "\n".join([head, *site_preview.preview_lines(out), nxt])
 
 
 def _refusal(exc: Exception) -> str:

@@ -32,9 +32,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from ...core.gamedata.model import GameData
+from ..spatial import geo
 from ..spatial.origin import PLAYER_WORDS, resolve_origin
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -42,22 +43,198 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type check
     from .store import Plan
 
 __all__ = [
+    "FOOTPRINT_MAX_M",
+    "FOOTPRINT_MIN_M",
     "SITING_SCHEMA",
+    "GroundZ",
     "SiteSurvey",
     "Siting",
     "SurveyRow",
     "build_siting",
+    "check",
+    "fit_to_bbox",
+    "ground_z",
+    "move_words",
     "parse",
     "parse_footprint",
     "plan_site_args",
     "resolve_plan_site",
     "resolve_site_origin",
+    "set_ground_z",
+    "snap",
     "survey",
 ]
 
 #: Shape of the recorded block, so a later reader can tell this record's vintage apart
 #: from a future one rather than guessing from which keys happen to be present.
 SITING_SCHEMA = 1
+
+FOOTPRINT_MIN_M = 8.0
+FOOTPRINT_MAX_M = 2000.0
+SOURCES = ("given", "layout", "default", "")
+LABEL_MAX = 80
+WHEN_MAX = 40
+#: Fit to built: the margin added round a candidate's machines, metres.
+FIT_MARGIN_M = 16.0
+
+
+class GroundZ(Protocol):
+    """Ground height under a pad, metres, or None when unknown (docs/planner-p5_contract.md §6)."""
+
+    def __call__(
+        self, x_m: float, y_m: float, yaw_deg: float, width_m: float, depth_m: float
+    ) -> float | None: ...
+
+
+_ground: list[GroundZ | None] = [None]
+
+
+def set_ground_z(provider: GroundZ | None) -> None:
+    """Install the terrain height lookup every siting write and preview uses."""
+    _ground[0] = provider
+
+
+def ground_z(
+    x_m: float, y_m: float, yaw_deg: float, width_m: float, depth_m: float
+) -> float | None:
+    provider = _ground[0]
+    if provider is None:
+        return None
+    try:
+        z = provider(x_m, y_m, yaw_deg, width_m, depth_m)
+    except Exception:
+        return None
+    return round(float(z), 2) if z is not None and math.isfinite(z) else None
+
+
+def _finite(name: str, raw) -> float:
+    if isinstance(raw, bool) or not isinstance(raw, int | float) or not math.isfinite(raw):
+        raise ValueError(f"site {name} must be a finite number, not {raw!r}")
+    return float(raw)
+
+
+def check(value) -> dict:
+    """``value`` as a ``site`` op stores it; ``ValueError`` in words when it cannot be.
+
+    The map square is the one hard edge; a missing height is filled from ``ground_z``.
+    """
+    if not isinstance(value, dict):
+        raise ValueError(f"site takes a siting object or null, not {value!r}")  # noqa: TRY004
+    schema = value.get("schema", SITING_SCHEMA)
+    if isinstance(schema, bool) or not isinstance(schema, int) or schema < 1:
+        raise ValueError(f"site schema must be a positive whole number, not {schema!r}")
+    if schema > SITING_SCHEMA:
+        raise ValueError(
+            f"this siting was written by a newer version (schema {schema}; this one reads "
+            f"up to {SITING_SCHEMA})"
+        )
+    origin = value.get("origin_m")
+    if not isinstance(origin, list | tuple) or len(origin) not in (2, 3):
+        raise ValueError("site origin_m must be [x, y] or [x, y, z] in metres")
+    x, y = _finite("x", origin[0]), _finite("y", origin[1])
+    z = origin[2] if len(origin) == 3 else None
+    z = None if z is None else _finite("z", z)
+    x0, y0, x1, y1 = geo.MAP_SQUARE_M
+    if not x0 <= x <= x1:
+        raise ValueError(f"the site is outside the map (x must be {x0:,.0f}…{x1:,.0f} m)")
+    if not y0 <= y <= y1:
+        raise ValueError(f"the site is outside the map (y must be {y0:,.0f}…{y1:,.0f} m)")
+    yaw = round(_finite("yaw_deg", value.get("yaw_deg", 0.0)) % 360.0, 6) % 360.0
+    fp = value.get("footprint_m") or [0.0, 0.0]
+    if not isinstance(fp, list | tuple) or len(fp) != 2:
+        raise ValueError("site footprint_m must be [width, depth] in metres")
+    w, d = _finite("width", fp[0]), _finite("depth", fp[1])
+    if (w, d) != (0.0, 0.0) and not all(FOOTPRINT_MIN_M <= v <= FOOTPRINT_MAX_M for v in (w, d)):
+        raise ValueError(
+            f"site footprint must be {FOOTPRINT_MIN_M:g}…{FOOTPRINT_MAX_M:,.0f} m each way, "
+            f"not {w:g} × {d:g}"
+        )
+    source = value.get("footprint_source", "")
+    if source not in SOURCES:
+        raise ValueError(f"site footprint_source is one of given, layout, default, not {source!r}")
+    label, when = value.get("origin_label", ""), value.get("when", "")
+    if not isinstance(label, str) or len(label) > LABEL_MAX:
+        raise ValueError(f"site origin_label is text of at most {LABEL_MAX} characters")
+    if not isinstance(when, str) or len(when) > WHEN_MAX:
+        raise ValueError(f"site when is text of at most {WHEN_MAX} characters")
+    if z is None:
+        z = ground_z(x, y, yaw, w, d)
+    return {
+        "schema": SITING_SCHEMA,
+        "origin_m": [x, y, z],
+        "yaw_deg": yaw,
+        "footprint_m": [w, d],
+        "footprint_source": source,
+        "origin_label": label,
+        "when": when,
+    }
+
+
+SNAP_MODES = ("fine", "grid8")
+GRID_M = 8.0
+YAW_STEP_DEG = 15.0
+
+
+def snap(
+    x_m: float, y_m: float, yaw_deg: float, width_m: float, depth_m: float, mode: str = "fine"
+) -> tuple[float, float, float]:
+    """The ``site_snap`` rule the page's drag also applies (``sitedrag.ts`` ``snap``).
+
+    ``fine`` rounds the centre to 1 m; ``grid8`` puts the pad's west and north edges on the
+    8 m world grid. Yaw goes to 15° steps in both.
+    """
+    if mode == "grid8":
+        x = round((x_m - width_m / 2) / GRID_M) * GRID_M + width_m / 2
+        y = round((y_m - depth_m / 2) / GRID_M) * GRID_M + depth_m / 2
+    else:
+        x, y = float(round(x_m)), float(round(y_m))
+    yaw = (round(yaw_deg / YAW_STEP_DEG) * YAW_STEP_DEG) % 360.0
+    return x, y, yaw
+
+
+def fit_to_bbox(bbox_m: list[float], name: str, when: str = "") -> dict:
+    """The siting that covers a candidate's machines: its box plus ``FIT_MARGIN_M``, unturned."""
+    x0, y0, x1, y1 = (float(v) for v in bbox_m)
+    w = max(FOOTPRINT_MIN_M, float(math.ceil(x1 - x0 + FIT_MARGIN_M)))
+    d = max(FOOTPRINT_MIN_M, float(math.ceil(y1 - y0 + FIT_MARGIN_M)))
+    return check(
+        {
+            "origin_m": [round((x0 + x1) / 2, 2), round((y0 + y1) / 2, 2), None],
+            "yaw_deg": 0.0,
+            "footprint_m": [min(w, FOOTPRINT_MAX_M), min(d, FOOTPRINT_MAX_M)],
+            "footprint_source": "given",
+            "origin_label": f"built “{name}”"[:LABEL_MAX],
+            "when": when[:WHEN_MAX],
+        }
+    )
+
+
+def _turn(a: float, b: float) -> float:
+    return (b - a + 180.0) % 360.0 - 180.0
+
+
+def move_words(was: dict | None, now: dict | None) -> str:
+    """``moved 1,503 m west, turned 30°`` and the like; "" when nothing readable moved."""
+    old = parse(_Raw(was)) if was else None
+    new = parse(_Raw(now)) if now else None
+    if old is None or new is None:
+        return ""
+    parts = []
+    dist = math.hypot(new.x_m - old.x_m, new.y_m - old.y_m)
+    if dist >= 0.5:
+        way = geo.direction_of(new.x_m, new.y_m, old.x_m, old.y_m).replace("th", "th-", 1)
+        parts.append(f"moved {dist:,.0f} m {way.rstrip('-')}")
+    turn = _turn(old.yaw_deg, new.yaw_deg)
+    if abs(turn) >= 0.5:
+        parts.append(f"turned {abs(turn):.0f}°")
+    if (round(old.width_m), round(old.depth_m)) != (round(new.width_m), round(new.depth_m)):
+        parts.append(f"resized to {new.width_m:.0f}×{new.depth_m:.0f} m")
+    return ", ".join(parts)
+
+
+@dataclass(frozen=True)
+class _Raw:
+    siting: dict | None
 
 
 @dataclass(frozen=True)

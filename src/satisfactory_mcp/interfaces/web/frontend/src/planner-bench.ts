@@ -718,6 +718,10 @@ export function renderBench(root: HTMLElement, select: (s: Selection) => void, c
   bench.chips.forEach(function (c) {
     if (FIELDS.indexOf(c.field) < 0) conflictLine(root, c.id, c.who, c.text);
   });
+  if (bench.tab === "site") {
+    renderResult(root, select, close);
+    return;
+  }
   var controls = make("fieldset", "dash-card plan-bench");
   controls.disabled = bench.gone;
   goal(controls);

@@ -11,10 +11,10 @@
  * direction of the transpose that function applies. They must not drift apart.
  */
 
-import { code, popup } from "./dom";
+import { code, esc, html, popup } from "./dom";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
-import { footprintCorners } from "./map";
+import { footprintCorners, hashFor } from "./map";
 import { declareColours } from "./palette";
 import { registerFetch } from "./registry";
 
@@ -31,7 +31,7 @@ import type { PlanSiting, PlansResponse } from "./api-shapes";
  * Green because the page spends none of it on anything built: blue, amber, tan, blue-violet,
  * slate and rust are all placements or networks, so an outline in a hue no built thing wears
  * cannot be mistaken for one. */
-var PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
+export var PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
 
 /* One pad's card. `source` is the row that decides whether the outline is worth trusting to
  * the metre: a footprint the player measured, against the square `plan_layout` budgeted from
@@ -54,6 +54,7 @@ function planPopup(p: PlanSiting): Row[] {
     ["origin", p.origin_label || null],
     ["factory", p.factory || null],
     ["selector", code("plan:" + p.name)],
+    ["", html('<a class="btn" href="' + esc(hashFor("planner/" + p.key + "/site")) + '">move</a>')],
   ];
 }
 
