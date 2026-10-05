@@ -168,7 +168,8 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     read bilinearly at exactly the coordinate asked about; ``terrain_ambiguous`` says it may
     be a rock top or roof, with ``terrain_bare_m`` the landscape under it. ``terrain_cave``
     is ``below`` where a cave lies under the point, with ``terrain_cave_note`` the line to
-    show; under ``inside`` ``terrain_m`` is null and the note is ``terrain_note``. Ground and built
+    show; under ``inside`` with no cave floor found ``terrain_m`` is null and the note is
+    ``terrain_note``. Ground and built
     are populations of things standing nearby. They stay apart out to the page: a node rests on
     terrain, a foundation is wherever the player put it, and one median over the three would
     be a number describing none of them. ``terrain_source`` says which layer of the field
@@ -210,8 +211,9 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     terrain_probe = near.terrain
     terrain_note = None
     cave = terrain_probe.cave if terrain_probe else caves.NONE
-    cave_note = caves.note(cave, terrain_probe.z_m) if terrain_probe else None
-    if cave == caves.INSIDE:
+    cave_note = terrain_probe.cave_note if terrain_probe else None
+    unknown = terrain_probe is not None and not terrain_probe.height_known
+    if unknown:
         terrain_note, cave_note = cave_note, None
     elif terrain_probe is None:
         terrain_note = (
@@ -232,7 +234,7 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
 
     return {
         "radius_m": near.radius_m,
-        "terrain_m": None if cave == caves.INSIDE else _round(near.terrain_m),
+        "terrain_m": None if unknown else _round(near.terrain_m),
         "terrain_source": terrain_probe.source if terrain_probe else None,
         "terrain_accuracy_m": terrain_probe.accuracy_m if terrain_probe else None,
         "terrain_bare_m": _round(terrain_probe.terrain_z_m) if terrain_probe else None,

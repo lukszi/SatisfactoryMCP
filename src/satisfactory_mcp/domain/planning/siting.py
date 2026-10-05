@@ -334,7 +334,9 @@ class Siting:
                 "may be a rock top"
                 + (f" (bare ground {bare:g}m)" if isinstance(bare, (int, float)) else "")
             )
-        if t.get("cave") == caves.BELOW:
+        if t.get("cave_floor"):
+            parts.append("in a cave: z is the rock collision just under the hint")
+        elif t.get("cave") == caves.BELOW:
             parts.append(caves.note(caves.BELOW, None) or "")
         elif cave_pct:
             parts.append(f"a cave lies under {cave_pct:g}% of the pad: z is the surface above it")
@@ -502,12 +504,12 @@ def terrain_z(
         reading = field.z(x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100)
         if reading is None:
             return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
-        if reading.cave == caves.INSIDE:
+        if not reading.height_known:
             return {
                 **out,
                 "z_m": None,
                 "cave": caves.INSIDE,
-                "reason": caves.note(caves.INSIDE, reading.z_m),
+                "reason": reading.cave_note,
             }
         return {
             **out,
@@ -520,6 +522,7 @@ def terrain_z(
             "coarse": reading.provenance == heightfield.PROV_FILL,
             "water_level_m": reading.water_m if reading.submerged else None,
             "cave": reading.cave,
+            "cave_floor": reading.cave_floor,
         }
     box = _footprint_box_cm(x_m, y_m, width_m, depth_m, yaw_deg)
     areas = {"ground": field.window(*box)}
