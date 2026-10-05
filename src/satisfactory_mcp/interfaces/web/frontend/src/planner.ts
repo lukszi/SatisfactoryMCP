@@ -41,7 +41,7 @@ import { clearPick } from "./planner-result";
 import { focusStartup, revealStage, settleTrackFocus } from "./planner-track";
 import { onBiomass } from "./powerview";
 import { onSelect, selected, selectionRef } from "./selection";
-import { choice, onSetting } from "./settings";
+import { amount, choice, onSetting, setting } from "./settings";
 import { state } from "./state";
 import { note, offer } from "./toast";
 import { objectiveText } from "./words";
@@ -73,6 +73,10 @@ interface Address {
   alt: string;
   track: boolean;
   stage: number;
+}
+
+function powerDefaults(): string {
+  return amount("paybackHours") + "|" + String(setting("overclockLast"));
 }
 
 function parts(at: string): Address {
@@ -487,6 +491,12 @@ function wire(): void {
   onBiomass(function () {
     dropFeeders();
     if (trackShowing()) loadTrack();
+  });
+  var powerWas = powerDefaults();
+  onSetting(function () {
+    if (powerDefaults() === powerWas) return;
+    powerWas = powerDefaults();
+    if (bench.plan) forgetSolves();
   });
   var headroomWas = stageHeadroom();
   onSetting(function () {
