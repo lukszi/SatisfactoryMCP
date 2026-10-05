@@ -16,7 +16,7 @@ live here:
 | --- | --- |
 | `tools/gen_world_heightmap.py` (`--caves`, `--rocks`) | `mapgen heightmap` (`caves`, `rocks`): `heightmap.py`, `gamedata/sweep.py`, `gamedata/mesh.py`, `gamedata/water.py`, `gamedata/caves.py`, `gamedata/rocks.py`, `terrain/field.py`, `terrain/validate.py`, `terrain/sidecar.py` |
 | `tools/gen_map_renders.py` | `mapgen renders`: `pipeline.py`, with `terrain/`, `palette/`, `lighting/` and `tiles/` |
-| `tools/gen_map_image.py` | `mapgen artwork`: `artwork.py`; the frame and slice reader in `gamedata/frame.py` |
+| `tools/gen_map_image.py` | `mapgen artwork`: `artwork.py`, `gamedata/artwork_sheet.py`, `enhance/`, `tiles/artwork_output.py`; the frame in `gamedata/frame.py` |
 | `tools/gen_paint_layers.py` | `mapgen paint`: `gamedata/paint.py` |
 | `tools/check_map_fill.py` | `mapgen check-fill`: `check_fill.py` |
 | `tools/map_fill.py` | `terrain/fill.py` |
@@ -540,6 +540,78 @@ comes from `gen_map_image.py`, because that is the tool that *measured* it.
 Measured when this first shipped at 8192²: 12 s to draw terrain and 15 s satellite, 32 s each
 to cut, 91 s for both layers end to end, 60.1 and 60.2 MB of PNG per pyramid over 1,365
 tiles. The 16384² numbers that replaced them are in the table above.
+
+### The artwork command, piece by piece (2026-10-05)
+
+`mapgen artwork` (`tools/gen_map_image.py`) is split by concern. `artwork.py` holds only the
+arguments, the order of the stages and the refusals.
+
+**Why it is a loader.** A rendered map of this world is Coffee Stain's artwork, so
+`/api/mapimage` is a loader and only a loader. The command reads the player's own install into
+the gitignored `data/local/`, and none of it is committed or served past localhost.
+
+**The sheet** (`gamedata/artwork_sheet.py`). The in-game world map is four `Texture2D` under
+`/Game/FactoryGame/Interface/UI/Assets/MapTest/SlicedMap/Map_{col}-{row}`. Each is 4096×4096
+`PF_DXT1` with 13 mips, and together they stitch into one 8192×8192 sheet. Both readings of the
+name produce a plausible map, because the world is roughly symmetric at a glance. So
+`seam_residuals` re-proves the layout on every run, and the run refuses to write if the layout
+stops holding. `calibrate` re-measures that the sheet spans the corners the sidecar pins. Alpha
+is dropped when it is 255 everywhere, because uniformly opaque alpha is a third of the file.
+
+**The trees** (`tiles/artwork_output.py`). The sheet is cut into `tiles/{z}/{x}_{y}.png`, one
+resolution per zoom, so the page fetches a few hundred KB at the whole-world framing instead of
+16.2 MB that decodes to 268 MB of RGBA. `map.png` stays as the fallback for a page that finds no
+pyramid, and it is the one file a reader can open and look at. `tiles@2x/` is described above.
+Each tree is staged and renamed into place on its own, so the pair is never half-swapped and a
+failure in the second leaves the first where it was.
+
+The @2x tree is never enhanced. @2x level z holds the same pixels as 1x level z+1 in tiles twice
+the size, so an `--enhance` run's z6 and z7 are already reachable: the @2x tree tops out a level
+sooner and the client asks for the 1x tile above it, which is the fallback `_tile_tree` was
+written around. Cutting @2x from upscaled pixels would be a second GPU pass for resolution the
+reader can already get.
+
+**The sidecar** (same module). `map.json` carries the four corners the endpoint
+reads, plus `_meta`. `tiles_2x` is left out entirely when there is no such tree, rather than
+written as a record saying "absent": `_map_pyramid` answers `max_2x_z: None` for a layer with no
+block, which is how `_tile_tree` knows to serve the 1x tile to every client. A block that said
+the tree was missing would still be a block, and a block means there is a tree. The renders
+write the same shape for the same reason. The staleness guard reads the sidecar back: a picture
+or tree from another build is refused (exit 3), and so is a run whose enhancement recipe is
+behind the one on disk (exit 5). That second rule compares recipe numbers, not the `enhanced`
+boolean: enhancing a plain pyramid is an upgrade, the same recipe is a refresh, a later one an
+upgrade again, and only an earlier recipe over a later one is refused. The usual case is a plain
+re-run over a sharpened tree, which would halve the map's usable resolution and say nothing; an
+older checkout re-cutting a newer recipe's tiles is the other. A sidecar with only
+`enhanced: true` was cut by recipe 1, the one pipeline that boolean ever described, and a recipe
+value that is not a positive whole number falls back to the boolean. The recipe numbers and
+their words live in `tiles/recipes.py` beside the render recipes.
+
+**The enhancement** (`enhance/`). `--enhance` adds z6 and z7, two more zoom levels than the
+artwork has pixels: 8192 px is about 0.9 m to the pixel, and a factory is machines eight metres
+across. It runs the sheet through Real-ESRGAN 4x on the GPU. It is off by default, because it
+needs a 45 MB binary this repository will not vendor and a Vulkan device.
+
+- `enhance/upscaler.py` downloads the binary once into the user cache, checks its digest before
+  unpacking, smoke-tests it on its own sample image, and checks that numpy and scipy come from
+  one environment.
+- `enhance/pixels.py` holds the three passes around the model: `presharpen` on the input,
+  `faint_mask` (the hybrid repair) and `colour_fix` on the output. Each says at its definition
+  what it repairs. Off its mask the pre-sharpen is exactly the identity, so it cannot leak onto
+  a fill. The colour fix works at the output's resolution, with the source Lanczos'd up to meet
+  it: blurring the source small and stretching it drifts half again as much.
+- `enhance/levels.py` cuts the source squares, runs the model and tiles the result. The squares
+  in `in/` are pre-sharpened and are the model's input only. Both repairs re-cut the untouched
+  source from the sheet, because they correct towards the source, and correcting towards a
+  sharpened copy corrects nothing. The colour fix runs before the core is cropped out of its
+  overlap: its blur reaches about 25 px, and a core cropped first would have no neighbour to
+  reach into, which is a seam in the making. The same module re-measures every claim into
+  `_meta.tiles.enhancement`: the tile seams against boundaries that are not seams, and the low
+  levels against the enhanced pixels they did not come from.
+
+The subpackage is its own unit rather than part of `palette/`, because it is not a style: it
+changes the artwork's recipe number, not a palette digest. It sits above `tiles/` in the import
+order, because it reads the recipe table there and cuts its levels with the same pyramid code.
 
 ## 18. One base map at a time, and the page says which (2026-07-31)
 

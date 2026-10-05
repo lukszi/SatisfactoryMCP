@@ -112,7 +112,7 @@ be traced to the axis it should move.
 | `common.py` | | Repository root, `data/local`, the default game path, the shared argument parser |
 | `pipeline.py` | | The renders orchestrator: arguments, refusals, stage order |
 | `heightmap.py` | data | The heightmap, caves and rocks command: arguments, refusals, stage order |
-| `artwork.py` | data | The artwork command: sheet decode, calibration, enhance, pyramid |
+| `artwork.py` | data | The artwork command: arguments, stage order, refusals |
 | `check_fill.py` | | The check-fill command |
 | `cache.py` | | The stamped raster caches (direct, top, meshes). The on-disk names are unchanged. |
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, heightfield grid |
@@ -122,6 +122,7 @@ be traced to the axis it should move.
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
 | `gamedata/water.py` | data | The heightfield's water channel: artwork mask, box levels, region masks |
+| `gamedata/artwork_sheet.py` | data | The artwork sheet: slice decode, layout proof, corner calibration |
 | `terrain/field.py` | data | Heightfield composition, plane encoding, and each layer's sidecar block |
 | `terrain/validate.py` | data | Heightfield gates (nodes, bare terrain, water), per-layer accuracy, the water block |
 | `terrain/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
@@ -138,7 +139,11 @@ be traced to the axis it should move.
 | `tiles/compose.py` | | The band loop that draws a layer |
 | `tiles/pyramid.py` | | Installing a layer and cutting its pyramid |
 | `tiles/sidecar.py` | | The render sidecar |
-| `tiles/recipes.py` | | The recipe numbers and the text each sidecar records |
+| `tiles/recipes.py` | | The recipe numbers and the text each sidecar records, renders and artwork |
+| `tiles/artwork_output.py` | | The artwork's `tiles/` and `tiles@2x/` trees, its `map.json`, and the staleness guard that reads it back |
+| `enhance/upscaler.py` | recipe | The Real-ESRGAN binary: one-time download into the user cache, digest, smoke test |
+| `enhance/pixels.py` | recipe | Pre-sharpen, faint-mark repair and colour fix around the model |
+| `enhance/levels.py` | recipe | The enhanced levels (source squares, upscale, repair, tiles) and the seam and low-zoom checks the sidecar records |
 
 Imports run one way. Subpackages never import a command module (`pipeline`, `heightmap`,
 `artwork`, `check_fill`, `cli`), and nothing in the package imports `tools/`.
