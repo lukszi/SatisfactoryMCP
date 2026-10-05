@@ -158,8 +158,9 @@ def decode_i16(blob: bytes, height: int, width: int) -> np.ndarray:
             f"height raster is {delta.size} texels, but meta.json says {height}x{width} "
             f"= {height * width} -- the sidecar and the raster are not from one run"
         )
-    running = np.cumsum(delta.reshape(height, width).astype(np.int32), axis=1)
-    return running.astype(np.int16)
+    # Accumulated in int16 on purpose: the wrap is the inverse of the encoder's truncation,
+    # and an int32 accumulator would hold a second full-size copy (1.25 GB peak at 7500^2).
+    return np.cumsum(delta.reshape(height, width), axis=1, dtype=np.int16)
 
 
 def encode_u8(grid: np.ndarray) -> bytes:

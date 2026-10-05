@@ -152,6 +152,23 @@ def test_the_codec_round_trips_a_raster_exactly_including_the_wrap():
     assert np.array_equal(hf.decode_u8(hf.encode_u8(grade), 37, 61), grade)
 
 
+def test_the_int16_accumulator_decodes_exactly_what_the_int32_one_did():
+    """The decoder sums in int16 to halve its peak; the wrap must land on the same raster."""
+    rng = np.random.default_rng(20261005)
+    grid = rng.integers(-32768, 32768, size=(23, 41)).astype(np.int16)
+    grid[3, ::2] = hf.NODATA
+    grid[3, 1::2] = 32767
+    blob = hf.encode_i16(grid)
+    import zlib
+
+    delta = np.frombuffer(zlib.decompress(blob), dtype="<i2").reshape(23, 41)
+    reference = np.cumsum(delta.astype(np.int32), axis=1).astype(np.int16)
+    decoded = hf.decode_i16(blob, 23, 41)
+    assert decoded.dtype == np.int16
+    assert np.array_equal(decoded, reference)
+    assert np.array_equal(decoded, grid)
+
+
 def test_the_delta_is_what_makes_the_raster_small():
     """Not decoration: on the real field it is 16.45 MB against 26.72 MB, 38% of the file.
 
