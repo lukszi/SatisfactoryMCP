@@ -543,5 +543,7 @@ export function showGhost(key: string, args: Record<string, unknown>, who: strin
   changed();
 }
 
-window.addEventListener("hashchange", syncSplit);
+window.addEventListener("hashchange", function () {
+  setTimeout(syncSplit, 0);
+});
 new MutationObserver(syncSplit).observe(document.body, { attributes: true, attributeFilter: ["class"] });
