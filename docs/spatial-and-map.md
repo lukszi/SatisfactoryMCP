@@ -1593,16 +1593,32 @@ the sun; the page picks where it stands.
 
 ### The model
 
-`light = amb · sky · SVF + (1 − amb) · sun · max(n·L, 0) · (1 − shadow) / sin(max(el, 35°))`,
+`light = amb · sky · SVF + (1 − amb) · sun · max(n·L, 0) · (1 − shadow · (1 − fill)) / sin(max(el, 35°))`,
 divided by the same expression for flat ground in the open, so flat ground at any sun is 1.
 
 - **Lambert** is the shipped hillshade's own term. Relit at 315° / 45° with shadows and sky
   off, unlit terrain reproduces the baked hillshade to 2 levels (a test holds it).
 - **Cast shadows** come from 32 stored horizon angles per pixel, interpolated between the two
-  directions either side of the sun, with a 2° soft edge. A blocker counts fully up to 40 m
-  away and not at all past 150 m (`FADE_M`): without the fade a low sun shadows a third to a
-  half of the land. A 100 m fade was tried at 16:00 on the four shared crops and reads almost
-  the same, so 150 m stays.
+  directions either side of the sun. A blocker counts fully up to 40 m away and not at all
+  past 150 m (`FADE_M`): without the fade a low sun shadows a third to a half of the land. A
+  100 m fade was tried at 16:00 on the four shared crops and reads almost the same, so 150 m
+  stays.
+- **Soft edge** (`SHADOW_SOFT_DEG`, 6°). A horizon goes from lit to shadowed over 6° of
+  angle. The edge is constant in angle, so on the ground it grows with the distance from the
+  blocker to the end of its shadow, `soft · H / sin² el`: under the 16:00 sun (24°) about
+  13 m for a 20 m wall and 3 m for a 5 m rock (a test holds that a taller blocker throws the
+  wider one). At the old 2° the edge was a step at every pixel, and at 16:00 whole valleys
+  turned into flat polygons with stair-stepped edges.
+- **Fill** (`SHADOW_FILL`, 0.35). A cast shadow keeps 35% of the sun's Lambert term: the sky
+  around the sun and the light bounced off sunlit ground, both from the sun's side. Without
+  it shadowed ground is the ambient term alone, the same for every slope, and a valley in
+  shadow reads as one flat grey shape at the floor. 0.2 and 0.35 were compared at 16:00 on
+  the cliff-lakes and abyss crops; 0.35 keeps the rock's shape inside the shadow.
+- **Tree crowns** cast into horizons of their own (below). Only a style that draws the
+  crowns reads them (`shader_light(layer)["crowns"]`, the painted style today); every other
+  style is shaded by the ground alone. Before, terrain, satellite and relief showed the
+  shadows of trees they do not draw: near-black blocks in the forests and dashes in the
+  desert, five times as frequent beside a crown as away from one.
 - **Sky view** within 10 m darkens the foot of a cliff and the floor of a gully. Larger radii
   grey whole valleys.
 - **Normalisation** by `sin(max(el, 35°))`: without the clamp a fifth to a third of the
@@ -1629,8 +1645,8 @@ artwork has no light direction to inherit.
 | Where | What |
 | --- | --- |
 | `<renders>/light/tiles/{z}/{x}_{y}.nrm.webp` | Lossless RGBA: east and south normal as `(v + 1) / 2`, sky view, land weight. An opaque tile drops the alpha channel, which a reader takes as land |
-| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | 32 horizons at half resolution, an 8 × 4 grey atlas of 128 px cells, `255 · sqrt(deg / 90)`, WebP q75 |
-| `<renders>/light/meta.json` | The light axis (model constants and their digest), tile counts, timings |
+| `<renders>/light/tiles/{z}/{x}_{y}.hz.webp` | An 8 × 8 grey atlas of 128 px cells at half resolution, `255 · sqrt(deg / 90)`, WebP q75: cells 0–31 the ground's horizons, cells 32–63 the crowns' where they stand above the ground's, else 0 |
+| `<renders>/light/meta.json` | The light axis (model constants and their digest), `occluder_layers` (the layers that read the crown cells; empty without crowns), tile counts, timings |
 | `<layer>/unlit/` | The unlit colour, 1x only |
 | `<layer>/tiles/`, `tiles@2x/` | The colour lit by the default sun: what a page without WebGL, and every older reader, draws |
 
@@ -1642,33 +1658,56 @@ from the downsampled heights, sky view and horizons by mean.
 `render_layer` hands the first layer's drawn heights and land weight to a `Surface` (two
 memory maps beside the raster caches, 5.4 GB at 32768). After that layer is drawn,
 `lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
-halo, and a process pool computes per block: horizons at half resolution, sky view, normals,
-the native tiles, and the light at the default sun for the baked copy. A block whose core is
-all water skips the horizon march. Each layer then installs `unlit/`, is lit in place by the
-default sun, and installs `tiles/` and `tiles@2x/` as before (`tiles/lit.py`).
+halo, and a process pool computes per block: the ground's horizons and the crowns' at half
+resolution, sky view, normals, the native tiles, and the light at the default sun for the
+baked copy, once with the crowns and once without. A block whose core is all water skips the
+horizon march. Each layer then installs `unlit/`, is lit in place by the default sun with its
+own term (`tiles/lit.py`: the crowns' only for a style that draws them), and installs
+`tiles/` and `tiles@2x/` as before.
 
 **Horizon cost.** The march takes bilinear samples up to 16 px and the nearest pixel beyond,
 with in-place arithmetic: 0.14 µs per half-resolution pixel and direction, 6.3 times faster
 than the all-bilinear reference, which it matches to a mean 0.10 to 0.17° and a 0.1 to 0.3%
-difference in which pixels are shadowed at 25°. A rotated row sweep was built and measured at
-1.7 times slower than the reference: rotating the block grows it, and every pixel of the
-rotated square is computed. One full-size block of the steepest 2 km box took 121 s on two
-threads of a shared machine, 69 s of it light terms and 52 s WebP encoding; 64 blocks project
-to 2.2 CPU-hours, about 8 minutes on 16 workers, before water blocks are skipped. The
-research estimate for the ray march was 72 minutes.
+difference in which pixels are shadowed at 25°. Measured again with the 6° edge on two
+full-size windows from the 1 m field: all-bilinear is 5.2 times slower and changes the
+horizon by a mean 0.15° (p99 2.4°), less than the q75 encoding does, and the shade by more
+than 0.1 on 0.4% of the pixels; the nearest pixel stays. A rotated row sweep was built and
+measured at 1.7 times slower than the reference: rotating the block grows it, and every
+pixel of the rotated square is computed. One full-size block of the steepest 2 km box took
+121 s on two threads of a shared machine, 69 s of it light terms and 52 s WebP encoding; 64
+blocks project to 2.2 CPU-hours, about 8 minutes on 16 workers, before water blocks are
+skipped. The research estimate for the ray march was 72 minutes.
+
+**Step growth** (`STEP_GROWTH`, 1%). Past `FINE_M` (44 m) the march steps grow with the
+distance. A plateau is sampled at the first step past its edge, so the horizon jumps from
+step to step and a soft edge shows the jumps as bands, as wide as the gap. At 3% they read
+as terraces in every penumbra at full size; at 1% they are 0.4 to 1.5 m and do not. 219
+steps instead of 138, measured at 19% more for the ground's 32 directions on a full-size
+window, because the bilinear steps near the receiver dominate. At 2048 every step is still
+one pixel.
+
+**Encoding.** q75 decodes within a mean 1.05° of the exact horizon (p99 6.4°), q90 within
+0.48° (p99 2.9°) at 1.44 times the bytes. With the 6° edge the two relight the abyss crop at
+16:00 the same to the eye, so q75 stays.
 
 **Bytes.** The steepest 2 km box writes 78 KB of lighting per z7 tile, so a full map is at
 most about 1.3 GB at z7 and less in practice, because open water compresses to almost
-nothing. The unlit colour adds about half the colour pyramid again.
+nothing. The crown cells are 0 wherever no crown stands above the ground's horizon; at 2048
+they take the light pyramid from 18.8 to 24.2 MB. The unlit colour adds about half the
+colour pyramid again.
 
 ### Hooks
 
 `bake_light` takes two optional rasters on the sheet's grid, both of which only cast:
 
-- `occluder`: absolute heights in metres, NaN where empty. It blocks under its own shorter
-  fade (`OCCLUDER_FADE_M`, 25 to 80 m) and lifts the receivers to its top, so a crown is lit
-  or shaded where the painted layer draws it. The paint store's crown tops feed it
-  (section 36; the mapgen README's "Tree shadows").
+- `occluder`: the crown tops in metres, NaN where empty, or `(top, cover)` with the covered
+  share of each pixel as a byte. The crowns stand on the surface, each lifted by its cover
+  (`horizon.crown_surface`), and cast into the crown cells under their own shorter fade
+  (`OCCLUDER_FADE_M`, 25 to 80 m), received on the crown tops, so a crown is lit or shaded
+  where the painted layer draws it. A crown cell keeps its horizon only where it stands
+  above the ground's, which the shader's `max` makes exact and leaves the cells empty away
+  from trees. `occluder_layers` names the layers that read them. The paint store's crown
+  tops feed it (section 36; the mapgen README's "Tree shadows").
 - `slabs = (ground, min_z, max_z)`: the surface without the floating geometry, and that
   geometry's underside and top. A slab extends a horizon only where its underside is below
   the horizon already reached, so an arch stops casting a curtain to the ground. On the arch
@@ -1678,7 +1717,9 @@ nothing. The unlit colour adds about half the colour pyramid again.
 
 `litlayer.ts` draws a lit layer on one WebGL2 canvas in the base-map pane: per tile the unlit
 colour, normals and horizons, relit by the shader with the arithmetic of `lighting/model.py`.
-The z0 probe's `X-Map-Light` header carries the shader's numbers. Without WebGL2, or when the
+The z0 probe's `X-Map-Light` header carries the shader's numbers; the layer's `params.crowns`
+switches the crown cells on, and a pyramid without `hz_cells` reads as the old 8 × 4 atlas
+with no fill. A test holds the shader to the Python model's constants. Without WebGL2, or when the
 context or the tiles fail, the layer falls back to the baked `tiles/` with a toast. Settings →
 map holds the default sun (game noon, 09:00, 16:00 or map north-west) and the shadow and sky
 switches. The sun button on the map opens a time-of-day slider on the game's path, the
@@ -1691,6 +1732,9 @@ button moves the sun for the visit; Settings keeps the default.
 - The sun in the fragment, so a link carries it.
 - Faint diagonal bands at low sun from the q75 horizon encoding and the direction
   interpolation.
+- A crown top takes the ground's horizon measured on the ground under it, not on its top, so
+  in a valley a crown is shaded by terrain a little longer than it would be.
+- Whether the satellite style draws the tree crowns, and so reads their shadows.
 - Sun colour along the day, and whether the artwork style gets any light at all.
 
 ## 30. The game's own surface colours on the painted layer (2026-10-05)
@@ -2464,7 +2508,7 @@ pixel, these rules decide.
 | Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`. Section 30's estimate from the radius is gone. Section 30's trees-over-rock reads the same plane. |
 | Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
-| Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid. It blocks under `OCCLUDER_FADE_M` and receives on the crown top. Only a run that draws the painted layer has it. |
+| Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
 | Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 5 (the per-area targets of section 31 on top of sections 32 to 36). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. The water classes and the relief tint read that result, not the field's box levels. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |

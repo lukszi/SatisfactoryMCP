@@ -253,20 +253,33 @@ Shadows are not baked into colour: the lighting stage of section 29 stores faded
 and the page's sun picks two directions. Trees join that pass as its `occluder`, so they
 shade for any sun.
 
+- **Only where trees are drawn.** The crowns cast into horizons of their own, the atlas's
+  second half, and only a style that draws the crowns reads them (`shader_light`'s
+  `crowns`, the painted style today; `tiles.lit.crown_layers`, the light sidecar's
+  `occluder_layers`). Baked into the one horizon set every style shares, they shaded
+  terrain, satellite and relief with trees those styles do not draw: near-black blocks in
+  the forests and Red Bamboo, dashes in the desert. A crown cell keeps its horizon only
+  where it stands above the ground's, so it is empty away from trees and costs 29% more
+  light bytes at 2048.
 - **Where the occluder comes from.** A run drawn with `--unlit` and the painted layer hands
   the paint store's 1 m crown-top plane (`crown.i16.z`, section 36) to the stage, sampled on
-  the sheet's grid (`occluders.sheet_crowns`); a sheet pixel coarser than 1 m takes the
-  highest crown in its footprint. It is written as a memory map in the light cache. A run
+  the sheet's grid (`occluders.sheet_crowns`): each pixel averages a box of its own width,
+  one texel wide on a sheet finer than the plane, which is the bilinear sample. It gives the
+  mean crown top and the covered share, and the stage stands each crown on the surface
+  lifted by that share (`horizon.crown_surface`), so a crown keeps its area and its round
+  edge and a small one casts a small shadow. The old maximum filter and nearest sample drew
+  every crown as a block a pixel too big. Both are memory maps in the light cache. A run
   without the painted layer bakes no tree shadows; the light sidecar's `occluder` says which.
 - **`OCCLUDER_FADE_M` (25 m, 80 m)**: a crown is porous and its far shadow diffuse, so the
   occluder blocks under its own, shorter fade, beside the ground's `FADE_M`. With the
   ground's fade a Mangrove_Tall_01 at the 80 m cap lays a shadow about 93 m long under the
   16:00 sun (24 degrees); with this fade about 61 m, and a 20 m tree's shrinks from 44 m to
   36 m.
-- **Receivers on the crown top.** Where a crown stands, the horizon is measured from its top,
-  because that is the surface the painted layer draws there. Receiving on the ground under
-  the crowns put 71-86% of two forest crops in shadow at every sun, which reads as black
+- **Receivers on the crown top.** Where a crown stands, the crown horizon is measured from its
+  top, because that is the surface the painted layer draws there. Receiving on the ground
+  under the crowns put 71-86% of two forest crops in shadow at every sun, which reads as black
   forest; on the top the forest-edge crop keeps a mean light of 0.61-0.78 under the canopy.
+  The ground's horizons are measured on the ground, which is what every other style draws.
 - **Crown shape** (`canopy_top`, for a tree table rather than the paint store). A heightfield
   cannot hold the air under a crown, so each tree is a column whose top is a dome.
   `CROWN_RIM` (0.3) puts the rim at 30% of the height: at 0.7 every crown edge was a cliff
