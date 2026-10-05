@@ -48,6 +48,7 @@ from mapgen.terrain.sample import (
     taps_pchip,
 )
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
+from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -354,4 +355,5 @@ def render_layer(
                 f"  {layer}: {done:5.1%} of {size}x{size} in {time.time() - started:5.1f}s",
                 flush=True,
             )
+            print(encode_stage(f"draw:{layer}", done), flush=True)
     return out

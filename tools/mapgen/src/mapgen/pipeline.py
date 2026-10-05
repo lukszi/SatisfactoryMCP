@@ -154,6 +154,7 @@ from satisfactory_mcp.core.gameassets.versions import (
     RENDER_RECIPES,
     STYLES,
 )
+from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 
@@ -816,6 +817,7 @@ def main() -> int:
     measured: dict = {}
     for layer in layers:
         print(f"drawing {layer} at {args.size}x{args.size}")
+        print(encode_stage(f"draw:{layer}", 0.0), flush=True)
         started = time.time()
         sheet = render_layer(
             layer,
@@ -1023,6 +1025,7 @@ def main() -> int:
             f"@2x over z0..z{dense['max_z']} ({dense['bytes'] / 1e6:.1f} MB)  "
             f"(drew {drew:.0f}s, cut {cut:.0f}s)"
         )
+        print(encode_stage(f"cut:{layer}", 1.0), flush=True)
     if direct is not None:
         # Let the memory maps go before removing the files under them: on Windows an open
         # mapping refuses the unlink outright.

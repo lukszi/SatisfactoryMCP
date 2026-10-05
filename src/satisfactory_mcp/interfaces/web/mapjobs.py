@@ -31,10 +31,13 @@ PUBLISH_EVERY_S = 2.0
 
 def _child_env() -> dict[str, str]:
     env = dict(os.environ)
+    paths = [str(presets.mapgen_src())]
     root = config.source_root()
     if root is not None:
-        inherited = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = f"{root}{os.pathsep}{inherited}" if inherited else str(root)
+        paths.insert(0, str(root))
+    if inherited := env.get("PYTHONPATH"):
+        paths.append(inherited)
+    env["PYTHONPATH"] = os.pathsep.join(paths)
     env["PYTHONIOENCODING"] = "utf-8"
     return env
 
@@ -138,6 +141,7 @@ class MapJobRunner:
             "options": plan["options"],
             "label": label,
             "script": plan["script"],
+            "command": plan["command"],
             "argv": plan["argv"],
             "produces": list(plan["produces"]),
             "replaces": replaces,
@@ -249,8 +253,8 @@ class MapJobRunner:
         self.announce(job)
 
     def _spawn(self, job: dict) -> Child:
-        script = str(presets.tools_dir() / job["script"])
-        command = [self.python, "-u", script, *job["argv"]]
+        name = job.get("command") or presets.COMMANDS[job["preset"]]
+        command = [self.python, "-u", "-m", "mapgen", name, *job["argv"]]
         path = store.log_path(job["id"])
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "wb") as handle:

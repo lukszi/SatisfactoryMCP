@@ -52,6 +52,17 @@ SCRIPTS = {
     "paint": "gen_paint_layers.py",
 }
 
+#: The ``python -m mapgen`` command a preset runs. ``SCRIPTS`` stays: a job records it, and
+#: each one is that command's shim.
+COMMANDS = {
+    "render": "renders",
+    "artwork": "artwork",
+    "heightmap": "heightmap",
+    "caves": "heightmap",
+    "rocks": "heightmap",
+    "paint": "paint",
+}
+
 #: The modules the generators need from the ``gen`` extra.
 GEN_MODULES = ("ooz", "texture2ddecoder", "PIL")
 
@@ -224,10 +235,15 @@ def tools_dir() -> Path:
     return config.REPO_ROOT / "tools"
 
 
+def mapgen_src() -> Path:
+    """What a generator child needs on its path to import ``mapgen``."""
+    return tools_dir() / "mapgen" / "src"
+
+
 def can_generate() -> dict:
     """Whether this checkout can run the generators here, each check under a millisecond."""
     gen = all(importlib.util.find_spec(name) is not None for name in GEN_MODULES)
-    tools = (tools_dir() / SCRIPTS["render"]).is_file()
+    tools = (mapgen_src() / "mapgen" / "cli.py").is_file()
     try:
         config.game_root()
         game, game_reason = True, None
@@ -337,4 +353,10 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
             argv += ["--rocks", "--field", str(local / "heightmap")]
         else:
             argv += ["--out-dir", str(local / "heightmap")]
-    return {"script": SCRIPTS[preset], "argv": argv, "produces": produces, "options": options}
+    return {
+        "script": SCRIPTS[preset],
+        "command": COMMANDS[preset],
+        "argv": argv,
+        "produces": produces,
+        "options": options,
+    }
