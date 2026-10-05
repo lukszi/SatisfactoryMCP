@@ -47,6 +47,8 @@ LAYER_STYLE = {
     "terrain": "terrain-hypsometric",
     "satellite": "satellite-biome",
     "painted": "satellite-painted",
+    "relief": "relief-muted",
+    "relief-dark": "relief-night",
     "map": "artwork",
 }
 

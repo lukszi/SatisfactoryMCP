@@ -13,6 +13,7 @@ __all__ = [
     "CAVES_VERSION",
     "HEIGHTFIELD_GENERATOR_VERSION",
     "PAINT_GENERATOR_VERSION",
+    "PLAIN_TONE",
     "PROVENANCE_SCHEMA",
     "READER_VERSIONS",
     "RENDER_RECIPES",
@@ -75,9 +76,16 @@ ARTWORK_RECIPES: dict[int, dict] = {
 #: Palettes. A render's style ``id`` is its palette file's name under
 #: ``tools/mapgen/src/mapgen/palette/palettes/``,
 #: and the version is bumped when a palette changes on purpose; the file's hash is the digest.
+#: ``tone`` is the base's lightness, which the page's overlay colours follow.
 STYLES: dict[str, dict] = {
-    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 2},
-    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 2},
-    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 1},
-    "artwork": {"label": "artwork", "layer": "map", "version": 1},
-}
+    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 2, "tone": "light"},
+    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 2, "tone": "light"},
+    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 1,
+                          "tone": "light"},
+    "relief-muted": {"label": "relief", "layer": "relief", "version": 1, "tone": "light"},
+    "relief-night": {"label": "relief dark", "layer": "relief-dark", "version": 1, "tone": "dark"},
+    "artwork": {"label": "artwork", "layer": "map", "version": 1, "tone": "light"},
+}  # fmt: skip
+
+#: The tone of no imagery at all: the page's own dark sea.
+PLAIN_TONE = "dark"

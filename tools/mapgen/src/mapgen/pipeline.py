@@ -64,6 +64,7 @@ from mapgen.cache import (
     cached_meshes,
     direct_cache_dir,
     direct_cache_stamp,
+    missing_caches,
     top_cache_dir,
 )
 from mapgen.cache import mesh_stamp as cache_mesh_stamp
@@ -85,6 +86,7 @@ from mapgen.lighting.hillshade import (
     coarse_province,
 )
 from mapgen.palette.painted import PaintedGround, load_paint_meta
+from mapgen.palette.relief import ReliefGround
 from mapgen.palette.shore import OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
 from mapgen.palette.styles import (
     BIOME_BLEND_TEXELS,
@@ -92,6 +94,7 @@ from mapgen.palette.styles import (
     LAYER_STYLES,
     NO_MANS_LAND_RGB,
     PAINTED_PALETTE,
+    RELIEF_PALETTES,
     SHORE_OPTICS,
     STYLE_DIGESTS,
     UNKNOWN_BIOME_RGB,
@@ -123,7 +126,14 @@ from mapgen.tiles.pyramid import (
     install_layer,
     layer_dir,
 )
-from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
+from mapgen.tiles.recipes import (
+    COMPOSITION_TEXT,
+    LEVEL_ONLY_TEXT,
+    RECIPE,
+    RECIPE_KERNEL_ONLY,
+    Z7_TEXT,
+    sampling_text,
+)
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, build_sidecar, pinned_field_build
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
@@ -182,7 +192,13 @@ class Plan:
 
 
 #: The layers this file draws, in the order they are cut; ``--layer`` restricts it.
-LAYERS = ("terrain", "satellite", "painted")
+LAYERS = ("terrain", "satellite", "painted", "relief", "relief-dark")
+
+#: The layers coloured from the biome raster, which is read only when one of them is drawn.
+BIOME_LAYERS = ("satellite", "painted", "relief")
+
+#: Exit code of ``--restyle`` when the kept raster cache does not cover the run.
+RESTYLE_MISS = 9
 
 
 def load_imaging():
@@ -262,6 +278,11 @@ def main() -> int:
             "where direct.cache/ and top.cache/ live (default: beside the renders). A cache "
             "here is reused by any run whose size, sub-samples and build match it"
         ),
+    )
+    parser.add_argument(
+        "--restyle",
+        action="store_true",
+        help="palette only: draw from the kept raster cache and refuse if it is missing",
     )
     parser.add_argument(
         "--no-top",
@@ -404,6 +425,15 @@ def main() -> int:
                     "replace it anyway."
                 )
                 return 3
+    if args.restyle and weight_plane is not None:
+        root = args.cache_dir or out_dir / args.renders_name
+        stamp = direct_cache_stamp(args.size, args.direct_subsamples, field_build)
+        mesh_key = cache_mesh_stamp(args.size, field_build, READER_VERSIONS["render_meshes"])
+        gaps = missing_caches(root, stamp, mesh_key, not args.no_top, not args.no_meshes)
+        if gaps:
+            print(f"--restyle: {', '.join(gaps)} under {root} is missing or for another size "
+                  "or build. Draw once with --cache-dir and --keep-direct to keep it.")  # fmt: skip
+            return RESTYLE_MISS
 
     # ---- the artwork sheet, which every layer now needs ------------------------------
     paks = args.game / "FactoryGame" / "Content" / "Paks"
@@ -481,7 +511,7 @@ def main() -> int:
     # ---- the biome raster ------------------------------------------------------------
     biome = None
     drawn: list[str] = []
-    if "satellite" in layers or "painted" in layers:
+    if any(layer in BIOME_LAYERS for layer in layers):
         biome = read_biome(store, scripts)
         print(
             f"  {biome['width']}x{biome['width']} palette indices, "
@@ -592,6 +622,11 @@ def main() -> int:
             }
         }
         print(f"  paint layers prepared in {time.time() - started:.0f}s")
+    relief = {
+        layer: ReliefGround(RELIEF_PALETTES[layer][0], field, biome, list(drawn))
+        for layer in layers
+        if layer in RELIEF_PALETTES
+    }
 
     reach, reach_meta = (None, {}) if args.kernel_only else ocean_reach(field)
     if reach is not None:
@@ -835,6 +870,7 @@ def main() -> int:
             meshes=meshes,
             reach=reach,
             painted=painted if layer == "painted" else None,
+            relief=relief.get(layer),
             # Both layers draw the identical surface, so the seam and the regime table are
             # measured on the first one and quoted for both.
             seam=seam if not measured else None,
@@ -869,30 +905,7 @@ def main() -> int:
             "width_px": args.size,
             "height_px": args.size,
             "metres_per_pixel": round(spacing_m, 4),
-            "sampling": (
-                "the field's own composition rule, at this render's spacing. KERNEL: "
-                "tensor-product PCHIP (Fritsch-Butland slopes: exact at the 1 m vertices, "
-                "never outside a cell's own range) over the LANDSCAPE AND FILL lattices, "
-                "rebuilt by tools/map_fill.py -- the cliff province taken out, because "
-                "interpolating the composed field reconstructs its own 1 m fold and a rim reconstructed from "
-                "a fold is a 1 m staircase at any output resolution -- falling back to "
-                "bilinear where the 4x4 stencil straddles no data and to nothing where no "
-                "texel under it has a value. DIRECT: the cliff geometry rasterised into "
-                f"this grid at {spacing_m:.4f} m and composited on top of that lattice by "
-                "its own coverage of the pixel, raising the ground and never lowering it, "
-                "through a smoothed positive part so the line where a rock meets the ground "
-                "is not a derivative discontinuity the hillshade would draw. density.u8.z "
-                "does not gate any of this: it says which of the drawn texels are "
-                "measurements and which are the plane of a triangle wider than a texel, and "
-                "_meta.render.two_regime.regimes counts both"
-            )
-            if direct is not None
-            else (
-                "Catmull-Rom (cubic convolution, a = -1/2) over the 1 m field per output "
-                "pixel wherever the 4x4 stencil is whole, bilinear where it straddles the "
-                "edge of the data, and nothing at all where no texel under it has a value. "
-                "--kernel-only: no geometry was opened and no direct regime was drawn"
-            ),
+            "sampling": sampling_text(spacing_m, direct is not None),
             "two_regime": {
                 "enabled": direct is not None,
                 "subsamples_per_axis": args.direct_subsamples if direct is not None else None,
@@ -906,14 +919,7 @@ def main() -> int:
                     f"{args.direct_subsamples}x{args.direct_subsamples} sub-samples per output "
                     "texel, box-folded"
                 ),
-                "composition": (
-                    "the field's own rule at this render's spacing: the landscape and fill "
-                    "lattices interpolated with the C1 kernel, and the cliff geometry "
-                    "rasterised at 0.229 m composited over them by its own coverage, raising "
-                    "the ground and never lowering it. What this replaced was interpolating "
-                    "the 1 m FOLD of that composition, which reconstructs a rim as the 1 m "
-                    "staircase the fold put it on however fine the output grid is"
-                ),
+                "composition": COMPOSITION_TEXT,
                 "ground_lattice": ground_meta,
                 "terrain_lattice": terrain_meta,
                 "top_overlay": top is not None,
@@ -922,20 +928,7 @@ def main() -> int:
                 "fill_rebuild": fill_meta,
                 **measured,
             },
-            "z7": (
-                "interpolated-smooth. 32768 px is NOT a claim that the field has more to "
-                "say -- that was measured twice on this pipeline and refused twice, and the "
-                "high-frequency energy per pixel falls at every doubling. What z7 is, is the "
-                "same surface evaluated by the same C1 kernel at half the spacing, which a "
-                "client cannot produce for itself: a browser shown z6 at twice its scale "
-                "upsamples it BILINEARLY, and bilinear is C0, so the relief it draws is "
-                "ruled into 0.458 m squares. The exception is the direct regime, where the "
-                "pixels are triangles rather than an interpolation and z7 genuinely resolves "
-                "geometry the 1 m field folds away -- see two_regime.regimes for how much of "
-                "the sheet that is."
-            )
-            if args.size >= RENDER_PX
-            else None,
+            "z7": Z7_TEXT if args.size >= RENDER_PX else None,
             "hillshade": (
                 f"sun at azimuth {SUN_AZIMUTH_DEG} deg, altitude {SUN_ALTITUDE_DEG} deg, "
                 f"shade in [{SHADE_FLOOR}, {SHADE_FLOOR + SHADE_RANGE}], computed at the "
@@ -960,13 +953,7 @@ def main() -> int:
                     if reach is not None
                     else None
                 ),
-                "level_only": (
-                    "full alpha and the deep end of the ramp. 95.2% of level-only water "
-                    "stands over the fill province and 98% of its surface levels lie in a "
-                    "0.7 m band around the ocean's own -16.99 m, so it is the ocean, and a "
-                    "depth ramp run on a 3.9 m raster's rounding error is what used to draw "
-                    "3.572 km2 of it as land"
-                ),
+                "level_only": LEVEL_ONLY_TEXT,
             },
             "seconds_to_draw": round(drew, 1),
             "seconds_to_cut": round(cut, 1),
@@ -988,7 +975,7 @@ def main() -> int:
                 {
                     key: value
                     for key, value in inputs.items()
-                    if (key != "biome_raster" or layer in ("satellite", "painted"))
+                    if (key != "biome_raster" or layer in BIOME_LAYERS)
                     and (key != "paint" or layer == "painted")
                 },
                 {
@@ -1006,6 +993,7 @@ def main() -> int:
                     "version": STYLES[style_id]["version"],
                     "label": STYLES[style_id]["label"],
                     "digest": STYLE_DIGESTS[layer],
+                    "tone": STYLES[style_id]["tone"],
                 },
             ),
             extra={
@@ -1013,7 +1001,7 @@ def main() -> int:
                 **direct_source,
                 **top_source,
                 **mesh_source,
-                **(biome_source if layer in ("satellite", "painted") else {}),
+                **(biome_source if layer in BIOME_LAYERS else {}),
                 **(paint_source if layer == "painted" else {}),
             },
         )
@@ -1030,7 +1018,7 @@ def main() -> int:
         # Let the memory maps go before removing the files under them: on Windows an open
         # mapping refuses the unlink outright.
         direct = maps = top = top_maps = meshes = None
-        if not args.keep_direct:
+        if not (args.keep_direct or args.restyle):
             for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME):
                 root = args.cache_dir or out_dir / args.renders_name
                 shutil.rmtree(root / kept, ignore_errors=True)

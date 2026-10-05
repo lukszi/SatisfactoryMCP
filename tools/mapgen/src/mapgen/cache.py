@@ -99,3 +99,15 @@ def cached_meshes(directory: Path, stamp: dict):
         )
     except (OSError, ValueError):
         return None
+
+
+def missing_caches(
+    root: Path, stamp: dict, meshes_stamp: dict, top: bool, meshes: bool
+) -> list[str]:
+    """The cache directories under ``root`` a palette-only run needs and cannot use."""
+    wanted = [(DIRECT_CACHE_DIR_NAME, stamp, cached_direct)]
+    if top:
+        wanted.append((TOP_CACHE_DIR_NAME, stamp, cached_direct))
+    if meshes:
+        wanted.append((MESH_CACHE_DIR_NAME, meshes_stamp, cached_meshes))
+    return [name for name, want, read in wanted if read(root / name, want) is None]

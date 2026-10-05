@@ -1,0 +1,48 @@
+{
+ "id": "relief-night",
+ "about": "a dark relief map: an even OKLab night ramp over dry land ending warm, slope rock, a scaled hue-shifted hillshade and depth-tinted water",
+ "ramp_lo_pct": 1.0,
+ "ramp_hi_pct": 99.5,
+ "ramp_equalised": 0.60,
+ "ramp_lch": [
+  [0.320, 0.052, 150],
+  [0.345, 0.062, 135],
+  [0.370, 0.064, 115],
+  [0.405, 0.062, 82],
+  [0.440, 0.052, 62],
+  [0.480, 0.055, 70],
+  [0.530, 0.045, 85]
+ ],
+ "biome_blend_texels": 24.0,
+ "biome_tints": {},
+ "biome_fallback": [0.0, 0.0, 0, 0.0],
+ "rock": {"lo_deg": 32.0, "hi_deg": 52.0, "max": 0.6, "dl": 0.02, "c": 0.016, "h": 70},
+ "shade": {
+  "suns": [[315, 45, 1.0]],
+  "mode": "scale",
+  "k": 0.95,
+  "lo": 0.42,
+  "hi": 1.30,
+  "dechroma": 0.0,
+  "cool": [0.045, 265],
+  "warm": [0.012, 75],
+  "l_max": 0.9
+ },
+ "borrow_ink_damp": 0.25,
+ "water": {
+  "shallow_lch": [0.340, 0.055, 222],
+  "deep_lch": [0.245, 0.040, 240],
+  "tau_m": 12.0,
+  "level_only": 0.85,
+  "blur_m": 6.0,
+  "lit": 0.08,
+  "stroke_lch": [0.300, 0.040, 230],
+  "stroke": 0.0
+ },
+ "shore": {
+  "clarity_m": 0.8,
+  "edge_alpha": 0.45,
+  "wet_darken": 1.0,
+  "stroke": 0.0
+ }
+}

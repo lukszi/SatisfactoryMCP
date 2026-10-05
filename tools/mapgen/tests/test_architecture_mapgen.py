@@ -60,7 +60,7 @@ CEILING_SLACK = 25
 #: 2d7eaa9 (a pure move keeps every body's length). Shrink-only, same slack.
 FUNCTION_MAX_LINES = 150
 FUNCTION_CEILINGS: dict[str, int] = {
-    "pipeline.py::main": 840,
+    "pipeline.py::main": 812,
     "heightmap.py::main": 391,
     "heightmap.py::build_meta": 370,
     "artwork.py::main": 327,

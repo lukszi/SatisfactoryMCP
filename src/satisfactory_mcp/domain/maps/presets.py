@@ -35,7 +35,7 @@ __all__ = [
     "plan",
 ]
 
-RENDER_LAYERS = ("terrain", "satellite", "painted")
+RENDER_LAYERS = ("terrain", "satellite", "painted", "relief", "relief-dark")
 #: What a render job draws when it names no layers: the painted one needs the paint input.
 DEFAULT_LAYERS = ("terrain", "satellite")
 RENDER_SIZES = (1024, 2048, 4096, 8192, 16384, 32768)
