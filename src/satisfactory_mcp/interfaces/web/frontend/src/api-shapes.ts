@@ -232,6 +232,7 @@ export type PinStaleResponse = Body<"PinStaleResponse">;
 
 /* ------------------------------------- /api/plan/track, /api/plan/feeders, /api/asks */
 
+export type SitePreviewResponse = Body<"SitePreviewResponse">;
 export type TrackState = Schema["TrackState"];
 export type TrackMachine = Schema["TrackMachine"];
 export type TrackTarget = Schema["TrackTarget"];

@@ -1834,6 +1834,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan/site-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Site Preview
+         * @description A plan version's pad at (x, y, yaw, w × d), every part omitted taken from its stored
+         *     site, else from where a first placement starts. ``full`` reads the terrain at 1 m.
+         */
+        get: operations["plan_site_preview_api_plan_site_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -5634,6 +5655,8 @@ export interface components {
             payback_hours?: number | null;
             /** Overclock Last */
             overclock_last?: boolean | null;
+            /** Site Snap */
+            site_snap?: ("fine" | "grid8") | null;
         };
         /** SettingsPatchBody */
         SettingsPatchBody: {
@@ -5685,6 +5708,11 @@ export interface components {
             payback_hours: number;
             /** Overclock Last */
             overclock_last: boolean;
+            /**
+             * Site Snap
+             * @enum {string}
+             */
+            site_snap: "fine" | "grid8";
         };
         /** ShardHolder */
         ShardHolder: {
@@ -5738,6 +5766,145 @@ export interface components {
             holders: components["schemas"]["ShardHolder"][];
         };
         /**
+         * SiteBuilt
+         * @description What counts as built for the plan with its pad here: ``mode`` is auto, picked, world or
+         *     none, empty when the plan does not solve.
+         */
+        SiteBuilt: {
+            /** Mode */
+            mode: string;
+            /** Confidence */
+            confidence: string;
+            /** Figure */
+            figure: string;
+            /** Where */
+            where: string;
+            /** Hint */
+            hint: string;
+            /** Area */
+            area: string;
+            /** Built */
+            built: number | null;
+            /** Total */
+            total: number;
+            /** Current */
+            current: number;
+            /** Count */
+            count: number;
+            /** Stage Text */
+            stage_text: string;
+            /** Candidates */
+            candidates: components["schemas"]["SiteCandidate"][];
+        };
+        /** SiteCandidate */
+        SiteCandidate: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Machines */
+            machines: number;
+            /** Bbox M */
+            bbox_m: number[] | null;
+        };
+        /** SiteFit */
+        SiteFit: {
+            /** Name */
+            name: string;
+            /** Machines */
+            machines: number;
+            value: components["schemas"]["SiteValue"];
+        };
+        /** SiteLoss */
+        SiteLoss: {
+            /** Now */
+            now: number;
+            /** Here */
+            here: number;
+            /** Total */
+            total: number;
+            /** Text */
+            text: string;
+        };
+        /** SitePreviewNode */
+        SitePreviewNode: {
+            /** Instance */
+            instance: string;
+            /** Resource */
+            resource: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+        };
+        /**
+         * SitePreviewResponse
+         * @description One candidate pad. ``now`` is the stored site's figure; ``nodes`` and ``content_bbox_m``
+         *     come only with ``first=1``. Outside the map square only ``where`` is filled.
+         */
+        SitePreviewResponse: {
+            /** Key */
+            key: string;
+            /** Rev */
+            rev: number;
+            /** Save Id */
+            save_id: string;
+            /** Token */
+            token: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Yaw Deg */
+            yaw_deg: number;
+            /** W M */
+            w_m: number;
+            /** D M */
+            d_m: number;
+            /** Source */
+            source: string;
+            /** Sited */
+            sited: boolean;
+            /** In Map */
+            in_map: boolean;
+            /** In Content */
+            in_content: boolean;
+            /** Region */
+            region: string;
+            /** Z M */
+            z_m: number | null;
+            /** Z Note */
+            z_note: string;
+            terrain: components["schemas"]["SiteTerrain"] | null;
+            /** Terrain Note */
+            terrain_note: string;
+            /** Slabs */
+            slabs: string[];
+            /** On Pad */
+            on_pad: number;
+            /** Planned */
+            planned: number;
+            /** Trunks */
+            trunks: components["schemas"]["SiteTrunk"][];
+            /** Placeless */
+            placeless: string[];
+            built: components["schemas"]["SiteBuilt"];
+            now: components["schemas"]["SiteBuilt"];
+            /** Basis */
+            basis: string;
+            loses: components["schemas"]["SiteLoss"] | null;
+            /** Fits */
+            fits: components["schemas"]["SiteFit"][];
+            /** Overlaps */
+            overlaps: string[];
+            /** Nodes */
+            nodes: components["schemas"]["SitePreviewNode"][] | null;
+            /** Content Bbox M */
+            content_bbox_m: number[] | null;
+            /** Failure */
+            failure: string;
+        };
+        /**
          * SiteRow
          * @description ``mine`` is how many of the asked factory's machines stand in this site; 0 without
          *     ``?factory=``.
@@ -5765,6 +5932,72 @@ export interface components {
             buildings: components["schemas"]["AspectCount"][];
             /** Mine */
             mine: number;
+        };
+        /** SiteTerrain */
+        SiteTerrain: {
+            /** Z Min M */
+            z_min_m: number | null;
+            /** Z Median M */
+            z_median_m: number | null;
+            /** Z Max M */
+            z_max_m: number | null;
+            /** Slope Mean Deg */
+            slope_mean_deg: number | null;
+            /** Slope P90 Deg */
+            slope_p90_deg: number | null;
+            /** Roughness M */
+            roughness_m: number | null;
+            /** Submerged Pct */
+            submerged_pct: number;
+            /** Nodata Pct */
+            nodata_pct: number;
+            /** Stride */
+            stride: number;
+            /** Water M */
+            water_m: number | null;
+            /** Water Below M */
+            water_below_m: number | null;
+        };
+        /**
+         * SiteTrunk
+         * @description One trunk: ``run_m`` node to node and ``to_site_m`` the leg to the pad, straight lines;
+         *     ``lift_m`` and ``pumps`` are null without a ground height.
+         */
+        SiteTrunk: {
+            /** Name */
+            name: string;
+            /** Carrier */
+            carrier: string;
+            /** Members */
+            members: number;
+            /** Run M */
+            run_m: number;
+            /** To Site M */
+            to_site_m: number;
+            /** Lift M */
+            lift_m: number | null;
+            /** Pumps */
+            pumps: number | null;
+        };
+        /**
+         * SiteValue
+         * @description A ``site`` op value, ready to push.
+         */
+        SiteValue: {
+            /** Schema */
+            schema: number;
+            /** Origin M */
+            origin_m: (number | null)[];
+            /** Yaw Deg */
+            yaw_deg: number;
+            /** Footprint M */
+            footprint_m: number[];
+            /** Footprint Source */
+            footprint_source: string;
+            /** Origin Label */
+            origin_label: string;
+            /** When */
+            when: string;
         };
         /** SitesResponse */
         SitesResponse: {
@@ -9890,6 +10123,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedersResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_site_preview_api_plan_site_preview_get: {
+        parameters: {
+            query: {
+                key: string;
+                rev?: number | null;
+                x_m?: number | null;
+                y_m?: number | null;
+                yaw_deg?: number | null;
+                w_m?: number | null;
+                d_m?: number | null;
+                first?: boolean;
+                full?: boolean;
+                biomass?: "exclude" | "include";
+                headroom?: "measured" | "nameplate";
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SitePreviewResponse"];
                 };
             };
             /** @description Validation Error */
