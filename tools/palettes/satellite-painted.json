@@ -1,0 +1,171 @@
+{
+ "id": "satellite-painted",
+ "about": "the landscape's own paint layers times their albedo, pigment, canopy, rock and coral meshes, sky and sun light, Beer-Lambert water",
+ "albedo_darkening": 0.95,
+ "wet_sand_lightness_of_sand": 0.9,
+ "pigment": 0.15,
+ "canopy_gain": 0.85,
+ "canopy_dark": 0.85,
+ "have_blur_m": 6.0,
+ "fallback_blur_m": 44.0,
+ "seam_blend_m": 6.0,
+ "seam_jump": [
+  0.03,
+  0.09
+ ],
+ "biome_tint_strength": 0.35,
+ "biome_tint_blur_m": 44.0,
+ "biome_tint_ab": {
+  "Area_AbyssCliffs": [
+   0.0136,
+   -0.0329
+  ],
+  "Area_DesertCanyons": [
+   0.0419,
+   0.0116
+  ],
+  "Area_DuneDesert": [
+   0.0194,
+   0.0158
+  ],
+  "Area_GrassFields": [
+   -0.0323,
+   0.0208
+  ],
+  "Area_LakeForest": [
+   -0.034,
+   -0.0047
+  ],
+  "Area_MazeCanyons": [
+   0.0216,
+   -0.0095
+  ],
+  "Area_NorthernForest": [
+   -0.0317,
+   -0.0063
+  ],
+  "Area_RedBambooFields": [
+   0.0382,
+   0.0113
+  ],
+  "Area_RedJungle": [
+   0.0313,
+   0.0013
+  ],
+  "Area_RockyDesert": [
+   0.0287,
+   0.0148
+  ],
+  "Area_Savanna": [
+   -0.0024,
+   0.022
+  ],
+  "Area_SouthernForest": [
+   -0.0324,
+   -0.0038
+  ],
+  "Area_SpireCoast": [
+   -0.0109,
+   -0.0043
+  ],
+  "Area_Swamp": [
+   -0.0143,
+   -0.0054
+  ],
+  "Area_TitanForest": [
+   -0.0264,
+   -0.0162
+  ],
+  "Area_WesternDuneForest": [
+   -0.011,
+   0.0101
+  ],
+  "Area_crater": [
+   0.0008,
+   -0.0247
+  ]
+ },
+ "rock_tint_blur_m": 25.0,
+ "rock_tint_lightness": 0.3,
+ "rock_tint_chroma": 0.5,
+ "rock_lightness_add": 0.02,
+ "mesh_colours": {
+  "coral": [
+   176,
+   138,
+   156
+  ],
+  "shell": [
+   214,
+   204,
+   186
+  ],
+  "coral_seabed": [
+   95,
+   136,
+   153
+  ]
+ },
+ "chroma_gain": 1.2,
+ "altitude_lift": 0.03,
+ "ramp_lo_pct": 1.0,
+ "ramp_hi_pct": 99.5,
+ "ramp_equalised": 0.65,
+ "ambient": 0.4,
+ "sky": [
+  0.9,
+  0.98,
+  1.14
+ ],
+ "sun": [
+  1.05,
+  1.0,
+  0.93
+ ],
+ "exposure": 1.12,
+ "shoulder": 0.72,
+ "borrow_ink_damp": 0.25,
+ "shore": {
+  "stroke": 0.0,
+  "wet_band": {
+   "m": 3.0,
+   "tint": [
+    0.78,
+    0.8,
+    0.85
+   ]
+  },
+  "foam": {
+   "strength": 0.4,
+   "max_depth_m": 0.12,
+   "white": 0.85,
+   "width_m": 1.0
+  }
+ },
+ "water": {
+  "model": "beer-lambert, calibrated on Spire Coast screenshots",
+  "k_per_m": [
+   4.08,
+   3.53,
+   3.53
+  ],
+  "body": [
+   87,
+   127,
+   126
+  ],
+  "surface_r": 0.02,
+  "sky": [
+   150,
+   190,
+   230
+  ],
+  "deep": [
+   53,
+   78,
+   104
+  ],
+  "deep_tau_m": 12.0,
+  "bed_wet": 0.8
+ }
+}

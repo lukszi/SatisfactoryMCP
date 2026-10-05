@@ -102,7 +102,7 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 # The generator that WRITES the field, for the direct regime: its sweep, its mesh decode,
 # its cull rules and its rasteriser, called rather than reimplemented.
 from tools import gen_world_heightmap as gen
-from tools import map_fill
+from tools import map_fill, map_painted, map_shore
 from tools._common import base_parser, require_gen
 
 # The corners every layer is drawn on, the sheet the ARTWORK is drawn at, and how to read
@@ -116,7 +116,7 @@ RENDERS_DIR_NAME = "renders"
 RENDER_SIDECAR_NAME = "meta.json"
 
 #: The layers this file draws, in the order they are cut; ``--layer`` restricts it.
-LAYERS = ("terrain", "satellite")
+LAYERS = ("terrain", "satellite", "painted")
 
 #: How many processes deflate tiles when ``--workers`` is not given. One per core, capped
 #: because past a point the cores wait on the disk rather than on zlib, and each interpreter
@@ -182,6 +182,13 @@ RECIPES = {
         "band, and interior holes filled biharmonically. Rock texels unchanged; the open "
         "sea past the data stays the page's colour"
     ),
+    6: (
+        "recipe 5 with a crisp shore: near the sea, water coverage is the drawn surface "
+        "crossing the ocean level, antialiased to one pixel, under an exponential "
+        "shallow-water fade, where recipe 5 read the artwork's 3.66 m water mask; rivers and "
+        "lakes unchanged. Coral, shells, CliffPillar_03 and rubble rasterised for the map "
+        "only and composited raise-only where they stand near or above the water"
+    ),
 }
 RECIPE = RENDER_RECIPE_CURRENT
 
@@ -237,7 +244,11 @@ SHADE_RANGE = 0.55
 #: The palettes are files, one per style id, and a style's digest is the hash of its file's
 #: canonical JSON, so an edit without a version bump still reads as a different style.
 PALETTE_DIR = Path(__file__).resolve().parent / "palettes"
-LAYER_STYLES = {"terrain": "terrain-hypsometric", "satellite": "satellite-biome"}
+LAYER_STYLES = {
+    "terrain": "terrain-hypsometric",
+    "satellite": "satellite-biome",
+    "painted": "satellite-painted",
+}
 
 
 def load_palette(style: str) -> tuple[dict, str]:
@@ -249,6 +260,21 @@ def load_palette(style: str) -> tuple[dict, str]:
 
 TERRAIN_PALETTE, TERRAIN_DIGEST = load_palette(LAYER_STYLES["terrain"])
 SATELLITE_PALETTE, SATELLITE_DIGEST = load_palette(LAYER_STYLES["satellite"])
+PAINTED_PALETTE, PAINTED_DIGEST = load_palette(LAYER_STYLES["painted"])
+STYLE_DIGESTS = {
+    "terrain": TERRAIN_DIGEST,
+    "satellite": SATELLITE_DIGEST,
+    "painted": PAINTED_DIGEST,
+}
+
+#: The ocean shore's optics per style (recipe 6): opacity at the line, depth fade, wet ground.
+TERRAIN_SHORE = TERRAIN_PALETTE["shore"]
+SATELLITE_SHORE = SATELLITE_PALETTE["shore"]
+SHORE_OPTICS = {"terrain": TERRAIN_SHORE, "satellite": SATELLITE_SHORE,
+                "painted": PAINTED_PALETTE["shore"]}  # fmt: skip
+
+#: Where the painted style's paint layers live: an extracted input, tools/gen_paint_layers.py.
+PAINT_DIR = LOCAL_DIR / "paint"
 
 #: The height band the hypsometric ramp is stretched over, as percentiles of the land. Not
 #: min and max: a single 400 m spire would flatten the ramp over the whole rest of the world.
@@ -1221,7 +1247,9 @@ def sample_coverage(plane: np.ndarray, taps) -> np.ndarray:
 # --------------------------------------------------------------------------------------
 
 
-def read_cliff_geometry(store, scripts, index, classes, progress: bool = True) -> dict:
+def read_cliff_geometry(
+    store, scripts, index, classes, progress: bool = True, sweep: dict | None = None
+) -> dict:
     """The world's placements and the finest triangles every placed rock ships.
 
     Two calls into ``tools/gen_world_heightmap.py``: the same pass over the same 4,521
@@ -1232,9 +1260,8 @@ def read_cliff_geometry(store, scripts, index, classes, progress: bool = True) -
     placement loop. It is a test in the mesh's own local space against the mesh's own padded
     ``ExtendedBounds``, so it gives the same answer for all two hundred copies of a rock.
     """
-    sweep = gen.sweep_levels(
-        store, scripts, classes, gen.MeshBounds(store, scripts, index), progress
-    )
+    if sweep is None:
+        sweep = sweep_world(store, scripts, index, classes, progress)
     read = gen.read_mesh_geometry(store, scripts, index, sweep["meshes"], progress)
     geometry: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     clamped = 0
@@ -1257,6 +1284,18 @@ def read_cliff_geometry(store, scripts, index, classes, progress: bool = True) -
         "seconds_sweep": round(sweep["seconds"], 1),
         "seconds_decode": round(read["seconds"], 1),
     }
+
+
+def sweep_world(store, scripts, index, classes, progress: bool = True) -> dict:
+    """The field generator's sweep, also harvesting the render-only foliage."""
+    return gen.sweep_levels(
+        store,
+        scripts,
+        classes,
+        gen.MeshBounds(store, scripts, index),
+        progress,
+        extra_foliage=map_shore.is_render_only_foliage,
+    )
 
 
 def direct_placements(sweep: dict, geometry: dict) -> tuple[list, dict]:
@@ -1782,6 +1821,11 @@ def hillshade(z_m: np.ndarray, spacing_m: float) -> np.ndarray:
     columns run east, and the sun sits north-west. Getting that backwards inverts every
     valley on the map and still looks like terrain.
     """
+    return sun_dot(z_m, spacing_m) * SHADE_RANGE + SHADE_FLOOR
+
+
+def sun_dot(z_m: np.ndarray, spacing_m: float) -> np.ndarray:
+    """The surface normal against the north-west sun, clipped to [0, 1]."""
     azimuth = np.deg2rad(SUN_AZIMUTH_DEG)
     altitude = np.deg2rad(SUN_ALTITUDE_DEG)
     light = np.array(
@@ -1796,7 +1840,7 @@ def hillshade(z_m: np.ndarray, spacing_m: float) -> np.ndarray:
     lit = (-d_east * light[0] - d_south * light[1] + light[2]) / np.sqrt(
         d_east * d_east + d_south * d_south + 1.0
     )
-    return np.clip(lit, 0.0, 1.0) * SHADE_RANGE + SHADE_FLOOR
+    return np.clip(lit, 0.0, 1.0)
 
 
 def slope_degrees(z_m: np.ndarray, spacing_m: float) -> np.ndarray:
@@ -1903,36 +1947,43 @@ def water_over(rgb, depth, alpha, shade, shallow, deep):
     return rgb * (1 - weight) + colour * weight
 
 
-def terrain_colours(depth, wet, missing, shade, borrow, z_m, ramp_lo, ramp_hi, **_unused):
-    """The approved preview at full resolution: ramp, shade, borrowed detail, water, silence.
+def terrain_colours(scene: dict) -> np.ndarray:
+    """The approved preview at full resolution: ramp, shade, borrowed detail, then water.
 
-    The same arithmetic as the preview the owner picked, scaled up rather than re-tuned,
-    plus ``borrow``: the artwork's own light multiplied in over the provinces where the field
-    has none of its own.
+    ``borrow`` is the artwork's own light multiplied in over the provinces where the field
+    has none of its own. Pixels with no data are the caller's to paint.
     """
+    z_m, ramp_lo, ramp_hi = scene["z_m"], scene["ramp_lo"], scene["ramp_hi"]
     height = np.clip((z_m - ramp_lo) / max(ramp_hi - ramp_lo, 1e-6), 0.0, 1.0)
-    rgb = ramp(height, RAMP_STOPS) * (shade * borrow)[..., None]
-    rgb = water_over(rgb, depth, wet, shade, WATER_SHALLOW, WATER_DEEP)
-    return np.where(missing[..., None], SEA_RGB, rgb)
+    land = ramp(height, RAMP_STOPS) * (scene["shade"] * scene["borrow"])[..., None]
+    return map_shore.water_composite(
+        land, scene["water"], scene["shade"], TERRAIN_SHORE, WATER_SHALLOW, WATER_DEEP,
+        WATER_SHADE_FLOOR, WATER_SHADE_RANGE,
+    )  # fmt: skip
 
 
-def satellite_colours(depth, wet, missing, shade, borrow, z_m, slope, biome_rgb, noise, **_unused):
+def satellite_colours(scene: dict) -> np.ndarray:
     """Ground colour from the biome, then rock, then altitude, then light, then water.
 
     In that order: the biome says what grows there, the slope overrules it because nothing
     grows on a cliff face, the altitude bleaches what is left, the hillshade lights all of it
-    at once because a shadow falls on rock and canopy alike, and the water goes on top
-    because it is a different surface rather than a different ground.
-
-    ``borrow`` rides with the hillshade rather than with the colour: what is taken from the
-    artwork is light.
+    at once, and the water goes on top because it is a different surface. ``borrow`` rides
+    with the hillshade: what is taken from the artwork is light.
     """
+    slope, z_m = scene["slope"], scene["z_m"]
     rock = np.clip((slope - ROCK_LO_DEG) / (ROCK_HI_DEG - ROCK_LO_DEG), 0.0, 1.0)[..., None]
-    rgb = biome_rgb * (1 - rock) + ROCK_RGB * rock
+    rgb = scene["biome_rgb"] * (1 - rock) + ROCK_RGB * rock
     lift = np.clip((z_m - HIGH_LO_M) / (HIGH_HI_M - HIGH_LO_M), 0.0, 1.0)[..., None] * HIGH_LIFT
     rgb = rgb * (1 - lift) + HIGH_RGB * lift
-    rgb = rgb * noise[..., None] * (shade * borrow)[..., None]
-    rgb = water_over(rgb, depth, wet, shade, SATELLITE_WATER_SHALLOW, SATELLITE_WATER_DEEP)
+    land = rgb * scene["noise"][..., None] * (scene["shade"] * scene["borrow"])[..., None]
+    return map_shore.water_composite(
+        land, scene["water"], scene["shade"], SATELLITE_SHORE, SATELLITE_WATER_SHALLOW,
+        SATELLITE_WATER_DEEP, WATER_SHADE_FLOOR, WATER_SHADE_RANGE,
+    )  # fmt: skip
+
+
+def with_sea(rgb: np.ndarray, missing: np.ndarray) -> np.ndarray:
+    """No data in the page's own sea colour, whatever the style."""
     return np.where(missing[..., None], SEA_RGB, rgb)
 
 
@@ -2047,6 +2098,10 @@ def render_layer(
     measured_plane_u8=None,
     overlay=None,
     kernel=None,
+    meshes=None,
+    reach=None,
+    painted=None,
+    window=None,
 ) -> np.ndarray:
     """One whole layer, drawn a band of rows at a time. Returns ``(size, size, 3)`` uint8.
 
@@ -2062,10 +2117,16 @@ def render_layer(
     ``regimes`` are accumulators, passed for the first layer only, both layers drawing the
     identical surface. ``overlay`` is the arch-and-boulder pair of maps and its sub-sampling,
     composited last. ``kernel`` builds the smooth taps: ``taps_pchip`` unless told otherwise.
+    ``meshes`` is the render-only mesh raster (z, class); ``reach`` the 1 m plane where the
+    ocean's crossing rule applies, ``None`` for recipe 5's water everywhere; ``painted`` the
+    ``map_painted.PaintedGround`` the painted layer samples. ``window`` draws only rows
+    ``[r0, r1)`` and columns ``[c0, c1)`` of the sheet, with every raster passed in cut to it.
     """
     kernel = taps_pchip if kernel is None else kernel
-    painter = LAYER_PAINTERS[layer]
+    painter = LAYER_PAINTERS.get(layer)
     x_cm, y_cm = frame_coordinates(size)
+    r0, r1, c0, c1 = window or (0, size, 0, size)
+    x_cm = x_cm[c0:c1]
     spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
     blur_px = WATER_EDGE_BLUR_M / spacing_m
     detail, province = borrow
@@ -2074,8 +2135,8 @@ def render_layer(
     noise = noise_fields(NOISE_SEED) if layer == "satellite" else None
     wet_plane, measured_plane, _source = water_planes(field)
     water = field._water_raster()
-    out = np.empty((size, size, 3), np.uint8)
-    column_index = np.arange(size)
+    out = np.empty((r1 - r0, c1 - c0, 3), np.uint8)
+    column_index = np.arange(c0, c1)
 
     # The column taps are the same for every band, on both grids the bands sample: the
     # field's 1 m lattice and the artwork's 8192 sheet. Built once.
@@ -2091,12 +2152,17 @@ def render_layer(
     prov_cols = np.clip(
         np.round((x_cm - field.x0_cm) / field.spacing_cm).astype(np.int64), 0, field.width - 1
     )
+    if painted is not None:
+        rock_step = field.spacing_cm * map_painted.ROCK_GRID_M
+        rock_h, rock_w = painted.rock[0].shape
+        rock_cols = taps_linear(grid_position(x_cm, field.x0_cm, rock_step, rock_w), rock_w)
 
     started = time.time()
-    for top in range(0, size, BAND_ROWS):
-        bottom = min(top + BAND_ROWS, size)
-        lo = max(top - BAND_HALO, 0)
-        hi = min(bottom + BAND_HALO, size)
+    for top in range(r0, r1, BAND_ROWS):
+        bottom = min(top + BAND_ROWS, r1)
+        lo = max(top - BAND_HALO, r0)
+        hi = min(bottom + BAND_HALO, r1)
+        band = slice(lo - r0, hi - r0)
         field_y = grid_position(y_cm[lo:hi], field.y0_cm, field.spacing_cm, field.height)
         smooth = (kernel(field_y, field.height), cols_smooth)
         linear = (taps_linear(field_y, field.height), cols_linear)
@@ -2114,10 +2180,12 @@ def render_layer(
             z_m, missing, weight, switched = blend_regimes(
                 base_m,
                 missing,
-                (np.asarray(direct_z[lo:hi], np.float32), np.asarray(direct_coverage[lo:hi])),
+                (np.asarray(direct_z[band], np.float32), np.asarray(direct_coverage[band])),
                 linear,
                 subsamples,
             )
+            rock_lift = np.clip((z_m - base_m) / np.float32(map_shore.MESH_FULL_LIFT_M), 0.0, 1.0)
+            rock_seen = np.where(ground_missing, weight, np.minimum(weight, rock_lift))
             if seam is not None:
                 keep = slice(top - lo, bottom - lo)
                 seam.add(
@@ -2125,7 +2193,7 @@ def render_layer(
                     switched[keep],
                     weight[keep],
                     spacing_m,
-                    (np.asarray(direct_z[lo:hi], np.float32) / 100.0 - base_m)[keep],
+                    (np.asarray(direct_z[band], np.float32) / 100.0 - base_m)[keep],
                 )
             if regimes is not None:
                 prov_rows = np.clip(
@@ -2139,23 +2207,37 @@ def render_layer(
                     weight[top - lo : bottom - lo],
                     measured_plane_u8[picked] > 0,
                 )
+        top_weight = None
         if overlay is not None:
             top_z, top_coverage, top_subsamples = overlay
+            below = z_m
             z_m = composite_top(
                 z_m,
-                np.asarray(top_z[lo:hi], np.float32),
-                np.asarray(top_coverage[lo:hi]),
+                np.asarray(top_z[band], np.float32),
+                np.asarray(top_coverage[band]),
                 top_subsamples,
             )
+            top_weight = np.clip((z_m - below) / np.float32(map_shore.MESH_FULL_LIFT_M), 0.0, 1.0)
         if wet_plane is None:
             wet = measured = np.zeros(z_m.shape, np.float32)
             water_m = z_m
+            level_m = np.full(z_m.shape, np.nan, np.float32)
         else:
-            water_dm, _dry = sample_surface(water, smooth, linear, hf.NODATA)
+            water_dm, water_missing = sample_surface(water, smooth, linear, hf.NODATA)
             water_m = water_dm / np.float32(hf.DM_PER_M)
+            level_m = np.where(water_missing, np.nan, water_m)
             wet = sample_coverage(wet_plane, linear)
             measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
             measured = np.clip(measured, 0.0, 1.0)
+        mesh_weight = mesh_class = None
+        if meshes is not None:
+            z_m, mesh_weight, mesh_class = map_shore.composite_meshes(
+                z_m,
+                np.asarray(meshes[0][band], np.float32),
+                np.asarray(meshes[1][band]),
+                level_m,
+                composite_top,
+            )
 
         art_rows = taps_linear(
             grid_position(y_cm[lo:hi], art_y0_cm, art_step_cm, SHEET_PX), SHEET_PX
@@ -2163,29 +2245,61 @@ def render_layer(
         strength = sample_plain(province, linear) / 255.0
         lift = 1.0 + BORROW_GAIN * strength * (sample_plain(detail, (art_rows, art_cols)) / 127.0)
 
-        shade = hillshade(z_m, spacing_m)
-        extra: dict = {}
-        if layer == "satellite":
-            extra["slope"] = slope_degrees(z_m, spacing_m)
-            biome_rows = biome_index(
-                y_cm[lo:hi], BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], biome["width"]
+        old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
+        old_depth = water_depth_fraction(z_m, water_m, measured)
+        if reach is None:
+            water_terms = map_shore.blend_water(
+                None, old_cover, old_depth, None, WATER_DEPTH_FULL_M
             )
-            extra["biome_rgb"] = biome_rgb[np.ix_(biome_rows, biome_cols)].astype(np.float32)
-            extra["noise"] = sample_noise(noise, np.arange(lo, hi), column_index, size)
-        rgb = painter(
-            z_m=z_m,
-            depth=water_depth_fraction(z_m, water_m, measured),
-            wet=water_alpha(z_m, water_m, wet, measured, blur_px),
-            missing=missing,
-            shade=shade,
-            borrow=np.clip(lift, *BORROW_CLAMP),
-            ramp_lo=ramp_lo,
-            ramp_hi=ramp_hi,
-            **extra,
-        )
-        out[top:bottom] = np.clip(rgb[top - lo : bottom - lo], 0, 255).astype(np.uint8)
+        else:
+            water_terms = map_shore.blend_water(
+                sample_coverage(reach, linear),
+                old_cover,
+                old_depth,
+                map_shore.shore_terms(z_m, spacing_m),
+                WATER_DEPTH_FULL_M,
+            )
+        scene: dict = {
+            "z_m": z_m,
+            "borrow": np.clip(lift, *BORROW_CLAMP),
+            "ramp_lo": ramp_lo,
+            "ramp_hi": ramp_hi,
+            "water": water_terms,
+        }
+        if layer == "painted":
+            rock_rows = taps_linear(
+                grid_position(y_cm[lo:hi], field.y0_cm, rock_step, rock_h), rock_h
+            )
+            rock_weight = np.zeros(z_m.shape, np.float32) if weight is None else rock_seen
+            if top_weight is not None:
+                rock_weight = np.maximum(rock_weight, top_weight)
+            scene.update(
+                ndl=sun_dot(z_m, spacing_m),
+                ndl_flat=np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG))),
+                rock_weight=rock_weight,
+                mesh_weight=mesh_weight,
+                mesh_class=mesh_class,
+            )
+            rgb = map_painted.painted_colours(
+                scene,
+                painted,
+                lambda plane, taps=linear: sample_plain(plane, taps),
+                lambda plane, taps=(rock_rows, rock_cols): sample_plain(plane, taps),
+            )
+        else:
+            scene["shade"] = hillshade(z_m, spacing_m)
+            if layer == "satellite":
+                scene["slope"] = slope_degrees(z_m, spacing_m)
+                biome_rows = biome_index(
+                    y_cm[lo:hi], BOUNDS_M["y_min_m"], BOUNDS_M["y_max_m"], biome["width"]
+                )
+                scene["biome_rgb"] = biome_rgb[np.ix_(biome_rows, biome_cols)].astype(np.float32)
+                scene["noise"] = sample_noise(noise, np.arange(lo, hi), column_index, size)
+            rgb = painter(scene)
+        rgb = with_sea(rgb, missing)
+        out[top - r0 : bottom - r0] = np.clip(rgb[top - lo : bottom - lo], 0, 255).astype(np.uint8)
         if progress and (top // BAND_ROWS) % 16 == 0:
-            done = bottom / size
+            done = (bottom - r0) / (r1 - r0)
             print(
                 f"  {layer}: {done:5.1%} of {size}x{size} in {time.time() - started:5.1f}s",
                 flush=True,
@@ -2445,6 +2559,17 @@ def main() -> int:
         help="leave out the arches and foliage boulders the field keeps in top.i16.z",
     )
     parser.add_argument(
+        "--no-meshes",
+        action="store_true",
+        help="leave out the render-only coral, shell and pillar meshes",
+    )
+    parser.add_argument(
+        "--paint-dir",
+        type=Path,
+        default=PAINT_DIR,
+        help="the paint layers tools/gen_paint_layers.py wrote, for the painted layer",
+    )
+    parser.add_argument(
         "--renders-name",
         default=RENDERS_DIR_NAME,
         help=(
@@ -2645,7 +2770,8 @@ def main() -> int:
 
     # ---- the biome raster ------------------------------------------------------------
     biome = None
-    if "satellite" in layers:
+    drawn: list[str] = []
+    if "satellite" in layers or "painted" in layers:
         biome = read_biome(store, scripts)
         print(
             f"  {biome['width']}x{biome['width']} palette indices, "
@@ -2727,6 +2853,45 @@ def main() -> int:
     else:
         biome_rgb, biome_source = None, {}
 
+    painted = None
+    paint_source: dict = {}
+    if "painted" in layers:
+        paint_meta = map_painted.load_paint_meta(args.paint_dir)
+        if paint_meta is None:
+            print(
+                f"no paint layers at {args.paint_dir}, which the painted layer is coloured "
+                "from. Extract them once from the installed game:\n"
+                "    uv run --extra gen python tools/gen_paint_layers.py"
+            )
+            return 8
+        started = time.time()
+        painted = map_painted.PaintedGround(
+            args.paint_dir, PAINTED_PALETTE, field, biome, list(drawn)
+        )
+        inputs["paint"] = {
+            "cl": paint_meta.get("cl"),
+            "generator_version": paint_meta.get("generator_version"),
+            "digest": paint_meta.get("digest"),
+        }
+        paint_source = {
+            "paint": {
+                "name": f"data/local/{args.paint_dir.name}/",
+                "generator": paint_meta.get("generator"),
+                "generator_version": paint_meta.get("generator_version"),
+                "digest": paint_meta.get("digest"),
+                "seam_texels_blended": painted.seam_texels,
+                "seconds_to_prepare": round(time.time() - started, 1),
+            }
+        }
+        print(f"  paint layers prepared in {time.time() - started:.0f}s")
+
+    reach, reach_meta = (None, {}) if args.kernel_only else map_shore.ocean_reach(field)
+    if reach is not None:
+        print(
+            f"  ocean shore at {map_shore.OCEAN_LEVEL_M} m: {reach_meta['ocean_texels']} ocean "
+            f"texels, {reach_meta['reach_texels']} within {map_shore.OCEAN_REACH_M:g} m"
+        )
+
     # ---- the cliff geometry and the top overlay, rasterised into this render's own grid
     direct = None
     top = None
@@ -2734,12 +2899,21 @@ def main() -> int:
     top_source: dict = {}
     loaded: dict = {}
 
-    def geometry_once() -> dict:
-        if not loaded:
+    def sweep_once() -> dict:
+        if "sweep" not in loaded:
             index = AssetIndex(store)
             loaded["index"] = index
-            loaded["geometry"] = read_cliff_geometry(
+            loaded["sweep"] = sweep_world(
                 store, scripts, index, ClassFacts(store, index), not args.quiet
+            )
+        return loaded["sweep"]
+
+    def geometry_once() -> dict:
+        if "geometry" not in loaded:
+            sweep = sweep_once()
+            index = loaded["index"]
+            loaded["geometry"] = read_cliff_geometry(
+                store, scripts, index, ClassFacts(store, index), not args.quiet, sweep
             )
             got = loaded["geometry"]
             print(
@@ -2869,6 +3043,40 @@ def main() -> int:
                 print(f"the top raster in {top_cache} could not be read back after writing it")
                 return 7
             top = (top_maps[0], top_maps[1], args.direct_subsamples)
+
+    meshes = None
+    mesh_source: dict = {}
+    if weight_plane is not None and not args.no_meshes:
+        cache_root = args.cache_dir or out_dir / args.renders_name
+        mesh_cache = cache_root / map_shore.MESH_CACHE_DIR_NAME
+        mesh_stamp = map_shore.mesh_stamp(args.size, field_build, READER_VERSIONS["render_meshes"])
+        meshes = map_shore.cached_meshes(mesh_cache, mesh_stamp)
+        if meshes is None:
+            print(f"rasterising the render-only meshes at {spacing_m:.4f} m")
+            sweep = sweep_once()
+            prepared, mesh_meta = map_shore.mesh_items(store, scripts, loaded["index"], sweep)
+            print(f"  {mesh_meta['meshes']} meshes, {mesh_meta['instances']}")
+            mesh_stats = map_shore.rasterise_meshes(
+                prepared, mesh_cache, mesh_stamp, BOUNDS_M, DIRECT_BAND_ROWS, not args.quiet
+            )
+            print(f"  mesh raster: {mesh_stats['texels'] / 1e6:.2f} M texels in "
+                  f"{mesh_stats['seconds']}s")  # fmt: skip
+            mesh_source = {"render_meshes": {**mesh_meta, "raster": mesh_stats}}
+            del prepared
+            meshes = map_shore.cached_meshes(mesh_cache, mesh_stamp)
+        else:
+            print(f"reusing the render-only mesh raster already in {mesh_cache}")
+            mesh_source = {
+                "render_meshes": {
+                    "reused": json.loads(
+                        (mesh_cache / map_shore.MESH_CACHE_SIDECAR).read_text(encoding="utf-8")
+                    )
+                }
+            }
+        inputs["render_meshes"] = {
+            "cl": changelist(field_build),
+            "reader_version": READER_VERSIONS["render_meshes"],
+        }
     loaded.clear()
 
     # ---- draw and cut ----------------------------------------------------------------
@@ -2915,6 +3123,9 @@ def main() -> int:
             measured_plane_u8=weight_plane,
             overlay=top,
             kernel=taps_cubic if args.kernel_only else taps_pchip,
+            meshes=meshes,
+            reach=reach,
+            painted=painted if layer == "painted" else None,
             # Both layers draw the identical surface, so the seam and the regime table are
             # measured on the first one and quoted for both.
             seam=seam if not measured else None,
@@ -3027,6 +3238,19 @@ def main() -> int:
                 "edge_feather_m": WATER_EDGE_M,
                 "edge_blur_m": WATER_EDGE_BLUR_M,
                 "edge_blur_px": round(WATER_EDGE_BLUR_M / spacing_m, 3),
+                "shore": (
+                    {
+                        **reach_meta,
+                        "rule": (
+                            "within reach_m of measured ocean water, coverage is the drawn "
+                            "surface crossing level_m, antialiased to one pixel; elsewhere "
+                            "recipe 5's rule"
+                        ),
+                        "optics": SHORE_OPTICS[layer],
+                    }
+                    if reach is not None
+                    else None
+                ),
                 "level_only": (
                     "full alpha and the deep end of the ramp. 95.2% of level-only water "
                     "stands over the fill province and 98% of its surface levels lie in a "
@@ -3055,7 +3279,8 @@ def main() -> int:
                 {
                     key: value
                     for key, value in inputs.items()
-                    if key != "biome_raster" or layer == "satellite"
+                    if (key != "biome_raster" or layer in ("satellite", "painted"))
+                    and (key != "paint" or layer == "painted")
                 },
                 {
                     "family": "render",
@@ -3071,14 +3296,16 @@ def main() -> int:
                     "id": style_id,
                     "version": STYLES[style_id]["version"],
                     "label": STYLES[style_id]["label"],
-                    "digest": TERRAIN_DIGEST if layer == "terrain" else SATELLITE_DIGEST,
+                    "digest": STYLE_DIGESTS[layer],
                 },
             ),
             extra={
                 **borrow_source,
                 **direct_source,
                 **top_source,
-                **(biome_source if layer == "satellite" else {}),
+                **mesh_source,
+                **(biome_source if layer in ("satellite", "painted") else {}),
+                **(paint_source if layer == "painted" else {}),
             },
         )
         path = layer_dir(out_dir, layer, args.renders_name) / RENDER_SIDECAR_NAME
@@ -3092,9 +3319,9 @@ def main() -> int:
     if direct is not None:
         # Let the memory maps go before removing the files under them: on Windows an open
         # mapping refuses the unlink outright.
-        direct = maps = top = top_maps = None
+        direct = maps = top = top_maps = meshes = None
         if not args.keep_direct:
-            for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME):
+            for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, map_shore.MESH_CACHE_DIR_NAME):
                 root = args.cache_dir or out_dir / args.renders_name
                 shutil.rmtree(root / kept, ignore_errors=True)
     print(f"done in {time.time() - total_started:.0f}s")

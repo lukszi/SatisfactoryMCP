@@ -11,7 +11,14 @@ from satisfactory_mcp.core.gameassets import versions
 from satisfactory_mcp.domain.maps import axes as ax
 
 
-def _axes(recipe=5, hf=5, cl=502094, digest="sha256:hf", style_version=1, inputs=None):
+def _axes(
+    recipe=versions.RENDER_RECIPE_CURRENT,
+    hf=5,
+    cl=502094,
+    digest="sha256:hf",
+    style_version=versions.STYLES["terrain-hypsometric"]["version"],
+    inputs=None,
+):
     return {
         "schema": 1,
         "game": {"cl": cl},
@@ -81,9 +88,9 @@ def test_a_newer_renderer_is_an_offer_and_never_stale():
     assert got["stale"] == []
     assert got["rerender"] == {
         "recipe": versions.RENDER_RECIPE_CURRENT,
-        "label": "PCHIP r5",
+        "label": "crisp shore r6",
         "needs": [],
-        "text": "newer renderer: PCHIP r5",
+        "text": "newer renderer: crisp shore r6",
     }
 
 
@@ -97,9 +104,9 @@ def test_a_newer_palette_is_an_offer(monkeypatch):
     monkeypatch.setitem(
         versions.STYLES,
         "terrain-hypsometric",
-        {**versions.STYLES["terrain-hypsometric"], "version": 2},
+        {**versions.STYLES["terrain-hypsometric"], "version": 3},
     )
-    got = ax.verdict(_axes(style_version=1), _now())
+    got = ax.verdict(_axes(style_version=2), _now())
     assert got["restyle"] is True and got["stale"] == []
 
 
@@ -131,7 +138,7 @@ def test_a_legacy_render_sidecar_is_read_into_axes_and_flagged_inferred():
     assert ax.display_name(got) == "satellite · two-regime r3 · data 502094/hf v3"
     verdict = ax.verdict(got, _now())
     assert [s["axis"] for s in verdict["stale"]] == ["heightfield"]
-    assert verdict["rerender"]["label"] == "PCHIP r5"
+    assert verdict["rerender"]["label"] == "crisp shore r6"
     assert verdict["incomplete"] is True
 
 

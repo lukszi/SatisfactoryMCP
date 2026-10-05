@@ -18,7 +18,7 @@ are relative to `src/satisfactory_mcp/interfaces/web/frontend/src/`; backend pat
 |---|---|
 | A registry of map types in `data/local/maps/manifest.json`, adopting existing folders in place | Moving or renaming any adopted folder |
 | Provenance in every generator's sidecar, as three axes: data, renderer, style | A palette editor (the colour workflow writes `tools/palettes/<id>.json` by hand) |
-| Stale and re-render verdicts computed on read | Extracting the paint layers (only their input slot exists, §3.4) |
+| Stale and re-render verdicts computed on read | |
 | A generation runner in the web process: one job, a queue of four, re-adopted after a restart | Generating from chat |
 | Settings → maps: status, job card, generate form, type list, inputs | The `@@progress` line protocol (the log is parsed, §5.3) |
 | A shared default base map, and a switcher built from the registry | |
@@ -171,9 +171,10 @@ version 1, digests null.
 
 ### 3.4 Paint layers
 
-The input slot exists: a `paint` input reads `data/local/paint/meta.json` (`generator_version`,
-`cl` or a game pin, `digest`) exactly as the heightfield does, and a map that lists `paint` goes
-stale on the same rules. Nothing extracts the layers yet; the colour workflow will.
+A `paint` input reads `data/local/paint/meta.json` (`generator_version`, `cl` or a game pin,
+`digest`) exactly as the heightfield does, and a map that lists `paint` goes stale on the same
+rules. `tools/gen_paint_layers.py` writes it (the `paint` preset); only the game-painted layer
+lists it. spatial-and-map.md section 27 describes the planes.
 
 ### 3.5 Names and order
 
@@ -193,11 +194,12 @@ from a whitelist and every path is chosen by the server.
 
 | Preset | Command | Options |
 |---|---|---|
-| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] [--cache-dir data/local/maps/_cache/<S> --keep-direct]` | `layers` ⊆ terrain, satellite; `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `keep_cache` |
+| `render` | `gen_map_renders.py --game G --field data/local/heightmap --out-dir data/local/maps --renders-name <job> --size S [--layer L]… [--kernel-only] [--no-top] [--cache-dir data/local/maps/_cache/<S> --keep-direct]` | `layers` ⊆ terrain, satellite, painted (default the first two); `size` ∈ 1024…32768; `recipe` current or kernel-only; `top`; `keep_cache` |
 | `artwork` | `gen_map_image.py --game G --out-dir data/local/maps/<id> [--enhance] [--no-tiles-2x]` | `enhance`, `tiles_2x` |
 | `heightmap` | `gen_world_heightmap.py --game G --force --out-dir data/local/heightmap` | — |
 | `caves` | `… --caves --field … --caves-dir data/local/caves --force` | — |
 | `rocks` | `… --rocks --field … --force` | — |
+| `paint` | `gen_paint_layers.py --game G --out-dir data/local/paint` | — |
 
 - `--force` goes only to the input presets; a map job always writes a new folder.
 - `gen_map_renders.py --size` gained 2048 and 1024, the preview sizes: a 1024 terrain render

@@ -49,5 +49,11 @@
   40,
   110,
   170
- ]
+ ],
+ "shore": {
+  "clarity_m": 0.6,
+  "edge_alpha": 0.3,
+  "wet_darken": 0.82,
+  "stroke": 0.0
+ }
 }

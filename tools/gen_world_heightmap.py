@@ -462,12 +462,14 @@ def foliage_instances(
     return mesh, world
 
 
-def sweep_levels(store, scripts, classes, meshes, progress: bool = True) -> dict:
+def sweep_levels(
+    store, scripts, classes, meshes, progress: bool = True, extra_foliage=None
+) -> dict:
     """One pass over every ``*.umap`` of the world: landscape, placements, water actors.
 
     All three harvests need the same ``PackageView`` of the same 4,521 packages, and
     building that view is the whole cost of the pass, so they share it. Returns raw material
-    and nothing interpreted.
+    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in ``extra_foliage``.
     """
     components: list[tuple[int, int, np.ndarray]] = []
     proxies: list[tuple[float, float, float, float, float, float]] = []
@@ -481,6 +483,7 @@ def sweep_levels(store, scripts, classes, meshes, progress: bool = True) -> dict
     mesh_ids: dict[str, int] = {}
     owner_ids: dict[str, int] = {}
     foliage: dict[str, list[np.ndarray]] = {}
+    extra: dict[str, list[np.ndarray]] = {}
     unreadable = 0
     malformed = 0
     started = time.time()
@@ -555,9 +558,15 @@ def sweep_levels(store, scripts, classes, meshes, progress: bool = True) -> dict
                 owner_id = owner_ids.setdefault(root_owner[slot], len(owner_ids))
                 placements.append((mesh_id, owner_id, x, y, z, pitch, yaw, roll, sx, sy, sz))
             elif name in FOLIAGE_CLASSES:
-                found = foliage_instances(view, slot, classes)
+                found = foliage_instances(
+                    view,
+                    slot,
+                    classes,
+                    wanted=lambda m: is_top_foliage(m) or bool(extra_foliage and extra_foliage(m)),
+                )
                 if found is not None:
-                    foliage.setdefault(found[0], []).append(found[1])
+                    harvest = foliage if is_top_foliage(found[0]) else extra
+                    harvest.setdefault(found[0], []).append(found[1])
             elif is_water_class(name):
                 water_actors[name] = water_actors.get(name, 0) + 1
                 box, sources = water_actor_box(view, slot, classes, meshes)
@@ -591,6 +600,7 @@ def sweep_levels(store, scripts, classes, meshes, progress: bool = True) -> dict
         "water_boxless": water_boxless,
         "water_box_sources": box_sources,
         "foliage": {mesh: np.concatenate(parts) for mesh, parts in foliage.items()},
+        "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in extra.items()},
         "seconds": time.time() - started,
     }
 

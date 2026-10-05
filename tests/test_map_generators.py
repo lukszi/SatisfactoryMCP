@@ -57,10 +57,9 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
     """
     assert gen_map_renders.RENDERS_DIR_NAME == web_tiles.MAP_RENDERS_DIR_NAME
     assert gen_map_renders.RENDER_SIDECAR_NAME == web_tiles.MAP_RENDER_SIDECAR_NAME
-    assert (
-        set(gen_map_renders.LAYERS)
-        == set(presets.RENDER_LAYERS)
-        == {layer for layer in registry.LEGACY if layer != web_tiles.MAP_LAYER_DEFAULT}
+    assert set(gen_map_renders.LAYERS) == set(presets.RENDER_LAYERS)
+    assert {layer for layer in registry.LEGACY if layer != web_tiles.MAP_LAYER_DEFAULT} <= set(
+        gen_map_renders.LAYERS
     )
     assert gen_map_renders.BOUNDS_M == web_tiles.DEFAULT_MAP_BOUNDS_M
     # The tile grid is the cutter's, not this generator's: it hands its sheet to
@@ -595,16 +594,11 @@ def test_the_open_sea_past_the_data_stays_the_page_s_colour():
     assert missing[:, 112:].all() and not missing[:, :112].any()
     z_m = numpy.where(missing, 0.0, z_dm / hf.DM_PER_M).astype(numpy.float32)
     ones = numpy.ones(z_m.shape, numpy.float32)
-    rgb = gen_map_renders.terrain_colours(
-        depth=numpy.zeros_like(z_m),
-        wet=numpy.zeros_like(z_m),
-        missing=missing,
-        shade=ones,
-        borrow=ones,
-        z_m=z_m,
-        ramp_lo=0.0,
-        ramp_hi=100.0,
-    )
+    zeros = numpy.zeros_like(z_m)
+    water = {"cover": zeros, "depth": zeros, "depth_m": zeros, "ocean": zeros, "edge": zeros}
+    scene = {"z_m": z_m, "shade": ones, "borrow": ones, "ramp_lo": 0.0, "ramp_hi": 100.0,
+             "water": water}  # fmt: skip
+    rgb = gen_map_renders.with_sea(gen_map_renders.terrain_colours(scene), missing)
     assert (rgb[missing] == gen_map_renders.SEA_RGB).all()
 
 
