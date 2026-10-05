@@ -17,7 +17,7 @@ are relative to `src/satisfactory_mcp/interfaces/web/frontend/src/`; backend pat
 | In | Out |
 |---|---|
 | A registry of map types in `data/local/maps/manifest.json`, adopting existing folders in place | Moving or renaming any adopted folder |
-| Provenance in every generator's sidecar, as three axes: data, renderer, style | A palette editor (the colour workflow writes `tools/palettes/<id>.json` by hand) |
+| Provenance in every generator's sidecar, as three axes: data, renderer, style | A palette editor (the colour workflow writes `palette/palettes/<id>.json` in `tools/mapgen` by hand) |
 | Stale and re-render verdicts computed on read | |
 | A generation runner in the web process: one job, a queue of four, re-adopted after a restart | Generating from chat |
 | Settings → maps: status, job card, generate form, type list, inputs | The `@@progress` line protocol (the log is parsed, §5.3) |
@@ -140,15 +140,15 @@ and the tools' own staleness guards read what they always read.
 ### 3.1 Where "current" lives
 
 `core/gameassets/versions.py` holds what the server compares against without importing
-`tools/`, which a wheel does not ship: `RENDER_RECIPES` (label, sampler, `requires`, version),
+`tools/` or the `mapgen` package, which a wheel does not ship: `RENDER_RECIPES` (label, sampler, `requires`, version),
 `ARTWORK_RECIPES`, `STYLES`, `READER_VERSIONS`, `HEIGHTFIELD_GENERATOR_VERSION` and
 `CAVES_VERSION`. The generators import these, so the two sides cannot disagree;
 `tests/test_map_provenance.py` holds them to it.
 
 ### 3.2 Palettes are files
 
-`tools/palettes/<style id>.json` holds every colour a painter draws with
-(`terrain-hypsometric`, `satellite-biome`). The style digest is the sha256 of the file's
+`tools/mapgen/src/mapgen/palette/palettes/<style id>.json` holds every colour a painter draws
+with (`terrain-hypsometric`, `satellite-biome`, `satellite-painted`). The style digest is the sha256 of the file's
 canonical JSON, so an edit without a version bump still reads as a different style, and line
 endings cannot change it. The version a style carries is `STYLES[id].version`.
 
@@ -173,7 +173,8 @@ version 1, digests null.
 
 A `paint` input reads `data/local/paint/meta.json` (`generator_version`, `cl` or a game pin,
 `digest`) exactly as the heightfield does, and a map that lists `paint` goes stale on the same
-rules. `tools/gen_paint_layers.py` writes it (the `paint` preset); only the game-painted layer
+rules. `python -m mapgen paint` writes it (the `paint` preset, through
+`tools/gen_paint_layers.py`); only the game-painted layer
 lists it. spatial-and-map.md section 27 describes the planes.
 
 ### 3.5 Names and order
@@ -200,6 +201,13 @@ from a whitelist and every path is chosen by the server.
 | `caves` | `… --caves --field … --caves-dir data/local/caves --force` | — |
 | `rocks` | `… --rocks --field … --force` | — |
 | `paint` | `gen_paint_layers.py --game G --out-dir data/local/paint` | — |
+
+Each script is a thin shim in `tools/` that hands its arguments to one `python -m mapgen`
+command (`renders`, `artwork`, `heightmap`, `caves`, `rocks`, `paint`); the code lives in
+`tools/mapgen/`, whose README lists the commands. The runner starts the command
+(`presets.COMMANDS`); the script paths stay because `RENDERS_GENERATOR` and
+`ARTWORK_GENERATOR` in `domain/maps/axes.py` match the `_meta.generator` every sidecar
+records, and a job record still names its `script`.
 
 - `--force` goes only to the input presets; a map job always writes a new folder.
 - `gen_map_renders.py --size` gained 2048 and 1024, the preview sizes: a 1024 terrain render
@@ -240,11 +248,12 @@ lifespan. One asyncio task owns at most one generator.
 
 ### 5.1 Launch
 
-`sys.executable -u tools/<script> <argv>` with cwd the repository root, the source tree on
-`PYTHONPATH`, stdin closed, stdout and stderr into `data/local/maps/jobs/<job>.log`, and
+`sys.executable -u -m mapgen <command> <argv>` with cwd the repository root, the source tree
+and `tools/mapgen/src` on `PYTHONPATH`, stdin closed, stdout and stderr into
+`data/local/maps/jobs/<job>.log`, and
 `CREATE_NEW_PROCESS_GROUP | BELOW_NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW` on Windows. The
 job record `maps/jobs/<job>.json` is rewritten atomically on every change:
-`{id, preset, options, label, script, argv, produces, replaces, status, created, started,
+`{id, preset, options, label, script, command, argv, produces, replaces, status, created, started,
 ended, pid, pid_created, exit_code, stage, stage_words, pct, eta_s, peak_rss, error_line,
 last_line, estimate_s}`. `status` is `queued`, `running`, `done`, `failed`, `cancelled` or
 `interrupted`.
@@ -260,7 +269,10 @@ process pool and killing only the parent orphans its workers.
 
 ### 5.3 Progress
 
-Read from the log lines the generators already print, by `domain/maps/jobs.py` `Progress`:
+Read by `domain/maps/jobs.py` `Progress`. A `::stage {"id": "<step>[:<layer>]", "done": f}`
+line (`core/mapprogress.py`) is read first: the renders print one per draw progress line, at
+the start of each layer's draw and after each layer's cut, which covers `painted` too. Every
+other line falls back to the regexes over the human log lines:
 `N/4521 packages` and `… rock meshes,` (sweep), `direct.cache: P%`, `top.cache: P%`,
 `drawing <layer> at`, `<layer>: P% of`, `pyramid zN:` (counted against the tree's depth),
 `wrote …/<layer>` and `done in`. Stage weights come from §4.3, so the percentage is of the
@@ -391,8 +403,8 @@ On this machine, 2026-10-05, the worktree's server on scratch user data and the 
 
 ## 10. Open
 
-- The `@@progress` line protocol (design §2.2 phase 3) is not built; the regexes are pinned by
-  a test instead.
+- The `::stage` protocol covers the draw and cut stages; the sweep, direct and top stages
+  still come from the regexes, which stay as the fallback.
 - "Restyle" queues a full render, because `--cache-dir` reuse needs a kept cache; a palette-only
   path that skips the rasters entirely is the colour workflow's to add.
 - The artwork's re-render offer is never made for a plain (recipe 0) artwork: the upscale needs
