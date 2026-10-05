@@ -58,6 +58,12 @@ SPECS: dict[str, Spec] = {
     "overclock_last": Spec(
         "switch", False, "build a row one machine short and overclock its last machine"
     ),
+    "site_snap": Spec(
+        "choice",
+        "fine",
+        "how a moved plan pad snaps: fine is 1 m and 15° steps, grid8 the 8 m world grid",
+        options=("fine", "grid8"),
+    ),
     "advice_box_fed": Spec(
         "switch", False, "advise when a machine fed only from a storage box has emptied it"
     ),

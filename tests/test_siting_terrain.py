@@ -35,7 +35,8 @@ def test_a_bare_coordinate_gets_the_terrain_median_under_its_pad(field):
     assert (t["z_min_m"], t["z_max_m"]) == (2.0, 50.0)
     assert t["ambiguous_pct"] == pytest.approx(11.1, abs=0.1)
     assert t["ambiguous"], "a ninth of the pad is a rock top"
-    assert sit.to_dict()["z_source"] == "terrain"
+    stored = sit.to_dict()
+    assert stored["origin_m"][2] == 3.0 and "z_source" not in stored, "the record stays canonical"
     assert "terrain z 3m" in sit.terrain_line()
     assert sit.describe().startswith("origin 3,2,3m (terrain z, ground) (from 3,2)")
 
@@ -71,20 +72,28 @@ def test_no_field_and_no_data_are_none_with_a_reason(field):
     assert off.terrain["reason"] == "outside the map"
 
 
-def test_a_dragged_pad_gets_its_z_and_a_stated_one_is_kept(field):
-    dragged = {"origin_m": [3.0, 2.0, None], "footprint_m": [2.0, 2.0], "footprint_source": "given"}
-    out = siting.with_terrain_z(_state(), dragged, field)
-    assert out["origin_m"][2] == pytest.approx(3.0)
-    assert out["z_source"] == "terrain"
-    moved = {**out, "origin_m": [1.0, 2.0, out["origin_m"][2]]}
-    again = siting.with_terrain_z(_state(), moved, field)
-    assert again["origin_m"][2] == pytest.approx(1.0), "a terrain z follows the pad"
-    typed = {**dragged, "origin_m": [3.0, 2.0, 12.5], "z_source": "given"}
-    assert siting.with_terrain_z(_state(), typed, field)["origin_m"][2] == 12.5
+def test_the_installed_provider_fills_a_dragged_pad_and_keeps_a_stated_z(field):
+    dragged = {"origin_m": [3.0, 2.0, None], "footprint_m": [8.0, 8.0], "footprint_source": "given"}
+    try:
+        siting.set_ground_z(siting.terrain_provider(lambda: field))
+        assert siting.check(dragged)["origin_m"][2] == 3.0
+        typed = {**dragged, "origin_m": [3.0, 2.0, 12.5]}
+        assert siting.check(typed)["origin_m"][2] == 12.5
+        siting.set_ground_z(siting.terrain_provider(lambda: None))
+        assert siting.check(dragged)["origin_m"][2] is None
+    finally:
+        siting.set_ground_z(None)
 
 
-def test_an_old_record_without_z_source_still_parses():
-    plan = SimpleNamespace(siting={"origin_m": [1.0, 2.0, 3.0], "footprint_m": [4.0, 4.0]})
+def test_a_stored_record_carries_no_reading_and_says_nothing_about_one():
+    plan = SimpleNamespace(siting={"origin_m": [1.0, 2.0, 3.0], "footprint_m": [8.0, 8.0]})
     sit = siting.parse(plan)
     assert (sit.z_m, sit.z_source, sit.terrain) == (3.0, "", None)
     assert sit.terrain_line() is None
+
+
+def test_a_kept_stored_z_reads_the_terrain_beside_it(field):
+    plan = SimpleNamespace(siting={"origin_m": [3.0, 2.0, 7.0], "footprint_m": [2.0, 2.0]})
+    sit = siting.settle_z(_state(), siting.parse(plan), 7.0, "stored", field)
+    assert (sit.z_m, sit.z_source) == (7.0, "stored")
+    assert "z kept from stored" in sit.terrain_line()

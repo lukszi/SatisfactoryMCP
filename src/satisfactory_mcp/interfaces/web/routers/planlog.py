@@ -24,7 +24,6 @@ from fastapi.responses import JSONResponse
 from ....core.filelock import LockTimeout
 from ....core.gamedata.model import GameData
 from ....domain.planning import journal, manage, pins, summary, swaps
-from ....domain.planning import siting as planning_siting
 from ....domain.planning.planlog import (
     Actor,
     AlreadyUndone,
@@ -41,7 +40,6 @@ from ....domain.planning.planlog import (
     UnknownPlan,
 )
 from ....domain.world import pin
-from .. import terrain
 from ..serial import ActorBody, PlanOpBody, _actor_json, _fail, _state
 
 __all__ = ["router"]
@@ -451,13 +449,6 @@ def push_ops(
         ops, _said = pins.canonical_ops(st, body["ops"])
     except pins.PinError as exc:
         return _fail(str(exc), 400)
-    # A dragged pad arrives without a height; it gets the terrain's under its new spot.
-    ops = [
-        {**op, "value": planning_siting.with_terrain_z(st, op["value"], terrain.field())}
-        if op.get("op") == "site" and isinstance(op.get("value"), dict)
-        else op
-        for op in ops
-    ]
     item = body.get("require_item")
     extend = None
     if item:

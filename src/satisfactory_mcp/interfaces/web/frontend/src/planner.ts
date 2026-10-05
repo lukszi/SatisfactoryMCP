@@ -38,6 +38,7 @@ import { loadActivity } from "./planner-history";
 import { loadList, planTitle, renderList } from "./planner-list";
 import { onPins } from "./pins";
 import { clearPick } from "./planner-result";
+import { showGhost } from "./planner-site";
 import { focusStartup, revealStage, settleTrackFocus } from "./planner-track";
 import { onBiomass } from "./powerview";
 import { onSelect, selected, selectionRef } from "./selection";
@@ -72,6 +73,7 @@ interface Address {
   view: number;
   alt: string;
   track: boolean;
+  site: boolean;
   stage: number;
 }
 
@@ -86,7 +88,7 @@ function parts(at: string): Address {
   var alt = rest[1] === "alt" && rest[2] ? rest.slice(2).join("/") : "";
   var track = rest[1] === "track";
   var stage = track && /^\d+$/.test(rest[2] || "") ? Number(rest[2]) : 0;
-  return { key: key, view: m ? Number(m[1]) : 0, alt: alt, track: track, stage: stage };
+  return { key: key, view: m ? Number(m[1]) : 0, alt: alt, track: track, site: rest[1] === "site", stage: stage };
 }
 
 function syncTab(wanted: Address): void {
@@ -96,7 +98,8 @@ function syncTab(wanted: Address): void {
     bench.tab = "track";
     bench.track.stage = wanted.stage;
     if (entering) loadTrack();
-  } else if (bench.tab === "track") bench.tab = "build list";
+  } else if (wanted.site) bench.tab = "site";
+  else if (bench.tab === "track" || bench.tab === "site") bench.tab = "build list";
 }
 
 function trackShowing(): boolean {
@@ -272,7 +275,7 @@ function focusBody(): Record<string, unknown> {
     dash: state.dash,
     plan: planner && at && bench.key === at ? at : null,
     rev: planner && at && bench.plan ? bench.plan.rev : null,
-    tab: planner ? (at ? (bench.tab === "graph" || bench.tab === "track" ? bench.tab : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
+    tab: planner ? (at ? (bench.tab === "graph" || bench.tab === "track" || bench.tab === "site" ? bench.tab : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
     selection: planner && at ? altSelection() || bench.selection : shared(),
     follow: choice("follow"),
     sav: state.token || sav(),
@@ -374,6 +377,20 @@ export function onActivityEvent(entry: ActivityEvent): void {
         }
       });
     }
+    return;
+  }
+  if (entry.kind === "plan.view" && entry.plan && args.view === "site") {
+    var sited = entry.plan;
+    var spot = "planner/" + sited + "/site";
+    var look = function () {
+      showGhost(sited, args, who);
+      if (state.dash !== spot) go(spot);
+    };
+    if (mode === "toasts") {
+      named(sited, entry.name, function (called) {
+        offer(who + " looked at a spot for “" + called + "”", "open", look);
+      });
+    } else whenIdle(look);
     return;
   }
   if (entry.kind === "plan.view" && entry.plan && args.view === "alternates" && typeof args.item === "string") {

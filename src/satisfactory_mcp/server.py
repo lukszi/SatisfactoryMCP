@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from .domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from .domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
-from .domain.planning import journal, planlog
+from .domain.planning import journal, planlog, siting
 from .interfaces.mcp import tools as _tools
 from .interfaces.mcp.app import (
     Limit,
@@ -183,6 +183,7 @@ _ = (_state, _item_id, _player_xy, _cand_row, _resolve_factory, _plan_kwargs, _o
 def main() -> None:
     journal.set_writer("chat")
     planlog.use_recipe_names(_recipe_names)
+    siting.set_ground_z(siting.terrain_provider())
     mcp.run()
 
 

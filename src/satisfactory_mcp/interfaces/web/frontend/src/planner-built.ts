@@ -2,12 +2,11 @@
  * machines or percent, and the one-line answers. See docs/planner-p4_contract.md §5.2. */
 
 import { send } from "./api";
-import { copyText } from "./copy";
 import { button, choice, fieldError } from "./dashkit";
 import { make } from "./dom";
 import { onMap } from "./nav";
 import { showBox, vitals } from "./panel";
-import { bench, changed, gesture } from "./planner-core";
+import { bench, changed, gesture, pickTab } from "./planner-core";
 import { blankOrLong, newest, refreshLabels, refusal, wrote } from "./rename";
 import { choice as setting, setSetting } from "./settings";
 import { fail, friendly, note } from "./toast";
@@ -196,21 +195,12 @@ function mapButton(c: TrackBuiltCandidate | undefined): HTMLButtonElement | null
 }
 
 function placeButton(): HTMLButtonElement {
-  var name = bench.plan ? bench.plan.name : "";
-  var text = 'site_plan plan="' + name + '" at="<x,y>"';
   return button(
     "place",
     function () {
-      copyText(text).then(
-        function () {
-          note("copied " + text + ": fill in the spot and paste it into chat");
-        },
-        function () {
-          fail("could not copy: the browser refused");
-        }
-      );
+      pickTab("site");
     },
-    { title: "copy the chat call that sites this plan" }
+    { title: "put the plan's pad on the map" }
   );
 }
 

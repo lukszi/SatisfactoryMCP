@@ -69,7 +69,7 @@ export interface Chip {
 
 type Refusal = Partial<OutdatedResponse & AlreadyUndoneResponse & NameTakenResponse>;
 
-export type ResultTab = "build list" | "graph" | "track";
+export type ResultTab = "build list" | "graph" | "track" | "site";
 
 export interface Partition {
   partition_id: string;
@@ -469,7 +469,8 @@ export function pickTab(tab: ResultTab): void {
   if (tab === "track") {
     go(trackDash(bench.key, bench.track.stage), true);
     loadTrack();
-  } else if (was === "track") go("planner/" + bench.key, true);
+  } else if (tab === "site") go("planner/" + bench.key + "/site", true);
+  else if (was === "track" || was === "site") go("planner/" + bench.key, true);
   changed();
 }
 
