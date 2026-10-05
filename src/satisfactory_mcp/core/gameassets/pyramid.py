@@ -24,6 +24,7 @@ SHA-256 of every tile from both.
 from __future__ import annotations
 
 import shutil
+import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -47,6 +48,11 @@ TILES_RETIRED = TILES_DIR_NAME + RETIRED_SUFFIX
 #: A level with fewer tiles than this is cut serially however many workers were asked for:
 #: publishing a shared block and waking a pool to write four PNGs costs more than writing them.
 PARALLEL_MIN_TILES = 16
+
+#: A directory just written can be held for a moment by a scanner or the indexer: how often a
+#: fresh rename is retried, and the pause between tries.
+RENAME_TRIES = 30
+RENAME_PAUSE_S = 2.0
 
 #: What a level says it was cut from when the caller does not say. Every caller that is not
 #: cutting the game's artwork passes its own, so a level record cannot name the artwork under
@@ -288,6 +294,18 @@ def install_pyramid(
     return stats
 
 
+def rename_retrying(source: Path, target: Path) -> None:
+    """``source.rename(target)``, retried while Windows briefly refuses it."""
+    for attempt in range(RENAME_TRIES):
+        try:
+            source.rename(target)
+            return
+        except PermissionError:
+            if attempt == RENAME_TRIES - 1:
+                raise
+            time.sleep(RENAME_PAUSE_S)
+
+
 def swap_into_place(staging: Path, final: Path, retired: Path) -> str:
     """Put the finished tree where it is served from, and say how it managed it.
 
@@ -303,7 +321,7 @@ def swap_into_place(staging: Path, final: Path, retired: Path) -> str:
     seeing from the outside.
     """
     if not final.exists():
-        staging.rename(final)
+        rename_retrying(staging, final)
         return "the whole tree renamed into place"
     try:
         final.rename(retired)

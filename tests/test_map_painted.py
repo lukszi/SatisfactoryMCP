@@ -255,3 +255,24 @@ def test_every_style_names_its_shore_optics_and_the_ocean_level_is_one_constant(
         assert gen_map_renders.SHORE_OPTICS[layer]["stroke"] == 0.0, "the stroke is off by default"
     assert map_shore.OCEAN_LEVEL_M == -17.0
     assert versions.RENDER_RECIPES[gen_map_renders.RECIPE]["label"] == "crisp shore"
+
+
+def test_a_fresh_pyramid_rename_waits_out_a_brief_lock(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from satisfactory_mcp.core.gameassets import pyramid
+
+    staging, final = tmp_path / "tiles.incoming", tmp_path / "tiles"
+    staging.mkdir()
+    real, calls = Path.rename, []
+
+    def flaky(self, target):
+        calls.append(target)
+        if len(calls) < 3:
+            raise PermissionError("held by a scanner")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky)
+    monkeypatch.setattr(pyramid, "RENAME_PAUSE_S", 0.0)
+    pyramid.swap_into_place(staging, final, tmp_path / "tiles.retired")
+    assert final.is_dir() and len(calls) == 3
