@@ -45,7 +45,7 @@ TEXT_MAX = 200
 LABEL_MAX = 120
 REF_MAX = 200
 ANSWER_MAX = 200
-ABOUT_KINDS = ("plan", "process", "stage", "item", "pin")
+ABOUT_KINDS = ("plan", "process", "stage", "item", "pin", "advice")
 _ASK = re.compile(r"\s*ask:(\d+)\s*", re.IGNORECASE)
 _ANSWERED = re.compile(r"\s*ask:(\d+)(?:\s*[:=\-–—]\s*|\s+|$)(.*)", re.IGNORECASE | re.DOTALL)
 _KEY = re.compile(r"[0-9a-f]{8}")

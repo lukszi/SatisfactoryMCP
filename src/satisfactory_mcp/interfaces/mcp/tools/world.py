@@ -6,8 +6,11 @@ from __future__ import annotations
 
 from .... import config
 from ....core.saveio import projection as proj
+from ....core.schema import NewerSchema
 from ....core.text import ago, stamp
+from ....domain import advice
 from ....domain.power.report import biomass_note, starved_cause
+from ....presenters.text import advice as advice_text
 from ....presenters.text import primitives as render
 from ..app import (
     AsOf,
@@ -77,7 +80,7 @@ def list_worlds() -> str:
 def world_summary(
     save: str | None = None, world: str | None = None, as_of: AsOf = None, biomass: Biomass = None
 ) -> str:
-    """Progress, power and problems for one world."""
+    """Progress, power and problems for one world, and the advisories worth a look (adv: ids)."""
     try:
         st = _state(save, world, as_of)
     except Exception as exc:
@@ -112,6 +115,10 @@ def world_summary(
         (v["name"], v["count"], render.num(v["mw"]))
         for v in sorted(pw["by_generator"].values(), key=lambda v: -v["mw"])
     ]
+    try:
+        worth = advice_text.summary_block(advice.current(st, biomass=biomass))
+    except NewerSchema as exc:
+        worth = f"## worth a look\nunreadable: hidden advisories are schema {exc.found}"
     return render.envelope(
         "\n".join(
             line
@@ -148,7 +155,7 @@ def world_summary(
             ]
             if line
         ),
-        render.table(("generator", "count", "MW"), gen_rows),
+        render.table(("generator", "count", "MW"), gen_rows) + "\n\n" + worth,
         notes,
     )
 
