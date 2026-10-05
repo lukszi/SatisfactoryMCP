@@ -476,12 +476,12 @@ export function styleRoutes() {
  * ports, so `/api/pipes` infers a direction where the network admits only one and says
  * `unknown` where it admits two. The popup names which of the two a reader is looking at.
  */
-/* Oxide. A pipe's obvious colour is a saturated amber (#d99a3e), which is dE 4.5 from the
- * extractors, and the mid-rust band is the bauxite dot's own neighbourhood -- pipes run exactly
+/* Oxide. A pipe's obvious colour is a saturated amber (#d99a3e), which is the pending
+ * removal's own family, and the mid-rust band is the bauxite dot's own neighbourhood -- pipes run exactly
  * where bauxite is refined -- so the network went darker instead of brighter. Still warm where
  * the belts are cool. Measured against the current full table: dE 27.4 from the bauxite dot,
  * 28.7 from the stopped red, 30.1 from the nearest ground (Red Bamboo Fields), 49.0 from the
- * nearest of the artwork tones binned in power.ts, and 58.5 from the extractor amber. */
+ * nearest of the artwork tones binned in power.ts, and 102.1 from the extractor ultramarine. */
 var PIPE_COLOUR = declareColours("routes", { pipes: "#7d221a" }).pipes;
 
 /* The two tier tones, one step of value either side of PIPE_COLOUR -- which stays the middle
@@ -587,7 +587,7 @@ var CHEVRON_WEIGHT_PX = 1.5;
  * its 0.7 opacity the composite over those tones is dE 41.3 to 50.6 from the pipe underneath.
  * The nearest colour anywhere else on the page is the iron-ore dot, at dE 14.3 to 17.0 from
  * those composites -- a filled disc on terrain rather than a thin V on a line, and the
- * discharge in palette.ts carries that measurement. The extractor amber stays dE 45.5 away. */
+ * discharge in palette.ts carries that measurement. The extractor ultramarine is dE 119.2 away. */
 var CHEVRON_COLOUR = declareColours("routes", { chevrons: "#e8cbb4" }).chevrons;
 var CHEVRON_OPACITY = 0.7;
 

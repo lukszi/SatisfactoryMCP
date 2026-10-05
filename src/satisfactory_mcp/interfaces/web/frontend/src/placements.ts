@@ -97,15 +97,16 @@ registerFetch<StructuresResponse>({
  * Constructor (8x10 m). */
 var MACHINE_FALLBACK_M = 6;
 
-/* Blue, amber, tan. The water node dot at dE 8.6 from this blue is DISCHARGED in palette.ts:
- * the only machine in the dot's square metre is a water extractor, drawn in this table's amber
- * at dE 101.3, under a dot raiseNodeDots() keeps on top. Generators left the stopped red for a
- * warm neutral so a generator no longer reads as a fault; nearest cross-owner colour is the loot
- * cache dot at dE 17.2. */
+/* Blue, ultramarine, mint. The water node dot at dE 8.6 from this blue is DISCHARGED in
+ * palette.ts: the only machine in the dot's square metre is a water extractor, drawn in this
+ * table's ultramarine at dE 76.5, under a dot raiseNodeDots() keeps on top. Extractors left amber
+ * because amber is the pending removal; generators left tan because tan vanished on sand. Nearest
+ * cross-owner colours: extractors the oil dot at 36.2, generators the crates at 21.5. Measurements
+ * in docs/frontend_vision.md (T2). */
 var KIND_COLOUR: Record<string, string> = declareColours("placements", {
   machines: "#4aa3df",
-  extractors: "#e0a33f",
-  generators: "#b89a70",
+  extractors: "#19039c",
+  generators: "#a3f5b4",
 });
 
 /* The three layers /api/machines answers with, and the one row shape all three carry.
