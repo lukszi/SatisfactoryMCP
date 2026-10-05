@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import time
 import zlib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -24,6 +25,7 @@ from typing import Any, Literal
 import numpy as np
 
 from ... import config
+from . import caves as cave_masks
 
 __all__ = [
     "AMBIGUOUS_M",
@@ -154,6 +156,8 @@ WATER_QUALITY_NAMES = {
 
 ZLIB_LEVEL = 6
 
+CAVES_RECHECK_S = 1.0
+
 DM_PER_M = 10.0
 
 #: What a caller is told when the sidecar records no measured accuracy for a layer. Only
@@ -268,6 +272,9 @@ class Reading:
     #: The answer may be a rock top or roof rather than the floor beneath it. Without a
     #: terrain plane this is every cliff texel, since nothing else can tell them apart.
     ambiguous: bool = False
+    #: ``caves.CAVE_VALUES``. Separate from ``ambiguous``: under ``inside`` ``z_m`` is the
+    #: surface above the point and must not be presented as its height.
+    cave: str = cave_masks.NONE
 
     @property
     def source(self) -> str:
@@ -389,6 +396,8 @@ class Area:
     #: Share of the rectangle where ground stands over the bare landscape by more than
     #: ``AMBIGUOUS_M``; without a terrain plane, the cliff share.
     ambiguous_pct: float = 0.0
+    #: Share of the rectangle with a cave under it, from the cave mask.
+    cave_pct: float = 0.0
 
     @property
     def z_range_m(self) -> float | None:
@@ -478,10 +487,20 @@ class Field:
     ``cache`` on, a plane is decoded once into ``cache/<name>.npy`` and memory-mapped after.
     """
 
-    def __init__(self, meta: dict[str, Any], directory: Path, *, cache: bool = True) -> None:
+    def __init__(
+        self,
+        meta: dict[str, Any],
+        directory: Path,
+        *,
+        cache: bool = True,
+        caves_dir: Path | None = None,
+    ) -> None:
         self.meta = meta
         self.directory = directory
         self.cache = cache
+        self.caves_dir = caves_dir
+        self._caves: tuple[int, cave_masks.Caves | None] | None = None
+        self._caves_checked = 0.0
         grid = meta["grid"]
         self.width = int(grid["width"])
         self.height = int(grid["height"])
@@ -623,6 +642,40 @@ class Field:
         """``waterq.u8.z``, or ``None`` for a field written before it existed."""
         return self._plane(WATER_QUALITY_NAME)
 
+    def caves(self) -> cave_masks.Caves | None:
+        """The cave masks beside this field, loaded on first use and again when rewritten.
+
+        The sidecar is stat'ed at most once per ``CAVES_RECHECK_S``, so a point read does not
+        pay for a stat.
+        """
+        if self.caves_dir is None:
+            return None
+        now = time.monotonic()
+        if self._caves is not None and now - self._caves_checked < CAVES_RECHECK_S:
+            return self._caves[1]
+        self._caves_checked = now
+        try:
+            stamp = (self.caves_dir / cave_masks.META_NAME).stat().st_mtime_ns
+        except OSError:
+            self._caves = (0, None)
+            return None
+        if self._caves is None or self._caves[0] != stamp:
+            self._caves = (stamp, cave_masks.load_caves(self.caves_dir))
+        return self._caves[1]
+
+    def cave_at(
+        self,
+        x_cm: float,
+        y_cm: float,
+        hint_z_cm: float | None = None,
+        lowest_m: float | None = None,
+    ) -> str:
+        """``caves.CAVE_VALUES`` at a point; ``none`` wherever no cave mask was generated."""
+        found = self.caves()
+        if found is None:
+            return cave_masks.NONE
+        return found.classify(x_cm, y_cm, hint_z_cm, lowest_m)
+
     def density_raster(self) -> np.ndarray | None:
         """``density.u8.z``, or ``None`` for a field written before it existed.
 
@@ -684,6 +737,7 @@ class Field:
             accuracy_m=self._accuracy.get(provenance, UNKNOWN_ACCURACY_M),
             water_m=water_m,
             water_quality=quality,
+            cave=self.cave_at(x_cm, y_cm),
         )
 
     def _sample(
@@ -856,6 +910,7 @@ class Field:
             surface=surface,
             terrain_z_m=found.terrain_m,
             ambiguous=bool(ambiguous),
+            cave=self.cave_at(x_cm, y_cm, hint_z_cm, min(v for _, v in found.candidates())),
         )
 
     def _rows_cols(
@@ -964,6 +1019,7 @@ class Field:
             if counts[code]
         }
         ambiguous = 100.0 * self._ambiguous_count(cut) * stride * stride / denom
+        cave = 100.0 * self._cave_count(cut, good) * stride * stride / denom
 
         submerged, water_level, water_drop = self._area_water(cut, z, good, z_valid, stride, denom)
 
@@ -987,6 +1043,7 @@ class Field:
             provenance_pct=provenance_pct,
             surface=surface,
             ambiguous_pct=round(ambiguous, 1),
+            cave_pct=round(cave, 1),
         )
 
     def _surface_cut(self, surface: str, cut: tuple[slice, slice]) -> tuple[np.ndarray, np.ndarray]:
@@ -1034,6 +1091,17 @@ class Field:
         over = has_terrain & (ground - terrain > AMBIGUOUS_M)
         hole = ~has_terrain & np.isin(self._prov[cut], PROV_CLIFF_VALUES)
         return int((has_ground & (over | hole)).sum())
+
+    def _cave_count(self, cut: tuple[slice, slice], good: np.ndarray) -> int:
+        found = self.caves()
+        if found is None:
+            return 0
+        rows = np.arange(cut[0].start, cut[0].stop, cut[0].step)
+        cols = np.arange(cut[1].start, cut[1].stop, cut[1].step)
+        flagged = found.flagged(
+            self.x0_cm + cols * self.spacing_cm, self.y0_cm + rows * self.spacing_cm
+        )
+        return int((flagged & good).sum())
 
     def _area_water(
         self,
@@ -1164,7 +1232,9 @@ def load_field(local_dir: Path | None = None, *, cache: bool = True) -> Field | 
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if not isinstance(meta, dict):
             return None
-        field = Field(meta, directory, cache=cache)
+        field = Field(
+            meta, directory, cache=cache, caves_dir=directory.parent / cave_masks.DIR_NAME
+        )
     except (OSError, ValueError, TypeError, KeyError, zlib.error):
         return None
     _CACHE.clear()
