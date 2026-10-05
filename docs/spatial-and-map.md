@@ -1509,3 +1509,89 @@ adopts the painted layer as `game-painted-r6-502094`.
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
   did.
+
+## 28. Water by class in the game-painted style (2026-10-05)
+
+Recipe 6 drew every water texel with one set of Beer-Lambert optics, the ones calibrated on
+the Spire Coast sea. Inland that read wrong: rivers came out sea-blue, the swamp a clear blue
+sheet, and sulfur ponds like the sea. The game-painted style now gives each water body a
+class and each class its own optics. The ocean keeps its calibrated values unchanged.
+
+### The class plane
+
+`python -m mapgen paint` also writes `water_bodies.json` into the paint store: every water
+actor with a box (class, world box, the materials its export subtree assigns) and every
+root `StaticMeshComponent` whose mesh is under `/HotSpring/`. On build 502094 that is 839
+actors and 101 terraces, and it doubles the paint run to about 50 s because the water boxes
+read mesh bounds. `PAINT_GENERATOR_VERSION` is 2.
+
+`gamedata/waterbodies.py` `classify` turns that into a uint8 plane on the 1 m grid, once per
+render (about 5 s):
+
+1. Each actor's class comes from its first known material (`MATERIAL_CLASS`):
+   `MI_SLW_River_*` river, `MM_Lake_01` lake, `MI_Lake_Blue_01` blue lake,
+   `MI_Lake_Turquoise_01` turquoise, `MI_WaterSwamp_Muddy` swamp, `MI_Lake_Caves_01` cave,
+   `SulfurPond_Inst` sulfur, `MM_OceanMaster` ocean. 527 actors (the `FGWaterVolume`
+   brushes, translucent water, lake and ocean spline tools) assign none.
+2. A lake box at most 150 m on a side with a hot-spring terrace inside it (within 1 m of its z
+   range) is a hot spring.
+3. Boxes paint wet texels whose level lies within 1 m of the box's z range, largest box
+   first, so a pond inside a big box keeps its own class.
+4. Unclaimed wet texels within 1 m of the ocean level are ocean. That includes the level-only
+   water around the frame at about -16.3 m.
+5. The rest of an inland body (8-connected) takes the body's majority class when that class
+   covers at least a quarter of it.
+6. What is left is swamp in `Area_Swamp` and lake everywhere else.
+
+Build 502094: ocean 15.97 M texels, lake 1.20 M, swamp 0.62 M, river 0.38 M, turquoise 53 k,
+hot spring 15 k, sulfur 9.7 k, cave 5.3 k, blue lake 5.2 k; 312 bodies claimed by
+material, 0.28 M texels by the biome fallback.
+
+The renderer samples the plane bilinearly with the dry taps dropped
+(`terrain/sample.py` `ClassMix`), so a shore pixel takes its water's class rather than half
+of nothing. A pixel whose wet taps agree takes its class's row exactly. A band holding only
+ocean and dry texels takes the recipe 6 path unchanged, and so does a render from a paint store
+without `water_bodies.json`; the sidecar's `paint.water_classes` says which happened.
+
+### The optics
+
+Per class, in `water_classes` of `satellite-painted.json`: absorption `k_per_m`, the body
+colour `body`, the `deep` colour and its `deep_tau_m`, a `turbidity` and a `bed_tint`.
+
+```
+T     = (1 - turbidity) * exp(-k d)
+under = bed * bed_tint * T + body * (1 - T) + 0.02 sky
+under = lerp(under, deep, 1 - exp(-d / deep_tau))
+```
+
+With turbidity 0 and a white bed tint this is the ocean's formula. Turbidity is an opacity
+floor: murky water hides its bed even at the edge. The bed tint stands for a stained bed,
+the sulfur pond's orange rim.
+
+| Class | Body | k (r, g, b) /m | Turbidity | Source |
+|---|---|---|---|---|
+| river | #4f7d78 | 2.4, 1.6, 1.6 | 0 | Hue from the wiki's Rocky Desert river; clear, so the bed shows |
+| lake | #56745b | 3.0, 2.2, 2.6 | 0.1 | Wiki Lake Forest and the crash-site pond: jade green |
+| lake_blue | #4a8494 | 3.4, 1.0, 0.75 | 0 | `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
+| turquoise | #448882 | 3.5, 1.0, 1.1 | 0.05 | `MI_Lake_Turquoise_01` deep colour and tint |
+| swamp | #7e6e6a | 4.0, 4.5, 5.0 | 0.45 | Wiki Swamp: opaque mauve-brown mud |
+| cave | #2f4a47 | 3.0, 2.5, 2.5 | 0 | Dark; no reference |
+| sulfur | #67a395 | 3.0, 2.0, 2.0 | 0.3 | `SulfurPond_Inst`: deep (0.17, 1, 0.89) cyan, shallow (1, 0.26, 0) orange as the bed tint |
+| hot_spring | #68a098 | 2.5, 1.6, 1.5 | 0.2 | Milky turquoise; no reference |
+
+Targets follow the Spire Coast calibration (section 27): the reference colour times 0.85
+linear for map exposure, OKLab L times 0.95 and chroma times 0.9. Against the references at
+assumed depths, Delta E (OKLab x100): swamp 3.7 at 1 m and 5.2 at 3 m, lake 1.9 at 2 m and
+4.5 at 4 m. Hue alone (the a, b distance) is under 1 for both. The river references are a
+dusk shot at a grazing angle and a stream over white sand. They fix only the hue (a, b
+distance 1 to 3), not the lightness.
+
+### Known limits
+
+- No top-down screenshot has checked any class. The sulfur pond, hot spring and cave optics
+  come from material parameters, not from pictures.
+- Classes change at box edges. Where the water channel is itself built from boxes, as in the
+  Red Bamboo terrace lakes near (420, 560), a chain of pools reads as a mosaic of classes.
+- The hot-spring rule finds terraces in lake boxes near the sulfur ponds and in the Red Bamboo
+  terraces. Whether those pools are milky in game is unchecked.
+- The satellite and terrain styles still draw one water colour.

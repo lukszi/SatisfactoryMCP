@@ -70,8 +70,9 @@ without `--force`. See §24.
 ### paint
 
 Extracts the landscape's paint layers once per game build: one weight plane per layer on
-the 1 m grid, the tree canopy cover, the PigmentMap tint and each layer's albedo. Only the
-`painted` render layer reads them. See §27.
+the 1 m grid, the tree canopy cover, the PigmentMap tint and each layer's albedo, plus
+`water_bodies.json`: every water actor's box and materials and the hot-spring terraces. Only
+the `painted` render layer reads them. See §27 and §28.
 
 ### artwork
 
@@ -120,6 +121,7 @@ be traced to the axis it should move.
 | `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
+| `gamedata/waterbodies.py` | data | Water actors' materials, hot-spring terraces, the water class plane |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
 | `gamedata/water.py` | data | The heightfield's water channel: artwork mask, box levels, region masks |
 | `gamedata/artwork_sheet.py` | data | The artwork sheet: slice decode, layout proof, corner calibration |
@@ -127,7 +129,7 @@ be traced to the axis it should move.
 | `terrain/validate.py` | data | Heightfield gates (nodes, bare terrain, water), per-layer accuracy, the water block |
 | `terrain/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
-| `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling |
+| `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid, render-only meshes |
 | `terrain/measure.py` | renderer | `SeamTrace`, `RegimeCoverage` |
 | `palette/styles.py` | style | Palette loading, digests and the colour painters |

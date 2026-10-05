@@ -22,6 +22,7 @@ from scipy import ndimage
 
 from mapgen.common import LOCAL_DIR, ROOT, base_parser, require_gen
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from mapgen.gamedata.mesh import MeshBounds
 from mapgen.gamedata.sweep import (
     FOLIAGE_CLASSES,
     LANDSCAPE_SECTION_ORIGIN,
@@ -29,6 +30,7 @@ from mapgen.gamedata.sweep import (
     LEVEL_SUFFIX,
     foliage_instances,
 )
+from mapgen.gamedata.waterbodies import WATER_BODIES_NAME, harvest
 from satisfactory_mcp.core.gameassets.container import open_container
 from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
@@ -434,9 +436,10 @@ def canopy_cover(trees: dict[str, np.ndarray], grid: int) -> tuple[np.ndarray, d
 # ----------------------------------------------------------------------- the pass
 
 
-def sweep(store, scripts, classes, progress: bool) -> dict:
-    """One walk of every level: weight planes, component origins and tree positions."""
+def sweep(store, scripts, classes, progress: bool, meshes=None) -> dict:
+    """One walk of every level: weight planes, component origins, trees and water bodies."""
     planes: dict[str, np.ndarray] = {}
+    bodies: dict[str, list] = {"actors": [], "hot_springs": []}
     origins: list[tuple[int, int]] = []
     trees: dict[str, list[np.ndarray]] = {}
     unreadable, failed = 0, 0
@@ -465,6 +468,8 @@ def sweep(store, scripts, classes, progress: bool) -> dict:
                 found = foliage_instances(view, slot, classes, wanted=is_tree)
                 if found is not None:
                     trees.setdefault(found[0], []).append(found[1][:, 3, :3].astype(np.float32))
+        if meshes is not None:
+            harvest(view, classes, meshes, bodies)
         if progress and index % 500 == 0:
             print(
                 f"  {index}/{total} packages, {len(origins)} components, "
@@ -475,6 +480,7 @@ def sweep(store, scripts, classes, progress: bool) -> dict:
         "planes": planes,
         "origins": origins,
         "trees": {mesh: np.concatenate(parts) for mesh, parts in trees.items()},
+        "water_bodies": bodies,
         "unreadable": unreadable,
         "failed_packages": failed,
         "seconds": round(time.time() - started, 1),
@@ -503,7 +509,8 @@ def main() -> int:
     paks = args.game / "FactoryGame" / "Content" / "Paks"
     store = open_container(args.game)
     scripts = ScriptObjects(paks, oodle_decompress)
-    classes = ClassFacts(store, AssetIndex(store))
+    index = AssetIndex(store)
+    classes = ClassFacts(store, index)
     started = time.time()
 
     vectors = material_vectors(
@@ -521,7 +528,7 @@ def main() -> int:
         f"  {len(means)} textures, {len(vectors)} material vectors, pigment {pigment.shape[0]} px"
     )
 
-    found = sweep(store, scripts, classes, not args.quiet)
+    found = sweep(store, scripts, classes, not args.quiet, MeshBounds(store, scripts, index))
     planes = found["planes"]
     if not found["origins"]:
         print("no LandscapeComponent was read; the landscape moved or the format changed")
@@ -550,6 +557,13 @@ def main() -> int:
         "kind": "u8",
         "srgb": True,
         "placement": "the render frame, texel centres",
+    }
+    bodies = found["water_bodies"]
+    payload[WATER_BODIES_NAME] = json.dumps(bodies, separators=(",", ":")).encode("utf-8")
+    files[WATER_BODIES_NAME] = {
+        "kind": "json",
+        "actors": len(bodies["actors"]),
+        "hot_springs": len(bodies["hot_springs"]),
     }
     for name, blob in payload.items():
         files[name]["sha256"] = sha256_hex(blob)

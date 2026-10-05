@@ -16,12 +16,15 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.paint import CANOPY_NAME, META_NAME, PIGMENT_NAME
-from mapgen.palette.shore import add_foam, wet_band
+from mapgen.gamedata.waterbodies import CLASSES, OCEAN, WATER_BODIES_NAME, classify
+from mapgen.palette.shore import OCEAN_LEVEL_M, add_foam, wet_band
 from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL
+from mapgen.terrain.sample import ClassMix, class_taps
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
     "ROCK_GRID_M",
+    "WATER_TABLE_COLUMNS",
     "PaintedGround",
     "biome_grid",
     "dry_land_range",
@@ -29,12 +32,14 @@ __all__ = [
     "linear_from_oklab",
     "linear_to_srgb",
     "load_paint_meta",
+    "load_water_bodies",
     "mix_layers",
     "oklab",
     "painted_colours",
     "ramp_position",
     "seam_blend",
     "srgb_to_linear",
+    "water_table",
 ]
 
 #: OKLab, Björn Ottosson's matrices.
@@ -59,6 +64,9 @@ _M2_INV = np.linalg.inv(_M2).astype(np.float32)
 
 #: The rock colour's grid, coarser than the paint: it is a 25 m blur of it.
 ROCK_GRID_M = 4
+
+#: One row per water class: absorption, body, deep colour, deep tau, turbidity, bed tint.
+WATER_TABLE_COLUMNS = (3, 3, 3, 1, 1, 3)
 
 
 def srgb_to_linear(values) -> np.ndarray:
@@ -106,6 +114,40 @@ def load_paint_meta(paint_dir: Path) -> dict | None:
         return json.loads((paint_dir / META_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+def load_water_bodies(paint_dir: Path, meta: dict) -> dict | None:
+    """The store's water actors and hot-spring terraces; None for a store that predates them."""
+    if WATER_BODIES_NAME not in meta.get("files", {}):
+        return None
+    return json.loads((paint_dir / WATER_BODIES_NAME).read_text(encoding="utf-8"))
+
+
+def water_table(palette: dict) -> np.ndarray:
+    """``CLASSES`` rows of linear optics; a class the palette leaves out draws as the ocean."""
+    water = palette["water"]
+    ocean = {
+        "k_per_m": water["k_per_m"],
+        "body": water["body"],
+        "deep": water["deep"],
+        "deep_tau_m": water["deep_tau_m"],
+        "turbidity": 0.0,
+        "bed_tint": [1.0, 1.0, 1.0],
+    }
+    rows = []
+    for name in CLASSES:
+        entry = palette.get("water_classes", {}).get(name, ocean)
+        rows.append(
+            [
+                *entry["k_per_m"],
+                *srgb_to_linear(entry["body"]),
+                *srgb_to_linear(entry["deep"]),
+                entry["deep_tau_m"],
+                entry["turbidity"],
+                *entry["bed_tint"],
+            ]
+        )
+    return np.asarray(rows, np.float32)
 
 
 def _plane(paint_dir: Path, meta: dict, name: str) -> np.ndarray:
@@ -240,6 +282,43 @@ class PaintedGround:
         }
         lo, hi, cdf = dry_land_range(field, palette["ramp_lo_pct"], palette["ramp_hi_pct"])
         self.ramp = (lo, hi, cdf)
+        self.water_class, self.water_rows = None, water_table(palette)
+        self.source = {"seam_texels_blended": self.seam_texels}
+        self.water_source = "a paint store without water bodies: all water draws as the ocean"
+        bodies = load_water_bodies(paint_dir, meta)
+        if bodies is not None:
+            self._classify_water(bodies, field, (index, area_names))
+        self.source["water_classes"] = self.water_source
+
+    def _classify_water(self, bodies: dict, field, biome: tuple) -> None:
+        water, grades = field._water_raster(), field._water_quality_raster()
+        if water is None or grades is None:
+            self.water_source = "the field has no water level or quality plane"
+            return
+        level = np.where(water == hf.NODATA, np.nan, water / np.float32(hf.DM_PER_M))
+        wet = grades != hf.WATER_DRY
+        level = level.astype(np.float32)
+        self.water_class, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
+        self.water_source = {"source": f"paint/{WATER_BODIES_NAME}", **counts}
+
+    def water_optics(self, taps) -> dict | None:
+        """Per-pixel optics for a band with inland water; None draws every pixel as the ocean."""
+        if self.water_class is None:
+            return None
+        mix = ClassMix(class_taps(self.water_class, taps), OCEAN)
+        if mix.classes() <= {0, OCEAN}:
+            return None
+        parts = np.split(mix.of(self.water_rows), np.cumsum(WATER_TABLE_COLUMNS)[:-1], axis=-1)
+        k, body, deep, tau, turbidity, tint = parts
+        return {
+            **self.water,
+            "k": k,
+            "body": body,
+            "deep": deep,
+            "deep_tau_m": tau,
+            "turbidity": turbidity,
+            "tint": tint,
+        }
 
     def _pigment(self, paint_dir, albedo, rows, cols):
         strength = np.float32(self.palette["pigment"])
@@ -364,10 +443,13 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
 
     water = scene["water"]
     lit = wet_band(lit, water, p["shore"].get("wet_band"))
-    w = ground.water
+    w = scene.get("water_optics") or ground.water
     depth = water["depth_m"][..., None]
     transmit = np.exp(-w["k"] * depth)
     bed = g * exposure * w["bed"]
+    if "turbidity" in w:
+        transmit = transmit * (1.0 - w["turbidity"])
+        bed = bed * w["tint"]
     under = bed * transmit + w["body"] * (1.0 - transmit) + w["sky"]
     open_sea = 1.0 - np.exp(-depth / w["deep_tau_m"])
     under = under * (1.0 - open_sea) + w["deep"] * open_sea
