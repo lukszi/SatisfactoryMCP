@@ -18,6 +18,7 @@ headroom* moved with it, because chat's power tools take the same switch.
 | follow chat (`follow`) | browser | How one tab reacts to chat. The page already reports it to chat through `ui_context`. |
 | payback horizon, hours (`paybackHours`) | **server**, `payback_hours` | What a plan with no horizon of its own solves at, in chat and on the page ([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md)). Number 0–100, default 0. |
 | overclock the last machine (`overclockLast`) | **server**, `overclock_last` | The same for the overclock-last switch. Default off. |
+| pad snap (`siteSnap`) | **server**, `site_snap` | How a moved plan pad lands: `fine` (1 m, 15° steps, default) or `grid8` (8 m world grid). Chat's `site_plan` snaps with it too ([planner-p5_contract.md](planner-p5_contract.md) §5.2). |
 
 The rule: a setting is shared when chat computes with it. A setting that only changes how
 one viewer sees the page stays in the browser.
