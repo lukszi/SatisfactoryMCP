@@ -34,7 +34,7 @@ def _patch(client, values, **extra):
 def test_get_sends_every_default_before_any_write(client):
     assert client.get("/api/settings").json() == {
         "version": 0,
-        "values": {"stage_headroom": "measured", "biomass": False},
+        "values": {"stage_headroom": "measured", "biomass": False, "advice_box_fed": False},
         "stored": [],
         "updated": None,
         "by": None,

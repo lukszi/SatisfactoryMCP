@@ -48,6 +48,9 @@ SPECS: dict[str, Spec] = {
         options=("measured", "nameplate"),
     ),
     "biomass": Spec("switch", False, "count hand-fed biomass burners as generation and headroom"),
+    "advice_box_fed": Spec(
+        "switch", False, "advise when a machine fed only from a storage box has emptied it"
+    ),
 }
 
 

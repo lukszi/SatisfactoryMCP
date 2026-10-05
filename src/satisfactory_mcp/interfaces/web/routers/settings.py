@@ -33,6 +33,7 @@ class SettingsValues(TypedDict):
 
     stage_headroom: StageHeadroom
     biomass: bool
+    advice_box_fed: bool
 
 
 class SettingsResponse(TypedDict):
@@ -51,6 +52,7 @@ class SettingsChanges(TypedDict):
 
     stage_headroom: NotRequired[StageHeadroom | None]
     biomass: NotRequired[bool | None]
+    advice_box_fed: NotRequired[bool | None]
 
 
 class SettingsPatchBody(TypedDict):

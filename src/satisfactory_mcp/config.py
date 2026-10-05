@@ -176,6 +176,12 @@ def asks_dir() -> Path:
 
 
 @lru_cache(maxsize=1)
+def advice_dir() -> Path:
+    """Advisories the page or chat hid, one file per world (docs/advisors_contract.md §4)."""
+    return user_dir() / "advice"
+
+
+@lru_cache(maxsize=1)
 def settings_path() -> Path:
     """Settings the page and chat share, one file for every world (docs/shared-settings.md)."""
     return user_dir() / "settings.json"
