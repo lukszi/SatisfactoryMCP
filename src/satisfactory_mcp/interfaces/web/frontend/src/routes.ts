@@ -15,6 +15,7 @@ import { BAND, layer } from "./layers";
 import { footprintCorners, map, pixelsPerMetre } from "./map";
 import { raiseNodeDots } from "./markers";
 import { declareColours } from "./palette";
+import { tone } from "./tone";
 import { registerFetch } from "./registry";
 import { state } from "./state";
 
@@ -248,6 +249,7 @@ function beltColour(items_per_min: number | null | undefined): string {
  * stops being drawn at all -- one hairline for both networks, or they fade out at different
  * zooms and the page invents a difference the world does not have. */
 var BELT_WIDTH_M = 2;
+var BELT_CASING_PX = 2;
 var ROUTE_MIN_PX = 1.5;
 
 /* A lift is the same two metres seen end-on, so its ring is that circle: radius half the
@@ -337,6 +339,7 @@ export function drawBelts(data: BeltsResponse): void {
   // networks: belts, then pipes, then power.
   var group = layer("belts", false, BELT_COLOUR, [BAND.built, 10, "belts"]);
   var ppm = pixelsPerMetre();
+  var runs: L.Polyline[] = [];
   data.belts.forEach(function (b) {
     var first = b.points_m[0]!;
     var last = b.points_m[b.points_m.length - 1]!;
@@ -366,7 +369,25 @@ export function drawBelts(data: BeltsResponse): void {
     // the end that is actually on the floor being looked at.
     piece._floor = { run: { kind: "belt", key: b.chain }, ends: [first, last] };
     piece.bindPopup(beltPopup(b, beltKind(b, ring), first, last)).addTo(group);
+    if (!ring) runs.push(piece as L.Polyline);
   });
+  // On a light base mid steel sinks into bare ground, so runs get the power wires' casing; added
+  // after every core so sinkRoutes puts it underneath. See power.ts, CASED LINES.
+  if (tone() === "light") {
+    runs.forEach(function (run) {
+      var cased = L.polyline(run.getLatLngs() as L.LatLng[], {
+        color: LIFT_FILL,
+        weight: beltWeight(ppm) + BELT_CASING_PX,
+        opacity: 0.85,
+        interactive: false,
+      });
+      cased._widen = BELT_CASING_PX;
+      cased._floor = run._floor;
+      var route = run._route;
+      if (route) cased._route = { points_m: route.points_m, curve_m: route.curve_m, steps: route.steps.slice() };
+      cased.addTo(group);
+    });
+  }
   (data.attachments || []).forEach(function (a) {
     if (a.x_m === null || a.y_m === null) return;
     var w = (a.w_m || ATTACHMENT_FALLBACK_M) / 2;

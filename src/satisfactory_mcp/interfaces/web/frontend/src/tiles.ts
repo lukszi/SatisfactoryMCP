@@ -18,9 +18,11 @@ import { MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
 import { regionsUnderMode, updateRegionBlend } from "./regions";
 import { BOOT, state } from "./state";
 import { fail, offer } from "./toast";
+import { setTone } from "./tone";
 
 import type { MapTypeBody } from "./api-shapes";
 import type { ModeChoice } from "./layercontrol";
+import type { Tone } from "./tone";
 import type { BaseMode } from "./state";
 
 /** One base-map mode: a radio in the control, and at most one layer on the map. */
@@ -416,6 +418,18 @@ function modeChoices(): ModeChoice[] {
   });
 }
 
+/** The tone a mode's picture declares; plain is the page's own dark sea. */
+function toneOf(mode: BaseMode): Tone {
+  var body = mapState.body;
+  if (mode === "plain") return body ? body.plain_tone : "dark";
+  var row = body
+    ? body.types.filter(function (t) {
+        return t.id === mode;
+      })[0]
+    : undefined;
+  return row ? row.tone : "light";
+}
+
 /* Swap the one layer, and nothing else: the panes were created once by map.ts, the overlays
  * are the player's, and the CRS and tile grid are the same for every layer the server cuts.
  *
@@ -436,6 +450,7 @@ export function setMode(key: BaseMode, pinned: boolean): void {
   }
   state.mode = mode;
   state.imagery = !!drawn;
+  setTone(toneOf(mode));
   regionsUnderMode(state.imagery);
   updateRegionBlend();
   showModes(modeChoices(), mode);

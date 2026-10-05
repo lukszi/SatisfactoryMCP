@@ -244,12 +244,12 @@ registerFetch<MachinesResponse>({
  * separate from is the other filled boxes and the selection pink, which the old magenta sat
  * too close to. A cool blue-violet: dE 18.0 from its nearest cross-owner colour (the hard-drive
  * dot), 20.4 from the water dot, 27.4 from the machine blue, and 64.1 from the selection pink
- * (the magenta was 37.5). The fluid buffers are one value step down the same hue at dE 15.8,
- * near the house step; nearest cross-owner colour dE 25.4 (crude oil and the hard drive).
+ * (the magenta was 37.5). The fluid buffers are a deep ultramarine, dE 31.3 below it: the old
+ * #4a5596 was 3.2 from foundations on the bases. Nearest cross-owner colour dE 16.2 (crude oil).
  */
 var STORAGE = declareColours("placements", {
   storage: "#6a78c8",
-  "storage fluid": "#4a5596",
+  "storage fluid": "#253496",
 });
 var STORAGE_COLOUR = STORAGE.storage;
 var STORAGE_FLUID_COLOUR = STORAGE["storage fluid"];
