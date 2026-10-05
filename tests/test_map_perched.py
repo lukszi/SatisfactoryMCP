@@ -14,11 +14,13 @@ np = pytest.importorskip("numpy")
 pytest.importorskip("scipy")
 
 from mapgen.palette.perched import (  # noqa: E402
+    HOLE_DEPTH_MAX_M,
     PERCHED_EXCESS_M,
     perched_levels,
     relevel,
     spill_share,
     water_surfaces,
+    wet_holes,
 )
 from mapgen.palette.rivers import water_sources  # noqa: E402
 from mapgen.palette.shore import OCEAN_LEVEL_M  # noqa: E402
@@ -137,6 +139,89 @@ def test_a_box_over_lower_water_is_bounded_by_that_water():
     assert meta["bodies"] == 1
     assert (out[piece] == 0).all()
     assert np.array_equal(out[~piece], water[~piece])
+
+
+def _lake_with_holes():
+    """A lake at 10 m on a bed at 7 m, banks at 15 m, and what the artwork leaves dry in it:
+    a dark middle 8 m deep, an arch 10 m wide from shore to shore, an island above the
+    water, and a sandbar half a metre under it. The water east of the arch stands 1 m
+    higher. Ocean on the west, with a dry patch of its own."""
+    n = 200
+    height = np.full((n, n), 150, np.int16)
+    lake = np.zeros((n, n), bool)
+    lake[40:160, 40:160] = True
+    height[lake] = 70
+    height[:, :20] = -400
+    water = np.where(lake, 100, hf.NODATA).astype(np.int16)
+    water[:, 70:160][lake[:, 70:160]] = 110
+    parts = {
+        "middle": (slice(90, 110), slice(90, 110), 20),
+        "arch": (slice(40, 160), slice(60, 70), 70),
+        "island": (slice(120, 140), slice(120, 140), 120),
+        "sandbar": (slice(50, 56), slice(120, 150), 105),
+    }
+    for rows, cols, ground in parts.values():
+        height[rows, cols] = ground
+        water[rows, cols] = hf.NODATA
+    water[:, :20] = round(OCEAN_LEVEL_M * hf.DM_PER_M)
+    water[95:105, 5:15] = hf.NODATA
+    grades = np.where(water != hf.NODATA, hf.WATER_MEASURED, hf.WATER_DRY).astype(np.uint8)
+    return water, grades, height, {k: (r, c) for k, (r, c, _g) in parts.items()}
+
+
+def test_the_holes_the_artwork_leaves_in_a_lake_are_wetted_at_its_surface():
+    water, grades, height, parts = _lake_with_holes()
+    level, got, meta = wet_holes(_field(water, grades, height), water, water, grades)
+    assert (got[parts["middle"]] == hf.WATER_MEASURED).all(), "the dark middle"
+    assert (level[parts["middle"]] == 110).all(), "at its own body's surface"
+    arch = got[parts["arch"]] == hf.WATER_MEASURED
+    assert arch[10:-10].all() and arch.mean() > 0.95, "water under the arch, bar its very ends"
+    assert (level[parts["arch"]][arch] == 100).all(), "two bodies over one gap: the lower one"
+    assert (got[parts["island"]] == hf.WATER_DRY).all(), "ground above the water stays dry"
+    assert (got[parts["sandbar"]] == hf.WATER_DRY).all(), "and so does a sandbar awash"
+    assert (got[:, :20] == grades[:, :20]).all(), "the ocean is never touched"
+    filled = got != grades
+    assert np.array_equal(level[~filled], water[~filled]), "everything else byte for byte"
+    assert meta["texels"] == int(filled.sum()) and meta["bodies"] == 2
+    assert grades[parts["middle"]].max() == hf.WATER_DRY, "the input is not written"
+
+
+def test_a_gap_open_to_lower_ground_or_too_deep_is_no_hole():
+    """A notch where the bank falls away beside the lake is where its water would run to;
+    a pit deeper than a lake middle is a cliff foot. Neither is wetted."""
+    water, grades, height, _parts = _lake_with_holes()
+    notch = (slice(95, 105), slice(150, 160))
+    height[:, 160:] = 30
+    height[notch] = 30
+    water[notch] = hf.NODATA
+    pit = (slice(130, 136), slice(90, 96))
+    height[pit] = 110 - round((HOLE_DEPTH_MAX_M + 1) * hf.DM_PER_M)
+    water[pit] = hf.NODATA
+    grades = np.where(water != hf.NODATA, hf.WATER_MEASURED, hf.WATER_DRY).astype(np.uint8)
+    _level, got, _meta = wet_holes(_field(water, grades, height), water, water, grades)
+    assert (got[notch] == hf.WATER_DRY).all()
+    assert (got[pit] == hf.WATER_DRY).all()
+
+
+def test_the_water_a_render_draws_carries_the_wetted_holes():
+    water, grades, height, parts = _lake_with_holes()
+    field = _field(water, grades, height)
+    reach = (np.zeros(grades.shape, np.uint8), {"ocean_texels": 0, "reach_texels": 0})
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("mapgen.palette.perched.ocean_reach", lambda _field: reach)
+        got = water_surfaces(field, False)
+    assert (got.grades[parts["middle"]] == hf.WATER_MEASURED).all()
+    assert (got.level[parts["middle"]] == 110).all()
+    assert got.perched["holes"]["texels"] == int((got.grades != grades).sum()) > 0
+
+
+def test_water_the_river_reconcile_dropped_stays_dropped():
+    water, grades, height, parts = _lake_with_holes()
+    dropped = np.zeros_like(grades, dtype=bool)
+    dropped[parts["arch"]] = True
+    _level, got, _meta = wet_holes(_field(water, grades, height), water, water, grades, dropped)
+    assert (got[parts["arch"]] == hf.WATER_DRY).all()
+    assert (got[parts["middle"]] == hf.WATER_MEASURED).all()
 
 
 def test_the_renderer_takes_the_relevelled_raster():

@@ -2478,6 +2478,7 @@ pixel, these rules decide.
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid. It blocks under `OCCLUDER_FADE_M` and receives on the crown top. Only a run that draws the painted layer has it. |
 | Versions | Paint generator version 3. Styles: terrain 3, satellite 3, game-painted 5 (the per-area targets of section 31 on top of sections 32 to 36). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. The water classes and the relief tint read that result, not the field's box levels. |
+| Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, so a renderer reading those grades draws them. Section 33's open sea is found on that same water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
 
 ### Known limits
@@ -2536,12 +2537,50 @@ drawn depth. The largest are at (-822, 201), (-612, 772), (624, -505), (-375, -8
 (-1227, -278) and (-146, 961). Lakes whose banks stand above their level, the ocean, and
 level-only water are byte-identical.
 
+### Holes in a lake
+
+The artwork's blue test also reads a lake's deep middle as dry, and the water under an arch
+or bridge it draws across a lake. The field keeps those texels dry, so the renderer drew
+the lake bed there: dark-middle blobs, and in the cliff-ringed lakes near (1980, -1890) a
+straight strip 18 m wide and 220 m long under the arch, and the spokes of the star-shaped
+rock beside it. `wet_holes` fills them after the re-levelling, on the same bodies:
+
+- **Inside.** The measured water at the body's level, and other inland measured water
+  within 2 m of it, closed over gaps up to 24 m wide (`HOLE_BRIDGE_M` 12), with what that
+  encloses.
+- **Below.** Dry ground standing below the surface of the body's nearest texel.
+- **Not where it spills.** Nothing within 12 m of ground outside that shape standing more
+  than 2 m below the surface and running on past 12 m from the water, where still water
+  would run to. The rounded ends of a bridged gap are not a spill.
+- **Deep, but not a drop.** A connected part reaching the body, more than 2 m deep at its
+  deepest and nowhere deeper than 15 m (`HOLE_DEPTH_MAX_M`). A sandbar awash stays as the
+  artwork drew it. Without the cap 172 parts (6,700 texels) go deeper, up to 181 m: the
+  wide fall at (1791, 553), cliff feet at (470, -563) and (-1916, 345), and the drop east
+  of the arch lake. A real lake middle deeper than 15 m would stay dry too.
+
+A hole takes the surface of its body's nearest texel and the measured grade; where two
+bodies close over one gap, the lower surface. Water the river reconcile dropped stays
+dropped, the ocean is never a body, and every texel that was water is byte-identical. The
+class plane (section 33) and the relief tint read the result.
+
+Measured on the field's own planes: 54,733 texels in 394 bodies, about 4.5 s and 760 MB
+at peak (the re-levelling peaks at 1.1 GB). Median depth 2.0 m, 99th percentile 9.2 m.
+The largest are the arch lake at (1979, -1889) with 5,062 texels, (3596, -2139),
+(2245, 741), (3149, -606) and the arch lake's east arm at (2026, -1904). In a render, on
+the water the river reconcile leaves: 37,947 texels in 304 bodies.
+
 ### Known limits
 
 - Where a river spline speaks, its ribbon (section 34) has already taken the box's water
   back before this runs, so the spline's own surface replaces the membrane there. The
   membrane is left for boxes without a spline.
 - A box piece over another body passes the ring test only when enough of its ring is below
-  it. Rectangles of a higher box inside a lake whose ring is mostly cliffs still draw
-  deep: around (1920, -1897), (1846, -2152) and (2077, -1933).
+  it.
+- The arch lake near (1980, -1890) ends in a straight line at y -1733, the edge of its
+  `FGWaterVolume`. South of it the only box is the ocean spline's at -17 m, so the field's
+  water rule (section 19) drops the artwork's water there as ground standing out of the
+  sea. That is the field's level rule, not a hole, and this section leaves it.
+- The wide fall at (1790, 520): the 95 m lake's box reaches past the lip, to x 1863, over
+  the swamp 112 m below, at the lake's level. The re-levelling leaves that strip at the
+  lake's level, so it still draws as the lake, 112 m deep.
 - Level-only water keeps its own rule, so the open sea's deep rectangles are unchanged.

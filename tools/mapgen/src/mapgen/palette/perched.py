@@ -4,7 +4,8 @@ The field levels each wet texel at the highest water-box top over it. For a slop
 box's top is the river's upstream end, and where boxes of two bodies overlap in plan the
 higher body's top lands on the lower one. Either way the level stands metres above the dry
 banks around it, which still water cannot do, and the renderer would draw tens of metres of
-depth. docs/spatial-and-map.md section 38.
+depth. The artwork's mask also leaves dry holes inside a lake, which ``wet_holes`` fills.
+docs/spatial-and-map.md section 38.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ from mapgen.terrain.fill import solve
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
+    "HOLE_BRIDGE_M",
+    "HOLE_DEPTH_MAX_M",
     "PERCHED_EXCESS_M",
     "PERCHED_LIST_MAX",
     "SPILL_RING_M",
@@ -28,6 +31,7 @@ __all__ = [
     "relevel",
     "spill_share",
     "water_surfaces",
+    "wet_holes",
 ]
 
 #: The box level is kept while it stands at most this far above the shoreline's own
@@ -45,8 +49,20 @@ SPILL_SHARE = 0.25
 #: How many of the largest perched bodies the sidecar lists by place.
 PERCHED_LIST_MAX = 12
 
+#: Dry ground inside a lake is re-wetted across gaps up to twice this wide: the arches and
+#: bridges the artwork draws over the water.
+HOLE_BRIDGE_M = 12.0
+
+#: A hole deeper than this anywhere under its lake is a cliff foot or a box over lower water,
+#: not a lake middle too dark for the artwork's blue test.
+HOLE_DEPTH_MAX_M = 15.0
+
 _FOUR = ((0, 1), (0, -1), (1, 0), (-1, 0))
 _EIGHT = np.ones((3, 3), bool)
+
+
+def _is_ocean(value: int) -> bool:
+    return abs(value - OCEAN_LEVEL_M * hf.DM_PER_M) <= OCEAN_LEVEL_BAND_M * hf.DM_PER_M
 
 
 def _shifted(plane: np.ndarray, dr: int, dc: int, fill) -> np.ndarray:
@@ -149,17 +165,12 @@ def perched_levels(field, planes=None) -> tuple[np.ndarray | None, dict]:
     banks = np.where(dry, heights, np.where(wet & (water != hf.NODATA), water, np.nan))
     banks = banks.astype(np.float32)
     band_dm = PERCHED_EXCESS_M * hf.DM_PER_M
-    ocean_dm = OCEAN_LEVEL_M * hf.DM_PER_M
-
-    def is_ocean(value: int) -> bool:
-        return abs(value - ocean_dm) <= OCEAN_LEVEL_BAND_M * hf.DM_PER_M
-
     out = water.copy()
     found = []
     candidates = 0
     step_m = field.spacing_cm / 100.0
     pad = int(np.ceil(SPILL_RING_M[1] / step_m)) + 1
-    for window, body, value in _bodies(measured, water, is_ocean, pad):
+    for window, body, value in _bodies(measured, water, _is_ocean, pad):
         g = heights[window].astype(np.float32)
         bank = np.where(body, np.float32(np.nan), banks[window])
         shore, waterline = _shore(body, g, bank, value)
@@ -217,9 +228,105 @@ def perched_levels(field, planes=None) -> tuple[np.ndarray | None, dict]:
     }
 
 
+def _holes(body, near, ground, surface, dry, step_m: float) -> np.ndarray:
+    """Which of a window's ``dry`` texels are holes in ``body``: inside the closed shape of
+    the water at its level, below its ``surface``, away from where it would spill, and in a
+    part that reaches the body, more than ``PERCHED_EXCESS_M`` deep somewhere and nowhere
+    deeper than ``HOLE_DEPTH_MAX_M``.
+
+    It would spill over ground outside that shape standing that far below it which runs on
+    past the bridge, not over the rounded ends of a bridged gap."""
+    bridge = HOLE_BRIDGE_M / step_m
+    grown = ndimage.distance_transform_edt(~near) <= bridge
+    hull = ndimage.binary_fill_holes(ndimage.distance_transform_edt(grown) > bridge)
+    depth = surface.astype(np.int32) - ground
+    band = PERCHED_EXCESS_M * hf.DM_PER_M
+    hole = hull & dry & (depth > 0)
+    low, _count = ndimage.label(dry & ~hull & (depth > band), structure=_EIGHT)
+    away = np.unique(low[(low > 0) & ~grown])
+    if len(away):
+        hole &= ndimage.distance_transform_edt(~np.isin(low, away)) > bridge
+    parts, _count = ndimage.label(hole, structure=_EIGHT)
+    beside = np.unique(parts[ndimage.binary_dilation(body, structure=_EIGHT) & hole])
+    beside = beside[beside > 0]
+    if not len(beside):
+        return np.zeros_like(hole)
+    deepest = np.asarray(ndimage.maximum(depth, parts, beside))
+    return np.isin(parts, beside[(deepest > band) & (deepest <= HOLE_DEPTH_MAX_M * hf.DM_PER_M)])
+
+
+def wet_holes(field, before, level, grades, dropped=None) -> tuple:
+    """``(level, grades, meta)`` with the dry holes the artwork left in measured water filled.
+
+    The artwork's blue test reads a lake's deep middle, and water under an arch it draws
+    over the lake, as dry. A hole takes the surface of the nearest texel of its body and the
+    measured grade. Bodies are read off ``before``'s box levels, as ``perched_levels`` reads
+    them, and ``level`` is its result. ``dropped`` is water the river reconcile took out,
+    which stays out. New arrays where anything changed; the ocean is never touched.
+    """
+    heights = field._height_dm
+    known = heights != hf.NODATA
+    wet = grades != hf.WATER_DRY
+    if dropped is not None:
+        wet = wet | dropped
+    measured = (grades == hf.WATER_MEASURED) & (before != hf.NODATA) & known
+    sea = OCEAN_LEVEL_M * hf.DM_PER_M + np.array([-1, 1]) * OCEAN_LEVEL_BAND_M * hf.DM_PER_M
+    inland = measured & ((before < sea[0]) | (before > sea[1]))
+    step_m = field.spacing_cm / 100.0
+    band = PERCHED_EXCESS_M * hf.DM_PER_M
+    found = []
+    pad = 2 * int(np.ceil(HOLE_BRIDGE_M / step_m)) + 2
+    for window, body, value in _bodies(measured, before, _is_ocean, pad):
+        level_of = np.abs(before[window].astype(np.int32) - value) <= band
+        nearest = ndimage.distance_transform_edt(~body, return_distances=False, return_indices=True)
+        surface = level[window][tuple(nearest)]
+        near = body | (inland[window] & level_of)
+        hole = _holes(body, near, heights[window], surface, known[window] & ~wet[window], step_m)
+        if hole.any():
+            found.append((window, hole, surface))
+    if not found:
+        return level, grades, {"bodies": 0, "texels": 0}
+    level, grades, was = level.copy(), grades.copy(), grades
+    places = []
+    for window, hole, surface in found:
+        target = level[window]
+        # Two bodies that close over one gap leave it at the lower surface.
+        first = grades[window][hole] == hf.WATER_DRY
+        target[hole] = np.where(first, surface[hole], np.minimum(target[hole], surface[hole]))
+        grades[window][hole] = hf.WATER_MEASURED
+        rows, cols = np.nonzero(hole)
+        x_m = field.x0_cm / 100 + (window[1].start + cols.mean()) * step_m
+        y_m = field.y0_cm / 100 + (window[0].start + rows.mean()) * step_m
+        places.append(
+            {
+                "texels": int(hole.sum()),
+                "x_m": round(float(x_m), 1),
+                "y_m": round(float(y_m), 1),
+                "level_m": float(surface[hole].max()) / hf.DM_PER_M,
+            }
+        )
+    places.sort(key=lambda place: -place["texels"])
+    meta = {
+        "rule": (
+            "dry ground inside the shape the measured water at a body's level closes over "
+            "gaps up to twice bridge_m, standing below the surface, farther than bridge_m "
+            "from dry ground outside that shape standing excess_m below and running on past "
+            "bridge_m, in a part reaching the body, deeper than excess_m somewhere and "
+            "nowhere deeper than depth_max_m"
+        ),
+        "bridge_m": HOLE_BRIDGE_M,
+        "depth_max_m": HOLE_DEPTH_MAX_M,
+        "excess_m": PERCHED_EXCESS_M,
+        "bodies": len(found),
+        "texels": int(np.count_nonzero(grades != was)),
+        "largest": places[:PERCHED_LIST_MAX],
+    }
+    return level, grades, meta
+
+
 class WaterSurfaces(NamedTuple):
     """The water a render draws: the ocean reach, and the level and grade planes after the
-    rivers took their boxes' water back and perched water was re-levelled."""
+    rivers took their boxes' water back, perched water was re-levelled and holes filled."""
 
     reach: np.ndarray | None
     reach_meta: dict
@@ -245,7 +352,13 @@ def water_surfaces(field, kernel_only: bool, rivers=None) -> WaterSurfaces:
     )
     planes = None if rivers is None else (rivers.water_dm, rivers.grades)
     level, meta = perched_levels(field, planes)
+    own = field._water_quality_raster()
+    grades = own if rivers is None else rivers.grades
     if "bodies" in meta:
         print(f"  perched water: {meta['bodies']} bodies, {meta['texels']} texels re-levelled")
-    grades = field._water_quality_raster() if rivers is None else rivers.grades
+        before = field._water_raster() if rivers is None else rivers.water_dm
+        dropped = None if rivers is None else (own != hf.WATER_DRY) & (grades == hf.WATER_DRY)
+        level, grades, meta["holes"] = wet_holes(field, before, level, grades, dropped)
+        holes = meta["holes"]
+        print(f"  holes in lakes: {holes['bodies']} bodies, {holes['texels']} texels re-wetted")
     return WaterSurfaces(reach, reach_meta, level, grades, meta)
