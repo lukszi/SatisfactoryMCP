@@ -1353,7 +1353,7 @@ composited with the top layer's raise-only lift, and only where the mesh top sta
 
 **The heightfield is unchanged.** `CliffPillar_03` stays excluded there because it is passable
 in game: the map draws what the artwork draws, and height lookups keep reading the walkable
-ground. The provenance input is `render_meshes`, reader version 1.
+ground. The provenance input is `render_meshes`, reader version 1 (2 since section 28).
 
 ### The paint input
 
@@ -1437,3 +1437,97 @@ adopts the painted layer as `game-painted-r6-502094`.
   by the ocean rule.
 - Pigment strength (0.15) makes the central Red Bamboo ground strongly red, as the prototype
   did.
+
+## 28. Waterfalls and the first small-mesh batch (2026-10-05)
+
+Two additions to the satellite and game-painted styles. The heightfield is unchanged, and the
+recipe number stays 6. A render records them as two provenance inputs, `waterfalls` (reader
+version 1) and `render_meshes` (now reader version 2), plus each style's palette digest.
+Build 502094.
+
+### Where the falls come from
+
+Every waterfall on the map is a `BP_WaterFallTool_02` actor: 191 of them, 185 inside the map
+frame. The tool hangs a vertical curtain of `SM_Waterfall_Side_Module` instances, each 2 m wide
+and 10 m tall, from a lip. It lays `SM_Waterfall_Top_Module` instances (8.05 m of rushing
+water) upstream of the lip, and on 148 of the falls it puts `SM_SplashModule_Mid` discs where
+the water lands. The modules are instanced components whose mesh and attachment come from the
+class template, so the reader composes them onto the actor's root itself.
+`gamedata/waterfalls.py` turns one actor into one record:
+
+| Field | What |
+| --- | --- |
+| `x`, `y`, `z` | the middle of the lip, in metres |
+| `along`, `out` | the lip's direction and the direction the water falls (the actor's local -Y) |
+| `width_m` | the curtain's span along the lip |
+| `height_m` | the curtain's length, which often runs on far below the ground |
+| `top_len_m`, `splash` | the top modules' length, and each splash disc as `[x, y, z, radius]` |
+
+The level sweep reads them in the same pass that harvests the render-only meshes
+(`sweep_levels(read_actor=...)`), so this adds no second pass. A render caches the records in
+`falls.cache/falls.json` beside the raster caches, stamped with the build and the reader
+version, and deletes them with the caches unless `--keep-direct` is given. The 8
+`SM_WaterfallMesh_01` and the one `Waterfall_Top_01` are backdrop meshes outside the playable
+area and are not read.
+
+### Which falls are drawn
+
+`palette/falls.py` prepares the records against the field once per run. The drop is measured
+to the lowest surface within 11 m out from the lip, never below the curtain's own end. A fall
+is left out when:
+
+- its lip is less than 1 m above the ocean level, or under standing water. These are the ocean
+  pouring off the edge of the world: 102 of the 185 in-frame records.
+- the field has no ground under the lip, or less than half of the 30 points out from it.
+- the ground under the lip is more than 4 m above it, which means the fall is inside a cave or a
+  rock: 40 records.
+- it drops less than 2 m.
+
+One more record fails the last two tests, which leaves 42 drawable falls on this build.
+
+### How they are drawn
+
+The falls are drawn on the finished band in sRGB, after the sea fill, and only ever towards the
+foam colour. A pixel is never darkened. Each fall has three terms:
+
+- **The streak** is a band across the full width of the lip. It runs from the top modules
+  upstream (faint, 0.45) to `spread` metres out, where `spread = 0.05 * drop`, clamped to
+  2–9 m, and fades to 0.55 at its end. Two cosines across the lip break it into strands. It
+  shows only where the drawn ground stands below the lip plus 3 m, so a rock roof over the
+  fall hides it.
+- **The pool** is a filled capsule along the lip at the landing (the splash discs' median
+  offset, or half the spread), with a radius of `0.08 * drop`, clamped to 3–10 m, and a
+  slightly brighter rim. It shows only where the ground is at least 40% of the drop below the
+  lip, reaching full strength at 80%.
+- **The mist** is a soft halo 1.8 radii wide around the pool, at 0.28, in a cooler grey.
+
+The edges are softened over the larger of one pixel and 0.6 m. A fall narrower than a pixel
+therefore covers only part of it, so the falls stay small at preview sizes and on the coarse
+tiles. All the numbers are in each palette's `falls` block. The terrain style has none and
+draws no falls. The drawn ground, not the water surface, decides what hides the streak: the
+water boxes around a fall often stand above its lip.
+
+### The small-mesh batch
+
+The first slice of the satellite-gaps study's small-mesh list, drawn through the existing
+render-only path (section 27):
+
+| Meshes | How | Instances | Class |
+| --- | --- | --- | --- |
+| Hot-spring terraces, `/World/Environment/HotSpring/` | static meshes, added to `RENDER_ONLY_DIRS` | 101 | `terrace`, game-painted colour #ccbea8 |
+| `SmoothRock_03`, `SnakeStone_01` | foliage instances, matched by exact name in `RENDER_ONLY_FOLIAGE_MESHES` | 1,710 and 730 | `rock` |
+
+The 31 `Hotspring_Blob_01` meshes inside geyser nodes are components of the node actor, so the
+sweep does not reach them. The satellite style draws the new meshes as relief only, like the
+other render-only meshes.
+
+### Known limits
+
+- Nothing here has been checked against an in-game top-down view. The streak widths and the
+  pool sizes were chosen by looking at crops.
+- The waterfall material bends the curtain outwards in the vertex shader (`Curvature Amount`,
+  `WPO Strenght`). The record keeps the straight curtain the instances describe.
+- Where a rock overhangs part of a pool, the pool stops at the rock's edge. That is correct,
+  but it can draw a straight cut across the foam.
+- A 277 m wide fall, such as the one at (1784, 559), draws a long bright bar. At z3 and below
+  it is one of the brightest features in its area.

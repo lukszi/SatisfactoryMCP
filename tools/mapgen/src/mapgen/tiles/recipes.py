@@ -7,7 +7,7 @@ from satisfactory_mcp.core.gameassets.versions import (
     RENDER_RECIPE_KERNEL_ONLY,
 )
 
-__all__ = ["RECIPE", "RECIPES", "RECIPE_KERNEL_ONLY"]
+__all__ = ["RECIPE", "RECIPES", "RECIPE_KERNEL_ONLY", "Z7_NOTE"]
 
 #: Which recipe drew the pixels, recorded per layer so a reader looking at a tile can find
 #: out which set of rules made it.
@@ -59,3 +59,17 @@ RECIPE = RENDER_RECIPE_CURRENT
 #: switched off: no geometry opened, no direct regime, no cross-fade and no de-terracing.
 #: The sidecar records this number, so a layer drawn that way never claims the recipe above.
 RECIPE_KERNEL_ONLY = RENDER_RECIPE_KERNEL_ONLY
+
+#: What a 32768 px sheet's z7 is and is not, as the sidecar records it.
+Z7_NOTE = (
+    "interpolated-smooth. 32768 px is NOT a claim that the field has more to "
+    "say -- that was measured twice on this pipeline and refused twice, and the "
+    "high-frequency energy per pixel falls at every doubling. What z7 is, is the "
+    "same surface evaluated by the same C1 kernel at half the spacing, which a "
+    "client cannot produce for itself: a browser shown z6 at twice its scale "
+    "upsamples it BILINEARLY, and bilinear is C0, so the relief it draws is "
+    "ruled into 0.458 m squares. The exception is the direct regime, where the "
+    "pixels are triangles rather than an interpolation and z7 genuinely resolves "
+    "geometry the 1 m field folds away -- see two_regime.regimes for how much of "
+    "the sheet that is."
+)

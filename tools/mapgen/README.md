@@ -121,6 +121,7 @@ be traced to the axis it should move.
 | `gamedata/paint.py` | data | The paint command and the paint-layer store |
 | `gamedata/biome.py` | data | Biome raster and its calibration |
 | `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
+| `gamedata/waterfalls.py` | data | Waterfall records from the `BP_WaterFallTool_02` actors, and their cache |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
 | `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling |
 | `terrain/rasters.py` | renderer | Direct and top rasters on the output grid, render-only meshes |
@@ -129,6 +130,7 @@ be traced to the axis it should move.
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
 | `palette/painted.py` | style | The game-painted ground |
 | `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
+| `palette/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
 | `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |

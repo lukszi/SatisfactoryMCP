@@ -39,7 +39,8 @@ READER_VERSIONS = {
     "biome_raster": 1,
     "artwork_sheet": 1,
     "cliff_geometry": HEIGHTFIELD_GENERATOR_VERSION,
-    "render_meshes": 1,
+    "render_meshes": 2,
+    "waterfalls": 1,
 }
 
 #: ``tools/gen_map_renders.py`` recipes. ``requires`` names the heightfield the recipe needs:

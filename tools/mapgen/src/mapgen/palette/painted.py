@@ -17,7 +17,7 @@ from scipy import ndimage
 
 from mapgen.gamedata.paint import CANOPY_NAME, META_NAME, PIGMENT_NAME
 from mapgen.palette.shore import add_foam, wet_band
-from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL
+from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL, MESH_TERRACE
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -227,6 +227,7 @@ class PaintedGround:
         self.mesh_rgb = {
             MESH_CORAL: srgb_to_linear(palette["mesh_colours"]["coral"]),
             MESH_SHELL: srgb_to_linear(palette["mesh_colours"]["shell"]),
+            MESH_TERRACE: srgb_to_linear(palette["mesh_colours"]["terrace"]),
         }
         self.seabed_coral = srgb_to_linear(palette["mesh_colours"]["coral_seabed"])
         water = palette["water"]

@@ -71,6 +71,7 @@ from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, base_parser, require_gen
 from mapgen.gamedata.biome import calibrate_biome, read_biome, region_table_is_current
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.gamedata.paint import PAINT_DIR
+from mapgen.gamedata.waterfalls import FALLS_CACHE_DIR_NAME, falls_input
 from mapgen.heightmap import GENERATOR_VERSION
 from mapgen.lighting.hillshade import (
     BORROW_CLAMP,
@@ -84,6 +85,7 @@ from mapgen.lighting.hillshade import (
     artwork_detail,
     coarse_province,
 )
+from mapgen.palette.falls import prepare_falls
 from mapgen.palette.painted import PaintedGround, load_paint_meta
 from mapgen.palette.shore import OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
 from mapgen.palette.styles import (
@@ -123,7 +125,7 @@ from mapgen.tiles.pyramid import (
     install_layer,
     layer_dir,
 )
-from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
+from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY, Z7_NOTE
 from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, build_sidecar, pinned_field_build
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
@@ -271,7 +273,7 @@ def main() -> int:
     parser.add_argument(
         "--no-meshes",
         action="store_true",
-        help="leave out the render-only coral, shell and pillar meshes",
+        help="leave out the render-only meshes and the waterfalls",
     )
     parser.add_argument(
         "--paint-dir",
@@ -752,7 +754,7 @@ def main() -> int:
                 return 7
             top = (top_maps[0], top_maps[1], args.direct_subsamples)
 
-    meshes = None
+    meshes = falls = None
     mesh_source: dict = {}
     if weight_plane is not None and not args.no_meshes:
         cache_root = args.cache_dir or out_dir / args.renders_name
@@ -781,10 +783,11 @@ def main() -> int:
                     )
                 }
             }
-        inputs["render_meshes"] = {
-            "cl": changelist(field_build),
-            "reader_version": READER_VERSIONS["render_meshes"],
-        }
+        records, falls_source = falls_input(cache_root, field_build, sweep_once)
+        falls, mesh_source = prepare_falls(records, field), {**mesh_source, **falls_source}
+        falls_source["waterfalls"]["drawable"] = len(falls)
+        for name in ("render_meshes", "waterfalls"):
+            inputs[name] = {"cl": changelist(field_build), "reader_version": READER_VERSIONS[name]}
     loaded.clear()
 
     # ---- draw and cut ----------------------------------------------------------------
@@ -833,6 +836,7 @@ def main() -> int:
             overlay=top,
             kernel=taps_cubic if args.kernel_only else taps_pchip,
             meshes=meshes,
+            falls=falls,
             reach=reach,
             painted=painted if layer == "painted" else None,
             # Both layers draw the identical surface, so the seam and the regime table are
@@ -922,20 +926,7 @@ def main() -> int:
                 "fill_rebuild": fill_meta,
                 **measured,
             },
-            "z7": (
-                "interpolated-smooth. 32768 px is NOT a claim that the field has more to "
-                "say -- that was measured twice on this pipeline and refused twice, and the "
-                "high-frequency energy per pixel falls at every doubling. What z7 is, is the "
-                "same surface evaluated by the same C1 kernel at half the spacing, which a "
-                "client cannot produce for itself: a browser shown z6 at twice its scale "
-                "upsamples it BILINEARLY, and bilinear is C0, so the relief it draws is "
-                "ruled into 0.458 m squares. The exception is the direct regime, where the "
-                "pixels are triangles rather than an interpolation and z7 genuinely resolves "
-                "geometry the 1 m field folds away -- see two_regime.regimes for how much of "
-                "the sheet that is."
-            )
-            if args.size >= RENDER_PX
-            else None,
+            "z7": Z7_NOTE if args.size >= RENDER_PX else None,
             "hillshade": (
                 f"sun at azimuth {SUN_AZIMUTH_DEG} deg, altitude {SUN_ALTITUDE_DEG} deg, "
                 f"shade in [{SHADE_FLOOR}, {SHADE_FLOOR + SHADE_RANGE}], computed at the "
@@ -1031,7 +1022,8 @@ def main() -> int:
         # mapping refuses the unlink outright.
         direct = maps = top = top_maps = meshes = None
         if not args.keep_direct:
-            for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME):
+            for kept in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME,
+                         FALLS_CACHE_DIR_NAME):  # fmt: skip
                 root = args.cache_dir or out_dir / args.renders_name
                 shutil.rmtree(root / kept, ignore_errors=True)
     print(f"done in {time.time() - total_started:.0f}s")

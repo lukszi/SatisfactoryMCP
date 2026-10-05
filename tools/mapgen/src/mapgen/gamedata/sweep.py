@@ -261,13 +261,15 @@ def foliage_instances(
 
 
 def sweep_levels(
-    store, scripts, classes, meshes, progress: bool = True, extra_foliage=None
+    store, scripts, classes, meshes, progress: bool = True, extra_foliage=None, read_actor=None
 ) -> dict:
     """One pass over every ``*.umap`` of the world: landscape, placements, water actors.
 
     All three harvests need the same ``PackageView`` of the same 4,521 packages, and
     building that view is the whole cost of the pass, so they share it. Returns raw material
-    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in ``extra_foliage``.
+    and nothing interpreted. Foliage ``extra_foliage`` accepts lands in ``extra_foliage``;
+    whatever ``read_actor(view, slot, class path, classes)`` returns for a level actor, in
+    ``actors``.
     """
     components: list[tuple[int, int, np.ndarray]] = []
     proxies: list[tuple[float, float, float, float, float, float]] = []
@@ -282,6 +284,7 @@ def sweep_levels(
     owner_ids: dict[str, int] = {}
     foliage: dict[str, list[np.ndarray]] = {}
     extra: dict[str, list[np.ndarray]] = {}
+    actors: list = []
     unreadable = 0
     malformed = 0
     started = time.time()
@@ -304,6 +307,10 @@ def sweep_levels(
                 root_owner[root] = class_name_of(class_path)
 
         for slot, class_path in view.class_of.items():
+            if read_actor is not None and view.outer_of.get(slot) in view.level_slots:
+                found = read_actor(view, slot, class_path, classes)
+                if found is not None:
+                    actors.append(found)
             name = class_name_of(class_path)
             if name == "LandscapeStreamingProxy":
                 props = view.props(slot)
@@ -399,6 +406,7 @@ def sweep_levels(
         "water_box_sources": box_sources,
         "foliage": {mesh: np.concatenate(parts) for mesh, parts in foliage.items()},
         "extra_foliage": {mesh: np.concatenate(parts) for mesh, parts in extra.items()},
+        "actors": actors,
         "seconds": time.time() - started,
     }
 
