@@ -242,16 +242,13 @@ def search_resource_nodes(
         ["north", "resource:Crude Oil"]    crude oil in the north
         ["bbox:-500,-2500,600,-1800"]      a rectangle, metres
 
-    `near` accepts a coordinate in metres, `me` for the player, or the name of a
-    labelled factory -- "the nearest free coal to the coal powerplant" needs no
-    coordinates. Giving `near` in any view adds a distance column.
+    `near` accepts a coordinate in metres, `me` for the player, or the name of a labelled
+    factory, and in any view adds a distance column. All three views page with `offset=`
+    over a stable ranking.
 
-    All three views page with `offset=`; the ranking is stable, so the tail of 127 iron
-    nodes is reachable 25 at a time.
-
-    **Water is the exception to everything above.** Open water carries no node, so asking
-    for it returns only the fracking satellites; the bodies already being pumped, the pumps
-    on each and the measured sea level are printed beside them instead.
+    **Water is the exception.** Open water carries no node, so asking for it returns only
+    the fracking satellites, with the bodies already pumped, the pumps on each and the
+    measured sea level printed beside them.
     """
     if gone := app.retired(("mode", mode, "show"), ("group", group, "show")):
         return gone

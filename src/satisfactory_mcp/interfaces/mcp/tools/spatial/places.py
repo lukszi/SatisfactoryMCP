@@ -26,14 +26,13 @@ def list_regions(
 ) -> str:
     """Named map regions, optionally only those containing a given resource.
 
-    Region names are ADVISORY: the boundaries are the game's own map areas, downsampled
-    to a 256 m grid to publish and a 64 m one to look up in, so a name near a boundary can
-    be one cell out. Use them to talk about places, not to compute with -- every node row
-    also carries an exact grid cell.
+    Region names are ADVISORY: the boundaries are the game's own map areas, downsampled to a
+    256 m grid to publish and a 64 m one to look up in, so a name near a boundary can be one
+    cell out. Use them to talk about places, not to compute with -- every node row also
+    carries an exact grid cell.
 
-    `anchor` is a coordinate that provably lies in the region, which a centroid does not:
-    a concave region's mean lands on its neighbour's ground, and the map has drawn its
-    names at the anchor all along.
+    `anchor` is a coordinate that provably lies in the region, which a centroid does not: a
+    concave region's mean lands on its neighbour's ground.
     """
     if gone := app.retired(("with_resource", with_resource, "resource")):
         return gone
@@ -229,25 +228,19 @@ def describe_location(
 ) -> str:
     """Name the region at a place, sample its elevation, and count what runs through.
 
-    `at=` takes `'x,y'` in metres, or anything else this project prints an id for: `me`,
-    a named factory, `slab:<n>` from `factory_map show=slabs` -- including the bare
-    platforms nothing else would take -- or a `chain:`/`pipe:` run from `search_conduits`.
+    `at=` takes `'x,y'` in metres, `me`, a named factory, `slab:<n>` from `factory_map
+    show=slabs` (bare platforms included), or a `chain:`/`pipe:` run from
+    `search_conduits`. Off the map it answers 'off-map or ocean' rather than guessing the
+    nearest land region.
 
-    Returns 'off-map or ocean' rather than guessing the nearest land region.
+    Elevation is answered two ways and never averaged. With the extracted terrain field,
+    `terrain_m` is the texel at this coordinate, with its layer, that layer's accuracy, and
+    the water surface and depth where water stands. The rest is a SAMPLE of what stands
+    nearby, with count and spread: resource nodes are quoted as ground, foundations and
+    buildings as built elevation, and the gap between them is fill already stacked there.
 
-    Elevation is answered two ways and the two are never averaged. Where this machine
-    carries the extracted 1 m terrain field, `terrain_m` is one texel read at exactly
-    this coordinate, with the layer that answered, that layer's measured accuracy, and
-    the water surface and depth where water stands. Everything else is a SAMPLE
-    population reported with its count and spread: resource nodes rest on terrain and
-    are quoted as ground, foundations and buildings are quoted separately as built
-    elevation because a platform is wherever the player put it, and the gap between the
-    two is the fill already stacked there.
-
-    Belts and pipes are counted too, measured against the runs' drawn lines rather than
-    their corner points, so a conduit crossing mid-span is seen. With a readable save,
-    a zero here means nothing runs through -- absence in this output is absence in the
-    world. `search_conduits` lists the runs themselves.
+    Belts and pipes are counted against their drawn lines; with a readable save a zero means
+    nothing runs through. `search_conduits` lists the runs.
     """
     # The node table alone covers the whole map, so an unexplored coordinate still gets an
     # answer; a readable save adds the dense sources and resolves every other `at=` form.

@@ -114,12 +114,9 @@ def rename_factory(
 ) -> str:
     """Rename a factory label. The machines it holds are not touched and nothing re-anchors.
 
-    The label keeps its anchors, notes, centroid, signature and dates -- the name is the
-    only thing here a player picked, and correcting one used to mean naming the whole
-    selection again under a second name and forgetting the first.
-
-    Stored plans scoped to this factory follow the new name. Renaming onto a name this
-    world already uses is refused and says which label holds it.
+    The label keeps its anchors, notes, centroid, signature and dates. Stored plans scoped
+    to this factory follow the new name. Renaming onto a name this world already uses is
+    refused and says which label holds it.
     """
     st = app.load_world(save, world, as_of)
     label = _find_label(st.labels, name)
@@ -177,14 +174,10 @@ def amend_factory(
 ) -> str:
     """Add or drop individual machines on a label, without re-anchoring the rest of it.
 
-    `name_factory` re-anchors a label to whatever its selector picks, so correcting one
-    wrongly-included machine meant re-selecting the whole factory. This edits the
-    membership: every anchor `add` and `drop` do not name is left exactly as it was,
-    including ids this save no longer has.
-
-    `add` runs first, then `drop`, then `prune_missing`, which clears the anchors
-    `list_factories` reports gone. One machine is `machine:<instance>` on either side.
-    Dropping the last machine is refused -- deleting a label is `forget_factory`.
+    Every anchor `add` and `drop` do not name is left exactly as it was, including ids this
+    save no longer has. `add` runs first, then `drop`, then `prune_missing`, which clears
+    the anchors `list_factories` reports gone. One machine is `machine:<instance>` on either
+    side. Dropping the last machine is refused -- deleting a label is `forget_factory`.
     """
     st = app.load_world(save, world, as_of)
     store = st.labels

@@ -122,6 +122,20 @@ def test_tool_descriptions_stay_short():
         assert len(first) <= 120, (tool.name, first)
 
 
+#: Every tool description together, in characters: what each session carries before its first
+#: call. A ratchet set when the backstory moved to docs/mcp-surface.md; lower it, never raise it.
+TOOL_DESCRIPTION_BUDGET = 29_954
+
+
+def test_tool_descriptions_fit_their_budget():
+    """The descriptions are the usage contract. Backstory and validation figures belong in
+    the docs, where they cost nothing until somebody reads them."""
+    total = sum(len(tool.description or "") for tool in _run(srv.mcp.list_tools()))
+    assert total <= TOOL_DESCRIPTION_BUDGET, (
+        f"tool descriptions total {total} characters, over the {TOOL_DESCRIPTION_BUDGET} budget"
+    )
+
+
 def test_ui_context_takes_answered_asks_without_a_new_tool():
     tools = {t.name: t for t in _run(srv.mcp.list_tools())}
     props = tools["ui_context"].inputSchema["properties"]

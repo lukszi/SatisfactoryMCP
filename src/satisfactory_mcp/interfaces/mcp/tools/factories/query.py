@@ -278,9 +278,8 @@ def factory_query(
 ) -> str:
     """Ask one thing about one factory: what it makes, needs, draws, or touches.
 
-    `show` accepts several at once, e.g. "balance,power,links". `offset` pages every
-    table in the answer at once, so asking for one aspect at a time is what you want
-    when a factory has more machines than fit.
+    `show` accepts several at once, e.g. "balance,power,links"; `offset` pages every table
+    in the answer at once.
 
     - **summary** size, position, top recipes, net power
     - **balance** per-item produced vs consumed vs net -- the sign is the point
@@ -289,18 +288,15 @@ def factory_query(
     - **internal** made and eaten inside the set -- the mark of a self-contained line
     - **machines** every machine with its building, recipe and clock
     - **recipes** / **buildings** counts
-    - **power** draw vs generation, nameplate AND measured -- which factory is really
-      burning the grid, rather than which could
+    - **power** draw vs generation, nameplate AND measured
     - **nodes** resource nodes its extractors sit on
     - **links** which other factories it exchanges material with
     - **issues** paused, recipe-less, or unresolved machines
 
-    Every rate is printed twice. NAMEPLATE is the machine's recipe rate at its saved clock,
-    which a starved factory still reports in full. MEASURED is that rate scaled by the share
-    of its own productivity window each machine spent producing -- the window that ended
-    when the save was written, so a line idle at that moment measures 0 and is not broken.
-    A machine keeping no monitor is left out of measured entirely and shown separately,
-    because counting it in full there would invent output.
+    Every rate is printed twice: NAMEPLATE at the saved clock, and MEASURED, scaled by the
+    share of each machine's last productivity window spent producing -- so a line idle when
+    the save was written measures 0 without being broken. A machine with no monitor is left
+    out of measured and shown apart.
     """
     if gone := app.retired(("of", of, "show")):
         return gone

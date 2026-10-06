@@ -96,21 +96,14 @@ def trace_upstream(
 ) -> str:
     """What feeds a machine, or what it feeds -- walked on the save's own connections.
 
-    `factory_query` answers this between LABELLED sets. This answers it for one machine or
-    one building type, which is the question a cutover actually asks: thirteen Oil
-    Extractors sit on the Spire nodes and twenty Fuel Generators are burning, and repiping
-    the wrong extractor first drops several GW.
+    `factory_query` answers this between LABELLED sets; this answers it for one machine, a
+    building type or a label, which is the question a cutover asks: which feed can be
+    repiped without dropping the generators behind it.
 
-    Direction is READ, not guessed. Every material edge carries its connector role, and
-    92.5% of the connectors landing on a machine name their direction outright; the rest
-    are all on extractors or generators, whose own nature settles them. Where even that
-    fails the edge is walked BOTH ways -- over-reporting a feeder is recoverable, missing
-    one is not.
-
-    Belts and pipes are walked THROUGH and left out of the table: a trace from the
-    generators touches 331 nodes at depth 72, nearly all of it conveyor. What the route
-    crossed is named instead in a note -- how many runs of each medium, and the ids
-    `search_conduits` takes for the ones that have them.
+    Direction is READ from each edge's connector role, or from the machine's own nature
+    where the role is silent; an edge with neither is walked BOTH ways, so a feeder may be
+    over-reported but never missed. Belts and pipes are walked THROUGH and left out of the
+    table; a note names the runs the route crossed, with the ids `search_conduits` takes.
     """
     g = app.game()
     st = app.load_world(save, world, as_of)

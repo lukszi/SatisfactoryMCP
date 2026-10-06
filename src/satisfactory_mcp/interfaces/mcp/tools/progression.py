@@ -311,15 +311,10 @@ def mam_research(
 ) -> str:
     """MAM research: what is left, what it costs, and what you can afford right now.
 
-    The MAM is where CAPABILITIES live, as opposed to recipes -- the Dimensional Depot,
-    the Power Augmenter, and Production Amplifier, which is the one that lets a
-    Somersloop go into a machine at all.
-
-    That last one has no flag in the save. `BP_UnlockSubsystem_C` records overclocking as
-    `mIsBuildingOverclockUnlocked`, but nothing anywhere in the file records production
-    amplification, so it is derived from the purchased-schematic set instead. Capability
-    rows are marked LOCKS so it is obvious which research gates a tool argument rather
-    than just adding a recipe.
+    The MAM is where CAPABILITIES live, as opposed to recipes -- the Dimensional Depot, the
+    Power Augmenter, and the Production Amplifier, which lets a Somersloop go into a
+    machine. The save has no flag for that last one, so it is derived from the purchased
+    schematics. Rows marked LOCKS gate a tool argument rather than add a recipe.
     """
     if gone := app.retired(("status", status, "show"), ("search", search, "query")):
         return gone
@@ -542,13 +537,8 @@ def somersloops(
 ) -> str:
     """Somersloops held, slotted and owned -- the sibling of power_shards.
 
-    `sloop_budget` has existed since sloops became spendable and nothing exposed it, so
-    the only way to learn how many you had was to guess a `sloops=` budget and read the
-    shortfall warning: you had to guess the budget to discover the budget.
-
-    Free and committed are both exact. Slotted ones live in `InventoryPotential`, the same
-    component as Power Shards, so this counts slot contents rather than inverting a boost
-    multiplier.
+    Free and committed are both exact: slotted ones are counted from `InventoryPotential`,
+    the same component as Power Shards, not inverted from a boost multiplier.
     """
     st = app.load_world(save, world, as_of)
 

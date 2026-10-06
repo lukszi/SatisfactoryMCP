@@ -296,9 +296,7 @@ def rename_plan(
 ) -> str:
     """Rename a saved plan. Nothing is re-solved and nothing else about it changes.
 
-    The plan keeps its key, its recorded field, its siting and its notes -- a name is the
-    only thing here a player picked, and it was the only thing they could not correct
-    without saving the plan again under a second name and forgetting the first.
+    The plan keeps its key, its recorded field, its siting and its notes.
     """
     st = app.load_world(save, world, as_of)
     stored = _find_stored_plan(st, name)

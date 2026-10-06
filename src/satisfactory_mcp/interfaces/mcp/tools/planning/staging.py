@@ -111,35 +111,26 @@ def diff_vs_save(
 ) -> str:
     """What to change to get from the factory you have to the one plan_factory plans.
 
-    Takes exactly plan_factory's arguments and re-solves, because the server keeps no
-    state. Both tools print a plan id hashed over the arguments AND the save-derived
-    solve inputs, so two responses carrying the same id are provably the same plan.
+    Takes plan_factory's arguments and re-solves; both tools print a plan id hashed over the
+    arguments and the save-derived inputs, so the same id is provably the same plan.
 
     Machines are matched by IDENTITY, never by position: a manufacturer on (building,
-    recipe), a generator on its building alone since its fuel is piped in rather than
-    set on the machine, an extractor on the node it occupies. A Refinery running some
-    other recipe is busy, not spare, so it never counts toward the plan.
+    recipe), a generator on its building, an extractor on its node; a machine running
+    another recipe is busy, not spare. Actions are ordered free-first -- UNPAUSE, SETRECIPE,
+    then BUILD -- and the power arithmetic charges only the machines still to place. Where a
+    machine cannot be identified (Water Extractors) the answer is a RANGE.
 
-    Actions are ordered free-first -- UNPAUSE, then SETRECIPE on machines that produce
-    nothing today, then BUILD. Stages follow the plan's own chain depth and the power
-    arithmetic is INCREMENTAL, charging only the machines you have yet to place. Where
-    a machine cannot be identified at all (Water Extractors have no recipe and no
-    resolvable node) the answer is a RANGE, never a number.
+    Recall a stored plan with ``plan=`` and the diff is also grouped by STARTUP STAGE, the
+    partition commission_plan emits; ``stage=<n>`` narrows to one stage's delta and
+    ``stage=0`` asks for the overview without a stored plan, numbered from the arguments.
 
-    Recall a stored plan with ``plan=`` and the diff is also grouped by STARTUP STAGE --
-    the same partition commission_plan emits -- so it answers "which stage am I in".
-    ``stage=<n>`` narrows to one stage's delta; ``stage=0`` asks for the overview
-    without a stored plan, at the cost that the numbering moves when the arguments do.
+    Built and energised differ, and the save proves one direction only: a machine that
+    produced in its last 300 s window had power; one that did not may be unpowered, starved,
+    blocked or idle. A stage is never called unpowered, only built with nothing proven
+    running.
 
-    Built and energised are DIFFERENT states and the save separates them in one
-    direction only: a machine that produced in the last 300s window certainly had
-    power, while one that did not may be unpowered, starved, blocked or idle. Grid
-    membership is not persisted at all, so a stage is never reported as "unpowered" --
-    only as built with nothing proven running, which is exactly what a finished but
-    not-yet-energised block looks like.
-
-    Saves are read-only: this never proposes writing one, and there is no dismantle
-    action. Machines standing among the plan but not in it are listed for you to judge.
+    Saves are read-only here, and machines standing among the plan but not in it are listed
+    for you to judge.
     """
     g = app.game()
     st = app.load_world(save, world, as_of)
@@ -227,18 +218,13 @@ def commission_plan(
 ) -> str:
     """In what order to switch a built plant on, without blowing the fuse.
 
-    This is a STARTUP order, not a build order, and the difference removes most of the
-    problem. Building costs materials, not power -- a machine draws only when it runs --
-    so the whole plant can be constructed at leisure, drawing nothing, and then energised
-    block by block. Nothing here tells you what to build first.
+    A STARTUP order, not a build order: a machine draws only when it runs, so the whole
+    plant is built first, drawing nothing, and then energised block by block.
 
-    The constraint is one line, and it is hard: at every step, energised consumer draw
-    must stay under the headroom plus generation from generators already burning fuel.
-    Exceeding it in Satisfactory does not degrade gracefully -- the fuse blows and the
-    whole grid stops until it is reset by hand, including the plant that was feeding it.
-
-    Generators are free to energise (0 MW draw, read from the dump), so a wave costs its
-    consumers and refunds its generators, and that refund pays for the next wave.
+    At every step, energised consumer draw must stay under the headroom plus generation from
+    generators already burning fuel; exceeding it blows the fuse and stops the whole grid.
+    Generators energise for free, so a wave costs its consumers and its generators' output
+    pays for the next wave.
 
     Takes plan_factory's arguments, or recall a saved plan with ``plan=``.
     """

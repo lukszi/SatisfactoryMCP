@@ -20,7 +20,7 @@ ENFORCE = True
 ROOT = Path(__file__).resolve().parent.parent
 BUDGETS = [
     (ROOT / "src" / "satisfactory_mcp" / "interfaces", 1.45),
-    (ROOT / "src" / "satisfactory_mcp" / "presenters", 0.75),
+    (ROOT / "src" / "satisfactory_mcp" / "presenters", 0.60),
     (ROOT / "tools", 1.00),
     (ROOT / "src" / "satisfactory_mcp" / "domain", 1.35),
     (ROOT / "src" / "satisfactory_mcp" / "core", 1.00),

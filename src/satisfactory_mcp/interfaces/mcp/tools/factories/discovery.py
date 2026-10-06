@@ -263,16 +263,14 @@ def factory_map(
 ) -> str:
     """Proposed factories, from power islands and belt topology, plus what is named.
 
-    Three independent signals are reported rather than one answer, because none is
-    right alone: power islands separate outposts but leave a grown-together base as one
-    476-machine blob; belt components shatter that blob into fragments; foundation slabs
-    are the sharpest of the three but say nothing about the ground-built parts of a
-    factory. Where they disagree, carve the difference with `name_factory` and a
-    `product:`, `near:` or `slab:` selector.
+    Three independent signals, because none is right alone: power islands separate outposts
+    but merge a grown-together base into one blob; belt components shatter that blob into
+    fragments; foundation slabs are the sharpest but miss ground-built parts. Where they
+    disagree, carve the difference with `name_factory` and a `product:`, `near:` or `slab:`
+    selector.
 
-    show=slabs also lists BARE platforms -- poured foundations carrying no machine yet
-    -- with tile count, extent, bounding box and elevation, because a freshly built
-    platform is a real place a build plan refers to. Pads under a stated tile threshold
+    show=slabs also lists BARE platforms -- poured foundations carrying no machine yet --
+    with tile count, extent, bounding box and elevation; pads under a stated tile threshold
     are summarised in one line.
     """
     st = app.load_world(save, world, as_of)
@@ -327,14 +325,13 @@ def propose_factories(
 ) -> str:
     """One coherence score over every signal, agglomerated into proposed factories.
 
-    Combines foundation slabs, proximity, belt connectivity, shared products and
-    supply links. Validated leave-one-factory-out against the player's twelve
-    hand-named factories: precision 1.000, recall 0.945, and precision was 1.000 on
-    every fold -- it never merges two factories, it only ever splits one.
+    Combines foundation slabs, proximity, belt connectivity, shared products and supply
+    links. It errs toward splitting: a proposal never merges two factories, but one factory
+    may come back in pieces.
 
-    Use `name_factory` on what it proposes. `unnamed_only=True` answers "what have I
-    built and not named". The `#` column is the `proposal:<n>` selector every other tool
-    takes, and it counts over ALL proposals -- so it does not shift when you page.
+    Use `name_factory` on what it proposes. `unnamed_only=True` answers "what have I built
+    and not named". The `#` column is the `proposal:<n>` selector every other tool takes,
+    counted over ALL proposals, so it does not shift when you page.
     """
     st = app.load_world(save, world, as_of)
     store = st.labels
@@ -410,12 +407,9 @@ def select_machines(
 ) -> str:
     """Preview which machines a selector picks, before naming them.
 
-    Worth running first on anything product-based: 17 machines make Concrete on the
-    reference save, but 15 of them are a construction feed inside the steel site and
-    only one is the player's "concrete setup".
-
-    `slab:<n>` answers "what stands on this platform", and answers it for an empty one
-    too: a poured platform with nothing on it yet is described rather than refused.
+    Worth running first on anything product-based: a product selector also picks machines
+    feeding that product inside other sites. `slab:<n>` answers "what stands on this
+    platform", and describes an empty platform rather than refusing it.
     """
     st = app.load_world(save, world, as_of)
     picked = machine_select.select_machines(select, st, split=split, expand=expand)

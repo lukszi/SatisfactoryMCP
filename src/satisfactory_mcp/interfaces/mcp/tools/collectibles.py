@@ -41,21 +41,14 @@ def collected_from_world(
     """Map collectibles: how many exist, how many you took, what is left and what is closest.
 
     Slugs, somersloops, Mercer spheres and their shrines, mushrooms, drop pods and the loot
-    caches around them. Two sources, and neither is asked the other's question:
-
-    * **the map** says what exists and where, read from the installed game's own cooked
-      packages, so ``placed`` is exact and every coordinate is exact;
-    * **the save** says what is gone. The world is not saved -- a save never mentions a slug
-      still lying there -- so its destroyed-actor list *is* the collected list, and it is
-      exact too. ``remaining`` is the subtraction of the two.
+    caches around them. The MAP (the installed game's cooked packages) says what exists and
+    where, exactly; the SAVE's destroyed-actor list says what is gone, exactly; ``remaining``
+    is the subtraction.
 
     Views: ``census`` (default) counts every category; ``collected`` and ``remaining`` list
-    individual placements with coordinates; ``nearest`` lists the remaining ones by distance
-    from ``near``, defaulting to the player.
-
-    A placement in a cell no save has ever loaded is counted as remaining and reported as
-    ``never_streamed``. It is never called present -- the map says where it is and nothing
-    on disk says whether it is still there.
+    placements with coordinates; ``nearest`` lists the remaining ones by distance from
+    ``near``, defaulting to the player. A placement in a cell no save has loaded counts as
+    remaining and is reported as ``never_streamed``, never as present.
     """
     if gone := app.retired(("mode", mode, "show")):
         return gone

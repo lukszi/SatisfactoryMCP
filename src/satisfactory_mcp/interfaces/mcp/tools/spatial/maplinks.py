@@ -108,23 +108,17 @@ def show_on_map(
 ) -> str:
     """Map links centred on something: this project's own map, and the public one.
 
-    Two links for every place. The LOCAL one opens this project's web map, which draws
-    the reader's own save -- their machines, their belts, their siting. The
-    satisfactory-calculator.com one opens a third-party map of the vanilla world, which
-    knows the terrain and the nodes and nothing the player built.
+    The LOCAL link opens this project's web map, which draws the reader's own save; the
+    satisfactory-calculator.com link opens a map of the vanilla world, which knows terrain
+    and nodes and nothing the player built.
 
-    `at` is the same place vocabulary every other tool takes (see docs/selectors.md),
-    plus one kind of its own: `resource:<name>` centres on the centroid of EVERY node of
-    that resource and switches its overlays on, which is a viewport rather than a place
-    and is why no other tool accepts it.
+    `at` takes the place vocabulary every tool takes (docs/selectors.md), plus
+    `resource:<name>`, which centres on the centroid of EVERY node of that resource and
+    switches its overlays on. Only the Crude Oil layer tokens are confirmed; a wrong token
+    still opens the map in the right place, without that overlay.
 
-    Only the Crude Oil layer tokens are confirmed; the rest follow the same pattern and
-    are flagged. A wrong token still opens the map in the right place, just without that
-    overlay.
-
-    ``pin=True`` also pins the place for the page (a node, factory, sited plan or point;
-    pinning it twice returns the pin it already has), and the page shows it at once.
-    ``mode`` opens the local link on that base map instead of the shared default.
+    ``pin=True`` also pins the place for the page (pinning it twice returns the existing
+    pin). ``mode`` opens the local link on that base map instead of the shared default.
     """
     if mode:
         mode = _base_map(mode)

@@ -378,8 +378,8 @@ def plan_factory(
 ) -> str:
     """Optimise a factory with an LP over this world's unlocked recipes.
 
-    ``sources`` says which resource nodes may feed the plan, as a list of selectors --
-    named regions, radii, grid cells, compass directions, or specific node ids::
+    ``sources`` lists the resource-node selectors that may feed the plan -- named regions,
+    radii, grid cells, compass directions, or node ids::
 
         ["north"]                        everything in the northern half
         ["region:Northern Forest"]       one named region
@@ -388,81 +388,57 @@ def plan_factory(
         ["grid:X3Y4", "grid:X3Y5"]       specific grid cells
         ["north", "resource:Crude Oil"]  narrow a location to one resource
 
-    Omit it and the whole map is in scope. Use search_resource_nodes to discover ids.
+    Omit it and the whole map is in scope; search_resource_nodes lists node ids.
 
-    Machine counts are whole buildings at a derived clock: a 52.8 machine-equivalent
-    result is reported as 53 machines at 99.6%. That is exact, always a clean ratio,
-    and provably the power-optimal way to run that throughput, so ordinary ratio
-    underclocking is automatic and needs no parameter.
+    Machine counts are whole buildings at a derived clock (52.8 machine-equivalents is 53
+    machines at 99.6%), the power-optimal way to run that throughput.
 
     ``extractor_clocks`` overclocks the SOURCE NODES only, e.g. [1.0, 1.5, 2.0, 2.5].
-    That is the usual play: a node set is fixed, so speed is the only way to get more
-    out of it, whereas overclocking production machines mostly burns power. Each
-    machine above 100% needs Power Shards, which nothing here counts.
+    ``clocks`` lets the solver spread throughput over more, slower machines to save power,
+    each machine priced at ``machine_cost_mw``. Neither counts the Power Shards an
+    overclock needs.
 
-    ``clocks`` is only for asking a different question: passing [0.5, 1.0] lets the
-    solver SPREAD throughput over more machines to save power, which is real but not
-    free, so each machine is priced at ``machine_cost_mw`` (default 5 MW, just above
-    the 2.58 MW/machine that trade was measured to be worth). Overclock modes are not
-    offered by default because they consume Power Shards, which nothing here counts.
+    objective: max_mw | max_item | min_raw | min_machines | min_power. Every item balances
+    as an EQUALITY, so a byproduct with no consumer makes the plan infeasible rather than
+    silently vanishing.
 
-    objective: max_mw | max_item | min_raw | min_machines | min_power.
-    Every item is balanced as an EQUALITY, so a byproduct with no consumer makes the
-    plan infeasible rather than silently vanishing.
-
-    ``exports`` is the whitelist of what may leave, and the single most load-bearing
-    argument here; default is power only, which is often infeasible for crude oil::
+    ``exports`` is the whitelist of what may leave; the default is power only::
 
         exports=["MW"]                        power out, plant must be self-powered
         exports=["Plastic", "Rubber"]         items out, NO power export
         exports=["MW", "Plastic", "Rubber"]   both -- MW must be listed explicitly
 
-    Two things worth reading twice. The power token is **MW** (``mw``, ``power`` and
-    ``Power`` all work too), not the item name of anything. And ``exports``
-    **replaces** the default rather than extending it: naming an item drops MW, which
-    is deliberate, because exporting MW also forbids drawing from the existing grid.
-    A token matching no item is refused by name rather than solved around.
+    The power token is **MW** (``mw``, ``power`` and ``Power`` work too). ``exports``
+    **replaces** the default rather than extending it, and exporting MW forbids drawing from
+    the grid. A token matching no item is refused by name.
 
-    ``sloops`` is a BUDGET, not a switch: it is how many Somersloops you will actually
-    commit, and the solver spends up to that many wherever they buy the most. Default 0
-    spends none, because only a fixed number exist on the whole map and a plan that
-    quietly assumed them would be unbuildable. Each one costs 4x power for 2x output on
-    its machine, so they are placed one at a time across many machines rather than
-    filling one -- output is linear in sloops and power is quadratic, so spreading wins.
+    ``sloops`` is a BUDGET of Somersloops to commit, spent where they buy the most; 0 spends
+    none. Each costs 4x power for 2x output on its machine, so they spread across machines.
 
-    ``payback_hours`` trades machines for power: a row is spread over more, slower machines
-    while the power saved repays their build points within that many hours of play, at
-    ``power_price`` points per MWh (the save's grid mix unless given). 0 is the plain build.
-    ``overclock_last`` builds a row one machine short with the last one overclocked, weighed
-    against the horizon and the shards in hand plus those craftable from slugs;
-    ``row_overclock`` overrides it per row. From 5 h,
-    max_mw and min_power price each machine at its build points over the horizon instead of
-    ``machine_cost_mw``, so they may switch recipes away from scarce buildings. Both are
-    stored with the plan and follow the
-    shared settings until set; "default" puts a recalled plan back on them. The notes say
-    what the next stop would change. Extractors, generators and somersloop rows never move.
+    ``payback_hours`` spreads a row over more, slower machines while the power saved repays
+    their build points within that many hours of play, at ``power_price`` points per MWh
+    (the save's grid mix unless given); 0 is the plain build. ``overclock_last`` builds a
+    row one machine short with the last one overclocked, weighed against the shards in hand
+    plus those craftable from slugs; ``row_overclock`` overrides it per row. From 5 h,
+    max_mw and min_power price each machine at its build points instead of
+    ``machine_cost_mw``. Both are stored with the plan and follow the shared settings until
+    set; "default" puts a recalled plan back on them. Extractors, generators and somersloop
+    rows never move.
 
-    ``required`` names recipes (exact name or class id) that must make their item: every
-    other recipe whose main product is that item is excluded. A locked or banned one is
-    refused by name.
+    ``required`` names recipes (exact name or class id) that must make their item; every
+    other recipe for that item is excluded. A locked or banned one is refused by name.
 
-    ``logistics_items`` pins named items into the belt/pipe table however small their
-    flow, as rows ADDED to the ``limit`` biggest by volume. Without it, a two-item
-    question can fall off the bottom of a big plan's flow table.
+    ``logistics_items`` pins items into the belt/pipe table, ADDED to the ``limit`` biggest.
 
-    ``save_as`` stores the request. Over an existing plan it needs ``base_rev``, the
-    version you read (list_plans name=): edits to different settings since then merge,
-    the same setting changed by someone else is refused as outdated and nothing is saved.
+    ``save_as`` stores the request. Over an existing plan it needs ``base_rev``, the version
+    you read (list_plans name=): edits to other settings merge, and the same setting changed
+    by someone else is refused as outdated.
 
-    ``site_at`` says where the plan will STAND. On its own it makes the plan's water
-    assumption MEASURED rather than assumed: the terrain at that pad is read and the note
-    quotes how much of it is under water, at what level, and how far below the dry ground.
-    It never changes a number the LP produced -- how many extractors a body of water holds
-    is placement geometry no data here carries. With ``save_as`` it is also recorded, with
-    yaw and footprint, so later calls can answer "does what stands there match it"
-    (diff_vs_save) and "show me" (show_on_map at='plan:<name>'); a recalled plan that
-    was sited is measured at its own site without being told again. Use site_plan to set or
-    move the siting of an already-stored plan.
+    ``site_at`` says where the plan will STAND: the terrain at that pad is read and the
+    water note says how much is under water, at what level and how far below dry ground,
+    never changing an LP number. With ``save_as`` it is recorded with yaw and footprint,
+    for diff_vs_save's on-site census and show_on_map at='plan:<name>'; a recalled sited
+    plan is measured at its own site. site_plan moves a stored plan's siting.
     """
     g = app.game()
     st = app.load_world(save, world, as_of)

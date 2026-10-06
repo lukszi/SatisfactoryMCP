@@ -54,10 +54,8 @@ def current_save() -> str:
     return render.envelope(
         render.kv(
             [
-                # Leads, and is the one line here a tool takes back: this resource is where an
-                # orienting client looks first, and `file` alone cannot name a world state
-                # because the game rewrites `autosave_0` every rotation. See as_of= in
-                # docs/mcp-surface.md 10.1i.
+                # Leads: it is what as_of= takes back, and `file` alone cannot name a world
+                # state because autosaves rotate (docs/mcp-surface.md 10.1i).
                 ("save_token", st.token),
                 ("file", st.header.get("filename")),
                 ("written", written),

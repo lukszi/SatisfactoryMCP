@@ -75,8 +75,7 @@ def list_pending_hard_drive_choices(
             "use advise_hard_drive_pick(hard_drive_id=N) to rank one drive's options",
             "an option shows what its recipes MAKE and where; recipe_detail has the inputs",
             POOL_RULE,
-            # Every drive on the reference save shows 2 options and 1 reroll, matching
-            # mNumSchematicsPerHardDrive and mNumRerollsPerHardDrive in the headers.
+            # mNumSchematicsPerHardDrive and mNumRerollsPerHardDrive in the save headers.
             (
                 "each drive offers 2 options and allows 1 reroll; a reroll can re-serve "
                 "an excluded schematic when the pool is thin, so it is never simply wasted"

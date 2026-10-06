@@ -95,19 +95,16 @@ def plan_layout(
 ) -> str:
     """Turn a plan into a buildable schematic: blocks, buses and floors.
 
-    Same arguments as plan_factory, plus ``show``: "floors" (default, the stack),
-    "blocks" (every module with its size and rates), "buses" (item flows),
-    "trunks" (which resource nodes share each pipe or belt run into the site),
-    "materials" (what the whole thing costs to build, machines plus deck), or
-    "sites" (cut the plan into named modules and report what crosses between them).
+    Same arguments as plan_factory, plus ``show``: "floors" (default, the stack), "blocks"
+    (every module with its size and rates), "buses" (item flows), "trunks" (which resource
+    nodes share each pipe or belt run into the site), "materials" (what the whole thing
+    costs to build, machines plus deck), or "sites" (cut the plan into named modules and
+    report what crosses between them).
 
-    This is a SCHEMATIC, not a blueprint. It gives modules, connections, floor
-    assignment and a space budget. It deliberately does NOT give world coordinates or
-    belt routing -- there is no terrain data here, so those would be invented.
-
-    Blocks are split by throughput: 46 Refineries needing 1380 m3/min of crude cannot
-    share one manifold when a Mk2 pipe carries 600, so that is 3 blocks. Floors follow
-    chain depth, with a logistics deck between each pair of production floors.
+    A SCHEMATIC, not a blueprint: modules, connections, floor assignment and a space budget,
+    but no world coordinates or belt routing -- there is no terrain data to place them on.
+    Blocks are split by carrier throughput, and floors follow chain depth with a logistics
+    deck between production floors.
     """
     g = app.game()
     if gone := app.retired(("detail", detail, "show")):

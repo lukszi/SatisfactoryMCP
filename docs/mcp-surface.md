@@ -741,6 +741,42 @@ the inspector and the siting z. No tool or argument changed. Two things read dif
   gets that z, with `in a cave: z is the rock collision just under the hint` on its terrain
   line. With no floor in reach the answer stays `unknown`, as in §10.1m. No ceiling is printed.
 
+### 10.1o What the tool descriptions leave to this page
+
+A tool description is resident in every session, so it carries the usage contract and nothing
+else; `TOOL_DESCRIPTION_BUDGET` in `tests/test_surface.py` caps the total. The measurements and
+the history behind the contracts live here:
+
+- **`plan_factory`.** `machine_cost_mw` defaults to 5 MW, just above the 2.58 MW per machine
+  that spreading throughput over more machines was measured to save. Overclock modes are not
+  offered by default because they spend Power Shards. Somersloops are placed one at a time
+  across many machines because output is linear in sloops and power quadratic. How many
+  Water Extractors a body of water holds is placement geometry no data here carries, so
+  `site_at` measures the water and never moves an LP number.
+- **`propose_factories`** was validated leave-one-factory-out against the twelve hand-named
+  factories of the reference world: precision 1.000 on every fold, recall 0.945.
+- **`trace_upstream`.** 92.5% of the connectors landing on a machine name their direction;
+  the rest sit on extractors and generators, whose nature settles them. A trace from the
+  generators touches 331 nodes at depth 72, nearly all conveyor -- why belts and pipes are
+  walked through rather than listed.
+- **`select_machines`.** On the reference save 17 machines make Concrete and 15 of them are a
+  construction feed inside the steel site, which is why a product selector deserves a preview.
+- **`factory_map`.** Power islands left the reference world's grown-together base as one
+  476-machine blob.
+- **`list_buildings`.** `all` is 540 buildings, about 60k characters unpaged.
+- **`somersloops`.** Before it, the free sloop count could only be learned by guessing a
+  `sloops=` budget and reading the shortfall.
+- **`rename_factory`, `rename_plan`, `amend_factory`.** Before them a correction meant
+  naming or saving again under a second name, or re-selecting a whole factory to drop one
+  machine.
+- **`recipe_detail`** resolves a display name the way `match_recipes` does for
+  `exclude_recipes`; refusing one cost a caller two round trips.
+- **`mam_research`.** `BP_UnlockSubsystem_C` records overclocking as
+  `mIsBuildingOverclockUnlocked`; nothing in the save records production amplification.
+- **`diff_vs_save`.** A generator is matched on its building alone because its fuel is piped
+  in; Water Extractors have no recipe and no resolvable node; grid membership is not persisted.
+- **`commission_plan`.** Generators draw 0 MW in the dump, so energising one is free.
+
 ### 10.2 Context budget
 
 The binding constraint. All 291 automatable recipes in optimal TSV = 25,313 chars (~7k tokens). **No tool

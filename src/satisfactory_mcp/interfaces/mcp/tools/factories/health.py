@@ -459,41 +459,26 @@ def factory_health(
 ) -> str:
     """Measured uptime per machine, and WHY each stopped one is stopped.
 
-    The only measured numbers in this MCP. Every manufacturing building keeps a fixed
-    300-second productivity window; uptime is seconds-producing over that window.
+    Every manufacturing building keeps a 300-second productivity window; uptime is the
+    share of it spent producing.
 
-    States, worst first: `paused`, `dead node` (extractor bound to no resource --
-    a game update removed it), `no recipe`, `blocked` (output stack full),
-    `starved` (input empty), `stalled` (has input, output has room, still not running),
-    `intermittent`, `saturated`, `unmonitored`.
+    States, worst first: `paused`, `dead node` (extractor bound to no resource), `no
+    recipe`, `blocked` (output stack full), `starved` (input empty), `stalled` (has input,
+    output has room, still not running), `intermittent`, `saturated`, `unmonitored`. The
+    sweep's `todo` counts dead node, no recipe, blocked, starved and stalled.
 
-    A stalled machine no generator can reach over the wires says so in its `cause`, and
-    every such machine is named in a note whatever state it is in -- separately for "no
-    wire at all" and "wired to a circuit no generator stands on", which are different
-    builds to finish. The save records no "has power" flag, so a machine a generator CAN
-    reach is never called unpowered here whatever the grid is doing: the wire is the only
-    electrical fact the file carries.
+    A machine no generator can reach over the wires says so -- "no wire at all" and "wired
+    to a circuit no generator stands on" separately. The save has no "has power" flag, so a
+    machine a generator CAN reach is never called unpowered.
 
-    For a STARVED machine it also says what physically feeds the input it lacks: the run
-    that arrives, what stands at its far end and that feeder's own state, ONE hop back --
-    `trace_upstream` walks the rest. "No conduit of that medium arrives" and "one arrives
-    and the save joins its far end to nothing" are different rows and are never merged.
+    For a STARVED machine it names what feeds the missing input ONE hop back: the run that
+    arrives, what stands at its far end, and that feeder's state; `trace_upstream` walks
+    further. A missing FLUID is diagnosed on the plumbing ladder -- (1) connection, (2) head
+    lift, (3) flow rate -- and the cause names the first rung that fires.
 
-    A missing FLUID is diagnosed on the plumbing manual's own ladder -- (1) connection,
-    (2) head lift, (3) flow rate -- and the `cause` names the FIRST rung that fires, so a
-    line that cannot climb to the machine is never answered with its supply rates. Solids
-    have no head-lift rung and read exactly as before.
-
-    **Blocked counts as needing action**, alongside dead node, no recipe, starved and
-    stalled: a full output box means nothing is taking what the machine makes. The sweep's
-    `todo` column counts those five.
-
-    The sweep over every factory also reports three plumbing faults that belong to no machine
-    set: fluid buffers holding too little to output at their intake rate, pipeline pumps no
-    wire reaches, and points where a line climbs above the head lift pushing it. All three
-    are world-wide there, not scoped to a factory.
-
-    `offset` pages every table in the answer at once, worst first throughout.
+    factory='all' sweeps every named factory and adds the world-wide plumbing faults: fluid
+    buffers too low to output at their intake rate, unwired pipeline pumps, and lines that
+    climb above their head lift. `offset` pages every table at once, worst first.
     """
     st = app.load_world(save, world, as_of)
     window = render.page(limit, offset)

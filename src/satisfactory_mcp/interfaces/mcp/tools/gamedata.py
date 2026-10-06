@@ -359,14 +359,9 @@ def list_buildings(
     """Buildings by kind: production, extractor, generator, logistics, foundation,
     ramp, wall, pillar, beam, architecture (all five families together), or all.
 
-    Rows are marked HAVE or LOCKED against the save when one can be read. That matters
-    most for ``logistics``: a planner assuming a belt or pipe tier it has not unlocked
-    gets every line count wrong by a factor and nothing says so, which is the worst
-    failure mode a planner has.
-
-    Paged: ``all`` is 540 buildings and unpaged it ran to ~60k characters, which is not
-    an answer, it is a context eviction. The envelope says how many more there are and
-    which offset fetches them.
+    Rows are marked HAVE or LOCKED against the save when one can be read -- it matters most
+    for ``logistics``, where a planner assuming a tier it has not unlocked gets every line
+    count wrong. Paged with ``offset=``: ``all`` is hundreds of buildings.
     """
     if gone := app.retired(("kind", kind, "building_kind")):
         return gone

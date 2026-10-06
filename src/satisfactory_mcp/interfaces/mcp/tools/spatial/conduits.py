@@ -200,27 +200,19 @@ def search_conduits(
 ) -> str:
     """Belt and pipe runs near a point or between two areas: ends, length, elevation.
 
-    The web map has drawn these all along; this is the text answer to "is there a pipe
-    between those extractors and that platform, where does it run, how long is it". A
-    run is one belt CHAIN (consecutive conveyor pieces, split at splitters, mergers and
-    machines) or one placed pipeline piece. Longest first; each row carries both ends
-    with what stands there where known, the drawn length, and the elevation span.
+    A run is one belt CHAIN (consecutive conveyor pieces, split at splitters, mergers and
+    machines) or one placed pipeline piece. Longest first; each row carries both ends with
+    what stands there, the drawn length and the elevation span.
 
-    `show="networks"` answers the other size of question: one row per FLUID NETWORK in
-    the whole world, what each carries, how much pipe it is, where its middle is and
-    what it ends on. A network is one connected plumbing system, so that is the view
-    that tells you which system a run belongs to; `radius_m` and `to` do not narrow it,
-    and the distance column places each network relative to `near`.
+    `show="networks"` lists one row per FLUID NETWORK in the world instead: what it carries,
+    how much pipe, where its middle is and what it ends on. `radius_m` and `to` do not
+    narrow it; the distance column is measured from `near`.
 
-    `near` and `to` accept a coordinate in metres, `me`, a named factory, or one of this
-    tool's own run ids -- `chain:7`, `pipe:333` -- which centres on that run's midpoint,
-    so the ids in the `connects` column can be followed one call at a time. With `to`
-    set, only runs passing within both radii are listed. Proximity is measured against
-    the runs' drawn lines, not their corner points, so a run crossing mid-span counts.
-
-    Long lists page with `offset=`, and the truncation line names the next offset --
-    a busy junction can carry hundreds of chains and the tail of that list is as real
-    as its head.
+    `near` and `to` take a coordinate in metres, `me`, a named factory, or one of this
+    tool's run ids (`chain:7`, `pipe:333`), which centres on that run's midpoint so the
+    `connects` column can be followed. With `to`, only runs passing within both radii are
+    listed; proximity is measured against the drawn lines, so a run crossing mid-span
+    counts. Long lists page with `offset=`.
     """
     if gone := app.retired(("kind", kind, "conduit_kind")):
         return gone
