@@ -3,7 +3,7 @@
 Ground colour is the game's baked landscape colour where it has one (the paint store's bake,
 or a ``GroundBake`` handed in), else the paint-layer weights of ``data/local/paint/`` times
 each layer's albedo, tinted by the PigmentMap; a per-layer colour transfer to calibrated
-targets; under the tree canopy; rocks take their cliff family's tint and top layer, trees stand
+targets; under the tree canopy; rocks take their family's target or tint and top layer, trees stand
 over them where their crowns reach, arches and the render-only meshes take their own colours,
 and the Titan trees can be laid over everything; then a sky-and-sun light, an exposure gain
 with a soft shoulder and Beer-Lambert water over a seabed that carries the coral carpet. Every
@@ -59,7 +59,9 @@ from mapgen.palette.optics import paint_plane as _plane
 from mapgen.palette.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, add_foam, wet_band
 from mapgen.palette.surfaces import (
     canopy_over_rock,
+    family_cells,
     family_tables,
+    family_targets,
     mesh_surface,
     rock_surface,
     sunk_specks,
@@ -367,9 +369,10 @@ class PaintedGround:
         self.family_tint, self.family_top, self.family_has_top = family_tables(
             meta.get("rock_families") or {}
         )
-        # Render-grid rasters the pipeline attaches: the direct pass's family plane, and the
-        # Titan tree raster as (z cm, class, factor, row0, col0).
-        self.rock_family = None
+        # Render-grid rasters the pipeline attaches: the direct pass's family plane (with
+        # ``attach_families``), and the Titan tree raster as (z cm, class, factor, row0, col0).
+        self.rock_family, self.family_rock = None, {}
+        self.source["rock_family_targets"] = {}
         self.titan = None
         titan = palette.get("titan_trees") or {}
         self.titan_rgb = {
@@ -696,6 +699,7 @@ class PaintedGround:
             rock_lab[1:] * (1 - p["rock_tint_chroma"]) + lab[..., 1:] * p["rock_tint_chroma"]
         )
         cal = p["calibration"]
+        self._rock_lab = lab if cal.get("families") else None
         groups = [
             (self._area_weight(e["areas"])[: lab.shape[0], : lab.shape[1]], e["rock"])
             for e in cal.get("areas", [])
@@ -724,6 +728,20 @@ class PaintedGround:
             rock *= (mask + (1.0 - mask) / np.float32(p["tone"]["gain"]))[..., None]
         return [rock[..., k].astype(np.float32) for k in range(3)]
 
+    def attach_families(self, plane) -> None:
+        """The direct pass's family plane, and the rock of each family the palette gives a
+        target (``surfaces.family_targets``), which holds over any area's rock."""
+        self.rock_family, self.family_rock = plane, {}
+        base, self._rock_lab = getattr(self, "_rock_lab", None), None
+        if plane is None or base is None:
+            return
+        cal = self.palette["calibration"]
+        codes = family_cells(plane, base.shape[:2], ROCK_GRID_M * SPACING_CM / 100.0)
+        self.family_rock, measured = family_targets(
+            base, codes, cal["families"], self.palette, cal["min_texels"]
+        )
+        self.source.setdefault("rock_family_targets", {}).update(measured)
+
 
 def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> np.ndarray:
     """One band of the painted layer, sRGB 0..255.
@@ -741,7 +759,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     g = albedo * (1.0 - canopy) + canopy_rgb * canopy
     area_rock = np.stack([sample_rock(plane) for plane in ground.rock], -1)
     rock = scene["rock_weight"][..., None]
-    g = g * (1.0 - rock) + rock_surface(area_rock, scene, ground) * rock
+    g = g * (1.0 - rock) + rock_surface(area_rock, scene, ground, sample_rock) * rock
     g = canopy_over_rock(g, canopy, rock, scene, ground, sample, canopy_rgb)
     g = mesh_surface(g, area_rock, scene, ground, sample_rock)
 

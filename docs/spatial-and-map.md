@@ -2011,7 +2011,8 @@ luma 70 within 11 m of its three nodes go from 4,463 in the fifth render to 0. T
 wears that material, or its mesh's own first one, and the material's parent chain is walked to
 one of the `Cliff_<Layer>` instances (`gamedata/rockfamily.py`). Rocks on this build: grass
 4,737, plain cliff 4,344, forest 1,415, sand 1,019, red jungle 582, red grass 115, wet sand 42,
-and 8,772 others (desert rock, boulders, arches) with no family.
+and 8,772 others (desert rock, boulders, arches) with no family. Since reader version 2 desert
+rock is a family of its own (section 31, "Rock by mesh family").
 
 **The plane.** The direct pass already rasterises every rock with the max-Z rasteriser, which
 keeps the winning triangle's source id; the source is now the placement's family, written as
@@ -2229,6 +2230,7 @@ references were used:
 | Material | Areas | Target | References |
 | --- | --- | --- | --- |
 | Rock | Dune Desert, Desert Canyons, Rocky Desert (not Savanna) | #ae8271 | first pass |
+| Rock, desert rock family | wherever desert rock stands (see "Rock by mesh family" below) | #ae8271 | the desert rock target above. On the desert spires: [Spires Base](https://images.steamusercontent.com/ugc/23177420036648851/71D9249104B80F4E0B96989BE624C9583A34D636/) and [Funicular base](https://images.steamusercontent.com/ugc/9849253882402225725/30B60C5F97C3A2CDF7BA66D4554AB06E246919FD/) pool to #af6f58 (ΔE 4.9), and a Dune Desert mesa wall, [Desert for Dessert](https://steamcommunity.com/sharedfiles/filedetails/?id=3360666296), reads #925e4b |
 | Rock | Grass Fields, Northern Forest, Western Dune Forest | #7e7868 | up-facing lit rock: [store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_b1104309f1c22c85de6ad6c401e6d889411c14d2.1920x1080.jpg), [Random mode 1](https://satisfactory.wiki.gg/images/Random_Game_Mode_-_Resource_Node_Example_1.png), [cave entrance](https://satisfactory.wiki.gg/images/Entrance_Of_A_Cave.webp), [Northern Forest U8](https://satisfactory.wiki.gg/images/Comparison_2_-_Northern_Forest_-_U8.png) |
 | Rock and Cliff layer | Red Jungle, Jungle Spires, Red Bamboo Fields | #877e6e | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
 | Rock | Spire Coast | #51524d | an unpublished 1.0 shot; [Spire Coast](https://satisfactory.wiki.gg/images/Spire_Coast.png) for the lightness |
@@ -2252,6 +2254,65 @@ Two readings in these references:
   read blue-grey from sky light, which a top-down map does not show.
 - The Rocky Desert rock in its own references is grey, not the Dune Desert red-brown, so
   Savanna is kept out of the desert rock.
+
+### Rock by mesh family (2026-10-06)
+
+Rock takes its colour from the mesh it is before the area it stands in. `calibration.families`
+names a target per rock family (`gamedata/rockfamily.py` `FAMILIES`), and a family named there
+wears its target wherever it stands, over any area entry's rock. Style version 11 names one:
+the desert rock family, with the desert rock target #ae8271.
+
+**Why.** The desert spires of the Spire Coast, the mesas at x 1,450 to 2,250 and y -3,200 to
+-1,650, are desert rock. Every rock there is an `SM_DesertRock_*` mesh in its own
+`MI_DesertRock_*` material, the same set as the Dune Desert's. Their parent `MI_DesertRock`
+carries a `Rock Base Color` of linear (0.890, 0.549, 0.384), sRGB #f2c4a7, a salmon. The Spire
+Coast's grey pillars are cliff meshes: `CliffPillar`, `CliffFormation` and `CliffCone` in
+`_Forest` and `_WetSand` instances of the Cliff master, whose `Color Tint` is the near-neutral
+#cfc3b6. The game's area map gives the mesas to the Spire Coast, and the western one to an
+offshore piece of the Rocky Desert that the rehoming above moves to the Spire Coast. Coloured
+by area, they drew the Spire Coast's charcoal (#5a5b56 at the western mesa in the fifth
+render). The references show them red-brown (the table above).
+
+**The family.** `MI_DesertRock` (in `Rock/DesertRock/Material/`) roots the family `desert`,
+code 8 in the family plane. On build 502094, 5,907 placements are desert rock, all in the Dune
+Desert and the desert spires. The family has no `Color Tint` or top layer to read
+(`TARGET_ONLY`), so the paint store and its generator are unchanged. The family plane needs
+the new code, so the `rock_families` reader is version 2. A version 1 direct cache, with desert
+rock at code 0, is rasterised again on the next run, and a `--restyle` refuses it until then.
+
+**Drawing.** `PaintedGround.attach_families` takes the direct pass's family plane and reads its
+code at each 4 m cell of the rock grid (`surfaces.family_cells`). A family's rock grid takes
+its target's chroma and hue. Its lightness moves by the step from the median of the family's
+own cells to the target, as an area target's does (`family_targets`). Per pixel, rock of that
+family takes its family's rock in place of the area's (`rock_surface`). The sidecar records
+`paint.rock_family_targets`: on build 502094, 247,002 cells and a lightness step of -0.059.
+The offshore rehoming stays: the islands it moved to the Spire Coast, at (743, -2527) and the
+islets at (269, -1943), are cliff pillars and stay grey.
+
+**Measured.** Windows of the full-size grid (0.229 m to the pixel) were drawn in-process
+before and after, with the fifth render's raster caches and the family plane rasterised again
+for each window by the direct pass's own code. It matches the cached heights on all but 0.03%
+of the rock pixels. Values are the median of rock pixels (any direct coverage) as drawn,
+display sRGB:
+
+| Window | Rock there | Before | After |
+| --- | --- | --- | --- |
+| Western mesa, x 1,500 to 1,720, y -3,050 to -2,750 | desert | #565752 | #b88b79 |
+| Middle mesa, x 1,750 to 2,150, y -2,550 to -2,150 | desert | #575853 | #b78a78 |
+| Eastern mesa, x 2,000 to 2,250, y -2,100 to -1,850 | desert | #5f605a | #ac8170 |
+| Dune Desert, x 2,450 to 2,800, y -2,950 to -2,550 | desert | #aa7e6d | #aa7f6e |
+| Spire Coast islets at (269, -1943) | forest | #607350 | the same |
+| The spiral at (-339, -2275) | forest, wet sand | #5f7250, #567d7f | the same |
+| North beach at (128, -1500) | plain cliff, forest, grass | #987f6c, #706f54, #7f9662 | #99806c, #716f54, #7f9662 |
+| Northern Forest at (271, -1044) | grass, plain cliff | #768759, #7d875d | the same, no pixel changed |
+
+The mesas come out L 0.64 to 0.68, C 0.06, h 43: on the target, lit and lifted by their
+height. In the Dune Desert the desert rock moves within 1 level except at the window's west
+edge, where the area blend used to grey it. The Spire Coast windows change by at most 1 level
+on under 0.2% of their rock pixels, and the north beach by 1 level on a quarter of them: an
+area's rock median is measured over ground the new SandRipples target also moves. Away from
+rock, boulders and meshes (3 px clear of any), no pixel changes in any window except on the
+SandRipples layer in the Dune Desert.
 
 ### Other colours
 
@@ -2392,8 +2453,22 @@ the layers is mostly the biome tint, which is added after the transfer.
   is inferred from the flowers. Grass elsewhere keeps the Eastern Dune Forest target.
 - The Spire Coast rock target is near-neutral (C 0.008) because the hue in its references
   is the shot's teal haze. The moss on the spires is not modelled.
-- The rocks on the North Beach lagoon islands sit inside the main piece of
-  `Area_DesertCanyons`, so the offshore rehoming leaves them, and they keep the desert rock.
+- The rocks on the North Beach lagoon islands, and the cliff foot and boulders along the north
+  beach around (128, -1500), sit inside the main piece of `Area_DesertCanyons`, so the
+  offshore rehoming leaves them, and they keep the desert rock, though the wiki and a 2022
+  editor view show them grey. None of them is desert rock, so the desert family does not touch
+  them: the cliff foot is cliff meshes (`CliffPillar_01` to `_07`, `CliffFlat_02` and `_03`,
+  `CliffFormation_04` and `_05`) in plain, `_Forest` and `_Grass` instances, and the boulders
+  are foliage `SM_Boulder_04` and `SM_Boulder_02` in their own materials. It is the desert
+  entry's area target that reddens them. For the cliff foot to follow its own meshes, that
+  entry's rock would have to skip the cliff families, which take the default #85816c instead.
+  That would also grey the 561 cliff placements of the Desert Canyons and the 1,363 of the
+  Rocky Desert, so it is left undone. The boulders wear the same materials everywhere, with no
+  override, so following their mesh would give them one colour across the map, the Dune Desert
+  included.
+- Boulders, rubble, rock piles and arches have no family, so they keep the area's rock. On the
+  mesas, which the area map gives to the Spire Coast, a few of them stay charcoal on the
+  red-brown rock.
 - The Red Bamboo Fields and Red Jungle lakes keep the sea fit: their reference water
   reflects a purple sky, which is not the swamp's look.
 - Every target comes from tonemapped perspective screenshots; only the Grass Fields grass
@@ -2962,7 +3037,7 @@ pixel, these rules decide.
 | Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`. Section 30's estimate from the radius is gone. Section 30's trees-over-rock reads the same plane. |
 | Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
 | Canopy targets | Section 31's canopy targets move the crowns of section 36, each scope's step taken by the crowns near the target's hue; the soft canopy they used to colour stays off. Its named crown targets (the blue palms) move the crowns of their own hue wherever they grow, gated apart from the canopy targets. |
-| Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. Render-only rocks take the area's rock. |
+| Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. A family with a target of its own (desert rock, section 31's "Rock by mesh family") takes it over the area's rock. Render-only rocks take the area's rock. |
 | Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |

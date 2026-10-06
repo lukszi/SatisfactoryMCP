@@ -473,6 +473,9 @@
   "canopy": "#558653",
   "rock": "#85816c",
   "rock_keeps_exposure": true,
+  "families": {
+   "desert": "#ae8271"
+  },
   "meshes": {
    "coral": "#99868e",
    "coral_seabed": "#5f8899"

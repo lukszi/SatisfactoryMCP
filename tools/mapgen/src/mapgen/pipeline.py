@@ -743,7 +743,7 @@ def main() -> int:
             "reader_version": READER_VERSIONS["cliff_geometry"],
         }
         if painted is not None:
-            painted.rock_family = cached_family(cache, stamp)
+            painted.attach_families(cached_family(cache, stamp))
             for name in ("rock_families",) + (() if args.no_titan_trees else ("titan_trees",)):
                 inputs[name] = dict(inputs["cliff_geometry"], reader_version=READER_VERSIONS[name])
 
