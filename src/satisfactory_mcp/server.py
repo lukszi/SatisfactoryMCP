@@ -18,8 +18,12 @@ from .domain.session import journal
 from .interfaces.mcp import tools as _tools  # noqa: F401 -- importing it registers every tool
 from .interfaces.mcp.app import game, mcp, recipe_names
 from .interfaces.mcp.params import Limit
+from .interfaces.mcp.prompts import design_factory, pick_hard_drive, plan_power_plant
+from .interfaces.mcp.resources import current_save, docs_summary, factory_labels, map_regions
+from .interfaces.mcp.tools.collectibles import collected_from_world
 from .interfaces.mcp.tools.factories import (
     amend_factory,
+    factory_floors,
     factory_health,
     factory_map,
     factory_query,
@@ -31,7 +35,6 @@ from .interfaces.mcp.tools.factories import (
     select_machines,
     trace_upstream,
 )
-from .interfaces.mcp.tools.floors import factory_floors
 from .interfaces.mcp.tools.gamedata import (
     alternates_for_item,
     list_buildings,
@@ -58,15 +61,12 @@ from .interfaces.mcp.tools.planning import (
     ui_context,
 )
 from .interfaces.mcp.tools.progression import (
-    collected_from_world,
     mam_research,
     milestones,
     phase_requirements,
     power_shards,
     somersloops,
 )
-from .interfaces.mcp.tools.prompts import design_factory, pick_hard_drive, plan_power_plant
-from .interfaces.mcp.tools.resources import current_save, docs_summary, factory_labels, map_regions
 from .interfaces.mcp.tools.settings import settings
 from .interfaces.mcp.tools.spatial import (
     describe_location,

@@ -13,7 +13,8 @@ testing contract. Section numbers are continuous with the rest of the spec;
 
 > **`structured_output=False` on every text tool.** A tool annotated `-> str` gets an `outputSchema`
 > *and* has its payload echoed into `structuredContent` — a measured **1.96×** wire-size tax for zero
-> benefit (580 → 1,136 bytes on the real Plastic response). Enforce via a shared decorator.
+> benefit (580 → 1,136 bytes on the real Plastic response). Enforced by the shared decorator
+> `app.tool`.
 
 ### 10.1 Tools
 
@@ -278,33 +279,37 @@ its recipe.
 
 ### 10.1d One module per concern
 
-`server.py` reached **3,467 lines and 36 tools** before being split. It is now 143 lines
-that import and re-export; the tools live in `tools/`, one module per concern:
+`server.py` reached **3,467 lines and 36 tools** before being split. It now only imports and
+re-exports; the tools live in `interfaces/mcp/tools/`, one module per concern, and the three
+biggest concerns are packages of their own: `planning/` (stored plans, solve, layout,
+staging, siting, analysis, the page's context), `factories/` (discovery, query, health,
+labels, trace, floors) and `spatial/` (places, nodes, conduits, map links). Resources and
+prompts sit beside `app.py` and `params.py` in `interfaces/mcp/`. Module sizes are not
+tabled here because they move: `TOOL_MODULE_MAX_LINES` in `tests/test_architecture.py` caps
+every module under `interfaces/mcp/` at the 700 lines the web routers are held to.
 
-| module | tools | lines |
-|---|---|---|
-| `planning` | 11 | 1,240 |
-| `factories` | 8 | 818 |
-| `spatial` | 6 | 577 |
-| `gamedata` | 5 | 240 |
-| `world` | 5 | 198 |
-| `progression` | 2 | 205 |
-| `harddrives` | 2 | 116 |
-| `resources` / `prompts` | 4 / 3 | 102 / 69 |
+These rules hold it together, each with a test:
 
-Three rules hold it together, each with a test:
-
-- **`tools/__init__.py` imports every module for its side effects.** The decorators run on
-  import, and that is what attaches a tool to the shared `mcp`. Those imports look unused
-  and are not — a module dropped from that list would leave the server starting cleanly and
-  simply not offering its tools. A test walks the directory and asserts nothing is missing.
-- **Tool modules never import each other.** Shared resolvers live with their domains —
-  `factories.select.resolve_factory`, `spatial.places.resolve_place` — because more than one
-  group needs each, and a resolver is a domain decision rather than an app detail. `app`
-  keeps the old private names bound so `server`'s re-exports still resolve. A sibling
-  import is the first step back toward one file, so a test forbids it.
-- **`server` re-exports every public name.** Tests and scripts reach for
-  `server.plan_factory`, and a caller should not need to know which module a tool landed in.
+- **Every tools `__init__.py` imports its modules for their side effects.** The decorators
+  run on import, and that is what attaches a tool to the shared `mcp`. Those imports look
+  unused and are not — a module dropped from its package's imports would leave the server
+  starting cleanly and simply not offering its tools. A test walks every package and asserts
+  nothing is missing. A subpackage's `__init__` re-exports its tools by name.
+- **Tool modules never import each other.** What every group needs lives in `app` — the
+  `mcp` object, `load_world`, the `tool` decorator, `Refusal` — and parameter types shared by
+  several schemas live in `params`. Inside a package the only sibling imports allowed are its
+  private helper modules (`planning/_plan_log.py`, `planning/_requests.py`). Shared resolvers
+  live with their domains — `factories.select.resolve_factory`, `spatial.places.resolve_place`
+  — because a resolver is a domain decision rather than an app detail. A sibling import is the
+  first step back toward one file, so a test forbids it.
+- **`server` re-exports every tool.** Tests and scripts reach for `server.plan_factory`, and
+  a caller should not need to know which module a tool landed in.
+- **One seam to the save.** Every tool reads its world through `app.load_world`, which turns
+  any failure into the refusal `could not read save: …`; a tool that answers without a save
+  uses `app.load_world_or_none`. Tests serve a world through the `use_world` fixture, which
+  patches that one function, rather than patching each tool module.
+- **A refusal is an answer.** `app.tool` registers a text tool and returns a raised
+  `Refusal`'s text, or a selector error as `! …`, as the tool's reply.
 
 The move was mechanical — every tool body is byte-identical — but two classes of breakage
 were invisible to the linter and only showed at runtime: relative imports written for the
@@ -592,7 +597,7 @@ ignores `base_rev` and says so. A write that finds the plan lock held for 10 s a
 `! plans are busy (another writer held the lock 10 s); nothing written`.
 
 The store stamps each landing version with the new head's `plan_id` and resolved field
-(`_stamp` in `tools/planning.py`), so `world moved` stays honest after merged edits and page
+(`_head_stamper` in `tools/planning/_plan_log.py`), so `world moved` stays honest after merged edits and page
 edits alike.
 
 **`required`** on `plan_factory` takes recipe names or class ids. The tool resolves each to a

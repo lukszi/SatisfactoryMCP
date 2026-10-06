@@ -16,9 +16,10 @@ import pytest
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.filelock import LockTimeout
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.recall import PLAN_DEFAULTS
 from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.interfaces.mcp import app
-from satisfactory_mcp.interfaces.mcp.tools import planning
+from satisfactory_mcp.interfaces.mcp.tools.planning import _plan_log, _requests, solve, staging
 
 PAGE = Actor("page", "", 4242)
 WORLD = "TESTWORLD"
@@ -121,16 +122,14 @@ def test_a_busy_lock_writes_nothing_and_says_so(log, monkeypatch):
         raise LockTimeout("held")
 
     monkeypatch.setattr(PlanLog, "push", held)
-    assert srv.rename_plan(name="north oil", to="x", base_rev=1) == planning.BUSY
+    assert srv.rename_plan(name="north oil", to="x", base_rev=1) == _plan_log.BUSY
 
 
 def _over(log, key, base_rev, overrides, whole=None):
     head = log.state(key)
-    kwargs = (
-        whole if whole is not None else {**planning.PLAN_DEFAULTS, **head.kwargs(), **overrides}
-    )
-    return planning._save_over(
-        _World(), head, base_rev, kwargs, None, ("", ""), None, None, overrides
+    kwargs = whole if whole is not None else {**PLAN_DEFAULTS, **head.kwargs(), **overrides}
+    return solve._save_over(
+        _World(), head, base_rev, kwargs, None, solve.PlanMeta("", ""), None, None, overrides
     )
 
 
@@ -139,8 +138,10 @@ def test_a_recalled_save_diffs_only_what_chat_overrode_against_its_base(log):
     log.push(key, 1, [{"op": "set", "field": "sloops", "value": 2}], actor=PAGE)
     log.push(key, 2, [{"op": "set", "field": "sloops", "value": 3}], actor=PAGE)
     head = log.state(key)
-    stale = {**planning.PLAN_DEFAULTS, **head.kwargs(), "water_extractors": 5}
-    pushed, tail = planning._save_over(_World(), head, 1, stale, None, ("", ""), None, None, None)
+    stale = {**PLAN_DEFAULTS, **head.kwargs(), "water_extractors": 5}
+    pushed, tail = solve._save_over(
+        _World(), head, 1, stale, None, solve.PlanMeta("", ""), None, None, None
+    )
     assert pushed is None and "sloops: you 3, page set 2 in v2" in tail
 
     pushed, tail = _over(log, key, 1, {"water_extractors": 5})
@@ -152,10 +153,10 @@ def test_a_recalled_save_diffs_only_what_chat_overrode_against_its_base(log):
 def test_a_save_over_a_plan_renamed_since_base_rev_merges_into_it(log):
     key = _key(log)
     log.push(key, 1, [{"op": "rename", "name": "coast oil"}], actor=PAGE)
-    assert planning._save_target(_World(), "north oil", None) == (None, "")
-    target, refusal = planning._save_target(_World(), "north oil", 1)
+    assert solve._save_target(_World(), "north oil", None) == (None, "")
+    target, refusal = solve._save_target(_World(), "north oil", 1)
     assert refusal == "" and target.key == key
-    assert planning._save_target(_World(), key, 2)[0].key == key
+    assert solve._save_target(_World(), key, 2)[0].key == key
 
     pushed, tail = _over(log, key, 1, {"sloops": 2})
     assert pushed is not None, tail
@@ -169,7 +170,7 @@ def test_a_stale_name_two_plans_carried_is_refused_not_guessed(log):
     log.push(first, 1, [{"op": "rename", "name": "coast oil"}], actor=PAGE)
     second = log.create("north oil", {}, actor=PAGE).key
     log.push(second, 1, [{"op": "rename", "name": "desert oil"}], actor=PAGE)
-    target, refusal = planning._save_target(_World(), "north oil", 1)
+    target, refusal = solve._save_target(_World(), "north oil", 1)
     assert target is None
     assert refusal.startswith('! no plan is called "north oil" now, and 2 plans were at v1')
     assert refusal.endswith("Pass save_as=<key>; nothing saved")
@@ -365,7 +366,7 @@ RIP5 = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 
 
 
 def _rip(monkeypatch, headroom=None):
-    monkeypatch.setattr(planning, "_stages_seen", {})
+    monkeypatch.setattr(staging, "_stages_seen", {})
     srv.plan_factory(save_as="rip", limit=2, **RIP5)
     log = PlanLog(FIXTURE_WORLD)
     key = log.find("rip").key
@@ -551,7 +552,7 @@ def test_a_recalled_plan_prints_its_version_and_journals_a_view(scratch, game):
 def test_required_names_are_resolved_or_refused_by_name(scratch, game):
     assert "no recipe is called 'Nonsuch'" in srv.plan_factory(required=["Nonsuch"], **PROBE)
     rid = next(r.cls for r in game.recipes.values() if r.name == "Iron Plate")
-    ids, refused = planning._resolve_required(["iron plate", rid])
+    ids, refused = _requests._resolve_required(["iron plate", rid])
     assert refused == "" and ids == [rid, rid]
 
 

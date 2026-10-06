@@ -1,0 +1,186 @@
+"""``plan_layout``: a plan as a buildable schematic."""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from mcp.server.fastmcp import Context
+from pydantic import Field
+
+from .....domain.planning.layout.service import LayoutReport, build_layout_report
+from .....domain.planning.readout import payback, summary
+from .....domain.planning.solver.carrier import resolve_tiers
+from .....presenters.text.layout import render_layout
+from ... import app
+from ...params import (
+    AsOf,
+    Limit,
+    OverclockLast,
+    PaybackHours,
+    PlanName,
+    PowerPrice,
+    RowOverclock,
+    Sloops,
+    WaterExtractors,
+)
+from ._plan_log import _journal_view
+from ._requests import _power_refusal, _recall_request, _resolve_row_overclock, _solve_args
+
+
+def _payback_notes(g, st, prepared) -> list[str]:
+    """What the payback horizon would trade on this solve, as notes."""
+    sol = prepared.solution
+    draw = sum(-p["mw"] for p in sol.processes if p["mw"] < 0)
+    view = summary.power_view(g, st, prepared.request, sol, round(sol.machines_total), draw)
+    return payback.trade_text(view)
+
+
+@app.tool()
+def plan_layout(
+    objective: str = "max_mw",
+    target_item: str | None = None,
+    sources: list[str] | None = None,
+    exports: list[str] | None = None,
+    export_minimums: dict[str, float] | None = None,
+    show: Annotated[
+        str, Field(description="floors | blocks | buses | trunks | materials | sites")
+    ] = "floors",
+    detail: Annotated[str | None, Field(description="retired -- write show= instead")] = None,
+    only_free_nodes: bool = False,
+    allow_sinks: bool = True,
+    exclude_recipes: list[str] | None = None,
+    only_recipes: list[str] | None = None,
+    # plan_factory's solve arguments, so the layout draws the plan that was asked for.
+    clocks: list[float] | None = None,
+    extractor_clocks: list[float] | None = None,
+    machine_cost_mw: float = 5.0,
+    water_extractors: WaterExtractors = None,
+    sloops: Sloops = 0,
+    payback_hours: PaybackHours = None,
+    overclock_last: OverclockLast = None,
+    power_price: PowerPrice = None,
+    row_overclock: RowOverclock = None,
+    sites: Annotated[
+        dict[str, list[str]] | None,
+        Field(
+            description=(
+                'show="sites": {"rig": ["Heavy Oil Residue", ...], "hall": ["MW"]} '
+                "-- MW/power claims every generator"
+            )
+        ),
+    ] = None,
+    max_floor_foundations: Annotated[
+        int,
+        Field(description="cap a deck at this many 8m foundations; 0 = one stage per deck"),
+    ] = 0,
+    order_floors_by: Annotated[
+        str, Field(description='"chain" (build order) or "head" (minimise fluid lift)')
+    ] = "chain",
+    belt_tier: Annotated[
+        str, Field(description="belt tier name; blank = the fastest you have unlocked")
+    ] = "",
+    pipe_tier: Annotated[
+        str, Field(description="pipe tier name; blank = the fastest you have unlocked")
+    ] = "",
+    save: str | None = None,
+    world: str | None = None,
+    as_of: AsOf = None,
+    limit: Limit = 20,
+    plan: PlanName = None,
+    factory: Annotated[
+        str | None,
+        Field(description="fit the layout against this factory's existing platform"),
+    ] = None,
+    ctx: Context | None = None,
+) -> str:
+    """Turn a plan into a buildable schematic: blocks, buses and floors.
+
+    Same arguments as plan_factory, plus ``show``: "floors" (default, the stack),
+    "blocks" (every module with its size and rates), "buses" (item flows),
+    "trunks" (which resource nodes share each pipe or belt run into the site),
+    "materials" (what the whole thing costs to build, machines plus deck), or
+    "sites" (cut the plan into named modules and report what crosses between them).
+
+    This is a SCHEMATIC, not a blueprint. It gives modules, connections, floor
+    assignment and a space budget. It deliberately does NOT give world coordinates or
+    belt routing -- there is no terrain data here, so those would be invented.
+
+    Blocks are split by throughput: 46 Refineries needing 1380 m3/min of crude cannot
+    share one manifold when a Mk2 pipe carries 600, so that is 3 blocks. Floors follow
+    chain depth, with a logistics deck between each pair of production floors.
+    """
+    g = app.game()
+    if gone := app.retired(("detail", detail, "show")):
+        return gone
+    st = app.load_world(save, world, as_of)
+
+    row_overclock, refused = _resolve_row_overclock(row_overclock)
+    if refused:
+        return refused
+    tiers = resolve_tiers(g, st, belt_tier, pipe_tier)
+    if tiers.errors:
+        return render_layout(
+            g,
+            st,
+            LayoutReport(prepared=None, tiers=tiers),
+            objective=objective,
+            show=show,
+            limit=limit,
+        )
+
+    supplied = _solve_args(
+        objective=objective,
+        target_item=target_item,
+        sources=sources,
+        exports=exports,
+        export_minimums=export_minimums,
+        only_free_nodes=only_free_nodes,
+        allow_sinks=allow_sinks,
+        exclude_recipes=exclude_recipes,
+        only_recipes=only_recipes,
+        clocks=clocks,
+        extractor_clocks=extractor_clocks,
+        machine_cost_mw=machine_cost_mw,
+        water_extractors=water_extractors,
+        sloops=sloops,
+        # A tier reaches the scenario so the solve and the schematic agree, and only when
+        # asked for: a resolved default would read as an override on every recall.
+        belt_ipm=tiers.belt_ipm if tiers.asked_belt else None,
+        pipe_m3min=tiers.pipe_m3min if tiers.asked_pipe else None,
+        payback_hours=payback_hours,
+        overclock_last=overclock_last,
+        power_price=power_price,
+        row_overclock=row_overclock,
+    )
+    if refused := _power_refusal(supplied):
+        return refused
+    request = _recall_request(st, plan, supplied)
+    plan_notes = list(request.notes)
+
+    report = build_layout_report(
+        g,
+        st,
+        request.kwargs,
+        tiers,
+        objective=request.objective,
+        show=show,
+        sites=sites,
+        max_floor_foundations=max_floor_foundations,
+        order_floors_by=order_floors_by,
+        factory=factory,
+        plan=request.plan,
+    )
+    _journal_view(st, request.plan, "plan_layout", ctx)
+    if report.prepared is not None and report.prepared.ok:
+        plan_notes += _payback_notes(g, st, report.prepared)
+
+    return render_layout(
+        g,
+        st,
+        report,
+        objective=request.objective,
+        show=show,
+        limit=limit,
+        plan_name=request.name,
+        plan_notes=plan_notes,
+    )

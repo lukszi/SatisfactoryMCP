@@ -279,9 +279,7 @@ def test_naming_a_candidate_writes_the_store_and_drops_it_from_detection(empty, 
     assert [r["name"] for r in health["factories"]] == [row["suggested_name"]]
 
 
-def test_the_page_and_the_tool_write_the_same_label(
-    empty, store_dir, projection, game, monkeypatch
-):
+def test_the_page_and_the_tool_write_the_same_label(empty, store_dir, projection, game, use_world):
     body, row = _first(empty)
     _name(empty, body, row, name="steel factory")
     from_page = _stored(store_dir)["labels"][0]
@@ -290,9 +288,7 @@ def test_the_page_and_the_tool_write_the_same_label(
 
     from satisfactory_mcp.interfaces.mcp.tools import factories as tools
 
-    monkeypatch.setattr(
-        tools, "_state", lambda *a, **k: WorldState(projection=projection, game=game)
-    )
+    use_world(lambda: WorldState(projection=projection, game=game))
     tools.name_factory("steel factory", [row["selector"]])
     from_tool = _stored(store_dir)["labels"][0]
     assert from_page == from_tool
@@ -464,13 +460,11 @@ def test_a_plan_that_cannot_follow_a_rename_is_reported_and_the_rename_stands(
 
 
 def test_the_page_and_the_tool_rename_to_the_same_files(
-    empty, store_dir, projection, game, monkeypatch
+    empty, store_dir, projection, game, use_world
 ):
     from satisfactory_mcp.interfaces.mcp.tools import factories as tools
 
-    monkeypatch.setattr(
-        tools, "_state", lambda *a, **k: WorldState(projection=projection, game=game)
-    )
+    use_world(lambda: WorldState(projection=projection, game=game))
     _body, row = _first(empty)
     results = []
     for via in ("page", "tool"):
@@ -496,7 +490,7 @@ def test_the_user_data_override_moves_labels_and_plans(tmp_path, monkeypatch):
 
 
 def test_a_rename_is_journalled_with_was_and_to(
-    empty, store_dir, projection, game, monkeypatch, tmp_path
+    empty, store_dir, projection, game, monkeypatch, use_world, tmp_path
 ):
     from satisfactory_mcp.domain.session import journal
     from satisfactory_mcp.interfaces.mcp.tools import factories as tools
@@ -505,9 +499,7 @@ def test_a_rename_is_journalled_with_was_and_to(
     monkeypatch.setattr(journal, "_writer", "")
     monkeypatch.setattr(journal, "_seq", {})
     journal.set_writer("web")
-    monkeypatch.setattr(
-        tools, "_state", lambda *a, **k: WorldState(projection=projection, game=game)
-    )
+    use_world(lambda: WorldState(projection=projection, game=game))
     body, row = _first(empty)
     _name(empty, body, row, name="old name")
     assert _rename(empty, "old name", "mid name", _version(empty)).status_code == 200

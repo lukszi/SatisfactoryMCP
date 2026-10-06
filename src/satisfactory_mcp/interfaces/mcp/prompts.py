@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .. import app
+from . import app
 
 # Prompts also cost nothing until invoked, and they surface as slash commands. They
 # are where multi-step PROCEDURE lives, which keeps tool descriptions to one line and

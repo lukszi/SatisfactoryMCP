@@ -8,7 +8,7 @@ import pytest
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain import settings
 from satisfactory_mcp.domain.planning.stored.planlog import Actor
-from satisfactory_mcp.interfaces.mcp.tools import planning
+from satisfactory_mcp.interfaces.mcp.tools.planning import staging
 
 
 class _Stop(Exception):
@@ -44,7 +44,7 @@ def _capture(monkeypatch, use_world, state, name):
         raise _Stop
 
     use_world(state)
-    monkeypatch.setattr(planning, name, fake)
+    monkeypatch.setattr(staging, name, fake)
     return seen
 
 

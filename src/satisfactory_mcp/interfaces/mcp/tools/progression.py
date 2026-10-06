@@ -1,22 +1,16 @@
-"""Project Assembly phases and Power Shard budgeting.
-
-These were spliced in under the resources banner during a parallel merge and
-are tools, not resources -- both read the save and one takes a hypothetical."""
+"""Progression: elevator phases, milestones, MAM research, power shards and somersloops."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Annotated
 
-from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock, shards_for_clock
 from ....core.gamedata.model import GameData
-from ....domain.collectibles.service import collect_view
 from ....domain.progression.ladder import Rung, SchematicLadder
 from ....presenters.text import primitives as render
-from ....presenters.text.collectibles import render_collectibles
 from .. import app
 from ..params import AsOf, Limit
 
@@ -66,8 +60,42 @@ def phase_requirements(
     st = app.load_world(save, world, as_of)
     g = st.game
     req = st.phase_requirements()
-    stock = st.stock()
+    rows, short_by_phase = _phase_rows(g, req, st.stock())
 
+    target_row = next((r for r in req["phases"] if r["phase"] == req["target_phase"]), None)
+    outstanding_total = sum(target_row["outstanding"].values()) if target_row else 0
+    paid = req["paid_off_target"]
+    deliverable = _deliverable(target_row, short_by_phase.get(req["target_phase"]) or {})
+
+    return render.envelope(
+        "\n".join(
+            [
+                f"# {st.age_note}",
+                render.kv(
+                    [
+                        ("current_phase", req["current_phase"]),
+                        ("target_phase", req["target_phase"]),
+                        ("outstanding_on_target", outstanding_total or "-"),
+                        ("target_deliverable_now", deliverable),
+                    ]
+                ),
+                "delivered to target: "
+                + (
+                    " + ".join(f"{render.num(a)} {g.item_name(i)}" for i, a in sorted(paid.items()))
+                    or "nothing"
+                ),
+            ]
+        ),
+        render.table(
+            ("phase", "legacy_key", "trust", "outstanding", "done", "items", "have", "short by"),
+            rows,
+        ),
+        _phase_notes(req, paid),
+    )
+
+
+def _phase_rows(g: GameData, req: dict, stock: dict) -> tuple[list[tuple], dict]:
+    """One row per phase against spendable stock, and each phase's shortfall by item."""
     rows = []
     short_by_phase = {}
     for row in req["phases"]:
@@ -90,26 +118,28 @@ def phase_requirements(
                 " + ".join(f"{render.num(a)} {g.item_name(i)}" for i, a in short.items()) or "-",
             )
         )
+    return rows, short_by_phase
 
-    target_row = next((r for r in req["phases"] if r["phase"] == req["target_phase"]), None)
-    outstanding_total = sum(target_row["outstanding"].values()) if target_row else 0
-    target_short = short_by_phase.get(req["target_phase"]) or {}
-    paid = req["paid_off_target"]
 
-    deliverable = ""
-    if target_row is not None:
-        if target_short:
-            deliverable = (
-                f"no, short on {len(target_short)} of "
-                f"{len(target_row['outstanding'])} item(s) -- see the short by column"
-            )
-        else:
-            deliverable = "yes, every outstanding item is in stock"
-        # The verdict is only as good as the row it reads, and every row but an untouched
-        # one is a frozen snapshot of a cost the player may already have paid.
-        if target_row["stale"] != "usable":
-            deliverable += f" (from a {target_row['stale']} row)"
+def _deliverable(target_row: dict | None, target_short: dict) -> str:
+    """Whether the target phase could be delivered now, and which kind of row says so."""
+    if target_row is None:
+        return ""
+    if target_short:
+        deliverable = (
+            f"no, short on {len(target_short)} of "
+            f"{len(target_row['outstanding'])} item(s) -- see the short by column"
+        )
+    else:
+        deliverable = "yes, every outstanding item is in stock"
+    # Every row but an untouched one is a frozen snapshot of a cost that may be paid already.
+    if target_row["stale"] != "usable":
+        deliverable += f" (from a {target_row['stale']} row)"
+    return deliverable
 
+
+def _phase_notes(req: dict, paid: dict) -> list[str]:
+    """Which of the save's two phase records each number comes from, and how far to trust it."""
     notes = [
         (
             "the per-phase amounts come from mGamePhaseCosts, which FGGamePhaseManager.h "
@@ -152,32 +182,7 @@ def phase_requirements(
             "nothing has been delivered toward the target phase yet "
             "(mTargetGamePhasePaidOffCosts absent = empty)"
         )
-
-    return render.envelope(
-        "\n".join(
-            [
-                f"# {st.age_note}",
-                render.kv(
-                    [
-                        ("current_phase", req["current_phase"]),
-                        ("target_phase", req["target_phase"]),
-                        ("outstanding_on_target", outstanding_total or "-"),
-                        ("target_deliverable_now", deliverable),
-                    ]
-                ),
-                "delivered to target: "
-                + (
-                    " + ".join(f"{render.num(a)} {g.item_name(i)}" for i, a in sorted(paid.items()))
-                    or "nothing"
-                ),
-            ]
-        ),
-        render.table(
-            ("phase", "legacy_key", "trust", "outstanding", "done", "items", "have", "short by"),
-            rows,
-        ),
-        notes,
-    )
+    return notes
 
 
 @app.tool()
@@ -262,11 +267,10 @@ def power_shards(
                 f"{render.num(need - budget['potential'])} short"
             )
 
-    start = max(0, offset)
-    n = render.clamp(limit, default=10)
+    window = render.page(limit, offset)
     rows = [
         (h["cls"], render.num(h["clock"]), h["slotted"], h["needed"], h["idle"] or "")
-        for h in budget["holders"][start : start + n]
+        for h in window.of(budget["holders"])
     ]
     return render.envelope(
         f"# {st.age_note}\n"
@@ -284,8 +288,8 @@ def power_shards(
             ("building", "clock", "slotted", "needed", "idle"),
             rows,
             total=len(budget["holders"]),
-            offset=start,
-            limit=n,
+            offset=window.start,
+            limit=window.size,
         ),
         notes,
     )
@@ -322,8 +326,7 @@ def mam_research(
     st = app.load_world(save, world, as_of)
 
     g = st.game
-    start = max(0, offset)
-    n = render.clamp(limit, default=25)
+    window = render.page(limit, offset, default=25)
     wanted = (show or "todo").strip().casefold()
     if wanted not in LADDER_VIEWS:
         return f"! unknown show {show!r}. Choose from: all, todo, affordable"
@@ -412,10 +415,10 @@ def mam_research(
         + f", showing {wanted}",
         render.table(
             ("status", "research", "capability", "cost", "short by", "blocked by"),
-            rows[start : start + n],
+            window.of(rows),
             total=len(rows),
-            offset=start,
-            limit=n,
+            offset=window.start,
+            limit=window.size,
         ),
         notes,
     )
@@ -453,8 +456,7 @@ def milestones(
     st = app.load_world(save, world, as_of)
 
     g = st.game
-    start = max(0, offset)
-    n = render.clamp(limit, default=25)
+    window = render.page(limit, offset, default=25)
     wanted = (show or "todo").strip().casefold()
     if wanted not in LADDER_VIEWS:
         return f"! unknown show {show!r}. Choose from: all, todo, affordable"
@@ -473,7 +475,7 @@ def milestones(
     outstanding = [r for r in rungs if not r.done]
     ready = [r for r in outstanding if r.status == "READY"]
 
-    page = picked[start : start + n]
+    page = window.of(picked)
     show_blocked = any(r.blocked_by for r in page)
     headers = ["status", "tier", "milestone", "cost", "short by", "unlocks"]
     if show_blocked:
@@ -525,7 +527,7 @@ def milestones(
                 ("affordable_now", len(ready)),
             ]
         ),
-        render.table(headers, rows, total=len(picked), offset=start, limit=n),
+        render.table(headers, rows, total=len(picked), offset=window.start, limit=window.size),
         notes,
     )
 
@@ -553,8 +555,7 @@ def somersloops(
     budget = st.sloop_budget()
     gate = st.research_gate("production_boost")
     holders = budget["holders"]
-    start = max(0, offset)
-    n = render.clamp(limit, default=20)
+    window = render.page(limit, offset, default=20)
     rows = [
         (
             h["name"],
@@ -563,7 +564,7 @@ def somersloops(
             f"{h['boost']:g}x" if h["boost"] else "",
             f"{h['boost_in_save']:g}x" if h["boost_in_save"] else "-",
         )
-        for h in holders[start : start + n]
+        for h in window.of(holders)
     ]
     disagree = [
         h
@@ -623,70 +624,8 @@ def somersloops(
             ("building", "instance", "sloops", "boost", "boost_in_save"),
             rows,
             total=len(holders),
-            offset=start,
-            limit=n,
+            offset=window.start,
+            limit=window.size,
         ),
         notes,
     )
-
-
-@app.tool()
-def collected_from_world(
-    group: Annotated[
-        str | None,
-        Field(description="one category, e.g. 'power_slug_blue'. Omit to see them all"),
-    ] = None,
-    show: Annotated[
-        str,
-        Field(description="census | collected | remaining | nearest"),
-    ] = "census",
-    mode: Annotated[str | None, Field(description="retired -- write show= instead")] = None,
-    near: Annotated[
-        str | None,
-        Field(
-            description="origin for show=nearest: 'x,y' in metres, 'me', or a factory name. "
-            "Defaults to where the player is standing"
-        ),
-    ] = None,
-    save: str | None = None,
-    world: str | None = None,
-    as_of: AsOf = None,
-    limit: Limit = 25,
-    offset: int = 0,
-    ctx: Context | None = None,
-) -> str:
-    """Map collectibles: how many exist, how many you took, what is left and what is closest.
-
-    Slugs, somersloops, Mercer spheres and their shrines, mushrooms, drop pods and the loot
-    caches around them. Two sources, and neither is asked the other's question:
-
-    * **the map** says what exists and where, read from the installed game's own cooked
-      packages, so ``placed`` is exact and every coordinate is exact;
-    * **the save** says what is gone. The world is not saved -- a save never mentions a slug
-      still lying there -- so its destroyed-actor list *is* the collected list, and it is
-      exact too. ``remaining`` is the subtraction of the two.
-
-    Views: ``census`` (default) counts every category; ``collected`` and ``remaining`` list
-    individual placements with coordinates; ``nearest`` lists the remaining ones by distance
-    from ``near``, defaulting to the player.
-
-    A placement in a cell no save has ever loaded is counted as remaining and reported as
-    ``never_streamed``. It is never called present -- the map says where it is and nothing
-    on disk says whether it is still there.
-    """
-    if gone := app.retired(("mode", mode, "show")):
-        return gone
-    st = app.load_world(save, world, as_of)
-
-    view = collect_view(st, group, show, near)
-    if not view.error:
-        listed = view.mode if view.mode in ("collected", "nearest") else None
-        app.journal_world_find(
-            st,
-            ctx,
-            "collected_from_world",
-            "pickups",
-            {"view": listed, "group": group, "near": near if listed == "nearest" else None},
-            "looked at pickups" + (f" ({group})" if group else ""),
-        )
-    return render_collectibles(st, view, limit, offset=offset)

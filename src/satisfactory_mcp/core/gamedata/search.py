@@ -68,27 +68,6 @@ class Census:
         if recipe.is_event:
             self.events += 1
 
-    def line(self, subject: str) -> str:
-        """The completeness claim, and the evidence for it, in one line."""
-        if not self.total:
-            return f"# no recipe {subject} (searched all {self.scanned} recipes)"
-        parts = []
-        for kind in KINDS:
-            n = self.by_kind.get(kind, 0)
-            if not n:
-                continue
-            gate = ""
-            have, locked = self.have.get(kind, 0), self.locked.get(kind, 0)
-            if have or locked:
-                gate = f" [{have} HAVE, {locked} LOCKED]"
-            parts.append(f"{n} {kind}{gate}")
-        return (
-            f"# {self.total} recipe(s) {subject}: "
-            + ", ".join(parts)
-            + f". Counted over all {self.scanned} recipes;"
-            + " recipe_kind/limit change the rows, never these totals."
-        )
-
 
 def _qty(recipe: Recipe, item: str, side: str) -> float:
     flows = recipe.ingredients if side == "consumes" else recipe.products

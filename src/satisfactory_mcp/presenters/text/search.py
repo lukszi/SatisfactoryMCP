@@ -13,7 +13,7 @@ from ...core.gamedata.search import KINDS, Census, Hit
 from ...core.gamedata.unlocks import granted_by_label
 from . import primitives as render
 
-__all__ = ["render_search"]
+__all__ = ["item_flows", "render_search"]
 
 #: How one unit of each kind is measured. A part recipe is a throughput; the other
 #: two are one-off costs, and their duration field is a constant 1.0 s.
@@ -31,12 +31,63 @@ def _machine(game: GameData, r: Recipe) -> str:
     return b.name if b else "-"
 
 
-def _flows(game: GameData, r: Recipe, side: str) -> str:
-    per_min = r.kind == "part"
+def item_flows(game: GameData, parts, *, per_craft: bool = False) -> str:
+    """A recipe's ingredients or products as ``30 Crude Oil + 20 Water``, per minute by
+    default, or per craft for the recipes that do not run in a machine."""
     return render.flows(
-        (game.item_name(f.item), f.per_min if per_min else f.amount, False)
-        for f in (r.ingredients if side == "in" else r.products)
+        (game.item_name(p.item), p.amount if per_craft else p.per_min) for p in parts
     )
+
+
+def _census_header(census: Census, subject: str) -> str:
+    """The completeness claim, and the evidence for it, in one line."""
+    if not census.total:
+        return f"# no recipe {subject} (searched all {census.scanned} recipes)"
+    parts = []
+    for kind in KINDS:
+        n = census.by_kind.get(kind, 0)
+        if not n:
+            continue
+        gate = ""
+        have, locked = census.have.get(kind, 0), census.locked.get(kind, 0)
+        if have or locked:
+            gate = f" [{have} HAVE, {locked} LOCKED]"
+        parts.append(f"{n} {kind}{gate}")
+    return (
+        f"# {census.total} recipe(s) {subject}: "
+        + ", ".join(parts)
+        + f". Counted over all {census.scanned} recipes;"
+        + " recipe_kind/limit change the rows, never these totals."
+    )
+
+
+def _search_notes(
+    census: Census, subject: str, recipe_kind: str, mixed: bool, notes: list[str] | None
+) -> list[str]:
+    """What the page leaves out by kind and by event, and what its units mean."""
+    all_notes = list(notes or [])
+    # A building that eats the item is invisible to a part-only view, and silence there
+    # reads as "nothing else".
+    hidden = [
+        f"{census.by_kind[k]} {k}"
+        for k in KINDS
+        if k != recipe_kind and census.by_kind.get(k) and recipe_kind not in ("all", "", None)
+    ]
+    if hidden:
+        all_notes.append(
+            f"recipe_kind={recipe_kind!r} hides "
+            + " and ".join(hidden)
+            + f" recipe(s) that also {subject}"
+            " -- pass recipe_kind='building', 'manual' or 'all' to see them"
+        )
+    if census.events and not any("FICSMAS" in n for n in all_notes):
+        all_notes.append(f"{census.events} FICSMAS event recipe(s) counted but not shown")
+    if mixed:
+        all_notes.append(
+            "/min is throughput for one machine at 100% clock; /build and /craft are "
+            "one-off costs and are NOT rates"
+        )
+    return all_notes
 
 
 def render_search(
@@ -75,35 +126,16 @@ def render_search(
         row = [r.name, _machine(game, r)]
         if show_qty:
             row.append(f"{render.num(h.qty)}{_UNIT.get(r.kind, '')}")
-        row += [_flows(game, r, "in"), _flows(game, r, "out")]
+        per_craft = r.kind != "part"
+        row += [
+            item_flows(game, r.ingredients, per_craft=per_craft),
+            item_flows(game, r.products, per_craft=per_craft),
+        ]
         if show_status:
             row.append("HAVE" if h.unlocked else ("LOCKED" if h.unlocked is False else "-"))
         if show_granted:
             row.append(granted_by_label(game, r, width=60) if h.unlocked is False else "")
         rows.append(row)
-
-    all_notes = list(notes or [])
-    # The counter-example this exists for: a Tier 7-9 BUILDING that eats Rubber is
-    # invisible to a part-only view, and silence there reads as "nothing else".
-    hidden = [
-        f"{census.by_kind[k]} {k}"
-        for k in KINDS
-        if k != recipe_kind and census.by_kind.get(k) and recipe_kind not in ("all", "", None)
-    ]
-    if hidden:
-        all_notes.append(
-            f"recipe_kind={recipe_kind!r} hides "
-            + " and ".join(hidden)
-            + f" recipe(s) that also {subject}"
-            " -- pass recipe_kind='building', 'manual' or 'all' to see them"
-        )
-    if census.events and not any("FICSMAS" in n for n in all_notes):
-        all_notes.append(f"{census.events} FICSMAS event recipe(s) counted but not shown")
-    if mixed:
-        all_notes.append(
-            "/min is throughput for one machine at 100% clock; /build and /craft are "
-            "one-off costs and are NOT rates"
-        )
 
     body = render.table(
         headers,
@@ -113,7 +145,7 @@ def render_search(
         hint="or narrow the query.",
     )
     return render.envelope(
-        census.line(subject),
+        _census_header(census, subject),
         body + "\n" + render.ids_footer((h.recipe.name, h.recipe.cls) for h in page),
-        all_notes,
+        _search_notes(census, subject, recipe_kind, mixed, notes),
     )

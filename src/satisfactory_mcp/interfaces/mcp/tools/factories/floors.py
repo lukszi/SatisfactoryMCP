@@ -1,8 +1,8 @@
 """Storeys: the text twin of ``/api/floors``.
 
-``domain.factories.floors`` recovers real floors from foundation geometry and was reachable
-from the web map only. This parses the query, calls it once, and renders; every threshold
-and every claim about what a floor is belongs to that module.
+``domain.factories.floors`` recovers real floors from foundation geometry; this parses the
+query, calls it once, and renders. Every threshold and every claim about what a floor is
+belongs to that module.
 """
 
 from __future__ import annotations
@@ -11,11 +11,11 @@ from typing import Annotated
 
 from pydantic import Field
 
-from ....domain.factories import floors as ffloors
-from ....domain.spatial import heightfield
-from ....presenters.text import primitives as render
-from .. import app
-from ..params import AsOf, Limit
+from .....domain.factories import floors as ffloors
+from .....domain.spatial import heightfield
+from .....presenters.text import primitives as render
+from ... import app
+from ...params import AsOf, Limit
 
 #: How many building kinds a band names before the rest become "+N more".
 DECK_KINDS = 3
@@ -44,9 +44,8 @@ def _what_stands(st, classes: dict[str, str], instances: list[str]) -> str:
         name = st.game.building_name(cls) or cls or "?"
         counts[name] = counts.get(name, 0) + 1
     ranked = sorted(counts.items(), key=lambda kv: -kv[1])
-    shown = [f"{n}x {name}" for name, n in ranked[:DECK_KINDS]]
-    extra = len(ranked) - len(shown)
-    return ", ".join(shown + ([f"+{extra} more"] if extra else [])) or "-"
+    kinds = [f"{n}x {name}" for name, n in ranked]
+    return render.capped(kinds, DECK_KINDS, more=", +{n} more") or "-"
 
 
 def _band_rows(st, classes: dict[str, str], platform: ffloors.Platform) -> list[tuple]:
@@ -65,6 +64,83 @@ def _band_rows(st, classes: dict[str, str], platform: ffloors.Platform) -> list[
             )
         )
     return rows
+
+
+def _one_platform(st, report, header: str, notes: list[str], window: render.Page, limit) -> str:
+    """A single platform, floor by floor."""
+    one = report.platforms[0]
+    cx, cy = one.centre_cm
+    connectors = report.connectors
+    header += (
+        f"\n# platform {one.index}"
+        + (f" ({one.label})" if one.label else "")
+        + f": {render.num(one.area_m2)}m2 over {one.cells} tile(s), centre "
+        f"{cx / 100:.0f},{cy / 100:.0f}, {len(one.bands)} floor(s); "
+        f"{len(connectors)} belt/pipe run(s) leave a floor, "
+        f"{sum(1 for r in connectors if r.riser)} of them climbing 6m or more"
+    )
+    if one.bands:
+        notes.append(
+            f"{one.clean:.1%} of this platform's foundation pieces sit within 25cm of "
+            "one of these bands -- the premise of the decomposition, measured here"
+        )
+    else:
+        notes.append(
+            "no floor was detected here: no level of this pour carries the three "
+            "foundation pieces a band is made of, which is what a helper pad looks like"
+        )
+    rows = _band_rows(st, _classes(st), one)
+    return render.envelope(
+        header,
+        render.table(
+            ("floor", "top(m)", "m2", "tiles", "note", "machines", "belt_ends", "what"),
+            window.of(rows),
+            total=len(rows),
+            offset=window.start,
+            limit=limit,
+        ),
+        notes,
+    )
+
+
+def _platform_list(report, header: str, notes: list[str], window: render.Page, limit) -> str:
+    """Every platform that has a floor, largest first; helper pads are only counted."""
+    pads = [p for p in report.platforms if not p.bands]
+    ordered = sorted((p for p in report.platforms if p.bands), key=lambda p: -p.cells)
+    if pads:
+        notes.append(
+            f"{len(pads)} pour(s) carry no floor at all -- no level of theirs holds three "
+            f"foundation pieces, and the largest is {max(p.cells for p in pads)} tile(s). "
+            "Not listed"
+        )
+    rows = []
+    for one in window.of(ordered):
+        cx, cy = one.centre_cm
+        tops = [b.top_cm / 100 for b in one.bands]
+        rows.append(
+            (
+                one.index,
+                one.label or "-",
+                len(one.bands),
+                sum(1 for b in one.bands if b.minor),
+                render.num(one.area_m2),
+                f"{cx / 100:.0f},{cy / 100:.0f}",
+                f"{min(tops):.0f}..{max(tops):.0f}" if tops else "-",
+                sum(len(b.machines) for b in one.bands),
+            )
+        )
+    notes.append("factory_floors(platform=<index>) lists one platform floor by floor")
+    return render.envelope(
+        header,
+        render.table(
+            ("platform", "factory", "floors", "minor", "m2", "centre(m)", "tops(m)", "machines"),
+            rows,
+            total=len(ordered),
+            offset=window.start,
+            limit=limit,
+        ),
+        notes,
+    )
 
 
 @app.tool()
@@ -94,7 +170,6 @@ def factory_floors(
     platform is answered floor by floor instead.
     """
     st = app.load_world(save, world, as_of)
-
     report = ffloors.floor_decomposition(
         st, platform=platform, label=factory, terrain_field=heightfield.load_field()
     )
@@ -102,10 +177,8 @@ def factory_floors(
         return f"# {st.age_note}\n! {report.note or 'no platform matches'}"
 
     counts = report.counts()
-    # Machines only: ``counts["placements"]`` also holds the belt and pipe attachments, and
-    # "1,263 machines on a deck" over a world with 441 of them is a wrong sentence. What is
-    # ON a deck is counted off the bands, so this line and the table agree; the other three
-    # groups have no deck to be counted from.
+    # Machines only: ``counts["placements"]`` also holds the belt and pipe attachments. What
+    # is ON a deck is counted off the bands, so this line and the table agree.
     standing = {
         group: sum(1 for p in report.group(group) if p.kind != "attachments")
         for group in ffloors.GROUPS
@@ -142,78 +215,7 @@ def factory_floors(
     if factory is not None and report.selection:
         header += f"\n# {report.selection}"
 
+    window = render.page(limit, offset)
     if len(report.platforms) == 1:
-        one = report.platforms[0]
-        cx, cy = one.centre_cm
-        connectors = report.connectors
-        header += (
-            f"\n# platform {one.index}"
-            + (f" ({one.label})" if one.label else "")
-            + f": {render.num(one.area_m2)}m2 over {one.cells} tile(s), centre "
-            f"{cx / 100:.0f},{cy / 100:.0f}, {len(one.bands)} floor(s); "
-            f"{len(connectors)} belt/pipe run(s) leave a floor, "
-            f"{sum(1 for r in connectors if r.riser)} of them climbing 6m or more"
-        )
-        if one.bands:
-            notes.append(
-                f"{one.clean:.1%} of this platform's foundation pieces sit within 25cm of "
-                "one of these bands -- the premise of the decomposition, measured here"
-            )
-        else:
-            notes.append(
-                "no floor was detected here: no level of this pour carries the three "
-                "foundation pieces a band is made of, which is what a helper pad looks like"
-            )
-        rows = _band_rows(st, _classes(st), one)
-        start = max(0, offset)
-        return render.envelope(
-            header,
-            render.table(
-                ("floor", "top(m)", "m2", "tiles", "note", "machines", "belt_ends", "what"),
-                rows[start : start + render.clamp(limit)],
-                total=len(rows),
-                offset=start,
-                limit=limit,
-            ),
-            notes,
-        )
-
-    # A pour with no band at all is a helper pad -- a tile under a power pole, a jump-pad
-    # landing. Left out of the rows and counted in a note, never silently dropped.
-    pads = [p for p in report.platforms if not p.bands]
-    ordered = sorted((p for p in report.platforms if p.bands), key=lambda p: -p.cells)
-    if pads:
-        notes.append(
-            f"{len(pads)} pour(s) carry no floor at all -- no level of theirs holds three "
-            f"foundation pieces, and the largest is {max(p.cells for p in pads)} tile(s). "
-            "Not listed"
-        )
-    start = max(0, offset)
-    rows = []
-    for one in ordered[start : start + render.clamp(limit)]:
-        cx, cy = one.centre_cm
-        tops = [b.top_cm / 100 for b in one.bands]
-        rows.append(
-            (
-                one.index,
-                one.label or "-",
-                len(one.bands),
-                sum(1 for b in one.bands if b.minor),
-                render.num(one.area_m2),
-                f"{cx / 100:.0f},{cy / 100:.0f}",
-                f"{min(tops):.0f}..{max(tops):.0f}" if tops else "-",
-                sum(len(b.machines) for b in one.bands),
-            )
-        )
-    notes.append("factory_floors(platform=<index>) lists one platform floor by floor")
-    return render.envelope(
-        header,
-        render.table(
-            ("platform", "factory", "floors", "minor", "m2", "centre(m)", "tops(m)", "machines"),
-            rows,
-            total=len(ordered),
-            offset=start,
-            limit=limit,
-        ),
-        notes,
-    )
+        return _one_platform(st, report, header, notes, window, limit)
+    return _platform_list(report, header, notes, window, limit)

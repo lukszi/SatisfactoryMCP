@@ -333,17 +333,30 @@ def test_prompts_render_with_arguments():
 
 
 def test_every_tool_module_is_imported_by_the_package():
-    """The imports in tools/__init__.py look unused and are not: each module's
+    """The imports in each tools ``__init__.py`` look unused and are not: a module's
     decorators run on import, and that is what attaches it to the shared `mcp`. A module
-    dropped from that list would silently remove its tools -- the server would start
-    fine and simply not offer them."""
-    import pkgutil
+    dropped from its package's imports would silently remove its tools -- the server would
+    start fine and simply not offer them. Private helper modules register nothing."""
+    import ast
+    import pathlib
 
     from satisfactory_mcp.interfaces.mcp import tools
 
-    on_disk = {m.name for m in pkgutil.iter_modules(tools.__path__)}
-    assert on_disk, "no tool modules found"
-    assert on_disk <= set(tools.__all__), f"not imported: {on_disk - set(tools.__all__)}"
+    root = pathlib.Path(tools.__file__).parent
+    packages = [root, *(init.parent for init in root.rglob("*/__init__.py"))]
+    for package in packages:
+        imported: set[str] = set()
+        for node in ast.walk(ast.parse((package / "__init__.py").read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.level == 1:
+                if node.module:
+                    imported.add(node.module.split(".")[0])
+                else:
+                    imported.update(alias.name for alias in node.names)
+        on_disk = {p.stem for p in package.glob("*.py") if p.name != "__init__.py"}
+        on_disk |= {p.name for p in package.iterdir() if (p / "__init__.py").is_file()}
+        public = {name for name in on_disk if not name.startswith("_")}
+        assert public, f"no tool modules found in {package.name}"
+        assert public <= imported, f"{package.name} does not import: {public - imported}"
 
 
 def test_the_registered_surface_survives_the_split():
@@ -418,20 +431,25 @@ def test_every_registered_tool_is_reachable_by_name_from_the_server():
 
 def test_no_tool_module_imports_another():
     """Shared helpers live in `app`, so the tool modules stay siblings. One importing
-    another is the first step back toward a single file."""
+    another is the first step back toward a single file. Inside a subpackage a module may
+    import that package's private helpers (``from ._plan_log import``) and nothing else."""
     import pathlib
     import re
 
-    # Asked of the package `server` actually imported, not of a spelled-out path: the
-    # tool modules have moved once already, and a stale literal here would not fail --
-    # it would glob an empty directory and pass without checking anything.
+    # Asked of the package `server` actually imported, not of a spelled-out path: a stale
+    # literal here would glob an empty directory and pass without checking anything.
     root = pathlib.Path(srv._tools.__file__).parent
-    for path in root.glob("*.py"):
+    checked = 0
+    for path in root.rglob("*.py"):
         if path.name == "__init__.py":
             continue
+        checked += 1
         text = path.read_text(encoding="utf-8")
         siblings = re.findall(
             r"^\s*from \.(\w+) import|^\s*from \. import (\w+)", text, re.MULTILINE
         )
         found = {a or b for a, b in siblings}
-        assert not found, f"{path.name} imports sibling tool module(s): {found}"
+        if path.parent != root:
+            found = {name for name in found if not name.startswith("_")}
+        assert not found, f"{path.relative_to(root)} imports sibling tool module(s): {found}"
+    assert checked > 10, "no tool modules found"

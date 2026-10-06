@@ -185,7 +185,7 @@ def test_a_switched_off_miner_is_not_a_producing_one(game):
     """``occupancy`` reads ``paused`` and ``annotate`` used to drop it, so a node with a
     switched-off miner on it read exactly like a node being mined."""
     from satisfactory_mcp.domain.spatial import nodes as nodes_mod
-    from satisfactory_mcp.interfaces.mcp.tools.spatial import _occupant
+    from satisfactory_mcp.interfaces.mcp.tools.spatial.nodes import _occupant
 
     node = {
         "instance": "L:P.BP_ResourceNode_1",

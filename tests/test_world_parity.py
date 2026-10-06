@@ -10,7 +10,7 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from satisfactory_mcp.interfaces.mcp.tools import progression, spatial  # noqa: E402
+from satisfactory_mcp.interfaces.mcp.tools import collectibles, spatial  # noqa: E402
 
 
 @pytest.fixture
@@ -114,7 +114,7 @@ def test_regions_match_list_regions(tools, client):
 
 
 def test_the_census_numbers_match_collected_from_world(tools, client, state):
-    text = progression.collected_from_world()
+    text = collectibles.collected_from_world()
     rows = {r[0]: r for r in _table(text, "category\tplaced")}
     body = client.get("/api/collectibles", params={"mode": "census"}).json()
     assert body["census"]
@@ -141,7 +141,7 @@ def test_finder_calls_tell_a_following_page_where_to_go(tools, followed):
     tools.rank_build_sites(resource="Copper Ore", sources=["region:Grass Fields"])
     tools.search_conduits(near="me", conduit_kind="pipe")
     tools.whereami()
-    progression.collected_from_world(show="nearest", group="somersloop")
+    collectibles.collected_from_world(show="nearest", group="somersloop")
     found = [(e["kind"], e["tool"], e["args"]) for e in followed()]
     assert found == [
         (

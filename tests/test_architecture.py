@@ -413,6 +413,10 @@ ROUTER_EXTRA_EDGES: frozenset[tuple[str, str]] = frozenset(
 #:     __init__.py 72   world.py 68
 ROUTER_MAX_LINES = 700
 
+#: The same cap over the MCP adapter. planning.py reached 2,615 lines and factories.py 1,766
+#: before they became packages; the largest module after the split is under 650.
+TOOL_MODULE_MAX_LINES = 700
+
 #: The classes FastAPI treats as "this handler answers for itself".
 #:
 #: A handler annotated with one of these is returning a ``Response`` rather than a body to be
@@ -1470,6 +1474,19 @@ def test_no_router_grows_back_into_a_one_file_api():
         f"a router module is over {ROUTER_MAX_LINES} lines -- that is a second concern, and "
         "it wants its own file and its own entry at the END of ALL_ROUTERS (never in the "
         "middle: the tuple's order is the committed schema's path order):\n" + "\n".join(over)
+    )
+
+
+def test_no_tool_module_grows_back_into_a_god_module():
+    """``ROUTER_MAX_LINES``' rule for the MCP side: a second concern gets its own module."""
+    over = [
+        f"  {path.relative_to(PKG)}: {len(path.read_text(encoding='utf-8').splitlines())} lines"
+        for path in (PKG / "interfaces" / "mcp").rglob("*.py")
+        if len(path.read_text(encoding="utf-8").splitlines()) > TOOL_MODULE_MAX_LINES
+    ]
+    assert not over, (
+        f"an MCP module is over {TOOL_MODULE_MAX_LINES} lines -- that is a second concern; "
+        "give it its own module in the tool's package:\n" + "\n".join(over)
     )
 
 

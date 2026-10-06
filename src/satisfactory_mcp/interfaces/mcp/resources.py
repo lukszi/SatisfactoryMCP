@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from ....core.text import ago, format_local_time
-from ....domain.spatial import regions as regions_mod
-from ....presenters.text import primitives as render
-from .. import app
+import json
+
+from ...core.text import ago, format_local_time
+from ...domain.factories.labels import SCHEMA, LabelStore
+from ...domain.spatial import regions as regions_mod
+from ...presenters.text import primitives as render
+from . import app
 
 # Resources are CLIENT-PULLED, so they cost zero context until something asks for
 # them. That makes them right for stable orientation data and wrong for anything
@@ -86,10 +89,6 @@ def factory_labels() -> str:
     portable: a consumer can join it against its own read of the same save without
     needing anything from this server.
     """
-    import json
-
-    from ....domain.factories.labels import SCHEMA, LabelStore
-
     st, reason = app.load_world_or_none()
     if st is None:
         return json.dumps({"error": f"no readable save: {reason}"}, indent=1)

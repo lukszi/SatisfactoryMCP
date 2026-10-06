@@ -223,13 +223,11 @@ def test_amend_needs_an_origin(client):
 
 
 def test_the_page_and_the_tool_amend_to_the_same_label(
-    client, store_dir, projection, game, monkeypatch
+    client, store_dir, projection, game, use_world
 ):
     from satisfactory_mcp.interfaces.mcp.tools import factories as tools
 
-    monkeypatch.setattr(
-        tools, "_state", lambda *a, **k: WorldState(projection=projection, game=game)
-    )
+    use_world(lambda: WorldState(projection=projection, game=game))
     results = []
     for via in ("page", "tool"):
         for f in store_dir.glob("*.json"):

@@ -26,6 +26,7 @@ from ...domain.planning.stored.planlog import Actor
 from ...domain.session import journal
 from ...domain.world import pin
 from ...domain.world.state import WorldState, load_state
+from ...presenters.text import primitives as render
 
 INSTRUCTIONS = (
     "Plans are versioned: read one (list_plans name=) and pass its version as base_rev when "
@@ -203,10 +204,9 @@ def integrity_notes(projection: dict, data: GameData) -> list[str]:
     ):
         if not found:
             continue
-        shown = "; ".join(found[:INTEGRITY_NOTES_SHOWN])
-        rest = len(found) - INTEGRITY_NOTES_SHOWN
+        shown = render.capped(found, INTEGRITY_NOTES_SHOWN, sep="; ", more="; and {n} more")
         notes.append(
             f"{len(found)} problem(s) reading {channel}, so what follows may describe less "
-            f"than is really there: {shown}" + (f"; and {rest} more" if rest > 0 else "")
+            f"than is really there: {shown}"
         )
     return notes

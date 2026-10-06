@@ -41,7 +41,6 @@ __all__ = [
     "Feed",
     "MachineHealth",
     "assess",
-    "summarise",
 ]
 
 #: Uptime at or above this counts as running flat out.
@@ -281,9 +280,7 @@ def _cut_off(short: str, record: dict, recipe, game: GameData, conduits, heads) 
     )
 
 
-def _classify(
-    key: str, record: dict, game: GameData, dark: str, short: str, conduits, heads=None
-):
+def _classify(key: str, record: dict, game: GameData, dark: str, short: str, conduits, heads=None):
     """One record's ``(state, cause, uptime, recipe)``, on the ladder in the module docstring."""
     recipe = game.recipes.get(record.get("recipe") or "")
     live = record.get("uptime") or {}
@@ -532,9 +529,7 @@ def assess(
         if short not in wanted:
             continue
         dark = dark_of(short)
-        state, cause, uptime, recipe = _classify(
-            key, record, game, dark, short, conduits, heads
-        )
+        state, cause, uptime, recipe = _classify(key, record, game, dark, short, conduits, heads)
         entry = MachineHealth(
             instance=short,
             building=record.get("cls", "?"),
@@ -563,13 +558,3 @@ def assess(
                 report.starved_of[game.item_name(flow.item)] += 1
 
     return report
-
-
-def summarise(report: HealthReport) -> str:
-    """One line, states worst-first."""
-    parts = [f"{report.by_state[s]} {s}" for s in STATES if report.by_state[s]]
-    mean = report.mean_uptime
-    head = f"{len(report.machines)} machines"
-    if mean is not None:
-        head += f", mean uptime {mean:.0%}"
-    return head + (" -- " + ", ".join(parts) if parts else "")

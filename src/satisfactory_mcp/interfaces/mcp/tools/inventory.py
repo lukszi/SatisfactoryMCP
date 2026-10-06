@@ -1,8 +1,6 @@
 """What you own and where it is: stock by item, containers, and the crates on the ground.
 
-The text twins of ``/api/storage`` and ``/api/crates``. The projection has carried both
-tables since schemas 15 and 18 and only the map read them, so an assistant could be told
-"short 500 Quartz" and had no way to ask what was in the boxes.
+The text twins of ``/api/storage`` and ``/api/crates``.
 """
 
 from __future__ import annotations
@@ -23,18 +21,17 @@ from ..params import AsOf, Limit
 CONTENTS_KINDS = 3
 
 
-def _place(rm, holding: Holding) -> tuple[str, str]:
+def _place(regions, holding: Holding) -> tuple[str, str]:
     """A holding's region name and its coordinate in metres, both as printable cells."""
     if holding.pos is None:
         return "-", "-"
     x, y, _ = holding.pos
-    return rm.label_for(x, y).name or regions_mod.OFF_MAP, f"{x / 100:.0f},{y / 100:.0f}"
+    return regions.label_for(x, y).name or regions_mod.OFF_MAP, f"{x / 100:.0f},{y / 100:.0f}"
 
 
 def _contents(game, holding: Holding, kinds: int = CONTENTS_KINDS) -> str:
-    shown = [f"{render.num(n)} {game.item_name(i)}" for i, n in holding.items[:kinds]]
-    extra = len(holding.items) - len(shown)
-    return ", ".join(shown + ([f"+{extra} more"] if extra > 0 else [])) or "-"
+    held = [f"{render.num(n)} {game.item_name(i)}" for i, n in holding.items]
+    return render.capped(held, kinds, more=", +{n} more") or "-"
 
 
 def _fullness(holding: Holding) -> tuple[str, str]:
@@ -46,6 +43,86 @@ def _fullness(holding: Holding) -> tuple[str, str]:
     if holding.slots_used is None or not holding.slots:
         return fill, "-"
     return fill, f"{holding.slots_used}/{holding.slots}"
+
+
+def _stock_totals(st, breakdown: dict, wanted, window: render.Page, limit, notes) -> str:
+    """One row per item: spendable, and where the rest of it sits."""
+    g = st.game
+    rows = sorted(
+        ((i, v) for i, v in breakdown.items() if wanted is None or i == wanted),
+        key=lambda kv: (-kv[1]["spendable"], -kv[1]["machine"]),
+    )
+    table = render.table(
+        ("item", "spendable", "carried", "storage", "depot", "buffers", "crates"),
+        [
+            (
+                g.item_name(i),
+                render.num(v["spendable"]),
+                render.num(v["player"]) if v["player"] else "",
+                render.num(v["storage"]) if v["storage"] else "",
+                render.num(v["depot"]) if v["depot"] else "",
+                render.num(v["machine"]) if v["machine"] else "",
+                render.num(v["crate"]) if v["crate"] else "",
+            )
+            for i, v in window.of(rows)
+        ],
+        total=len(rows),
+        offset=window.start,
+        limit=limit,
+    )
+    notes.append("stock(item=..., where=True) says which containers hold one of them")
+    return render.envelope(
+        f"# {st.age_note}\n"
+        f"# {len(breakdown)} item kind(s) held, "
+        f"{sum(1 for v in breakdown.values() if v['spendable'])} of them spendable",
+        table,
+        notes,
+    )
+
+
+def _stock_places(st, breakdown: dict, wanted, window: render.Page, limit, notes) -> str:
+    """One row per container or crate holding the item, or holding anything at all."""
+    g = st.game
+    regions = regions_mod.load_regions()
+    holdings = st.inventory.holdings(wanted)
+    headers = ("amount" if wanted is not None else "holds", "place", "region", "x,y(m)", "source")
+    rows = []
+    for h in window.of(holdings):
+        region, at = _place(regions, h)
+        rows.append(
+            (
+                render.num(h.amount_of(wanted)) if wanted is not None else _contents(g, h, 2),
+                g.building_name(h.cls) or h.cls,
+                region,
+                at,
+                h.source if h.crate_kind is None else f"crate({h.crate_kind})",
+            )
+        )
+
+    total = breakdown.get(wanted, {}) if wanted is not None else {}
+    summary = f"# {st.age_note}\n# " + (
+        render.kv(
+            [
+                ("item", g.item_name(wanted)),
+                ("spendable", render.num(total.get("spendable", 0.0))),
+                ("carried", render.num(total.get("player", 0.0))),
+                ("depot", render.num(total.get("depot", 0.0))),
+                ("in_buffers", render.num(total.get("machine", 0.0))),
+            ]
+        )
+        if wanted is not None
+        else f"{len(holdings)} place(s) hold something, biggest first"
+    )
+    notes.append(
+        "carried and Depot stock stands nowhere on the map, so it is on the summary line "
+        "rather than in a row"
+    )
+    notes.append("storage(item=...) says how full each of those containers is")
+    return render.envelope(
+        summary,
+        render.table(headers, rows, total=len(holdings), offset=window.start, limit=limit),
+        notes,
+    )
 
 
 @app.tool()
@@ -82,8 +159,7 @@ def stock(
         if wanted is None:
             return f"no item matches {item!r}"
 
-    inv = st.inventory
-    breakdown = inv.breakdown()
+    breakdown = st.inventory.breakdown()
     if wanted is not None and wanted not in breakdown:
         return (
             f"# {st.age_note}\n"
@@ -99,83 +175,10 @@ def stock(
         ),
         "fluids are m3",
     ]
-
+    window = render.page(limit, offset, default=25)
     if not where:
-        rows = sorted(
-            ((i, v) for i, v in breakdown.items() if wanted is None or i == wanted),
-            key=lambda kv: (-kv[1]["spendable"], -kv[1]["machine"]),
-        )
-        start = max(0, offset)
-        table = render.table(
-            ("item", "spendable", "carried", "storage", "depot", "buffers", "crates"),
-            [
-                (
-                    g.item_name(i),
-                    render.num(v["spendable"]),
-                    render.num(v["player"]) if v["player"] else "",
-                    render.num(v["storage"]) if v["storage"] else "",
-                    render.num(v["depot"]) if v["depot"] else "",
-                    render.num(v["machine"]) if v["machine"] else "",
-                    render.num(v["crate"]) if v["crate"] else "",
-                )
-                for i, v in rows[start : start + render.clamp(limit, default=25)]
-            ],
-            total=len(rows),
-            offset=start,
-            limit=limit,
-        )
-        notes.append("stock(item=..., where=True) says which containers hold one of them")
-        return render.envelope(
-            f"# {st.age_note}\n"
-            f"# {len(breakdown)} item kind(s) held, "
-            f"{sum(1 for v in breakdown.values() if v['spendable'])} of them spendable",
-            table,
-            notes,
-        )
-
-    rm = regions_mod.load_regions()
-    holdings = inv.holdings(wanted)
-    # Named item: one number per place. No item: the place's biggest stacks, which is the
-    # same question asked of a world rather than of one item.
-    headers = ("amount" if wanted is not None else "holds", "place", "region", "x,y(m)", "source")
-    start = max(0, offset)
-    rows = []
-    for h in holdings[start : start + render.clamp(limit, default=25)]:
-        region, at = _place(rm, h)
-        rows.append(
-            (
-                render.num(h.amount_of(wanted)) if wanted is not None else _contents(g, h, 2),
-                g.building_name(h.cls) or h.cls,
-                region,
-                at,
-                h.source if h.crate_kind is None else f"crate({h.crate_kind})",
-            )
-        )
-
-    total = breakdown.get(wanted, {}) if wanted is not None else {}
-    summary = f"# {st.age_note}\n# " + (
-        render.kv(
-            [
-                ("item", g.item_name(wanted)),
-                ("spendable", render.num(total.get("spendable", 0.0))),
-                ("carried", render.num(total.get("player", 0.0))),
-                ("depot", render.num(total.get("depot", 0.0))),
-                ("in_buffers", render.num(total.get("machine", 0.0))),
-            ]
-        )
-        if wanted is not None
-        else f"{len(holdings)} place(s) hold something, biggest first"
-    )
-    notes.append(
-        "carried and Depot stock stands nowhere on the map, so it is on the summary line "
-        "rather than in a row"
-    )
-    notes.append("storage(item=...) says how full each of those containers is")
-    return render.envelope(
-        summary,
-        render.table(headers, rows, total=len(holdings), offset=start, limit=limit),
-        notes,
-    )
+        return _stock_totals(st, breakdown, wanted, window, limit, notes)
+    return _stock_places(st, breakdown, wanted, window, limit, notes)
 
 
 @app.tool()
@@ -233,9 +236,7 @@ def storage(
         except ValueError as exc:
             return f"! {exc}"
 
-    # The census counts every container in the world and the filters decide only which are
-    # SHOWN: a header that moved with `item=` would answer "how many containers have I got"
-    # with the number holding concrete.
+    # The census counts every container and the filters decide only which are SHOWN.
     containers = [h for h in st.inventory.holdings() if h.source == "storage"]
     hits = [h for h in containers if want_kind is None or h.kind == want_kind]
     if wanted is not None:
@@ -267,11 +268,11 @@ def storage(
         f"# {len(hits)} shown{scope}"
     )
 
-    rm = regions_mod.load_regions()
-    start = max(0, offset)
+    regions = regions_mod.load_regions()
+    window = render.page(limit, offset, default=15)
     rows = []
-    for h in hits[start : start + render.clamp(limit, default=15)]:
-        region, where = _place(rm, h)
+    for h in window.of(hits):
+        region, where = _place(regions, h)
         fill, used = _fullness(h)
         rows.append(
             (
@@ -310,7 +311,7 @@ def storage(
             ("container", "region", "x,y(m)", "fill", "used", "holds"),
             rows,
             total=len(hits),
-            offset=start,
+            offset=window.start,
             limit=limit,
         ),
         notes,
@@ -339,11 +340,11 @@ def crates(
     g = st.game
 
     holdings = [h for h in st.inventory.holdings() if h.source == "crate"]
-    rm = regions_mod.load_regions()
-    start = max(0, offset)
+    regions = regions_mod.load_regions()
+    window = render.page(limit, offset, default=25)
     rows = []
-    for h in holdings[start : start + render.clamp(limit, default=25)]:
-        region, at = _place(rm, h)
+    for h in window.of(holdings):
+        region, at = _place(regions, h)
         z = "-" if h.pos is None else f"{h.pos[2] / 100:.0f}"
         rows.append(
             (
@@ -377,7 +378,7 @@ def crates(
             ("kind", "region", "x,y(m)", "z(m)", "kinds", "items", "contents"),
             rows,
             total=len(holdings),
-            offset=start,
+            offset=window.start,
             limit=limit,
         ),
         notes,

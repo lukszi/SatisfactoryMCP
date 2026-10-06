@@ -43,7 +43,7 @@ from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.world import state as state_mod
 from satisfactory_mcp.domain.world.state import WorldState, _name_stem, load_collectibles
 from satisfactory_mcp.interfaces.mcp import app
-from satisfactory_mcp.interfaces.mcp.tools.progression import collected_from_world
+from satisfactory_mcp.interfaces.mcp.tools.collectibles import collected_from_world
 
 pytestmark = pytest.mark.integration
 
