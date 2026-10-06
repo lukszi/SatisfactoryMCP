@@ -17,6 +17,7 @@ from ... import config
 from ...core import schema
 from ...core.jsontypes import JsonValue
 from ...core.saveio.records import instance_leaf
+from ...core.saveio.schema import BuildableRecord
 from ..planning.stored.plan_args import PlanLogError
 from ..planning.stored.planlog import PlanLog, PlanState
 from ..spatial import geo
@@ -186,12 +187,13 @@ def _number(ref: Mapping[str, object], name: str) -> float:
     return float(value)
 
 
-#: A machine record as the projection holds it, and a row of the node table.
-Record = Mapping[str, object]
+#: A ref as a request sends it, or a stored one read field by field.
+RawRef = Mapping[str, object]
+#: A row of the node table.
 Node = dict[str, object]
 
 
-def _fields(ref: PinRef | None) -> Record:
+def _fields(ref: PinRef | None) -> RawRef:
     """A stored ref read field by field, a missing one a ``KeyError``."""
     return ref or {}
 
@@ -202,7 +204,7 @@ class _World:
     def __init__(self, st: WorldState) -> None:
         self.st = st
         self._plans: dict[str, PlanState] | None = None
-        self._machines: dict[str, Record] | None = None
+        self._machines: dict[str, BuildableRecord] | None = None
         self._nodes: dict[str, Node] | None = None
 
     @property
@@ -221,10 +223,11 @@ class _World:
     def plan(self, key: str) -> PlanState | None:
         return self.plans().get(key)
 
-    def machines(self) -> dict[str, Record]:
+    def machines(self) -> dict[str, BuildableRecord]:
         if self._machines is None:
-            records = self.st.all_records() if getattr(self.st, "projection", None) else ()
-            self._machines = {instance_leaf(r.get("instance")): r for r in records}
+            records = self.st.all_records() if getattr(self.st, "projection", None) else []
+            rows = cast("list[BuildableRecord]", records)
+            self._machines = {instance_leaf(r.get("instance")): r for r in rows}
         return self._machines
 
     def nodes(self) -> dict[str, Node]:
@@ -305,7 +308,7 @@ def _in_plan(st: WorldState, stored: PlanState, rid: str) -> bool:
 _Normalised = tuple[PinRef, tuple[float, float] | None]
 
 
-def _normalise_plan_or_process(world: _World, kind: str, ref: Record) -> _Normalised:
+def _normalise_plan_or_process(world: _World, kind: str, ref: RawRef) -> _Normalised:
     wanted = _text_ref(ref, "plan")
     state = world.plan(wanted.lower())
     if state is None:
@@ -327,7 +330,7 @@ def _normalise_plan_or_process(world: _World, kind: str, ref: Record) -> _Normal
     return {"plan": state.key, "recipe": rid}, None
 
 
-def _normalise_factory(world: _World, kind: str, ref: Record) -> _Normalised:
+def _normalise_factory(world: _World, kind: str, ref: RawRef) -> _Normalised:
     name = _text_ref(ref, "factory")
     label = world.label(name)
     if label is None:
@@ -338,7 +341,7 @@ def _normalise_factory(world: _World, kind: str, ref: Record) -> _Normalised:
     return {"factory": label.name}, _metres(centre) if centre is not None else None
 
 
-def _normalise_machine(world: _World, kind: str, ref: Record) -> _Normalised:
+def _normalise_machine(world: _World, kind: str, ref: RawRef) -> _Normalised:
     inst = instance_leaf(_text_ref(ref, "machine"))
     record = world.machines().get(inst)
     if record is None or not record.get("pos"):
@@ -346,7 +349,7 @@ def _normalise_machine(world: _World, kind: str, ref: Record) -> _Normalised:
     return {"machine": inst}, _metres(record["pos"])
 
 
-def _normalise_node_or_field(world: _World, kind: str, ref: Record) -> _Normalised:
+def _normalise_node_or_field(world: _World, kind: str, ref: RawRef) -> _Normalised:
     wanted = _text_ref(ref, "node")
     node = world.node(wanted)
     if node is None:
@@ -358,7 +361,7 @@ def _normalise_node_or_field(world: _World, kind: str, ref: Record) -> _Normalis
     return {"node": short, "resource": str(node["resource"]), "nodes": members}, _metres(centre)
 
 
-def _normalise_point(world: _World, kind: str, ref: Record) -> _Normalised:
+def _normalise_point(world: _World, kind: str, ref: RawRef) -> _Normalised:
     x_m, y_m = _number(ref, "x_m"), _number(ref, "y_m")
     x0, y0, x1, y1 = geo.MAP_SQUARE_M
     if not (x0 <= x_m <= x1 and y0 <= y_m <= y1):
@@ -366,7 +369,7 @@ def _normalise_point(world: _World, kind: str, ref: Record) -> _Normalised:
     return {"x_m": round(x_m, 1), "y_m": round(y_m, 1)}, (round(x_m, 1), round(y_m, 1))
 
 
-_NORMALISERS: dict[str, Callable[[_World, str, Record], _Normalised]] = {
+_NORMALISERS: dict[str, Callable[[_World, str, RawRef], _Normalised]] = {
     "plan": _normalise_plan_or_process,
     "process": _normalise_plan_or_process,
     "factory": _normalise_factory,
@@ -383,7 +386,7 @@ def _normalise(world: _World, kind: str, ref: object) -> _Normalised:
     return _NORMALISERS[kind](world, kind, cast("dict[str, object]", ref))
 
 
-def _identity(kind: str, ref: Record) -> tuple[object, ...]:
+def _identity(kind: str, ref: RawRef) -> tuple[object, ...]:
     if kind == "plan":
         return (kind, ref["plan"])
     if kind == "process":
@@ -487,8 +490,9 @@ def _describe_plan_or_process(world: _World, pin: PinRecord, ref: PinRef) -> Pin
     if pin["kind"] == "plan":
         origin = (state.siting or {}).get("origin_m") if state is not None else None
         x_m = y_m = None
-        if origin and len(origin) >= 2 and not gone_why:
-            x_m, y_m = round(float(origin[0]), 1), round(float(origin[1]), 1)
+        if isinstance(origin, list | tuple) and len(origin) >= 2 and not gone_why:
+            point = cast("Sequence[float]", origin)
+            x_m, y_m = round(float(point[0]), 1), round(float(point[1]), 1)
         return _described(name, f"plan “{name}”", f"plan “{name}”", x_m, y_m, gone_why)
     recipe_name, building = world.recipe(ref.get("recipe", ""))
     shown = f"{building} · {recipe_name}" if building else recipe_name
