@@ -20,6 +20,7 @@ from ....core.text import plural
 from ..solver.graph import chain_depth_of_rates
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..solver.model import ProcessRow
     from ..solver.prepare import PreparedPlan
 
 __all__ = ["Commissioning", "Wave", "WaveRow", "commission"]
@@ -124,7 +125,7 @@ class Commissioning:
         return sum(w.machines for w in self.waves)
 
 
-def _cycle_s(proc: dict, game: GameData) -> float:
+def _cycle_s(proc: ProcessRow, game: GameData) -> float:
     """How long one cycle of this process takes at the clock the plan runs it at.
 
     Clock divides: a machine at 250% finishes its cycle in 40% of the base time.
@@ -140,7 +141,7 @@ def _cycle_s(proc: dict, game: GameData) -> float:
     return 0.0
 
 
-def _depths(processes: list[dict]) -> dict[str, int]:
+def _depths(processes: list[ProcessRow]) -> dict[str, int]:
     """Chain depth per process id, from the same ``graph.chain_depth_of_rates`` the diff
     orders its build with, so the two halves of "which stage am I in" order one plant alike."""
     depths = chain_depth_of_rates([p["rates"] for p in processes])

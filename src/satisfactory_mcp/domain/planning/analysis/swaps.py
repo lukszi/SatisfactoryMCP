@@ -103,7 +103,7 @@ def _applied(args: PlanArgs, ops: list[PlanOpBody]) -> dict:
     """``args`` with each set op applied, as solve arguments."""
     raw = args.to_dict()
     for op in ops:
-        field, member = op.get("field"), op.get("member")
+        field, member = op.get("field", ""), op.get("member")
         members = list(raw[field])
         if op.get("op") == "add":
             if member not in members:

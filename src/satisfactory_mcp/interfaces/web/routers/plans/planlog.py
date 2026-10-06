@@ -354,8 +354,8 @@ def create_plan(
             args,
             actor=page_actor(),
             sav=_save_token(st, None),
-            plan_id=stamped["plan_id"],
-            provenance=stamped["provenance"],
+            plan_id=stamped.get("plan_id", ""),
+            provenance=stamped.get("provenance", {}),
             note=_chat_solve_note(body.get("from_entry")),
         )
     except NameTaken as exc:

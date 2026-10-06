@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from ..solver.model import MW, Solution
+from ..solver.model import MW, ProcessRow, Solution
 
 __all__ = ["BuildJob", "JobKey", "group_key", "group_processes"]
 
 #: What a plan row is matched on: ``("recipe", building, recipe)``, ``("generator",
 #: building)`` or ``("extractor", building, resource, purity)``.
-JobKey: TypeAlias = tuple[str, ...]
+JobKey: TypeAlias = tuple[str | None, ...]
 
 
 @dataclass
@@ -35,13 +35,13 @@ class BuildJob:
     depth: int = 0
 
 
-def _resource_of(proc: dict) -> str:
+def _resource_of(proc: ProcessRow) -> str:
     """The single item an extractor column produces."""
     produced = [item for item, rate in proc.get("rates", {}).items() if rate > 0]
     return produced[0] if produced else ""
 
 
-def group_key(proc: dict) -> JobKey:
+def group_key(proc: ProcessRow) -> JobKey:
     """The identity a plan row is matched on, as a hashable tuple.
 
     Public because it is the join between the two things this package says about one

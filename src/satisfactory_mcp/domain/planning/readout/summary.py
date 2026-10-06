@@ -38,6 +38,7 @@ from .views import (
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ..stored.plan_args import PlanArgs
     from ..stored.planlog.records import PlanState, Stamp
+    from ..stored.views import PlanStamp
 
 __all__ = [
     "failure_cause",
@@ -514,7 +515,7 @@ def _solve_response(
 def stamp_for(g: GameData, st: WorldState) -> Stamp:
     """The ``planlog.Stamp`` for pushes read against ``st``: plan_id and selector provenance."""
 
-    def stamp(state: PlanState) -> dict[str, object]:
+    def stamp(state: PlanState) -> PlanStamp:
         return {
             "plan_id": build_scenario(g, st, **state.kwargs()).plan_id,
             "provenance": provenance.record(g, st, list(state.args.sources) or None),

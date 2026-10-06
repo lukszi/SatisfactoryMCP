@@ -40,7 +40,7 @@ BUDGETS: dict[str, int] = {
     "src/satisfactory_mcp/domain/collectibles": 0,
     "src/satisfactory_mcp/domain/factories": 4,
     "src/satisfactory_mcp/domain/maps": 1,
-    "src/satisfactory_mcp/domain/planning/analysis": 1,
+    "src/satisfactory_mcp/domain/planning/analysis": 0,
     "src/satisfactory_mcp/domain/planning/layout": 1,
     "src/satisfactory_mcp/domain/planning/progress": 0,
     "src/satisfactory_mcp/domain/planning/readout": 0,

@@ -204,7 +204,7 @@ def _job_row(
     stages_by_row: dict[JobKey, list[int]],
 ) -> TrackRow:
     """One ``TrackResponse.rows`` entry: a build job, what to do, and where on the map."""
-    kind = row.key[0] if row.key else ""
+    kind = (row.key[0] or "") if row.key else ""
     recipe_id = row.key[2] if kind == "recipe" and len(row.key) > 2 else None
     recipe = g.recipes.get(recipe_id or "")
     states = Counter(health.get(name, "unmonitored") for name in row.have_instances)
