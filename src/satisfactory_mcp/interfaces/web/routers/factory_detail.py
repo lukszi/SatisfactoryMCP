@@ -15,9 +15,17 @@ from fastapi import APIRouter, Request
 
 from ....domain.factories import identity as fidentity
 from ....domain.factories.query import build_view
-from ....domain.spatial import geo
 from ....domain.spatial import nodes as nodes_mod
-from ..serial import cm_to_m, error_response, require_world, xyz_m
+from ..serial import (
+    bbox_m,
+    cm_to_m,
+    error_response,
+    instance_leaf,
+    point_m,
+    require_world,
+    standing_anchors,
+    xyz_m,
+)
 
 __all__ = ["router"]
 
@@ -88,12 +96,12 @@ class AspectIssue(TypedDict):
     machine: str | None
 
 
-def _issue(line: str, bname) -> AspectIssue:
+def _issue(line: str, building_name) -> AspectIssue:
     head, sep, rest = line.partition(": ")
     cls, found, _tail = head.rpartition("_C_")
     if not sep or not found:
         return {"text": line, "machine": None}
-    return {"text": f"{bname(cls + '_C')}: {rest}", "machine": head}
+    return {"text": f"{building_name(cls + '_C')}: {rest}", "machine": head}
 
 
 class FactoryAspectsResponse(TypedDict):
@@ -119,8 +127,7 @@ def _label_machines(st, factory: str) -> tuple[str, list[str]] | None:
     label = next((x for x in st.labels.labels if x.name == factory), None)
     if label is None:
         return None
-    alive = set(st.graph.machines())
-    return label.name, [m for m in label.anchors if m in alive]
+    return label.name, standing_anchors(st, label)
 
 
 def _node_places() -> dict[str, tuple[float, float]]:
@@ -128,7 +135,7 @@ def _node_places() -> dict[str, tuple[float, float]]:
         table = nodes_mod.load_nodes().nodes
     except FileNotFoundError:
         return {}
-    return {str(n["instance"]).rsplit(".", 1)[-1]: (n["x"], n["y"]) for n in table}
+    return {instance_leaf(n["instance"]): (n["x"], n["y"]) for n in table}
 
 
 @router.get("/factories/aspects", response_model=FactoryAspectsResponse)
@@ -147,20 +154,19 @@ def factory_aspects(
     if found is None:
         return error_response(f"no factory named “{factory}” in this world", 404)
     name, machines = found
-    g = st.game
-    view = build_view(name, machines, st.graph, g, st.projection, st.labels)
+    game = st.game
+    view = build_view(name, machines, st.graph, game, st.projection, st.labels)
     placed = fidentity.positions(st.projection)
-    box = geo.bbox([placed[m][:2] for m in machines if m in placed])
     places = _node_places() if view.nodes else {}
 
-    def bname(cls: str) -> str:
-        return g.building_name(cls) or cls
+    def building_name(cls: str) -> str:
+        return game.building_name(cls) or cls
 
     return {
         "name": name,
         "size": view.size,
-        "centroid_m": [cm_to_m(view.centroid[0]), cm_to_m(view.centroid[1])],
-        "bbox_m": None if box is None else [cm_to_m(v) for v in box],
+        "centroid_m": point_m(view.centroid),
+        "bbox_m": bbox_m(placed, machines),
         "spread_m": round(view.spread_m, 1),
         "producers": view.producers,
         "unmonitored_producers": view.unmonitored_producers,
@@ -188,22 +194,24 @@ def factory_aspects(
         "machines": [
             {
                 "instance": m.instance,
-                "building": bname(m.building),
+                "building": building_name(m.building),
                 "recipe": m.recipe or None,
                 "clock": round(m.clock, 4),
                 "paused": m.paused,
                 **xyz_m(m.pos if any(m.pos) else None),
             }
-            for m in sorted(view.machines, key=lambda x: (bname(x.building), x.recipe))
+            for m in sorted(view.machines, key=lambda x: (building_name(x.building), x.recipe))
         ],
         "recipes": [{"name": k, "count": v} for k, v in view.recipes.most_common()],
-        "buildings": [{"name": bname(k), "count": v} for k, v in view.buildings.most_common()],
+        "buildings": [
+            {"name": building_name(k), "count": v} for k, v in view.buildings.most_common()
+        ],
         "nodes": [
             {
                 "node": node,
                 "resource": resource,
                 "purity": purity,
-                "extractor": bname(cls),
+                "extractor": building_name(cls),
                 "clock": round(clock, 4),
                 "left": left,
                 "x_m": cm_to_m(places[node][0]) if node in places else None,
@@ -215,7 +223,7 @@ def factory_aspects(
             {"factory": None if k == "(unlabelled)" else k, "machines": v}
             for k, v in view.links.most_common()
         ],
-        "issues": [_issue(line, bname) for line in view.issues],
+        "issues": [_issue(line, building_name) for line in view.issues],
     }
 
 
@@ -263,24 +271,26 @@ def factory_sites(
         if found is None:
             return error_response(f"no factory named “{factory}” in this world", 404)
         mine = set(found[1])
-    g = st.game
     sites = st.sites()
     rows = []
-    for index, s in enumerate(sites):
-        held = sum(1 for leaf in s["instances"] if leaf in mine)
+    for index, site in enumerate(sites):
+        held = sum(1 for leaf in site["instances"] if leaf in mine)
         if factory is not None and not held:
             continue
-        ranked = sorted(s["buildings"].items(), key=lambda kv: -kv[1])
+        ranked = sorted(site["buildings"].items(), key=lambda kv: -kv[1])
         rows.append(
             {
                 "index": index,
-                "direction": s["direction"],
-                "grid": s["grid"],
-                **xyz_m(s["centroid"]),
-                "count": s["count"],
-                "diameter_m": s["diameter_m"],
-                "selector": s["selector"],
-                "buildings": [{"name": g.building_name(c) or c, "count": n} for c, n in ranked],
+                "direction": site["direction"],
+                "grid": site["grid"],
+                **xyz_m(site["centroid"]),
+                "count": site["count"],
+                "diameter_m": site["diameter_m"],
+                "selector": site["selector"],
+                "buildings": [
+                    {"name": st.game.building_name(cls) or cls, "count": count}
+                    for cls, count in ranked
+                ],
                 "mine": held,
             }
         )

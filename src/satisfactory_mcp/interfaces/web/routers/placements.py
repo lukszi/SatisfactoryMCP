@@ -15,7 +15,14 @@ from ....core.gamedata.model import pretty_class
 from ....core.saveio import rows as saverows
 from ....domain.factories import health
 from ....domain.world.state import WorldState
-from ..serial import cm_to_m, require_world, xyz_m, yaw_deg
+from ..serial import (
+    building_footprint,
+    cm_to_m,
+    instance_leaf,
+    placement_fields,
+    require_world,
+    yaw_deg,
+)
 
 __all__ = ["router"]
 
@@ -108,24 +115,20 @@ class StructuresResponse(TypedDict):
     tile_m: float
 
 
-def _leaf(row: dict) -> str:
-    return str(row.get("instance", "")).rsplit(".", 1)[-1]
-
-
 def _record_row(
-    st: WorldState, row: dict, verdict: health.MachineHealth, owners: dict[str, str]
+    st: WorldState,
+    row: dict,
+    verdicts: dict[str, health.MachineHealth],
+    owners: dict[str, str],
 ) -> PlacementRow:
     """One machine/extractor/generator, flattened for the map; extents per docs/web-wire.md."""
-    cls = row.get("cls") or ""
-    building = st.game.buildings.get(cls)
-    footprint = getattr(building, "footprint", None) if building else None
+    leaf = instance_leaf(row.get("instance", ""))
+    verdict = verdicts[leaf]
+    footprint = building_footprint(st.game, row.get("cls") or "")
     recipe_id = row.get("recipe")
     recipe = st.game.recipes.get(recipe_id) if recipe_id else None
     return {
-        "instance_leaf": _leaf(row),
-        "cls": row.get("cls"),
-        "name": st.game.building_name(cls),
-        **xyz_m(row.get("pos")),
+        **placement_fields(st.game, row),
         "recipe": recipe_id,
         "recipe_name": recipe.name if recipe else pretty_class(recipe_id),
         "clock": row.get("clock"),
@@ -133,12 +136,8 @@ def _record_row(
         "state": verdict.state,
         "actionable": verdict.state in health.ACTIONABLE,
         "uptime": None if verdict.uptime is None else round(verdict.uptime, 3),
-        "yaw": yaw_deg(row.get("yaw")),
-        # Footprint is already metres; the projection's coordinates are not.
-        "w_m": round(footprint.width_m, 1) if footprint else None,
-        "l_m": round(footprint.depth_m, 1) if footprint else None,
         "h_m": round(footprint.height_m, 1) if footprint else None,
-        "factory": owners.get(_leaf(row)),
+        "factory": owners.get(leaf),
     }
 
 
@@ -156,13 +155,18 @@ def machines(request: Request, save: str | None = None, world: str | None = None
     states in ``health.ACTIONABLE``. How the map marks it: docs/save-projection.md §6.2d.
     """
     st = require_world(request, save, world)
-    p = st.projection
-    leaves = [_leaf(row) for kind in MACHINE_KINDS for row in p.get(kind, ())]
+    projection = st.projection
+    leaves = [
+        instance_leaf(row.get("instance", ""))
+        for kind in MACHINE_KINDS
+        for row in projection.get(kind, ())
+    ]
     # Total by construction: assess walks MACHINE_KINDS too, so the lookup cannot miss.
-    verdicts = {m.instance: m for m in health.assess("map", leaves, st.game, p, st.graph).machines}
+    assessed = health.assess("map", leaves, st.game, projection, st.graph)
+    verdicts = {verdict.instance: verdict for verdict in assessed.machines}
     owners = {leaf: label.name for label in st.labels.labels for leaf in label.anchors}
     return {
-        kind: [_record_row(st, row, verdicts[_leaf(row)], owners) for row in p.get(kind, ())]
+        kind: [_record_row(st, row, verdicts, owners) for row in projection.get(kind, ())]
         for kind in MACHINE_KINDS
     }
 

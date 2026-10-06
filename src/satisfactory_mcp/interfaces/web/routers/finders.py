@@ -13,7 +13,6 @@ from typing import Annotated, Any, Literal, TypedDict
 from fastapi import APIRouter, Query, Request
 
 from ....core.text import ago
-from ....domain.collectibles import service as collectibles_service
 from ....domain.planning.scenario import resolve_item
 from ....domain.spatial import finder, geo, place, ranking
 from ....domain.spatial import nodes as spatial_nodes
@@ -26,9 +25,12 @@ from ..serial import (
     cm_to_m,
     error_response,
     found_field_json,
+    node_identity,
+    point_m,
     region_json,
     require_world,
     resource_name,
+    stale_tables,
     world_state,
     xyz_m,
 )
@@ -183,32 +185,50 @@ class RegionTableResponse(TypedDict):
     accuracy_m: int
 
 
-def _found_node(r: dict, game, rm, drifted: set[str]) -> FoundNode:
-    status = finder.status_of(r)
-    cls = r.get("tapped_by")
+def _found_node(node: dict, game, region_map, drifted: set[str]) -> FoundNode:
+    status = finder.status_of(node)
+    cls = node.get("tapped_by")
     occupant = None
     if cls:
         occupant = game.building_name(cls) or cls
-        if r.get("tapped_clock") is not None:
-            occupant += f" @{r['tapped_clock']:.0%}"
-    leaf = str(r["instance"]).rsplit(".", 1)[-1]
+        if node.get("tapped_clock") is not None:
+            occupant += f" @{node['tapped_clock']:.0%}"
+    identity = node_identity(node, game)
     return {
-        "id": r["instance"],
-        "name": leaf,
-        "resource": r["resource"],
-        "resource_name": resource_name(game, r["resource"]),
-        "purity": r["purity"],
-        "kind": r["kind"],
-        **xyz_m((r["x"], r["y"], r["z"])),
-        "grid": r["grid"],
-        "rate": round(r["rate"], 2),
+        **identity,
+        "purity": node["purity"],
+        "kind": node["kind"],
+        **xyz_m((node["x"], node["y"], node["z"])),
+        "grid": node["grid"],
+        "rate": round(node["rate"], 2),
         "status": status,
         "occupant": occupant,
-        "occupant_off": bool(r.get("tapped_paused")) if cls else None,
-        "region": region_json(rm.label_for_node(r)),
-        "distance_m": r.get("distance_m"),
-        "moved": leaf in drifted,
+        "occupant_off": bool(node.get("tapped_paused")) if cls else None,
+        "region": region_json(region_map.label_for_node(node)),
+        "distance_m": node.get("distance_m"),
+        "moved": identity["name"] in drifted,
         "spoiler": status == "locked",
+    }
+
+
+def _ranked_site_json(rank: int, site: dict) -> RankedSite:
+    return {
+        "rank": rank,
+        "score": site["score"],
+        "region": site["region"],
+        "grid": site["grid"],
+        "x_m": cm_to_m(site["x"]),
+        "y_m": cm_to_m(site["y"]),
+        "selector": site["selector"],
+        "nodes": site["nodes"],
+        "untapped": site["untapped"],
+        "spread_m": site["spread_m"],
+        "to_infra_m": site["to_infra_m"],
+        "purity": site["purity"],
+        "alt_m": None if site["alt_m"] is None else round(site["alt_m"], 1),
+        "rough_m": site["rough_m"],
+        "slope_deg": site["slope_deg"],
+        "wet_pct": site["wet_pct"],
     }
 
 
@@ -249,10 +269,10 @@ def world_nodes(
     if refusal:
         return error_response(refusal)
     if resource and resource.strip().casefold() != "all":
-        rid = resolve_item(game, resource)
-        if rid is None:
+        resource_id = resolve_item(game, resource)
+        if resource_id is None:
             return error_response(f"unknown resource {resource!r}")
-        resource = resource_name(game, rid)
+        resource = resource_name(game, resource_id)
     try:
         spatial_nodes.load_nodes()
     except FileNotFoundError as exc:
@@ -282,18 +302,20 @@ def world_nodes(
     if found.unselected:
         return error_response("no selector resolved: " + "; ".join(found.errors))
 
-    rm = spatial_regions.load_regions()
-    drifted = found.drifted
+    region_map = spatial_regions.load_regions()
     water = found.water
+    fields_view = view == "fields"
     return {
         "view": view,
         "description": found.description,
         "selectors": found.selectors,
         "where": found.where,
-        "nodes": []
-        if view == "fields"
-        else [_found_node(r, game, rm, drifted) for r in found.rows],
-        "fields": [found_field_json(f, game) for f in found.fields] if view == "fields" else [],
+        "nodes": (
+            []
+            if fields_view
+            else [_found_node(node, game, region_map, found.drifted) for node in found.rows]
+        ),
+        "fields": [found_field_json(f, game) for f in found.fields] if fields_view else [],
         "count": len(found.rows),
         "total": round(found.total, 2),
         "free": round(found.free, 2),
@@ -305,7 +327,7 @@ def world_nodes(
         "choices": finder.choices(game),
         "notes": finder.page_notes(found, st),
         "stale": spatial_nodes.table_age(
-            st.header if st else None, None, [r["instance"] for r in found.rows]
+            st.header if st else None, None, [node["instance"] for node in found.rows]
         ),
         "save_error": save_error,
     }
@@ -322,46 +344,29 @@ def world_sites(
 ) -> Any:
     """Candidate fields for one resource, best first, as ``rank_build_sites`` ranks them."""
     game = request.app.state.game()
-    rid = resolve_item(game, resource)
-    if rid is None:
+    resource_id = resolve_item(game, resource)
+    if resource_id is None:
         return error_response(f"unknown resource {resource!r}")
     st = require_world(request, save, world)
-    ranked = finder.rank(st, game, rid, source, resolve_resource=_resolver(game))
+    ranked = finder.rank(st, game, resource_id, source, resolve_resource=_resolver(game))
     if ranked.unselected:
         return error_response("no selector resolved: " + "; ".join(ranked.selection.errors))
-    rm = spatial_regions.load_regions()
-    sites = []
-    for i, sc in enumerate(ranked.scored[:limit], 1):
-        v = finder.site_view(sc, rm)
-        sites.append(
-            {
-                "rank": i,
-                "score": v["score"],
-                "region": v["region"],
-                "grid": v["grid"],
-                "x_m": cm_to_m(v["x"]),
-                "y_m": cm_to_m(v["y"]),
-                "selector": v["selector"],
-                "nodes": v["nodes"],
-                "untapped": v["untapped"],
-                "spread_m": v["spread_m"],
-                "to_infra_m": v["to_infra_m"],
-                "purity": v["purity"],
-                "alt_m": None if v["alt_m"] is None else round(v["alt_m"], 1),
-                "rough_m": v["rough_m"],
-                "slope_deg": v["slope_deg"],
-                "wet_pct": v["wet_pct"],
-            }
-        )
+    region_map = spatial_regions.load_regions()
+    sites = [
+        _ranked_site_json(rank, finder.site_view(scored, region_map))
+        for rank, scored in enumerate(ranked.scored[:limit], 1)
+    ]
     return {
-        "resource": rid,
-        "resource_name": resource_name(game, rid),
+        "resource": resource_id,
+        "resource_name": resource_name(game, resource_id),
         "description": ranked.selection.description,
         "sites": sites,
         "count": len(ranked.scored),
         "weights": dict(ranking.WEIGHTS),
         "notes": [*ranked.selection.errors, *ranked.notes],
-        "stale": spatial_nodes.table_age(st.header, None, [r["instance"] for r in ranked.rows]),
+        "stale": spatial_nodes.table_age(
+            st.header, None, [node["instance"] for node in ranked.rows]
+        ),
     }
 
 
@@ -377,17 +382,10 @@ def world_here(
     game = request.app.state.game()
     found = place.here(st, game, radius_m)
     rows = found.nodes
-    instances = [r["instance"] for r in rows]
+    instances = [node["instance"] for node in rows]
     drifted = spatial_nodes.drifted(found.skew, instances)
-    rm = spatial_regions.load_regions()
-    stale = [
-        age
-        for age in (
-            spatial_nodes.table_age(st.header, None, instances),
-            collectibles_service.table_age(st),
-        )
-        if age is not None and (age["behind"] or age["observed_matches"] is False)
-    ]
+    region_map = spatial_regions.load_regions()
+    stale = stale_tables(st, None, instances)
     player = found.player
     building = found.nearest_building
     return {
@@ -399,7 +397,7 @@ def world_here(
         "grid": None if player is None else geo.grid_cell(player[0], player[1]),
         "direction": None if player is None else geo.direction_of(player[0], player[1]),
         "radius_m": radius_m,
-        "nodes": [_found_node(r, game, rm, drifted) for r in rows],
+        "nodes": [_found_node(node, game, region_map, drifted) for node in rows],
         "nodes_total": len(rows),
         "nearest_building": None
         if building is None
@@ -418,24 +416,24 @@ def world_regions(
 ) -> Any:
     """Named regions with their node counts, as ``list_regions`` lists them."""
     game = request.app.state.game()
-    rid = resolve_item(game, resource) if resource else None
-    if resource and rid is None:
+    resource_id = resolve_item(game, resource) if resource else None
+    if resource and resource_id is None:
         return error_response(f"unknown resource {resource!r}")
     table = spatial_nodes.load_nodes()
-    rm = spatial_regions.load_regions()
+    region_map = spatial_regions.load_regions()
     return {
-        "resource": rid,
-        "resource_name": resource_name(game, rid) if rid else None,
+        "resource": resource_id,
+        "resource_name": resource_name(game, resource_id) if resource_id else None,
         "rows": [
             {
-                "name": r["name"],
-                "direction": r["direction"],
-                "grid": r["grid"],
-                "anchor_m": (cm_to_m(r["anchor"][0]), cm_to_m(r["anchor"][1])),
-                "area_km2": r["area_km2"],
-                "nodes": r["nodes"],
+                "name": row["name"],
+                "direction": row["direction"],
+                "grid": row["grid"],
+                "anchor_m": point_m(row["anchor"]),
+                "area_km2": row["area_km2"],
+                "nodes": row["nodes"],
             }
-            for r in spatial_regions.region_rows(table, rid)
+            for row in spatial_regions.region_rows(table, resource_id)
         ],
-        "accuracy_m": rm.accuracy_m,
+        "accuracy_m": region_map.accuracy_m,
     }

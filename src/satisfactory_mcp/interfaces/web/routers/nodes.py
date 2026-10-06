@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
-from ..serial import Region, error_response, region_json, resource_name, world_state, xyz_m
+from ..serial import Region, error_response, node_identity, region_json, world_state, xyz_m
 
 __all__ = ["router"]
 
@@ -105,7 +105,7 @@ def nodes(
     """
     try:
         table = spatial_nodes.load_nodes()
-        rmap = spatial_regions.load_regions()
+        region_map = spatial_regions.load_regions()
     except FileNotFoundError as exc:
         return error_response(str(exc), 404)
 
@@ -122,27 +122,24 @@ def nodes(
     game = request.app.state.game()
     rows = table.by_resource(resource) if resource else table.nodes
     out: list[NodeRow] = []
-    for n in rows:
-        held = taken.get(n["instance"])
+    for node in rows:
+        held = taken.get(node["instance"])
         occupant = held["extractor"] if held else None
-        reachable = None if unlocked is None else spatial_nodes.reachable(n, unlocked)
+        reachable = None if unlocked is None else spatial_nodes.reachable(node, unlocked)
         out.append(
             {
-                "id": n["instance"],
-                "resource": n["resource"],
-                "resource_name": resource_name(game, n["resource"]),
-                "name": str(n["instance"]).rsplit(".", 1)[-1],
-                "kind": n["kind"],
-                "purity": n["purity"],
-                **xyz_m((n["x"], n["y"], n["z"])),
+                **node_identity(node, game),
+                "kind": node["kind"],
+                "purity": node["purity"],
+                **xyz_m((node["x"], node["y"], node["z"])),
                 "occupied": held is not None,
                 "occupant_cls": occupant,
                 "occupant_name": game.building_name(occupant),
-                # Not `reachable(n, unlocked)`: the domain reads a null unlock set as "no
+                # Not `reachable(node, unlocked)`: the domain reads a null unlock set as "no
                 # world to judge against, so assume yes", which is the right default for a
                 # capacity sum and the wrong one for a dot somebody plans around.
                 "reachable": reachable,
-                "region": region_json(rmap.label_for_node(n)),
+                "region": region_json(region_map.label_for_node(node)),
                 "spoiler": reachable is False and held is None,
             }
         )

@@ -6,11 +6,13 @@ from collections.abc import Iterable
 from typing import Any, Literal, TypedDict
 
 from ....core.gamedata.model import GameData, pretty_class
+from ....domain.collectibles import service as collectibles_service
 from ....domain.factories import identity as fidentity
 from ....domain.planning.planlog import Actor
+from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world.state import WorldState
-from .units import cm_to_m, instance_leaf, xyz_m
+from .units import cm_to_m, instance_leaf, xyz_m, yaw_deg
 
 __all__ = [
     "ActorBody",
@@ -24,15 +26,24 @@ __all__ = [
     "Region",
     "TableAge",
     "actor_json",
+    "building_footprint",
     "collectible_json",
+    "contents_json",
+    "flow_edges_json",
+    "flow_group_json",
     "flow_json",
     "found_field_json",
     "item_amounts",
+    "machine_name",
     "machine_spots",
+    "node_identity",
+    "placement_fields",
     "region_json",
     "regions_or_none",
     "resource_name",
     "settings_json",
+    "stale_tables",
+    "standing_anchors",
 ]
 
 
@@ -98,6 +109,29 @@ class TableAge(TypedDict):
     observed_from: str | None
     observed_matches: bool | None
     notes: list[str]
+
+
+def stale_tables(st: WorldState, node_table: Any, instances: list[str]) -> list[TableAge]:
+    """The node and placement tables worth a warning: older than the save, or observed elsewhere."""
+    ages = (
+        spatial_nodes.table_age(st.header, node_table, instances),
+        collectibles_service.table_age(st),
+    )
+    return [
+        age
+        for age in ages
+        if age is not None and (age["behind"] or age["observed_matches"] is False)
+    ]
+
+
+def node_identity(node: dict, game: GameData | None) -> dict:
+    """The four fields that name a resource node on every node row."""
+    return {
+        "id": node["instance"],
+        "name": instance_leaf(node["instance"]),
+        "resource": node["resource"],
+        "resource_name": resource_name(game, node["resource"]),
+    }
 
 
 class CollectibleRow(TypedDict):
@@ -275,6 +309,27 @@ def flow_json(flow_graph: Any, item: str, rate: float) -> Flow:
     }
 
 
+def flow_group_json(group: Any) -> dict:
+    """The fields the factory graph and the trace share for one recipe group."""
+    return {
+        "id": group.key,
+        "label": f"{len(group.machines)}× {group.building}",
+        "detail": group.recipe,
+        "machines": len(group.machines),
+        "running": group.states["running"],
+        "blocked": group.states["blocked"],
+        "stopped": group.states["stopped"],
+    }
+
+
+def flow_edges_json(flow_graph: Any) -> list[dict]:
+    """A flow graph's edges; ``per_min`` is ``None`` where there is no surplus to share."""
+    return [
+        {"source": edge.source, "target": edge.target, "item": edge.item, "per_min": edge.per_min}
+        for edge in flow_graph.edges
+    ]
+
+
 class MachineSpot(TypedDict):
     """One placed machine. ``factory`` is the label that holds it, if any."""
 
@@ -303,3 +358,51 @@ def machine_spots(st: WorldState, machines) -> list[dict]:
             }
         )
     return spots
+
+
+def standing_anchors(st: WorldState, label: Any) -> list[str]:
+    """A factory label's anchors that still stand in this save, in the label's order."""
+    alive = set(st.graph.machines())
+    return [machine for machine in label.anchors if machine in alive]
+
+
+def machine_name(game: GameData, recipe: Any) -> str | None:
+    """The machine a recipe runs in, by display name; ``None`` for hand and build recipes."""
+    building = game.machine(recipe)
+    return building.name if building else None
+
+
+def building_footprint(game: GameData, cls: str) -> Any:
+    """A building class's clearance footprint, or ``None`` where the docs dump carries none."""
+    building = game.buildings.get(cls)
+    return getattr(building, "footprint", None) if building else None
+
+
+def placement_fields(game: GameData, row: dict) -> dict:
+    """What an actor placement row leads with: id, class, name, position, facing and size."""
+    cls = row.get("cls") or ""
+    footprint = building_footprint(game, cls)
+    return {
+        "instance_leaf": instance_leaf(row.get("instance", "")),
+        "cls": row.get("cls"),
+        "name": game.building_name(cls),
+        **xyz_m(row.get("pos")),
+        "yaw": yaw_deg(row.get("yaw")),
+        "w_m": round(footprint.width_m, 1) if footprint else None,
+        "l_m": round(footprint.depth_m, 1) if footprint else None,
+    }
+
+
+def contents_json(game: GameData, row: dict) -> dict:
+    """What a container or crate holds, every stack named, with the totals a header shows."""
+    raw = [e for e in row.get("items") or () if isinstance(e, (list, tuple)) and len(e) >= 2]
+    items = [{"cls": str(e[0]), "name": game.item_name(str(e[0])), "count": e[1]} for e in raw]
+    return {
+        "items": items,
+        # Arithmetic rather than the 0 it comes to, so a cap put back on ``items`` makes
+        # this the count of what was left off again.
+        "more": max(0, len(raw) - len(items)),
+        "item_kinds": len(raw),
+        "total": sum(e[1] for e in raw if isinstance(e[1], (int, float))),
+        "slots": row.get("slots"),
+    }

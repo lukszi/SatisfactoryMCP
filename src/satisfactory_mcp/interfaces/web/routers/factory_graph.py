@@ -17,17 +17,19 @@ from ....domain.factories import flowgraph
 from ....domain.factories import identity as fidentity
 from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
-from ....domain.spatial import geo
 from ....domain.world import pin
 from ....domain.world.state import WorldState
 from ..serial import (
     Flow,
     MachineSpot,
     RequestRefused,
-    cm_to_m,
+    bbox_m,
+    flow_edges_json,
+    flow_group_json,
     flow_json,
     machine_spots,
     require_world,
+    standing_anchors,
 )
 
 __all__ = ["router"]
@@ -79,7 +81,8 @@ TERMINAL_LABELS = {
 }
 
 
-def _bare(key: str, kind: str, label: str, detail: str) -> dict:
+def _plain_node(key: str, kind: str, label: str, detail: str) -> dict:
+    """An input or terminal node: a label and a line, and none of a group's counts."""
     return {
         "id": key,
         "kind": kind,
@@ -93,6 +96,22 @@ def _bare(key: str, kind: str, label: str, detail: str) -> dict:
         "stopped": 0,
         "states": {},
         "bbox_m": None,
+    }
+
+
+def _group_node(flow_graph: flowgraph.FlowGraph, group: Any, placed: dict) -> dict:
+    """One recipe group: its machines' mean clock, what it makes, its states and its box."""
+    clocks = group.clocks
+    return {
+        **flow_group_json(group),
+        "kind": "group",
+        "clock": round(sum(clocks) / len(clocks), 3) if clocks else None,
+        "makes": [
+            flow_json(flow_graph, item, rate)
+            for item, rate in sorted(group.makes.items(), key=lambda kv: -kv[1])
+        ],
+        "states": dict(sorted(group.health.items())),
+        "bbox_m": bbox_m(placed, group.machines),
     }
 
 
@@ -118,8 +137,7 @@ def _picked_machines(
         label = next((x for x in st.labels.labels if x.name == factory), None)
         if label is None:
             raise RequestRefused(f"no factory named “{factory}” in this world", 404)
-        alive = set(st.graph.machines())
-        return PickedMachines(st, [m for m in label.anchors if m in alive], label.name)
+        return PickedMachines(st, standing_anchors(st, label), label.name)
     if not token:
         raise RequestRefused("candidate= needs the token= it was detected at", 400)
     try:
@@ -149,47 +167,24 @@ def factory_graph(
     written since then is refused (409), since the index may now name another cluster.
     """
     st, machines, title = _picked_machines(request, factory, candidate, token, save, world)
-    fg = flowgraph.build(st, st.game, build_view(title, machines, st.graph, st.game, st.projection))
+    view = build_view(title, machines, st.graph, st.game, st.projection)
+    flow_graph = flowgraph.build(st, st.game, view)
     whole = "factory" if factory else "cluster"
     placed = fidentity.positions(st.projection)
-    nodes: list[dict] = []
-    for g in fg.groups.values():
-        box = geo.bbox([placed[m][:2] for m in g.machines if m in placed])
-        nodes.append(
-            {
-                "id": g.key,
-                "kind": "group",
-                "label": f"{len(g.machines)}× {g.building}",
-                "detail": g.recipe,
-                "machines": len(g.machines),
-                "clock": round(sum(g.clocks) / len(g.clocks), 3) if g.clocks else None,
-                "makes": [
-                    flow_json(fg, k, v) for k, v in sorted(g.makes.items(), key=lambda kv: -kv[1])
-                ],
-                "running": g.states["running"],
-                "blocked": g.states["blocked"],
-                "stopped": g.states["stopped"],
-                "states": dict(sorted(g.health.items())),
-                "bbox_m": None if box is None else [cm_to_m(v) for v in box],
-            }
-        )
-    used = {e.source for e in fg.edges} | {e.target for e in fg.edges}
+    nodes = [_group_node(flow_graph, group, placed) for group in flow_graph.groups.values()]
+    used = {e.source for e in flow_graph.edges} | {e.target for e in flow_graph.edges}
     for key in sorted(k for k in used if k.startswith("in:")):
-        nodes.append(_bare(key, "input", key[3:], f"enters the {whole}"))
+        nodes.append(_plain_node(key, "input", key[3:], f"enters the {whole}"))
     for kind, text in TERMINAL_LABELS.items():
         if kind in used:
-            nodes.append(
-                _bare(kind, kind, text.format(whole), f"{fg.terminals.get(kind, 0)} reached")
-            )
+            reached = f"{flow_graph.terminals.get(kind, 0)} reached"
+            nodes.append(_plain_node(kind, kind, text.format(whole), reached))
     return {
         "title": title,
         "token": pin.check(st.header, None),
-        "buffers": len(fg.buffers),
+        "buffers": len(flow_graph.buffers),
         "nodes": nodes,
-        "edges": [
-            {"source": e.source, "target": e.target, "item": e.item, "per_min": e.per_min}
-            for e in fg.edges
-        ],
+        "edges": flow_edges_json(flow_graph),
     }
 
 

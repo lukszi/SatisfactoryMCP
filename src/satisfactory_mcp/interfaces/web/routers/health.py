@@ -16,8 +16,8 @@ from fastapi import APIRouter, Request
 from ....domain.factories import identity as fidentity
 from ....domain.factories.health import ACTIONABLE, OK, STATES
 from ....domain.factories.sweep import sweep
-from ....domain.spatial import geo
-from ..serial import cm_to_m, require_world
+from ....domain.world.state import WorldState
+from ..serial import bbox_m, cm_to_m, point_m, require_world
 
 __all__ = ["router"]
 
@@ -79,6 +79,50 @@ class FactoryHealthResponse(TypedDict):
     factories: list[FactoryHealthRow]
 
 
+def _issue_row(st: WorldState, placed: dict, machine: Any) -> dict:
+    at = placed.get(machine.instance)
+    return {
+        "instance": machine.instance,
+        "state": machine.state,
+        "uptime": None if machine.uptime is None else round(machine.uptime, 3),
+        "what": machine.recipe or st.game.building_name(machine.building) or machine.building,
+        "cause": list(machine.cause),
+        "x_m": cm_to_m(at[0]) if at else None,
+        "y_m": cm_to_m(at[1]) if at else None,
+    }
+
+
+def _factory_row(st: WorldState, swept: Any, placed: dict, review: dict[str, str]) -> dict:
+    """One named factory's sweep: its extent, uptime, states and worst machines."""
+    label, standing, report, view = swept.label, swept.standing, swept.report, swept.view
+    mean = report.mean_uptime
+    worst = report.worst(WORST_PER_FACTORY)
+    worst_actionable = swept.worst_actionable(WORST_PER_FACTORY)
+    return {
+        "name": label.name,
+        "centroid_m": point_m(label.centroid),
+        "bbox_m": bbox_m(placed, standing),
+        "anchors": len(label.anchors),
+        "alive": len(standing),
+        "review": review.get(label.name),
+        "machines": len(report.machines),
+        "uptime": None if mean is None else round(mean, 3),
+        "measured_mw": round(view.measured_draw_mw, 1),
+        "nameplate_mw": round(view.draw_mw, 1),
+        "states": [
+            {"state": state, "count": report.by_state[state]}
+            for state in STATES
+            if report.by_state[state]
+        ],
+        "actionable": sum(report.by_state[state] for state in ACTIONABLE),
+        "unwired": len(report.unwired),
+        "no_generator": len(report.no_generator),
+        "worst": [_issue_row(st, placed, machine) for machine in worst],
+        "worst_actionable": [_issue_row(st, placed, machine) for machine in worst_actionable],
+        "attention": sum(1 for machine in report.machines if machine.state not in OK),
+    }
+
+
 @router.get("/factories/health", response_model=FactoryHealthResponse)
 def factory_health(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Uptime, states and the worst machines of every named factory, worst factory first."""
@@ -87,47 +131,7 @@ def factory_health(request: Request, save: str | None = None, world: str | None 
     alive_set = set(st.graph.machines())
     placed = fidentity.positions(st.projection)
     review = {row["name"]: row["status"] for row in st.labels.review(alive_set)}
-
-    def issue(m) -> dict:
-        at = placed.get(m.instance)
-        return {
-            "instance": m.instance,
-            "state": m.state,
-            "uptime": None if m.uptime is None else round(m.uptime, 3),
-            "what": m.recipe or st.game.building_name(m.building) or m.building,
-            "cause": list(m.cause),
-            "x_m": cm_to_m(at[0]) if at else None,
-            "y_m": cm_to_m(at[1]) if at else None,
-        }
-
-    rows = []
-    for swept in sweep(st):
-        label, standing, report, view = swept.label, swept.standing, swept.report, swept.view
-        box = geo.bbox([placed[m][:2] for m in standing if m in placed])
-        mean = report.mean_uptime
-        rows.append(
-            {
-                "name": label.name,
-                "centroid_m": [cm_to_m(label.centroid[0]), cm_to_m(label.centroid[1])],
-                "bbox_m": None if box is None else [cm_to_m(v) for v in box],
-                "anchors": len(label.anchors),
-                "alive": len(standing),
-                "review": review.get(label.name),
-                "machines": len(report.machines),
-                "uptime": None if mean is None else round(mean, 3),
-                "measured_mw": round(view.measured_draw_mw, 1),
-                "nameplate_mw": round(view.draw_mw, 1),
-                "states": [
-                    {"state": s, "count": report.by_state[s]} for s in STATES if report.by_state[s]
-                ],
-                "actionable": sum(report.by_state[s] for s in ACTIONABLE),
-                "unwired": len(report.unwired),
-                "no_generator": len(report.no_generator),
-                "worst": [issue(m) for m in report.worst(WORST_PER_FACTORY)],
-                "worst_actionable": [issue(m) for m in swept.worst_actionable(WORST_PER_FACTORY)],
-                "attention": sum(1 for m in report.machines if m.state not in OK),
-            }
-        )
+    rows = [_factory_row(st, swept, placed, review) for swept in sweep(st)]
     return {
         "labels_version": st.labels.version,
         "states": list(STATES),

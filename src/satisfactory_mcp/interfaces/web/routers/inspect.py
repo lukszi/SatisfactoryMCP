@@ -15,7 +15,6 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from fastapi import APIRouter, Query, Request
 
-from ....domain.collectibles import service as collectibles_service
 from ....domain.spatial import caves, geo, place
 from ....domain.spatial import elevation as spatial_elevation
 from ....domain.spatial import nodes as spatial_nodes
@@ -30,8 +29,9 @@ from ..serial import (
     collectible_json,
     error_response,
     found_field_json,
+    node_identity,
     region_json,
-    resource_name,
+    stale_tables,
     world_state,
     xyz_m,
 )
@@ -258,19 +258,16 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     }
 
 
-def _nearest_json(n: dict, game) -> NearestNode:
+def _nearest_json(node: dict, game) -> NearestNode:
     return {
-        "id": n["instance"],
-        "name": str(n["instance"]).rsplit(".", 1)[-1],
-        "resource": n["resource"],
-        "resource_name": resource_name(game, n["resource"]),
-        "kind": n["kind"],
-        "purity": n["purity"],
-        **xyz_m((n["x"], n["y"], n["z"])),
-        "occupied": n["tapped"],
-        "occupant_cls": n["tapped_by"],
-        "distance_m": n["distance_m"],
-        "spoiler": not n["tapped"] and not n["reachable"],
+        **node_identity(node, game),
+        "kind": node["kind"],
+        "purity": node["purity"],
+        **xyz_m((node["x"], node["y"], node["z"])),
+        "occupied": node["tapped"],
+        "occupant_cls": node["tapped_by"],
+        "distance_m": node["distance_m"],
+        "spoiler": not node["tapped"] and not node["reachable"],
     }
 
 
@@ -323,19 +320,13 @@ def inspect(
     nearest = found.nearest
     stale = []
     if st is not None:
-        nodes_age = spatial_nodes.table_age(st.header, table, [n["instance"] for n in nearest])
-        pickups_age = collectibles_service.table_age(st)
-        stale = [
-            age
-            for age in (nodes_age, pickups_age)
-            if age is not None and (age["behind"] or age["observed_matches"] is False)
-        ]
+        stale = stale_tables(st, table, [node["instance"] for node in nearest])
     counted = found.conduits
     return {
         "at": {"x_m": round(x_m, 1), "y_m": round(y_m, 1)},
         "region": region_json(found.label),
         "elevation": _elevation_json(found.probe),
-        "nearest": [_nearest_json(n, game) for n in nearest],
+        "nearest": [_nearest_json(node, game) for node in nearest],
         "grid": geo.grid_cell(x, y),
         "direction": geo.direction_of(x, y),
         "conduits": None if counted is None else {**counted, "radius_m": found.conduit_radius_m},

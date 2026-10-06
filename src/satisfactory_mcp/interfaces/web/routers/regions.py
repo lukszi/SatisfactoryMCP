@@ -16,7 +16,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from ....domain.spatial import regions as spatial_regions
-from ..serial import cm_to_m, error_response
+from ..serial import cm_to_m, error_response, point_m
 
 __all__ = ["router"]
 
@@ -75,27 +75,23 @@ def regions() -> Any:
     The ``.`` cells are ocean or off-map and carry no name.
     """
     try:
-        rmap = spatial_regions.load_regions()
+        region_map = spatial_regions.load_regions()
     except FileNotFoundError as exc:
         return error_response(str(exc), 404)
 
-    def _label_m(name: str, centroid: tuple[float, float]) -> list[float]:
-        anchor = rmap.label_anchor(name) or centroid
-        return [cm_to_m(anchor[0]), cm_to_m(anchor[1])]
-
     payload = {
-        "grid": list(rmap.grid),
-        "legend": dict(rmap.legend),
-        "cell_m": cm_to_m(rmap.cell),
-        "x0_m": cm_to_m(rmap.x0),
-        "y0_m": cm_to_m(rmap.y0),
+        "grid": list(region_map.grid),
+        "legend": dict(region_map.legend),
+        "cell_m": cm_to_m(region_map.cell),
+        "x0_m": cm_to_m(region_map.x0),
+        "y0_m": cm_to_m(region_map.y0),
         "regions": {
             name: {
-                "centroid_m": [cm_to_m(entry["centroid"][0]), cm_to_m(entry["centroid"][1])],
+                "centroid_m": point_m(entry["centroid"]),
                 "bbox_m": [cm_to_m(v) for v in entry["bbox"]],
-                "label_m": _label_m(name, entry["centroid"]),
+                "label_m": point_m(region_map.label_anchor(name) or entry["centroid"]),
             }
-            for name, entry in rmap.regions.items()
+            for name, entry in region_map.regions.items()
         },
     }
     return JSONResponse(payload, headers={"Cache-Control": "max-age=3600"})

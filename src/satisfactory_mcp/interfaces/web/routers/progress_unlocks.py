@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 from ....core.gamedata.constants import CAPABILITY_SCHEMATICS
 from ....domain.progression.ladder import SchematicLadder
 from ....domain.progression.phases import opened_tier, opening_phase, phase_number
-from ..serial import ItemAmount, item_amounts, require_world
+from ..serial import ItemAmount, item_amounts, machine_name, require_world
 
 __all__ = ["router"]
 
@@ -354,12 +354,11 @@ def progress_harddrives(request: Request, save: str | None = None, world: str | 
         for opt in offer.options:
             recipes = []
             for recipe in opt["recipes"]:
-                machine = game.machine(recipe)
                 recipes.append(
                     {
                         "cls": recipe.cls,
                         "name": recipe.name,
-                        "machine": machine.name if machine else None,
+                        "machine": machine_name(game, recipe),
                         "products": item_amounts(
                             game, ((f.item, round(f.per_min, 2)) for f in recipe.products)
                         ),

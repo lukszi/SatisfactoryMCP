@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.world.inventory import CRATE_KIND_TEXT
 from ....domain.world.state import WorldState
-from ..serial import require_world, xyz_m, yaw_deg
+from ..serial import contents_json, instance_leaf, require_world, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -74,24 +74,16 @@ class CratesResponse(TypedDict):
 
 def _crate_row(st: WorldState, row: dict) -> CrateRow:
     """One crate row, its contents resolved to display names and sent whole."""
-    raw = [e for e in row.get("items") or () if isinstance(e, (list, tuple)) and len(e) >= 2]
-    items = [{"cls": str(e[0]), "name": st.game.item_name(str(e[0])), "count": e[1]} for e in raw]
     kind = str(row.get("kind") or "none")
     return {
-        "instance_leaf": str(row.get("instance", "")).rsplit(".", 1)[-1],
+        "instance_leaf": instance_leaf(row.get("instance", "")),
         "cls": row.get("cls"),
         "kind": kind,
         # ``.get``, not ``[]`` -- see ``CrateRow`` for the kind this build has not heard of.
         "kind_text": CRATE_KIND_TEXT.get(kind),
         **xyz_m(row.get("pos")),
         "yaw": yaw_deg(row.get("yaw")),
-        "items": items,
-        # Arithmetic rather than the literal 0 it comes to, so that a bound put back on
-        # ``items`` makes this the count of what was left off again.
-        "more": max(0, len(raw) - len(items)),
-        "item_kinds": len(raw),
-        "total": sum(e[1] for e in raw if isinstance(e[1], (int, float))),
-        "slots": row.get("slots"),
+        **contents_json(st.game, row),
     }
 
 

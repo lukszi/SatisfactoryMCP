@@ -21,7 +21,7 @@ from ....domain.factories import floors as ffloors
 from ....domain.factories import select as fselect
 from ....domain.world.state import WorldState
 from .. import terrain
-from ..serial import cm_to_m, error_response, require_world, xyz_m
+from ..serial import cm_to_m, error_response, point_m, require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -194,8 +194,8 @@ def _platform_json(platform: ffloors.Platform) -> FloorPlatform:
         "cells": platform.cells,
         "pieces": platform.pieces,
         "area_m2": round(platform.area_m2, 1),
-        "centre_m": [cm_to_m(platform.centre_cm[0]), cm_to_m(platform.centre_cm[1])],
-        "extent_m": [cm_to_m(platform.extent_cm[0]), cm_to_m(platform.extent_cm[1])],
+        "centre_m": point_m(platform.centre_cm),
+        "extent_m": point_m(platform.extent_cm),
         # The premise, per platform rather than averaged: the share of this platform's
         # foundation pieces that landed within epsilon of one of its own bands.
         "clean": round(platform.clean, 4),

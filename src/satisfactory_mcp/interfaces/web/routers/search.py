@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 from fastapi import APIRouter, Request
 
 from ....core.gamedata import search as gsearch
-from ..serial import world_state
+from ..serial import machine_name, world_state
 
 __all__ = ["router"]
 
@@ -57,13 +57,9 @@ class SearchResponse(TypedDict):
     save_note: str | None
 
 
-def _machine(g, recipe) -> str | None:
-    b = g.machine(recipe)
-    return b.name if b else None
-
-
-def _first(name: str, q: str) -> tuple[bool, str]:
-    return (not name.casefold().startswith(q), name)
+def _prefix_match_key(name: str, query: str) -> tuple[bool, str]:
+    """Sorts names that start with the query first, then alphabetically."""
+    return (not name.casefold().startswith(query), name)
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -93,39 +89,41 @@ def search(
             "save_note": None,
         }
     key = text.casefold()
-    g = request.app.state.game()
-    items = gsearch.find_items(g, text)
+    game = request.app.state.game()
+    items = gsearch.find_items(game, text)
     have = None
     labels = []
     note = None
     try:
         st = world_state(request, save, world)
         have = st.available_recipe_ids
-        labels = [lb for lb in st.labels.labels if key in lb.name.casefold()]
+        labels = [label for label in st.labels.labels if key in label.name.casefold()]
     except Exception as exc:
         note = f"no save could be read ({exc}): factories are missing and unlocks are unknown"
-    hits, _census = gsearch.search(g, query=text, recipe_kind="all", unlocked=have)
+    hits, _census = gsearch.search(game, query=text, recipe_kind="all", unlocked=have)
     if only_unlocked or spoilers is False:
-        hits = [h for h in hits if h.unlocked is not False]
-    hits.sort(key=lambda h: _first(h.recipe.name, key))
-    labels.sort(key=lambda lb: _first(lb.name, key))
+        hits = [hit for hit in hits if hit.unlocked is not False]
+    hits.sort(key=lambda hit: _prefix_match_key(hit.recipe.name, key))
+    labels.sort(key=lambda label: _prefix_match_key(label.name, key))
     return {
-        "items": [{"cls": i.cls, "name": i.name} for i in items[:SHOWN]],
+        "items": [{"cls": item.cls, "name": item.name} for item in items[:SHOWN]],
         "items_total": len(items),
         "recipes": [
             {
-                "cls": h.recipe.cls,
-                "name": h.recipe.name,
-                "kind": h.recipe.kind,
-                "machine": _machine(g, h.recipe),
-                "alternate": h.recipe.is_alternate,
-                "unlocked": h.unlocked,
-                "spoiler": h.unlocked is False,
+                "cls": hit.recipe.cls,
+                "name": hit.recipe.name,
+                "kind": hit.recipe.kind,
+                "machine": machine_name(game, hit.recipe),
+                "alternate": hit.recipe.is_alternate,
+                "unlocked": hit.unlocked,
+                "spoiler": hit.unlocked is False,
             }
-            for h in hits[:SHOWN]
+            for hit in hits[:SHOWN]
         ],
         "recipes_total": len(hits),
-        "factories": [{"name": lb.name, "machines": len(lb.anchors)} for lb in labels[:SHOWN]],
+        "factories": [
+            {"name": label.name, "machines": len(label.anchors)} for label in labels[:SHOWN]
+        ],
         "factories_total": len(labels),
         "save_note": note,
     }

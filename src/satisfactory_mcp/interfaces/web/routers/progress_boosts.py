@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request
 
 from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock
 from ....domain.world.state import WorldState
-from ..serial import ItemAmount, item_amounts, require_world, xyz_m
+from ..serial import ItemAmount, instance_leaf, item_amounts, require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -77,7 +77,7 @@ def _overclock_positions(st: WorldState) -> dict[str, dict[str, float | None]]:
     positions = {}
     for record in st.overclock.records:
         xyz = xyz_m(record.get("pos"))
-        positions[str(record.get("instance", "")).rsplit(".", 1)[-1]] = {
+        positions[instance_leaf(record.get("instance", ""))] = {
             "x_m": xyz["x_m"],
             "y_m": xyz["y_m"],
         }

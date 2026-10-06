@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request
 from ....core.saveio import rows as saverows
 from ....domain.spatial import geo
 from ....domain.world.state import WorldState
-from ..serial import cm_to_m, require_world, yaw_deg
+from ..serial import cm_to_m, instance_leaf, require_world, yaw_deg
 
 __all__ = ["router"]
 
@@ -119,7 +119,7 @@ def _power_names(st: WorldState) -> dict[str, str]:
                 continue
             name = st.game.building_name(row.get("cls"))
             if name:
-                out[str(row.get("instance", "")).rsplit(".", 1)[-1]] = name
+                out[instance_leaf(row.get("instance", ""))] = name
     for pole in saverows.iter_power_poles(st.projection):
         if 0 <= pole.actor_index < len(actors):
             name = st.game.building_name(pole.cls)

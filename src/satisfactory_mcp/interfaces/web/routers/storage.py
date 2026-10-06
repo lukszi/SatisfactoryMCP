@@ -24,7 +24,7 @@ from typing import Any, Literal, TypedDict
 from fastapi import APIRouter, Request
 
 from ....domain.world.state import WorldState
-from ..serial import require_world, xyz_m, yaw_deg
+from ..serial import contents_json, placement_fields, require_world
 
 __all__ = ["router"]
 
@@ -125,71 +125,27 @@ class StorageResponse(TypedDict):
 
 
 def _storage_row(st: WorldState, row: dict) -> StorageSolid | StorageFluid:
-    """One container or fluid buffer: where it stands, how big it is, and what is in it.
-
-    Two record shapes behind one row shape, told apart by ``kind``. A solid container carries
-    ``items`` and ``slots``; a fluid buffer carries ``fluid``, ``stored_m3`` and ``fill``.
-    The other side's fields are absent rather than null, because a row that said
-    ``"stored_m3": null`` on every container would be inviting a client to print it.
-
-    ``fill`` is the one figure here that needs the dump rather than the save: a buffer's
-    contents are a bare float of cubic metres, and 1,730.6 is not a reading until it is put
-    against the 2,400 the class holds.
-    """
-    cls = row.get("cls") or ""
-    building = st.game.buildings.get(cls)
-    footprint = getattr(building, "footprint", None) if building else None
-    out: dict[str, Any] = {
-        "instance_leaf": str(row.get("instance", "")).rsplit(".", 1)[-1],
-        "cls": row.get("cls"),
-        "name": st.game.building_name(cls),
-        **xyz_m(row.get("pos")),
-        "yaw": yaw_deg(row.get("yaw")),
-        "w_m": round(footprint.width_m, 1) if footprint else None,
-        "l_m": round(footprint.depth_m, 1) if footprint else None,
+    """One container or fluid buffer: where it stands, how big it is, and what is in it."""
+    if "stored_m3" not in row:
+        return {**placement_fields(st.game, row), "kind": "solid", **contents_json(st.game, row)}
+    building = st.game.buildings.get(row.get("cls") or "")
+    fluid = row.get("fluid")
+    # A buffer stores a bare float of cubic metres; the class's capacity makes it a reading.
+    capacity = getattr(building, "storage_capacity_m3", 0.0) if building else 0.0
+    stored = row.get("stored_m3")
+    return {
+        **placement_fields(st.game, row),
+        "kind": "fluid",
+        "fluid": fluid,
+        "fluid_name": st.game.item_name(fluid) if fluid else None,
+        "stored_m3": stored,
+        "capacity_m3": round(capacity, 1) if capacity else None,
+        "fill": (
+            round(float(stored) / capacity, 4)
+            if capacity and isinstance(stored, (int, float))
+            else None
+        ),
     }
-    if "stored_m3" in row:
-        fluid = row.get("fluid")
-        capacity = getattr(building, "storage_capacity_m3", 0.0) if building else 0.0
-        stored = row.get("stored_m3")
-        out.update(
-            {
-                "kind": "fluid",
-                "fluid": fluid,
-                "fluid_name": st.game.item_name(fluid) if fluid else None,
-                "stored_m3": stored,
-                "capacity_m3": round(capacity, 1) if capacity else None,
-                "fill": (
-                    round(float(stored) / capacity, 4)
-                    if capacity and isinstance(stored, (int, float))
-                    else None
-                ),
-            }
-        )
-        return out
-
-    raw = [e for e in row.get("items") or () if isinstance(e, (list, tuple)) and len(e) >= 2]
-    items = [
-        {
-            "cls": str(e[0]),
-            "name": st.game.item_name(str(e[0])),
-            "count": e[1],
-        }
-        for e in raw
-    ]
-    out.update(
-        {
-            "kind": "solid",
-            "items": items,
-            # Arithmetic rather than the literal 0 it comes to, so that a bound put back on
-            # ``items`` makes this the count of what was left off again.
-            "more": max(0, len(raw) - len(items)),
-            "item_kinds": len(raw),
-            "total": sum(e[1] for e in raw if isinstance(e[1], (int, float))),
-            "slots": row.get("slots"),
-        }
-    )
-    return out
 
 
 @router.get("/storage", response_model=StorageResponse)

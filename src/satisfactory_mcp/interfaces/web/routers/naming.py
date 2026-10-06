@@ -34,16 +34,17 @@ from ....domain.factories.select import SelectorError, select_machines
 from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
 from ....domain.spatial import geo
-from ....domain.spatial import regions as spatial_regions
 from ....domain.world import pin
 from ..serial import (
     Flow,
     MachineSpot,
+    bbox_m,
     busy_response,
-    cm_to_m,
     error_response,
     flow_json,
     machine_spots,
+    point_m,
+    regions_or_none,
     require_world,
     session_name,
 )
@@ -156,8 +157,8 @@ _REFUSALS: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _flows(fg: flowgraph.FlowGraph, role: str) -> list[dict]:
-    return [flow_json(fg, item, rate) for item, rate in fg.listed(role)]
+def _flows(flow_graph: flowgraph.FlowGraph, role: str) -> list[dict]:
+    return [flow_json(flow_graph, item, rate) for item, rate in flow_graph.listed(role)]
 
 
 def _cluster(st, machines: list[str], name: str):
@@ -185,6 +186,39 @@ def _refused(exc: Exception) -> Any:
     return busy_response("factory labels", exc)
 
 
+def _candidate_row(
+    st, index: int, proposal, verdict: str, suggested: str, region_map, placed: dict
+) -> dict:
+    """One unnamed proposal: what it makes and takes, where it is, and the name it would get."""
+    cand = fidentity.describe(proposal.machines, st.graph, st.game, st.projection, "proposal")
+    view, flow_graph = _cluster(st, proposal.machines, "proposal")
+    extracted = {row[1] for row in view.nodes}
+    _item, confident = naming.lead(flow_graph, cand, st.game, extracted)
+    return {
+        "index": index,
+        "selector": f"proposal:{index}",
+        "machines": proposal.size,
+        "fed": verdict,
+        "products": _flows(flow_graph, "product"),
+        "intermediates": _flows(flow_graph, "intermediate"),
+        "sunk": _flows(flow_graph, "sunk"),
+        "unrouted": _flows(flow_graph, "unrouted"),
+        "inputs": _flows(flow_graph, "input"),
+        "buffers": len(flow_graph.buffers),
+        "buildings": [
+            {"name": st.game.building_name(cls) or cls, "count": count}
+            for cls, count in cand.buildings.most_common()
+        ],
+        "region": region_map.label_for(*cand.centroid).name if region_map else None,
+        "centroid_m": point_m(cand.centroid),
+        "bbox_m": bbox_m(placed, proposal.machines),
+        "spread_m": round(cand.spread_m, 1),
+        "score": round(proposal.cohesion, 3),
+        "suggested_name": suggested,
+        "confident": confident,
+    }
+
+
 @router.get("/factories/candidates", response_model=CandidatesResponse)
 def factory_candidates(
     request: Request,
@@ -200,56 +234,23 @@ def factory_candidates(
     if min_machines < 1:
         return error_response("min_machines is at least 1", 400)
     st = require_world(request, save, world)
-    try:
-        rmap = spatial_regions.load_regions()
-    except FileNotFoundError:
-        rmap = None
+    region_map = regions_or_none()
 
     placed = fidentity.positions(st.projection)
-    names = naming.proposal_names(st, st.proposals, style, rmap)
+    names = naming.proposal_names(st, st.proposals, style, region_map)
     hidden = {"small": 0, "not_fed": 0}
     rows = []
-    for index, pr in enumerate(st.proposals):
-        if st.labels.covers(pr.machines):
+    for index, proposal in enumerate(st.proposals):
+        if st.labels.covers(proposal.machines):
             continue
-        if pr.size < min_machines:
+        if proposal.size < min_machines:
             hidden["small"] += 1
             continue
-        verdict = fed.feeding(st, st.game, pr.machines)
+        verdict = fed.feeding(st, st.game, proposal.machines)
         if fed_only and verdict == fed.NOT_FED:
             hidden["not_fed"] += 1
             continue
-        cand = fidentity.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
-        view, fg = _cluster(st, pr.machines, "proposal")
-        extracted = {row[1] for row in view.nodes}
-        _item, confident = naming.lead(fg, cand, st.game, extracted)
-        region = rmap.label_for(*cand.centroid).name if rmap else None
-        box = geo.bbox([placed[m][:2] for m in pr.machines if m in placed])
-        rows.append(
-            {
-                "index": index,
-                "selector": f"proposal:{index}",
-                "machines": pr.size,
-                "fed": verdict,
-                "products": _flows(fg, "product"),
-                "intermediates": _flows(fg, "intermediate"),
-                "sunk": _flows(fg, "sunk"),
-                "unrouted": _flows(fg, "unrouted"),
-                "inputs": _flows(fg, "input"),
-                "buffers": len(fg.buffers),
-                "buildings": [
-                    {"name": st.game.building_name(k) or k, "count": v}
-                    for k, v in cand.buildings.most_common()
-                ],
-                "region": region,
-                "centroid_m": [cm_to_m(cand.centroid[0]), cm_to_m(cand.centroid[1])],
-                "bbox_m": None if box is None else [cm_to_m(v) for v in box],
-                "spread_m": round(cand.spread_m, 1),
-                "score": round(pr.cohesion, 3),
-                "suggested_name": names[index],
-                "confident": confident,
-            }
-        )
+        rows.append(_candidate_row(st, index, proposal, verdict, names[index], region_map, placed))
     return {
         "token": pin.check(st.header, None),
         "version": st.labels.version,

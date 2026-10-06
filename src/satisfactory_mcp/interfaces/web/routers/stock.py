@@ -14,9 +14,8 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....domain.spatial import regions as spatial_regions
 from ....domain.world.inventory import CRATE_KIND_TEXT, Holding
-from ..serial import Region, cm_to_m, region_json, require_world, xyz_m
+from ..serial import Region, cm_to_m, region_json, regions_or_none, require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -88,32 +87,52 @@ class StockResponse(TypedDict):
     player: StockPlayer
 
 
-def _place(st, rmap, me, h: Holding) -> StockPlace:
-    g = st.game
+def _place(st, region_map, player_xy, holding: Holding) -> StockPlace:
+    game = st.game
     region = None
     distance = None
-    if h.pos is not None:
-        if rmap is not None:
-            region = region_json(rmap.label_for(h.pos[0], h.pos[1]))
-        if me is not None:
-            distance = cm_to_m(hypot(h.pos[0] - me[0], h.pos[1] - me[1]))
+    pos = holding.pos
+    if pos is not None:
+        if region_map is not None:
+            region = region_json(region_map.label_for(pos[0], pos[1]))
+        if player_xy is not None:
+            distance = cm_to_m(hypot(pos[0] - player_xy[0], pos[1] - player_xy[1]))
     return {
-        "source": h.source,
-        "kind": h.kind,
-        "instance_leaf": h.instance,
-        "cls": h.cls,
-        "name": g.building_name(h.cls) or h.cls,
-        **xyz_m(h.pos),
+        "source": holding.source,
+        "kind": holding.kind,
+        "instance_leaf": holding.instance,
+        "cls": holding.cls,
+        "name": game.building_name(holding.cls) or holding.cls,
+        **xyz_m(pos),
         "region": region,
         "distance_m": distance,
-        "items": [{"item": i, "name": g.item_name(i), "amount": n} for i, n in h.items],
-        "total": h.total,
-        "slots": h.slots,
-        "slots_used": h.slots_used,
-        "fill": None if h.fill is None else round(h.fill, 4),
-        "capacity_m3": h.capacity_m3,
-        "crate_kind": h.crate_kind,
-        "crate_kind_text": CRATE_KIND_TEXT.get(h.crate_kind) if h.crate_kind else None,
+        "items": [
+            {"item": item, "name": game.item_name(item), "amount": amount}
+            for item, amount in holding.items
+        ],
+        "total": holding.total,
+        "slots": holding.slots,
+        "slots_used": holding.slots_used,
+        "fill": None if holding.fill is None else round(holding.fill, 4),
+        "capacity_m3": holding.capacity_m3,
+        "crate_kind": holding.crate_kind,
+        "crate_kind_text": (
+            CRATE_KIND_TEXT.get(holding.crate_kind) if holding.crate_kind else None
+        ),
+    }
+
+
+def _pile_row(game, item: str, piles: dict) -> StockPile:
+    return {
+        "item": item,
+        "name": game.item_name(item),
+        "fluid": bool(getattr(game.items.get(item), "is_fluid", False)),
+        "spendable": piles["spendable"],
+        "carried": piles["player"],
+        "storage": piles["storage"],
+        "depot": piles["depot"],
+        "buffers": piles["machine"],
+        "crates": piles["crate"],
     }
 
 
@@ -122,32 +141,16 @@ def stock(request: Request, save: str | None = None, world: str | None = None) -
     """Every item held, split into piles, and every place holding something, biggest first."""
     st = require_world(request, save, world)
 
-    g = st.game
-    inv = st.inventory
-    breakdown = inv.breakdown()
-    ordered = sorted(breakdown.items(), key=lambda kv: (-kv[1]["spendable"], -kv[1]["machine"]))
-    items = [
-        {
-            "item": i,
-            "name": g.item_name(i),
-            "fluid": bool(getattr(g.items.get(i), "is_fluid", False)),
-            "spendable": v["spendable"],
-            "carried": v["player"],
-            "storage": v["storage"],
-            "depot": v["depot"],
-            "buffers": v["machine"],
-            "crates": v["crate"],
-        }
-        for i, v in ordered
-    ]
+    inventory = st.inventory
+    ordered = sorted(
+        inventory.breakdown().items(), key=lambda kv: (-kv[1]["spendable"], -kv[1]["machine"])
+    )
+    items = [_pile_row(st.game, item, piles) for item, piles in ordered]
 
-    try:
-        rmap = spatial_regions.load_regions()
-    except FileNotFoundError:
-        rmap = None
-    me = st.player_position()
-    holdings = inv.holdings()
-    places = [_place(st, rmap, me, h) for h in holdings]
+    region_map = regions_or_none()
+    player_xy = st.player_position()
+    holdings = inventory.holdings()
+    places = [_place(st, region_map, player_xy, holding) for holding in holdings]
     containers = [h for h in holdings if h.source == "storage"]
     solids = [h for h in containers if h.kind == "solid"]
     crates = [h for h in holdings if h.source == "crate"]
@@ -162,5 +165,5 @@ def stock(request: Request, save: str | None = None, world: str | None = None) -
             "crates": len(crates),
             "deaths": sum(1 for h in crates if h.crate_kind == "death"),
         },
-        "player": xyz_m(me),
+        "player": xyz_m(player_xy),
     }

@@ -24,7 +24,7 @@ from fastapi import APIRouter, Request
 
 from ....core.saveio import rows as saverows
 from ....domain.world.state import WorldState
-from ..serial import cm_to_m, require_world, xyz_m, yaw_deg
+from ..serial import cm_to_m, placement_fields, require_world
 
 __all__ = ["router"]
 
@@ -168,26 +168,6 @@ def _curve_m(spans: Any, points: list) -> RouteCurveM:
     return out if any(out) else None
 
 
-def _attachment_row(st: WorldState, row: dict) -> AttachmentRow:
-    """One splitter or merger: where it stands, which way it faces, and what it is.
-
-    Shorter than ``_record_row`` on purpose: a splitter has no recipe, no clock and nothing
-    to pause, so the machine row's shape would be six null columns saying that six times.
-    """
-    cls = row.get("cls") or ""
-    building = st.game.buildings.get(cls)
-    footprint = getattr(building, "footprint", None) if building else None
-    return {
-        "instance_leaf": str(row.get("instance", "")).rsplit(".", 1)[-1],
-        "cls": row.get("cls"),
-        "name": st.game.building_name(cls),
-        **xyz_m(row.get("pos")),
-        "yaw": yaw_deg(row.get("yaw")),
-        "w_m": round(footprint.width_m, 1) if footprint else None,
-        "l_m": round(footprint.depth_m, 1) if footprint else None,
-    }
-
-
 @router.get("/belts", response_model=BeltsResponse)
 def belts(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Every conveyor belt and lift, as the polyline it was actually built along.
@@ -235,7 +215,7 @@ def belts(request: Request, save: str | None = None, world: str | None = None) -
             }
         )
     attachments = [
-        _attachment_row(st, row)
+        placement_fields(st.game, row)
         for row in st.projection.get("attachments") or ()
         if isinstance(row, dict)
     ]

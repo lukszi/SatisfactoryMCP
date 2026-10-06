@@ -20,9 +20,16 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError
 from ....domain.factories.trace import resolve_seeds, trace
-from ....domain.spatial import geo
 from ....domain.world import pin
-from ..serial import cm_to_m, error_response, require_world
+from ..serial import (
+    bbox_m,
+    cm_to_m,
+    error_response,
+    flow_edges_json,
+    flow_group_json,
+    point_m,
+    require_world,
+)
 
 __all__ = ["router"]
 
@@ -107,12 +114,12 @@ class TraceResponse(TypedDict):
 
 def _rates(values: dict[str, float]) -> list[dict]:
     return [
-        {"item": k, "per_min": round(v, 2)}
-        for k, v in sorted(values.items(), key=lambda kv: -kv[1])
+        {"item": item, "per_min": round(rate, 2)}
+        for item, rate in sorted(values.items(), key=lambda kv: -kv[1])
     ]
 
 
-def _kind(game, cls: str) -> str:
+def _machine_kind(game, cls: str) -> str:
     building = game.buildings.get(cls)
     if building is not None and building.is_extractor:
         return "extractor"
@@ -121,7 +128,8 @@ def _kind(game, cls: str) -> str:
     return "production"
 
 
-def _runs(st, nodes: set[str]) -> list[dict]:
+def _crossed_runs(st, nodes: set[str]) -> list[dict]:
+    """The belt and pipe runs the walk crossed, each with the polylines of its pieces."""
     actors = (st.projection.get("graph") or {}).get("actors") or []
     run_of = st.physical.run_of
     runs: dict[int, dict] = {}
@@ -143,8 +151,48 @@ def _runs(st, nodes: set[str]) -> list[dict]:
                 "pieces": link.pieces if link is not None else 1,
                 "lines_m": [],
             }
-        run["lines_m"].append([[cm_to_m(p[0]), cm_to_m(p[1])] for p in seg.points])
+        run["lines_m"].append([point_m(p) for p in seg.points])
     return list(runs.values())
+
+
+def _reached_totals(view, reached: dict, seed_set: set[str], way: str) -> dict[str, float]:
+    """What the reached machines make (``up``) or use (``down``), seeds left out."""
+    totals: dict[str, float] = {}
+    for row in view.machines:
+        if row.instance in reached and row.instance not in seed_set:
+            for item, rate in (row.makes if way == "up" else row.uses).items():
+                totals[item] = totals.get(item, 0.0) + rate
+    return totals
+
+
+def _machine_rows(
+    st, view, reached: dict, seed_set: set[str], verdicts: dict, placed: dict
+) -> list[dict]:
+    """Every machine of the traced set: seeds first, then by hops from them, then by name."""
+    rows = []
+    for row in view.machines:
+        hit = reached.get(row.instance)
+        verdict = verdicts.get(row.instance)
+        state = verdict.state if verdict else "unmonitored"
+        at = placed.get(row.instance)
+        rows.append(
+            {
+                "instance": row.instance,
+                "name": st.game.building_name(row.building) or row.building,
+                "kind": hit.kind if hit else _machine_kind(st.game, row.building),
+                "seed": row.instance in seed_set,
+                "hops": hit.hops if hit and row.instance not in seed_set else 0,
+                "recipe": row.recipe or None,
+                "makes": _rates(row.makes),
+                "uses": _rates(row.uses),
+                "state": state,
+                "actionable": state in health.ACTIONABLE,
+                "x_m": cm_to_m(at[0]) if at else None,
+                "y_m": cm_to_m(at[1]) if at else None,
+            }
+        )
+    rows.sort(key=lambda r: (not r["seed"], r["hops"], r["name"]))
+    return rows
 
 
 @router.get("/trace", response_model=TraceResponse)
@@ -176,42 +224,13 @@ def trace_path(
     reached = {r.instance: r for r in walked.reached}
     members = list(dict.fromkeys([*seeds, *reached]))
     view = build_view(subject, members, st.graph, st.game, st.projection)
-    fg = flowgraph.build(st, st.game, view)
+    flow_graph = flowgraph.build(st, st.game, view)
     verdicts = {
         m.instance: m
         for m in health.assess(subject, members, st.game, st.projection, st.graph).machines
     }
     placed = fidentity.positions(st.projection)
     seed_set = set(seeds)
-
-    totals: dict[str, float] = {}
-    machines = []
-    for row in view.machines:
-        hit = reached.get(row.instance)
-        verdict = verdicts.get(row.instance)
-        state = verdict.state if verdict else "unmonitored"
-        if hit is not None and row.instance not in seed_set:
-            for item, rate in (row.makes if way == "up" else row.uses).items():
-                totals[item] = totals.get(item, 0.0) + rate
-        at = placed.get(row.instance)
-        machines.append(
-            {
-                "instance": row.instance,
-                "name": st.game.building_name(row.building) or row.building,
-                "kind": hit.kind if hit else _kind(st.game, row.building),
-                "seed": row.instance in seed_set,
-                "hops": hit.hops if hit and row.instance not in seed_set else 0,
-                "recipe": row.recipe or None,
-                "makes": _rates(row.makes),
-                "uses": _rates(row.uses),
-                "state": state,
-                "actionable": state in health.ACTIONABLE,
-                "x_m": cm_to_m(at[0]) if at else None,
-                "y_m": cm_to_m(at[1]) if at else None,
-            }
-        )
-    machines.sort(key=lambda r: (not r["seed"], r["hops"], r["name"]))
-    box = geo.bbox([placed[m][:2] for m in members if m in placed])
     return {
         "seed": seed,
         "subject": subject,
@@ -222,25 +241,13 @@ def trace_path(
         "ambiguous": walked.ambiguous,
         "truncated": walked.truncated,
         "seeds": len(seeds),
-        "bbox_m": None if box is None else [cm_to_m(v) for v in box],
-        "items": _rates(totals),
-        "machines": machines,
-        "runs": _runs(st, walked.nodes),
+        "bbox_m": bbox_m(placed, members),
+        "items": _rates(_reached_totals(view, reached, seed_set, way)),
+        "machines": _machine_rows(st, view, reached, seed_set, verdicts, placed),
+        "runs": _crossed_runs(st, walked.nodes),
         "groups": [
-            {
-                "id": g.key,
-                "label": f"{len(g.machines)}× {g.building}",
-                "detail": g.recipe,
-                "machines": len(g.machines),
-                "running": g.states["running"],
-                "blocked": g.states["blocked"],
-                "stopped": g.states["stopped"],
-                "makes": _rates(dict(g.makes)),
-            }
-            for g in fg.groups.values()
+            {**flow_group_json(group), "makes": _rates(dict(group.makes))}
+            for group in flow_graph.groups.values()
         ],
-        "edges": [
-            {"source": e.source, "target": e.target, "item": e.item, "per_min": e.per_min}
-            for e in fg.edges
-        ],
+        "edges": flow_edges_json(flow_graph),
     }

@@ -21,9 +21,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.factories import identity as fidentity
 from ....domain.factories import naming
-from ....domain.spatial import geo
-from ....domain.spatial import regions as spatial_regions
-from ..serial import cm_to_m, error_response, require_world
+from ..serial import bbox_m, error_response, point_m, regions_or_none, require_world
 
 __all__ = ["router"]
 
@@ -94,22 +92,13 @@ def factories(
 
     if style not in naming.STYLES:
         return error_response(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
-    try:
-        rmap = spatial_regions.load_regions()
-    except FileNotFoundError:
-        rmap = None
-    names = naming.proposal_names(st, st.proposals, style, rmap)
+    names = naming.proposal_names(st, st.proposals, style, regions_or_none())
     placed = fidentity.positions(st.projection)
-
-    def _bbox_m(machines) -> list[float] | None:
-        box = geo.bbox([placed[m][:2] for m in machines if m in placed])
-        return None if box is None else [cm_to_m(v) for v in box]
-
     named = [
         {
             "name": label.name,
-            "centroid_m": [cm_to_m(label.centroid[0]), cm_to_m(label.centroid[1])],
-            "bbox_m": _bbox_m(label.anchors),
+            "centroid_m": point_m(label.centroid),
+            "bbox_m": bbox_m(placed, label.anchors),
             "machines": len(label.anchors),
             "notes": label.notes,
         }
@@ -117,18 +106,18 @@ def factories(
     ]
 
     proposals = []
-    for index, pr in enumerate(st.proposals):
-        if st.labels.covers(pr.machines):
+    for index, proposal in enumerate(st.proposals):
+        if st.labels.covers(proposal.machines):
             continue  # already named by the player; the label speaks for it
-        cand = fidentity.describe(pr.machines, st.graph, st.game, st.projection, "proposal")
+        cand = fidentity.describe(proposal.machines, st.graph, st.game, st.projection, "proposal")
         proposals.append(
             {
                 "index": index,
                 "label": names[index],
-                "centroid_m": [cm_to_m(cand.centroid[0]), cm_to_m(cand.centroid[1])],
-                "bbox_m": _bbox_m(pr.machines),
-                "machines": pr.size,
-                "score": round(pr.cohesion, 3),
+                "centroid_m": point_m(cand.centroid),
+                "bbox_m": bbox_m(placed, proposal.machines),
+                "machines": proposal.size,
+                "score": round(proposal.cohesion, 3),
                 "spread_m": round(cand.spread_m, 1),
             }
         )
