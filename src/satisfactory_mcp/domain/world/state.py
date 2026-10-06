@@ -3,9 +3,7 @@
 Each subject -- unlocks, the build census, power, progression, research gates, hard drives,
 overclocking, inventories, the map's collectible table, the save's identity -- is a small
 dataclass of its own, built from the same two fields. ``WorldState`` holds them and
-delegates. It is the context every other domain package takes as an argument, so the whole
-delegating surface is load-bearing: properties, methods, class-level constants and the
-module-level names alike.
+delegates; it is the context every other domain package takes as an argument.
 """
 
 from __future__ import annotations
@@ -15,11 +13,11 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, ClassVar
 
-from ...core.gamedata.model import GameData, Recipe, Schematic
+from ...core.gamedata.model import GameData, Recipe
 from ...core.saveio import projection as proj
 from ...core.singleflight import Singleflight
 from ..collectibles.removed import RemovedActors, observed_session
-from ..collectibles.table import CollectibleTable, _name_stem, load_collectibles
+from ..collectibles.table import CollectibleTable, load_collectibles
 from ..power.report import PowerLedger, wired_actors
 from ..progression.harddrives import HardDriveDesk, HardDriveOffer
 from ..progression.phases import PhaseLedger
@@ -35,9 +33,6 @@ from .identity import SaveIdentity
 from .inventory import Inventory
 
 __all__ = ["CollectibleTable", "HardDriveOffer", "WorldState", "load_collectibles"]
-
-#: Re-exported rather than used: the collectibles tests import ``_name_stem`` from here.
-_ = (_name_stem,)
 
 #: The six expensive views that are pure functions of ``(projection, game)``, shared by every
 #: state built over the same pair -- a request builds its own ``WorldState`` and the whole
@@ -265,9 +260,6 @@ class WorldState:
     def dependencies_met(self, schematic_id: str) -> tuple[bool, list[str]]:
         return self.unlocks.dependencies_met(schematic_id)
 
-    def _schematic_recipes(self, s: Schematic) -> list[Recipe]:
-        return self.unlocks.schematic_recipes(s)
-
     # ---- what is actually built ----------------------------------------
 
     @property
@@ -332,7 +324,7 @@ class WorldState:
 
     # ---- overclocking ----------------------------------------------------
 
-    SLOOP_ITEM: ClassVar[str] = OverclockBudget.SLOOP_ITEM
+    SOMERSLOOP_ITEM: ClassVar[str] = OverclockBudget.SOMERSLOOP_ITEM
     MERCER_ITEM: ClassVar[str] = OverclockBudget.MERCER_ITEM
 
     def shard_budget(self) -> dict:
@@ -344,10 +336,6 @@ class WorldState:
     # ---- research gates --------------------------------------------------
 
     CAPABILITY_FLAGS: ClassVar[dict[str, str]] = ResearchGates.CAPABILITY_FLAGS
-
-    @property
-    def _unlock_flags(self) -> dict:
-        return self.research._unlock_flags
 
     def has_capability(self, name: str) -> bool:
         return self.research.has_capability(name)
@@ -386,13 +374,8 @@ class WorldState:
     def collectible_census(self) -> list[dict]:
         return self.removed.collectible_census()
 
-    def removed_actors(self, group: str | None = None) -> dict:
-        return self.removed.removed_actors(group)
-
-    def _removed_by_name(
-        self, out: dict, instances: list, cells: list[str], group: str | None
-    ) -> dict:
-        return self.removed._removed_by_name(out, instances, cells, group)
+    def collected_summary(self, group: str | None = None) -> dict:
+        return self.removed.collected_summary(group)
 
     def removed_group(self, name: str) -> str | None:
         return self.removed.removed_group(name)
@@ -416,10 +399,6 @@ class WorldState:
         return self.identity.player_position()
 
     # ---- what is held ----------------------------------------------------
-
-    @property
-    def _inventories(self) -> dict[str, dict[str, float]]:
-        return self.inventory.sources
 
     def stock(self) -> dict[str, float]:
         return self.inventory.stock()

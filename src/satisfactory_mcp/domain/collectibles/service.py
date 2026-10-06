@@ -1,11 +1,8 @@
 """What the map placed, what this save took, and which rows answer the question asked.
 
-Validating the mode, un-retiring a group, refusing the modes the map table is required for,
-resolving an origin, picking and sorting the rows, dropping the pedestals and tallying the
-observed states are all the decision of *which* placements answer the question, which is a
-domain decision -- so it happens here and hands the presenter a finished view. Every refusal
-is a string on the view rather than an early return of formatted text, because the caller
-that renders is not always the caller that decides.
+Which placements answer a question is a domain decision, so it is made here and the presenter
+gets a finished view. Every refusal is a string on the view rather than formatted text,
+because the caller that renders is not always the caller that decides.
 """
 
 from __future__ import annotations
@@ -29,8 +26,12 @@ __all__ = [
     "found",
     "is_spoiler",
     "label",
+    "state_counts",
     "table_age",
 ]
+
+#: The views a collectibles question can ask for.
+_MODES = ("census", "collected", "remaining", "nearest")
 
 #: What to run when the table is not there. Said in full, because "regenerate it" is not a
 #: command and the reader is an assistant relaying it to somebody at a prompt.
@@ -92,71 +93,126 @@ class CollectiblesView:
     save_only: bool = False
 
 
+def _refusal(mode: str, group: str | None, error: str) -> CollectiblesView:
+    return CollectiblesView(mode=mode, group=group, error=error)
+
+
+def _resolve_group(group: str | None, table) -> tuple[str | None, str | None]:
+    """``(group, refusal)``: the name folded, and a retired bucket renamed where the map has
+    the same thing under a new name and refused where it does not."""
+    if not group:
+        return group, None
+    # Category names are lowercase snake_case, so folding is a normalisation, not a guess.
+    group = group.strip().casefold()
+    hint = RETIRED_GROUPS.get(group)
+    if hint and table is not None and hint in table.by_category:
+        return hint, None
+    if hint and table is not None:
+        return group, f"! '{group}' is no longer a category: {hint}"
+    return group, None
+
+
+def _nearest_origin(st, near: str | None) -> tuple[tuple[float, float] | None, str, str | None]:
+    """``(origin, where, refusal)``: ``near`` resolved, else the player's own position."""
+    if near:
+        try:
+            origin, where = resolve_place(st, near)
+        except ValueError as exc:
+            return None, "", f"! {exc}"
+        return origin, where, None
+    here = st.player_position()
+    if here is None:
+        return (
+            None,
+            "",
+            (
+                "! the 'nearest' view needs an origin and this save has no player pawn: "
+                "pass near='x,y' in metres or a named factory"
+            ),
+        )
+    return (here[0], here[1]), "you", None
+
+
+def _listing_rows(st, mode: str, group: str | None, origin) -> list[dict]:
+    """The placements one listing mode shows, in its order."""
+    if mode == "nearest":
+        return st.nearest_placements(origin, group)
+    if mode == "remaining":
+        rows = st.placements(group, remaining_only=True)
+    else:
+        rows = [p for p in st.placements(group) if p["collected"]]
+    rows.sort(key=lambda r: (r["category"], r["name"]))
+    return rows
+
+
+def _without_pedestals(rows: list[dict], table, group: str | None):
+    """``(rows, pedestals, hidden)``: a shrine row dropped from an unfiltered listing, where
+    it would double-count the artifact standing on it; ``group='mercer_shrine'`` keeps them."""
+    pedestals = sorted({c for c in table.by_category if table.pedestal_of(c)})
+    if group is not None:
+        return rows, pedestals, 0
+    kept = [r for r in rows if r["category"] not in pedestals]
+    return kept, pedestals, len(rows) - len(kept)
+
+
+def state_counts(rows) -> dict[str, int]:
+    """Listing rows by observed state, ``collected`` first and ``unstated`` for the unknown."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        key = "collected" if row["collected"] else row["observed"] or "unstated"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def collect_view(
     st: WorldState, group: str | None, mode: str, near: str | None
 ) -> CollectiblesView:
     """Pick the placements that answer one collectibles question.
 
-    The order of the checks is the order of the refusals, and it is load-bearing: an
-    unknown mode is refused before a retired group, and both before the save is asked for
-    its destroyed list, so a caller who got two things wrong is told about the first one.
+    The order of the checks is the order of the refusals, and it is load-bearing: a caller
+    who got two things wrong is told about the first one.
     """
     wanted = (mode or "census").strip().casefold()
-    if wanted not in ("census", "collected", "remaining", "nearest"):
-        return CollectiblesView(
-            mode=wanted,
-            error=f"! unknown view {mode!r}. Choose from: census, collected, remaining, nearest",
+    if wanted not in _MODES:
+        return _refusal(
+            wanted,
+            None,
+            f"! unknown view {mode!r}. Choose from: census, collected, remaining, nearest",
         )
 
     table = st.collectibles
     if table is None:
-        # ``st.collectibles`` degrades silently for both, and the two need different
-        # answers: a fresh clone has never generated the file and a half-written one has
-        # to be deleted first. Asking again strictly is what separates them.
+        # ``st.collectibles`` is None for a file never generated and for a broken one, which
+        # need different answers; asking again strictly separates them.
         try:
             load_collectibles(strict=True)
         except CollectiblesUnreadable as exc:
-            return CollectiblesView(
-                mode=wanted,
-                group=group,
-                error=(
-                    f"! the map's placement table is CORRUPT, not missing: {exc}. Delete it "
-                    f"and run {GENERATOR_COMMAND} -- until then nothing here knows how many "
-                    "collectibles exist or where they are"
-                ),
+            return _refusal(
+                wanted,
+                group,
+                f"! the map's placement table is CORRUPT, not missing: {exc}. Delete it "
+                f"and run {GENERATOR_COMMAND} -- until then nothing here knows how many "
+                "collectibles exist or where they are",
             )
-    if group:
-        # Category names are lowercase snake_case, so folding the argument is a
-        # normalisation and not a guess. A retired bucket is renamed where the map has the
-        # same thing under a new name, and refused where it does not.
-        group = group.strip().casefold()
-        hint = RETIRED_GROUPS.get(group)
-        if hint and table is not None and hint in table.by_category:
-            group = hint
-        elif hint and table is not None:
-            return CollectiblesView(
-                mode=wanted,
-                group=group,
-                error=f"! '{group}' is no longer a category: {hint}",
-            )
+    group, refused = _resolve_group(group, table)
+    if refused:
+        return _refusal(wanted, group, refused)
 
     if table is None and wanted in ("remaining", "nearest"):
-        # An explicit refusal, not the census: answering a narrower question than the one
-        # asked would teach the caller that the argument worked.
-        return CollectiblesView(
-            mode=wanted,
-            group=group,
-            error=(
-                f"! the {wanted!r} view needs the map's own placement table and "
-                "data/world_collectibles.json has never been generated, so nothing here "
-                "knows how many collectibles exist or where they are. Only the census and "
-                f"collected views work from a save alone. Generate it with {GENERATOR_COMMAND}"
-            ),
+        # Refused rather than answered with the census, which would teach the caller that
+        # the argument worked.
+        return _refusal(
+            wanted,
+            group,
+            f"! the {wanted!r} view needs the map's own placement table and "
+            "data/world_collectibles.json has never been generated, so nothing here "
+            "knows how many collectibles exist or where they are. Only the census and "
+            f"collected views work from a save alone. Generate it with {GENERATOR_COMMAND}",
         )
 
-    removed = st.removed_actors(group)
+    removed = st.collected_summary(group)
     if "error" in removed:
-        return CollectiblesView(mode=wanted, group=group, error="! " + removed["error"])
+        return _refusal(wanted, group, "! " + removed["error"])
 
     view = CollectiblesView(
         mode=wanted,
@@ -168,54 +224,16 @@ def collect_view(
     if table is None or wanted == "census":
         return view
 
-    origin = None
-    where = ""
+    origin, where = None, ""
     if wanted == "nearest":
-        if near:
-            try:
-                origin, where = resolve_place(st, near)
-            except ValueError as exc:
-                return CollectiblesView(mode=wanted, group=group, error=f"! {exc}")
-        else:
-            here = st.player_position()
-            if here is None:
-                return CollectiblesView(
-                    mode=wanted,
-                    group=group,
-                    error=(
-                        "! the 'nearest' view needs an origin and this save has no player pawn: "
-                        "pass near='x,y' in metres or a named factory"
-                    ),
-                )
-            origin, where = (here[0], here[1]), "you"
-        rows = st.nearest_placements(origin, group)
-    elif wanted == "remaining":
-        rows = st.placements(group, remaining_only=True)
-        rows.sort(key=lambda r: (r["category"], r["name"]))
-    else:
-        rows = [p for p in st.placements(group) if p["collected"]]
-        rows.sort(key=lambda r: (r["category"], r["name"]))
-
-    # A shrine is the base its artifact stands on, so an unfiltered listing would show it as
-    # a second row a metre from the sphere -- the double-count the census warns about, in
-    # listing form. Dropped only when no group was asked for: group='mercer_shrine' means the
-    # caller wants the pedestals.
-    pedestals = sorted({c for c in table.by_category if table.pedestal_of(c)})
-    hidden = 0
-    if group is None:
-        before = len(rows)
-        rows = [r for r in rows if r["category"] not in pedestals]
-        hidden = before - len(rows)
-
-    counts: dict[str, int] = {}
-    for r in rows:
-        key = "collected" if r["collected"] else r["observed"] or "unstated"
-        counts[key] = counts.get(key, 0) + 1
-
+        origin, where, refused = _nearest_origin(st, near)
+        if refused:
+            return _refusal(wanted, group, refused)
+    rows, view.pedestals, view.hidden = _without_pedestals(
+        _listing_rows(st, wanted, group, origin), table, group
+    )
     view.rows = rows
-    view.hidden = hidden
-    view.pedestals = pedestals
-    view.counts = counts
+    view.counts = state_counts(rows)
     view.origin = origin
     view.where = where
     return view

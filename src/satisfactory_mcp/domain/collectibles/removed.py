@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import ClassVar
 
+from ...core.saveio.records import instance_leaf
 from ..spatial import geo
-from .table import CollectibleTable, _class_of_removed, _leaf, _name_stem
+from .table import CollectibleTable, name_stem, removed_actor_class
 
 __all__ = ["RemovedActors", "observed_session"]
 
@@ -69,7 +70,7 @@ class RemovedActors:
         source = table.by_category.get(category, []) if category else table.rows
         out: list[dict] = []
         for row in source:
-            name = _leaf(row["instance"])
+            name = instance_leaf(row["instance"])
             collected = (row["cell"], name) in gone
             if collected and remaining_only:
                 continue
@@ -164,15 +165,12 @@ class RemovedActors:
             )
         return rows
 
-    def removed_actors(self, group: str | None = None) -> dict:
+    def collected_summary(self, group: str | None = None) -> dict:
         """What this save records as collected off the map, resolved against the map itself.
 
-        **The world is not saved.** Every slug, mushroom, sphere and drop pod sits where the
-        map put it, and a save never mentions the ones still standing -- it records the
-        negative, which actors are gone, so the destroyed list *is* the collected list. What
-        it does not carry is a class: an entry is a bare ``(cell, name)``, and only the join
-        to the map's placement table by that pair decides one. Without the table this
-        degrades to the name-prefix census under ``source: "save-only"`` rather than raising.
+        The destroyed list IS the collected list (save-projection.md §6.11), and only the
+        join to the placement table by ``(cell, name)`` gives an entry a class. Without the
+        table this degrades to the name-prefix census under ``source: "save-only"``.
         """
         removed = self.projection.get("removed") or {}
         cells: list[str] = removed.get("cells") or []
@@ -193,17 +191,15 @@ class RemovedActors:
         for ix, leaf in instances:
             row = table.by_key.get((cells[ix] if 0 <= ix < len(cells) else "", leaf))
             if row is None:
-                stem = _name_stem(leaf)
+                stem = name_stem(leaf)
                 stems[stem] = stems.get(stem, 0) + 1
             else:
                 collected[row["category"]] = collected.get(row["category"], 0) + 1
         out["groups"] = dict(sorted(collected.items(), key=lambda kv: -kv[1]))
         out["resolved"] = sum(collected.values())
         out["unresolved"] = sum(stems.values())
-        #: Destroyed records the map places nothing at, by name stem -- a label, not a class.
-        #: Two causes, and they are not interchangeable: a class the table excludes (scenery,
-        #: regrowing flora, resource nodes, each counted in ``_meta.excluded``), or an actor
-        #: the map never placed, which is what a pickup the player dropped is.
+        # Destroyed records the map places nothing at, by name stem: a class the table
+        # excludes (``_meta.excluded``), or an actor the map never placed, like a dropped pickup.
         out["unresolved_stems"] = dict(sorted(stems.items(), key=lambda kv: (-kv[1], kv[0])))
         out["census"] = self.collectible_census()
         if group is None:
@@ -229,7 +225,7 @@ class RemovedActors:
         for _ix, leaf in instances:
             label = self.removed_group(leaf)
             if label is None:
-                cls = _class_of_removed(leaf)
+                cls = removed_actor_class(leaf)
                 unmatched[cls] = unmatched.get(cls, 0) + 1
             else:
                 grouped[label] = grouped.get(label, 0) + 1
@@ -250,18 +246,8 @@ class RemovedActors:
         ]
         return out
 
-    #: What a name-only rule groups the save's removed-actor list into, used ONLY when the
-    #: map's placement table is absent: ``(label, prefixes, strict)``, first match wins, so
-    #: ``BP_Crystal_mk2`` must be tried before the ``BP_Crystal`` that is its prefix.
-    #:
-    #: **The rule is measurably wrong and no fix exists.** A destroyed record carries an
-    #: instance name and no class path, and most of those names have the placement counter
-    #: glued straight onto the blueprint name: a somersloop is ``BP_WAT1`` and a Mercer sphere
-    #: ``BP_WAT2``, so ``BP_WAT112`` is undecidable and the ``strict`` groups refuse it. Worse,
-    #: the map's own actors kept the names of the actors they were copied from -- 98 rows the
-    #: map calls ``BP_Crystal_mk2_C`` are named ``BP_Crystal_C_<n>`` -- which spells a class
-    #: outright and spells the wrong one. Scored against the map on the reference save it
-    #: misfiles 51 of 713 and leaves 65 as ``artifact_unsplit``.
+    #: The name-only fallback when the placement table is absent: ``(label, prefixes,
+    #: strict)``, first match wins. Measurably wrong with no fix (save-projection.md §6.11).
     REMOVED_GROUPS: ClassVar[tuple[tuple[str, tuple[str, ...], bool], ...]] = (
         ("slug_purple", ("BP_Crystal_mk3",), False),
         ("slug_yellow", ("BP_Crystal_mk2",), False),

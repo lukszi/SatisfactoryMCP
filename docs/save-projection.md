@@ -786,7 +786,7 @@ update while the merged union never falls, and the trailer list carries internal
 of the 31 saves that the vendored parser reproduces exactly. Format, overlap predicates and the
 oracle parity are in `docs/savparse-notes.md`.
 
-`WorldState.removed_actors(group=None)` groups by class-name prefix and `collected_from_world`
+`WorldState.collected_summary(group=None)` groups by class-name prefix and `collected_from_world`
 prints it. On the reference save, **889 actors over 284 cells**: flora 185, dropped_pickup 170,
 slug_blue 163, mercer_shrine 80, artifact_unsplit 65, crash_site 55, debris 51, slug_yellow 50,
 slug_purple 37, mercer_sphere 27, somersloop 6. Both the census and the per-group listing are
@@ -814,12 +814,20 @@ names spell `BP_WAT1_C` unambiguously, while the player holds **11 somersloops i
 Depot plus 4 slotted in machines** — so at least nine of the unsplit names are sloops, on the one
 game-behaviour premise that a somersloop is only ever picked up off the map.
 
-One inconsistency in `removed_actors()` is known and stated rather than hidden: `groups` is built
+One inconsistency in `collected_summary()` is known and stated rather than hidden: `groups` is built
 from `counts`, whose keys have already lost their `_C`, so the two `strict` groups can never
 match there and `groups["somersloop"]` / `groups["mercer_sphere"]` are absent on **31 of 31
-saves** even though `removed_actors("mercer_sphere")["actors"]` returns 27 entries. 65 + 6 + 27 =
+saves** even though `collected_summary("mercer_sphere")["actors"]` returns 27 entries. 65 + 6 + 27 =
 98, so nothing is lost, but the census and the listing disagree about whether the split exists.
 Details in `docs/savparse-notes.md`.
+
+**Since the map's placement table, the name rule is only the fallback, and it is measurably
+wrong with no fix.** `RemovedActors.REMOVED_GROUPS` runs only when the table is absent. Besides
+the glued counter above, the map's own actors kept the names of the actors they were copied
+from — 98 rows the map calls `BP_Crystal_mk2_C` are named `BP_Crystal_C_<n>` — which spells a
+class outright and spells the wrong one. Scored against the map on the reference save the
+rule misfiles 51 of 713 and leaves 65 as `artifact_unsplit`, which is why every caller of the
+save-only census has to label it.
 
 ### 6.12 Power wires — the save publishes the drawn line, not just the pair
 

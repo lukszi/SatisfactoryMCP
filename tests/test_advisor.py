@@ -189,7 +189,7 @@ def test_counterfactual_adds_every_recipe_of_a_three_recipe_schematic(
         r for r in prog["available_recipes"] if r not in PACKAGED_TURBOFUEL
     ]
     st = WorldState(projection=proj, game=game)
-    assert len(st._schematic_recipes(game.schematics[TURBO_BLEND_FUEL])) == 3
+    assert len(st.unlocks.schematic_recipes(game.schematics[TURBO_BLEND_FUEL])) == 3
 
     seen: list[set[str]] = []
 

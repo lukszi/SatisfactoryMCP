@@ -150,7 +150,7 @@ def _new_recipes_for(state: WorldState, schematic_id: str) -> list[Recipe]:
     s = state.game.schematics.get(schematic_id)
     if s is None:
         return []
-    return state._schematic_recipes(s)
+    return state.unlocks.schematic_recipes(s)
 
 
 def _request(state: WorldState, sources: list[str] | None, obj: Objective) -> PlanRequest:
