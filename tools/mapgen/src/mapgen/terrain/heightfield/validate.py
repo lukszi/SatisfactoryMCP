@@ -15,7 +15,7 @@ from mapgen.common import ROOT
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM, sample_grid
 from mapgen.gamedata.ground.biome import region_mask
 from mapgen.gamedata.nodes import NODE_TABLE
-from satisfactory_mcp.core.arrays import BoolMask, F64Grid
+from satisfactory_mcp.core.arrays import BoolMask, F64Grid, I16Grid, U8Grid
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -179,7 +179,7 @@ def _node_table_path() -> str:
     return str(NODE_TABLE.relative_to(ROOT)).replace("\\", "/")
 
 
-def validate_terrain(frame: dict, prov: NDArray[np.integer]) -> TerrainCheck:
+def validate_terrain(frame: dict, prov: U8Grid) -> TerrainCheck:
     """The bare terrain against the nodes standing on the landscape layer."""
     nodes = _static_nodes()
     x, y, z = nodes.x_cm, nodes.y_cm, nodes.z_m
@@ -391,7 +391,7 @@ def error_stats(errors: F64Grid, total: int) -> ErrorStats:
     }
 
 
-def validate_field(height_dm: NDArray[np.integer], prov: NDArray[np.integer]) -> FieldValidation:
+def validate_field(height_dm: I16Grid, prov: U8Grid) -> FieldValidation:
     """Measure the built field against the static node table, whole and per layer.
 
     The whole-field number is the gate; the per-layer ones go in the sidecar so a reading can

@@ -247,7 +247,7 @@ def _mesh_groups(store: IoStore, scripts: ScriptObjects, index: AssetIndex, swee
     """Per render-only mesh, its instances' matrices and source codes: the class, and for a
     rock the family its placement wears (``worn_family``), shifted above it."""
     meshes = sweep["meshes"]
-    caches: tuple[dict[str, str], dict[str, int]] = ({}, {})
+    caches: tuple[dict[str, str | None], dict[str, int]] = ({}, {})
     groups: dict[str, tuple[list[F64Grid], list[int]]] = {}
 
     def add(mesh: str, mats: list[F64Grid], materials: list[str | None]) -> None:
