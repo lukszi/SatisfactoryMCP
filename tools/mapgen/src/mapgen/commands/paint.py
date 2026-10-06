@@ -53,22 +53,15 @@ from mapgen.gamedata.ground.weightmaps import (
     component_origin,
     place,
 )
+from mapgen.gamedata.install import open_game
 from mapgen.gamedata.level.sweep import FOLIAGE_CLASSES, LEVEL_DIR, LEVEL_SUFFIX, foliage_instances
 from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.vegetation import crown_sprites as crown_data
 from mapgen.gamedata.vegetation.carpet import is_carpet, write_carpet
 from mapgen.gamedata.vegetation.trees import canopy_cover, is_tree
 from mapgen.gamedata.water.bodies import WATER_BODIES_NAME, harvest
-from satisfactory_mcp.core.gameassets.container import open_container
-from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
-from satisfactory_mcp.core.gameassets.packages import (
-    AssetIndex,
-    ClassFacts,
-    PackageView,
-    ScriptObjects,
-    class_name_of,
-)
+from satisfactory_mcp.core.gameassets.packages import AssetIndex, PackageView, class_name_of
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
     changelist,
@@ -236,11 +229,8 @@ def main() -> int:
     except (InstallNotFound, OSError, ValueError) as exc:
         print(f"not a game install: {exc}")
         return 1
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
-    store = open_container(args.game)
-    scripts = ScriptObjects(paks, oodle_decompress)
-    index = AssetIndex(store)
-    classes = ClassFacts(store, index)
+    reader = open_game(args.game)
+    store, scripts, index, classes = reader.store, reader.scripts, reader.index, reader.classes
     started = time.time()
 
     vectors = material_vectors(

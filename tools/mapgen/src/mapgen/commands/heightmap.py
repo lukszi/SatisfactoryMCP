@@ -48,6 +48,7 @@ from pathlib import Path
 from mapgen.commands.caves import write_caves
 from mapgen.commands.rocks import write_rocks
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
+from mapgen.gamedata.install import GameReader, missing_container, open_game
 from mapgen.gamedata.level.fill_raster import read_baseline
 from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
 from mapgen.gamedata.level.sweep import sweep_levels
@@ -75,9 +76,7 @@ from mapgen.terrain.heightfield.validate import (
     validate_water,
     water_gate_failures,
 )
-from satisfactory_mcp.core.gameassets.container import open_container
-from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
-from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
+from satisfactory_mcp.core.gameassets.container import paks_dir
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
     install_directory,
@@ -132,25 +131,22 @@ def refusal(args, build_pin: str) -> int | None:
         )
         return 4
 
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
-    if not (paks / "FactoryGame-Windows.utoc").exists():
-        print(f"no FactoryGame-Windows.utoc under {paks}")
+    if (missing := missing_container(args.game)) is not None:
+        print(missing)
         return 1
     return None
 
 
-def open_game(game: Path, pyooz_version: str):
-    """The container, its script objects and its asset index."""
-    paks = game / "FactoryGame" / "Content" / "Paks"
-    print(f"reading the world from {paks} with pyooz {pyooz_version}")
-    store = open_container(game)
-    scripts = ScriptObjects(paks, oodle_decompress)
-    index = AssetIndex(store)
+def open_reader(game: Path, pyooz_version: str) -> GameReader:
+    """The opened install, with the two lines that say what was opened."""
+    print(f"reading the world from {paks_dir(game)} with pyooz {pyooz_version}")
+    reader = open_game(game)
+    store = reader.store
     print(
         f"  .utoc v{store.version}, {store.entry_count} entries, "
         f"{store.block_size // 1024} KiB blocks, methods {store.methods}"
     )
-    return store, scripts, index
+    return reader
 
 
 def main() -> int:
@@ -178,12 +174,12 @@ def main() -> int:
     refused = refusal(args, build_pin)
     if refused is not None:
         return refused
-    store, scripts, index = open_game(args.game, pyooz_version)
+    reader = open_reader(args.game, pyooz_version)
+    store, scripts, index, classes = reader.store, reader.scripts, reader.index, reader.classes
     loud = not args.quiet
     timings: dict[str, float] = {}
 
     print("sweeping the world's packages for landscape, placements and water volumes")
-    classes = ClassFacts(store, index)
     sweep = sweep_levels(store, scripts, classes, MeshBounds(store, scripts, index), loud)
     timings["sweep"] = round(sweep["seconds"], 1)
     report_sweep(sweep)

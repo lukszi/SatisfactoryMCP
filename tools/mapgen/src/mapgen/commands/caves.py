@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.install import missing_container, open_game
 from mapgen.gamedata.rocks.caves import (
     CAVE_BUFFER_CELLS,
     CAVE_CELL_CM,
@@ -19,9 +20,6 @@ from mapgen.gamedata.rocks.caves import (
     build_caves,
     sweep_caves,
 )
-from satisfactory_mcp.core.gameassets.container import open_container
-from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
-from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
 from satisfactory_mcp.core.gameassets.provenance import install_directory, sha256_hex
 from satisfactory_mcp.core.gameassets.versions import CAVES_VERSION
 from satisfactory_mcp.domain.spatial import caves
@@ -45,14 +43,12 @@ def write_caves(args, build_pin: str, build_raw) -> int:
             "stand under the ground, which needs one. Run this tool without --caves first."
         )
         return 4
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
-    if not (paks / "FactoryGame-Windows.utoc").exists():
-        print(f"no FactoryGame-Windows.utoc under {paks}")
+    if (missing := missing_container(args.game)) is not None:
+        print(missing)
         return 1
     started = time.time()
-    store = open_container(args.game)
-    scripts = ScriptObjects(paks, oodle_decompress)
-    classes = ClassFacts(store, AssetIndex(store))
+    reader = open_game(args.game)
+    store, scripts, classes = reader.store, reader.scripts, reader.classes
     print("sweeping the world for cave sound volumes and cave decoration")
     found = sweep_caves(store, scripts, classes, not args.quiet)
     arrays, counts = build_caves(found, field.height_dm)

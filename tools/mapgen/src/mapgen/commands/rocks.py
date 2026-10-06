@@ -6,12 +6,10 @@ import json
 import time
 from pathlib import Path
 
+from mapgen.gamedata.install import missing_container, open_game
 from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.rocks.collision_pack import rock_pack
-from satisfactory_mcp.core.gameassets.container import open_container
-from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
-from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -35,15 +33,12 @@ def write_rocks(args, build_pin: str, build_raw) -> int:
     if any(t.exists() for t in targets) and not args.force:
         print(f"{field_dir} already has a collision pack. Pass --force to replace it.")
         return 3
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
-    if not (paks / "FactoryGame-Windows.utoc").exists():
-        print(f"no FactoryGame-Windows.utoc under {paks}")
+    if (missing := missing_container(args.game)) is not None:
+        print(missing)
         return 1
     started = time.time()
-    store = open_container(args.game)
-    scripts = ScriptObjects(paks, oodle_decompress)
-    index = AssetIndex(store)
-    classes = ClassFacts(store, index)
+    reader = open_game(args.game)
+    store, scripts, index, classes = reader.store, reader.scripts, reader.index, reader.classes
     print("sweeping the world for rock placements and cave floors")
     sweep = sweep_levels(store, scripts, classes, MeshBounds(store, scripts, index), not args.quiet)
     payload = rock_pack(store, scripts, index, classes, sweep, build_pin, build_raw)
