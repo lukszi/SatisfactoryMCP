@@ -15,6 +15,7 @@ from satisfactory_mcp.core.gameassets.container import CONTAINER, paks_dir
 from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects
 from satisfactory_mcp.core.gameassets.provenance import installed_build_from_exe
+from satisfactory_mcp.core.jsontypes import JsonObject
 from tools.collectibles.build import build
 from tools.collectibles.catalog import EXCLUDED, NUCLEAR_HOG
 from tools.collectibles.hazards import CreatureCatalog, HazardWorld, Radioactivity, build_hazards
@@ -27,7 +28,7 @@ DEFAULT_OUT = ROOT / "data" / "world_collectibles.json"
 
 
 def main() -> int:
-    parser = base_parser(__doc__.splitlines()[0])
+    parser = base_parser((__doc__ or "").partition("\n")[0])
     parser.add_argument(
         "saves",
         nargs="?",
@@ -80,7 +81,9 @@ def main() -> int:
     return 0
 
 
-def read_world(store: IoStore, scripts: ScriptObjects) -> tuple[MapWorld, HazardWorld, list[dict]]:
+def read_world(
+    store: IoStore, scripts: ScriptObjects
+) -> tuple[MapWorld, HazardWorld, list[JsonObject]]:
     """The map's placements, its hazard sources resolved, and the other levels' census."""
     world = read_map(store, scripts)
     print(
@@ -121,11 +124,11 @@ def read_world(store: IoStore, scripts: ScriptObjects) -> tuple[MapWorld, Hazard
             f"  declared radius: {cls:24} {declared['placements']:>5} placements  "
             f"{declared['distinct_radii']} distinct {declared['radius_cm']}"
         )
-    other_levels = read_other_levels(store, scripts)
+    other_levels: list[JsonObject] = read_other_levels(store, scripts)
     stray = [e for e in other_levels if e.get("actors_of_an_emitted_class")]
+    actors = sum(n for e in other_levels if isinstance(n := e.get("actors", 0), int))
     print(
-        f"  {len(other_levels)} other .umap in the container "
-        f"({sum(e.get('actors', 0) for e in other_levels)} actors); "
+        f"  {len(other_levels)} other .umap in the container ({actors} actors); "
         f"{len(stray)} of them place an actor of an emitted class"
     )
     if stray:

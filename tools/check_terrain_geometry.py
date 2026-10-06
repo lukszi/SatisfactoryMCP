@@ -37,6 +37,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import NotRequired, TypeAlias, TypedDict
 
 import numpy as np
 
@@ -53,9 +54,10 @@ from mapgen.gamedata.meshes import ROCK_DIRS, MeshBounds
 from mapgen.gamedata.nodes import NODE_TABLE
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
 from mapgen.terrain.heightfield.validate import VALIDATION_TRIM
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid
 from satisfactory_mcp.core.gameassets import nanite, staticmesh
 from satisfactory_mcp.core.gameassets.container import CONTAINER, open_container, paks_dir
-from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
+from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
 from satisfactory_mcp.core.gameassets.packages import (
     AssetIndex,
     ClassFacts,
@@ -67,18 +69,110 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 #: The rungs, in the order the table prints them. ``hull`` first because it is what ships.
 RUNGS = ("hull", "lod0", "best")
 
+#: A mesh's triangles as ``(vertices, triangles)``, mesh-local centimetres.
+Mesh: TypeAlias = tuple[F32Grid, I64Grid]
+
+#: One rung's mesh, ready to rasterise: ``(vertices, triangles, low, high)``, bounds padded.
+Geometry: TypeAlias = tuple[F32Grid, I64Grid, F64Grid, F64Grid]
+
+
+class MeshRungs(TypedDict):
+    """One mesh's three readings, with what went wrong reading each."""
+
+    package: str
+    bounds: staticmesh.Bounds
+    hull: tuple[F32Grid, I64Grid, float] | None
+    hull_note: str | None
+    parse_error: NotRequired[str]
+    lod0: NotRequired[Mesh]
+    nanite: NotRequired[Mesh]
+    nanite_problems: NotRequired[list[str]]
+    nanite_clusters: NotRequired[int]
+
+
+class RungRead(TypedDict):
+    """``read_rungs``: every rock mesh read, how many were wanted, and why the rest were not."""
+
+    meshes: dict[str, MeshRungs]
+    wanted: int
+    notes: dict[str, str]
+    seconds: float
+
+
+#: The five numbers of a score. The functional form, because two keys are not identifiers.
+Metrics = TypedDict(
+    "Metrics",
+    {
+        "median_abs_m": float,
+        "p90_abs_m": float,
+        "trimRMS90_m": float,
+        "frac_lt_1m": float,
+        "frac_lt_0.25m": float,
+    },
+)
+
+
+class Unscored(TypedDict):
+    """A probe set no candidate value falls on."""
+
+    n: int
+    coverage: float
+
+
+#: A score: the metrics raw at the top level, then median-detrended under ``detrended``.
+Scored = TypedDict(
+    "Scored",
+    {
+        "n": int,
+        "coverage": float,
+        "offset_m": float,
+        "median_abs_m": float,
+        "p90_abs_m": float,
+        "trimRMS90_m": float,
+        "frac_lt_1m": float,
+        "frac_lt_0.25m": float,
+        "detrended": Metrics,
+    },
+)
+
+
+class RungScore(TypedDict):
+    """One rung of the table: what was rasterised, its grain, and a score per probe set."""
+
+    meshes: int
+    source_triangles: int
+    rasterised_triangles: int
+    placements: int
+    covered_texels: int
+    grain: dict[str, float]
+    scores: dict[str, Scored | Unscored]
+
+
+class GeometryTable(TypedDict):
+    """What ``--out`` writes."""
+
+    rungs: dict[str, RungScore]
+    meshes_with_a_hull: int
+    meshes_with_nanite: int
+
 
 # --- Reading all three sources out of one open of each mesh. --------------------------
 
 
-def read_rungs(store, scripts, index, meshes: list[str], progress: bool = True) -> dict:
+def read_rungs(
+    store: IoStore,
+    scripts: ScriptObjects,
+    index: AssetIndex,
+    meshes: list[str],
+    progress: bool = True,
+) -> RungRead:
     """Every rock mesh's hull, LOD0 and Nanite leaf, from one read of each package.
 
     One read, three answers, so the three rungs cannot disagree about which asset they
     were looking at.
     """
     wanted = [m for m in meshes if any(d in m for d in ROCK_DIRS)]
-    out: dict[str, dict] = {}
+    out: dict[str, MeshRungs] = {}
     notes: dict[str, str] = {}
     started = time.time()
     for count, mesh in enumerate(wanted):
@@ -105,14 +199,18 @@ def read_rungs(store, scripts, index, meshes: list[str], progress: bool = True) 
     return {"meshes": out, "wanted": len(wanted), "notes": notes, "seconds": time.time() - started}
 
 
-def _read_mesh_rungs(store, view: PackageView, export, package: str, bounds) -> dict:
+def _read_mesh_rungs(
+    store: IoStore, view: PackageView, export: dict, package: str, bounds: staticmesh.Bounds
+) -> MeshRungs:
     """One mesh's hull, LOD 0 and Nanite leaf, with what went wrong reading each."""
     low, high = bounds
-    row: dict = {"package": package, "bounds": (low, high)}
-
     hull, why = staticmesh.collision_hull(view, low, high)
-    row["hull"] = None if hull is None else (hull[0], hull[1].astype(np.int64), hull[2])
-    row["hull_note"] = why
+    row: MeshRungs = {
+        "package": package,
+        "bounds": (low, high),
+        "hull": None if hull is None else (hull[0], hull[1].astype(np.int64), hull[2]),
+        "hull_note": why,
+    }
 
     tail = staticmesh.render_tail(view, export)
     try:
@@ -137,20 +235,21 @@ def _read_mesh_rungs(store, view: PackageView, export, package: str, bounds) -> 
     return row
 
 
-def geometry_for(rung: str, read: dict) -> dict:
+def geometry_for(rung: str, read: RungRead) -> dict[str, Geometry]:
     """``{mesh: (verts, tris, low, high)}`` for one rung, over the hull-equivalent set only.
 
     A mesh with no hull is absent from every rung, not just from ``hull``, which is what
     keeps the three rows a comparison of resolution rather than of coverage.
     """
-    out: dict[str, tuple] = {}
+    out: dict[str, Geometry] = {}
     for mesh, row in read["meshes"].items():
-        if row.get("hull") is None:
+        hull = row["hull"]
+        if hull is None:
             continue
         low, high = row["bounds"]
-        pad = row["hull"][2]
+        pad = hull[2]
         if rung == "hull":
-            verts, tris = row["hull"][0], row["hull"][1]
+            verts, tris = hull[0], hull[1]
         elif rung == "lod0":
             if "lod0" not in row:
                 continue
@@ -172,7 +271,7 @@ def geometry_for(rung: str, read: dict) -> dict:
 # --- The score vocabulary. One definition, used by every table this prints. -----------
 
 
-def _metrics(sorted_abs: np.ndarray) -> dict:
+def _metrics(sorted_abs: F64Grid) -> Metrics:
     cut = max(1, int(sorted_abs.size * VALIDATION_TRIM))
     return {
         "median_abs_m": round(float(np.median(sorted_abs)), 4),
@@ -183,7 +282,7 @@ def _metrics(sorted_abs: np.ndarray) -> dict:
     }
 
 
-def score(truth_m: np.ndarray, field_m: np.ndarray, n_total: int | None = None) -> dict:
+def score(truth_m: F64Grid, field_m: F64Grid, n_total: int | None = None) -> Scored | Unscored:
     """The five numbers, raw at the top level and median-detrended underneath.
 
     Both conventions are live in this project: the cliff baseline is raw, and ``meta.json``
@@ -204,8 +303,8 @@ def score(truth_m: np.ndarray, field_m: np.ndarray, n_total: int | None = None) 
     }
 
 
-def format_score_row(tag: str, scored: dict) -> str:
-    if not scored.get("n"):
+def format_score_row(tag: str, scored: Scored | Unscored) -> str:
+    if "median_abs_m" not in scored:
         return f"{tag:24s}  (no probes)"
     return (
         f"{tag:24s} n={scored['n']:>9,}  med {scored['median_abs_m']:7.4f}  "
@@ -214,7 +313,7 @@ def format_score_row(tag: str, scored: dict) -> str:
     )
 
 
-def world_to_texel(x_cm, y_cm) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def world_to_texel(x_cm: F64Grid, y_cm: F64Grid) -> tuple[I64Grid, I64Grid, BoolMask]:
     """World centimetres -> the field's ``(row, col)`` texels, and which fall on the grid."""
     col = np.round((np.asarray(x_cm) - ORIGIN_X_CM) / SPACING_CM).astype(np.int64)
     row = np.round((np.asarray(y_cm) - ORIGIN_Y_CM) / SPACING_CM).astype(np.int64)
@@ -222,7 +321,7 @@ def world_to_texel(x_cm, y_cm) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return row, col, on_grid
 
 
-def sample(grid_cm: np.ndarray, x_cm, y_cm) -> np.ndarray:
+def sample(grid_cm: F32Grid, x_cm: F64Grid, y_cm: F64Grid) -> F64Grid:
     """The candidate raster read in metres at world coordinates, NaN where it is silent."""
     row, col, on_grid = world_to_texel(x_cm, y_cm)
     value = grid_cm[np.clip(row, 0, GRID_PX - 1), np.clip(col, 0, GRID_PX - 1)]
@@ -243,7 +342,9 @@ GRAIN_DECADES = (-3, 3)
 GRAIN_PER_DECADE = 100
 
 
-def world_grain(geometry: dict, placements: np.ndarray, meshes: list[str]) -> dict:
+def world_grain(
+    geometry: dict[str, Geometry], placements: F64Grid, meshes: list[str]
+) -> dict[str, float]:
     """Placement-weighted world-space triangle edge length: percentiles and the z6 share.
 
     Measured after the placement transform, never before: placement scale runs from a
@@ -316,7 +417,7 @@ def world_grain(geometry: dict, placements: np.ndarray, meshes: list[str]) -> di
 
 
 def main() -> int:
-    parser: argparse.ArgumentParser = base_parser(__doc__.splitlines()[0])
+    parser: argparse.ArgumentParser = base_parser((__doc__ or "").partition("\n")[0])
     parser.add_argument(
         "--rungs", default=",".join(RUNGS), help=f"which of {','.join(RUNGS)} to score"
     )
@@ -362,7 +463,7 @@ def main() -> int:
         return 2
     probes, province = load_probes(field, args.foliage, args.foliage_mask)
 
-    table: dict = {"rungs": {}, "meshes_with_a_hull": hulls, "meshes_with_nanite": nanites}
+    table: GeometryTable = {"rungs": {}, "meshes_with_a_hull": hulls, "meshes_with_nanite": nanites}
     for rung in args.rungs.split(","):
         if rung not in RUNGS:
             print(f"unknown rung {rung!r}")
@@ -375,12 +476,12 @@ def main() -> int:
     return 0
 
 
-def _report_rungs_read(read: dict) -> tuple[int, int]:
+def _report_rungs_read(read: RungRead) -> tuple[int, int]:
     """Print what the mesh read found; ``(meshes with a hull, meshes with Nanite)``."""
-    hulls = sum(1 for r in read["meshes"].values() if r.get("hull") is not None)
+    hulls = sum(1 for r in read["meshes"].values() if r["hull"] is not None)
     nanites = sum(1 for r in read["meshes"].values() if "nanite" in r)
     broken = {
-        m: r["nanite_problems"] for m, r in read["meshes"].items() if r.get("nanite_problems")
+        m: problems for m, r in read["meshes"].items() if (problems := r.get("nanite_problems"))
     }
     print(
         f"  {len(read['meshes'])}/{read['wanted']} meshes opened in {read['seconds']:.0f}s: "
@@ -391,9 +492,9 @@ def _report_rungs_read(read: dict) -> tuple[int, int]:
         print(f"    {mesh.rsplit('/', 1)[-1]}: {'; '.join(problems)}")
 
     boundary_edges_by_mesh = {
-        mesh: nanite.boundary_edges(r["nanite"][1])
+        mesh: nanite.boundary_edges(decoded[1])
         for mesh, r in read["meshes"].items()
-        if "nanite" in r
+        if (decoded := r.get("nanite")) is not None
     }
     closed_mesh_count = sum(1 for v in boundary_edges_by_mesh.values() if v == 0)
     print(
@@ -404,36 +505,41 @@ def _report_rungs_read(read: dict) -> tuple[int, int]:
 
 
 def load_probes(
-    field, foliage: Path | None, foliage_mask: Path | None
-) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    field: hf.Field, foliage: Path | None, foliage_mask: Path | None
+) -> tuple[dict[str, F64Grid], dict[str, BoolMask]]:
     """The probe sets, and per set which probes stand on the shipped field's cliff province."""
     nodes = json.loads(NODE_TABLE.read_text(encoding="utf-8"))["nodes"]
-    probes = {"nodes": np.array([[n["x"], n["y"], n["z"]] for n in nodes], float)}
+    probes: dict[str, F64Grid] = {
+        "nodes": np.array([[n["x"], n["y"], n["z"]] for n in nodes], float)
+    }
     if foliage is not None:
         points = np.load(foliage)
         if foliage_mask is not None:
             points = points[np.load(foliage_mask)]
         probes["foliage"] = points
-    province = {}
+    provenance = field.provenance_plane
+    if provenance is None:
+        raise SystemExit("the shipped field has no provenance plane")
+    province: dict[str, BoolMask] = {}
     for name, pts in probes.items():
         row, col, _on_grid = world_to_texel(pts[:, 0], pts[:, 1])
         texels = (np.clip(row, 0, GRID_PX - 1), np.clip(col, 0, GRID_PX - 1))
         # Both cliff values: testing ``== PROV_CLIFF`` scores a v3 field on a quarter of
         # the probes and calls it the same measurement.
-        province[name] = np.isin(field.provenance_plane[texels], hf.PROV_CLIFF_VALUES)
+        province[name] = np.isin(provenance[texels], hf.PROV_CLIFF_VALUES)
         print(f"  {name}: {len(pts)} probes, {int(province[name].sum())} on the cliff province")
     return probes, province
 
 
 def score_rung(
     rung: str,
-    read: dict,
+    read: RungRead,
     sweep: dict,
     frame: dict,
-    probes: dict[str, np.ndarray],
-    province: dict[str, np.ndarray],
+    probes: dict[str, F64Grid],
+    province: dict[str, BoolMask],
     loud: bool,
-) -> dict:
+) -> RungScore:
     """Rasterise one rung's geometry into a whole-world field and score it on every probe set."""
     geometry = geometry_for(rung, read)
     triangles = sum(len(t) for _v, t, _lo, _hi in geometry.values())
@@ -442,7 +548,7 @@ def score_rung(
     whole = np.full((GRID_PX, GRID_PX), np.nan, np.float32)
     dx, dy = drop_offsets(frame)
     whole[dy : dy + frame["height"], dx : dx + frame["width"]] = cliffs["z_cm"]
-    entry = {
+    entry: RungScore = {
         "meshes": len(geometry),
         "source_triangles": triangles,
         "rasterised_triangles": cliffs["triangles"],

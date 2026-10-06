@@ -15,6 +15,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 import numpy as np
 
@@ -28,13 +29,15 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
 from mapgen.common import base_parser, require_gen
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.ground.biome import calibrate_biome
+from satisfactory_mcp.core.arrays import F64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import (
     CONTAINER,
     open_container,
     paks_dir,
     read_artwork_sheet,
 )
-from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
+from satisfactory_mcp.core.gameassets.imaging import BlockDecoder, ImageFactory, ImageT
+from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
 from satisfactory_mcp.core.gameassets.maparea import (
     MAP_AREA_CLASS,
     MAP_AREA_DIR,
@@ -50,6 +53,7 @@ from satisfactory_mcp.core.gameassets.provenance import (
     installed_build_from_exe,
     read_path,
 )
+from satisfactory_mcp.core.jsontypes import JsonArray, JsonObject
 from satisfactory_mcp.domain.spatial import geo
 
 DEST = ROOT / "data" / "region_names.json"
@@ -116,7 +120,7 @@ VOID_DISTANCE_M = 1000.0
 
 #: The confidence letters, and what each one measures about its own cell.
 INTERIOR, BOUNDARY, UNNAMED = "l", "b", "u"
-CONFIDENCE_LEGEND = {
+CONFIDENCE_LEGEND: JsonObject = {
     INTERIOR: "interior cell: one area covers the whole 256 m cell",
     BOUNDARY: "boundary cell: an exact area boundary runs through it",
     UNNAMED: "unnamed cell: the game names no region here, so the label is its No Man's Land",
@@ -126,7 +130,7 @@ CONFIDENCE_LEGEND = {
 #: Measured once, on 2026-07-30, against the committed wiki trace at the commit before it was
 #: retired. It cannot be measured again -- the source it compares against is deleted -- so
 #: these figures are transcribed and no run gates on them.
-RETIRED_TRACE_COMPARISON = {
+RETIRED_TRACE_COMPARISON: JsonObject = {
     "what": (
         "data/satisfactory_regions.json, a hand trace of satisfactory.wiki.gg's Biome Map "
         "image (CC BY-SA 4.0), rasterised at 256 m. Retired in the same commit as this "
@@ -149,7 +153,7 @@ RETIRED_TRACE_COMPARISON = {
     "names_the_game_has_and_the_wiki_did_not": ["Blue Crater is a game name, not a wiki one"],
 }
 
-KNOWN_LIMITATIONS = [
+KNOWN_LIMITATIONS: JsonArray = [
     (
         "The published grid is 256 m and the lookup grid is 64 m, so a name near a "
         "boundary can be one region out. The SOURCE boundaries are exact -- this is "
@@ -168,19 +172,25 @@ KNOWN_LIMITATIONS = [
 ]
 
 
-def load_positioned_rows(name: str, key: str) -> list[dict]:
+class PositionedRow(TypedDict):
+    x: float
+    y: float
+    category: NotRequired[str]
+
+
+def load_positioned_rows(name: str, key: str) -> list[PositionedRow]:
     """The ``key`` rows of a committed ``data/`` table, each of which must carry x and y."""
     path = ROOT / "data" / name
     if not path.exists():
         raise SystemExit(f"{path.relative_to(ROOT)} missing -- the land mask needs it")
-    rows = json.loads(path.read_text(encoding="utf-8"))[key]
+    rows: list[PositionedRow] = json.loads(path.read_text(encoding="utf-8"))[key]
     missing = [r for r in rows if "x" not in r or "y" not in r]
     if missing:
         raise SystemExit(f"{name}: {len(missing)} of {len(rows)} {key} carry no x/y")
     return rows
 
 
-def reference_points() -> tuple[np.ndarray, dict[str, int]]:
+def reference_points() -> tuple[F64Grid, dict[str, int]]:
     """Static world objects, used purely to tell coast from ocean.
 
     Positions only: the raster names every cell, so these decide one thing, which is whether
@@ -211,7 +221,7 @@ def texel_bounds(lo: float, hi: float, span: tuple[float, float], width: int) ->
 
 
 def rasterise(
-    area: np.ndarray, names: list[str | None], cell: float, nx: int, ny: int
+    area: U8Grid, names: list[str | None], cell: float, nx: int, ny: int
 ) -> tuple[list[list[str | None]], list[list[bool]]]:
     """Majority display name per grid cell, and whether that cell is one area throughout.
 
@@ -244,14 +254,14 @@ def rasterise(
     return grid, pure
 
 
-def nearest_distance_m(points: np.ndarray, x: float, y: float) -> float:
+def nearest_distance_m(points: F64Grid, x: float, y: float) -> float:
     return float(np.sqrt(((points[:, 0] - x) ** 2 + (points[:, 1] - y) ** 2).min())) / 100.0
 
 
 def classify_cells(
     grid: list[list[str | None]],
     pure: list[list[bool]],
-    points: np.ndarray,
+    points: F64Grid,
     cell: float,
     inherited_void: tuple[set[tuple[int, int]], int] | None,
 ) -> tuple[set[tuple[int, int]], list[str], dict[str, int]]:
@@ -321,7 +331,7 @@ def encode_grid_rows(
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = base_parser(__doc__.splitlines()[0])
+    parser = base_parser((__doc__ or "").partition("\n")[0])
     parser.add_argument(
         "-o", "--out", type=Path, default=DEST, help=f"destination (default {DEST})"
     )
@@ -333,7 +343,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _grid_meta(fine_nx: int, fine_ny: int) -> dict:
+def _grid_meta(fine_nx: int, fine_ny: int) -> JsonObject:
     return {
         "x0": GRID_X0,
         "y0": GRID_Y0,
@@ -498,10 +508,17 @@ def area_display_names(areas: MapAreas) -> list[str | None] | None:
             "shows for it. Nothing was written."
         )
         return None
-    return [None if area is None else DISPLAY_NAMES[area.key] for area in areas.areas]
+    keys = [None if area is None else area.key for area in areas.areas]
+    return [None if key is None else DISPLAY_NAMES[key] for key in keys]
 
 
-def calibrate_pin(store, areas: MapAreas, raster: np.ndarray, decoder, image_mod) -> dict | None:
+def calibrate_pin(
+    store: IoStore,
+    areas: MapAreas,
+    raster: U8Grid,
+    decoder: BlockDecoder,
+    image_mod: ImageFactory[ImageT],
+) -> JsonObject | None:
     """The raster's pin to the map square, re-measured rather than inherited; None, with the
     reason printed, when it no longer holds by the required margin."""
     biome = {"width": areas.width, "area": raster}
@@ -529,14 +546,24 @@ def cell_count_line(cell: float, counts: dict[str, int]) -> str:
     )
 
 
+class RegionExtent(TypedDict):
+    letter: str
+    bbox: list[int]
+    centroid: list[int]
+    cells: int
+    area_km2: float
+    grid_cells: list[str]
+    areas: list[str]
+
+
 def region_extents(
     region_rows: list[str],
     letters: dict[str, str],
     areas: MapAreas,
     names: list[str | None],
-) -> dict[str, dict]:
+) -> dict[str, RegionExtent]:
     """Per region: bbox, centroid and cells, read off the published grid so containment holds."""
-    regions: dict[str, dict] = {}
+    regions: dict[str, RegionExtent] = {}
     for name, letter in letters.items():
         cells = [
             (i, j) for j in range(GRID_NY) for i in range(GRID_NX) if region_rows[j][i] == letter
@@ -574,14 +601,14 @@ def region_extents(
     return regions
 
 
-def area_name_map(areas: MapAreas) -> dict[str, dict]:
+def area_name_map(areas: MapAreas) -> dict[str, JsonObject]:
     """Area asset -> its package, localisation key, display name, palette indices and texels."""
     return {
         area.asset: {
             "package": area.stem,
             "display_name_key": area.key,
             "string_table": area.string_table,
-            "display_name": DISPLAY_NAMES[area.key],
+            "display_name": None if area.key is None else DISPLAY_NAMES[area.key],
             "palette_indices": [i for i, a in enumerate(areas.areas) if a == area],
             "texels": sum(areas.texels.count(i) for i, a in enumerate(areas.areas) if a == area),
         }
@@ -589,7 +616,7 @@ def area_name_map(areas: MapAreas) -> dict[str, dict]:
     }
 
 
-def _unreferenced_assets(store, areas: MapAreas) -> set[str]:
+def _unreferenced_assets(store: IoStore, areas: MapAreas) -> set[str]:
     """Area assets beside the texture that no palette index reaches: the game has the name and
     puts no ground under it (``Area_EasternDuneForest_1``)."""
     on_disk = {
@@ -605,16 +632,16 @@ def build_meta(
     build_pin: str,
     exe_build: str | None,
     areas: MapAreas,
-    calibration: dict,
+    calibration: JsonObject,
     coarse_counts: dict[str, int],
     fine_counts: dict[str, int],
     mask_counts: dict[str, int],
     mask_points: int,
-    name_map: dict[str, dict],
+    name_map: dict[str, JsonObject],
     unreferenced: list[str],
     fine_shape: tuple[int, int],
     versions: dict[str, str],
-) -> dict:
+) -> JsonObject:
     """The table's ``_meta``: provenance, the naming rules, the grids and the land mask."""
     return {
         "purpose": (
@@ -658,13 +685,13 @@ def build_meta(
         ),
         "calibration": calibration,
         "area_display_names": {asset: entry["display_name"] for asset, entry in name_map.items()},
-        "name_map": name_map,
+        "name_map": dict(name_map),
         "naming_rules": _naming_rules(unreferenced),
         "grids": _grids(fine_shape),
         "confidence_legend": CONFIDENCE_LEGEND,
         "cell_counts": {
-            f"{GRID_CELL / 100:.0f}m": coarse_counts,
-            f"{FINE_CELL / 100:.0f}m": fine_counts,
+            f"{GRID_CELL / 100:.0f}m": dict(coarse_counts),
+            f"{FINE_CELL / 100:.0f}m": dict(fine_counts),
         },
         "void_distance_m": VOID_DISTANCE_M,
         "land_mask": {
@@ -683,7 +710,7 @@ def build_meta(
                 ),
             },
             "reference_points": mask_points,
-            "categories": mask_counts,
+            "categories": dict(mask_counts),
         },
         "node_region_overrides": (
             "gone, key and all. It held 48 oil nodes whose region had been read off a wiki "
@@ -698,7 +725,7 @@ def build_meta(
     }
 
 
-def _naming_rules(unreferenced: list[str]) -> dict:
+def _naming_rules(unreferenced: list[str]) -> JsonObject:
     return {
         "rule": (
             "the display name is the game's own, taken from each Area_* asset's "
@@ -733,11 +760,11 @@ def _naming_rules(unreferenced: list[str]) -> dict:
             "Area assets that exist beside the texture and that no palette index reaches. "
             "Eastern Dune Forest is a name the game has and puts nowhere."
         ),
-        "unreferenced_area_assets": unreferenced,
+        "unreferenced_area_assets": list(unreferenced),
     }
 
 
-def _grids(fine_shape: tuple[int, int]) -> dict:
+def _grids(fine_shape: tuple[int, int]) -> JsonObject:
     fine_nx, fine_ny = fine_shape
     return {
         "published": (
