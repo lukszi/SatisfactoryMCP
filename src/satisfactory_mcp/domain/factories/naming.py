@@ -81,21 +81,21 @@ def lead_of(st, machines: list[str], cand: Candidate | None = None) -> tuple[str
     if cand is None:
         cand = describe(machines, st.graph, st.game, st.projection, "proposal")
     view = build_view("proposal", machines, st.graph, st.game, st.projection)
-    extracted = {row[1] for row in view.nodes}
+    extracted = {row.resource for row in view.nodes}
     return lead(flowgraph.build(st, st.game, view), cand, st.game, extracted)
 
 
-def proposal_names(st, proposals, style: str = DEFAULT_STYLE, rmap=None) -> dict[int, str]:
+def proposal_names(st, proposals, style: str = DEFAULT_STYLE, region_map=None) -> dict[int, str]:
     """The suggested name of every proposal no label covers, by index, numbered in index
     order past the names already taken -- one answer for the map, Detect and chat."""
     taken = [label.name for label in st.labels.labels]
     out: dict[int, str] = {}
-    for index, pr in enumerate(proposals):
-        if st.labels.covers(pr.machines):
+    for index, proposal in enumerate(proposals):
+        if st.labels.covers(proposal.machines):
             continue
-        cand = describe(pr.machines, st.graph, st.game, st.projection, "proposal")
-        item, _confident = lead_of(st, pr.machines, cand)
-        region = rmap.label_for(*cand.centroid).name if rmap else None
+        cand = describe(proposal.machines, st.graph, st.game, st.projection, "proposal")
+        item, _confident = lead_of(st, proposal.machines, cand)
+        region = region_map.label_for(*cand.centroid).name if region_map else None
         out[index] = suggest(item, region, taken, style)
         taken.append(out[index])
     return out

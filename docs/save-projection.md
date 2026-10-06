@@ -362,6 +362,17 @@ Two implementation notes that were both bugs first:
   under `issues`. Anything whose building class cannot be resolved is reported rather than
   silently contributing 0 MW — an understated draw with no explanation is worse than an
   error.
+- **Nameplate and measured are carried side by side, and their safe directions are
+  opposite.** A Foundry on Solid Steel Ingot at 150% is nameplate 1.5× its recipe rate
+  whether or not it has ever had iron; the pair is what says which. An unreadable machine
+  charged in full makes a power figure conservative but an output figure optimistic, so a
+  machine with no monitor contributes nothing to the measured flows and its nameplate rate
+  is parked in `unmonitored_*`: measured production is a floor by construction, and
+  measured + unmonitored ≤ nameplate. `unmonitored_producers` equal to `producers` means
+  the set has no *measured* production, which is not the same as none. `producing_now`
+  counts machines mid-production at the instant of the save, beside the five-minute
+  window; on a factory that has just stopped the two disagree, and the disagreement is the
+  finding.
 
 This is explicitly **not** throughput. A starved factory reports its full rate; measuring
 what actually flows needs the productivity fields, and conflating the two would make a
