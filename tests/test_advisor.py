@@ -16,7 +16,7 @@ from satisfactory_mcp.core.gamedata.search import resolve_item
 from satisfactory_mcp.domain.planning.analysis import advisor
 from satisfactory_mcp.domain.planning.solver.model import MW, Scenario, Solution
 from satisfactory_mcp.domain.planning.solver.optimize import solve
-from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario, with_recipes
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.nodes.selectors import select_nodes
 from satisfactory_mcp.domain.world.state import WorldState
@@ -61,7 +61,7 @@ def test_advisor_scenarios_extract_rather_than_conjure_raw_material(game, state)
     variable has no extractor, so it charges no extraction power and no node count
     limits it -- the plan it prices could not be built."""
     for obj in advisor.standard_objectives():
-        sc = advisor._request(state, NORTH, obj).scenario
+        sc = advisor._baseline_request(state, NORTH, obj).scenario
         assert sc.raw_caps == {}, f"{obj.key} reintroduced free raw material"
         assert sc.extractor_nodes, f"{obj.key} has no extractors, so raw material is free"
 
@@ -71,7 +71,8 @@ def test_min_machines_objectives_inherit_the_grid_import_allowance(state):
     here would let it drift: a min_machines solve with no import allowance is forced
     to be self-powered and silently reports a much larger machine count."""
     by_key = {
-        o.key: advisor._request(state, NORTH, o).scenario for o in advisor.standard_objectives()
+        o.key: advisor._baseline_request(state, NORTH, o).scenario
+        for o in advisor.standard_objectives()
     }
     assert by_key["net_mw"].grid_import_mw is None  # MW is exported, so no import
     assert by_key["min_machines_for_plastic"].grid_import_mw == 1e6
@@ -117,7 +118,9 @@ def test_a_misspelled_source_refuses_instead_of_scoring_an_empty_scope(state):
     scope SOLVES: feasible, net_mw 0.0, and therefore a 0 delta on every option. Without
     the refusal the user reads "neither option is worth anything" and never learns they
     misspelled a region."""
-    sc = advisor._request(state, ["region:Nowhereland"], advisor.standard_objectives()[0]).scenario
+    sc = advisor._baseline_request(
+        state, ["region:Nowhereland"], advisor.standard_objectives()[0]
+    ).scenario
     assert {k[0] for k in sc.extractor_nodes} <= {"Build_WaterPump_C"}
     empty = solve(sc)
     assert empty.ok and empty.net_mw == 0.0, "the silent answer is a confident zero, not an error"
@@ -212,18 +215,15 @@ def test_counterfactual_adds_every_recipe_of_a_three_recipe_schematic(
     assert any(wanted <= s for s in seen), "counterfactual dropped part of the schematic"
 
 
-def test_a_candidates_new_building_is_offered_to_the_solver(game, state, monkeypatch):
+def test_a_candidates_new_building_is_offered_to_the_solver(game, state):
     """A recipe is not worthless for needing a machine that is unlocked but unbuilt.
     Withholding the building makes the candidate infeasible and reports a None delta
     where the honest answer is a delta plus a "build one first" note."""
     blender_recipe = next(r for r in game.recipes.values() if r.machine == "Build_Blender_C")
-    assert advisor._needed_buildings(state, [blender_recipe.cls]) == {"Build_Blender_C"}
-    sc = advisor._request(state, NORTH, advisor.standard_objectives()[0]).scenario
-    captured: list[Scenario] = []
-    monkeypatch.setattr(advisor, "solve", lambda scenario: captured.append(scenario))
-    advisor._solve_with(sc, state, [blender_recipe.cls])
-    assert "Build_Blender_C" in captured[0].buildings_available
-    assert blender_recipe.cls in captured[0].recipes
+    sc = advisor._baseline_request(state, NORTH, advisor.standard_objectives()[0]).scenario
+    offered = with_recipes(sc, [blender_recipe.cls])
+    assert "Build_Blender_C" in offered.buildings_available
+    assert blender_recipe.cls in offered.recipes
 
 
 def test_own_output_objective_falls_back_to_nothing_without_a_product(game):

@@ -1,40 +1,15 @@
 """Which raw input a plan cannot get, and why -- the other half of INFEASIBLE.
 
-``plan_factory`` already names the buildings a plan needs but the world has not
-built (``must build first: Blender``). It said nothing at all about the resource end,
-and that asymmetry cost a real session: a rocket-fuel plan returned a bare
-INFEASIBLE, ``explain_byproducts`` correctly reported that no byproduct was stuck, and
-the actual cause -- Nitrogen Gas exists **only** as resource-well satellites, which
-need a Pressurizer this world has not unlocked -- had to be recovered by hand from a
-node scan and a recipe listing.
-
-**The verdict is the LP's, never a graph walk**, for the same reason ``byproducts``
-gives: a backward walk from the target over-reports (it names every raw input of every
-route, including routes the plan would never take) and a forward "what can I make from
-what I have" closure under-reports, because Recycled Plastic and Recycled Rubber each
-need the other's product and yet the PAIR net-creates both out of Fuel. So one probe
-does the work: re-solve with a free supply of every raw resource the scope cannot
-currently produce, and let ``raw_used`` say which of them the plan actually wanted.
-
-That gives two honest outcomes, and the negative one is worth as much as the positive:
-
-* the probe solves -> every resource it drew on is demonstrably part of the cause,
-  because the only change was making it available;
-* the probe is still infeasible -> raw supply is **not** the problem, which rules out
-  a whole family of guesses and points back at the byproduct balance.
-
-What it cannot do is apportion blame. Two missing resources that are both needed are
-both reported, with no claim about which is "the" blocker, and a resource the probe
-used only because it was cheap is still reported -- the probe proves it was wanted,
-not that it was unavoidable. The WHY beside each one is a separate, purely factual
-read of the node table (none in scope / behind a locked building / already tapped),
-and it is quoted as counts so a wrong inference is visible rather than buried.
+One probe re-solves with a free supply of every resource the scope cannot extract, and
+``raw_used`` names the ones the plan wanted; still infeasible means supply is not the cause.
+The why beside each is a factual read of the node table, quoted as counts. docs/planning.md §8.2a.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+from ....core.gamedata.constants import WATER, WATER_PUMP
 from ....core.gamedata.model import GameData
 from ...spatial import nodes as nodes_mod
 from ..solver.model import MW
@@ -106,13 +81,13 @@ def _explain(
         reason="",
     )
 
-    if item == "Desc_Water_C":
-        # Water does not come from the node table at all -- build_scenario supplies it
-        # from water volumes, capped by extractor count. Reading its well-satellite
-        # rows here would name the wrong building entirely.
-        pump = "Build_WaterPump_C"
+    if item == WATER:
+        # Water comes from water volumes, never the node table; its well rows name the
+        # wrong building.
         out.reason = "water comes from water volumes, and no Water Extractor is unlocked"
-        out.needs = (game.buildings[pump].name,) if pump in game.buildings else (pump,)
+        out.needs = (
+            (game.buildings[WATER_PUMP].name,) if WATER_PUMP in game.buildings else (WATER_PUMP,)
+        )
         return out
 
     if not scoped:
@@ -163,14 +138,8 @@ def _explain(
 
 
 def unmakeable(req: PlanRequest, game: GameData) -> list[str]:
-    """Exports and targets that no column in this scope produces, and why.
-
-    This is the locked half of ``must build first: Blender``, and it needs no probe:
-    an export item with no producing process cannot be exported at any rate, whatever
-    else is fixed. The distinction it draws is the one a player acts on -- a recipe
-    that is not unlocked and a recipe whose machine is not unlocked are different
-    errands.
-    """
+    """Exports and targets that no column in this scope produces, and why: no recipe, a
+    locked recipe, or a locked machine. Needs no probe (docs/planning.md §8.2a, §8.2b)."""
     sc = req.scenario
     made = {i for p in build_processes(sc) for i, rate in p.rates.items() if rate > 0}
     pool = set(sc.recipes)
@@ -267,9 +236,7 @@ def describe(report: SupplyReport, game: GameData) -> list[str]:
         "changed, the same plan solves"
     )
     for m in report.missing:
-        # `used` is deliberately not quoted here. The probe maximises against an
-        # unlimited supply, so its draw is the probe's plan and not a requirement --
-        # printing it would read as "you need 34,208 Coal/min", which is invention.
+        # Never quote `used`: the probe's draw against free supply is not a requirement.
         needs = f" -- needs {', '.join(m.needs)}" if m.needs else ""
         lines.append(f"missing raw: {m.name} ({m.reason}){needs}")
     return lines

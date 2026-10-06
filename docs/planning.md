@@ -109,6 +109,31 @@ node in scope (with the map-wide count) → nodes in scope but none reachable �
 which `build_scenario` never turns into extractor columns). If none of those hold it says the cause is
 not established rather than inventing one.
 
+**`explain_byproducts` is the same rule from the other end** (`planning/analysis/byproducts.py`):
+which produced item has no outlet. Two static analyses are tempting and both are wrong on the
+reference recipe set. "An item with no consumer is stuck" misses the real trap — Polymer Resin has two
+unlocked consumers (Residual Plastic, Residual Rubber) and is stuck anyway, because Plastic and Rubber
+have nowhere to go either. "An item whose consumers reach an outlet is fine" over-reports the other way:
+Plastic terminates via Empty Canister → Packaged Liquid Biofuel → a Biomass Burner, true as a chain and
+useless as a plan, since nothing in a crude-oil scope supplies the biofuel; a chain test ignores
+co-inputs. So candidates come from a **relaxed probe** — every produced item made exportable, the naive
+`net >= 0` formulation, used only to size and rank and never shown as a plan — and each is confirmed by
+re-solving with that one item opened. An item is named as the blocker only when opening it alone
+measurably moves the caller's own objective, and fixes are priced only for a confirmed blocker.
+
+Anything the base plan produces is already consumed exactly (every balance is an equality), so it
+cannot be the dead end and is skipped. Without that, the probe only works for maximising objectives:
+under `min_power`, `min_raw` or `min_machines` dumping an intermediate is cheaper than processing it, so
+the probe exports every one and each gets reported STUCK in a plan that works.
+
+The graph work left is explanatory: which recipes would consume the item, unlocked or not, and whether
+the chain out of it runs into a closed loop. The loop is scoped to the DIRECT products of the item's
+unlocked consumers rather than a whole strongly connected component — the big component absorbs plenty
+in principle, none of which the scope can supply. Whether a loop can absorb anything is itself a tiny
+LP: Recycled Plastic and Recycled Rubber consume each other's product, and reading that as "they cancel"
+gets it backwards — no non-negative mix of the two absorbs either, and the pair net-CREATES both out of
+Fuel, so it can never soak up a resin surplus.
+
 `nodes.blocking_buildings` supplies the actionable half — *which* building to go and unlock. It is
 strictly sharper than the `reachable` flag in one direction that matters: `reachable` asks only whether
 an extractor of the right **kind** is unlocked and never whether it can tap that **resource**, so an
@@ -1493,7 +1518,62 @@ back at **0.94 m³ crude per Plastic with zero water**, when 0.33 crude plus som
 1.0 and applied to both the raw columns and the extractor columns. A weight of 0 only makes sense as the
 first half of a lexicographic pair — minimise the priced resources, then pin them and minimise the free
 one, or the free one comes back at its stand-in cap. `bom` uses it for water ([§10.1c](mcp-surface.md#101c-bom--the-flattened-bill));
-`compare_recipe_options` predates it and pins its primary resource by cap instead.
+`compare_recipe_options` predates it and pins its primary resource by cap instead (§8.10).
+
+### 8.10 Route comparison
+
+`alternates_for_item` answers "which recipes make this". `compare_recipe_options`
+(`planning/analysis/recipe_routes.py`) answers what each way of making it COSTS, end to end — raw per
+unit, buildings, power, byproducts that need an outlet, and machine types the player owns but has never
+placed.
+
+**A route is one pinned producer.** The interesting comparison is a sub-chain — `Crude → Alt HOR → Diluted
+Fuel` against `Crude → Fuel` — not one recipe against another. So a route pins the recipe that makes the
+final item, deletes its RIVALS from the recipe set, and lets the LP choose everything upstream. Deleting
+the rivals is what makes it a route rather than a blend: with them present the LP mixes producers and
+there is nothing to compare. Both `bom` and this start from `chain_scenario`: every resource a free raw
+input at a stand-in cap, `extractor_nodes={}`, so the per-unit economics never depend on which nodes the
+save happens to have free.
+
+**Not a tree, and not shadow prices.** Recycled Plastic and Recycled Rubber form a real 2-cycle, so a tree
+has no correct depth — and the best Plastic route runs through it. Machine counts, byproduct outlets and
+unbuilt buildings are not dual quantities at all; duals would also be non-unique on these degenerate
+`min_raw` LPs (§8.7), and a reduced cost prices one marginal unit at the current basis rather than
+committing to a chain that is not in it.
+
+**Three solves per route**, because one objective cannot answer the question:
+
+1. `min_machines` at the requested rate — the fewest-buildings floor.
+2. `max_item` with the primary resource capped at `PROBE_RATE` (60/min) — the scale-free headline, "60
+   crude in, 160 Fuel out".
+3. `min_raw` at the requested rate with the primary resource pinned to what solve 2 proved reachable — the
+   buildable plan, and the lexicographic tie-break §8.7 asks for: the scarce resource first, then total
+   raw. Without the pin a bare `min_raw` buys crude back with water (§8.7's 0.94 against 0.33).
+
+The pin in solve 3 needs headroom. `objective_value` is rounded to 4 dp, so the probe yield can read high
+by up to 5e-5 and a cap derived from it sits just below what the route needs — which reported Motor,
+Battery and both Heavy Modular Frame routes, all buildable, as having no route at all. The cap is widened
+by exactly that rounding plus the MILP's 1e-6.
+
+**One ranking resource for the whole table**, chosen once: the resource most routes spend, water excluded
+since it is a pipe burden rather than a scarcity. A per-unit column whose denominator changed between rows
+would not be a comparison. `per_resource` re-runs the table on another one.
+
+The figures reproduce the oil finding exactly: 60 crude → 160 Fuel at 30.00 net MW per m³/min crude via
+Alt HOR + Diluted Fuel, against 40 Fuel and 7.58 MW for the base Fuel recipe. The power yield burns the
+output in the best generator this save has **unlocked**, on the LP's linear draw so it stays scale-free.
+
+What the pinning cannot answer:
+
+* two chains ending in the same recipe — `Residual Fuel` fed by Alt HOR or by base Plastic is one route,
+  and the LP keeps only the cheaper;
+* a deliberate BLEND of two producers, which real factories run;
+* the cost of a rival's OTHER products — deleting it also deletes it as their source, so a route can be
+  charged for replacing a byproduct it never wanted;
+* whether a reachable node of each raw exists, which is `plan_factory`'s question;
+* a route that never spends the ranking resource: it is buildable, has no denominator here, and is
+  reported as such rather than as a chain that cannot close. A route spending several resources is ranked
+  on the shared one and the rest are named, never priced.
 
 ---
 
@@ -1513,7 +1593,9 @@ The counterfactual must add **all new recipes of the schematic** (two carry thre
 
 Because a recipe can be worthless for power and excellent elsewhere, evaluate every candidate against a
 small standard battery — max net MW from a resource basket; min raw for a fixed target part; min
-machines; min power — and **never collapse them into one score without naming the tradeoff**.
+machines; min power — and **never collapse them into one score without naming the tradeoff**. Each
+candidate is also measured on its own main product, or one outside the battery's scope reads 0 for
+every objective: Coated Cable makes Cable, which a plastic-and-power battery never sees.
 
 Report alongside, explicitly labelled as heuristics not maths: byproducts created/removed, new building
 types required (and whether they're unlocked *and built*), water/pipe burden, belt pressure, complexity.
@@ -1533,6 +1615,18 @@ types required (and whether they're unlocked *and built*), water/pipe burden, be
   reports only the ore saving is misleading.
 - **Charge only genuinely new infrastructure.** One run charged all 3,280 m³/min of water as newly
   extracted, including 400 m³/min from 4 already-built extractors.
+- **The baseline is the quantity `plan_factory` reports.** Every advisor scenario goes through
+  `build_scenario`, so raw material arrives through real extractors on real nodes — power charged,
+  count capped by the nodes. Feeding the same basket in as free `raw_caps` inflated the northern
+  baseline from 92,269 MW to 171,882 MW; the deltas mostly survived, since the bias cancels between the
+  two solves, but the absolute number a player compares against `plan_factory` did not. For the same
+  reason a power objective reads `net_mw`, never `objective_value`, which carries the machine price
+  (§8.4) and put the baseline 4,966 MW below the `plan_factory` figure it invites comparison with.
+- **An empty scope is refused, not solved.** `build_scenario` always grants water pumps, so a typo'd
+  region still solves: a baseline of 0 MW and a 0 delta on every option, a confident "neither is worth
+  anything" that reads as a verdict rather than a misspelling.
+- **Only a researchable candidate is recommended.** 24 of the 109 alternates are dependency-blocked on
+  the reference save, and ranking alone would let one of them become the headline advice.
 
 ### 9.3 Unverified mechanics — must be labelled in output
 
