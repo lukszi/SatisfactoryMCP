@@ -55,13 +55,13 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.cache import (
+    CACHE_SIDECAR_NAME,
     DIRECT_CACHE_DIR_NAME,
-    DIRECT_CACHE_SIDECAR,
     TOP_CACHE_DIR_NAME,
-    cached_direct,
     cached_family,
+    cached_raster,
     direct_cache_dir,
-    direct_cache_stamp,
+    raster_cache_stamp,
     restyle_gaps,
     top_cache_dir,
 )
@@ -105,7 +105,7 @@ from mapgen.palette.water.surface import (
 )
 from mapgen.render.compose import DIRECT_LIFT_KNEE_M, render_layer
 from mapgen.render.drawpool import add_draw_flags, draw_threads
-from mapgen.render.extras import KEPT_CACHE_DIRS, load_extras
+from mapgen.render.extras import RUN_CACHE_DIRS, load_extras
 from mapgen.render.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.render.light import add_light_flags, claim_scratch, light_run
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
@@ -652,8 +652,8 @@ def main() -> int:
             if args.cache_dir
             else direct_cache_dir(out_dir, args.renders_name)
         )
-        stamp = direct_cache_stamp(args.size, args.direct_subsamples, field_build)
-        maps = cached_direct(cache, stamp)
+        stamp = raster_cache_stamp(args.size, args.direct_subsamples, field_build)
+        maps = cached_raster(cache, stamp)
         if maps is None:
             print(
                 f"decoding the cliff geometry and rasterising it at {spacing_m:.4f} m"
@@ -704,13 +704,13 @@ def main() -> int:
                     "pyooz_version": pyooz_version,
                 }
             }
-            maps = cached_direct(cache, stamp)
+            maps = cached_raster(cache, stamp)
             del prepared
         else:
             print(f"reusing the direct raster already in {cache}")
             direct_source = {
                 "cliff_geometry": {
-                    "reused": json.loads((cache / DIRECT_CACHE_SIDECAR).read_text(encoding="utf-8"))
+                    "reused": json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
                 }
             }
         if maps is None:
@@ -732,7 +732,7 @@ def main() -> int:
                 if args.cache_dir
                 else top_cache_dir(out_dir, args.renders_name)
             )
-            top_maps = cached_direct(top_cache, stamp)
+            top_maps = cached_raster(top_cache, stamp)
             if top_maps is None:
                 print(f"rasterising the arches and foliage boulders at {spacing_m:.4f} m")
                 geometry = geometry_once()
@@ -757,13 +757,13 @@ def main() -> int:
                 )
                 top_source = {"top_overlay": {**top_meta, "raster": top_stats}}
                 del items
-                top_maps = cached_direct(top_cache, stamp)
+                top_maps = cached_raster(top_cache, stamp)
             else:
                 print(f"reusing the top raster already in {top_cache}")
                 top_source = {
                     "top_overlay": {
                         "reused": json.loads(
-                            (top_cache / DIRECT_CACHE_SIDECAR).read_text(encoding="utf-8")
+                            (top_cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8")
                         )
                     }
                 }
@@ -987,7 +987,7 @@ def main() -> int:
             # mapping refuses the unlink outright.
             direct = maps = top = top_maps = meshes = painted = None
             if not (args.keep_direct or args.restyle):
-                for kept in KEPT_CACHE_DIRS:
+                for kept in RUN_CACHE_DIRS:
                     root = args.cache_dir or out_dir / args.renders_name
                     shutil.rmtree(root / kept, ignore_errors=True)
     print(f"done in {time.time() - total_started:.0f}s")

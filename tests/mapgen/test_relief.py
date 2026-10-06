@@ -10,15 +10,15 @@ import json
 import numpy as np
 
 from mapgen.cache import (
+    CACHE_SIDECAR_NAME,
     DIRECT_CACHE_DIR_NAME,
-    DIRECT_CACHE_SIDECAR,
     DIRECT_COVERAGE_NAME,
     DIRECT_Z_NAME,
     MESH_CACHE_DIR_NAME,
     TOP_CACHE_DIR_NAME,
-    direct_cache_stamp,
     mesh_stamp,
     missing_caches,
+    raster_cache_stamp,
 )
 from mapgen.commands.renders import BIOME_LAYERS, LAYERS
 from mapgen.palette.painted.ground import oklab, srgb_to_linear
@@ -134,7 +134,7 @@ def test_biome_tints_move_the_ground_towards_the_biome():
 
 
 def test_a_restyle_names_every_cache_it_cannot_use(tmp_path):
-    stamp = direct_cache_stamp(64, 1, "build 1")
+    stamp = raster_cache_stamp(64, 1, "build 1")
     meshes = mesh_stamp(64, "build 1", 1)
     assert missing_caches(tmp_path, stamp, meshes, True, True) == [
         DIRECT_CACHE_DIR_NAME,
@@ -144,10 +144,10 @@ def test_a_restyle_names_every_cache_it_cannot_use(tmp_path):
     for name in (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME):
         folder = tmp_path / name
         folder.mkdir()
-        (folder / DIRECT_CACHE_SIDECAR).write_text(json.dumps(stamp), encoding="utf-8")
+        (folder / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
         np.zeros((64, 64), np.float32).tofile(folder / DIRECT_Z_NAME)
         np.zeros((64, 64), np.uint8).tofile(folder / DIRECT_COVERAGE_NAME)
     assert missing_caches(tmp_path, stamp, meshes, True, False) == []
     assert missing_caches(tmp_path, stamp, meshes, True, True) == [MESH_CACHE_DIR_NAME]
-    other = direct_cache_stamp(128, 1, "build 1")
+    other = raster_cache_stamp(128, 1, "build 1")
     assert missing_caches(tmp_path, other, meshes, False, False) == [DIRECT_CACHE_DIR_NAME]

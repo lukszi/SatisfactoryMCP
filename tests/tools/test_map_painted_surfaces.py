@@ -14,12 +14,12 @@ import numpy as np
 import pytest
 
 from mapgen.cache import (
-    DIRECT_CACHE_SIDECAR,
+    CACHE_SIDECAR_NAME,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
     DIRECT_Z_NAME,
     cached_family,
-    direct_cache_stamp,
+    raster_cache_stamp,
 )
 from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.ground.bake import (
@@ -383,19 +383,19 @@ def test_a_mesh_raster_is_reused_when_its_stamp_matches(tmp_path, capsys):
 
 
 def test_the_direct_cache_carries_the_family_reader_and_its_plane(tmp_path):
-    stamp = direct_cache_stamp(8, 1, "build 1")
+    stamp = raster_cache_stamp(8, 1, "build 1")
     assert stamp["families"] == READER_VERSIONS["rock_families"]
     assert READER_VERSIONS["rock_families"] >= 2, "a plane without the desert family is a miss"
     np.zeros((8, 8), np.float32).tofile(tmp_path / DIRECT_Z_NAME)
     np.zeros((8, 8), np.uint8).tofile(tmp_path / DIRECT_COVERAGE_NAME)
-    (tmp_path / DIRECT_CACHE_SIDECAR).write_text(json.dumps(stamp), encoding="utf-8")
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
     assert cached_family(tmp_path, stamp) is None, "no plane was written"
     np.full((8, 8), 3, np.uint8).tofile(tmp_path / DIRECT_FAMILY_NAME)
     plane = cached_family(tmp_path, stamp)
     assert plane is not None and int(plane[0, 0]) == 3
     del plane
     old = {k: v for k, v in stamp.items() if k != "families"}
-    (tmp_path / DIRECT_CACHE_SIDECAR).write_text(json.dumps(old), encoding="utf-8")
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(json.dumps(old), encoding="utf-8")
     assert cached_family(tmp_path, stamp) is None, "a cache from before the families is a miss"
 
 

@@ -11,9 +11,9 @@ import numpy as np
 import pytest
 
 from mapgen.cache import (
+    CACHE_SIDECAR_NAME,
     DIRECT_CACHE_DIR_NAME,
     MESH_CACHE_DIR_NAME,
-    MESH_CACHE_SIDECAR,
     MESH_CLASS_NAME,
     MESH_Z_NAME,
     TITAN_CACHE_DIR_NAME,
@@ -98,7 +98,7 @@ def test_painted_keeps_the_default_sun_on_a_mesh_only_it_draws_when_another_laye
 def _write_meshes(folder, stamp):
     folder.mkdir(parents=True)
     size = stamp["size"]
-    (folder / MESH_CACHE_SIDECAR).write_text(json.dumps(stamp), encoding="utf-8")
+    (folder / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
     np.zeros((size, size), np.float32).tofile(folder / MESH_Z_NAME)
     np.zeros((size, size), np.uint8).tofile(folder / MESH_CLASS_NAME)
 

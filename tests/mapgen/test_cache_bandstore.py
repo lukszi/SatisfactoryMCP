@@ -17,23 +17,22 @@ from mapgen import cli
 from mapgen.bandstore import BandArray, BandStoreError, BandWriter
 from mapgen.cache import (
     BANDS_SUFFIX,
+    CACHE_SIDECAR_NAME,
     DIRECT_CACHE_DIR_NAME,
-    DIRECT_CACHE_SIDECAR,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
     DIRECT_Z_NAME,
     MESH_CACHE_DIR_NAME,
-    MESH_CACHE_SIDECAR,
     MESH_CLASS_NAME,
     MESH_Z_NAME,
     STORAGE_BANDS,
     STORAGE_RAW,
-    cached_direct,
     cached_family,
     cached_meshes,
-    direct_cache_stamp,
+    cached_raster,
     mesh_stamp,
     missing_caches,
+    raster_cache_stamp,
 )
 from mapgen.commands.compress_cache import compress
 from mapgen.common import Refusal
@@ -189,10 +188,10 @@ def _mesh_band(prepared, x0_cm, y0_cm, scale_cm, rows, cols):
 
 @pytest.mark.parametrize("storage", [STORAGE_RAW, STORAGE_BANDS])
 def test_both_storages_hit_and_hold_the_same_planes(tmp_path, monkeypatch, storage):
-    folder, stamp = tmp_path / DIRECT_CACHE_DIR_NAME, direct_cache_stamp(SIZE, 1, "b1")
+    folder, stamp = tmp_path / DIRECT_CACHE_DIR_NAME, raster_cache_stamp(SIZE, 1, "b1")
     stats = rasterise_direct(_band_raster, folder, SIZE, 1, stamp, False, storage)
     assert stats["storage"] == storage
-    z, cov = cached_direct(folder, stamp)
+    z, cov = cached_raster(folder, stamp)
     family = cached_family(folder, stamp)
     kind = np.memmap if storage == STORAGE_RAW else BandArray
     assert all(isinstance(p, kind) for p in (z, cov, family))
@@ -200,7 +199,7 @@ def test_both_storages_hit_and_hold_the_same_planes(tmp_path, monkeypatch, stora
         assert _same(np.asarray(got), want)
     suffix = "" if storage == STORAGE_RAW else BANDS_SUFFIX
     assert sorted(p.name for p in folder.iterdir()) == sorted(
-        [DIRECT_CACHE_SIDECAR] + [name + suffix for name in DIRECT_PLANES]
+        [CACHE_SIDECAR_NAME] + [name + suffix for name in DIRECT_PLANES]
     )
 
     monkeypatch.setattr(render_meshes, "rasterise_mesh_band", _mesh_band)
@@ -217,48 +216,48 @@ def test_both_storages_hit_and_hold_the_same_planes(tmp_path, monkeypatch, stora
 
 def test_a_legacy_cache_without_a_storage_field_still_hits(tmp_path):
     stamp = mesh_stamp(64, "b1", 2)
-    (tmp_path / MESH_CACHE_SIDECAR).write_text(json.dumps(stamp), encoding="utf-8")
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(json.dumps(stamp), encoding="utf-8")
     np.full((64, 64), 7.0, np.float32).tofile(tmp_path / MESH_Z_NAME)
     np.full((64, 64), 3, np.uint8).tofile(tmp_path / MESH_CLASS_NAME)
     z, cls = cached_meshes(tmp_path, stamp)
     assert isinstance(z, np.memmap) and float(z[5, 5]) == 7.0 and int(cls[63, 0]) == 3
     del z, cls
-    (tmp_path / MESH_CACHE_SIDECAR).write_text(
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(
         json.dumps({**stamp, "storage": "zstd-bands-v9"}), encoding="utf-8"
     )
     assert cached_meshes(tmp_path, stamp) is None, "a storage this reader does not know"
 
 
 def test_a_rewrite_in_the_other_storage_removes_the_first(tmp_path):
-    stamp = direct_cache_stamp(SIZE, 1, "b1")
+    stamp = raster_cache_stamp(SIZE, 1, "b1")
     rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_RAW)
     rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
-        [DIRECT_CACHE_SIDECAR] + [name + BANDS_SUFFIX for name in DIRECT_PLANES]
+        [CACHE_SIDECAR_NAME] + [name + BANDS_SUFFIX for name in DIRECT_PLANES]
     )
     rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_RAW)
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
-        [DIRECT_CACHE_SIDECAR, *DIRECT_PLANES]
+        [CACHE_SIDECAR_NAME, *DIRECT_PLANES]
     )
 
 
 def test_a_corrupt_band_raises_and_unstamps_its_cache_so_the_next_run_misses(tmp_path):
-    stamp = direct_cache_stamp(SIZE, 1, "b1")
+    stamp = raster_cache_stamp(SIZE, 1, "b1")
     rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
     _corrupt_band(tmp_path / (DIRECT_Z_NAME + BANDS_SUFFIX), (SIZE, SIZE), np.float32, 1)
-    z, _cov = cached_direct(tmp_path, stamp)
+    z, _cov = cached_raster(tmp_path, stamp)
     with pytest.raises(BandStoreError, match="band 1"):
         z[250:300]
-    assert not (tmp_path / DIRECT_CACHE_SIDECAR).exists()
-    assert cached_direct(tmp_path, stamp) is None
+    assert not (tmp_path / CACHE_SIDECAR_NAME).exists()
+    assert cached_raster(tmp_path, stamp) is None
 
 
 def test_a_truncated_band_file_is_a_miss(tmp_path):
-    stamp = direct_cache_stamp(SIZE, 1, "b1")
+    stamp = raster_cache_stamp(SIZE, 1, "b1")
     rasterise_direct(_band_raster, tmp_path, SIZE, 1, stamp, False, STORAGE_BANDS)
     plane = tmp_path / (DIRECT_COVERAGE_NAME + BANDS_SUFFIX)
     plane.write_bytes(plane.read_bytes()[:-100])
-    assert cached_direct(tmp_path, stamp) is None
+    assert cached_raster(tmp_path, stamp) is None
     assert cached_family(tmp_path, stamp) is None
 
 
@@ -266,7 +265,7 @@ def test_a_truncated_band_file_is_a_miss(tmp_path):
 
 
 def _raw_caches(root):
-    stamp = direct_cache_stamp(SIZE, 1, "b1")
+    stamp = raster_cache_stamp(SIZE, 1, "b1")
     rasterise_direct(_band_raster, root / DIRECT_CACHE_DIR_NAME, SIZE, 1, stamp, False,
                      STORAGE_RAW)  # fmt: skip
     key = mesh_stamp(SIZE, "b1", 2)
@@ -279,14 +278,14 @@ def test_the_converter_round_trips_a_raw_cache_in_place(tmp_path):
     stamp, _key = _raw_caches(tmp_path)
     folder = tmp_path / DIRECT_CACHE_DIR_NAME
     before = {name: (folder / name).read_bytes() for name in DIRECT_PLANES}
-    recorded = json.loads((folder / DIRECT_CACHE_SIDECAR).read_text(encoding="utf-8"))
+    recorded = json.loads((folder / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
     done = compress(folder)
     assert sorted(done["planes"]) == sorted(DIRECT_PLANES)
     assert done["band_bytes"] < done["raw_bytes"] == sum(map(len, before.values()))
-    after = json.loads((folder / DIRECT_CACHE_SIDECAR).read_text(encoding="utf-8"))
+    after = json.loads((folder / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
     assert after == {**recorded, "storage": STORAGE_BANDS}
     assert not any((folder / name).exists() for name in DIRECT_PLANES)
-    planes = (*cached_direct(folder, stamp), cached_family(folder, stamp))
+    planes = (*cached_raster(folder, stamp), cached_family(folder, stamp))
     for plane, name in zip(planes, DIRECT_PLANES, strict=True):
         assert isinstance(plane, BandArray) and np.asarray(plane).tobytes() == before[name]
     assert compress(folder) == {"already": True, "removed": [], "kept": {}}
@@ -297,11 +296,11 @@ def test_the_command_converts_a_folder_into_a_target_and_leaves_the_source(tmp_p
     out = tmp_path / "out"
     monkeypatch.setattr(sys, "argv", ["mapgen"])
     assert cli.main(["compress-cache", str(tmp_path / "kept"), "--to", str(out)]) == 0
-    assert isinstance(cached_direct(out / DIRECT_CACHE_DIR_NAME, stamp)[0], BandArray)
+    assert isinstance(cached_raster(out / DIRECT_CACHE_DIR_NAME, stamp)[0], BandArray)
     assert isinstance(cached_meshes(out / MESH_CACHE_DIR_NAME, key)[1], BandArray)
-    source = cached_direct(tmp_path / "kept" / DIRECT_CACHE_DIR_NAME, stamp)
+    source = cached_raster(tmp_path / "kept" / DIRECT_CACHE_DIR_NAME, stamp)
     assert isinstance(source[0], np.memmap)
-    assert _same(np.asarray(source[0]), np.asarray(cached_direct(out / DIRECT_CACHE_DIR_NAME,
+    assert _same(np.asarray(source[0]), np.asarray(cached_raster(out / DIRECT_CACHE_DIR_NAME,
                                                                  stamp)[0]))  # fmt: skip
     del source
 
@@ -310,7 +309,7 @@ def test_the_converter_refuses_a_cache_being_written(tmp_path, monkeypatch, caps
     monkeypatch.setattr(sys, "argv", ["mapgen"])
     _raw_caches(tmp_path)
     folder = tmp_path / DIRECT_CACHE_DIR_NAME
-    (folder / DIRECT_CACHE_SIDECAR).unlink()
+    (folder / CACHE_SIDECAR_NAME).unlink()
     with pytest.raises(Refusal, match="still being written"):
         compress(folder)
     assert cli.main(["compress-cache", str(folder)]) == 1
@@ -322,11 +321,11 @@ def test_the_converter_refuses_a_cache_being_written(tmp_path, monkeypatch, caps
 def test_the_converter_refuses_a_cache_a_render_holds_open(tmp_path):
     stamp, _key = _raw_caches(tmp_path)
     folder = tmp_path / DIRECT_CACHE_DIR_NAME
-    held = cached_direct(folder, stamp)
+    held = cached_raster(folder, stamp)
     with pytest.raises(Refusal, match="held open"):
         compress(folder)
     del held
-    recorded = json.loads((folder / DIRECT_CACHE_SIDECAR).read_text("utf-8"))
+    recorded = json.loads((folder / CACHE_SIDECAR_NAME).read_text("utf-8"))
     assert recorded["storage"] == STORAGE_RAW
     assert not list(folder.glob("*" + BANDS_SUFFIX))
     assert compress(folder)["planes"]

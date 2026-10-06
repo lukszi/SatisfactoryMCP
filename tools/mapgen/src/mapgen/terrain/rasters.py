@@ -10,8 +10,8 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.cache import (
+    CACHE_SIDECAR_NAME,
     DIRECT_BAND_ROWS,
-    DIRECT_CACHE_SIDECAR,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
     DIRECT_Z_NAME,
@@ -357,13 +357,13 @@ def rasterise_direct(
     Banded because a 32768 square of float32 is 4.3 GB and the render already holds 3.2 GB
     of output; 256 rows is 34 MB. On disk because the answer is the same for both layers and
     rasterising 216 M triangles is twenty minutes. The planes are written beside a sidecar
-    naming what they are of, and ``cached_direct`` refuses anything that does not match
+    naming what they are of, and ``cached_raster`` refuses anything that does not match
     rather than drawing last week's rocks under this week's field.
 
     A ``band_raster`` that returns ``(z, source)`` also writes the family plane.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / DIRECT_CACHE_SIDECAR).unlink(missing_ok=True)
+    (directory / CACHE_SIDECAR_NAME).unlink(missing_ok=True)
     clear_planes(directory, (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME, DIRECT_FAMILY_NAME))
     step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / size
     x0_cm = BOUNDS_M["x_min_m"] * 100
@@ -418,5 +418,5 @@ def rasterise_direct(
             "read by every layer; deleted at the end of the run unless --keep-direct."
         ),
     }
-    (directory / DIRECT_CACHE_SIDECAR).write_text(json.dumps(stats, indent=1), encoding="utf-8")
+    (directory / CACHE_SIDECAR_NAME).write_text(json.dumps(stats, indent=1), encoding="utf-8")
     return stats

@@ -20,9 +20,9 @@ import numpy as np
 
 from mapgen.bandstore import BAND_ROWS, BandArray, BandWriter
 from mapgen.cache import (
-    DIRECT_CACHE_SIDECAR,
+    BAND_STORE_DIRS,
+    CACHE_SIDECAR_NAME,
     PLANE_DTYPES,
-    RASTER_DIRS,
     STORAGE_BANDS,
     STORAGE_RAW,
     clear_planes,
@@ -34,14 +34,14 @@ from mapgen.common import Refusal
 __all__ = ["REFUSED", "caches_under", "compress", "held_open", "main"]
 
 REFUSED = 1
-SIDECAR = DIRECT_CACHE_SIDECAR
+SIDECAR = CACHE_SIDECAR_NAME
 
 
 def caches_under(root: Path) -> list[Path]:
     """``root`` itself when it is a cache, else the raster caches directly under it."""
-    if (root / SIDECAR).is_file() or root.name in RASTER_DIRS:
+    if (root / SIDECAR).is_file() or root.name in BAND_STORE_DIRS:
         return [root]
-    return [root / name for name in RASTER_DIRS if (root / name).is_dir()]
+    return [root / name for name in BAND_STORE_DIRS if (root / name).is_dir()]
 
 
 def _real(path: Path) -> Path:

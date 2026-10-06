@@ -10,8 +10,8 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.cache import (
+    CACHE_SIDECAR_NAME,
     DIRECT_BAND_ROWS,
-    MESH_CACHE_SIDECAR,
     MESH_CLASS_NAME,
     MESH_FAMILY_NAME,
     MESH_Z_NAME,
@@ -267,7 +267,7 @@ def rasterise_meshes(
     plane, and the family plane when the items carry families."""
     size = stamp["size"]
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / MESH_CACHE_SIDECAR).unlink(missing_ok=True)
+    (directory / CACHE_SIDECAR_NAME).unlink(missing_ok=True)
     clear_planes(directory, (MESH_Z_NAME, MESH_CLASS_NAME, MESH_FAMILY_NAME))
     step_cm = (bounds_m["x_max_m"] - bounds_m["x_min_m"]) * 100 / size
     covered, started = 0, time.time()
@@ -296,7 +296,7 @@ def rasterise_meshes(
                 )
     stats = {**stamp, "storage": storage, "texels": covered,
              "seconds": round(time.time() - started, 1)}  # fmt: skip
-    (directory / MESH_CACHE_SIDECAR).write_text(json.dumps(stats, indent=1), encoding="utf-8")
+    (directory / CACHE_SIDECAR_NAME).write_text(json.dumps(stats, indent=1), encoding="utf-8")
     return stats
 
 
@@ -311,7 +311,7 @@ def mesh_pass(cache: Path, size: int, build, reader: str, build_items, label: st
     maps = cached_meshes(cache, stamp)
     if maps is not None:
         print(f"reusing the {label} raster already in {cache}")
-        recorded = json.loads((cache / MESH_CACHE_SIDECAR).read_text(encoding="utf-8"))
+        recorded = json.loads((cache / CACHE_SIDECAR_NAME).read_text(encoding="utf-8"))
         return _with_family(cache, stamp, maps), {reader: {"reused": recorded}}
     spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
     print(f"rasterising the {label} at {spacing_m:.4f} m")

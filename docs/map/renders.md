@@ -936,7 +936,7 @@ close, and a writer that fails or is closed short deletes its file. `BandArray` 
 ### Reading
 
 `cache.open_plane` returns a `BandArray` for the band store and the read-only memory map for a
-raw cache. `cached_direct`, `cached_family` and `cached_meshes` go through it, and the Titan
+raw cache. `cached_raster`, `cached_family` and `cached_meshes` go through it, and the Titan
 trees through `cached_meshes`. Nothing that draws changed.
 
 - `BandArray` decodes a band when it is first asked for and keeps the last three. A band

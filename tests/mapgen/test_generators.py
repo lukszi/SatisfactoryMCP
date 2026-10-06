@@ -25,11 +25,11 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from mapgen.cache import (
-    DIRECT_CACHE_SIDECAR,
+    CACHE_SIDECAR_NAME,
     DIRECT_COVERAGE_NAME,
     DIRECT_Z_NAME,
-    cached_direct,
-    direct_cache_stamp,
+    cached_raster,
+    raster_cache_stamp,
 )
 from mapgen.commands.renders import LAYERS
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME
@@ -725,7 +725,7 @@ def test_the_regime_table_counts_by_province_and_reports_the_unbucketed_weight()
 
 
 def test_a_direct_cache_from_another_render_is_rebuilt_rather_than_drawn_from(tmp_path):
-    """``cached_direct``: three keys, and a mismatch on any of them is a different picture.
+    """``cached_raster``: three keys, and a mismatch on any of them is a different picture.
 
     The raster is written once and read by both layers, which is the only reason it is on
     disk at all -- so the question a reader has is whether the bytes under this run's
@@ -733,21 +733,21 @@ def test_a_direct_cache_from_another_render_is_rebuilt_rather_than_drawn_from(tm
     else is last week's rocks, and the answer to that is to rasterise again rather than to
     draw them.
     """
-    stamp = direct_cache_stamp(8, 1, "build 495413")
+    stamp = raster_cache_stamp(8, 1, "build 495413")
     tmp_path.mkdir(parents=True, exist_ok=True)
     numpy.zeros((8, 8), numpy.float32).tofile(tmp_path / DIRECT_Z_NAME)
     numpy.zeros((8, 8), numpy.uint8).tofile(tmp_path / DIRECT_COVERAGE_NAME)
-    (tmp_path / DIRECT_CACHE_SIDECAR).write_text(
+    (tmp_path / CACHE_SIDECAR_NAME).write_text(
         json.dumps({**stamp, "seconds": 1.0}), encoding="utf-8"
     )
-    assert cached_direct(tmp_path, stamp) is not None
+    assert cached_raster(tmp_path, stamp) is not None
     for other in (
-        direct_cache_stamp(16, 1, "build 495413"),
-        direct_cache_stamp(8, 2, "build 495413"),
-        direct_cache_stamp(8, 1, "build 500000"),
+        raster_cache_stamp(16, 1, "build 495413"),
+        raster_cache_stamp(8, 2, "build 495413"),
+        raster_cache_stamp(8, 1, "build 500000"),
     ):
-        assert cached_direct(tmp_path, other) is None
-    assert cached_direct(tmp_path / "nowhere", stamp) is None
+        assert cached_raster(tmp_path, other) is None
+    assert cached_raster(tmp_path / "nowhere", stamp) is None
 
 
 def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(tmp_path):

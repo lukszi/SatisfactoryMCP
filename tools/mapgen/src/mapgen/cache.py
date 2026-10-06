@@ -34,7 +34,8 @@ DIRECT_COVERAGE_NAME = "direct.cov.u8"
 DIRECT_FAMILY_NAME = "direct.family.u8"
 
 
-DIRECT_CACHE_SIDECAR = "meta.json"
+#: Every cache's stamp: the sidecar a cache is read back by.
+CACHE_SIDECAR_NAME = "meta.json"
 
 
 #: The arch-and-boulder raster, cached the same way and under the same file names.
@@ -52,9 +53,6 @@ MESH_CLASS_NAME = "meshes.class.u8"
 
 #: The rock family of each texel's winning render-only mesh, as the direct cache's.
 MESH_FAMILY_NAME = "meshes.family.u8"
-
-
-MESH_CACHE_SIDECAR = "meta.json"
 
 
 #: Every plane a raster cache holds, by its raw file name, and its element type.
@@ -88,7 +86,7 @@ def top_cache_dir(out_dir: Path, name: str = RENDERS_DIR_NAME) -> Path:
     return out_dir / name / TOP_CACHE_DIR_NAME
 
 
-def direct_cache_stamp(
+def raster_cache_stamp(
     size: int, subsamples: int, build: str | None, families: int | None = None
 ) -> dict:
     """What a cached direct raster has to agree with before it is drawn from.
@@ -199,16 +197,16 @@ def _planes(directory: Path, sidecar: str, stamp: dict, names: tuple[str, ...]):
         return None
 
 
-def cached_direct(directory: Path, stamp: dict) -> tuple | None:
+def cached_raster(directory: Path, stamp: dict) -> tuple | None:
     """The cached raster's two planes, read-only, or ``None`` if it is not this one."""
-    return _planes(directory, DIRECT_CACHE_SIDECAR, stamp, (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME))
+    return _planes(directory, CACHE_SIDECAR_NAME, stamp, (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME))
 
 
 def cached_family(directory: Path, stamp: dict):
     """The direct cache's family plane, when it is this cache and was written."""
-    if "families" not in stamp or cached_direct(directory, stamp) is None:
+    if "families" not in stamp or cached_raster(directory, stamp) is None:
         return None
-    found = _planes(directory, DIRECT_CACHE_SIDECAR, stamp, (DIRECT_FAMILY_NAME,))
+    found = _planes(directory, CACHE_SIDECAR_NAME, stamp, (DIRECT_FAMILY_NAME,))
     return None if found is None else found[0]
 
 
@@ -221,10 +219,15 @@ TITAN_FACTOR = 2
 RIVER_CACHE_DIR_NAME = "rivers.cache"
 
 #: Every raster cache, the planes ``python -m mapgen compress-cache`` converts.
-RASTER_DIRS = (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME, TITAN_CACHE_DIR_NAME)
+BAND_STORE_DIRS = (
+    DIRECT_CACHE_DIR_NAME,
+    TOP_CACHE_DIR_NAME,
+    MESH_CACHE_DIR_NAME,
+    TITAN_CACHE_DIR_NAME,
+)
 
 #: Every raster cache a run deletes at its end unless ``--keep-direct``.
-RASTER_CACHE_DIRS = (*RASTER_DIRS, RIVER_CACHE_DIR_NAME)
+CACHE_DIR_NAMES = (*BAND_STORE_DIRS, RIVER_CACHE_DIR_NAME)
 
 
 def mesh_stamp(size: int, build: str | None, reader_version: int) -> dict:
@@ -233,12 +236,12 @@ def mesh_stamp(size: int, build: str | None, reader_version: int) -> dict:
 
 def cached_meshes(directory: Path, stamp: dict):
     """``(z cm, class)`` planes, read-only, if the cache is this one, else ``None``."""
-    return _planes(directory, MESH_CACHE_SIDECAR, stamp, (MESH_Z_NAME, MESH_CLASS_NAME))
+    return _planes(directory, CACHE_SIDECAR_NAME, stamp, (MESH_Z_NAME, MESH_CLASS_NAME))
 
 
 def cached_mesh_family(directory: Path, stamp: dict):
     """The mesh cache's family plane, when it is this cache and one was written."""
-    found = _planes(directory, MESH_CACHE_SIDECAR, stamp, (MESH_FAMILY_NAME,))
+    found = _planes(directory, CACHE_SIDECAR_NAME, stamp, (MESH_FAMILY_NAME,))
     return None if found is None else found[0]
 
 
@@ -271,9 +274,9 @@ def missing_caches(
     root: Path, stamp: dict, meshes_stamp: dict, top: bool, meshes: bool, titan_stamp=None
 ) -> list[str]:
     """The cache directories under ``root`` a palette-only run needs and cannot use."""
-    wanted = [(DIRECT_CACHE_DIR_NAME, stamp, cached_direct)]
+    wanted = [(DIRECT_CACHE_DIR_NAME, stamp, cached_raster)]
     if top:
-        wanted.append((TOP_CACHE_DIR_NAME, stamp, cached_direct))
+        wanted.append((TOP_CACHE_DIR_NAME, stamp, cached_raster))
     if meshes:
         wanted.append((MESH_CACHE_DIR_NAME, meshes_stamp, cached_meshes))
     if titan_stamp is not None:
@@ -286,5 +289,5 @@ def restyle_gaps(root: Path, size: int, subsamples: int, build, top: bool, meshe
     """``missing_caches`` for a run at ``size``; ``titan`` when it draws the Titan trees."""
     mesh_key = mesh_stamp(size, build, READER_VERSIONS["render_meshes"])
     titan_key = mesh_stamp(size // TITAN_FACTOR, build, READER_VERSIONS["titan_trees"])
-    stamp = direct_cache_stamp(size, subsamples, build)
+    stamp = raster_cache_stamp(size, subsamples, build)
     return missing_caches(root, stamp, mesh_key, top, meshes, titan_key if titan else None)

@@ -18,11 +18,11 @@ from typing import Self
 
 import numpy as np
 
-__all__ = ["BAND_ROWS", "KEEP_BANDS", "LEVEL", "BandArray", "BandStoreError", "BandWriter"]
+__all__ = ["BAND_ROWS", "CACHED_BANDS", "ZSTD_LEVEL", "BandArray", "BandStoreError", "BandWriter"]
 
 BAND_ROWS = 256
-LEVEL = 1
-KEEP_BANDS = 3
+ZSTD_LEVEL = 1
+CACHED_BANDS = 3
 MAGIC = b"MGBANDS1"
 #: magic, rows, cols, band rows, dtype string, offset table bytes.
 TRAILER = struct.Struct("<8sqqq8sq")
@@ -50,7 +50,7 @@ def _unshuffle(raw: bytes, dtype: np.dtype, rows: int, cols: int) -> np.ndarray:
 class BandWriter:
     """Writes a plane top to bottom, ``band_rows`` at a time; ``close`` commits it to disk."""
 
-    def __init__(self, path, shape, dtype, band_rows: int = BAND_ROWS, level: int = LEVEL):
+    def __init__(self, path, shape, dtype, band_rows: int = BAND_ROWS, level: int = ZSTD_LEVEL):
         import zstandard
 
         self.path, self.dtype = Path(path), np.dtype(dtype)
@@ -118,7 +118,7 @@ class BandArray:
 
     ndim = 2
 
-    def __init__(self, path, shape, dtype, keep: int = KEEP_BANDS,
+    def __init__(self, path, shape, dtype, keep: int = CACHED_BANDS,
                  on_corrupt: Callable[[], None] | None = None):  # fmt: skip
         import zstandard
 

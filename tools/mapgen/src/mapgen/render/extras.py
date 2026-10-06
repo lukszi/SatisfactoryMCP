@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from mapgen.cache import (
+    CACHE_DIR_NAMES,
     MESH_CACHE_DIR_NAME,
-    RASTER_CACHE_DIRS,
     TITAN_CACHE_DIR_NAME,
     TITAN_FACTOR,
 )
@@ -20,10 +20,10 @@ from mapgen.palette.water.falls import load_falls
 from mapgen.palette.water.rivers import load_rivers
 from mapgen.terrain.render_meshes import mesh_items, mesh_pass, titan_items
 
-__all__ = ["KEPT_CACHE_DIRS", "Extras", "load_extras"]
+__all__ = ["RUN_CACHE_DIRS", "Extras", "load_extras"]
 
 #: Every cache a run deletes at its end unless ``--keep-direct``.
-KEPT_CACHE_DIRS = (*RASTER_CACHE_DIRS, FALLS_CACHE_DIR_NAME)
+RUN_CACHE_DIRS = (*CACHE_DIR_NAMES, FALLS_CACHE_DIR_NAME)
 
 
 @dataclass
