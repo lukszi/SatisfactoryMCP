@@ -16,7 +16,7 @@ import { applyDash } from "../dash/shell";
 import { applyFloorFragment } from "../map/floors/floors";
 import { reload } from "./load";
 import { map, writeHash, writtenHash } from "../map/map";
-import { applyPickupFragment } from "../map/drawn/markers";
+import { applyPickupFragment } from "../map/drawn/pickups";
 import { showSelector } from "../map/panel";
 import { dashFromFragment, garbledNote, parseHash, pinnedPath, state } from "./state";
 import { askMode, knownMode } from "../map/tiles";

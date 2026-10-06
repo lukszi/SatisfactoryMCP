@@ -10,7 +10,8 @@ import { reveal } from "../labels";
 import { L } from "../leaflet";
 import { boundsOfBbox, FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, latLngOf } from "../map";
 import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
-import { knownNodes, pickupName } from "../drawn/markers";
+import { knownNodes } from "../drawn/markers";
+import { pickupName } from "../drawn/pickups";
 import { withQuery } from "../../app/nav";
 import {
   carriesText,

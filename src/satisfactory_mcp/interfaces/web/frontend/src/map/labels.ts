@@ -12,7 +12,7 @@ import { cardWithFloors } from "./floors/floors";
 import { coords, joinWithConjunction } from "../kit/format";
 import { L } from "./leaflet";
 import { BAND, BUILT_AREA_LAYERS, clearedLayer, turnOnLayers } from "./layers";
-import { layerWord } from "./drawn/markers";
+import { layerDisplayName } from "./drawn/pickups";
 import { boundsOfBbox, flyPadded, latLngOf, map } from "./map";
 import { regionLabels } from "./regions";
 import { registerFetch } from "../app/registry";
@@ -28,7 +28,7 @@ import type { Row } from "../kit/dom";
  * that ticked itself as the map moved would make the checkbox lie about who decided. One toast
  * for the set, because the player made one gesture. */
 export function reveal(names: string[]): void {
-  const turned = turnOnLayers(names).map(layerWord);
+  const turned = turnOnLayers(names).map(layerDisplayName);
   if (!turned.length) return;
   notify(
     joinWithConjunction(turned, "and") +

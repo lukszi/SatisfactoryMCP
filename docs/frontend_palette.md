@@ -41,7 +41,7 @@ carried on the path as `_widen`) and is re-added at every zoom, so the rim stays
 Nearest neighbour is the closest colour of any OTHER owner, as the audit computes it today.
 "Discharged" means the pair is listed in `palette.ts`.
 
-### `markers` — node dots, the player and the pickups (`drawn/markers.ts`)
+### `markers` — node dots and the player (`drawn/markers.ts`), pickups (`drawn/pickups.ts`)
 
 | key | hex | role | nearest cross-owner neighbour | constraint |
 | --- | --- | --- | --- | --- |

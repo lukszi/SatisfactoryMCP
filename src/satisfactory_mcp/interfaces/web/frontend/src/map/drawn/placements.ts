@@ -32,20 +32,20 @@ import type {
   StructuresResponse,
 } from "../../api/shapes";
 
+// Concrete: slate violet, the one cool direction the grounds leave open (docs/frontend_palette.md).
+var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).foundations;
+
 /* The player's floor plan: one 8 m tile per placed foundation, ramp, wall or catwalk.
  *
- * NO PER-CLASS SIZE. None of these eighteen classes has clearance data, and they all snap to
- * the same grid, whose edge the server reports as `tile_m` -- so a wall paints the tile it
- * stands on rather than its own thin volume, straddling two tiles and fringing a walled
- * platform by half a tile, which is invisible at any zoom where the platform is legible.
+ * NO PER-CLASS SIZE. None of these classes has clearance data, and they all snap to the same
+ * grid, whose edge the server reports as `tile_m` -- so a wall paints the tile it stands on
+ * rather than its own thin volume, straddling two tiles and fringing a walled platform by half
+ * a tile, which is invisible at any zoom where the platform is legible.
  *
  * Stroked in its own fill colour, the trick the biome cells already use: no stroke at all
  * leaves hairline seams between neighbouring tiles at low zoom, and a stroke in any other
  * colour draws an 8 m grid.
  */
-// Concrete: slate violet, the one cool direction the grounds leave open (docs/frontend_palette.md).
-var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).foundations;
-
 export function drawStructures(data: StructuresResponse): void {
   // First of the built band, because the concrete is what everything else in it stands on
   // or runs over -- the legend reads a base bottom-up, exactly as the player laid it.
@@ -151,9 +151,8 @@ export function drawMachines(data: MachinesResponse): void {
           ["building", m.name],
           ["recipe", m.recipe_name || m.recipe],
           ["clock", m.clock === null ? null : pct(m.clock)],
-          // The state replaces the old "paused: yes" row rather than joining it: they would
-          // be the same claim twice, and this one can also say why a machine nobody paused
-          // is standing still.
+          // One state row and no separate "paused" row: that would be the same claim twice,
+          // and this one can also say why a machine nobody paused is standing still.
           [
             "state",
             (blocked ? "blocked: output full" : m.state) + (m.actionable ? " · " + WORDS.needAction : ""),
@@ -276,9 +275,9 @@ function storageContents(s: StorageRow): Row[] {
 
 /* One container's whole card: what it is, what is in it, and where it stands.
  *
- * The contents come FIRST, above the placement rows every other popup on this page leads with,
- * because they are the reason this layer exists -- a reader who clicks a box is asking what is
- * in it, not where it is, and where it is was answered by the click.
+ * The contents come FIRST, above the placement rows, because they are the reason this layer
+ * exists -- a reader who clicks a box is asking what is in it, not where it is, and where it is
+ * was answered by the click.
  */
 function storagePopup(s: StorageRow): Row[] {
   var rows: Row[] = [["storage", s.name]];
