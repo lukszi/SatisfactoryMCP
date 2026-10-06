@@ -276,8 +276,8 @@ colour value, so every colour sits with its owner and its warrant.
 - **A seam moves in one step.** A TypedDict is not assignable to a bare `dict`, nor the other
   way, so a producer cannot type its return while its callers still annotate `dict`. Until they
   read the schema's types, `saveio.resolve_save` and `load_projection` return `JsonObject`,
-  `saveio.records` and `ParsedObject.properties` stay loose, and `saveio.rows` takes a
-  `Mapping[str, object]`, which accepts both.
+  `ParsedObject.properties` stays loose, and `saveio.rows` takes a `Mapping[str, object]`,
+  which accepts both.
 - **Empty dataclass fields.** `field(default_factory=list)` leaves the element type unknown in
   strict mode and ruff refuses a `lambda: []`, so a field names its own type:
   `field(default_factory=list[str])`.
