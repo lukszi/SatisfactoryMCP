@@ -34,6 +34,7 @@ __all__ = [
     "VOID_EDGE_BLUR_M",
     "VOID_FALLOFF_M",
     "VOID_RIM",
+    "VOID_STRIP_M",
     "WATER_DEPTH_FULL_M",
     "WATER_EDGE_BLUR_M",
     "WATER_EDGE_M",
@@ -99,6 +100,10 @@ VOID_FALLOFF_M = 50.0
 #: The strength of the light line the artwork draws round the void beside the land.
 VOID_RIM = 0.85
 
+#: Dry ground under the sea's level in a gap at most this wide between the open sea and the
+#: void past the world's edge is sea.
+VOID_STRIP_M = 8.0
+
 
 class VoidPlanes(NamedTuple):
     """The void as drawn, each 0..255 on the field's grid. ``cover`` is how much of a texel the
@@ -138,7 +143,8 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
     void (``void_planes``). Under the open sea, which is that and level-only water at the
     ocean's level, a bed continues the measured one beside it in value and in slope, rises to
     a dry coast, follows the artwork's tones and settles to ``OPEN_SEA_DEPTH_M`` away from
-    all of them, and runs on under the void as far as the sea fades into it.
+    all of them, and runs on under the void as far as the sea fades into it. Dry ground under
+    the sea's level between it and the void past the edge joins it (``_void_strip``).
     """
     started = time.time()
     heights_dm, ground_dm = lattice
@@ -154,7 +160,8 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
     stored = np.asarray(field._height_dm)
     beside = (grades == hf.WATER_DRY) & ~nodata & ndimage.binary_dilation(unknown, iterations=3)
     coast = beside & (stored >= top + COAST_ABOVE_M * hf.DM_PER_M)
-    low = beside & (stored <= top) & (stored != hf.NODATA)
+    sunken = (grades == hf.WATER_DRY) & ~nodata & (stored <= top) & (stored != hf.NODATA)
+    low = beside & sunken
     added = low | (sea & (grades == hf.WATER_DRY))
     unknown |= added
     measured = ocean & (grades == hf.WATER_MEASURED) & ~nodata
@@ -163,8 +170,10 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
     empty = (nodata & ~sea, nodata)
     void, fringe = void_planes(empty, measured | unknown | under, step_m)
     del under
-    added |= fringe
-    unknown |= fringe
+    strip = _void_strip(unknown, sunken & ~low, empty[0] & (void.pit == 0), step_m)
+    del sunken
+    added |= fringe | strip
+    unknown |= fringe | strip
     level = np.where(added, np.int16(round(ocean_level_m * hf.DM_PER_M)), level).astype(np.int16)
     level_m = np.where(added, np.float32(ocean_level_m), level_m)
     seeds = measured | coast
@@ -185,7 +194,9 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
             "rest the void. Under the open sea and level-only water at the ocean's level "
             "(within band_m) a bed is drawn, a screened Poisson membrane on a cell_m grid: "
             "fixed on the measured bed past blend_m and at a dry coast (stored ground "
-            "coast_above_m over the band's top; dry ground at or under it joins the sea), "
+            "coast_above_m over the band's top; dry ground at or under it joins the sea, and "
+            "so does such ground in a gap at most strip_m wide between the sea and the void "
+            "past the world's edge), "
             "held to the measured bed over blend_pull_m within blend_m, drawn to the depth of "
             "the artwork's water tone (tone_depth_m) over tone_pull_m, settling to deep_m "
             "over about settle_m; the measured bed is laid back over it across blend_m, so "
@@ -207,8 +218,10 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
         "tone_pull_m": OPEN_SEA_TONE_PULL_M,
         "void_edge_m": VOID_EDGE_BLUR_M,
         "falloff_m": VOID_FALLOFF_M,
+        "strip_m": VOID_STRIP_M,
         "sea_over_no_data_texels": int(sea.sum()),
         "dry_texels_joined": int(low.sum()),
+        "strip_texels_joined": int(strip.sum()),
         "void_texels": int(empty[0].sum()),
         "pit_texels": int(np.count_nonzero(void.pit)),
         "fringe_texels": int(fringe.sum()),
@@ -345,6 +358,43 @@ def _under_the_sea(ocean, low, step_m: float) -> np.ndarray:
     )
     near = np.repeat(np.repeat(near, OPEN_SEA_CELL, axis=0), OPEN_SEA_CELL, axis=1)
     return low & near[:rows, :cols]
+
+
+def _void_strip(sea, sunken, edge, step_m: float) -> np.ndarray:
+    """``sunken`` ground in a gap at most ``VOID_STRIP_M`` wide between ``sea`` and ``edge``,
+    the void past the world's edge, measured through that ground: the strip which, drawn as
+    land, was a dotted line along the void."""
+    reach = max(1, round(VOID_STRIP_M / step_m)) + 1
+    out = np.zeros(sunken.shape, bool)
+    if not (sunken.any() and edge.any()):
+        return out
+    band = sunken & (ndimage.maximum_filter(edge.view(np.uint8), size=2 * reach + 1) > 0)
+    tile, (rows, cols) = 512, band.shape
+    for r in range(0, rows, tile):
+        for c in range(0, cols, tile):
+            if not band[r : r + tile, c : c + tile].any():
+                continue
+            rs = slice(max(r - reach, 0), min(r + tile + reach, rows))
+            cs = slice(max(c - reach, 0), min(c + tile + reach, cols))
+            through = band[rs, cs]
+            gap = _steps(sea[rs, cs], reach, through).astype(np.int16)
+            gap += _steps(edge[rs, cs], reach, through)
+            top, left = r - rs.start, c - cs.start
+            got = (through & (gap <= reach))[top : top + tile, left : left + tile]
+            out[r : r + tile, c : c + tile] = got
+    return out
+
+
+def _steps(seed, limit: int, through) -> np.ndarray:
+    """Steps from ``seed`` through ``through``, 4-connected, as uint8; 255 past ``limit``."""
+    out = np.full(seed.shape, 255, np.uint8)
+    reached = seed.copy()
+    out[reached] = 0
+    for step in range(1, limit + 1):
+        grown = ndimage.binary_dilation(reached, mask=through)
+        out[grown & ~reached] = step
+        reached = grown
+    return out
 
 
 def _grid_laplacian(active: np.ndarray) -> sp.csr_matrix:

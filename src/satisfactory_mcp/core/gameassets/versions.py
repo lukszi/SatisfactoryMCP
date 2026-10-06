@@ -87,12 +87,12 @@ ARTWORK_RECIPES: dict[int, dict] = {
 #: and the version is bumped when a palette changes on purpose; the file's hash is the digest.
 #: ``tone`` is the base's lightness, which the page's overlay colours follow.
 STYLES: dict[str, dict] = {
-    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 6, "tone": "light"},
-    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 6, "tone": "light"},
-    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 8,
+    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 7, "tone": "light"},
+    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 7, "tone": "light"},
+    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 9,
                           "tone": "light"},
-    "relief-muted": {"label": "relief", "layer": "relief", "version": 4, "tone": "light"},
-    "relief-night": {"label": "relief dark", "layer": "relief-dark", "version": 4, "tone": "dark"},
+    "relief-muted": {"label": "relief", "layer": "relief", "version": 5, "tone": "light"},
+    "relief-night": {"label": "relief dark", "layer": "relief-dark", "version": 5, "tone": "dark"},
     "artwork": {"label": "artwork", "layer": "map", "version": 1, "tone": "light"},
 }  # fmt: skip
 

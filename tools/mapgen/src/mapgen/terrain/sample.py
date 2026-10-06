@@ -26,6 +26,7 @@ __all__ = [
     "sample_plain",
     "sample_surface",
     "taps_cubic",
+    "taps_footprint",
     "taps_linear",
     "taps_pchip",
 ]
@@ -142,6 +143,22 @@ def taps_linear(position: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarra
     fraction = (position - low).astype(np.float32)
     index = np.stack([low, np.minimum(low + 1, limit - 1)])
     return index, np.stack([1.0 - fraction, fraction])
+
+
+def taps_footprint(position: np.ndarray, width: float, limit: int):
+    """A pixel ``width`` texels wide as taps: each texel it covers, weighted by the overlap.
+
+    A texel is the cell of its vertex, half a texel either side. Where the pixel is no wider
+    than a texel this is ``taps_linear``, so a sheet finer than the grid samples as before.
+    """
+    if width <= 1.0:
+        return taps_linear(position, limit)
+    lo = position - width / 2.0
+    first = np.floor(lo + 0.5).astype(np.int64)
+    index = first[None, :] + np.arange(int(np.ceil(width)) + 1)[:, None]
+    inside = np.minimum(position + width / 2.0, index + 0.5) - np.maximum(lo, index - 0.5)
+    weight = (np.clip(inside, 0.0, None) / width).astype(np.float32)
+    return np.clip(index, 0, limit - 1), weight
 
 
 def taps_cubic(position: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarray]:

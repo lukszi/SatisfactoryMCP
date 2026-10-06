@@ -11,6 +11,8 @@ import struct
 
 import numpy as np
 from scipy import ndimage
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.mesh import is_water_class, water_actor_box
@@ -18,6 +20,7 @@ from satisfactory_mcp.core.gameassets.packages import class_name_of, root_compon
 
 __all__ = [
     "BIOME_CLASS",
+    "BODY_STEP_M",
     "BOX_Z_TOLERANCE_M",
     "CLASSES",
     "DRY",
@@ -29,11 +32,13 @@ __all__ = [
     "OCEAN_BAND_M",
     "OPEN_SEA_CELL",
     "OPEN_SEA_RADIUS_M",
+    "RIVER",
     "WATER_BODIES_NAME",
     "actor_materials",
     "body_class",
     "classify",
     "harvest",
+    "level_bodies",
     "open_sea",
 ]
 
@@ -52,7 +57,7 @@ CLASSES = (
     "sulfur",
     "hot_spring",
 )
-DRY, OCEAN = 0, 1
+DRY, OCEAN, RIVER = 0, 1, 2
 _ID = {name: i for i, name in enumerate(CLASSES)}
 
 #: A water actor's first material, by short name.
@@ -79,6 +84,9 @@ BOX_Z_TOLERANCE_M = 1.0
 
 #: A body's majority class fills the rest of it only above this share of its texels.
 MAJORITY_SHARE = 0.25
+
+#: Wet neighbours whose levels differ by more than this are two bodies.
+BODY_STEP_M = 0.5
 
 #: Ocean-level water the map's edge reaches through channels at least twice this wide is
 #: the open sea, and no box's.
@@ -185,9 +193,9 @@ def classify(
 
     ``level_m`` is the water level per texel (nan where none), ``wet`` the texels the
     channel calls water, ``biome`` the biome index grid and the names it indexes. No box
-    but the ocean's claims the open sea.
+    but the ocean's claims the open sea. A river box's claim stands only on a body it
+    mostly covers (``_settle_rivers``).
     """
-    rows, cols = wet.shape
     springs = np.asarray(bodies.get("hot_springs") or np.zeros((0, 3)), np.float64)
     claims = []
     for name, box, materials in bodies.get("actors", []):
@@ -195,23 +203,31 @@ def classify(
         if found is not None:
             claims.append(((box[3] - box[0]) * (box[4] - box[1]), _ID[found], box))
     sea = open_sea(level_m, wet, ocean_level_m)
-    plane = np.zeros((rows, cols), np.uint8)
+    plane = np.zeros(wet.shape, np.uint8)
+    base = np.zeros(wet.shape, np.uint8)
+    rank = np.zeros(wet.shape, np.uint16)
     # Big boxes first, so a small pond inside a big one keeps its own class.
-    for _area, cid, (x0, y0, z0, x1, y1, z1) in sorted(claims, key=lambda c: -c[0]):
-        c0 = max(int((x0 - ORIGIN_X_CM) / SPACING_CM), 0)
-        c1 = min(int(np.ceil((x1 - ORIGIN_X_CM) / SPACING_CM)) + 1, cols)
-        r0 = max(int((y0 - ORIGIN_Y_CM) / SPACING_CM), 0)
-        r1 = min(int(np.ceil((y1 - ORIGIN_Y_CM) / SPACING_CM)) + 1, rows)
-        if c0 >= c1 or r0 >= r1:
+    for order, (_area, cid, box) in enumerate(sorted(claims, key=lambda c: -c[0]), 1):
+        window = _box_window(box, wet.shape)
+        if window is None:
             continue
-        level = level_m[r0:r1, c0:c1]
-        tol = BOX_Z_TOLERANCE_M
-        hit = wet[r0:r1, c0:c1] & (level >= z0 / 100 - tol) & (level <= z1 / 100 + tol)
+        z0, z1 = box[2] / 100 - BOX_Z_TOLERANCE_M, box[5] / 100 + BOX_Z_TOLERANCE_M
+        level = level_m[window]
+        hit = wet[window] & (level >= z0) & (level <= z1)
         if cid != OCEAN:
-            hit &= ~sea[r0:r1, c0:c1]
-        plane[r0:r1, c0:c1][hit] = cid
-    unclaimed = wet & (plane == DRY)
-    plane[unclaimed & (np.abs(level_m - ocean_level_m) <= OCEAN_BAND_M)] = OCEAN
+            hit &= ~sea[window]
+        plane[window][hit] = cid
+        rank[window][hit] = order
+        if cid != RIVER:
+            base[window][hit] = cid
+    near_ocean = wet & (np.abs(level_m - ocean_level_m) <= OCEAN_BAND_M)
+    band = near_ocean & (plane == DRY)
+    plane[band] = OCEAN
+    judged = (wet & (plane != OCEAN)) | (band & ~sea)
+    del band
+    given_back = _settle_rivers((plane, base, rank), judged, level_m)
+    del base, rank, judged
+    plane[near_ocean & (plane == DRY)] = OCEAN
     _fill_by_majority(plane, wet)
     left = wet & (plane == DRY)
     if left.any():
@@ -225,7 +241,78 @@ def classify(
         "hot_spring_terraces": len(springs),
         "filled_by_biome": int(left.sum()),
         "open_sea_texels": int(sea.sum()),
+        "river_box_texels_given_back": given_back,
     }
+
+
+def _box_window(box, shape) -> tuple[slice, slice] | None:
+    """The texels a world box covers on the 1 m grid, or None off it."""
+    x0, y0, _z0, x1, y1, _z1 = box
+    c0 = max(int((x0 - ORIGIN_X_CM) / SPACING_CM), 0)
+    c1 = min(int(np.ceil((x1 - ORIGIN_X_CM) / SPACING_CM)) + 1, shape[1])
+    r0 = max(int((y0 - ORIGIN_Y_CM) / SPACING_CM), 0)
+    r1 = min(int(np.ceil((y1 - ORIGIN_Y_CM) / SPACING_CM)) + 1, shape[0])
+    return None if c0 >= c1 or r0 >= r1 else (slice(r0, r1), slice(c0, c1))
+
+
+def level_bodies(mask: np.ndarray, level_m: np.ndarray) -> np.ndarray:
+    """Labels from 1 of the 8-connected parts of ``mask`` whose neighbours' levels agree
+    within ``BODY_STEP_M``, 0 outside it."""
+    rows, cols = mask.shape
+    index = np.full(mask.shape, -1, np.int32)
+    count = int(mask.sum())
+    index[mask] = np.arange(count, dtype=np.int32)
+    src, dst = [], []
+    for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+        a = (slice(0, rows - dr), slice(max(-dc, 0), cols - max(dc, 0)))
+        b = (slice(dr, rows), slice(max(dc, 0), cols - max(-dc, 0)))
+        with np.errstate(invalid="ignore"):
+            joined = mask[a] & mask[b] & (np.abs(level_m[a] - level_m[b]) <= BODY_STEP_M)
+        src.append(index[a][joined])
+        dst.append(index[b][joined])
+    src, dst = np.concatenate(src), np.concatenate(dst)
+    graph = coo_matrix((np.ones(len(src), np.int8), (src, dst)), shape=(count, count))
+    labels = np.zeros(mask.shape, np.int32)
+    labels[mask] = connected_components(graph, directed=False)[1] + 1
+    return labels
+
+
+def _settle_rivers(painted, judged, level_m) -> int:
+    """A river box's texels in each body at one level of ``judged``: where the river holds
+    more of it than every other class together and at least ``MAJORITY_SHARE``, the body
+    turns river but for what boxes smaller than its river claimed; anywhere else they go
+    back to ``base``, painted without the river boxes. Returns how many went back.
+
+    ``painted`` is ``(plane, base, rank)``, ``rank`` each texel's last box in painting
+    order. ``judged``'s ocean texels are the unclaimed water at the ocean level.
+    """
+    plane, base, rank = painted
+    river = plane == RIVER
+    if not river.any():
+        return 0
+    labels, _count = ndimage.label(judged, structure=np.ones((3, 3)))
+    found_in = np.unique(labels[river & judged])
+    del river
+    places = ndimage.find_objects(labels)
+    given_back = 0
+    for found in found_in:
+        window = places[found - 1]
+        part = labels[window] == found
+        body = level_bodies(part, level_m[window])
+        cls, order = plane[window], rank[window]
+        held = cls == RIVER
+        size = np.bincount(body.ravel())
+        votes = np.bincount(body[held], minlength=len(size))
+        other = np.bincount(body[part & (cls != DRY) & ~held], minlength=len(size))
+        wins = (votes > other) & (votes >= MAJORITY_SHARE * size)
+        wins[0] = False
+        first = np.full(len(size), np.iinfo(np.uint16).max, np.uint16)
+        np.minimum.at(first, body[held], order[held])
+        back = part & ~wins[body] & held
+        cls[wins[body] & (order < first[body])] = RIVER
+        cls[back] = base[window][back]
+        given_back += int(back.sum())
+    return given_back
 
 
 def _fill_by_majority(plane: np.ndarray, wet: np.ndarray) -> None:

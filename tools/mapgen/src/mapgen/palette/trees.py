@@ -1,5 +1,6 @@
 """Trees laid over the finished painted pixel: the Titan forest's raster and per-tree crowns,
-the crowns moved onto the canopy targets. docs/spatial-and-map.md sections 30, 31 and 36.
+the crowns moved onto the canopy targets and the named crown targets. docs/spatial-and-map.md
+sections 30, 31 and 36.
 """
 
 from __future__ import annotations
@@ -12,12 +13,15 @@ from mapgen.palette.calibration import transfer_op, weighted_median
 from mapgen.palette.colour import flat_light, linear_from_oklab, oklab, unit_luminance
 
 __all__ = [
+    "CANOPY_GREY",
     "GATE_CHROMA",
     "HUE_GATE_DEG",
     "IDENTITY_OP",
+    "TARGET_GREY",
     "crown_lab",
     "crown_ops",
     "hue_gate",
+    "moved_crowns",
     "over_crowns",
     "sample_titan",
     "species_colours",
@@ -29,10 +33,14 @@ __all__ = [
 IDENTITY_OP = np.array([0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0], np.float32)
 
 #: A crown takes all of its scope's transfer within the first angle of the target's hue and
-#: none past the second, so a canopy target moves the trees it was measured on and leaves
-#: pink bamboo, blue palms and coral their own colours. Greys under the chroma never move.
+#: none past the second, so a target moves the trees of its own hue and leaves pink bamboo
+#: and coral their own colours.
 HUE_GATE_DEG = (20.0, 40.0)
 GATE_CHROMA = 0.02
+#: The chroma over which a gate opens, none at the first and all from the second: the
+#: canopy targets' from grey up, a named crown target's only past the greys.
+CANOPY_GREY = (0.0, GATE_CHROMA)
+TARGET_GREY = (GATE_CHROMA, 0.025)
 
 
 def crown_lab(rgb, style: dict) -> np.ndarray:
@@ -42,14 +50,28 @@ def crown_lab(rgb, style: dict) -> np.ndarray:
     return lab
 
 
-def hue_gate(lab, hue) -> np.ndarray:
+def hue_gate(lab, hue, grey=CANOPY_GREY) -> np.ndarray:
     """How much of a transfer each crown colour takes, by its hue's distance from ``hue``."""
     chroma = np.hypot(lab[..., 1], lab[..., 2])
     along = lab[..., 1] * hue[..., 0] + lab[..., 2] * hue[..., 1]
     cos = along / np.maximum(chroma * np.hypot(hue[..., 0], hue[..., 1]), np.float32(1e-6))
     full, none = np.cos(np.radians(HUE_GATE_DEG)).astype(np.float32)
     gate = np.clip((cos - none) / (full - none), 0.0, 1.0)
-    return (gate * np.clip(chroma / np.float32(GATE_CHROMA), 0.0, 1.0)).astype(np.float32)
+    lo, hi = grey
+    opens = np.clip((chroma - np.float32(lo)) / np.float32(hi - lo), 0.0, 1.0)
+    return (gate * opens).astype(np.float32)
+
+
+def moved_crowns(lab, ops) -> np.ndarray:
+    """Crown colours after ``(op, grey)`` transfers, each gated on the colour before any."""
+    out = lab.copy()
+    a, b = lab[..., 1], lab[..., 2]
+    for op, grey in ops:
+        gate = hue_gate(lab, op[..., 5:7], grey)
+        out[..., 0] += gate * op[..., 0]
+        out[..., 1] += gate * ((op[..., 1] - 1.0) * a + op[..., 2] * b)
+        out[..., 2] += gate * (op[..., 3] * a + (op[..., 4] - 1.0) * b)
+    return out
 
 
 def species_colours(crowns) -> tuple[np.ndarray, np.ndarray]:
@@ -63,13 +85,15 @@ def species_colours(crowns) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(colours, np.float32), np.asarray(areas, np.float32)
 
 
-def crown_ops(crowns, style: dict, cells, scopes: list, min_trees: int) -> tuple[list, dict]:
+def crown_ops(
+    crowns, style: dict, cells, scopes: list, min_trees: int, grey=CANOPY_GREY
+) -> tuple[list, dict]:
     """One colour transfer per scope, from its trees' median crown colour to its target.
 
     ``cells`` is each record's ``(row, col)`` on the scope planes; ``scopes`` holds
     ``(weight plane or None, target OKLab)``, None for the trees no other scope holds. A tree
-    counts by the ground its crown hides times its hue gate. Returns the ops, None for a
-    scope with too few trees, and what was measured.
+    counts by the ground its crown hides times its hue gate, which opens over ``grey``.
+    Returns the ops, None for a scope with too few trees, and what was measured.
     """
     colours, areas = species_colours(crowns)
     species = crowns.records["species"]
@@ -83,7 +107,7 @@ def crown_ops(crowns, style: dict, cells, scopes: list, min_trees: int) -> tuple
     ops, measured = [], {}
     for i, (plane, target) in enumerate(scopes):
         hue = np.asarray(target[1:], np.float32) / max(float(np.hypot(*target[1:])), 1e-6)
-        gate = hue_gate(lab, hue)
+        gate = hue_gate(lab, hue, grey)
         inside = ((plane[rows, cols] if plane is not None else 1.0 - claimed) >= 0.5) & (gate > 0.5)
         if inside.sum() < min_trees:
             ops.append(None)
@@ -155,12 +179,12 @@ def titan_over(out, scene: dict, ground) -> np.ndarray:
     return out * (1.0 - alpha) + lit * alpha
 
 
-def over_crowns(out, crowns: dict, scene: dict, p: dict, ambient, exposure, op=None):
+def over_crowns(out, crowns: dict, scene: dict, p: dict, ambient, exposure, ops=()):
     """Tree crowns over everything below them, lit by their own domes.
 
     A crown is hidden where the drawn surface stands above its top: a tree under an
-    overhang, or rock the tree grows beside and below. ``op`` is the calibration's transfer,
-    seven numbers or seven planes on the band, taken by each crown by its hue gate.
+    overhang, or rock the tree grows beside and below. ``ops`` are the calibration's
+    ``(op, grey)`` transfers, each op seven numbers or seven planes on the band.
     """
     style = p["crowns"]
     cover = crowns["cover"]
@@ -169,13 +193,7 @@ def over_crowns(out, crowns: dict, scene: dict, p: dict, ambient, exposure, op=N
     )
     wet = scene["water"]["cover"] * np.float32(1.0 - style["over_water"])
     alpha = (np.clip(cover, 0.0, 1.0) * style["opacity"] * seen * (1.0 - wet))[..., None]
-    lab = crown_lab(crowns["rgb"] / np.maximum(cover, 1e-4)[..., None], style)
-    if op is not None:
-        gate = hue_gate(lab, op[..., 5:7])
-        lab[..., 0] += gate * op[..., 0]
-        a, b = lab[..., 1].copy(), lab[..., 2].copy()
-        lab[..., 1] = a + gate * ((op[..., 1] - 1.0) * a + op[..., 2] * b)
-        lab[..., 2] = b + gate * (op[..., 3] * a + (op[..., 4] - 1.0) * b)
+    lab = moved_crowns(crown_lab(crowns["rgb"] / np.maximum(cover, 1e-4)[..., None], style), ops)
     lab[..., 1:] *= np.float32(p["chroma_gain"])
     colour = np.clip(linear_from_oklab(lab), 0.0, 1.0)
     shade = np.clip(crowns["ndl"] / scene["ndl_flat"], *style["shade_clamp"])
