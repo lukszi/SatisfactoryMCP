@@ -91,7 +91,7 @@ def test_a_deeply_nested_property_list_is_refused_rather_than_overflowing_the_st
     """Nested structs must hit a ParseError long before CPython's recursion limit.
 
     Every route back into a nested property list -- a struct, an array element, a map value,
-    an ``InventoryItem``'s weapon state -- goes through ``_Decoder.property_list``, and it
+    an ``InventoryItem``'s weapon state -- goes through ``PropertyDecoder.property_list``, and it
     used to recurse once per nested tag with nothing counting. 29,010 crafted bytes were
     enough: written over one real object's payload and run through the sidecar, the save came
     out as ``{"error": "RecursionError", "detail": "maximum recursion depth exceeded"}`` with

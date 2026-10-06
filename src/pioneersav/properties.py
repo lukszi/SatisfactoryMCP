@@ -121,14 +121,14 @@ class ParsedObject:
         return self.actor_specific_info
 
 
-class _TooDeep(ParseError):
-    """The nesting guard tripping: a ``ParseError`` ``attempt()`` must not swallow."""
+class NestingTooDeep(ParseError):
+    """The nesting guard tripping: a ``ParseError`` ``first_exact_fit()`` must not swallow."""
 
 
 # ----------------------------------------------------------- struct bodies
 
 
-def _vector(d: _Decoder) -> list[float]:
+def _vector(d: PropertyDecoder) -> list[float]:
     """FVector: three doubles on a UE5 save, three floats on a UE4 one. The width follows the
     save, not the object: a UE5 game writes doubles even into a version-36 object."""
     r = d.r
@@ -137,7 +137,7 @@ def _vector(d: _Decoder) -> list[float]:
     return [r.f64(), r.f64(), r.f64()]
 
 
-def _quat(d: _Decoder) -> list[float]:
+def _quat(d: PropertyDecoder) -> list[float]:
     """FQuat: four doubles on a UE5 save and four floats on a UE4 one, as ``_vector``."""
     r = d.r
     if d.ue4_save:
@@ -145,35 +145,35 @@ def _quat(d: _Decoder) -> list[float]:
     return [r.f64(), r.f64(), r.f64(), r.f64()]
 
 
-def _box(d: _Decoder) -> list:
+def _box(d: PropertyDecoder) -> list:
     """FBox: min, max and a validity byte, seven entries at ``_vector``'s width."""
     return [*_vector(d), *_vector(d), d.r.i8() != 0]
 
 
-def _linear_color(d: _Decoder) -> list[float]:
+def _linear_color(d: PropertyDecoder) -> list[float]:
     """FLinearColor stayed four *floats* through the UE5 upgrade; FVector did not."""
     r = d.r
     return [r.f32(), r.f32(), r.f32(), r.f32()]
 
 
-def _guid(d: _Decoder) -> list[int]:
+def _guid(d: PropertyDecoder) -> list[int]:
     """16 bytes, reported as two uint64s."""
     r = d.r
     return [r.u64(), r.u64()]
 
 
-def _int_vector(d: _Decoder) -> list[int]:
+def _int_vector(d: PropertyDecoder) -> list[int]:
     """FIntVector: a world-partition cell coordinate, e.g. the foliage grid's ``[-7,-25,-1]``."""
     r = d.r
     return [r.i32(), r.i32(), r.i32()]
 
 
-def _fluid_box(d: _Decoder) -> float:
+def _fluid_box(d: PropertyDecoder) -> float:
     """FFluidBox: one float, the fluid currently in a pipe segment."""
     return d.r.f32()
 
 
-def _client_identity_info(d: _Decoder) -> list:
+def _client_identity_info(d: PropertyDecoder) -> list:
     """``[offlineId, [[platform, idBytes], ...]]``: who owns a player state, one length-prefixed
     account id per linked platform, left as bytes because nothing reads it."""
     r = d.r
@@ -187,7 +187,7 @@ def _client_identity_info(d: _Decoder) -> list:
     return [offline_id, out]
 
 
-def _inventory_item_modern(d: _Decoder) -> list:
+def _inventory_item_modern(d: PropertyDecoder) -> list:
     """``FInventoryItem`` as an object reference, a has-state int32, and the state if there is one.
 
     State is the state class plus a sized, nested property list (a weapon's ammo counter), so
@@ -210,7 +210,7 @@ def _inventory_item_modern(d: _Decoder) -> list:
     return [item_class.path_name, [state_class.path_name, values, types]]
 
 
-def _inventory_item_legacy(d: _Decoder) -> list:
+def _inventory_item_legacy(d: PropertyDecoder) -> list:
     """``FInventoryItem`` as two bare object references: the descriptor, then the ``Equip_*_C``
     actor this item instance is, or two empty strings."""
     r = d.r
@@ -218,10 +218,10 @@ def _inventory_item_legacy(d: _Decoder) -> list:
     return [item_class.path_name, read_reference(r).path_name or None]
 
 
-def _inventory_item(d: _Decoder) -> list:
+def _inventory_item(d: PropertyDecoder) -> list:
     """``FInventoryItem`` where no declared size can referee the layout, so the version guesses.
 
-    Only a bare container element lands here; ``_Decoder.struct`` lets the declared size choose
+    Only a bare container element lands here; ``read_struct`` lets the declared size choose
     everywhere else, because the layout follows no version in the file (savparse-notes.md).
     """
     if d.version < FIRST_MODERN_BODY:
@@ -301,7 +301,7 @@ def _read_type_name(r: Reader, depth: int = 0) -> TypeName:
 
 
 @dataclass(slots=True)
-class _Tag:
+class PropertyTag:
     name: str
     type: TypeName
     size: int
@@ -311,7 +311,7 @@ class _Tag:
     bool_value: int = 0
 
 
-def _read_tag_ue5(r: Reader) -> _Tag:
+def _read_tag_ue5(r: Reader) -> PropertyTag:
     """Object version 60's tag, UE5's ``FPropertyTag``::
 
         str  name
@@ -325,8 +325,8 @@ def _read_tag_ue5(r: Reader) -> _Tag:
     """
     name = r.string()
     if name == _TERMINATOR:
-        return _Tag(name=name, type=TypeName(""), size=0, index=0, flags=0)
-    tag = _Tag(name=name, type=_read_type_name(r), size=0, index=0, flags=0)
+        return PropertyTag(name=name, type=TypeName(""), size=0, index=0, flags=0)
+    tag = PropertyTag(name=name, type=_read_type_name(r), size=0, index=0, flags=0)
     tag.size = r.i32()
     expect(tag.size >= 0, r.pos - 4, f"property {tag.name!r} declares size {tag.size}")
     # checked before the fields it would move, so the offset names the flags byte
@@ -345,7 +345,7 @@ def _read_tag_ue5(r: Reader) -> _Tag:
     return tag
 
 
-def _read_tag_ue4(r: Reader) -> _Tag:
+def _read_tag_ue4(r: Reader) -> PropertyTag:
     """Object version 36/52's tag, UE4's: the same information in fixed positions::
 
         str  name
@@ -361,7 +361,7 @@ def _read_tag_ue4(r: Reader) -> _Tag:
     """
     name = r.string()
     if name == _TERMINATOR:
-        return _Tag(name=name, type=TypeName(""), size=0, index=0, flags=0)
+        return PropertyTag(name=name, type=TypeName(""), size=0, index=0, flags=0)
     type_name = r.string()
     size = r.i32()
     expect(size >= 0, r.pos - 4, f"property {name!r} declares size {size}")
@@ -389,7 +389,7 @@ def _read_tag_ue4(r: Reader) -> _Tag:
     if has_guid:
         r.skip(16)
     # no native-serialise bit in UE4; never synthesise one, or SpawnData lists get skipped
-    return _Tag(
+    return PropertyTag(
         name=name,
         type=TypeName(type_name, params),
         size=size,
@@ -402,7 +402,7 @@ def _read_tag_ue4(r: Reader) -> _Tag:
 # -------------------------------------------------------------- the values
 
 
-class _Decoder:
+class PropertyDecoder:
     """Reads one object's properties, keyed by two different versions.
 
     ``version`` is the object's own: it picks the tag layout and guesses ``InventoryItem``.
@@ -436,7 +436,7 @@ class _Decoder:
         The depth guard lives here because every route into a nested list passes through.
         """
         if self.depth >= _MAX_NESTING:
-            raise _TooDeep(
+            raise NestingTooDeep(
                 f"at body offset {self.r.pos}: property lists nested more than "
                 f"{_MAX_NESTING} deep, so the cursor is not on a property tag"
             )
@@ -468,7 +468,7 @@ class _Decoder:
             )
             start = r.pos
             end = start + tag.size
-            value = self.value(tag, end)
+            value = self.read_value(tag, end)
             expect(
                 r.pos == end,
                 r.pos,
@@ -480,11 +480,11 @@ class _Decoder:
 
     # -- one property -----------------------------------------------------
 
-    def value(self, tag: _Tag, end: int):
+    def read_value(self, tag: PropertyTag, end: int):
         """Dispatch on the type name. ``end`` is where the payload must stop."""
         r = self.r
         name = tag.type.name
-        reader = _SCALARS.get(name)
+        reader = SCALAR_READERS.get(name)
         if reader is not None:
             return reader(r)
         if name == "BoolProperty":
@@ -500,18 +500,18 @@ class _Decoder:
             return [self.enum_name(tag), r.string()]
         if name == "StructProperty":
             native = bool(tag.flags & TAG_NATIVE_SERIALIZE)
-            return self.struct(tag.type.inner, native_hint=native, end=end, exact=True)
+            return self.read_struct(tag.type.inner, native_hint=native, end=end, exact=True)
         if name == "ArrayProperty":
-            return self.array(tag, end)
+            return self.read_array(tag, end)
         if name == "SetProperty":
-            return self.set_(tag, end)
+            return self.read_set(tag, end)
         if name == "MapProperty":
-            return self.map_(tag, end)
+            return self.read_map(tag, end)
         if name == "TextProperty":
-            return self.text(end)
-        return self.unknown(f"property type {name!r}", end)
+            return self.read_text(end)
+        return self.skip_unknown(f"property type {name!r}", end)
 
-    def unknown(self, what: str, end: int):
+    def skip_unknown(self, what: str, end: int):
         """Skip forwards to the declared ``end`` with a warning: the escape hatch the design
         rests on. Never backwards, which would fabricate a container's later elements."""
         r = self.r
@@ -526,7 +526,7 @@ class _Decoder:
         self.warnings.append((r.pos, f"skipped {end - r.pos} bytes: {what}"))
         r.pos = end
 
-    def attempt(self, what: str, end: int, *decoders):
+    def first_exact_fit(self, what: str, end: int, *decoders):
         """Try each reading in turn; keep the first that lands exactly on the declared ``end``.
 
         Pass the narrowest reading first: a wrong narrow one fails at once, a permissive one
@@ -537,7 +537,7 @@ class _Decoder:
         for decode in decoders:
             try:
                 value = decode()
-            except _TooDeep:
+            except NestingTooDeep:
                 # the stack guard, not a wrong guess: the next reading would trip it too
                 raise
             except ValueError:
@@ -547,17 +547,17 @@ class _Decoder:
                     return value
             del self.warnings[mark:]
             self.r.pos = start
-        return self.unknown(what, end)
+        return self.skip_unknown(what, end)
 
     # -- enums ------------------------------------------------------------
 
-    def enum_name(self, tag: _Tag) -> str | None:
+    def enum_name(self, tag: PropertyTag) -> str | None:
         """The enum a Byte/Enum property is typed by, or ``None`` for a plain byte, whether UE4
         wrote the string ``"None"`` or UE5 wrote no parameter."""
         inner = tag.type.inner.name
         return inner if inner and inner != _TERMINATOR else None
 
-    def byte_value(self, tag: _Tag):
+    def byte_value(self, tag: PropertyTag):
         """``[enumName, value]``: ``[None, 2]`` for a plain byte, ``['EGamePhase',
         'EGP_MidGame']`` for an enum; readers take ``[-1]`` off either."""
         enum = self.enum_name(tag)
@@ -565,7 +565,9 @@ class _Decoder:
 
     # -- structs ----------------------------------------------------------
 
-    def struct(self, struct_type: TypeName, *, native_hint: bool, end: int, exact: bool = False):
+    def read_struct(
+        self, struct_type: TypeName, *, native_hint: bool, end: int, exact: bool = False
+    ):
         """A struct: raw numbers if its NAME is in ``_NATIVE_STRUCTS``, else a property list.
         ``exact`` means ``end`` is this struct's own declared end, which lets the size referee
         ``InventoryItem`` and turn an unknown non-list struct into a skip (savparse-notes.md).
@@ -574,7 +576,7 @@ class _Decoder:
         if native is not None:
             if native is _inventory_item and exact:
                 # the two layouts can never land on the same byte, so the size decides outright
-                return self.attempt(
+                return self.first_exact_fit(
                     "an InventoryItem that reads as neither layout",
                     end,
                     lambda: _inventory_item_modern(self),
@@ -589,7 +591,7 @@ class _Decoder:
                 )
             return self.r.bytes(end - self.r.pos)
         if exact:
-            return self.attempt(
+            return self.first_exact_fit(
                 f"struct {struct_type.name!r} that is neither native nor a property list",
                 end,
                 lambda: list(self.property_list(end)),
@@ -598,7 +600,7 @@ class _Decoder:
 
     # -- containers -------------------------------------------------------
 
-    def _count(self, what: str, end: int) -> int:
+    def _read_element_count(self, what: str, end: int) -> int:
         """An element count, bounded by the bytes its own block has left: no element is shorter
         than one byte, and the count lives inside the payload, where a torn file makes it
         anything."""
@@ -612,14 +614,24 @@ class _Decoder:
         )
         return count
 
-    def array(self, tag: _Tag, end: int):
+    def _expect_no_removals(self, what: str) -> None:
+        """A set's or map's leading removal count, which a saved container leaves at 0."""
+        r = self.r
+        removed = r.i32()
+        expect(
+            removed == 0,
+            r.pos - 4,
+            f"{what} declares {removed} removed entries; a saved container has no removal list",
+        )
+
+    def read_array(self, tag: PropertyTag, end: int):
         """``i32 count`` then the elements, untagged: their type is the array's own parameter."""
         r = self.r
-        count = self._count(f"array {tag.name!r}", end)
+        count = self._read_element_count(f"array {tag.name!r}", end)
         inner = tag.type.inner
         if inner.name == "StructProperty":
-            return self.struct_array(tag, count, end)
-        element = _SCALARS.get(inner.name)
+            return self.read_struct_array(tag, count, end)
+        element = SCALAR_READERS.get(inner.name)
         if element is not None:
             return [element(r) for _ in range(count)]
         if inner.name in ("ObjectProperty", "InterfaceProperty"):
@@ -633,10 +645,10 @@ class _Decoder:
         if inner.name == "EnumProperty":
             return [r.string() for _ in range(count)]
         if inner.name == "TextProperty":
-            return [self.text(end) for _ in range(count)]
-        return self.unknown(f"array of {inner.name!r}", end)
+            return [self.read_text(end) for _ in range(count)]
+        return self.skip_unknown(f"array of {inner.name!r}", end)
 
-    def struct_array(self, tag: _Tag, count: int, end: int):
+    def read_struct_array(self, tag: PropertyTag, count: int, end: int):
         """The elements of a struct array. Version 36/52 opens the payload with a full property
         tag, the only place it names the struct, so that tag is read rather than skipped."""
         r = self.r
@@ -655,58 +667,44 @@ class _Decoder:
             end = min(end, r.pos + inner.size)
         if native and struct_type.name not in _NATIVE_STRUCTS:
             # elements have no size of their own, so the whole array is skipped by its size
-            return self.unknown(f"array of self-serialising {struct_type.name!r}", end)
-        return [self.struct(struct_type, native_hint=native, end=end) for _ in range(count)]
+            return self.skip_unknown(f"array of self-serialising {struct_type.name!r}", end)
+        return [self.read_struct(struct_type, native_hint=native, end=end) for _ in range(count)]
 
-    def set_(self, tag: _Tag, end: int):
+    def read_set(self, tag: PropertyTag, end: int):
         """``i32 removed, i32 count`` then the elements, reported as ``[type, values]``. A
         nonzero removal count is refused rather than skipped, so the day one appears says so."""
         inner = tag.type.inner
         if self.ue4_tags and _is_unnamed_struct(inner):
             # unframed readings first: a set has no struct-array header to read
-            return self.attempt(
+            return self.first_exact_fit(
                 f"version-{self.version} set {tag.name!r} of unnamed structs",
                 end,
                 *(
-                    (lambda t=t: self._set_body_bare(tag, t, end))
+                    (lambda t=t: self._read_set_unframed(tag, t, end))
                     for t in _unnamed_element_candidates(inner, _UNNAMED_SET_CANDIDATES)
                 ),
-                lambda: self._set_body(tag, inner, end),
+                lambda: self._read_set_as_array(tag, inner, end),
             )
-        return self._set_body(tag, inner, end)
+        return self._read_set_as_array(tag, inner, end)
 
-    def _set_body_bare(self, tag: _Tag, inner: TypeName, end: int):
+    def _read_set_unframed(self, tag: PropertyTag, inner: TypeName, end: int):
         """A set whose elements are written back to back, without the struct-array header the
         version-36/52 array reading expects."""
-        r = self.r
-        removed = r.i32()
-        expect(
-            removed == 0,
-            r.pos - 4,
-            f"set {tag.name!r} declares {removed} removed entries; a saved container has "
-            "no removal list",
-        )
-        count = self._count(f"set {tag.name!r}", end)
+        self._expect_no_removals(f"set {tag.name!r}")
+        count = self._read_element_count(f"set {tag.name!r}", end)
         # the candidate struct's name: the bytes never named it, so the guess that fit is the label
         label = inner.inner.name or inner.name
-        return [label, [self.element(inner, end) for _ in range(count)]]
+        return [label, [self.read_untagged(inner, end) for _ in range(count)]]
 
-    def _set_body(self, tag: _Tag, inner: TypeName, end: int):
+    def _read_set_as_array(self, tag: PropertyTag, inner: TypeName, end: int):
         """The set's elements read as an array of its element type."""
-        r = self.r
-        removed = r.i32()
-        expect(
-            removed == 0,
-            r.pos - 4,
-            f"set {tag.name!r} declares {removed} removed entries; a saved container has "
-            "no removal list",
-        )
-        values = self.array(
-            _Tag(tag.name, TypeName("ArrayProperty", [inner]), 0, 0, tag.flags), end
+        self._expect_no_removals(f"set {tag.name!r}")
+        values = self.read_array(
+            PropertyTag(tag.name, TypeName("ArrayProperty", [inner]), 0, 0, tag.flags), end
         )
         return [inner.name, values]
 
-    def map_(self, tag: _Tag, end: int):
+    def read_map(self, tag: PropertyTag, end: int):
         """``i32 removed, i32 count`` then untagged key/value pairs, reported as
         ``[[k, v], ...]``, each side typed by the map's own parameters."""
         r = self.r
@@ -719,41 +717,36 @@ class _Decoder:
         key_type, value_type = tag.type.params
         if self.ue4_tags and (_is_unnamed_struct(key_type) or _is_unnamed_struct(value_type)):
             # only the key is substituted; an unnamed value is always a property list
-            return self.attempt(
+            return self.first_exact_fit(
                 f"version-{self.version} map {tag.name!r} of unnamed structs",
                 end,
                 *(
-                    (lambda k=k: self._map_body(tag, k, value_type, end))
+                    (lambda k=k: self._read_map_entries(tag, k, value_type, end))
                     for k in _unnamed_key_candidates(key_type)
                 ),
             )
-        return self._map_body(tag, key_type, value_type, end)
+        return self._read_map_entries(tag, key_type, value_type, end)
 
-    def _map_body(self, tag: _Tag, key_type: TypeName, value_type: TypeName, end: int):
+    def _read_map_entries(
+        self, tag: PropertyTag, key_type: TypeName, value_type: TypeName, end: int
+    ):
         """The map's pairs, read with the given key type."""
-        r = self.r
-        removed = r.i32()
-        expect(
-            removed == 0,
-            r.pos - 4,
-            f"map {tag.name!r} declares {removed} removed entries; a saved container has "
-            "no removal list",
-        )
-        count = self._count(f"map {tag.name!r}", end)
+        self._expect_no_removals(f"map {tag.name!r}")
+        count = self._read_element_count(f"map {tag.name!r}", end)
         out = []
         for _ in range(count):
-            key = self.element(key_type, end)
-            value = self.element(value_type, end)
+            key = self.read_untagged(key_type, end)
+            value = self.read_untagged(value_type, end)
             out.append([key, value])
         return out
 
-    def element(self, type_name: TypeName, end: int):
+    def read_untagged(self, type_name: TypeName, end: int):
         """One untagged map key, map value or set element of a known type.
 
         Never pass the map's flags byte on: it is set when either side serialises itself.
         """
         r = self.r
-        scalar = _SCALARS.get(type_name.name)
+        scalar = SCALAR_READERS.get(type_name.name)
         if scalar is not None:
             return scalar(r)
         if type_name.name in ("ObjectProperty", "InterfaceProperty"):
@@ -761,26 +754,26 @@ class _Decoder:
         if type_name.name == "SoftObjectProperty":
             return read_soft_reference(r)
         if type_name.name == "StructProperty":
-            return self.struct(type_name.inner, native_hint=False, end=end)
+            return self.read_struct(type_name.inner, native_hint=False, end=end)
         if type_name.name == "ByteProperty":
             return r.i8()
         if type_name.name == "EnumProperty":
             return r.string()
-        return self.unknown(f"untagged {type_name.name!r}", end)
+        return self.skip_unknown(f"untagged {type_name.name!r}", end)
 
     # -- text -------------------------------------------------------------
 
-    def text(self, end: int):
+    def read_text(self, end: int):
         """FText, reported as ``[flags, historyType, hasCultureInvariant, string]``.
 
         Only history 0xFF, a plain typed string, is decoded; any other is skipped through
-        ``unknown``, whose refusal to move backwards keeps an array of texts honest.
+        ``skip_unknown``, whose refusal to move backwards keeps an array of texts honest.
         """
         r = self.r
         flags = r.i32()
         history = r.i8()
         if history != 0xFF:
-            self.unknown(f"FText history type {history}", end)
+            self.skip_unknown(f"FText history type {history}", end)
             return [flags, history]
         has_invariant = r.i32()
         return [flags, history, has_invariant, r.string() if has_invariant else None]
@@ -789,7 +782,7 @@ class _Decoder:
 #: Types whose payload is one fixed-width value with no framing, read the same way as a tagged
 #: property, an array element or a map key. No 16-bit reader: none has met real bytes, and an
 #: unknown type is skipped with a warning. ``Int8Property`` yields raw ``bytes``.
-_SCALARS = {
+SCALAR_READERS = {
     "IntProperty": Reader.i32,
     "Int64Property": Reader.i64,
     "UInt64Property": Reader.u64,
@@ -825,7 +818,7 @@ def read_object(
     if slot.version >= FIRST_UE5_OBJECT_VERSION:
         r.i8()  # the object-reference migration byte
 
-    decoder = _Decoder(r, slot.version, out.warnings, save_version=save_version)
+    decoder = PropertyDecoder(r, slot.version, out.warnings, save_version=save_version)
     out.properties, out.property_types = decoder.property_list(end)
     out.extra_offset = r.pos
     out.extra_length = end - r.pos

@@ -642,7 +642,7 @@ container's declared length, which is not the element's length.
   out of the bytes after the map and the *next* skip dragged the cursor back onto that end —
   so the declared size balanced and the object parsed. A hand-built
   `map<int, array<Vector>>` came back as two pairs, both values `None`, the second key
-  invented out of the terminator's length prefix, **no error**. `unknown()` now refuses to
+  invented out of the terminator's length prefix, **no error**. `skip_unknown()` now refuses to
   move the cursor backwards. Skipping the *last* element of a container still works, because
   there the container's remaining length **is** the element's length — verified on real bytes
   by renaming the value type of the calendar subsystem's one-entry
@@ -650,7 +650,7 @@ container's declared length, which is not the element's length.
 * `FText` had the same hole: a history type other than 0xFF inside an *array* of texts
   consumed the rest of the array and the elements after it were invented
   (`[[0, 3], [5, 78]]`, a "history type" that was really a string length). Its skip now goes
-  through `unknown()` and inherits the guard.
+  through `skip_unknown()` and inherits the guard.
 * A container's element count is now bounded by the bytes left in its own block instead of a
   flat 10,000,000. The count lives *inside* the payload, so the tag's size check does not
   bound it: a count of 9,000,000 planted in a 12-byte array inside a 40 MB body read
@@ -688,7 +688,7 @@ correct rather than lucky:
 * Version-60 tag flags seen: `0x00`, `0x08`, `0x09` (native + array index), `0x10`. Never
   `0x02`, never `0x04`, never anything above `0x10`.
 * Strings: **27,648,606** read, of which **25** are negative-length UTF-16 — and all 25 are
-  inside an `attempt()` guess that is then thrown away. No save on this disk holds a UTF-16
+  inside an `first_exact_fit()` guess that is then thrown away. No save on this disk holds a UTF-16
   string in a property.
 
 Verified as already correct, and worth not re-deriving: skip-by-declared-length recovers
@@ -1052,7 +1052,7 @@ shows 29 chains apparently moving one way and 16 the other.
      `ParseError`. Written over one real object and run through the sidecar it came out as
      `{"error": "RecursionError", "detail": "maximum recursion depth exceeded"}` with a
      traceback on stderr and **no offset** — exactly the report `errors.py` was written to
-     abolish, arriving through the one door it did not cover. `_Decoder.property_list` now
+     abolish, arriving through the one door it did not cover. `PropertyDecoder.property_list` now
      counts its own depth against `_MAX_NESTING = 32`; the deepest real list in any of the 31
      saves is **4**.
    * **A property list that terminates early was absorbed in silence.** Overwriting one

@@ -741,7 +741,7 @@ def test_the_bool_bit_and_the_native_bit_are_the_documented_ones():
 # So three properties on every saveVersion 52 save cannot be told apart from a property list by
 # anything in the file: the foliage subsystem's `mSaveData` and the scanner's `mDestroyedPickups`
 # and `mLootedDropPods`, 918,917 bytes on the reference v52 save. They are read by offering
-# candidate struct types to `attempt` and keeping the one that lands exactly on the property's
+# candidate struct types to `first_exact_fit` and keeping the one that lands exactly on the property's
 # declared end -- `IntVector` for a map key, `Guid` then `Vector` for a set element, each of them
 # a type version 60 writes out in full for the same field.
 #
@@ -757,7 +757,7 @@ def test_the_bool_bit_and_the_native_bit_are_the_documented_ones():
 # * that the candidates are tried narrowest-first. No two of them can land on the same bytes --
 #   16, 24 and a property list of any length differ -- so a test asserting the order would only
 #   restate the constant it reads.
-# * that `attempt` throws away the warnings a rejected candidate produced. It was measured for:
+# * that `first_exact_fit` throws away the warnings a rejected candidate produced. It was measured for:
 #   a map whose keys are property lists and whose values hold an unknown property type produces
 #   the same two warnings with the discard and without it, because the `IntVector` candidate
 #   fails on the first key and never reaches a value. Nothing observable distinguishes the two,
