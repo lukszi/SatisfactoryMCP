@@ -45,6 +45,7 @@ estimate assumes before a job of that kind has run once.
 | `artwork` | `gen_map_image.py` | `data/local/` (`map.png`, `map.json`, `tiles/`, `tiles@2x/`) | 3 min; 14 min with `--enhance` |
 | `renders` | `gen_map_renders.py` | `data/local/renders/<layer>/` | 3 min at `--size 1024`; about 30 min for two layers at full size |
 | `check-fill` | `check_map_fill.py` | nothing, unless `--json <file>` | not measured |
+| `compress-cache` | | the given raster caches, converted in place | 4 s for a 1.3 GB Titan cache; about 2.5 min for a full set (estimate) |
 
 ### heightmap
 
@@ -109,7 +110,9 @@ as the artwork. The main options:
 - `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
   with its own digest (§30).
 
-A full-size run needs about 10.7 GB of scratch space for those caches. See §25 to §27, and
+At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
+(§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
+`compress-cache` converts it. See §25 to §27 and §39, and
 [maps_contract.md](../../docs/maps_contract.md) for how the server registers the result.
 
 ### check-fill
@@ -118,6 +121,16 @@ Scores the rebuilt height lattice against held-out landscape through the same fu
 render calls. It checks fill, seams, holes and the sampler. Only the baselines are
 emulated. It reads the field and the game and writes nothing unless `--json` names a file.
 See §26.
+
+### compress-cache
+
+`python -m mapgen compress-cache <dir>` converts raw raster caches to the zstd band store in
+place. `<dir>` is one cache (`direct.cache`, `top.cache`, `meshes.cache`, `titan.cache`) or a
+folder holding them, such as `data/local/maps/_cache/<size>`. It reads every band back
+before it records the new storage in the sidecar, and only then deletes the raw planes. It
+refuses a cache with no `meta.json`, which may still be being written, and on Windows one a
+render holds open. `--to <dir>` writes the band store elsewhere and leaves the source alone.
+It does not read the game. See §39.
 
 ## Package map
 
@@ -132,7 +145,9 @@ be traced to the axis it should move.
 | `heightmap.py` | data | The heightmap, caves and rocks command: arguments, refusals, stage order |
 | `artwork.py` | data | The artwork command: arguments, stage order, refusals |
 | `check_fill.py` | | The check-fill command |
-| `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers). The on-disk names are unchanged. |
+| `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers) and how a raster cache is stored: band store or raw memory maps. The on-disk names and stamps are unchanged. |
+| `bandstore.py` | | The zstd band store: `BandWriter` and the read-only `BandArray` |
+| `compress_cache.py` | | The compress-cache command |
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, heightfield grid |
 | `gamedata/sweep.py` | data | Level sweep, foliage, landscape frame, baseline |
 | `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
@@ -200,7 +215,7 @@ here.
 `render_layer` draws a sheet 256 rows at a time; at 32768 a whole-sheet float32 intermediate
 is four gigabytes. Each band carries `BAND_HALO` rows either side and crops them, because a
 one-sided difference at every band edge would draw a line across the world. `direct` is the
-rock raster's memory maps with the ground lattice and the sub-sampling, and `overlay` the
+rock raster's two planes with the ground lattice and the sub-sampling, and `overlay` the
 arch-and-boulder pair; without them the picture is one regime. `seam` and `regimes` are the
 measuring accumulators, passed for the first layer only since every layer draws one surface.
 `meshes` is the render-only mesh raster, `reach` the plane where the ocean's crossing rule

@@ -28,6 +28,9 @@ Planned as 0.2.0.
 - *Stage headroom* and *count biomass burners* are shared by the page and chat, in
   `settings.json` in the user data dir. A browser's own earlier value is adopted once. Chat's
   `biomass=` now defaults to that setting, and a new `settings` tool reads and writes it.
+- Map generation needs `zstandard`, now in the `gen` extra: stop satisfactory-mcp, then run
+  `uv sync --extra gen`. Raster caches kept by an earlier version are still reused;
+  `python -m mapgen compress-cache <dir>` shrinks them about 20x.
 
 ### Added
 
@@ -43,6 +46,9 @@ Planned as 0.2.0.
   saved power, priced at the save's grid mix, repays them; an overclock-last switch builds a
   row one machine short. Both default from shared settings and are on `plan_factory` and
   `plan_layout`.
+- Map generator: the render's raster caches are stored compressed, 0.93 GB instead of
+  18.5 GB at full size, and read without inflating; the tiles are the same bytes.
+  `python -m mapgen compress-cache` converts caches kept before.
 
 ### Deprecated
 

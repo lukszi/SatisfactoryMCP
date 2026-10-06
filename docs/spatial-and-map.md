@@ -802,7 +802,8 @@ the field*: `sweep_levels`, `read_mesh_geometry`, `rotation_matrix`, `winding_si
 changes is the grid they are pointed at — its own 32768², 0.229 m to the texel — which is
 what makes a difference between the render and the field a difference of spacing rather than
 of rasteriser. 216 M triangles over 20,233 placements, banded at 256 rows, 806 s, written to
-a memory-mapped scratch file so both layers draw from one rasterisation.
+a memory-mapped scratch file so both layers draw from one rasterisation. (Since section 39
+the scratch file is a zstd band store.)
 
 **Two things then had to be got right that the parked design got wrong**, and both were
 found by looking at the picture rather than at the statistic.
@@ -1681,8 +1682,8 @@ A full run of all three layers took 60 min wall time on 2026-10-05, against abou
 two layers of recipe 5: lattice 11 s, paint preparation 78 s, sweep and decode 47 s, rock pass
 10.5 min, arch-and-boulder pass 1.7 min, render-only mesh pass 6.4 min (42.6 M texels). Drawing
 and cutting took 11 min for terrain, 13 min for satellite and 15 min for painted. The
-render-only mesh cache is 5.4 GB at 32768 and is deleted with the others unless
-`--keep-direct`. Tile output was 2,523 MB: terrain 863 MB, satellite 838 MB and painted
+render-only mesh cache was 5.4 GB at 32768, 0.13 GB in the band store since section 39, and
+is deleted with the others unless `--keep-direct`. Tile output was 2,523 MB: terrain 863 MB, satellite 838 MB and painted
 822 MB. `--renders-name renders-v4` writes to `data/local/renders-v4/<layer>/`; the registry
 adopts the painted layer as `game-painted-r6-502094`.
 
@@ -1774,7 +1775,8 @@ the rock pass, the arch-and-boulder pass and the render-only mesh pass. `--resty
 from the caches a render kept with `--cache-dir` and `--keep-direct`, and exits 9 when one is
 missing or was cut for another size, sub-sampling or build, so a palette change never turns into
 a full render. The caches are kept afterwards. The job preset is `restyle` on a render
-(maps_contract.md §4).
+(maps_contract.md §4). Since section 39 the kept caches are a zstd band store, about 0.9 GB at
+full size against 18.5 GB raw; a raw cache kept before then is still drawn from.
 
 Measured at `--size 1024` on 2026-10-05, with other renders running on the machine: the run that
 built the caches (terrain only) took 8 min 41 s, most of it the sweep, the rock pass and the mesh
@@ -3269,3 +3271,158 @@ the river under the 235.5 m box at (-764, 668), the lake under the 131.3 m volum
   whole length, so its upper end would draw dry. No such case shows on this build.
 - This section leaves level-only water alone. At the ocean's level it draws on section 26's
   open-sea bed; away from it, it keeps the deep tint.
+
+## 39. Compressed raster caches: the zstd band store (2026-10-06)
+
+The render's raster caches (`direct.cache`, `top.cache`, `meshes.cache`, `titan.cache`) were
+headerless raw memory maps: 18.5 GB at 32768, more than the 10.7 GB the job estimate and the
+README assumed. Each plane is written once, top to bottom in 256-row bands, and every layer
+then reads it top to bottom again, rows `[top - 8, top + 264)` per band. Two other reads exist:
+the family plane's strided row gather, once per run, and the Titan raster's half-resolution
+window. Nothing reads them at random. They are now a zstd band store, 0.93 GB at 32768, which
+the render reads directly: nothing is inflated back to a raw file first. The planes round-trip
+bit for bit, so the tiles are the same bytes.
+
+### Measured (2026-10-06, the renders-v5 caches, build 502094)
+
+Every band of every plane was hashed before and after.
+
+| Plane | Raw MiB | Band store MiB | Ratio |
+| --- | --- | --- | --- |
+| `direct.cache/direct.z.f32` | 4,096 | 709.6 | 5.8 |
+| `direct.cache/direct.cov.u8` | 1,024 | 3.5 | 289 |
+| `direct.cache/direct.family.u8` | 1,024 | 3.4 | 299 |
+| `top.cache/direct.z.f32` | 4,096 | 36.4 | 112 |
+| `top.cache/direct.cov.u8` | 1,024 | 3.1 | 331 |
+| `meshes.cache/meshes.z.f32` | 4,096 | 119.5 | 34 |
+| `meshes.cache/meshes.class.u8` | 1,024 | 6.1 | 167 |
+| `titan.cache/meshes.z.f32` | 1,024 | 10.2 | 101 |
+| `titan.cache/meshes.class.u8` | 256 | 0.1 | 2,249 |
+| All | 17,664 | 892 | 19.8 |
+
+Only 11% of the float32 texels are not zero, and the rock heights hold 80% of the compressed
+bytes. Writing all nine planes cost 9.9 s of CPU and reading them back in the render's pattern
+17.8 s, against 7.5 s for the memory maps once they are in the page cache. A cold read of the
+raw set from the hard disk the caches live on runs at 115 to 147 MB/s, so 120 to 154 s; the band
+store is 6 to 8 s of reading. The two coverage planes are redundant at one sub-sample, since
+a texel is covered exactly where its height is not zero, but they are kept: they cost 7 MB
+compressed.
+
+Other codecs on the same planes: zstd without the shuffle 3.8x on the rock heights, lz4 3.3x,
+`numpy.savez_compressed` 3.9x and slow. blosc2 with shuffle and zstd reached 5.5 to 6.5x and is
+fast with threads, but it is a heavy dependency and 4.14.1 corrupted data with `TRUNC_PREC`
+plus `BYTEDELTA`. Compressing whole files at rest and inflating them before a run saves no peak
+disk, adds about 2.5 min per run and a second window in which a crash leaves a half-written
+cache. Caching less was not worth it.
+
+### The format
+
+- One file per plane, `<plane>.bands`, beside where the raw `<plane>` was:
+  `direct.z.f32.bands`, `meshes.class.u8.bands`.
+- One zstd frame per band of 256 rows, the rasteriser's own band and one row of 256 px tiles;
+  a last band may be short. Level 1, with the content size and checksum in every frame.
+- A plane wider than a byte is byte-shuffled per band before compression: every value's first
+  byte, then every second byte, and so on. That is what makes float32 heights compress, 5.8x
+  against 3.8x. A one-byte plane goes in as it is.
+- After the frames, an int64 offset table of bands + 1 entries, then a 48-byte trailer: the
+  magic `MGBANDS1`, rows, columns, band rows, the numpy dtype string and the table's length.
+  Little-endian throughout. The file is fsynced when it is closed.
+- The sidecar's `storage` names the layout: `zstd-bands-v1`, or `raw`. A sidecar without the
+  field is a raw cache from before this section. The stamp did not change, so those caches
+  still hit. A storage this reader does not know is a miss.
+
+`mapgen/bandstore.py` holds the format: `BandWriter` writes bands in order and commits on
+close, and a writer that fails or is closed short deletes its file. `BandArray` reads.
+
+### Reading
+
+`cache.open_plane` returns a `BandArray` for the band store and the read-only memory map for a
+raw cache. `cached_direct`, `cached_family` and `cached_meshes` go through it, and the Titan
+trees through `cached_meshes`. Nothing that draws changed.
+
+- `BandArray` decodes a band when it is first asked for and keeps the last three. A band
+  loop read spans three bands at most, in order, so each band is decoded once per layer.
+- It takes a row, a row slice, or an integer array of rows, then any column index. The
+  family gather is decoded band by band. Results are read-only, as the memory maps' were.
+- It opens the file for each band and holds no handle between reads. Clearing the cache
+  through `DELETE /api/maps/cache` is refused while a job runs, so no reader loses a file.
+- At 32768 this costs about 10 s more CPU per layer, and about 0.45 GB more memory for three
+  decoded bands of each plane: 96 MB for a float32 plane. It saves about 2 min of reading
+  from a cold disk.
+
+### A damaged cache
+
+- Opening a plane reads its trailer and offset table, and checks the shape, type and
+  table. A truncated, foreign or mismatched file is a miss, and the run rebuilds the cache.
+- A band's payload is checked when it is decoded. A corrupt band raises `BandStoreError`
+  naming the file and its rows, after deleting the cache's `meta.json`. The run stops with that
+  message and the next run misses and rebuilds, rather than stopping at the same band again.
+  Checking every frame at open would decode the whole cache, about 18 s at 32768, on every
+  run.
+- The rasterisers close and fsync every plane before writing `meta.json`. A run that dies
+  part way leaves no sidecar, which is a miss.
+
+### Writing
+
+`rasterise_direct`, including the family plane it opens on the first band that carries one,
+and `rasterise_meshes`, which also writes the Titan raster, write through `cache.plane_writer`.
+Each first removes its planes in both layouts, so a cache never holds both, and records
+`storage` in the sidecar. Passing `storage="raw"` writes the old layout, which is how the
+check below was run.
+
+### Converting a kept cache
+
+`python -m mapgen compress-cache <dir>` converts a raw cache in place. `<dir>` is one raster
+cache, or a folder holding them such as `data/local/maps/_cache/<size>`.
+
+1. Each plane is written beside the raw one, band by band, with a BLAKE2b digest of every raw
+   band.
+2. Every band is decoded again and compared with its digest.
+3. The sidecar is rewritten with `storage`, through a temporary file and a rename.
+4. Only then are the raw planes deleted.
+
+A failure deletes what the command wrote and leaves the cache as it was. It refuses a
+directory with no readable `meta.json`, which is a cache still being written or not a cache.
+On Windows it also refuses a cache whose plane another process holds open, such as a render
+reading it: it renames each plane to itself and back, which Windows refuses for an open file.
+Elsewhere that test finds nothing. `--to <dir>` writes the band store there and leaves the
+source alone. A cache already in the band store is skipped, and raw planes left beside its
+band files are removed.
+
+On a copy of the renders-v5 Titan cache, the command took 1,342 MB to 10.8 MB in 4 to 5 s, at
+a peak working set of 97 MB, and the decoded planes hash to the raw files' SHA-256. A whole
+32768 set should take 2 to 2.5 min, nearly all of it reading 18.5 GB from a hard disk. That is
+an estimate from the read rates above, not a run.
+
+### Checked at 2048 (2026-10-06)
+
+The same 2048 render, all five layers with `--workers 2`, ran twice, one after the other, from
+the same field, paint and build. The first run forced the rasterisers to `storage="raw"` and the
+second used the band store.
+
+- All 530 tiles, 106 per layer, are byte-identical by SHA-256.
+- The render sidecars differ only in their timings and the new `storage` fields.
+- The nine cache planes decode to the raw planes' bytes. `compress-cache --to` on the raw run's
+  caches wrote band files byte-identical to the band run's own.
+- The caches are 72.4 MB raw and 6.0 MB in the band store at 2048, 12x. The coarse sheet has
+  rock on 31% of its texels, against 11% at 32768, so previews compress less than a full
+  render.
+- Both runs peaked at 7.8 GB working set. That is the render's own field, lattice and paint
+  state; three decoded bands of all nine 2048 planes come to about 29 MB.
+- Wall time was 545 s raw and 601 s banded, on a machine running other work. Decoding a 2048
+  cache takes well under a second per layer, so the difference is load, not the store.
+
+A full-size render has not yet been compared with a raw-cache render of the same build. The
+planes round-trip bit for bit, so identical tiles are expected there too.
+
+### Compatibility
+
+- `zstandard==0.25.0` is in the `gen` extra. `python -m mapgen renders` asks for it with the
+  other `gen` modules, and the Maps tab's generation check includes it.
+- An older build of the generator does not find the raw files in a band-store cache, so it
+  misses and rebuilds raw. The `.bands` files stay beside them until the next band-store run
+  or a cache clear removes them.
+- The job estimate's cache term, `CACHE_BYTES_FULL` in `domain/maps/presets.py`, is 1.0 GB at
+  32768, scaled by area like the rest.
+- The unlit run's surface planes (section 29, 5.4 GB at 32768) are not in the band store: the
+  lighting pool reads them in blocks with a halo, not in row order.
