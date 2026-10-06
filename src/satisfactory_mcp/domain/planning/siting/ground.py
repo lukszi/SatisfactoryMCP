@@ -3,17 +3,27 @@
 from __future__ import annotations
 
 import statistics
+from collections.abc import Callable
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any
+from enum import Enum
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 from ...spatial import caves, heightfield
 from .record import Siting, footprint_box_cm, ground_provider
+from .views import TerrainZ
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
 
+
+class _Field(Enum):
+    INSTALLED = "installed"
+
+
 #: ``terrain_field`` left at this means "the installed provider's field"; ``None``, "none".
-INSTALLED_FIELD = object()
+INSTALLED_FIELD = _Field.INSTALLED
+#: What a ``terrain_field`` argument may be.
+TerrainField: TypeAlias = "heightfield.Field | Literal[_Field.INSTALLED] | None"
 
 #: A pad is flagged ambiguous when at least this share of it may be a roof over the floor.
 AMBIGUOUS_PAD_PCT = 10.0
@@ -35,6 +45,30 @@ def _built_hint_m(st: WorldState | None, probe: Siting) -> float | None:
     return statistics.median(zs) if zs else None
 
 
+def _point_z(
+    field: heightfield.Field, x_m: float, y_m: float, hint_m: float | None, out: TerrainZ
+) -> TerrainZ:
+    """``terrain_z`` without a footprint: one bilinear read at the site's origin."""
+    reading = field.z(x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100)
+    if reading is None:
+        return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
+    if not reading.height_known:
+        return {**out, "z_m": None, "cave": caves.INSIDE, "reason": reading.cave_note}
+    return {
+        **out,
+        "z_m": round(reading.z_m, 2),
+        "surface": reading.surface,
+        "bare_m": None if reading.terrain_z_m is None else round(reading.terrain_z_m, 2),
+        "ambiguous": reading.ambiguous,
+        "provenance": reading.source,
+        "accuracy_m": reading.accuracy_m,
+        "coarse": reading.provenance == heightfield.PROV_FILL,
+        "water_level_m": reading.water_m if reading.submerged else None,
+        "cave": reading.cave,
+        "cave_floor": reading.cave_floor,
+    }
+
+
 def terrain_z(
     field: heightfield.Field | None,
     x_m: float,
@@ -45,7 +79,7 @@ def terrain_z(
     yaw_deg: float = 0.0,
     hint_m: float | None = None,
     hint_from: str = "",
-) -> dict[str, Any]:
+) -> TerrainZ:
     """The ground under a site from the heightfield, with what that number is worth.
 
     Over a footprint the answer is the pad's median on one surface -- ground unless a hint
@@ -55,35 +89,13 @@ def terrain_z(
     """
     if field is None:
         return {"z_m": None, "reason": NO_FIELD}
-    out: dict[str, Any] = {
+    out: TerrainZ = {
         "hint_m": None if hint_m is None else round(hint_m, 2),
         "hint_from": hint_from or None,
         "build": field.build,
     }
     if width_m <= 0 or depth_m <= 0:
-        reading = field.z(x_m * 100, y_m * 100, hint_z_cm=None if hint_m is None else hint_m * 100)
-        if reading is None:
-            return {**out, "z_m": None, "reason": _silence(field, x_m, y_m)}
-        if not reading.height_known:
-            return {
-                **out,
-                "z_m": None,
-                "cave": caves.INSIDE,
-                "reason": reading.cave_note,
-            }
-        return {
-            **out,
-            "z_m": round(reading.z_m, 2),
-            "surface": reading.surface,
-            "bare_m": None if reading.terrain_z_m is None else round(reading.terrain_z_m, 2),
-            "ambiguous": reading.ambiguous,
-            "provenance": reading.source,
-            "accuracy_m": reading.accuracy_m,
-            "coarse": reading.provenance == heightfield.PROV_FILL,
-            "water_level_m": reading.water_m if reading.submerged else None,
-            "cave": reading.cave,
-            "cave_floor": reading.cave_floor,
-        }
+        return _point_z(field, x_m, y_m, hint_m, out)
     box = footprint_box_cm(x_m, y_m, width_m, depth_m, yaw_deg)
     areas = {"ground": field.window(*box)}
     if field.has_terrain:
@@ -163,7 +175,7 @@ def settle_z(
     sit: Siting,
     at_z_m: float | None,
     label: str,
-    terrain_field: Any,
+    terrain_field: TerrainField,
 ) -> Siting:
     """``sit`` with its z settled: a typed or player z wins, else the terrain's."""
     field = _installed_field() if terrain_field is INSTALLED_FIELD else terrain_field
@@ -185,14 +197,19 @@ def settle_z(
         hint_from=hint_from,
     )
     z_m = at_z_m
-    if z_m is None and reading.get("z_m") is not None:
-        z_m, z_source = float(reading["z_m"]), "terrain"
+    terrain_m = reading.get("z_m")
+    if z_m is None and terrain_m is not None:
+        z_m, z_source = float(terrain_m), "terrain"
     return replace(
         sit,
         z_m=None if z_m is None else round(z_m, 2),
         z_source=z_source,
         terrain=reading,
     )
+
+
+#: Loads the terrain field, or None when this machine has none.
+FieldLoader: TypeAlias = Callable[[], "heightfield.Field | None"]
 
 
 class TerrainGround:
@@ -202,7 +219,7 @@ class TerrainGround:
     dragged pad go through one installed source.
     """
 
-    def __init__(self, load) -> None:
+    def __init__(self, load: FieldLoader) -> None:
         self.load = load
 
     def __call__(
@@ -214,11 +231,11 @@ class TerrainGround:
         return reading.get("z_m")
 
 
-def terrain_provider(load=heightfield.load_field) -> TerrainGround:
+def terrain_provider(load: FieldLoader = heightfield.load_field) -> TerrainGround:
     return TerrainGround(load)
 
 
-def _installed_field():
+def _installed_field() -> heightfield.Field | None:
     """The field behind the installed provider, or ``None`` with no terrain provider."""
-    load = getattr(ground_provider[0], "load", None)
+    load: FieldLoader | None = getattr(ground_provider[0], "load", None)
     return load() if load is not None else None

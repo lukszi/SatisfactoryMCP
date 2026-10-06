@@ -14,17 +14,36 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import TypeVar
+from typing import Protocol, TypeVar
 
 from .... import config
 from ....core import schema
+from ....core.jsontypes import JsonObject, JsonValue
 from .plan_args import PLAN_ARGS
 
-__all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore", "find_by_name"]
+__all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore", "StoredPlan", "find_by_name"]
 
 SCHEMA = 1
 
 _Item = TypeVar("_Item")
+
+
+class StoredPlan(Protocol):
+    """What a recall reads off a stored plan: a ``Plan``, or a ``planlog.PlanState``."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def plan_id(self) -> str: ...
+
+    @property
+    def provenance(self) -> JsonObject: ...
+
+    @property
+    def siting(self) -> JsonObject: ...
+
+    def kwargs(self) -> dict: ...
 
 
 def find_by_name(items: list[_Item], name_of: Callable[[_Item], str], needle: str) -> _Item | None:
@@ -49,10 +68,10 @@ class Plan:
     created: str = ""
     #: What each source selector RESOLVED to when saved; ``provenance`` owns the shape.
     #: Empty means "not recorded", which a recall reports as such and not as "unchanged".
-    provenance: dict = field(default_factory=dict)
+    provenance: JsonObject = field(default_factory=dict[str, JsonValue])
     #: Where this plan is to STAND; ``planning.siting`` owns the shape and empty means "not
     #: sited". Untouched by a re-save: where a plan goes has its own verb.
-    siting: dict = field(default_factory=dict)
+    siting: JsonObject = field(default_factory=dict[str, JsonValue])
     key: str = ""
     rev: int = 0
 
@@ -68,7 +87,7 @@ _FIELDS = frozenset(f.name for f in fields(Plan))
 class PlanStore:
     world_id: str
     session_name: str = ""
-    plans: list[Plan] = field(default_factory=list)
+    plans: list[Plan] = field(default_factory=list[Plan])
     version: int = 0
 
     @staticmethod

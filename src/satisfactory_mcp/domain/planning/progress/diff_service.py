@@ -17,8 +17,9 @@ from ...world.state import WorldState
 from .. import siting as siting_mod
 from ..solver.prepare import PreparedPlan, prepare
 from ..stored.planlog import PlanState
+from ..stored.store import Plan
 from . import built
-from .diff import DiffReport, build_diff
+from .diff import DiffReport, build_diff, request_of, solution_of
 from .stages import Tracking, machine_states, track
 from .startup import Commissioning, commission
 
@@ -84,7 +85,7 @@ class DiffVsSaveReport:
     #: The startup order the partition came from, beside ``tracking``.
     startup: Commissioning | None = None
     #: graph.health state per matched machine, from the one pass ``tracking`` also read.
-    health: dict[str, str] = field(default_factory=dict)
+    health: dict[str, str] = field(default_factory=dict[str, str])
     #: What the scope costs the reader, when a factory narrowed what counts as built.
     scope_note: str = ""
     #: Said when a stored plan re-solves to a different plan_id than it was saved with.
@@ -111,7 +112,7 @@ def diff_in_scope(
     prepared: PreparedPlan,
     scope_name: str | None,
     biomass: bool,
-    stored: PlanState | None = None,
+    stored: PlanState | Plan | None = None,
 ) -> tuple[DiffReport, str]:
     """The diff of a solved plan under an optional factory scope, and the scope's note.
 
@@ -121,23 +122,20 @@ def diff_in_scope(
     when the named factory has no machines left: an empty scope is the caller's mistake,
     not a diff saying the plan is unbuilt.
     """
+    solution, request = solution_of(prepared), request_of(prepared)
     if stored is not None:
         found = built.detect(g, st, stored, prepared, scope_name)
-        diff = build_diff(
-            g, st, prepared.solution, prepared.request, scope=found.scope, biomass=biomass
-        )
+        diff = build_diff(g, st, solution, request, scope=found.scope, biomass=biomass)
         low = None
         if found.scope_low is not None:
-            low = build_diff(
-                g, st, prepared.solution, prepared.request, scope=found.scope_low, biomass=biomass
-            )
+            low = build_diff(g, st, solution, request, scope=found.scope_low, biomass=biomass)
         built.fill_progress(found, diff, low)
         diff.built_at = found
         note = ""
         if found.mode == "picked":
             note = _scope_note(found.picked, len(found.scope or ()))
         return diff, note
-    scope = None
+    scope: set[str] | None = None
     note = ""
     if scope_name and built.mode_of(scope_name) == "world":
         scope_name = None
@@ -151,7 +149,7 @@ def diff_in_scope(
             )
         scope = set(machines)
         note = _scope_note(resolved_name, len(scope))
-    diff = build_diff(g, st, prepared.solution, prepared.request, scope=scope, biomass=biomass)
+    diff = build_diff(g, st, solution, request, scope=scope, biomass=biomass)
     return diff, note
 
 
@@ -159,7 +157,7 @@ def plan_progress(g: GameData, st: WorldState, stored: PlanState) -> built.Built
     """A stored plan's ``built_at`` alone, for a list of plans: one solve and one match, no
     startup order. None when the plan does not solve or builds nothing."""
     prepared = prepare(g, st, stored.kwargs(), diagnose=False)
-    if prepared.failure or not prepared.solution.processes:
+    if prepared.failure or prepared.solution is None or not prepared.solution.processes:
         return None
     diff, _ = diff_in_scope(g, st, prepared, None, False, stored=stored)
     return diff.built_at
@@ -169,6 +167,7 @@ def _track_stages(
     g: GameData,
     st: WorldState,
     report: DiffVsSaveReport,
+    diff: DiffReport,
     *,
     plan_name: str,
     stored: PlanState | None,
@@ -177,21 +176,22 @@ def _track_stages(
     """Partition the plan into startup stages and match them against the save, in place."""
     head, source = resolve_headroom(report.power, stored=stored, default=default)
     report.startup = commission(report.prepared, g, head, source)
-    report.health = machine_states(report.diff, g, st)
+    report.health = machine_states(diff, g, st)
     report.tracking = track(
         report.prepared,
         report.startup,
-        report.diff,
+        diff,
         g,
         st,
         plan_name=plan_name,
         health=report.health,
     )
+    saved_plan: PlanState | Plan | None
     if stored is not None:
         saved_plan = stored
     else:
         saved_plan = st.plans.find(plan_name) if plan_name else None
-    plan_id = report.prepared.request.plan_id
+    plan_id = request_of(report.prepared).plan_id
     saved_id = saved_plan.plan_id if saved_plan is not None else ""
     if plan_name and saved_id and saved_id != plan_id:
         # A stage number is a milestone the player remembers, and a re-solve against a
@@ -228,14 +228,14 @@ def build_diff_report(
     if prepared.failure:
         return report
 
-    if not prepared.solution.processes:
+    solution = solution_of(prepared)
+    if not solution.processes:
         report.empty = True
         return report
 
     recalled = stored if stored is not None else (st.plans.find(plan) if plan else None)
-    report.diff, report.scope_note = diff_in_scope(
-        g, st, prepared, factory, biomass, stored=recalled
-    )
+    diff, report.scope_note = diff_in_scope(g, st, prepared, factory, biomass, stored=recalled)
+    report.diff = diff
 
     # A sited plan gets the census over its own pad. Beside the identity-matched diff,
     # not instead of it: the diff says whether the machines exist, the survey says
@@ -244,9 +244,9 @@ def build_diff_report(
         sit = siting_mod.parse(recalled)
         if sit is not None:
             report.site = sit
-            report.site_survey = siting_mod.survey(g, st, sit, prepared.solution.processes)
+            report.site_survey = siting_mod.survey(g, st, sit, solution.processes)
 
     # Off unless asked for: the stage numbering is only stable for a STORED plan.
     if plan or stored is not None or stage is not None:
-        _track_stages(g, st, report, plan_name=plan_name, stored=stored, default=default)
+        _track_stages(g, st, report, diff, plan_name=plan_name, stored=stored, default=default)
     return report

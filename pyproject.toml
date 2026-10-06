@@ -221,8 +221,6 @@ ignore = [
 "tests/**/*.py" = ["TID251"]
 # The modules that still import typing.Any. The list only shrinks, and a line no longer needed
 # fails tests/architecture/test_typing.py.
-"src/satisfactory_mcp/domain/planning/siting/ground.py" = ["TID251"]
-"src/satisfactory_mcp/domain/planning/siting/resolve.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/caves.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/heightfield/field.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/rocks.py" = ["TID251"]

@@ -8,10 +8,11 @@ the code had to choose something the contract leaves open, and why.
 
 | Module | Holds |
 |---|---|
-| `stored/plan_args.py` | `PlanArgs`, each field's kind and check, `PLAN_ARGS`, `PLAN_DEFAULTS`, `InvalidOp`; reads nothing else in `stored` |
+| `stored/views.py` | The shapes: `PlanArgsBody` and `PlanOpBody` as the web publishes them; `PlanOp`, an op as the log reads and writes it (JSON of `PlanOpBody`'s shape); the records a commit, a state and a conflict are written as |
+| `stored/plan_args.py` | `PlanArgs`, each field's kind and check, `PLAN_ARGS`, `PLAN_DEFAULTS`, `InvalidOp`; reads only `views` in `stored` |
 | `planlog/records.py` | `PlanState`, `Commit`, `Actor`, `Conflict`, `Pushed`, `Stamp` and the refusals |
 | `planlog/ops.py` | One op at a time: canonical form, apply, inverse, merge key, clash; `diff_args`; undo chains |
-| `planlog/wording.py` | `describe_op`, `describe_commit` and the words of a conflict |
+| `planlog/wording.py` | `describe_op`, `describe_commit`, the words of a conflict, and `op_text`, which reads an op's names |
 | `planlog/log.py` | `PlanLog` and `PlanView`: the files, the locks, snapshots and the merge |
 | `planlog/migrate.py` | The one-time move of the legacy file into the log |
 

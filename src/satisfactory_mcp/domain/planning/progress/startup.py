@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from ....core.gamedata.model import GameData
 from ....core.text import plural
 from ..solver.graph import chain_depth_of_rates
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..solver.prepare import PreparedPlan
 
 __all__ = ["Commissioning", "Wave", "WaveRow", "commission"]
 
@@ -57,7 +60,7 @@ class WaveRow:
 @dataclass
 class Wave:
     index: int
-    rows: list[WaveRow] = field(default_factory=list)
+    rows: list[WaveRow] = field(default_factory=list[WaveRow])
     available_before: float = 0.0
 
     def fill_s(self) -> float:
@@ -107,14 +110,14 @@ class Commissioning:
     #: Where the headroom figure came from, printed as a labelled input so a sequence
     #: computed against a stale save is visibly stale.
     headroom_source: str = ""
-    waves: list[Wave] = field(default_factory=list)
+    waves: list[Wave] = field(default_factory=list[Wave])
     plant_draw_mw: float = 0.0
     plant_generation_mw: float = 0.0
     #: Cheapest slice that keeps every stage of the chain fed: one machine of every
     #: process. If this does not fit the headroom, no startup order exists at this scope.
     minimum_slice_mw: float = 0.0
     ok: bool = True
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list[str])
 
     @property
     def machines(self) -> int:
@@ -182,7 +185,7 @@ def _fit_wave(
 
 
 def commission(
-    prepared, game: GameData, headroom_mw: float, headroom_source: str = ""
+    prepared: PreparedPlan, game: GameData, headroom_mw: float, headroom_source: str = ""
 ) -> Commissioning:
     """Order the plan's machines into waves that can each be switched on safely."""
     out = Commissioning(headroom_mw=headroom_mw, headroom_source=headroom_source)

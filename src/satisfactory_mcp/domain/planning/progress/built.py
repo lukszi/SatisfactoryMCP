@@ -10,9 +10,9 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
@@ -25,8 +25,12 @@ from ...world.state import WorldState
 from .. import siting as siting_mod
 from ..solver.prepare import PreparedPlan
 from ..stored.planlog import PlanState
-from .diff import DiffReport, machine_rate
-from .jobs import group_processes
+from ..stored.store import Plan
+from .diff import DiffReport, DiffRow, machine_rate, request_of, solution_of
+from .jobs import JobKey, group_processes
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ...factories.cohere import Proposal
 
 __all__ = [
     "AUTO",
@@ -107,10 +111,10 @@ class BuiltAt:
     area: SearchArea | None = None
     scope: set[str] | None = None
     scope_low: set[str] | None = None
-    candidates: list[Candidate] = field(default_factory=list)
+    candidates: list[Candidate] = field(default_factory=list[Candidate])
     picked: str = ""
-    foreign: list[tuple[str, int]] = field(default_factory=list)
-    also_here: list[str] = field(default_factory=list)
+    foreign: list[tuple[str, int]] = field(default_factory=list[tuple[str, int]])
+    also_here: list[str] = field(default_factory=list[str])
     node_owner: str = ""
     hint: str = ""
     fallback: str = ""
@@ -119,7 +123,7 @@ class BuiltAt:
     total: int = 0
     percent: float | None = None
     percent_max: float | None = None
-    missing: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list[str])
 
     @property
     def top(self) -> Candidate | None:
@@ -154,7 +158,7 @@ class BuiltAt:
         return f"{self.built} / {self.total}"
 
     def details(self) -> list[str]:
-        out = []
+        out: list[str] = []
         if self.missing:
             out.append("missing: " + ", ".join(self.missing))
         if self.also_here:
@@ -208,7 +212,7 @@ def plan_radius_m(g: GameData, prepared: PreparedPlan) -> float:
     """How far a plan of this size reaches from its site: the circle round the square
     its machines' footprints need, plus a margin."""
     foundations = 0
-    for proc in prepared.solution.processes:
+    for proc in solution_of(prepared).processes:
         if proc["kind"] == "extractor":
             continue
         b = g.buildings.get(proc.get("building_id") or "")
@@ -219,7 +223,7 @@ def plan_radius_m(g: GameData, prepared: PreparedPlan) -> float:
 
 
 def search_area(
-    g: GameData, st: WorldState, stored: PlanState, prepared: PreparedPlan
+    g: GameData, st: WorldState, stored: PlanState | Plan, prepared: PreparedPlan
 ) -> SearchArea | None:
     """Where this plan's machines would stand, or None when it has no single spot."""
     radius = plan_radius_m(g, prepared)
@@ -234,7 +238,7 @@ def search_area(
     sources = [str(s).strip() for s in (raw or [])]
     near = [s for s in sources if s.casefold().startswith("near:")]
     if near and len(near) == len(sources):
-        circles = []
+        circles: list[tuple[float, float, float]] = []
         for term in near:
             try:
                 place, _reach = parse_near(term[5:])
@@ -249,13 +253,13 @@ def search_area(
             )
         return None
     if sources and all(s.casefold().startswith("node:") for s in sources):
-        rows = [r for r in prepared.request.node_rows if r.get("kind") == "node"]
-        circles = tuple((float(r["x"]), float(r["y"]), radius) for r in rows)
+        rows = [r for r in request_of(prepared).node_rows if r.get("kind") == "node"]
+        on_nodes = tuple((float(r["x"]), float(r["y"]), radius) for r in rows)
         ids = frozenset(instance_leaf(r["instance"]) for r in rows)
-        if circles:
+        if on_nodes:
             return SearchArea(
                 "nodes",
-                circles,
+                on_nodes,
                 node_ids=ids,
                 words=f"around its {len(rows)} {plural('node', len(rows))}",
             )
@@ -270,7 +274,7 @@ class _PlacedMachine:
     leaf: str
     group: str
     cls: str
-    key: tuple
+    key: JobKey
     rate: float
     xy: tuple[float, float] | None
     node: str
@@ -296,7 +300,7 @@ def _placed_machines(st: WorldState) -> dict[str, _PlacedMachine]:
         for r in st.projection.get(group, ()):
             leaf = instance_leaf(r.get("instance"))
             if group == "machines":
-                key: tuple = ("recipe", r["cls"], r.get("recipe") or "")
+                key: JobKey = ("recipe", r["cls"], r.get("recipe") or "")
             elif group == "generators":
                 key = ("generator", r["cls"])
             else:
@@ -314,7 +318,7 @@ def _placed_machines(st: WorldState) -> dict[str, _PlacedMachine]:
     return out
 
 
-def _coverage(have: dict[tuple, float], want: dict[tuple, float]) -> tuple[float, float]:
+def _coverage(have: dict[JobKey, float], want: dict[JobKey, float]) -> tuple[float, float]:
     """(share of the plan's rate covered, overlap over union)."""
     total = sum(want.values()) or 1.0
     overlap = sum(min(have.get(k, 0.0), v) for k, v in want.items())
@@ -341,8 +345,8 @@ def _cluster_names(st: WorldState, wanted: set[int]) -> dict[int, str]:
     return {i: names.get(i, f"cluster {i}") for i in wanted}
 
 
-def _rate_by_job(machines: list[_PlacedMachine]) -> dict[tuple, float]:
-    have: dict[tuple, float] = {}
+def _rate_by_job(machines: list[_PlacedMachine]) -> dict[JobKey, float]:
+    have: dict[JobKey, float] = {}
     for r in machines:
         if r.group != "extractors":
             have[r.key] = have.get(r.key, 0.0) + r.rate
@@ -350,7 +354,7 @@ def _rate_by_job(machines: list[_PlacedMachine]) -> dict[tuple, float]:
 
 
 def _seed_machines(
-    placed: dict[str, _PlacedMachine], want: dict[tuple, float], area: SearchArea
+    placed: dict[str, _PlacedMachine], want: dict[JobKey, float], area: SearchArea
 ) -> list[_PlacedMachine]:
     """Machines doing a job the plan wants, standing in its search area."""
     return [
@@ -363,8 +367,8 @@ def _seed_machines(
 def _grow_into_clusters(
     seeds: list[_PlacedMachine],
     placed: dict[str, _PlacedMachine],
-    want: dict[tuple, float],
-    proposals: list,
+    want: dict[JobKey, float],
+    proposals: Sequence[Proposal],
     proposal_of: dict[str, int],
 ) -> tuple[list[int], set[str]]:
     """The clusters the seeds stand in, and the seeds plus every machine in those clusters
@@ -383,14 +387,14 @@ def _grow_into_clusters(
 def _rank_owners(
     counted: set[str],
     placed: dict[str, _PlacedMachine],
-    want: dict[tuple, float],
+    want: dict[JobKey, float],
     owner_of: Callable[[str], _Owner],
 ) -> tuple[list[_Ranked], dict[_Owner, list[_PlacedMachine]]]:
     """The counted machines by owner, best fit to the plan first."""
     by_owner: dict[_Owner, list[_PlacedMachine]] = {}
     for m in sorted(counted):
         by_owner.setdefault(owner_of(m), []).append(placed[m])
-    ranked = []
+    ranked: list[_Ranked] = []
     for owner, members in by_owner.items():
         share, fit = _coverage(_rate_by_job(members), want)
         ranked.append(_Ranked(owner, members, share, fit))
@@ -421,13 +425,13 @@ def _attribute_node_extractors(
 def _also_here(
     g: GameData,
     grown: list[int],
-    proposals: list,
+    proposals: Sequence[Proposal],
     placed: dict[str, _PlacedMachine],
-    want: dict[tuple, float],
+    want: dict[JobKey, float],
     ours: Callable[[str], bool],
 ) -> list[str]:
     """The three commonest buildings in the grown clusters that the plan does not want."""
-    also: Counter = Counter()
+    also: Counter[str] = Counter()
     for i in grown:
         for m in proposals[i].machines:
             rec = placed.get(m)
@@ -455,7 +459,7 @@ def _node_owner_note(
 ) -> str:
     """``its 3 iron ore nodes already feed “north smelters”``, one clause per other plant."""
     resource = {
-        instance_leaf(row["instance"]): row["resource"] for row in prepared.request.node_rows
+        instance_leaf(row["instance"]): row["resource"] for row in request_of(prepared).node_rows
     }
     return "; ".join(
         f"its {len(rows)} {(g.item_name(resource.get(rows[0].node, '')) or 'resource').lower()} "
@@ -470,7 +474,7 @@ def _decide_confidence(
     kept: set[str],
     excluded: set[str],
     placed: dict[str, _PlacedMachine],
-    want: dict[tuple, float],
+    want: dict[JobKey, float],
     label_of: dict[str, str],
     area: SearchArea,
 ) -> None:
@@ -502,7 +506,8 @@ def _decide_confidence(
 def _detect_at_site(
     g: GameData, st: WorldState, prepared: PreparedPlan, area: SearchArea
 ) -> BuiltAt:
-    jobs = group_processes(prepared.solution)
+    solution, request = solution_of(prepared), request_of(prepared)
+    jobs = group_processes(solution)
     want = {job.key: job.clock_sum for job in jobs if job.kind != "extractor"}
     extractor_classes = {job.building_id for job in jobs if job.kind == "extractor"}
     placed = _placed_machines(st)
@@ -510,9 +515,7 @@ def _detect_at_site(
 
     seeds = _seed_machines(placed, want, area)
     plan_nodes = {
-        instance_leaf(row["instance"])
-        for row in prepared.request.node_rows
-        if row.get("kind") == "node"
+        instance_leaf(row["instance"]) for row in request.node_rows if row.get("kind") == "node"
     }
     on_nodes = [r for r in placed.values() if r.group == "extractors" and r.node in plan_nodes]
     if not seeds and not on_nodes:
@@ -596,7 +599,7 @@ def _detect_at_site(
 def detect(
     g: GameData,
     st: WorldState,
-    stored: PlanState,
+    stored: PlanState | Plan,
     prepared: PreparedPlan,
     factory: str | None = None,
 ) -> BuiltAt:
@@ -622,7 +625,12 @@ def detect(
             out = BuiltAt(mode="picked", picked=name, scope=set(machines), area=area)
             seen = _detect_at_site(g, st, prepared, area) if area is not None else None
             top = seen.top if seen is not None and seen.scope else None
-            if top is not None and top.name != name and top.rate_share >= HINT_SHARE:
+            if (
+                seen is not None
+                and top is not None
+                and top.name != name
+                and top.rate_share >= HINT_SHARE
+            ):
                 out.hint = (
                     f"auto sees {len(top.machines)} matching machines in “{top.name}” at the site"
                 )
@@ -642,7 +650,7 @@ def detect(
 # ------------------------------------------------------------------ progress
 
 
-def _row_figures(rows) -> tuple[int, int, int, float, float]:
+def _row_figures(rows: Iterable[DiffRow]) -> tuple[int, int, int, float, float]:
     total = built = built_max = 0
     low_rate = high_rate = 0.0
     for r in rows:

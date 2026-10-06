@@ -6,13 +6,17 @@ import hashlib
 import json
 from collections import Counter, deque
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
 from ...factories.health import assess
 from ...world.state import WorldState
-from .diff import DiffReport, whole_machines
-from .jobs import group_key
+from .diff import DiffReport, DiffRow, solution_of, whole_machines
+from .jobs import JobKey, group_key
 from .startup import Commissioning
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..solver.prepare import PreparedPlan
 
 __all__ = [
     "DARK_STATES",
@@ -83,7 +87,7 @@ class StageRow:
     built: int = 0
     built_max: int = 0
     #: graph.health state -> how many of this stage's built machines are in it.
-    by_state: Counter = field(default_factory=Counter)
+    by_state: Counter[str] = field(default_factory=Counter[str])
     draw_mw: float = 0.0
     generation_mw: float = 0.0
     #: ``verb``/``free`` are the WHOLE plan's free action for this build job -- unpausing
@@ -92,8 +96,8 @@ class StageRow:
     verb: str = "OK"
     free: int = 0
     note: str = ""
-    key: tuple = ()
-    instances: list[str] = field(default_factory=list)
+    key: JobKey = ()
+    instances: list[str] = field(default_factory=list[str])
 
     @property
     def running(self) -> int:
@@ -115,7 +119,7 @@ class Stage:
     """One startup wave, matched against the save."""
 
     index: int
-    rows: list[StageRow] = field(default_factory=list)
+    rows: list[StageRow] = field(default_factory=list[StageRow])
     draw_mw: float = 0.0
     generation_mw: float = 0.0
     available_before: float = 0.0
@@ -161,8 +165,8 @@ class Stage:
         return sum(n for s, n in self.by_state.items() if s in MONITORED_STATES)
 
     @property
-    def by_state(self) -> Counter:
-        total: Counter = Counter()
+    def by_state(self) -> Counter[str]:
+        total: Counter[str] = Counter()
         for r in self.rows:
             total.update(r.by_state)
         return total
@@ -187,7 +191,7 @@ class Stage:
 
 @dataclass
 class Tracking:
-    stages: list[Stage] = field(default_factory=list)
+    stages: list[Stage] = field(default_factory=list[Stage])
     ok: bool = True
     #: The stage the player is in: the first one not fully built. 0 when the whole plan
     #: stands, because the save cannot say which block of a built plant is energised.
@@ -195,7 +199,7 @@ class Tracking:
     #: Name of the stored plan this partition came from. Empty means the numbering was
     #: derived from arguments given on the call and will renumber when they change.
     plan_name: str = ""
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list[str])
 
     @property
     def machines(self) -> int:
@@ -256,7 +260,7 @@ class Tracking:
         )
 
 
-def _counted(counter: Counter) -> list[tuple[str, int]]:
+def _counted(counter: Counter[str]) -> list[tuple[str, int]]:
     return sorted(((s, n) for s, n in counter.items() if n), key=lambda sn: (-sn[1], sn[0]))
 
 
@@ -279,7 +283,7 @@ def machine_states(report: DiffReport, game: GameData, state: WorldState) -> dic
     return {m.instance: m.state for m in assess("plan", matched, game, state.projection).machines}
 
 
-def _states_for(row, health: dict[str, str]) -> list[tuple[str, str, float]]:
+def _states_for(row: DiffRow, health: dict[str, str]) -> list[tuple[str, str, float]]:
     """This build job's matched machines with their clocks, running ones first.
 
     Identical machines are indistinguishable in the save -- nothing records which Refinery
@@ -303,7 +307,7 @@ class _JobPool:
     those standing among the plan's own are certainly its own.
     """
 
-    def __init__(self, row, health: dict[str, str]) -> None:
+    def __init__(self, row: DiffRow, health: dict[str, str]) -> None:
         self.machines = deque(_states_for(row, health))
         self.clock = row.plan_clock or 1.0
         self.rate_left = sum(clock for _, _, clock in self.machines)
@@ -313,7 +317,8 @@ class _JobPool:
 
     def take(self, rate: float) -> list[tuple[str, str, float]]:
         """Machines off the front, running ones first, until their clocks reach ``rate``."""
-        taken, total = [], 0.0
+        taken: list[tuple[str, str, float]] = []
+        total = 0.0
         while self.machines and total < rate - 1e-6:
             machine = self.machines.popleft()
             taken.append(machine)
@@ -322,7 +327,7 @@ class _JobPool:
 
 
 def track(
-    prepared,
+    prepared: PreparedPlan,
     startup: Commissioning,
     report: DiffReport,
     game: GameData,
@@ -345,7 +350,7 @@ def track(
         return out
 
     by_key = {r.key: r for r in report.rows if r.key}
-    key_of_pid = {p["pid"]: group_key(p) for p in prepared.solution.processes}
+    key_of_pid = {p["pid"]: group_key(p) for p in solution_of(prepared).processes}
 
     # One health pass over every machine the diff matched, anywhere in the plan; split per
     # row it would rescan the whole projection once per build job.
@@ -364,7 +369,7 @@ def track(
             waits_for_fill=wave.waits_for_fill,
         )
         for wave_row in wave.rows:
-            key = key_of_pid.get(wave_row.pid, ())
+            key: JobKey = key_of_pid.get(wave_row.pid, ())
             diff_row = by_key.get(key)
             pool = pools.get(key)
             clock = pool.clock if pool is not None else 1.0

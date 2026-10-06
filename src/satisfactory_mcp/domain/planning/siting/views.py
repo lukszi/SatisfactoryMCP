@@ -1,4 +1,5 @@
-"""The wire shapes of a site preview: one candidate pad and everything it would meet.
+"""The shapes of a site: its stored record, the ground under it, and one candidate pad and
+everything it would meet.
 
 Wire rules, and why these are ``typing_extensions`` TypedDicts: docs/web-wire.md.
 """
@@ -17,7 +18,37 @@ __all__ = [
     "SiteTerrain",
     "SiteTrunk",
     "SiteValue",
+    "TerrainZ",
 ]
+
+
+class TerrainZ(TypedDict, total=False):
+    """``terrain_z``: the heightfield's reading of a site. ``z_m`` is always there, and
+    ``reason`` says why when it is None; a point read and a pad read fill different keys."""
+
+    z_m: float | None
+    reason: str | None
+    hint_m: float | None
+    hint_from: str | None
+    build: str | None
+    surface: str
+    bare_m: float | None
+    ambiguous: bool
+    provenance: str
+    accuracy_m: float | None
+    coarse: bool
+    water_level_m: float | None
+    cave: str
+    cave_floor: bool
+    z_min_m: float | None
+    z_max_m: float | None
+    ambiguous_pct: float
+    cave_pct: float
+    coarse_pct: float
+    nodata_pct: float
+    submerged_pct: float
+    slope_mean_deg: float | None
+    roughness_m: float | None
 
 
 class SitePreviewNode(TypedDict):

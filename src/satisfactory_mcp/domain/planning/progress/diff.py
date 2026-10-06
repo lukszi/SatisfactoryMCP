@@ -9,11 +9,18 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
+from ....core.saveio.schema import (
+    BuildableRecord,
+    ExtractorRecord,
+    GeneratorRecord,
+    MachineRecord,
+)
 from ....core.text import plural
 from ...spatial import geo
 from ...spatial import nodes as nodes_mod
@@ -22,9 +29,10 @@ from ..layout.materials import cost_of
 from ..solver.graph import chain_depth_of_rates
 from ..solver.model import MW, Solution
 from ..solver.scenario import PlanRequest
-from .jobs import BuildJob, group_processes
+from .jobs import BuildJob, JobKey, group_processes
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..solver.prepare import PreparedPlan
     from .built import BuiltAt
 
 __all__ = [
@@ -35,7 +43,9 @@ __all__ = [
     "DiffRow",
     "build_diff",
     "machine_rate",
+    "request_of",
     "save_id",
+    "solution_of",
     "whole_machines",
 ]
 
@@ -72,18 +82,18 @@ class DiffRow:
     have_min: int | None = None
     #: What this row is matched ON (see ``jobs.group_key``). The join key for anything that needs
     #: to say something else about the same build job, such as which startup wave it is in.
-    key: tuple = ()
+    key: JobKey = ()
     #: instanceNames of the machines counted in ``have``, so a caller can ask the save
     #: what those machines are actually doing rather than only how many there are.
-    have_instances: list[str] = field(default_factory=list)
+    have_instances: list[str] = field(default_factory=list[str])
     #: instanceNames the VERB applies to: the paused machines for UNPAUSE, the idle ones
     #: being re-recipe'd for SETRECIPE. Never ``have_instances[:count]`` -- the paused
     #: three are anywhere in the matched set, and the idle ones are not in it at all.
-    act_instances: list[str] = field(default_factory=list)
+    act_instances: list[str] = field(default_factory=list[str])
     #: Distance in metres of each matched machine from the plan's ground anchor.
-    have_distances: list[float] = field(default_factory=list)
+    have_distances: list[float] = field(default_factory=list[float])
     #: (node id, metres from the anchor) to build on. Ids paste back as node: selectors.
-    targets: list[tuple[str, float]] = field(default_factory=list)
+    targets: list[tuple[str, float]] = field(default_factory=list[tuple[str, float]])
     #: Idle machines re-recipe'd into this row rather than built.
     reuse: int = 0
     note: str = ""
@@ -99,7 +109,7 @@ class DiffRow:
     have_rate: float = 0.0
     plan_clock: float = 1.0
     #: Each counted machine's clock, beside ``have_instances``.
-    have_clocks: list[float] = field(default_factory=list)
+    have_clocks: list[float] = field(default_factory=list[float])
 
     @property
     def actionable(self) -> bool:
@@ -142,10 +152,22 @@ class DiffReport:
     built_at: BuiltAt | None = None
 
 
+def solution_of(prepared: PreparedPlan) -> Solution:
+    """The solution of a plan whose ``failure`` the caller has ruled out."""
+    assert prepared.solution is not None, "the plan did not solve"
+    return prepared.solution
+
+
+def request_of(prepared: PreparedPlan) -> PlanRequest:
+    """The request of a plan whose ``failure`` the caller has ruled out."""
+    assert prepared.request is not None, "the plan did not solve"
+    return prepared.request
+
+
 # ------------------------------------------------------------------- save side
 
 
-def _xy(record: dict) -> tuple[float, float] | None:
+def _xy(record: BuildableRecord) -> tuple[float, float] | None:
     pos = record.get("pos")
     return (pos[0], pos[1]) if pos else None
 
@@ -158,7 +180,7 @@ def _nearest_m(
     return min(geo.distance_m(point, other) for other in others)
 
 
-def machine_rate(record: dict) -> float:
+def machine_rate(record: BuildableRecord) -> float:
     """One machine's rate in full-speed machines: its clock, and 1.0 where the save omits it."""
     clock = record.get("clock")
     return 1.0 if clock is None else float(clock)
@@ -177,16 +199,16 @@ def _machines_to_add(need_rate: float, have_rate: float, clock: float) -> int:
 
 @dataclass
 class _SaveIndex:
-    by_recipe: dict[tuple[str, str], list[dict]]
-    by_generator: dict[str, list[dict]]
-    by_extractor_class: dict[str, list[dict]]
-    idle: dict[str, list[dict]]
+    by_recipe: dict[tuple[str, str], list[MachineRecord]]
+    by_generator: dict[str, list[GeneratorRecord]]
+    by_extractor_class: dict[str, list[ExtractorRecord]]
+    idle: dict[str, list[MachineRecord]]
     #: (extractor class, resource, purity) -> in-scope node rows already tapped.
     tapped: dict[tuple[str, str, str], list[dict]]
     #: (resource, purity) -> in-scope node rows with nothing on them.
     free: dict[tuple[str, str], list[dict]]
     #: node instanceName -> the extractor actor sitting on it.
-    extractor_on: dict[str, dict]
+    extractor_on: dict[str, ExtractorRecord]
 
 
 def _index_save(
@@ -199,11 +221,11 @@ def _index_save(
     something else, which is the wrong answer to "how far along is the aluminium setup".
     """
 
-    def inside(record: dict) -> bool:
+    def inside(record: BuildableRecord) -> bool:
         return scope is None or instance_leaf(record["instance"]) in scope
 
-    by_recipe: dict[tuple[str, str], list[dict]] = {}
-    idle: dict[str, list[dict]] = {}
+    by_recipe: dict[tuple[str, str], list[MachineRecord]] = {}
+    idle: dict[str, list[MachineRecord]] = {}
     for m in state.projection.get("machines", ()):
         if not inside(m):
             continue
@@ -214,13 +236,13 @@ def _index_save(
             # No recipe set means no output, so reusing one has no opportunity cost.
             idle.setdefault(m["cls"], []).append(m)
 
-    by_generator: dict[str, list[dict]] = {}
+    by_generator: dict[str, list[GeneratorRecord]] = {}
     for entry in state.projection.get("generators", ()):
         if inside(entry):
             by_generator.setdefault(entry["cls"], []).append(entry)
 
-    by_extractor_class: dict[str, list[dict]] = {}
-    extractor_on: dict[str, dict] = {}
+    by_extractor_class: dict[str, list[ExtractorRecord]] = {}
+    extractor_on: dict[str, ExtractorRecord] = {}
     in_scope_nodes: set[str] = set()
     for entry in state.projection.get("extractors", ()):
         if inside(entry):
@@ -259,12 +281,13 @@ def _anchor(index: _SaveIndex) -> tuple[float, float] | None:
     plan actually pins to a coordinate. Everything else could be built anywhere, so
     anchoring on it would be a preference dressed up as a derivation.
     """
-    points = []
+    points: list[tuple[float, float]] = []
     for rows in index.tapped.values():
         for row in rows:
             actor = index.extractor_on.get(row["instance"])
-            if actor and _xy(actor):
-                points.append(_xy(actor))
+            xy = _xy(actor) if actor else None
+            if xy:
+                points.append(xy)
     return geo.centroid(points)
 
 
@@ -288,7 +311,7 @@ def save_id(state: WorldState) -> str:
 # ----------------------------------------------------------------- the matching
 
 
-def _machines_doing(job: BuildJob, index: _SaveIndex) -> list[dict]:
+def _machines_doing(job: BuildJob, index: _SaveIndex) -> list[BuildableRecord]:
     """Machines in the save that already do this plan row's job.
 
     Recipe rows join on (building, recipe); a Refinery on another recipe is busy, not
@@ -326,7 +349,7 @@ def _plan_clock(job: BuildJob) -> float:
     return 1.0 if abs(clock - 1.0) <= RECLOCK_TOLERANCE else clock
 
 
-def _reclock_note(records: list[dict], to_build: int, job: BuildJob) -> str:
+def _reclock_note(records: Sequence[BuildableRecord], to_build: int, job: BuildJob) -> str:
     """A note when the built clocks plus the machines still to build at the plan's clock
     miss the plan's total, or "" when they meet it. More machines at a lower clock is
     the same rate, so neither the count nor one machine's clock decides it."""
@@ -344,8 +367,8 @@ def _reclock_note(records: list[dict], to_build: int, job: BuildJob) -> str:
 class _Notes:
     """A row's notes in chat's words and in the page's, which leave some out or reword them."""
 
-    chat: list[str] = field(default_factory=list)
-    page: list[str] = field(default_factory=list)
+    chat: list[str] = field(default_factory=list[str])
+    page: list[str] = field(default_factory=list[str])
 
     def both(self, text: str) -> None:
         self.chat.append(text)
@@ -358,10 +381,10 @@ def _class_count_range(
     matched_points: list[tuple[float, float]],
     need_rate: float,
     plan_clock: float,
-) -> tuple[list[dict], list[dict], int, int]:
+) -> tuple[list[BuildableRecord], list[BuildableRecord], int, int]:
     """Count a job with no node to join on by its class: (machines nearest first, the ones
     among the plant, the most still to build, the fewest already built)."""
-    records = list(index.by_extractor_class.get(job.building_id, []))
+    records: list[BuildableRecord] = list(index.by_extractor_class.get(job.building_id, []))
     near = [
         r
         for r in records
@@ -394,9 +417,9 @@ def _claim_idle(
     matched_points: list[tuple[float, float]],
     claimed_idle: set[str],
     build: int,
-) -> list[dict]:
+) -> list[MachineRecord]:
     """Idle machines of this job's class among the plant, up to ``build``, claimed once."""
-    reassigned_machines: list[dict] = []
+    reassigned_machines: list[MachineRecord] = []
     if job.kind != "recipe" or build <= 0:
         return reassigned_machines
     for idle_machine in index.idle.get(job.building_id, []):
@@ -412,7 +435,9 @@ def _claim_idle(
     return reassigned_machines
 
 
-def _choose_verb(unpause: list[dict], reassigned: int, build: int) -> tuple[str, int]:
+def _choose_verb(
+    unpause: Sequence[BuildableRecord], reassigned: int, build: int
+) -> tuple[str, int]:
     """The one action a row asks for, free ones first: unpause, then set a recipe, then build."""
     if unpause:
         return "UNPAUSE", len(unpause)
@@ -514,11 +539,11 @@ def _row_for(
 class _Built:
     """The machines that count toward one job, and the interval when identity is missing."""
 
-    records: list[dict]
-    near: list[dict] = field(default_factory=list)
+    records: list[BuildableRecord]
+    near: list[BuildableRecord] = field(default_factory=list[BuildableRecord])
     build_max: int | None = None
     have_min: int | None = None
-    targets: list[tuple[str, float]] = field(default_factory=list)
+    targets: list[tuple[str, float]] = field(default_factory=list[tuple[str, float]])
 
 
 def _count_built(
@@ -556,7 +581,7 @@ def _note_actions(
     verb: str,
     build: int,
     build_max: int | None,
-    reassigned_machines: list[dict],
+    reassigned_machines: Sequence[BuildableRecord],
 ) -> None:
     """The builds that follow a cheaper verb, and the idle machines it reassigns."""
     reassigned = len(reassigned_machines)

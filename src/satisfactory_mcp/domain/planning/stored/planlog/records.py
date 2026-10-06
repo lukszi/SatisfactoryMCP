@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from typing import cast
 
+from .....core.jsontypes import JsonObject, JsonValue
 from ..plan_args import InvalidOp, PlanArgs, PlanLogError, checked_headroom, legacy_hours
+from ..views import (
+    ActorRecord,
+    CommitRecord,
+    ConflictRecord,
+    PlanOp,
+    PlanStamp,
+    PlanStateRecord,
+)
 from .wording import (
     action_words,
     conflict_subject,
@@ -55,7 +65,12 @@ class BaseRevRequired(PlanLogError):
         self.head = head
 
 
-def _stored_headroom(value) -> float | None:
+def json_copy(record: Mapping[str, object]) -> JsonObject:
+    """A deep copy of ``record`` as the plain JSON object it is: a TypedDict, or JSON read back."""
+    return cast(JsonObject, copy.deepcopy(dict(record)))
+
+
+def _stored_headroom(value: object) -> float | None:
     try:
         return checked_headroom("headroom_mw", value)
     except InvalidOp:
@@ -72,32 +87,23 @@ class PlanState:
     factory: str = ""
     created: str = ""
     plan_id: str = ""
-    provenance: dict = field(default_factory=dict)
-    siting: dict = field(default_factory=dict)
+    #: ``provenance.record``'s block as stored; empty means "not recorded".
+    provenance: JsonObject = field(default_factory=dict[str, JsonValue])
+    #: ``siting.normalise_record``'s record as stored; empty means "not sited".
+    siting: JsonObject = field(default_factory=dict[str, JsonValue])
     args: PlanArgs = field(default_factory=PlanArgs)
     headroom_mw: float | None = None
 
     def kwargs(self) -> dict:
         return self.args.kwargs()
 
-    def to_dict(self) -> dict:
-        return {
-            "key": self.key,
-            "rev": self.rev,
-            "name": self.name,
-            "forgotten": self.forgotten,
-            "notes": self.notes,
-            "factory": self.factory,
-            "created": self.created,
-            "plan_id": self.plan_id,
-            "provenance": copy.deepcopy(self.provenance),
-            "siting": copy.deepcopy(self.siting),
-            "args": self.args.to_dict(),
-            "headroom_mw": self.headroom_mw,
-        }
+    def to_dict(self) -> PlanStateRecord:
+        return {"key": self.key, "rev": self.rev, **self.body()}
 
     @classmethod
-    def from_dict(cls, raw: dict, key: str = "", rev: int = 0) -> PlanState:
+    def from_dict(cls, stored: Mapping[str, object], key: str = "", rev: int = 0) -> PlanState:
+        """``stored`` is JSON from the log, of the shape ``PlanStateRecord`` declares."""
+        raw = cast(PlanStateRecord, stored)
         return cls(
             key=raw.get("key") or key,
             rev=int(raw.get("rev") or rev),
@@ -113,11 +119,20 @@ class PlanState:
             headroom_mw=_stored_headroom(raw.get("headroom_mw")),
         )
 
-    def body(self) -> dict:
+    def body(self) -> PlanStateRecord:
         """The ``create`` op's ``state``: everything but key and rev."""
-        out = self.to_dict()
-        del out["key"], out["rev"]
-        return out
+        return {
+            "name": self.name,
+            "forgotten": self.forgotten,
+            "notes": self.notes,
+            "factory": self.factory,
+            "created": self.created,
+            "plan_id": self.plan_id,
+            "provenance": copy.deepcopy(self.provenance),
+            "siting": copy.deepcopy(self.siting),
+            "args": self.args.to_dict(),
+            "headroom_mw": self.headroom_mw,
+        }
 
 
 _CLIENT_NAMES = {"claude-code": "Claude Code", "claude-ai": "Claude Desktop"}
@@ -129,14 +144,17 @@ class Actor:
     client: str = ""
     pid: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> ActorRecord:
         return {"kind": self.kind, "client": self.client, "pid": self.pid}
 
     @classmethod
-    def from_dict(cls, raw: dict | None) -> Actor:
-        raw = raw or {}
+    def from_dict(cls, raw: Mapping[str, object] | None) -> Actor:
+        given = raw or {}
+        pid = given.get("pid") or 0
         return cls(
-            str(raw.get("kind") or "system"), str(raw.get("client") or ""), int(raw.get("pid") or 0)
+            str(given.get("kind") or "system"),
+            str(given.get("client") or ""),
+            int(pid) if isinstance(pid, int | float | str) else 0,
         )
 
     def display(self) -> str:
@@ -147,11 +165,11 @@ class Actor:
         return self.kind
 
 
-def _legacy_op(op):
+def _legacy_op(op: PlanOp) -> PlanOp:
     """An old ``set power_priority`` op as the ``set payback_hours`` it now means."""
-    if not isinstance(op, dict) or op.get("field") != "power_priority" or op.get("op") != "set":
+    if op.get("field") != "power_priority" or op.get("op") != "set":
         return op
-    out = {"op": "set", "field": "payback_hours", "value": legacy_hours(op.get("value"))}
+    out: PlanOp = {"op": "set", "field": "payback_hours", "value": legacy_hours(op.get("value"))}
     if "was" in op:
         out["was"] = legacy_hours(op.get("was"))
     return out
@@ -164,12 +182,12 @@ class Commit:
     ts: float
     actor: Actor
     sav: str
-    ops: list[dict]
-    merged_over: list[int] = field(default_factory=list)
+    ops: list[PlanOp]
+    merged_over: list[int] = field(default_factory=list[int])
     undoes: int | None = None
     note: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> CommitRecord:
         return {
             "rev": self.rev,
             "base_rev": self.base_rev,
@@ -183,7 +201,9 @@ class Commit:
         }
 
     @classmethod
-    def from_dict(cls, raw: dict) -> Commit:
+    def from_dict(cls, stored: Mapping[str, object]) -> Commit:
+        """``stored`` is one JSON line of the log, of the shape ``CommitRecord`` declares."""
+        raw = cast(CommitRecord, stored)
         return cls(
             rev=int(raw["rev"]),
             base_rev=int(raw.get("base_rev") or 0),
@@ -203,8 +223,8 @@ class Commit:
 @dataclass
 class Conflict:
     key: str
-    mine: dict
-    theirs: dict
+    mine: PlanOp
+    theirs: PlanOp
     theirs_rev: int
     theirs_actor: Actor
 
@@ -219,7 +239,7 @@ class Conflict:
             f"{who} {action_words(self.theirs)} in v{self.theirs_rev}"
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> ConflictRecord:
         return {
             "key": self.key,
             "mine": copy.deepcopy(self.mine),
@@ -235,8 +255,8 @@ class Pushed:
     key: str
     rev: int
     base_rev: int
-    applied: list[dict]
-    dropped: list[dict]
+    applied: list[PlanOp]
+    dropped: list[PlanOp]
     merged_over: list[int]
     others: list[Commit]
     noop: bool
@@ -285,4 +305,4 @@ class Outdated(PlanLogError):
 
 
 #: Works out a plan's ``plan_id`` and ``provenance`` from its new head, under the lock.
-Stamp = Callable[[PlanState], dict]
+Stamp = Callable[[PlanState], PlanStamp]
