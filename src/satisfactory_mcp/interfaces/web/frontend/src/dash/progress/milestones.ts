@@ -122,7 +122,7 @@ export function renderMilestones(body: HTMLElement): void {
   const counts: Record<string, number> = { affordable: 0, short: 0, done: 0, locked: 0 };
   rows.forEach(function (milestone) {
     const status = milestoneStatus(milestone);
-    const key = status.indexOf("locked") === 0 ? "locked" : status.indexOf("blocked") === 0 ? "short" : status;
+    const key = status.indexOf("locked") === 0 ? "locked" : milestone.status === "BLOCKED" ? "short" : status;
     counts[key] = (counts[key] || 0) + 1;
   });
   const tiles = make("div", "dash-tiles");
