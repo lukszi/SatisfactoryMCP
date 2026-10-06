@@ -53,6 +53,7 @@ import { loadWorlds } from "./app/world-picker";
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
 import "./chat/advice";
+import "./dash/recipes/cache";
 import "./map/drawn/crates";
 import "./dash/progress/feeds";
 import "./app/header";
@@ -64,7 +65,6 @@ import "./chat/pins";
 import "./map/drawn/placements";
 import "./map/drawn/plan-sitings";
 import "./map/drawn/power-wires";
-import "./dash/recipes/recipes";
 import "./map/drawn/routes";
 import "./dash/world/world";
 
