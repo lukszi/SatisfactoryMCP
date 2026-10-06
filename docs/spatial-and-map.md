@@ -2597,8 +2597,8 @@ read mesh bounds. `PAINT_GENERATOR_VERSION` is 3 (with sections 30 to 32 and 36)
 render (about 5 s):
 
 1. Each actor's class comes from its first known material (`MATERIAL_CLASS`):
-   `MI_SLW_River_*` river, `MM_Lake_01` lake, `MI_Lake_Blue_01` blue lake,
-   `MI_Lake_Turquoise_01` turquoise, `MI_WaterSwamp_Muddy` swamp, `MI_Lake_Caves_01` cave,
+   `MI_SLW_River_*` river, `MM_Lake_01` and `MI_Lake_Turquoise_01` lake (see "Lake colours"
+   below), `MI_Lake_Blue_01` blue lake, `MI_WaterSwamp_Muddy` swamp, `MI_Lake_Caves_01` cave,
    `SulfurPond_Inst` sulfur, `MM_OceanMaster` ocean. 527 actors (the `FGWaterVolume`
    brushes, translucent water, lake and ocean spline tools) assign none.
 2. A lake box at most 150 m on a side with a hot-spring terrace inside it (within 1 m of its z
@@ -2621,7 +2621,8 @@ render (about 5 s):
 
 Build 502094: ocean 16.23 M texels, lake 1.20 M, swamp 0.35 M, river 0.38 M, turquoise 53 k,
 hot spring 15 k, sulfur 9.7 k, cave 5.3 k, blue lake 5.2 k; 312 bodies claimed by
-material, 0.28 M texels by the biome fallback. The open sea is 14.92 M texels; it took
+material, 0.28 M texels by the biome fallback. Turquoise has since merged into lake; about 2 k
+of its texels went to hot spring instead (see "Lake colours" below). The open sea is 14.92 M texels; it took
 264,581 texels from the swamp and 16 from a river, and nothing from any other class.
 Seeding it from the texels with no ground as well would add 2 k, so the edge alone does.
 
@@ -2705,28 +2706,70 @@ With turbidity 0 and a white bed tint this is the ocean's formula. Turbidity is 
 floor: murky water hides its bed even at the edge. The bed tint stands for a stained bed,
 the sulfur pond's orange rim.
 
-| Class | Body | k (r, g, b) /m | Turbidity | Source |
-|---|---|---|---|---|
-| river | #4f7d78 | 2.4, 1.6, 1.6 | 0 | Hue from the wiki's Rocky Desert river; clear, so the bed shows |
-| lake | #56745b | 3.0, 2.2, 2.6 | 0.1 | Wiki Lake Forest and the crash-site pond: jade green |
-| lake_blue | #4a8494 | 3.4, 1.0, 0.75 | 0 | `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
-| turquoise | #448882 | 3.5, 1.0, 1.1 | 0.05 | `MI_Lake_Turquoise_01` deep colour and tint |
-| swamp | #7e6e6a | 4.0, 4.5, 5.0 | 0.45 | Wiki Swamp: opaque mauve-brown mud |
-| cave | #2f4a47 | 3.0, 2.5, 2.5 | 0 | Dark; no reference |
-| sulfur | #67a395 | 3.0, 2.0, 2.0 | 0.3 | `SulfurPond_Inst`: deep (0.17, 1, 0.89) cyan, shallow (1, 0.26, 0) orange as the bed tint |
-| hot_spring | #68a098 | 2.5, 1.6, 1.5 | 0.2 | Milky turquoise; no reference |
+| Class | Body | Deep | k (r, g, b) /m | Turbidity | Source |
+|---|---|---|---|---|---|
+| river | #4f7d78 | #2e5054 | 2.4, 1.6, 1.6 | 0 | Hue from the wiki's Rocky Desert river; clear, so the bed shows |
+| lake | #56745b | #375a58 | 3.0, 2.2, 2.6 | 0.1 | Body: jade near the shore. Deep: teal from 1.0 top-down screenshots (see "Lake colours") |
+| lake_blue | #4a8494 | #22485a | 3.4, 1.0, 0.75 | 0 | `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
+| swamp | #7e6e6a | #726360 | 4.0, 4.5, 5.0 | 0.45 | Wiki Swamp: opaque mauve-brown mud |
+| cave | #2f4a47 | #1c2e2d | 3.0, 2.5, 2.5 | 0 | Dark; no reference |
+| sulfur | #67a395 | #3f8a7e | 3.0, 2.0, 2.0 | 0.3 | `SulfurPond_Inst`: deep (0.17, 1, 0.89) cyan, shallow (1, 0.26, 0) orange as the bed tint |
+| hot_spring | #68a098 | #46827d | 2.5, 1.6, 1.5 | 0.2 | Milky turquoise; no reference |
 
 Targets follow the Spire Coast calibration (section 27): the reference colour times 0.85
 linear for map exposure, OKLab L times 0.95 and chroma times 0.9. Against the references at
 assumed depths, Delta E (OKLab x100): swamp 3.7 at 1 m and 5.2 at 3 m, lake 1.9 at 2 m and
-4.5 at 4 m. Hue alone (the a, b distance) is under 1 for both. The river references are a
-dusk shot at a grazing angle and a stream over white sand. They fix only the hue (a, b
-distance 1 to 3), not the lightness.
+4.5 at 4 m (with the old jade deep colour). Hue alone (the a, b distance) is under 1 for both.
+The river references are a dusk shot at a grazing angle and a stream over white sand. They fix
+only the hue (a, b distance 1 to 3), not the lightness.
+
+### Lake colours (2026-10-06)
+
+The lake row was calibrated jade throughout, on the wiki's Lake Forest shot. That jade was the
+Lake Forest fog: the `Atmosphere_LakeForest` volume over the 131 m lakes has a noon
+inscattering of #4a7354, Delta E 1.9 from the lake body #56745b, and starts at 0 m. The game's
+lake material (`MM_Lake_01`, single-layer water) absorbs red most and green least and scatters
+nothing, so it has no body colour of its own: shallow water reads green over its bed, and deep
+water reads dark, lit mostly by the sky's reflection. In 1.0 screenshots from above, deep lake
+water reads teal at hue 185 to 199 (the biggest Crater Lakes crater near top-down: #4b6c67),
+and near-shore water green at hue 146 to 165.
+
+The body stays the jade, which is right near the shore. The deep colour moves from #2c4e3c
+(hue 160) to the teal #375a58 (hue 191); absorption, `deep_tau_m` (6 m) and turbidity are
+unchanged. Drawn through the painted layer's water (tone and exposure included) over each
+window's baked bed, at its depth on the field's own planes, the median Rocky Desert lake texel
+reads:
+
+| Depth | Before | After |
+|---|---|---|
+| 0-1 m | #5f7661 (h147) | #607763 (h149) |
+| 1-2 m | #53715c (h154) | #547260 (h158) |
+| 2-4 m | #4b6a55 (h155) | #4e6d5e (h163) |
+| 4-8 m | #405f4c (h157) | #45655b (h173) |
+| 8-15 m | #3b5a47 (h157) | #41625a (h178) |
+| 15 m and deeper | #2e4f3d (h159) | #385b58 (h189) |
+
+The Lake Forest, Crater Lakes and mesa windows agree within 6 degrees of hue at each depth,
+but for the mesa's shallows over red sand (hue 140 under 1 m). A shallow lake changes little;
+a deep one turns from dark green to teal.
+
+The 14 `MI_Lake_Turquoise_01` lakes on the Desert Spires mesas are lakes too. The instance's
+cooked shader maps are hash-identical to `MM_Lake_01`'s, its deep colour, tint and depth
+switch are not parameters of the master, and no actor sets anything the shader reads: in game
+they render exactly as `MM_Lake_01`. 1.0 screenshots of the big mesa lake at (1950, -1890)
+read green shallows (#526e46) and dark deep water, Delta E 3.2 from the lake body. The
+turquoise class drew it cyan (#44827c at 1 to 2 m); it now draws as a lake (#54725f at 1 to
+2 m, #47675c at 4 to 8 m). The turquoise class is gone.
+
+As lakes, these boxes also fall under step 2's hot-spring rule. The 230.3 m lake by the crash
+site at (1908, -2368) is a 114 m box holding three hot-spring terraces near (1918, -2428), so
+it draws as a hot spring (#5d968f at 2 to 4 m; 2.1 k texels on the field's own planes).
 
 ### Known limits
 
-- No top-down screenshot has checked any class. The sulfur pond, hot spring and cave optics
-  come from material parameters, not from pictures.
+- Only the lake class has been checked against screenshots from above, and only its hue band
+  (about 70 % confidence); no in-game top-down check over a known depth has been made. The
+  sulfur pond, hot spring and cave optics come from material parameters, not from pictures.
 - Classes change at box edges. Where the water channel is itself built from boxes, as in the
   Red Bamboo terrace lakes near (420, 560), a chain of pools reads as a mosaic of classes.
 - Two bodies more than 0.5 m apart in level are judged apart. Where the field levelled them
@@ -2739,8 +2782,9 @@ distance 1 to 3), not the lightness.
   inside the Rocky Desert's -17.046 m box, near (-989, -1,434) and (-978, -1,262), and two
   puddles beside them (6,993 texels in all) read the sea's level and draw as sea; the sea's
   box stands over them too.
-- The hot-spring rule finds terraces in lake boxes near the sulfur ponds and in the Red Bamboo
-  terraces. Whether those pools are milky in game is unchecked.
+- The hot-spring rule finds terraces in lake boxes near the sulfur ponds, in the Red Bamboo
+  terraces and in the mesa lake by the crash site at (1908, -2368). Whether those pools are
+  milky in game is unchecked.
 - The satellite and terrain styles still draw one water colour.
 ## 34. Rivers from the game's own splines: recipe 7 (2026-10-05)
 

@@ -57,6 +57,7 @@ def test_the_material_names_the_class():
     assert body_class("BP_Water_C", ["MI_WaterSwamp_Muddy"], box, NO_SPRINGS) == "swamp"
     assert body_class("BP_Water_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
     assert body_class("BP_River_PROT_C", ["MI_SLW_River_Base_01"], box, NO_SPRINGS) == "river"
+    assert body_class("BP_Water_C", ["MI_Lake_Turquoise_01"], box, NO_SPRINGS) == "lake"
     assert body_class("FGWaterVolume", [], box, NO_SPRINGS) is None
     assert set(MATERIAL_CLASS.values()) <= set(CLASSES)
 
@@ -173,10 +174,10 @@ def test_a_river_box_reaching_into_a_lake_leaves_the_lake_one_class():
 def test_a_small_pond_inside_a_big_box_keeps_its_class():
     wet = np.ones((40, 40), bool)
     level = np.full((40, 40), 20.0, np.float32)
-    pond = ["BP_Water_C", ["MI_Lake_Turquoise_01"]]
+    pond = ["BP_Water_C", ["MI_Lake_Blue_01"]]
     bodies = {"actors": [_actor(pond, 10, 10, 15, 15, 20.0), _actor(LAKE_BOX, 0, 0, 40, 40, 20.0)]}
     plane, _ = classify(level, wet, bodies, (np.zeros((40, 40), np.uint8), GRASS), 0.0)
-    assert (plane[10:16, 10:16] == ID["turquoise"]).all()
+    assert (plane[10:16, 10:16] == ID["lake_blue"]).all()
     assert (plane == ID["lake"]).sum() == 40 * 40 - 36
 
 
@@ -190,12 +191,12 @@ def test_a_body_a_river_box_mostly_covers_is_a_river_whole():
         "actors": [
             _actor(RIVER_BOX, 10, 10, 40, 50, 25.0, 31.0),
             _actor(LAKE_BOX, 0, 38, 60, 60, 30.0),
-            _actor(["BP_Water_C", ["MI_Lake_Turquoise_01"]], 20, 20, 25, 25, 30.0),
+            _actor(["BP_Water_C", ["MI_Lake_Blue_01"]], 20, 20, 25, 25, 30.0),
         ],
         "hot_springs": [],
     }
     plane, counts = classify(level, wet, bodies, (np.zeros((60, 60), np.uint8), GRASS), 0.0)
-    assert (plane[20:26, 20:26] == ID["turquoise"]).all(), "a small pond keeps its own class"
+    assert (plane[20:26, 20:26] == ID["lake_blue"]).all(), "a small pond keeps its own class"
     rest = wet.copy()
     rest[20:26, 20:26] = False
     assert (plane[rest] == ID["river"]).all()
