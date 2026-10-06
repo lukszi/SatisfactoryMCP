@@ -7,14 +7,14 @@ import { count, flow, mw, pct } from "../../kit/format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "../graph";
 import { vitals } from "../../app/vitals";
 import { recipesButton, renderAlternates } from "./planner-alternates";
-import { askButton, askMarks } from "../../chat/asks";
+import { askButton, openAsksAbout } from "../../chat/asks";
 import { pickTab } from "./planner-reads";
 import { bench, changed, pendingFocus } from "./planner-state";
 import { applyOps, banOps, undoRev } from "./planner-writes";
 import { rowOverclock } from "./planner-power";
 import { renderSite } from "./planner-site";
 import { renderTrack } from "./planner-track";
-import { pinsFor, pinThis } from "../../chat/pins";
+import { processPinsByRecipe, createPin } from "../../chat/pins";
 import { headroom, LEDGER } from "../power-ledger";
 import { WORDS } from "../../kit/words";
 
@@ -215,7 +215,7 @@ function pinProcessButton(row: SolveRow): HTMLButtonElement | null {
   return button(
     WORDS.pin,
     function () {
-      pinThis("process", { plan: bench.key, recipe: id! });
+      createPin("process", { plan: bench.key, recipe: id! });
     },
     { title: "pin this process and copy its pin:N for chat", label: "pin " + row.recipe }
   );
@@ -246,9 +246,9 @@ function recipeCell(row: SolveRow, live: boolean): HTMLElement {
   if (row.required) cell.appendChild(chip("required", "muted"));
   if (!live) return cell;
   if (bench.chatChangedRows[row.id]) cell.appendChild(chip(WORDS.actorChat, "muted", "chat changed this process since you opened the plan"));
-  var pinned = row.recipe_id ? pinsFor(bench.key)[row.recipe_id] : undefined;
+  var pinned = row.recipe_id ? processPinsByRecipe(bench.key)[row.recipe_id] : undefined;
   if (pinned) cell.appendChild(idChip(pinned.id, pinned.text));
-  askMarks(bench.key, "process", row.recipe_id || row.recipe).forEach(function (a) {
+  openAsksAbout(bench.key, "process", row.recipe_id || row.recipe).forEach(function (a) {
     cell.appendChild(idChip(a.id, a.text));
   });
   return cell;
@@ -372,7 +372,7 @@ function planNodes(data: SolveResponse): PlanNode[] {
   data.rows.forEach(function (r) {
     byId[r.id] = r;
   });
-  var pins = pinsFor(bench.key);
+  var pins = processPinsByRecipe(bench.key);
   return data.graph.nodes.map(function (n: PlanGraphNode): PlanNode {
     var row = n.row ? byId[n.row] : undefined;
     var badges: string[] = [];

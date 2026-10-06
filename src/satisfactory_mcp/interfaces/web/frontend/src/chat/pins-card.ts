@@ -2,7 +2,7 @@
  * See docs/planner-p3_contract.md §2 F4. */
 
 import { askButton } from "./asks";
-import { button, capRows, chip, copyButton, empty, error, fieldError, link, loading, table } from "../kit/dashkit";
+import { button, capRows, chip, copyButton, empty, error, inlineTextEdit, link, loading, table } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { dropPin, LABEL_MAX, pinStore, refetchPins, renamePin, showPin } from "./pins";
 import { counted, PIN_KIND } from "../kit/words";
@@ -10,96 +10,74 @@ import { counted, PIN_KIND } from "../kit/words";
 import type { Column, SortState } from "../kit/dashkit";
 import type { AskAbout, PinRow } from "../api/shapes";
 
-var editing = { n: 0, fresh: false };
+var editing = { pinNumber: 0, fresh: false };
 var order: SortState = { key: "pin", desc: false };
+var showAllPins = false;
 
-function labelCell(p: PinRow, redraw: () => void): HTMLElement | string {
-  if (editing.n !== p.n) return p.label || "–";
-  var box = make("input", "dash-name pin-rename");
-  box.value = box.defaultValue = p.label;
-  box.setAttribute("data-ctl", "pin-label:" + p.n);
-  box.setAttribute("aria-label", "label for " + p.id);
-  var settled = false;
-  var stop = function () {
-    settled = true;
-    editing.n = 0;
-    redraw();
-  };
-  var commit = function () {
-    if (settled) return;
-    var wanted = box.value.trim();
-    if (wanted.length > LABEL_MAX) {
-      fieldError(box, "a label is at most " + LABEL_MAX + " characters");
-      return;
-    }
-    if (wanted === p.label) {
-      stop();
-      return;
-    }
-    settled = true;
-    box.defaultValue = box.value;
-    renamePin(p, wanted).then(function () {
-      editing.n = 0;
+function labelCell(pin: PinRow, redraw: () => void): HTMLElement | string {
+  if (editing.pinNumber !== pin.n) return pin.label || "–";
+  var focusNow = editing.fresh;
+  editing.fresh = false;
+  return inlineTextEdit({
+    value: pin.label,
+    ctl: "pin-label:" + pin.n,
+    label: "label for " + pin.id,
+    className: "dash-name pin-rename",
+    focusNow: focusNow,
+    stopEscape: true,
+    validate: function (text) {
+      return text.length > LABEL_MAX ? "a label is at most " + LABEL_MAX + " characters" : "";
+    },
+    onCommit: function (text) {
+      if (text === pin.label) {
+        editing.pinNumber = 0;
+        redraw();
+        return;
+      }
+      renamePin(pin, text).then(function () {
+        editing.pinNumber = 0;
+        redraw();
+      });
+    },
+    onCancel: function () {
+      editing.pinNumber = 0;
       redraw();
-    });
-  };
-  box.onkeydown = function (event) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      commit();
-    } else if (event.key === "Escape") {
-      event.stopPropagation();
-      box.value = box.defaultValue;
-      stop();
-    }
-  };
-  box.onblur = function () {
-    setTimeout(function () {
-      if (box.isConnected) commit();
-    }, 0);
-  };
-  if (editing.fresh) {
-    editing.fresh = false;
-    setTimeout(function () {
-      box.focus();
-      box.select();
-    }, 0);
-  }
-  return box;
+    },
+  });
 }
 
-function place(p: PinRow): HTMLElement | string {
-  if (p.x_m !== null && p.y_m !== null) {
+function locationCell(pin: PinRow): HTMLElement | string {
+  if (pin.x_m !== null && pin.y_m !== null) {
     return button(
       "map",
       function () {
-        showPin(p);
+        showPin(pin);
       },
-      { map: true, title: "fly the map to " + p.id + " and open it", label: "show " + p.id + " on the map" }
+      { map: true, title: "fly the map to " + pin.id + " and open it", label: "show " + pin.id + " on the map" }
     );
   }
-  if (p.ref.plan && !p.gone) return link("planner/" + p.ref.plan, "open plan", "btn btn-map");
+  if (pin.ref.plan && !pin.gone) return link("planner/" + pin.ref.plan, "open plan", "btn btn-map");
   return "";
 }
 
-function actions(p: PinRow, redraw: () => void): HTMLElement {
+function actionsCell(pin: PinRow, redraw: () => void): HTMLElement {
   var box = make("span", "dash-acts");
   var slot = make("span", "pin-place");
-  var where = place(p);
+  var where = locationCell(pin);
   if (where) slot.appendChild(typeof where === "string" ? make("span", "", where) : where);
   box.appendChild(slot);
   box.appendChild(
     button(
       "rename",
       function () {
-        editing.n = p.n;
+        editing.pinNumber = pin.n;
         editing.fresh = true;
         redraw();
       },
-      { label: "rename " + p.id, disabled: editing.n === p.n }
+      { label: "rename " + pin.id, disabled: editing.pinNumber === pin.n }
     )
   );
-  box.appendChild(copyButton(p.id, "copy", { title: "copy " + p.id + " for chat", label: "copy " + p.id }));
+  box.appendChild(copyButton(pin.id, "copy", { title: "copy " + pin.id + " for chat", label: "copy " + pin.id }));
   box.appendChild(
     button(
       "delete",
@@ -107,18 +85,16 @@ function actions(p: PinRow, redraw: () => void): HTMLElement {
         box.querySelectorAll("button").forEach(function (b) {
           b.disabled = true;
         });
-        dropPin(p);
+        dropPin(pin);
       },
-      { title: "delete " + p.id + "; its number is not reused", label: "delete " + p.id }
+      { title: "delete " + pin.id + "; its number is not reused", label: "delete " + pin.id }
     )
   );
-  var about: AskAbout = { kind: "pin", label: p.id + " " + (p.label || p.text.replace(/ in “[^”]*”$/, "")), ref: p.id };
-  if (p.ref.plan && !p.gone) about.plan = p.ref.plan;
-  box.appendChild(askButton(about, "pin:" + p.n));
+  var about: AskAbout = { kind: "pin", label: pin.id + " " + (pin.label || pin.text.replace(/ in “[^”]*”$/, "")), ref: pin.id };
+  if (pin.ref.plan && !pin.gone) about.plan = pin.ref.plan;
+  box.appendChild(askButton(about, "pin:" + pin.n));
   return box;
 }
-
-var allPins = false;
 
 export function renderPins(parent: HTMLElement, redraw: () => void): void {
   var card = make("section", "dash-card");
@@ -133,56 +109,56 @@ export function renderPins(parent: HTMLElement, redraw: () => void): void {
       {
         key: "pin",
         label: "pin",
-        sort: function (p) {
-          return p.n;
+        sort: function (pin) {
+          return pin.n;
         },
-        render: function (p) {
-          return p.id;
+        render: function (pin) {
+          return pin.id;
         },
       },
       {
         key: "what",
         label: "what",
-        sort: function (p) {
-          return PIN_KIND[p.kind] || p.kind;
+        sort: function (pin) {
+          return PIN_KIND[pin.kind] || pin.kind;
         },
-        render: function (p) {
-          return p.text;
+        render: function (pin) {
+          return pin.text;
         },
       },
       {
         key: "label",
         label: "label",
-        sort: function (p) {
-          return p.label;
+        sort: function (pin) {
+          return pin.label;
         },
-        render: function (p) {
-          return labelCell(p, redraw);
+        render: function (pin) {
+          return labelCell(pin, redraw);
         },
       },
       {
         key: "state",
         label: "state",
-        render: function (p) {
-          if (!p.gone) return "live";
+        render: function (pin) {
+          if (!pin.gone) return "live";
           var cell = make("span", "");
-          cell.appendChild(chip("gone", "muted", p.gone_why));
-          cell.appendChild(make("span", "dash-sub", p.gone_why));
+          cell.appendChild(chip("gone", "muted", pin.gone_why));
+          cell.appendChild(make("span", "dash-sub", pin.gone_why));
           return cell;
         },
       },
       {
         key: "acts",
         label: "",
-        render: function (p) {
-          return actions(p, redraw);
+        render: function (pin) {
+          return actionsCell(pin, redraw);
         },
       },
     ];
     var grid = table(columns, rows, { sort: order, onSort: redraw, caption: "pins" });
     card.appendChild(grid);
-    capRows(card, grid, rows.length, 50, "show all " + counted(rows.length, "pin"), allPins, function () {
-      allPins = true;
+    capRows(card, grid, rows.length, 50, "show all " + counted(rows.length, "pin"), showAllPins, function () {
+      showAllPins = true;
     });
   }
   parent.appendChild(card);

@@ -2,7 +2,7 @@
  * the versions others made since it was opened. */
 
 import { askButton } from "../../chat/asks";
-import { pinFor, pinThis } from "../../chat/pins";
+import { findPin, createPin } from "../../chat/pins";
 import { button, chip, copyButton, inlineTextEdit, toggleButton } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { ageShort } from "../../kit/format";
@@ -72,14 +72,14 @@ function planActions(parent: HTMLElement): void {
   acts.appendChild(toggleButton("versions", bench.versionsOpen, toggleVersions, { title: "every version of this plan: view one, or restore it as a new version" }));
   acts.appendChild(duplicateButton());
   var key = bench.key;
-  var pinned = pinFor("plan", function (ref) {
+  var pinned = findPin("plan", function (ref) {
     return ref.plan === key;
   });
   acts.appendChild(
     button(
       pinned ? "copy " + pinned.id : WORDS.pin,
       function () {
-        pinThis("plan", { plan: key });
+        createPin("plan", { plan: key });
       },
       { title: "pin this plan and copy its pin:N for chat", label: pinned ? undefined : "pin this plan" }
     )

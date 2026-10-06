@@ -2,7 +2,7 @@
  * docs/planner_slice_contract.md §12. */
 
 import { get } from "../../api/client";
-import { askOpen, closeBar, onAsks, renderAskBar, settleAskFocus } from "../../chat/asks";
+import { isAskBarOpen, closeBar, onAsks, renderAskBar, settleAskFocus } from "../../chat/asks";
 import { loading } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { keepFocus } from "../../kit/focus";
@@ -419,7 +419,7 @@ export function onNotesEvent(): void {
 
 function onEscape(event: KeyboardEvent): void {
   if (event.key !== "Escape" || !root.isConnected || openPlanKey() === null) return;
-  if (askOpen()) {
+  if (isAskBarOpen()) {
     event.preventDefault();
     closeBar();
     return;

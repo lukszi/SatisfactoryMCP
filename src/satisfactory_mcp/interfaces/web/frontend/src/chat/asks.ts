@@ -6,7 +6,6 @@ import { copyText } from "../kit/copy";
 import { button, fieldError } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { liveStore } from "./livestore";
-import { state } from "../app/state";
 import { fail, friendlyError, notify } from "../kit/toast";
 import { ASK_KIND, WORDS } from "../kit/words";
 
@@ -17,14 +16,14 @@ export var ASK_MAX = 200;
 
 var LABEL_MAX = 120;
 var REF_MAX = 200;
-var ASKS: ApiPath = "/api/asks";
-var ASK_ONE: ApiPath = "/api/asks/{n}";
+var ASKS_PATH: ApiPath = "/api/asks";
+var ASK_PATH: ApiPath = "/api/asks/{n}";
 var TEXT_CTL = "ask-text";
 
-var store = liveStore<AsksResponse, AskRow>(ASKS, function (data) {
+var store = liveStore<AsksResponse, AskRow>(ASKS_PATH, function (data) {
   return data.asks;
 }, "ask");
-var bar = { about: null as AskAbout | null, opener: "", text: "", problem: "", enter: false, back: "", busy: false };
+var bar = { about: null as AskAbout | null, ownerId: "", text: "", validationError: "", focusInputOnRender: false, returnFocusTo: "", busy: false };
 
 export var onAsks = store.on;
 export var askStore = store.read;
@@ -38,22 +37,19 @@ export function liveAsks(): AskRow[] {
 }
 
 export function asksFor(planKey: string): AskRow[] {
-  return liveAsks().filter(function (a) {
-    return a.about.plan === planKey;
+  return liveAsks().filter(function (ask) {
+    return ask.about.plan === planKey;
   });
 }
 
-export function askMarks(planKey: string, kind: string, ref: string): AskRow[] {
-  return asksFor(planKey).filter(function (a) {
-    return a.about.kind === kind && a.about.ref === ref && a.state !== "answered";
+/** The unanswered asks about one thing in a plan, for the marks beside it. */
+export function openAsksAbout(planKey: string, kind: string, ref: string): AskRow[] {
+  return asksFor(planKey).filter(function (ask) {
+    return ask.about.kind === kind && ask.about.ref === ref && ask.state !== "answered";
   });
 }
 
-export function onActivity(entry: { world: string; kind: string }): void {
-  if (entry.world === state.world && entry.kind.indexOf("ask.") === 0) refetchAsks();
-}
-
-function clip(text: string, max: number): string {
+function truncateChars(text: string, max: number): string {
   return text.length > max ? text.slice(0, max - 1) + "…" : text;
 }
 
@@ -62,64 +58,65 @@ export function askLabel(about: AskAbout): string {
 }
 
 export function askButton(about: AskAbout, ctl: string, text?: string): HTMLButtonElement {
-  var subject: AskAbout = { kind: about.kind, label: clip(about.label, LABEL_MAX), ref: clip(about.ref, REF_MAX) };
+  var subject: AskAbout = { kind: about.kind, label: truncateChars(about.label, LABEL_MAX), ref: truncateChars(about.ref, REF_MAX) };
   if (about.plan) subject.plan = about.plan;
   if (about.rev) subject.rev = about.rev;
   var id = "ask:" + ctl;
-  var b = button(
+  var askBtn = button(
     text || "ask",
     function () {
       openBar(subject, id);
     },
     { title: "queue a question for chat about this " + (ASK_KIND[about.kind] || about.kind), label: "ask chat about " + askLabel(subject) }
   );
-  b.setAttribute("data-ctl", id);
-  b.setAttribute("aria-expanded", String(bar.opener === id && !!bar.about));
-  return b;
+  askBtn.setAttribute("data-ctl", id);
+  askBtn.setAttribute("aria-expanded", String(bar.ownerId === id && !!bar.about));
+  return askBtn;
 }
 
-function openBar(about: AskAbout, opener: string): void {
+function openBar(about: AskAbout, ownerId: string): void {
   bar.about = about;
-  bar.opener = opener;
-  bar.problem = "";
-  bar.enter = true;
-  bar.back = "";
+  bar.ownerId = ownerId;
+  bar.validationError = "";
+  bar.focusInputOnRender = true;
+  bar.returnFocusTo = "";
   notifyAskListeners();
 }
 
-export function askOpen(): boolean {
+export function isAskBarOpen(): boolean {
   return !!bar.about;
 }
 
-export function askOpener(): string {
-  return bar.about ? bar.opener : bar.back;
+/** The button the bar belongs to: its opener while open, the one focus returns to once shut. */
+export function askBarOwnerId(): string {
+  return bar.about ? bar.ownerId : bar.returnFocusTo;
 }
 
 export function closeBar(): void {
   if (!bar.about) return;
-  bar.back = bar.opener;
+  bar.returnFocusTo = bar.ownerId;
   bar.about = null;
-  bar.opener = "";
+  bar.ownerId = "";
   bar.text = "";
-  bar.problem = "";
+  bar.validationError = "";
   bar.busy = false;
   notifyAskListeners();
 }
 
-function queue(box: HTMLInputElement): void {
+function queueAsk(box: HTMLInputElement): void {
   var about = bar.about;
   if (!about || bar.busy) return;
   var text = box.value.trim();
   bar.text = box.value;
-  if (!text) bar.problem = "write a question for chat first";
-  else if (text.length > ASK_MAX) bar.problem = "a question is at most " + ASK_MAX + " characters; this one is " + text.length;
-  else bar.problem = "";
-  if (bar.problem) {
-    fieldError(box, bar.problem);
+  if (!text) bar.validationError = "write a question for chat first";
+  else if (text.length > ASK_MAX) bar.validationError = "a question is at most " + ASK_MAX + " characters; this one is " + text.length;
+  else bar.validationError = "";
+  if (bar.validationError) {
+    fieldError(box, bar.validationError);
     return;
   }
   bar.busy = true;
-  send<AskRow & ApiError>("POST", ASKS, { text: text, about: about })
+  send<AskRow & ApiError>("POST", ASKS_PATH, { text: text, about: about })
     .then(function (row) {
       box.defaultValue = box.value;
       closeBar();
@@ -163,7 +160,7 @@ export function renderAskBar(parent: HTMLElement): void {
   input.onkeydown = function (event) {
     if (event.key === "Enter") {
       event.preventDefault();
-      queue(input);
+      queueAsk(input);
     } else if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -176,7 +173,7 @@ export function renderAskBar(parent: HTMLElement): void {
     button(
       bar.busy ? "queueing…" : "queue for chat",
       function () {
-        queue(input);
+        queueAsk(input);
       },
       { title: "queue it as ask:N and copy that for chat", disabled: bar.busy }
     )
@@ -193,39 +190,40 @@ export function renderAskBar(parent: HTMLElement): void {
   );
   box.appendChild(line);
   parent.appendChild(box);
-  if (bar.problem) fieldError(input, bar.problem);
+  if (bar.validationError) fieldError(input, bar.validationError);
 }
 
+/** After a redraw: focus the bar's input once it opens, or its opener once it shuts. */
 export function settleAskFocus(root: HTMLElement): void {
-  if (bar.about && bar.enter) {
+  if (bar.about && bar.focusInputOnRender) {
     var input = root.querySelector<HTMLInputElement>('[data-ctl="' + TEXT_CTL + '"]');
     if (input) {
-      bar.enter = false;
+      bar.focusInputOnRender = false;
       input.focus();
     }
     return;
   }
-  if (!bar.back) return;
-  var opener = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(bar.back) + '"]');
-  bar.back = "";
+  if (!bar.returnFocusTo) return;
+  var opener = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(bar.returnFocusTo) + '"]');
+  bar.returnFocusTo = "";
   if (!opener) return;
   opener.focus({ preventScroll: true });
   opener.scrollIntoView({ block: "center" });
 }
 
-export function dropAsk(row: AskRow): void {
-  store.once(row.n, function () {
-    return send<AskDropped>("DELETE", ASK_ONE, { rev: row.rev }, String(row.n))
+export function dropAsk(ask: AskRow): void {
+  store.deleteOnce(ask.n, function () {
+    return send<AskDropped>("DELETE", ASK_PATH, { rev: ask.rev }, String(ask.n))
       .then(function () {
-        notify("deleted " + row.id);
+        notify("deleted " + ask.id);
         refetchAsks();
       })
       .catch(function (reason) {
-        var current = store.refused(reason);
+        var current = store.recoverFromConflict(reason);
         if (current) {
           var body = (reason as StatusError).body as AskStaleResponse;
-          fail(body.error || row.id + " changed since you read it");
-        } else fail("could not delete " + row.id + ": " + friendlyError(reason));
+          fail(body.error || ask.id + " changed since you read it");
+        } else fail("could not delete " + ask.id + ": " + friendlyError(reason));
       });
   });
 }

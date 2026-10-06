@@ -6,9 +6,9 @@
 
 import { el } from "../kit/dom";
 import { loadLive, loadOne } from "./load";
-import { onActivity as onAdviceActivity, refetchAdvice } from "../chat/advice";
-import { onActivity as onAskActivity, refetchAsks } from "../chat/asks";
-import { onActivity as onPinActivity, onPlanChange, refetchPins } from "../chat/pins";
+import { refetchAdvice } from "../chat/advice";
+import { refetchAsks } from "../chat/asks";
+import { onPlanChange, refetchPins } from "../chat/pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "../dash/planner/planner";
 import { onRenameActivity } from "../dash/factories/rename";
 import { fetchMaps, onMapsEvent } from "./map-types";
@@ -21,6 +21,13 @@ import { refreshWorlds } from "./world-picker";
 import type { SettingsResponse } from "../api/shapes";
 import type { MapsEvent } from "./map-types";
 import type { ActivityEvent, PlansEvent } from "../dash/planner/planner-state";
+
+/* Activity kinds that change a list the page and chat share, and the refetch each one owes. */
+var REFETCH_BY_KIND: [string, () => void][] = [
+  ["pin.", refetchPins],
+  ["ask.", refetchAsks],
+  ["advice.", refetchAdvice],
+];
 
 /* The stream replays the newest event of every kind to each new subscriber, so the first one
  * usually describes a write that happened BEFORE this page opened: not news, and refetching
@@ -59,9 +66,9 @@ function dispatchActivity(entries: ActivityEvent[]): void {
   });
   fresh.forEach(function (entry, i) {
     dispatched[entry.id] = true;
-    onPinActivity(entry);
-    onAskActivity(entry);
-    onAdviceActivity(entry);
+    REFETCH_BY_KIND.forEach(function (rule) {
+      if (entry.world === state.world && entry.kind.indexOf(rule[0]) === 0) rule[1]();
+    });
     if (entry.kind !== "world.find" || i === lastFind) onFindActivity(entry);
     onRenameActivity(entry);
     onActivityEvent(entry);

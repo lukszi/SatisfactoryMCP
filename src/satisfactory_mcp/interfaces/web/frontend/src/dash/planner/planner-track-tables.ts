@@ -1,7 +1,7 @@
 /* Track's tables: the jobs of the plan, the items it is short of and what stands on site, with
  * the row helpers the stages table shares. See docs/planner-p4_contract.md §2 F2–F4. */
 
-import { askButton, askMarks } from "../../chat/asks";
+import { askButton, openAsksAbout } from "../../chat/asks";
 import { copyText } from "../../kit/copy";
 import { button, chip, empty, idChip, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
@@ -42,7 +42,7 @@ export function askAbout(kind: string, label: string, ref: string): AskAbout {
 }
 
 export function appendAskMarks(cell: HTMLElement, kind: string, ref: string): void {
-  askMarks(bench.key, kind, ref).forEach(function (ask) {
+  openAsksAbout(bench.key, kind, ref).forEach(function (ask) {
     cell.appendChild(idChip(ask.id, ask.text));
   });
 }

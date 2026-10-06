@@ -2,9 +2,10 @@
  * button, restore, and the store behind them. See docs/advisors_contract.md §8. */
 
 import { get, latest, send } from "../api/client";
-import { askButton, askOpener, onAsks, renderAskBar, settleAskFocus } from "./asks";
+import { askButton, askBarOwnerId, onAsks, renderAskBar, settleAskFocus } from "./asks";
 import { button, chip, empty, error, link, loading } from "../kit/dashkit";
 import { make } from "../kit/dom";
+import { createListeners } from "../app/listeners";
 import { goToMapThen } from "../app/nav";
 import { showBox, showMachine } from "../map/map-highlight";
 import { registerFetch } from "../app/registry";
@@ -35,26 +36,24 @@ var TRACED = ["unconnected", "starved", "underclock", "box_empty"];
 
 var view = {
   data: null as AdviceResponse | null,
-  problem: "",
+  loadError: "",
   world: "",
-  fresh: {} as Record<string, boolean>,
-  open: {} as Record<string, boolean>,
-  more: false,
+  newIds: {} as Record<string, boolean>,
+  expandedKeys: {} as Record<string, boolean>,
+  showAllActive: false,
   showHidden: false,
-  menu: "",
-  menuEnter: false,
-  busy: {} as Record<string, boolean>,
+  openMenuKey: "",
+  focusMenuOnRender: false,
+  writingKeys: {} as Record<string, boolean>,
 };
-var listeners: Array<() => void> = [];
+var adviceListeners = createListeners();
 
 export function onAdvice(listener: () => void): void {
-  listeners.push(listener);
+  adviceListeners.on(listener);
 }
 
 function notifyAdviceListeners(): void {
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  adviceListeners.emit();
 }
 
 function remembered(): Record<string, boolean> | null {
@@ -78,77 +77,79 @@ function remember(ids: string[]): void {
   }
 }
 
-function accept(body: AdviceResponse): void {
-  var ids = body.active.concat(body.hidden).map(function (r) {
-    return r.id;
+/** The active advisories not shown before: against the previous reply in this world, else
+ *  against the ids this browser stored on its last visit. */
+function newSinceLastVisit(previous: AdviceResponse | null, body: AdviceResponse, seen: Record<string, boolean> | null): string[] {
+  var fresh = body.active.filter(function (advisory) {
+    if (previous) {
+      return !previous.active.concat(previous.hidden).some(function (known) {
+        return known.id === advisory.id;
+      });
+    }
+    return !!seen && !seen[advisory.id];
+  });
+  return fresh.map(function (advisory) {
+    return advisory.id;
+  });
+}
+
+function adoptAdvice(body: AdviceResponse): void {
+  var ids = body.active.concat(body.hidden).map(function (advisory) {
+    return advisory.id;
   });
   var seen = remembered();
-  if (!view.data || view.world !== state.world) {
-    view.fresh = {};
-    if (seen)
-      body.active.forEach(function (r) {
-        if (!seen![r.id]) view.fresh[r.id] = true;
-      });
-  } else {
-    body.active.forEach(function (r) {
-      if (!view.data!.active.concat(view.data!.hidden).some(function (o) { return o.id === r.id; })) view.fresh[r.id] = true;
-    });
-  }
+  var sameWorld = !!view.data && view.world === state.world;
+  if (!sameWorld) view.newIds = {};
+  newSinceLastVisit(sameWorld ? view.data : null, body, seen).forEach(function (id) {
+    view.newIds[id] = true;
+  });
   remember(ids);
   view.data = body;
-  view.problem = "";
+  view.loadError = "";
   view.world = state.world;
   notifyAdviceListeners();
 }
 
-function query(): string {
-  return spoilerQuery();
-}
-
 export function refetchAdvice(): void {
   var ticket = latest("advice");
-  get<AdviceResponse>(`${PATH}?${query()}`)
+  get<AdviceResponse>(`${PATH}?${spoilerQuery()}`)
     .then(function (body) {
-      if (ticket.fresh()) accept(body);
+      if (ticket.fresh()) adoptAdvice(body);
     })
     .catch(function (reason) {
       if (!ticket.fresh()) return;
-      view.problem = friendlyError(reason);
+      view.loadError = friendlyError(reason);
       notifyAdviceListeners();
     });
-}
-
-export function onActivity(entry: { world: string; kind: string }): void {
-  if (entry.world === state.world && entry.kind.indexOf("advice.") === 0) refetchAdvice();
 }
 
 registerFetch<AdviceResponse>({
   wave: "live",
   rank: 45,
   path: PATH,
-  query: query,
+  query: spoilerQuery,
   label: "advisories",
   clears: [],
   refilters: false,
-  draw: accept,
+  draw: adoptAdvice,
   failed: function () {
-    view.problem = "the save could not be read";
+    view.loadError = "the save could not be read";
     notifyAdviceListeners();
   },
 });
 
 onSetting(refetchAdvice);
 
-var mineBefore = false;
+var askBarWasOurs = false;
 onAsks(function () {
-  var mine = askOpener().indexOf(ASK_PREFIX) === 0;
-  if (mine || mineBefore) notifyAdviceListeners();
-  mineBefore = mine;
+  var ours = askBarOwnerId().indexOf(ASK_PREFIX) === 0;
+  if (ours || askBarWasOurs) notifyAdviceListeners();
+  askBarWasOurs = ours;
 });
 
 /* -------------------------------------------------------------------- writes */
 
-function stale(reason: unknown, what: string): void {
+function reportWriteFailure(reason: unknown, what: string): void {
   var err = reason as StatusError;
   if (err && err.status === 409) {
     var body = err.body as AdviceStaleResponse | undefined;
@@ -157,44 +158,45 @@ function stale(reason: unknown, what: string): void {
   refetchAdvice();
 }
 
-function playWords(hours: number): string {
-  return hours < 1 ? Math.round(hours * 60) + " min" : hours + " h";
+function playTimeText(hours: number): string {
+  return hours < 1 ? Math.max(1, Math.round(hours * 60)) + " min" : Math.round(hours * 10) / 10 + " h";
 }
 
-function hide(row: AdviceRow, hours: number | null): void {
-  if (view.busy[row.key]) return;
-  view.busy[row.key] = true;
-  view.menu = "";
-  var body = hours === null ? { key: row.key, mode: "dismiss", rev: row.rev } : { key: row.key, mode: "snooze", hours: hours, rev: row.rev };
+/** Hides an advisory for `hours` of play, or until it gets worse when `hours` is null. */
+function snoozeOrDismiss(advisory: AdviceRow, hours: number | null): void {
+  if (view.writingKeys[advisory.key]) return;
+  view.writingKeys[advisory.key] = true;
+  view.openMenuKey = "";
+  var body = hours === null ? { key: advisory.key, mode: "dismiss", rev: advisory.rev } : { key: advisory.key, mode: "snooze", hours: hours, rev: advisory.rev };
   notifyAdviceListeners();
-  send<AdviceRow & ApiError>("POST", HIDE, body, undefined, query())
+  send<AdviceRow & ApiError>("POST", HIDE, body, undefined, spoilerQuery())
     .then(function () {
-      notify(hours === null ? "hidden until it gets worse" : "snoozed for " + playWords(hours) + " of play");
+      notify(hours === null ? "hidden until it gets worse" : "snoozed for " + playTimeText(hours) + " of play");
       refetchAdvice();
     })
     .catch(function (reason) {
-      stale(reason, "not hidden");
+      reportWriteFailure(reason, "not hidden");
     })
     .then(function () {
-      delete view.busy[row.key];
+      delete view.writingKeys[advisory.key];
       notifyAdviceListeners();
     });
 }
 
-function restore(row: AdviceRow): void {
-  if (view.busy[row.key]) return;
-  view.busy[row.key] = true;
+function restore(advisory: AdviceRow): void {
+  if (view.writingKeys[advisory.key]) return;
+  view.writingKeys[advisory.key] = true;
   notifyAdviceListeners();
-  send<AdviceRestored>("DELETE", RESTORE, { rev: row.rev }, row.id)
+  send<AdviceRestored>("DELETE", RESTORE, { rev: advisory.rev }, advisory.id)
     .then(function () {
-      notify("restored " + ADVICE_WORD[row.kind] + ": " + row.text);
+      notify("restored " + ADVICE_WORD[advisory.kind] + ": " + advisory.text);
       refetchAdvice();
     })
     .catch(function (reason) {
-      stale(reason, "not restored");
+      reportWriteFailure(reason, "not restored");
     })
     .then(function () {
-      delete view.busy[row.key];
+      delete view.writingKeys[advisory.key];
       notifyAdviceListeners();
     });
 }
@@ -202,9 +204,9 @@ function restore(row: AdviceRow): void {
 /* ---------------------------------------------------------------- the menu */
 
 function closeMenu(focusBack: boolean): void {
-  var key = view.menu;
+  var key = view.openMenuKey;
   if (!key) return;
-  view.menu = "";
+  view.openMenuKey = "";
   notifyAdviceListeners();
   if (!focusBack) return;
   var opener = document.querySelector<HTMLElement>('[data-ctl="adv-more:' + CSS.escape(key) + '"]');
@@ -212,13 +214,13 @@ function closeMenu(focusBack: boolean): void {
 }
 
 document.addEventListener("click", function (event) {
-  if (!view.menu) return;
+  if (!view.openMenuKey) return;
   var target = event.target as HTMLElement | null;
   if (target && target.closest && target.closest(".advice-menu, .advice-split")) return;
   closeMenu(false);
 });
 
-function moveIn(menu: HTMLElement, event: KeyboardEvent): void {
+function handleMenuKey(menu: HTMLElement, event: KeyboardEvent): void {
   var items = Array.prototype.slice.call(menu.querySelectorAll("[role=menuitem]")) as HTMLElement[];
   var at = items.indexOf(document.activeElement as HTMLElement);
   if (event.key === "Escape") {
@@ -233,49 +235,49 @@ function moveIn(menu: HTMLElement, event: KeyboardEvent): void {
   } else if (event.key === "Tab") closeMenu(false);
 }
 
-function snoozeSplit(row: AdviceRow): HTMLElement {
+function snoozeSplit(advisory: AdviceRow): HTMLElement {
   var box = make("span", "advice-split");
-  var busy = !!view.busy[row.key];
+  var writing = !!view.writingKeys[advisory.key];
   box.appendChild(
     button(
       "snooze 1 h",
       function () {
-        hide(row, 1);
+        snoozeOrDismiss(advisory, 1);
       },
-      { title: "hide it for 1 h of play time; it comes back sooner if it gets worse", label: "snooze " + ADVICE_WORD[row.kind] + " for 1 h of play", disabled: busy }
+      { title: "hide it for 1 h of play time; it comes back sooner if it gets worse", label: "snooze " + ADVICE_WORD[advisory.kind] + " for 1 h of play", disabled: writing }
     )
   );
-  var open = view.menu === row.key;
+  var open = view.openMenuKey === advisory.key;
   var more = button(
     "▾",
     function () {
-      view.menu = open ? "" : row.key;
-      view.menuEnter = !open;
+      view.openMenuKey = open ? "" : advisory.key;
+      view.focusMenuOnRender = !open;
       notifyAdviceListeners();
     },
-    { title: "snooze for longer, or until it gets worse", label: "more ways to hide " + ADVICE_WORD[row.kind], disabled: busy }
+    { title: "snooze for longer, or until it gets worse", label: "more ways to hide " + ADVICE_WORD[advisory.kind], disabled: writing }
   );
   more.classList.add("advice-caret");
   more.setAttribute("aria-haspopup", "menu");
   more.setAttribute("aria-expanded", String(open));
-  more.setAttribute("data-ctl", "adv-more:" + row.key);
+  more.setAttribute("data-ctl", "adv-more:" + advisory.key);
   box.appendChild(more);
   if (!open) return box;
   var menu = make("div", "advice-menu");
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-label", "hide for");
-  SNOOZES.forEach(function (s) {
-    var item = make("button", "advice-menu-item", s[1]);
+  SNOOZES.forEach(function (snooze) {
+    var item = make("button", "advice-menu-item", snooze[1]);
     item.type = "button";
     item.setAttribute("role", "menuitem");
     item.onclick = function (event) {
       event.stopPropagation();
-      hide(row, s[0]);
+      snoozeOrDismiss(advisory, snooze[0]);
     };
     menu.appendChild(item);
   });
   menu.onkeydown = function (event) {
-    moveIn(menu, event);
+    handleMenuKey(menu, event);
   };
   box.appendChild(menu);
   return box;
@@ -283,10 +285,10 @@ function snoozeSplit(row: AdviceRow): HTMLElement {
 
 /* ----------------------------------------------------------------- the rows */
 
-function mapAction(row: AdviceRow): HTMLElement | null {
-  var spots = row.machines;
+function mapAction(advisory: AdviceRow): HTMLElement | null {
+  var spots = advisory.machines;
   if (!spots.length) return null;
-  var layers = row.reveal;
+  var layers = advisory.reveal;
   var one = spots.length === 1 ? spots[0]! : null;
   return button(
     "map",
@@ -296,22 +298,22 @@ function mapAction(row: AdviceRow): HTMLElement | null {
           showMachine(one.instance, one.name, one.x_m, one.y_m, { layers: layers });
           return;
         }
-        var b = row.bbox_m;
-        if (!b) return;
+        var bbox = advisory.bbox_m;
+        if (!bbox) return;
         var pad = 30;
-        showBox([b[0]! - pad, b[1]! - pad, b[2]! + pad, b[3]! + pad], { layers: layers });
+        showBox([bbox[0]! - pad, bbox[1]! - pad, bbox[2]! + pad, bbox[3]! + pad], { layers: layers });
       });
     },
-    { title: "fly the map to " + (one ? "it" : "them"), map: true, label: "show " + ADVICE_WORD[row.kind] + " " + row.subject + " on the map" }
+    { title: "fly the map to " + (one ? "it" : "them"), map: true, label: "show " + ADVICE_WORD[advisory.kind] + " " + advisory.subject + " on the map" }
   );
 }
 
-function actions(row: AdviceRow): HTMLElement {
+function actions(advisory: AdviceRow): HTMLElement {
   var box = make("span", "dash-acts advice-acts");
-  var map = mapAction(row);
+  var map = mapAction(advisory);
   if (map) box.appendChild(map);
-  var seed = row.seed;
-  if (seed && TRACED.indexOf(row.kind) >= 0) {
+  var seed = advisory.seed;
+  if (seed && TRACED.indexOf(advisory.kind) >= 0) {
     var from = seed;
     box.appendChild(
       button(
@@ -321,62 +323,62 @@ function actions(row: AdviceRow): HTMLElement {
             startTrace(from, "up");
           });
         },
-        { title: "draw what feeds it on the map", label: "trace what feeds " + row.subject }
+        { title: "draw what feeds it on the map", label: "trace what feeds " + advisory.subject }
       )
     );
   }
-  if (row.kind === "power" || row.kind === "headroom") box.appendChild(link("power", "power", "btn"));
-  if (row.plan) box.appendChild(link("planner/" + row.plan, "open plan", "btn"));
-  if (row.state === "active") {
-    box.appendChild(askButton({ kind: "advice", label: row.text, ref: row.key }, "adv-" + row.id));
-    box.appendChild(snoozeSplit(row));
+  if (advisory.kind === "power" || advisory.kind === "headroom") box.appendChild(link("power", "power", "btn"));
+  if (advisory.plan) box.appendChild(link("planner/" + advisory.plan, "open plan", "btn"));
+  if (advisory.state === "active") {
+    box.appendChild(askButton({ kind: "advice", label: advisory.text, ref: advisory.key }, "adv-" + advisory.id));
+    box.appendChild(snoozeSplit(advisory));
   } else {
     box.appendChild(
       button(
         "restore",
         function () {
-          restore(row);
+          restore(advisory);
         },
-        { title: "show it again", label: "restore " + ADVICE_WORD[row.kind] + ": " + row.text, disabled: !!view.busy[row.key] }
+        { title: "show it again", label: "restore " + ADVICE_WORD[advisory.kind] + ": " + advisory.text, disabled: !!view.writingKeys[advisory.key] }
       )
     );
   }
   return box;
 }
 
-function hiddenWords(row: AdviceRow): string {
-  var who = row.by === "chat" ? " by chat" : "";
-  var d = view.data;
-  if (row.state === "snoozed" && row.until_play_s !== null && d) {
-    var left = Math.max(0, row.until_play_s - d.play_s) / 3600;
-    return "snoozed" + who + ", " + (left < 1 ? Math.max(1, Math.round(left * 60)) + " min" : Math.round(left * 10) / 10 + " h") + " of play left";
+function hiddenWords(advisory: AdviceRow): string {
+  var who = advisory.by === "chat" ? " by chat" : "";
+  var data = view.data;
+  if (advisory.state === "snoozed" && advisory.until_play_s !== null && data) {
+    var left = Math.max(0, advisory.until_play_s - data.play_s) / 3600;
+    return "snoozed" + who + ", " + playTimeText(left) + " of play left";
   }
   return "hidden" + who + " until it gets worse";
 }
 
-function rowView(row: AdviceRow): HTMLElement {
-  var li = make("li", "advice-row" + (row.state === "active" ? "" : " advice-hidden"));
-  var open = !!view.open[row.key];
+function rowView(advisory: AdviceRow): HTMLElement {
+  var li = make("li", "advice-row" + (advisory.state === "active" ? "" : " advice-hidden"));
+  var open = !!view.expandedKeys[advisory.key];
   var main = make("button", "advice-main");
   main.type = "button";
   main.setAttribute("aria-expanded", String(open));
-  main.setAttribute("data-ctl", "adv:" + row.key);
+  main.setAttribute("data-ctl", "adv:" + advisory.key);
   main.title = open ? "hide the evidence" : "show the evidence";
-  main.appendChild(chip(ADVICE_WORD[row.kind] || row.kind, row.tone as "blocked" | "mid" | "muted"));
-  if (view.fresh[row.id] && row.state === "active") main.appendChild(chip("new", "muted", "not on this page before"));
-  if (row.back) main.appendChild(chip("back", "muted", "back: worse than when it was hidden"));
-  main.appendChild(make("span", "advice-text", row.text));
+  main.appendChild(chip(ADVICE_WORD[advisory.kind] || advisory.kind, advisory.tone as "blocked" | "mid" | "muted"));
+  if (view.newIds[advisory.id] && advisory.state === "active") main.appendChild(chip("new", "muted", "not on this page before"));
+  if (advisory.back) main.appendChild(chip("back", "muted", "back: worse than when it was hidden"));
+  main.appendChild(make("span", "advice-text", advisory.text));
   main.onclick = function () {
-    view.open[row.key] = !open;
+    view.expandedKeys[advisory.key] = !open;
     notifyAdviceListeners();
   };
   li.appendChild(main);
-  li.appendChild(actions(row));
+  li.appendChild(actions(advisory));
   if (open) {
     var lines = make("ul", "advice-lines");
-    var facts = row.lines.slice();
-    if (row.back) facts.unshift("back: worse than when it was hidden");
-    if (row.state !== "active") facts.unshift(hiddenWords(row));
+    var facts = advisory.lines.slice();
+    if (advisory.back) facts.unshift("back: worse than when it was hidden");
+    if (advisory.state !== "active") facts.unshift(hiddenWords(advisory));
     if (!facts.length) facts.push("no more to it than the line above");
     facts.forEach(function (line) {
       lines.appendChild(make("li", "", line));
@@ -386,46 +388,103 @@ function rowView(row: AdviceRow): HTMLElement {
   return li;
 }
 
+/** At most VISIBLE rows and PER_KIND of each kind, unless every row was asked for. */
 function shownRows(rows: AdviceRow[]): { shown: AdviceRow[]; rest: AdviceRow[] } {
-  if (view.more) return { shown: rows, rest: [] };
-  var per: Record<string, number> = {};
+  if (view.showAllActive) return { shown: rows, rest: [] };
+  var perKind: Record<string, number> = {};
   var shown: AdviceRow[] = [];
   var rest: AdviceRow[] = [];
-  rows.forEach(function (row) {
-    per[row.kind] = (per[row.kind] || 0) + 1;
-    if (per[row.kind]! <= PER_KIND && shown.length < VISIBLE) shown.push(row);
-    else rest.push(row);
+  rows.forEach(function (advisory) {
+    perKind[advisory.kind] = (perKind[advisory.kind] || 0) + 1;
+    if (perKind[advisory.kind]! <= PER_KIND && shown.length < VISIBLE) shown.push(advisory);
+    else rest.push(advisory);
   });
   return { shown: shown, rest: rest };
 }
 
 function moreWords(rest: AdviceRow[]): string {
   var kinds: string[] = [];
-  var n: Record<string, number> = {};
-  rest.forEach(function (r) {
-    if (!n[r.kind]) kinds.push(r.kind);
-    n[r.kind] = (n[r.kind] || 0) + 1;
+  var perKind: Record<string, number> = {};
+  rest.forEach(function (advisory) {
+    if (!perKind[advisory.kind]) kinds.push(advisory.kind);
+    perKind[advisory.kind] = (perKind[advisory.kind] || 0) + 1;
   });
   return kinds
-    .map(function (k) {
-      return (n[k]! > 1 ? n[k] + " " : "") + ADVICE_WORD[k];
+    .map(function (kind) {
+      return (perKind[kind]! > 1 ? perKind[kind] + " " : "") + ADVICE_WORD[kind];
     })
     .join(", ");
 }
 
 function textLink(text: string, action: () => void, expanded: boolean): HTMLButtonElement {
-  var b = make("button", "advice-link", text);
-  b.type = "button";
-  b.setAttribute("aria-expanded", String(expanded));
-  b.onclick = function (event) {
+  var toggle = make("button", "advice-link", text);
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", String(expanded));
+  toggle.onclick = function (event) {
     event.stopPropagation();
     action();
   };
-  return b;
+  return toggle;
 }
 
 export interface AdviceFilter {
   factory: string;
+}
+
+function renderActiveAdvice(card: HTMLElement, active: AdviceRow[], filter?: AdviceFilter): void {
+  if (!active.length) {
+    empty(card, filter ? "nothing worth a look in this factory" : "nothing worth a look in this save");
+    return;
+  }
+  var cut = shownRows(active);
+  var list = make("ul", "advice-list");
+  cut.shown.forEach(function (advisory) {
+    list.appendChild(rowView(advisory));
+  });
+  card.appendChild(list);
+  var line = make("p", "advice-foot");
+  if (cut.rest.length) {
+    line.appendChild(
+      textLink("+" + cut.rest.length + " more (" + moreWords(cut.rest) + ")", function () {
+        view.showAllActive = true;
+        notifyAdviceListeners();
+      }, false)
+    );
+  } else if (view.showAllActive && active.length > VISIBLE) {
+    line.appendChild(
+      textLink("show fewer", function () {
+        view.showAllActive = false;
+        notifyAdviceListeners();
+      }, true)
+    );
+  }
+  if (line.childNodes.length) card.appendChild(line);
+}
+
+function renderHiddenAdvice(card: HTMLElement, hidden: AdviceRow[]): void {
+  if (!hidden.length) return;
+  var foot = make("p", "advice-foot");
+  foot.appendChild(
+    textLink(hidden.length + " hidden · " + (view.showHidden ? "close" : "show"), function () {
+      view.showHidden = !view.showHidden;
+      notifyAdviceListeners();
+    }, view.showHidden)
+  );
+  card.appendChild(foot);
+  if (!view.showHidden) return;
+  var list = make("ul", "advice-list");
+  hidden.forEach(function (advisory) {
+    list.appendChild(rowView(advisory));
+  });
+  card.appendChild(list);
+}
+
+function restoreAdviceFocus(card: HTMLElement): void {
+  if (!view.openMenuKey || !view.focusMenuOnRender) return;
+  var first = card.querySelector<HTMLElement>(".advice-menu [role=menuitem]");
+  if (!first) return;
+  view.focusMenuOnRender = false;
+  first.focus({ preventScroll: true });
 }
 
 export function adviceCard(parent: HTMLElement, filter?: AdviceFilter): void {
@@ -434,68 +493,21 @@ export function adviceCard(parent: HTMLElement, filter?: AdviceFilter): void {
   bar.appendChild(make("h2", "dash-h", WORDS.worthALook));
   card.appendChild(bar);
   parent.appendChild(card);
-  if (askOpener().indexOf(ASK_PREFIX) === 0) renderAskBar(card);
-  var d = view.world === state.world ? view.data : null;
-  if (!d) {
-    if (view.problem) error(card, "the advisories", view.problem, refetchAdvice);
+  if (askBarOwnerId().indexOf(ASK_PREFIX) === 0) renderAskBar(card);
+  var data = view.world === state.world ? view.data : null;
+  if (!data) {
+    if (view.loadError) error(card, "the advisories", view.loadError, refetchAdvice);
     else loading(card, "advisories");
     return;
   }
-  var mine = function (r: AdviceRow): boolean {
-    return !filter || (r.subject_kind === "factory" && r.subject === filter.factory);
+  var inScope = function (advisory: AdviceRow): boolean {
+    return !filter || (advisory.subject_kind === "factory" && advisory.subject === filter.factory);
   };
-  var active = d.active.filter(mine);
-  var hidden = d.hidden.filter(mine);
+  var active = data.active.filter(inScope);
+  var hidden = data.hidden.filter(inScope);
   bar.appendChild(make("span", "dash-muted advice-count", active.length + " · " + hidden.length + " hidden"));
-  if (!active.length) empty(card, filter ? "nothing worth a look in this factory" : "nothing worth a look in this save");
-  else {
-    var cut = shownRows(active);
-    var list = make("ul", "advice-list");
-    cut.shown.forEach(function (row) {
-      list.appendChild(rowView(row));
-    });
-    card.appendChild(list);
-    var line = make("p", "advice-foot");
-    if (cut.rest.length) {
-      line.appendChild(
-        textLink("+" + cut.rest.length + " more (" + moreWords(cut.rest) + ")", function () {
-          view.more = true;
-          notifyAdviceListeners();
-        }, false)
-      );
-    } else if (view.more && active.length > VISIBLE) {
-      line.appendChild(
-        textLink("show fewer", function () {
-          view.more = false;
-          notifyAdviceListeners();
-        }, true)
-      );
-    }
-    if (line.childNodes.length) card.appendChild(line);
-  }
-  if (hidden.length) {
-    var foot = make("p", "advice-foot");
-    foot.appendChild(
-      textLink(hidden.length + " hidden · " + (view.showHidden ? "close" : "show"), function () {
-        view.showHidden = !view.showHidden;
-        notifyAdviceListeners();
-      }, view.showHidden)
-    );
-    card.appendChild(foot);
-    if (view.showHidden) {
-      var shut = make("ul", "advice-list");
-      hidden.forEach(function (row) {
-        shut.appendChild(rowView(row));
-      });
-      card.appendChild(shut);
-    }
-  }
+  renderActiveAdvice(card, active, filter);
+  renderHiddenAdvice(card, hidden);
   settleAskFocus(card);
-  if (view.menu && view.menuEnter) {
-    var first = card.querySelector<HTMLElement>(".advice-menu [role=menuitem]");
-    if (first) {
-      view.menuEnter = false;
-      first.focus({ preventScroll: true });
-    }
-  }
+  restoreAdviceFocus(card);
 }

@@ -8,7 +8,7 @@ import { count, formatNumber, mw, pct, perMin, signed } from "../../kit/format";
 import { enterFloors } from "../../map/floors/floors";
 import { hashFor } from "../../map/map";
 import { showBox } from "../../map/map-highlight";
-import { pinThis } from "../../chat/pins";
+import { createPin } from "../../chat/pins";
 import { state } from "../../app/state";
 import { counted, WORDS } from "../../kit/words";
 import { mapButton, pointButton, render } from "../shell";
@@ -70,7 +70,7 @@ export function factoryPinButton(name: string): HTMLButtonElement {
   return button(
     WORDS.pin,
     function () {
-      pinThis("factory", { factory: name });
+      createPin("factory", { factory: name });
     },
     { title: "pin this factory and copy its pin:N for chat", label: "pin " + name }
   );
