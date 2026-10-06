@@ -14,7 +14,7 @@ from pydantic import Field
 from ....core.filelock import LockTimeout
 from ....core.saveio import ports
 from ....domain.factories import edits, naming
-from ....domain.factories.labels import LabelError, stamp
+from ....domain.factories.labels import LabelError, edit_stamp
 from ....domain.factories.query import ASPECTS as QUERY_ASPECTS
 from ....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from ....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
@@ -1397,7 +1397,9 @@ def name_factory(
         return render.envelope(f"# {head}", "", warn + ["dry run: nothing written"])
 
     try:
-        edits.name(st.world_id, _session(st), name, cand, notes=notes, when=stamp(st.header))
+        edits.name_factory(
+            st.world_id, _session(st), name, cand, notes=notes, when=edit_stamp(st.header)
+        )
     except LABEL_REFUSALS as exc:
         return _label_refused(exc)
     path = store.path_for(store.world_id)
@@ -1460,7 +1462,7 @@ def rename_factory(
     if done.stuck:
         notes.append(
             f"{len(done.stuck)} stored plan(s) still name {done.was!r} and did not follow "
-            f"({done.why}): {', '.join(done.stuck)}; save each again with "
+            f"({done.stuck_reason}): {', '.join(done.stuck)}; save each again with "
             f"factory={done.name!r} to re-point it"
         )
     return render.envelope(
@@ -1522,7 +1524,7 @@ def amend_factory(
         {m for m in label.anchors if m not in alive} if prune_missing else set()
     )
     try:
-        plan = edits.plan_amend(store, label, wanted, going, alive)
+        plan = edits.preview_amendment(store, label, wanted, going, alive)
     except LabelError as exc:
         return _label_refused(exc)
     warn = _pin_notes([*(add or ()), *(drop or ())], st)
@@ -1559,9 +1561,9 @@ def amend_factory(
             label.name,
             wanted,
             going,
-            cand=cand if standing else None,
+            candidate=cand if standing else None,
             notes=notes,
-            when=stamp(st.header),
+            when=edit_stamp(st.header),
         )
     except LABEL_REFUSALS as exc:
         return _label_refused(exc)

@@ -18,8 +18,8 @@ __all__ = [
     "Renamed",
     "amend",
     "forget",
-    "name",
-    "plan_amend",
+    "name_factory",
+    "preview_amendment",
     "rename",
     "repoint_plans",
 ]
@@ -27,7 +27,8 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Renamed:
-    """``plans`` followed the new name; ``stuck`` still name the old one, with why."""
+    """``plans`` followed the new name; ``stuck`` still name the old one, for
+    ``stuck_reason``."""
 
     name: str
     was: str
@@ -36,21 +37,21 @@ class Renamed:
     version: int
     path: Path
     stuck: list[str]
-    why: str
+    stuck_reason: str
 
 
 def _pick(store: LabelStore, name: str, exact: bool) -> Label:
-    label = next((x for x in store.labels if x.name == name), None) if exact else store.find(name)
+    label = store.named(name) if exact else store.find(name)
     if label is None:
         raise UnknownLabel(f"no factory named {name!r}")
     return label
 
 
-def name(
+def name_factory(
     world_id: str,
     session: str,
     name: str,
-    cand,
+    candidate,
     notes: str = "",
     when: str = "",
     create: bool = False,
@@ -60,9 +61,9 @@ def name(
     (``None`` when it is new) and the version written."""
     with LabelStore.editing(world_id, session, expect) as store:
         before = None if create else store.find(name)
-        held = list(before.anchors) if before else None
-        label = store.name(name, cand, notes=notes, when=when, create=create)
-    return label, held, store.version
+        previous_anchors = list(before.anchors) if before else None
+        label = store.name(name, candidate, notes=notes, when=when, create=create)
+    return label, previous_anchors, store.version
 
 
 def forget(
@@ -161,7 +162,7 @@ class Amendment:
     named: bool
 
 
-def plan_amend(
+def preview_amendment(
     store: LabelStore, label: Label, add: list[str], drop: set[str], alive: set[str]
 ) -> Amendment:
     """The dry run of ``amend``: ``add`` first, then ``drop``, on a copy of ``label``.
@@ -190,12 +191,12 @@ def amend(
     name: str,
     add: list[str],
     drop: set[str],
-    cand=None,
+    candidate=None,
     notes: str = "",
     when: str = "",
     expect: int | None = None,
 ) -> tuple[Label, int]:
-    """Attach ``add`` and detach ``drop`` on one label; ``cand`` refreshes its geometry.
+    """Attach ``add`` and detach ``drop`` on one label; ``candidate`` refreshes its geometry.
 
     Returns the label and the version written.
     """
@@ -203,9 +204,9 @@ def amend(
         label = _pick(store, name, exact=True)
         store.attach(label, add)
         store.detach(label, drop)
-        if cand is not None:
-            label.centroid = cand.centroid
-            label.signature = dict(cand.buildings)
+        if candidate is not None:
+            label.centroid = candidate.centroid
+            label.signature = dict(candidate.buildings)
         if notes:
             label.notes = notes
         label.last_matched = when

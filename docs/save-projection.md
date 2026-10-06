@@ -497,8 +497,25 @@ id and position across two saves). Matching is **recall**, `|anchors ∩ candida
 Jaccard — Jaccard punishes growth, and extending a factory is the most common thing that happens to
 one. Match at ≥ 0.5, re-anchor at ≥ 0.8 with no competing label.
 
+Recall is what survives the edits a player actually makes:
+
+| edit | recall |
+|---|---|
+| moving a machine | unchanged: the id does not change |
+| adding a wing | stays 1.0: new machines are not in the denominator |
+| removing a few | dips slightly, still far above the threshold |
+| rebuilding half of it | ~0.5, flagged for confirmation rather than lost |
+
+On a confirmed match the label re-anchors to the current membership, so gradual rebuilding
+never accumulates drift.
+
 Labels attach to **arbitrary machine sets**, not to a base or a line, because a real factory is
 sometimes several components (Christmas) and sometimes part of one (steel inside the base).
+
+**A set counts as already named when a majority of it is covered** (`NAMED_SHARE`, 0.5). The
+clusterer runs over the whole world and so rediscovers every named factory, and both obvious
+rules misfire on that: "any anchor" hides a genuinely new cluster that swallowed one
+neighbouring machine, and "every anchor" re-offers a factory named all but one machine of.
 
 Persisted per world under `saveIdentifier` in `user_data_dir/labels/`, deliberately **not** under
 `cache_dir` (which `cache_prune` wipes) and **not** in the repo.
