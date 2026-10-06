@@ -1,6 +1,6 @@
 """The band loop that composes a layer's sheet: two height regimes, water and colour.
 
-Moved from ``tools/gen_map_renders.py``; the bands run on threads (``tiles/drawpool.py``).
+Moved from ``tools/gen_map_renders.py``; the bands run on threads (``render/drawpool.py``).
 """
 
 from __future__ import annotations

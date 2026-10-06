@@ -38,7 +38,7 @@ WATER_EDGE_BLUR_M = 0.73
 def drawn_water(field, kernel_only: bool, rivers, lattice, artwork_water):
     """The run's water as every layer draws it: ``(surfaces, open sea or None, planes)``.
 
-    ``palette.perched.water_surfaces``, then ``open_sea`` over the run's ``lattice``.
+    ``palette.water.perched.water_surfaces``, then ``open_sea`` over the run's ``lattice``.
     ``--kernel-only`` (recipe 2) has neither, and keeps the page's sea past the data.
     """
     water = water_surfaces(field, kernel_only, rivers)

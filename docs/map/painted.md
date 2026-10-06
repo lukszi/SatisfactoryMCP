@@ -15,7 +15,7 @@ mask: 3.66 m BC1 blocks copied nearest-neighbour to 1 m. Its 0.9 m depth feather
 beach with a median slope of 0.067, smearing the edge over about 13 m. Nothing finer than the
 1 m landscape exists in the game files, so the coast is now drawn from it.
 
-- **Where.** `ocean_reach` in `palette/shore.py` (then `tools/map_shore.py`): measured water whose level is within 0.5 m
+- **Where.** `ocean_reach` in `palette/water/shore.py` (then `tools/map_shore.py`): measured water whose level is within 0.5 m
   of `OCEAN_LEVEL_M`, and every texel within 48 m of it that is not level-only water. Rivers,
   lakes and all level-only water keep recipe 5's rule, unchanged to the byte. Level-only
   water stands over the fill, whose raster holds the surface (about -16.3 m off the
@@ -51,7 +51,7 @@ beach with a median slope of 0.067, smearing the edge over about 13 m. Nothing f
 ### Render-only meshes
 
 Coral trees, big, plateau and small shells, `CliffPillar_03` and rubble are drawn by the
-artwork as land and are absent from the heightfield. `mesh_items` (now in `terrain/rasters.py`) takes the statics
+artwork as land and are absent from the heightfield. `mesh_items` (now in `terrain/render_meshes.py`) takes the statics
 under `/Foliage/Coral/` and `/UnderWater/` plus `CliffPillar_03` from the same placement sweep,
 and the foliage instances of the same directories and of `/Rubble/` and `SeaRock` (minus the
 top-layer boulders) through a new `extra_foliage` harvest of `sweep_levels`. Each mesh is read
@@ -96,7 +96,7 @@ graph that wires them is stripped. Extracted planes reproduce the prototype's pa
 ### The game-painted style
 
 Layer `painted`, style `satellite-painted`, palette `palette/palettes/satellite-painted.json`,
-in `palette/painted.py` (both under `tools/mapgen/src/mapgen/`). Once per run, on the 1 m grid (about 80 s):
+in `palette/painted/ground.py` (both under `tools/mapgen/src/mapgen/`). Once per run, on the 1 m grid (about 80 s):
 
 1. Paint weights times layer albedo times 0.95, normalised by total weight; Puddles lerped on
    top. WetSand's OKLab lightness is set to 0.9 of Sand's: as shipped it is lighter than the
@@ -254,7 +254,7 @@ Build 502094. Every number below was measured on crops of the z7 grid, not on a 
 
 Every landscape HLOD cell of `Persistent_Level.umap` ships an unlit BaseColor of its 508 m
 square: a 1024 px virtual texture of 128 px BC1 tiles with a 4 px border, in Morton order.
-`gamedata/bake.py` finds each cell's mip-0 chunk by its size and bulk flags, box-filters it to
+`gamedata/ground/bake.py` finds each cell's mip-0 chunk by its size and bulk flags, box-filters it to
 1 m and places it where the landscape component of the same section lands. `python -m mapgen
 paint` writes it as `bake.rgb.u8.z` (47 MB). On this build 141 of 148 cells decode; the seven
 small edge cells (512 and 256 px) have another layout and are left out, and the paint covers
@@ -303,10 +303,10 @@ A stamp reaches at most 10.2 m from its node, and past 9 m the bake is back to i
 distance from the paint mix.
 
 Since style version 10 the painted ground patches each stamp before the bake is blended
-(`palette/painted.py` `patch_stamps`). Within 11 m of a crude oil node (`STAMP_INNER_M`) the
+(`palette/painted/albedo.py` `patch_stamps`). Within 11 m of a crude oil node (`STAMP_INNER_M`) the
 bake takes the paint mix, scaled to the bake by the median per-texel ratio of bake to paint on
 the ring out to 15 m (`STAMP_OUTER_M`). Across that ring it hands back to the bake by a
-smoothstep. The nodes come from `data/world_resource_nodes.json` (`gamedata/bake.py`
+smoothstep. The nodes come from `data/world_resource_nodes.json` (`gamedata/nodes.py`
 `oil_nodes`). The bake keeps its weight there, so the biome tint stays off, as it is around the
 node. 10,011 texels are replaced and 8,635 blended; the sidecar records
 `paint.bake_stamps_patched`. In the Spire Coast window at (269, -1943), pixels darker than sRGB
@@ -317,7 +317,7 @@ luma 70 within 11 m of its three nodes go from 4,463 in the fifth render to 0. T
 
 **Families.** The sweep now records each placement's first `OverrideMaterials` entry. A rock
 wears that material, or its mesh's own first one, and the material's parent chain is walked to
-one of the `Cliff_<Layer>` instances (`gamedata/rockfamily.py`). Rocks on this build: grass
+one of the `Cliff_<Layer>` instances (`gamedata/rocks/families.py`). Rocks on this build: grass
 4,737, plain cliff 4,344, forest 1,415, sand 1,019, red jungle 582, red grass 115, wet sand 42,
 and 8,772 others (desert rock, boulders, arches) with no family. Since reader version 2 desert
 rock is a family of its own (section 31, "Rock by mesh family").
@@ -340,7 +340,7 @@ inside that ramp, and the forest top wears a display target in place of its text
 (section 31, "Moss in patches").
 
 The rock targets of section 31 are measured on rock that already wears the common tint, so
-only a family's departure from it is applied (`palette/surfaces.py` `family_tables`). With one
+only a family's departure from it is applied (`palette/painted/surfaces.py` `family_tables`). With one
 tint for every family, as on this build, rock stays on its target. Through style version 5 the
 whole tint was multiplied on after the target was set, which drew every rock 44% darker in
 linear light and warmer than its target. A render-only rock (`CliffPillar_03`, sea rocks,
@@ -438,7 +438,7 @@ pink or beige in its textures and stays with the render-only meshes of section 2
 ### The input
 
 `python -m mapgen paint` harvests the carpet in the same level walk as the canopy trees
-(`gamedata/carpet.py`) and writes two more planes into the paint store, so they carry the paint
+(`gamedata/vegetation/carpet.py`) and writes two more planes into the paint store, so they carry the paint
 input's digest and build. Paint generator version 2.
 
 | File | What |
@@ -452,7 +452,7 @@ decides where water covers them.
 
 ### Drawing it
 
-Style `satellite-painted` version 2, palette key `carpet`. In `palette/optics.py`:
+Style `satellite-painted` version 2, palette key `carpet`. In `palette/painted/optics.py`:
 
 1. **Patches.** The cover is blurred by `blur_m` (3 m) and mapped through
    `1 - exp(-gain * share)` with `gain` 8, so a cluster of rosettes reads as one patch with a

@@ -91,7 +91,7 @@ halo, and a process pool computes per block: the ground's horizons and the crown
 resolution, sky view, normals, the native tiles, and the light at the default sun for the
 baked copy, once with the crowns and once without. A block whose core is all water skips the
 horizon march. Each layer then queues `unlit/` from a copy of the sheet, is lit in place by
-the default sun with its own term while that tree encodes (`tiles/lit.py`: the crowns' only
+the default sun with its own term while that tree encodes (`render/light.py`: the crowns' only
 for a style that draws them), and queues `tiles/` and `tiles@2x/`. All three go through one
 encode pool and are renamed into place in that order (section 17, "Cutting in parallel").
 
@@ -347,7 +347,7 @@ sprite) times its own scale, snapped to eleven bins from 0.5 to 20 m.
 
 ### Drawing
 
-`terrain/crowns.py` stamps the crowns into each band of the render's own grid. Each tree's
+`terrain/crown_stamp.py` stamps the crowns into each band of the render's own grid. Each tree's
 sprite is turned by its yaw, scaled, and shifted along its trunk axis by the species' mean
 crown height, so a leaning bamboo's crown stands off its base. The sprite is read through a
 mip chain (2x2 means; the top channel takes the maximum) at the level whose texel is nearest
@@ -356,7 +356,7 @@ lowest top first, each over the ones below. A band returns cover, cover-weighted
 dome height and the highest crown top in world cm; `crown_band(...)["top_cm"]` is the crown
 height raster on any render grid.
 
-`palette/painted.py` composites the crowns that stand out of the water last, over water and
+`palette/painted/ground.py` composites the crowns that stand out of the water last, over water and
 foam, under the highlight shoulder; a crown under the water's surface is drawn in the bed
 instead ("Crowns and the water" below). The `crowns` block of `satellite-painted.json`:
 
@@ -412,7 +412,7 @@ every crown: faded and blue, as if drowned. Of the 99,073 trees, 6,490 stand on 
 ocean's level, and 475 have their top under the water's level.
 
 Now each pixel of a crown is compared with the water's surface there, the drawn ground plus
-the water's depth (`palette/trees.py` `crown_layer`):
+the water's depth (`palette/painted/trees.py` `crown_layer`):
 
 - **Out of the water**, its top more than half of `waterline_m` over the surface: drawn
   whole over the water, the foam and the shore line, exactly as over dry ground. The rocks
@@ -420,7 +420,7 @@ the water's depth (`palette/trees.py` `crown_layer`):
   surface.
 - **Under it**: composited into the bed after the coral carpet and before the open-sea term
   and the opaque area water, seen through the water above its own top with the class's
-  optics (`palette/optics.py` `underwater`), as the seabed coral is (section 31). Shallow
+  optics (`palette/painted/optics.py` `underwater`), as the seabed coral is (section 31). Shallow
   under clear water it reads as a dark shape; under the swamp's murk it is gone within a
   few tens of centimetres.
 - Between the two, `waterline_m` (0.1 m) cuts a crown where its top crosses the surface, so a
@@ -488,7 +488,7 @@ zero, from 13 m to 9 m over its last metre, and that edge outweighs the 0.8 to 1
 shrunk by 0.35. Every coral tree came out lit as a hump.
 
 **The rule.** A species the render-only mesh pass draws is no crown: `load_crowns` drops its
-records (`terrain/crowns.py` `meshed_species`, `is_render_only_foliage` on the species'
+records (`terrain/crown_stamp.py` `meshed_species`, `is_render_only_foliage` on the species'
 mesh). The paint store is unchanged and keeps generator version 3. Its crown-top plane still
 holds the coral, so in a render with the light a coral tree still casts a tree shadow. The
 coral trees then draw as recipe 6 drew them, in the calibrated colours: the coral mesh colour
@@ -500,7 +500,7 @@ coral speck standing in the sea, which the crown over it had hidden.
 standing in the water to the seabed, so the pyramid holds those pixels as water, with land
 weight 0, and leaves them unlit. Most coral stands in the sea, so in a lit run it drew flat.
 The painted layer, drawn unlit in a run whose surface another layer captured, now keeps the
-default sun's Lambert term of its own top on the meshes only it draws (`palette/shore.py`
+default sun's Lambert term of its own top on the meshes only it draws (`palette/painted/ground.py`
 `painted_ndl`, with `lighting/model.py` `surface_direct`, the shader's direct term without
 shadows). The pyramid has those pixels as water, so the page leaves them as baked. Coral on
 dry land is in the surface and is lit live. When the painted layer captures the surface

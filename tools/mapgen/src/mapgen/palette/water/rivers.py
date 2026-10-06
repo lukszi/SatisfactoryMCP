@@ -136,7 +136,7 @@ def _reconcile(field, ground, ribbon, plane_m, tops):
     runs above that level: then the box is a lake's AABB reaching over the river's valley. Any other where the ribbon speaks
     (its reach, minus where the plane hangs too far over the ground) is dropped: the ribbon
     draws the river there. Then a lower body takes back the box tops over it
-    (``gamedata.water.lower_bodies``). ``ribbon`` is ``(speaks, valley, draws)``: ``valley``
+    (``gamedata.water.channel.lower_bodies``). ``ribbon`` is ``(speaks, valley, draws)``: ``valley``
     where the ground stands at most ``RIVER_MAX_DEPTH_M`` over the plane, ``draws`` where the
     ribbon covers the texel. Water in the valley more than that above the plane is a higher
     body's box over the river (``_over_the_river``).
@@ -226,7 +226,7 @@ def water_sources(field, rivers: RiverWater | None, level=None, grades=None):
 
     ``level`` replaces the level plane: the same water, re-levelled where it was perched.
     ``grades`` replaces the quality plane the wet and measured planes are read from, so
-    water the run re-wet or added (``palette.perched``, ``palette.water.open_sea``) is drawn.
+    water the run re-wet or added (``palette.water.perched``, ``open_sea``) is drawn.
     """
     if grades is None and rivers is not None:
         grades = rivers.grades

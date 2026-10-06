@@ -316,7 +316,7 @@ comes from `gen_map_image.py`, because that is the tool that *measured* it.
 
 ### The artwork command, piece by piece (2026-10-05)
 
-`mapgen artwork` (`tools/gen_map_image.py`) is split by concern. `artwork.py` holds only the
+`mapgen artwork` (`tools/gen_map_image.py`) is split by concern. `commands/artwork.py` holds only the
 arguments, the order of the stages and the refusals.
 
 **Why it is a loader.** A rendered map of this world is Coffee Stain's artwork, so
@@ -650,7 +650,8 @@ Four causes, all in how the shared band loop drew water and no data:
 - **Render-only meshes became islands** in the styles that draw ground and water only
   (section 27).
 
-What is drawn now, by `gamedata/water.py`, `terrain/fill.py` and `palette/water.py`:
+What is drawn now, by `gamedata/water/channel.py`, `terrain/fill.py` and
+`palette/water/open_sea.py`:
 
 - **The artwork says sea or void.** `artwork_planes` classifies the decoded sheet on the 1 m
   grid: water is the water channel's own test (`B - R >= 25`), void is anything else with a
@@ -702,7 +703,7 @@ The next review still found straight lines in the sea and navy in the pits:
 - **Hard straight edges where the sea meets the void**: east of the dunes, the south-west
   notch, and both 638 m falls.
 
-What `palette/water.py` and `palette/styles.py` draw now:
+What `palette/water/open_sea.py` and `palette/styles.py` draw now:
 
 - **A bed continuous in slope.** Within 100 m of the open sea (`OPEN_SEA_BLEND_M`) the
   measured bed is no longer fixed in the membrane. It pulls the membrane towards itself over
@@ -816,7 +817,7 @@ tiles are the same bytes:
   cover is not 0. The colour under the water is still worked out for every pixel; painting
   only the wet pixels is the larger step left for later.
 
-`blend_where` in `palette/shore.py` does the masking for the last two. It gathers the touched
+`blend_where` in `palette/water/shore.py` does the masking for the last two. It gathers the touched
 pixels, blends them with the same expression and writes them over a copy of the input. Past a
 share of the band it blends the whole band instead, because gathering is then slower: 2/3 of
 the pixels for the void (`VOID_MOST`), 1/3 for the water (`WET_MIX_MOST`). On a synthetic

@@ -19,7 +19,7 @@ root `StaticMeshComponent` whose mesh is under `/HotSpring/`. On build 502094 th
 actors and 101 terraces, and it doubles the paint run to about 50 s because the water boxes
 read mesh bounds. `PAINT_GENERATOR_VERSION` is 3 (with sections 30 to 32 and 36).
 
-`gamedata/waterbodies.py` `classify` turns that into a uint8 plane on the 1 m grid, once per
+`gamedata/water/bodies.py` `classify` turns that into a uint8 plane on the 1 m grid, once per
 render (about 5 s):
 
 1. Each actor's class comes from its first known material (`MATERIAL_CLASS`):
@@ -462,7 +462,7 @@ mouths). Plane footprint 0.92 km². 0.39 km² of it stands above the 1 m ground,
 
 ### The reader
 
-`gamedata/rivers.py`, run inside the shared level sweep (`sweep_levels` keeps each river's
+`gamedata/water/rivers.py`, run inside the shared level sweep (`sweep_levels` keeps each river's
 sections beside the water boxes). The render caches both as `rivers.cache/rivers.json`,
 keyed on the build and the reader version `river_splines`, so a run whose raster caches hit
 skips the sweep. A standalone walk takes 9 s.
@@ -489,7 +489,7 @@ the nearest centreline piece, measured exactly rather than to the nearest sample
 
 ### Reconciling with the field's water
 
-`palette/rivers.py`, once per run, on copies of the field's planes. The field on disk is not
+`palette/water/rivers.py`, once per run, on copies of the field's planes. The field on disk is not
 changed.
 
 - **A wet texel came from a river box** when its level equals that box's top within 5 cm and
@@ -566,7 +566,7 @@ and 10 m tall, from a lip. It lays `SM_Waterfall_Top_Module` instances (8.05 m o
 water) upstream of the lip, and on 148 of the falls it puts `SM_SplashModule_Mid` discs where
 the water lands. The modules are instanced components whose mesh and attachment come from the
 class template, so the reader composes them onto the actor's root itself.
-`gamedata/waterfalls.py` turns one actor into one record:
+`gamedata/water/falls.py` turns one actor into one record:
 
 | Field | What |
 | --- | --- |
@@ -585,7 +585,7 @@ area and are not read.
 
 ### Which falls are drawn
 
-`palette/falls.py` prepares the records against the field once per run. The drop is measured
+`palette/water/falls.py` prepares the records against the field once per run. The drop is measured
 to the lowest surface within 11 m out from the lip, never below the curtain's own end. A fall
 is left out when:
 
@@ -668,7 +668,7 @@ Beer-Lambert water blended almost fully to the open-sea colour, in a flat shape 
 artwork mask's 3.66 m block edges, because the depth feather never fades out on a 40 m
 depth. Every recipe since 2 has drawn it.
 
-`palette/perched.py` re-levels these bodies before drawing. The field is not changed. It
+`palette/water/perched.py` re-levels these bodies before drawing. The field is not changed. It
 runs on the water the rivers left (section 34), and the painted style's water classes
 (section 33) and the relief styles' water tint are taken from its result, so every consumer
 draws one surface. Part of recipe 7.
@@ -790,13 +790,13 @@ same rectangle in navy.
 
 Four changes, all in the renderer. The field is not changed.
 
-- **A lower body takes its water back** (`gamedata.water.lower_bodies`, in the river
+- **A lower body takes its water back** (`gamedata.water.channel.lower_bodies`, in the river
   reconcile after the river boxes' water). Each surface box with a level of its own, lowest
   first, floods from the wet texels at its top every measured texel joined to them, under
   the box, whose ground stands below the top and whose level stands more than 2 m above it
   (`LOWER_BODY_STEP_M`). A river's AABB has no level of its own, and boxes at the ocean's
   level are left to section 26. 41,100 texels.
-- **Water over the river** (`palette.rivers._over_the_river`). In a river's valley, where the
+- **Water over the river** (`palette.water.rivers._over_the_river`). In a river's valley, where the
   ribbon speaks and the ground stands at most 8 m over its plane (`RIVER_MAX_DEPTH_M`), water
   more than 8 m above the plane is a higher body's box over the river. It takes the plane's
   level and goes where the ribbon draws it or the ground stands above the plane, so the

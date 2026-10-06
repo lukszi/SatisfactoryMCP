@@ -159,60 +159,83 @@ be traced to the axis it should move.
 |---|---|---|
 | `cli.py` | | The `python -m mapgen` command table. Standard library only, so a spawned worker does not import numpy. |
 | `common.py` | | Repository root, `data/local`, the default game path, the shared argument parser |
+| `colour.py` | | sRGB, linear light and OKLab, the luminance weights and the flat light |
 | `pools.py` | | What a pool of workers may take: the free memory, and one BLAS thread in each worker |
-| `pipeline.py` | | The renders orchestrator: arguments, refusals, stage order |
-| `heightmap.py` | data | The heightmap, caves and rocks command: arguments, refusals, stage order |
-| `artwork.py` | data | The artwork command: arguments, stage order, refusals |
-| `check_fill.py` | | The check-fill command |
 | `cache.py` | | The stamped caches (direct, top, meshes, Titan trees, rivers) and how a raster cache is stored: band store or raw memory maps. The on-disk names and stamps are unchanged. |
 | `bandstore.py` | | The zstd band store: `BandWriter` and the read-only `BandArray` |
-| `compress_cache.py` | | The compress-cache command |
+| `commands/renders.py` | | The renders orchestrator: arguments, refusals, stage order |
+| `commands/heightmap.py` | data | The heightmap command: arguments, refusals, stage order; `--caves` and `--rocks` go to the next row |
+| `commands/caves.py`, `rocks.py` | data | The cave masks and the rock collision pack, written beside a field |
+| `commands/paint.py` | data | The paint command: one level walk into the paint-layer store |
+| `commands/artwork.py` | data | The artwork command: arguments, stage order, refusals |
+| `commands/check_fill.py` | | The check-fill command |
+| `commands/compress_cache.py` | | The compress-cache command |
 | `gamedata/frame.py` | data | Map frame (read from `geo.MAP_SQUARE_M`), render sizes, heightfield grid |
-| `gamedata/sweep.py` | data | Level sweep, foliage, landscape frame, baseline |
-| `gamedata/mesh.py` | data | Mesh decode, `MaxZRaster`, cliff and top rasters, water-actor boxes |
-| `gamedata/paint.py` | data | The paint command and the paint-layer store |
-| `gamedata/bake.py` | data | The landscape's baked ground colour and the layer refit |
-| `gamedata/rockfamily.py` | data | Rock material families (the cliff layers and desert rock): per placement, tint and top layer |
-| `gamedata/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
-| `gamedata/crowns.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
-| `gamedata/biome.py` | data | Biome raster and its calibration |
-| `gamedata/waterbodies.py` | data | Water actors' materials, hot-spring terraces, the water class plane |
-| `gamedata/caves.py`, `rocks.py` | data | Cave masks, rock collision pack |
-| `gamedata/water.py` | data | The heightfield's water channel: artwork mask, box levels, region masks |
 | `gamedata/artwork_sheet.py` | data | The artwork sheet: slice decode, layout proof, corner calibration |
-| `terrain/field.py` | data | Heightfield composition, plane encoding, and each layer's sidecar block |
-| `terrain/validate.py` | data | Heightfield gates (nodes, bare terrain, water), per-layer accuracy, the water block |
-| `terrain/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
-| `gamedata/rivers.py` | data | River splines (`BP_River_PROT_C`), sampling, the 1 m ribbon planes |
-| `gamedata/waterfalls.py` | data | Waterfall records from the `BP_WaterFallTool_02` actors, and their cache |
-| `gamedata/trees.py` | data | Tree instances as crowns: species bounds, instance scale, the tree table |
+| `gamedata/meshes.py` | data | Mesh geometry reads, collision hulls, `ExtendedBounds` |
+| `gamedata/maxz_raster.py` | data | `MaxZRaster`, the max-Z scatter rasteriser cliffs, crown sprites and render meshes share |
+| `gamedata/placements.py` | data | A placement's rotation, and the culls by owner, mesh name, arch and size |
+| `gamedata/materials.py` | data | Material-instance parameters, and the materials of a mesh's sections |
+| `gamedata/nodes.py` | data | The static resource-node table, and the oil nodes the bake stamps |
+| `gamedata/level/sweep.py` | data | The level sweep: foliage, water actors, landscape components |
+| `gamedata/level/landscape.py` | data | The landscape frame and its seam offsets |
+| `gamedata/level/fill_raster.py` | data | `HeightData_Test`, the interface raster that fills outside the landscape |
+| `gamedata/rocks/cliffs.py` | data | The field's cliff and top rasters |
+| `gamedata/rocks/families.py` | data | Rock material families (the cliff layers and desert rock): per placement, tint and top layer |
+| `gamedata/rocks/collision_pack.py`, `caves.py` | data | Rock collision pack, cave masks |
+| `gamedata/water/actors.py` | data | Which classes are water actors, and each one's box in the world |
+| `gamedata/water/channel.py` | data | The heightfield's water channel: artwork mask, box levels |
+| `gamedata/water/bodies.py` | data | Water actors' materials, hot-spring terraces, the class of each body |
+| `gamedata/water/rivers.py` | data | River splines (`BP_River_PROT_C`), sampling, the 1 m ribbon planes |
+| `gamedata/water/falls.py` | data | Waterfall records from the `BP_WaterFallTool_02` actors, and their cache |
+| `gamedata/vegetation/trees.py` | data | Tree instances as crowns: species bounds, instance scale, the tree table, canopy cover |
+| `gamedata/vegetation/crown_sprites.py` | data | Tree crown sprites from LOD 0, tree records, the crown top plane |
+| `gamedata/vegetation/carpet.py` | data | The seabed coral carpet's harvest and planes, written by the paint command |
+| `gamedata/ground/paint_store.py` | data | The paint-layer store's folder and file names |
+| `gamedata/ground/weightmaps.py` | data | The landscape's paint weightmaps, placed on the 1 m grid |
+| `gamedata/ground/landscape_albedo.py` | data | The paint layers' textures and albedo, and the rock families' colours |
+| `gamedata/ground/bake.py` | data | The landscape's baked ground colour and the layer refit |
+| `gamedata/ground/biome.py` | data | Biome raster and its calibration, region masks |
+| `terrain/heightfield/field.py` | data | Heightfield composition and plane encoding |
+| `terrain/heightfield/validate.py` | data | Heightfield gates (nodes, bare terrain, water) |
+| `terrain/heightfield/sidecar_blocks.py` | data | Each layer's sidecar block, per-layer accuracy, the water block |
+| `terrain/heightfield/sidecar.py` | data | The heightfield's `meta.json`, its staleness guard, the run's progress lines |
 | `terrain/fill.py` | renderer | Lattice rebuild: fill, seams, holes |
-| `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes |
-| `terrain/rasters.py` | renderer | Direct and top rasters on the output grid, render-only meshes |
-| `terrain/crowns.py` | renderer | Tree crowns stamped into a band of the output grid |
+| `terrain/sample.py` | renderer | Sampling kernels (PCHIP, Catmull-Rom, linear), resampling, class planes, value noise |
+| `terrain/rasters.py` | renderer | Direct and top rasters on the output grid |
+| `terrain/render_meshes.py` | renderer | The render-only meshes and the Titan trees on the output grid |
+| `terrain/crown_stamp.py` | renderer | Tree crowns stamped into a band of the output grid |
 | `terrain/measure.py` | renderer | `SeamTrace`, `RegimeCoverage` |
-| `palette/styles.py` | style | Palette loading, digests and the colour painters |
-| `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
-| `palette/painted.py` | style | The game-painted ground |
-| `palette/relief.py` | style | The relief styles' painter (light and dark palettes) |
-| `palette/water.py`, `shore.py` | style | Water drawing, shore optics, foam |
-| `palette/rivers.py` | style | River water: reconciled with the field's, laid over each band |
-| `palette/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
-| `palette/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
-| `lighting/hillshade.py` | light | Hillshade, sun term, artwork borrow |
+| `lighting/hillshade.py` | light | Hillshade and sun term |
+| `lighting/borrow.py` | light | The artwork borrow and its sidecar record |
 | `lighting/sun.py`, `model.py` | light | The game's sun path and default; the live-light model and its reference |
 | `lighting/horizon.py`, `stage.py` | light | Normals, sky view, faded horizons; the stage that writes the lighting pyramid |
-| `palette/lightparams.py` | style | What the page's shader reads from a style |
-| `tiles/lit.py` | | Installing a layer drawn unlit: `unlit/` and the default-sun copy |
-| `tiles/borrowmeta.py` | | The sidecar record of the artwork borrow |
 | `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
-| `tiles/compose.py` | | The band loop that draws a layer |
-| `tiles/drawpool.py` | | How many threads draw a layer's bands, and the pool that keeps their order |
+| `palette/styles.py` | style | Palette loading, digests, the colour painters and their height ramp |
+| `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
+| `palette/relief.py` | style | The relief styles' painter (light and dark palettes) |
+| `palette/lightparams.py` | style | What the page's shader reads from a style |
+| `palette/painted/ground.py` | style | The game-painted ground |
+| `palette/painted/albedo.py` | style | The paint store mixed into a ground albedo, and the bake patched over it |
+| `palette/painted/calibration.py` | style | Colour calibration: display targets taken back to ground colour |
+| `palette/painted/surfaces.py` | style | Rock in its family's colour, the canopy over rock, the render-only meshes |
+| `palette/painted/trees.py` | style | Trees over the painted pixel: the Titan forest and per-tree crowns |
+| `palette/painted/optics.py` | style | What is seen under each wet pixel, the coral carpet |
+| `palette/painted/water_classes.py` | style | The water-class plane and the swamp-to-ocean blends at mouths |
+| `palette/water/surface.py`, `shore.py` | style | Water drawing, shore optics, foam |
+| `palette/water/open_sea.py` | style | The open sea's bed past the measured one, and the void planes |
+| `palette/water/rivers.py` | style | River water: reconciled with the field's, laid over each band |
+| `palette/water/falls.py` | style | Waterfalls: the foam streak, the plunge pool and the mist |
+| `palette/water/perched.py` | style | Water levels re-read from the shoreline where a box top is not the surface |
+| `render/compose.py` | | The band loop that draws a layer |
+| `render/drawpool.py` | | How many threads draw a layer's bands, and the pool that keeps their order |
+| `render/extras.py` | | What a run loads beside the field: meshes, falls, Titan trees and rivers |
+| `render/light.py` | | Installing a layer drawn unlit: `unlit/` and the default-sun copy |
+| `render/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/pyramid.py` | | Installing a layer and cutting its pyramid; the worker flags |
 | `tiles/cutter.py` | | The parallel cutter: a layer's tile trees through one encode pool |
 | `tiles/sidecar.py` | | The render sidecar |
-| `tiles/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/recipes.py` | | The recipe numbers and their words, renders and artwork |
 | `tiles/rendertext.py` | | The render sidecar's sampling, composition, z7 and level-only text |
 | `tiles/artwork_output.py` | | The artwork's `tiles/` and `tiles@2x/` trees, its `map.json`, and the staleness guard that reads it back |
@@ -220,8 +243,9 @@ be traced to the axis it should move.
 | `enhance/pixels.py` | recipe | Pre-sharpen, faint-mark repair and colour fix around the model |
 | `enhance/levels.py` | recipe | The enhanced levels (source squares, upscale, repair, tiles) and the seam and low-zoom checks the sidecar records |
 
-Imports run one way. Subpackages never import a command module (`pipeline`, `heightmap`,
-`artwork`, `check_fill`, `cli`), and nothing in the package imports `tools/`.
+Imports run one way. No module imports a command under `commands/` (only `heightmap` hands
+`--caves` and `--rocks` to theirs), `cli` reaches them by name, and nothing in the package
+imports `tools/`.
 
 The container opener and the artwork sheet's slice reader are game readers, so they live in
 `satisfactory_mcp.core.gameassets.container` beside the IoStore reader.
@@ -231,7 +255,7 @@ The container opener and the artwork sheet's slice reader are game readers, so t
 Why some constants have the values they have. The code keeps a one-line comment and points
 here.
 
-### The band loop (`tiles/compose.py`)
+### The band loop (`render/compose.py`)
 
 `render_layer` draws a sheet 256 rows at a time; at 32768 a whole-sheet float32 intermediate
 is four gigabytes. Each band carries `BAND_HALO` rows either side and crops them, because a
@@ -244,7 +268,7 @@ applies (`None` keeps recipe 5's water). `painted` and `relief` are the prepared
 those styles, built once per run. `falls` are the prepared waterfalls and `rivers` the
 `RiverWater` whose ribbons replace the field's river water. `window` draws part of the sheet,
 which is how crops are compared. `threads` draws that many bands at once to the same bytes
-(`tiles/drawpool.py`, `--draw-threads`): the bands share the layer's inputs read-only, each
+(`render/drawpool.py`, `--draw-threads`): the bands share the layer's inputs read-only, each
 writes its own rows, and their seam and regime measurements are merged in band order
 (docs/spatial-and-map.md section 40).
 
@@ -254,7 +278,7 @@ of the 1 m ground per 3.66 m pixel drew the bake's stippled blends as speckle an
 trails as dotted lines, in the Rocky Desert most of all. A pixel no wider than a texel keeps
 the bilinear taps, so 8192 px and up draw as before.
 
-### Light (`lighting/hillshade.py`)
+### Light (`lighting/hillshade.py`, `lighting/borrow.py`)
 
 - **The sun** sits north-west at 45 degrees, the convention every relief map uses. Lit from
   anywhere else, the reader's eye inverts the valleys. `hillshade` is a dot product against
@@ -300,7 +324,7 @@ the bilinear taps, so 8192 px and up draw as before.
 - **`BORROW_LUMA`** is Rec. 601, the weighting that matches how a person sees light. Colour
   never crosses: an ocean drawn blue contributes its brightness and nothing else.
 
-### Tree shadows (`lighting/horizon.py`, `lighting/occluders.py`, `tiles/lit.py`)
+### Tree shadows (`lighting/horizon.py`, `lighting/occluders.py`, `render/light.py`)
 
 Shadows are not baked into colour: the lighting stage of section 29 stores faded horizons
 and the page's sun picks two directions. Trees join that pass as its `occluder`, so they
@@ -308,7 +332,7 @@ shade for any sun.
 
 - **Only where trees are drawn.** The crowns cast into horizons of their own, the atlas's
   second half, and only a style that draws the crowns reads them (`shader_light`'s
-  `crowns`, the painted style today; `tiles.lit.crown_layers`, the light sidecar's
+  `crowns`, the painted style today; `render.light.crown_layers`, the light sidecar's
   `occluder_layers`). Baked into the one horizon set every style shares, they shaded
   terrain, satellite and relief with trees those styles do not draw: near-black blocks in
   the forests and Red Bamboo, dashes in the desert. A crown cell keeps its horizon only
@@ -338,7 +362,7 @@ shade for any sun.
   `CROWN_RIM` (0.3) puts the rim at 30% of the height: at 0.7 every crown edge was a cliff
   and overlapping crowns drew hard arcs; at 0 the shadow share grew 3-4 points with little
   visual gain.
-- **Sizes.** `gamedata/trees.py` takes species from the foliage mesh and top and radius from
+- **Sizes.** `gamedata/vegetation/trees.py` takes species from the foliage mesh and top and radius from
   its `ExtendedBounds`, which match the LOD0 geometry for all 53 tree meshes (top within
   0.6 m). `CROWN_TOP_MAX_M` (80 m) caps the column under a lifted crown;
   `CROWN_MIN_RADIUS_M` drops trunks and bulbs. `terrain.rasters.sweep_world` harvests
@@ -346,7 +370,7 @@ shade for any sun.
 - **Not yet:** the crown domes are not in the normal pyramid, so a crown is lit by the ground's
   normal under it.
 
-### Water (`palette/water.py`)
+### Water (`palette/water/surface.py`, `open_sea.py`)
 
 - **`WATER_EDGE_M`**: the field is a 1 m grid and "is this texel under water" is a step
   function on it, so a hard test draws every coast as 1 m blocks. Under this depth, water and
@@ -360,7 +384,7 @@ shade for any sun.
   raster's rounding error the depth ramp would erase three and a half square kilometres of
   ocean. On the shipped field 95.2% of level-only water stands over the fill province and 98%
   of its surface levels lie inside a 0.7 m band around the ocean's -16.99 m, so it is the
-  ocean. There `palette/water.py` draws it over a bed of its own, continued from the measured
+  ocean. There `palette/water/open_sea.py` draws it over a bed of its own, continued from the measured
   bed beside it and settling to 60 m offshore, so every style reads one seabed and the colour
   does not step at the data edge. Level-only water away from the ocean's level, and
   `--kernel-only`, keep the deep end of the ramp.
@@ -396,7 +420,7 @@ shade for any sun.
   beside the 638 m falls and on the north edge. A wider band stays the land the artwork
   draws: at 12 m the rule cut a 15 m spit on the north edge into pieces.
 - **Perched water**: a sloped river's box top is its upstream end, and one body's box can
-  cover a lower body. `palette/perched.py` re-levels such water from its own shoreline
+  cover a lower body. `palette/water/perched.py` re-levels such water from its own shoreline
   before it is drawn. A box can also reach past its own fall's lip: **`LIP_DROP_M`** cuts a
   body where the ground falls more than 8 m between neighbours, and the water below the
   drop is re-levelled first, so the basin under a fall is not drawn at the lake's level.
@@ -407,7 +431,7 @@ shade for any sun.
   raster that rounds above a sea surface 17 m down, so the missing byte is reported in the
   sidecar.
 
-### Rivers (`gamedata/rivers.py`, `palette/rivers.py`)
+### Rivers (`gamedata/water/rivers.py`, `palette/water/rivers.py`)
 
 - **The plane is the water.** A river is `SM_RiverPlane` bent along Hermite sections, so its
   surface is a height and a half width per point. The depth is that height minus the drawn

@@ -30,7 +30,7 @@ DIRECT_Z_NAME = "direct.z.f32"
 DIRECT_COVERAGE_NAME = "direct.cov.u8"
 
 
-#: The cliff family of each texel's winning rock (``gamedata.rockfamily.FAMILIES``).
+#: The cliff family of each texel's winning rock (``gamedata.rocks.families.FAMILIES``).
 DIRECT_FAMILY_NAME = "direct.family.u8"
 
 

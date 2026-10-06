@@ -12,8 +12,8 @@ gated swamp water and the mesh colours below are version 6, the blue palms' own 
 version 9, the desert rock family's target and the daylight dune target version 11, and the
 three land rules (the Spire Coast rock from its own material, wet sand by rule, the red Kapok
 by species) version 17, and the moss in patches version 18. Code:
-`palette/painted.py`, `palette/calibration.py`, `palette/trees.py` (crowns),
-`palette/optics.py` (water) and `palette/surfaces.py` (rock and meshes). Numbers: the `tone`
+`palette/painted/ground.py`, `calibration.py`, `trees.py` (crowns), `optics.py` (water)
+and `surfaces.py` (rock and meshes). Numbers: the `tone`
 and `calibration` blocks of `palette/palettes/satellite-painted.json`.
 
 ### The ground albedo source
@@ -78,7 +78,7 @@ the north beach; [3806590944](https://steamcommunity.com/sharedfiles/filedetails
 is where the mauve of #b1a09e came from.
 
 `calibration.derived` holds the rule: WetSand is the Sand target with OKLab lightness ×0.80,
-chroma ×1.0 and hue −10°. `with_derived` (`palette/calibration.py`) adds it to every scope that
+chroma ×1.0 and hue −10°. `with_derived` (`palette/painted/calibration.py`) adds it to every scope that
 has a Sand target and no WetSand target of its own: #a29583 from the global #d5cbb6, and
 #987b61 inside the desert entry from its #c4ab8b. A target written out in a scope wins over the
 rule. The derived targets then go through the per-layer transfer like any other.
@@ -151,7 +151,7 @@ areas they do not touch: the Rocky Desert's id covers the sea north of the Spire
 (around (743, -2527)) and the islands off the west coast (-2655, 1506). Its rock and sand
 targets followed, so the Spire Coast's outer islands drew red-brown rock (#b18574 against
 #51524d) and tan sand, with a seam through one rock mass at the area edge. Before any target
-is scoped, the area map on the 4 m rock grid is rehomed (`palette/calibration.py`
+is scoped, the area map on the 4 m rock grid is rehomed (`palette/painted/calibration.py`
 `rehome_offshore`, from `PaintedGround._coarse_areas`). An area's pieces are its 8-connected
 components; the one holding the most land is its own. Any other piece with land under half
 its cells takes the named area it shares the longest border with, else No Man's Land. Sea is
@@ -208,7 +208,7 @@ Two readings in these references:
 ### Rock by mesh family (2026-10-06)
 
 Rock takes its colour from the mesh it is before the area it stands in. `calibration.families`
-names a target per rock family (`gamedata/rockfamily.py` `FAMILIES`), and a family named there
+names a target per rock family (`gamedata/rocks/families.py` `FAMILIES`), and a family named there
 wears its target wherever it stands, over any area entry's rock. Style version 11 names one:
 the desert rock family, with the desert rock target #ae8271.
 
@@ -288,7 +288,7 @@ heightfield and is drawn by the render-only mesh pass (section 27). Through game
 its 32 lagoon sea stacks drew in the area's rock, flat #51524d, with no family and no top
 layer. Now the mesh pass records each rock's family as the direct pass does: the placement's
 override material, else the mesh's own, walked up to a `Cliff_<Layer>` root
-(`gamedata/rockfamily.py` `worn_family`). `rasterise_mesh_band` carries it above the class in
+(`gamedata/rocks/families.py` `worn_family`). `rasterise_mesh_band` carries it above the class in
 each instance's source code (`MESH_FAMILY_SHIFT`), and the cache gains a family plane,
 `meshes.family.u8`, beside the class plane (render meshes reader version 3, so an older mesh
 cache is rasterised again once). `mesh_surface` draws a rock pixel through `rock_surface` with
@@ -346,7 +346,7 @@ Cliff master's top-layer function. It is cooked into the master, so its mask can
 (section 30, "Rock surfaces"). The patches are a rule drawn by the style and tuned to the
 screenshots' share, not game data.
 
-**The mask.** `palette/surfaces.py` `top_cover` multiplies section 30's up-facing ramp by a
+**The mask.** `palette/painted/surfaces.py` `top_cover` multiplies section 30's up-facing ramp by a
 patch mask from `rock_top.patches`. The mask's noise is `patch_noise`: value noise on a
 lattice in world metres from the frame's corner, each lattice point valued by a 64-bit hash
 of its indices and the seed, blended by smoothstep. Three octaves of 16, 6 and 2.5 m weigh
@@ -425,7 +425,7 @@ pixels carry a top, and 1.0 s where 10 to 26% do: 55 to 133 s over the sheet's 1
 
 With crowns drawn the soft canopy is off (`canopy_kept` 0), so through style version 5 the
 canopy targets coloured nothing and the crowns drew their texture means: the Red Jungle a
-saturated red against its #7c4955. The targets now move the crowns (`palette/trees.py`
+saturated red against its #7c4955. The targets now move the crowns (`palette/painted/trees.py`
 `crown_ops`, applied in `crown_layer`):
 
 - **Scopes.** Each area entry with a `canopy` target is one, holding the trees where its area
@@ -456,7 +456,7 @@ saturated red against its #7c4955. The targets now move the crowns (`palette/tre
 - **Species targets** (game-painted 17). `calibration.species` names a target per tree
   species, for a colour that belongs to the tree rather than to the place. Before the scopes
   are measured, each named species' crowns move from the species' own colour as drawn onto
-  its target, every texel of its sprite's mips (`palette/trees.py` `species_targets`), so the
+  its target, every texel of its sprite's mips (`palette/painted/trees.py` `species_targets`), so the
   hue gates that follow see the moved colour. One is named: the red Kapok `SM_Kapok_03`, on
   #7c4955, 1,324 trees, step -0.035 and ×0.646 (sidecar `species@SM_Kapok_03`).
 

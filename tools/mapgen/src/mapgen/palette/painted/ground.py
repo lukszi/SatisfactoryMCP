@@ -8,7 +8,7 @@ over them where their crowns reach, arches and the render-only meshes take their
 and the Titan trees can be laid over everything; then a sky-and-sun light, an exposure gain
 with a soft shoulder and Beer-Lambert water over a seabed with the coral carpet and sunk
 crowns. Every number is in ``palette/palettes/satellite-painted.json``. docs/spatial-and-map.md
-sections 27, 30 to 32 and 36; the water ``palette/optics.py``, rocks ``palette/surfaces.py``.
+sections 27, 30 to 32 and 36; the water ``palette/painted/optics.py``, rocks ``surfaces.py``.
 """
 
 from __future__ import annotations

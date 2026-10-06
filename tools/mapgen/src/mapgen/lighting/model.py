@@ -119,7 +119,7 @@ _LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
 
 
 def _tone(y, knee: float, white: float):
-    """The painted style's luminance shoulder (``palette.painted.tone``); knee 1 is none."""
+    """The painted style's luminance shoulder (``palette.painted.calibration.tone``); knee 1 is none."""
     if knee >= 1.0:
         return y
     span = 1.0 - knee

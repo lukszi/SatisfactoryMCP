@@ -323,7 +323,7 @@ def fill_field(
     ``ground_dm`` is the kernel's lattice as ``ground_lattice`` and ``terrain_lattice``
     made it (cliff removed, landscape at 7.8 mm). ``heights_dm`` is that ground with the
     cliff province's own heights put back unchanged. Both are float32 with ``nodata``.
-    ``void`` is where the artwork draws void (``gamedata.water.artwork_planes``): the
+    ``void`` is where the artwork draws void (``gamedata.water.channel.artwork_planes``): the
     no-data holes and the ground below ``PIT_FLOOR_M`` it draws as pits are left empty.
     """
     timings: dict[str, float] = {}
