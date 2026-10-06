@@ -17,7 +17,7 @@ FILL_HORIZONTAL_M = 7500.0 / FILL_RASTER_PX
 FILL_VERTICAL_M = FILL_RASTER_SCALE_CM_PER_RAW / 255.0 / 100.0
 
 
-def compose_top(height_dm: np.ndarray, frame: dict, top: dict) -> tuple[np.ndarray, int]:
+def fold_top_overlay(height_dm: np.ndarray, frame: dict, top: dict) -> tuple[np.ndarray, int]:
     """``height_dm`` max-folded with the overlay, and how many texels the overlay raised."""
     dx, dy = drop_offsets(frame)
     out = height_dm.copy()
@@ -49,7 +49,7 @@ def fill_raster_indices() -> tuple[np.ndarray, np.ndarray]:
     return bi, bj
 
 
-def compose(frame: dict, cliffs: dict, baseline_cm: np.ndarray, valid: np.ndarray) -> dict:
+def compose_field(frame: dict, cliffs: dict, baseline_cm: np.ndarray, valid: np.ndarray) -> dict:
     """Fuse the layers into the output grid: fill, then landscape, then cliff over both.
 
     The fill is everywhere the interface raster says anything, so it goes down first and is

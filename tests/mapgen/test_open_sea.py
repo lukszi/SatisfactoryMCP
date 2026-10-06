@@ -23,7 +23,7 @@ from mapgen.palette.water.open_sea import (
 from mapgen.palette.water.rivers import water_sources
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, composite_meshes
 from mapgen.render.compose import DIRECT_LIFT_KNEE_M, composite_top, render_layer
-from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pits, relax
+from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pit_mask, relax
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -94,7 +94,7 @@ def test_an_interior_hole_drawn_as_a_pit_is_left_empty():
     void[10:20, 10:20] = True
     void[12:15, 30:40] = True
     void[:, 55:] = True
-    got = pits(nodata, void)
+    got = pit_mask(nodata, void)
     assert got[10:20, 10:20].all()
     assert not got[30:40, 30:40].any() and not got[:, 55:].any()
 
@@ -108,7 +108,7 @@ def test_a_floor_the_artwork_draws_as_void_is_a_pit_wherever_it_lies():
     floor[20:30, 50:55] = True  # a floor at the void past the edge
     void = np.zeros_like(nodata)
     void[10:20, 10:20] = void[:, 50:] = True
-    got = pits(nodata, void, floor)
+    got = pit_mask(nodata, void, floor)
     assert got[10:20, 10:20].all() and got[20:30, 50:55].all()
     assert not got[30:40, 30:40].any() and not got[:, 55:].any()
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mapgen.gamedata.water.falls import falls_input
+from mapgen.gamedata.water.falls import load_or_sweep_falls
 from mapgen.palette.styles import PAINTED_PALETTE, SATELLITE_PALETTE
 from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -47,7 +47,7 @@ def _surface_at(field, x_m, y_m) -> tuple[np.ndarray, np.ndarray]:
 
 def load_falls(cache_root, build, sweep_once, field) -> tuple[np.ndarray, dict]:
     """The drawable falls for this field, and the sidecar's ``waterfalls`` block."""
-    records, source = falls_input(cache_root, build, sweep_once)
+    records, source = load_or_sweep_falls(cache_root, build, sweep_once)
     falls = prepare_falls(records, field)
     source["waterfalls"]["drawable"] = len(falls)
     return falls, source

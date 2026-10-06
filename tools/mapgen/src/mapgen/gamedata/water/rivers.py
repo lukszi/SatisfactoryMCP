@@ -92,7 +92,7 @@ def river_actor(view, actor: int, classes, meshes) -> dict:
             continue
         props = view.props(slot)
         mesh = view.import_path(props["StaticMesh"]) if "StaticMesh" in props else None
-        bounds = meshes.of(mesh) if mesh else None
+        bounds = meshes.extended_bounds(mesh) if mesh else None
         half = bounds[1][1] if bounds else RIVER_PLANE_HALF_WIDTH_CM
         row = _section(view, slot, classes, half)
         if row is not None:

@@ -57,7 +57,12 @@ from mapgen.gamedata.nodes import NODE_TABLE
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs, rasterise_top
 from mapgen.gamedata.rocks.collision_pack import rock_pack
 from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
-from mapgen.terrain.heightfield.field import compose, compose_top, encode_planes, report_field
+from mapgen.terrain.heightfield.field import (
+    compose_field,
+    encode_planes,
+    fold_top_overlay,
+    report_field,
+)
 from mapgen.terrain.heightfield.sidecar import (
     build_meta,
     refuse_stale,
@@ -71,7 +76,7 @@ from mapgen.terrain.heightfield.validate import (
     VALIDATION_TRIM_RMS_MAX_M,
     report_validation,
     report_water,
-    validate,
+    validate_field,
     validate_terrain,
     validate_water,
     water_gate_failures,
@@ -214,14 +219,14 @@ def main() -> int:
     print(f"  interface raster decoded, {baseline_valid.mean() * 100:.1f}% of it says something")
 
     started = time.time()
-    field = compose(frame, cliffs, baseline_cm, baseline_valid)
+    field = compose_field(frame, cliffs, baseline_cm, baseline_valid)
     timings["compose"] = round(time.time() - started, 1)
     report_field(field)
 
     print("rasterising arches and foliage boulders for the top plane")
     top = rasterise_top(sweep, frame, store, scripts, index, loud)
     timings["top"] = round(top["seconds"], 1)
-    top_dm, top_raised = compose_top(field["height_dm"], frame, top)
+    top_dm, top_raised = fold_top_overlay(field["height_dm"], frame, top)
     print(
         f"  {top['arch_placements']} arch placements, {top['foliage_instances']} foliage "
         f"instances {top['foliage_by_mesh']}; raised {top_raised} texels over the ground"
@@ -242,7 +247,7 @@ def main() -> int:
         return 7
 
     started = time.time()
-    validation = validate(field["height_dm"], field["prov"])
+    validation = validate_field(field["height_dm"], field["prov"])
     timings["validate"] = round(time.time() - started, 1)
     report_validation(validation)
     whole = validation["field"]

@@ -23,7 +23,6 @@ __all__ = [
     "BIOME_CLASS",
     "BODY_STEP_M",
     "BOX_Z_TOLERANCE_M",
-    "CLASSES",
     "DRY",
     "HOT_SPRING_BOX_MAX_M",
     "HOT_SPRING_MARK",
@@ -37,10 +36,11 @@ __all__ = [
     "SEA_ROUNDING_M",
     "SWAMP",
     "WATER_BODIES_NAME",
+    "WATER_CLASSES",
     "actor_materials",
     "body_class",
     "classify",
-    "harvest",
+    "collect_water_bodies",
     "level_bodies",
     "open_sea",
 ]
@@ -48,7 +48,7 @@ __all__ = [
 WATER_BODIES_NAME = "water_bodies.json"
 
 #: Index = value in the class plane. 0 is dry.
-CLASSES = (
+WATER_CLASSES = (
     "dry",
     "ocean",
     "river",
@@ -61,7 +61,7 @@ CLASSES = (
     "translucent",
 )
 DRY, OCEAN, RIVER = 0, 1, 2
-_ID = {name: i for i, name in enumerate(CLASSES)}
+_ID = {name: i for i, name in enumerate(WATER_CLASSES)}
 SWAMP = _ID["swamp"]
 
 
@@ -140,7 +140,7 @@ def actor_materials(view, actor: int) -> tuple[str, ...]:
     return tuple(sorted(found))
 
 
-def harvest(view, classes, meshes, out: dict) -> None:
+def collect_water_bodies(view, classes, meshes, out: dict) -> None:
     """Add one level's water actors and hot-spring terraces to ``out``."""
     roots = {root_component(view, slot) for slot in view.class_of}
     for slot, class_path in view.class_of.items():
@@ -202,7 +202,7 @@ def open_sea(level_m: np.ndarray, wet: np.ndarray, ocean_level_m: float) -> np.n
 def classify(
     level_m: np.ndarray, wet: np.ndarray, bodies: dict, biome: tuple, ocean_level_m: float
 ) -> tuple[np.ndarray, dict]:
-    """The class plane (uint8, ``CLASSES`` index) on the 1 m grid, and counts.
+    """The class plane (uint8, ``WATER_CLASSES`` index) on the 1 m grid, and counts.
 
     ``level_m`` is the water level per texel (nan where none), ``wet`` the texels the
     channel calls water, ``biome`` the biome index grid and the names it indexes. No box
@@ -249,9 +249,9 @@ def classify(
         index, names = biome
         lut = np.array([_ID[BIOME_CLASS.get(n, "lake")] for n in names], np.uint8)
         plane[left] = lut[index[left]]
-    counts = np.bincount(plane.ravel(), minlength=len(CLASSES))
+    counts = np.bincount(plane.ravel(), minlength=len(WATER_CLASSES))
     return plane, {
-        "classes": {CLASSES[i]: int(n) for i, n in enumerate(counts) if i and n},
+        "classes": {WATER_CLASSES[i]: int(n) for i, n in enumerate(counts) if i and n},
         "bodies_claimed": len(claims),
         "hot_spring_terraces": len(springs),
         "filled_by_biome": int(left.sum()),
@@ -337,8 +337,8 @@ def _fill_by_majority(plane: np.ndarray, wet: np.ndarray) -> None:
     if not count:
         return
     claimed = inland & (plane != DRY)
-    key = labels[claimed].astype(np.int64) * len(CLASSES) + plane[claimed]
-    votes = np.bincount(key, minlength=(count + 1) * len(CLASSES)).reshape(count + 1, -1)
+    key = labels[claimed].astype(np.int64) * len(WATER_CLASSES) + plane[claimed]
+    votes = np.bincount(key, minlength=(count + 1) * len(WATER_CLASSES)).reshape(count + 1, -1)
     size = np.bincount(labels.ravel(), minlength=count + 1)
     major = votes.argmax(1).astype(np.uint8)
     major[votes.max(1) < MAJORITY_SHARE * size] = DRY

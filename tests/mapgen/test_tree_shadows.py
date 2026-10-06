@@ -33,7 +33,7 @@ class _Bounds:
     def __init__(self, table):
         self.table = table
 
-    def of(self, mesh):
+    def extended_bounds(self, mesh):
         return self.table.get(mesh)
 
 

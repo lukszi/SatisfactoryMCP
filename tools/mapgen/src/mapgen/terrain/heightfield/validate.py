@@ -272,7 +272,7 @@ def error_stats(errors: np.ndarray, total: int) -> dict:
     }
 
 
-def validate(height_dm: np.ndarray, prov: np.ndarray) -> dict:
+def validate_field(height_dm: np.ndarray, prov: np.ndarray) -> dict:
     """Measure the built field against the static node table, whole and per layer.
 
     The whole-field number is the gate; the per-layer ones go in the sidecar so a reading can

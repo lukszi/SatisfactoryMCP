@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.water.bodies import CLASSES, OCEAN
+from mapgen.gamedata.water.bodies import OCEAN, WATER_CLASSES
 from mapgen.lighting.occluders import sheet_crowns
 from mapgen.palette.painted.ground import (
     WATER_TABLE_COLUMNS,
@@ -23,7 +23,7 @@ from mapgen.terrain.sample import taps_linear
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from tests.support.map_scenes import class_optics, painted_ground_stub, water_scene
 
-RIVER = CLASSES.index("river")
+RIVER = WATER_CLASSES.index("river")
 
 
 def _ground(plane) -> PaintedGround:

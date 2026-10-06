@@ -12,7 +12,7 @@ import pytest
 
 from mapgen.gamedata.ground.landscape_albedo import LAYERS
 from mapgen.gamedata.rocks.families import FAMILIES
-from mapgen.gamedata.water.bodies import CLASSES
+from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.palette.painted.albedo import GroundBake, ground_albedo
 from mapgen.palette.painted.calibration import scoped_planes
 from mapgen.palette.painted.ground import (
@@ -36,7 +36,7 @@ from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.core.gameassets import versions
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
-SWAMP = CLASSES.index("swamp")
+SWAMP = WATER_CLASSES.index("swamp")
 
 
 def _hex(colour: str) -> np.ndarray:

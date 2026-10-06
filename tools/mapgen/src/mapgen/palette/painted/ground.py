@@ -22,7 +22,7 @@ from mapgen.colour import LUMA, flat_light, linear_from_oklab, linear_to_srgb, o
 from mapgen.gamedata.frame import SPACING_CM
 from mapgen.gamedata.ground.bake import BAKE_NAME, bake_have
 from mapgen.gamedata.ground.paint_store import CANOPY_NAME, CROWN_NAME, PIGMENT_NAME
-from mapgen.gamedata.water.bodies import CLASSES
+from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
 from mapgen.lighting.model import surface_direct
 from mapgen.palette.painted.albedo import (
@@ -271,7 +271,7 @@ class PaintedGround:
             (
                 self._area_weight(e["areas"]),
                 display_to_linear(palette, e["water"]),
-                CLASSES.index(e["water_class"]),
+                WATER_CLASSES.index(e["water_class"]),
             )
             for e in scoped
             if "water" in e

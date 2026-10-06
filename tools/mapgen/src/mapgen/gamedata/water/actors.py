@@ -156,10 +156,10 @@ def _component_box(view: PackageView, slot: int, name: str, meshes: MeshBounds):
         source = "InstancedStaticMeshComponent.CachedBounds"
     elif name == "StaticMeshComponent":
         mesh = view.import_path(props.get("StaticMesh", b"")) if "StaticMesh" in props else None
-        pair = meshes.of(mesh) if mesh else None
+        pair = meshes.extended_bounds(mesh) if mesh else None
         source = "StaticMesh.ExtendedBounds"
         if pair is None:
-            pair = meshes.of(WATER_PLANE_MESH)
+            pair = meshes.extended_bounds(WATER_PLANE_MESH)
             source = "WaterPlane.ExtendedBounds (assumed)"
     else:
         return None, None

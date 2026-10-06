@@ -15,7 +15,7 @@ from mapgen.gamedata.water.falls import (
     FALLS_CACHE_DIR_NAME,
     FALLS_CACHE_NAME,
     fall_from_modules,
-    falls_input,
+    load_or_sweep_falls,
 )
 from mapgen.palette.water import falls as fallpaint
 from mapgen.palette.water.falls import FALL_STYLES, draw_falls, prepare_falls
@@ -76,14 +76,14 @@ def test_the_falls_are_cached_per_build_and_reader(tmp_path):
         calls.append(1)
         return {"actors": [{"x": 1.0, "y": 2.0, "z": 3.0, "width_m": 4.0}, {"not": "a fall"}]}
 
-    falls, meta = falls_input(tmp_path, "502094", sweep_once)
+    falls, meta = load_or_sweep_falls(tmp_path, "502094", sweep_once)
     assert (
         falls == [{"x": 1.0, "y": 2.0, "z": 3.0, "width_m": 4.0}]
         and not meta["waterfalls"]["reused"]
     )
-    again, meta = falls_input(tmp_path, "502094", sweep_once)
+    again, meta = load_or_sweep_falls(tmp_path, "502094", sweep_once)
     assert again == falls and meta["waterfalls"]["reused"] and len(calls) == 1
-    falls_input(tmp_path, "999999", sweep_once)
+    load_or_sweep_falls(tmp_path, "999999", sweep_once)
     assert len(calls) == 2, "another build is read again"
     assert (tmp_path / FALLS_CACHE_DIR_NAME / FALLS_CACHE_NAME).is_file()
     assert meta["waterfalls"]["reader_version"] == versions.READER_VERSIONS["waterfalls"]

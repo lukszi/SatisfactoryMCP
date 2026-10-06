@@ -59,7 +59,7 @@ from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.vegetation import crown_sprites as crown_data
 from mapgen.gamedata.vegetation.carpet import is_carpet, write_carpet
 from mapgen.gamedata.vegetation.trees import canopy_cover, is_tree
-from mapgen.gamedata.water.bodies import WATER_BODIES_NAME, harvest
+from mapgen.gamedata.water.bodies import WATER_BODIES_NAME, collect_water_bodies
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, PackageView, class_name_of
 from satisfactory_mcp.core.gameassets.provenance import (
@@ -144,7 +144,7 @@ def sweep(store, scripts, classes, progress: bool, meshes=None) -> dict:
                 elif found is not None:
                     trees.setdefault(found[0], []).append(found[1].astype(np.float32))
         if meshes is not None:
-            harvest(view, classes, meshes, bodies)
+            collect_water_bodies(view, classes, meshes, bodies)
         if progress and index % 500 == 0:
             print(
                 f"  {index}/{total} packages, {len(origins)} components, "

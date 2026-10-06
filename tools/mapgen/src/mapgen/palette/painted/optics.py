@@ -15,7 +15,7 @@ from scipy import ndimage
 
 from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.vegetation.carpet import COVER_NAME, TOP_NAME
-from mapgen.gamedata.water.bodies import CLASSES, OCEAN
+from mapgen.gamedata.water.bodies import OCEAN, WATER_CLASSES
 from mapgen.palette.painted.albedo import paint_plane
 from mapgen.palette.painted.water_classes import class_shares
 from mapgen.palette.water.shore import optical_depth
@@ -35,7 +35,7 @@ __all__ = [
 #: One row per water class: absorption, body, deep colour, deep tau, turbidity, bed tint.
 WATER_TABLE_COLUMNS = (3, 3, 3, 1, 1, 3)
 
-_RIVER = CLASSES.index("river")
+_RIVER = WATER_CLASSES.index("river")
 
 
 def water_table(palette: dict) -> np.ndarray:
@@ -51,7 +51,7 @@ def water_table(palette: dict) -> np.ndarray:
         "bed_tint": [1.0, 1.0, 1.0],
     }
     rows = []
-    for name in CLASSES:
+    for name in WATER_CLASSES:
         entry = palette.get("water_classes", {}).get(name, ocean)
         rows.append(
             [

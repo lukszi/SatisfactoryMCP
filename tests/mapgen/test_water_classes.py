@@ -14,12 +14,12 @@ from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.water.bodies import (
     ACTOR_CLASS,
     BODY_STEP_M,
-    CLASSES,
     HOT_SPRING_BOX_MAX_M,
     MATERIAL_CLASS,
     OCEAN,
     SWAMP,
     WATER_BODIES_NAME,
+    WATER_CLASSES,
     body_class,
     classify,
     level_bodies,
@@ -65,7 +65,7 @@ def test_the_material_names_the_class():
     assert body_class("BP_River_PROT_C", ["MI_SLW_River_Base_01"], box, NO_SPRINGS) == "river"
     assert body_class("BP_Water_C", ["MI_Lake_Turquoise_01"], box, NO_SPRINGS) == "lake"
     assert body_class("FGWaterVolume", [], box, NO_SPRINGS) is None
-    assert set(MATERIAL_CLASS.values()) <= set(CLASSES)
+    assert set(MATERIAL_CLASS.values()) <= set(WATER_CLASSES)
 
 
 def test_translucent_water_is_its_own_class_and_a_known_material_still_wins():
@@ -75,7 +75,7 @@ def test_translucent_water_is_its_own_class_and_a_known_material_still_wins():
     assert body_class("BP_TranslucentWater_C", [], box, NO_SPRINGS) == "translucent"
     assert body_class("BP_TranslucentWater_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
     assert body_class("BP_Water_C", ["SulfurPond_Inst"], box, NO_SPRINGS) == "sulfur"
-    assert set(ACTOR_CLASS.values()) <= set(CLASSES)
+    assert set(ACTOR_CLASS.values()) <= set(WATER_CLASSES)
     spring = np.array([[box[0] + 500, box[1] + 500, 100 * 100.0]])
     assert body_class("BP_TranslucentWater_C", [], box, spring) == "translucent"
 
@@ -351,8 +351,8 @@ def test_swamp_blends_into_the_ocean_across_the_line_they_meet_on():
 
 def test_a_blend_draws_the_mix_of_the_swamp_and_ocean_rows():
     table = class_shares()
-    assert table.shape == (MOUTH_BLEND + MOUTH_STEPS, len(CLASSES))
-    np.testing.assert_array_equal(table[:MOUTH_BLEND], np.eye(MOUTH_BLEND, len(CLASSES)))
+    assert table.shape == (MOUTH_BLEND + MOUTH_STEPS, len(WATER_CLASSES))
+    np.testing.assert_array_equal(table[:MOUTH_BLEND], np.eye(MOUTH_BLEND, len(WATER_CLASSES)))
     np.testing.assert_allclose(table.sum(1), 1.0)
     assert (np.diff(table[MOUTH_BLEND:, SWAMP]) > 0).all()
     rows = water_table(PAINTED_PALETTE)
@@ -378,7 +378,7 @@ def test_a_uniform_pixel_takes_its_row_exactly_and_dry_taps_do_not_dilute():
     plane = np.zeros((4, 4), np.uint8)
     plane[:, 2:] = CLASS_ID["swamp"]
     plane[2:, :2] = CLASS_ID["river"]
-    table = np.arange(len(CLASSES) * 2, dtype=np.float32).reshape(-1, 2) + 0.1
+    table = np.arange(len(WATER_CLASSES) * 2, dtype=np.float32).reshape(-1, 2) + 0.1
     mix = ClassMix(class_taps(plane, _taps([0.0, 0.5, 2.5], [2.5, 1.5, 0.2], plane.shape)), OCEAN)
     rows = mix.of(table)
     np.testing.assert_array_equal(rows[0, 0], table[CLASS_ID["swamp"]])
@@ -395,7 +395,7 @@ def test_a_uniform_pixel_takes_its_row_exactly_and_dry_taps_do_not_dilute():
 
 def test_every_inland_class_has_optics_and_a_missing_one_draws_as_the_ocean():
     classes = PAINTED_PALETTE["water_classes"]
-    assert set(CLASSES[2:]) <= set(classes)
+    assert set(WATER_CLASSES[2:]) <= set(classes)
     table = water_table(PAINTED_PALETTE)
     assert table.shape == (MOUTH_BLEND + MOUTH_STEPS, sum(WATER_TABLE_COLUMNS))
     bare = {k: v for k, v in PAINTED_PALETTE.items() if k != "water_classes"}

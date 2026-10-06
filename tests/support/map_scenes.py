@@ -6,14 +6,14 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from mapgen.gamedata.water.bodies import CLASSES
+from mapgen.gamedata.water.bodies import WATER_CLASSES
 from mapgen.palette.painted.ground import WATER_TABLE_COLUMNS, srgb_to_linear, water_table
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: Water class name to its row in the class table.
-CLASS_ID = {name: i for i, name in enumerate(CLASSES)}
+CLASS_ID = {name: i for i, name in enumerate(WATER_CLASSES)}
 
 
 def stub_field(height_m: np.ndarray, water_m: np.ndarray | None = None, grades=None):

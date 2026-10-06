@@ -36,7 +36,7 @@ __all__ = [
     "TOP_MODULE_LENGTH_CM",
     "cached_falls",
     "fall_from_modules",
-    "falls_input",
+    "load_or_sweep_falls",
     "read_fall",
     "write_falls",
 ]
@@ -175,7 +175,7 @@ def cached_falls(path: Path, stamp: dict) -> list[dict] | None:
     return falls if isinstance(falls, list) else None
 
 
-def falls_input(cache_root: Path, build: str | None, sweep_once) -> tuple[list[dict], dict]:
+def load_or_sweep_falls(cache_root: Path, build: str | None, sweep_once) -> tuple[list[dict], dict]:
     """The falls from this build's cache, else from ``sweep_once()``, and what the sidecar says."""
     path = cache_root / FALLS_CACHE_DIR_NAME / FALLS_CACHE_NAME
     stamp = {"game_version_pinned": build, "reader_version": READER_VERSIONS["waterfalls"]}

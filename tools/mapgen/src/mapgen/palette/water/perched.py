@@ -18,7 +18,7 @@ from scipy import sparse as sp
 from scipy.sparse import csgraph
 
 from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
-from mapgen.terrain.fill import solve
+from mapgen.terrain.fill import harmonic_fill
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -204,7 +204,7 @@ def _surface(body, g, shore, waterline, value: int, wet=None) -> np.ndarray | No
         held = held & beside if (held & beside).any() else held
         if not held.any():
             return None
-    surface = solve(waterline, held, body & ~held, 1).astype(np.float32)
+    surface = harmonic_fill(waterline, held, body & ~held, 1).astype(np.float32)
     # A part joined to the rest only by a corner has no shoreline of its own to span.
     parts, count = ndimage.label(body)
     ashore = np.zeros(count + 1, bool)

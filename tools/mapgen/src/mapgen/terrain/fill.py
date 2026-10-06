@@ -55,13 +55,13 @@ __all__ = [
     "fill_from_raster",
     "fill_holes",
     "ground_lattice",
+    "harmonic_fill",
     "nearest_fill",
-    "pits",
+    "pit_mask",
     "raster_positions",
     "rebuild_lattice",
     "reconstruct_raster",
     "relax",
-    "solve",
     "terrain_lattice",
     "tiled_harmonic",
 ]
@@ -164,7 +164,7 @@ def _laplacian(active: np.ndarray) -> sp.csr_matrix:
     return (sp.diags(np.asarray(adj.sum(axis=1)).ravel()) - adj).tocsr()
 
 
-def solve(values, known, unknown, order: int) -> np.ndarray:
+def harmonic_fill(values, known, unknown, order: int) -> np.ndarray:
     """``values`` with ``unknown`` replaced by the harmonic (1) or biharmonic (2) fill.
 
     Known texels are Dirichlet; anything neither known nor unknown is outside the domain.
@@ -215,7 +215,7 @@ def tiled_harmonic(values, known, unknown) -> np.ndarray:
                 continue
             rs = slice(max(r - SOLVE_HALO, 0), min(r + SOLVE_TILE + SOLVE_HALO, rows))
             cs = slice(max(c - SOLVE_HALO, 0), min(c + SOLVE_TILE + SOLVE_HALO, cols))
-            got = solve(values[rs, cs], known[rs, cs], unknown[rs, cs], 1)
+            got = harmonic_fill(values[rs, cs], known[rs, cs], unknown[rs, cs], 1)
             inner = got[
                 r - rs.start : block[0].stop - rs.start, c - cs.start : block[1].stop - cs.start
             ]
@@ -244,7 +244,7 @@ def blend_seam(rec, land_m, land, target, band_m: float = SEAM_BAND_M):
     return blended.astype(np.float32), band
 
 
-def pits(nodata: np.ndarray, void: np.ndarray, floor=None) -> np.ndarray:
+def pit_mask(nodata: np.ndarray, void: np.ndarray, floor=None) -> np.ndarray:
     """The pits: each region of no data and ``floor`` ground the artwork draws as void over
     ``PIT_SHARE`` of. Of one that reaches the field's edge only the floor, as the rest is
     left empty anyway."""
@@ -287,10 +287,10 @@ def fill_holes(ground_m, known, hole_max: int = HOLE_MAX_TEXELS, keep_out=None):
         if not ring.any():  # walled in by a pit: nothing beside it to span
             continue
         values = np.nan_to_num(out[rs, cs]).astype(np.float64)
-        got = solve(values, anchor, hole, 2)
+        got = harmonic_fill(values, anchor, hole, 2)
         lo, hi = values[ring].min(), values[ring].max()
         if got[hole].max() > hi + HOLE_FALLBACK_M or got[hole].min() < lo - HOLE_FALLBACK_M:
-            got = solve(values, anchor, hole, 1)
+            got = harmonic_fill(values, anchor, hole, 1)
             stats["harmonic_fallback"] += 1
         over = max(float(got[hole].max() - hi), float(lo - got[hole].min()), 0.0)
         stats["overshoot_max_m"] = max(stats["overshoot_max_m"], round(over, 3))
@@ -355,7 +355,9 @@ def fill_field(
     tick("seam")
 
     floor = (height_dm != nodata) & (height_dm <= np.float32(PIT_FLOOR_M * 10.0))
-    pit = np.zeros(ground.shape, bool) if void is None else pits(height_dm == nodata, void, floor)
+    pit = (
+        np.zeros(ground.shape, bool) if void is None else pit_mask(height_dm == nodata, void, floor)
+    )
     ground[pit] = np.nan
     known = ~np.isnan(ground)
     ground, holes, hole_stats = fill_holes(ground, known, keep_out=pit)

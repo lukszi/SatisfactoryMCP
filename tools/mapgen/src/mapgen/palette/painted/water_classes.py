@@ -7,10 +7,10 @@ from scipy import ndimage
 
 from mapgen.gamedata.water.bodies import (
     BODY_STEP_M,
-    CLASSES,
     OCEAN,
     SWAMP,
     WATER_BODIES_NAME,
+    WATER_CLASSES,
     classify,
     level_bodies,
 )
@@ -41,7 +41,7 @@ def water_classes(water, grades, bodies: dict, areas: tuple) -> tuple[np.ndarray
 
 #: Plane values from here on blend swamp into ocean: ``MOUTH_BLEND + k`` is swamp share
 #: ``(k + 0.5) / MOUTH_STEPS``, the rest ocean (``class_shares``).
-MOUTH_BLEND = len(CLASSES)
+MOUTH_BLEND = len(WATER_CLASSES)
 MOUTH_STEPS = 64
 
 #: Swamp meeting the ocean inside one body blends into it over this far either side.
@@ -51,7 +51,7 @@ MOUTH_FEATHER_M = 30.0
 def class_shares() -> np.ndarray:
     """Each plane value's share of each class: a class is all its own, a mouth blend is
     part swamp and the rest ocean."""
-    table = np.eye(MOUTH_BLEND + MOUTH_STEPS, len(CLASSES), dtype=np.float32)
+    table = np.eye(MOUTH_BLEND + MOUTH_STEPS, len(WATER_CLASSES), dtype=np.float32)
     swamp = (np.arange(MOUTH_STEPS, dtype=np.float32) + 0.5) / MOUTH_STEPS
     table[MOUTH_BLEND:, SWAMP] = swamp
     table[MOUTH_BLEND:, OCEAN] = 1.0 - swamp

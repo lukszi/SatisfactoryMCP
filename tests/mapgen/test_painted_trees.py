@@ -16,7 +16,7 @@ import pytest
 from mapgen.colour import linear_to_srgb, oklab
 from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD, SPRITE_M
-from mapgen.gamedata.water.bodies import CLASSES, OCEAN
+from mapgen.gamedata.water.bodies import OCEAN, WATER_CLASSES
 from mapgen.palette.painted.albedo import hidden_ground
 from mapgen.palette.painted.calibration import (
     display_to_crown,
@@ -42,7 +42,7 @@ from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from mapgen.terrain.sample import taps_linear
 
-SWAMP = CLASSES.index("swamp")
+SWAMP = WATER_CLASSES.index("swamp")
 STYLE = PAINTED_PALETTE["crowns"]
 GREEN, RED = (0.06, 0.12, 0.035), (0.22, 0.04, 0.04)
 #: The blue palms' leaf and the balloon tree's: one hue, the second a near-grey.
@@ -301,7 +301,7 @@ def test_a_coral_speck_in_the_sea_is_drawn_as_the_water_around_it():
 def test_the_painted_palette_carries_the_fixed_colours():
     p = PAINTED_PALETTE
     swamp = [e for e in p["calibration"]["areas"] if "water" in e]
-    assert swamp and all(e["water_class"] in CLASSES for e in swamp)
+    assert swamp and all(e["water_class"] in WATER_CLASSES for e in swamp)
     shell = np.asarray(p["mesh_colours"]["shell"], np.float32)
     assert shell.max() < 120 and np.ptp(shell) < 10, "the shells' own grey, not cream"
     assert p["carpet"]["blur_m"] >= 2.0, "patches, not one dot per rosette"

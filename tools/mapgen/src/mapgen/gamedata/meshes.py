@@ -245,7 +245,7 @@ class MeshBounds:
         self.store, self.scripts, self.index = store, scripts, index
         self._cache: dict[str, tuple | None] = {}
 
-    def of(self, mesh_path: str) -> tuple[tuple, tuple] | None:
+    def extended_bounds(self, mesh_path: str) -> tuple[tuple, tuple] | None:
         if mesh_path not in self._cache:
             bounds = None
             package = self.index.path_for(mesh_path)

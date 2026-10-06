@@ -80,7 +80,7 @@ def crown_species(meshes, names) -> dict[str, Crown]:
     """``{mesh: Crown}`` from each tree mesh's ``ExtendedBounds``; unreadable ones are left out."""
     out = {}
     for mesh in names:
-        bounds = meshes.of(mesh)
+        bounds = meshes.extended_bounds(mesh)
         if bounds is None:
             continue
         (ox, oy, oz), (ex, ey, ez) = bounds
