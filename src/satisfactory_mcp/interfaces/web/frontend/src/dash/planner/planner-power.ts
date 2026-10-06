@@ -4,10 +4,11 @@
 import { button, checkbox, selectBox, slider } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, formatNumber, mw, pct } from "../../kit/format";
-import { bench, gesture } from "./planner-core";
+import { bench } from "./planner-state";
+import { applyOps } from "./planner-writes";
 
 import type { SolveResponse, SolveRow } from "../../api/shapes";
-import type { Op } from "./planner-core";
+import type { Op } from "./planner-state";
 
 type Payback = SolveResponse["power"];
 type Stop = Payback["stops"][number];
@@ -45,7 +46,7 @@ function machines(n: number): string {
 
 export function stopWords(view: Payback | null, h: number): string {
   var stop = stopAt(view, h);
-  if (!stop) return hours(h) + (bench.solving ? ": solving…" : "");
+  if (!stop) return hours(h) + (bench.solvingRev ? ": solving…" : "");
   if (!h || !stop.extra_machines) return hours(h) + ": no extra machines · " + count(stop.machines) + " machines · " + mw(stop.mw_draw);
   var parts = ["pays back within " + hours(h), machines(stop.extra_machines), (stop.saved_mw < 0 ? "+" : "−") + mw(Math.abs(stop.saved_mw))];
   if (stop.average_payback_h !== null) parts.push("on average " + hours(stop.average_payback_h));
@@ -80,7 +81,7 @@ function tally(oc: Payback["overclock"], rows: OverclockRow[], stock: boolean): 
 }
 
 export function overclockWords(view: Payback | null): string {
-  if (!view) return bench.solving ? "solving…" : "";
+  if (!view) return bench.solvingRev ? "solving…" : "";
   var oc = view.overclock;
   var own = oc.pinned_last ? count(oc.pinned_last) + " row(s) overclocked by their own setting" : "";
   if (!oc.rows.length) {
@@ -110,7 +111,7 @@ function overclockRow(body: HTMLElement, view: Payback | null): void {
   var on = view ? view.overclock.on : plan.args.overclock_last === true;
   var row = make("div", "plan-line plan-overclock");
   var box = checkbox("overclock the last machine", on, function (next) {
-    gesture([{ op: "set", field: "overclock_last", value: next }]);
+    applyOps([{ op: "set", field: "overclock_last", value: next }]);
   });
   box.title = "a row of 4.2 machines becomes 3 at 100% and 1 at 120%, using 1–2 Power Shards";
   row.appendChild(box);
@@ -125,7 +126,7 @@ function followDefault(field: "payback_hours" | "overclock_last"): HTMLElement {
   return button(
     "use default",
     function () {
-      gesture([{ op: "set", field: field, value: null }]);
+      applyOps([{ op: "set", field: field, value: null }]);
     },
     { title: "follow the shared setting on the Settings tab again" }
   );
@@ -196,7 +197,7 @@ export function rowOverclock(row: SolveRow): HTMLElement | null {
     o.pinned || "",
     function (value) {
       var op: Op = value ? { op: "put", field: "row_overclock", item: id!, value: value } : { op: "del", field: "row_overclock", item: id! };
-      gesture([op]);
+      applyOps([op]);
     },
     { label: "last machine of " + row.recipe, title: optionWords(o) + (o.without ? " · not enough shards for this row" : "") }
   );
@@ -232,7 +233,7 @@ export function powerRow(body: HTMLElement): void {
       function (i) {
         if (HOURS[i] === plan.args.payback_hours) return;
         released();
-        gesture([{ op: "set", field: "payback_hours", value: HOURS[i]! }]);
+        applyOps([{ op: "set", field: "payback_hours", value: HOURS[i]! }]);
       },
       { label: "payback horizon in hours of play", ends: ["fewer machines", "less power"], disabled: still, title: "hours of play the saved power must repay the extra machines in" }
     )

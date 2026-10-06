@@ -7,7 +7,9 @@ import { make } from "../../kit/dom";
 import { count } from "../../kit/format";
 import { L } from "../../map/leaflet";
 import { map } from "../../map/map";
-import { bench, changed, gesture, stageHeadroom } from "./planner-core";
+import { stageHeadroom } from "./planner-reads";
+import { bench, changed } from "./planner-state";
+import { applyOps } from "./planner-writes";
 import { biomassQuery } from "../power-ledger";
 import { onSetting, settingChoice } from "../../app/settings";
 import { busy, corners, crossCancel, crossDrop, crossing, crossOn, crossTurn, edit, ghost, nodes, outsideMap, same, setPad, stop, useSnap, yawStep } from "./pad-drag";
@@ -159,7 +161,7 @@ function restore(): void {
 
 function push(p: Pad): void {
   site.confirm = null;
-  gesture([{ op: "site", value: value(p) }]);
+  applyOps([{ op: "site", value: value(p) }]);
   site.label = "map";
   site.sized = false;
   paint();

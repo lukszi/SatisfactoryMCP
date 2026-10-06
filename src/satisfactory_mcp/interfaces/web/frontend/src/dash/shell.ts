@@ -11,7 +11,7 @@ import { located, showFactory } from "../map/panel";
 import { showMachine, showPoint } from "../map/map-highlight";
 import { onVitals, vitals } from "../app/vitals";
 import { renderPlanner, viewFocus } from "./planner/planner";
-import { bench, onBench } from "./planner/planner-core";
+import { bench, onBench } from "./planner/planner-state";
 import { planTitle } from "./planner/planner-list";
 import { onProgress, renderProgress } from "./progress/progress";
 import { renderRecipes } from "./recipes/recipes";

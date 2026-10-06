@@ -5,38 +5,34 @@ import { button, chip, copyButton, empty, error, link, loading, selectBox, toggl
 import { make } from "../../kit/dom";
 import { ageShort, perMin } from "../../kit/format";
 import { go } from "../../app/nav";
+import { toggleVersions } from "./planner-reads";
+import { bench, changed, displayName, inbox, itemList, knownItem, NAME_MAX, NOTES_MAX } from "./planner-state";
 import {
   applyArgs,
-  bench,
-  changed,
+  applyOps,
+  banOps,
   createPlan,
   dismissStrip,
   dropChip,
   forgetPlan,
-  gesture,
-  inbox,
-  itemList,
-  knownItem,
-  NAME_MAX,
-  NOTES_MAX,
   openPlan,
   redoLast,
   renamePlan,
   restorePlan,
-  status,
-  toggleVersions,
+  syncStatus,
   undoLast,
   undoRev,
-} from "./planner-core";
+} from "./planner-writes";
 import { duplicateButton, renderVersions, renderView } from "./planner-history";
 import { loadList, planTitle } from "./planner-list";
 import { hours, powerRow } from "./planner-power";
-import { banOps, recipeName, renderResult } from "./planner-result";
+import { renderResult } from "./planner-result";
 import { pinFor, pinThis } from "../../chat/pins";
 import { fail, friendlyError } from "../../kit/toast";
 import { counted, OBJECTIVES, objectiveText, WORDS } from "../../kit/words";
 
-import type { Op, Selection } from "./planner-core";
+import type { FocusSelection } from "../../api/shapes";
+import type { Op } from "./planner-state";
 
 var CLOCKS = [1, 1.5, 2, 2.5];
 var FIELDS = ["objective", "export_minimums", "target_item", "exports", "sources", "required", "banned", "water_extractors", "sloops", "extractor_clocks", "payback_hours", "overclock_last", "power_price", "notes"];
@@ -46,10 +42,6 @@ var invalid: Record<string, string> = {};
 var kept: Record<string, string> = {};
 var renaming = { on: false, fresh: false };
 var shown = "";
-
-function name(id: string): string {
-  return (bench.plan && bench.plan.names[id]) || id;
-}
 
 function flag(ctl: string, text: string, raw?: string): void {
   invalid[ctl] = text;
@@ -86,7 +78,7 @@ function section(parent: HTMLElement, field: string[], label: string): HTMLEleme
   row.appendChild(make("span", "plan-label", label));
   var body = make("div", "plan-controls");
   row.appendChild(body);
-  bench.chips.forEach(function (c) {
+  bench.conflictChips.forEach(function (c) {
     if (field.indexOf(c.field) < 0) return;
     conflictLine(row, c.id, c.who, c.text);
   });
@@ -136,7 +128,7 @@ function removable(parent: HTMLElement, text: string, ops: Op[], ctl?: string): 
   x.title = "remove";
   x.setAttribute("aria-label", "remove " + text);
   x.onclick = function () {
-    gesture(ops);
+    applyOps(ops);
   };
   c.appendChild(x);
   parent.appendChild(c);
@@ -156,7 +148,7 @@ function adder(parent: HTMLElement, ctl: string, placeholder: string, ops: (text
     function (raw) {
       if (!raw) return;
       var made = ops(raw);
-      if (made) gesture(made);
+      if (made) applyOps(made);
     },
     placeholder
   );
@@ -190,7 +182,7 @@ function goal(parent: HTMLElement): void {
     goals,
     args.objective,
     function (value) {
-      gesture([{ op: "set", field: "objective", value: value }]);
+      applyOps([{ op: "set", field: "objective", value: value }]);
     },
     { label: "goal" }
   );
@@ -203,7 +195,7 @@ function goal(parent: HTMLElement): void {
       "text",
       function (raw) {
         var hit = raw ? item("target-item", raw) : "";
-        if (hit !== null) gesture([{ op: "set", field: "target_item", value: hit || null }]);
+        if (hit !== null) applyOps([{ op: "set", field: "target_item", value: hit || null }]);
       },
       "item to maximise"
     );
@@ -216,7 +208,7 @@ function goal(parent: HTMLElement): void {
 
 function exportRow(parent: HTMLElement, id: string, rate: number | null): void {
   var line = make("div", "plan-export");
-  var label = name(id);
+  var label = displayName(id);
   line.appendChild(make("span", "plan-export-name", label));
   var ctl = "rate:" + id;
   var box = input(
@@ -226,11 +218,11 @@ function exportRow(parent: HTMLElement, id: string, rate: number | null): void {
     function (raw) {
       var n = number(raw);
       if (n === null) {
-        if (rate !== null) gesture([{ op: "del", field: "export_minimums", item: id }]);
+        if (rate !== null) applyOps([{ op: "del", field: "export_minimums", item: id }]);
       } else if (!(n > 0)) {
         flag(ctl, "a rate is a positive number per minute, or blank for any");
       } else {
-        gesture([{ op: "put", field: "export_minimums", item: id, value: n }]);
+        applyOps([{ op: "put", field: "export_minimums", item: id, value: n }]);
       }
     },
     "any"
@@ -246,7 +238,7 @@ function exportRow(parent: HTMLElement, id: string, rate: number | null): void {
   x.title = "stop exporting " + label;
   x.setAttribute("aria-label", "remove export " + label);
   x.onclick = function () {
-    gesture(ops);
+    applyOps(ops);
   };
   line.appendChild(x);
   parent.appendChild(line);
@@ -273,7 +265,7 @@ function exportsRow(parent: HTMLElement): void {
       "export MW",
       power,
       function () {
-        gesture([{ op: power ? "remove" : "add", field: "exports", member: "MW" }]);
+        applyOps([{ op: power ? "remove" : "add", field: "exports", member: "MW" }]);
       },
       { title: power ? "stop exporting power; the plan may then draw from the grid" : "export power too; the plan then may not draw from the grid" }
     );
@@ -300,7 +292,7 @@ function sources(parent: HTMLElement): void {
   var groups: Record<string, string[]> = {};
   var order: string[] = [];
   args.sources.forEach(function (member) {
-    var key = member.indexOf("node:") === 0 && name(member) !== member ? name(member) : "";
+    var key = member.indexOf("node:") === 0 && displayName(member) !== member ? displayName(member) : "";
     if (!key) {
       removable(body, member, [{ op: "remove", field: "sources", member: member }]);
       return;
@@ -329,12 +321,12 @@ function recipes(parent: HTMLElement): void {
   rec.appendChild(make("span", "plan-sub", "required"));
   if (!args.required.length) rec.appendChild(make("span", "dash-muted", "none"));
   chips(rec, "required", args.required, function (m) {
-    return recipeName(String(m));
+    return displayName(String(m));
   });
   rec.appendChild(make("span", "plan-sub", "banned"));
   if (!args.banned.length) rec.appendChild(make("span", "dash-muted", "none"));
   chips(rec, "banned", args.banned, function (m) {
-    return recipeName(String(m));
+    return displayName(String(m));
   });
   adder(rec, "banned-add", "+ ban a recipe or pattern", banOps);
 }
@@ -352,7 +344,7 @@ function clocks(body: HTMLElement): void {
       c * 100 + "%",
       picked,
       function () {
-        gesture(ops);
+        applyOps(ops);
       },
       {
         title: only ? "extractors need at least one clock" : picked ? "stop offering extractors at this clock" : "offer extractors at this clock (above 100% needs power shards)",
@@ -377,7 +369,7 @@ function supply(parent: HTMLElement): void {
         flag("water", "water extractors is a whole number, or blank for auto");
         return;
       }
-      gesture([{ op: "set", field: "water_extractors", value: n }]);
+      applyOps([{ op: "set", field: "water_extractors", value: n }]);
     },
     "auto"
   );
@@ -391,7 +383,7 @@ function supply(parent: HTMLElement): void {
       flag("sloops", "somersloops is a whole number");
       return;
     }
-    gesture([{ op: "set", field: "sloops", value: n }]);
+    applyOps([{ op: "set", field: "sloops", value: n }]);
   });
   sloops.setAttribute("aria-label", "somersloops");
   body.appendChild(sloops);
@@ -413,13 +405,13 @@ function notes(parent: HTMLElement): void {
   box.setAttribute("data-ctl", "notes");
   box.onchange = function () {
     box.defaultValue = box.value;
-    gesture([{ op: "set", field: "notes", value: box.value }]);
+    applyOps([{ op: "set", field: "notes", value: box.value }]);
   };
   body.appendChild(box);
 }
 
 function stripRows(parent: HTMLElement): void {
-  if (!bench.strip.length) return;
+  if (!bench.othersCommits.length) return;
   var box = make("section", "dash-card");
   var title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "changed since you opened it"));
@@ -433,7 +425,7 @@ function stripRows(parent: HTMLElement): void {
     )
   );
   box.appendChild(title);
-  bench.strip.forEach(function (row) {
+  bench.othersCommits.forEach(function (row) {
     var line = make("div", "plan-line");
     line.appendChild(chip(row.who, "muted"));
     line.appendChild(make("span", "dash-what" + (row.undone ? " dash-muted" : ""), "v" + row.rev + " " + row.text + (row.undone ? " (undone)" : "")));
@@ -450,7 +442,7 @@ function stripRows(parent: HTMLElement): void {
     }
     box.appendChild(line);
   });
-  var d = bench.stripDelta;
+  var d = bench.othersDelta;
   if (d) box.appendChild(make("p", "dash-note", "result since v" + d.from_rev + ": " + d.text));
   parent.appendChild(box);
 }
@@ -632,15 +624,15 @@ function header(parent: HTMLElement): void {
   var plan = bench.plan!;
   var head = make("div", "dash-title");
   titleLine(head);
-  var st = status();
+  var st = syncStatus();
   head.appendChild(make("span", "plan-status" + (st === "conflict" ? " bad" : ""), "v" + plan.rev + " · " + st));
-  if (bench.last) head.appendChild(make("span", "plan-status", "last change: " + bench.last.who + ", " + ageShort(bench.last.ts) + " ago"));
+  if (bench.lastChange) head.appendChild(make("span", "plan-status", "last change: " + bench.lastChange.who + ", " + ageShort(bench.lastChange.ts) + " ago"));
   head.appendChild(make("span", "plan-held"));
   parent.appendChild(head);
   problems(parent, ["rename"]);
   var acts = make("div", "dash-acts plan-acts");
-  acts.appendChild(button("undo", undoLast, { title: "undo your last change on this plan (Ctrl+Z)", disabled: bench.gone || !bench.done.length }));
-  acts.appendChild(button("redo", redoLast, { title: "undo that undo (Ctrl+Shift+Z)", disabled: bench.gone || !bench.redo.length }));
+  acts.appendChild(button("undo", undoLast, { title: "undo your last change on this plan (Ctrl+Z)", disabled: bench.gone || !bench.undoStack.length }));
+  acts.appendChild(button("redo", redoLast, { title: "undo that undo (Ctrl+Shift+Z)", disabled: bench.gone || !bench.redoStack.length }));
   acts.appendChild(
     button(
       "rename",
@@ -681,7 +673,7 @@ function gone(parent: HTMLElement): void {
   parent.appendChild(line);
 }
 
-export function renderBench(root: HTMLElement, select: (s: Selection) => void, close: () => void): void {
+export function renderBench(root: HTMLElement, select: (s: FocusSelection) => void, close: () => void): void {
   if (shown !== bench.key) {
     shown = bench.key;
     invalid = {};
@@ -708,13 +700,13 @@ export function renderBench(root: HTMLElement, select: (s: Selection) => void, c
   header(root);
   if (bench.gone) gone(root);
   renderVersions(root);
-  if (bench.view) {
+  if (bench.viewedRev) {
     renderView(root, select);
     return;
   }
   renderCard(root);
   stripRows(root);
-  bench.chips.forEach(function (c) {
+  bench.conflictChips.forEach(function (c) {
     if (FIELDS.indexOf(c.field) < 0) conflictLine(root, c.id, c.who, c.text);
   });
   if (bench.tab === "site") {

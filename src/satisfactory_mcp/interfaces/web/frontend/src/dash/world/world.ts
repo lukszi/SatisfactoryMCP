@@ -13,7 +13,7 @@ import { hashFor, writeHash } from "../../map/map";
 import { dashParts, go, subjectQuery, withQuery } from "../../app/nav";
 import { showPoint } from "../../map/map-highlight";
 import { registerFetch } from "../../app/registry";
-import { actorWord } from "../planner/planner-core";
+import { actorWord } from "../planner/planner-state";
 import { onSetting, settingChoice } from "../../app/settings";
 import { state } from "../../app/state";
 import { notify, offer } from "../../kit/toast";
@@ -26,7 +26,7 @@ import { counted, gapText, WORDS } from "../../kit/words";
 import type { ApiError, ApiPath, ApiUrl } from "../../api/client";
 import type { Column, SortState } from "../../kit/dashkit";
 import type { HereResponse, Region, RegionRow, RegionTableResponse, TableAge } from "../../api/shapes";
-import type { ActivityEvent } from "../planner/planner-core";
+import type { ActivityEvent } from "../planner/planner-state";
 
 var VIEWS: [string, string][] = [
   ["", "here"],

@@ -7,7 +7,9 @@ import { make } from "../../kit/dom";
 import { goToMapThen } from "../../app/nav";
 import { showBox } from "../../map/map-highlight";
 import { vitals } from "../../app/vitals";
-import { bench, changed, gesture, pickTab } from "./planner-core";
+import { pickTab } from "./planner-reads";
+import { bench, changed } from "./planner-state";
+import { applyOps } from "./planner-writes";
 import { blankOrLong, newest, refreshLabels, refusal, wrote } from "../factories/rename";
 import { setSetting, settingChoice } from "../../app/settings";
 import { fail, friendlyError, notify } from "../../kit/toast";
@@ -51,7 +53,7 @@ function setFactory(value: string): void {
   var plan = bench.plan;
   if (!plan || bench.gone || plan.factory === value) return;
   picking.open = false;
-  gesture([{ op: "set", field: "factory", value: value }]);
+  applyOps([{ op: "set", field: "factory", value: value }]);
 }
 
 function startNaming(c: TrackBuiltCandidate): void {

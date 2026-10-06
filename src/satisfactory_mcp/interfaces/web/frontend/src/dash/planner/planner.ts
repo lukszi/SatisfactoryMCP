@@ -10,31 +10,10 @@ import { onReload } from "../../app/load";
 import { dashParts, go } from "../../app/nav";
 import { onVitals } from "../../app/vitals";
 import { renderBench } from "./planner-bench";
-import {
-  actorWord,
-  bench,
-  changed,
-  dropFeeders,
-  followHead,
-  forgetSolves,
-  hideAlternates,
-  inbox,
-  loadAlternates,
-  loadItems,
-  loadTrack,
-  onBench,
-  openPlan,
-  pendingFocus,
-  redoLast,
-  reset,
-  resyncHead,
-  sav,
-  showAlternates,
-  stageHeadroom,
-  trackDash,
-  undoLast,
-  viewRev,
-} from "./planner-core";
+import { trackDash } from "./planner-address";
+import { dropFeeders, forgetSolves, hideAlternates, loadAlternates, loadTrack, openRevision, saveToken, showAlternates, stageHeadroom } from "./planner-reads";
+import { actorWord, bench, changed, inbox, loadItems, onBench, pendingFocus, resetBench } from "./planner-state";
+import { followHead, openPlan, redoLast, resyncHead, undoLast } from "./planner-writes";
 import { loadActivity } from "./planner-history";
 import { loadList, planTitle, renderList } from "./planner-list";
 import { onPins } from "../../chat/pins";
@@ -48,8 +27,8 @@ import { state } from "../../app/state";
 import { notify, offer } from "../../kit/toast";
 import { objectiveText } from "../../kit/words";
 
-import type { ActivityResponse, FocusResponse, PlansResponse } from "../../api/shapes";
-import type { ActivityEvent, PlansEvent, Selection } from "./planner-core";
+import type { ActivityResponse, FocusResponse, FocusSelection, PlansResponse } from "../../api/shapes";
+import type { ActivityEvent, PlansEvent } from "./planner-state";
 
 var FOCUS_DEBOUNCE_MS = 1000;
 var HEARTBEAT_MS = 15000;
@@ -104,7 +83,7 @@ function syncTab(wanted: Address): void {
 }
 
 function trackShowing(): boolean {
-  return !!subject() && bench.tab === "track" && !!bench.plan && !bench.view;
+  return !!subject() && bench.tab === "track" && !!bench.plan && !bench.viewedRev;
 }
 
 function subject(): string | null {
@@ -119,12 +98,12 @@ function altDash(key: string, item: string): string {
 
 function goAlt(plan: string, at: string): void {
   var switching = subject() === plan && dashParts().rest[1] === "alt";
-  if (!switching) bench.altBack = false;
+  if (!switching) bench.alternatesCloseGoesBack = false;
   go(at, switching);
 }
 
 function closeAlternates(): void {
-  var back = bench.altBack && dashParts().rest[1] === "alt";
+  var back = bench.alternatesCloseGoesBack && dashParts().rest[1] === "alt";
   refocus = hideAlternates();
   if (back) history.back();
   else go(bench.tab === "track" ? trackDash(bench.key, bench.track.stage) : "planner/" + bench.key, true);
@@ -165,7 +144,7 @@ function flush(): void {
   if (heldDraw) draw();
 }
 
-function select(s: Selection): void {
+function select(s: FocusSelection): void {
   bench.selection = s;
   changed();
   scheduleFocus();
@@ -197,7 +176,7 @@ function draw(): void {
     if (!inField() && bench.track.stage === stageReveal) revealStage(root, stageReveal);
     stageReveal = 0;
   }
-  var alt = bench.alt;
+  var alt = bench.alternates;
   var shut = alt && alt.enter && parts(dashParts().subject).alt === alt.item ? root.querySelector<HTMLElement>('[data-ctl="alt-close"]') : null;
   if (alt && shut) {
     alt.enter = false;
@@ -213,7 +192,7 @@ function draw(): void {
       back.focus({ preventScroll: true });
     }
   }
-  var sig = JSON.stringify([bench.tab, bench.alt ? bench.alt.item : "", bench.selection, bench.plan ? bench.plan.rev : null]);
+  var sig = JSON.stringify([bench.tab, bench.alternates ? bench.alternates.item : "", bench.selection, bench.plan ? bench.plan.rev : null]);
   if (sig !== focusSig) {
     focusSig = sig;
     scheduleFocus();
@@ -236,33 +215,33 @@ export function renderPlanner(body: HTMLElement, at: string): void {
   }
   loadItems();
   if (bench.world !== state.world) {
-    reset(bench.key);
+    resetBench(bench.key);
     mounted = null;
   }
   if (key !== mounted) {
     mounted = key;
     if (key) openPlan(key);
     else {
-      reset("");
+      resetBench("");
       loadList();
       loadActivity();
     }
     scheduleFocus();
   }
   if (key) syncTab(wanted);
-  if (key && bench.view !== wanted.view) viewRev(wanted.view);
+  if (key && bench.viewedRev !== wanted.view) openRevision(wanted.view);
   if (key && wanted.alt) showAlternates(wanted.alt);
-  else if (bench.alt) refocus = hideAlternates();
+  else if (bench.alternates) refocus = hideAlternates();
   draw();
 }
 
-function shared(): Selection | null {
+function shared(): FocusSelection | null {
   var s = selected();
   return s ? { kind: s.kind, label: s.label, ref: selectionRef(s) } : null;
 }
 
-function altSelection(): Selection | null {
-  var alt = bench.alt;
+function altSelection(): FocusSelection | null {
+  var alt = bench.alternates;
   if (!alt) return null;
   return { kind: "item", label: alt.data ? alt.data.name : alt.item, ref: alt.item };
 }
@@ -279,7 +258,7 @@ function focusBody(): Record<string, unknown> {
     tab: planner ? (at ? (bench.tab === "graph" || bench.tab === "track" || bench.tab === "site" ? bench.tab : "workbench") : "list") : cut < 0 ? state.dash : state.dash.slice(0, cut),
     selection: planner && at ? altSelection() || bench.selection : shared(),
     follow: settingChoice("follow"),
-    sav: state.saveToken || sav(),
+    sav: state.saveToken || saveToken(),
   };
 }
 
@@ -458,7 +437,7 @@ export function resyncPlanner(replay: (entries: ActivityEvent[]) => void): void 
 
 export function onSaveEvent(): void {
   if (bench.plan) forgetSolves();
-  if (bench.alt) loadAlternates();
+  if (bench.alternates) loadAlternates();
   dropFeeders();
   if (trackShowing()) loadTrack();
 }
@@ -482,7 +461,7 @@ function escape(event: KeyboardEvent): void {
     return;
   }
   if (!subject()) return;
-  if (bench.alt) {
+  if (bench.alternates) {
     event.preventDefault();
     closeAlternates();
   } else if (clearPick()) event.preventDefault();

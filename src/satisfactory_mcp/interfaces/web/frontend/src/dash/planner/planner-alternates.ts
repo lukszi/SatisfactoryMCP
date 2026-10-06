@@ -4,12 +4,14 @@
 import { button, chip, empty, error, loading, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, mw, perMin, signed } from "../../kit/format";
-import { bench, gesture, loadAlternates, pushing } from "./planner-core";
+import { loadAlternates } from "./planner-reads";
+import { bench } from "./planner-state";
+import { applyOps, hasPushInFlight } from "./planner-writes";
 import { counted, WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";
 import type { DeltaRow, PlanOpBody, SwapOption } from "../../api/shapes";
-import type { Op } from "./planner-core";
+import type { Op } from "./planner-state";
 
 var NONE = "–";
 
@@ -60,12 +62,12 @@ function recipeCell(o: SwapOption): HTMLElement {
 }
 
 function settled(): boolean {
-  var alt = bench.alt;
-  return !!alt && !!alt.data && !alt.asked && !pushing() && !!bench.plan && alt.data.rev === bench.plan.rev;
+  var alt = bench.alternates;
+  return !!alt && !!alt.data && !alt.asked && !hasPushInFlight() && !!bench.plan && alt.data.rev === bench.plan.rev;
 }
 
 function act(list: Op[], requires?: boolean): void {
-  if (settled()) gesture(list, requires && bench.alt && bench.alt.data ? bench.alt.data.item : undefined);
+  if (settled()) applyOps(list, requires && bench.alternates && bench.alternates.data ? bench.alternates.data.item : undefined);
 }
 
 function acts(o: SwapOption): HTMLElement {
@@ -85,7 +87,7 @@ function acts(o: SwapOption): HTMLElement {
         function () {
           act(require, true);
         },
-        { title: "make every " + (bench.alt && bench.alt.data ? bench.alt.data.name : "unit") + " in this plan with " + o.name, label: "require " + o.name }
+        { title: "make every " + (bench.alternates && bench.alternates.data ? bench.alternates.data.name : "unit") + " in this plan with " + o.name, label: "require " + o.name }
       )
     );
   }
@@ -177,7 +179,7 @@ function optionTable(options: SwapOption[]): HTMLElement {
 }
 
 export function renderAlternates(parent: HTMLElement, close: () => void): void {
-  var alt = bench.alt;
+  var alt = bench.alternates;
   if (!alt) return;
   var data = alt.data;
   var name = data ? data.name : "";

@@ -20,7 +20,7 @@ import { refreshWorlds } from "./world-picker";
 
 import type { SettingsResponse } from "../api/shapes";
 import type { MapsEvent } from "./map-types";
-import type { ActivityEvent, PlansEvent } from "../dash/planner/planner-core";
+import type { ActivityEvent, PlansEvent } from "../dash/planner/planner-state";
 
 /* The stream replays the newest event of every kind to each new subscriber, so the first one
  * usually describes a write that happened BEFORE this page opened: not news, and refetching

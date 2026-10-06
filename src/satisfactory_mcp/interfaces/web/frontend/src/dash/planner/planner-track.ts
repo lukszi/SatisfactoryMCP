@@ -11,7 +11,9 @@ import { nodeLayers } from "../../map/drawn/markers";
 import { goToMapThen } from "../../app/nav";
 import { showBox, showMachine } from "../../map/map-highlight";
 import { builtColumn, builtLine } from "./planner-built";
-import { bench, changed, gesture, loadFeeders, loadTrack, pickStage, stageHeadroom } from "./planner-core";
+import { loadFeeders, loadTrack, pickStage, stageHeadroom } from "./planner-reads";
+import { bench, changed } from "./planner-state";
+import { applyOps } from "./planner-writes";
 import { recipesButton } from "./planner-result";
 import { headroom } from "../power-ledger";
 import { actionTone, tone } from "../machine-states";
@@ -19,8 +21,7 @@ import { fail, notify } from "../../kit/toast";
 import { counted, TRACK_VERB, WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";
-import type { AskAbout, TrackCost, TrackResponse, TrackRow, TrackSiteRow, TrackStage, TrackState, Feeder } from "../../api/shapes";
-import type { Selection } from "./planner-core";
+import type { AskAbout, FocusSelection, TrackCost, TrackResponse, TrackRow, TrackSiteRow, TrackStage, TrackState, Feeder } from "../../api/shapes";
 
 type Box = [number, number, number, number];
 
@@ -146,7 +147,7 @@ function headline(parent: HTMLElement, d: TrackResponse, asked: number): void {
 function setHeadroom(value: number | null): void {
   var plan = bench.plan;
   if (!plan || (plan.headroom_mw === undefined ? null : plan.headroom_mw) === value) return;
-  gesture([{ op: "set", field: "headroom_mw", value: value }]);
+  applyOps([{ op: "set", field: "headroom_mw", value: value }]);
 }
 
 function givenField(parent: HTMLElement, stored: number | null, pressable: number[]): void {
@@ -404,7 +405,7 @@ function stageFilter(parent: HTMLElement, n: number, total: number): void {
   parent.appendChild(line);
 }
 
-function jobs(parent: HTMLElement, d: TrackResponse, select: (s: Selection) => void): void {
+function jobs(parent: HTMLElement, d: TrackResponse, select: (s: FocusSelection) => void): void {
   var view = bench.track;
   var card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "jobs · " + counted(d.rows.length, "job")));
@@ -754,7 +755,7 @@ export function revealStage(root: HTMLElement, n: number): void {
   if (row) row.scrollIntoView({ block: "center" });
 }
 
-export function renderTrack(parent: HTMLElement, select: (s: Selection) => void): void {
+export function renderTrack(parent: HTMLElement, select: (s: FocusSelection) => void): void {
   var view = bench.track;
   var d = view.data;
   var frame = make("div", "plan-track" + (view.asked && d ? " plan-stale" : ""));

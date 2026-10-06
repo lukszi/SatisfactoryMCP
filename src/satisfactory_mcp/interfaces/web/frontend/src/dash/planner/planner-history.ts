@@ -7,15 +7,15 @@ import { make } from "../../kit/dom";
 import { ageShort } from "../../kit/format";
 import { go, withQuery } from "../../app/nav";
 import { argsWords } from "./planner-bench";
-import { actorWord, bench, changed, commitWords, duplicatePlan, inbox, restoreRev, undoIn } from "./planner-core";
+import { actorWord, bench, changed, commitWords, inbox } from "./planner-state";
+import { duplicatePlan, restoreRev, undoRevisionOf } from "./planner-writes";
 import { renderVersionResult } from "./planner-result";
 import { state } from "../../app/state";
 import { fail, friendlyError, notify } from "../../kit/toast";
 import { counted, objectiveText, WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";
-import type { ActivityResponse, ActivityRow, VersionRow } from "../../api/shapes";
-import type { Selection } from "./planner-core";
+import type { ActivityResponse, ActivityRow, FocusSelection, VersionRow } from "../../api/shapes";
 
 var ACTIVITY_LIMIT = 50;
 
@@ -70,7 +70,7 @@ function versionActs(row: VersionRow, head: number): HTMLElement {
       function () {
         go(planDash(key, row.rev));
       },
-      { title: "open v" + row.rev + " read-only", label: "view v" + row.rev, disabled: row.rev === bench.view }
+      { title: "open v" + row.rev + " read-only", label: "view v" + row.rev, disabled: row.rev === bench.viewedRev }
     )
   );
   if (row.rev !== head && !bench.gone) {
@@ -140,7 +140,7 @@ export function renderVersions(parent: HTMLElement): void {
     card.appendChild(
       table(columns, data.versions, {
         rowClass: function (r) {
-          return r.rev === bench.view ? "plan-picked" : "";
+          return r.rev === bench.viewedRev ? "plan-picked" : "";
         },
         caption: "versions of this plan",
       })
@@ -150,8 +150,8 @@ export function renderVersions(parent: HTMLElement): void {
   parent.appendChild(card);
 }
 
-export function renderView(parent: HTMLElement, select: (s: Selection) => void): void {
-  var rev = bench.view;
+export function renderView(parent: HTMLElement, select: (s: FocusSelection) => void): void {
+  var rev = bench.viewedRev;
   var plan = bench.plan!;
   var card = make("section", "dash-card plan-strip");
   var title = make("div", "dash-title");
@@ -179,18 +179,18 @@ export function renderView(parent: HTMLElement, select: (s: Selection) => void):
   }
   acts.appendChild(duplicateButton(rev));
   card.appendChild(acts);
-  var shown = bench.viewPlan;
-  if (bench.viewError) error(card, "v" + rev, bench.viewError);
+  var shown = bench.viewedPlan;
+  if (bench.viewedError) error(card, "v" + rev, bench.viewedError);
   else if (!shown) loading(card, "v" + rev);
   else {
     card.appendChild(make("p", "", (shown.name !== plan.name ? "named “" + shown.name + "” · " : "") + argsWords(shown.args as unknown as Record<string, unknown>)));
-    if (bench.viewDelta && bench.viewDelta.from_rev === rev) {
-      card.appendChild(make("p", "dash-note", "result from v" + rev + " to v" + bench.viewDelta.to_rev + ": " + bench.viewDelta.text));
+    if (bench.viewedDelta && bench.viewedDelta.from_rev === rev) {
+      card.appendChild(make("p", "dash-note", "result from v" + rev + " to v" + bench.viewedDelta.to_rev + ": " + bench.viewedDelta.text));
     }
   }
   parent.appendChild(card);
-  if (bench.viewResult) renderVersionResult(parent, bench.viewResult, rev, select);
-  else if (shown && !bench.viewError) loading(parent, "the result of v" + rev);
+  if (bench.viewedResult) renderVersionResult(parent, bench.viewedResult, rev, select);
+  else if (shown && !bench.viewedError) loading(parent, "the result of v" + rev);
 }
 
 export function loadActivity(): void {
@@ -260,7 +260,7 @@ function activityActs(row: ActivityRow): HTMLElement {
       button(
         "undo",
         function () {
-          undoIn(key, rev)
+          undoRevisionOf(key, rev)
             .then(function (text) {
               notify(text);
               loadActivity();

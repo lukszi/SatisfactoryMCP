@@ -9,7 +9,9 @@ import { dashParts, go } from "../../app/nav";
 import { vitals } from "../../app/vitals";
 import { renderAlternates } from "./planner-alternates";
 import { askButton, askMarks } from "../../chat/asks";
-import { bench, changed, gesture, pendingFocus, pickTab, showAlternates, undoRev } from "./planner-core";
+import { pickTab, showAlternates } from "./planner-reads";
+import { bench, changed, pendingFocus } from "./planner-state";
+import { applyOps, banOps, undoRev } from "./planner-writes";
 import { rowOverclock } from "./planner-power";
 import { renderSite } from "./planner-site";
 import { renderTrack } from "./planner-track";
@@ -19,8 +21,8 @@ import { WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { GraphNodeShape } from "../graph";
-import type { Ledger, PlanGraphNode, SolveRate, SolveResponse, SolveRow } from "../../api/shapes";
-import type { Op, ResultTab, Selection } from "./planner-core";
+import type { FocusSelection, Ledger, PlanGraphNode, SolveRate, SolveResponse, SolveRow } from "../../api/shapes";
+import type { ResultTab } from "./planner-state";
 
 interface PlanNode extends GraphNodeShape {
   tip: string;
@@ -77,20 +79,6 @@ function items(rows: SolveRate[]): SolveRate[] {
   return rows.filter(function (r) {
     return r.item !== POWER;
   });
-}
-
-export function recipeName(id: string): string {
-  return (bench.plan && bench.plan.names[id]) || id;
-}
-
-function listed(field: "required" | "banned", member: string): boolean {
-  return !!bench.plan && bench.plan.args[field].indexOf(member) >= 0;
-}
-
-export function banOps(member: string): Op[] {
-  var ops: Op[] = [{ op: "add", field: "banned", member: member }];
-  if (listed("required", member)) ops.push({ op: "remove", field: "required", member: member });
-  return ops;
 }
 
 function facts(data: SolveResponse): string {
@@ -174,8 +162,8 @@ function summary(parent: HTMLElement, data: SolveResponse, rev: number, live: bo
   var card = make("section", "dash-card");
   var title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "result · v" + rev));
-  var waiting = live && bench.solving && bench.solving !== rev;
-  if (waiting) title.appendChild(make("span", "plan-status", "solving v" + bench.solving + "…"));
+  var waiting = live && bench.solvingRev && bench.solvingRev !== rev;
+  if (waiting) title.appendChild(make("span", "plan-status", "solving v" + bench.solvingRev + "…"));
   card.appendChild(title);
   var body = make("div", waiting ? "plan-stale" : "");
   card.appendChild(body);
@@ -200,23 +188,23 @@ function mainItem(data: SolveResponse, row: SolveRow): string | null {
 }
 
 WIDE.addEventListener("change", function () {
-  if (bench.alt) changed();
+  if (bench.alternates) changed();
 });
 
-function pickRow(row: SolveRow, select: (s: Selection) => void): void {
+function pickRow(row: SolveRow, select: (s: FocusSelection) => void): void {
   bench.picked = row.id;
   select({ kind: "process", label: row.building + " · " + row.recipe, ref: row.recipe_id || row.recipe });
 }
 
 export function recipesButton(item: string, name: string, where: string): HTMLButtonElement {
   var ctl = "alt:" + where + ":" + item;
-  var open = !!bench.alt && bench.alt.item === item;
+  var open = !!bench.alternates && bench.alternates.item === item;
   var b = button(
     WORDS.recipes,
     function () {
       var switching = dashParts().rest[1] === "alt";
       showAlternates(item, ctl);
-      if (!switching) bench.altBack = true;
+      if (!switching) bench.alternatesCloseGoesBack = true;
       go("planner/" + bench.key + "/alt/" + item, switching);
     },
     { title: "every recipe for " + name + " and what requiring each would change", label: "recipes for " + name }
@@ -233,7 +221,7 @@ function banButton(row: SolveRow): HTMLButtonElement {
       var member = row.recipe_id || row.recipe;
       pendingFocus.ctl = "banned:" + member;
       pendingFocus.until = Date.now() + 5000;
-      gesture(banOps(member));
+      applyOps(banOps(member));
     },
     { title: "keep this recipe out of the plan", label: "ban " + row.recipe }
   );
@@ -275,7 +263,7 @@ function recipeCell(row: SolveRow, live: boolean): HTMLElement {
   var cell = make("span", "plan-recipe", row.recipe);
   if (row.required) cell.appendChild(chip("required", "muted"));
   if (!live) return cell;
-  if (bench.chatRows[row.id]) cell.appendChild(chip(WORDS.actorChat, "muted", "chat changed this process since you opened the plan"));
+  if (bench.chatChangedRows[row.id]) cell.appendChild(chip(WORDS.actorChat, "muted", "chat changed this process since you opened the plan"));
   var pinned = row.recipe_id ? pinsFor(bench.key)[row.recipe_id] : undefined;
   if (pinned) cell.appendChild(idChip(pinned.id, pinned.text));
   askMarks(bench.key, "process", row.recipe_id || row.recipe).forEach(function (a) {
@@ -284,7 +272,7 @@ function recipeCell(row: SolveRow, live: boolean): HTMLElement {
   return cell;
 }
 
-function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selection) => void, live: boolean): void {
+function buildList(parent: HTMLElement, data: SolveResponse, select: (s: FocusSelection) => void, live: boolean): void {
   var card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "build list · " + count(data.rows.length) + " processes"));
   var columns: Column<SolveRow>[] = [
@@ -386,9 +374,9 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: Selecti
 function flashing(): string[] {
   var now = Date.now();
   Object.keys(flashed).forEach(function (id) {
-    if (!bench.chatRows[id]) delete flashed[id];
+    if (!bench.chatChangedRows[id]) delete flashed[id];
   });
-  Object.keys(bench.chatRows).forEach(function (id) {
+  Object.keys(bench.chatChangedRows).forEach(function (id) {
     if (!flashed[id]) flashed[id] = now;
   });
   return Object.keys(flashed).filter(function (id) {
@@ -405,7 +393,7 @@ function planNodes(data: SolveResponse): PlanNode[] {
   return data.graph.nodes.map(function (n: PlanGraphNode): PlanNode {
     var row = n.row ? byId[n.row] : undefined;
     var badges: string[] = [];
-    if (row && bench.chatRows[row.id]) badges.push(WORDS.actorChat);
+    if (row && bench.chatChangedRows[row.id]) badges.push(WORDS.actorChat);
     if (row && row.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
     var tip = row
       ? row.building + " · " + row.recipe + "\nin: " + rates(items(row.inputs)) + "\nout: " + rates(items(row.outputs))
@@ -428,7 +416,7 @@ function planNodes(data: SolveResponse): PlanNode[] {
   });
 }
 
-function pickNode(data: SolveResponse, node: PlanNode, select: (s: Selection) => void): void {
+function pickNode(data: SolveResponse, node: PlanNode, select: (s: FocusSelection) => void): void {
   var row = data.rows.filter(function (r) {
     return r.id === node.row;
   })[0];
@@ -440,7 +428,7 @@ function pickNode(data: SolveResponse, node: PlanNode, select: (s: Selection) =>
   select({ kind: "item", label: node.label, ref: node.item || "" });
 }
 
-function graphFrameFor(data: SolveResponse, select: (s: Selection) => void): HTMLElement {
+function graphFrameFor(data: SolveResponse, select: (s: FocusSelection) => void): HTMLElement {
   var nodes = planNodes(data);
   var flash = flashing();
   var key =
@@ -539,7 +527,7 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
   parent.appendChild(card);
 }
 
-function graphTab(parent: HTMLElement, data: SolveResponse, select: (s: Selection) => void): HTMLElement | null {
+function graphTab(parent: HTMLElement, data: SolveResponse, select: (s: FocusSelection) => void): HTMLElement | null {
   var card = graphFrame("production graph", true);
   parent.appendChild(card);
   if (!data.graph.nodes.length) {
@@ -553,7 +541,7 @@ function graphTab(parent: HTMLElement, data: SolveResponse, select: (s: Selectio
   return frame;
 }
 
-export function renderVersionResult(parent: HTMLElement, data: SolveResponse, rev: number, select: (s: Selection) => void): void {
+export function renderVersionResult(parent: HTMLElement, data: SolveResponse, rev: number, select: (s: FocusSelection) => void): void {
   summary(parent, data, rev, false);
   if (data.feasible) buildList(parent, data, select, false);
 }
@@ -578,7 +566,7 @@ function resultTabs(parent: HTMLElement): void {
   );
 }
 
-export function renderResult(parent: HTMLElement, select: (s: Selection) => void, close: () => void): void {
+export function renderResult(parent: HTMLElement, select: (s: FocusSelection) => void, close: () => void): void {
   if (bench.tab === "site") {
     resultTabs(parent);
     renderSite(parent);
@@ -592,8 +580,8 @@ export function renderResult(parent: HTMLElement, select: (s: Selection) => void
   }
   summary(parent, data, bench.resultRev, true);
   if (!data.feasible) {
-    var last = bench.feasible;
-    if (bench.alt) renderAlternates(parent, close);
+    var last = bench.lastFeasible;
+    if (bench.alternates) renderAlternates(parent, close);
     if (!last) return;
     var grey = make("div", "plan-stale");
     if (bench.tab === "track") grey.appendChild(make("p", "dash-note", "track needs a solvable version"));
@@ -604,13 +592,13 @@ export function renderResult(parent: HTMLElement, select: (s: Selection) => void
     return;
   }
   resultTabs(parent);
-  var beside = !!bench.alt && bench.tab === "graph" && WIDE.matches;
+  var beside = !!bench.alternates && bench.tab === "graph" && WIDE.matches;
   var split = make("div", "plan-result" + (beside ? " beside" : ""));
-  var dim = bench.tab !== "track" && bench.solving && bench.solving !== bench.resultRev;
+  var dim = bench.tab !== "track" && bench.solvingRev && bench.solvingRev !== bench.resultRev;
   var main = make("div", "plan-main" + (dim ? " plan-stale" : ""));
-  if (bench.alt && !beside) renderAlternates(split, close);
+  if (bench.alternates && !beside) renderAlternates(split, close);
   split.appendChild(main);
-  if (bench.alt && beside) renderAlternates(split, close);
+  if (bench.alternates && beside) renderAlternates(split, close);
   var frame = bench.tab === "graph" ? graphTab(main, data, select) : null;
   if (bench.tab === "track") renderTrack(main, select);
   else if (bench.tab !== "graph") buildList(main, data, select, true);
