@@ -113,6 +113,7 @@ strict = [
     "tools/mapgen/src/mapgen/gamedata/install.py",
     "tools/mapgen/src/mapgen/gamedata/nodes.py",
     "tools/mapgen/src/mapgen/gamedata/placements.py",
+    "tools/mapgen/src/mapgen/gamedata/rocks/families.py",
 ]
 reportUnnecessaryTypeIgnoreComment = "error"
 
