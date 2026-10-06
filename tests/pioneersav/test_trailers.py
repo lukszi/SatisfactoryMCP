@@ -44,17 +44,13 @@ from pioneersav.trailers import (
     TRAILER_READERS,
 )
 from tests.support.fanout import fanout_width, in_order
-from tests.support.paths import FIXTURES
-
-FIXTURE = FIXTURES / "save_trailers.bin"
+from tests.support.paths import committed_fixture
 
 
 @pytest.fixture(scope="module")
 def blobs() -> list[tuple[str, bytes]]:
     """Every fixture entry as ``(classPath, bytes)``, in file order."""
-    if not FIXTURE.is_file():
-        pytest.skip("trailer fixture not committed")
-    r = Reader(FIXTURE.read_bytes())
+    r = Reader(committed_fixture("save_trailers.bin").read_bytes())
     out = []
     for _ in range(r.i32()):
         cls = r.string()

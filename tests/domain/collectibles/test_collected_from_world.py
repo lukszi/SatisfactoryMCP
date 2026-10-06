@@ -24,9 +24,9 @@ still in the tree as the no-table fallback, and
 answer for the very rows it was reporting on.
 
 Numbers come from the committed projection (the reference save: 889 destroyed records in 284
-cells) joined against ``data/world_collectibles.json``. That file is untracked, so every test
-needing it goes through the ``table`` fixture and skips without it -- and the degraded path it
-skips to is itself tested.
+cells) joined against ``data/world_collectibles.json``. That file is tracked, so every test
+needing it goes through the ``table`` fixture, which fails without it; the degraded path a
+missing table falls back to is tested on its own.
 """
 
 from __future__ import annotations
@@ -103,12 +103,11 @@ UNRESOLVED = 176
 
 @pytest.fixture(scope="session")
 def table():
-    """The map's placement table. Untracked, so absent is a normal condition."""
-    loaded = load_collectibles()
+    """The map's placement table. Tracked, so absent is a broken checkout; ``strict`` keeps an
+    unreadable file from passing for an absent one."""
+    loaded = load_collectibles(strict=True)
     if loaded is None:
-        pytest.skip(
-            "needs data/world_collectibles.json (uv run python tools/gen_world_collectibles.py)"
-        )
+        pytest.fail("data/world_collectibles.json is tracked and missing -- broken checkout?")
     return loaded
 
 

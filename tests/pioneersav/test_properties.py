@@ -54,18 +54,13 @@ from pioneersav.properties import (
     read_object,
 )
 from pioneersav.references import ObjectReference
-from tests.support.paths import FIXTURES
-
-FIXTURE = FIXTURES / "save_properties.bin"
-BODY_FIXTURE = FIXTURES / "save_body.bin"
+from tests.support.paths import committed_fixture
 
 
 @pytest.fixture(scope="module")
 def blocks() -> dict[str, tuple[bytes, ObjectSlice, bool]]:
     """Every fixture entry, keyed by the object's short instance name."""
-    if not FIXTURE.is_file():
-        pytest.skip("property fixture not committed")
-    raw = FIXTURE.read_bytes()
+    raw = committed_fixture("save_properties.bin").read_bytes()
     r = Reader(raw)
     out = {}
     for _ in range(r.i32()):
@@ -457,11 +452,9 @@ def test_the_version_36_body_fixture_parses_end_to_end():
     stack exercises the version-36 struct-array header that lives inside the payload, and
     nothing in it was chosen to make the property reader look good.
     """
-    if not BODY_FIXTURE.is_file():
-        pytest.skip("body fixture not committed")
     from pioneersav import ActorHeader, read_body
 
-    raw = BODY_FIXTURE.read_bytes()
+    raw = committed_fixture("save_body.bin").read_bytes()
     save = read_body(raw)
     seen = 0
     versions = set()
@@ -484,11 +477,9 @@ def test_an_actor_payload_opens_with_its_reference_lists():
     name as a property name -- which is why this asserts on the reference and not just on
     the property count.
     """
-    if not BODY_FIXTURE.is_file():
-        pytest.skip("body fixture not committed")
     from pioneersav import ActorHeader, read_body
 
-    raw = BODY_FIXTURE.read_bytes()
+    raw = committed_fixture("save_body.bin").read_bytes()
     save = read_body(raw)
     actors = [
         (h, s)
