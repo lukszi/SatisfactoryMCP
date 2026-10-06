@@ -70,8 +70,8 @@ from mapgen.palette.painted.surfaces import (
     sunk_specks,
 )
 from mapgen.palette.painted.trees import (
-    band_crowns,
     crown_calibration,
+    lit_crowns,
     over_crowns,
     sample_titan,
     titan_over,
@@ -601,7 +601,7 @@ def painted_colours(scene: dict, ground: PaintedGround, sample, sample_rock) -> 
     lit = g * light * (exposure * borrow)[..., None]
 
     water = scene["water"]
-    trees = band_crowns(scene, ground, sample_rock, exposure)
+    trees = lit_crowns(scene, ground, sample_rock, exposure)
     lit = wet_band(lit, water, p["shore"].get("wet_band"))
     under = underwater(g, scene, ground, sample, sample_rock, exposure, trees)
     out = wet_mix(lit, under, water["cover"][..., None])

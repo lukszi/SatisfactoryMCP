@@ -48,7 +48,7 @@ from mapgen.palette.water.surface import (
     water_depth_fraction,
 )
 from mapgen.render.drawpool import bands_held, in_order
-from mapgen.terrain.crown_stamp import crown_band
+from mapgen.terrain.crown_stamp import stamp_crowns
 from mapgen.terrain.measure import SEAM_MID
 from mapgen.terrain.rasters import pixel_coverage
 from mapgen.terrain.sample import (
@@ -71,10 +71,10 @@ __all__ = [
     "BAND_HALO",
     "BAND_ROWS",
     "DIRECT_LIFT_KNEE_M",
-    "band_water",
+    "band_water_terms",
     "blend_regimes",
     "composite_top",
-    "crowns_in_band",
+    "domed_crowns",
     "render_layer",
 ]
 
@@ -157,7 +157,7 @@ def blend_regimes(base_m, missing, direct, linear, subsamples, keep=None):
     )
 
 
-def band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m) -> dict:
+def band_water_terms(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m) -> dict:
     """Recipe 5's water, and within ``reach`` of the sea the ocean's crossing rule. ``wet``
     rides along for the rivers: past the last wet texel, the edge's blur is no water."""
     old_cover = water_alpha(z_m, water_m, wet, measured, blur_px)
@@ -176,12 +176,12 @@ def band_water(z_m, water_m, wet, measured, blur_px, reach, linear, spacing_m) -
     return terms
 
 
-def crowns_in_band(painted, x_cm, y_cm, spacing_m, unlit=False) -> dict | None:
+def domed_crowns(painted, x_cm, y_cm, spacing_m, unlit=False) -> dict | None:
     """The crowns over these pixel centres, with their domes lit by the shared sun."""
     if painted.crowns is None:
         return None
     step_cm = spacing_m * 100.0
-    band = crown_band(
+    band = stamp_crowns(
         painted.crowns, x_cm[0] - step_cm / 2, y_cm[0] - step_cm / 2, step_cm, len(y_cm), len(x_cm)
     )
     gain = np.float32(painted.palette["crowns"]["dome_gain"])
@@ -204,7 +204,7 @@ def _capture(surface, rows, z_m, missing, cover) -> None:
     surface.put(top, z_m[keep], dry[keep], slice(c0, c1))
 
 
-def _band_water(z_m, planes, smooth, linear):
+def _sample_water_surface(z_m, planes, smooth, linear):
     """One band's water surface, level (NaN where none), wet cover and measured share.
 
     ``planes`` ends with the run's ``OpenSea`` or None. With it, the wet cover counts only
@@ -448,7 +448,7 @@ def _band_ground(job, rows) -> tuple[dict, list]:
             top_subsamples,
         )
         top_weight = np.clip((z_m - below) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
-    water_m, level_m, wet, measured = _band_water(
+    water_m, level_m, wet, measured = _sample_water_surface(
         z_m, (job.water, job.wet_plane, job.measured_plane, job.sea), smooth, linear
     )
     mesh_weight = mesh_class = None
@@ -478,7 +478,7 @@ def _band_colour(job, rows, ground: dict) -> np.ndarray:
     strength = sample_plain(province, linear) / 255.0
     lift = 1.0 + BORROW_GAIN * strength * (sample_plain(detail, (art_rows, job.art_cols)) / 127.0)
 
-    water_terms = band_water(
+    water_terms = band_water_terms(
         z_m, ground["water_m"], ground["wet"], ground["measured"], job.blur_px, job.reach,
         linear, job.spacing_m,
     )  # fmt: skip
@@ -536,7 +536,7 @@ def _painted_band(job, rows, ground: dict, scene: dict) -> np.ndarray:
     if ground["top_weight"] is not None:
         rock_weight = np.maximum(rock_weight, ground["top_weight"])
     flat = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
-    scene["crowns"] = crowns_in_band(painted, job.x_cm, job.y_cm[lo:hi], job.spacing_m, job.unlit)
+    scene["crowns"] = domed_crowns(painted, job.x_cm, job.y_cm[lo:hi], job.spacing_m, job.unlit)
     meshes = (ground["mesh_weight"], ground["mesh_class"], ground["level_m"])
     scene.update(
         ndl=painted_ndl(z_m, job.spacing_m, job.unlit, job.surface, meshes),

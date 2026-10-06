@@ -353,7 +353,7 @@ crown height, so a leaning bamboo's crown stands off its base. The sprite is rea
 mip chain (2x2 means; the top channel takes the maximum) at the level whose texel is nearest
 the output pixel, bilinearly, so a 1024 preview keeps each crown's area. Trees are laid
 lowest top first, each over the ones below. A band returns cover, cover-weighted colour, a
-dome height and the highest crown top in world cm; `crown_band(...)["top_cm"]` is the crown
+dome height and the highest crown top in world cm; `stamp_crowns(...)["top_cm"]` is the crown
 height raster on any render grid.
 
 `palette/painted/ground.py` composites the crowns that stand out of the water last, over water and

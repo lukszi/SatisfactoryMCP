@@ -252,7 +252,7 @@ body a crown sunk 0.3 m in the swamp showed more than in the sea, which murky wa
 do (`tests/mapgen/test_crowns_over_water.py`). Absorption, `deep_tau_m`, turbidity and the rule
 for which water takes the opaque colour (section 37, "Swamp water") are unchanged.
 
-**Measured.** Drawn by the painted layer's own water code (`band_water`, `class_optics`,
+**Measured.** Drawn by the painted layer's own water code (`band_water_terms`, `class_optics`,
 `underwater`, the tone, then `with_void`) at 1 m on the field's own planes, with the open sea
 laid by `open_sea` from the artwork and the class plane from `classify`. The bed is the bake,
 unlit and uncalibrated, so only the absolute colour of the shallows is approximate. Medians

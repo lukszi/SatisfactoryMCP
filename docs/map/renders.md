@@ -809,7 +809,7 @@ tiles are the same bytes:
 - **The void is drawn where it is.** `with_void` blended every pixel of the band. Where its
   cover and rim are both 0 the blend gives back the pixel, so only the pixels under one of
   them are blended. A band with no void under its rows and no pixel without data returns
-  before the void's four planes are sampled, and `_band_water` and `_rock_kept` skip the
+  before the void's four planes are sampled, and `_sample_water_surface` and `_rock_kept` skip the
   cover there too.
 - **Water is mixed where it is.** The terrain and satellite styles (`water_composite`), the
   painted style and the relief styles all end their water with

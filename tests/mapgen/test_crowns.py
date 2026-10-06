@@ -15,7 +15,7 @@ from mapgen.gamedata.vegetation import crown_sprites as data
 from mapgen.gamedata.vegetation.trees import RADIUS_BINS_M, canopy_cover
 from mapgen.palette.painted.trees import crown_layer, over_crowns
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.terrain.crown_stamp import crown_band, load_crowns, meshed_species, sprite_levels
+from mapgen.terrain.crown_stamp import load_crowns, meshed_species, sprite_levels, stamp_crowns
 
 LEAF = (0.1, 0.3, 0.05)
 
@@ -141,7 +141,7 @@ def _l_sprite():
 
 
 def _band(crowns, step_cm=22.9, size=80, x0=-900.0, y0=-900.0):
-    return crown_band(crowns, x0, y0, step_cm, size, size)
+    return stamp_crowns(crowns, x0, y0, step_cm, size, size)
 
 
 def test_a_tree_stamps_its_sprite_turned_by_its_yaw(tmp_path):

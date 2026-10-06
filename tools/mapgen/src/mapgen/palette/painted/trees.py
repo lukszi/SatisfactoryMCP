@@ -26,7 +26,7 @@ __all__ = [
     "HUE_GATE_DEG",
     "IDENTITY_OP",
     "TARGET_GREY",
-    "band_crowns",
+    "lit_crowns",
     "crown_calibration",
     "crown_lab",
     "crown_layer",
@@ -288,7 +288,7 @@ def crown_layer(crowns: dict, scene: dict, p: dict, ambient, exposure, ops=()) -
             "colour": colour * light * exposure, "top_m": top_m, "sunk": sunk}  # fmt: skip
 
 
-def band_crowns(scene: dict, ground, sample_rock, exposure) -> dict | None:
+def lit_crowns(scene: dict, ground, sample_rock, exposure) -> dict | None:
     """The band's ``crown_layer`` with the ground's calibration ops on it; None without crowns."""
     crowns, p = scene.get("crowns"), ground.palette
     if crowns is None:

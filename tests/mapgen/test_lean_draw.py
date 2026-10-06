@@ -177,7 +177,7 @@ def test_the_void_helpers_skip_only_what_reads_as_zero(monkeypatch, void_rows, m
         return (
             compose._void(rgb, missing, sea, linear, rock, z_m),
             compose._rock_kept(z_m * 100.0, missing, (wet_plane, sea), linear),
-            compose._band_water(z_m, planes, smooth, linear),
+            compose._sample_water_surface(z_m, planes, smooth, linear),
         )
 
     lean = run()

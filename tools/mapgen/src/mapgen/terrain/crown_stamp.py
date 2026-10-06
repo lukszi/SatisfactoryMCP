@@ -27,7 +27,7 @@ __all__ = [
     "COVER_TOP_MIN",
     "DOME_SIGMA_M",
     "CrownSet",
-    "crown_band",
+    "stamp_crowns",
     "load_crowns",
     "meshed_species",
     "sprite_levels",
@@ -136,7 +136,7 @@ def _bilinear(level: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
     return top * (1 - fy) + bottom * fy
 
 
-def crown_band(crowns: CrownSet, x0_cm, y0_cm, step_cm, rows, cols) -> dict:
+def stamp_crowns(crowns: CrownSet, x0_cm, y0_cm, step_cm, rows, cols) -> dict:
     """One band of crowns on pixel centres: cover, linear colour, dome height, top.
 
     ``cover`` and ``rgb`` are composited front over back, tallest last; ``dome_m`` is the
