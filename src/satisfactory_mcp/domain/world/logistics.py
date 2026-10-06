@@ -191,13 +191,14 @@ def _dangling_link(attached: dict, actors, game, medium: str, pieces: int, ident
     """A run with one known end: its SOURCE where the run leaves it, its TARGET where the run
     arrives, so "leaves and reaches nothing" and "arrives from nothing" stay apart."""
     ((node, node_roles),) = attached.items()
-    side = _named_side(node_roles) or side_by_nature(actor_class(actors[node]), game)
+    role_side = _named_side(node_roles)
+    side = role_side or side_by_nature(actor_class(actors[node]), game)
     arriving = side == "in"
     return Link(
         source=None if arriving else actors[node],
         target=actors[node] if arriving else None,
         medium=medium,
-        basis=BY_ROLE if side else BASIS_UNKNOWN,
+        basis=BY_ROLE if role_side else (BY_NATURE if side else BASIS_UNKNOWN),
         pieces=pieces,
         source_role="" if arriving else node_roles[0],
         target_role=node_roles[0] if arriving else "",

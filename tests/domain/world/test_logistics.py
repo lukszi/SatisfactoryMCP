@@ -20,6 +20,7 @@ from satisfactory_mcp.domain.world.logistics import (
     BASIS_UNKNOWN,
     BY_NATURE,
     BY_ROLE,
+    _dangling_link,
     build_physical_graph,
 )
 
@@ -99,6 +100,17 @@ def test_an_undirected_link_is_walked_from_either_end(projection, game) -> None:
 
 def link_in(links, wanted) -> bool:
     return any(link is wanted for link in links or ())
+
+
+def test_a_dangling_run_names_what_settled_its_direction(game) -> None:
+    """A water pump's pipe port names no direction, so its nature does, and says so."""
+    pump = "Build_WaterPump_C_1"
+    by_nature = _dangling_link({0: ["FGPipeConnectionFactory"]}, [pump], game, ports.PIPE, 1, "")
+    assert (by_nature.source, by_nature.target, by_nature.basis) == (pump, None, BY_NATURE)
+
+    maker = "Build_ConstructorMk1_C_2"
+    by_role = _dangling_link({0: ["Output0"]}, [maker], game, ports.CONVEYOR, 1, "")
+    assert (by_role.source, by_role.basis) == (maker, BY_ROLE)
 
 
 def test_no_hypertube_reaches_the_physical_graph(projection, game) -> None:
