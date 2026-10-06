@@ -12,7 +12,25 @@ import { bench, changed } from "./planner-state";
 import { applyOps } from "./planner-writes";
 import { biomassQuery } from "../power-ledger";
 import { onSetting, settingChoice } from "../../app/settings";
-import { busy, corners, crossCancel, crossDrop, crossing, crossOn, crossTurn, edit, ghost, nodes, outsideMap, same, setPad, stop, useSnap, yawStep } from "./pad-drag";
+import {
+  crossCancel,
+  crossDrop,
+  crosshairActive,
+  crossTurn,
+  normaliseYaw,
+  outsideMap,
+  padCorners,
+  padGestureActive,
+  samePad,
+  setPad,
+  showGhostPad,
+  showNodeLines,
+  startCrosshair,
+  startPadEdit,
+  stopPadEdit,
+  useSnap,
+  yawStep,
+} from "./pad-drag";
 import { state } from "../../app/state";
 import { friendlyError } from "../../kit/toast";
 import { counted, WORDS } from "../../kit/words";
@@ -45,7 +63,7 @@ var site = {
   start: null as Pad | null,
   source: "",
   pad: null as Pad | null,
-  last: null as SitePreviewResponse | null,
+  lastPreview: null as SitePreviewResponse | null,
   error: "",
   note: "",
   confirm: null as Confirm | null,
@@ -70,41 +88,53 @@ var snapWas = settingChoice("siteSnap");
 onSetting(function () {
   if (settingChoice("siteSnap") === snapWas) return;
   snapWas = settingChoice("siteSnap");
-  if (showing()) paint();
+  if (siteTabShowing()) paint();
 });
 
 function padOf(raw: unknown): Pad | null {
-  var s = raw as { origin_m?: (number | null)[]; yaw_deg?: number; footprint_m?: number[] } | null;
-  if (!s || !s.origin_m || s.origin_m[0] === null || s.origin_m[1] === null) return null;
-  var fp = s.footprint_m || [0, 0];
-  return { x: Number(s.origin_m[0]), y: Number(s.origin_m[1]), yaw: Number(s.yaw_deg || 0), w: Number(fp[0] || 0), d: Number(fp[1] || 0) };
+  var siting = raw as { origin_m?: (number | null)[]; yaw_deg?: number; footprint_m?: number[] } | null;
+  if (!siting || !siting.origin_m || siting.origin_m[0] === null || siting.origin_m[1] === null) return null;
+  var footprint = siting.footprint_m || [0, 0];
+  return {
+    x_m: Number(siting.origin_m[0]),
+    y_m: Number(siting.origin_m[1]),
+    yaw_deg: Number(siting.yaw_deg || 0),
+    width_m: Number(footprint[0] || 0),
+    depth_m: Number(footprint[1] || 0),
+  };
 }
 
-function m(n: number): string {
+function footprintSource(raw: unknown): string {
+  return String((raw as { footprint_source?: string }).footprint_source || "");
+}
+
+function wholeNumber(n: number): string {
   return Math.round(n).toLocaleString("en-GB");
 }
 
-function query(p: Pad | null, extra: string): ApiUrl {
-  var q = "key=" + encodeURIComponent(site.key) + "&rev=" + site.rev + "&" + biomassQuery() + "&headroom=" + stageHeadroom();
-  if (p) q += "&x_m=" + p.x + "&y_m=" + p.y + "&yaw_deg=" + p.yaw + "&w_m=" + p.w + "&d_m=" + p.d;
-  return (PREVIEW + "?" + q + extra) as ApiUrl;
+function previewUrl(p: Pad | null, extra: string): ApiUrl {
+  var query = "key=" + encodeURIComponent(site.key) + "&rev=" + site.rev + "&" + biomassQuery() + "&headroom=" + stageHeadroom();
+  if (p) query += "&x_m=" + p.x_m + "&y_m=" + p.y_m + "&yaw_deg=" + p.yaw_deg + "&w_m=" + p.width_m + "&d_m=" + p.depth_m;
+  return (PREVIEW + "?" + query + extra) as ApiUrl;
 }
 
 function fetchPreview(p: Pad | null, extra: string): Promise<SitePreviewResponse> {
-  var t = performance.now();
-  return get<SitePreviewResponse>(query(p, extra)).then(function (data) {
-    rtt = performance.now() - t;
+  var sent = performance.now();
+  return get<SitePreviewResponse>(previewUrl(p, extra)).then(function (data) {
+    rtt = performance.now() - sent;
     return data;
   });
 }
 
-function pump(): void {
+/* One preview in flight, the newest pad waiting, and a gap that grows with the round trip so a
+ * slow server is not flooded while a pad is dragged. */
+function pumpPreviews(): void {
   clearTimeout(pumpTimer);
   if (inflight || !pending) return;
   var gap = Math.min(GAP_MAX_MS, Math.max(GAP_MIN_MS, GAP_PER_RTT * rtt));
   var wait = sentAt + gap - performance.now();
   if (wait > 0) {
-    pumpTimer = window.setTimeout(pump, wait);
+    pumpTimer = window.setTimeout(pumpPreviews, wait);
     return;
   }
   var p = pending;
@@ -115,7 +145,7 @@ function pump(): void {
   fetchPreview(p, "")
     .then(function (data) {
       if (key === site.key) {
-        site.last = data;
+        site.lastPreview = data;
         site.error = "";
         paintLines();
       }
@@ -125,74 +155,75 @@ function pump(): void {
     })
     .then(function () {
       inflight = false;
-      pump();
+      pumpPreviews();
     });
 }
 
-function ask(p: Pad): void {
+function requestPreview(p: Pad): void {
   pending = p;
-  pump();
+  pumpPreviews();
 }
 
-function value(p: Pad): Record<string, unknown> {
+function movePad(p: Pad, preview: boolean): void {
+  site.pad = p;
+  setPad(p);
+  if (preview) requestPreview(p);
+}
+
+function sitingValue(p: Pad): Record<string, unknown> {
   return {
     schema: 1,
-    origin_m: [p.x, p.y, null],
-    yaw_deg: p.yaw,
-    footprint_m: [p.w, p.d],
+    origin_m: [p.x_m, p.y_m, null],
+    yaw_deg: p.yaw_deg,
+    footprint_m: [p.width_m, p.depth_m],
     footprint_source: site.sized ? "given" : site.source || "layout",
     origin_label: site.label,
     when: "",
   };
 }
 
-function restore(): void {
+/** Puts the pad back where the plan has it, or where it started. */
+function revertPad(): void {
   site.confirm = null;
   site.label = "map";
   site.sized = false;
   var back = site.stored || site.start || site.pad;
-  if (back) {
-    site.pad = back;
-    setPad(back);
-    ask(back);
-  }
+  if (back) movePad(back, true);
   paint();
 }
 
-function push(p: Pad): void {
+function saveSite(p: Pad): void {
   site.confirm = null;
-  applyOps([{ op: "site", value: value(p) }]);
+  applyOps([{ op: "site", value: sitingValue(p) }]);
   site.label = "map";
   site.sized = false;
   paint();
 }
 
-function commit(p: Pad, how: string): void {
+/** A pad put down: refused off the map, held for a confirm when it would lose built machines. */
+function commitPad(p: Pad, how: string): void {
   site.pad = p;
   site.note = "";
-  if (site.stored && same(p, site.stored)) {
+  if (site.stored && samePad(p, site.stored)) {
     paint();
     return;
   }
   if (outsideMap(p)) {
     site.note = "outside the map: the drop is refused";
-    var refused = site.note;
-    restore();
-    site.note = refused;
-    paint();
+    revertPad();
     return;
   }
   var key = site.key;
   fetchPreview(p, "&full=1")
     .then(function (data) {
-      if (key !== site.key || !same(site.pad, p)) return;
-      site.last = data;
+      if (key !== site.key || !samePad(site.pad, p)) return;
+      site.lastPreview = data;
       if (data.loses && how !== "fit") {
         site.confirm = { pad: p, text: data.loses.text };
         paint();
         return;
       }
-      push(p);
+      saveSite(p);
     })
     .catch(function (reason) {
       site.error = friendlyError(reason);
@@ -200,29 +231,30 @@ function commit(p: Pad, how: string): void {
     });
 }
 
-var hooks = {
+var dragHooks = {
   step: function (p: Pad) {
     site.pad = p;
     site.note = "";
     paintHead();
     paintFields();
-    ask(p);
+    requestPreview(p);
   },
-  commit: commit,
+  commit: commitPad,
   cancel: function () {
-    restore();
+    revertPad();
   },
 };
 
-function frame(p: Pad): void {
+/** Fits the pad, and chat's ghost when it has one, into the part of the map the card leaves. */
+function framePad(p: Pad): void {
   if ((map as unknown as { _animatingZoom?: boolean })._animatingZoom) {
     map.once("zoomend", function () {
-      frame(p);
+      framePad(p);
     });
     return;
   }
-  var bounds = L.latLngBounds(corners(p)).pad(1.2);
-  if (site.ghost && site.ghost.key === site.key) bounds.extend(L.latLngBounds(corners(site.ghost.pad)));
+  var bounds = L.latLngBounds(padCorners(p)).pad(1.2);
+  if (site.ghost && site.ghost.key === site.key) bounds.extend(L.latLngBounds(padCorners(site.ghost.pad)));
   var dash = document.getElementById("dash")!.getBoundingClientRect();
   var box = map.getContainer().getBoundingClientRect();
   var side = dash.left > box.left + 4;
@@ -234,26 +266,26 @@ function frame(p: Pad): void {
   });
 }
 
-function start(): void {
+function beginSiting(): void {
   var key = site.key;
   var plan = bench.plan!;
   site.stored = padOf(plan.siting);
-  site.source = plan.siting ? String((plan.siting as { footprint_source?: string }).footprint_source || "") : "";
+  site.source = plan.siting ? footprintSource(plan.siting) : "";
   site.error = "";
   fetchPreview(site.stored, "&first=1")
     .then(function (data) {
       if (key !== site.key) return;
-      site.last = data;
+      site.lastPreview = data;
       if (!site.stored) site.source = data.source;
-      site.start = { x: data.x_m, y: data.y_m, yaw: data.yaw_deg, w: data.w_m, d: data.d_m };
+      site.start = { x_m: data.x_m, y_m: data.y_m, yaw_deg: data.yaw_deg, width_m: data.w_m, depth_m: data.d_m };
       var p = site.stored || site.start;
       site.pad = p;
-      edit(p, plan.name, hooks, COARSE.matches);
-      nodes(data.nodes || []);
-      if (site.ghost && site.ghost.key === key) ghost(site.ghost.pad);
+      startPadEdit(p, plan.name, dragHooks, COARSE.matches);
+      showNodeLines(data.nodes || []);
+      if (site.ghost && site.ghost.key === key) showGhostPad(site.ghost.pad);
       if (!site.framed) {
         site.framed = true;
-        frame(p);
+        framePad(p);
       }
       paint();
     })
@@ -264,7 +296,8 @@ function start(): void {
     });
 }
 
-function sync(): void {
+/* A new head moves the pad to what was stored, unless a gesture or a confirm holds it. */
+function syncWithPlan(): void {
   var plan = bench.plan;
   if (!plan) return;
   if (site.key !== bench.key) {
@@ -273,47 +306,65 @@ function sync(): void {
     site.framed = false;
     site.confirm = null;
     site.note = "";
-    site.last = null;
-    start();
+    site.lastPreview = null;
+    beginSiting();
     return;
   }
-  if (site.rev !== plan.rev && !busy() && !site.confirm) {
+  if (site.rev !== plan.rev && !padGestureActive() && !site.confirm) {
     site.rev = plan.rev;
-    if (site.ghost && site.ghost.key === site.key && plan.siting && same(padOf(plan.siting), site.ghost.pad)) dropGhost();
+    if (site.ghost && site.ghost.key === site.key && plan.siting && samePad(padOf(plan.siting), site.ghost.pad)) dropGhost();
     var stored = padOf(plan.siting);
     site.stored = stored;
-    if (stored) site.source = String((plan.siting as { footprint_source?: string }).footprint_source || "");
+    if (stored) site.source = footprintSource(plan.siting);
     var back = stored || site.start;
-    if (back) {
-      site.pad = back;
-      setPad(back);
-      ask(back);
-    }
+    if (back) movePad(back, true);
   }
 }
 
 /* ---------------------------------------------------------------- the card */
 
-function line(parent: HTMLElement, text: string, tone?: string): void {
+function feedbackLine(parent: HTMLElement, text: string, tone?: string): void {
   if (text) parent.appendChild(make("p", "site-line" + (tone ? " " + tone : ""), text));
 }
 
-function nearest(p: Pad, data: SitePreviewResponse | null): string {
-  var list = (data && data.nodes) || (site.last && site.last.nodes) || null;
-  if (!list || !list.length) return "";
-  var d = list.map(function (n) {
-    return { n: n, m: Math.hypot(n.x_m - p.x, n.y_m - p.y) };
+function nodeDistanceLine(p: Pad, nodes: SitePreviewResponse["nodes"]): string {
+  if (!nodes || !nodes.length) return "";
+  var byDistance = nodes.map(function (node) {
+    return { node: node, distanceM: Math.hypot(node.x_m - p.x_m, node.y_m - p.y_m) };
   });
-  d.sort(function (a, b) {
-    return a.m - b.m;
+  byDistance.sort(function (a, b) {
+    return a.distanceM - b.distanceM;
   });
-  return "nearest " + d[0]!.n.resource + " node " + m(d[0]!.m) + " m · farthest " + m(d[d.length - 1]!.m) + " m";
+  var nearest = byDistance[0]!;
+  var farthest = byDistance[byDistance.length - 1]!;
+  return "nearest " + nearest.node.resource + " node " + wholeNumber(nearest.distanceM) + " m · farthest " + wholeNumber(farthest.distanceM) + " m";
 }
 
+// Only the first preview of a pad carries its nodes; later ones are measured against those.
 var firstNodes: SitePreviewResponse["nodes"] = null;
 
+function terrainLines(t: NonNullable<SitePreviewResponse["terrain"]>): void {
+  feedbackLine(feedback, "ground " + t.z_min_m + "…" + t.z_max_m + " m · slope " + (t.slope_mean_deg || 0) + "° (p90 " + (t.slope_p90_deg || 0) + "°) · rough " + (t.roughness_m || 0) + " m · " + (t.submerged_pct < 1 ? t.submerged_pct : Math.round(t.submerged_pct)) + " % under water");
+  if (t.water_m === 0) feedbackLine(feedback, "water on the pad");
+  else if (t.water_m !== null) feedbackLine(feedback, "water " + wholeNumber(t.water_m) + " m" + (t.water_below_m !== null ? ", " + wholeNumber(t.water_below_m) + " m below" : ""));
+  if (t.cave_pct) feedbackLine(feedback, "a cave lies under " + Math.max(1, Math.round(t.cave_pct)) + " % of the pad: heights are the surface");
+}
+
+function trunksLine(trunks: SitePreviewResponse["trunks"]): void {
+  if (!trunks.length) return;
+  var run = 0;
+  var leg = 0;
+  var pumps = 0;
+  trunks.forEach(function (trunk) {
+    run += trunk.run_m;
+    leg += trunk.to_site_m;
+    if (trunk.pumps) pumps++;
+  });
+  feedbackLine(feedback, counted(trunks.length, "trunk") + " · " + wholeNumber(run) + " m node to node + " + wholeNumber(leg) + " m to the pad · " + (pumps ? pumps + " need pumps" : "no pumps"));
+}
+
 function paintLines(): void {
-  var data = site.last;
+  var data = site.lastPreview;
   var p = site.pad;
   feedback.textContent = "";
   if (!data || !p) {
@@ -321,48 +372,33 @@ function paintLines(): void {
     return;
   }
   if (data.nodes) firstNodes = data.nodes;
-  var stale = data.x_m !== p.x || data.y_m !== p.y || data.yaw_deg !== p.yaw || data.w_m !== p.w || data.d_m !== p.d;
+  var stale = data.x_m !== p.x_m || data.y_m !== p.y_m || data.yaw_deg !== p.yaw_deg || data.w_m !== p.width_m || data.d_m !== p.depth_m;
   feedback.classList.toggle("plan-stale", stale);
   if (outsideMap(p)) {
-    line(feedback, "outside the map: a drop here is refused", "site-refused");
+    feedbackLine(feedback, "outside the map: a drop here is refused", "site-refused");
     return;
   }
-  line(feedback, data.region || "off any named region");
-  if (!data.in_content) line(feedback, "off the playable ground", "dash-muted");
-  line(feedback, data.z_m !== null ? "ground height " + m(data.z_m) + " m" : data.z_note, data.z_m === null ? "dash-muted" : "");
-  var t = data.terrain;
-  if (!t) line(feedback, data.terrain_note, "dash-muted");
-  else if (t.z_min_m === null) line(feedback, "no terrain data under the pad", "dash-muted");
-  else {
-    line(feedback, "ground " + t.z_min_m + "…" + t.z_max_m + " m · slope " + (t.slope_mean_deg || 0) + "° (p90 " + (t.slope_p90_deg || 0) + "°) · rough " + (t.roughness_m || 0) + " m · " + (t.submerged_pct < 1 ? t.submerged_pct : Math.round(t.submerged_pct)) + " % under water");
-    if (t.water_m === 0) line(feedback, "water on the pad");
-    else if (t.water_m !== null) line(feedback, "water " + m(t.water_m) + " m" + (t.water_below_m !== null ? ", " + m(t.water_below_m) + " m below" : ""));
-    if (t.cave_pct) line(feedback, "a cave lies under " + Math.max(1, Math.round(t.cave_pct)) + " % of the pad: heights are the surface");
-  }
-  line(feedback, data.slabs.length ? "on " + data.slabs.join("; ") : "bare ground");
+  feedbackLine(feedback, data.region || "off any named region");
+  if (!data.in_content) feedbackLine(feedback, "off the playable ground", "dash-muted");
+  feedbackLine(feedback, data.z_m !== null ? "ground height " + wholeNumber(data.z_m) + " m" : data.z_note, data.z_m === null ? "dash-muted" : "");
+  var terrain = data.terrain;
+  if (!terrain) feedbackLine(feedback, data.terrain_note, "dash-muted");
+  else if (terrain.z_min_m === null) feedbackLine(feedback, "no terrain data under the pad", "dash-muted");
+  else terrainLines(terrain);
+  feedbackLine(feedback, data.slabs.length ? "on " + data.slabs.join("; ") : "bare ground");
   if (data.failure) {
-    line(feedback, data.failure, "dash-muted");
+    feedbackLine(feedback, data.failure, "dash-muted");
     return;
   }
-  line(feedback, counted(data.on_pad, "machine") + " " + (data.on_pad === 1 ? "stands" : "stand") + " on the pad (plan: " + count(data.planned) + ")");
-  line(feedback, nearest(p, { nodes: firstNodes } as SitePreviewResponse));
-  if (data.trunks.length) {
-    var run = 0;
-    var leg = 0;
-    var pumps = 0;
-    data.trunks.forEach(function (tr) {
-      run += tr.run_m;
-      leg += tr.to_site_m;
-      if (tr.pumps) pumps++;
-    });
-    line(feedback, counted(data.trunks.length, "trunk") + " · " + m(run) + " m node to node + " + m(leg) + " m to the pad · " + (pumps ? pumps + " need pumps" : "no pumps"));
-  }
-  var b = data.built;
-  line(feedback, "here: " + b.where + " · " + b.figure, "site-built");
-  if (data.sited) line(feedback, "now: " + data.now.where + " · " + data.now.figure, "dash-muted");
-  line(feedback, data.basis, "dash-muted");
-  if (b.stage_text) line(feedback, "here " + b.stage_text);
-  if (data.overlaps.length) line(feedback, "overlaps the pad of " + data.overlaps.map(function (n) { return "“" + n + "”"; }).join(", "), "site-warn");
+  feedbackLine(feedback, counted(data.on_pad, "machine") + " " + (data.on_pad === 1 ? "stands" : "stand") + " on the pad (plan: " + count(data.planned) + ")");
+  feedbackLine(feedback, nodeDistanceLine(p, firstNodes));
+  trunksLine(data.trunks);
+  var built = data.built;
+  feedbackLine(feedback, "here: " + built.where + " · " + built.figure, "site-built");
+  if (data.sited) feedbackLine(feedback, "now: " + data.now.where + " · " + data.now.figure, "dash-muted");
+  feedbackLine(feedback, data.basis, "dash-muted");
+  if (built.stage_text) feedbackLine(feedback, "here " + built.stage_text);
+  if (data.overlaps.length) feedbackLine(feedback, "overlaps the pad of " + data.overlaps.map(function (name) { return "“" + name + "”"; }).join(", "), "site-warn");
 }
 
 function numberField(label: string, ctl: string, val: number, apply: (n: number) => void): HTMLElement {
@@ -390,13 +426,11 @@ function numberField(label: string, ctl: string, val: number, apply: (n: number)
 
 var fields = make("div", "site-fields");
 
-function typed(change: (p: Pad) => Pad): void {
-  if (!site.pad || busy()) return;
-  var next = change({ x: site.pad.x, y: site.pad.y, yaw: site.pad.yaw, w: site.pad.w, d: site.pad.d });
-  site.pad = next;
-  setPad(next);
-  ask(next);
-  commit(next, "typed");
+function applyTypedEdit(change: (p: Pad) => Pad): void {
+  if (!site.pad || padGestureActive()) return;
+  var next = change({ ...site.pad });
+  movePad(next, true);
+  commitPad(next, "typed");
 }
 
 function paintFields(): void {
@@ -405,16 +439,16 @@ function paintFields(): void {
   var active = document.activeElement;
   if (active && fields.contains(active)) return;
   fields.textContent = "";
-  fields.appendChild(numberField("x, m", "site-x", p.x, function (n) { typed(function (q) { q.x = n; return q; }); }));
-  fields.appendChild(numberField("y, m", "site-y", p.y, function (n) { typed(function (q) { q.y = n; return q; }); }));
-  fields.appendChild(numberField("yaw, °", "site-yaw", p.yaw, function (n) { typed(function (q) { q.yaw = ((n % 360) + 360) % 360; return q; }); }));
-  fields.appendChild(numberField("W, m", "site-w", p.w, function (n) { site.sized = true; typed(function (q) { q.w = n; return q; }); }));
-  fields.appendChild(numberField("D, m", "site-d", p.d, function (n) { site.sized = true; typed(function (q) { q.d = n; return q; }); }));
+  fields.appendChild(numberField("x, m", "site-x", p.x_m, function (n) { applyTypedEdit(function (q) { q.x_m = n; return q; }); }));
+  fields.appendChild(numberField("y, m", "site-y", p.y_m, function (n) { applyTypedEdit(function (q) { q.y_m = n; return q; }); }));
+  fields.appendChild(numberField("yaw, °", "site-yaw", p.yaw_deg, function (n) { applyTypedEdit(function (q) { q.yaw_deg = normaliseYaw(n); return q; }); }));
+  fields.appendChild(numberField("W, m", "site-w", p.width_m, function (n) { site.sized = true; applyTypedEdit(function (q) { q.width_m = n; return q; }); }));
+  fields.appendChild(numberField("D, m", "site-d", p.depth_m, function (n) { site.sized = true; applyTypedEdit(function (q) { q.depth_m = n; return q; }); }));
 }
 
 function actions(parent: HTMLElement): void {
   var row = make("div", "site-actions");
-  if (crossing()) {
+  if (crosshairActive()) {
     var deg = yawStep() + "°";
     row.appendChild(button("⟲ " + deg, function () { crossTurn(-1); }, { label: "turn the pad " + deg + " anticlockwise" }));
     row.appendChild(button("⟳ " + deg, function () { crossTurn(1); }, { label: "turn the pad " + deg + " clockwise" }));
@@ -424,53 +458,51 @@ function actions(parent: HTMLElement): void {
     row.appendChild(drop);
     row.appendChild(button("cancel", function () { crossCancel(); paint(); }));
   } else {
-    var move = button(COARSE.matches ? "move" : WORDS.moveByPanning, function () { crossOn(); paint(); }, { title: "pan the map under a fixed pad, then drop it" });
+    var move = button(COARSE.matches ? "move" : WORDS.moveByPanning, function () { startCrosshair(); paint(); }, { title: "pan the map under a fixed pad, then drop it" });
     move.setAttribute("data-ctl", "site-cross");
     move.disabled = bench.gone || !site.pad;
     row.appendChild(move);
-    var fits = site.last && site.last.fits ? site.last.fits : [];
-    fits.forEach(function (f) {
-      row.appendChild(button(WORDS.fitPad(f.name), function () {
-        var p = padOf(f.value)!;
-        site.label = f.value.origin_label;
+    var fits = site.lastPreview && site.lastPreview.fits ? site.lastPreview.fits : [];
+    fits.forEach(function (fit) {
+      row.appendChild(button(WORDS.fitPad(fit.name), function () {
+        var p = padOf(fit.value)!;
+        site.label = fit.value.origin_label;
         site.sized = true;
-        site.pad = p;
-        setPad(p);
-        commit(p, "fit");
-      }, { title: "centre the pad on what is built there, " + f.machines + " machines, and size it to cover them" }));
+        movePad(p, false);
+        commitPad(p, "fit");
+      }, { title: "centre the pad on what is built there, " + fit.machines + " machines, and size it to cover them" }));
     });
   }
   parent.appendChild(row);
 }
 
 function confirmLine(parent: HTMLElement): void {
-  var c = site.confirm;
-  if (c === null) return;
-  var held = c;
+  var asked = site.confirm;
+  if (asked === null) return;
+  var held = asked;
   var row = make("div", "site-confirm");
   row.setAttribute("role", "alert");
-  row.appendChild(make("span", "", c.text));
-  var go = button("move anyway", function () { push(held.pad); });
-  go.setAttribute("data-ctl", "site-anyway");
-  row.appendChild(go);
-  row.appendChild(button("cancel", function () { restore(); }));
+  row.appendChild(make("span", "", asked.text));
+  var anyway = button("move anyway", function () { saveSite(held.pad); });
+  anyway.setAttribute("data-ctl", "site-anyway");
+  row.appendChild(anyway);
+  row.appendChild(button("cancel", function () { revertPad(); }));
   parent.appendChild(row);
 }
 
 function ghostLine(parent: HTMLElement): void {
   var seen = site.ghost;
   if (seen === null || seen.key !== site.key) return;
-  var g = seen;
+  var ghost = seen;
   var row = make("div", "site-ghost-line");
-  row.appendChild(make("span", "", g.who + " is looking at " + m(g.pad.x) + ", " + m(g.pad.y)));
+  row.appendChild(make("span", "", ghost.who + " is looking at " + wholeNumber(ghost.pad.x_m) + ", " + wholeNumber(ghost.pad.y_m)));
   var use = button("use it", function () {
     site.label = "chat preview";
-    site.sized = !site.stored || g.pad.w !== site.stored.w || g.pad.d !== site.stored.d;
-    var p = g.pad;
-    site.pad = p;
-    setPad(p);
+    site.sized = !site.stored || ghost.pad.width_m !== site.stored.width_m || ghost.pad.depth_m !== site.stored.depth_m;
+    var p = ghost.pad;
+    movePad(p, false);
     dropGhost();
-    commit(p, "chat");
+    commitPad(p, "chat");
   }, { title: "move the pad there: one version, Ctrl+Z undoes it" });
   use.setAttribute("data-ctl", "site-use");
   row.appendChild(use);
@@ -482,7 +514,7 @@ var headline = make("span", "dash-sub");
 
 function paintHead(): void {
   var p = site.pad;
-  headline.textContent = p ? m(p.x) + ", " + m(p.y) + " · " + m(p.yaw) + "° · " + m(p.w) + " × " + m(p.d) + " m" + (site.stored ? "" : " · not placed yet") : "";
+  headline.textContent = p ? wholeNumber(p.x_m) + ", " + wholeNumber(p.y_m) + " · " + wholeNumber(p.yaw_deg) + "° · " + wholeNumber(p.width_m) + " × " + wholeNumber(p.depth_m) + " m" + (site.stored ? "" : " · not placed yet") : "";
 }
 
 function paint(): void {
@@ -493,7 +525,7 @@ function paint(): void {
   head.appendChild(headline);
   card.appendChild(head);
   if (site.error) error(card, "the spot", site.error);
-  if (site.note) line(card, site.note, "site-refused");
+  if (site.note) feedbackLine(card, site.note, "site-refused");
   confirmLine(card);
   ghostLine(card);
   paintFields();
@@ -508,19 +540,19 @@ function paint(): void {
 
 /* ---------------------------------------------------------------- the split */
 
-function showing(): boolean {
+function siteTabShowing(): boolean {
   return document.body.classList.contains("dash-on") && state.dash.indexOf("planner/") === 0 && /\/site$/.test(state.dash) && bench.tab === "site";
 }
 
 export function syncSplit(): void {
-  var on = showing();
+  var on = siteTabShowing();
   if (document.body.classList.contains("site-on") === on) return;
   document.body.classList.toggle("site-on", on);
   if (!on) {
-    stop();
-    ghost(null);
+    stopPadEdit();
+    showGhostPad(null);
     site.key = "";
-    site.last = null;
+    site.lastPreview = null;
   }
 }
 
@@ -528,7 +560,7 @@ export function syncSplit(): void {
 export function renderSite(parent: HTMLElement): void {
   if (!bench.plan) return;
   document.body.classList.add("site-on");
-  sync();
+  syncWithPlan();
   paint();
   parent.appendChild(card);
 }
@@ -537,20 +569,20 @@ export function renderSite(parent: HTMLElement): void {
 
 function dropGhost(): void {
   site.ghost = null;
-  ghost(null);
+  showGhostPad(null);
 }
 
 /** A chat `site_plan(preview=True)`: a ghost pad with [use it] on that plan's site tab. */
 export function showGhost(key: string, args: Record<string, unknown>, who: string): void {
-  var n = function (k: string): number {
-    return Number(args[k]);
+  var arg = function (name: string): number {
+    return Number(args[name]);
   };
-  var p = { x: n("x_m"), y: n("y_m"), yaw: n("yaw_deg") || 0, w: n("w_m"), d: n("d_m") };
-  if (![p.x, p.y, p.w, p.d].every(isFinite)) return;
+  var p: Pad = { x_m: arg("x_m"), y_m: arg("y_m"), yaw_deg: arg("yaw_deg") || 0, width_m: arg("w_m"), depth_m: arg("d_m") };
+  if (![p.x_m, p.y_m, p.width_m, p.depth_m].every(isFinite)) return;
   site.ghost = { key: key, pad: p, who: who };
   if (site.key === key) {
-    ghost(p);
-    if (!busy()) frame(site.pad || p);
+    showGhostPad(p);
+    if (!padGestureActive()) framePad(site.pad || p);
   }
   changed();
 }

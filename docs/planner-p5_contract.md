@@ -238,7 +238,7 @@ siting.set_ground_z(provider)   # provider(x_m, y_m, yaw_deg, width_m, depth_m) 
 
 | Module | Does |
 |---|---|
-| `sitedrag.ts` (new) | Handles, crosshair, keyboard bursts, snap, node lines, the ghost. No fetch: it reports `step` and `commit` |
+| `dash/planner/pad-drag.ts` (new) | Handles, crosshair, keyboard bursts, snap, node lines, the ghost. No fetch: it reports `step` and `commit` |
 | `planner-site.ts` (new) | The card, the throttled preview loop, the drop with its confirm, fit, [use it], the split class |
 | `planner-core.ts`, `planner.ts`, `planner-result.ts`, `planner-bench.ts` | `ResultTab` `"site"`, the address, follow for `plan.view view=site`, the tab |
 | `planner-built.ts` | **[place]** opens the site tab |
