@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from ...core.gamedata.footprint import FOUNDATION_M, Packed
 from ...core.gamedata.model import GameData
 from .solver.carrier import carrier_for
-from .solver.optimize import MW, Solution
+from .solver.model import MW, Solution
 
 __all__ = [
     "LOGISTICS_FLOOR_M",

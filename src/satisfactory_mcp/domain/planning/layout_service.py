@@ -21,7 +21,7 @@ from .layout import Layout, build_layout, fluid_head
 from .materials import build_materials
 from .sites import claim_processes, partition
 from .solver.carrier import TierChoice
-from .solver.optimize import Solution
+from .solver.model import Solution
 from .solver.prepare import PreparedPlan, prepare
 from .trunks import plan_trunks
 

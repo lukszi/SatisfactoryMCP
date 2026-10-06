@@ -11,7 +11,8 @@ from __future__ import annotations
 import pytest
 from conftest import REFERENCE_FIELD
 
-from satisfactory_mcp.domain.planning.solver.optimize import MW, solve
+from satisfactory_mcp.domain.planning.solver.model import MW
+from satisfactory_mcp.domain.planning.solver.optimize import solve
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario, match_recipes
 
 pytestmark = pytest.mark.integration

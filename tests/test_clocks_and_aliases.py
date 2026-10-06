@@ -5,12 +5,9 @@ from __future__ import annotations
 import pytest
 from conftest import REFERENCE_FIELD
 
-from satisfactory_mcp.domain.planning.solver.optimize import (
-    Scenario,
-    extractor_processes,
-    normalise_objective,
-    solve,
-)
+from satisfactory_mcp.domain.planning.solver.model import Scenario, normalise_objective
+from satisfactory_mcp.domain.planning.solver.optimize import solve
+from satisfactory_mcp.domain.planning.solver.processes import extractor_processes
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
 pytestmark = pytest.mark.integration
@@ -123,6 +120,6 @@ def test_scenario_normalises_on_construction(game):
 @pytest.mark.parametrize("word", ["MW", "mw", "power", "Power"])
 def test_power_is_accepted_as_an_export_in_any_spelling(game, state, word):
     req = build_scenario(game, state, sources=list(REFERENCE_FIELD), exports=[word])
-    from satisfactory_mcp.domain.planning.solver.optimize import MW
+    from satisfactory_mcp.domain.planning.solver.model import MW
 
     assert MW in req.scenario.exports

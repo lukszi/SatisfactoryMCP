@@ -37,7 +37,9 @@ from dataclasses import dataclass, field, replace
 
 from ....core.gamedata.model import GameData
 from ...spatial import nodes as nodes_mod
-from ..solver.optimize import MW, build_processes, solve
+from ..solver.model import MW
+from ..solver.optimize import solve
+from ..solver.processes import build_processes
 from ..solver.scenario import PlanRequest
 
 __all__ = ["MissingRaw", "SupplyReport", "describe", "diagnose", "unmakeable"]

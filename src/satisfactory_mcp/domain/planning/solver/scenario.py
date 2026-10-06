@@ -22,7 +22,7 @@ from ...spatial.select import Selection, select_nodes
 from .. import siting as siting_mod
 from ..stored.planlog import is_power
 from . import prices as prices_mod
-from .optimize import MW, Scenario
+from .model import MW, Scenario
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
@@ -408,7 +408,7 @@ def build_scenario(
 
     if recycle_once:
         # Widened over the process label as well as the recipe name, as exclude_recipes is.
-        from .optimize import build_processes as _procs
+        from .processes import build_processes as _procs
 
         wanted: set[str] = set()
         for pattern in recycle_once:
@@ -547,7 +547,7 @@ def _ban_processes(sc: Scenario, patterns: list[str]) -> tuple[Scenario, list[st
     """
     from dataclasses import replace
 
-    from .optimize import build_processes
+    from .processes import build_processes
 
     candidates = [p for p in build_processes(sc) if p.kind in ("generator", "extractor")]
     banned: set[str] = set()

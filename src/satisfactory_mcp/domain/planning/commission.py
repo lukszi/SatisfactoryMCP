@@ -208,7 +208,7 @@ def _depths(processes: list[dict]) -> dict[str, int]:
     component and no order at all.
     """
     from .layout import chain_depth
-    from .solver.optimize import MW
+    from .solver.model import MW
 
     depths = chain_depth(
         [

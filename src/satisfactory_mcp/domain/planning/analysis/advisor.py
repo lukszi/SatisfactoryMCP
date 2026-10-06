@@ -32,7 +32,8 @@ from dataclasses import dataclass, field, replace
 from ....core.gamedata.model import GameData, Recipe
 from ...spatial.select import SELECTOR_HELP
 from ...world.state import WorldState
-from ..solver.optimize import MW, Scenario, Solution, solve
+from ..solver.model import MW, Scenario, Solution
+from ..solver.optimize import solve
 from ..solver.scenario import PlanRequest, build_scenario
 
 __all__ = [

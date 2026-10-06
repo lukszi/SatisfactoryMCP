@@ -42,7 +42,7 @@ from ..spatial import geo
 from ..spatial import nodes as nodes_mod
 from ..world.state import WorldState
 from .layout import chain_depth
-from .solver.optimize import MW, Solution
+from .solver.model import MW, Solution
 from .solver.scenario import PlanRequest
 
 __all__ = [

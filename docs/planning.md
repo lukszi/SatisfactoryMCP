@@ -132,7 +132,7 @@ says so rather than implying it catches the bug.
 ### 8.2c Three gaps a planning session found
 
 **Generator burn had no name to ban.** `exclude_recipes` searches `game.recipes`, but
-generator burn and extraction are *synthesised* in `optimize.py` from building data —
+generator burn and extraction are *synthesised* in `processes.py` from building data —
 they are not recipes and have no entry in Docs.json. So `"Coal-Powered Generator on
 Coal"`, the exact string the build table prints, matched nothing. The recourse was
 deleting 20 generators by hand, which only worked because coal happened to be a leaf in

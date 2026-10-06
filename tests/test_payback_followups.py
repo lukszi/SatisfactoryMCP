@@ -9,12 +9,11 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning.readout import payback
 from satisfactory_mcp.domain.planning.solver import prices
-from satisfactory_mcp.domain.planning.solver.optimize import (
-    PAYBACK_STOPS,
+from satisfactory_mcp.domain.planning.solver.model import PAYBACK_STOPS, Scenario
+from satisfactory_mcp.domain.planning.solver.optimize import solve
+from satisfactory_mcp.domain.planning.solver.overclock import (
     POWER_GOAL_BUILD_COST_FROM_H,
-    Scenario,
     machine_mw,
-    solve,
 )
 from satisfactory_mcp.domain.planning.solver.prices import tiers_path as real_tiers_path
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario, shard_stock

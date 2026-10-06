@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 from ....core.gamedata.model import GameData
 from ...world.state import WorldState
 from ..analysis import supply
-from .optimize import Solution, free_lunch_audit, solve
+from .model import Solution
+from .optimize import free_lunch_audit, solve
 from .scenario import PlanRequest, build_scenario
 
 __all__ = ["PlanFailure", "PreparedPlan", "prepare"]

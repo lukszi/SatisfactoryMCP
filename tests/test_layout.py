@@ -14,7 +14,8 @@ from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp.core.gamedata.footprint import FOUNDATION_M, extract_footprint
 from satisfactory_mcp.domain.planning.layout import LOGISTICS_FLOOR_M, build_layout
-from satisfactory_mcp.domain.planning.solver.optimize import MW, Scenario, solve
+from satisfactory_mcp.domain.planning.solver.model import MW, Scenario
+from satisfactory_mcp.domain.planning.solver.optimize import solve
 
 pytestmark = pytest.mark.integration
 

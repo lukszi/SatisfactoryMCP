@@ -73,7 +73,8 @@ from dataclasses import dataclass, field, replace
 
 from ....core.gamedata.model import GameData
 from ...world.state import WorldState
-from ..solver.optimize import Scenario, Solution, solve
+from ..solver.model import Scenario, Solution
+from ..solver.optimize import solve
 from ..solver.scenario import build_scenario, resolve_item
 
 __all__ = [

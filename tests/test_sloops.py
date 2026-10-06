@@ -19,8 +19,9 @@ from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.readout.slice import slice_of
-from satisfactory_mcp.domain.planning.solver.optimize import build_processes, solve
+from satisfactory_mcp.domain.planning.solver.optimize import solve
 from satisfactory_mcp.domain.planning.solver.prepare import prepare
+from satisfactory_mcp.domain.planning.solver.processes import build_processes
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
 pytestmark = pytest.mark.integration

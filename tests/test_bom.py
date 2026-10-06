@@ -12,7 +12,7 @@ import pytest
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.analysis.bom import build_bom, live_processes
-from satisfactory_mcp.domain.planning.solver.optimize import Solution
+from satisfactory_mcp.domain.planning.solver.model import Solution
 from satisfactory_mcp.presenters.text.bom import render_bom
 
 pytestmark = pytest.mark.integration

@@ -10,7 +10,8 @@ from __future__ import annotations
 import pytest
 from conftest import REFERENCE_FIELD
 
-from satisfactory_mcp.domain.planning.solver.optimize import build_processes, solve
+from satisfactory_mcp.domain.planning.solver.optimize import solve
+from satisfactory_mcp.domain.planning.solver.processes import build_processes
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
 pytestmark = pytest.mark.integration
@@ -218,7 +219,7 @@ def test_a_negligible_process_is_unlisted_but_still_counted(game, state):
     0.0017/min -- one item every ten hours. Unlike a clock-mode split there is nothing to
     fold it into. Dropping the ROW is right; dropping the MACHINE is not, and doing both
     silently turned a measured "9 buildings" into 8 in compare_recipe_options."""
-    from satisfactory_mcp.domain.planning.solver import optimize as opt
+    from satisfactory_mcp.domain.planning.solver.model import NEGLIGIBLE_IPM
 
     req = build_scenario(
         game,
@@ -236,7 +237,7 @@ def test_a_negligible_process_is_unlisted_but_still_counted(game, state):
     listed = sum(p["machines"] for p in sol.processes)
     assert listed < sol.machines_total, "the omitted machine is still in the total"
     assert any("contribute under" in w for w in sol.warnings), sol.warnings
-    assert all(p["clock"] >= opt.NEGLIGIBLE_IPM / 1000 for p in sol.processes), (
+    assert all(p["clock"] >= NEGLIGIBLE_IPM / 1000 for p in sol.processes), (
         "no vanishing rows survive in the table"
     )
 

@@ -44,7 +44,9 @@ from ....core.gamedata.constants import AWESOME_SINK_MW
 from ....core.gamedata.model import GameData
 from ....core.gamedata.unlocks import granted_by_label
 from ...world.state import WorldState
-from ..solver.optimize import MW, Process, Scenario, Solution, build_processes, solve
+from ..solver.model import MW, Process, Scenario, Solution
+from ..solver.optimize import solve
+from ..solver.processes import build_processes
 from ..solver.scenario import build_scenario, resolve_item
 
 __all__ = ["Blocker", "Fix", "Loop", "Outlet", "Report", "analyse"]

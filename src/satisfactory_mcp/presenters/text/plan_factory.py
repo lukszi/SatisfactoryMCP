@@ -12,7 +12,7 @@ from ...domain.planning.readout import payback
 from ...domain.planning.readout.report import PlanFactoryReport
 from ...domain.planning.readout.slice import grid_import_mw, linear_gap_note
 from ...domain.planning.readout.summary import power_view
-from ...domain.planning.solver.optimize import MW
+from ...domain.planning.solver.model import MW
 from ...domain.world.state import WorldState
 from . import primitives as render
 

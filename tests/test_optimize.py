@@ -4,14 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from satisfactory_mcp.domain.planning.solver.optimize import (
-    MW,
-    Process,
-    Scenario,
-    build_processes,
-    free_lunch_audit,
-    solve,
-)
+from satisfactory_mcp.domain.planning.solver.model import MW, Process, Scenario
+from satisfactory_mcp.domain.planning.solver.optimize import free_lunch_audit, solve
+from satisfactory_mcp.domain.planning.solver.processes import build_processes
 
 pytestmark = pytest.mark.integration
 
@@ -52,12 +47,12 @@ def test_duplicate_process_id_is_fatal(game, monkeypatch):
     """A duplicate pid merges two columns and yields a plausible, mass-balanced,
     WRONG answer -- exactly the bug that made one miner produce both coal and
     sulfur. It must raise, not warn."""
-    import satisfactory_mcp.domain.planning.solver.optimize as opt
+    import satisfactory_mcp.domain.planning.solver.processes as processes_mod
 
     dupe = Process(pid="same", kind="recipe", label="a", rates={}, mw=0.0)
-    monkeypatch.setattr(opt, "recipe_processes", lambda sc: [dupe, dupe])
-    monkeypatch.setattr(opt, "extractor_processes", lambda sc: [])
-    monkeypatch.setattr(opt, "generator_processes", lambda sc: [])
+    monkeypatch.setattr(processes_mod, "recipe_processes", lambda sc: [dupe, dupe])
+    monkeypatch.setattr(processes_mod, "extractor_processes", lambda sc: [])
+    monkeypatch.setattr(processes_mod, "generator_processes", lambda sc: [])
     with pytest.raises(AssertionError, match="duplicate process id"):
         build_processes(Scenario(game=game, recipes=[]))
 
