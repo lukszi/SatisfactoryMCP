@@ -177,6 +177,7 @@ be traced to the axis it should move.
 | `gamedata/placements.py` | data | A placement's rotation, and the culls by owner, mesh name, arch and size |
 | `gamedata/materials.py` | data | Material-instance parameters, and the materials of a mesh's sections |
 | `gamedata/nodes.py` | data | The static resource-node table, and the oil nodes the bake stamps |
+| `gamedata/install.py` | data | The install opened once: `GameReader`, `open_game`, `missing_container` |
 | `gamedata/level/sweep.py` | data | The level sweep: foliage, water actors, landscape components |
 | `gamedata/level/landscape.py` | data | The landscape frame and its seam offsets |
 | `gamedata/level/fill_raster.py` | data | `HeightData_Test`, the interface raster that fills outside the landscape |
@@ -216,6 +217,7 @@ be traced to the axis it should move.
 | `palette/palettes/*.json` | style | One palette per style. Its digest is the file's canonical JSON. |
 | `palette/relief.py` | style | The relief styles' painter (light and dark palettes) |
 | `palette/lightparams.py` | style | What the page's shader reads from a style |
+| `palette/scene.py` | style | What a band hands a painter: `BandScene`, its water terms, crowns, optics and grid |
 | `palette/painted/ground.py` | style | The game-painted ground |
 | `palette/painted/albedo.py` | style | The paint store mixed into a ground albedo, and the bake patched over it |
 | `palette/painted/calibration.py` | style | Colour calibration: display targets taken back to ground colour |
