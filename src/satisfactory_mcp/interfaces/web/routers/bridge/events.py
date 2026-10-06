@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import cast
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from .....core.saveio import projection as proj
+from .....core.saveio.schema import SaveHeader
 from .....domain.world import pin
 from ...watch.events import KIND_ACTIVITY, KIND_PLANS, KIND_SAVE, KINDS, WatchEvent
 
@@ -62,7 +64,8 @@ async def _payload(event: WatchEvent) -> str:
     key = (event.filename, event.mtime)
     if _MEMO[0] != key:
         try:
-            _MEMO = (key, pin.remember(await asyncio.to_thread(proj.resolve_save, event.filename)))
+            header = await asyncio.to_thread(proj.resolve_save, event.filename)
+            _MEMO = (key, pin.remember(cast("SaveHeader", header)))
         except Exception:
             _MEMO = (key, None)
     return json.dumps({**body, "save_token": _MEMO[1]})

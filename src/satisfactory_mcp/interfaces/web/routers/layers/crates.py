@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....core.saveio.records import instance_leaf
+from .....core.saveio.schema import CrateRecord
 from .....domain.world.inventory import CRATE_KIND_TEXT
 from .....domain.world.state import WorldState
 from ...serial import StoredItem, contents_json, require_world, xyz_m, yaw_deg
@@ -64,7 +65,7 @@ class CratesResponse(TypedDict):
     items_total: int
 
 
-def _crate_row(st: WorldState, row: dict) -> CrateRow:
+def _crate_row(st: WorldState, row: CrateRecord) -> CrateRow:
     """One crate row, its contents resolved to display names and sent whole."""
     kind = str(row.get("kind") or "none")
     return {

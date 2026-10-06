@@ -10,6 +10,7 @@ from pydantic import Field
 from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock, shards_for_clock
 from ....core.gamedata.model import GameData
 from ....domain.progression.ladder import Rung, SchematicLadder
+from ....domain.progression.views import PhaseRequirements, PhaseRow, ShardBudget
 from ....presenters.text import primitives as render
 from .. import app
 from ..params import AsOf, Limit
@@ -100,7 +101,9 @@ def phase_requirements(
     )
 
 
-def _phase_rows(g: GameData, req: dict, stock: dict) -> tuple[list[tuple], dict]:
+def _phase_rows(
+    g: GameData, req: PhaseRequirements, stock: dict[str, float]
+) -> tuple[list[tuple], dict]:
     """One row per phase against spendable stock, and each phase's shortfall by item."""
     rows = []
     short_by_phase = {}
@@ -127,7 +130,7 @@ def _phase_rows(g: GameData, req: dict, stock: dict) -> tuple[list[tuple], dict]
     return rows, short_by_phase
 
 
-def _deliverable(target_row: dict | None, target_short: dict) -> str:
+def _deliverable(target_row: PhaseRow | None, target_short: dict) -> str:
     """Whether the target phase could be delivered now, and which kind of row says so."""
     if target_row is None:
         return ""
@@ -144,7 +147,7 @@ def _deliverable(target_row: dict | None, target_short: dict) -> str:
     return deliverable
 
 
-def _phase_notes(req: dict, paid: dict) -> list[str]:
+def _phase_notes(req: PhaseRequirements, paid: dict[str, float]) -> list[str]:
     """Which of the save's two phase records each number comes from, and how far to trust it."""
     notes = [
         (
@@ -241,7 +244,7 @@ def power_shards(
     )
 
 
-def _shard_notes(budget: dict, per_shard: float) -> list[str]:
+def _shard_notes(budget: ShardBudget, per_shard: float) -> list[str]:
     """What the shard budget rests on: the measurement, the slot count, slugs, idle slots."""
     notes = []
     if not budget["measured"]:
@@ -284,7 +287,7 @@ def _shard_notes(budget: dict, per_shard: float) -> list[str]:
     return notes
 
 
-def _shard_plan_note(budget: dict, per_shard: float, machines: int, clock: float) -> str:
+def _shard_plan_note(budget: ShardBudget, per_shard: float, machines: int, clock: float) -> str:
     """Whether ``machines`` at ``clock`` fit the free shards, the craftable ones, or neither."""
     need_each = shards_for_clock(clock, per_shard)
     need = need_each * machines

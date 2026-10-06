@@ -11,6 +11,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
+from .....core.saveio.schema import StorageRecord
 from .....domain.world.state import WorldState
 from ...serial import StoredItem, contents_json, placement_fields, require_world
 
@@ -82,7 +83,7 @@ class StorageResponse(TypedDict):
     items_total: int
 
 
-def _storage_row(st: WorldState, row: dict) -> StorageSolid | StorageFluid:
+def _storage_row(st: WorldState, row: StorageRecord) -> StorageSolid | StorageFluid:
     """One container or fluid buffer: where it stands, how big it is, and what is in it."""
     if "stored_m3" not in row:
         return {**placement_fields(st.game, row), "kind": "solid", **contents_json(st.game, row)}
