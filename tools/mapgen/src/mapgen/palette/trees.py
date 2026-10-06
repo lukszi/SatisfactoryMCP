@@ -9,10 +9,12 @@ from __future__ import annotations
 import numpy as np
 
 from mapgen.gamedata.crowns import SPRITE_M
+from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.lighting.hillshade import sun_dot
 from mapgen.palette.calibration import (
     display_to_crown,
     sampled_rgb,
+    scoped_planes,
     transfer_op,
     weighted_median,
 )
@@ -25,6 +27,7 @@ __all__ = [
     "IDENTITY_OP",
     "TARGET_GREY",
     "band_crowns",
+    "crown_calibration",
     "crown_lab",
     "crown_layer",
     "crown_ops",
@@ -162,6 +165,41 @@ def _moved_level(level, step: float, matrix, style: dict) -> np.ndarray:
     out = level.copy()
     out[..., 1:4] = np.where(cover > 0, moved * cover, 0.0)
     return out
+
+
+def crown_calibration(crowns, palette: dict, targets: dict, grid, area_weight) -> tuple:
+    """The crowns' ``(op, grey)`` transfers and what was measured: the species targets moved
+    in place first, then the canopy targets' (one op, or seven coarse planes), then one
+    map-wide op per named crown target.
+
+    ``grid`` is the scope planes' ``(shape, step cm)`` and ``area_weight(keys)`` an area
+    entry's plane on it. Each area entry's trees move by their own median's step to its
+    canopy target, the rest by theirs to the global target, as the layers do. A named target
+    takes the crowns of its own hue wherever they grow.
+    """
+    style = palette["crowns"]
+    records = crowns.records
+    shape, step = grid
+    rows = np.clip(((records["y"] - ORIGIN_Y_CM) // step).astype(np.int64), 0, shape[0] - 1)
+    cols = np.clip(((records["x"] - ORIGIN_X_CM) // step).astype(np.int64), 0, shape[1] - 1)
+    entries = [e for e in targets.get("areas", []) if "canopy" in e]
+    scopes = [(area_weight(e["areas"]), display_to_crown(palette, e["canopy"])) for e in entries]
+    if "canopy" in targets:
+        scopes.append((None, display_to_crown(palette, targets["canopy"])))
+    moved = species_targets(crowns, style, targets.get("species", {}), palette)
+    ops, measured = crown_ops(crowns, style, (rows, cols), scopes, targets["min_texels"])
+    found = {**measured, **moved}
+    default = ops[-1] if "canopy" in targets and ops[-1] is not None else IDENTITY_OP
+    scoped = [(w, op) for (w, _t), op in zip(scopes, ops, strict=True) if w is not None]
+    out = [(scoped_planes(default, [(w, op) for w, op in scoped if op is not None]), CANOPY_GREY)]
+    for name, hex_colour in targets.get("crowns", {}).items():
+        target = display_to_crown(palette, hex_colour)
+        (op,), measured = crown_ops(crowns, style, (rows, cols), [(None, target)],
+                                    targets["min_texels"], TARGET_GREY)  # fmt: skip
+        if op is not None:
+            out.append((op, TARGET_GREY))
+            found[f"crowns@{name}"] = measured["crowns@0"]
+    return out, found
 
 
 def sample_titan(titan, sheet) -> tuple | None:

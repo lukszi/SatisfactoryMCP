@@ -1,9 +1,9 @@
 """The water of the game-painted style: what is seen under each wet pixel.
 
-Beer-Lambert over the bed (section 27), each water class's own optics (section 33), the
-seabed carpet (section 32), the crowns under the surface (section 36) and the calibrated
-opaque water of an area (section 31), gated by the class it names. docs/spatial-and-map.md
-sections 31 to 33, 36 and 37.
+Beer-Lambert over the bed (section 27), the class plane and each class's own optics (section
+33), the seabed carpet (section 32), the crowns under the surface (section 36) and the
+calibrated opaque water of an area (section 31), gated by the class it names.
+docs/spatial-and-map.md sections 31 to 33, 36 and 37.
 """
 
 from __future__ import annotations
@@ -15,9 +15,16 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.carpet import COVER_NAME, TOP_NAME
-from mapgen.gamedata.waterbodies import CLASSES, OCEAN, WATER_BODIES_NAME, class_shares
+from mapgen.gamedata.waterbodies import (
+    CLASSES,
+    OCEAN,
+    WATER_BODIES_NAME,
+    class_shares,
+    classify,
+    feather_mouths,
+)
 from mapgen.palette.colour import srgb_to_linear
-from mapgen.palette.shore import optical_depth
+from mapgen.palette.shore import OCEAN_LEVEL_M, optical_depth
 from mapgen.terrain.sample import ClassMix, class_taps
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -30,6 +37,7 @@ __all__ = [
     "opaque_share",
     "paint_plane",
     "underwater",
+    "water_classes",
     "water_table",
 ]
 
@@ -54,6 +62,18 @@ def load_water_bodies(paint_dir: Path, meta: dict) -> dict | None:
     if WATER_BODIES_NAME not in meta.get("files", {}):
         return None
     return json.loads((paint_dir / WATER_BODIES_NAME).read_text(encoding="utf-8"))
+
+
+def water_classes(water, grades, bodies: dict, areas: tuple) -> tuple[np.ndarray, dict]:
+    """The class plane of the water as drawn, swamp feathered into the ocean where they meet
+    (``feather_mouths``), and what the sidecar records. ``water`` is the level plane in dm,
+    ``grades`` its quality, ``areas`` the area index grid and the names it indexes."""
+    level = np.where(water == hf.NODATA, np.nan, water / np.float32(hf.DM_PER_M))
+    wet = grades != hf.WATER_DRY
+    level = level.astype(np.float32)
+    plane, counts = classify(level, wet, bodies, areas, OCEAN_LEVEL_M)
+    counts["mouth_blend_texels"] = feather_mouths(plane, level)
+    return plane, {"source": f"paint/{WATER_BODIES_NAME}", **counts}
 
 
 def water_table(palette: dict) -> np.ndarray:

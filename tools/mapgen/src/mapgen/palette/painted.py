@@ -21,12 +21,11 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.bake import BAKE_NAME, STAMP_RING_MIN, bake_have, stamp_windows
-from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from mapgen.gamedata.frame import SPACING_CM
 from mapgen.gamedata.paint import CANOPY_NAME, CROWN_NAME, META_NAME, PIGMENT_NAME
-from mapgen.gamedata.waterbodies import CLASSES, WATER_BODIES_NAME, classify, feather_mouths
+from mapgen.gamedata.waterbodies import CLASSES
 from mapgen.palette.calibration import (
     area_ids,
-    display_to_crown,
     display_to_ground,
     display_to_linear,
     layer_transfer,
@@ -54,6 +53,7 @@ from mapgen.palette.optics import (
     load_carpet,
     load_water_bodies,
     underwater,
+    water_classes,
     water_table,
 )
 from mapgen.palette.optics import paint_plane as _plane
@@ -68,14 +68,10 @@ from mapgen.palette.surfaces import (
     sunk_specks,
 )
 from mapgen.palette.trees import (
-    CANOPY_GREY,
-    IDENTITY_OP,
-    TARGET_GREY,
     band_crowns,
-    crown_ops,
+    crown_calibration,
     over_crowns,
     sample_titan,
-    species_targets,
     titan_over,
 )
 from mapgen.terrain.crowns import load_crowns
@@ -460,16 +456,9 @@ class PaintedGround:
         elif water is None or grades is None:
             found = "the field has no water level or quality plane"
         else:
-            level = np.where(water == hf.NODATA, np.nan, water / np.float32(hf.DM_PER_M))
             biome, names = self._biome
             index = biome_grid(biome, *grades.shape)
-            wet = grades != hf.WATER_DRY
-            level = level.astype(np.float32)
-            self.water_class, counts = classify(
-                level, wet, self._bodies, (index, names), OCEAN_LEVEL_M
-            )
-            counts["mouth_blend_texels"] = feather_mouths(self.water_class, level)
-            found = {"source": f"paint/{WATER_BODIES_NAME}", **counts}
+            self.water_class, found = water_classes(water, grades, self._bodies, (index, names))
         self.source["water_classes"] = found
         return found
 
@@ -499,39 +488,12 @@ class PaintedGround:
         return {**self.source, "crowns": crowns}
 
     def _crown_ops(self, targets: dict) -> list:
-        """The crowns' ``(op, grey)`` transfers: the canopy targets' (one op, or seven coarse
-        planes), then one map-wide op per named crown target.
-
-        Each area entry's trees move by their own median's step to its canopy target, the
-        rest by theirs to the global target, as the layers do. A named target takes the
-        crowns of its own hue wherever they grow.
-        """
-        style = self.palette["crowns"]
-        records = self.crowns.records
-        step = SPACING_CM * ROCK_GRID_M
-        shape = self.coarse_index.shape
-        rows = np.clip(((records["y"] - ORIGIN_Y_CM) // step).astype(np.int64), 0, shape[0] - 1)
-        cols = np.clip(((records["x"] - ORIGIN_X_CM) // step).astype(np.int64), 0, shape[1] - 1)
-        entries = [e for e in targets.get("areas", []) if "canopy" in e]
-        scopes = [(self._area_weight(e["areas"]), display_to_crown(self.palette, e["canopy"]))
-                  for e in entries]  # fmt: skip
-        if "canopy" in targets:
-            scopes.append((None, display_to_crown(self.palette, targets["canopy"])))
-        moved = species_targets(self.crowns, style, targets.get("species", {}), self.palette)
-        ops, measured = crown_ops(self.crowns, style, (rows, cols), scopes, targets["min_texels"])
-        self.crown_measured = {**measured, **moved}
-        default = ops[-1] if "canopy" in targets and ops[-1] is not None else IDENTITY_OP
-        scoped = [(w, op) for (w, _t), op in zip(scopes, ops, strict=True) if w is not None]
-        out = [(scoped_planes(default, [(w, op) for w, op in scoped if op is not None]),
-                CANOPY_GREY)]  # fmt: skip
-        for name, hex_colour in targets.get("crowns", {}).items():
-            target = display_to_crown(self.palette, hex_colour)
-            (op,), measured = crown_ops(self.crowns, style, (rows, cols), [(None, target)],
-                                        targets["min_texels"], TARGET_GREY)  # fmt: skip
-            if op is not None:
-                out.append((op, TARGET_GREY))
-                self.crown_measured[f"crowns@{name}"] = measured["crowns@0"]
-        return out
+        """The crowns' transfers on the rock grid (``trees.crown_calibration``)."""
+        grid = (self.coarse_index.shape, SPACING_CM * ROCK_GRID_M)
+        ops, self.crown_measured = crown_calibration(
+            self.crowns, self.palette, targets, grid, self._area_weight
+        )
+        return ops
 
     def _bake(self, paint_dir, albedo, have):
         """The bake where it exists, feathered over ``have_blur_m`` into the paint mix.
