@@ -73,30 +73,50 @@ export var LASSO_ATTR = "data-lasso";
 export var FIND_ATTR = "data-find";
 export var FIND_AT_ATTR = "data-find-at";
 
+/* A popup button for a delegated listener, as markup: every attribute value and the text are
+ * escaped, because a popup is a string until Leaflet opens it. */
+export function dataButton(attrs: Record<string, string>, text: string, title: string): string {
+  var pairs = Object.keys(attrs).map(function (name) {
+    return name + '="' + esc(attrs[name]) + '"';
+  });
+  return '<button type="button" class="btn" ' + pairs.join(" ") + ' title="' + esc(title) + '">' + esc(text) + "</button>";
+}
+
+/* One capture-phase click listener for every element carrying `attr`, so a button inside a
+ * popup works without a handler of its own. */
+export function onAttributeClick(attr: string, handler: (hit: Element, event: Event) => void): void {
+  document.addEventListener(
+    "click",
+    function (event) {
+      var target = event.target as Element | null;
+      var hit = target && target.closest ? target.closest("[" + attr + "]") : null;
+      if (!hit) return;
+      event.stopPropagation();
+      event.preventDefault();
+      handler(hit, event);
+    },
+    true
+  );
+}
+
 export function traceButtons(seed: string): Markup {
-  var value = esc(seed);
   function button(dir: string, text: string, title: string): string {
-    return (
-      '<button type="button" class="btn" ' +
-      TRACE_ATTR +
-      '="' +
-      value +
-      '" ' +
-      TRACE_DIR_ATTR +
-      '="' +
-      dir +
-      '" title="' +
-      title +
-      '">' +
-      text +
-      "</button>"
-    );
+    var attrs: Record<string, string> = {};
+    attrs[TRACE_ATTR] = seed;
+    attrs[TRACE_DIR_ATTR] = dir;
+    return dataButton(attrs, text, title);
   }
   return html(
     button("up", "supply ↑", "draw what feeds this on the map") +
       " " +
       button("down", "output ↓", "draw what this feeds on the map")
   );
+}
+
+/* A popup's title row is always emitted: a null name would drop the row and leave the card
+ * without its title. */
+export function popupTitleRow(key: string, name: string | null, cls: string | null): Row {
+  return [key, name || cls || "class not recorded in this projection"];
 }
 
 export function popup(pairs: Row[]): string {

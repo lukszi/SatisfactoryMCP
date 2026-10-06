@@ -1,14 +1,6 @@
 /* The map. Reads /api, draws markers, and refetches when the game writes a save.
  *
- * Two coordinate facts drive everything below.
- *
- *   1. The API already speaks metres. Nothing here divides by 100 -- if a number looks
- *      like centimetres, the bug is server-side.
- *   2. Satisfactory is +X east and +Y SOUTH, while Leaflet's CRS.Simple is +lat north.
- *      So a point is plotted at [-y, x], and that negation lives in map.ts and nowhere else.
- *
- * And one content fact: every string that reaches a popup or a label is DATA, so popup()
- * escapes everything by default and the few rows that need markup say so with html().
+ * Coordinates (metres, plotted at [-y, x]) are map/map.ts's header.
  *
  * This file is the entry point and draws nothing. What it holds is the ORDER of two things
  * neither of which is visible from inside a module: which map events are listened for, and

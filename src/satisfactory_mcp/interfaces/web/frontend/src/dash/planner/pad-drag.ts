@@ -3,7 +3,7 @@
  * docs/planner-p5_contract.md §3 is the specification. */
 
 import { L } from "../../map/leaflet";
-import { footprintCorners, map, MAP_SQUARE_M, xy } from "../../map/map";
+import { footprintCorners, map, MAP_SQUARE_M, latLngOf } from "../../map/map";
 import { PLAN_COLOUR } from "../../map/drawn/plan-sitings";
 
 export interface Pad {
@@ -116,7 +116,7 @@ export function outsideMap(p: Pad): boolean {
 function turnAt(p: Pad): L.LatLngTuple {
   var a = (p.yaw * Math.PI) / 180;
   var r = (TURN_REACH * p.d) / 2;
-  return xy({ x_m: p.x - Math.sin(a) * r, y_m: p.y + Math.cos(a) * r });
+  return latLngOf({ x_m: p.x - Math.sin(a) * r, y_m: p.y + Math.cos(a) * r });
 }
 
 function metres(at: L.LatLng): Spot {
@@ -126,7 +126,7 @@ function metres(at: L.LatLng): Spot {
 function drawLines(p: Pad): void {
   lines.forEach(function (line, i) {
     var s = spots[i]!;
-    line.setLatLngs([xy({ x_m: p.x, y_m: p.y }), xy(s)]);
+    line.setLatLngs([latLngOf({ x_m: p.x, y_m: p.y }), latLngOf(s)]);
     line.setTooltipContent(Math.round(Math.hypot(s.x_m - p.x, s.y_m - p.y)).toLocaleString("en-GB") + " m, distance, not a route");
   });
 }
@@ -134,7 +134,7 @@ function drawLines(p: Pad): void {
 function draw(p: Pad, moveHandles: boolean): void {
   pad = p;
   if (outline) outline.setLatLngs(corners(p));
-  if (moveHandles && mover) mover.setLatLng(xy({ x_m: p.x, y_m: p.y }));
+  if (moveHandles && mover) mover.setLatLng(latLngOf({ x_m: p.x, y_m: p.y }));
   if (moveHandles && turner) turner.setLatLng(turnAt(p));
   drawLines(p);
 }
@@ -207,7 +207,7 @@ function flushBurst(): void {
 }
 
 function handles(p: Pad, name: string): void {
-  mover = L.marker(xy({ x_m: p.x, y_m: p.y }), { draggable: true, keyboard: true, pane: PANE, icon: icon("move", "move the pad"), autoPan: false });
+  mover = L.marker(latLngOf({ x_m: p.x, y_m: p.y }), { draggable: true, keyboard: true, pane: PANE, icon: icon("move", "move the pad"), autoPan: false });
   turner = L.marker(turnAt(p), { draggable: true, keyboard: false, pane: PANE, icon: icon("turn", "turn the pad"), autoPan: false });
   mover.on("dragstart", function () {
     gesture = "drag";
@@ -341,9 +341,9 @@ export function crossOn(): void {
   cross.setAttribute("aria-hidden", "true");
   map.getContainer().appendChild(cross);
   placeCross();
-  map.panTo(xy({ x_m: pad.x, y_m: pad.y }), { animate: false });
+  map.panTo(latLngOf({ x_m: pad.x, y_m: pad.y }), { animate: false });
   var centre = visibleCentre();
-  var here = map.latLngToContainerPoint(xy({ x_m: pad.x, y_m: pad.y }));
+  var here = map.latLngToContainerPoint(latLngOf({ x_m: pad.x, y_m: pad.y }));
   map.panBy(here.subtract(centre), { animate: false });
   map.on("move", follow);
   window.addEventListener("resize", placeCross);

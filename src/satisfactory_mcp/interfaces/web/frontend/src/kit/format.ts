@@ -110,6 +110,39 @@ export function timeOfDay(ts: number): string {
   return new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+/* "3× Constructor, 2× Smelter". `formatCount` defaults to the bare number, which is what most
+ * callers print today. */
+export function buildingCounts(
+  entries: { count: number; name: string }[],
+  joiner?: string,
+  limit?: number,
+  formatCount?: (n: number) => string
+): string {
+  var shown = limit === undefined ? entries : entries.slice(0, limit);
+  return shown
+    .map(function (entry) {
+      return (formatCount ? formatCount(entry.count) : String(entry.count)) + "× " + entry.name;
+    })
+    .join(joiner === undefined ? ", " : joiner);
+}
+
+/* How many rows share each key, most first; ties keep the order the keys were first seen. */
+export function tallyBy<R>(rows: R[], key: (row: R) => string): { name: string; count: number }[] {
+  var counts = new Map<string, { name: string; count: number }>();
+  rows.forEach(function (row) {
+    var name = key(row);
+    var entry = counts.get(name);
+    if (!entry) {
+      entry = { name: name, count: 0 };
+      counts.set(name, entry);
+    }
+    entry.count += 1;
+  });
+  return Array.from(counts.values()).sort(function (a, b) {
+    return b.count - a.count;
+  });
+}
+
 export function nowSeconds(): number {
   return Date.now() / 1000;
 }

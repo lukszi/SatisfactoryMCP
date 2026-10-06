@@ -9,6 +9,7 @@
  */
 
 import type { paths } from "./schema";
+import { createListeners } from "../app/listeners";
 import { state } from "../app/state";
 
 /** Every path the server serves, straight out of its own OpenAPI document. */
@@ -67,7 +68,7 @@ function withSelection(path: string): string {
 
 var TOKENLESS_PATHS = ["/api/summary", "/api/worlds"];
 
-var staleListeners: Array<() => void> = [];
+var staleChanged = createListeners();
 
 function withSaveToken(url: string): string {
   var bare = url.split("?")[0]!;
@@ -78,29 +79,24 @@ function withSaveToken(url: string): string {
 function setStale(on: boolean): void {
   if (state.saveMovedOn === on) return;
   state.saveMovedOn = on;
-  staleListeners.forEach(function (listener) {
-    listener();
-  });
+  staleChanged.emit();
 }
 
 export function onStale(listener: () => void): void {
-  staleListeners.push(listener);
+  staleChanged.on(listener);
 }
 
-var tokenListeners: Array<() => void> = [];
+var tokenMoved = createListeners();
 
 export function onToken(listener: () => void): void {
-  tokenListeners.push(listener);
+  tokenMoved.on(listener);
 }
 
 export function holdToken(token: string): void {
   var moved = state.saveToken !== token;
   state.saveToken = token;
   setStale(false);
-  if (moved)
-    tokenListeners.forEach(function (listener) {
-      listener();
-    });
+  if (moved) tokenMoved.emit();
 }
 
 export function dropToken(): void {

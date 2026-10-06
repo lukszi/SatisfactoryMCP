@@ -6,7 +6,7 @@
  * transpiler erases the file whole and it is in no bundle.
  */
 
-/** A point in game metres, `[x, y]`. Latitude is `-y`; see `xy` in map.ts. */
+/** A point in game metres, `[x, y]`. Latitude is `-y`; see `latLngOf` in map.ts. */
 export type PointM = [number, number];
 
 /** A point with its height, `[x, y, z]` -- what the route splines carry. */

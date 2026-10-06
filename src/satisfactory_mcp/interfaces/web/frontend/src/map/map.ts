@@ -1,9 +1,9 @@
 /* The map object, the coordinate convention, and the three panes everything is stacked in.
  *
- * The page's one coordinate rule lives here and nowhere else: Satisfactory is +X east and +Y
- * SOUTH while Leaflet is +lat north, so a point is plotted at [-y, x]. `xy` and
- * `footprintCorners` apply it and `writeHash` inverts it, which is why the fragment is
- * written here rather than beside the world picker whose selection it also carries.
+ * The page's one coordinate rule lives here and nowhere else: the API speaks metres (nothing on
+ * the page divides by 100), and Satisfactory is +X east and +Y SOUTH while Leaflet is +lat
+ * north, so a point is plotted at [-y, x]. `latLngOf`, `boundsOfBbox` and `footprintCorners`
+ * apply it, and `gameXY` and `writeHash` invert it.
  *
  * Creating the map is a SIDE EFFECT of importing this module, and the modules that decorate
  * it get their ordering from importing this one.
@@ -12,18 +12,31 @@
 import { L } from "./leaflet";
 import { BOOT, pinnedFilename, state } from "../app/state";
 
+import type { BboxM, Point3M, PointM } from "./geometry";
+
 var BOUND = 5000; // metres; the playable world is ~7 km across, so this frames it loosely.
 
 // The whole-world framing every load starts from.
 export var HOME_VIEW: { centre: L.LatLngTuple; zoom: number } = { centre: [0, 0], zoom: -3 };
 
-/** A row with game coordinates, plotted the page's one way round. See the note above. */
-export function xy(row: { x_m: number; y_m: number }): L.LatLngTuple {
-  return [-row.y_m, row.x_m];
+/** A point in game metres, plotted the page's one way round. See the note above. */
+export function latLngOf(point: { x_m: number; y_m: number } | PointM | Point3M): L.LatLngTuple {
+  return Array.isArray(point) ? [-point[1], point[0]] : [-point.y_m, point.x_m];
 }
 
-export function flyToBox(box: [number, number, number, number], options?: { maxZoom?: number; padLeft?: number }): void {
-  var bounds = L.latLngBounds([xy({ x_m: box[0], y_m: box[1] }), xy({ x_m: box[2], y_m: box[3] })]);
+/** A `[x_min, y_min, x_max, y_max]` box as Leaflet bounds, grown by `padM` metres a side. */
+export function boundsOfBbox(bbox: BboxM, padM?: number): L.LatLngBounds {
+  var pad = padM || 0;
+  return L.latLngBounds([latLngOf([bbox[0] - pad, bbox[1] - pad]), latLngOf([bbox[2] + pad, bbox[3] + pad])]);
+}
+
+/** The inverse of latLngOf: a map position as game metres. */
+export function gameXY(latlng: L.LatLng | L.LatLngLiteral): PointM {
+  return [latlng.lng, -latlng.lat];
+}
+
+export function flyToBox(box: BboxM, options?: { maxZoom?: number; padLeft?: number }): void {
+  var bounds = boundsOfBbox(box);
   var pad = overlayPad();
   if (options && options.padLeft !== undefined) pad.topLeft.x = options.padLeft;
   map.flyToBounds(bounds, {

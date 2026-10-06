@@ -12,7 +12,7 @@ import { regionLine, shortResource } from "../../kit/format";
 import { batch, control, registerSection } from "../layercontrol/control";
 import { L } from "../leaflet";
 import { BAND, layer } from "../layers";
-import { map, xy } from "../map";
+import { map, latLngOf } from "../map";
 import { declareColours } from "../palette";
 import { pinButtons } from "../../chat/pins";
 import { registerFetch } from "../../app/registry";
@@ -145,7 +145,7 @@ function paintNodes(data: NodesResponse): void {
         // Null is "no save read", which is not a claim either way; only false is LOCKED.
         var locked = n.reachable === false;
         if (locked) {
-          L.circleMarker(xy(n), {
+          L.circleMarker(latLngOf(n), {
             radius: PURITY_RADIUS[n.purity] || 4,
             color: TONED["locked casing"],
             weight: 3,
@@ -153,7 +153,7 @@ function paintNodes(data: NodesResponse): void {
             interactive: false,
           }).addTo(group);
         }
-        var dot = L.circleMarker(xy(n), {
+        var dot = L.circleMarker(latLngOf(n), {
           radius: PURITY_RADIUS[n.purity] || 4,
           color: colour,
           weight: n.occupied ? 2 : 1,
@@ -254,7 +254,7 @@ export function drawPlayer(p: SummaryResponse["player"]): void {
   // read against, which is why it sits with the biomes and the labels rather than with the
   // machines. Third of that band, under the two region rows it is a position within.
   var group = layer("player", true, PLAYER_COLOUR, [BAND.chrome, 20, "player"]);
-  L.circleMarker(xy(p as { x_m: number; y_m: number }), {
+  L.circleMarker(latLngOf(p as { x_m: number; y_m: number }), {
     radius: 7,
     color: PLAYER_COLOUR,
     weight: 2,
@@ -426,7 +426,7 @@ function paintPickups(data: CollectiblesResponse): void {
       var wanted = state.pickups.indexOf(category) >= 0;
       var group = layer(name, wanted, colour, [BAND.pickup, 0, name], pickupName(category));
       byCategory[category]!.forEach(function (r) {
-        var here = xy(r);
+        var here = latLngOf(r);
         var mark: L.Path = r.collected
           ? L.polyline(
               [

@@ -22,6 +22,15 @@ export function appendNote(parent: HTMLElement, text: string): HTMLElement {
   return line;
 }
 
+/* "<before>Settings<after>" as a note, the link being the way to the setting that hid something. */
+export function settingsLinkNote(parent: HTMLElement, before: string, after: string, tag?: "p" | "span"): HTMLElement {
+  var line = make(tag || "p", "dash-note", before);
+  line.appendChild(link("settings", "Settings"));
+  if (after) line.appendChild(document.createTextNode(after));
+  parent.appendChild(line);
+  return line;
+}
+
 export function heading(parent: HTMLElement, text: string, unit?: string): void {
   var h = make("h2", "dash-h", text);
   if (unit) h.appendChild(make("span", "dash-unit", " " + unit));
@@ -44,11 +53,18 @@ export function cell(tr: HTMLElement, content: string | number | HTMLElement, cl
   tr.appendChild(td);
 }
 
-export function checkbox(label: string, checked: boolean, change: (on: boolean) => void): HTMLLabelElement {
-  var toggle = make("label", "dash-toggle");
+export function checkbox(
+  label: string,
+  checked: boolean,
+  change: (on: boolean) => void,
+  options?: { candidate?: string; className?: string }
+): HTMLLabelElement {
+  var o = options || {};
+  var toggle = make("label", "dash-toggle" + (o.className ? " " + o.className : ""));
   var box = make("input");
   box.type = "checkbox";
   box.checked = checked;
+  if (o.candidate) box.setAttribute("data-candidate", o.candidate);
   box.onchange = function () {
     change(box.checked);
   };
@@ -154,6 +170,8 @@ export interface TableOptions<R> {
   caption?: string;
 }
 
+/* onSort usually redraws the whole view, so the clicked header is gone: the rebuilt header for
+ * the same column registers itself here and takes the focus back. */
 var pendingSortFocus: { sort: SortState; key: string } | null = null;
 var refocusTarget: HTMLElement | null = null;
 
@@ -220,6 +238,62 @@ function markSortHeaders<R>(ths: HTMLElement[], columns: Column<R>[], sort: Sort
   });
 }
 
+function headerCell<R>(column: Column<R>): HTMLTableCellElement {
+  var th = make("th", alignClass(column.align));
+  th.scope = "col";
+  if (column.title) th.title = column.title;
+  return th;
+}
+
+/* The arrow sits on the side the column aligns to, so it never pushes the label off its edge. */
+function sortableHeader<R>(column: Column<R>, sortState: SortState, onPick: () => void): HTMLTableCellElement {
+  var th = headerCell(column);
+  th.classList.add("dk-sort");
+  th.tabIndex = 0;
+  var arrow = make("span", "sort-arrow");
+  arrow.setAttribute("aria-hidden", "true");
+  if (column.align === "right") {
+    th.appendChild(arrow);
+    th.appendChild(document.createTextNode(column.label));
+  } else {
+    th.appendChild(document.createTextNode(column.label));
+    th.appendChild(arrow);
+  }
+  if (pendingSortFocus && pendingSortFocus.sort === sortState && pendingSortFocus.key === column.key) refocusTarget = th;
+  th.onclick = onPick;
+  th.onkeydown = function (event) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onPick();
+    }
+  };
+  return th;
+}
+
+function resortAndRefocus<R>(
+  th: HTMLElement,
+  column: Column<R>,
+  sortState: SortState,
+  redrawBody: () => void,
+  onSort?: () => void
+): void {
+  if (sortState.key === column.key) sortState.desc = !sortState.desc;
+  else {
+    sortState.key = column.key;
+    sortState.desc = column.align === "right";
+  }
+  redrawBody();
+  if (!onSort) return;
+  pendingSortFocus = { sort: sortState, key: column.key };
+  refocusTarget = null;
+  onSort();
+  var again = refocusTarget as HTMLElement | null;
+  pendingSortFocus = null;
+  refocusTarget = null;
+  if (again && again.isConnected) again.focus();
+  else if (th.isConnected) th.focus();
+}
+
 export function table<R>(columns: Column<R>[], rows: R[], options?: TableOptions<R>): HTMLElement {
   var o = options || {};
   var wrap = make("div", "dash-scroll");
@@ -230,54 +304,28 @@ export function table<R>(columns: Column<R>[], rows: R[], options?: TableOptions
   var tbody = make("tbody");
   var ths: HTMLElement[] = [];
   columns.forEach(function (c) {
-    var th = make("th", alignClass(c.align));
-    th.scope = "col";
-    if (c.title) th.title = c.title;
+    var sort = o.sort;
+    var th: HTMLTableCellElement;
+    if (!c.sort || !sort) {
+      th = headerCell(c);
+      th.textContent = c.label;
+    } else {
+      var sortState = sort;
+      th = sortableHeader(c, sortState, function () {
+        resortAndRefocus(
+          th,
+          c,
+          sortState,
+          function () {
+            markSortHeaders(ths, columns, sortState);
+            fillTableBody(tbody, columns, rows, o);
+          },
+          o.onSort
+        );
+      });
+    }
     ths.push(th);
     tr.appendChild(th);
-    var sort = o.sort;
-    if (!c.sort || !sort) {
-      th.textContent = c.label;
-      return;
-    }
-    var state = sort;
-    th.classList.add("dk-sort");
-    th.tabIndex = 0;
-    var arrow = make("span", "sort-arrow");
-    arrow.setAttribute("aria-hidden", "true");
-    if (c.align === "right") {
-      th.appendChild(arrow);
-      th.appendChild(document.createTextNode(c.label));
-    } else {
-      th.appendChild(document.createTextNode(c.label));
-      th.appendChild(arrow);
-    }
-    if (pendingSortFocus && pendingSortFocus.sort === state && pendingSortFocus.key === c.key) refocusTarget = th;
-    var pick = function () {
-      if (state.key === c.key) state.desc = !state.desc;
-      else {
-        state.key = c.key;
-        state.desc = c.align === "right";
-      }
-      markSortHeaders(ths, columns, state);
-      fillTableBody(tbody, columns, rows, o);
-      if (!o.onSort) return;
-      pendingSortFocus = { sort: state, key: c.key };
-      refocusTarget = null;
-      o.onSort();
-      var again = refocusTarget as HTMLElement | null;
-      pendingSortFocus = null;
-      refocusTarget = null;
-      if (again && again.isConnected) again.focus();
-      else if (th.isConnected) th.focus();
-    };
-    th.onclick = pick;
-    th.onkeydown = function (event) {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        pick();
-      }
-    };
   });
   if (o.sort) markSortHeaders(ths, columns, o.sort);
   head.appendChild(tr);
@@ -315,6 +363,21 @@ export function copyButton(value: string, text: string, options: ButtonOptions):
   b.title = options.title || "copy " + value;
   if (options.label) b.setAttribute("aria-label", options.label);
   b.setAttribute(COPY_ATTR, value);
+  return b;
+}
+
+/* A button a document-level listener handles (trace, lasso, find): it carries the data
+ * attributes and, like copyButton, no onclick of its own. */
+export function delegatedButton(text: string, attrs: Record<string, string>, options?: ButtonOptions): HTMLButtonElement {
+  var o = options || {};
+  var b = make("button", "btn" + (o.map ? " btn-map" : ""), text);
+  b.type = "button";
+  if (o.title) b.title = o.title;
+  if (o.label) b.setAttribute("aria-label", o.label);
+  b.disabled = !!o.disabled;
+  Object.keys(attrs).forEach(function (name) {
+    b.setAttribute(name, attrs[name]!);
+  });
   return b;
 }
 
@@ -395,6 +458,12 @@ export function error(parent: HTMLElement, thing: string, reason: unknown, retry
   parent.appendChild(box);
 }
 
+/* A read that has not landed: still loading, or failed and worth a retry. */
+export function pendingNotice(parent: HTMLElement, label: string, failure: unknown, failed: boolean, retry: () => void): void {
+  if (failed) error(parent, label, failure, retry);
+  else loading(parent, label);
+}
+
 export function statusChip(status: "free" | "tapped" | "locked"): HTMLElement {
   return chip(WORDS[status], status === "free" ? "ok" : "muted");
 }
@@ -441,4 +510,67 @@ export function fieldError(field: HTMLElement, message: string): void {
   field.setAttribute("aria-invalid", "true");
   field.setAttribute("aria-describedby", hint.id);
   field.parentNode.insertBefore(hint, field.nextSibling);
+}
+
+export interface InlineTextEdit {
+  value: string;
+  /** The `data-ctl` keepFocus finds the box by after a redraw. */
+  ctl: string;
+  label: string;
+  className?: string;
+  maxLength?: number;
+  /** Focus and select on the next tick: the box was just opened by a click. */
+  focusNow?: boolean;
+  /** A problem with the trimmed text, shown under the box; "" accepts it. */
+  validate?: (text: string) => string;
+  onCommit: (text: string) => void;
+  onCancel: () => void;
+  stopEscape?: boolean;
+}
+
+/* One name edited in place: Enter or leaving the box commits, Escape reverts. `settled` keeps
+ * the blur that follows either one from committing a second time. */
+export function inlineTextEdit(o: InlineTextEdit): HTMLInputElement {
+  var box = make("input", o.className || "dash-name");
+  box.value = box.defaultValue = o.value;
+  if (o.maxLength !== undefined) box.maxLength = o.maxLength;
+  box.setAttribute("data-ctl", o.ctl);
+  box.setAttribute("aria-label", o.label);
+  var settled = false;
+  var commit = function () {
+    if (settled) return;
+    var text = box.value.trim();
+    var problem = o.validate ? o.validate(text) : "";
+    if (problem) {
+      fieldError(box, problem);
+      return;
+    }
+    settled = true;
+    box.defaultValue = box.value;
+    o.onCommit(text);
+  };
+  box.onkeydown = function (event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commit();
+    } else if (event.key === "Escape") {
+      if (o.stopEscape) event.stopPropagation();
+      if (settled) return;
+      settled = true;
+      box.value = box.defaultValue;
+      o.onCancel();
+    }
+  };
+  box.onblur = function () {
+    setTimeout(function () {
+      if (box.isConnected) commit();
+    }, 0);
+  };
+  if (o.focusNow) {
+    setTimeout(function () {
+      box.focus();
+      box.select();
+    }, 0);
+  }
+  return box;
 }

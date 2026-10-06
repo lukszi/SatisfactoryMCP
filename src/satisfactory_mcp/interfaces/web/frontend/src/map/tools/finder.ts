@@ -8,7 +8,7 @@ import { keepFocus } from "../../kit/focus";
 import { coords, count, formatNumber, metres, perMin } from "../../kit/format";
 import { reveal } from "../labels";
 import { L } from "../leaflet";
-import { FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, xy } from "../map";
+import { FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, latLngOf } from "../map";
 import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
 import { knownNodes, pickupName } from "../drawn/markers";
 import { withQuery } from "../../app/nav";
@@ -104,7 +104,7 @@ function card(): HTMLElement {
 }
 
 function ring(at: { x_m: number; y_m: number }, seed: boolean): void {
-  L.circleMarker(xy(at), {
+  L.circleMarker(latLngOf(at), {
     radius: seed ? 11 : 7,
     color: HIGHLIGHT,
     weight: seed ? 4 : 2,
@@ -116,7 +116,7 @@ function ring(at: { x_m: number; y_m: number }, seed: boolean): void {
 }
 
 function box(b: [number, number, number, number]): void {
-  L.rectangle(L.latLngBounds([xy({ x_m: b[0], y_m: b[1] }), xy({ x_m: b[2], y_m: b[3] })]), {
+  L.rectangle(L.latLngBounds([latLngOf({ x_m: b[0], y_m: b[1] }), latLngOf({ x_m: b[2], y_m: b[3] })]), {
     color: HIGHLIGHT,
     weight: 2,
     dashArray: "6 4",
@@ -171,13 +171,13 @@ function draw(set: Shown, seed: number): L.LatLngBounds | null {
   if (set.kind === "nodes" || set.kind === "pickups" || set.kind === "sites") {
     (set.rows as { x_m: number; y_m: number }[]).forEach(function (r, i) {
       ring(r, i === seed);
-      grow(xy(r));
+      grow(latLngOf(r));
     });
   } else if (set.kind === "fields") {
     set.rows.forEach(function (f, i) {
       box(f.bbox_m);
       if (i === seed) members(f);
-      grow(L.latLngBounds([xy({ x_m: f.bbox_m[0], y_m: f.bbox_m[1] }), xy({ x_m: f.bbox_m[2], y_m: f.bbox_m[3] })]));
+      grow(L.latLngBounds([latLngOf({ x_m: f.bbox_m[0], y_m: f.bbox_m[1] }), latLngOf({ x_m: f.bbox_m[2], y_m: f.bbox_m[3] })]));
     });
   } else {
     set.rows.forEach(function (r, i) {
@@ -203,7 +203,7 @@ function flyTo(set: Shown, seed: number, bounds: L.LatLngBounds | null): void {
   }
   if (row) {
     var at = row as { x_m: number; y_m: number };
-    flyToPoint(xy(at), Math.max(map.getZoom(), POINT_ZOOM));
+    flyToPoint(latLngOf(at), Math.max(map.getZoom(), POINT_ZOOM));
     return;
   }
   if (bounds) flyPadded(bounds.pad(ALL_PAD), ALL_ZOOM, FIT_SNAP);
@@ -654,7 +654,7 @@ export function showRef(ref: string, spot?: { x_m?: number; y_m?: number; label:
   ring({ x_m: x, y_m: y }, true);
   if (!map.hasLayer(group)) group.addTo(map);
   render();
-  flyToPoint(xy({ x_m: x, y_m: y }), Math.max(map.getZoom(), POINT_ZOOM));
+  flyToPoint(latLngOf({ x_m: x, y_m: y }), Math.max(map.getZoom(), POINT_ZOOM));
 }
 
 var pending = 0;

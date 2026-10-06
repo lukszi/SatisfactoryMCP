@@ -7,7 +7,7 @@ import { code, esc, html, popup } from "../kit/dom";
 import { L } from "../map/leaflet";
 import { BAND, layer } from "../map/layers";
 import { liveStore } from "./livestore";
-import { flyToPoint, map, xy } from "../map/map";
+import { flyToPoint, map, latLngOf } from "../map/map";
 import { goToMapThen } from "../app/nav";
 import { registerFetch } from "../app/registry";
 import { state } from "../app/state";
@@ -89,7 +89,7 @@ function draw(data: PinsResponse): void {
     var spot = Math.round(p.x_m) + "," + Math.round(p.y_m);
     var below = stacked[spot] || 0;
     stacked[spot] = below + 1;
-    var tag = L.marker(xy({ x_m: p.x_m, y_m: p.y_m }), {
+    var tag = L.marker(latLngOf({ x_m: p.x_m, y_m: p.y_m }), {
       icon: L.divIcon({ className: "pin-tag" + (p.gone ? " gone" : ""), html: esc(p.n), iconSize: [28, 18], iconAnchor: [-4, 22 + below * 20] }),
       title: name,
       alt: name,
@@ -166,7 +166,7 @@ export function dropPin(pin: PinRow): void {
 
 export function showPin(pin: PinRow): void {
   if (pin.x_m === null || pin.y_m === null) return;
-  var at = xy({ x_m: pin.x_m, y_m: pin.y_m });
+  var at = latLngOf({ x_m: pin.x_m, y_m: pin.y_m });
   goToMapThen(function () {
     var group = state.layers["pins"];
     if (group && !map.hasLayer(group)) group.addTo(map);

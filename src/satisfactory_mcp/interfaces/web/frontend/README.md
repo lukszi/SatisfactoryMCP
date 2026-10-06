@@ -26,6 +26,13 @@ The artifact is never in a diff and never in a merge: what is reviewed is `src/`
 `static/` resolves by rebuild, always -- after pulling a frontend change, run
 `npm run build` again and the served page matches the sources by construction.
 
+Two details of `vite.config.ts` that its comments only point at. The banner is written into
+each chunk in `generateBundle`, after minification, rather than through `output.banner`:
+esbuild strips comments that are not legal comments, and how that pass interleaves with
+Rollup's banner hook is not something the guard test should bet on. And the output names
+carry no content hash, so a diff between two builds says what changed; the server's
+`StaticFiles` ETag does the cache busting instead.
+
 ## The dev loop
 
 `npm run dev` serves the page from source with hot module replacement and proxies `/api` to
@@ -47,6 +54,8 @@ that work; if a compression plugin is ever added here, this is the thing it will
 
 The page reads `/api` at absolute paths, so nothing has to be configured for dev versus
 production — in production it is the same origin, in dev the proxy makes it look like one.
+`SATISFACTORY_MCP_WEB` points the proxy at another server, for example a throwaway instance
+rather than the one a game session is running against.
 
 ## Layout
 

@@ -1,6 +1,8 @@
 /* Factory health and the power circuits as the last reads left them. The side panel fetches
  * both and is the only writer; every other view reads here, so none of them imports the panel. */
 
+import { createListeners } from "./listeners";
+
 import type { CircuitsResponse, FactoryHealthResponse } from "../api/shapes";
 
 export interface Vitals {
@@ -12,18 +14,16 @@ export interface Vitals {
 
 var store: Vitals = { health: null, healthError: "", circuits: null, circuitsError: "" };
 
-var listeners: Array<() => void> = [];
+var changed = createListeners();
 
 export function vitals(): Vitals {
   return store;
 }
 
 export function onVitals(listener: () => void): void {
-  listeners.push(listener);
+  changed.on(listener);
 }
 
 export function notifyVitals(): void {
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  changed.emit();
 }

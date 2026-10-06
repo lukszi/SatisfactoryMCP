@@ -26,6 +26,17 @@ export function go(dash: string, replace?: boolean): void {
   else location.hash = hashFor(dash);
 }
 
+/* The two below move the address without a hashchange: the caller redraws the view itself. */
+export function replaceDash(dash: string): void {
+  history.replaceState(null, "", hashFor(dash));
+  state.dash = dash;
+}
+
+export function pushDash(dash: string): void {
+  history.pushState(null, "", hashFor(dash));
+  state.dash = dash;
+}
+
 export function goToMapThen(action: () => void): void {
   var run = function () {
     map.invalidateSize();
