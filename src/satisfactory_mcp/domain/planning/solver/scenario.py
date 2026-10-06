@@ -97,7 +97,7 @@ class PlanRequest:
     scenario: Scenario
     selection: Selection
     #: In-scope nodes annotated with tapped/tapped_by/reachable; the diff's exact match.
-    node_rows: list[dict]
+    node_rows: list[nodes_mod.AnnotatedNode]
     plan_id: str
     #: Recipes removed by exclude_recipes, and patterns that matched nothing (§8.8).
     excluded: list[str] = field(default_factory=list)
@@ -106,7 +106,7 @@ class PlanRequest:
     export_errors: list[str] = field(default_factory=list)
     #: Every in-scope node before the reachable/tapped filters, so a missing raw is
     #: explainable (docs/planning.md §8.2a).
-    scoped_nodes: list[dict] = field(default_factory=list)
+    scoped_nodes: list[nodes_mod.AnnotatedNode] = field(default_factory=list)
     only_free_nodes: bool = False
     #: Recipe ids ``required`` put in force, after the refusals (contract §6).
     required: list[str] = field(default_factory=list)
@@ -209,7 +209,10 @@ def _supplied_caps(
 
 
 def _extractor_census(
-    game: GameData, state: WorldState, node_rows: list[dict], water_extractors: int | None
+    game: GameData,
+    state: WorldState,
+    node_rows: list[nodes_mod.AnnotatedNode],
+    water_extractors: int | None,
 ) -> dict[tuple[str, str, str], int]:
     """Nodes per ``(extractor, resource, purity)``, each tapped by the best unlocked extractor."""
     extractor_counts: dict[tuple[str, str, str], int] = {}

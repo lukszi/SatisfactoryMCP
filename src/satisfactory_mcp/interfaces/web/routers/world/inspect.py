@@ -211,7 +211,7 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
     }
 
 
-def _nearest_json(node: dict, game) -> NearestNode:
+def _nearest_json(node: spatial_nodes.MeasuredNode, game) -> NearestNode:
     return {
         **node_identity(node, game),
         "kind": node["kind"],

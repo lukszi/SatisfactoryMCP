@@ -11,8 +11,9 @@ Everything in this module is derived and exact. Fuzzy biome *names* live in
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 __all__ = [
     "CM_PER_M",
@@ -21,6 +22,7 @@ __all__ = [
     "GRID_CELL",
     "MAP_SQUARE_M",
     "Cluster",
+    "PlacedT",
     "bbox",
     "bearing_deg",
     "centroid",
@@ -32,6 +34,7 @@ __all__ = [
     "grid_cell",
     "in_direction",
     "inside",
+    "xy_of",
 ]
 
 CM_PER_M = 100.0
@@ -201,11 +204,35 @@ def diameter_m(points: Sequence[tuple[float, float]]) -> float:
     )
 
 
+#: A row placed by its ``x``, ``y`` and ``z`` keys in centimetres: a node row, or a
+#: building's point.
+PlacedT = TypeVar("PlacedT", bound=Mapping[str, object])
+
+
+def _number(member: Mapping[str, object], key: str) -> float:
+    value = member[key]
+    if not isinstance(value, int | float):
+        raise TypeError(f"{key} is {value!r}, not a number")
+    return value
+
+
+def _word(member: Mapping[str, object], key: str) -> str:
+    value = member[key]
+    if not isinstance(value, str):
+        raise TypeError(f"{key} is {value!r}, not a string")
+    return value
+
+
+def xy_of(member: Mapping[str, object]) -> tuple[float, float]:
+    """The ``x``, ``y`` of a placed row, in centimetres."""
+    return _number(member, "x"), _number(member, "y")
+
+
 @dataclass
-class Cluster:
+class Cluster(Generic[PlacedT]):
     """A group of nearby nodes. Named by CONTENT, never by biome."""
 
-    members: list[dict]
+    members: list[PlacedT]
 
     @property
     def size(self) -> int:
@@ -215,14 +242,14 @@ class Cluster:
     def centroid(self) -> tuple[float, float, float]:
         n = len(self.members)
         return (
-            sum(m["x"] for m in self.members) / n,
-            sum(m["y"] for m in self.members) / n,
-            sum(m["z"] for m in self.members) / n,
+            sum(_number(m, "x") for m in self.members) / n,
+            sum(_number(m, "y") for m in self.members) / n,
+            sum(_number(m, "z") for m in self.members) / n,
         )
 
     @property
     def diameter_m(self) -> float:
-        return diameter_m([(m["x"], m["y"]) for m in self.members])
+        return diameter_m([xy_of(m) for m in self.members])
 
     @property
     def grid_cell(self) -> str:
@@ -236,22 +263,24 @@ class Cluster:
         cluster merges 6 well satellites with a plain node 85 m away, and reading 'well' off
         the first understates that field by 120 m3/min.
         """
-        out: dict[str, int] = {}
-        for m in self.members:
-            out[m["kind"]] = out.get(m["kind"], 0) + 1
-        return out
+        return self._tally("kind")
 
     def purities(self) -> dict[str, int]:
+        return self._tally("purity")
+
+    def _tally(self, key: str) -> dict[str, int]:
         out: dict[str, int] = {}
         for m in self.members:
-            out[m["purity"]] = out.get(m["purity"], 0) + 1
+            word = _word(m, key)
+            out[word] = out.get(word, 0) + 1
         return out
 
 
-def cluster(nodes: list[dict], link_m: float = FIELD_LINK_M) -> list[Cluster]:
+def cluster(nodes: Sequence[PlacedT], link_m: float = FIELD_LINK_M) -> list[Cluster[PlacedT]]:
     """Single-linkage clustering on XY, by default into the fields ``FIELD_LINK_M`` joins."""
     remaining = list(nodes)
-    out: list[Cluster] = []
+    points = {id(node): xy_of(node) for node in remaining}
+    out: list[Cluster[PlacedT]] = []
     while remaining:
         seed = remaining.pop()
         group = [seed]
@@ -259,8 +288,8 @@ def cluster(nodes: list[dict], link_m: float = FIELD_LINK_M) -> list[Cluster]:
         while changed:
             changed = False
             for cand in list(remaining):
-                cp = (cand["x"], cand["y"])
-                if any(distance_m(cp, (m["x"], m["y"])) <= link_m for m in group):
+                cp = points[id(cand)]
+                if any(distance_m(cp, points[id(m)]) <= link_m for m in group):
                     group.append(cand)
                     remaining.remove(cand)
                     changed = True

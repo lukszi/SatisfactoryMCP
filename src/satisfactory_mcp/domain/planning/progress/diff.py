@@ -182,9 +182,9 @@ class _SaveIndex:
     by_extractor_class: dict[str, list[dict]]
     idle: dict[str, list[dict]]
     #: (extractor class, resource, purity) -> in-scope node rows already tapped.
-    tapped: dict[tuple[str, str, str], list[dict]]
+    tapped: dict[tuple[str | None, str, str], list[nodes_mod.AnnotatedNode]]
     #: (resource, purity) -> in-scope node rows with nothing on them.
-    free: dict[tuple[str, str], list[dict]]
+    free: dict[tuple[str, str], list[nodes_mod.AnnotatedNode]]
     #: node instanceName -> the extractor actor sitting on it.
     extractor_on: dict[str, dict]
 
@@ -235,8 +235,8 @@ def _index_save(
     # The one exact machine match available: annotate() resolved node -> extractor from
     # mExtractableResource, and the plan's extractor columns were built from these very
     # rows, so this join needs no inference at all.
-    tapped: dict[tuple[str, str, str], list[dict]] = {}
-    free: dict[tuple[str, str], list[dict]] = {}
+    tapped: dict[tuple[str | None, str, str], list[nodes_mod.AnnotatedNode]] = {}
+    free: dict[tuple[str, str], list[nodes_mod.AnnotatedNode]] = {}
     for row in request.node_rows:
         if row["kind"] != "node" or row["rate"] <= 0:
             continue
@@ -381,7 +381,7 @@ def _free_node_targets(
 ) -> list[tuple[str, float]]:
     """The ``count`` free nodes nearest the anchor to build this extractor job on."""
 
-    def metres(row: dict) -> float:
+    def metres(row: nodes_mod.AnnotatedNode) -> float:
         return geo.distance_m((row["x"], row["y"]), anchor) if anchor else 0.0
 
     free = sorted(index.free.get((job.resource, job.purity), []), key=metres)

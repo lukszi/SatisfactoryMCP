@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
 from ...spatial.nodes.selectors import split_spec
+from ...spatial.nodes.table import NodeRecord
 from ..solver.scenario import select_for
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -42,7 +43,7 @@ LEAF_CAP = 250
 NAME_CAP = 5
 
 
-def _bbox(nodes: list[dict]) -> list[float] | None:
+def _bbox(nodes: list[NodeRecord]) -> list[float] | None:
     """The box these nodes occupy, in METRES -- the form ``bbox:`` selectors take."""
     if not nodes:
         return None
@@ -51,7 +52,7 @@ def _bbox(nodes: list[dict]) -> list[float] | None:
     return [round(min(xs), 2), round(min(ys), 2), round(max(xs), 2), round(max(ys), 2)]
 
 
-def _entry(selector: str, nodes: list[dict]) -> dict:
+def _entry(selector: str, nodes: list[NodeRecord]) -> dict:
     leaves = sorted(instance_leaf(n["instance"]) for n in nodes)
     return {
         "selector": selector,

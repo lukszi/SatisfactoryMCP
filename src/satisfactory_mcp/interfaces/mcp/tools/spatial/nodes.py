@@ -11,6 +11,7 @@ from .....domain.spatial import ranking as ranking_mod
 from .....domain.spatial import regions as regions_mod
 from .....domain.spatial.nodes import search as node_search
 from .....domain.spatial.nodes.selectors import SELECTOR_HELP
+from .....domain.spatial.nodes.views import WaterSummary
 from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, Limit
@@ -172,7 +173,7 @@ def _field_table(found, window: render.Page) -> str:
     )
 
 
-def _open_water_block(water: dict) -> str:
+def _open_water_block(water: WaterSummary) -> str:
     """The water no node carries: bodies drawn from, pumps on each, the sea level."""
     level = water["sea_level_m"]
     per_pump = water["per_pump_m3_min"]
