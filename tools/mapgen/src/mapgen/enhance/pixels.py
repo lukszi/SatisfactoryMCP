@@ -41,28 +41,17 @@ __all__ = [
     "presharpen_pixels",
 ]
 
-#: The faint-detail mask, and the whole of it. ``depth`` is how far a pixel sits below the
-#: local mean of a FAINT_WINDOW box -- the map's marks are darker than what they are drawn
-#: on -- grown by FAINT_GROW so a mark's halo is covered too. Between FAINT_LO and FAINT_HI
-#: is the band the AI drops; below it there is nothing to protect and above it the AI is
-#: better than Lanczos. FAINT_FEATHER then blurs the mask so the blend has no edge.
+#: The faint-detail mask: a pixel's depth below its FAINT_WINDOW box mean, grown by
+#: FAINT_GROW. FAINT_LO to FAINT_HI is the band the model drops; FAINT_FEATHER blurs the edge.
 FAINT_WINDOW = 9
 FAINT_GROW = 3
 FAINT_LO = 3.0
 FAINT_HI = 14.0
 FAINT_FEATHER = 5
 
-#: The pre-sharpen, on the INPUT square before the model sees it: three rounds of unsharp
-#: masking blended in where the same depth statistic says there is a faint mark. The amount
-#: is a nudge that carries the weak band over the model's floor, not a sharpening pass.
-#:
-#: PRESHARPEN_HI is 10 against the repair's 14 because amplifying a mid stroke hands the
-#: model more contrast to expand: decoupling the two bands costs 0.03 of weak-stroke
-#: retention and buys back a mid retention of 1.13 against 1.07.
-#:
-#: The mask is hard rather than a ramp, then grown by one PASSIVE round -- a pixel joins
-#: only if more than three of its eight neighbours are already in, so a mark thickens and a
-#: lone speck of noise does not spread -- and PRESHARPEN_EDGE feathers the blend.
+#: The pre-sharpen of the model's input: PRESHARPEN_ROUNDS of unsharp masking where the band
+#: up to PRESHARPEN_HI is over PRESHARPEN_ON, grown where PRESHARPEN_NEIGHBOURS of the eight
+#: neighbours are in, feathered by PRESHARPEN_EDGE.
 PRESHARPEN_ROUNDS = 3
 PRESHARPEN_SIGMA = 1.0
 PRESHARPEN_AMOUNT = 0.14
@@ -71,8 +60,7 @@ PRESHARPEN_ON = 0.15
 PRESHARPEN_NEIGHBOURS = 4
 PRESHARPEN_EDGE = 0.6
 
-#: In pixels of the 4x output, and it must exceed a stroke's width there -- strokes are 4
-#: to 8 px at 4x -- or the fix blurs back the sharpening it exists to protect.
+#: In pixels of the 4x output, wider than a stroke there, or the fix blurs the sharpening.
 COLOUR_FIX_SIGMA = 6.0
 
 
@@ -90,23 +78,16 @@ class ImageModule(Protocol):
 
 
 def faint_depth(luma: NDArray[np.floating]) -> F32Grid:
-    """How far each pixel sits below its own neighbourhood, grown to cover a mark's halo.
+    """How far each pixel sits below its neighbourhood, grown over a mark's halo.
 
-    The one statistic both masks are built on. Measured on the SOURCE luma alone, so
-    everything downstream is reproducible from the input without reference to any
-    candidate's output. The map's marks are all darker than what they are drawn on, so
-    depth is positive on a mark and near zero on flat fill.
+    Both masks read it, from the source luma alone: positive on a mark, near zero on fill.
     """
     value = luma.astype(np.float32)
     return maximum_filter(uniform_filter(value, FAINT_WINDOW) - value, FAINT_GROW)
 
 
 def faint_band(depth: F32Grid, hi: float) -> F32Grid:
-    """The band from FAINT_LO to ``hi``, as feathered weights in [0, 1].
-
-    A product of two clipped ramps, box-blurred, which cannot leave the interval -- so a
-    caller can blend with it without clamping again.
-    """
+    """The band from FAINT_LO to ``hi`` as feathered weights, never outside [0, 1]."""
     weight = np.clip((hi - depth) / (hi - FAINT_LO), 0.0, 1.0)
     weight *= np.clip((depth - FAINT_LO) / FAINT_LO, 0.0, 1.0)
     return uniform_filter(weight, FAINT_FEATHER)
@@ -118,11 +99,10 @@ def faint_mask(luma: NDArray[np.floating]) -> F32Grid:
 
 
 def presharpen_mask(luma: NDArray[np.floating]) -> BoolMask:
-    """Where the input is nudged before the model sees it: a hard mask, grown passively.
+    """Where the input is nudged before the model sees it: the weak strokes only, grown once.
 
-    Stops at PRESHARPEN_HI where the repair's band stops at FAINT_HI: the repair covers
-    every stroke the model weakens, mid ones included, while this one must cover only the
-    weak ones, because a mid stroke handed more contrast is one the model expands harder.
+    The band stops at PRESHARPEN_HI, below the repair's FAINT_HI: the model expands a mid
+    stroke handed more contrast.
     """
     inside = faint_band(faint_depth(luma), PRESHARPEN_HI) > PRESHARPEN_ON
     neighbours = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], np.uint8)
@@ -133,10 +113,7 @@ def presharpen_mask(luma: NDArray[np.floating]) -> BoolMask:
 def presharpen_pixels(rgb: NDArray[np.number]) -> tuple[NDArray[np.floating], BoolMask]:
     """Unsharp the faint marks of one source square, and nothing else. Returns (rgb, mask).
 
-    A mark 4 to 10 luma below its surroundings sits under the model's response floor, and
-    no amount of repairing the output puts back a stroke that was never drawn. Amplifying
-    it by a third on the way IN carries it over, and the model then keeps about 85% of what
-    it was handed instead of 79% of a mark it half-missed. Off the mask it is the identity.
+    It lifts a mark over the model's response floor; off the mask it is the identity.
     """
     flat = np.asarray(rgb, np.float32)
     sharp = flat.copy()
@@ -158,14 +135,9 @@ def presharpen(source: Image.Image, image_mod: ImageModule) -> tuple[Image.Image
 def colour_fix_pixels(
     out_rgb: NDArray[np.number], source_rgb: NDArray[np.number], sigma: float = COLOUR_FIX_SIGMA
 ) -> F32Grid:
-    """Put the source's low frequencies back into the output, and leave the detail alone.
+    """``out - blur(out, sigma) + blur(source, sigma)``: the source's colour, the model's detail.
 
-        fixed = out - blur(out, sigma) + blur(source, sigma)
-
-    An upscaler is allowed an opinion about detail the source does not resolve, not about
-    what colour a flat fill is, and this model drifts the largest fill in a square by up to
-    a whole level of the map's own palette. Both arrays and ``sigma`` are at the OUTPUT's
-    resolution: blurring the source small and stretching it drifts half again as much.
+    Both arrays and ``sigma`` are at the output's resolution.
     """
     out = np.array(out_rgb, np.float32)
     out -= gaussian_filter(out, (sigma, sigma, 0))
@@ -193,9 +165,7 @@ def hybrid_upscale(
 ) -> tuple[Image.Image, float]:
     """The AI everywhere, Lanczos where the AI drops detail. Returns (image, coverage).
 
-    Both sides are computed from the same source square, so the only thing the mask picks
-    between is two renderings of identical pixels. It is upsampled bilinearly: a blocky
-    blend weight would print the mask's own 4 px grid into the output.
+    The mask is upsampled bilinearly: a blocky weight would print its 4 px grid.
     """
     side = source.width * scale
     weight = faint_mask(np.asarray(source, np.float32).mean(2))
