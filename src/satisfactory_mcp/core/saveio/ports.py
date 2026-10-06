@@ -1,19 +1,23 @@
 """What a connector role name says about the edge it sits on.
 
-``graph["material"]`` is one flat list holding three unrelated physical systems: conveyors
-carrying items, pipes carrying fluid, and hypertubes carrying a PLAYER and nothing else.
-Only the role names distinguish them, so a reader that walks the layer unfiltered treats a
-hypertube as a belt -- 126 of the reference world's 11,664 edges. Every consumer of that
-layer classifies here rather than keeping its own list.
+``graph["material"]`` holds conveyors, pipes and hypertubes (which carry a PLAYER) in one
+flat list that only the role names tell apart -- 126 of the reference world's 11,664 edges
+are hypertubes -- so every consumer of that layer classifies here.
 """
 
 from __future__ import annotations
 
-__all__ = ["CONVEYOR", "HYPERTUBE", "PIPE", "edge_medium", "is_hypertube_edge", "medium"]
+__all__ = [
+    "CONVEYOR",
+    "HYPERTUBE",
+    "PIPE",
+    "edge_medium",
+    "is_hypertube_edge",
+    "medium",
+    "port_direction",
+]
 
-#: What one edge carries. ``None`` is a role this vocabulary does not know, which stays in
-#: whatever layer it was found in: an unrecognised role is a gap in this table, not a
-#: hypertube.
+#: What one edge carries; an unknown role (``None``) is a gap in this table, not a hypertube.
 CONVEYOR = "conveyor"
 PIPE = "pipe"
 HYPERTUBE = "hypertube"
@@ -67,16 +71,23 @@ def medium(role: str) -> str | None:
 
 
 def edge_medium(role_a: str, role_b: str) -> str | None:
-    """What an edge carries, from its two ends. ``None`` when they disagree or neither says.
-
-    Disagreement is reported rather than resolved: a conveyor role facing a pipe role is a
-    save this vocabulary has read wrong, and picking one end would hide that.
-    """
+    """What an edge carries, from its two ends; ``None`` when neither says, or when they
+    disagree, which means this vocabulary misread the save and picking one would hide it."""
     a, b = medium(role_a), medium(role_b)
     if a is None:
         return b
     if b is None or a == b:
         return a
+    return None
+
+
+def port_direction(role: str) -> str | None:
+    """``"out"`` or ``"in"`` where the connector names its direction, else ``None``."""
+    lowered = role.lower()
+    if "output" in lowered:
+        return "out"
+    if "input" in lowered:
+        return "in"
     return None
 
 

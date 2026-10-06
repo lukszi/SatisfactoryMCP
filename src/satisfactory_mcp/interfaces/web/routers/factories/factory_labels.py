@@ -25,7 +25,7 @@ from .....domain.factories.labels import (
     NameClash,
     StaleStore,
     UnknownLabel,
-    stamp,
+    edit_stamp,
 )
 from .....domain.factories.query import build_view
 from .....domain.factories.select import SelectorError, select_machines
@@ -244,7 +244,7 @@ def factory_candidates(
         if proposal.size < min_machines:
             hidden["small"] += 1
             continue
-        verdict = fed.feeding(st, st.game, proposal.machines)
+        verdict = fed.feed_verdict(st, st.game, proposal.machines)
         if fed_only and verdict == fed.NOT_FED:
             hidden["not_fed"] += 1
             continue
@@ -287,13 +287,13 @@ def name_candidate(
     cand = candidates.describe(picked, st.graph, st.game, st.projection, "label")
     overlaps = st.labels.overlaps(picked, name)
     try:
-        label, _held, written = edits.name(
+        label, _held, written = edits.name_factory(
             st.world_id,
             session_name(st),
             name,
             cand,
             notes=notes,
-            when=stamp(st.header),
+            when=edit_stamp(st.header),
             create=True,
             expect=version,
         )
@@ -339,7 +339,7 @@ def rename_label(
         "machines": done.machines,
         "plans": done.plans,
         "plans_stuck": done.stuck,
-        "stuck_reason": done.why,
+        "stuck_reason": done.stuck_reason,
         "version": done.version,
         "stored_in": str(done.path),
     }
@@ -411,7 +411,7 @@ def amend_label(
     """Add the machines inside ``area`` or ``extra_areas`` (metres, map frame) to a label, or
     drop them from it.
 
-    The same ``plan_amend`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
+    The same ``preview_amendment`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
     """
     name, dry_run = body["name"], body.get("dry_run", False)
     if body["mode"] not in AMEND_MODES:
@@ -437,7 +437,7 @@ def amend_label(
     )
     wanted, going = (within, set()) if body["mode"] == "add" else ([], set(within))
     try:
-        plan = edits.plan_amend(st.labels, label, wanted, going, alive)
+        plan = edits.preview_amendment(st.labels, label, wanted, going, alive)
     except LabelError as exc:
         return _refused(exc)
     reply = {
@@ -462,8 +462,8 @@ def amend_label(
             label.name,
             wanted,
             going,
-            cand=cand if plan.standing else None,
-            when=stamp(st.header),
+            candidate=cand if plan.standing else None,
+            when=edit_stamp(st.header),
             expect=body["version"],
         )
     except (StaleStore, LabelError, LockTimeout) as exc:

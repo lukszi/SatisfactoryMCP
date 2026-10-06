@@ -23,10 +23,10 @@ from satisfactory_mcp.domain.world.flow import (
     REVERSE,
     UNKNOWN,
     _build,
-    _class_of,
     _solve,
     pipe_flow,
 )
+from satisfactory_mcp.domain.world.fluid_couplings import coupling_actor_class
 
 # --------------------------------------------------------------------------- unit
 
@@ -545,7 +545,7 @@ def test_water_runs_from_the_extractors_to_the_coal_plants(projection):
     classes: dict = defaultdict(set)
     actors = projection["graph"]["actors"]
     for node, _kind, actor in terminals:
-        classes[node].add(_class_of(actors[actor]))
+        classes[node].add(coupling_actor_class(actors[actor]))
 
     networks = projection["pipes"]["networks"]
     water = {i for i, n in enumerate(networks) if n.get("fluid") == "Desc_Water_C"}

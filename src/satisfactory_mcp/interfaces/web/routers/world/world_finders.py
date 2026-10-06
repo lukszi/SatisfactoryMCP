@@ -1,9 +1,10 @@
 """``/api/world/*``: the World finders -- where I am, nodes, fields, sites, regions.
 
 Each route calls the domain function its MCP tool calls
-(``surroundings.player_surroundings``, ``node_search.find_nodes``, ``node_search.rank``,
-``regions.region_rows``), so the page and the chat answer one question one way. Conduits are
-``world_conduits.py``. Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
+(``surroundings.player_surroundings``, ``node_search.find_nodes``,
+``node_search.rank_build_sites``, ``regions.region_rows``), so the page and the chat answer one
+question one way. Conduits are ``world_conduits.py``. Handler names are operation_ids (wire
+rule 1 of docs/web-wire.md).
 """
 
 from __future__ import annotations
@@ -315,7 +316,9 @@ def world_nodes(
         "nodes": (
             []
             if fields_view
-            else [_found_node(node, game, region_map, found.drifted) for node in found.rows]
+            else [
+                _found_node(node, game, region_map, found.drifted_leaf_names) for node in found.rows
+            ]
         ),
         "fields": [found_field_json(f, game) for f in found.fields] if fields_view else [],
         "count": len(found.rows),
@@ -326,7 +329,7 @@ def world_nodes(
         "water": None
         if water is None
         else {k: water[k] for k in ("bodies", "pumps", "per_pump_m3_min", "sea_level_m")},
-        "choices": node_search.choices(game),
+        "choices": node_search.filter_choices(game),
         "notes": node_search.page_notes(found, st),
         "stale": spatial_nodes.table_age(
             st.header if st else None, None, [node["instance"] for node in found.rows]
@@ -350,12 +353,14 @@ def world_sites(
     if resource_id is None:
         return error_response(f"unknown resource {resource!r}")
     st = require_world(request, save, world)
-    ranked = node_search.rank(st, game, resource_id, source, resolve_resource=_resolver(game))
+    ranked = node_search.rank_build_sites(
+        st, game, resource_id, source, resolve_resource=_resolver(game)
+    )
     if ranked.unselected:
         return error_response("no selector resolved: " + "; ".join(ranked.selection.errors))
     region_map = spatial_regions.load_regions()
     sites = [
-        _ranked_site_json(rank, node_search.site_view(scored, region_map))
+        _ranked_site_json(rank, node_search.site_row(scored, region_map))
         for rank, scored in enumerate(ranked.scored[:limit], 1)
     ]
     return {
@@ -385,7 +390,7 @@ def world_here(
     found = surroundings.player_surroundings(st, game, radius_m)
     rows = found.nodes
     instances = [node["instance"] for node in rows]
-    drifted = spatial_nodes.drifted(found.skew, instances)
+    drifted = spatial_nodes.drifted_leaf_names(found.skew, instances)
     region_map = spatial_regions.load_regions()
     stale = stale_tables(st, None, instances)
     player = found.player

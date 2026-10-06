@@ -80,9 +80,9 @@ def regions() -> Any:
     payload = {
         "grid": list(region_map.grid),
         "legend": dict(region_map.legend),
-        "cell_m": cm_to_m(region_map.cell),
-        "x0_m": cm_to_m(region_map.x0),
-        "y0_m": cm_to_m(region_map.y0),
+        "cell_m": cm_to_m(region_map.cell_cm),
+        "x0_m": cm_to_m(region_map.x0_cm),
+        "y0_m": cm_to_m(region_map.y0_cm),
         "regions": {
             name: {
                 "centroid_m": point_m(entry["centroid"]),

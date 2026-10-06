@@ -611,7 +611,7 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
   **skip** hides the row for this page session only; nothing is stored.
 - **Write.** `POST /api/labels {name, proposal, as_of, version}` resolves `proposal:N` through
   `select.select_machines`, describes the machines with `identity.describe`, and writes through
-  `edits.name`, which is what `name_factory` calls too. So the tool and the page write the same
+  `edits.name_factory`, which is what the `name_factory` tool calls too. So the tool and the page write the same
   label (pinned by `test_the_page_and_the_tool_write_the_same_label`).
   Unlike the tool, the page **refuses a name the world already holds** (409) instead of
   re-anchoring it: `put`'s substring match could otherwise silently move another label.
@@ -666,7 +666,7 @@ blocked), and a name is about what the factory is built to make.
 
 **Classes come from topology, not from rates** (decided 2026-09-27: "If it outputs them into a
 box somewhere, that is a product. If it just outputs them into a sink, it's not an output.").
-`flowgraph.ends` walks each producing machine's outputs downstream over `st.physical`, the
+`flowgraph.output_destinations` walks each producing machine's outputs downstream over `st.physical`, the
 contracted belt and pipe runs. It passes through splitters, mergers, junctions, pumps and
 valves; lifts are part of a run. It sorts where the walk ends:
 
@@ -758,7 +758,7 @@ keeping names already edited.
 
 ### 9.5 Fed or not, and the size floor
 
-`fed.feeding` answers "is this a real factory or a box somebody fills by hand". It walks
+`fed.feed_verdict` answers "is this a real factory or a box somebody fills by hand". It walks
 upstream with `trace.trace`, the walk `trace_upstream` makes (belts and pipes walked through,
 directions read from connector roles). The verdict is one of three:
 
@@ -937,7 +937,7 @@ me that graph for a detected factory".
   drag on a touch screen, adds another area to the same preview instead (`extra_areas` in the
   body; a machine inside any area counts). Switching add/remove re-checks the same areas.
 - **Same path as the tool.** The route picks the machines inside the area (`geo.inside`, an
-  even-odd test on the machine positions), then calls `edits.plan_amend`, the dry run that
+  even-odd test on the machine positions), then calls `edits.preview_amendment`, the dry run that
   `amend_factory` now uses too, and `edits.amend`, now under `LabelStore.editing` with
   `expect`. `test_the_page_and_the_tool_amend_to_the_same_label` compares the stored label
   after each path.

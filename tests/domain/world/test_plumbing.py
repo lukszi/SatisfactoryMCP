@@ -14,8 +14,8 @@ from satisfactory_mcp.domain.world import headlift
 from satisfactory_mcp.domain.world.plumbing import (
     PUMP_CLASSES,
     balance_level_m3,
-    dark_pumps,
     throttled_buffers,
+    unwired_pumps,
 )
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import factories as tool
@@ -97,7 +97,7 @@ def test_a_pump_with_no_power_edge_is_dark_and_a_valve_is_not():
         wired={"Build_PipelinePump_C_1"},
     )
     counts = {"Build_PipelinePump_C": 1, "Build_PipelinePumpMk2_C": 1, "Build_Valve_C": 1}
-    dark, unseen = dark_pumps({"building_counts": counts}, graph)
+    dark, unseen = unwired_pumps({"building_counts": counts}, graph)
     assert dark == ["Build_PipelinePumpMk2_C_2"]
     assert unseen == 0
 
@@ -107,7 +107,7 @@ def test_a_pump_the_graph_never_saw_is_counted_rather_than_called_wired():
     graph = _Graph(
         {"Build_PipelinePump_C_1": "Build_PipelinePump_C"}, wired={"Build_PipelinePump_C_1"}
     )
-    dark, unseen = dark_pumps({"building_counts": {"Build_PipelinePump_C": 3}}, graph)
+    dark, unseen = unwired_pumps({"building_counts": {"Build_PipelinePump_C": 3}}, graph)
     assert dark == []
     assert unseen == 2
 
@@ -121,7 +121,7 @@ def test_the_reference_world_has_three_throttled_buffers_and_seven_dark_pumps(ga
         ("Build_IndustrialTank_C", 74),
         ("Build_PipeStorageTank_C", 42),
     ], "worst SHARE first, so a 42 m3 small buffer is less starved than a 54 m3 industrial"
-    dark, unseen = dark_pumps(projection, build_graph(projection))
+    dark, unseen = unwired_pumps(projection, build_graph(projection))
     assert len(dark) == 7
     assert {c for c in PUMP_CLASSES if any(n.startswith(c) for n in dark)} == {
         "Build_PipelinePumpMk2_C"

@@ -351,9 +351,12 @@ def test_belt_pieces_are_grouped_into_chains_before_anything_vertical(state):
     by_chain = Counter(r.membership for r in report.runs if r.kind == "belt")
     assert by_chain["connector"] == 113
     per_piece = 0
-    index = floors._platforms(floors.foundation_tops(state.projection))[1]
+    tops = floors.foundation_tops(state.projection)
+    index = floors._index_decks(floors._bands_of(tops), tops)
     for segment in segments:
-        run = floors._classify(index, segment[2], floors.RUN_SLACK_CM)
+        run = floors._run_over_decks(
+            index, segment[2], floors.RUN_SLACK_CM, kind="belt", key=segment[0]
+        )
         per_piece += run.membership == "connector"
     assert per_piece != by_chain["connector"], (
         "grouping by chain first has to change the answer, or the rule is decoration"

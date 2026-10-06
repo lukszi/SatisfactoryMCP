@@ -7,22 +7,19 @@ import re
 from dataclasses import dataclass, field
 
 from ... import config
+from ...core.saveio.records import instance_leaf
 
 __all__ = [
     "COLLECTIBLES_FILE",
     "CollectibleTable",
     "CollectiblesUnreadable",
-    "_name_stem",
     "load_collectibles",
+    "name_stem",
+    "removed_actor_class",
 ]
 
 
-def _leaf(instance: str) -> str:
-    """The instance name without its level path."""
-    return str(instance).rsplit(".", 1)[-1]
-
-
-def _class_of_removed(leaf: str) -> str:
+def removed_actor_class(leaf: str) -> str:
     """Class of a removed actor from its instance name, for the `other` bucket only.
 
     Mirrors the sidecar's `_removed_class`, duplicated because the sidecar runs as a separate
@@ -38,21 +35,18 @@ def _class_of_removed(leaf: str) -> str:
     return "_".join(parts) or leaf
 
 
-#: A placement counter glued straight onto a blueprint name with no separator, e.g. the
-#: ``369`` of ``BP_SporeFlower369``. Only stripped after a LETTER, so ``BP_DebrisActor_02``
-#: -- where the digits are a real part of the class name -- survives intact.
+#: A placement counter glued onto a name (``BP_SporeFlower369``), stripped only after a
+#: LETTER so the real digits of ``BP_DebrisActor_02`` survive.
 _GLUED_INDEX = re.compile(r"(?<=[A-Za-z])\d+$")
 
 
-def _name_stem(leaf: str) -> str:
+def name_stem(leaf: str) -> str:
     """A label for a removed actor the map table has no row for. NOT a class.
 
-    Only the map can name a class -- ``BP_WAT133`` is a somersloop and ``BP_Crystal_C_15``
-    can be a yellow slug -- so anything derived from a name is a display string and never a
-    decision. Worth computing all the same: without it 89 spore flowers appear as 40 one-row
-    entries with the placement counter still attached.
+    Only the map can name a class -- ``BP_WAT133`` is a somersloop -- so this is a display
+    string and never a decision; without it 89 spore flowers read as 40 one-row entries.
     """
-    return _GLUED_INDEX.sub("", _class_of_removed(leaf))
+    return _GLUED_INDEX.sub("", removed_actor_class(leaf))
 
 
 @dataclass
@@ -71,10 +65,9 @@ class CollectibleTable:
 
     def __post_init__(self) -> None:
         for row in self.rows:
-            #: ``(cell, name)``, never the bare name: auto-numbered placements reuse names
-            #: across cells, while the pair is unique over all 69,364 map actors. A
-            #: name-only index would both invent matches and miss real ones.
-            self.by_key[(row["cell"], _leaf(row["instance"]))] = row
+            # ``(cell, name)``, never the bare name: auto-numbered placements reuse names
+            # across cells, while the pair is unique over all 69,364 map actors.
+            self.by_key[(row["cell"], instance_leaf(row["instance"]))] = row
             self.by_category.setdefault(row["category"], []).append(row)
 
     def __len__(self) -> int:

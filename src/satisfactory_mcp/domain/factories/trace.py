@@ -1,35 +1,10 @@
-"""Walking the material graph in the direction the stuff actually moves.
+"""Walking the material graph in the direction the stuff actually moves: what feeds THIS
+machine, which on a save mid-cutover decides what is safe to repipe.
 
-`factory_query` answers "what does this factory touch" between labelled sets. The question
-underneath it is narrower and was unanswerable: *what feeds THIS machine* -- which, on a
-live save mid-cutover, decides what you are allowed to repipe. Thirteen Oil Extractors sit
-on the Spire nodes and twenty Fuel Generators are burning; repiping the wrong extractor
-first drops several GW. The answer turns out to be **one** of the thirteen.
-
-Direction is read, not inferred
--------------------------------
-Every material edge already carries the connector role at each end -- `Output1`,
-`Input0`, `PipeInputFactory` -- and the role is what orients it. Measured on the reference
-save, of 2,300 connectors landing on a production machine:
-
-* 2,002 are `Input`/`Output` (belts) and 126 are `PipeInputFactory`/`PipeOutputFactory`.
-  **92.5% state their direction outright.**
-* 172 are the bare `FGPipeConnectionFactory`, which does not -- and every single one of
-  them is on an extractor or a generator. An extractor only ever produces and a generator
-  only ever consumes, so its own role settles the edge. The resolution is exact, not a
-  guess.
-
-A trap worth recording: asking whether BOTH ends name a direction says 0% of 11,664 edges
-are orientable, which is true and useless. The far end is nearly always a belt, and a belt
-genuinely has no direction as an object -- only the machine end does.
-
-Logistics is traversed, then named
-----------------------------------
-A trace from the generators touches 331 nodes at depth 72, almost all of it conveyor and
-pipe segments. A path through that is unreadable, so the walk passes THROUGH logistics and
-reports only machines in its table, which is the same thing `graph.query` does to find a
-factory's boundary. What it also keeps is which RUNS those nodes belonged to
-(`..world.logistics`), so the route can be named without the table growing 300 rows.
+Direction is read off the connector role at each end, then off the machine's own nature
+where the role is the bare ``FGPipeConnectionFactory``. The walk passes THROUGH logistics and
+reports only machines, keeping the conduit runs it crossed. docs/planning.md §8.5n has the
+measurements.
 """
 
 from __future__ import annotations
@@ -39,23 +14,15 @@ from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
+from ...core.saveio.records import instance_leaf
+from ..world.logistics import side_by_nature
 from .select import SelectorError, resolve_factory
 
-__all__ = ["Reached", "Trace", "feeder_records", "live_feeders", "orient", "resolve_seeds", "trace"]
+__all__ = ["Reached", "Trace", "feeder_records", "live_feeders", "resolve_seeds", "trace"]
 
-#: Hard stop on the walk. The reference save's deepest chain is 72 hops of mostly belt,
-#: so this is far above anything real -- it exists so a malformed graph cannot spin.
+#: Hard stop on the walk, far above the reference save's deepest chain of 72 hops, so a
+#: malformed graph cannot spin.
 MAX_HOPS = 500
-
-
-def orient(role: str) -> str | None:
-    """Which way material moves at this connector, or None when the name does not say."""
-    lowered = role.lower()
-    if "output" in lowered:
-        return "out"
-    if "input" in lowered:
-        return "in"
-    return None
 
 
 @dataclass
@@ -105,6 +72,16 @@ def _kind(game: GameData, cls: str) -> str | None:
     return None
 
 
+def _classes_by_leaf(state) -> dict[str, str]:
+    return {instance_leaf(r["instance"]): r.get("cls", "") for r in state.all_records()}
+
+
+def _side(role: str, cls: str, game: GameData) -> str | None:
+    """Which way material moves at a connector: its role first, then the machine's nature,
+    which settles every bare ``FGPipeConnectionFactory`` on an extractor or a generator."""
+    return ports.port_direction(role) or side_by_nature(cls, game)
+
+
 def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, set[str]], int]:
     """Directed feeds-into maps, plus how many edges stayed ambiguous.
 
@@ -113,7 +90,7 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
     """
     graph = state.projection.get("graph") or {}
     roles, actors = graph.get("roles") or [], graph.get("actors") or []
-    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state.all_records()}
+    cls_of = _classes_by_leaf(state)
 
     up: dict[str, set[str]] = {}
     down: dict[str, set[str]] = {}
@@ -123,17 +100,8 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
         if ports.is_hypertube_edge(role_a, role_b):
             continue
         a, b = actors[edge[0]], actors[edge[1]]
-        side_a, side_b = orient(role_a), orient(role_b)
-        # The connector name first; then the machine's own nature, which settles every
-        # bare FGPipeConnectionFactory on this save because they all sit on an extractor
-        # (only produces) or a generator (only consumes).
-        if side_a is None:
-            kind = _kind(game, cls_of.get(a, ""))
-            side_a = "out" if kind == "extractor" else "in" if kind == "generator" else None
-        if side_b is None:
-            kind = _kind(game, cls_of.get(b, ""))
-            side_b = "out" if kind == "extractor" else "in" if kind == "generator" else None
-
+        side_a = _side(role_a, cls_of.get(a, ""), game)
+        side_b = _side(role_b, cls_of.get(b, ""), game)
         if side_a == "out" or side_b == "in":
             pairs = [(a, b)]
         elif side_a == "in" or side_b == "out":
@@ -159,7 +127,7 @@ def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
 
     Raises ``SelectorError`` when the text is none of the three.
     """
-    records = {r["instance"].rsplit(".", 1)[-1]: r for r in state.all_records()}
+    records = {instance_leaf(r["instance"]): r for r in state.all_records()}
     what = seed.strip()
     if what.casefold().startswith("label:"):
         wanted = what[len("label:") :].strip()
@@ -169,7 +137,7 @@ def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
         seeds = [str(m) for m in machines]
         return seeds, f"factory {name!r} ({len(seeds)} machines)"
     if what.casefold().startswith("machine:") and "," not in what:
-        what = what[len("machine:") :].strip().rsplit(".", 1)[-1]
+        what = instance_leaf(what[len("machine:") :].strip())
         if what not in records:
             raise SelectorError(f"no machine called {what!r} in this save")
     if what in records:
@@ -196,7 +164,7 @@ def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Tra
     adjacency = up if direction == "up" else down
     out = Trace(direction=direction, seeds=list(seeds), ambiguous=ambiguous)
 
-    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state.all_records()}
+    cls_of = _classes_by_leaf(state)
     start = [s for s in seeds if s in cls_of or s in adjacency]
     seen: dict[str, int] = {s: 0 for s in start}
     queue: deque[str] = deque(start)
@@ -255,7 +223,7 @@ def power_at_risk(state, game: GameData, machines: list[str]) -> tuple[float, in
     downstream = trace(state, game, machines, direction="down")
     mw = 0.0
     total = running = 0
-    by_instance = {r["instance"].rsplit(".", 1)[-1]: r for r in state.all_records()}
+    by_instance = {instance_leaf(r["instance"]): r for r in state.all_records()}
     for row in downstream.reached:
         if row.kind != "generator":
             continue
@@ -280,7 +248,7 @@ def live_feeders(g, st, floor_mw: float = 1.0) -> list[tuple[str, float]]:
     extractors" is usually many safe moves and one that browns out the base.
     """
     return [
-        (f"{name} {record['instance'].rsplit('.', 1)[-1][-10:]}", mw)
+        (f"{name} {instance_leaf(record['instance'])[-10:]}", mw)
         for record, name, mw in feeder_records(g, st, floor_mw)
     ]
 
@@ -289,7 +257,7 @@ def feeder_records(g, st, floor_mw: float = 1.0) -> list[tuple[dict, str, float]
     """``live_feeders`` as (extractor record, building name, MW), largest first."""
     out: list[tuple[dict, str, float]] = []
     for record in st.projection.get("extractors", ()):
-        instance = record["instance"].rsplit(".", 1)[-1]
+        instance = instance_leaf(record["instance"])
         mw, _, running = power_at_risk(st, g, [instance])
         if running and mw >= floor_mw:
             building = g.buildings.get(record.get("cls", ""))

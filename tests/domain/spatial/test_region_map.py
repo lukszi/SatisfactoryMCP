@@ -48,7 +48,7 @@ def test_land_is_still_labelled(region_map):
 
 
 def test_void_cells_exist_but_are_a_minority(region_map):
-    total = region_map.nx * region_map.ny
+    total = region_map.column_count * region_map.row_count
     void = sum(row.count(".") for row in region_map.grid)
     assert 0 < void < total * 0.5
 
@@ -63,12 +63,12 @@ def test_every_raster_cell_lies_inside_its_regions_bbox(region_map):
     for name, info in region_map.regions.items():
         x1, y1, x2, y2 = info["bbox"]
         letter = info["letter"]
-        for j in range(region_map.ny):
-            for i in range(region_map.nx):
+        for j in range(region_map.row_count):
+            for i in range(region_map.column_count):
                 if region_map.grid[j][i] != letter:
                     continue
-                cx = region_map.x0 + (i + 0.5) * region_map.cell
-                cy = region_map.y0 + (j + 0.5) * region_map.cell
+                cx = region_map.x0_cm + (i + 0.5) * region_map.cell_cm
+                cy = region_map.y0_cm + (j + 0.5) * region_map.cell_cm
                 assert x1 <= cx <= x2 and y1 <= cy <= y2, f"{name} cell ({i},{j})"
 
 
@@ -146,7 +146,7 @@ def test_the_wiki_only_region_names_are_gone(region_map):
     """
     for name in ("Western Beaches", "Snaketree Forest", "Eastern Dune Forest"):
         assert region_map.resolve(name) is None, name
-        assert region_map.filter_nodes([], name) == []
+        assert region_map.nodes_in_region([], name) == []
 
 
 def test_oil_bearing_regions(region_map, node_table):
@@ -161,10 +161,10 @@ def test_oil_bearing_regions(region_map, node_table):
     named = {region_map.label_for_node(n).name for n in oil}
     named.discard(None)
     assert "Spire Coast" in named
-    assert len(region_map.filter_nodes(oil, "Spire Coast")) == 6
+    assert len(region_map.nodes_in_region(oil, "Spire Coast")) == 6
     # And the crude that left it is accounted for rather than merely absent.
-    assert len(region_map.filter_nodes(oil, "Rocky Desert")) == 12
-    assert len(region_map.filter_nodes(oil, "Desert Canyons")) == 1
+    assert len(region_map.nodes_in_region(oil, "Rocky Desert")) == 12
+    assert len(region_map.nodes_in_region(oil, "Desert Canyons")) == 1
 
 
 # --------------------------------------------------------- name resolution

@@ -448,13 +448,13 @@ def test_many_long_asks_stay_inside_the_budget(ctx):
 
 
 def _advisory(kind: str, subject: str, members=("M_1",)):
-    from satisfactory_mcp.domain.advice import rules
+    from satisfactory_mcp.domain.advice import advisory
 
-    return rules.Advisory(
-        key=rules.key_for(kind, "factory", subject),
+    return advisory.Advisory(
+        key=advisory.key_for(kind, "factory", subject),
         id="",
         kind=kind,
-        severity=rules.SEVERITY[kind],
+        severity=advisory.SEVERITY[kind],
         subject_kind="factory",
         subject=subject,
         text=f"3 machines in “{subject}” starve of Coal",

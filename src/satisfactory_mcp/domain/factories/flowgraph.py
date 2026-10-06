@@ -1,8 +1,9 @@
 """A machine set as recipe groups joined by items, with where each output physically goes.
 
-``ends`` walks one output downstream over the contracted belt and pipe runs; ``build`` groups
-machines by recipe, apportions nameplate rates onto the edges and classes every item as
-product, sunk, intermediate, unrouted or input. docs/frontend_vision.md §9.4 has the rules.
+``output_destinations`` walks one output downstream over the contracted belt and pipe runs;
+``build`` groups machines by recipe, apportions nameplate rates onto the edges and classes
+every item as product, sunk, intermediate, unrouted or input. docs/frontend_vision.md §9.4
+has the rules.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
+from ...core.saveio.records import actor_class
 from ..world.logistics import PhysicalGraph
 from .health import ACTIONABLE, assess
 from .query import FactoryView
@@ -26,8 +28,8 @@ __all__ = [
     "STORAGE",
     "FlowGraph",
     "build",
-    "ends",
     "node_kind",
+    "output_destinations",
 ]
 
 INSIDE, STORAGE, BUFFER, EXPORT, SINK, NOWHERE = (
@@ -48,14 +50,9 @@ FITTINGS = ("Splitter", "Merger", "Junction", "Pump", "Valve", "Attachment")
 MAX_HOPS = 400
 
 
-def _class_of(actor: str) -> str:
-    head, _, tail = actor.rpartition("_")
-    return head if tail.isdigit() else actor
-
-
 def node_kind(actor: str) -> str:
     """``sink``, ``storage`` or ``other`` for a node a run ends at, by its class name."""
-    cls = _class_of(actor)
+    cls = actor_class(actor)
     if "ResourceSink" in cls:
         return SINK
     if "Storage" in cls or "IndustrialTank" in cls:
@@ -63,7 +60,7 @@ def node_kind(actor: str) -> str:
     return "other"
 
 
-def ends(
+def output_destinations(
     physical: PhysicalGraph,
     start: str,
     medium: str,
@@ -124,7 +121,7 @@ class Group:
 
 
 @dataclass(frozen=True)
-class Edge:
+class FlowEdge:
     source: str
     target: str
     item: str
@@ -134,7 +131,7 @@ class Edge:
 @dataclass
 class FlowGraph:
     groups: dict[str, Group] = field(default_factory=dict)
-    edges: list[Edge] = field(default_factory=list)
+    edges: list[FlowEdge] = field(default_factory=list)
     #: item -> product | sunk | intermediate | unrouted | input
     roles: dict[str, str] = field(default_factory=dict)
     #: item -> the terminal kinds any of its output reaches
@@ -157,38 +154,48 @@ def _medium(game: GameData, item: str) -> str:
     return ports.PIPE if found is not None and found.is_fluid else ports.CONVEYOR
 
 
-def build(state, game: GameData, view: FactoryView) -> FlowGraph:
-    """The recipe-group graph of ``view``'s machines, with item roles and apportioned rates."""
-    out = FlowGraph()
-    inside = {row.instance for row in view.machines}
-    report = assess(view.name, sorted(inside), game, state.projection, state.graph)
+def _group_machines(out: FlowGraph, state, game: GameData, view: FactoryView) -> dict[str, str]:
+    """Fill ``out.groups`` by building and recipe; returns each machine's group key."""
+    inside = sorted(row.instance for row in view.machines)
+    report = assess(view.name, inside, game, state.projection, state.graph)
     state_of = {m.instance: m.state for m in report.machines}
     group_of: dict[str, str] = {}
     for row in view.machines:
         label = row.recipe or ", ".join(sorted(row.makes)) or ", ".join(sorted(row.uses))
         key = f"{row.building}|{label}"
-        g = out.groups.get(key)
-        if g is None:
-            g = out.groups[key] = Group(
+        group = out.groups.get(key)
+        if group is None:
+            group = out.groups[key] = Group(
                 key, game.building_name(row.building) or row.building, label
             )
-        g.machines.append(row.instance)
-        g.clocks.append(row.clock)
+        group.machines.append(row.instance)
+        group.clocks.append(row.clock)
         for item, rate in row.makes.items():
-            g.makes[item] += rate
+            group.makes[item] += rate
         for item, rate in row.uses.items():
-            g.uses[item] += rate
-        s = state_of.get(row.instance, "unmonitored")
-        g.states["blocked" if s == "blocked" else "stopped" if s in ACTIONABLE else "running"] += 1
-        g.health[s] += 1
+            group.uses[item] += rate
+        machine_state = state_of.get(row.instance, "unmonitored")
+        if machine_state == "blocked":
+            group.states["blocked"] += 1
+        else:
+            group.states["stopped" if machine_state in ACTIONABLE else "running"] += 1
+        group.health[machine_state] += 1
         group_of[row.instance] = key
-
-    for g in out.groups.values():
-        for item, rate in g.makes.items():
+    for group in out.groups.values():
+        for item, rate in group.makes.items():
             out.produced[item] = out.produced.get(item, 0.0) + rate
-        for item, rate in g.uses.items():
+        for item, rate in group.uses.items():
             out.consumed[item] = out.consumed.get(item, 0.0) + rate
+    return group_of
 
+
+def _walk_outputs(out: FlowGraph, state, game: GameData, view: FactoryView, group_of: dict):
+    """Where every group's outputs go: ``(reach, kinds, used_inside)``.
+
+    ``reach`` maps (group, item) to the groups inside that use it, ``kinds`` to the terminal
+    kinds it reaches outside; boxes walked through land in ``out.buffers``.
+    """
+    inside = {row.instance for row in view.machines}
     physical = state.physical
     reach: dict[tuple[str, str], set[str]] = defaultdict(set)
     kinds: dict[tuple[str, str], set[str]] = defaultdict(set)
@@ -198,8 +205,11 @@ def build(state, game: GameData, view: FactoryView) -> FlowGraph:
     for row in view.machines:
         for item in row.makes:
             medium = medium_cache.setdefault(item, _medium(game, item))
-            for kind, actor in ends(physical, row.instance, medium, inside, state.graph.is_machine):
-                pair = (group_of[row.instance], item)
+            pair = (group_of[row.instance], item)
+            destinations = output_destinations(
+                physical, row.instance, medium, inside, state.graph.is_machine
+            )
+            for kind, actor in destinations:
                 if kind == INSIDE:
                     used_inside.add(item)
                     target = group_of.get(actor or "")
@@ -211,30 +221,38 @@ def build(state, game: GameData, view: FactoryView) -> FlowGraph:
                     kinds[pair].add(kind)
                     terminal_actors[kind].add(actor or "")
     out.terminals = Counter({k: len(v) for k, v in terminal_actors.items()})
+    return reach, kinds, used_inside
 
+
+def _apportion(out: FlowGraph, reach: dict, kinds: dict) -> None:
+    """Share each group's demand over the groups that reach it, then its surplus over the
+    terminal kinds it reaches; an unmet demand comes ``in:`` from outside."""
     allotted: dict[tuple[str, str], float] = defaultdict(float)
-    for target, g in out.groups.items():
-        for item, demand in g.uses.items():
+    for target, group in out.groups.items():
+        for item, demand in group.uses.items():
             suppliers = [
-                p for p in out.groups if target in reach.get((p, item), ()) and p != target
+                producer
+                for producer in out.groups
+                if target in reach.get((producer, item), ()) and producer != target
             ]
-            made = sum(out.groups[p].makes[item] for p in suppliers)
-            for p in suppliers:
-                share = demand * out.groups[p].makes[item] / made if made else 0.0
-                allotted[(p, item)] += share
-                out.edges.append(Edge(p, target, item, round(share, 2)))
+            made = sum(out.groups[producer].makes[item] for producer in suppliers)
+            for producer in suppliers:
+                share = demand * out.groups[producer].makes[item] / made if made else 0.0
+                allotted[(producer, item)] += share
+                out.edges.append(FlowEdge(producer, target, item, round(share, 2)))
             if made < demand - 1e-6:
-                out.edges.append(Edge(f"in:{item}", target, item, round(demand - made, 2)))
+                out.edges.append(FlowEdge(f"in:{item}", target, item, round(demand - made, 2)))
 
-    for (p, item), reached in kinds.items():
-        surplus = out.groups[p].makes[item] - allotted[(p, item)]
+    for (producer, item), reached in kinds.items():
+        surplus = out.groups[producer].makes[item] - allotted[(producer, item)]
         each = round(surplus / len(reached), 2) if surplus > 1e-6 else None
         for kind in sorted(reached):
-            out.edges.append(Edge(p, kind, item, each))
+            out.edges.append(FlowEdge(producer, kind, item, each))
 
+
+def _item_roles(out: FlowGraph, kinds: dict, used_inside: set[str]) -> None:
     for item in set(out.produced) | set(out.consumed):
-        where = set().union(*(kinds.get((p, item), set()) for p in out.groups))
-        fed_inside = item in used_inside
+        where = set().union(*(kinds.get((producer, item), set()) for producer in out.groups))
         out.destinations[item] = where
         if item not in out.produced:
             out.roles[item] = "input"
@@ -242,8 +260,17 @@ def build(state, game: GameData, view: FactoryView) -> FlowGraph:
             out.roles[item] = "product"
         elif SINK in where:
             out.roles[item] = "sunk"
-        elif fed_inside:
+        elif item in used_inside:
             out.roles[item] = "intermediate"
         else:
             out.roles[item] = "unrouted"
+
+
+def build(state, game: GameData, view: FactoryView) -> FlowGraph:
+    """The recipe-group graph of ``view``'s machines, with item roles and apportioned rates."""
+    out = FlowGraph()
+    group_of = _group_machines(out, state, game, view)
+    reach, kinds, used_inside = _walk_outputs(out, state, game, view, group_of)
+    _apportion(out, reach, kinds)
+    _item_roles(out, kinds, used_inside)
     return out

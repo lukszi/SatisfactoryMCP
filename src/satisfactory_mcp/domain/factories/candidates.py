@@ -1,23 +1,9 @@
 """Candidate factories, from three signals that each fail alone.
 
-Measured on a 316-hour save against the player's own list of what they built:
-
-* **material components** -- 35 pieces, 19 of them fragments. Splits one Christmas
-  factory into a Tree Branch line and a Candy Cane line. Too fine.
-* **power islands** (towers removed) -- 6, one holding 476 machines. Separates
-  outposts cleanly, does not subdivide the base at all. Too coarse.
-* **spatial clustering alone** -- chains through shared infrastructure and merged an
-  oil plant 900 m from the base into it. Wrong shape.
-
-What works is the third signal the first two lack: **what a machine makes**. Steel
-(50 machines, 95 m spread) and Tier 1&2 (54 machines, 197 m) are one belt-connected
-mass topologically, but they sit 600 m apart and make different things. A grown-together
-base defeats topology; it does not defeat geometry plus recipe.
-
-So a *base* comes from power, a *line* from material, and a *cluster* from product and
-position -- and they are offered as candidates rather than as an answer. Which grouping
-is "a factory" is a naming decision, which is why labels attach to arbitrary machine
-sets rather than to any one of these.
+A *base* comes from power islands, a *line* from material components, and a *cluster* from
+what machines make and where they stand. They are offered as candidates rather than as an
+answer: which grouping is "a factory" is a naming decision, which is why labels attach to
+arbitrary machine sets. docs/save-projection.md §6.2 has the measurements.
 """
 
 from __future__ import annotations
@@ -26,13 +12,22 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData, pretty_class
+from ...core.saveio.records import instance_leaf, iter_machine_records
 from ..spatial import geo
 from .model import FactoryGraph
 
-__all__ = ["Candidate", "bases", "describe", "lines_within", "positions", "product_clusters"]
+__all__ = [
+    "Candidate",
+    "bases",
+    "describe",
+    "lines_within",
+    "machines_making",
+    "positions",
+    "product_clusters",
+    "recipes_by_machine",
+]
 
-#: Machines further apart than this were not built as one thing. 150 m comfortably
-#: contains the measured steel site (95 m) and tier 1&2 (197 m spans two sub-rows).
+#: Machines further apart than this were not built as one thing; holds the 95 m steel site.
 CLUSTER_LINK_M = 150.0
 
 #: Below this a "factory" is a stray machine or two, reported as fragments instead.
@@ -78,28 +73,42 @@ class Candidate:
 def positions(projection: dict) -> dict[str, tuple[float, float, float]]:
     """Every placed machine, extractor and generator, by instance leaf, in centimetres.
 
-    Public because a machine SET is the unit this package deals in and its position is
-    the one thing every consumer of a set eventually wants: ``describe`` needs it for a
-    centroid, the clusterer for its link distance, and the map endpoint for the box to
-    fly a label's factory to. Records with no ``pos`` are absent rather than zeroed, so
-    a caller reading ``pos[m]`` for a missing machine fails loudly instead of placing it
-    at the world centre.
+    A record with no ``pos`` is absent rather than zeroed, so a lookup of it fails loudly
+    instead of placing the machine at the world centre.
     """
     out: dict[str, tuple[float, float, float]] = {}
-    for key in ("machines", "extractors", "generators"):
-        for record in projection.get(key, ()):
-            pos = record.get("pos")
-            if pos:
-                out[record["instance"].rsplit(".", 1)[-1]] = tuple(pos)
+    for _group, leaf, record in iter_machine_records(projection):
+        pos = record.get("pos")
+        if pos:
+            out[leaf] = tuple(pos)
     return out
 
 
-def _recipes(projection: dict) -> dict[str, str]:
+def recipes_by_machine(projection: dict) -> dict[str, str]:
+    """Every manufacturer with a recipe set, by instance leaf, to its recipe id."""
     return {
-        r["instance"].rsplit(".", 1)[-1]: r["recipe"]
+        instance_leaf(r["instance"]): r["recipe"]
         for r in projection.get("machines", ())
         if r.get("recipe")
     }
+
+
+def machines_making(
+    game: GameData, projection: dict, products: list[str], within: list[str] | None = None
+) -> list[str]:
+    """Machines whose recipe makes any of ``products`` (item names, any case)."""
+    wanted = {p.casefold() for p in products}
+    scope = set(within) if within is not None else None
+    hits: list[str] = []
+    for machine, recipe_id in recipes_by_machine(projection).items():
+        if scope is not None and machine not in scope:
+            continue
+        recipe = game.recipes.get(recipe_id)
+        if recipe is None:
+            continue
+        if any(game.item_name(f.item).casefold() in wanted for f in recipe.products):
+            hits.append(machine)
+    return hits
 
 
 def describe(
@@ -111,15 +120,14 @@ def describe(
 ) -> Candidate:
     """Attach products, buildings and geometry to a set of machines."""
     pos = positions(projection)
-    rec = _recipes(projection)
+    recipe_of = recipes_by_machine(projection)
     products: Counter = Counter()
     recipes: Counter = Counter()
     buildings: Counter = Counter()
 
     for m in machines:
         buildings[graph.cls.get(m, "?")] += 1
-        rid = rec.get(m)
-        recipe = game.recipes.get(rid or "")
+        recipe = game.recipes.get(recipe_of.get(m) or "")
         if recipe is None:
             continue
         recipes[recipe.name] += 1
@@ -172,10 +180,10 @@ def _cluster(machines: list[str], pos: dict, link_m: float) -> list[list[str]]:
         changed = True
         while changed:
             changed = False
-            for cand in list(remaining):
-                if any(geo.distance_m(pos[cand][:2], pos[m][:2]) <= link_m for m in group):
-                    group.append(cand)
-                    remaining.remove(cand)
+            for candidate in list(remaining):
+                if any(geo.distance_m(pos[candidate], pos[m]) <= link_m for m in group):
+                    group.append(candidate)
+                    remaining.remove(candidate)
                     changed = True
         out.append(group)
     out.sort(key=len, reverse=True)
@@ -192,28 +200,13 @@ def product_clusters(
 ) -> list[Candidate]:
     """Machines making any of ``products``, grouped by position.
 
-    This is what recovers a factory buried inside a belt-connected base. Product
-    alone over-collects -- 17 machines make Concrete, but 15 of them sit in the steel
-    site making it for construction and only one is the player's "concrete setup".
-    Position is what separates them.
+    This is what recovers a factory buried inside a belt-connected base: product alone
+    over-collects, and position is what separates the sites (§6.2).
     """
-    pos = positions(projection)
-    rec = _recipes(projection)
-    wanted = {p.casefold() for p in products}
-    scope = set(within) if within is not None else None
-
-    hits: list[str] = []
-    for m, rid in rec.items():
-        if scope is not None and m not in scope:
-            continue
-        recipe = game.recipes.get(rid)
-        if recipe is None:
-            continue
-        if any(game.item_name(f.item).casefold() in wanted for f in recipe.products):
-            hits.append(m)
-
+    hits = machines_making(game, projection, products, within)
     return [
-        describe(group, graph, game, projection, "product") for group in _cluster(hits, pos, link_m)
+        describe(group, graph, game, projection, "product")
+        for group in _cluster(hits, positions(projection), link_m)
     ]
 
 

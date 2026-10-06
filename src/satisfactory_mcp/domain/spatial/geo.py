@@ -17,6 +17,7 @@ from dataclasses import dataclass
 __all__ = [
     "CM_PER_M",
     "DIRECTIONS",
+    "FIELD_LINK_M",
     "GRID_CELL",
     "MAP_SQUARE_M",
     "Cluster",
@@ -34,6 +35,10 @@ __all__ = [
 ]
 
 CM_PER_M = 100.0
+
+#: Single-linkage distance that recovers the real resource fields: the widest oil field
+#: spreads 288 m, far less than any gap between two fields.
+FIELD_LINK_M = 200.0
 
 #: Biome grid: 1.024 km cells, numbered from the SOUTH-WEST corner. [WIKI]
 GRID_CELL = 102_400.0
@@ -130,10 +135,10 @@ def _hemisphere(x: float, y: float, direction: str) -> bool:
     return _angle_gap(b, target) <= 90.0
 
 
-def distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
-    """Planar XY distance in metres. Z is excluded: it matters for pipe head, not for
-    proximity, where a 40 m climb is noise against a 400 m walk."""
-    return math.dist(a, b) / CM_PER_M
+def distance_m(a: Sequence[float], b: Sequence[float]) -> float:
+    """Planar XY distance in metres between two cm points; any Z is ignored. It matters for
+    pipe head, not for proximity, where a 40 m climb is noise against a 400 m walk."""
+    return math.dist(a[:2], b[:2]) / CM_PER_M
 
 
 def distance_3d_m(a: Sequence[float], b: Sequence[float]) -> float:
@@ -243,12 +248,8 @@ class Cluster:
         return out
 
 
-def cluster(nodes: list[dict], link_m: float = 200.0) -> list[Cluster]:
-    """Single-linkage clustering on XY.
-
-    200 m is the empirically right link distance: it recovers the real oil fields
-    (max within-field spread 288 m, far smaller than any between-field gap).
-    """
+def cluster(nodes: list[dict], link_m: float = FIELD_LINK_M) -> list[Cluster]:
+    """Single-linkage clustering on XY, by default into the fields ``FIELD_LINK_M`` joins."""
     remaining = list(nodes)
     out: list[Cluster] = []
     while remaining:

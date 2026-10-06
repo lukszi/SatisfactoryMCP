@@ -25,10 +25,10 @@ SAMPLE = (
 def test_the_generated_shape_matches_the_supplied_link():
     """Same zoom, same coordinate, same group, same six oil tokens. Order differs and
     that is fine -- the site takes a set."""
-    url = maplink.map_url(40351, -208857, maplink.layers_for(["Desc_LiquidOil_C"]))
+    url = maplink.calculator_map_url(40351, -208857, maplink.layers_for(["Desc_LiquidOil_C"]))
     head, _, fragment = url.partition("#")
     zoom, x, y = fragment.split("|")[0].split(";")
-    assert head == maplink.BASE
+    assert head == maplink.CALCULATOR_MAP_URL
     assert (zoom, x, y) == ("4.75", "40351", "-208857")
     assert fragment.split("|")[1] == "gameLayer"
 
@@ -40,12 +40,12 @@ def test_coordinates_are_save_centimetres_not_metres():
     """Every other tool in this MCP quotes metres. Doing the conversion anywhere but the
     caller would put a metre value 1/100th of the way across the map, near the origin,
     which looks plausible and is wrong."""
-    url = maplink.map_url(-106900, -127300)
+    url = maplink.calculator_map_url(-106900, -127300)
     assert "#4.75;-106900;-127300|" in url
 
 
 def test_a_coordinate_is_rounded_not_truncated():
-    url = maplink.map_url(-109969.6, -124184.4)
+    url = maplink.calculator_map_url(-109969.6, -124184.4)
     assert ";-109970;-124184|" in url
 
 
@@ -118,7 +118,7 @@ def test_an_unknown_resource_contributes_no_token_rather_than_a_guess():
 
 def test_the_fragment_delimiters_survive_escaping():
     """; and | are structural here; percent-encoding them would break the fragment."""
-    url = maplink.map_url(1, 2, ["oilPure", "ironNormal"])
+    url = maplink.calculator_map_url(1, 2, ["oilPure", "ironNormal"])
     assert "|gameLayer|oilPure;ironNormal" in url
     assert "%3B" not in url and "%7C" not in url
 
@@ -132,7 +132,7 @@ def test_every_target_gets_this_projects_own_map_link(game):
     for target in ("0,0", "resource:Crude Oil"):
         out = srv.show_on_map(target)
         assert "local map: " + maplink.local_base() + "#" in out, target
-        assert "public map: " + maplink.BASE + "#" in out, target
+        assert "public map: " + maplink.CALCULATOR_MAP_URL + "#" in out, target
         # The local one leads, because it is the one that knows what was built.
         assert out.index("local map:") < out.index("public map:")
 

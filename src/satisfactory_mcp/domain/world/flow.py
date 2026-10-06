@@ -15,10 +15,10 @@ no fixed direction without the RATES. On the reference save 365 of 503 pipes res
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import NamedTuple
 
 from ...core.saveio import rows as saverows
-from ...core.saveio.ports import PIPE as _PIPE
-from ...core.saveio.ports import medium as _medium
+from .fluid_couplings import coupling_actor_class, fluid_couplings, producer_consumer_classes
 
 __all__ = ["FORWARD", "REVERSE", "UNKNOWN", "pipe_flow"]
 
@@ -34,8 +34,8 @@ _JUNCTIONS = (
     "Build_PipelineJunction_Cross_C",
     "Build_PipelineJunction_T_C",
 )
-#: The bodies that also HOLD fluid, which is what ``_solve``'s guard needs and a junction is
-#: not: a tank can accept flow that nothing beyond it consumes, so it can end a route.
+#: The bodies that also HOLD fluid, which is what the conservation guard needs and a junction
+#: is not: a tank can accept flow that nothing beyond it consumes, so it can end a route.
 _STORES = (
     "Build_IndustrialTank_C",
     "Build_PipeStorageTank_C",
@@ -56,80 +56,51 @@ BASIS_NETWORK = "propagated"
 BASIS_NONE = "unresolved"
 
 
-def _class_of(short: str) -> str:
-    """``Build_OilRefinery_C_2147245036`` -> ``Build_OilRefinery_C``."""
-    head, sep, _tail = short.rpartition("_C_")
-    return head + "_C" if sep else short
+class _PipeGraph(NamedTuple):
+    """The plumbing as nodes fluid can stand at, and what joins them.
 
-
-class _Union:
-    """Union-find over ``(actorIndex, roleIndex)``, which is what a coupling joins."""
-
-    def __init__(self) -> None:
-        self._parent: dict[tuple[int, int], tuple[int, int]] = {}
-
-    def find(self, x: tuple[int, int]) -> tuple[int, int]:
-        parent = self._parent
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(self, a: tuple[int, int], b: tuple[int, int]) -> None:
-        ra, rb = self.find(a), self.find(b)
-        if ra != rb:
-            self._parent[ra] = rb
-
-
-def _build(projection: dict) -> tuple[list, list, list, dict, set]:
-    """The plumbing as (pipe edges, one-way edges, terminals, adjacency, buffer nodes).
-
-    A node is a place fluid can be: a coupling between two connectors, or a junction or
-    buffer body whose ports have been merged into one. The buffer nodes come out separately
-    because a tank holds fluid, so it can supply and it can accept, yet it PRODUCES nothing
-    and CONSUMES nothing and so can never orient a pipe.
+    ``stores`` come out separately because a tank can supply and accept, yet it PRODUCES and
+    CONSUMES nothing and so can never orient a pipe.
     """
-    graph = projection.get("graph") or {}
-    actors = list(graph.get("actors") or ())
-    roles = list(graph.get("roles") or ())
-    fluid_role = {i for i, name in enumerate(roles) if _medium(name) == _PIPE}
-    role_name = {i: name for i, name in enumerate(roles)}
 
-    joins = _Union()
-    ports_of: dict[int, set[int]] = defaultdict(set)
-    for edge in graph.get("material") or ():
-        if not isinstance(edge, (list, tuple)) or len(edge) < 4:
-            continue
-        a, b, ra, rb = edge[0], edge[1], edge[2], edge[3]
-        if ra not in fluid_role or rb not in fluid_role:
-            continue
-        joins.union((a, ra), (b, rb))
-        ports_of[a].add(ra)
-        ports_of[b].add(rb)
+    pipes: list[tuple[tuple | None, tuple | None]]
+    devices: list[tuple[tuple, tuple]]
+    terminals: list[tuple[tuple, str, int]]
+    adjacency: dict[tuple, list]
+    stores: set
 
-    for actor, ports in ports_of.items():
-        if 0 <= actor < len(actors) and _class_of(actors[actor]) in _BODIES:
-            first = min(ports)
-            for role in ports:
-                joins.union((actor, first), (actor, role))
 
+def _port_kind(name: str, cls: str, producers: set, consumers: set) -> str:
+    """``source``, ``sink`` or ``any``: the port's own typing first, then the building's."""
+    if name.startswith("PipeInputFactory"):
+        return "sink"
+    if name.startswith("PipeOutputFactory"):
+        return "source"
+    if name.startswith("ConnectionAny"):
+        return "any"
+    if cls in producers:
+        return "source"
+    if cls in consumers:
+        return "sink"
+    return "any"
+
+
+def _build(projection: dict) -> _PipeGraph:
+    """The plumbing as pipe edges, one-way edges, typed terminals and their adjacency."""
+    joins, ports_of, actors, roles = fluid_couplings(
+        projection, lambda actor: coupling_actor_class(actor) in _BODIES
+    )
+    role_name = dict(enumerate(roles))
+    role_ix = {name: i for i, name in enumerate(roles)}
     segments = list(saverows.iter_pipe_segments(projection))
     pipe_actors = {seg.actor_index for seg in segments if seg.actor_index >= 0}
-
-    # An extractor cannot consume what it pulls out of the ground and a generator cannot
-    # produce its fuel, which settles the buildings whose single port carries the generic
-    # ``FGPipeConnectionFactory`` name.
-    producers = {r.get("cls") for r in projection.get("extractors") or () if isinstance(r, dict)}
-    consumers = {r.get("cls") for r in projection.get("generators") or () if isinstance(r, dict)}
+    producers, consumers = producer_consumer_classes(projection)
 
     devices: list[tuple[tuple, tuple]] = []
     terminals: list[tuple[tuple, str, int]] = []
-
-    role_ix = {name: i for i, name in enumerate(roles)}
     stores: set = set()
     for actor, ports in ports_of.items():
-        cls = _class_of(actors[actor]) if 0 <= actor < len(actors) else ""
+        cls = coupling_actor_class(actors[actor]) if 0 <= actor < len(actors) else ""
         if actor in pipe_actors:
             continue  # emitted below, in the segments' own order
         if cls in _BODIES:
@@ -142,25 +113,12 @@ def _build(projection: dict) -> tuple[list, list, list, dict, set]:
                 devices.append((joins.find((actor, c0)), joins.find((actor, c1))))
             continue
         for role in ports:
-            name = role_name.get(role, "")
-            if name.startswith("PipeInputFactory"):
-                kind = "sink"
-            elif name.startswith("PipeOutputFactory"):
-                kind = "source"
-            elif name.startswith("ConnectionAny"):
-                kind = "any"
-            elif cls in producers:
-                kind = "source"
-            elif cls in consumers:
-                kind = "sink"
-            else:
-                kind = "any"
+            kind = _port_kind(role_name.get(role, ""), cls, producers, consumers)
             if kind != "any":
                 terminals.append((joins.find((actor, role)), kind, actor))
 
     # One entry per ROW of the table, not per row that decoded: ``/api/pipes`` joins to this
-    # list by a segment's position, so a torn row owes it a slot that says "no idea" rather
-    # than shifting every pipe after it up by one.
+    # list by a segment's position, so a torn row owes it a slot that says "no idea".
     c0, c1 = role_ix.get("PipelineConnection0"), role_ix.get("PipelineConnection1")
     pipes: list[tuple[tuple | None, tuple | None]] = [(None, None)] * saverows.pipe_segment_count(
         projection
@@ -182,7 +140,7 @@ def _build(projection: dict) -> tuple[list, list, list, dict, set]:
     for j, (n0, n1) in enumerate(devices):
         adjacency[n0].append((n1, ("device", j)))
         adjacency[n1].append((n0, ("device", j)))
-    return pipes, devices, terminals, adjacency, stores
+    return _PipeGraph(pipes, devices, terminals, adjacency, stores)
 
 
 def _reach(adjacency: dict, start, without) -> set:
@@ -199,46 +157,67 @@ def _reach(adjacency: dict, start, without) -> set:
     return seen
 
 
-def _solve(
-    pipes,
-    devices,
-    terminals,
-    adjacency,
-    stores=frozenset(),
-    *,
-    drop_actor=None,
-    cuts=True,
-    one_way=True,
-):
-    """Direction per pipe as +1 (points[0] to points[-1]), -1 (the reverse) or 0."""
-    source: dict = defaultdict(int)
-    sink: dict = defaultdict(int)
-    for node, kind, actor in terminals:
-        if actor == drop_actor:
-            continue
-        (source if kind == "source" else sink)[node] += 1
+def _settle_by_cuts(pipes, adjacency, source: dict, sink: dict) -> list[int]:
+    """Orient every pipe whose removal leaves producers alone on one side, consumers beyond."""
     total_source, total_sink = sum(source.values()), sum(sink.values())
-
     settled = [0] * len(pipes)
-    if cuts:
-        for i, (n0, n1) in enumerate(pipes):
-            if n0 is None or n1 is None or n0 == n1:
-                continue
-            near = _reach(adjacency, n0, ("pipe", i))
-            if n1 in near:
-                continue  # a cycle: both orderings are consistent, so neither is claimed
-            near_source = sum(source[n] for n in near)
-            near_sink = sum(sink[n] for n in near)
-            if near_source and not near_sink and total_sink - near_sink:
-                settled[i] = 1
-            elif near_sink and not near_source and total_source - near_source:
-                settled[i] = -1
+    for i, (n0, n1) in enumerate(pipes):
+        if n0 is None or n1 is None or n0 == n1:
+            continue
+        near = _reach(adjacency, n0, ("pipe", i))
+        if n1 in near:
+            continue  # a cycle: both orderings are consistent, so neither is claimed
+        near_source = sum(source[n] for n in near)
+        near_sink = sum(sink[n] for n in near)
+        if near_source and not near_sink and total_sink - near_sink:
+            settled[i] = 1
+        elif near_sink and not near_source and total_source - near_source:
+            settled[i] = -1
+    return settled
 
-    if not one_way:
-        devices = ()
 
-    # Conservation, to a fixpoint. At a node that is nothing but plumbing, what arrives has
-    # to leave, so a single unsettled edge among same-facing settled ones is forced.
+def _forced_edge(rows: list, settled: list[int]) -> tuple[int, bool, int] | None:
+    """The one unsettled pipe at a bare node, if what arrives there forces its direction."""
+    arriving = leaving = 0
+    open_edge = None
+    for kind, index, at_first in rows:
+        if kind == "device":
+            # The device draws fluid out of its inlet node and into its outlet node.
+            leaving += 1 if at_first else 0
+            arriving += 0 if at_first else 1
+        elif settled[index] == 0:
+            if open_edge is not None:
+                return None
+            open_edge = (index, at_first)
+        elif (settled[index] == 1) == at_first:
+            leaving += 1
+        else:
+            arriving += 1
+    if open_edge is None:
+        return None
+    index, at_first = open_edge
+    if arriving and not leaving:
+        return index, at_first, 1 if at_first else -1
+    if leaving and not arriving:
+        return index, at_first, -1 if at_first else 1
+    return None
+
+
+def _has_receiver(
+    adjacency: dict, far, index: int, wanted: dict, wanted_ports: set, stores
+) -> bool:
+    """Whether the side a pipe would send fluid to can take it: a port, a pump end or a tank.
+
+    Without this, flow is invented into a bare stub of pipe that ends in nothing.
+    """
+    beyond = _reach(adjacency, far, ("pipe", index))
+    return any(wanted[n] for n in beyond) or bool(beyond & wanted_ports) or bool(beyond & stores)
+
+
+def _settle_by_conservation(
+    settled: list[int], pipes, devices, adjacency, stores, source: dict, sink: dict
+) -> None:
+    """At a node that is nothing but plumbing what arrives has to leave; run to a fixpoint."""
     incident: dict[tuple, list] = defaultdict(list)
     for i, (n0, n1) in enumerate(pipes):
         if n0 is None or n1 is None:
@@ -257,48 +236,39 @@ def _solve(
         for node, rows in incident.items():
             if source[node] or sink[node]:
                 continue  # it has a port of its own, so nothing here is forced
-            arriving = leaving = 0
-            open_edge = None
-            for kind, index, at_first in rows:
-                if kind == "device":
-                    # The device draws fluid out of its inlet node and into its outlet node.
-                    leaving += 1 if at_first else 0
-                    arriving += 0 if at_first else 1
-                elif settled[index] == 0:
-                    if open_edge is not None:
-                        open_edge = False
-                        break
-                    open_edge = (index, at_first)
-                elif (settled[index] == 1) == at_first:
-                    leaving += 1
-                else:
-                    arriving += 1
-            if not open_edge:
+            forced = _forced_edge(rows, settled)
+            if forced is None:
                 continue
-            index, at_first = open_edge
-            if arriving and not leaving:
-                direction = 1 if at_first else -1
-            elif leaving and not arriving:
-                direction = -1 if at_first else 1
-            else:
-                continue
-            # The guard. Settling this edge says fluid crosses it, so the side it would be
-            # sent to has to hold something able to take it: a machine port, a pump's intake
-            # (it pulls at its inlet and pushes at its outlet) or a tank. Without this, flow
-            # is invented into a bare stub of pipe that ends in nothing.
+            index, at_first, direction = forced
             n0, n1 = pipes[index]
             far = n1 if at_first else n0
             outbound = (direction == 1) == at_first
             wanted, wanted_ports = (sink, inlets) if outbound else (source, outlets)
-            beyond = _reach(adjacency, far, ("pipe", index))
-            if (
-                not any(wanted[n] for n in beyond)
-                and not (beyond & wanted_ports)
-                and not (beyond & stores)
-            ):
+            if not _has_receiver(adjacency, far, index, wanted, wanted_ports, stores):
                 continue
             settled[index] = direction
             changed = True
+
+
+def _solve(
+    pipes,
+    devices,
+    terminals,
+    adjacency,
+    stores=frozenset(),
+    *,
+    cuts=True,
+    one_way=True,
+):
+    """Direction per pipe as +1 (points[0] to points[-1]), -1 (the reverse) or 0."""
+    source: dict = defaultdict(int)
+    sink: dict = defaultdict(int)
+    for node, kind, _actor in terminals:
+        (source if kind == "source" else sink)[node] += 1
+    settled = _settle_by_cuts(pipes, adjacency, source, sink) if cuts else [0] * len(pipes)
+    _settle_by_conservation(
+        settled, pipes, devices if one_way else (), adjacency, stores, source, sink
+    )
     return settled
 
 

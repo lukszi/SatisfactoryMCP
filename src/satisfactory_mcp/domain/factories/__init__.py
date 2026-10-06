@@ -1,8 +1,7 @@
 """The factory graph and everything built on it: identity, labels, selection.
 
-Kept as its own package rather than inside ``save`` because the graph is not a view of
-a save file so much as the structure the save happens to describe -- identity, health,
-layout and diff all want it, and each was re-deriving fragments of it.
+Identity, health, layout and diff all want the graph, so it is built once here rather than
+re-derived in fragments by each.
 """
 
 from .build import build_graph

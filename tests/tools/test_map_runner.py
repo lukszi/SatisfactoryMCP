@@ -39,7 +39,7 @@ def env(tmp_path, monkeypatch):
     install_fake(tools)
     monkeypatch.setattr(presets, "tools_dir", lambda: tools)
     monkeypatch.setattr(config, "game_root", lambda: tmp_path / "game")
-    monkeypatch.setattr(registry, "game_cl", lambda: 502094)
+    monkeypatch.setattr(registry, "installed_changelist", lambda: 502094)
     monkeypatch.setattr(
         presets,
         "can_generate",
@@ -213,14 +213,14 @@ def test_progress_reads_a_recorded_full_render_log():
     seen = []
     for line in lines.splitlines():
         progress.feed(line)
-        seen.append((progress.stage, round(progress.pct() or 0, 3)))
+        seen.append((progress.stage, round(progress.fraction_done() or 0, 3)))
     stages = [stage for stage, _ in seen]
     for wanted in ("sweep", "direct", "top", "draw:terrain", "cut:terrain", "draw:satellite",
                    "cut:satellite"):  # fmt: skip
         assert wanted in stages, wanted
     pcts = [pct for _, pct in seen]
     assert pcts == sorted(pcts), "progress never runs backwards"
-    assert progress.finished and progress.pct() == 1.0
+    assert progress.finished and progress.fraction_done() == 1.0
     halfway = dict(seen)["draw:terrain"]
     assert 0.4 < halfway < 0.8
     assert progress.eta(100.0) is None
@@ -238,6 +238,6 @@ def test_stage_lines_drive_progress_where_the_regexes_cannot():
     progress.feed("  pyramid z0: 256x256, 1 tiles, 0.10 MB")
     assert progress.stage == "cut:painted"
     progress.feed(mapprogress.encode_stage("cut:painted", 1.0))
-    assert progress.pct() == 1.0
+    assert progress.fraction_done() == 1.0
     assert mapprogress.decode("::stage {not json") is None
     assert mapprogress.decode(mapprogress.encode_plan([("sweep", 36)])).steps == (("sweep", 36.0),)

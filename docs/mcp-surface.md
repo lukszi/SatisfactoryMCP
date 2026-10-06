@@ -349,8 +349,8 @@ length is filtering and table-building against a domain call that already exists
 no second copy to drift from. The rule applied was: extract where logic is *duplicated* or
 *unreachable without the MCP layer*, not wherever a function is long. `search_resource_nodes`
 met the second half of that rule once the World page needed the same answer: its selection,
-status, totals and fields are `domain/spatial/nodes/search.py` now, beside `rank`, `surroundings.player_surroundings`,
-`surroundings.describe_point`, `conduits.search` and `regions.region_rows`, and each spatial tool is that
+status, totals and fields are `domain/spatial/nodes/search.py` now, beside `rank_build_sites`, `surroundings.player_surroundings`,
+`surroundings.describe_point`, `conduit_search.search` and `regions.region_rows`, and each spatial tool is that
 call plus its text (frontend_vision.md §18).
 
 ### 10.1f `search_conduits` — belts and pipes become queryable text
@@ -388,13 +388,20 @@ Decisions that took measurement:
 - **`connects` is labelled a geometric read**, and it is the one part of this tool that still
   is. Ends are attributed to the nearest placed thing whose footprint (plus port reach) covers
   them, `?` where nothing known stands there, and a `chain:`/`pipe:` ident where the run
-  simply continues into another — which is what lets a route be followed piece to piece. The
-  EXACT answer to the same question is `factory_health` and `trace_upstream`, which read the
-  save's connection records instead; since schema 20 both tables carry an actor index, so the
-  two views share these idents and can be read against each other. §6.15.
-- **Lengths follow the chords.** The points are spline control points and a bend's arc is up
-  to 16.4 m longer than its chords on one measured piece, so curved runs read slightly short
-  and the response says so instead of inventing an arc length.
+  simply continues into another — which is what lets a route be followed piece to piece.
+  Junctions, pumps and valves are in no placement table, so a pipe names one only where the
+  material graph does, as `via`. The EXACT answer to the same question is `factory_health`
+  and `trace_upstream`, which read the save's connection records instead; since schema 20
+  both tables carry an actor index, so the two views share these idents and can be read
+  against each other. §6.15.
+- **Lengths follow the drawn line.** A span whose tangents schema 15 records is integrated
+  along its own spline, and a span with none is its chord; the projection stores tangents
+  exactly where a chord would be out by a centimetre or more, so both measure the curve the
+  map draws. A chord across one measured bend was out by 16.4 m.
+- **Every distance is in metres and every coordinate in centimetres.** Coordinates stay in
+  the save's own units and every threshold is stated in the metres it is compared in, all
+  routed through `spatial.geo` (`domain/world/conduits.py` builds the runs,
+  `domain/world/conduit_search.py` answers the tool).
 - **It pages on the surface's `offset=` convention.** The truncation envelope ends "call again
   with offset=N", and a busy junction really does carry hundreds of chains — a next step the
   caller cannot take would be worse than none.

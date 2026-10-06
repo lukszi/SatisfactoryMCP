@@ -145,12 +145,12 @@ def _fill_note(near: spatial_elevation.Elevation) -> str | None:
     """Which of its two causes left ``fill_m`` null, or ``None`` when it has a value."""
     if near.fill_m is not None:
         return None
-    if len(near.ground) < spatial_elevation.MIN_GROUND_SAMPLES:
+    if len(near.ground_m) < spatial_elevation.MIN_GROUND_SAMPLES:
         return (
-            f"not enough ground samples ({len(near.ground)} of "
+            f"not enough ground samples ({len(near.ground_m)} of "
             f"{spatial_elevation.MIN_GROUND_SAMPLES} within {near.radius_m:g} m)"
         )
-    if not near.built:
+    if not near.built_m:
         return f"nothing built within {near.radius_m:g} m"
     return None
 
@@ -201,9 +201,9 @@ def _elevation_json(near: spatial_elevation.Elevation) -> Elevation:
         "terrain_note": terrain_note,
         "ground_m": _rounded(near.median(*spatial_elevation.GROUND_SOURCES)),
         "ground_spread_m": _rounded(near.spread(*spatial_elevation.GROUND_SOURCES)),
-        "ground_count": len(near.ground),
+        "ground_count": len(near.ground_m),
         "built_m": _rounded(near.median(*built_sources)) if built_sources else None,
-        "built_count": len(near.built),
+        "built_count": len(near.built_m),
         "fill_m": _rounded(near.fill_m),
         "fill_note": _fill_note(near),
         "counts": dict(near.counts),

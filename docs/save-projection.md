@@ -119,6 +119,30 @@ The **committed fixture and the current save have none** — every wired machine
 a generator stands on, which is the sharper sentence and the one the tool prints. The degree-zero
 half stands at 7 on the fixture and 8 on the current save.
 
+**`power_report` carries draw twice, because the two answer different questions.** Uptime
+is the 300 s productivity monitor, carried by **524 of 570** records on the reference save.
+`headroom_mw` (nameplate) is the *safe* figure: what is free if everything built ran at once,
+and energising a block can un-starve idle machines downstream, so it is the one not to exceed
+when nobody is watching. `measured_headroom_mw` is the *current* figure, weighted by how much
+of the factory is actually running. They are far apart: nameplate draw **6,901 MW** against a
+measured **2,389 MW**, so 649 MW of headroom nameplate against roughly **5,161 MW** actual.
+
+- A machine with no monitor is charged at full nameplate on both sides: unknown utilisation
+  must not read as idle. Paused buildings are excluded from both.
+- Generators are capacity either way, since they burn to meet demand. The exception is
+  `starved_generators`: a plant with a dry input is a number that will not appear when the
+  grid asks for it, and each is named, because knowing WHICH plant is the whole value. The
+  dry input decides and a zero uptime only corroborates — a generator load-follows, so one
+  below 1.0 with full tanks is healthy, and one with no monitor is left alone.
+- With the wire layer present, a record on no power edge is left out of both sides and counted
+  under `unwired_*`, so the ledger is the sum of the circuits. The wire is tested first: a
+  paused record on no wire is still counted there, at no MW, which is the rule `assess` lists
+  its unwired machines by.
+- Wired biomass burners count only with `biomass=true`; otherwise they are left out of
+  generation, both headrooms and the starved list, and summed under `biomass_*`, so a surface
+  can say what it left out. The HUB's built-in burner has no rating and stays under
+  `unmodellable` in both modes.
+
 ### 6.2a Foundation slabs — the fourth signal
 
 A player builds a platform, then fills it. Belts and wires cross between platforms freely
@@ -362,6 +386,17 @@ Two implementation notes that were both bugs first:
   under `issues`. Anything whose building class cannot be resolved is reported rather than
   silently contributing 0 MW — an understated draw with no explanation is worse than an
   error.
+- **Nameplate and measured are carried side by side, and their safe directions are
+  opposite.** A Foundry on Solid Steel Ingot at 150% is nameplate 1.5× its recipe rate
+  whether or not it has ever had iron; the pair is what says which. An unreadable machine
+  charged in full makes a power figure conservative but an output figure optimistic, so a
+  machine with no monitor contributes nothing to the measured flows and its nameplate rate
+  is parked in `unmonitored_*`: measured production is a floor by construction, and
+  measured + unmonitored ≤ nameplate. `unmonitored_producers` equal to `producers` means
+  the set has no *measured* production, which is not the same as none. `producing_now`
+  counts machines mid-production at the instant of the save, beside the five-minute
+  window; on a factory that has just stopped the two disagree, and the disagreement is the
+  finding.
 
 This is explicitly **not** throughput. A starved factory reports its full rate; measuring
 what actually flows needs the productivity fields, and conflating the two would make a
@@ -400,6 +435,11 @@ settle it. **Every rule below was wrong before it was measured:**
   set but points at an `FGWaterVolume` that is not a purity-table key; that one works fine.
 - **Generators keep a `FuelInventory`, not an `InputInventory`.** Without capturing it a
   starved coal plant shows no evidence either way.
+- **A starved input names what feeds it.** One `Feed` row per arriving run of the input's
+  medium: `nothing` (no run arrives) and `unfed` (a pipe arrives, and no source anywhere
+  reaches its network) are findings; `open` (the save joins the far end to no actor, a
+  feeder unknown rather than absent), `joined` (the run's direction was declined) and `fed`
+  are not.
 
 `STACK_SIZE` joins §5.6's register: Docs.json gives only the enum symbol (`SS_BIG`), so
 the numbers are game knowledge. Verified against observed buffers — Wire 500 = `SS_HUGE`,
@@ -457,8 +497,25 @@ id and position across two saves). Matching is **recall**, `|anchors ∩ candida
 Jaccard — Jaccard punishes growth, and extending a factory is the most common thing that happens to
 one. Match at ≥ 0.5, re-anchor at ≥ 0.8 with no competing label.
 
+Recall is what survives the edits a player actually makes:
+
+| edit | recall |
+|---|---|
+| moving a machine | unchanged: the id does not change |
+| adding a wing | stays 1.0: new machines are not in the denominator |
+| removing a few | dips slightly, still far above the threshold |
+| rebuilding half of it | ~0.5, flagged for confirmation rather than lost |
+
+On a confirmed match the label re-anchors to the current membership, so gradual rebuilding
+never accumulates drift.
+
 Labels attach to **arbitrary machine sets**, not to a base or a line, because a real factory is
 sometimes several components (Christmas) and sometimes part of one (steel inside the base).
+
+**A set counts as already named when a majority of it is covered** (`NAMED_SHARE`, 0.5). The
+clusterer runs over the whole world and so rediscovers every named factory, and both obvious
+rules misfire on that: "any anchor" hides a genuinely new cluster that swallowed one
+neighbouring machine, and "every anchor" re-offers a factory named all but one machine of.
 
 Persisted per world under `saveIdentifier` in `user_data_dir/labels/`, deliberately **not** under
 `cache_dir` (which `cache_prune` wipes) and **not** in the repo.
@@ -659,6 +716,15 @@ the same reasoning that makes `must build first:` a note and not an error. It fi
 when `sloops > 0`, since a plan spending none is buildable today and a standing warning
 would be noise.
 
+**Which MAM tree a node is in is read off its class id.** The trees themselves are not in
+Docs.json (the `BPD_ResearchTree_*` assets do not ship) and the save names only which trees
+are open, so `ResearchGates.TREE_PREFIXES` maps each tree to the class-id prefixes its nodes
+carry. Nine trees pair 1:1 with a prefix of their own name; the four alien-organism prefixes
+are grouped by elimination — they are the MAM nodes left once the other nine trees have
+theirs — and are `[UNVERIFIED]`. `BPD_ResearchTree_HardDrive_C` is deliberately absent: its
+nodes are `EST_Alternate` schematics won from drives, not `EST_MAM` rows, and no MAM view
+lists them. A node no prefix claims is never reported as locked.
+
 `mam_research` exposes the whole tree: status (DONE / READY / short / BLOCKED), cost,
 what you are short of, prerequisites, and a `LOCKS <capability>` marker on the rows that
 gate a feature rather than merely adding a recipe. Costs are checked against spendable
@@ -746,7 +812,7 @@ update while the merged union never falls, and the trailer list carries internal
 of the 31 saves that the vendored parser reproduces exactly. Format, overlap predicates and the
 oracle parity are in `docs/savparse-notes.md`.
 
-`WorldState.removed_actors(group=None)` groups by class-name prefix and `collected_from_world`
+`WorldState.collected_summary(group=None)` groups by class-name prefix and `collected_from_world`
 prints it. On the reference save, **889 actors over 284 cells**: flora 185, dropped_pickup 170,
 slug_blue 163, mercer_shrine 80, artifact_unsplit 65, crash_site 55, debris 51, slug_yellow 50,
 slug_purple 37, mercer_sphere 27, somersloop 6. Both the census and the per-group listing are
@@ -774,12 +840,20 @@ names spell `BP_WAT1_C` unambiguously, while the player holds **11 somersloops i
 Depot plus 4 slotted in machines** — so at least nine of the unsplit names are sloops, on the one
 game-behaviour premise that a somersloop is only ever picked up off the map.
 
-One inconsistency in `removed_actors()` is known and stated rather than hidden: `groups` is built
+One inconsistency in `collected_summary()` is known and stated rather than hidden: `groups` is built
 from `counts`, whose keys have already lost their `_C`, so the two `strict` groups can never
 match there and `groups["somersloop"]` / `groups["mercer_sphere"]` are absent on **31 of 31
-saves** even though `removed_actors("mercer_sphere")["actors"]` returns 27 entries. 65 + 6 + 27 =
+saves** even though `collected_summary("mercer_sphere")["actors"]` returns 27 entries. 65 + 6 + 27 =
 98, so nothing is lost, but the census and the listing disagree about whether the split exists.
 Details in `docs/savparse-notes.md`.
+
+**Since the map's placement table, the name rule is only the fallback, and it is measurably
+wrong with no fix.** `RemovedActors.REMOVED_GROUPS` runs only when the table is absent. Besides
+the glued counter above, the map's own actors kept the names of the actors they were copied
+from — 98 rows the map calls `BP_Crystal_mk2_C` are named `BP_Crystal_C_<n>` — which spells a
+class outright and spells the wrong one. Scored against the map on the reference save the
+rule misfiles 51 of 713 and leaves 65 as `artifact_unsplit`, which is why every caller of the
+save-only census has to label it.
 
 ### 6.12 Power wires — the save publishes the drawn line, not just the pair
 

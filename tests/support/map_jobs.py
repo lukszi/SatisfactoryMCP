@@ -55,7 +55,7 @@ def link_dir(target: Path, at: Path) -> None:
 def local(tmp_path, monkeypatch) -> Path:
     """A ``data/local`` as a long-used machine has it: artwork, three render sets, a link."""
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    monkeypatch.setattr(registry, "game_cl", lambda: 502094)
+    monkeypatch.setattr(registry, "installed_changelist", lambda: 502094)
     root = tmp_path / "local"
     root.mkdir()
     write_pyramid(
@@ -109,7 +109,7 @@ def in_use_local(tmp_path, monkeypatch) -> Path:
 
     root = tmp_path / "local"
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    monkeypatch.setattr(registry, "game_cl", lambda: 502094)
+    monkeypatch.setattr(registry, "installed_changelist", lambda: 502094)
     monkeypatch.setattr(pipeline, "LOCAL_DIR", root)
     root.mkdir()
     write_pyramid(root, "map.json", {"_meta": {"generator": "tools/gen_map_image.py"}})

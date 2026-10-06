@@ -7,7 +7,7 @@ import itertools
 
 import pytest
 
-from satisfactory_mcp.domain.advice import rules
+from satisfactory_mcp.domain.advice import advisory, rules
 from satisfactory_mcp.domain.factories import health
 from satisfactory_mcp.domain.planning.stored import manage
 from satisfactory_mcp.domain.planning.stored.manage import PlanStatus
@@ -38,21 +38,21 @@ def test_the_fixture_fires_its_measured_rows(world):
         ("pickups", "world"),
     ]
     assert {r.severity for r in _by(rows, "starved")} == {"act"}
-    assert rules.TONE["act"] == "blocked" and "bad" not in rules.TONE.values()
+    assert advisory.TONE["act"] == "blocked" and "bad" not in advisory.TONE.values()
 
 
 def test_every_line_fits_the_page_and_chat(world):
     for r in rules.compute(world, box_fed=True):
-        assert len(r.text) <= rules.TEXT_MAX and len(r.tool_text) <= rules.TOOL_MAX
-        assert len(r.lines) <= 3 and len(r.spots) <= rules.SPOTS_SENT
+        assert len(r.text) <= advisory.TEXT_MAX and len(r.tool_text) <= advisory.TOOL_MAX
+        assert len(r.lines) <= 3 and len(r.spots) <= advisory.SPOTS_SENT
         assert "None" not in r.text and "nan" not in r.text.lower()
 
 
 def test_the_order_is_a_fixed_tuple_and_the_same_every_time(world):
     first, again = rules.compute(world), rules.compute(world)
     assert first == again
-    assert first == sorted(first, key=rules.Advisory.rank)
-    kinds = [rules.KINDS.index(r.kind) for r in first]
+    assert first == sorted(first, key=advisory.Advisory.rank)
+    kinds = [advisory.KINDS.index(r.kind) for r in first]
     assert kinds == sorted(kinds)
 
 
@@ -127,7 +127,7 @@ def _starving(leaf: str, item: str) -> health.MachineHealth:
 
 
 def test_k6_needs_a_starved_consumer_in_the_same_named_factory(world):
-    w = rules._World(world)
+    w = rules.RuleContext(world)
     out = {"out": {"items": {"Desc_OreIron_C": 3}}}
     w.records = {
         "Miner_1": ("extractors", {"cls": "Build_MinerMk2_C", "clock": 0.5, "buffers": out}),
@@ -190,7 +190,7 @@ def test_k9_honours_spoilers_and_never_counts_hard_drives(world, monkeypatch):
         _pickup("hard_drive", False, 50.0),
         _pickup("crashed_drop_pod", False, 60.0),
     ]
-    monkeypatch.setattr(surroundings, "_pickups_near", lambda st, x, y: [dict(p) for p in near])
+    monkeypatch.setattr(surroundings, "pickups_near", lambda st, x, y: [dict(p) for p in near])
     [quiet] = rules._pickups(world, spoilers=False)
     assert quiet.weight == 1 and quiet.text.endswith("power slug blue 100 m")
     [told] = rules._pickups(world, spoilers=True)
@@ -201,31 +201,31 @@ def test_k9_honours_spoilers_and_never_counts_hard_drives(world, monkeypatch):
 def test_capped_keeps_three_of_a_kind_and_five_in_all(world):
     rows = rules.compute(world)
     many = [r for r in rows if r.kind == "starved"] * 2 + rows
-    shown, rest = rules.capped(sorted(many, key=rules.Advisory.rank))
+    shown, rest = advisory.capped(sorted(many, key=advisory.Advisory.rank))
     assert len(shown) == 5 and len(shown) + len(rest) == len(many)
-    assert max(sum(1 for r in shown if r.kind == k) for k in rules.KINDS) <= 3
+    assert max(sum(1 for r in shown if r.kind == k) for k in advisory.KINDS) <= 3
 
 
 def test_the_key_grammar_escapes_a_bar_and_splits_cleanly():
-    key = rules.key_for("starved", "factory", "a|b")
+    key = advisory.key_for("starved", "factory", "a|b")
     assert key == "starved|factory:a%7Cb"
     kind, _, subject = key.partition("|")
     assert kind == "starved" and subject == "factory:a%7Cb"
-    assert rules.key_for("power", "world", "world") == "power|world"
+    assert advisory.key_for("power", "world", "world") == "power|world"
 
 
 def test_ids_are_four_hex_and_a_collision_lengthens_both_to_six():
-    ids = rules.ids_for(["power|world", "pickups|world"])
+    ids = advisory.ids_for(["power|world", "pickups|world"])
     assert all(len(v) == len("adv:") + 4 for v in ids.values())
     seen: dict[str, str] = {}
     for n in itertools.count():
         key = f"starved|factory:f{n}"
-        prefix = rules.ids_for([key])[key]
+        prefix = advisory.ids_for([key])[key]
         if prefix in seen:
             pair = [seen[prefix], key]
             break
         seen[prefix] = key
-    both = rules.ids_for(pair + ["power|world"])
+    both = advisory.ids_for(pair + ["power|world"])
     assert len({both[k] for k in pair}) == 2
     assert all(len(both[k]) == len("adv:") + 6 for k in pair)
     assert len(both["power|world"]) == len("adv:") + 4

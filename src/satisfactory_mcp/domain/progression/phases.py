@@ -45,25 +45,25 @@ class PhaseLedger:
     unlocks: UnlockSet
 
     def progression(self) -> dict:
-        p = self.projection.get("progression", {})
+        recorded = self.projection.get("progression", {})
         tiers: dict[int, list[str]] = {}
-        for sid in self.unlocks.purchased_schematic_ids:
-            s = self.game.schematics.get(sid)
-            if s and s.type == "EST_Milestone":
-                tiers.setdefault(s.tier, []).append(sid)
+        for schematic_id in self.unlocks.purchased_schematic_ids:
+            schematic = self.game.schematics.get(schematic_id)
+            if schematic and schematic.type == "EST_Milestone":
+                tiers.setdefault(schematic.tier, []).append(schematic_id)
         all_tiers: dict[int, int] = {}
-        for s in self.game.schematics.values():
-            if s.type == "EST_Milestone":
-                all_tiers[s.tier] = all_tiers.get(s.tier, 0) + 1
+        for schematic in self.game.schematics.values():
+            if schematic.type == "EST_Milestone":
+                all_tiers[schematic.tier] = all_tiers.get(schematic.tier, 0) + 1
         # Highest FULLY complete tier. The highest tier with ANY milestone done is a
         # different and misleading number.
         complete = [t for t, total in sorted(all_tiers.items()) if len(tiers.get(t, ())) == total]
         return {
-            "game_phase": p.get("game_phase"),
-            "target_phase": p.get("target_phase"),
+            "game_phase": recorded.get("game_phase"),
+            "target_phase": recorded.get("target_phase"),
             "phase_costs_remaining": {
                 k: {i: a for i, a in v.items() if a}
-                for k, v in (p.get("phase_costs_remaining") or {}).items()
+                for k, v in (recorded.get("phase_costs_remaining") or {}).items()
                 if any(v.values())
             },
             "milestones_by_tier": {
@@ -74,19 +74,8 @@ class PhaseLedger:
             "available_recipes": len(self.unlocks.available_recipe_ids),
         }
 
-    #: EGamePhase -> GP_Project_Assembly_Phase_N, and it is MEASURED, not read.
-    #:
-    #: ``mGamePhaseCosts`` is keyed by the deprecated EGamePhase enum while
-    #: ``mCurrentGamePhase``/``mTargetGamePhase`` point at UFGGamePhase assets, and nothing
-    #: joins the two: those assets do not ship in Docs.json, the field that would join them
-    #: lives on them, and the manager's own legacy scalar is absent from the save. The anchor
-    #: is EGP_EndGame -> Phase_3, from a save where the target phase had exactly one item
-    #: paid off and the EGP_EndGame entry showed the same three items with the same one
-    #: settled; the rest follow by the enum order declared in the shipped header, the four
-    #: stored keys being contiguous in it.
-    #:
-    #: ClassVar and not a field: a bare dict annotation on a dataclass is a mutable default
-    #: and raises at class-creation time.
+    #: EGamePhase -> GP_Project_Assembly_Phase_N: one pair measured, the rest by enum order
+    #: (save-projection.md §6.4). A ClassVar, as a dict default on a dataclass raises.
     EGP_TO_PHASE: ClassVar[dict[str, str]] = {
         "EGP_MidGame": "GP_Project_Assembly_Phase_1",
         "EGP_LateGame": "GP_Project_Assembly_Phase_2",
@@ -96,41 +85,27 @@ class PhaseLedger:
 
     @staticmethod
     def _subtractable(snapshot: dict, complete: list[str], paid: dict) -> bool:
-        """Whether the live paid-off record may be taken off this frozen row.
-
-        Sound only where the row froze before ANY delivery, since a snapshot taken after one
-        has the delivery in it already and would charge it twice. Two things prove a row
-        froze late and both are checked: an item sitting at zero in it, and an item the live
-        record says more has been paid into than the row still bills for. Neither can happen
-        to a full cost. A partial payment smaller than the remainder is undetectable, which
-        is why the surviving case is labelled and why what it yields is a LOWER bound on what
-        is still owed -- the true cost is at least the frozen figure.
-        """
+        """Whether the live paid-off record may be taken off this frozen row: only where no
+        item sits at zero in it and none was paid past what it bills (§6.4), so what the
+        subtraction yields is a LOWER bound on what is still owed."""
         return not complete and all(v <= snapshot.get(i, 0.0) for i, v in paid.items())
 
     def phase_requirements(self) -> dict:
-        """Space Elevator deliveries, live record first and deprecated record labelled.
+        """Space Elevator deliveries, live record first and the frozen legacy one labelled.
 
-        Two sources disagree and only one is alive. ``mCurrentGamePhase`` /
-        ``mTargetGamePhase`` / ``mTargetGamePhasePaidOffCosts`` are live: deliveries go to
-        the TARGET phase, so "what do I owe" is its cost minus what is paid off.
-        ``mGamePhaseCosts`` is deprecated and **frozen** -- byte-identical across 29 saves of
-        the reference world spanning the session that finished Phase 3, which it still bills
-        for -- but it is the only source of per-phase item lists, since the UFGGamePhase
-        assets holding ``mCosts`` do not ship in Docs.json. It is trustworthy for the TARGET
-        row alone: untouched it is still that phase's full cost, and once deliveries start
-        the live record is subtracted from it where ``_subtractable`` allows rather than the
-        row being written off. Every row carries a ``stale`` flag rather than being filtered.
+        Deliveries go to the TARGET phase, so "what do I owe" is its frozen cost minus what
+        the live record says is paid off; every row carries a ``stale`` flag rather than
+        being filtered (save-projection.md §6.4).
         """
-        p = self.projection.get("progression", {}) or {}
-        current = p.get("game_phase") or ""
-        target = p.get("target_phase") or ""
+        recorded = self.projection.get("progression", {}) or {}
+        current = recorded.get("game_phase") or ""
+        target = recorded.get("target_phase") or ""
         # Absent means empty, not missing: UE omits empty SaveGame TArrays. Empty is
         # the informative answer here -- nothing has been delivered to the target yet.
-        paid = {k: v for k, v in (p.get("paid_off_target") or {}).items() if v}
+        paid = {k: v for k, v in (recorded.get("paid_off_target") or {}).items() if v}
 
         rows = []
-        for egp, costs in (p.get("phase_costs_remaining") or {}).items():
+        for egp, costs in (recorded.get("phase_costs_remaining") or {}).items():
             phase = self.EGP_TO_PHASE.get(egp)
             snapshot = {i: a for i, a in costs.items() if a}
             outstanding = snapshot

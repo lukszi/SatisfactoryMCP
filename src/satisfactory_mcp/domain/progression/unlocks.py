@@ -50,13 +50,17 @@ class UnlockSet:
         31 on the reference save: 24 Recipe_Swatch_*, 5 Recipe_Material_*, 2 skins.
         Filtered out rather than surfaced as broken IDs.
         """
-        return {r for r in self.available_recipe_ids if r not in self.game.recipes}
+        return {
+            recipe_id
+            for recipe_id in self.available_recipe_ids
+            if recipe_id not in self.game.recipes
+        }
 
     def unlocked_recipes(self, kind: str = "part") -> list[Recipe]:
         return [
-            self.game.recipes[r]
-            for r in sorted(self.available_recipe_ids)
-            if r in self.game.recipes and self.game.recipes[r].kind == kind
+            self.game.recipes[recipe_id]
+            for recipe_id in sorted(self.available_recipe_ids)
+            if recipe_id in self.game.recipes and self.game.recipes[recipe_id].kind == kind
         ]
 
     def has_recipe(self, recipe_id: str) -> bool:
@@ -77,40 +81,40 @@ class UnlockSet:
         Derived from unlocked BUILDING recipes via their product descriptor, because
         recipe naming is unreliable: Recipe_SmelterMk1_C builds the FOUNDRY.
         """
-        desc_to_build = {
+        building_of_descriptor = {
             b.descriptor: cls for cls, b in self.game.buildings.items() if b.descriptor
         }
         out: set[str] = set()
-        for rid in self.available_recipe_ids:
-            r = self.game.recipes.get(rid)
-            if r is None or r.kind != "building":
+        for recipe_id in self.available_recipe_ids:
+            recipe = self.game.recipes.get(recipe_id)
+            if recipe is None or recipe.kind != "building":
                 continue
-            for f in r.products:
-                hit = desc_to_build.get(f.item)
-                if hit:
-                    out.add(hit)
+            for product in recipe.products:
+                building_id = building_of_descriptor.get(product.item)
+                if building_id:
+                    out.add(building_id)
         return out
 
     def can_build(self, building_id: str) -> bool:
         return building_id in self.unlocked_building_ids
 
-    def schematic_recipes(self, s: Schematic) -> list[Recipe]:
+    def schematic_recipes(self, schematic: Schematic) -> list[Recipe]:
         """Recipes a schematic grants that the player does not already have.
 
         Follows BP_UnlockSchematic_C exactly one level, which is needed for
         Quartz Purification -> Silica Distilled. Deeper recursion is wrong: it drags
         in 23 customization schematics.
         """
-        ids = list(s.unlocks_recipes)
-        for chained in s.unlocks_schematics:
+        recipe_ids = list(schematic.unlocks_recipes)
+        for chained in schematic.unlocks_schematics:
             child = self.game.schematics.get(chained)
             if child is not None:
-                ids.extend(child.unlocks_recipes)
+                recipe_ids.extend(child.unlocks_recipes)
         out = []
-        for rid in dict.fromkeys(ids):
-            r = self.game.recipes.get(rid)
-            if r is not None and rid not in self.available_recipe_ids:
-                out.append(r)
+        for recipe_id in dict.fromkeys(recipe_ids):
+            recipe = self.game.recipes.get(recipe_id)
+            if recipe is not None and recipe_id not in self.available_recipe_ids:
+                out.append(recipe)
         return out
 
     def dependencies_met(self, schematic_id: str) -> tuple[bool, list[str]]:
@@ -119,9 +123,18 @@ class UnlockSet:
         24 of the 109 alternates are blocked behind milestone schematics on the
         reference save. mTechTier is 0 for 71 of them, so it cannot be the gate.
         """
-        s = self.game.schematics.get(schematic_id)
-        if s is None:
+        schematic = self.game.schematics.get(schematic_id)
+        if schematic is None:
             return False, [f"unknown schematic {schematic_id}"]
-        missing = [d for d in s.dependencies if d not in self.purchased_schematic_ids]
-        names = [self.game.schematics[m].name if m in self.game.schematics else m for m in missing]
+        missing = [
+            dependency
+            for dependency in schematic.dependencies
+            if dependency not in self.purchased_schematic_ids
+        ]
+        names = [
+            self.game.schematics[missing_id].name
+            if missing_id in self.game.schematics
+            else missing_id
+            for missing_id in missing
+        ]
         return (not missing), names

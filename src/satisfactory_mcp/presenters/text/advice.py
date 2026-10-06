@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 
 from ...domain.advice import WORDS, Advisory, Current
-from ...domain.advice.rules import capped
+from ...domain.advice.advisory import capped
 
 __all__ = ["CONTEXT_ROWS", "SUMMARY_ROWS", "context_lines", "parse_hide", "summary_block"]
 

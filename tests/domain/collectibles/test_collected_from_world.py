@@ -38,10 +38,10 @@ import pytest
 
 from satisfactory_mcp.domain.collectibles import service
 from satisfactory_mcp.domain.collectibles.service import GENERATOR_COMMAND
-from satisfactory_mcp.domain.collectibles.table import CollectiblesUnreadable
+from satisfactory_mcp.domain.collectibles.table import CollectiblesUnreadable, name_stem
 from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.world import state as state_mod
-from satisfactory_mcp.domain.world.state import WorldState, _name_stem, load_collectibles
+from satisfactory_mcp.domain.world.state import WorldState, load_collectibles
 from satisfactory_mcp.interfaces.mcp.tools import progression
 from satisfactory_mcp.interfaces.mcp.tools.progression import collected_from_world
 
@@ -129,7 +129,7 @@ def test_every_collected_actor_is_resolved_by_the_map_and_the_counts_are_the_map
     nothing at is counted and named rather than vanishing, so "713 collected" cannot quietly
     become the answer to "889 things happened".
     """
-    out = state.removed_actors()
+    out = state.collected_summary()
     assert out["source"] == "map"
     assert out["total"] == TOTAL_DESTROYED
     assert out["cells"] == 284
@@ -186,7 +186,7 @@ def test_artifact_unsplit_is_gone_because_the_map_splits_every_glued_name(state,
     the old census said so by refusing. The map does not have to refuse: it resolves all 98
     removed ``BP_WAT*`` names as 80 spheres and 18 somersloops, with none left over.
     """
-    out = state.removed_actors()
+    out = state.collected_summary()
     assert "artifact_unsplit" not in out["groups"]
     wat = [(cell, name) for cell, name in state.destroyed_keys if name.startswith("BP_WAT")]
     assert len(wat) == 98
@@ -200,11 +200,11 @@ def test_a_class_is_never_taken_from_a_name(state, table):
     """Every group in the census is a real map category, and every actor listed under one
     carries that category's class -- read from the map, not recovered from the name. The
     somersloop group holds names like ``BP_WAT147`` that no name rule assigns."""
-    for category in state.removed_actors()["groups"]:
+    for category in state.collected_summary()["groups"]:
         assert category in table.by_category
-        for placement in state.removed_actors(category)["actors"]:
+        for placement in state.collected_summary(category)["actors"]:
             assert placement["cls"] == table.cls_of(category)
-    listed = {p["name"] for p in state.removed_actors("somersloop")["actors"]}
+    listed = {p["name"] for p in state.collected_summary("somersloop")["actors"]}
     assert "BP_WAT147" in listed
 
 
@@ -220,7 +220,7 @@ def test_the_join_needs_the_cell_as_well_as_the_name(state, table):
     projection = copy.deepcopy(state.projection)
     projection["removed"]["cells"].append("NOT_A_REAL_CELL_00000000")
     projection["removed"]["instances"].append([len(projection["removed"]["cells"]) - 1, name])
-    out = WorldState(projection=projection, game=state.game).removed_actors()
+    out = WorldState(projection=projection, game=state.game).collected_summary()
     assert out["total"] == TOTAL_DESTROYED + 1
     assert out["resolved"] == RESOLVED, "the name alone must not resolve it"
     assert out["unresolved"] == UNRESOLVED + 1
@@ -232,7 +232,7 @@ def test_a_destroyed_record_the_map_places_nothing_at_is_named_not_dropped(state
     placed at all, which is what a pickup the player dropped is. They are reported by name
     stem with the table's own reason, so "collected 713" is never confused with "889 things
     are accounted for"."""
-    out = state.removed_actors()
+    out = state.collected_summary()
     stems = out["unresolved_stems"]
     assert sum(stems.values()) == UNRESOLVED
     assert stems["BP_SporeFlower"] == 79
@@ -246,7 +246,7 @@ def test_a_class_nobody_anticipated_lands_in_the_unresolved_bucket(state, table)
     shrinking the census, so the next person can regenerate the table."""
     projection = copy.deepcopy(state.projection)
     projection["removed"]["instances"] += [[0, "BP_SomethingNew_7"]] * 3
-    out = WorldState(projection=projection, game=state.game).removed_actors()
+    out = WorldState(projection=projection, game=state.game).collected_summary()
     assert out["unresolved_stems"]["BP_SomethingNew"] == 3
     assert out["total"] == TOTAL_DESTROYED + 3
     assert out["resolved"] == RESOLVED
@@ -258,9 +258,9 @@ def test_a_glued_counter_is_stripped_only_after_a_letter(table):
     turns 79 spore flowers into 40 one-row entries. Digits after a letter are the glued
     counter; digits after an underscore are part of the class name and must survive --
     ``BP_DebrisActor_02`` is a real class and ``BP_DebrisActor_0`` is not."""
-    assert _name_stem("BP_SporeFlower369") == "BP_SporeFlower"
-    assert _name_stem("BP_DebrisActor_02_C_5") == "BP_DebrisActor_02"
-    assert _name_stem("BP_Crystal_C_UAID_04421A9713F0395B01_1557158296") == "BP_Crystal"
+    assert name_stem("BP_SporeFlower369") == "BP_SporeFlower"
+    assert name_stem("BP_DebrisActor_02_C_5") == "BP_DebrisActor_02"
+    assert name_stem("BP_Crystal_C_UAID_04421A9713F0395B01_1557158296") == "BP_Crystal"
     # Ambiguous stems are named as such rather than resolved to one of their siblings.
     reason = table.excluded_reason("BP_DebrisActor")
     assert "BP_DebrisActor_01_C" in reason and "a name does not say which" in reason
@@ -361,7 +361,7 @@ def test_collected_placements_carry_the_position_the_save_cannot(state, table):
     """A destroyed record has no transform at all -- the old listing could only show the
     cell. The map supplies the coordinate, so "where was the sloop I already took" is
     answerable, and every listed actor is one this save really did collect."""
-    listed = state.removed_actors("somersloop")["actors"]
+    listed = state.collected_summary("somersloop")["actors"]
     assert len(listed) == COLLECTED["somersloop"] == 18
     for placement in listed:
         assert placement["collected"] is True
@@ -387,7 +387,7 @@ def test_what_can_be_listed_is_what_was_counted(state, table):
     save and the listing from another, so the parts stopped adding to the whole; both now
     come from ``placements``."""
     census = {r["category"]: r for r in state.collectible_census()}
-    groups = state.removed_actors()["groups"]
+    groups = state.collected_summary()["groups"]
     assert set(census) == set(table.by_category) == set(PLACED)
     for category, row in census.items():
         listed = state.placements(category)
@@ -419,7 +419,7 @@ def test_a_projection_with_no_removed_key_reports_nothing_rather_than_failing(st
     projection = copy.deepcopy(state.projection)
     del projection["removed"]
     older = WorldState(projection=projection, game=state.game)
-    out = older.removed_actors()
+    out = older.collected_summary()
     assert out["total"] == 0 and out["cells"] == 0
     assert out["groups"] == {} and out["unresolved"] == 0
     assert {r["category"]: r["remaining"] for r in out["census"]}["somersloop"] == 106
@@ -428,7 +428,7 @@ def test_a_projection_with_no_removed_key_reports_nothing_rather_than_failing(st
 def test_an_unknown_group_comes_back_as_an_error_not_an_exception(state, table):
     """The name reaches this from a tool argument, so a typo is a user event and not a bug.
     It must answer with the census plus an ``error`` naming the categories the map places."""
-    out = state.removed_actors("no_such_group")
+    out = state.collected_summary("no_such_group")
     assert "actors" not in out
     assert out["total"] == TOTAL_DESTROYED
     assert out["error"].startswith("unknown group 'no_such_group'; the map places: [")
@@ -632,7 +632,7 @@ def test_without_the_map_table_the_census_degrades_to_names_and_says_so(save_onl
     """``data/world_collectibles.json`` is untracked, so a fresh clone has none. The save
     still knows what it destroyed, so that answer is given -- labelled, with the wrongness
     of the grouping quantified, rather than raising or pretending."""
-    out = save_only.removed_actors()
+    out = save_only.collected_summary()
     assert out["source"] == "save-only"
     assert out["total"] == TOTAL_DESTROYED
     assert out["groups"] == dict(sorted(BY_NAME.items(), key=lambda kv: -kv[1]))
@@ -695,7 +695,7 @@ def test_the_degraded_census_still_refuses_to_guess_an_artifact(save_only):
     assert save_only.removed_group("BP_WAT2_C_18") == "mercer_sphere"
     for name in ("BP_WAT112_14", "BP_WAT60", "BP_WAT73", "BP_WAT84", "BP_WAT2_228"):
         assert save_only.removed_group(name) == "artifact_unsplit", name
-    assert save_only.removed_actors()["groups"]["artifact_unsplit"] == 65
+    assert save_only.collected_summary()["groups"]["artifact_unsplit"] == 65
 
 
 def test_the_degraded_census_still_puts_first_match_first(save_only):
@@ -712,7 +712,7 @@ def test_the_degraded_census_still_puts_first_match_first(save_only):
 def test_the_degraded_census_reports_an_unmatched_class_rather_than_dropping_it(save_only):
     projection = copy.deepcopy(save_only.projection)
     projection["removed"]["instances"] += [[0, "BP_SomethingNew_7"]] * 3
-    out = WorldState(projection=projection, game=save_only.game).removed_actors()
+    out = WorldState(projection=projection, game=save_only.game).collected_summary()
     assert out["other"] == {"BP_SomethingNew": 3}
     assert out["total"] == TOTAL_DESTROYED + 3
     assert sum(out["groups"].values()) == TOTAL_DESTROYED

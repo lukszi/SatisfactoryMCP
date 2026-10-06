@@ -19,7 +19,7 @@ __all__ = ["HardDriveDesk", "HardDriveOffer"]
 class HardDriveOffer:
     hard_drive_id: int | None
     rerolls_left: int
-    options: list[dict]  # {schematic, name, recipes: [Recipe], inventory_slots}
+    options: list[dict]  # {schematic, name, recipes: [Recipe], slots}
 
 
 @dataclass

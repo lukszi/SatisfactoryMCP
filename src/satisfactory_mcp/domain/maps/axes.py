@@ -26,10 +26,12 @@ __all__ = [
     "axes_from_sidecar",
     "current_state",
     "derive_id",
+    "dict_at",
     "display_name",
+    "freshness",
+    "int_or_none",
     "sort_key",
     "style_tone",
-    "verdict",
 ]
 
 RENDERS_GENERATOR = "tools/gen_map_renders.py"
@@ -77,23 +79,31 @@ INPUT_NAMES = {
 }
 
 
-def _int(value: object) -> int | None:
+def int_or_none(value: object) -> int | None:
+    """``value`` when it is a plain int, never a bool; else ``None``."""
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def dict_at(obj: object, *keys: str) -> dict:
+    """The dict at ``obj[k1][k2]...``, or ``{}`` where any step is missing or not a dict."""
+    for key in keys:
+        obj = obj.get(key) if isinstance(obj, dict) else None
+    return obj if isinstance(obj, dict) else {}
+
+
 def _legacy_renders(block: dict) -> dict:
-    sources = block.get("sources") if isinstance(block.get("sources"), dict) else {}
-    field = sources.get("heightfield") if isinstance(sources.get("heightfield"), dict) else {}
+    sources = dict_at(block, "sources")
+    field = dict_at(sources, "heightfield")
     cl = changelist(field.get("game_version_pinned"))
-    recipe = _int(block.get("recipe")) or 0
+    recipe = int_or_none(block.get("recipe")) or 0
     known = RENDER_RECIPES.get(recipe, {})
-    render = block.get("render") if isinstance(block.get("render"), dict) else {}
-    regime = render.get("two_regime") if isinstance(render.get("two_regime"), dict) else {}
+    render = dict_at(block, "render")
+    regime = dict_at(render, "two_regime")
     layer = str(block.get("layer") or "")
     inputs: dict = {
         "heightfield": {
             "cl": cl,
-            "generator_version": _int(field.get("generator_version")),
+            "generator_version": int_or_none(field.get("generator_version")),
             "planes": LEGACY_PLANES.get(recipe, ["height"]),
             "digest": None,
         }
@@ -115,8 +125,8 @@ def _legacy_renders(block: dict) -> dict:
             "label": known.get("label", f"recipe {recipe}"),
             "sampler": known.get("sampler"),
             "two_regime": bool(regime.get("enabled", known.get("two_regime", False))),
-            "size_px": _int(render.get("width_px")),
-            "subsamples": _int(regime.get("subsamples_per_axis")),
+            "size_px": int_or_none(render.get("width_px")),
+            "subsamples": int_or_none(regime.get("subsamples_per_axis")),
         },
         "style": {"id": style, "version": 1, "label": STYLES.get(style, {}).get("label", style),
                   "digest": None, "inferred": True},
@@ -125,14 +135,13 @@ def _legacy_renders(block: dict) -> dict:
 
 
 def _legacy_artwork(block: dict) -> dict:
-    slices = read_path(block, ("sources", "map_slices"))
-    slices = slices if isinstance(slices, dict) else {}
+    slices = dict_at(block, "sources", "map_slices")
     cl = changelist(slices.get("game_version_raw")) or changelist(slices.get("game_version_pinned"))
-    tiles = block.get("tiles") if isinstance(block.get("tiles"), dict) else {}
-    recipe = _int(read_path(tiles, ("enhancement", "recipe")))
+    tiles = dict_at(block, "tiles")
+    recipe = int_or_none(read_path(tiles, ("enhancement", "recipe")))
     if recipe is None:
         recipe = 1 if tiles.get("enhanced") else 0
-    image = block.get("image") if isinstance(block.get("image"), dict) else {}
+    image = dict_at(block, "image")
     return {
         "schema": PROVENANCE_SCHEMA,
         "game": {"cl": cl},
@@ -140,7 +149,7 @@ def _legacy_artwork(block: dict) -> dict:
                                      "inferred": True}},
         "renderer": {"family": "artwork", "recipe": recipe, "version": 1,
                      "label": ARTWORK_RECIPES.get(recipe, {}).get("label", f"recipe {recipe}"),
-                     "size_px": _int(image.get("width_px"))},
+                     "size_px": int_or_none(image.get("width_px"))},
         "style": {"id": "artwork", "version": 1, "label": "artwork", "digest": None},
         "inferred": True,
     }  # fmt: skip
@@ -151,8 +160,7 @@ def axes_from_sidecar(sidecar: object, kind: str = "render") -> dict:
 
     A sidecar nothing can be read from still answers: its axes are empty and ``inferred``.
     """
-    block = sidecar.get("_meta") if isinstance(sidecar, dict) else None
-    block = block if isinstance(block, dict) else {}
+    block = dict_at(sidecar, "_meta")
     native = block.get("provenance")
     if isinstance(native, dict) and isinstance(native.get("renderer"), dict):
         return {**native, "inferred": False}
@@ -188,10 +196,10 @@ def _input_now(local: Path, name: str) -> dict | None:
         meta, ("sources", "game", "build_raw")
     )
     cl = changelist(pin) or changelist(read_path(meta, ("sources", "game", "game_version_pinned")))
-    files = meta.get("files") if isinstance(meta.get("files"), dict) else {}
+    files = dict_at(meta, "files")
     return {
-        "version": _int(meta.get(version_key)),
-        "cl": cl if cl is not None else _int(meta.get("cl")),
+        "version": int_or_none(meta.get(version_key)),
+        "cl": cl if cl is not None else int_or_none(meta.get("cl")),
         "digest": meta.get("digest") if isinstance(meta.get("digest"), str) else None,
         "planes": sorted(files),
         "transcribed": meta.get("transcribed"),
@@ -218,7 +226,7 @@ PLANE_FILES = {
 }
 
 
-def _needs(recipe: int, current: dict) -> list[str]:
+def _inputs_to_rebuild(recipe: int, current: dict) -> list[str]:
     """Which inputs have to be rebuilt before ``recipe`` can draw from what is on disk."""
     wanted = RENDER_RECIPES[recipe]["requires"].get("heightfield", {})
     field = current["inputs"].get("heightfield")
@@ -231,11 +239,12 @@ def _needs(recipe: int, current: dict) -> list[str]:
     return []
 
 
-def verdict(axes: dict, current: dict) -> dict:
-    """``{stale: [{axis, text}], rerender, restyle, incomplete}`` for one map's axes."""
+def _stale_inputs(axes: dict, current: dict) -> tuple[list[dict], bool]:
+    """``(stale, incomplete)``: what is out of date under a picture, and whether its record
+    is too thin to say."""
     stale: list[dict] = []
-    inputs = axes.get("inputs") if isinstance(axes.get("inputs"), dict) else {}
-    recorded_cls = [_int(v.get("cl")) for v in inputs.values() if isinstance(v, dict)]
+    inputs = dict_at(axes, "inputs")
+    recorded_cls = [int_or_none(v.get("cl")) for v in inputs.values() if isinstance(v, dict)]
     known_cls = [cl for cl in recorded_cls if cl is not None]
     game_cl = current.get("game_cl")
     if game_cl is not None and known_cls and min(known_cls) < game_cl:
@@ -247,7 +256,7 @@ def verdict(axes: dict, current: dict) -> dict:
         words = INPUT_NAMES.get(name, name)
         if name in INPUT_DIRS:
             now = current["inputs"].get(name)
-            had = _int(entry.get("generator_version", entry.get("version")))
+            had = int_or_none(entry.get("generator_version", entry.get("version")))
             if now is None or had is None or now["version"] is None:
                 incomplete = incomplete or had is None
                 continue
@@ -258,54 +267,74 @@ def verdict(axes: dict, current: dict) -> dict:
             if not entry.get("digest"):
                 incomplete = True
         else:
-            had = _int(entry.get("reader_version"))
+            had = int_or_none(entry.get("reader_version"))
             now_reader = current["readers"].get(name)
             if had is None:
                 incomplete = True
             elif now_reader is not None and now_reader > had:
                 stale.append({"axis": name, "text": f"newer {words} (v{had} → v{now_reader})"})
-    renderer = axes.get("renderer") if isinstance(axes.get("renderer"), dict) else {}
-    rerender = None
-    recipe, version = _int(renderer.get("recipe")), _int(renderer.get("version")) or 0
-    if renderer.get("family") == "render" and recipe is not None:
-        best = RENDER_RECIPES[RENDER_RECIPE_CURRENT]
-        if (RENDER_RECIPE_CURRENT, best["version"]) > (recipe, version):
-            needs = _needs(RENDER_RECIPE_CURRENT, current)
-            label = f"{best['label']} r{RENDER_RECIPE_CURRENT}"
-            rerender = {
-                "recipe": RENDER_RECIPE_CURRENT,
-                "label": label,
-                "needs": needs,
-                "text": f"newer renderer: {label}"
-                + (" after rebuilding the heightfield" if needs else ""),
-            }
-    style = axes.get("style") if isinstance(axes.get("style"), dict) else {}
+    return stale, incomplete
+
+
+def _rerender_offer(axes: dict, current: dict) -> dict | None:
+    """The current renderer, offered where it is newer than the one that drew this picture."""
+    renderer = dict_at(axes, "renderer")
+    recipe = int_or_none(renderer.get("recipe"))
+    version = int_or_none(renderer.get("version")) or 0
+    if renderer.get("family") != "render" or recipe is None:
+        return None
+    best = RENDER_RECIPES[RENDER_RECIPE_CURRENT]
+    if (RENDER_RECIPE_CURRENT, best["version"]) <= (recipe, version):
+        return None
+    needs = _inputs_to_rebuild(RENDER_RECIPE_CURRENT, current)
+    label = f"{best['label']} r{RENDER_RECIPE_CURRENT}"
+    return {
+        "recipe": RENDER_RECIPE_CURRENT,
+        "label": label,
+        "needs": needs,
+        "text": f"newer renderer: {label}" + (" after rebuilding the heightfield" if needs else ""),
+    }
+
+
+def _restyle_offer(axes: dict) -> bool:
+    """Whether the style table has a newer version of this picture's palette."""
+    style = dict_at(axes, "style")
     known_style = STYLES.get(str(style.get("id")))
-    restyle = bool(
+    return bool(
         known_style
-        and _int(style.get("version")) is not None
+        and int_or_none(style.get("version")) is not None
         and known_style["version"] > style["version"]
     )
-    return {"stale": stale, "rerender": rerender, "restyle": restyle, "incomplete": incomplete}
 
 
-def data_cl(axes: dict) -> int | None:
+def freshness(axes: dict, current: dict) -> dict:
+    """``{stale: [{axis, text}], rerender, restyle, incomplete}`` for one map's axes."""
+    stale, incomplete = _stale_inputs(axes, current)
+    return {
+        "stale": stale,
+        "rerender": _rerender_offer(axes, current),
+        "restyle": _restyle_offer(axes),
+        "incomplete": incomplete,
+    }
+
+
+def data_changelist(axes: dict) -> int | None:
     """The build the picture's data came from: the heightfield's, else the oldest input's."""
-    inputs = axes.get("inputs") if isinstance(axes.get("inputs"), dict) else {}
+    inputs = dict_at(axes, "inputs")
     field = inputs.get("heightfield")
-    if isinstance(field, dict) and _int(field.get("cl")) is not None:
+    if isinstance(field, dict) and int_or_none(field.get("cl")) is not None:
         return field["cl"]
-    known = [_int(v.get("cl")) for v in inputs.values() if isinstance(v, dict)]
+    known = [int_or_none(v.get("cl")) for v in inputs.values() if isinstance(v, dict)]
     known = [cl for cl in known if cl is not None]
-    return min(known) if known else _int(read_path(axes, ("game", "cl")))
+    return min(known) if known else int_or_none(read_path(axes, ("game", "cl")))
 
 
-def _hf_version(axes: dict) -> int | None:
-    return _int(read_path(axes, ("inputs", "heightfield", "generator_version")))
+def _heightfield_version(axes: dict) -> int | None:
+    return int_or_none(read_path(axes, ("inputs", "heightfield", "generator_version")))
 
 
 def renderer_label(axes: dict) -> str:
-    renderer = axes.get("renderer") if isinstance(axes.get("renderer"), dict) else {}
+    renderer = dict_at(axes, "renderer")
     recipe = renderer.get("recipe")
     label = str(renderer.get("label") or "unknown")
     if renderer.get("family") == "artwork" and recipe == 0:
@@ -314,27 +343,27 @@ def renderer_label(axes: dict) -> str:
 
 
 def style_label(axes: dict) -> str:
-    style = axes.get("style") if isinstance(axes.get("style"), dict) else {}
+    style = dict_at(axes, "style")
     return str(style.get("label") or style.get("id") or "unknown")
 
 
 def style_tone(axes: dict) -> str:
     """``light`` or ``dark``: the sidecar's word, else the style table's, else light."""
-    style = axes.get("style") if isinstance(axes.get("style"), dict) else {}
+    style = dict_at(axes, "style")
     tone = style.get("tone") or STYLES.get(str(style.get("id")), {}).get("tone")
     return tone if tone in ("light", "dark") else "light"
 
 
 def data_label(axes: dict) -> str:
-    cl = data_cl(axes)
-    hf = _hf_version(axes)
+    cl = data_changelist(axes)
+    heightfield_version = _heightfield_version(axes)
     text = f"data {cl if cl is not None else '?'}"
-    return text + (f"/hf v{hf}" if hf is not None else "")
+    return text + (f"/hf v{heightfield_version}" if heightfield_version is not None else "")
 
 
 def light_label(axes: dict) -> str | None:
     """The light model a layer drawn unlit is relit with; ``None`` for one drawn lit."""
-    light = axes.get("light") if isinstance(axes.get("light"), dict) else None
+    light = dict_at(axes, "light")
     return str(light.get("label") or light.get("id") or "lit") if light else None
 
 
@@ -343,7 +372,7 @@ def display_name(axes: dict, with_size: bool = False) -> str:
     parts = [style_label(axes), renderer_label(axes), data_label(axes)]
     if light_label(axes):
         parts.append(str(light_label(axes)))
-    size = _int(read_path(axes, ("renderer", "size_px")))
+    size = int_or_none(read_path(axes, ("renderer", "size_px")))
     if with_size and size:
         parts.append(f"{size} px")
     return " · ".join(parts)
@@ -351,16 +380,16 @@ def display_name(axes: dict, with_size: bool = False) -> str:
 
 def sort_key(axes: dict, ident: str) -> tuple:
     """Style, then data (newest build, then highest input versions), renderer, style version."""
-    renderer = axes.get("renderer") if isinstance(axes.get("renderer"), dict) else {}
-    style = axes.get("style") if isinstance(axes.get("style"), dict) else {}
+    renderer = dict_at(axes, "renderer")
+    style = dict_at(axes, "style")
     return (
         style_label(axes),
-        -(data_cl(axes) or 0),
-        -(_hf_version(axes) or 0),
-        -(_int(renderer.get("recipe")) or 0),
-        -(_int(renderer.get("version")) or 0),
-        -(_int(style.get("version")) or 0),
-        -(_int(renderer.get("size_px")) or 0),
+        -(data_changelist(axes) or 0),
+        -(_heightfield_version(axes) or 0),
+        -(int_or_none(renderer.get("recipe")) or 0),
+        -(int_or_none(renderer.get("version")) or 0),
+        -(int_or_none(style.get("version")) or 0),
+        -(int_or_none(renderer.get("size_px")) or 0),
         ident,
     )
 

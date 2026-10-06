@@ -7,6 +7,7 @@ them. The grammar it implements is written out in `docs/selectors.md`.
 
 from __future__ import annotations
 
+from ...core.saveio.records import instance_leaf, iter_machine_records
 from . import geo, nodes
 
 #: The conduit-run spelling this project settles on, everywhere: ``chain:<n>`` for a belt
@@ -153,7 +154,7 @@ def _node_origin(text: str) -> tuple[tuple[float, float], str]:
     want = text.partition(":")[2].strip()
     table = nodes.load_nodes()
     for instance, node in table.by_instance().items():
-        if want in (instance, instance.rsplit(".", 1)[-1]):
+        if want in (instance, instance_leaf(instance)):
             return (node["x"], node["y"]), f"node:{want} ({node['purity']} {node['kind']})"
     raise ValueError(f"no resource node called {want!r}; search_resource_nodes lists the ids")
 
@@ -162,11 +163,10 @@ def _machine_origin(st, text: str) -> tuple[tuple[float, float], str]:
     """Centre on one standing machine; the leaf and the full instance path both match."""
     if st is None:
         raise ValueError(f"{text!r} names a machine, which needs a readable save")
-    want = text.partition(":")[2].strip().rsplit(".", 1)[-1]
-    for key in ("machines", "extractors", "generators"):
-        for record in st.projection.get(key, ()):
-            if record.get("pos") and record.get("instance", "").rsplit(".", 1)[-1] == want:
-                return (record["pos"][0], record["pos"][1]), f"machine:{want}"
+    want = instance_leaf(text.partition(":")[2].strip())
+    for _group, leaf, record in iter_machine_records(st.projection):
+        if record.get("pos") and leaf == want:
+            return (record["pos"][0], record["pos"][1]), f"machine:{want}"
     raise ValueError(f"no machine called {want!r} in this save")
 
 
@@ -263,10 +263,10 @@ def _pin_origin(st, text: str) -> tuple[tuple[float, float], str]:
 
 def label_centre(st, label) -> tuple[float, float] | None:
     """The centroid of a label's standing machines in centimetres, or None when none stand."""
-    pos = {}
-    for key in ("machines", "extractors", "generators"):
-        for record in st.projection.get(key, ()):
-            if record.get("pos"):
-                pos[record["instance"].rsplit(".", 1)[-1]] = record["pos"]
+    pos = {
+        leaf: record["pos"]
+        for _group, leaf, record in iter_machine_records(st.projection)
+        if record.get("pos")
+    }
     points = [pos[m][:2] for m in label.anchors if m in pos]
     return geo.centroid(points) if points else None

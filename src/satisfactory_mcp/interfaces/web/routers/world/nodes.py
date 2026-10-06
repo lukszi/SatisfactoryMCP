@@ -84,7 +84,7 @@ def nodes(
     unlocked: set[str] | None = None
     try:
         st = world_state(request, save, world)
-        taken = spatial_nodes.occupancy(st.projection)
+        taken = spatial_nodes.occupancy_by_node(st.projection)
         unlocked = st.unlocked_building_ids
     except Exception as exc:
         save_error = f"could not read save: {exc}"

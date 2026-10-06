@@ -248,9 +248,9 @@ def test_plan_amend_leaves_the_label_as_it_was():
     label = Label(id="a", name="a", anchors=["m1", "m2"])
     other = Label(id="b", name="b", anchors=["m3"])
     store.labels = [label, other]
-    plan = edits.plan_amend(store, label, ["m3"], {"m1"}, {"m1", "m2", "m3"})
+    plan = edits.preview_amendment(store, label, ["m3"], {"m1"}, {"m1", "m2", "m3"})
     assert plan.added == ["m3"] and plan.dropped == ["m1"] and plan.after == ["m2", "m3"]
     assert plan.overlaps == {"b": 1} and plan.named
     assert label.anchors == ["m1", "m2"]
     with pytest.raises(LabelError):
-        edits.plan_amend(store, label, [], {"m1", "m2"}, set())
+        edits.preview_amendment(store, label, [], {"m1", "m2"}, set())

@@ -1,12 +1,7 @@
 """``as_of=``: a caller pins one world state, and every later call is consistent or refuses.
 
-The hazard is a client making several calls while the game autosaves between them -- call 1
-reads save A, call 3 reads save B, and the answer composed from both never existed in either
-world. Nothing on the wire made that detectable, because a response names its FILENAME and an
-autosave reuses filenames. ``identity.save_token`` is the name that does not repeat; this
-module is what happens when a caller hands one back.
-
-The contract, in one place: docs/mcp-surface.md, section 10.1i.
+``identity.save_token`` is the name that does not repeat across autosave rotation; this module
+is what happens when a caller hands one back. The contract is docs/mcp-surface.md §10.1i.
 """
 
 from __future__ import annotations
@@ -23,18 +18,12 @@ __all__ = ["LEDGER_MAX", "PinRefused", "check", "ledger_path", "recall", "rememb
 
 
 class PinRefused(RuntimeError):
-    """``as_of=`` named a world state that is not the one on disk.
-
-    A refusal and not a fallback. The pinned state usually no longer EXISTS: an autosave
-    rewrites its own file, so the bytes it named are gone -- and answering from the newer
-    save instead would produce exactly the silently blended conclusion ``as_of=`` was added
-    to prevent.
-    """
+    """``as_of=`` named a world state that is not the one on disk: a refusal, never a
+    fallback to the newer save, which would blend two states into one answer."""
 
 
-#: Tokens kept in the ledger, newest by write time. Deep enough to outlast any one
-#: conversation -- at the game's ~5 minute autosave that is about 17 hours of play -- and
-#: small enough that the file stays a few tens of kB.
+#: Tokens kept in the ledger, newest by write time: ~17 hours of play at the ~5 minute
+#: autosave, in a few tens of kB.
 LEDGER_MAX = 200
 
 
@@ -54,14 +43,9 @@ def _load() -> dict:
 def remember(header: dict) -> str:
     """Record this save under its token, and return the token.
 
-    Called on every read rather than only when ``as_of=`` is passed, because a pin is
-    recognisable only if the read that MINTED it was recorded -- and a caller does not
-    decide to pin until after that read has answered.
-
-    Best-effort, like every other cache here: a ledger that cannot be written costs a
-    refusal its detail, never an answer. Several processes share the file
-    (the server, the CLI, a test worker per core) and the last writer wins, so a lost entry
-    degrades one refusal's wording rather than admitting a stale pin.
+    Called on every read, because a pin is recognisable only if the read that MINTED it was
+    recorded. Best-effort and last writer wins across processes: a lost entry costs one
+    refusal its detail, never an answer.
     """
     token = save_token(header)
     entries = _load()
@@ -157,16 +141,9 @@ def _recover(pinned: dict) -> str:
 def check(header: dict, as_of: str | None) -> str:
     """Record this read, and enforce ``as_of=`` against it. Returns the current token.
 
-    Raises ``PinRefused`` in the four ways a pin can fail, and they are four different
-    sentences because they are four different mistakes: a stale pin is a fact about the
-    world and names both states, a token from another world has no distance to report at
-    all, and a token this install never minted is a fact about the CALLER -- invented, or
-    carried over from another machine -- which no amount of detail about the current save
-    explains.
-
-    Each message opens by naming the pin, because every tool wraps this in its own "could
-    not read save:" and the save that could not be read is the PINNED one, not the one that
-    resolved perfectly well a line earlier.
+    Raises ``PinRefused`` in the four ways a pin can fail, four sentences for four mistakes
+    (§10.1i). Each opens by naming the pin, because every tool wraps it in "could not read
+    save:" and the save that could not be read is the PINNED one.
     """
     current = remember(header)
     if not as_of:
@@ -188,10 +165,8 @@ def check(header: dict, as_of: str | None) -> str:
             f"is minted here from the save it names, so one that is unknown was either "
             f"invented or carried over from another machine. {here} {_WAY_OUT}"
         )
-    # A pin from ANOTHER world, which is what a two-world install and a stray ``world=``
-    # produce. It gets its own sentence because ``_distance`` would be a fabrication here:
-    # two worlds' playtimes are two unrelated clocks, and subtracting them reads as a
-    # measurement of how far this world has moved.
+    # A pin from ANOTHER world gets no ``_distance``: two worlds' playtimes are unrelated
+    # clocks, and subtracting them would read as how far this world has moved.
     if pinned.get("world_id") != header.get("save_identifier"):
         raise PinRefused(
             f"as_of={want}: that token names a different world. You pinned "

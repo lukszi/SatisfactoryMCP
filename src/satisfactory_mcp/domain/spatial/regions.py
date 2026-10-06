@@ -67,17 +67,17 @@ class RegionMap:
     legend: dict[str, str]
     regions: dict[str, dict]
     meta: dict
-    x0: float
-    y0: float
-    cell: float
-    nx: int
-    ny: int
+    x0_cm: float
+    y0_cm: float
+    cell_cm: float
+    column_count: int
+    row_count: int
     #: The finer pair, when the table carries one. Same origin, same legend, smaller cell.
-    fine: list[str] | None = None
+    fine_grid: list[str] | None = None
     fine_confidence: list[str] | None = None
-    fine_cell: float = 0.0
-    fine_nx: int = 0
-    fine_ny: int = 0
+    fine_cell_cm: float = 0.0
+    fine_column_count: int = 0
+    fine_row_count: int = 0
 
     # ---- coordinate -> name -------------------------------------------
 
@@ -88,9 +88,9 @@ class RegionMap:
         ``label_for`` instead answers at the finer grid's resolution, which can put a label
         on a cell the payload paints as another region's.
         """
-        i = int((x - self.x0) // self.cell)
-        j = int((y - self.y0) // self.cell)
-        if 0 <= i < self.nx and 0 <= j < self.ny:
+        i = int((x - self.x0_cm) // self.cell_cm)
+        j = int((y - self.y0_cm) // self.cell_cm)
+        if 0 <= i < self.column_count and 0 <= j < self.row_count:
             return i, j
         return None
 
@@ -100,17 +100,21 @@ class RegionMap:
         Prefers the fine pair and falls back to the published one: one origin, one legend,
         and a caller that never has to know which answered.
         """
-        if self.fine and self.fine_confidence:
-            i = int((x - self.x0) // self.fine_cell)
-            j = int((y - self.y0) // self.fine_cell)
-            if 0 <= i < self.fine_nx and 0 <= j < self.fine_ny:
-                return self.fine[j][i], self.fine_confidence[j][i], int(self.fine_cell / 100)
+        if self.fine_grid and self.fine_confidence:
+            i = int((x - self.x0_cm) // self.fine_cell_cm)
+            j = int((y - self.y0_cm) // self.fine_cell_cm)
+            if 0 <= i < self.fine_column_count and 0 <= j < self.fine_row_count:
+                return (
+                    self.fine_grid[j][i],
+                    self.fine_confidence[j][i],
+                    int(self.fine_cell_cm / 100),
+                )
             return None
         at = self.cell_of(x, y)
         if at is None:
             return None
         i, j = at
-        return self.grid[j][i], self.confidence[j][i], int(self.cell / 100)
+        return self.grid[j][i], self.confidence[j][i], int(self.cell_cm / 100)
 
     def label_for(self, x: float, y: float) -> Label:
         """Name the region containing a point.
@@ -137,7 +141,7 @@ class RegionMap:
     @property
     def accuracy_m(self) -> int:
         """How far a name is trustworthy in metres: the finer grid's cell, if there is one."""
-        default = int((self.fine_cell or self.cell) / 100)
+        default = int((self.fine_cell_cm or self.cell_cm) / 100)
         return int(self.meta.get("accuracy_m", default))
 
     # ---- name -> nodes -------------------------------------------------
@@ -147,17 +151,17 @@ class RegionMap:
 
     def resolve(self, name: str) -> str | None:
         """Resolve a region name case-insensitively, allowing unique prefixes."""
-        q = name.strip().casefold()
+        query = name.strip().casefold()
         for known in self.regions:
-            if known.casefold() == q:
+            if known.casefold() == query:
                 return known
-        hits = [k for k in self.regions if k.casefold().startswith(q)]
+        hits = [k for k in self.regions if k.casefold().startswith(query)]
         if len(hits) == 1:
             return hits[0]
-        hits = [k for k in self.regions if q in k.casefold()]
+        hits = [k for k in self.regions if query in k.casefold()]
         return hits[0] if len(hits) == 1 else None
 
-    def filter_nodes(self, nodes: list[dict], name: str) -> list[dict]:
+    def nodes_in_region(self, nodes: list[dict], name: str) -> list[dict]:
         """Nodes whose label matches ``name``."""
         resolved = self.resolve(name)
         if resolved is None:
@@ -199,32 +203,32 @@ class RegionMap:
             return cx, cy
         best: tuple[float, float, float] | None = None
         for j, row in enumerate(self.grid):
-            for i, cell in enumerate(row):
-                if cell != letter:
+            for i, cell_letter in enumerate(row):
+                if cell_letter != letter:
                     continue
-                px = self.x0 + (i + 0.5) * self.cell
-                py = self.y0 + (j + 0.5) * self.cell
+                px = self.x0_cm + (i + 0.5) * self.cell_cm
+                py = self.y0_cm + (j + 0.5) * self.cell_cm
                 d = (px - cx) ** 2 + (py - cy) ** 2
                 if best is None or d < best[0]:
                     best = (d, px, py)
         return (cx, cy) if best is None else (best[1], best[2])
 
 
-def region_rows(table, rid: str | None, rows: list[dict] | None = None) -> list[dict]:
+def region_rows(node_table, resource_id: str | None, rows: list[dict] | None = None) -> list[dict]:
     """One row per named region, busiest first: anchor (cm), direction, grid, area, nodes.
 
     ``rows`` is the node pool counted, the whole table by default; with ``rid`` only that
     resource counts and a region holding none of it is left out.
     """
-    rm = load_regions()
-    pool = rows if rows is not None else table.nodes
-    if rid:
-        pool = [n for n in pool if n["resource"] == rid]
+    region_map = load_regions()
+    pool = rows if rows is not None else node_table.nodes
+    if resource_id:
+        pool = [n for n in pool if n["resource"] == resource_id]
     out = []
-    for name in rm.names():
-        info = rm.summary(name)
-        hits = rm.filter_nodes(pool, name)
-        if rid and not hits:
+    for name in region_map.names():
+        info = region_map.summary(name)
+        hits = region_map.nodes_in_region(pool, name)
+        if resource_id and not hits:
             continue
         ax, ay = info["anchor"] or info["centroid"]
         out.append(
@@ -254,23 +258,23 @@ def load_regions() -> RegionMap:
     if hit is not None:
         return hit
     payload = json.loads(path.read_text(encoding="utf-8"))
-    gm = payload["grid_meta"]
+    grid_meta = payload["grid_meta"]
     region_map = RegionMap(
         grid=payload["region_grid"],
         confidence=payload["confidence_grid"],
         legend=payload["legend"],
         regions=payload["regions"],
         meta=payload.get("_meta", {}),
-        x0=gm["x0"],
-        y0=gm["y0"],
-        cell=gm["cell"],
-        nx=gm["nx"],
-        ny=gm["ny"],
-        fine=payload.get("fine_grid"),
+        x0_cm=grid_meta["x0"],
+        y0_cm=grid_meta["y0"],
+        cell_cm=grid_meta["cell"],
+        column_count=grid_meta["nx"],
+        row_count=grid_meta["ny"],
+        fine_grid=payload.get("fine_grid"),
         fine_confidence=payload.get("fine_confidence"),
-        fine_cell=gm.get("fine_cell", 0.0),
-        fine_nx=gm.get("fine_nx", 0),
-        fine_ny=gm.get("fine_ny", 0),
+        fine_cell_cm=grid_meta.get("fine_cell", 0.0),
+        fine_column_count=grid_meta.get("fine_nx", 0),
+        fine_row_count=grid_meta.get("fine_ny", 0),
     )
     _MAP.clear()
     _MAP[key] = region_map

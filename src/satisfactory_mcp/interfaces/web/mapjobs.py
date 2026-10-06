@@ -169,7 +169,9 @@ class MapJobRunner:
         if not cost["ok"]:
             raise presets.DiskShort(cost["reason"])
         ident = store.new_id()
-        plan = presets.plan(preset, options, ident, registry.game_cl(), registry.taken_ids())
+        plan = presets.plan(
+            preset, options, ident, registry.installed_changelist(), registry.taken_ids()
+        )
         if label:
             for entry in plan["produces"].values():
                 entry["label"] = label.strip()[:80] or None
@@ -306,7 +308,7 @@ class MapJobRunner:
             started = job.get("started") or time.time()
             job["stage"] = run.progress.stage
             job["stage_words"] = run.progress.stage_words()
-            pct = run.progress.pct()
+            pct = run.progress.fraction_done()
             job["pct"] = round(pct, 4) if pct is not None else None
             eta = run.progress.eta(time.time() - started)
             job["eta_s"] = round(eta) if eta is not None else None

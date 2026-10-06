@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
 
+from ...core.gamedata.constants import BUILDING_CLASS_ALIASES
 from ...core.gamedata.model import GameData
+from ...core.saveio.records import MACHINE_GROUPS
 
 if TYPE_CHECKING:
     from ..progression.unlocks import UnlockSet
@@ -34,8 +36,6 @@ class BuildCensus:
         FGLightweightBuildableSubsystem holds Build_* classes that appear in no actor
         header, so a header-only count understates what exists.
         """
-        from ...core.gamedata.constants import BUILDING_CLASS_ALIASES
-
         out: dict[str, int] = {}
         for source in (
             self.projection.get("building_counts", {}),
@@ -80,5 +80,4 @@ class BuildCensus:
         ]
 
     def all_records(self) -> list[dict]:
-        p = self.projection
-        return [*p.get("machines", ()), *p.get("extractors", ()), *p.get("generators", ())]
+        return [record for group in MACHINE_GROUPS for record in self.projection.get(group, ())]

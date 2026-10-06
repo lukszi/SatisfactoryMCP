@@ -21,6 +21,7 @@ from ....domain.spatial.places import (
     RUN_PREFIXES,
     resolve_place,
 )
+from ....domain.world import conduit_search
 from ....domain.world import conduits as conduits_mod
 from ....presenters.text import primitives as render
 from ..app import (
@@ -200,10 +201,10 @@ def describe_location(
     else:
         notes.append("the terrain field has no data at this point -- open ocean, or a cave mouth")
     if near.samples:
-        for what, values in (("ground", near.ground), ("built", near.built)):
+        for what, values in (("ground", near.ground_m), ("built", near.built_m)):
             if not values:
                 continue
-            mid = near.middle(values)
+            mid = near.median_of(values)
             fields.append(
                 (
                     f"{what}_elevation_m",
@@ -302,7 +303,7 @@ def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset
     a player thinks in and the reason "is there a pipe from here to there" has an answer
     at all.
     """
-    order = conduits_mod.networks(st, origin)
+    order = conduit_search.networks(st, origin)
 
     rows = []
     start = max(0, offset)
@@ -451,7 +452,7 @@ def search_conduits(
             return "! show='networks' lists fluid networks; a belt chain belongs to none"
         return _networks_view(g, st, origin, where, limit, offset)
 
-    found = conduits_mod.search(
+    found = conduit_search.search(
         st, near, radius_m, to=to, to_radius_m=to_radius_m, kind=want, network=network
     )
     if found.error:
@@ -770,8 +771,8 @@ def search_resource_nodes(
                 f"{int(c.centroid[0] / 100)},{int(c.centroid[1] / 100)}",
                 c.size,
                 ",".join(f"{n}{k[0]}" for k, n in sorted(c.purities.items())),
-                render.num(c.total),
-                render.num(c.free),
+                render.num(c.total_rate),
+                render.num(c.free_rate),
                 f"{c.diameter_m:.0f}m",
                 "LOCKED" if c.locked else "",
             )
@@ -910,7 +911,7 @@ def show_on_map(
     node = None
     if kind.casefold() == "resource":
         item = _item_id(value.strip())
-        if not item or item not in maplink.LAYERS:
+        if not item or item not in maplink.CALCULATOR_RESOURCE_LAYERS:
             return f"! no map layer for resource {value.strip()!r}"
         rows = table.by_resource(item)
         if not rows:
@@ -974,7 +975,9 @@ def show_on_map(
         ),
         mode=mode or "",
     )
-    body = f"local map: {local}\npublic map: {maplink.map_url(*origin, tokens, zoom=zoom)}"
+    body = (
+        f"local map: {local}\npublic map: {maplink.calculator_map_url(*origin, tokens, zoom=zoom)}"
+    )
     if tokens:
         body += "\n# layers: " + ", ".join(tokens)
     notes.append(
@@ -1067,7 +1070,7 @@ def rank_build_sites(
             f"could not read save: {exc} (site ranking needs a save to know what is already built)"
         )
 
-    ranked = node_search.rank(st, g, rid, sources, resolve_resource=_item_id)
+    ranked = node_search.rank_build_sites(st, g, rid, sources, resolve_resource=_item_id)
     sel = ranked.selection
     if ranked.unselected:
         return render.envelope("# no candidates", "", [*sel.errors, SELECTOR_HELP])
@@ -1094,7 +1097,7 @@ def rank_build_sites(
     unit = "m3/min" if g.items[rid].is_fluid else "/min"
     out_rows = []
     for sc in scored[:n]:
-        v = node_search.site_view(sc, rm)
+        v = node_search.site_row(sc, rm)
         alt = v["alt_m"]
         out_rows.append(
             (

@@ -13,7 +13,7 @@ from satisfactory_mcp.domain.factories.health import (
     OPEN,
     assess,
 )
-from satisfactory_mcp.domain.world.logistics import UNKNOWN, build_physical_graph
+from satisfactory_mcp.domain.world.logistics import BASIS_UNKNOWN, build_physical_graph
 from tests.support.factory_health import (
     ArrivingRuns,
     assess_records,
@@ -103,7 +103,7 @@ def test_an_undirected_run_is_not_reported_as_feeding(game):
     report = assess_records(
         game,
         machines=[_starved(name)],
-        physical=ArrivingRuns([link(name, "Build_PipelineJunction_C_9", basis=UNKNOWN)]),
+        physical=ArrivingRuns([link(name, "Build_PipelineJunction_C_9", basis=BASIS_UNKNOWN)]),
     )
     (feed,) = report.machines[0].feeds
     assert feed.verdict == JOINED

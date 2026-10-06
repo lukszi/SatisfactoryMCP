@@ -13,7 +13,7 @@ from satisfactory_mcp.domain.collectibles import service
 from satisfactory_mcp.domain.spatial import geo, maplink, regions, surroundings
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.nodes import search as node_search
-from satisfactory_mcp.domain.world import conduits
+from satisfactory_mcp.domain.world import conduit_search
 from satisfactory_mcp.domain.world.state import WorldState
 
 IRON = "Desc_OreIron_C"
@@ -30,7 +30,7 @@ def test_a_resource_filter_keeps_only_that_resource_and_totals_add_up(state, gam
     found = _find(state, game, resource="Iron Ore", view="nodes")
     assert found.rows and {r["resource"] for r in found.rows} == {IRON}
     assert found.total == pytest.approx(sum(r["rate"] for r in found.rows))
-    assert found.free == pytest.approx(nodes_mod.capacity(found.rows, only_free=True))
+    assert found.free == pytest.approx(nodes_mod.untapped_rate(found.rows))
     assert found.unit == "/min"
     assert [(-r["rate"], r["instance"]) for r in found.rows] == sorted(
         (-r["rate"], r["instance"]) for r in found.rows
@@ -124,7 +124,7 @@ def test_fields_cluster_members_within_the_link_distance(state, game):
         assert f.selector.startswith("near:")
         x0, y0, x1, y1 = f.bbox
         assert all(x0 <= m["x"] <= x1 and y0 <= m["y"] <= y1 for m in f.members)
-        assert f.free <= f.total
+        assert f.free_rate <= f.total_rate
         assert f.spoiler == (not any(m["reachable"] for m in f.members))
 
 
@@ -141,16 +141,16 @@ def test_a_field_distance_is_to_its_nearest_member(state, game):
 
 
 def test_rank_orders_untapped_reachable_fields_best_first(state, game):
-    ranked = node_search.rank(state, game, IRON, None)
+    ranked = node_search.rank_build_sites(state, game, IRON, None)
     assert ranked.scored
     scores = [s.score for s in ranked.scored]
     assert scores == sorted(scores, reverse=True)
-    view = node_search.site_view(ranked.scored[0])
+    view = node_search.site_row(ranked.scored[0])
     assert view["selector"].startswith("near:") and view["untapped"] > 0
 
 
 def test_rank_with_a_failed_selector_selects_nothing(state, game):
-    assert node_search.rank(state, game, IRON, ["region:Nowhere"]).unselected
+    assert node_search.rank_build_sites(state, game, IRON, ["region:Nowhere"]).unselected
 
 
 # ----------------------------------------------------------------------- place
@@ -197,7 +197,7 @@ def test_describe_without_a_save_keeps_the_map_and_drops_the_save(game):
 
 
 def test_search_near_lists_runs_longest_first(state):
-    found = conduits.search(state, "-1216,-1127", 300.0)
+    found = conduit_search.search(state, "-1216,-1127", 300.0)
     assert found.hits
     lengths = [r.length_m for r in found.hits]
     assert lengths == sorted(lengths, reverse=True)
@@ -206,23 +206,25 @@ def test_search_near_lists_runs_longest_first(state):
 
 
 def test_search_kind_and_to_narrow_the_runs(state):
-    pipes = conduits.search(state, "-1216,-1127", 300.0, kind="pipe")
+    pipes = conduit_search.search(state, "-1216,-1127", 300.0, kind="pipe")
     assert pipes.hits and all(r.kind == "pipe" for r in pipes.hits)
-    both = conduits.search(state, "-1216,-1127", 300.0, to="-1200,-1100", to_radius_m=100.0)
+    both = conduit_search.search(state, "-1216,-1127", 300.0, to="-1200,-1100", to_radius_m=100.0)
     assert all(r.dist_m(*both.second) <= 100.0 for r in both.hits)
     assert both.where_to == "-1200,-1100"
 
 
 def test_search_network_lists_every_pipe_of_that_network(state):
     net = next(r.network for r in state.conduit_runs if r.kind == "pipe" and r.network is not None)
-    found = conduits.search(state, "me", 1.0, network=net)
+    found = conduit_search.search(state, "me", 1.0, network=net)
     expected = [r for r in state.conduit_runs if r.kind == "pipe" and r.network == net]
     assert {r.ident for r in found.hits} == {r.ident for r in expected}
 
 
 def test_search_run_picks_one_run_and_refuses_an_unknown_one(state):
-    assert [r.ident for r in conduits.search(state, "me", 1.0, run="chain:7").hits] == ["chain:7"]
-    assert conduits.search(state, "me", 1.0, run="chain:999999").error
+    assert [r.ident for r in conduit_search.search(state, "me", 1.0, run="chain:7").hits] == [
+        "chain:7"
+    ]
+    assert conduit_search.search(state, "me", 1.0, run="chain:999999").error
 
 
 def test_a_network_touching_both_areas_is_reported_as_bridged(game):
@@ -240,13 +242,13 @@ def test_a_network_touching_both_areas_is_reported_as_bridged(game):
         "generators": [],
     }
     st = WorldState(projection=projection, game=game)
-    found = conduits.search(st, "0,0", 20.0, to="30,400", to_radius_m=20.0)
+    found = conduit_search.search(st, "0,0", 20.0, to="30,400", to_radius_m=20.0)
     assert not found.hits
     assert found.bridged and "pipe network 33" in found.bridged[0]
 
 
 def test_networks_sum_every_pipe_once(state):
-    views = conduits.networks(state, (0.0, 0.0))
+    views = conduit_search.networks(state, (0.0, 0.0))
     pipes = [r for r in state.conduit_runs if r.kind == "pipe"]
     assert sum(v.pieces for v in views) == len(pipes)
     lengths = [v.length_m for v in views]
@@ -302,7 +304,9 @@ def test_table_age_is_silent_on_a_current_table_and_scoped_on_a_stale_one():
     assert age["moved"] == 1 and age["unjoinable"] == 0
     assert age["notes"] and "NodeA" in age["notes"][0]
     assert nodes_mod.table_age({"save_version": 8}, table, ["L:P.Other"])["moved"] == 0
-    assert nodes_mod.drifted(nodes_mod.skew_from_meta(table.meta, {"save_version": 8}), None) == {
+    assert nodes_mod.drifted_leaf_names(
+        nodes_mod.skew_from_meta(table.meta, {"save_version": 8}), None
+    ) == {
         "NodeA",
         "NodeB",
     }
@@ -361,7 +365,7 @@ def test_show_ref_spells_each_place_kind():
 
 
 def test_choices_cover_the_whole_table(game):
-    got = node_search.choices(game)
+    got = node_search.filter_choices(game)
     table = nodes_mod.load_nodes()
     assert sum(r["nodes"] for r in got["resources"]) == len(table)
     assert set(got["kinds"]) == {n["kind"] for n in table.nodes}

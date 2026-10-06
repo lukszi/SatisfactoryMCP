@@ -12,6 +12,7 @@ import json
 import shutil
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 from ... import config
 from ...core import atomic, filelock, schema
@@ -106,31 +107,25 @@ def has_pyramid(directory: Path) -> bool:
     return (directory / "tiles" / "0" / "0_0.png").is_file()
 
 
-def _present(local: Path, entry: dict) -> bool:
+def _pyramid_present(local: Path, entry: dict) -> bool:
     target = _inside(local, entry["dir"])
     if target is None:
         return False
     return has_pyramid(target) or (entry["dir"] == "." and (target / "map.png").is_file())
 
 
-def _tiles(sidecar: dict | None) -> dict:
-    block = sidecar.get("_meta") if isinstance(sidecar, dict) else None
-    block = block if isinstance(block, dict) else {}
-    one = block.get("tiles") if isinstance(block.get("tiles"), dict) else {}
-    two = block.get("tiles_2x") if isinstance(block.get("tiles_2x"), dict) else {}
-
-    def whole(source: dict, key: str) -> int | None:
-        value = source.get(key)
-        return value if isinstance(value, int) and not isinstance(value, bool) else None
-
+def _tile_stats(sidecar: dict | None) -> dict:
+    """Bytes on disk and pyramid depth of both trees, as the sidecar records them."""
+    one = ax.dict_at(sidecar, "_meta", "tiles")
+    two = ax.dict_at(sidecar, "_meta", "tiles_2x")
     return {
-        "bytes": (whole(one, "bytes") or 0) + (whole(two, "bytes") or 0),
-        "max_z": whole(one, "max_z"),
-        "max_2x_z": whole(two, "max_z"),
+        "bytes": (ax.int_or_none(one.get("bytes")) or 0) + (ax.int_or_none(two.get("bytes")) or 0),
+        "max_z": ax.int_or_none(one.get("max_z")),
+        "max_2x_z": ax.int_or_none(two.get("max_z")),
     }
 
 
-def describe(local: Path, rel: str, sidecar_name: str, kind: str) -> dict:
+def describe_pyramid(local: Path, rel: str, sidecar_name: str, kind: str) -> dict:
     """What a pyramid directory's sidecar says: axes, size on disk, depth, when written."""
     target = local / rel
     sidecar = ax.read_json(target / sidecar_name)
@@ -138,7 +133,7 @@ def describe(local: Path, rel: str, sidecar_name: str, kind: str) -> dict:
         created = (target / sidecar_name).stat().st_mtime
     except OSError:
         created = None
-    return {"axes": ax.axes_from_sidecar(sidecar, kind), **_tiles(sidecar), "created": created}
+    return {"axes": ax.axes_from_sidecar(sidecar, kind), **_tile_stats(sidecar), "created": created}
 
 
 def new_entry(ident: str, kind: str, layer: str, rel: str, sidecar: str, origin: str) -> dict:
@@ -169,15 +164,25 @@ def _resolved(local: Path, rel: str) -> str:
         return str(local / rel).casefold()
 
 
-def _candidates(local: Path) -> list[tuple[str | None, str, str, str, str]]:
-    """``(legacy id or None, dir, sidecar, kind, layer)`` for every pyramid lying under ``local``."""
-    found: list[tuple[str | None, str, str, str, str]] = []
+class PyramidCandidate(NamedTuple):
+    """A pyramid lying under ``data/local``, and the legacy id it answers to, if any."""
+
+    legacy: str | None
+    rel: str
+    sidecar: str
+    kind: str
+    layer: str
+
+
+def _candidates(local: Path) -> list[PyramidCandidate]:
+    """Every pyramid lying under ``local``."""
+    found: list[PyramidCandidate] = []
     if has_pyramid(local) or (local / "map.png").is_file():
-        found.append(("map", ".", "map.json", "artwork", "map"))
+        found.append(PyramidCandidate("map", ".", "map.json", "artwork", "map"))
     for ident in ("terrain", "satellite"):
         rel = LEGACY[ident][0]
         if has_pyramid(local / rel):
-            found.append((ident, rel, "meta.json", "render", ident))
+            found.append(PyramidCandidate(ident, rel, "meta.json", "render", ident))
     roots = sorted(p for p in local.glob("renders*") if p.is_dir() and p.name != "renders")
     maps = local / MAPS_DIR_NAME
     if maps.is_dir():
@@ -188,18 +193,18 @@ def _candidates(local: Path) -> list[tuple[str | None, str, str, str, str]]:
         if root.name.endswith(SKIPPED_SUFFIXES):
             continue
         if has_pyramid(root):
-            found.append((None, root.relative_to(local).as_posix(), "map.json", "artwork", "map"))
+            rel = root.relative_to(local).as_posix()
+            found.append(PyramidCandidate(None, rel, "map.json", "artwork", "map"))
             continue
         for layer_dir in sorted(p for p in root.iterdir() if p.is_dir()):
             if layer_dir.name.endswith(SKIPPED_SUFFIXES) or not has_pyramid(layer_dir):
                 continue
-            meta = ax.read_json(layer_dir / "meta.json") or {}
-            block = meta.get("_meta") if isinstance(meta.get("_meta"), dict) else {}
+            block = ax.dict_at(ax.read_json(layer_dir / "meta.json"), "_meta")
             if block.get("generator") != ax.RENDERS_GENERATOR:
                 continue
             layer = str(block.get("layer") or layer_dir.name)
             rel = layer_dir.relative_to(local).as_posix()
-            found.append((None, rel, "meta.json", "render", layer))
+            found.append(PyramidCandidate(None, rel, "meta.json", "render", layer))
     return found
 
 
@@ -212,7 +217,7 @@ def _adopt_into(data: dict, local: Path) -> list[str]:
         if where in seen:
             continue
         seen.add(where)
-        described = describe(local, rel, sidecar, kind)
+        described = describe_pyramid(local, rel, sidecar, kind)
         if legacy is not None and legacy not in types:
             ident = legacy
         else:
@@ -220,7 +225,7 @@ def _adopt_into(data: dict, local: Path) -> list[str]:
             ident = ax.derive_id(
                 ax.style_label(axes),
                 axes.get("renderer", {}).get("recipe"),
-                ax.data_cl(axes),
+                ax.data_changelist(axes),
                 set(types) | RESERVED,
             )
         entry = new_entry(ident, kind, layer, rel, sidecar, "adopted")
@@ -365,7 +370,7 @@ def _live_axes(local: Path, entry: dict) -> dict:
     return held[1]
 
 
-def game_cl() -> int | None:
+def installed_changelist() -> int | None:
     from ...core.gameassets.provenance import InstallNotFound, changelist, installed_build
 
     try:
@@ -379,12 +384,12 @@ def view(current: dict | None = None) -> dict:
     """Every type with its computed status, freshness, name and title, in display order."""
     data = read()
     local = local_dir()
-    current = current if current is not None else ax.current_state(local, game_cl())
+    current = current if current is not None else ax.current_state(local, installed_changelist())
     rows = []
     for ident, entry in data["types"].items():
         axes = _live_axes(local, entry)
         status = entry.get("status") if entry.get("status") in STATUSES else "ready"
-        if status == "ready" and not _present(local, entry):
+        if status == "ready" and not _pyramid_present(local, entry):
             status = "missing"
         rows.append(
             {
@@ -392,7 +397,7 @@ def view(current: dict | None = None) -> dict:
                 "entry": entry,
                 "axes": axes,
                 "status": status,
-                "freshness": ax.verdict(axes, current),
+                "freshness": ax.freshness(axes, current),
             }
         )
     groups: dict[str, int] = {}
@@ -432,7 +437,7 @@ def adopt_existing() -> list[str]:
     return added
 
 
-def _known(data: dict, ident: str) -> dict:
+def _require_entry(data: dict, ident: str) -> dict:
     entry = data["types"].get(ident)
     if entry is None:
         raise MapsUnknown(f"no map type “{ident}”")
@@ -447,7 +452,7 @@ def update(
         raise MapsError("a label is at most 80 characters")
 
     def change(data: dict) -> bool:
-        entry = _known(data, ident)
+        entry = _require_entry(data, ident)
         dirty = False
         if label is not None:
             new = label.strip() or None
@@ -466,7 +471,7 @@ def set_default(ident: str, version: int | None = None) -> dict:
 
     def change(data: dict) -> bool:
         if ident != PLAIN:
-            entry = _known(data, ident)
+            entry = _require_entry(data, ident)
             if entry.get("status") != "ready":
                 raise MapsRefused(f"{ident} is {entry.get('status')}, not ready to be the default")
         if data["default"] == ident:
@@ -481,7 +486,7 @@ def _trash_target(ident: str) -> Path:
     return maps_dir() / TRASH_DIR_NAME / f"{ident}-{int(time.time() * 1000)}"
 
 
-def _move_out(local: Path, entry: dict, ident: str) -> None:
+def _move_to_trash(local: Path, entry: dict, ident: str) -> None:
     source = _inside(local, entry["dir"])
     if source is None or not source.exists():
         return
@@ -517,13 +522,13 @@ def delete(ident: str, version: int | None = None, busy: frozenset[str] = frozen
 
     def change(data: dict) -> bool:
         nonlocal freed
-        entry = _known(data, ident)
+        entry = _require_entry(data, ident)
         if data["default"] == ident:
             raise MapsRefused("pick another default first")
         if ident in busy:
             raise MapsRefused(f"a generation job still uses {ident}; cancel it first")
         try:
-            _move_out(local_dir(), entry, ident)
+            _move_to_trash(local_dir(), entry, ident)
         except OSError as exc:
             raise MapsRefused(
                 f"{ident} is in use and was not deleted ({exc.strerror or exc}); "
@@ -545,7 +550,7 @@ def discard(ident: str) -> None:
         if entry is None:
             return False
         try:
-            _move_out(local_dir(), entry, ident)
+            _move_to_trash(local_dir(), entry, ident)
         except OSError:
             pass
         if data["default"] == ident:
@@ -587,8 +592,8 @@ def finish(ident: str, job: str) -> bool:
         if entry is None:
             return False
         local = local_dir()
-        ok = _present(local, entry)
-        entry.update(describe(local, entry["dir"], entry["sidecar"], entry["kind"]))
+        ok = _pyramid_present(local, entry)
+        entry.update(describe_pyramid(local, entry["dir"], entry["sidecar"], entry["kind"]))
         entry["status"] = "ready" if ok else "failed"
         entry["job"] = job
         if data["default"] is None and ok:

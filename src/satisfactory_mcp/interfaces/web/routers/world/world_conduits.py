@@ -1,8 +1,8 @@
 """``/api/world/conduits``: belt and pipe runs near a place, or every fluid network.
 
-The runs are ``conduits.search``'s and the networks ``conduits.networks``', the calls
-``search_conduits`` makes, so the page and the chat answer one question one way. Handler
-names are operation_ids (wire rule 1 of docs/web-wire.md).
+The runs are ``conduit_search.search``'s and the networks ``conduit_search.networks``',
+the calls ``search_conduits`` makes, so the page and the chat answer one question one
+way. Handler names are operation_ids (wire rule 1 of docs/web-wire.md).
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from fastapi import APIRouter, Query, Request
 
 from .....domain.spatial.places import resolve_place
+from .....domain.world import conduit_search
 from .....domain.world import conduits as conduits_mod
 from ...serial import choice_refusal, cm_to_m, error_response, require_world, resource_name
 
@@ -182,7 +183,7 @@ def world_conduits(
     view = view.strip().casefold()
     kind = conduit_kind.strip().casefold()
     refusal = choice_refusal(view, CONDUIT_VIEWS, "view") or choice_refusal(
-        kind, (*conduits_mod.KINDS, "all"), "conduit_kind"
+        kind, (*conduit_search.KINDS, "all"), "conduit_kind"
     )
     if refusal:
         return error_response(refusal)
@@ -213,9 +214,9 @@ def world_conduits(
             origin, where = resolve_place(st, near)
         except ValueError as exc:
             return error_response(f"! {exc}")
-        return _networks_reply(conduits_mod.networks(st, origin), where, game, base, page)
+        return _networks_reply(conduit_search.networks(st, origin), where, game, base, page)
 
-    found = conduits_mod.search(
+    found = conduit_search.search(
         st,
         near,
         radius_m,

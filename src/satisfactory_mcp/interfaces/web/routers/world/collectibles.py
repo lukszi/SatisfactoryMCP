@@ -117,11 +117,7 @@ def collectibles(
     ]
     counts = view.counts
     if hidden:
-        counts = {}
-        for r in view.rows or ():
-            if r["category"] not in hidden:
-                key = "collected" if r["collected"] else r["observed"] or "unstated"
-                counts[key] = counts.get(key, 0) + 1
+        counts = service.state_counts(r for r in view.rows or () if r["category"] not in hidden)
     return {
         "mode": view.mode,
         "group": view.group,
