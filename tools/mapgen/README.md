@@ -311,6 +311,31 @@ shade for any sun.
   bed beside it and settling to 60 m offshore, so every style reads one seabed and the colour
   does not step at the data edge. Level-only water away from the ocean's level, and
   `--kernel-only`, keep the deep end of the ramp.
+- **`OPEN_SEA_BLEND_M`, `OPEN_SEA_BLEND_PULL_M`**: a membrane fixed on the measured bed meets
+  it in value but not in slope, and the hillshade and the depth tint both draw the kink. Along
+  a landscape component's straight edge that kink was a line hundreds of metres long. Within
+  100 m of the open sea the measured bed is no longer fixed. It only pulls the membrane, over
+  about 25 m, and is laid back over it on a cosine taper, so the bed is smooth in slope too.
+  A pull is a smooth constraint where a fixed cell is a hard edge, so its edge bends the slope
+  but cannot kink it. Past the 100 m the measured bed is drawn as measured.
+- **`OPEN_SEA_TONE_DEPTH_M`**: the artwork draws its water in four flat tones, and over the
+  landscape's measured ocean each tone sits on one depth band: 5.3, 3.5 and 1.3 m in the
+  median for the three lighter ones, and anything deeper for the teal. Where the open sea has
+  no bed, a lighter tone pulls the membrane to its depth over `OPEN_SEA_TONE_PULL_M`, so a
+  strip the artwork draws shallow is not drawn deep.
+- **The void** (`void_planes`, `styles.with_void`): no data that does not reach the field's
+  edge through no data is a pit, the rest is the void past the world's edge. Both are drawn as
+  the artwork draws them, lit at the edge and darkening over a Gaussian of `VOID_FALLOFF_M`
+  (50 m, the artwork's falloff reaches black in about 110 m), with a light rim. A pit goes from
+  the artwork's grey to black, and the void past the edge goes to the page's own sea colour.
+  Beside the open sea the bed runs on under the void and the sea fades into it over the same
+  falloff, with no lit edge and no rim. Here "the sea" includes dry ground under its level
+  within the shore rule's `OCEAN_REACH_M`, which that rule draws as sea. Low ground further
+  inland is not counted: the southern lowlands lie under the sea's level. A rock standing in
+  the void keeps the void off only above the sea's level; deeper, it is the void's, or the
+  sea run on under the void would draw it as water. A floor the fill emptied beside the void
+  past the edge is part of that void. Drawn as a pit, the north-east corner's floor was a black
+  rectangle on the page's navy.
 - **Perched water**: a sloped river's box top is its upstream end, and one body's box can
   cover a lower body. `palette/perched.py` re-levels such water from its own shoreline
   before it is drawn. The thresholds are measured in

@@ -1391,7 +1391,8 @@ What is drawn now, by `gamedata/water.py`, `terrain/fill.py` and `palette/water.
 - **The artwork says sea or void.** `artwork_planes` classifies the decoded sheet on the 1 m
   grid: water is the water channel's own test (`B - R >= 25`), void is anything else with a
   Rec. 601 luma of 110 or less. The pits are black to a flat grey (luma 0 to about 80), the
-  ground beige or white (140 and up).
+  ground beige or white (140 and up). Its water comes back as one of the artwork's four flat
+  tones, split at `G - R` of 40, 56 and 70 (`WATER_ARTWORK_BANDS`).
 - **A pit stays empty.** A region of no data and of ground below -200 m is a pit when at
   least half of it is void in the artwork: 0.88 to 0.95 for the crater and the abyss pits, 0.5
   to 0.7 for a crack under its white outline, 0.44 and less for the holes drawn as ground. Of
@@ -1416,6 +1417,74 @@ What is drawn now, by `gamedata/water.py`, `terrain/fill.py` and `palette/water.
   sea and void counts its water against the part that is not void, so the void's edge is
   never drawn as land.
 
+### The open sea and the void, a second pass (2026-10-06)
+
+The next review still found straight lines in the sea and navy in the pits:
+
+- **A seam east of the swamp**, overview x 1718, y 1147 to 1330, and its corner at y 1147.
+  The measured landscape ends at game x 3045 on a 30.8 m plateau, and level-only fill lies
+  east of it. Sampled across that edge from y 450 to 1120, the depth had no step: the
+  membrane matched the plateau to within 0.6 m. It had a kink. The plateau is flat, while the
+  membrane climbs at 0.07 to 0.7 m per metre from the first texel, pulled by the 60 m floor
+  and by cliff-province seeds 98 m deep. The hillshade lights the bed and the depth tint
+  follows it, so the kink drew a line 670 m long. The 4 m cells next to the seeds were not
+  the cause: they put no step into the samples.
+- **A darker strip right of the island chain** in waterfall_1, game x -1730 to -1600, y 3100
+  to 3400. It is level-only fill closed in by the chain and the void, so no seed holds it
+  and the membrane drew it 7.5 to 9.5 m deep. The artwork draws it cyan.
+- **Pits in the page's navy**, flat and hard-edged: the crater at (-164, 1310), the abyss
+  pits and the pit under ow_perched_5. Satellite's deep sea (#152a3b) and relief dark's
+  (#031b2d) are close enough to that navy that the void past the world's edge read as ocean.
+- **Hard straight edges where the sea meets the void**: east of the dunes, the south-west
+  notch, and both 638 m falls.
+
+What `palette/water.py` and `palette/styles.py` draw now:
+
+- **A bed continuous in slope.** Within 100 m of the open sea (`OPEN_SEA_BLEND_M`) the
+  measured bed is no longer fixed in the membrane. It pulls the membrane towards itself over
+  about 25 m (`OPEN_SEA_BLEND_PULL_M`), and is then laid back over the result on a cosine
+  taper, from the membrane at the edge to the measured bed 100 m in. Past that it is drawn as
+  measured, to the decimetre. One solve does it (`membrane`): the screened membrane with a
+  pull per cell, conjugate gradients on the 4 m grid. A pull is a smooth constraint where a
+  fixed cell is a hard edge, so the edge of a pull bends the slope and cannot break it. Across
+  the swamp seam, the depth now rises from the plateau over about 60 m with no corner, and
+  1.47 M measured texels are blended. A measured shelf narrower than 100 m is held near its
+  own depth but no longer exactly: a 30 m wide, 8 m shelf beside open sea draws 10 to 11 m.
+- **The artwork's tones as depth.** On the landscape's measured ocean each of the artwork's
+  three lighter tones sits on one depth band. The median is 5.3 m for `G - R` about 48 (p10
+  to p90: 4.9 to 6.6 m), 3.5 m for about 64 (2.9 to 4.6 m) and 1.3 m for about 78 (0.5 to
+  2.1 m). The teal, about 32, has a 42 m median and says only "deeper". Where the open sea
+  has no bed, a lighter tone pulls the membrane to its depth over 12 m
+  (`OPEN_SEA_TONE_PULL_M`); 109,913 texels carry one. The strip right of the chain now draws
+  2 to 4 m deep, matching its tone.
+- **Pits are not the void past the edge.** No data that does not reach the field's edge
+  through no data is a pit; the rest is the void past the world's edge. A floor the fill
+  emptied at the north-east corner (3,939, -2,933) belongs to that void. Drawn as a pit, it
+  was a black rectangle on the page's navy. The crater and both abyss pits are pits: 135,744
+  texels of the 10.84 M.
+- **The artwork's falloff.** The artwork lights a pit or the void past the edge at its
+  rim, a white line about 2 m wide, and fades from a flat grey (luma 65 to 76) to black over
+  about 110 m. Half the light is gone by 37 m, three quarters by 63 m. A Gaussian of 50 m
+  (`VOID_FALLOFF_M`) on the void's mask fits that profile to about 5 points. Every style
+  draws both the same way: a light rim, then from the artwork's grey to black in a pit, and
+  from a lit tone of the page's navy (#424f5a) to the navy itself past the edge.
+- **The sea fades into the void.** Beside the open sea the bed runs on under the void
+  (338,807 texels), and the void's cover rises from 0 at its edge to 1 over the same falloff,
+  with no lit edge and no rim. A pixel takes its sea share from the ocean around it,
+  Gaussian-weighted, so a coast where land and sea meet the void changes treatment smoothly.
+  Dry ground under the sea's surface within the shore rule's 48 m of the ocean counts as sea
+  here, because that rule draws it as sea. In the south-west notch, the cliffs at -100 m
+  beside the void had a rim drawn down the middle of the water. Low ground further inland stays
+  land: 3.1 M dry texels lie under the sea's level, most of them in the southern lowlands.
+- **Rocks in the void.** The void's cover is still kept off a rock standing in it, but only
+  where the rock stands above the sea's level. A cliff mesh 250 m down at the bottom of the
+  south-west notch drew as a dark green blob before, and as deep water once the sea ran on
+  under the void. Now it is the void's, as the artwork draws it.
+
+Measured on the 2048 preview against the same run before the change, 3.5 to 4.2% of the
+sheet's pixels changed per style, all of them in the sea, the void or at their edges. The open
+sea's pass now takes about 12 s, up from about 8.
+
 The bed is drawing support, not a measurement: the field, its quality byte and the server's
 lookups are unchanged, and `--kernel-only` (recipe 2) still draws the page's sea past the
 data. The sidecar records the rule and the counts under `water.level_only` and the pits
@@ -1427,8 +1496,14 @@ Known limits:
   staircase, now as a soft gradient over a few hundred metres rather than a line.
 - A pit's edge is the data's: where the field has ground above -200 m beside a pit and the
   artwork draws void, the ground is drawn.
-- 681 regions pass, many of them a few texels of deep ground; each is drawn as the void.
-- In the satellite and relief dark styles the deep sea and the void are close in colour.
+- 681 regions pass, many of them a few texels of deep ground; those inside the land are drawn
+  as small pits, grey with a rim.
+- In the satellite and relief dark styles the deep sea and the page's navy are still close in
+  colour. Beside the land the void now has a lit edge and a rim, but where the sea fades into
+  it nothing marks the edge of the world. Whether the void past the edge should leave the
+  page's navy, as the artwork's black does, is open.
+- The tones are a hint, not a bed: under the teal the open sea is not held deeper than 6 m,
+  and a tone's anti-aliased edge against land can read a metre or two too deep.
 - The falls off the edge of the world are still left out (section 35).
 
 ### Cost and output

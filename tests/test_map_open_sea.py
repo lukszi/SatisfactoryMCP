@@ -18,7 +18,13 @@ from mapgen.palette.relief import water_tint_plane  # noqa: E402
 from mapgen.palette.rivers import water_sources  # noqa: E402
 from mapgen.palette.shore import OCEAN_LEVEL_M, composite_meshes  # noqa: E402
 from mapgen.palette.styles import RELIEF_PALETTES, SEA_RGB, with_void  # noqa: E402
-from mapgen.palette.water import OPEN_SEA_DEPTH_M, OPEN_SEA_SETTLE_M, open_sea  # noqa: E402
+from mapgen.palette.water import (  # noqa: E402
+    OPEN_SEA_BLEND_M,
+    OPEN_SEA_DEPTH_M,
+    OPEN_SEA_SETTLE_M,
+    OPEN_SEA_TONE_DEPTH_M,
+    open_sea,
+)
 from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pits, relax  # noqa: E402
 from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL  # noqa: E402
 from mapgen.tiles.compose import composite_top, render_layer  # noqa: E402
@@ -64,6 +70,8 @@ def test_the_artwork_tells_its_sea_from_its_void():
     sheet[:, : SHEET_PX // 4] = (79, 112, 122)  # the open sea's teal
     sheet[:, SHEET_PX // 4 : SHEET_PX // 2] = (170, 160, 145)  # beige ground
     sheet[:, SHEET_PX // 2 : 3 * SHEET_PX // 4] = (76, 76, 76)  # a pit's flat grey
+    for band, green in enumerate((120, 136, 152), start=1):  # the shallower tones, in rows
+        sheet[band * SHEET_PX // 4 :, : SHEET_PX // 4] = (72, green, green + 16)
     water, void = artwork_planes(sheet)
     assert water.shape == void.shape == (GRID_PX, GRID_PX)
     quarter = GRID_PX // 4
@@ -71,6 +79,8 @@ def test_the_artwork_tells_its_sea_from_its_void():
     assert not void[:, : 2 * quarter - 1].any(), "the sea and the ground are not void"
     assert void[:, 2 * quarter + 1 :].all(), "a pit and the black past the edge are"
     assert VOID_ARTWORK_LUMA_MAX < 140
+    tones = [int(water[(band * 2 + 1) * GRID_PX // 8, 10]) for band in range(4)]
+    assert tones == [1, 2, 3, 4], "the open sea's teal to the brightest cyan"
 
 
 # ----------------------------------------------------------------------- the pits
@@ -163,7 +173,7 @@ def test_level_only_sea_gets_a_bed_from_the_measured_one_beside_it():
     height, water, grades = _coast()
     sea, heights, ground = _sea(height, water, grades)
     depth = (OCEAN_DM - heights[20]) / hf.DM_PER_M
-    assert abs(depth[55] - 8.0) < 0.05, "the measured shelf keeps its own bed"
+    assert depth[45] < 12.0 < depth[200] - 10.0, "a shelf narrower than the blend stays a shelf"
     assert abs(depth[60] - depth[59]) < 1.0, "no step where the level-only water starts"
     assert np.all(np.diff(depth[60:]) >= -0.05), "it only ever deepens away from the shelf"
     settled = 60 + int(OPEN_SEA_SETTLE_M)
@@ -171,6 +181,36 @@ def test_level_only_sea_gets_a_bed_from_the_measured_one_beside_it():
     assert np.array_equal(heights, ground)
     assert (sea.grades[:, 60:] == hf.WATER_MEASURED).all(), "its depth is read off the bed"
     assert (grades[:, 60:] == hf.WATER_LEVEL_ONLY).all(), "the field's own planes are untouched"
+
+
+def test_the_bed_is_continuous_in_value_and_slope_across_the_measured_edge():
+    height, water, grades = _coast(40, 1200)
+    height[:, 30:330] = -170 - 80  # a measured shelf 300 m wide, 8 m deep
+    grades[:, 30:330] = hf.WATER_MEASURED
+    grades[:, 330:] = hf.WATER_LEVEL_ONLY
+    _open, heights, _ground = _sea(height, water, grades)
+    depth = (OCEAN_DM - heights[20]) / hf.DM_PER_M
+    edge = 330 - int(OPEN_SEA_BLEND_M)
+    assert np.allclose(depth[40:edge], 8.0), "past the blend the measured bed is as measured"
+    bend = np.abs(np.diff(depth[edge - 50 : 600], 2)).max()
+    # The membrane alone leaves the shelf flat and climbs at once, a kink of ~0.12 m/m.
+    assert bend < 0.03, f"the slope turns by {bend:.3f} m/m in a metre: a kink"
+    assert depth[330] - 8.0 > 0.5 and np.all(np.diff(depth[edge:]) >= -0.01)
+
+
+def test_the_artwork_s_tones_draw_the_open_sea_s_bed_to_their_depth():
+    height, water, grades = _coast(40, 1200)
+    grades[:, 30:] = hf.WATER_LEVEL_ONLY
+    tones = np.ones(height.shape, np.uint8)
+    tones[:, :30] = 0
+    _open, plain, _ground = _sea(height, water, grades, tones)
+    tones[:, 600:750] = 4  # the brightest cyan, a shoal the data does not have
+    _open, heights, _ground = _sea(height, water, grades, tones)
+    depth = (OCEAN_DM - heights[20]) / hf.DM_PER_M
+    before = (OCEAN_DM - plain[20]) / hf.DM_PER_M
+    assert before[675] > 30.0 and abs(depth[675] - OPEN_SEA_TONE_DEPTH_M[-1]) < 1.0
+    assert depth[450] > depth[675] + 8.0 < depth[900], "the shoal is the tone's, not more"
+    assert np.abs(np.diff(depth[450:900], 2)).max() < 0.05, "pulled, never pinned to a kink"
 
 
 def test_the_open_sea_s_bed_rises_to_a_dry_coast():
@@ -182,7 +222,7 @@ def test_the_open_sea_s_bed_rises_to_a_dry_coast():
 
 
 def test_no_data_is_sea_where_the_artwork_draws_water_and_void_elsewhere():
-    height, water, grades = _coast(160, 160)
+    height, water, grades = _coast(400, 400)
     height[:, 120:] = hf.NODATA
     water[:, 120:] = hf.NODATA
     grades[:, 120:] = hf.WATER_DRY
@@ -192,11 +232,28 @@ def test_no_data_is_sea_where_the_artwork_draws_water_and_void_elsewhere():
     assert (sea.grades[:80, 120:] == hf.WATER_MEASURED).all()
     assert (sea.level[:80, 120:] == OCEAN_DM).all()
     assert (heights[:80, 120:] < OCEAN_DM).all(), "with a bed under it"
-    assert (sea.grades[85:, 120:] == hf.WATER_DRY).all() and (heights[85:, 120:] == hf.NODATA).all()
-    assert (sea.void[100:, 130:] == 255).all() and (sea.void[:70, :] == 0).all()
-    assert 0 < sea.void[100, 119] < 255, "the void's edge is soft"
-    assert sea.meta["sea_over_no_data_texels"] == 80 * 40
+    deep = (slice(300, None), slice(330, None))
+    assert (sea.grades[deep] == hf.WATER_DRY).all() and (heights[deep] == hf.NODATA).all()
+    assert (sea.void.cover[deep] == 255).all() and (sea.void.cover[:70, :] == 0).all()
+    assert sea.meta["sea_over_no_data_texels"] == 80 * 280
     assert grades[0, 130] == hf.WATER_DRY, "the field's own planes are not touched"
+
+
+def test_the_open_sea_fades_into_the_void_rather_than_stopping_at_its_edge():
+    height, water, grades = _coast(400, 400)
+    height[:, 120:] = water[:, 120:] = hf.NODATA
+    grades[:, 120:] = hf.WATER_DRY
+    art = np.zeros(height.shape, bool)
+    art[:80, 120:] = True
+    sea, heights, _ground = _sea(height, water, grades, art)
+    cover = sea.void.cover[80:300, 300].astype(np.int16)
+    assert cover[0] < 10 and cover[-1] == 255 and np.all(np.diff(cover) >= 0)
+    assert 60 < cover[37] < 190, "about half the sea still shows ~37 m into the void"
+    under = (slice(80, 120), slice(130, 400))
+    assert (sea.grades[under] == hf.WATER_MEASURED).all() and (heights[under] < OCEAN_DM).all()
+    assert sea.void.falloff[under].min() > 230, "no lit edge where the sea goes on under it"
+    assert sea.void.rim[under].max() < 20, "and no rim"
+    assert sea.meta["fringe_texels"] > 0
 
 
 def test_the_renderer_draws_its_wet_and_measured_planes_from_the_grades_it_is_given():
@@ -245,6 +302,69 @@ def test_the_void_is_the_page_s_sea_and_softens_its_edge():
     got = with_void(rgb, np.array([[0.0, 0.5, 1.0]], np.float32))
     assert np.allclose(got[0, 0], 200.0) and np.allclose(got[0, 2], SEA_RGB)
     assert np.allclose(got[0, 1], (200.0 + SEA_RGB) / 2)
+
+
+def test_dry_ground_the_shore_draws_as_sea_takes_no_rim_beside_the_void():
+    height, water, grades = _coast(400, 600)
+    height[:, 300:320] = -1000  # dry cliff 100 m under the surface, as the shore draws it
+    water[:, 300:320] = hf.NODATA
+    grades[:, 300:320] = hf.WATER_DRY
+    height[:, 320:] = water[:, 320:] = hf.NODATA
+    grades[:, 320:] = hf.WATER_DRY
+    grades[:, 30:300] = hf.WATER_MEASURED
+    sea, _heights, _ground = _sea(height, water, grades)
+    assert sea.void.rim[200, 315:325].max() < 30 and sea.void.cover[200, 322] < 60
+    height[:, 100:320] = -1000  # the same ground, far inland from any sea
+    water[:, :320] = hf.NODATA
+    grades[:, :320] = hf.WATER_DRY
+    inland, _heights, _ground = _sea(height, water, grades)
+    assert inland.void.rim[200, 315:325].max() > 150 and inland.void.cover[200, 322] > 200
+
+
+def _land_with_a_pit(n=600):
+    """Land with a hole in it and no data past its east edge: ``(sea, height)``."""
+    height = np.full((n, n), 300, np.int16)
+    height[:, 450:] = hf.NODATA  # the void past the world's edge
+    height[200:400, 150:350] = hf.NODATA  # a pit
+    water = np.full((n, n), hf.NODATA, np.int16)
+    sea, _heights, _ground = _sea(height, water, np.zeros((n, n), np.uint8))
+    return sea, height
+
+
+def test_a_pit_is_told_from_the_void_past_the_world_s_edge():
+    sea, _height = _land_with_a_pit()
+    pit = sea.void.pit
+    assert (pit[205:395, 155:345] == 255).all() and not pit[:, 455:].any() and not pit[:150].any()
+    assert sea.meta["pit_texels"] == 200 * 200
+    # A floor the fill emptied is a pit inside the land and the void beside the void.
+    height = np.full((300, 300), 300, np.int16)
+    height[:, 250:] = hf.NODATA
+    heights = height.astype(np.float32)
+    heights[100:200, 200:250] = heights[20:60, 20:60] = hf.NODATA
+    water = np.full(height.shape, hf.NODATA, np.int16)
+    field = _field(height, water, np.zeros(height.shape, np.uint8))
+    art = np.zeros(height.shape, bool)
+    got = open_sea(field, (heights, None), None, art, OCEAN_LEVEL_M).void.pit
+    assert (got[20:60, 20:60] == 255).all() and not got[:, 200:].any()
+
+
+def test_the_void_falls_off_from_a_lit_rimmed_edge_and_a_pit_is_never_navy():
+    sea, _height = _land_with_a_pit()
+    void, row = sea.void, 300
+    falloff = void.falloff[row, 450:600].astype(np.int16)
+    assert falloff[0] < 30 and falloff[-1] >= 250 and np.all(np.diff(falloff) >= 0)
+    assert 60 < falloff[37] < 190, "the artwork's falloff: about half way at ~37 m"
+    assert void.rim[row, 448:452].max() > 150 and void.rim[row, 470:].max() == 0
+    assert void.rim[row, 148:152].max() > 150, "a pit has the rim too"
+    assert 0 < void.cover[row, 449] < 255 and 0 < void.cover[row, 149] < 255, "a soft edge"
+    planes = [p[row].astype(np.float32) / 255 for p in void]
+    drawn = with_void(np.full((600, 3), 120.0, np.float32), *planes)
+    assert np.allclose(drawn[599], SEA_RGB, atol=2), "deep in, the void is the page's sea"
+    assert drawn[453].mean() > SEA_RGB.mean() + 20, "beside the land its edge is lit"
+    centre, edge = drawn[250], drawn[155]
+    assert centre.max() < 25 and edge.mean() > centre.mean() + 20, "a pit darkens inwards"
+    navy = np.abs(drawn[160:340] - SEA_RGB).max(axis=-1) <= 8
+    assert not navy.any(), "and no pixel of it is the page's navy"
 
 
 def test_a_layer_draws_the_artwork_s_sea_and_the_void_past_the_data():

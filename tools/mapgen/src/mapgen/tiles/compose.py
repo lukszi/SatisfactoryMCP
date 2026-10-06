@@ -23,7 +23,13 @@ from mapgen.palette.falls import draw_falls
 from mapgen.palette.painted import ROCK_GRID_M, painted_colours
 from mapgen.palette.relief import relief_colours
 from mapgen.palette.rivers import water_sources
-from mapgen.palette.shore import MESH_FULL_LIFT_M, blend_water, composite_meshes, shore_terms
+from mapgen.palette.shore import (
+    MESH_FULL_LIFT_M,
+    OCEAN_LEVEL_M,
+    blend_water,
+    composite_meshes,
+    shore_terms,
+)
 from mapgen.palette.styles import (
     LAYER_PAINTERS,
     NOISE_SEED,
@@ -197,20 +203,24 @@ def _band_water(z_m, planes, smooth, linear):
     wet = sample_coverage(wet_plane, linear)
     measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
     if sea is not None:
-        land = 1.0 - sample_plain(sea.void, linear) / np.float32(255.0)
+        land = 1.0 - sample_plain(sea.void.cover, linear) / np.float32(255.0)
         wet = np.clip(wet / np.maximum(land, np.float32(1e-3)), 0.0, 1.0)
     return water_m, level_m, wet, np.clip(measured, 0.0, 1.0)
 
 
-def _void(rgb, missing, sea, linear, rock):
-    """A finished band under the void: no data at all, and the open sea's soft cover kept
-    off the rocks a pixel's ``rock`` coverage holds; without the open sea, no data only."""
+def _void(rgb, missing, sea, linear, rock, z_m):
+    """A finished band under the void: no data at all, and the open sea's void planes with
+    the cover and rim kept off the rocks a pixel's ``rock`` coverage holds where they stand
+    out of the sea; without the open sea, no data only, in the page's sea."""
     if sea is None:
         return with_sea(rgb, missing)
-    cover = sample_plain(sea.void, linear) / np.float32(255.0)
+    cover, falloff, pit, rim = (sample_plain(p, linear) / np.float32(255.0) for p in sea.void)
     if rock is not None:
-        cover = cover * (1.0 - rock)
-    return with_void(rgb, np.where(missing, np.float32(1.0), np.clip(cover, 0.0, 1.0)))
+        # A rock deep in the void, under the sea's level, is the void's, as the artwork has it.
+        rock = rock * np.clip(z_m - np.float32(OCEAN_LEVEL_M) + 0.5, 0.0, 1.0)
+        cover, rim = cover * (1.0 - rock), rim * (1.0 - rock)
+    cover = np.where(missing, np.float32(1.0), np.clip(cover, 0.0, 1.0))
+    return with_void(rgb, cover, falloff, pit, rim)
 
 
 def render_layer(
@@ -421,7 +431,7 @@ def render_layer(
                 scene["biome_rgb"] = biome_rgb[np.ix_(biome_rows, biome_cols)].astype(np.float32)
                 scene["noise"] = sample_noise(noise, np.arange(lo, hi), column_index, size)
             rgb = painter(scene)
-        rgb = _void(rgb, missing, sea, linear, weight)
+        rgb = _void(rgb, missing, sea, linear, weight, z_m)
         rgb = draw_falls(rgb, falls, layer, x_cm, y_cm[lo:hi], z_m, spacing_m)
         out[top - r0 : bottom - r0] = np.clip(rgb[top - lo : bottom - lo], 0, 255).astype(np.uint8)
         if progress and (top // BAND_ROWS) % 16 == 0:
