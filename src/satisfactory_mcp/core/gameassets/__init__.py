@@ -23,7 +23,7 @@ Two rules hold this package together, and both are enforced by reading the sourc
   ``importlib``, and no import of the extra anywhere but inside a function body.
   ``iostore.oodle_decompress`` is the one such body, and it is a convenience a caller may
   pass in -- not a dependency this package reaches for on its own.
-  ``pyramid._encode_tile_row`` is the second, and it is the exception that proves the shape
+  ``pyramid.encode_tile_row`` is the second, and it is the exception that proves the shape
   of the rule: a spawned worker cannot be handed a module object through a pickle, so it
   imports Pillow itself -- inside the function, in a process that only exists because a
   caller who already had Pillow asked for workers.

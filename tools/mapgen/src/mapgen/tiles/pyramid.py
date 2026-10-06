@@ -5,50 +5,69 @@ Moved verbatim from ``tools/gen_map_renders.py``.
 
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 import time
-from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from mapgen.common import RENDERS_DIR_NAME
 from mapgen.gamedata.frame import RENDER_2X_PX
+from mapgen.tiles.cutter import CUT_WORKERS, Cutter, Source, Tree
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_2X_PX,
     PYRAMID_TILE_PX,
     TILES_2X_DIR_NAME,
-    cut_square,
-    cut_square_parallel,
+    TILES_DIR_NAME,
     install_pyramid,
 )
 
 __all__ = [
-    "CHECK_PARALLEL_Z",
     "DEFAULT_WORKERS",
     "WORKER_CAP",
+    "add_cut_flags",
     "check_parallel",
     "install_layer",
     "layer_dir",
+    "queue_layer",
 ]
 
-#: How many processes deflate tiles when ``--workers`` is not given. One per core, capped
-#: because past a point the cores wait on the disk rather than on zlib, and each interpreter
-#: pays to import numpy before it writes a PNG.
+#: How many processes bake the light when ``--workers`` is not given. One per core, capped
+#: because each holds a block of the bake's planes.
 WORKER_CAP = 16
 DEFAULT_WORKERS = min(os.cpu_count() or 1, WORKER_CAP)
-
-#: Which level ``--check-parallel`` cuts twice. z5 is 1,024 tiles, so the timing means
-#: something, and every supported sheet size has it.
-CHECK_PARALLEL_Z = 5
 
 # --------------------------------------------------------------------------------------
 # Installing a layer.
 # --------------------------------------------------------------------------------------
 
 
+def add_cut_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--cut-workers",
+        type=int,
+        default=CUT_WORKERS,
+        help=(
+            f"processes encoding tiles (default {CUT_WORKERS}, fewer when memory is short; "
+            "1 cuts serially). The tiles are the same bytes either way"
+        ),
+    )
+
+
 def layer_dir(out_dir: Path, layer: str, name: str = RENDERS_DIR_NAME) -> Path:
     return out_dir / name / layer
+
+
+def queue_layer(cutter: Cutter, source: Source, directory: Path, text: str) -> tuple[Tree, Tree]:
+    """Queue ``tiles/``, then ``tiles@2x/`` cut from a downscale capped at ``RENDER_2X_PX``.
+
+    Cut from the full sheet the @2x tree would gain a z6 of 512 px tiles weighing as much as
+    the whole 1x pyramid. That downscale is the 1x level of the same size, resampled once.
+    """
+    tiles = cutter.tree(source, directory, TILES_DIR_NAME, PYRAMID_TILE_PX, text)
+    dense = source.derive(min(source.px, RENDER_2X_PX))
+    return tiles, cutter.tree(dense, directory, TILES_2X_DIR_NAME, PYRAMID_TILE_2X_PX, text)
 
 
 def install_layer(
@@ -65,17 +84,25 @@ def install_layer(
     ``tiles/`` first, because that is what every client can read, then ``tiles@2x/``, which
     a client that cannot find it simply asks for the 1x instead. Each is renamed into place
     on its own, so a run that dies between them never leaves the page without a base map.
-
-    The @2x tree is cut from a **downscale** of the sheet, capped at ``RENDER_2X_PX``: cut
-    from the full sheet it would gain a z6 of 512 px tiles weighing as much as the whole 1x
-    pyramid, for pixels a hi-DPI client already gets by asking for ``z + 1`` at 1x.
+    ``workers`` encode; one cuts serially with ``install_pyramid``, the reference.
     """
     directory = layer_dir(out_dir, layer, name)
     directory.mkdir(parents=True, exist_ok=True)
-    sheet = image_mod.fromarray(sheet_rgb)
-    source = f"tools/gen_map_renders.py, {layer} recipe {recipe}, Lanczos"
+    text = f"tools/gen_map_renders.py, {layer} recipe {recipe}, Lanczos"
     started = time.time()
-    stats = install_pyramid(sheet, image_mod, directory, source=source, workers=workers)
+    if workers <= 1:
+        stats, dense = serial_layer(image_mod.fromarray(sheet_rgb), image_mod, directory, text)
+        return stats, dense, time.time() - started
+    with Cutter(image_mod, workers) as cutter:
+        with cutter.publish(sheet_rgb) as source:
+            trees = queue_layer(cutter, source, directory, text)
+        stats, dense = (cutter.install(tree) for tree in trees)
+    return stats, dense, time.time() - started
+
+
+def serial_layer(sheet, image_mod, directory: Path, text: str) -> tuple[dict, dict]:
+    """``queue_layer``'s two trees, one tile at a time in this process."""
+    stats = install_pyramid(sheet, image_mod, directory, source=text)
     dense_px = min(sheet.width, RENDER_2X_PX)
     dense_sheet = (
         sheet if dense_px == sheet.width else sheet.resize((dense_px, dense_px), image_mod.LANCZOS)
@@ -85,41 +112,39 @@ def install_layer(
         image_mod,
         directory,
         tile_px=PYRAMID_TILE_2X_PX,
-        source=source,
-        workers=workers,
+        source=text,
         dir_name=TILES_2X_DIR_NAME,
     )
-    return stats, dense, time.time() - started
+    return stats, dense
 
 
 def check_parallel(sheet_rgb, image_mod, scratch: Path, workers: int) -> dict:
-    """Cut one level twice -- serially and in parallel -- and compare every tile's SHA-256.
+    """Cut one pyramid twice -- serially and in parallel -- and compare every tile's SHA-256.
 
     The parallel cutter's claim is **identical bytes** rather than equivalence, which a hash
-    settles. On demand rather than every run: it costs one extra cut of one level and it
+    settles. On demand rather than every run: it costs two extra cuts of the sheet, and it
     guards against a change to the cutter, not against a flaky machine.
     """
     from hashlib import sha256
 
-    sheet = image_mod.fromarray(sheet_rgb)
-    level = sheet.resize((PYRAMID_TILE_PX << CHECK_PARALLEL_Z,) * 2, image_mod.LANCZOS)
     digests = {}
     timings = {}
-    for name, jobs in (("serial", 1), ("parallel", workers)):
+    for name in ("serial", "parallel"):
         dest = scratch / name
         dest.mkdir(parents=True, exist_ok=True)
-        if jobs > 1:
-            with ProcessPoolExecutor(max_workers=jobs) as pool:
-                # Wake every worker before the clock starts: spawning interpreters that each
-                # import numpy costs more than the cutting being measured.
-                list(pool.map(int, range(jobs)))
-                started = time.time()
-                cut_square_parallel(level, dest, CHECK_PARALLEL_Z, PYRAMID_TILE_PX, pool)
-                timings[name] = round(time.time() - started, 2)
+        started = time.time()
+        if name == "serial":
+            install_pyramid(image_mod.fromarray(sheet_rgb), image_mod, dest)
         else:
-            started = time.time()
-            cut_square(level, dest, CHECK_PARALLEL_Z, 0, 0, PYRAMID_TILE_PX)
-            timings[name] = round(time.time() - started, 2)
+            with Cutter(image_mod, workers) as cutter:
+                # Wake every encoder before the clock starts: spawning interpreters that each
+                # import numpy costs more than a small cut.
+                list(cutter.encoders.map(int, range(cutter.workers)))
+                started = time.time()
+                with cutter.publish(sheet_rgb) as source:
+                    tree = cutter.tree(source, dest, TILES_DIR_NAME, PYRAMID_TILE_PX, "check")
+                cutter.install(tree)
+        timings[name] = round(time.time() - started, 2)
         digests[name] = {
             str(path.relative_to(dest)).replace("\\", "/"): sha256(path.read_bytes()).hexdigest()
             for path in sorted(dest.rglob("*.png"))
@@ -127,7 +152,7 @@ def check_parallel(sheet_rgb, image_mod, scratch: Path, workers: int) -> dict:
     same = digests["serial"] == digests["parallel"]
     shutil.rmtree(scratch, ignore_errors=True)
     return {
-        "level": CHECK_PARALLEL_Z,
+        "levels": sorted({int(name.split("/")[1]) for name in digests["serial"]}),
         "tiles": len(digests["serial"]),
         "seconds_serial": timings["serial"],
         "seconds_parallel": timings["parallel"],
@@ -140,8 +165,8 @@ def check_parallel(sheet_rgb, image_mod, scratch: Path, workers: int) -> dict:
             if digests["serial"][name] != digests["parallel"].get(name)
         )[:8],
         "method": (
-            "the same level cut both ways into two scratch directories, SHA-256 of every "
-            "tile compared name by name. The parallel path resamples nothing -- it is handed "
-            "the level already resized -- so this is an identity, not a tolerance."
+            "the whole pyramid cut both ways into two scratch directories, SHA-256 of every "
+            "tile compared name by name: Pillow's resize of the whole sheet and one process "
+            "against the strip resampling and the encode pool"
         ),
     }

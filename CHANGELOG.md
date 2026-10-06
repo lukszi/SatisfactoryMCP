@@ -61,6 +61,11 @@ Planned as 0.2.0.
   the painted layer, because the tree crowns are written once, where the bake reads them.
   `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
   after the run that wrote it.
+- Map generator: a layer's three tile trees (`unlit/`, `tiles/`, `tiles@2x/`) are cut through
+  one pool of encoders, with the levels resampled on threads while it encodes. A lit layer
+  at full size cuts in about a third of the time; the tiles are the same bytes. The new
+  `--cut-workers` sets the encoders (default one per core, at most 24, fewer when memory is
+  short); `--workers` now sets only the light bake's processes.
 
 ### Deprecated
 
