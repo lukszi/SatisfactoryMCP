@@ -101,7 +101,8 @@ purpose.
 
 **`live` and `state`.** `state` is the committed projection, frozen; `live` is the newest save
 on the machine, for tests that measure the tool's real answer. `live` skips on `SaveError`, so
-a machine with the game and no save reports skips rather than errors.
+a machine with the game and no save reports skips rather than errors. An MCP tool test hands
+the tools its world through `use_world`, which replaces `app.load_world` (docs/mcp-surface.md).
 
 **Speed.** `-n 8` is measured. On a 16-core, 32-thread machine the default set took 5.8 s at 8
 workers, 7.7 s at 16 and 14.3 s at 32, and the integration set 30 s at 8 against 38 s at 32,
