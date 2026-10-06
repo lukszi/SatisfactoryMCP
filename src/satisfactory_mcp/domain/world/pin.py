@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 from typing_extensions import TypedDict
 
@@ -58,8 +59,8 @@ def _load() -> dict[str, PinEntry]:
         raw = json.loads(ledger_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    entries: dict[str, PinEntry] = raw if isinstance(raw, dict) else {}
-    return entries
+    # The ledger is this module's own file: ``remember`` is the only writer.
+    return cast("dict[str, PinEntry]", raw) if isinstance(raw, dict) else {}
 
 
 def remember(header: SaveHeader) -> str:
