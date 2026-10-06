@@ -3607,7 +3607,7 @@ export interface components {
         };
         /**
          * GeneratorTotal
-         * @description One generator class, counted and summed. A value of ``PowerSummary.by_generator``.
+         * @description One generator class, counted and summed: a value of ``PowerReport.by_generator``.
          */
         GeneratorTotal: {
             /** Name */
@@ -5453,6 +5453,63 @@ export interface components {
             connections: number;
         };
         /**
+         * PowerReport
+         * @description Generation capacity, draw both nameplate and measured, and what each leaves out.
+         *
+         *     Declaration order is the order ``PowerLedger.power_report`` returns them in; what each
+         *     figure can claim is save-projection §6.1a. ``utilisation`` is never null: it is
+         *     ``measured / draw``, and ``1.0`` when nothing draws at all -- a factory with nothing built
+         *     is fully utilised in the only sense the ratio has.
+         */
+        PowerReport: {
+            /** Generation Mw */
+            generation_mw: number;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Headroom Mw */
+            headroom_mw: number;
+            /** Measured Draw Mw */
+            measured_draw_mw: number;
+            /** Measured Headroom Mw */
+            measured_headroom_mw: number;
+            /** Monitored */
+            monitored: number;
+            /** Unmonitored */
+            unmonitored: number;
+            /** Paused Consumers */
+            paused_consumers: number;
+            /** Utilisation */
+            utilisation: number;
+            /** By Generator */
+            by_generator: {
+                [key: string]: components["schemas"]["GeneratorTotal"];
+            };
+            /** Unmodellable */
+            unmodellable: string[];
+            /** Paused Count */
+            paused_count: number;
+            /** Starved Generators */
+            starved_generators: components["schemas"]["StarvedEntry"][];
+            /** Starved Generation Mw */
+            starved_generation_mw: number;
+            /** Unwired Generators */
+            unwired_generators: number;
+            /** Unwired Generation Mw */
+            unwired_generation_mw: number;
+            /** Unwired Consumers */
+            unwired_consumers: number;
+            /** Unwired Draw Mw */
+            unwired_draw_mw: number;
+            /** Unwired Paused */
+            unwired_paused: number;
+            /** Biomass Counted */
+            biomass_counted: boolean;
+            /** Biomass Generators */
+            biomass_generators: number;
+            /** Biomass Mw */
+            biomass_mw: number;
+        };
+        /**
          * PowerResponse
          * @description The two lists and the three counts.
          *
@@ -5485,49 +5542,8 @@ export interface components {
             price: number;
         };
         /**
-         * PowerSummary
-         * @description The scalar fields of ``WorldState.power_report()`` the page can use.
-         *
-         *     Declaration order is the order ``domain/power/report.py`` returns them in. The domain
-         *     also returns the starved-generator list, which rule 3 drops here: it is a text-surface
-         *     answer and the page has no place for it.
-         *
-         *     ``utilisation`` is never null: it is ``measured / draw``, and ``1.0`` when nothing draws
-         *     at all -- a factory with nothing built is fully utilised in the only sense the ratio has.
-         */
-        PowerSummary: {
-            /** Generation Mw */
-            generation_mw: number;
-            /** Draw Mw */
-            draw_mw: number;
-            /** Headroom Mw */
-            headroom_mw: number;
-            /** Measured Draw Mw */
-            measured_draw_mw: number;
-            /** Measured Headroom Mw */
-            measured_headroom_mw: number;
-            /** Monitored */
-            monitored: number;
-            /** Unmonitored */
-            unmonitored: number;
-            /** Utilisation */
-            utilisation: number;
-            /** By Generator */
-            by_generator: {
-                [key: string]: components["schemas"]["GeneratorTotal"];
-            };
-            /** Unmodellable */
-            unmodellable: string[];
-            /** Paused Count */
-            paused_count: number;
-            /** Biomass Generators */
-            biomass_generators: number;
-            /** Biomass Mw */
-            biomass_mw: number;
-        };
-        /**
          * ProgressionSummary
-         * @description ``WorldState.progression()`` verbatim, on the same terms as ``PowerSummary``.
+         * @description ``WorldState.progression()`` verbatim, on the same terms as ``PowerReport``.
          *
          *     ``game_phase`` and ``target_phase`` are ``null`` on the pre-1.0 saves that carry no
          *     phase at all; ``highest_complete_tier`` is ``null`` when not one tier is finished, which
@@ -6052,6 +6068,38 @@ export interface components {
                 number,
                 number
             ][][];
+        };
+        /**
+         * SaveHeader
+         * @description The save header the sidecar reads, and the file's own path, size and write time.
+         */
+        SaveHeader: {
+            /** Path */
+            path: string;
+            /** Filename */
+            filename: string;
+            /** Session Name */
+            session_name: string;
+            /** Save Identifier */
+            save_identifier: string;
+            /** Save Header Version */
+            save_header_version: number;
+            /** Save Version */
+            save_version: number;
+            /** Build Version */
+            build_version: number;
+            /** Play Duration S */
+            play_duration_s: number;
+            /** Save Datetime Ticks */
+            save_datetime_ticks: number;
+            /** Is Modded */
+            is_modded: boolean;
+            /** Is Creative */
+            is_creative: boolean;
+            /** Mtime Ns */
+            mtime_ns: number;
+            /** Size */
+            size: number;
         };
         /**
          * SaveRow
@@ -6646,6 +6694,20 @@ export interface components {
             required: boolean;
         };
         /**
+         * StarvedEntry
+         * @description A generator out of an input it burns, and idle for it; ``missing`` names the inputs.
+         */
+        StarvedEntry: {
+            /** Instance */
+            instance: string;
+            /** Name */
+            name: string;
+            /** Mw */
+            mw: number;
+            /** Missing */
+            missing: string[];
+        };
+        /**
          * StarvedGenerator
          * @description ``cause`` is ``missing`` as one phrase: "out of Coal, Water" or "no fuel loaded".
          */
@@ -6912,22 +6974,18 @@ export interface components {
          * SummaryResponse
          * @description What ``/api/summary`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
          *
-         *     ``header`` is the save header the sidecar read, forwarded whole and typed as the open map
-         *     it is: the key set is the SIDECAR's contract, and spelling it out here would delete any
-         *     fourteenth key the parser learns to read. ``power`` and ``progression`` are the opposite
-         *     case and are spelled out in full, because each is a literal ``return {...}`` in the
-         *     domain with a fixed key set.
+         *     ``header`` is the save header the sidecar read, whole: its key set is the sidecar's
+         *     contract, ``SaveHeader`` in ``core/saveio/schema.py``, so a key the parser learns to read
+         *     is added there and reaches this reply. ``power`` and ``progression`` are the domain's
+         *     answers verbatim.
          */
         SummaryResponse: {
-            /** Header */
-            header: {
-                [key: string]: unknown;
-            };
+            header: components["schemas"]["SaveHeader"];
             /** Save Token */
             save_token: string;
             /** Age Note */
             age_note: string;
-            power: components["schemas"]["PowerSummary"];
+            power: components["schemas"]["PowerReport"];
             progression: components["schemas"]["ProgressionSummary"];
             player: components["schemas"]["PlayerPosition"];
         };

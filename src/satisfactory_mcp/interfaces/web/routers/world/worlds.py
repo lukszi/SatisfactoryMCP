@@ -16,7 +16,8 @@ from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....core.saveio import projection as proj
-from .....domain.power.views import GeneratorTotal
+from .....core.saveio.schema import SaveHeader
+from .....domain.power.views import PowerReport
 from .....domain.progression.views import ProgressionSummary
 from .....domain.world import pin
 from ...serial import Biomass, PlayerPosition, error_response, require_world, xyz_m
@@ -112,52 +113,22 @@ def worlds() -> Any:
 # -------------------------------------------------------------------- summary
 
 
-class PowerSummary(TypedDict):
-    """The scalar fields of ``WorldState.power_report()`` the page can use.
-
-    Declaration order is the order ``domain/power/report.py`` returns them in. The domain
-    also returns the starved-generator list, which rule 3 drops here: it is a text-surface
-    answer and the page has no place for it.
-
-    ``utilisation`` is never null: it is ``measured / draw``, and ``1.0`` when nothing draws
-    at all -- a factory with nothing built is fully utilised in the only sense the ratio has.
-    """
-
-    generation_mw: float
-    draw_mw: float
-    headroom_mw: float
-    measured_draw_mw: float
-    measured_headroom_mw: float
-    monitored: int
-    unmonitored: int
-    utilisation: float
-    by_generator: dict[str, GeneratorTotal]
-    #: Generator classes Docs carries no entry for. Sorted, and empty on a world that has
-    #: none, which is a measurement rather than a gap.
-    unmodellable: list[str]
-    paused_count: int
-    #: What ``?biomass=exclude`` left out: wired, unpaused biomass burners and their MW.
-    biomass_generators: int
-    biomass_mw: float
-
-
 class SummaryResponse(TypedDict):
     """What ``/api/summary`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
 
-    ``header`` is the save header the sidecar read, forwarded whole and typed as the open map
-    it is: the key set is the SIDECAR's contract, and spelling it out here would delete any
-    fourteenth key the parser learns to read. ``power`` and ``progression`` are the opposite
-    case and are spelled out in full, because each is a literal ``return {...}`` in the
-    domain with a fixed key set.
+    ``header`` is the save header the sidecar read, whole: its key set is the sidecar's
+    contract, ``SaveHeader`` in ``core/saveio/schema.py``, so a key the parser learns to read
+    is added there and reaches this reply. ``power`` and ``progression`` are the domain's
+    answers verbatim.
     """
 
-    header: dict[str, Any]
+    header: SaveHeader
     #: This world state's token, the same one the MCP tools print and take back as ``as_of=``.
     #: On the wire beside ``age_note`` -- which already contains it -- so a client reads the
     #: identity as a field rather than out of a sentence.
     save_token: str
     age_note: str
-    power: PowerSummary
+    power: PowerReport
     progression: ProgressionSummary
     player: PlayerPosition
 

@@ -12,13 +12,14 @@ from ....core.schema import NewerSchema
 from ....core.text import ago, format_local_time
 from ....domain import advice
 from ....domain.power.report import biomass_note, starved_cause
+from ....domain.power.views import PowerReport
 from ....presenters.text import advice as advice_text
 from ....presenters.text import primitives as render
 from .. import app
 from ..params import AsOf, Biomass, Limit
 
 
-def _generator_rows(power: dict) -> list[tuple]:
+def _generator_rows(power: PowerReport) -> list[tuple]:
     """One row per generator kind, biggest output first."""
     return [
         (v["name"], v["count"], render.num(v["mw"]))

@@ -19,6 +19,7 @@ from ...core.singleflight import Singleflight
 from ..collectibles.removed import RemovedActors, observed_session
 from ..collectibles.table import CollectibleTable, load_collectibles
 from ..power.report import PowerLedger, wired_actors
+from ..power.views import PowerReport
 from ..progression.harddrives import HardDriveDesk, HardDriveOffer
 from ..progression.phases import PhaseLedger
 from ..progression.research import ResearchGates
@@ -294,7 +295,7 @@ class WorldState:
 
     # ---- power ---------------------------------------------------------
 
-    def power_report(self, *, biomass: bool = False) -> dict:
+    def power_report(self, *, biomass: bool = False) -> PowerReport:
         return self.power.power_report(biomass=biomass)
 
     # ---- carriers, and the water they are drawn from --------------------

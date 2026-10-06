@@ -11,7 +11,7 @@ __all__ = ["ProgressionSummary", "SlugRow"]
 
 
 class ProgressionSummary(TypedDict):
-    """``WorldState.progression()`` verbatim, on the same terms as ``PowerSummary``.
+    """``WorldState.progression()`` verbatim, on the same terms as ``PowerReport``.
 
     ``game_phase`` and ``target_phase`` are ``null`` on the pre-1.0 saves that carry no
     phase at all; ``highest_complete_tier`` is ``null`` when not one tier is finished, which

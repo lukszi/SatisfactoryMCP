@@ -14,6 +14,7 @@ from ....core.text import ago
 from ...factories.select import SelectorError
 from ...factories.trace import feeder_records
 from ...power.report import biomass_note
+from ...power.views import PowerReport
 from ...spatial import nodes as nodes_mod
 from ...spatial.regions import load_regions
 from ...world.state import WorldState
@@ -277,7 +278,7 @@ def _stage_view(stage: Stage, positions: dict[str, tuple[float, float]]) -> dict
     }
 
 
-def _power(power: dict, biomass: bool) -> dict:
+def _power(power: PowerReport, biomass: bool) -> dict:
     return {
         "generation_mw": round(power.get("generation_mw", 0.0), 2),
         "draw_mw": round(power.get("draw_mw", 0.0), 2),
@@ -287,7 +288,9 @@ def _power(power: dict, biomass: bool) -> dict:
     }
 
 
-def _startup(startup: Commissioning | None, power: dict, stored: PlanState, default: str) -> dict:
+def _startup(
+    startup: Commissioning | None, power: PowerReport, stored: PlanState, default: str
+) -> dict:
     if startup is None:
         head, source = resolve_headroom(power, stored=stored, default=default)
         return {

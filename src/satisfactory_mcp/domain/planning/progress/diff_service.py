@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from ....core.gamedata.model import GameData
 from ...factories.select import SelectorError, resolve_factory
+from ...power.views import PowerReport
 from ...world.state import WorldState
 from .. import siting as siting_mod
 from ..solver.prepare import PreparedPlan, prepare
@@ -46,7 +47,7 @@ HEADROOM_DEFAULTS = ("measured", "nameplate")
 DEFAULT_HEADROOM = "measured"
 
 
-def default_headroom(power: dict, which: str = DEFAULT_HEADROOM) -> tuple[float, str]:
+def default_headroom(power: PowerReport, which: str = DEFAULT_HEADROOM) -> tuple[float, str]:
     """The save's headroom a plan without a stored one uses, and its source words."""
     if which == "nameplate":
         return float(power.get("headroom_mw", 0.0)), NAMEPLATE_SOURCE
@@ -54,7 +55,7 @@ def default_headroom(power: dict, which: str = DEFAULT_HEADROOM) -> tuple[float,
 
 
 def resolve_headroom(
-    power: dict,
+    power: PowerReport,
     *,
     given: float | None = None,
     stored: PlanState | None = None,
@@ -74,9 +75,10 @@ class DiffVsSaveReport:
     """A solved plan, the save it was matched against, and the stages if asked."""
 
     prepared: PreparedPlan
+    #: The grid the plan is matched against, read whether or not the plan solves.
+    power: PowerReport
     #: ``None`` when the plan failed or came back empty -- there is nothing to diff.
     diff: DiffReport | None = None
-    power: dict = field(default_factory=dict)
     #: The startup partition matched against the save, only when a stage was asked for.
     tracking: Tracking | None = None
     #: The startup order the partition came from, beside ``tracking``.
@@ -222,7 +224,7 @@ def build_diff_report(
     partitioned against the save's ``default`` reading (measured or nameplate).
     """
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
-    report = DiffVsSaveReport(prepared=prepared)
+    report = DiffVsSaveReport(prepared=prepared, power=st.power_report(biomass=biomass))
     if prepared.failure:
         return report
 
@@ -234,7 +236,6 @@ def build_diff_report(
     report.diff, report.scope_note = diff_in_scope(
         g, st, prepared, factory, biomass, stored=recalled
     )
-    report.power = st.power_report(biomass=biomass)
 
     # A sited plan gets the census over its own pad. Beside the identity-matched diff,
     # not instead of it: the diff says whether the machines exist, the survey says

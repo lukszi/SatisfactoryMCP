@@ -19,7 +19,7 @@ from .....core.saveio.records import instance_leaf
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
 from .....domain.power.report import PowerLedger, starved_cause
-from .....domain.power.views import GeneratorTotal
+from .....domain.power.views import GeneratorTotal, PowerReport
 from .....domain.spatial import geo
 from .....domain.world.state import WorldState
 from ...serial import (
@@ -129,7 +129,7 @@ class CircuitsResponse(TypedDict):
     no_generator: list[MachineRef]
 
 
-def _ledger(report: dict) -> dict:
+def _ledger(report: PowerReport) -> dict:
     return {
         "generation_mw": round(report["generation_mw"], 1),
         "starved_generation_mw": round(report["starved_generation_mw"], 1),
@@ -151,14 +151,14 @@ def _position_m(placed: dict, leaf: str) -> tuple[float | None, float | None]:
     return (cm_to_m(pos[0]), cm_to_m(pos[1])) if pos else (None, None)
 
 
-def _groups(report: dict) -> list[dict]:
+def _groups(report: PowerReport) -> list[dict]:
     return [
         {"name": g["name"], "count": g["count"], "mw": round(g["mw"], 1)}
         for g in sorted(report["by_generator"].values(), key=lambda g: -g["mw"])
     ]
 
 
-def _starved(report: dict, placed: dict) -> list[dict]:
+def _starved(report: PowerReport, placed: dict) -> list[dict]:
     rows = []
     for starved in report["starved_generators"]:
         x, y = _position_m(placed, starved["instance"])

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from ....core.gamedata.model import GameData
 from ...factories.select import SelectorError
 from ...factories.trace import live_feeders
+from ...power.views import PowerReport
 from ...world.state import WorldState
 from ..solver.prepare import PreparedPlan, prepare
 from ..stored.planlog import PlanState
@@ -32,12 +33,13 @@ class CommissionReport:
     """A startup sequence, the headroom it was computed against, and the cutover risk."""
 
     prepared: PreparedPlan
+    #: The grid the sequence is cut against, read whether or not the plan solves.
+    power: PowerReport
     #: ``None`` when the plan failed -- there is nothing to switch on.
     startup: Commissioning | None = None
     #: The headroom the sequence was actually built against, and where it came from.
     headroom_mw: float = 0.0
     headroom_source: str = ""
-    power: dict = field(default_factory=dict)
     #: Built extractors already feeding running generators. Only computed for a
     #: sequence that exists, since it is advice about following one.
     live_feeders: list[tuple[str, float]] = field(default_factory=list)
@@ -64,7 +66,7 @@ def build_commission_report(
     gives none, and the waves are matched against the save under its scope.
     """
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
-    report = CommissionReport(prepared=prepared)
+    report = CommissionReport(prepared=prepared, power=st.power_report(biomass=biomass))
     if prepared.failure:
         return report
 
@@ -73,9 +75,8 @@ def build_commission_report(
     # reason phase_requirements labels its rows instead of filtering them. Measured by
     # default: on the reference save nameplate leaves 116 MW free against a 392 MW minimum
     # slice, so no plan gets stages (docs/planner_p4.md, B3).
-    report.power = power = st.power_report(biomass=biomass)
     report.headroom_mw, report.headroom_source = resolve_headroom(
-        power, given=headroom_mw, stored=stored, default=default
+        report.power, given=headroom_mw, stored=stored, default=default
     )
 
     report.startup = startup = commission(prepared, g, report.headroom_mw, report.headroom_source)

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from ...core.gamedata.constants import BUILDING_CLASS_ALIASES
 from ...core.gamedata.model import Building, GameData
 from ...core.saveio.records import instance_leaf
+from .views import GeneratorTotal, PowerReport, StarvedEntry
 
 __all__ = [
     "BIOMASS_BURNERS",
@@ -56,7 +57,7 @@ def starved_cause(missing: list[str] | tuple[str, ...]) -> str:
     return "out of " + ", ".join(named) if named else "no fuel loaded"
 
 
-def biomass_note(report: dict) -> str:
+def biomass_note(report: PowerReport) -> str:
     """The one line naming what ``biomass=False`` left out, or "" when nothing was."""
     n = report.get("biomass_generators") or 0
     if not n or (report.get("biomass_mw") or 0) <= 0:
@@ -129,10 +130,10 @@ def _generator_mw(building: Building | None, record: dict) -> float:
 class _GenerationTally:
     """Generation capacity, the plants that are not capacity, and what was left out."""
 
-    by_generator: dict[str, dict] = field(default_factory=dict)
+    by_generator: dict[str, GeneratorTotal] = field(default_factory=dict)
     total_mw: float = 0.0
     unmodellable: list[str] = field(default_factory=list)
-    starved: list[dict] = field(default_factory=list)
+    starved: list[StarvedEntry] = field(default_factory=list)
     starved_mw: float = 0.0
     unwired: int = 0
     unwired_mw: float = 0.0
@@ -250,7 +251,7 @@ class PowerLedger:
             tally.charge(rated, extractor_record, self._is_wired(extractor_record))
         return tally
 
-    def power_report(self, *, biomass: bool = False) -> dict:
+    def power_report(self, *, biomass: bool = False) -> PowerReport:
         """Generation capacity, and draw both nameplate and measured (save-projection §6.1a).
 
         ``headroom_mw`` is the safe figure, what is free if everything built ran at once;
