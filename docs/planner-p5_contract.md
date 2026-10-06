@@ -171,7 +171,7 @@ matches the pad is still shown, dimmed. Steps never write.
 
 ## 5. The `site` op
 
-### 5.1 Check (`siting.check`, called from `planlog._check_op`)
+### 5.1 Normalise (`siting.normalise_record`, called from `planlog.ops._canonical_op`)
 
 | Field | Rule |
 |---|---|
@@ -199,7 +199,7 @@ so they cannot store different shapes. Undo does not: it replays the stored inve
 - Chat's `site_plan` writes and previews are snapped with the shared value; the page's typed
   fields are not.
 
-### 5.3 Words (`describe_op`, `_did`)
+### 5.3 Words (`describe_op`, `_action_words`)
 
 `site set at 1,476, -2,098 (Rocky Desert)` · `site moved 1,503 m west` · `site moved 212 m
 north-east, turned 30°` · `site resized to 200×120 m` · `site cleared`. A record that does not
@@ -215,8 +215,8 @@ siting.set_ground_z(provider)   # provider(x_m, y_m, yaw_deg, width_m, depth_m) 
 ```
 
 - `siting.ground_z` calls it; an exception or a non-finite answer reads as None.
-- `check` fills a null `z` with it on every write; the preview shows it as `z_m`, and the trunk
-  lift uses it before the pad's median ground.
+- `normalise_record` fills a null `z` with it on every write; the preview shows it as `z_m`, and
+  the trunk lift uses it before the pad's median ground.
 - Nothing installs a provider yet. The terrain-height work wires it with that one call where the
   web app and the MCP server start, and the page then shows `ground height … m` instead of
   `terrain height: pending` with no page change.

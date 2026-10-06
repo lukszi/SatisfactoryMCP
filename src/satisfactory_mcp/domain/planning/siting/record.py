@@ -92,7 +92,17 @@ def _finite(name: str, raw) -> float:
     return float(raw)
 
 
-def check(value) -> dict:
+def footprint_box_cm(
+    x_m: float, y_m: float, width_m: float, depth_m: float, yaw_deg: float
+) -> tuple[float, float, float, float]:
+    """The axis-aligned box round a turned footprint, in save centimetres (x0, y0, x1, y1)."""
+    a = math.radians(yaw_deg)
+    ex = abs(width_m / 2 * math.cos(a)) + abs(depth_m / 2 * math.sin(a))
+    ey = abs(width_m / 2 * math.sin(a)) + abs(depth_m / 2 * math.cos(a))
+    return (x_m - ex) * 100, (y_m - ey) * 100, (x_m + ex) * 100, (y_m + ey) * 100
+
+
+def normalise_record(value) -> dict:
     """``value`` as a ``site`` op stores it; ``ValueError`` in words when it cannot be.
 
     The map square is the one hard edge; a missing height is filled from ``ground_z``.
@@ -149,8 +159,6 @@ def check(value) -> dict:
     }
 
 
-SNAP_MODES = ("fine", "grid8")
-
 GRID_M = 8.0
 
 YAW_STEP_DEG = {"fine": 15.0, "grid8": 90.0}
@@ -185,7 +193,7 @@ def fit_to_bbox(bbox_m: list[float], name: str, when: str = "") -> dict:
     x0, y0, x1, y1 = (float(v) for v in bbox_m)
     w = max(FOOTPRINT_MIN_M, float(math.ceil(x1 - x0 + FIT_MARGIN_M)))
     d = max(FOOTPRINT_MIN_M, float(math.ceil(y1 - y0 + FIT_MARGIN_M)))
-    return check(
+    return normalise_record(
         {
             "origin_m": [round((x0 + x1) / 2, 2), round((y0 + y1) / 2, 2), None],
             "yaw_deg": 0.0,
@@ -203,8 +211,8 @@ def _turn(a: float, b: float) -> float:
 
 def move_words(was: dict | None, now: dict | None) -> str:
     """``moved 1,503 m west, turned 30°`` and the like; "" when nothing readable moved."""
-    old = parse(_Raw(was)) if was else None
-    new = parse(_Raw(now)) if now else None
+    old = Siting.from_record(was) if was else None
+    new = Siting.from_record(now) if now else None
     if old is None or new is None:
         return ""
     parts = []
@@ -218,11 +226,6 @@ def move_words(was: dict | None, now: dict | None) -> str:
     if (round(old.width_m), round(old.depth_m)) != (round(new.width_m), round(new.depth_m)):
         parts.append(f"resized to {new.width_m:.0f}×{new.depth_m:.0f} m")
     return ", ".join(parts)
-
-
-@dataclass(frozen=True)
-class _Raw:
-    siting: dict | None
 
 
 @dataclass(frozen=True)
@@ -246,15 +249,67 @@ class Siting:
     #: Save timestamp when this was recorded, same field ``Plan.created`` uses.
     when: str = ""
     #: Where ``z_m`` came from: "given" (typed x,y,z), "you" (the player pawn), "stored"
-    #: (kept from the record), "terrain" (the heightfield under the footprint), or "". Not stored: the
-    #: canonical record is ``check``'s, and this and ``terrain`` live for one reply.
+    #: (kept from the record), "terrain" (the heightfield under the footprint), or "". Not
+    #: stored: ``normalise_record`` owns the record, and this and ``terrain`` live for one reply.
     z_source: str = ""
     #: The heightfield's reading of the site, beside whatever z won; see ``terrain_z``.
     terrain: dict | None = None
 
+    @classmethod
+    def from_record(cls, raw) -> Siting | None:
+        """The siting a stored record describes, or None -- absence is ordinary, not an error."""
+        if not isinstance(raw, dict) or not raw.get("origin_m"):
+            return None
+        origin = list(raw["origin_m"]) + [None, None, None]
+        fp = list(raw.get("footprint_m") or ()) + [0.0, 0.0]
+        try:
+            return cls(
+                x_m=float(origin[0]),
+                y_m=float(origin[1]),
+                z_m=None if origin[2] is None else float(origin[2]),
+                yaw_deg=float(raw.get("yaw_deg") or 0.0),
+                width_m=float(fp[0] or 0.0),
+                depth_m=float(fp[1] or 0.0),
+                source=str(raw.get("footprint_source") or ""),
+                origin_label=str(raw.get("origin_label") or ""),
+                when=str(raw.get("when") or ""),
+            )
+        except (TypeError, ValueError):
+            # A hand-edited record that no longer parses reads as "not sited" rather than as
+            # a crash inside every planning tool that recalls the plan.
+            return None
+
     @property
     def has_footprint(self) -> bool:
         return self.width_m > 0 and self.depth_m > 0
+
+    def bbox_cm(self) -> tuple[float, float, float, float]:
+        """The axis-aligned box round the turned pad, in save centimetres."""
+        return footprint_box_cm(self.x_m, self.y_m, self.width_m, self.depth_m, self.yaw_deg)
+
+    def corners_m(self) -> list[tuple[float, float]]:
+        """The pad's four corners in metres, turned by its yaw."""
+        a = math.radians(self.yaw_deg)
+        c, s = math.cos(a), math.sin(a)
+        hw, hd = self.width_m / 2, self.depth_m / 2
+        return [
+            (self.x_m + dx * c - dy * s, self.y_m + dx * s + dy * c)
+            for dx, dy in ((-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd))
+        ]
+
+    def overlaps(self, other: Siting) -> bool:
+        """Whether the two turned pads meet, by separating axes."""
+        mine, theirs = self.corners_m(), other.corners_m()
+        for poly in (mine, theirs):
+            for i in range(4):
+                x1, y1 = poly[i]
+                x2, y2 = poly[(i + 1) % 4]
+                nx, ny = y2 - y1, x1 - x2
+                along_mine = [nx * x + ny * y for x, y in mine]
+                along_theirs = [nx * x + ny * y for x, y in theirs]
+                if max(along_mine) < min(along_theirs) or max(along_theirs) < min(along_mine):
+                    return False
+        return True
 
     def stored_label(self) -> str:
         if self.origin_label.startswith("pin:") and " = " in self.origin_label:
@@ -343,24 +398,4 @@ class Siting:
 
 def parse(plan: Plan) -> Siting | None:
     """The siting a stored plan carries, or None -- absence is ordinary, not an error."""
-    raw = getattr(plan, "siting", None)
-    if not isinstance(raw, dict) or not raw.get("origin_m"):
-        return None
-    origin = list(raw["origin_m"]) + [None, None, None]
-    fp = list(raw.get("footprint_m") or ()) + [0.0, 0.0]
-    try:
-        return Siting(
-            x_m=float(origin[0]),
-            y_m=float(origin[1]),
-            z_m=None if origin[2] is None else float(origin[2]),
-            yaw_deg=float(raw.get("yaw_deg") or 0.0),
-            width_m=float(fp[0] or 0.0),
-            depth_m=float(fp[1] or 0.0),
-            source=str(raw.get("footprint_source") or ""),
-            origin_label=str(raw.get("origin_label") or ""),
-            when=str(raw.get("when") or ""),
-        )
-    except (TypeError, ValueError):
-        # A hand-edited record that no longer parses reads as "not sited" rather than as
-        # a crash inside every planning tool that recalls the plan.
-        return None
+    return Siting.from_record(getattr(plan, "siting", None))

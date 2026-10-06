@@ -2,33 +2,23 @@
 
 from __future__ import annotations
 
-import math
 import statistics
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from ...spatial import caves, heightfield
-from .record import Siting, _ground
+from .record import Siting, _ground, footprint_box_cm
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
 
 #: ``terrain_field`` left at this means "the installed provider's field"; ``None``, "none".
-LOAD_FIELD = object()
+INSTALLED_FIELD = object()
 
 #: A pad is flagged ambiguous when at least this share of it may be a roof over the floor.
 AMBIGUOUS_PAD_PCT = 10.0
 
 NO_FIELD = "no terrain field on this machine -- run tools/gen_world_heightmap.py"
-
-
-def _footprint_box_cm(
-    x_m: float, y_m: float, width_m: float, depth_m: float, yaw_deg: float
-) -> tuple[float, float, float, float]:
-    a = math.radians(yaw_deg)
-    ex = abs(width_m / 2 * math.cos(a)) + abs(depth_m / 2 * math.sin(a))
-    ey = abs(width_m / 2 * math.sin(a)) + abs(depth_m / 2 * math.cos(a))
-    return (x_m - ex) * 100, (y_m - ey) * 100, (x_m + ex) * 100, (y_m + ey) * 100
 
 
 def _built_hint_m(st: WorldState | None, probe: Siting) -> float | None:
@@ -94,7 +84,7 @@ def terrain_z(
             "cave": reading.cave,
             "cave_floor": reading.cave_floor,
         }
-    box = _footprint_box_cm(x_m, y_m, width_m, depth_m, yaw_deg)
+    box = footprint_box_cm(x_m, y_m, width_m, depth_m, yaw_deg)
     areas = {"ground": field.window(*box)}
     if field.has_terrain:
         areas["terrain"] = field.window(*box, surface="terrain", shape=False)
@@ -176,7 +166,7 @@ def settle_z(
     terrain_field: Any,
 ) -> Siting:
     """``sit`` with its z settled: a typed or player z wins, else the terrain's."""
-    field = _installed_field() if terrain_field is LOAD_FIELD else terrain_field
+    field = _installed_field() if terrain_field is INSTALLED_FIELD else terrain_field
     if at_z_m is not None:
         z_source = label if label in ("you", "stored") else "given"
         hint_m, hint_from = at_z_m, z_source

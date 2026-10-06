@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ....core.gamedata.model import GameData
 from ...spatial.places import PLAYER_WORDS, resolve_place
-from .ground import LOAD_FIELD, settle_z
+from .ground import INSTALLED_FIELD, settle_z
 from .record import Siting, parse
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -83,13 +84,43 @@ def plan_site_args(st: WorldState, plan: str | None, at: str, footprint: str) ->
     return f"{sit.x_m:g},{sit.y_m:g}", footprint
 
 
+def _sited(
+    st: WorldState,
+    at: str,
+    footprint: str,
+    blank_footprint: Callable[[], tuple[float, float, str]],
+    *,
+    yaw_deg: float,
+    when: str,
+    terrain_field: Any,
+) -> Siting:
+    """The siting at ``at``; a blank ``footprint`` asks ``blank_footprint`` for (w, d, source)."""
+    x_m, y_m, z_m, label = resolve_site_origin(st, at)
+    if footprint.strip():
+        width, depth = parse_footprint(footprint)
+        source = "given"
+    else:
+        width, depth, source = blank_footprint()
+    sit = Siting(
+        x_m=round(x_m, 2),
+        y_m=round(y_m, 2),
+        yaw_deg=float(yaw_deg or 0.0),
+        width_m=width,
+        depth_m=depth,
+        source=source,
+        origin_label=label,
+        when=when,
+    )
+    return settle_z(st, sit, z_m, label, terrain_field)
+
+
 def resolve_plan_site(
     st: WorldState,
     at: str,
     footprint: str = "",
     when: str = "",
     *,
-    terrain_field: Any = LOAD_FIELD,
+    terrain_field: Any = INSTALLED_FIELD,
 ) -> Siting:
     """A site for a plan being BUILT, resolved before there is a solution to size it from.
 
@@ -100,23 +131,49 @@ def resolve_plan_site(
     """
     from ...world.water import SITE_PAD_M
 
-    x_m, y_m, z_m, label = resolve_site_origin(st, at)
-    if footprint.strip():
-        width, depth = parse_footprint(footprint)
-        source = "given"
-    else:
-        width = depth = SITE_PAD_M
-        source = "default"
-    sit = Siting(
-        x_m=round(x_m, 2),
-        y_m=round(y_m, 2),
-        width_m=width,
-        depth_m=depth,
-        source=source,
-        origin_label=label,
-        when=when,
+    def default_pad() -> tuple[float, float, str]:
+        return SITE_PAD_M, SITE_PAD_M, "default"
+
+    return _sited(
+        st, at, footprint, default_pad, yaw_deg=0.0, when=when, terrain_field=terrain_field
     )
-    return settle_z(st, sit, z_m, label, terrain_field)
+
+
+def _layout_side(game: GameData, st: WorldState, solution, plan_kwargs: dict | None) -> float:
+    """The side of the square ``plan_layout`` budgets for this plan, solving it if needed."""
+    sol = solution
+    if sol is None:
+        from ..solver.prepare import prepare
+
+        prepared = prepare(game, st, dict(plan_kwargs or {}), diagnose=False)
+        if prepared.failure is not None:
+            raise ValueError(
+                f"cannot derive a footprint: the plan does not solve "
+                f"({prepared.failure.headline}). Pass footprint='WxD' in metres instead"
+            )
+        sol = prepared.solution
+    if not getattr(sol, "processes", None):
+        raise ValueError(
+            "cannot derive a footprint from an empty plan -- pass footprint='WxD' in metres"
+        )
+    from ..layout.schematic import build_layout
+    from ..solver.carrier import resolve_tiers
+
+    tiers = resolve_tiers(game, st, "", "")
+    kwargs = plan_kwargs or {}
+    lay = build_layout(
+        game,
+        sol,
+        belt_ipm=kwargs.get("belt_ipm") or tiers.belt_ipm,
+        pipe_m3min=kwargs.get("pipe_m3min") or tiers.pipe_m3min,
+    )
+    side = lay.site_side_m()
+    if side <= 0:
+        raise ValueError(
+            "the layout budgets no floor for this plan (no known machine footprints) "
+            "-- pass footprint='WxD' in metres"
+        )
+    return side
 
 
 def build_siting(
@@ -129,7 +186,7 @@ def build_siting(
     solution=None,
     plan_kwargs: dict | None = None,
     when: str = "",
-    terrain_field: Any = LOAD_FIELD,
+    terrain_field: Any = INSTALLED_FIELD,
 ) -> Siting:
     """Turn tool arguments into a Siting, deriving the footprint when none was given.
 
@@ -140,55 +197,11 @@ def build_siting(
 
     Raises ``ValueError`` with a caller-facing message on anything unresolvable.
     """
-    x_m, y_m, z_m, label = resolve_site_origin(st, at)
 
-    if footprint.strip():
-        width, depth = parse_footprint(footprint)
-        source = "given"
-    else:
-        sol = solution
-        if sol is None:
-            from ..solver.prepare import prepare
+    def layout_square() -> tuple[float, float, str]:
+        side = _layout_side(game, st, solution, plan_kwargs)
+        return side, side, "layout"
 
-            prepared = prepare(game, st, dict(plan_kwargs or {}), diagnose=False)
-            if prepared.failure is not None:
-                raise ValueError(
-                    f"cannot derive a footprint: the plan does not solve "
-                    f"({prepared.failure.headline}). Pass footprint='WxD' in metres instead"
-                )
-            sol = prepared.solution
-        if not getattr(sol, "processes", None):
-            raise ValueError(
-                "cannot derive a footprint from an empty plan -- pass footprint='WxD' in metres"
-            )
-        from ..layout.schematic import build_layout
-        from ..solver.carrier import resolve_tiers
-
-        tiers = resolve_tiers(game, st, "", "")
-        kwargs = plan_kwargs or {}
-        lay = build_layout(
-            game,
-            sol,
-            belt_ipm=kwargs.get("belt_ipm") or tiers.belt_ipm,
-            pipe_m3min=kwargs.get("pipe_m3min") or tiers.pipe_m3min,
-        )
-        side = lay.site_side_m()
-        if side <= 0:
-            raise ValueError(
-                "the layout budgets no floor for this plan (no known machine footprints) "
-                "-- pass footprint='WxD' in metres"
-            )
-        width = depth = side
-        source = "layout"
-
-    sit = Siting(
-        x_m=round(x_m, 2),
-        y_m=round(y_m, 2),
-        yaw_deg=float(yaw_deg or 0.0),
-        width_m=width,
-        depth_m=depth,
-        source=source,
-        origin_label=label,
-        when=when,
+    return _sited(
+        st, at, footprint, layout_square, yaw_deg=yaw_deg, when=when, terrain_field=terrain_field
     )
-    return settle_z(st, sit, z_m, label, terrain_field)

@@ -8,9 +8,12 @@ longer exists -- silently.
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from satisfactory_mcp import server as srv
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.stored.store import PLAN_ARGS, Plan, PlanStore
 
@@ -276,6 +279,12 @@ def test_plan_defaults_cover_every_stored_argument():
     """A stored argument with no declared default could never be overridden, because
     the override test compares against PLAN_DEFAULTS."""
     assert set(PLAN_ARGS) == set(srv.PLAN_DEFAULTS)
+
+
+def test_every_stored_argument_is_one_build_scenario_takes():
+    """``PLAN_ARGS`` is derived from the stored fields, so a field the solve does not take
+    would reach ``build_scenario`` as an unknown keyword on every recall."""
+    assert set(PLAN_ARGS) <= set(inspect.signature(build_scenario).parameters)
 
 
 def test_kwargs_filters_out_anything_no_longer_accepted():

@@ -1,8 +1,21 @@
 # The plan log
 
-How `domain/planning/stored/planlog.py` stores plans. The specification is
+How `domain/planning/stored/planlog/` stores plans. The specification is
 [planner_slice_contract.md](planner_slice_contract.md) §2–§5 and §7; this note records where
 the code had to choose something the contract leaves open, and why.
+
+## Modules
+
+| Module | Holds |
+|---|---|
+| `stored/plan_args.py` | `PlanArgs`, each field's kind and check, `PLAN_ARGS`, `PLAN_DEFAULTS`, `InvalidOp`; reads nothing else in `stored` |
+| `planlog/records.py` | `PlanState`, `Commit`, `Actor`, `Conflict`, `Pushed`, `Stamp` and the refusals |
+| `planlog/ops.py` | One op at a time: canonical form, apply, inverse, merge key, clash; `diff_args`; undo chains |
+| `planlog/wording.py` | `describe_op`, `describe_commit` and the words of a conflict |
+| `planlog/log.py` | `PlanLog` and `PlanView`: the files, the locks, snapshots and the merge |
+| `planlog/migrate.py` | The one-time move of the legacy file into the log |
+
+`planlog/__init__.py` re-exports what callers import, so they name the package, not a module.
 
 ## Layout
 

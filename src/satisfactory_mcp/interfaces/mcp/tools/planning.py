@@ -617,7 +617,7 @@ def site_plan(
                 when=when,
             )
             # The stored z stays; a missing one is read from the terrain under the pad.
-            sit = siting_mod.settle_z(st, sit, existing.z_m, "stored", siting_mod.LOAD_FIELD)
+            sit = siting_mod.settle_z(st, sit, existing.z_m, "stored", siting_mod.INSTALLED_FIELD)
     except ValueError as exc:
         return f"! {exc}"
 
@@ -625,7 +625,7 @@ def site_plan(
     if sit.z_source == "terrain":
         # Snapping moved the pad, so its terrain z is read again where it now stands.
         sit = siting_mod.settle_z(
-            st, dataclasses.replace(sit, z_m=None), None, "", siting_mod.LOAD_FIELD
+            st, dataclasses.replace(sit, z_m=None), None, "", siting_mod.INSTALLED_FIELD
         )
     pushed, text = push(sit.to_dict(), "not sited")
     if pushed is None:

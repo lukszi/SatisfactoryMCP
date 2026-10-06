@@ -32,6 +32,7 @@ from satisfactory_mcp.domain.planning.stored.planlog import (
     describe_op,
     diff_args,
     inverse,
+    wording,
 )
 
 PAGE = Actor("page", "", 1)
@@ -691,7 +692,9 @@ def test_recipe_members_read_as_names_once_a_namer_is_set(monkeypatch):
     op = {"op": "add", "field": "banned", "member": "Recipe_UnpackageOilResidue_C"}
     assert describe_op(op) == "+banned Recipe_UnpackageOilResidue_C"
     monkeypatch.setattr(
-        planlog, "_namer", [lambda: {"Recipe_UnpackageOilResidue_C": "Unpackage Heavy Oil Residue"}]
+        wording,
+        "_recipe_name_source",
+        [lambda: {"Recipe_UnpackageOilResidue_C": "Unpackage Heavy Oil Residue"}],
     )
     assert describe_op(op) == "+banned Unpackage Heavy Oil Residue"
     assert describe_op({**op, "member": "Recycled"}) == "+banned Recycled"
@@ -903,7 +906,7 @@ def test_two_processes_writing_at_once_lose_nothing(tmp_path, monkeypatch):
     env = {
         **os.environ,
         "SATISFACTORY_USER_DATA": str(tmp_path),
-        "PYTHONPATH": str(Path(planlog.__file__).resolve().parents[4]),
+        "PYTHONPATH": str(Path(planlog.__file__).resolve().parents[5]),
     }
     procs = [
         subprocess.Popen([sys.executable, "-c", _WRITER, key, tag, "25"], env=env)

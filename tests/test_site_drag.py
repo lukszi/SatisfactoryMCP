@@ -16,7 +16,6 @@ from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.planning.layout.trunks import Trunk, TrunkMember
 from satisfactory_mcp.domain.planning.siting import preview as site_preview
-from satisfactory_mcp.domain.planning.siting.record import _Raw
 from satisfactory_mcp.domain.planning.stored import planlog
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, InvalidOp, PlanLog, describe_op
 from satisfactory_mcp.domain.spatial import geo
@@ -54,7 +53,9 @@ def _no_ground():
 
 
 def test_check_canonicalises_and_normalises_yaw():
-    got = siting.check(_value(yaw_deg=-30.0, origin_label="map", footprint_source="given"))
+    got = siting.normalise_record(
+        _value(yaw_deg=-30.0, origin_label="map", footprint_source="given")
+    )
     assert got == {
         "schema": 1,
         "origin_m": [100.0, -200.0, None],
@@ -64,8 +65,8 @@ def test_check_canonicalises_and_normalises_yaw():
         "origin_label": "map",
         "when": "",
     }
-    assert siting.check(_value(yaw_deg=720.0))["yaw_deg"] == 0.0
-    assert siting.check({"origin_m": [1.0, 2.0]})["footprint_m"] == [0.0, 0.0]
+    assert siting.normalise_record(_value(yaw_deg=720.0))["yaw_deg"] == 0.0
+    assert siting.normalise_record({"origin_m": [1.0, 2.0]})["footprint_m"] == [0.0, 0.0]
 
 
 @pytest.mark.parametrize(
@@ -87,7 +88,7 @@ def test_check_canonicalises_and_normalises_yaw():
 )
 def test_check_refuses_in_words(value, words):
     with pytest.raises(ValueError, match=None) as caught:
-        siting.check(value)
+        siting.normalise_record(value)
     assert words in str(caught.value)
 
 
@@ -119,15 +120,15 @@ def test_a_drop_outside_the_playable_box_is_allowed(plans):
 
 
 def test_describe_op_says_where_how_far_and_how_much_it_turned():
-    was = siting.check(_value(1476.0, -2098.0))
-    west = siting.check(_value(-27.0, -2098.0))
+    was = siting.normalise_record(_value(1476.0, -2098.0))
+    west = siting.normalise_record(_value(-27.0, -2098.0))
     assert describe_op({"op": "site", "was": was, "value": west}) == "site moved 1,503 m west"
-    turned = siting.check(_value(1476.0 + 150, -2098.0 - 150, yaw_deg=30.0))
+    turned = siting.normalise_record(_value(1476.0 + 150, -2098.0 - 150, yaw_deg=30.0))
     assert (
         describe_op({"op": "site", "was": was, "value": turned})
         == "site moved 212 m north-east, turned 30°"
     )
-    bigger = siting.check(_value(1476.0, -2098.0, footprint_m=[200.0, 120.0]))
+    bigger = siting.normalise_record(_value(1476.0, -2098.0, footprint_m=[200.0, 120.0]))
     assert describe_op({"op": "site", "was": was, "value": bigger}) == "site resized to 200×120 m"
     assert describe_op({"op": "site", "was": was, "value": None}) == "site cleared"
     first = describe_op({"op": "site", "was": None, "value": was})
@@ -192,7 +193,7 @@ def test_fit_to_bbox_covers_the_machines_with_a_margin():
     assert got["origin_m"] == [140.25, -20.0, None]
     assert got["footprint_m"] == [97.0, 76.0] and got["yaw_deg"] == 0.0
     assert got["footprint_source"] == "given" and got["origin_label"] == "built “oil setup”"
-    sit = siting.parse(_Raw(got))
+    sit = siting.Siting.from_record(got)
     assert sit.contains_cm(100.0 * 100, -50.0 * 100) and sit.contains_cm(180.5 * 100, 10.0 * 100)
 
 
@@ -204,11 +205,11 @@ def test_a_ground_height_provider_fills_z_and_a_failing_one_is_ignored(plans):
         return 12.345
 
     siting.set_ground_z(ground)
-    assert siting.check(_value())["origin_m"] == [100.0, -200.0, 12.35]
+    assert siting.normalise_record(_value())["origin_m"] == [100.0, -200.0, 12.35]
     assert asked == [(100.0, -200.0, 0.0, 96.0, 64.0)]
-    assert siting.check(_value(origin_m=[1.0, 2.0, 7.0]))["origin_m"][2] == 7.0
+    assert siting.normalise_record(_value(origin_m=[1.0, 2.0, 7.0]))["origin_m"][2] == 7.0
     siting.set_ground_z(lambda *a: 1 / 0)
-    assert siting.check(_value())["origin_m"][2] is None
+    assert siting.normalise_record(_value())["origin_m"][2] is None
 
 
 def test_trunk_legs_to_the_site_move_while_the_chain_does_not():
@@ -320,8 +321,8 @@ def test_fit_to_built_offers_a_pad_that_covers_the_candidate(world):
     out = site_preview.preview(world.game, world, sess, _pad(*BUILT_SPOT, side=40.0))
     assert out["fits"], "a 40 m pad does not cover the factory it stands in"
     fit = out["fits"][0]
-    assert siting.check(fit["value"]) == fit["value"]
-    covered = site_preview.preview(world.game, world, sess, siting.parse(_Raw(fit["value"])))
+    assert siting.normalise_record(fit["value"]) == fit["value"]
+    covered = site_preview.preview(world.game, world, sess, siting.Siting.from_record(fit["value"]))
     assert fit["name"] not in [f["name"] for f in covered["fits"]]
 
 
