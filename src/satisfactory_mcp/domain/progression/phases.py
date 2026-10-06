@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
 from ...core.gamedata.model import GameData
+from ...core.saveio.schema import Projection
+from .views import PhaseRequirements, PhaseRow, ProgressionSummary
 
 if TYPE_CHECKING:
     from .unlocks import UnlockSet
@@ -40,11 +42,11 @@ def opening_phase(tier: int) -> int:
 class PhaseLedger:
     """Where the run stands: tiers completed and phase deliveries outstanding."""
 
-    projection: dict
+    projection: Projection
     game: GameData
     unlocks: UnlockSet
 
-    def progression(self) -> dict:
+    def progression(self) -> ProgressionSummary:
         recorded = self.projection.get("progression", {})
         tiers: dict[int, list[str]] = {}
         for schematic_id in self.unlocks.purchased_schematic_ids:
@@ -61,8 +63,9 @@ class PhaseLedger:
         return {
             "game_phase": recorded.get("game_phase"),
             "target_phase": recorded.get("target_phase"),
+            # Item counts: the save stores ``FItemAmount.Amount`` as an int32.
             "phase_costs_remaining": {
-                k: {i: a for i, a in v.items() if a}
+                k: {i: int(a) for i, a in v.items() if a}
                 for k, v in (recorded.get("phase_costs_remaining") or {}).items()
                 if any(v.values())
             },
@@ -84,13 +87,15 @@ class PhaseLedger:
     }
 
     @staticmethod
-    def _subtractable(snapshot: dict, complete: list[str], paid: dict) -> bool:
+    def _subtractable(
+        snapshot: dict[str, float], complete: list[str], paid: dict[str, float]
+    ) -> bool:
         """Whether the live paid-off record may be taken off this frozen row: only where no
         item sits at zero in it and none was paid past what it bills (§6.4), so what the
         subtraction yields is a LOWER bound on what is still owed."""
         return not complete and all(v <= snapshot.get(i, 0.0) for i, v in paid.items())
 
-    def phase_requirements(self) -> dict:
+    def phase_requirements(self) -> PhaseRequirements:
         """Space Elevator deliveries, live record first and the frozen legacy one labelled.
 
         Deliveries go to the TARGET phase, so "what do I owe" is its frozen cost minus what
@@ -104,7 +109,7 @@ class PhaseLedger:
         # the informative answer here -- nothing has been delivered to the target yet.
         paid = {k: v for k, v in (recorded.get("paid_off_target") or {}).items() if v}
 
-        rows = []
+        rows: list[PhaseRow] = []
         for egp, costs in (recorded.get("phase_costs_remaining") or {}).items():
             phase = self.EGP_TO_PHASE.get(egp)
             snapshot = {i: a for i, a in costs.items() if a}

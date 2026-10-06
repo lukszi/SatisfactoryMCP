@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING, ClassVar
 from ...core.gamedata.constants import POTENTIAL_SHARD_SLOTS, shards_for_clock
 from ...core.gamedata.model import GameData
 from ...core.saveio.records import instance_leaf
+from ...core.saveio.schema import BuildableRecord, Projection
 from ..world.inventory import SPENDABLE
+from .views import ShardBudget, ShardHolder, SloopBudget, SloopHolding, SlugRow
 
 if TYPE_CHECKING:
     from ..world.inventory import Inventory
@@ -28,18 +30,18 @@ class OverclockBudget:
     which records those are is the census's business.
     """
 
-    projection: dict
+    projection: Projection
     game: GameData
     inventory: Inventory
-    records: list[dict] = field(default_factory=list)
+    records: list[BuildableRecord] = field(default_factory=list[BuildableRecord])
 
     #: The Somersloop and Mercer Sphere item classes; ids, since a localised dump renames.
     SOMERSLOOP_ITEM: ClassVar[str] = "Desc_WAT1_C"
     MERCER_ITEM: ClassVar[str] = "Desc_WAT2_C"
 
-    def _slug_rows(self, stock: dict[str, float]) -> tuple[list[dict], float]:
+    def _slug_rows(self, stock: dict[str, float]) -> tuple[list[SlugRow], float]:
         """Uncrafted slugs held, richest first, and the shards they would craft into."""
-        slugs = []
+        slugs: list[SlugRow] = []
         craftable = 0.0
         for item, yield_each in sorted(self.game.slug_yields().items(), key=lambda kv: -kv[1]):
             held = stock.get(item, 0.0)
@@ -57,10 +59,12 @@ class OverclockBudget:
             craftable += held * yield_each
         return slugs, craftable
 
-    def _shard_holders(self, shard_items: dict, per_shard: float) -> tuple[list[dict], int]:
+    def _shard_holders(
+        self, shard_items: dict[str, float], per_shard: float
+    ) -> tuple[list[ShardHolder], float]:
         """Every building with a shard slotted or a clock that needs one, and the slotted sum."""
-        committed = 0
-        holders: list[dict] = []
+        committed: float = 0
+        holders: list[ShardHolder] = []
         for record in self.records:
             slotted = sum(
                 n
@@ -86,7 +90,7 @@ class OverclockBudget:
         holders.sort(key=lambda h: (-h["slotted"], h["cls"]))
         return holders, committed
 
-    def shard_budget(self) -> dict:
+    def shard_budget(self) -> ShardBudget:
         """Power Shards held, committed and free.
 
         Committed shards are READ off each buildable's ``InventoryPotential`` and never
@@ -128,7 +132,7 @@ class OverclockBudget:
             "measured": any("potential_slots" in r for r in self.records),
         }
 
-    def sloop_budget(self) -> dict:
+    def sloop_budget(self) -> SloopBudget:
         """Somersloops on hand and in machines.
 
         Free ones are what ``stock`` spends; committed ones are read from the same
@@ -144,7 +148,7 @@ class OverclockBudget:
                 by_place[_PLACE_OF_BUCKET[bucket]] = held
 
         committed = 0.0
-        holders: list[dict] = []
+        holders: list[SloopHolding] = []
         for record in self.records:
             slots = record.get("potential_slots") or {}
             slotted = float(slots.get(self.SOMERSLOOP_ITEM, 0.0))
