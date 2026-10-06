@@ -1868,7 +1868,7 @@ from the downsampled heights, sky view and horizons by mean.
 ### The stage
 
 `render_layer` hands the first layer's drawn heights and land weight to a `Surface` (two
-memory maps beside the raster caches, 5.4 GB at 32768). After that layer is drawn,
+memory maps in the light's scratch, 5.4 GB at 32768). After that layer is drawn,
 `lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
 halo, and a process pool computes per block: the ground's horizons and the crowns' at half
 resolution, sky view, normals, the native tiles, and the light at the default sun for the
@@ -1908,13 +1908,66 @@ nothing. The crown cells are 0 wherever no crown stands above the ground's horiz
 they take the light pyramid from 18.8 to 24.2 MB. The unlit colour adds about half the
 colour pyramid again.
 
-**Scratch.** While the run lasts, `light.cache/` beside the raster caches holds 13.5 bytes a
-pixel, 14.5 GB at full size: the surface (heights 4, land 1), the default-sun terms (3), and
-the bake's half-resolution heights, land and sky view (1.5) and quarter-resolution horizons
-(4). With the painted layer the crown tops and cover (5) are written there and copied into
-the bake's own occluder files (5), 10.7 GB more. The cache is removed at the end of the run.
-The Maps tab's estimate counts it as `presets.LIGHT_SCRATCH_BYTES` and
-`CROWN_SCRATCH_BYTES`, scaled by area; a test holds the first to the stage's allocation.
+**Scratch.** While the run lasts, `light.cache/` holds 13.5 bytes a pixel, 14.5 GB at full
+size: the surface (heights 4, land 1), the default-sun terms (3), and the bake's
+half-resolution heights, land and sky view (1.5) and quarter-resolution horizons (4). With
+the painted layer the crown tops and cover add 5, 5.4 GB. The Maps tab's estimate counts them
+as `presets.LIGHT_SCRATCH_BYTES` and `CROWN_SCRATCH_BYTES`, scaled by area; tests hold both to
+what the stage allocates.
+
+It is scratch for one run, not a cache. It carries no stamp, no flag keeps it (`--keep-direct`
+keeps the raster caches only), and every lit run, `--restyle` and another layer set included,
+bakes the light again. Nothing reads it after the run, so the question of storing it
+compressed (section 39) is one of size and traffic while the run lasts, not of reuse.
+
+| Planes | Written | Read |
+| --- | --- | --- |
+| `z`, `land` | By the first layer drawn, a band of rows at a time | By the bake, one block of 16 × 16 tiles at a time with its halo (`land` without one); `land` again by each layer's default-sun copy, 512 rows at a time |
+| `occluder`, `occluder_cover` | By `crown_occluder`, 256 rows at a time | By the bake, a block with its halo |
+| `terms` | By the bake's processes, a block each | By each layer's default-sun copy, 512 rows at a time |
+| `zh`, `landh`, `svfh`, `hzq` | By the bake's processes, a block each | By each coarser level, a strip of rows at a time; each level replaces them with its own |
+
+Until 2026-10-06 the crowns went to `crowns.npy` and `crown_cover.npy` and the bake copied
+them into its occluder files, 10.7 GB in all at full size. `crown_occluder` now writes the
+occluder files (`stage.occluder_planes`) and the bake reads them where they are. At full
+size that is 5.4 GB less disk and 10.7 GB less traffic. A test bakes both ways to the same
+bytes. A 2048 render of all five layers, `--workers 2`, ran before and after the change:
+all 1,125 tiles match by SHA-256, the light pyramid's 170 among them, the sidecars differ
+in their timings only, and the scratch at its peak went from 98.6 to 77.6 MB with every
+other plane unchanged.
+
+- **Where.** `--scratch-dir`, else `--cache-dir`, else beside the renders. The Maps tab does
+  not pass it.
+- **Traffic.** At 32768 the scratch takes about 22 GB of writes (27 GB with the old copy).
+  Reads come to 18 GB for the bake's blocks (the halo makes a window 1.75 times its block's
+  area), 8 GB for the coarser levels and 4.3 GB for each layer's default-sun copy, 47 GB in
+  all for five layers once the page cache no longer holds them. At the 115 to 147 MB/s
+  measured on the hard disk of section 39 that is up to 8 to 10 minutes of transfer a run,
+  on the disk that also writes the tiles; an SSD does it in under a minute. These are counts
+  of what each step touches, not a measurement of a full run.
+- **Not compressed.** Measured on a 2048 preview with the painted layer (2026-10-06), the
+  scratch at its peak is 77.6 MB and zstd level 1 with the shuffle of section 39, in 1024 px
+  tiles, makes it 29.9 MB: 2.6 times. The planes the bake and the default-sun copies read
+  most are dense: heights 1.8 times, terms 1.8, half-resolution heights 1.7, sky view 1.8,
+  horizons 2.4. Level 19 gets the heights to 2.0, and the terms to 3.4 stored a channel at a
+  time. Tiles of 256 or 2048 px move the ratio by less than 0.1. Only the land weight (25),
+  the crown cover (6.9) and the crown tops (5.7, NaN away from trees) shrink much. The
+  raster caches of section 39 are 89% zero, which is why they went 20 times smaller. Scaled
+  to 32768 that is about 20 GB to 7 or 8 GB while the run lasts, at up to 2 s of CPU a GB to
+  write and under 1 s to read. It would take a 2-D tiled store the bake's processes can
+  write a block at a time, for space nothing keeps after the run; moving the scratch to an
+  SSD with `--scratch-dir` takes all of the traffic off the hard disk instead.
+- **The start of a run.** `lit.claim_scratch` empties a scratch a run left when it was
+  killed, before the field is read. A render that has started drawing keeps its `z.npy`
+  mapped until it ends, and Windows refuses to rename a mapped file, so a scratch in use is
+  refused with a message instead. Elsewhere that check finds nothing. Before, the second run
+  failed with `[Errno 22]` when it created its first plane, after the preparation; two runs
+  started while both are still preparing still meet that way.
+- **The end of a run.** `lit.light_run` closes the stage however the draw loop ends:
+  finished, returned early, failed or interrupted. A run killed outright, as a job cancelled
+  from the Maps tab is, leaves the scratch to the next lit run's start or, under the cache
+  folder, to the tab's cache clear. So can a failure whose traceback still holds a plane
+  mapped.
 
 ### Hooks
 
@@ -3734,5 +3787,7 @@ planes round-trip bit for bit, so identical tiles are expected there too.
   or a cache clear removes them.
 - The job estimate's cache term, `CACHE_BYTES_FULL` in `domain/maps/presets.py`, is 1.0 GB at
   32768, scaled by area like the rest.
-- The unlit run's surface planes (section 29, 5.4 GB at 32768) are not in the band store: the
-  lighting pool reads them in blocks with a halo, not in row order.
+- The light's scratch (section 29, "Scratch") is not in the band store. It is not a cache:
+  nothing reads it after the run that wrote it, which deletes it. Its planes are dense and
+  compress 2.6 times, not 20, and the bake reads them in blocks with a halo and writes some a
+  block at a time from its processes. `--scratch-dir` moves it off the cache drive instead.

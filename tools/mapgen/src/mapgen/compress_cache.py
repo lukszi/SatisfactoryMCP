@@ -25,6 +25,7 @@ from mapgen.cache import (
     STORAGE_BANDS,
     STORAGE_RAW,
     clear_planes,
+    held_open,
     plane_file,
 )
 
@@ -43,22 +44,6 @@ def caches_under(root: Path) -> list[Path]:
     if (root / SIDECAR).is_file() or root.name in RASTER_DIRS:
         return [root]
     return [root / name for name in RASTER_DIRS if (root / name).is_dir()]
-
-
-def held_open(paths) -> Path | None:
-    """The first file another process holds open, found by renaming it to itself and back.
-
-    Windows refuses to rename an open file; elsewhere a rename always succeeds, and nothing is
-    found.
-    """
-    for path in paths:
-        probe = path.with_name(path.name + ".probe")
-        try:
-            os.replace(path, probe)
-        except OSError:
-            return path
-        os.replace(probe, path)
-    return None
 
 
 def _digest(band: np.ndarray) -> bytes:

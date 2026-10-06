@@ -57,6 +57,10 @@ Planned as 0.2.0.
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
   still accepted. With the light a full-size render is budgeted at about 10 minutes more and
   needs 14.5 GB more scratch space.
+- Map generator: the light's scratch, `light.cache/`, is 5.4 GB smaller at full size with
+  the painted layer, because the tree crowns are written once, where the bake reads them.
+  `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
+  after the run that wrote it.
 
 ### Deprecated
 
@@ -103,6 +107,9 @@ Planned as 0.2.0.
   beside it, and `--overwrite-in-use` replaces it anyway.
 - The Maps tab's render estimate follows the "live sun" box, counts the light cache's
   scratch space against the free disk, and times a lit render only from an earlier lit one.
+- A render that fails deletes its light scratch too, and the next lit run removes what a
+  killed run left. On Windows, a run that would share the scratch of a render already
+  drawing is refused at the start, where it used to fail after the slow preparation.
 
 ## [0.1.0] - 2026-09-27
 

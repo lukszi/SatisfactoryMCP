@@ -52,6 +52,7 @@ __all__ = [
     "default_terms",
     "discard",
     "hz_atlas",
+    "occluder_planes",
 ]
 
 LIGHT_DIR_NAME = "light"
@@ -295,9 +296,23 @@ def _alloc(work: Path, size: int) -> None:
         np.lib.format.open_memmap(work / f"{name}.npy", "w+", dtype, shape).flush()
 
 
+def occluder_planes(work: Path, size: int) -> tuple[np.ndarray, np.ndarray]:
+    """The crown tops and cover as ``w+`` memory maps under the names the bake reads."""
+    work.mkdir(parents=True, exist_ok=True)
+    shape = (size, size)
+    top = np.lib.format.open_memmap(work / "occluder.npy", "w+", np.float32, shape)
+    return top, np.lib.format.open_memmap(work / "occluder_cover.npy", "w+", np.uint8, shape)
+
+
+def _in_place(raster, path: Path, dtype) -> bool:
+    name = getattr(raster, "filename", None)
+    return name is not None and raster.dtype == dtype and Path(name).resolve() == path.resolve()
+
+
 def _extra(work: Path, name: str, raster, dtype=np.float32) -> None:
-    if raster is not None:
-        np.save(work / f"{name}.npy", np.asarray(raster, dtype))
+    path = work / f"{name}.npy"
+    if raster is not None and not _in_place(raster, path, dtype):
+        np.save(path, np.asarray(raster, dtype))
 
 
 def bake_light(surface: Surface, out_dir: Path, workers: int, occluder=None, slabs=None,
@@ -308,7 +323,8 @@ def bake_light(surface: Surface, out_dir: Path, workers: int, occluder=None, sla
     empty, or ``(top, cover)`` with the covered share as a byte; it casts into the crown
     horizons that ``occluder_layers`` read. ``slabs`` is an optional ``(ground, min_z,
     max_z)`` for geometry with open space beneath it (arches): the surface without it, and
-    its underside and top. Both only cast.
+    its underside and top. Both only cast. An occluder made by ``occluder_planes`` in the
+    surface's directory is read where it is, not copied.
     """
     started = time.time()
     surface.flush()

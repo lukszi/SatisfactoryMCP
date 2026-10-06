@@ -98,7 +98,8 @@ def test_an_unlit_run_deletes_its_crown_occluder_with_the_light_cache(tmp_path):
     painted = SimpleNamespace(crown=np.full((8, 8), 120, np.int16), meta={"grid": grid})
     run = UnlitRun(tmp_path, 16, crown_occluder(painted, tmp_path, 16))
 
-    assert (tmp_path / LIGHT_CACHE_DIR_NAME / "crowns.npy").is_file()
+    assert (tmp_path / LIGHT_CACHE_DIR_NAME / "occluder.npy").is_file()
+    assert not (tmp_path / LIGHT_CACHE_DIR_NAME / "crowns.npy").exists(), "written once"
     run.close()
     assert not (tmp_path / LIGHT_CACHE_DIR_NAME).exists()
     assert crown_occluder(SimpleNamespace(), tmp_path, 16) is None

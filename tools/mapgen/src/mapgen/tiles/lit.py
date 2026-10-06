@@ -2,7 +2,8 @@
 
 Each layer keeps ``tiles/`` and ``tiles@2x/`` lit by the default sun, so a page without
 WebGL and every older reader still draw a lit map, and adds ``unlit/``, the colour the page
-relights live. docs/spatial-and-map.md section 29.
+relights live. The stage's ``light.cache/`` is scratch for one run. docs/spatial-and-map.md
+section 29.
 """
 
 from __future__ import annotations
@@ -10,13 +11,23 @@ from __future__ import annotations
 import argparse
 import shutil
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 
+from mapgen.cache import held_open
 from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import sheet_crowns
-from mapgen.lighting.stage import LIGHT_DIR_NAME, Surface, bake_light, default_terms, discard
+from mapgen.lighting.stage import (
+    LIGHT_DIR_NAME,
+    Surface,
+    bake_light,
+    default_terms,
+    discard,
+    occluder_planes,
+)
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.palette.lightparams import shader_light
 from mapgen.palette.styles import LAYER_STYLES
@@ -28,8 +39,10 @@ __all__ = [
     "UNLIT_DIR_NAME",
     "UnlitRun",
     "add_light_flags",
+    "claim_scratch",
     "crown_layers",
     "crown_occluder",
+    "light_run",
     "relight_in_place",
 ]
 
@@ -50,6 +63,36 @@ def add_light_flags(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument("--unlit", dest="light", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--scratch-dir",
+        type=Path,
+        default=None,
+        help=(
+            f"where the light's {LIGHT_CACHE_DIR_NAME}/ lives while the run lasts (default: "
+            "--cache-dir, else beside the renders). Nothing reads it after the run, which "
+            "deletes it; at full size it takes about 20 GB, so a fast local disk helps"
+        ),
+    )
+
+
+def claim_scratch(args: argparse.Namespace, renders: Path) -> Path | None:
+    """Where the run's ``light.cache/`` goes, emptied of a run that died; None without light.
+
+    A render still running keeps its heights mapped, and Windows refuses to rename a mapped
+    file, so that scratch is refused rather than emptied under it.
+    """
+    if not args.light:
+        return None
+    root = args.scratch_dir or args.cache_dir or renders
+    directory = root / LIGHT_CACHE_DIR_NAME
+    surface = directory / "z.npy"
+    if surface.is_file() and held_open([surface]):
+        raise SystemExit(
+            f"{directory} is the light scratch of a render still running. Wait for it to "
+            "finish, or pass --scratch-dir with another directory."
+        )
+    shutil.rmtree(directory, ignore_errors=True)
+    return root
 
 
 def relight_in_place(sheet: np.ndarray, surface: Surface, params: dict) -> None:
@@ -75,14 +118,14 @@ def crown_layers() -> list[str]:
 
 
 def crown_occluder(painted, cache_root: Path, size: int):
-    """The painted ground's crown tops and cover as the stage's occluder; None without them."""
+    """The painted ground's crown tops and cover, written where the bake reads its occluder.
+
+    None without them. The stage reads these files in place: there is no second copy.
+    """
     crown = getattr(painted, "crown", None)
     if crown is None:
         return None
-    directory = cache_root / LIGHT_CACHE_DIR_NAME
-    directory.mkdir(parents=True, exist_ok=True)
-    top = np.lib.format.open_memmap(directory / "crowns.npy", "w+", np.float32, (size, size))
-    cover = np.lib.format.open_memmap(directory / "crown_cover.npy", "w+", np.uint8, (size, size))
+    top, cover = occluder_planes(cache_root / LIGHT_CACHE_DIR_NAME, size)
     return sheet_crowns(crown, painted.meta["grid"], size, top, cover), cover
 
 
@@ -150,3 +193,14 @@ class UnlitRun:
         self.surface.close()
         discard(self.surface)
         shutil.rmtree(self.surface.directory, ignore_errors=True)
+
+
+@contextmanager
+def light_run(root: Path | None, size: int, painted) -> Iterator[UnlitRun | None]:
+    """The run's light stage in ``root``, crowns first, closed however the run ends; or None."""
+    run = None if root is None else UnlitRun(root, size, crown_occluder(painted, root, size))
+    try:
+        yield run
+    finally:
+        if run is not None:
+            run.close()

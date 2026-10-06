@@ -13,7 +13,7 @@ import pytest
 from test_map_render_in_use import Passed, local, run, runner  # noqa: F401  (the fixtures)
 from test_map_styles import _keep_cache
 
-from mapgen.lighting.stage import Surface, _alloc
+from mapgen.lighting.stage import Surface, _alloc, occluder_planes
 from satisfactory_mcp.domain.maps import presets, registry
 
 
@@ -78,6 +78,15 @@ def test_the_light_scratch_is_the_light_cache_the_stage_allocates(tmp_path):
     _alloc(work, size)
     written = sum(path.stat().st_size for path in work.glob("*.npy"))
     expected = presets.LIGHT_SCRATCH_BYTES * (size / presets.FULL_PX) ** 2
+    assert written == pytest.approx(expected, rel=0.01)
+
+
+def test_the_crown_scratch_is_the_one_occluder_the_bake_reads(tmp_path):
+    size = 512
+    planes = occluder_planes(tmp_path, size)
+    del planes
+    written = sum(path.stat().st_size for path in tmp_path.glob("*.npy"))
+    expected = presets.CROWN_SCRATCH_BYTES * (size / presets.FULL_PX) ** 2
     assert written == pytest.approx(expected, rel=0.01)
 
 

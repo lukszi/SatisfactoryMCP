@@ -122,7 +122,7 @@ from mapgen.tiles.borrowmeta import borrow_metadata
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
 from mapgen.tiles.extras import KEPT_CACHE_DIRS, load_extras
 from mapgen.tiles.inuse import IN_USE, add_in_use_flag, in_use_refusal
-from mapgen.tiles.lit import UnlitRun, add_light_flags, crown_occluder
+from mapgen.tiles.lit import add_light_flags, claim_scratch, light_run
 from mapgen.tiles.pyramid import (
     CHECK_PARALLEL_Z,
     DEFAULT_WORKERS,
@@ -344,6 +344,7 @@ def main() -> int:
     if refusal := in_use_refusal(LOCAL_DIR, renders, args.overwrite_in_use):
         print(refusal)
         return IN_USE
+    scratch = claim_scratch(args, renders)
 
     versions = require_gen("ooz", "texture2ddecoder", "PIL.Image", "zstandard")
     pillow_version, pyooz_version = versions["pillow"], versions["pyooz"]
@@ -815,195 +816,195 @@ def main() -> int:
 
     # ---- draw and cut ----------------------------------------------------------------
     borrow_source = borrow_metadata(detail_meta, province_meta)
-    light = (UnlitRun(cache_root, args.size, crown_occluder(painted, cache_root, args.size))
-             if args.light else None)  # fmt: skip
-    total_started = time.time()
-    seam = SeamTrace() if direct is not None else None
-    regimes = RegimeCoverage() if direct is not None else None
-    measured: dict = {}
-    for layer in layers:
-        print(f"drawing {layer} at {args.size}x{args.size}")
-        print(encode_stage(f"draw:{layer}", 0.0), flush=True)
-        started = time.time()
-        sheet = render_layer(
-            layer,
-            field,
-            biome_rgb,
-            biome or {"width": 1, "area": np.zeros((1, 1), np.uint8)},
-            borrow,
-            args.size,
-            not args.quiet,
-            height_dm=heights,
-            direct=direct,
-            measured_plane_u8=weight_plane,
-            overlay=top,
-            kernel=taps_cubic if args.kernel_only else taps_pchip,
-            meshes=meshes,
-            falls=extras.falls,
-            reach=water.reach,
-            water_level=water.level,
-            sea=sea,
-            painted=painted if layer == "painted" else None,
-            rivers=extras.rivers,
-            relief=relief.get(layer),
-            # Both layers draw the identical surface, so the seam and the regime table are
-            # measured on the first one and quoted for both.
-            seam=seam if not measured else None,
-            regimes=regimes if not measured else None,
-            unlit=light is not None,
-            surface=light.surface_for() if light else None,
-        )
-        drew = time.time() - started
-        if seam is not None and not measured:
-            measured = {"seam_trace": seam.result(), "regimes": regimes.result()}
-            trace = measured["seam_trace"]
-            if trace.get("measured"):
-                print(
-                    f"  seam trace: p99 |d2z/dx2| {trace['p99_curvature']['seam']} over the "
-                    f"blend against {trace['p99_curvature']['switch']} for the hard max on "
-                    f"the same texels -- the fade spends "
-                    f"{trace['share_of_a_hard_switch']} of that ceiling; against the terrain "
-                    f"beside the join it reads {trace['against_the_pure_regimes']}, which is "
-                    "the design's own reference and is measuring the silhouette"
-                )
-            print(f"  regimes: {measured['regimes']['sheet_pct']}")
-        try:
-            stats, dense, cut = (light.install if light else install_layer)(
-                sheet, image_mod, out_dir, layer, workers, recipe, args.renders_name
+    with light_run(scratch, args.size, painted) as light:
+        total_started = time.time()
+        seam = SeamTrace() if direct is not None else None
+        regimes = RegimeCoverage() if direct is not None else None
+        measured: dict = {}
+        for layer in layers:
+            print(f"drawing {layer} at {args.size}x{args.size}")
+            print(encode_stage(f"draw:{layer}", 0.0), flush=True)
+            started = time.time()
+            sheet = render_layer(
+                layer,
+                field,
+                biome_rgb,
+                biome or {"width": 1, "area": np.zeros((1, 1), np.uint8)},
+                borrow,
+                args.size,
+                not args.quiet,
+                height_dm=heights,
+                direct=direct,
+                measured_plane_u8=weight_plane,
+                overlay=top,
+                kernel=taps_cubic if args.kernel_only else taps_pchip,
+                meshes=meshes,
+                falls=extras.falls,
+                reach=water.reach,
+                water_level=water.level,
+                sea=sea,
+                painted=painted if layer == "painted" else None,
+                rivers=extras.rivers,
+                relief=relief.get(layer),
+                # Both layers draw the identical surface, so the seam and the regime table are
+                # measured on the first one and quoted for both.
+                seam=seam if not measured else None,
+                regimes=regimes if not measured else None,
+                unlit=light is not None,
+                surface=light.surface_for() if light else None,
             )
-        except PyramidError as exc:
-            print(exc)
-            return 1
-        del sheet
-        stats["game_version_pinned"] = field_build
-        dense["game_version_pinned"] = field_build
-        render = {
-            "width_px": args.size,
-            "height_px": args.size,
-            "metres_per_pixel": round(spacing_m, 4),
-            "sampling": sampling_text(spacing_m, direct is not None),
-            "two_regime": {
-                "enabled": direct is not None,
-                "subsamples_per_axis": args.direct_subsamples if direct is not None else None,
-                "silhouette_antialiasing": (
-                    "none: a pixel is rock where a triangle covers its centre, at the "
-                    "triangle's own height, and ground where none does. Rock heights are "
-                    "never blurred across a silhouette"
+            drew = time.time() - started
+            if seam is not None and not measured:
+                measured = {"seam_trace": seam.result(), "regimes": regimes.result()}
+                trace = measured["seam_trace"]
+                if trace.get("measured"):
+                    print(
+                        f"  seam trace: p99 |d2z/dx2| {trace['p99_curvature']['seam']} over the "
+                        f"blend against {trace['p99_curvature']['switch']} for the hard max on "
+                        f"the same texels -- the fade spends "
+                        f"{trace['share_of_a_hard_switch']} of that ceiling; against the terrain "
+                        f"beside the join it reads {trace['against_the_pure_regimes']}, which is "
+                        "the design's own reference and is measuring the silhouette"
+                    )
+                print(f"  regimes: {measured['regimes']['sheet_pct']}")
+            try:
+                stats, dense, cut = (light.install if light else install_layer)(
+                    sheet, image_mod, out_dir, layer, workers, recipe, args.renders_name
                 )
-                if args.direct_subsamples == 1
-                else (
-                    f"{args.direct_subsamples}x{args.direct_subsamples} sub-samples per output "
-                    "texel, box-folded"
+            except PyramidError as exc:
+                print(exc)
+                return 1
+            del sheet
+            stats["game_version_pinned"] = field_build
+            dense["game_version_pinned"] = field_build
+            render = {
+                "width_px": args.size,
+                "height_px": args.size,
+                "metres_per_pixel": round(spacing_m, 4),
+                "sampling": sampling_text(spacing_m, direct is not None),
+                "two_regime": {
+                    "enabled": direct is not None,
+                    "subsamples_per_axis": args.direct_subsamples if direct is not None else None,
+                    "silhouette_antialiasing": (
+                        "none: a pixel is rock where a triangle covers its centre, at the "
+                        "triangle's own height, and ground where none does. Rock heights are "
+                        "never blurred across a silhouette"
+                    )
+                    if args.direct_subsamples == 1
+                    else (
+                        f"{args.direct_subsamples}x{args.direct_subsamples} sub-samples per output "
+                        "texel, box-folded"
+                    ),
+                    "composition": COMPOSITION_TEXT,
+                    "ground_lattice": ground_meta,
+                    "terrain_lattice": terrain_meta,
+                    "top_overlay": top is not None,
+                    "measurement_rule": weight_meta,
+                    "lift_knee_m": DIRECT_LIFT_KNEE_M,
+                    "fill_rebuild": fill_meta,
+                    **measured,
+                },
+                "z7": Z7_TEXT if args.size >= RENDER_PX else None,
+                "hillshade": (
+                    f"sun at azimuth {SUN_AZIMUTH_DEG} deg, altitude {SUN_ALTITUDE_DEG} deg, "
+                    f"shade in [{SHADE_FLOOR}, {SHADE_FLOOR + SHADE_RANGE}], computed at the "
+                    "output's own spacing"
                 ),
-                "composition": COMPOSITION_TEXT,
-                "ground_lattice": ground_meta,
-                "terrain_lattice": terrain_meta,
-                "top_overlay": top is not None,
-                "measurement_rule": weight_meta,
-                "lift_knee_m": DIRECT_LIFT_KNEE_M,
-                "fill_rebuild": fill_meta,
-                **measured,
-            },
-            "z7": Z7_TEXT if args.size >= RENDER_PX else None,
-            "hillshade": (
-                f"sun at azimuth {SUN_AZIMUTH_DEG} deg, altitude {SUN_ALTITUDE_DEG} deg, "
-                f"shade in [{SHADE_FLOOR}, {SHADE_FLOOR + SHADE_RANGE}], computed at the "
-                "output's own spacing"
-            ),
-            "water": {
-                "source": water_source,
-                "depth_ramp_m": WATER_DEPTH_FULL_M,
-                "edge_feather_m": WATER_EDGE_M,
-                "edge_blur_m": WATER_EDGE_BLUR_M,
-                "edge_blur_px": round(WATER_EDGE_BLUR_M / spacing_m, 3),
-                "shore": (
+                "water": {
+                    "source": water_source,
+                    "depth_ramp_m": WATER_DEPTH_FULL_M,
+                    "edge_feather_m": WATER_EDGE_M,
+                    "edge_blur_m": WATER_EDGE_BLUR_M,
+                    "edge_blur_px": round(WATER_EDGE_BLUR_M / spacing_m, 3),
+                    "shore": (
+                        {
+                            **water.reach_meta,
+                            "rule": (
+                                "within reach_m of measured ocean water, coverage is the drawn "
+                                "surface crossing level_m, antialiased to one pixel; elsewhere "
+                                "recipe 5's rule"
+                            ),
+                            "optics": SHORE_OPTICS[layer],
+                        }
+                        if water.reach is not None
+                        else None
+                    ),
+                    "perched": water.perched,
+                    "level_only": LEVEL_ONLY_TEXT if sea is None else sea.meta,
+                    "rivers": extras.river_meta or None,
+                },
+                "seconds_to_draw": round(drew, 1),
+                "seconds_to_cut": round(cut, 1),
+                "cut_workers": workers,
+                **({"parallel_cutter_check": parallel_check} if parallel_check else {}),
+                "imaging": {"name": "pillow", "version": pillow_version},
+            }
+            style_id = LAYER_STYLES[layer]
+            recipe_row = RENDER_RECIPES[recipe]
+            sidecar = build_sidecar(
+                layer=layer,
+                recipe=recipe,
+                field_meta=field_meta,
+                tiles=stats,
+                tiles_2x=dense,
+                render=render,
+                provenance=provenance_block(
+                    game_raw,
                     {
-                        **water.reach_meta,
-                        "rule": (
-                            "within reach_m of measured ocean water, coverage is the drawn "
-                            "surface crossing level_m, antialiased to one pixel; elsewhere "
-                            "recipe 5's rule"
-                        ),
-                        "optics": SHORE_OPTICS[layer],
-                    }
-                    if water.reach is not None
-                    else None
+                        key: value
+                        for key, value in inputs.items()
+                        if (key != "biome_raster" or layer in BIOME_LAYERS)
+                        and (
+                            key not in ("paint", "rock_families", "titan_trees")
+                            or layer == "painted"
+                        )
+                    },
+                    {
+                        "family": "render",
+                        "recipe": recipe,
+                        "version": recipe_row["version"],
+                        "label": recipe_row["label"],
+                        "sampler": "catmull-rom" if args.kernel_only else recipe_row["sampler"],
+                        "two_regime": direct is not None,
+                        "size_px": args.size,
+                        "subsamples": args.direct_subsamples,
+                    },
+                    {
+                        "id": style_id,
+                        "version": STYLES[style_id]["version"],
+                        "label": STYLES[style_id]["label"],
+                        "digest": STYLE_DIGESTS[layer],
+                        "tone": STYLES[style_id]["tone"],
+                    },
                 ),
-                "perched": water.perched,
-                "level_only": LEVEL_ONLY_TEXT if sea is None else sea.meta,
-                "rivers": extras.river_meta or None,
-            },
-            "seconds_to_draw": round(drew, 1),
-            "seconds_to_cut": round(cut, 1),
-            "cut_workers": workers,
-            **({"parallel_cutter_check": parallel_check} if parallel_check else {}),
-            "imaging": {"name": "pillow", "version": pillow_version},
-        }
-        style_id = LAYER_STYLES[layer]
-        recipe_row = RENDER_RECIPES[recipe]
-        sidecar = build_sidecar(
-            layer=layer,
-            recipe=recipe,
-            field_meta=field_meta,
-            tiles=stats,
-            tiles_2x=dense,
-            render=render,
-            provenance=provenance_block(
-                game_raw,
-                {
-                    key: value
-                    for key, value in inputs.items()
-                    if (key != "biome_raster" or layer in BIOME_LAYERS)
-                    and (key not in ("paint", "rock_families", "titan_trees") or layer == "painted")
+                extra={
+                    **borrow_source,
+                    **direct_source,
+                    **top_source,
+                    **mesh_source,
+                    **(biome_source if layer in BIOME_LAYERS else {}),
+                    **(paint_source if layer == "painted" else {}),
                 },
-                {
-                    "family": "render",
-                    "recipe": recipe,
-                    "version": recipe_row["version"],
-                    "label": recipe_row["label"],
-                    "sampler": "catmull-rom" if args.kernel_only else recipe_row["sampler"],
-                    "two_regime": direct is not None,
-                    "size_px": args.size,
-                    "subsamples": args.direct_subsamples,
-                },
-                {
-                    "id": style_id,
-                    "version": STYLES[style_id]["version"],
-                    "label": STYLES[style_id]["label"],
-                    "digest": STYLE_DIGESTS[layer],
-                    "tone": STYLES[style_id]["tone"],
-                },
-            ),
-            extra={
-                **borrow_source,
-                **direct_source,
-                **top_source,
-                **mesh_source,
-                **(biome_source if layer in BIOME_LAYERS else {}),
-                **(paint_source if layer == "painted" else {}),
-            },
-        )
-        if light is not None:
-            light.decorate(sidecar, layer)
-        path = layer_dir(out_dir, layer, args.renders_name) / RENDER_SIDECAR_NAME
-        path.write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
-        print(
-            f"wrote {layer_dir(out_dir, layer, args.renders_name)}  {stats['count']} tiles over "
-            f"z0..z{stats['max_z']} ({stats['bytes'] / 1e6:.1f} MB) plus {dense['count']} "
-            f"@2x over z0..z{dense['max_z']} ({dense['bytes'] / 1e6:.1f} MB)  "
-            f"(drew {drew:.0f}s, cut {cut:.0f}s)"
-        )
-        print(encode_stage(f"cut:{layer}", 1.0), flush=True)
-    if direct is not None:
-        # Let the memory maps go before removing the files under them: on Windows an open
-        # mapping refuses the unlink outright.
-        direct = maps = top = top_maps = meshes = painted = None
-        if not (args.keep_direct or args.restyle):
-            for kept in KEPT_CACHE_DIRS:
-                root = args.cache_dir or out_dir / args.renders_name
-                shutil.rmtree(root / kept, ignore_errors=True)
-    if light is not None:
-        light.close()
+            )
+            if light is not None:
+                light.decorate(sidecar, layer)
+            path = layer_dir(out_dir, layer, args.renders_name) / RENDER_SIDECAR_NAME
+            path.write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
+            print(
+                f"wrote {layer_dir(out_dir, layer, args.renders_name)}  {stats['count']} tiles over "
+                f"z0..z{stats['max_z']} ({stats['bytes'] / 1e6:.1f} MB) plus {dense['count']} "
+                f"@2x over z0..z{dense['max_z']} ({dense['bytes'] / 1e6:.1f} MB)  "
+                f"(drew {drew:.0f}s, cut {cut:.0f}s)"
+            )
+            print(encode_stage(f"cut:{layer}", 1.0), flush=True)
+        if direct is not None:
+            # Let the memory maps go before removing the files under them: on Windows an open
+            # mapping refuses the unlink outright.
+            direct = maps = top = top_maps = meshes = painted = None
+            if not (args.keep_direct or args.restyle):
+                for kept in KEPT_CACHE_DIRS:
+                    root = args.cache_dir or out_dir / args.renders_name
+                    shutil.rmtree(root / kept, ignore_errors=True)
     print(f"done in {time.time() - total_started:.0f}s")
     print("none of it is committed: data/local/ is gitignored and stays that way.")
     return 0
