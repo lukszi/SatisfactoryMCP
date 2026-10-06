@@ -23,7 +23,7 @@ def field(tmp_path):
 def _state(*positions):
     """A world holding machines at the given save positions (cm)."""
     records = [{"cls": "Build_X", "pos": list(p)} for p in positions]
-    return SimpleNamespace(_all_records=lambda: records, player_position=lambda: None)
+    return SimpleNamespace(all_records=lambda: records, player_position=lambda: None)
 
 
 def test_a_bare_coordinate_gets_the_terrain_median_under_its_pad(field):

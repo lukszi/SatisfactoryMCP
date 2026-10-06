@@ -234,7 +234,7 @@ def test_an_action_names_the_machines_it_applies_to(spire, state):
     to three pumps that are already running. SETRECIPE is worse: the idle machines it
     takes are not in the matched set at all."""
     _req, _sol, rep = spire
-    paused = {r["instance"].rsplit(".", 1)[-1] for r in state._all_records() if r.get("paused")}
+    paused = {r["instance"].rsplit(".", 1)[-1] for r in state.all_records() if r.get("paused")}
 
     water = _row(rep, "normal Water")
     assert len(water.act_instances) == water.count == 3

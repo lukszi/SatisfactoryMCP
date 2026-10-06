@@ -113,7 +113,7 @@ def _adjacency(state, game: GameData) -> tuple[dict[str, set[str]], dict[str, se
     """
     graph = state.projection.get("graph") or {}
     roles, actors = graph.get("roles") or [], graph.get("actors") or []
-    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state._all_records()}
+    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state.all_records()}
 
     up: dict[str, set[str]] = {}
     down: dict[str, set[str]] = {}
@@ -159,7 +159,7 @@ def resolve_seeds(state, game: GameData, seed: str) -> tuple[list[str], str]:
 
     Raises ``SelectorError`` when the text is none of the three.
     """
-    records = {r["instance"].rsplit(".", 1)[-1]: r for r in state._all_records()}
+    records = {r["instance"].rsplit(".", 1)[-1]: r for r in state.all_records()}
     what = seed.strip()
     if what.casefold().startswith("label:"):
         wanted = what[len("label:") :].strip()
@@ -196,7 +196,7 @@ def trace(state, game: GameData, seeds: list[str], direction: str = "up") -> Tra
     adjacency = up if direction == "up" else down
     out = Trace(direction=direction, seeds=list(seeds), ambiguous=ambiguous)
 
-    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state._all_records()}
+    cls_of = {r["instance"].rsplit(".", 1)[-1]: r.get("cls", "") for r in state.all_records()}
     start = [s for s in seeds if s in cls_of or s in adjacency]
     seen: dict[str, int] = {s: 0 for s in start}
     queue: deque[str] = deque(start)
@@ -255,7 +255,7 @@ def power_at_risk(state, game: GameData, machines: list[str]) -> tuple[float, in
     downstream = trace(state, game, machines, direction="down")
     mw = 0.0
     total = running = 0
-    by_instance = {r["instance"].rsplit(".", 1)[-1]: r for r in state._all_records()}
+    by_instance = {r["instance"].rsplit(".", 1)[-1]: r for r in state.all_records()}
     for row in downstream.reached:
         if row.kind != "generator":
             continue

@@ -38,7 +38,7 @@ def _built_hint_m(st: WorldState | None, probe: Siting) -> float | None:
         return None
     zs = [
         record["pos"][2] / 100.0
-        for record in st._all_records()
+        for record in st.all_records()
         if record.get("pos")
         and len(record["pos"]) > 2
         and probe.contains_cm(record["pos"][0], record["pos"][1])

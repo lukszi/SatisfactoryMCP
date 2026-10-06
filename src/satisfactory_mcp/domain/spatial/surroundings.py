@@ -63,7 +63,7 @@ def player_surroundings(st, game, radius_m: float = 500.0) -> PlayerSurroundings
         n["direction"] = geo.direction_of(n["x"], n["y"], x, y)
     near.sort(key=lambda n: n["distance_m"])
     out.nodes = near
-    builds = [r for r in st._all_records() if r.get("pos")]
+    builds = [r for r in st.all_records() if r.get("pos")]
     closest = min(
         builds,
         key=lambda r: geo.distance_m((r["pos"][0], r["pos"][1]), (x, y)),

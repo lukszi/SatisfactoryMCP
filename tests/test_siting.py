@@ -199,7 +199,7 @@ def test_a_recalled_sited_plan_is_measured_at_its_own_site():
 def test_survey_counts_what_stands_inside_the_footprint(game, state):
     """Centre a pad on a real machine from the fixture save: it must be counted, and a
     pad in open ocean must count nothing."""
-    record = next(r for r in state._all_records() if r.get("pos"))
+    record = next(r for r in state.all_records() if r.get("pos"))
     x_cm, y_cm = record["pos"][0], record["pos"][1]
     sit = Siting(x_m=x_cm / 100, y_m=y_cm / 100, width_m=20.0, depth_m=20.0)
 
@@ -217,7 +217,7 @@ def test_survey_counts_what_stands_inside_the_footprint(game, state):
 
 @pytest.mark.integration
 def test_survey_reports_planned_against_standing_per_class(game, state):
-    record = next(r for r in state._all_records() if r.get("pos"))
+    record = next(r for r in state.all_records() if r.get("pos"))
     x_cm, y_cm = record["pos"][0], record["pos"][1]
     sit = Siting(x_m=x_cm / 100, y_m=y_cm / 100, width_m=20.0, depth_m=20.0)
     processes = [

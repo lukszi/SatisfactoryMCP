@@ -54,7 +54,7 @@ def survey(game: GameData, st: WorldState, sit: Siting, processes: list[dict]) -
     # The same records factory_map and describe_location read: machines, extractors and
     # generators, each with its save position. Belts and foundations are not in the
     # projection's census and are deliberately out of scope here.
-    for record in st._all_records():
+    for record in st.all_records():
         pos = record.get("pos")
         if pos and sit.contains_cm(pos[0], pos[1]):
             cls = record.get("cls") or ""

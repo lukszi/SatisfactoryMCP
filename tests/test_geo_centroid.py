@@ -111,7 +111,7 @@ def test_a_factory_view_still_reports_a_centroid_and_spread(game, state):
         geo.diameter_m(
             [
                 (r["pos"][0], r["pos"][1])
-                for r in state._all_records()
+                for r in state.all_records()
                 if r.get("pos") and r["instance"].rsplit(".", 1)[-1] in set(machines)
             ]
         )
