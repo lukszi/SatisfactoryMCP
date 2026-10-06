@@ -1,7 +1,7 @@
 """Inflating the compressed body.
 
 Everything after the header is a run of independently zlib-compressed blocks with a
-49-byte preamble each. Verified across every save on the author's disk: all 31 whose
+49-byte preamble each. Verified across every save on the development machine: all 31 whose
 header parses inflate cleanly, 1,194 MB of body in 1.3 s, none failed.
 
 The preamble writes its compressed and uncompressed sizes TWICE, identically. That is a

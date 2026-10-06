@@ -12,12 +12,9 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp import server as srv
+from tests.support import tables
 
 pytestmark = pytest.mark.integration
-
-
-def _rows(out: str) -> list[str]:
-    return [line for line in out.splitlines() if "\t" in line and not line.startswith("#")][1:]
 
 
 def test_all_reaches_every_building(game):
@@ -28,7 +25,7 @@ def test_all_reaches_every_building(game):
     assert total > 400
     seen, offset = 0, 0
     while True:
-        page = _rows(srv.list_buildings(building_kind="all", offset=offset))
+        page = tables.data_lines(srv.list_buildings(building_kind="all", offset=offset))
         if not page:
             break
         seen += len(page)
@@ -42,7 +39,7 @@ def test_the_first_call_is_the_same_answer_as_the_second(game):
     long fixed; this pins the property that made it a report -- the answer must not
     depend on when it is asked."""
     assert srv.list_buildings(building_kind="all") == srv.list_buildings(building_kind="all")
-    assert _rows(srv.list_buildings(building_kind="all"))
+    assert tables.data_lines(srv.list_buildings(building_kind="all"))
 
 
 def test_all_is_paged_rather_than_a_context_eviction(game):
@@ -51,12 +48,12 @@ def test_all_is_paged_rather_than_a_context_eviction(game):
     how to get the rest, in the same envelope every other list tool uses."""
     out = srv.list_buildings(building_kind="all")
     assert len(out) < 5000
-    assert len(_rows(out)) == 25
+    assert len(tables.data_lines(out)) == 25
     assert "540 match(es), showing 25 from offset 0" in out
     assert "call again with offset=25" in out
     # And the offset genuinely advances: no shared rows between page one and page two.
     page_two = srv.list_buildings(building_kind="all", offset=25)
-    assert not set(_rows(out)) & set(_rows(page_two))
+    assert not set(tables.data_lines(out)) & set(tables.data_lines(page_two))
 
 
 def test_the_build_piece_families_are_kinds(game):
@@ -66,10 +63,10 @@ def test_the_build_piece_families_are_kinds(game):
     for kind in ("foundation", "ramp", "wall", "pillar", "beam", "architecture"):
         out = srv.list_buildings(building_kind=kind)
         assert not out.startswith("! unknown kind"), kind
-        assert _rows(out), kind
+        assert tables.data_lines(out), kind
     # The exact piece the player had to measure in-game: Big Pillar Support, 8x8x4 m.
     pillars = srv.list_buildings(building_kind="pillar")
-    row = next(line for line in _rows(pillars) if "Big Pillar Support" in line)
+    row = next(line for line in tables.data_lines(pillars) if "Big Pillar Support" in line)
     assert "8x8x4m" in row
 
 

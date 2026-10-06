@@ -66,7 +66,7 @@ def _line(points):
 
 
 def test_a_pipe_from_an_extractor_flows_away_from_it():
-    """The simplest true statement in the whole subject, and the one the owner asked for.
+    """The simplest true statement in the whole subject, and the first one asked for.
 
     A water extractor cannot consume water. So a pipe with one end on its port and a consumer
     somewhere beyond the other end runs away from the extractor, and ``basis`` says the

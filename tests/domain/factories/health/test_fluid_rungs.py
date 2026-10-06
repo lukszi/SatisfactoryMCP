@@ -86,7 +86,7 @@ def test_a_network_no_source_reaches_is_connection_and_not_head_lift(game):
     """The rung (1) fact only the head-lift model can see: the run arrives from a real
     fitting, so the conduit graph is satisfied, and yet nothing anywhere puts fluid in it.
 
-    This is the ten refineries of the owner's newest saves, and calling them a head-lift
+    This is the ten refineries of the reference world's newest saves, and calling them a head-lift
     fault would be ten wrong answers to one unfinished pipe.
     """
     name = "Build_OilRefinery_C_202"

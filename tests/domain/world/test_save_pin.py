@@ -193,9 +193,7 @@ def test_the_ledger_survives_a_process_boundary(ledger):
     assert pin.recall("sav:0123456789ab") is None
 
 
-def test_a_ledger_that_cannot_be_written_costs_a_refusal_and_never_an_answer(
-    tmp_path, monkeypatch
-):
+def test_a_ledger_that_cannot_be_written_costs_a_refusal_and_never_an_answer(tmp_path, monkeypatch):
     """Best-effort, like every other cache here. The pin still holds; only the sharper of
     the two refusals is lost, because an unrecorded token reads as one never minted."""
     monkeypatch.setattr(pin.config, "cache_dir", lambda: tmp_path / "nope" / "deeper")

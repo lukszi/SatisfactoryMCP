@@ -11,12 +11,9 @@ import pytest
 
 from satisfactory_mcp.domain.planning.optimize import build_processes, solve
 from satisfactory_mcp.domain.planning.scenario import build_scenario
-from tests.support.reference_world import REFERENCE_FIELD
+from tests.support.reference_world import REFERENCE_SOURCES
 
 pytestmark = pytest.mark.integration
-
-SPIRE = list(REFERENCE_FIELD)
-
 
 # ------------------------------------------- 1. excluding a generator burn
 
@@ -29,7 +26,7 @@ def test_a_generator_burn_can_be_excluded_by_the_label_the_table_prints(game, st
     req = build_scenario(
         game,
         state,
-        sources=SPIRE,
+        sources=REFERENCE_SOURCES,
         objective="max_mw",
         exports=["MW"],
         exclude_recipes=["Coal-Powered Generator on Coal"],
@@ -44,7 +41,7 @@ def test_the_building_name_alone_bans_every_fuel_it_burns(game, state):
     req = build_scenario(
         game,
         state,
-        sources=SPIRE,
+        sources=REFERENCE_SOURCES,
         objective="max_mw",
         exports=["MW"],
         exclude_recipes=["Coal-Powered Generator"],
@@ -60,7 +57,7 @@ def test_a_fuel_name_bans_burning_it_even_though_it_also_names_recipes(game, sta
     req = build_scenario(
         game,
         state,
-        sources=SPIRE,
+        sources=REFERENCE_SOURCES,
         objective="max_mw",
         exports=["MW"],
         exclude_recipes=["Coal"],
@@ -76,7 +73,7 @@ def test_a_pattern_matching_neither_still_refuses(game, state):
     req = build_scenario(
         game,
         state,
-        sources=SPIRE,
+        sources=REFERENCE_SOURCES,
         objective="max_mw",
         exports=["MW"],
         exclude_recipes=["Nonsense Thing"],
@@ -94,7 +91,7 @@ def test_water_extractors_can_be_capped_to_what_a_site_holds(game, state):
     The cap exists so a player can state a measured limit. It is NOT a shoreline count --
     pumps sit on platforms built out over open water -- so what it stands in for is
     however much water the player is willing to floor over."""
-    kw = dict(sources=SPIRE, objective="max_mw", exports=["MW"])
+    kw = dict(sources=REFERENCE_SOURCES, objective="max_mw", exports=["MW"])
     free = solve(build_scenario(game, state, **kw).scenario)
     capped = solve(build_scenario(game, state, water_extractors=5, **kw).scenario)
     assert free.ok and capped.ok
@@ -148,7 +145,7 @@ def test_clock_modes_of_one_node_set_collapse_to_a_single_row(game, state):
     req = build_scenario(
         game,
         state,
-        sources=SPIRE,
+        sources=REFERENCE_SOURCES,
         objective="max_mw",
         exports=["MW"],
         extractor_clocks=[1, 1.5, 2, 2.5],
@@ -163,7 +160,7 @@ def test_clock_modes_of_one_node_set_collapse_to_a_single_row(game, state):
 def test_folding_preserves_what_was_extracted(game, state):
     """Extraction is linear in clock, so pooling v*clock and re-emitting at one mode is
     exact. If it were not, the fold would quietly change the plan."""
-    kw = dict(sources=SPIRE, objective="max_mw", exports=["MW"])
+    kw = dict(sources=REFERENCE_SOURCES, objective="max_mw", exports=["MW"])
     one = solve(build_scenario(game, state, **kw).scenario)
     many = solve(build_scenario(game, state, extractor_clocks=[1], **kw).scenario)
     assert one.ok and many.ok
@@ -183,7 +180,7 @@ def test_the_water_cap_holds_at_every_value(game, state, cap):
     req = build_scenario(
         game,
         state,
-        sources=SPIRE,
+        sources=REFERENCE_SOURCES,
         objective="max_mw",
         exports=["MW"],
         extractor_clocks=[1, 1.5, 2, 2.5],
@@ -202,7 +199,7 @@ def test_a_group_cap_is_reported_binding_even_when_split_across_modes(game, stat
     req = build_scenario(
         game,
         state,
-        sources=SPIRE,
+        sources=REFERENCE_SOURCES,
         objective="max_mw",
         exports=["MW"],
         extractor_clocks=[1, 1.5, 2, 2.5],
@@ -223,7 +220,7 @@ def test_a_negligible_process_is_unlisted_but_still_counted(game, state):
     req = build_scenario(
         game,
         state,
-        sources=SPIRE,
+        sources=REFERENCE_SOURCES,
         objective="max_mw",
         exports=["MW", "Plastic", "Rubber"],
         export_minimums={"Plastic": 2000, "Rubber": 300},
@@ -290,7 +287,10 @@ def test_the_water_warning_quotes_real_geometry(game, state):
     fp = game.buildings["Build_WaterPump_C"].footprint
     assert fp is not None and fp.area_m2 > 0
     out = srv.plan_factory(
-        sources=SPIRE, objective="max_mw", exports=["MW"], extractor_clocks=[1, 1.5, 2, 2.5]
+        sources=REFERENCE_SOURCES,
+        objective="max_mw",
+        exports=["MW"],
+        extractor_clocks=[1, 1.5, 2, 2.5],
     )
     warn = next(line for line in out.splitlines() if "Water Extractor(s)" in line)
     # The platform and its concrete, which is what actually costs something, in BOTH

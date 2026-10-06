@@ -462,7 +462,7 @@ PLASTIC20 = {"objective": "min_power", "exports": ["Plastic"], "export_minimums"
 
 
 @pytest.fixture
-def world(monkeypatch, projection, game):
+def fresh_state_factory(monkeypatch, projection, game):
     from satisfactory_mcp.domain.world.state import WorldState
     from satisfactory_mcp.interfaces.mcp.tools import planning
 
@@ -473,7 +473,7 @@ def world(monkeypatch, projection, game):
     return fresh
 
 
-def test_chat_sets_reads_and_resets_the_horizon(world):
+def test_chat_sets_reads_and_resets_the_horizon(fresh_state_factory):
     from satisfactory_mcp import server as srv
 
     made = srv.plan_factory(save_as="oil", payback_hours=10, limit=2, **PLASTIC20)
@@ -493,7 +493,7 @@ def test_chat_sets_reads_and_resets_the_horizon(world):
     )
 
 
-def test_chat_overclock_and_price_override(world):
+def test_chat_overclock_and_price_override(fresh_state_factory):
     from satisfactory_mcp import server as srv
 
     told = srv.plan_factory(overclock_last=True, limit=5, **PLASTIC20)

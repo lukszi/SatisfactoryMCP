@@ -21,20 +21,13 @@ from satisfactory_mcp.domain.planning.optimize import build_processes, solve
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.planning.scenario import build_scenario
 from satisfactory_mcp.domain.planning.slice import slice_of
-from tests.support.reference_world import REFERENCE_FIELD
+from tests.support.reference_world import REFERENCE_MAX_MW_ARGS
 
 pytestmark = pytest.mark.integration
 
-SPIRE = dict(
-    objective="max_mw",
-    sources=list(REFERENCE_FIELD),
-    exports=["MW"],
-    extractor_clocks=[1.0, 1.5, 2.0, 2.5],
-)
-
 
 def _plan(game, state, **kw):
-    return prepare(game, state, {**SPIRE, **kw})
+    return prepare(game, state, {**REFERENCE_MAX_MW_ARGS, **kw})
 
 
 # ------------------------------------------------------------ the game rule
@@ -220,7 +213,7 @@ def _bill_line(out: str) -> str:
 
 
 def test_the_tool_prints_a_bill_when_it_spends(game):
-    out = srv.plan_factory(sloops=16, limit=3, **SPIRE)
+    out = srv.plan_factory(sloops=16, limit=3, **REFERENCE_MAX_MW_ARGS)
     line = _bill_line(out)
     assert "16 spent" in line
     assert "You hold" in line
@@ -229,7 +222,7 @@ def test_the_tool_prints_a_bill_when_it_spends(game):
 
 
 def test_the_tool_says_short_when_the_budget_exceeds_what_is_held(game):
-    out = srv.plan_factory(sloops=64, limit=3, **SPIRE)
+    out = srv.plan_factory(sloops=64, limit=3, **REFERENCE_MAX_MW_ARGS)
     assert "SHORT by" in _bill_line(out)
 
 
@@ -238,7 +231,7 @@ def test_a_sloop_budget_warns_when_the_research_is_missing(game, live):
     for it -- it is derived from the purchased schematics. Planning ahead of the research
     is legitimate, so this warns rather than refusing, but staying silent would print a
     plan that cannot be built as shown."""
-    out = srv.plan_factory(sloops=16, limit=3, **SPIRE)
+    out = srv.plan_factory(sloops=16, limit=3, **REFERENCE_MAX_MW_ARGS)
     if live.has_capability("production_boost"):
         assert "NOT RESEARCHED" not in out
         return
@@ -249,13 +242,13 @@ def test_a_sloop_budget_warns_when_the_research_is_missing(game, live):
 
 def test_no_budget_means_no_research_warning(game):
     """The gate is about SPENDING them. A plan that spends none is buildable today."""
-    out = srv.plan_factory(limit=3, **SPIRE)
+    out = srv.plan_factory(limit=3, **REFERENCE_MAX_MW_ARGS)
     assert "NOT RESEARCHED" not in out
 
 
 def test_spending_none_still_points_at_the_argument(game):
     """The old note said "nothing here plans sloops", which stopped being true."""
-    out = srv.plan_factory(limit=3, **SPIRE)
+    out = srv.plan_factory(limit=3, **REFERENCE_MAX_MW_ARGS)
     line = _bill_line(out)
     assert "none used" in line
     assert "sloops=" in line
@@ -264,8 +257,8 @@ def test_spending_none_still_points_at_the_argument(game):
 def test_the_budget_changes_the_plan_id(game, state):
     """Two plans that differ only in sloops must not be able to claim the same id --
     that is the whole promise plan_id makes."""
-    a = build_scenario(game, state, **SPIRE)
-    b = build_scenario(game, state, sloops=16, **SPIRE)
+    a = build_scenario(game, state, **REFERENCE_MAX_MW_ARGS)
+    b = build_scenario(game, state, sloops=16, **REFERENCE_MAX_MW_ARGS)
     assert a.plan_id != b.plan_id
 
 
@@ -275,5 +268,5 @@ def test_plan_layout_takes_the_same_budget(game):
     from satisfactory_mcp.domain.planning.store import PLAN_ARGS
 
     assert "sloops" in PLAN_ARGS
-    out = srv.plan_layout(sloops=16, limit=3, **SPIRE)
+    out = srv.plan_layout(sloops=16, limit=3, **REFERENCE_MAX_MW_ARGS)
     assert not out.startswith("! ")

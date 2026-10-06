@@ -27,16 +27,10 @@ from satisfactory_mcp.domain.planning.diff import DiffReport, DiffRow, build_dif
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning
-from tests.support.reference_world import REFERENCE_FIELD
+from tests.support.reference_world import REFERENCE_FIELD, REFERENCE_MAX_MW_ARGS
 
 pytestmark = pytest.mark.integration
 
-SPIRE = dict(
-    objective="max_mw",
-    sources=list(REFERENCE_FIELD),
-    exports=["MW"],
-    extractor_clocks=[1.0, 1.5, 2.0, 2.5],
-)
 HEADROOM = 711.49
 
 #: A real recipe id, so a fabricated machine record is assessed as a machine with a
@@ -64,7 +58,7 @@ def _tools_read_the_reference_world(monkeypatch, projection, game):
 
 @pytest.fixture
 def plan(game, state):
-    return prepare(game, state, dict(SPIRE))
+    return prepare(game, state, dict(REFERENCE_MAX_MW_ARGS))
 
 
 @pytest.fixture
@@ -225,7 +219,7 @@ def test_power_is_kept_out_of_the_dependency_graph(game, state):
     generator on its fuel -- one component, and no order at all."""
     from satisfactory_mcp.domain.planning.commission import _depths
 
-    prepared = prepare(game, state, dict(SPIRE))
+    prepared = prepare(game, state, dict(REFERENCE_MAX_MW_ARGS))
     depths = _depths(prepared.solution.processes)
     assert len(set(depths.values())) > 1
     extractors = [p["pid"] for p in prepared.solution.processes if p["kind"] == "extractor"]
@@ -262,7 +256,7 @@ def test_commission_and_diff_order_a_plant_the_same_way(game, state):
     from satisfactory_mcp.domain.planning.commission import _depths
     from satisfactory_mcp.domain.planning.layout import chain_depth
 
-    prepared = prepare(game, state, dict(SPIRE))
+    prepared = prepare(game, state, dict(REFERENCE_MAX_MW_ARGS))
     procs = prepared.solution.processes
     mine = _depths(procs)
     theirs = chain_depth(
@@ -310,7 +304,7 @@ def test_a_bigger_headroom_needs_no_more_waves(plan, game):
 
 
 def test_the_tool_prints_the_sequence(game):
-    out = srv.commission_plan(**SPIRE)
+    out = srv.commission_plan(**REFERENCE_MAX_MW_ARGS)
     assert not out.startswith("! ")
     assert "wave\tchain\ton" in out
     assert "W1" in out
@@ -319,17 +313,17 @@ def test_the_tool_prints_the_sequence(game):
 def test_headroom_is_printed_as_a_labelled_input(game):
     """So a sequence computed against a save that has since moved is visibly stale rather
     than quietly wrong."""
-    out = srv.commission_plan(**SPIRE)
+    out = srv.commission_plan(**REFERENCE_MAX_MW_ARGS)
     assert "headroom_MW=" in out
     assert "source: measured from the save" in out
-    given = srv.commission_plan(headroom_mw=5000.0, **SPIRE)
+    given = srv.commission_plan(headroom_mw=5000.0, **REFERENCE_MAX_MW_ARGS)
     assert "source: given by caller" in given
 
 
 def test_the_tool_says_to_build_everything_first(game):
     """The re-frame, stated where it matters. A reader who takes these for build stages
     would sequence the construction for no reason."""
-    out = srv.commission_plan(**SPIRE)
+    out = srv.commission_plan(**REFERENCE_MAX_MW_ARGS)
     assert "build EVERYTHING first" in out
     assert "switch-ons" in out
 
@@ -337,7 +331,7 @@ def test_the_tool_says_to_build_everything_first(game):
 def test_the_tool_recommends_a_power_switch_per_block(game):
     """It has to be built in from the start, so it belongs with the sequence rather than
     in a footnote after the plant is up."""
-    out = srv.commission_plan(**SPIRE)
+    out = srv.commission_plan(**REFERENCE_MAX_MW_ARGS)
     assert "Power Switch per block" in out
     assert "WHOLE grid" in out
 
@@ -345,7 +339,7 @@ def test_the_tool_recommends_a_power_switch_per_block(game):
 def test_generator_rows_survive_truncation(game):
     """They sort last by chain depth, so a per-wave limit silently dropped exactly the
     rows that pay for the next wave."""
-    out = srv.commission_plan(limit=12, **SPIRE)
+    out = srv.commission_plan(limit=12, **REFERENCE_MAX_MW_ARGS)
     assert "Generator" in out
     # And truncation is announced rather than silent, so a short table does not read as
     # the whole sequence.
@@ -359,7 +353,7 @@ def test_the_offset_the_truncation_notice_names_is_a_real_parameter(game):
 
     headroom_mw is passed explicitly so the sequence exists whatever the live grid is
     doing right now -- the default reads headroom from the save, and a loaded grid
-    answers "0 wave(s)", which would turn this into a test of the owner's evening."""
+    answers "0 wave(s)", which would turn this into a test of whatever the grid was doing when the save was made."""
     header = "wave\tchain\ton\tcum\tprocess\tMW\tfree after"
 
     def data_rows(out: str) -> list[str]:
@@ -367,9 +361,9 @@ def test_the_offset_the_truncation_notice_names_is_a_real_parameter(game):
         body = lines[lines.index(header) + 1 :]
         return [line for line in body if "\t" in line]
 
-    first = srv.commission_plan(limit=5, headroom_mw=5000.0, **SPIRE)
+    first = srv.commission_plan(limit=5, headroom_mw=5000.0, **REFERENCE_MAX_MW_ARGS)
     assert "more: call again with offset=5" in first
-    paged = srv.commission_plan(limit=5, offset=5, headroom_mw=5000.0, **SPIRE)
+    paged = srv.commission_plan(limit=5, offset=5, headroom_mw=5000.0, **REFERENCE_MAX_MW_ARGS)
     assert "from offset 5" in paged
     overlap = set(data_rows(first)) & set(data_rows(paged))
     assert not overlap, overlap
@@ -515,7 +509,7 @@ def test_no_startup_order_means_no_stages_rather_than_an_exception(plan, game):
 def test_the_tool_groups_the_diff_by_stage(game):
     """stage=0 asks for the overview without a stored plan. The table is the point: one
     row per wave, with what is built and what is proven running side by side."""
-    out = srv.diff_vs_save(stage=0, **SPIRE)
+    out = srv.diff_vs_save(stage=0, **REFERENCE_MAX_MW_ARGS)
     assert not out.startswith("! ")
     assert "# STAGES" in out
     assert "stage\ton\tbuilt\trunning" in out
@@ -525,7 +519,7 @@ def test_the_tool_groups_the_diff_by_stage(game):
 def test_the_stage_overview_never_calls_a_dark_block_unpowered(game):
     """The one way this feature can be confidently wrong. Silence has four causes and the
     save separates none of them, so the word must not appear as a verdict."""
-    out = srv.diff_vs_save(stage=0, **SPIRE)
+    out = srv.diff_vs_save(stage=0, **REFERENCE_MAX_MW_ARGS)
     assert "built and ENERGISED are different states" in out
     assert "may be unpowered, starved, blocked or simply idle" in out
     assert "not an anomaly" in out
@@ -534,7 +528,7 @@ def test_the_stage_overview_never_calls_a_dark_block_unpowered(game):
 def test_the_stage_filter_shows_one_stage_and_drops_the_cost_table(game):
     """A stage is a switch-on, not a build step: the whole plant is built first, so
     splitting the materials bill across stages would describe a build nobody does."""
-    out = srv.diff_vs_save(stage=1, **SPIRE)
+    out = srv.diff_vs_save(stage=1, **REFERENCE_MAX_MW_ARGS)
     assert "# STAGE 1 of" in out
     assert "act\ton\tbuilt\trunning" in out
     assert "cost of the build counts" not in out
@@ -543,7 +537,7 @@ def test_the_stage_filter_shows_one_stage_and_drops_the_cost_table(game):
 
 def test_an_unknown_stage_names_the_stages_that_exist(game):
     """Rather than an empty table, which would read as "stage 9 is done"."""
-    out = srv.diff_vs_save(stage=99, **SPIRE)
+    out = srv.diff_vs_save(stage=99, **REFERENCE_MAX_MW_ARGS)
     assert "no stage 99" in out
     assert "it has stages 1" in out
 
@@ -553,7 +547,7 @@ def test_a_stage_number_without_a_stored_plan_says_it_will_move(game):
     only for a stored request. Derived from loose arguments they renumber the moment an
     argument or the world moves, so the tool says so rather than letting a player write
     "I am in stage 3" in their notes against nothing."""
-    out = srv.diff_vs_save(stage=0, **SPIRE)
+    out = srv.diff_vs_save(stage=0, **REFERENCE_MAX_MW_ARGS)
     assert "not a stored plan" in out
     assert "save_as" in out
 
@@ -567,7 +561,7 @@ def test_recalling_a_stored_plan_answers_which_stage_you_are_in(game):
     """The headline case: `diff_vs_save(plan=...)` with no stage argument at all. A
     stored plan is what makes a stage number worth writing down, so recalling one turns
     the grouping on without being asked, and the caveat about loose numbering drops."""
-    saved = srv.plan_factory(save_as="stage-test", **SPIRE)
+    saved = srv.plan_factory(save_as="stage-test", **REFERENCE_MAX_MW_ARGS)
     assert 'saved as "stage-test" v1' in saved
 
     out = srv.diff_vs_save(plan="stage-test")

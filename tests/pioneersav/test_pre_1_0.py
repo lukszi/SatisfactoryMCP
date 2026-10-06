@@ -1,6 +1,6 @@
 """The four pre-1.0 save layouts: saveHeaderType 8, 9 and 10, saveVersion 25 to 36.
 
-35 of the 66 saves on the author's disk are the player's own 2021-2023 history and were
+35 of the 66 saves on the development machine are one player's 2021-2023 history and were
 refused by every parser this project has had. They are readable now, and they are readable as
 **the same walk with version-gated fields** rather than as a second parser -- see
 ``savparse/versions.py`` for the thresholds. These tests are what keeps that true: a

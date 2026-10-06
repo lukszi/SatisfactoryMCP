@@ -16,6 +16,7 @@ import pytest
 
 from satisfactory_mcp.domain.factories import floors as ffloors
 from satisfactory_mcp.interfaces.mcp.tools import floors as tool
+from tests.support import tables
 
 
 @pytest.fixture
@@ -24,15 +25,10 @@ def tools(monkeypatch, labelled):
     return tool
 
 
-def _rows(out: str) -> list[list[str]]:
-    lines = [ln for ln in out.splitlines() if not ln.startswith(("#", "!"))]
-    return [ln.split("\t") for ln in lines[1:]]
-
-
 def test_the_world_view_lists_platforms_largest_first_and_names_them(tools):
     """A platform carries the player's own factory label where one of its machines has one,
     which is what makes the index worth handing back."""
-    rows = _rows(tools.factory_floors(limit=5))
+    rows = tables.rows(tools.factory_floors(limit=5))
     assert [int(r[4].replace(",", "")) for r in rows] == sorted(
         (int(r[4].replace(",", "")) for r in rows), reverse=True
     )
@@ -52,7 +48,7 @@ def test_one_platform_is_answered_floor_by_floor(tools):
     """The question is "how many decks and what is on each", and the answer is the 12 m
     module this world is built on: smelters, then constructors, then assemblers."""
     out = tools.factory_floors(platform=1)
-    rows = _rows(out)
+    rows = tables.rows(out)
     assert [r[0] for r in rows] == ["0", "1", "2", "3", "4", "5"]
     assert rows[1][1] == "30.2" and rows[2][1] == "42.2"
     assert rows[1][7] == "32x Smelter"
@@ -65,7 +61,7 @@ def test_the_machines_it_prints_are_the_ones_the_domain_put_on_that_deck(tools, 
     door, so the two differ by three on this world."""
     report = ffloors.floor_decomposition(state, platform=1)
     band = report.platforms[0]
-    rows = _rows(tools.factory_floors(platform=1))
+    rows = tables.rows(tools.factory_floors(platform=1))
     assert [int(r[5]) for r in rows] == [len(b.machines) for b in band.bands]
     assert [int(r[6]) for r in rows] == [len(b.attachments) for b in band.bands]
 
@@ -74,7 +70,7 @@ def test_a_factory_name_narrows_to_the_platform_it_stands_on(tools):
     out = tools.factory_floors(factory="steel factory")
     assert "platform 6 (steel factory)" in out
     assert "factory 'steel factory'" in out
-    assert next(r[7] for r in _rows(out)) == "32x Smelter"
+    assert next(r[7] for r in tables.rows(out)) == "32x Smelter"
 
 
 def test_it_says_which_measurement_this_is_where_another_tool_disagrees(tools):
@@ -108,7 +104,7 @@ def test_a_full_page_stays_inside_the_context_budget(tools, call):
 
 
 def test_it_pages_on_the_offset_its_envelope_promises(tools):
-    first = _rows(tools.factory_floors(limit=5))
-    second = _rows(tools.factory_floors(limit=5, offset=5))
+    first = tables.rows(tools.factory_floors(limit=5))
+    second = tables.rows(tools.factory_floors(limit=5, offset=5))
     assert len(first) == len(second) == 5
     assert not {r[0] for r in first} & {r[0] for r in second}

@@ -49,7 +49,9 @@ def test_key_moves_when_either_schema_moves(state, monkeypatch):
 
 
 def test_changed_since_reports_both_axes_and_the_window(state, row):
-    older = tl.build_row(_shift(state, play=row["play_duration_s"] - 7200, mtime=1, machines_dropped=3))
+    older = tl.build_row(
+        _shift(state, play=row["play_duration_s"] - 7200, mtime=1, machines_dropped=3)
+    )
     line = tl.Timeline(world_id=state.world_id, rows=[older, row])
     out = line.changed_since(older)
     assert out["played_s"] == 7200

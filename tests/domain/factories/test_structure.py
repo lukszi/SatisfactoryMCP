@@ -81,8 +81,8 @@ def test_walls_bridge_slabs_only_when_chained():
 
 def test_a_slab_records_the_box_its_tiles_occupy_not_one_invented_from_the_centre():
     """`centre` is the tile MEAN and sits wherever the tiles are dense, so
-    `centre +- extent/2` puts corners on an L-shaped platform that do not exist. The
-    reference user reconstructed a bare platform's box from nine describe_location
+    `centre +- extent/2` puts corners on an L-shaped platform that do not exist. A bare
+    platform's box was once reconstructed from nine describe_location
     probes by hand; `bbox` is that box, stored, from the tiles themselves."""
     from satisfactory_mcp.domain.factories.structure import build_structures
 
@@ -109,7 +109,7 @@ def test_factory_map_lists_bare_platforms_and_summarises_pads_by_a_stated_thresh
     game, monkeypatch
 ):
     """show=slabs listed only slabs CARRYING machines, so a bare 1,901-foundation
-    platform -- the most important object in that user's build -- was invisible. Bare
+    platform -- the most important object in that build -- was invisible. Bare
     platforms are now rows with extent, bbox and elevation; helper pads below the
     threshold are one summary line that names the threshold, so the omission is a
     known one."""

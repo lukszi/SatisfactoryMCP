@@ -2,7 +2,7 @@
 
 Written to replace a vendored GPL-3.0 parser. The format is a fact about what the game
 writes, not a creative work, so this implements the format and verifies black-box: same
-file in, same values out. Measured across 67 saves on the author's disk, this agreed with
+file in, same values out. Measured across 67 saves on the development machine, this agreed with
 the old parser on all 31 it could read and failed on exactly the same 36 -- pre-1.0 saves
 whose header the old parser also refuses.
 
@@ -126,7 +126,7 @@ def test_every_refusal_names_the_versions_that_would_explain_it(raw):
     and useless where "saveHeaderType 20 (known: 8, 9, 10, 14)" is the answer.
 
     saveHeaderType 8, 9 and 10 used to be the example here, because all 36 pre-1.0 files on the
-    author's disk failed. 35 of them are read now -- see ``test_pre_1_0.py`` -- so the
+    development machine failed. 35 of them are read now -- see ``test_pre_1_0.py`` -- so the
     unknown type has to be a hypothetical one, and the message has to list what IS derived
     rather than name a single version.
     """

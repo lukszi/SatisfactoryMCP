@@ -48,6 +48,7 @@ from satisfactory_mcp.core.gamedata.constants import CAPABILITY_SCHEMATICS
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning as planning_tools
 from satisfactory_mcp.interfaces.mcp.tools import progression as progression_tools
+from tests.support import tables
 from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
@@ -329,10 +330,6 @@ def constructed(game, projection, monkeypatch):
     return build
 
 
-def _rows(out: str) -> list[list[str]]:
-    return [line.split("\t") for line in out.splitlines() if "\t" in line][1:]
-
-
 def test_every_mam_node_is_placed_in_a_tree(game, state):
     """The register is a prefix table over class ids, because Docs.json ships no research
     trees. A game patch that adds a MAM node under a new prefix must fail here: unplaced
@@ -361,13 +358,13 @@ def test_a_node_in_an_unopened_tree_is_not_called_ready(constructed, state):
     # show=todo, so the FICSMAS nodes this world already finished are out of it: a
     # finished node is finished whatever its tree says now.
     out = srv.mam_research(show="todo", query="FICSMAS", limit=25)
-    statuses = {row[0] for row in _rows(out)}
+    statuses = {row[0] for row in tables.rows(out)}
     assert statuses == {"TREE SHUT"}, statuses
     assert "TREE SHUT means" in out
 
     # And with the tree open again, the same rows go back to being ordinary work.
     constructed(unlocked_trees=open_trees)
-    reopened = {row[0] for row in _rows(srv.mam_research(show="todo", query="FICSMAS"))}
+    reopened = {row[0] for row in tables.rows(srv.mam_research(show="todo", query="FICSMAS"))}
     assert reopened and "TREE SHUT" not in reopened
 
 
@@ -376,7 +373,7 @@ def test_a_shut_tree_is_never_offered_as_affordable(constructed, state):
     belongs out of it however cheap it is."""
     constructed(unlocked_trees=[])
     out = srv.mam_research(show="affordable", limit=25)
-    assert _rows(out) == []
+    assert tables.rows(out) == []
 
 
 def test_research_already_under_way_says_so_and_says_how_long(constructed, game):
@@ -386,7 +383,7 @@ def test_research_already_under_way_says_so_and_says_how_long(constructed, game)
     constructed(ongoing=[{"schematic": running, "seconds_left": 420.0}])
     name = game.schematics[running].name
     out = srv.mam_research(show="all", query=name)
-    (row,) = _rows(out)
+    (row,) = tables.rows(out)
     assert row[0] == "RUNNING 420s"
     assert "RUNNING is research already under way" in out
     # Paid for and started: not something the player can go and do now.

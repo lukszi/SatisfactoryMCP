@@ -1,7 +1,7 @@
 """The head-lift model: every rule once, and the reference world as the acceptance test.
 
 The model exists to be SILENT on a working base, so the test that matters most is the last
-section: the owner's world reports no FAULT, the one line it does name is pinned as the
+section: the reference world reports no FAULT, the one line it does name is pinned as the
 disagreement it is, and the perturbations beside it prove the silence is a verdict rather
 than a model with nothing to say.
 """
@@ -303,7 +303,7 @@ def _uphill_pump(consumer_z, pump_z=20.0, powered=True):
 
 
 def test_a_powered_pump_draws_from_below_its_own_inlet(game):
-    """The rule the owner's fuel line forced: a powered pump does not wait to be reached.
+    """The rule the reference world's fuel line forced: a powered pump does not wait to be reached.
 
     The extractor's 11.02 m stops 9 m short of this pump's inlet and the pump lifts anyway,
     from its own centre, because fluid ARRIVING is what settles an inlet -- rung (1) -- and
@@ -433,7 +433,7 @@ def test_a_consumer_on_the_flat_at_a_near_empty_buffers_connectors_is_fed(game):
 
     A tenth-full Industrial Buffer stood 1.2 m in its own tank and its outlet is 1.75 m up,
     so the head was 0.55 m short of a pipe leaving on the flat and everything past it was
-    called cut off. The owner's fuel line is exactly this shape at 400 m3 scale.
+    called cut off. The reference world's fuel line is exactly this shape at 400 m3 scale.
     """
     assert _verdict(_tanked(240.0, 1.75, connector_z=1.75), game).crests == ()
 
@@ -527,10 +527,10 @@ def test_consumers_behind_one_hill_are_named_once_under_that_hill(game):
 # --------------------------------------------------------------- the reference world
 
 
-def test_the_owners_base_reports_no_head_lift_problem(projection, game):
+def test_the_reference_base_reports_no_head_lift_problem(projection, game):
     """The acceptance test. A model that cries wolf on a working factory is wrong.
 
-    Swept over every save on the author's machine this holds for all 93 of them, 1,448 fluid
+    Swept over every save on the development machine this holds for all 93 of them, 1,448 fluid
     networks and 6,380 consumer ports -- see `docs/fluids_model.md`.
     """
     report = head_lift(projection, game, build_graph(projection))
@@ -543,7 +543,7 @@ def test_the_owners_base_reports_no_head_lift_problem(projection, game):
 
 
 def test_the_fuel_lines_twenty_generators_clear_the_buffer_they_sit_on(projection, game):
-    """Both gates on the owner's fuel line are now cleared, by two separate measurements.
+    """Both gates on the reference world's fuel line are now cleared, by two separate measurements.
 
     A 400 m3 buffer sits in series between seven Packagers and the Mk2 pump, and the pump's
     inlet stands above its surface -- a powered pump draws, so that one does not bind. A

@@ -21,10 +21,9 @@ import pytest
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.planning.sites import partition
-from satisfactory_mcp.domain.world.state import WorldState
 from tests.support.reference_world import REFERENCE_FIELD
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("planned")]
 
 RIG = ["Heavy Oil Residue", "Diluted Fuel", "Water Extractor", "Oil Extractor"]
 HALL = ["Fuel-Powered Generator"]
@@ -32,16 +31,11 @@ RESIN = ["Residual Plastic", "Residual Rubber"]
 THREE = {"A-rig": RIG, "B-hall": HALL, "C-resin": RESIN}
 
 
-@pytest.fixture(autouse=True)
-def live(planned) -> WorldState:
-    return planned
-
-
 @pytest.fixture
-def decoupled(game, live):
-    kwargs = dict(live.plans.find("spire-coast-full").kwargs())
+def decoupled(game, planned):
+    kwargs = dict(planned.plans.find("spire-coast-full").kwargs())
     kwargs["sources"] = list(REFERENCE_FIELD)
-    return prepare(game, live, kwargs)
+    return prepare(game, planned, kwargs)
 
 
 # ------------------------------------------------------- the regression case
@@ -69,14 +63,14 @@ def test_the_interface_table_matches_the_hand_built_one(decoupled, game):
     assert water.rate == pytest.approx(1_100, rel=0.02) and water.lines == 2
 
 
-def test_the_coupled_variant_opens_the_fuel_return(game, live, decoupled):
+def test_the_coupled_variant_opens_the_fuel_return(game, planned, decoupled):
     """The single interface that defines the architecture. Decoupled it is ZERO; coupled
     it is ~1,150 on 2 pipes, and the hall's share drops from 16 pipes to 14."""
-    kw = dict(live.plans.find("spire-coast-full").kwargs())
+    kw = dict(planned.plans.find("spire-coast-full").kwargs())
     kw["sources"] = list(REFERENCE_FIELD)
     kw["exclude_recipes"] = [x for x in kw["exclude_recipes"] if "Recycled" not in x]
     kw["export_minimums"] = {"Plastic": 2000, "Rubber": 300}
-    coupled = prepare(game, live, kw)
+    coupled = prepare(game, planned, kw)
     assert coupled.solution.net_mw == pytest.approx(83_470.97, abs=0.5)
 
     spec = {**THREE, "C-resin": [*RESIN, "Recycled Plastic", "Recycled Rubber"]}

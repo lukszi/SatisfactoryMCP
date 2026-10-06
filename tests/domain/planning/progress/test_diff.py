@@ -4,7 +4,7 @@ Every test here pins one way this tool could be CONFIDENTLY WRONG. That is the w
 risk of a diff: an answer that is well-formed, plausible and tells the player to
 dismantle a working factory reads exactly like a correct one.
 
-The reference plan is max_mw over Spire Coast with Plastic and Rubber exportable --
+The reference plan is max_mw over the reference field with Plastic and Rubber exportable --
 the driving use case from DESIGN.md Appendix B, solved against the committed save
 projection so the numbers do not drift with the live autosave.
 """
@@ -40,7 +40,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("game")]
 #: ones an ACTION applies to, three per row, and never the row's whole matched set.
 DIFF_BUDGET = 2900
 
-SPIRE = {
+REFERENCE_PLAN_ARGS = {
     "objective": "max_mw",
     "sources": list(REFERENCE_FIELD),
     "exports": ["MW", "Plastic", "Rubber"],
@@ -48,8 +48,8 @@ SPIRE = {
 
 
 @pytest.fixture(scope="module")
-def spire(game, state):
-    req = build_scenario(game, state, **SPIRE)
+def reference_plan(game, state):
+    req = build_scenario(game, state, **REFERENCE_PLAN_ARGS)
     sol = solve(req.scenario)
     assert sol.ok
     return req, sol, build_diff(game, state, sol, req)
@@ -76,12 +76,12 @@ def _row(report, needle):
 # ------------------------------------------------------------------- matching
 
 
-def test_off_recipe_machines_never_count_toward_the_plan(spire, state):
+def test_off_recipe_machines_never_count_toward_the_plan(reference_plan, state):
     """This world has 36 Refineries; 5 run Alternate Heavy Oil Residue and 31 make
     copper, plastic and alumina. Matching on the building class alone would say "you
     have 36, build 10" -- arithmetically true, and it would tell the player to break
     their copper line. Identity is (building, recipe)."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     row = _row(rep, "Alternate: Heavy Oil Residue")
     assert state.built("Build_OilRefinery_C") == 36
     assert row.have == 5
@@ -90,13 +90,13 @@ def test_off_recipe_machines_never_count_toward_the_plan(spire, state):
     assert "31 Refineries busy on other recipes" in row.note
 
 
-def test_generators_match_on_building_because_fuel_is_piped_not_set(spire):
+def test_generators_match_on_building_because_fuel_is_piped_not_set(reference_plan):
     """A generator has no recipe: mCurrentFuelClass is whatever is currently piped in.
     The plan runs 176 Fuel Generators on Fuel and 20 on Turbofuel, but that is 196
     identical buildings and one plumbing decision, not two machines to place. Keeping
     them apart would have counted the 20 already built against the Fuel row only and
     demanded 20 brand-new generators for the Turbofuel row."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     rows = [r for r in rep.rows if r.building_id == "Build_GeneratorFuel_C"]
     assert len(rows) == 1
     assert rows[0].have == 20
@@ -105,7 +105,7 @@ def test_generators_match_on_building_because_fuel_is_piped_not_set(spire):
     assert "176 on Fuel + 20 on Turbofuel" in rows[0].note
 
 
-def test_extractors_match_through_the_node_they_occupy(spire):
+def test_extractors_match_through_the_node_they_occupy(reference_plan):
     """The only exact machine-level match the save supports. mExtractableResource
     resolves 13/13 oil pumps, and the plan extractor columns were built from those very
     node rows, so the join needs no inference and no proximity guess.
@@ -115,7 +115,7 @@ def test_extractors_match_through_the_node_they_occupy(spire):
     is the join's strongest form: purity-by-purity equality, which a proximity guess would
     have to hit three times in a row by luck. ``have`` is by rate: the seven impure pumps
     are clocked to eight pumps' worth."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     by_purity = {p: _row(rep, f"{p} Crude Oil") for p in ("impure", "normal", "pure")}
     assert [(r.have, r.need, r.build) for r in by_purity.values()] == [
         (8, 7, 0),
@@ -132,14 +132,14 @@ def test_extractors_match_through_the_node_they_occupy(spire):
     assert all(t[0].startswith("BP_ResourceNode") for t in coal.targets)
 
 
-def test_unmatchable_extractors_report_a_range_not_a_number(spire):
+def test_unmatchable_extractors_report_a_range_not_a_number(reference_plan):
     """Water Extractors have no recipe and all 23 point at FGWaterVolume objects that
     are not node keys (OQ5), so they cannot be attributed to a plant at all. 4 stand at
     the oil plant, 13 at the main base and 6 two and a half kilometres away, almost
     certainly feeding the coal generators. Both 8 and 27 are defensible and both are
     wrong to assert, so the answer is the interval. Counted by rate, the 23 pumps' clocks
     add up to 24 pumps at the plan's 100%."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     row = _row(rep, "normal Water")
     assert len(row.have_instances) == 23 and row.have == 24
     assert row.build_max is not None
@@ -150,10 +150,10 @@ def test_unmatchable_extractors_report_a_range_not_a_number(spire):
     assert render.where_bands(row.have_distances).count("@") == 3
 
 
-def test_the_range_only_appears_where_identity_is_actually_missing(spire):
+def test_the_range_only_appears_where_identity_is_actually_missing(reference_plan):
     """A range everywhere would be hedging. Every row that CAN be matched exactly must
     report an exact count."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     ranged = [r for r in rep.rows if r.build_max is not None and r.build_max != r.build]
     assert [r.building_id for r in ranged] == ["Build_WaterPump_C"]
 
@@ -177,10 +177,10 @@ def test_reclock_compares_the_total_against_the_plans_total(clock, expected):
     assert bool(_reclock_note([{"clock": clock}], 0, group)) is expected
 
 
-def test_a_ratio_clock_plan_row_asks_nobody_to_reclock(spire):
+def test_a_ratio_clock_plan_row_asks_nobody_to_reclock(reference_plan):
     """The Fuel Generator row runs at 99.43% and its 20 existing generators are all at
     the default clock. A correct diff says nothing about clocks there."""
-    _req, sol, rep = spire
+    _req, sol, rep = reference_plan
     plan_clock = min(
         p["clock"] for p in sol.processes if p["building_id"] == "Build_GeneratorFuel_C"
     )
@@ -188,13 +188,13 @@ def test_a_ratio_clock_plan_row_asks_nobody_to_reclock(spire):
     assert "planned rate" not in _row(rep, "Fuel-Powered Generator").note
 
 
-def test_an_overclocked_machine_is_noted_but_never_becomes_the_action(spire):
+def test_an_overclocked_machine_is_noted_but_never_becomes_the_action(reference_plan):
     """One oil pump runs at 250% where the plan budgets 100%, so the player already
     extracts more crude than the plan asks for. That is worth saying -- the plan is
     understating them -- but it is not a change the plan requires, and the verb must come
     from the count and never from the clock: this row is OK because 7 pumps stand on 7
     nodes, with the 250% mentioned in the note and nowhere else."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     row = _row(rep, "impure Crude Oil")
     assert "of the planned rate" in row.note
     assert row.verb == "OK"
@@ -204,12 +204,12 @@ def test_an_overclocked_machine_is_noted_but_never_becomes_the_action(spire):
 # -------------------------------------------------------------------- actions
 
 
-def test_free_actions_come_before_building(spire):
+def test_free_actions_come_before_building(reference_plan):
     """4 Assemblers stand 20 m from the plan Compacted Coal Assembler with no recipe
     set at all. They produce nothing, so re-recipeing them has zero opportunity cost
     and turns "build 4" into four dropdowns. Materials are the expensive resource, so
     anything free must be spent first."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     row = _row(rep, "Alternate: Compacted Coal")
     assert row.verb == "SETRECIPE"
     assert row.reuse == 4
@@ -217,10 +217,10 @@ def test_free_actions_come_before_building(spire):
     assert "no output today" in row.note
 
 
-def test_paused_machines_count_as_built_and_are_unpaused_not_rebuilt(spire):
+def test_paused_machines_count_as_built_and_are_unpaused_not_rebuilt(reference_plan):
     """3 of the 23 Water Extractors are paused by the player. They exist; they just do
     not run. Treating them as absent would have added 3 buildings to the bill."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     row = _row(rep, "normal Water")
     assert row.verb == "UNPAUSE"
     assert row.count == 3
@@ -228,12 +228,12 @@ def test_paused_machines_count_as_built_and_are_unpaused_not_rebuilt(spire):
     assert "then BUILD 7..28" in row.note
 
 
-def test_an_action_names_the_machines_it_applies_to(spire, state):
+def test_an_action_names_the_machines_it_applies_to(reference_plan, state):
     """The row said "UNPAUSE 3, have 23" and named none of them, and the three are not
     the first three matched -- rendering `have_instances[:3]` would have sent the player
     to three pumps that are already running. SETRECIPE is worse: the idle machines it
     takes are not in the matched set at all."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     paused = {r["instance"].rsplit(".", 1)[-1] for r in state._all_records() if r.get("paused")}
 
     water = _row(rep, "normal Water")
@@ -256,7 +256,7 @@ def test_the_ids_of_an_action_reach_the_reader(game, state):
     from satisfactory_mcp.domain.planning.diff_service import build_diff_report
     from satisfactory_mcp.presenters.text.diff import render_diff
 
-    report = build_diff_report(game, state, dict(SPIRE), objective="max_mw")
+    report = build_diff_report(game, state, dict(REFERENCE_PLAN_ARGS), objective="max_mw")
     out = render_diff(game, state, report, objective="max_mw", limit=20)
     water = _row(report.rep, "normal Water")
     assert "# machines to act on, reusable as machine: selectors" in out
@@ -268,7 +268,7 @@ def test_the_ids_of_an_action_reach_the_reader(game, state):
 def test_an_idle_machine_is_only_reused_once(game, state):
     """Idle machines are a shared pool. Allocating the same Assembler to two plan rows
     would under-count the build twice over."""
-    req = build_scenario(game, state, **SPIRE)
+    req = build_scenario(game, state, **REFERENCE_PLAN_ARGS)
     rep = build_diff(game, state, solve(req.scenario), req)
     assert sum(r.reuse for r in rep.rows) <= len(state.misconfigured)
 
@@ -276,14 +276,14 @@ def test_an_idle_machine_is_only_reused_once(game, state):
 # ------------------------------------------------------- the no-dismantle guard
 
 
-def test_there_is_no_dismantle_action_anywhere(spire):
+def test_there_is_no_dismantle_action_anywhere(reference_plan):
     """Saves are read-only and this is the player factory. Superseded machines are
     named; what to do about them is not the tool call to make."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     assert {r.verb for r in rep.rows} <= {"BUILD", "UNPAUSE", "SETRECIPE", "OK"}
 
 
-def test_neighbours_are_scoped_by_radius_and_by_shared_materials(spire):
+def test_neighbours_are_scoped_by_radius_and_by_shared_materials(reference_plan):
     """Two guards, both needed. The 200 m radius excludes this world 32 Coal
     Generators, which sit 887-1060 m from the oil plant -- without it a max_mw plan
     would list every generator in the world as superseded. The shared-item test
@@ -292,7 +292,7 @@ def test_neighbours_are_scoped_by_radius_and_by_shared_materials(spire):
 
     What survives both is the right answer: the Diluted Packaged Fuel route, which the
     37 Blenders replace."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     labels = dict(rep.neighbours)
     assert "Refinery Alternate: Diluted Packaged Fuel" in labels
     assert not any("Ingot" in label or "Iron Rod" in label for label in labels)
@@ -303,11 +303,11 @@ def test_neighbours_are_scoped_by_radius_and_by_shared_materials(spire):
 # ------------------------------------------------------------ staging and power
 
 
-def test_stages_run_extractors_first_and_generators_last(spire):
+def test_stages_run_extractors_first_and_generators_last(reference_plan):
     """Build order is the plan own chain depth, condensed so the genuine Recycled
     Plastic / Recycled Rubber cycle shares a stage. Nothing is special-cased:
     extractors fall out at the bottom because they consume nothing."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     stage = {r.process: r.stage for r in rep.rows}
     assert stage["normal Water"] == stage["impure Coal"] == 1
     # Alt HOR feeds the Blender, whose Fuel feeds the Turbofuel Refinery, whose fuel
@@ -317,21 +317,21 @@ def test_stages_run_extractors_first_and_generators_last(spire):
     assert stage["Fuel-Powered Generator"] == max(r.stage for r in rep.rows)
 
 
-def test_the_power_arithmetic_is_incremental_not_the_plan_total(spire, state):
+def test_the_power_arithmetic_is_incremental_not_the_plan_total(reference_plan, state):
     """The plan draws ~9,800 MW across 339 buildings, but 20 Fuel Generators, 5
     Refineries and 10 Oil Extractors already exist and already draw. Charging the plan
     own total would double-count them and demand far more slices than the build needs."""
-    _req, sol, rep = spire
+    _req, sol, rep = reference_plan
     plan_draw = sum(-p["mw"] for p in sol.processes if p["mw"] < 0)
     assert 0 < rep.deficit_mw < plan_draw
     assert rep.headroom_mw == pytest.approx(state.power_report()["headroom_mw"])
 
 
-def test_slices_come_from_the_deficit_against_real_headroom(spire):
+def test_slices_come_from_the_deficit_against_real_headroom(reference_plan):
     """An LP solution is a ray, so any fraction of it is itself feasible and
     self-powered. That turns "power first?" from folklore into a number: 4,655 MW of
     new draw against 831 MW of headroom is at least six proportional slices."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     assert rep.slices == -(-rep.deficit_mw // rep.headroom_mw)
     assert rep.slices > 1
 
@@ -339,32 +339,32 @@ def test_slices_come_from_the_deficit_against_real_headroom(spire):
 # ------------------------------------------------------------------------ cost
 
 
-def test_cost_uses_spendable_stock_and_never_machine_buffers(spire, state):
+def test_cost_uses_spendable_stock_and_never_machine_buffers(reference_plan, state):
     """Summing every stack in the world reported Water 5,556,375 and Fuel 1,048,762 --
     pipe and machine contents in litres -- so a build-cost check against that would
     have said the player can afford anything."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     stock = state.stock()
     for line in rep.cost:
         assert line.stock == pytest.approx(stock.get(line.item, 0.0))
     assert all(line.shortfall > 0 for line in rep.cost)
 
 
-def test_cost_names_the_missing_production_line_not_just_the_big_number(spire):
+def test_cost_names_the_missing_production_line_not_just_the_big_number(reference_plan):
     """8,800 Rubber with zero machines making Rubber is a different problem from 8,800
     Quickwire with fourteen. The gate on this plan is the line that does not exist."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     top = rep.cost[0]
     assert top.name == "Rubber"
     assert top.lines == 0
     assert "Heavy Modular Frame" in [c.name for c in rep.cost[:2]]
 
 
-def test_hand_crafted_items_are_not_reported_as_a_missing_line(spire, game):
+def test_hand_crafted_items_are_not_reported_as_a_missing_line(reference_plan, game):
     """A Portable Miner has zero production lines by nature, not by neglect -- it has
     no automatable recipe at all. Ranking it beside Rubber would bury the real finding
     under a two-unit shortfall."""
-    _req, _sol, rep = spire
+    _req, _sol, rep = reference_plan
     names = [c.name for c in rep.cost]
     if "Portable Miner" in names:
         assert names.index("Portable Miner") == len(names) - 1
@@ -379,10 +379,13 @@ def test_the_plan_id_covers_the_save_derived_inputs_not_just_the_arguments(game,
     The id is what makes that safe: identical arguments must give an identical id, and
     a different question must give a different one. Hashing the arguments alone would
     let a newly unlocked recipe silently change the plan under a stable id."""
-    a = build_scenario(game, state, **SPIRE)
-    b = build_scenario(game, state, **SPIRE)
+    a = build_scenario(game, state, **REFERENCE_PLAN_ARGS)
+    b = build_scenario(game, state, **REFERENCE_PLAN_ARGS)
     assert a.plan_id == b.plan_id
-    assert build_scenario(game, state, **{**SPIRE, "exports": ["MW"]}).plan_id != a.plan_id
+    assert (
+        build_scenario(game, state, **{**REFERENCE_PLAN_ARGS, "exports": ["MW"]}).plan_id
+        != a.plan_id
+    )
 
     # A save-derived input, not an argument: losing a recipe changes what can be built.
     progression = deepcopy(state.projection["progression"])
@@ -390,19 +393,22 @@ def test_the_plan_id_covers_the_save_derived_inputs_not_just_the_arguments(game,
         r for r in progression["available_recipes"] if r != "Recipe_Alternate_DilutedFuel_C"
     ]
     fewer = _variant(game, state, progression=progression)
-    assert build_scenario(game, fewer, **SPIRE).plan_id != a.plan_id
+    assert build_scenario(game, fewer, **REFERENCE_PLAN_ARGS).plan_id != a.plan_id
 
     # But tapping a node must NOT move the plan: the same nodes are still in scope, so
     # the id keeps meaning "same plan" and the save id carries "you built something".
-    assert build_scenario(game, _variant(game, state, extractors=[]), **SPIRE).plan_id == a.plan_id
+    assert (
+        build_scenario(game, _variant(game, state, extractors=[]), **REFERENCE_PLAN_ARGS).plan_id
+        == a.plan_id
+    )
 
 
-def test_the_save_id_moves_when_the_factory_does(game, state, spire):
+def test_the_save_id_moves_when_the_factory_does(game, state, reference_plan):
     """Same plan id with a different save id is the useful mid-build signal: the plan
     did not move, you did."""
-    _req, sol, rep = spire
+    _req, sol, rep = reference_plan
     changed = _variant(game, state, machines=state.projection["machines"][:-1])
-    other = build_diff(game, changed, sol, build_scenario(game, changed, **SPIRE))
+    other = build_diff(game, changed, sol, build_scenario(game, changed, **REFERENCE_PLAN_ARGS))
     assert other.save_id != rep.save_id
 
 
@@ -410,7 +416,7 @@ def test_one_scenario_path_serves_every_planning_tool(game, state):
     """plan_factory, plan_layout and diff_vs_save must describe the same factory for
     the same arguments. Three copies of the translation would drift invisibly: each
     tool would stay self-consistent about a slightly different plant."""
-    req = build_scenario(game, state, **SPIRE)
+    req = build_scenario(game, state, **REFERENCE_PLAN_ARGS)
     assert req.scenario.exports == ("__MW__", "Desc_Plastic_C", "Desc_Rubber_C")
     assert req.node_rows and all(r["reachable"] for r in req.node_rows)
 
@@ -424,7 +430,7 @@ def test_the_cost_table_says_when_it_hid_rows(game, state):
     from satisfactory_mcp.domain.planning.diff_service import build_diff_report
     from satisfactory_mcp.presenters.text.diff import COST_ROWS, render_diff
 
-    report = build_diff_report(game, state, dict(SPIRE), objective="max_mw")
+    report = build_diff_report(game, state, dict(REFERENCE_PLAN_ARGS), objective="max_mw")
     assert len(report.rep.cost) <= COST_ROWS, "this world stopped being the short case"
     report.rep.cost = [
         CostLine(item=f"Desc_{i}_C", name=f"Item {i}", need=100.0, stock=1.0, lines=0)
@@ -438,8 +444,8 @@ def test_both_tools_print_the_id_they_tell_the_reader_to_compare():
     """diff_vs_save's own docstring says two responses carrying the same id are provably
     the same plan -- and plan_factory printed the id only when the plan was SAVED, so the
     cross-check it advertises could not be performed on an unsaved one."""
-    plan = srv.plan_factory(**SPIRE)
-    diff = srv.diff_vs_save(**SPIRE)
+    plan = srv.plan_factory(**REFERENCE_PLAN_ARGS)
+    diff = srv.diff_vs_save(**REFERENCE_PLAN_ARGS)
     plan_id = plan.split("[plan ", 1)[1].split("]")[0]
     assert f"[plan {plan_id}/save " in diff
 
@@ -477,7 +483,7 @@ def test_the_tool_is_registered_and_capped():
 def test_the_response_fits_its_budget():
     """The context budget is the binding design constraint, and a diff is the tool most
     tempted to dump 435 machine rows."""
-    out = srv.diff_vs_save(**SPIRE)
+    out = srv.diff_vs_save(**REFERENCE_PLAN_ARGS)
     assert len(out) < DIFF_BUDGET, f"diff_vs_save returned {len(out)} chars"
     assert "DISMANTLE" not in out
     # Ids belong in a footer, not in rows: a node instance name runs to 51 characters.

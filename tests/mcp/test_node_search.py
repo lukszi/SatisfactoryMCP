@@ -16,6 +16,7 @@ import pytest
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.factories.labels import LabelStore
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support import tables
 from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
@@ -108,20 +109,6 @@ def test_a_bare_platform_resolves_by_the_index_that_names_it(game):
         srv._origin_for(None, "slab:0")
 
 
-def _rows(out: str) -> list[dict]:
-    """Parse the tab table by HEADER, not by column position.
-
-    The merged tool keeps a `grid` column the standalone one did not have, so
-    index-based parsing silently read the wrong field and compared a coordinate against
-    "X3Y2".
-    """
-    lines = [x for x in out.splitlines() if "\t" in x]
-    if not lines:
-        return []
-    headers = lines[0].split("\t")
-    return [dict(zip(headers, line.split("\t"), strict=False)) for line in lines[1:]]
-
-
 def _dist(row: dict) -> int:
     return int(row[next(k for k in row if k.startswith("dist"))].rstrip("m"))
 
@@ -130,7 +117,7 @@ def test_nodes_come_back_nearest_first(game):
     """The whole point of the mode: the other two rank by yield."""
     out = srv.search_resource_nodes(resource="Coal", show="nearest", near="0,0", limit=8)
     assert not out.startswith("! ")
-    distances = [_dist(r) for r in _rows(out)]
+    distances = [_dist(r) for r in tables.rows_by_header(out)]
     assert distances, out
     assert distances == sorted(distances), distances
 
@@ -138,7 +125,7 @@ def test_nodes_come_back_nearest_first(game):
 def test_distance_is_measured_from_the_given_origin(game):
     """A node's reported distance must match its reported coordinate."""
     out = srv.search_resource_nodes(resource="Coal", show="nearest", near="0,0", limit=3)
-    rows = _rows(out)
+    rows = tables.rows_by_header(out)
     assert rows
     for row in rows:
         x_m, y_m = (float(v) for v in row["x,y(m)"].split(","))
@@ -148,7 +135,7 @@ def test_distance_is_measured_from_the_given_origin(game):
 def test_the_distance_column_names_the_origin(game):
     """So a reader of the table knows what the number is measured from."""
     out = srv.search_resource_nodes(resource="Coal", show="nearest", near="0,0", limit=2)
-    assert any(k.startswith("dist to ") for k in _rows(out)[0])
+    assert any(k.startswith("dist to ") for k in tables.rows_by_header(out)[0])
 
 
 def test_nearest_without_an_origin_says_so(game):
@@ -173,7 +160,7 @@ def test_a_tapped_node_names_the_miner_on_it_and_its_clock(game):
     """``tapped_by`` and ``tapped_clock`` were computed for every node on every call and
     then rendered as the bare word "tapped", so "which miner is on that node, at what
     clock, is it worth reclaiming" was thrown away on each one."""
-    rows = _rows(srv.search_resource_nodes(resource="Coal", show="nodes", limit=25))
+    rows = tables.rows_by_header(srv.search_resource_nodes(resource="Coal", show="nodes", limit=25))
     tapped = [r for r in rows if r["status"] == "tapped"]
     assert tapped, "no coal node on this save is tapped, so this proves nothing"
     assert all("@" in r["occupant"] for r in tapped), tapped

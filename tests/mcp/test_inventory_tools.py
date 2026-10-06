@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp.interfaces.mcp.tools import inventory as tool
+from tests.support import tables
 
 
 @pytest.fixture
@@ -21,12 +22,6 @@ def tools(monkeypatch, state):
     """The tool module answering about the fixture world instead of the newest save."""
     monkeypatch.setattr(tool, "_state", lambda save=None, world=None, as_of=None: state)
     return tool
-
-
-def _rows(out: str) -> list[list[str]]:
-    """The data rows of the one table in a response: no ``#`` header, no ``!`` note."""
-    lines = [ln for ln in out.splitlines() if not ln.startswith(("#", "!"))]
-    return [ln.split("\t") for ln in lines[1:]]
 
 
 # ------------------------------------------------------------------ stock
@@ -38,7 +33,7 @@ def test_stock_reports_each_pile_apart_and_adds_up_only_the_spendable_ones(tools
     and 7 in a crate that are reported and NOT added -- which is what the affordability
     check has always done and never printed."""
     out = tools.stock(item="Concrete")
-    row = _rows(out)[0]
+    row = tables.rows(out)[0]
     assert row[:6] == ["Concrete", "61941", "1", "59440", "2500", "9551"]
     assert row[6] == "7", "the crate column"
     assert state.stock()["Desc_Cement_C"] == pytest.approx(61941)
@@ -46,7 +41,7 @@ def test_stock_reports_each_pile_apart_and_adds_up_only_the_spendable_ones(tools
 
 def test_machine_buffers_reach_a_reader_at_all(tools):
     """``machine_buffers()`` had no consumer anywhere in the tree."""
-    buffers = [r for r in _rows(tools.stock(limit=25)) if r[5]]
+    buffers = [r for r in tables.rows(tools.stock(limit=25)) if r[5]]
     assert buffers, "no row printed anything in a machine buffer"
     assert "buffers" in tools.stock(limit=1), "and the column is named"
 
@@ -72,7 +67,7 @@ def test_an_item_held_nowhere_says_so_in_all_five_places(tools):
 def test_where_names_the_place_and_the_region_it_stands_in(tools):
     """The join item 20 asks for -- "where is my concrete": a container row, a region name
     from the same table the map paints with, and a coordinate to walk to."""
-    rows = _rows(tools.stock(item="Concrete", where=True, limit=4))
+    rows = tables.rows(tools.stock(item="Concrete", where=True, limit=4))
     assert rows[0][:4] == ["24000", "Industrial Storage Container", "Rocky Desert", "-1089,-1245"]
     assert {r[4] for r in rows} <= {"storage", "crate(death)", "crate(dismantle)", "crate(none)"}
 
@@ -87,8 +82,8 @@ def test_where_says_out_loud_that_carried_and_depot_stock_has_no_row(tools):
 
 def test_stock_pages_rather_than_promising_an_offset_it_has_not_got(tools):
     """Fifteen tools on this surface print "call again with offset=N" and take no offset."""
-    first = _rows(tools.stock(limit=5))
-    second = _rows(tools.stock(limit=5, offset=5))
+    first = tables.rows(tools.stock(limit=5))
+    second = tables.rows(tools.stock(limit=5, offset=5))
     assert len(first) == len(second) == 5
     assert not {r[0] for r in first} & {r[0] for r in second}
     assert "showing 5 from offset 5" in tools.stock(limit=5, offset=5)
@@ -118,7 +113,7 @@ def test_how_full_a_container_is_gets_measured_rather_than_left_to_the_reader(to
     """The web payload ships slots and a total; the fraction between them is the answer to
     "is this box backing up". A full Industrial Storage Container is 48 of 48 slots at its
     items' own stack sizes."""
-    row = _rows(tools.storage(limit=1))[0]
+    row = tables.rows(tools.storage(limit=1))[0]
     assert row[0] == "Industrial Storage Container"
     assert row[3] == "100%" and row[4] == "48/48"
 
@@ -126,7 +121,7 @@ def test_how_full_a_container_is_gets_measured_rather_than_left_to_the_reader(to
 def test_a_fluid_buffer_reports_m3_against_what_its_class_holds(tools):
     """1,730.6 is not a reading until it is put against the 2,400 an Industrial Fluid
     Buffer holds -- and its contents are named by the pipe network, not by the tank."""
-    rows = _rows(tools.storage(container_kind="fluid", limit=5))
+    rows = tables.rows(tools.storage(container_kind="fluid", limit=5))
     assert rows[0][3] == "72%" and rows[0][4] == "1731/2400m3"
     assert "Crude Oil" in rows[0][5]
 
@@ -136,7 +131,7 @@ def test_an_unknown_container_kind_is_refused_with_the_choices(tools):
 
 
 def test_empty_containers_are_hidden_by_default_and_reachable_on_request(tools):
-    shown = len(_rows(tools.storage(limit=25)))
+    shown = len(tables.rows(tools.storage(limit=25)))
     assert "21 empty container(s) hidden -- pass empty=True" in tools.storage(limit=1)
     out = tools.storage(empty=True, limit=25)
     assert "151 shown" in out
@@ -147,14 +142,14 @@ def test_near_narrows_to_one_base_and_says_what_it_narrowed_to(tools):
     """The question is "what is in the boxes HERE", and 151 containers spread over 4 km is
     not an answer to it."""
     out = tools.storage(near="-611,-1586", radius_m=100, limit=10)
-    rows = _rows(out)
+    rows = tables.rows(out)
     assert rows and all(r[2].startswith("-6") for r in rows)
     assert "within 100m of -611,-1586" in out
 
 
 def test_a_filter_that_matches_nothing_does_not_read_as_an_empty_world(tools):
     out = tools.storage(near="3000,3000", radius_m=50)
-    assert not _rows(out)
+    assert not tables.rows(out)
     assert "widen radius_m" in out
 
 
@@ -166,7 +161,7 @@ def test_crates_name_what_is_in_them_and_where_to_walk(tools):
     knows what kind it is and one of which predates the game recording that."""
     out = tools.crates()
     assert "2 crate(s) on the ground, 0 from a death; 48 item(s) in them" in out
-    rows = _rows(out)
+    rows = tables.rows(out)
     assert [r[0] for r in rows] == ["dismantle", "none"]
     assert rows[0][1:4] == ["No Man's Land", "-508,-2595", "-17"]
     assert "15 Iron Plate" in rows[0][6]

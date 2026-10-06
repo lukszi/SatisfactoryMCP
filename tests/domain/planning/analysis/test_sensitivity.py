@@ -16,46 +16,32 @@ from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.gamedata.unlocks import SOURCE_OF_TYPE
 from satisfactory_mcp.domain.planning.scenario import build_scenario
 from satisfactory_mcp.domain.planning.sensitivity import sweep_unlocks
-from satisfactory_mcp.domain.world.state import WorldState
-from tests.support.reference_world import REFERENCE_FIELD
+from tests.support.reference_world import REFERENCE_MAX_MW_ARGS
 
-pytestmark = pytest.mark.integration
-
-SPIRE = dict(
-    objective="max_mw",
-    sources=list(REFERENCE_FIELD),
-    exports=["MW"],
-    extractor_clocks=[1.0, 1.5, 2.0, 2.5],
-)
-
-
-@pytest.fixture(autouse=True)
-def live(planned) -> WorldState:
-    """The reference world: the measured answer below names the Blender it still lacked,
-    and the newest save has one."""
-    return planned
+# The fixture world, not the newest save: the measured answer names the Blender it lacked.
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("planned")]
 
 
 @pytest.fixture
-def sweep(game, live):
-    return sweep_unlocks(build_scenario(game, live, **SPIRE), live)
+def sweep(game, planned):
+    return sweep_unlocks(build_scenario(game, planned, **REFERENCE_MAX_MW_ARGS), planned)
 
 
 # ------------------------------------------------------------ the sweep
 
 
-def test_every_locked_alternate_is_tried(sweep, live):
+def test_every_locked_alternate_is_tried(sweep, planned):
     """No relevance filter. A recipe that opens a chain the plan cannot currently reach
     touches none of its items by definition, and is exactly the interesting case -- and at
     0.01 s a solve, skipping the cleverness costs about a second."""
-    assert sweep.tried == len(live.locked_alternates)
+    assert sweep.tried == len(planned.locked_alternates)
     assert sweep.tried > 50
 
 
-def test_an_unlocked_recipe_is_never_a_candidate(sweep, live):
+def test_an_unlocked_recipe_is_never_a_candidate(sweep, planned):
     """It would report a delta of zero and pad the table with things you already own."""
     tried = {r.recipe for r in sweep.rows}
-    assert not (tried & live.available_recipe_ids)
+    assert not (tried & planned.available_recipe_ids)
 
 
 def test_most_candidates_change_nothing_and_that_is_reported(sweep):
@@ -65,16 +51,16 @@ def test_most_candidates_change_nothing_and_that_is_reported(sweep):
     assert sweep.rows, "every candidate gets a row even when its gain is zero"
 
 
-def test_the_baseline_matches_the_plan_it_is_measured_against(sweep, game, live):
+def test_the_baseline_matches_the_plan_it_is_measured_against(sweep, game, planned):
     """A delta against a different baseline is not a delta. This is the mistake advisor.py
     documents: feeding raw_caps instead of real extractors inflated a baseline by 86%."""
     from satisfactory_mcp.domain.planning.prepare import prepare
 
-    plan = prepare(game, live, dict(SPIRE))
+    plan = prepare(game, planned, dict(REFERENCE_MAX_MW_ARGS))
     assert sweep.baseline == pytest.approx(plan.solution.objective_value)
 
 
-def test_gain_is_positive_for_better_whichever_way_the_objective_points(game, live):
+def test_gain_is_positive_for_better_whichever_way_the_objective_points(game, planned):
     """`objective_value` is sign-normalised for max/min, so a min_* objective needs
     flipping -- otherwise a recipe that halves raw usage reports a large NEGATIVE gain and
     sorts last, which is exactly backwards."""
@@ -99,13 +85,13 @@ def test_noise_is_not_a_finding(sweep):
     assert all(abs(r.gain) > sweep.tolerance for r in sweep.movers)
 
 
-def test_a_search_narrows_the_candidate_pool(game, live):
+def test_a_search_narrows_the_candidate_pool(game, planned):
     narrow = sweep_unlocks(
-        build_scenario(game, live, **SPIRE),
-        live,
-        [r for r in live.locked_alternates if "Turbo" in r.name],
+        build_scenario(game, planned, **REFERENCE_MAX_MW_ARGS),
+        planned,
+        [r for r in planned.locked_alternates if "Turbo" in r.name],
     )
-    assert 0 < narrow.tried < len(live.locked_alternates)
+    assert 0 < narrow.tried < len(planned.locked_alternates)
 
 
 # ------------------------------------------------------------ the finding
@@ -132,18 +118,20 @@ def test_a_candidate_names_the_machine_its_delta_assumes(sweep):
 
 
 def test_the_tool_reports_the_sweep(game):
-    out = srv.rank_unlocks(**SPIRE)
+    out = srv.rank_unlocks(**REFERENCE_MAX_MW_ARGS)
     assert not out.startswith("! ")
     assert "gain\tvs base\talternate" in out
     assert "Turbo Blend Fuel" in out
     assert "candidates=79" in out
 
 
-def test_it_flags_what_is_claimable_from_a_pending_drive(game, live):
+def test_it_flags_what_is_claimable_from_a_pending_drive(game, planned):
     """The difference between "worth having" and "you can have it right now". Turbo Blend
     Fuel is worth +14,540 MW here AND sitting in drive 25."""
-    out = srv.rank_unlocks(**SPIRE)
-    on_offer = {r.cls for o in live.hard_drive_offers for opt in o.options for r in opt["recipes"]}
+    out = srv.rank_unlocks(**REFERENCE_MAX_MW_ARGS)
+    on_offer = {
+        r.cls for o in planned.hard_drive_offers for opt in o.options for r in opt["recipes"]
+    }
     if "Recipe_Alternate_TurboBlendFuel_C" not in on_offer:
         pytest.skip("that drive has been claimed")
     assert "claimable NOW" in out
@@ -151,13 +139,15 @@ def test_it_flags_what_is_claimable_from_a_pending_drive(game, live):
 
 
 def test_it_says_how_many_were_checked_and_found_irrelevant(game):
-    out = srv.rank_unlocks(**SPIRE)
+    out = srv.rank_unlocks(**REFERENCE_MAX_MW_ARGS)
     assert "changed this plan" in out
     assert "worth nothing HERE" in out
 
 
 def test_an_unmatched_search_refuses_rather_than_sweeping_everything(game):
-    assert srv.rank_unlocks(query="no such recipe", **SPIRE).startswith("! no LOCKED")
+    assert srv.rank_unlocks(query="no such recipe", **REFERENCE_MAX_MW_ARGS).startswith(
+        "! no LOCKED"
+    )
 
 
 def test_an_infeasible_plan_has_nothing_to_rank(game):
@@ -178,7 +168,7 @@ def test_every_candidate_names_the_schematic_that_grants_it(sweep):
 
 
 def test_the_tool_prints_the_schematic_column(game):
-    out = srv.rank_unlocks(**SPIRE)
+    out = srv.rank_unlocks(**REFERENCE_MAX_MW_ARGS)
     assert "alternate\tgranted by" in out
 
 
@@ -186,7 +176,7 @@ def test_the_column_says_what_kind_of_work_the_unlock_is(game):
     """A hard drive and a milestone are different evenings, and the schematic name alone
     said neither -- it repeated the alternate column and was cut off at 30 characters. The
     words come from ``core.gamedata.unlocks``, so this column reads like search_recipes'."""
-    out = srv.rank_unlocks(**SPIRE)
+    out = srv.rank_unlocks(**REFERENCE_MAX_MW_ARGS)
     body = out.split("alternate\tgranted by", 1)[1].splitlines()[1:]
     cells = [line.split("\t")[3] for line in body if line.count("\t") >= 7]
     assert cells
@@ -233,7 +223,7 @@ def test_an_infeasible_candidate_is_marked_rather_than_left_at_zero(game, monkey
         return out
 
     monkeypatch.setattr(tool, "sweep_unlocks", one_fails)
-    out = srv.rank_unlocks(**SPIRE)
+    out = srv.rank_unlocks(**REFERENCE_MAX_MW_ARGS)
     assert "INFEASIBLE: 1 candidate(s) did not solve" in out
     assert "UNKNOWN rather than zero" in out
     assert broke[0] in out
@@ -258,21 +248,21 @@ def test_activates_lists_only_what_the_baseline_was_not_already_running(sweep):
         assert len(row.activates) < 20
 
 
-def test_the_same_sweep_against_the_saved_plan_finds_nothing(game, live):
+def test_the_same_sweep_against_the_saved_plan_finds_nothing(game, planned):
     """The trap this tool set for its own author. Ad-hoc arguments measure a DIFFERENT
     plant: Turbo Blend Fuel is worth +13.6% against unconstrained Spire Coast and exactly
     zero against the saved plan, which bans Turbofuel and coal generators. Both answers
     are right; only one is about the factory being built."""
-    stored = live.plans.find("spire-coast-full")
-    saved = sweep_unlocks(build_scenario(game, live, **stored.kwargs()), live)
-    assert saved.tried == len(live.locked_alternates)
+    stored = planned.plans.find("spire-coast-full")
+    saved = sweep_unlocks(build_scenario(game, planned, **stored.kwargs()), planned)
+    assert saved.tried == len(planned.locked_alternates)
     assert saved.movers == []
 
 
-def test_ad_hoc_arguments_warn_that_a_saved_plan_exists(game, live):
-    """Because the author of this tool read the ad-hoc number and reported it as if it
+def test_ad_hoc_arguments_warn_that_a_saved_plan_exists(game, planned):
+    """Because the ad-hoc number was once read and reported it as if it
     were about the saved architecture."""
-    out = srv.rank_unlocks(**SPIRE)
+    out = srv.rank_unlocks(**REFERENCE_MAX_MW_ARGS)
     assert "measured against the ARGUMENTS GIVEN" in out
     assert "pass plan=" in out
     # And recalling a plan drops the warning, because then it is not true.

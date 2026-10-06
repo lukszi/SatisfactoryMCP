@@ -134,7 +134,7 @@ def test_no_machine_on_this_fixture_is_on_a_generator_less_circuit(proj):
     anywhere on the circuit it is wired to. On this world every such component is a bare
     pole chain, so the honest answer for the reference save is "every wired machine is on a
     circuit a generator stands on". It is not vacuous code -- 34 of the 98 saves on the
-    author's machine carry one, up to 32 machines at a time, and ten Oil Refineries in two
+    development machine carry one, up to 32 machines at a time, and ten Oil Refineries in two
     rows of five on HL_BUFFER_A..D are what it was measured against. If this ever stops
     being zero the fixture has been re-cut from a save where the check fires, and the
     reference numbers quoted for the empty case go with it.
