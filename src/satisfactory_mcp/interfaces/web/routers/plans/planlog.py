@@ -22,15 +22,14 @@ from .....core.gamedata.model import GameData
 from .....domain.planning.analysis import swaps
 from .....domain.planning.readout import summary
 from .....domain.planning.stored import manage
+from .....domain.planning.stored.plan_args import PlanArgs, PlanLogError
 from .....domain.planning.stored.planlog import (
     AlreadyUndone,
     Commit,
     Forgotten,
     NameTaken,
     Outdated,
-    PlanArgs,
     PlanLog,
-    PlanLogError,
     PlanState,
     Pushed,
     UnknownPlan,

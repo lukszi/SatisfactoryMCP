@@ -13,7 +13,8 @@ from .....domain.planning.progress.diff_service import plan_progress
 from .....domain.planning.solver.scenario import build_scenario
 from .....domain.planning.stored import manage
 from .....domain.planning.stored import provenance as prov
-from .....domain.planning.stored.planlog import PlanLog, PlanLogError, factory_words
+from .....domain.planning.stored.plan_args import PlanLogError
+from .....domain.planning.stored.planlog import PlanLog, factory_words
 from .....domain.planning.stored.store import PLAN_ARGS
 from .....presenters.text import primitives as render
 from ... import app

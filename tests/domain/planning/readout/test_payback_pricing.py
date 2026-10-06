@@ -19,10 +19,9 @@ from satisfactory_mcp.domain.planning.solver.overclock import (
 )
 from satisfactory_mcp.domain.planning.solver.prices import tiers_path as real_tiers_path
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario, shard_stock
+from satisfactory_mcp.domain.planning.stored.plan_args import PAYBACK_MAX_H, InvalidOp
 from satisfactory_mcp.domain.planning.stored.planlog import (
-    PAYBACK_MAX_H,
     Actor,
-    InvalidOp,
     Outdated,
     PlanLog,
     describe_op,

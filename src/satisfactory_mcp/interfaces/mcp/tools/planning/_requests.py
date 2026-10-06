@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .....domain.planning.stored.planlog import InvalidOp, PlanArgs
+from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs
 from .....domain.planning.stored.recall import PLAN_DEFAULTS, expand_plan_pin, recall_plan
 from ... import app
 

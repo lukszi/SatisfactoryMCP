@@ -16,15 +16,13 @@ from satisfactory_mcp.domain.planning.solver.model import PAYBACK_STOPS, Scenari
 from satisfactory_mcp.domain.planning.solver.optimize import solve
 from satisfactory_mcp.domain.planning.solver.overclock import best_clock
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
+from satisfactory_mcp.domain.planning.stored.plan_args import InvalidOp, PlanArgs, legacy_hours
 from satisfactory_mcp.domain.planning.stored.planlog import (
     Actor,
-    InvalidOp,
     Outdated,
-    PlanArgs,
     PlanLog,
     describe_op,
     inverse,
-    legacy_hours,
 )
 from satisfactory_mcp.domain.planning.stored.recall import PLAN_DEFAULTS, overrides_of
 from tests.support.reference_world import FIVE_RIP_ARGS, FIXTURE_WORLD

@@ -6,12 +6,8 @@ import json
 
 import pytest
 
-from satisfactory_mcp.domain.planning.stored.planlog import (
-    InvalidOp,
-    Outdated,
-    describe_op,
-    inverse,
-)
+from satisfactory_mcp.domain.planning.stored.plan_args import InvalidOp
+from satisfactory_mcp.domain.planning.stored.planlog import Outdated, describe_op, inverse
 from tests.support.plan_log import CHAT, PAGE
 
 

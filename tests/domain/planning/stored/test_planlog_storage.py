@@ -12,12 +12,10 @@ from pathlib import Path
 import pytest
 
 from satisfactory_mcp import config
+from satisfactory_mcp.core import schema
 from satisfactory_mcp.domain.planning.stored import planlog
-from satisfactory_mcp.domain.planning.stored.planlog import (
-    InvalidOp,
-    NameTaken,
-    PlanLog,
-)
+from satisfactory_mcp.domain.planning.stored.plan_args import InvalidOp, is_power
+from satisfactory_mcp.domain.planning.stored.planlog import NameTaken, PlanLog
 from tests.support.plan_log import CHAT, PAGE
 
 
@@ -114,7 +112,7 @@ def test_no_legacy_file_means_nothing_to_migrate(plans):
 
 
 def test_the_migration_backs_up_the_legacy_file_and_stamps_its_version(monkeypatch):
-    monkeypatch.setattr(planlog.schema, "writer_version", lambda: "9.8.7")
+    monkeypatch.setattr(schema, "writer_version", lambda: "9.8.7")
     legacy = _legacy()
     before = legacy.read_bytes()
     plans = PlanLog("W")
@@ -128,7 +126,7 @@ def test_a_legacy_file_from_a_newer_schema_is_refused_and_nothing_is_written():
     legacy = _legacy()
     raw = json.loads(legacy.read_text(encoding="utf-8"))
     legacy.write_text(json.dumps({**raw, "schema": planlog.SCHEMA + 1}), encoding="utf-8")
-    with pytest.raises(planlog.schema.NewerSchema, match="newer version"):
+    with pytest.raises(schema.NewerSchema, match="newer version"):
         PlanLog("W")
     root = PlanLog.dir_for("W")
     assert not (root / "migrated.json").exists()
@@ -140,7 +138,7 @@ def test_a_log_migrated_by_a_newer_schema_is_refused():
     marker = PlanLog("W").root / "migrated.json"
     raw = json.loads(marker.read_text(encoding="utf-8"))
     marker.write_text(json.dumps({**raw, "schema": planlog.SCHEMA + 1}), encoding="utf-8")
-    with pytest.raises(planlog.schema.NewerSchema):
+    with pytest.raises(schema.NewerSchema):
         PlanLog("W")
 
 
@@ -162,8 +160,8 @@ def test_every_spelling_of_power_is_stored_as_mw():
     assert pushed.noop and plans.find("spire").args.exports == ["MW", "Plastic"]
     plans.push(spire.key, 1, [{"op": "remove", "field": "exports", "member": "power"}], actor=PAGE)
     assert plans.find("spire").args.exports == ["Plastic"]
-    assert all(planlog.is_power(x) for x in ("MW", "mw", " Power ", "__MW__"))
-    assert not planlog.is_power("Plastic")
+    assert all(is_power(x) for x in ("MW", "mw", " Power ", "__MW__"))
+    assert not is_power("Plastic")
 
 
 def test_an_older_log_that_stored_the_solver_spelling_replays_as_mw(plans):

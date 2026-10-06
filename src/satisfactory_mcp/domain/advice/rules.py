@@ -17,7 +17,8 @@ from ..factories import health
 from ..planning.progress.diff_service import diff_in_scope
 from ..planning.solver.prepare import prepare
 from ..planning.stored import manage
-from ..planning.stored.planlog import PlanLog, PlanLogError
+from ..planning.stored.plan_args import PlanLogError
+from ..planning.stored.planlog import PlanLog
 from ..spatial import nodes as nodes_mod
 from ..spatial import regions, surroundings
 from ..world.headlift import head_lift

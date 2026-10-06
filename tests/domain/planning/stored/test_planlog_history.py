@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import pytest
 
+from satisfactory_mcp.domain.planning.stored.plan_args import InvalidOp
 from satisfactory_mcp.domain.planning.stored.planlog import (
     Actor,
     AlreadyUndone,
     Forgotten,
-    InvalidOp,
     NameTaken,
     Outdated,
     describe_commit,

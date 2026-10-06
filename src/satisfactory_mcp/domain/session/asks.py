@@ -12,7 +12,8 @@ from pathlib import Path
 
 from ... import config
 from ...core import filelock, schema
-from ..planning.stored.planlog import PlanLog, PlanLogError
+from ..planning.stored.plan_args import PlanLogError
+from ..planning.stored.planlog import PlanLog
 
 __all__ = [
     "ABOUT_KINDS",

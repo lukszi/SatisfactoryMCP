@@ -12,12 +12,11 @@ import shutil
 import pytest
 
 from satisfactory_mcp.domain.planning.stored import planlog
+from satisfactory_mcp.domain.planning.stored.plan_args import OBJECTIVES, InvalidOp, PlanArgs
 from satisfactory_mcp.domain.planning.stored.planlog import (
     Actor,
     BaseRevRequired,
-    InvalidOp,
     NameTaken,
-    PlanArgs,
     UnknownPlan,
     describe_op,
     wording,
@@ -185,7 +184,7 @@ def _random_ops(rng: random.Random) -> list[dict]:
         return [{"op": "site", "value": rng.choice([None, site_value(rng.randrange(99))])}]
     if pick == 6:
         return [{"op": "set", "field": "notes", "value": f"n{rng.randrange(5)}"}]
-    return [{"op": "set", "field": "objective", "value": rng.choice(planlog.OBJECTIVES)}]
+    return [{"op": "set", "field": "objective", "value": rng.choice(OBJECTIVES)}]
 
 
 def test_replay_from_a_snapshot_equals_a_full_replay(plans, plan):

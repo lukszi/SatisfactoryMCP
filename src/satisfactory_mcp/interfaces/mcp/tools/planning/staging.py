@@ -10,7 +10,7 @@ from pydantic import Field
 from .....domain.planning.progress.commission_service import build_commission_report
 from .....domain.planning.progress.diff_service import build_diff_report
 from .....domain.planning.progress.stages import partition_id
-from .....domain.planning.stored.planlog import PlanLogError
+from .....domain.planning.stored.plan_args import PlanLogError
 from .....presenters.text.commission import render_commission
 from .....presenters.text.diff import render_diff
 from ... import app

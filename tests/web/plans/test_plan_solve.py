@@ -14,7 +14,8 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning.stored.planlog import KINDS, PlanLog
+from satisfactory_mcp.domain.planning.stored.plan_args import KINDS
+from satisfactory_mcp.domain.planning.stored.planlog import PlanLog
 from satisfactory_mcp.domain.session import journal
 from tests.support.plan_log import CHAT
 from tests.support.reference_world import FIVE_RIP_ARGS, FIXTURE_WORLD, RIP

@@ -12,7 +12,8 @@ from ....core.gamedata.model import GameData
 from ...world.state import WorldState
 from ..solver.scenario import build_scenario
 from . import provenance as prov
-from .planlog import Actor, Commit, InvalidOp, NameTaken, PlanLog, Pushed, Stamp
+from .plan_args import InvalidOp
+from .planlog import Actor, Commit, NameTaken, PlanLog, Pushed, Stamp
 
 __all__ = [
     "COPY_TRIES",

@@ -13,7 +13,8 @@ from ....core.gamedata.unlocks import granted_by
 from ...world.state import WorldState
 from ..readout import summary
 from ..stored import manage
-from ..stored.planlog import PlanArgs, PlanState
+from ..stored.plan_args import PlanArgs
+from ..stored.planlog import PlanState
 
 __all__ = ["STATUS_ORDER", "primary_makers", "replaced_required", "swap_deltas"]
 

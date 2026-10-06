@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from .....core.filelock import LockTimeout
 from .....domain.planning.readout import summary
+from .....domain.planning.stored.plan_args import PlanLogError
 from .....domain.planning.stored.planlog import (
     AlreadyUndone,
     BaseRevRequired,
@@ -14,7 +15,6 @@ from .....domain.planning.stored.planlog import (
     Forgotten,
     Outdated,
     PlanLog,
-    PlanLogError,
     Pushed,
     describe_commit,
     describe_op,

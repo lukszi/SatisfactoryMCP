@@ -14,7 +14,8 @@ from pathlib import Path
 from ... import config
 from ...core import filelock, schema
 from ...core.saveio.records import instance_leaf
-from ..planning.stored.planlog import PlanLog, PlanLogError
+from ..planning.stored.plan_args import PlanLogError
+from ..planning.stored.planlog import PlanLog
 from ..spatial import geo
 from ..spatial import nodes as nodes_mod
 

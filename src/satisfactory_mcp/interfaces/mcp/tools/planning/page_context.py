@@ -15,7 +15,8 @@ from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain import advice
 from .....domain.advice import store as advice_store
-from .....domain.planning.stored.planlog import Actor, Commit, PlanLog, PlanLogError
+from .....domain.planning.stored.plan_args import PlanLogError
+from .....domain.planning.stored.planlog import Actor, Commit, PlanLog
 from .....domain.session import asks, focus, journal, pins
 from .....presenters.text import advice as advice_text
 from .....presenters.text import primitives as render

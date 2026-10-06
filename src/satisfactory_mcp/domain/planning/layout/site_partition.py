@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from ....core.gamedata.model import GameData
 from ..readout.slice import PlanSlice, slice_of
 from ..solver.carrier import carrier_for
-from ..stored.planlog import is_power
+from ..stored.plan_args import is_power
 
 __all__ = ["Interface", "Site", "SitePlan", "claim_processes", "partition"]
 

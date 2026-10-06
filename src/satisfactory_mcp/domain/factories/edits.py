@@ -10,7 +10,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ...core.filelock import LockTimeout
-from ..planning.stored.planlog import Actor, PlanLog, PlanLogError
+from ..planning.stored.plan_args import PlanLogError
+from ..planning.stored.planlog import Actor, PlanLog
 from .labels import Label, LabelStore, UnknownLabel
 
 __all__ = [

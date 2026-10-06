@@ -16,7 +16,7 @@ from .....core.gamedata.search import resolve_item
 from .....domain.planning.analysis import swaps
 from .....domain.planning.readout import summary
 from .....domain.planning.stored import manage
-from .....domain.planning.stored.planlog import InvalidOp, PlanArgs
+from .....domain.planning.stored.plan_args import InvalidOp, PlanArgs
 from ...serial import (
     PlanOpBody,
     check_plan_key,
