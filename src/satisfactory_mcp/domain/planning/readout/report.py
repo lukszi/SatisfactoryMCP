@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ....core.gamedata.constants import WATER_EXTRACTOR_WARN_AT
+from ....core.gamedata.constants import WATER_EXTRACTOR_KEY, WATER_EXTRACTOR_WARN_AT, WATER_PUMP
 from ....core.gamedata.model import GameData
 from ....core.gamedata.search import resolve_item
 from ...world.state import WorldState
-from ..solver.model import MW
+from ..solver.model import MW, Solution
 from ..solver.prepare import PreparedPlan, prepare
 from ..solver.processes import build_processes
 from .slice import PlanSlice, slice_of
@@ -28,18 +28,16 @@ class PlanFactoryReport:
     #: ``None`` when the plan failed; every field below it is derived from a solution.
     bill: PlanSlice | None = None
     water_pumps: float = 0.0
-    #: ``water_volumes()`` whenever the plan pumps at all, carrying the pump footprint and
-    #: its packings only once the count is large enough for the concrete to matter.
+    #: ``water_volumes()`` whenever the plan pumps at all, with the pump footprint and its
+    #: packings only once the count is large enough for the concrete to matter.
     water: dict | None = None
-    #: The extractor ceiling this solve ran under, and where it came from. ``given`` means
-    #: the caller measured it; otherwise it is ``WATER_EXTRACTOR_CAP_ASSUMED``.
+    #: The extractor ceiling this solve ran under; ``given`` when the caller measured it,
+    #: otherwise ``WATER_EXTRACTOR_CAP_ASSUMED``.
     water_cap: int = 0
     water_cap_given: bool = False
-    #: Whether that ceiling is HOLDING THE ANSWER DOWN -- the solve took every extractor it
-    #: was allowed, so the plan is shaped by an assumption rather than by the world.
+    #: The solve took every extractor allowed: the plan is shaped by an assumption.
     water_binding: bool = False
-    #: What the terrain measures at the site, when the plan was told where it stands and
-    #: this machine has a field. Evidence for the assumption above; never a substitute.
+    #: What the terrain measures at the site: evidence for the assumption, never a substitute.
     site_water: object | None = None
     shard_budget: dict | None = None
     sloop_budget: dict | None = None
@@ -49,15 +47,106 @@ class PlanFactoryReport:
     sloops_asked: int = 0
     flows: list = field(default_factory=list)
     #: Item ids from ``logistics_items`` that resolved AND appear in the flows.
-    pins: list[str] = field(default_factory=list)
-    pin_errors: list[str] = field(default_factory=list)
+    logistics_item_ids: list[str] = field(default_factory=list)
+    logistics_item_errors: list[str] = field(default_factory=list)
     #: Building classes this plan uses and this world has never built.
     needed_buildings: set[str] = field(default_factory=set)
     #: Processes above 100%, production machines first and extractors last.
     overclocked: list = field(default_factory=list)
-    #: Named exports the solution exports at zero, with what the LP can say about why. An
-    #: export is a whitelist and not a demand, so zero is a legal optimum, not a fault.
+    #: Named exports leaving at zero, with what the LP can say about why; zero is a legal
+    #: optimum, since an export is a whitelist and not a demand.
     zero_exports: list[dict] = field(default_factory=list)
+
+
+def _water_facts(report: PlanFactoryReport, g: GameData, st: WorldState, plan_kwargs: dict) -> None:
+    """Pump count, its assumed cap and whether it binds, and what the site measures.
+
+    Water has no nodes, so the count is bounded by an assumption (docs/planning.md §8.2c).
+    """
+    prepared = report.prepared
+    report.water_pumps = sum(
+        p["machines"] for p in prepared.solution.processes if p.get("building_id") == WATER_PUMP
+    )
+    report.water_cap = int(prepared.request.scenario.extractor_nodes.get(WATER_EXTRACTOR_KEY, 0))
+    report.water_cap_given = plan_kwargs.get("water_extractors") is not None
+    # Whole machines, so equality is the test.
+    report.water_binding = bool(report.water_cap) and report.water_pumps >= report.water_cap - 1e-6
+    if report.water_pumps <= 0:
+        return
+    pump = g.buildings.get(WATER_PUMP)
+    size = pump.footprint if pump else None
+    heavy = report.water_pumps >= WATER_EXTRACTOR_WARN_AT and not report.water_cap_given
+    # Packed, never n x footprint, which ignores shared edges (docs/planning.md §8.5g).
+    block = size.pack(report.water_pumps) if size and heavy else None
+    pier = size.pack(report.water_pumps, columns=1) if size and heavy else None
+    report.water = {
+        **st.water_volumes(),
+        "size": size if heavy else None,
+        "block": block,
+        "pier": pier,
+    }
+    site = prepared.request.site
+    if site is not None:
+        report.site_water = st.site_water(
+            site.x_m, site.y_m, width_m=site.width_m, depth_m=site.depth_m
+        )
+
+
+def _overclocked(sol: Solution) -> list[dict]:
+    """Rows above 100% that are not overclock-last, production machines first."""
+    pushed = [p for p in sol.processes if p["clock"] > 1.01 and "last_clock" not in p]
+    return [p for p in pushed if p["kind"] != "extractor"] + [
+        p for p in pushed if p["kind"] == "extractor"
+    ]
+
+
+def _zero_exports(g: GameData, prepared: PreparedPlan) -> list[dict]:
+    """Named exports at zero: eaten or sunk, not makeable in scope, or simply unrewarded."""
+    sol = prepared.solution
+    scenario = prepared.request.scenario
+    zero_named = [
+        item for item in scenario.exports if item != MW and sol.exports.get(item, 0.0) <= 1e-6
+    ]
+    if not zero_named:
+        return []
+    produced: dict[str, float] = {}
+    for p in sol.processes:
+        for item, rate in p["rates"].items():
+            if rate > 0:
+                produced[item] = produced.get(item, 0.0) + rate
+    can_make = {
+        item for proc in build_processes(scenario) for item, rate in proc.rates.items() if rate > 0
+    }
+    return [
+        {
+            "item": item,
+            "name": g.item_name(item),
+            "produced": produced.get(item, 0.0),
+            "sunk": sol.sunk.get(item, 0.0),
+            "makeable": item in can_make,
+        }
+        for item in zero_named
+    ]
+
+
+def _logistics_item_ids(
+    g: GameData, flows: list[dict], logistics_items: list[str] | None
+) -> tuple[list[str], list[str]]:
+    """The named items that move in this plan, and why each other name was dropped.
+
+    The presenter shows these above its own limit, since flows rank by volume.
+    """
+    item_ids: list[str] = []
+    errors: list[str] = []
+    for name in logistics_items or []:
+        item_id = resolve_item(g, name)
+        if item_id is None:
+            errors.append(f"logistics_items: no item matches {name!r}")
+        elif not any(e["item"] == item_id for e in flows):
+            errors.append(f"logistics: nothing moves {g.item_name(item_id)} in this plan")
+        else:
+            item_ids.append(item_id)
+    return item_ids, errors
 
 
 def build_plan_report(
@@ -87,111 +176,28 @@ def build_plan_report(
     if prepared.failure:
         return report
     sol = prepared.solution
+    _water_facts(report, g, st, plan_kwargs)
 
-    # Water has no nodes, no purity and no geometry in any data this project can read, so
-    # the extractor count is bounded by an ASSUMPTION rather than by the map. Pumps stand on
-    # platforms built out over open water, so area and concrete are the costs, not frontage.
-    report.water_pumps = sum(
-        p["machines"] for p in sol.processes if p.get("building_id") == "Build_WaterPump_C"
-    )
-    n_water = report.water_pumps
-    report.water_cap = int(
-        prepared.request.scenario.extractor_nodes.get(
-            ("Build_WaterPump_C", "Desc_Water_C", "normal"), 0
-        )
-    )
-    report.water_cap_given = plan_kwargs.get("water_extractors") is not None
-    # Whole machines, so equality is the test: the LP hands back a fractional count only
-    # when something else binds first.
-    report.water_binding = bool(report.water_cap) and n_water >= report.water_cap - 1e-6
-    if n_water > 0:
-        pump = g.buildings.get("Build_WaterPump_C")
-        size = pump.footprint if pump else None
-        heavy = n_water >= WATER_EXTRACTOR_WARN_AT and not report.water_cap_given
-        # Packed, not n x footprint: that product ignores shared edges and overstates the
-        # concrete by about a third.
-        block = size.pack(n_water) if size and heavy else None
-        pier = size.pack(n_water, columns=1) if size and heavy else None
-        report.water = {
-            **st.water_volumes(),
-            "size": size if heavy else None,
-            "block": block,
-            "pier": pier,
-        }
-        site = prepared.request.site
-        if site is not None:
-            report.site_water = st.site_water(
-                site.x_m, site.y_m, width_m=site.width_m, depth_m=site.depth_m
-            )
-
-    # A shard raises the MAXIMUM clock by 0.5, so a machine at 150% needs one and only a
-    # machine at 250% needs three.
     report.bill = bill = slice_of(prepared, g)
     if bill.shard_rows:
         report.shard_budget = st.shard_budget()
     report.sloops_asked = int(plan_kwargs.get("sloops") or 0)
-    # A sloop budget is only spendable once Production Amplifier is researched. Reported
-    # rather than refused, because planning ahead of the research is legitimate.
+    # Reported rather than refused: planning ahead of the research is legitimate.
     if report.sloops_asked:
         report.sloop_gate = st.research_gate("production_boost")
     if bill.sloop_used_rows:
         report.sloop_budget = st.sloop_budget()
 
-    # A POWER-BLIND objective drives clocks up and hides the cost: phase 2 pins the goal and
-    # minimises MACHINE COUNT, so it picks the highest clocks, and power goes as clock**1.32.
-    pushed = [p for p in sol.processes if p["clock"] > 1.01 and "last_clock" not in p]
-    report.overclocked = [p for p in pushed if p["kind"] != "extractor"] + [
-        p for p in pushed if p["kind"] == "extractor"
-    ]
-
+    # A power-blind objective pushes clocks up and hides the cost (docs/planning.md §8.2i).
+    report.overclocked = _overclocked(sol)
     report.needed_buildings = {
         p["building_id"]
         for p in sol.processes
         if p["building_id"] and st.built(p["building_id"]) == 0
     }
-
-    # Three causes the LP can distinguish for a named export coming out at zero: everything
-    # made was eaten as an intermediate (or sunk), nothing in scope CAN make it, or nothing
-    # rewarded making it -- only the objective and export_minimums give an export value.
-    zero_named = [
-        item
-        for item in prepared.request.scenario.exports
-        if item != MW and sol.exports.get(item, 0.0) <= 1e-6
-    ]
-    if zero_named:
-        produced: dict[str, float] = {}
-        for p in sol.processes:
-            for item, rate in p["rates"].items():
-                if rate > 0:
-                    produced[item] = produced.get(item, 0.0) + rate
-        can_make = {
-            item
-            for proc in build_processes(prepared.request.scenario)
-            for item, rate in proc.rates.items()
-            if rate > 0
-        }
-        report.zero_exports = [
-            {
-                "item": item,
-                "name": g.item_name(item),
-                "produced": produced.get(item, 0.0),
-                "sunk": sol.sunk.get(item, 0.0),
-                "makeable": item in can_make,
-            }
-            for item in zero_named
-        ]
-
-    # Rows rank by volume, so a two-item question lives in the tail; the presenter pins
-    # these ids above its own limit.
+    report.zero_exports = _zero_exports(g, prepared)
     report.flows = [e for e in sol.logistics if e["rate"] > 0]
-    for name in logistics_items or []:
-        item_id = resolve_item(g, name)
-        if item_id is None:
-            report.pin_errors.append(f"logistics_items: no item matches {name!r}")
-        elif not any(e["item"] == item_id for e in report.flows):
-            report.pin_errors.append(
-                f"logistics: nothing moves {g.item_name(item_id)} in this plan"
-            )
-        else:
-            report.pins.append(item_id)
+    report.logistics_item_ids, report.logistics_item_errors = _logistics_item_ids(
+        g, report.flows, logistics_items
+    )
     return report

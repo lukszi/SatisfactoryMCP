@@ -1,28 +1,7 @@
-"""What a subset of a solved plan costs and produces.
+"""What a subset of a solved plan costs and produces: power, flows, shards and sloops.
 
-Every plan-level question that is not "solve it" turns out to be this: take some of the
-processes, and total up their power, their item flows, and the Power Shards and
-Somersloops they need. The shard bill is one call. Commissioning is this in a loop.
-
-Two power figures, and the difference is not rounding
-----------------------------------------------------
-``mw_linear`` is what the LP optimised: power proportional to machine-equivalents.
-``mw`` is the exact figure after whole machines are placed at a derived clock. Because
-``clock**exponent`` is convex, running N whole machines below 100% draws LESS than the
-linear estimate -- on a measured Spire Coast plan, 43,101 MW exact against 43,092
-promised, 9.4 MW to the good.
-
-So the identity that holds is::
-
-    solution.net_mw == sum(mw_linear) - sink_mw          # exactly
-
-and ``net_mw`` here (exact) is always at least as good. Headroom checks should use the
-exact figure: it is the power the machines actually draw, and erring the other way would
-reject a slice that fits.
-
-``sink_mw`` belongs to the PLAN, not to any process -- an AWESOME Sink is charged per
-belt line of sunk material and no column owns it. A subset therefore cannot attribute it,
-and a partial slice reports 0 rather than a share invented by proration.
+Power is the exact figure for whole machines at their derived clocks, never the LP's linear
+one, and the sink's draw belongs to the whole plan only (docs/planning.md §8.2e).
 """
 
 from __future__ import annotations
@@ -81,9 +60,7 @@ class PlanSlice:
     shard_rows: list[ShardRow] = field(default_factory=list)
     #: EMPTY boostable slots -- capacity the plan did not use.
     sloop_rows: list[SloopRow] = field(default_factory=list)
-    #: Slots the plan actually fills. Distinct from `sloop_rows` because one is a
-    #: suggestion and the other is a bill: conflating them would report 856 somersloops
-    #: needed for a plan that spends none.
+    #: Slots the plan actually fills: a bill, kept apart from the suggestion above (§8.2f).
     sloop_used_rows: list[SloopRow] = field(default_factory=list)
     #: Slots on buildings this model cannot production-boost (generators, extractors).
     #: Counted separately so they are never advertised as a doubling.
@@ -105,13 +82,8 @@ class PlanSlice:
 
     @property
     def sloops_used(self) -> int:
-        """Somersloops this plan spends, counted against WHOLE machines.
-
-        The LP spends them against machine-equivalents and the readout rounds those up,
-        so this can exceed the budget the solver was given -- the same overshoot that
-        turned a 54-extractor cap into 64 machines. The caller checks it against the
-        budget rather than being told a number that is quietly too small.
-        """
+        """Somersloops this plan spends, counted against WHOLE machines, so it can exceed
+        the budget the LP solved under; the caller checks (docs/planning.md §8.2f)."""
         return sum(r.total for r in self.sloop_used_rows)
 
     def outputs(self, tol: float = 1e-6) -> list[tuple[str, float]]:
@@ -167,10 +139,7 @@ def slice_of(
         if building is not None and building.sloop_slots:
             boost = building.boost_for(building.sloop_slots)
             if row["sloops"]:
-                # Spent, so it is a bill line and never a suggestion. The boost is the
-                # one this row actually runs at, not the building's maximum: a Refinery
-                # with 1 of its 2 slots filled makes 1.5x, and quoting the 2x it could
-                # reach would overstate the plan's own output.
+                # A bill line, at the boost this row runs at rather than the building's top.
                 out.sloop_used_rows.append(
                     SloopRow(
                         row["label"],
@@ -184,10 +153,7 @@ def slice_of(
                     SloopRow(row["label"], row["machines"], building.sloop_slots, boost)
                 )
             elif not building.can_boost:
-                # Generators and extractors carry slots with can_boost False, so
-                # boost_for returns 1.0. Whatever a somersloop does in a Fuel Generator,
-                # this model does not represent it -- counting those slots as capacity
-                # would promise an output gain the solver cannot deliver.
+                # Generator and extractor slots are never capacity (docs/planning.md §8.2e).
                 out.unboostable_slots += building.sloop_slots * row["machines"]
 
     if keep is None:

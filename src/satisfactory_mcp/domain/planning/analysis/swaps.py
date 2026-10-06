@@ -15,49 +15,52 @@ from ..readout import summary
 from ..stored import manage
 from ..stored.planlog import PlanArgs, PlanState
 
-__all__ = ["STATUS_ORDER", "makers", "replaced_required", "swap_deltas"]
+__all__ = ["STATUS_ORDER", "primary_makers", "replaced_required", "swap_deltas"]
 
 STATUS_ORDER = ("in use", "required", "available", "banned", "locked")
 
 
-def makers(g: GameData, item: str) -> list[Recipe]:
-    """Recipes whose first product is ``item``; every maker when none has it first."""
+def primary_makers(g: GameData, item: str) -> list[Recipe]:
+    """Recipes whose main product is ``item``; every maker when none has it first."""
     every = search.makers_of(g, item)
-    first = [r for r in every if r.products and r.products[0].item == item]
+    first = [r for r in every if r.main_product == item]
     return first or every
 
 
-def _literal(g: GameData, member: str, recipe: Recipe) -> bool:
+def _names_recipe(member: str, recipe: Recipe) -> bool:
+    """Whether a required or banned entry names ``recipe`` itself, by id or exact name."""
     return member == recipe.cls or member.strip().casefold() == recipe.name.casefold()
 
 
 def _banned_by(
     g: GameData, banned: list[str], recipe: Recipe, pool: list[str]
 ) -> tuple[str | None, bool]:
+    """The ban entry that removes ``recipe``, and whether it is a pattern rather than its name."""
     scope = pool if recipe.cls in pool else [*pool, recipe.cls]
     literal = None
     for member in banned:
         if recipe.cls not in match_recipes(g, member, scope):
             continue
-        if not _literal(g, member, recipe):
+        if not _names_recipe(member, recipe):
             return member, True
         literal = literal or member
     return literal, False
 
 
-def _first(g: GameData, rid: str) -> str | None:
+def _main_product(g: GameData, rid: str) -> str | None:
     recipe = g.recipes.get(rid)
-    return recipe.products[0].item if recipe is not None and recipe.products else None
+    return recipe.main_product if recipe is not None else None
 
 
 def _op(kind: str, field: str, member: str) -> dict:
     return {"op": kind, "field": field, "member": member}
 
 
-def _ops(g: GameData, args: PlanArgs, recipe: Recipe, item: str) -> tuple[list, list, list]:
-    required = [m for m in args.required if _literal(g, m, recipe)]
-    literal_bans = [m for m in args.banned if _literal(g, m, recipe)]
-    others = [m for m in args.required if m not in required and _first(g, m) == item]
+def _swap_ops(g: GameData, args: PlanArgs, recipe: Recipe, item: str) -> tuple[list, list, list]:
+    """The require, ban and free ops for ``recipe`` against the plan's arguments."""
+    required = [m for m in args.required if _names_recipe(m, recipe)]
+    literal_bans = [m for m in args.banned if _names_recipe(m, recipe)]
+    others = [m for m in args.required if m not in required and _main_product(g, m) == item]
     require = [_op("add", "required", recipe.cls)]
     require += [_op("remove", "required", m) for m in others]
     require += [_op("remove", "banned", m) for m in literal_bans]
@@ -75,14 +78,14 @@ def replaced_required(g: GameData, head: PlanState, item: str, ops: list[dict]) 
         for op in ops
         if op.get("op") == "add"
         and op.get("field") == "required"
-        and _first(g, str(op.get("member"))) == item
+        and _main_product(g, str(op.get("member"))) == item
     }
     if not added:
         return []
     return [
         _op("remove", "required", m)
         for m in head.args.required
-        if m not in added and _first(g, m) == item
+        if m not in added and _main_product(g, m) == item
     ]
 
 
@@ -122,23 +125,23 @@ def _counts(options: list[dict], hidden: int) -> str:
 
 
 def swap_deltas(
-    g: GameData, st: WorldState, state: PlanState, item_id: str, spoilers: bool = True
+    g: GameData, st: WorldState, stored: PlanState, item_id: str, spoilers: bool = True
 ) -> dict:
-    """Every recipe making ``item_id`` with what requiring it would change in ``state``."""
-    head = summary.solve_summary(g, st, state.kwargs())
+    """Every recipe making ``item_id`` with what requiring it would change in ``stored``."""
+    head = summary.solve_summary(g, st, stored.kwargs())
     in_use = {r.get("recipe_id") for r in head.get("rows") or ()}
     have = st.available_recipe_ids
-    args = state.args
+    args = stored.args
     pool = [r.cls for r in st.unlocked_recipes("part")]
     options, hidden = [], 0
-    for recipe in makers(g, item_id):
+    for recipe in primary_makers(g, item_id):
         unlocked = recipe.cls in have
         if not unlocked and not spoilers:
             hidden += 1
             continue
-        required = any(_literal(g, m, recipe) for m in args.required)
+        required = any(_names_recipe(m, recipe) for m in args.required)
         banned_by, by_pattern = _banned_by(g, list(args.banned), recipe, pool)
-        require, ban, free = _ops(g, args, recipe, item_id)
+        require, ban, free = _swap_ops(g, args, recipe, item_id)
         solved = unlocked and not by_pattern
         delta = None
         if solved:
@@ -170,8 +173,8 @@ def swap_deltas(
     name = g.item_name(item_id)
     feasible = bool(head.get("feasible"))
     return {
-        "key": state.key,
-        "rev": state.rev,
+        "key": stored.key,
+        "rev": stored.rev,
         "item": item_id,
         "name": name,
         "head_feasible": feasible,
@@ -180,6 +183,6 @@ def swap_deltas(
         "head_mw_net": head.get("mw_net"),
         "options": options,
         "hidden": hidden,
-        "text": f"recipes for {name} in “{state.name}” v{state.rev}: "
+        "text": f"recipes for {name} in “{stored.name}” v{stored.rev}: "
         f"{len(options)}{_counts(options, hidden)}",
     }

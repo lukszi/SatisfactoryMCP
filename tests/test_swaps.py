@@ -125,17 +125,22 @@ def test_options_are_ordered_by_status_never_by_delta(state, game, plans):
 def test_makers_are_first_product_recipes_else_every_maker(game):
     from satisfactory_mcp.core.gamedata import search
 
-    assert {r.cls for r in swaps.makers(game, ITEM)} == {STANDARD, BOLTED, STITCHED, ADHERED}
+    assert {r.cls for r in swaps.primary_makers(game, ITEM)} == {
+        STANDARD,
+        BOLTED,
+        STITCHED,
+        ADHERED,
+    }
     byproduct = next(
         item
         for item in sorted(game.items)
         if (found := search.makers_of(game, item))
         and all(r.products[0].item != item for r in found)
     )
-    assert swaps.makers(game, byproduct) == search.makers_of(game, byproduct)
+    assert swaps.primary_makers(game, byproduct) == search.makers_of(game, byproduct)
     mixed = next(
         item
         for item in sorted(game.items)
         if len({r.products[0].item == item for r in search.makers_of(game, item)}) == 2
     )
-    assert all(r.products[0].item == mixed for r in swaps.makers(game, mixed))
+    assert all(r.products[0].item == mixed for r in swaps.primary_makers(game, mixed))
