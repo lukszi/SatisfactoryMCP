@@ -10,7 +10,6 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-import os
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
@@ -21,9 +20,8 @@ from ....core.schema import NewerSchema
 from ....domain import advice
 from ....domain.advice import store as hidden_store
 from ....domain.planning import journal
-from ....domain.planning.planlog import Actor
 from ....domain.world import pin
-from ..serial import busy_response, error_response, newer_schema_response, require_world
+from ..serial import busy_response, error_response, newer_schema_response, page_actor, require_world
 
 __all__ = ["router"]
 
@@ -104,7 +102,7 @@ class AdviceStaleResponse(TypedDict):
     row: AdviceRow | None
 
 
-def _row(adv, state: str, back: bool, rev: int, entry: dict | None) -> AdviceRow:
+def _advice_row(adv, state: str, back: bool, rev: int, entry: dict | None) -> AdviceRow:
     by = (entry or {}).get("by") or {}
     return {
         "id": adv.id,
@@ -133,17 +131,17 @@ def _row(adv, state: str, back: bool, rev: int, entry: dict | None) -> AdviceRow
     }
 
 
-def _rows(cur: advice.Current) -> tuple[list[AdviceRow], list[AdviceRow]]:
-    active = [_row(a, "active", back, rev, None) for a, back, rev in cur.active]
+def _advice_rows(cur: advice.Current) -> tuple[list[AdviceRow], list[AdviceRow]]:
+    active = [_advice_row(a, "active", back, rev, None) for a, back, rev in cur.active]
     hidden = [
-        _row(a, str(e.get("state") or "dismissed"), False, int(e.get("rev") or 0), e)
+        _advice_row(a, str(e.get("state") or "dismissed"), False, int(e.get("rev") or 0), e)
         for a, e in cur.hidden
     ]
     return active, hidden
 
 
-def _one(cur: advice.Current, key: str) -> AdviceRow | None:
-    active, hidden = _rows(cur)
+def _row_for_key(cur: advice.Current, key: str) -> AdviceRow | None:
+    active, hidden = _advice_rows(cur)
     return next((r for r in active + hidden if r["key"] == key), None)
 
 
@@ -156,7 +154,7 @@ def _refused(st, exc: Exception) -> JSONResponse:
     if isinstance(exc, LockTimeout):
         return busy_response("advisories", exc)
     if isinstance(exc, hidden_store.AdviceStale):
-        row = _one(advice.current(st), exc.key)
+        row = _row_for_key(advice.current(st), exc.key)
         return JSONResponse({"error": str(exc), "stale": True, "row": row}, status_code=409)
     if isinstance(exc, hidden_store.AdviceMissing):
         return error_response(str(exc), 404)
@@ -166,15 +164,11 @@ def _refused(st, exc: Exception) -> JSONResponse:
 _ERRORS = (hidden_store.AdviceError, LockTimeout, NewerSchema)
 
 
-def _page() -> Actor:
-    return Actor("page", "", os.getpid())
-
-
-def _subject(adv) -> str:
+def _quoted_subject(adv) -> str:
     return f"“{adv.subject}”" if adv.subject_kind in ("factory", "plan") else adv.subject
 
 
-def _hours(hours: float) -> str:
+def _play_time_text(hours: float) -> str:
     return f"{hours * 60:.0f} min" if hours < 1 else f"{hours:g} h"
 
 
@@ -194,7 +188,7 @@ def advice_list(
         cur = advice.current(st, biomass=wants, spoilers=bool(spoilers))
     except NewerSchema as exc:
         return newer_schema_response(exc, STORE_NAME)
-    active, hidden = _rows(cur)
+    active, hidden = _advice_rows(cur)
     return {
         "save_token": pin.remember(st.header),
         "play_s": cur.play_s,
@@ -229,7 +223,7 @@ def hide_advice(
             adv,
             mode,
             play_s=cur.play_s,
-            by=_page().to_dict(),
+            by=page_actor().to_dict(),
             hours=hours,
             rev=body.get("rev"),
             firing=[a.key for a in cur.items],
@@ -237,12 +231,12 @@ def hide_advice(
     except _ERRORS as exc:
         return _refused(st, exc)
     what = "dismissed" if mode == "dismiss" else "snoozed"
-    text = f"{what} {adv.id} {adv.kind.replace('_', ' ')} {_subject(adv)}"
+    text = f"{what} {adv.id} {adv.kind.replace('_', ' ')} {_quoted_subject(adv)}"
     if mode == "snooze":
-        text += f" for {_hours(float(hours))} of play"
+        text += f" for {_play_time_text(float(hours))} of play"
     args = {"id": adv.id, "key": adv.key, "mode": mode}
-    journal.append(st.world_id, "advice.hide", actor=_page(), args=args, text=text)
-    return _one(advice.current(st, spoilers=bool(spoilers)), adv.key)
+    journal.append(st.world_id, "advice.hide", actor=page_actor(), args=args, text=text)
+    return _row_for_key(advice.current(st, spoilers=bool(spoilers)), adv.key)
 
 
 @router.delete(
@@ -269,6 +263,6 @@ def restore_advice(
         return _refused(st, exc)
     args = {"id": adv.id, "key": adv.key}
     journal.append(
-        st.world_id, "advice.restore", actor=_page(), args=args, text=f"restored {adv.id}"
+        st.world_id, "advice.restore", actor=page_actor(), args=args, text=f"restored {adv.id}"
     )
     return {"ok": True, "id": adv.id}

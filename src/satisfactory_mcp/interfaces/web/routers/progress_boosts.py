@@ -91,7 +91,7 @@ def progress_shards(request: Request, save: str | None = None, world: str | None
 
     budget = st.shard_budget()
     per_shard = max(budget["shard_items"].values()) if budget["shard_items"] else 0.0
-    at = _overclock_positions(st)
+    positions = _overclock_positions(st)
     return {
         "measured": budget["measured"],
         "free": float(budget["free"]),
@@ -102,16 +102,16 @@ def progress_shards(request: Request, save: str | None = None, world: str | None
         "per_shard": float(per_shard),
         "max_clock": float(max_clock(per_shard)),
         "slots_per_building": int(budget["slots_per_building"]),
-        "idle": sum(int(h["idle"]) for h in budget["holders"]),
+        "idle": sum(int(holder["idle"]) for holder in budget["holders"]),
         "slugs": [
             {
-                "item": s["item"],
-                "name": s["name"],
-                "held": float(s["held"]),
-                "each": float(s["each"]),
-                "shards": float(s["shards"]),
+                "item": slug["item"],
+                "name": slug["name"],
+                "held": float(slug["held"]),
+                "each": float(slug["each"]),
+                "shards": float(slug["shards"]),
             }
-            for s in budget["slugs"]
+            for slug in budget["slugs"]
         ],
         "by_place": [
             {
@@ -122,15 +122,15 @@ def progress_shards(request: Request, save: str | None = None, world: str | None
         ],
         "holders": [
             {
-                "instance": h["instance"],
-                "name": st.game.building_name(h["cls"]),
-                "clock": float(h["clock"]),
-                "slotted": int(h["slotted"]),
-                "needed": int(h["needed"]),
-                "idle": int(h["idle"]),
-                **at.get(h["instance"], NO_POSITION),
+                "instance": holder["instance"],
+                "name": st.game.building_name(holder["cls"]),
+                "clock": float(holder["clock"]),
+                "slotted": int(holder["slotted"]),
+                "needed": int(holder["needed"]),
+                "idle": int(holder["idle"]),
+                **positions.get(holder["instance"], NO_POSITION),
             }
-            for h in budget["holders"]
+            for holder in budget["holders"]
         ],
     }
 
@@ -186,7 +186,7 @@ def progress_sloops(
     shut = st.research.tree_locked(CAPABILITY_SCHEMATICS["production_boost"])
     spoiler = gate is not None and shut
     hide = spoiler and spoilers is False
-    at = _overclock_positions(st)
+    positions = _overclock_positions(st)
     return {
         "measured": budget["committed_measured"],
         "free": float(budget["free"]),
@@ -203,13 +203,15 @@ def progress_sloops(
         else [],
         "holders": [
             {
-                "instance": h["instance"],
-                "name": h["name"],
-                "sloops": float(h["sloops"]),
-                "boost": None if h["boost"] is None else float(h["boost"]),
-                "boost_in_save": None if h["boost_in_save"] is None else float(h["boost_in_save"]),
-                **at.get(h["instance"], NO_POSITION),
+                "instance": holder["instance"],
+                "name": holder["name"],
+                "sloops": float(holder["sloops"]),
+                "boost": None if holder["boost"] is None else float(holder["boost"]),
+                "boost_in_save": None
+                if holder["boost_in_save"] is None
+                else float(holder["boost_in_save"]),
+                **positions.get(holder["instance"], NO_POSITION),
             }
-            for h in budget["holders"]
+            for holder in budget["holders"]
         ],
     }

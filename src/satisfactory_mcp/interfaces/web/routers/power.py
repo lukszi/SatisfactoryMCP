@@ -195,12 +195,12 @@ def power(request: Request, save: str | None = None, world: str | None = None) -
             named.get(str(actors[end])) if isinstance(end, int) and 0 <= end < len(actors) else None
             for end in pair
         ]
-        a = [cm_to_m(v) for v in wire.a]
-        b = [cm_to_m(v) for v in wire.b]
+        a_m = [cm_to_m(v) for v in wire.a]
+        b_m = [cm_to_m(v) for v in wire.b]
         wires.append(
             {
-                "a_m": a,
-                "b_m": b,
+                "a_m": a_m,
+                "b_m": b_m,
                 "from": ends[0],
                 "to": ends[1],
                 # Read off the same edge as ``from``/``to``, so the four fields cannot

@@ -9,7 +9,6 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-import os
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body
@@ -18,8 +17,14 @@ from fastapi.responses import JSONResponse
 from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
 from ....domain import settings as store
-from ....domain.planning.planlog import Actor
-from ..serial import ActorBody, busy_response, error_response, newer_schema_response, settings_json
+from ..serial import (
+    ActorBody,
+    busy_response,
+    error_response,
+    newer_schema_response,
+    page_actor,
+    settings_json,
+)
 
 __all__ = ["router"]
 
@@ -98,7 +103,7 @@ def change_settings(body: Annotated[SettingsPatchBody, Body()]) -> Any:
     try:
         view = store.write(
             dict(body["values"]),
-            Actor("page", "", os.getpid()),
+            page_actor(),
             version=body.get("version"),
             only_unset=bool(body.get("only_unset")),
         )

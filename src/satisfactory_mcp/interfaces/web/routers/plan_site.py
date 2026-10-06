@@ -25,9 +25,9 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
-_SESSIONS: OrderedDict[tuple, site_preview.Session] = OrderedDict()
+_PREVIEW_CACHE: OrderedDict[tuple, site_preview.Session] = OrderedDict()
 _LOCK = threading.Lock()
-SESSIONS = 8
+PREVIEW_CACHE_MAX = 8
 
 
 class SitePreviewNode(TypedDict):
@@ -153,19 +153,19 @@ class SitePreviewResponse(TypedDict):
     failure: str
 
 
-def _session(st, state, biomass: bool, headroom: str, token: str) -> site_preview.Session:
+def _preview_session(st, state, biomass: bool, headroom: str, token: str) -> site_preview.Session:
     key = (st.world_id, state.key, state.rev, token, biomass, headroom)
     with _LOCK:
-        hit = _SESSIONS.get(key)
+        hit = _PREVIEW_CACHE.get(key)
         if hit is not None:
-            _SESSIONS.move_to_end(key)
+            _PREVIEW_CACHE.move_to_end(key)
             return hit
-    sess = site_preview.open_session(st.game, st, state, biomass=biomass, default=headroom)
+    session = site_preview.open_session(st.game, st, state, biomass=biomass, default=headroom)
     with _LOCK:
-        _SESSIONS[key] = sess
-        while len(_SESSIONS) > SESSIONS:
-            _SESSIONS.popitem(last=False)
-    return sess
+        _PREVIEW_CACHE[key] = session
+        while len(_PREVIEW_CACHE) > PREVIEW_CACHE_MAX:
+            _PREVIEW_CACHE.popitem(last=False)
+    return session
 
 
 @router.get("/plan/site-preview", response_model=SitePreviewResponse)
@@ -191,8 +191,8 @@ def plan_site_preview(
     st = require_world(request, save, world)
     state = require_plan(plan_log(st), key, rev)
     token = pin.check(st.header, None)
-    sess = _session(st, state, biomass == "include", headroom, token)
-    base = siting.parse(state) or site_preview.start_siting(st.game, st, sess)
+    session = _preview_session(st, state, biomass == "include", headroom, token)
+    base = siting.parse(state) or site_preview.start_siting(st.game, st, session)
     w = base.width_m if w_m is None else w_m
     d = base.depth_m if d_m is None else d_m
     if not (w > 0 and d > 0):
@@ -212,7 +212,7 @@ def plan_site_preview(
     out = site_preview.preview(
         st.game,
         st,
-        sess,
+        session,
         sit,
         terrain=field,
         terrain_cap=0 if full else site_preview.DRAG_TEXELS,

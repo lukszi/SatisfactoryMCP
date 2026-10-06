@@ -39,7 +39,7 @@ def client(tmp_path, monkeypatch, projection, game):
         monkeypatch.setattr(config, name, lambda root=root: root)
     monkeypatch.setattr(journal, "_writer", "")
     monkeypatch.setattr(journal, "_seq", {})
-    monkeypatch.setattr(plan_site, "_SESSIONS", type(plan_site._SESSIONS)())
+    monkeypatch.setattr(plan_site, "_PREVIEW_CACHE", type(plan_site._PREVIEW_CACHE)())
     monkeypatch.setattr(terrain, "field", lambda: None)
 
     one = WorldState(projection=projection, game=game)

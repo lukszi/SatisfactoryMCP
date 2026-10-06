@@ -12,7 +12,6 @@ WARNING: the function name is the operation_id -- renaming it churns the committ
 
 from __future__ import annotations
 
-import os
 from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
@@ -32,7 +31,6 @@ from ....domain.factories.labels import (
 from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
 from ....domain.planning import journal
-from ....domain.planning.planlog import Actor
 from ....domain.spatial import geo
 from ....domain.world import pin
 from ..serial import (
@@ -43,6 +41,7 @@ from ..serial import (
     error_response,
     flow_json,
     machine_spots,
+    page_actor,
     point_m,
     regions_or_none,
     require_world,
@@ -321,7 +320,7 @@ def rename_label(
 ) -> Any:
     """Rename a label by its exact name; its machines stay and plans scoped to it follow."""
     st = require_world(request, save, world)
-    page = Actor("page", "", os.getpid())
+    page = page_actor()
     try:
         done = edits.rename(
             st.world_id, session_name(st), name, to, actor=page, exact=True, expect=version

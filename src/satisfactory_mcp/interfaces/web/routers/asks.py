@@ -11,7 +11,6 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-import os
 from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
@@ -21,8 +20,7 @@ from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
 from ....domain.planning import asks as ask_store
 from ....domain.planning import journal
-from ....domain.planning.planlog import Actor
-from ..serial import busy_response, error_response, newer_schema_response, require_world
+from ..serial import busy_response, error_response, newer_schema_response, page_actor, require_world
 
 __all__ = ["router"]
 
@@ -87,10 +85,6 @@ class AskStaleResponse(TypedDict):
     ask: AskRow
 
 
-def _page() -> Actor:
-    return Actor("page", "", os.getpid())
-
-
 STORE_NAME = "the asks"
 
 
@@ -111,12 +105,12 @@ def _refused(world_id: str, exc: Exception) -> JSONResponse:
 _ERRORS = (ask_store.AskError, LockTimeout, NewerSchema)
 
 
-def _note(world_id: str, kind: str, ask: dict, text: str) -> None:
+def _journal(world_id: str, kind: str, ask: dict, text: str) -> None:
     about = ask["about"]
     journal.append(
         world_id,
         kind,
-        actor=_page(),
+        actor=page_actor(),
         plan=about.get("plan"),
         rev=about.get("rev"),
         args={"n": ask["n"]},
@@ -149,7 +143,7 @@ def create_ask(
         ask = ask_store.create(st.world_id, body["text"], dict(body["about"]))
     except _ERRORS as exc:
         return _refused(st.world_id, exc)
-    _note(st.world_id, "ask.add", ask, f"queued {ask['id']} “{ask['text']}”")
+    _journal(st.world_id, "ask.add", ask, f"queued {ask['id']} “{ask['text']}”")
     return ask
 
 
@@ -171,5 +165,5 @@ def drop_ask(
         ask = ask_store.drop(st.world_id, n, body["rev"])
     except _ERRORS as exc:
         return _refused(st.world_id, exc)
-    _note(st.world_id, "ask.drop", ask, f"deleted ask:{n}")
+    _journal(st.world_id, "ask.drop", ask, f"deleted ask:{n}")
     return {"ok": True, "n": n}

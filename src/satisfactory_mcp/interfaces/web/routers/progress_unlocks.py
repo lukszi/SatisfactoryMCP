@@ -271,12 +271,12 @@ def progress_phase(
     """
     st = require_world(request, save, world)
 
-    req = st.phase_requirements()
+    requirements = st.phase_requirements()
     stock = st.stock()
-    target = phase_number(req["target_phase"])
+    target = phase_number(requirements["target_phase"])
     phases = []
     deliverable = None
-    for row in req["phases"]:
+    for row in requirements["phases"]:
         items = []
         for item, need in sorted(row["outstanding"].items(), key=lambda kv: -kv[1]):
             have = float(stock.get(item, 0.0))
@@ -289,7 +289,7 @@ def progress_phase(
                     "short": round(max(0.0, float(need) - have), 1),
                 }
             )
-        if row["phase"] and row["phase"] == req["target_phase"]:
+        if row["phase"] and row["phase"] == requirements["target_phase"]:
             deliverable = all(i["short"] <= 0 for i in items)
         phases.append(
             {
@@ -304,9 +304,9 @@ def progress_phase(
     if spoilers is False:
         phases = [p for p in phases if not p["spoiler"]]
     return {
-        "current_phase": req["current_phase"] or None,
-        "target_phase": req["target_phase"] or None,
-        "delivered": item_amounts(st.game, sorted(req["paid_off_target"].items())),
+        "current_phase": requirements["current_phase"] or None,
+        "target_phase": requirements["target_phase"] or None,
+        "delivered": item_amounts(st.game, sorted(requirements["paid_off_target"].items())),
         "deliverable": deliverable,
         "phases": phases,
     }

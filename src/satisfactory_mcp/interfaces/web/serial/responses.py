@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from ....core.schema import NewerSchema
-from ....domain.planning.planlog import InvalidOp, PlanLog, PlanState, UnknownPlan
+from ....domain.planning.planlog import Actor, InvalidOp, PlanLog, PlanState, UnknownPlan
 from ....domain.world.state import WorldState
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "choice_refusal",
     "error_response",
     "newer_schema_response",
+    "page_actor",
     "plan_log",
     "plan_not_found",
     "require_plan",
@@ -61,6 +63,11 @@ def require_world(request: Request, save: str | None, world: str | None) -> Worl
         return world_state(request, save, world)
     except Exception as exc:
         raise RequestRefused(f"could not read save: {exc}", 404) from exc
+
+
+def page_actor() -> Actor:
+    """Who a write from the page is stamped as: the page, through this server's process."""
+    return Actor("page", "", os.getpid())
 
 
 def choice_refusal(value: str | None, allowed: tuple[str, ...], name: str) -> str | None:

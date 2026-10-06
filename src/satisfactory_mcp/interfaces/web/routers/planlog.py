@@ -14,7 +14,6 @@ Wire rules: docs/web-wire.md.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
@@ -24,7 +23,6 @@ from ....core.filelock import LockTimeout
 from ....core.gamedata.model import GameData
 from ....domain.planning import journal, manage, pins, summary, swaps
 from ....domain.planning.planlog import (
-    Actor,
     AlreadyUndone,
     Commit,
     Forgotten,
@@ -46,6 +44,7 @@ from ..serial import (
     busy_response,
     check_plan_key,
     error_response,
+    page_actor,
     plan_log,
     plan_not_found,
     require_plan,
@@ -237,11 +236,8 @@ class VersionsResponse(TypedDict):
     versions: list[VersionRow]
 
 
-def _page() -> Actor:
-    return Actor("page", "", os.getpid())
-
-
-def _token(st, given: str | None) -> str:
+def _save_token(st, given: str | None) -> str:
+    """The save token a write is stamped with: the page's own, else the loaded save's."""
     if given:
         return given
     try:
@@ -250,12 +246,27 @@ def _token(st, given: str | None) -> str:
         return ""
 
 
-def _note(from_entry: str | None) -> str:
+def _chat_solve_note(from_entry: str | None) -> str:
     return f"applied chat solve {from_entry}" if from_entry else ""
 
 
-def _commit(commit: Commit) -> CommitBody:
+def _commit_body(commit: Commit) -> CommitBody:
     return {**commit.to_dict(), "actor": actor_json(commit.actor), "text": commit.text()}
+
+
+def _version_row(row: dict) -> VersionRow:
+    commit = row["commit"]
+    return {
+        "rev": commit.rev,
+        "ts": commit.ts,
+        "actor": actor_json(commit.actor),
+        "text": commit.text(),
+        "undoes": commit.undoes,
+        "undone_by": row["undone_by"],
+        "restores": row["restores"],
+        "merged_over": list(commit.merged_over),
+        "note": commit.note,
+    }
 
 
 def _state_body(log: PlanLog, state: PlanState, game: GameData) -> PlanStateBody:
@@ -278,7 +289,7 @@ def _pushed(log: PlanLog, pushed: Pushed, game: GameData) -> PushedResponse:
         "merged_over": list(pushed.merged_over),
         "applied": pushed.applied,
         "dropped": pushed.dropped,
-        "others": [_commit(c) for c in pushed.others],
+        "others": [_commit_body(c) for c in pushed.others],
         "text": pushed.text(pushed.state.name),
         "state": _state_body(log, pushed.state, game),
     }
@@ -290,7 +301,7 @@ def _outdated(log: PlanLog, exc: Outdated, game: GameData) -> JSONResponse:
         "outdated": True,
         "head": exc.head,
         "base_rev": exc.base_rev,
-        "since": [_commit(c) for c in exc.since],
+        "since": [_commit_body(c) for c in exc.since],
         "conflicts": [
             {**c.to_dict(), "theirs_actor": actor_json(c.theirs_actor)} for c in exc.conflicts
         ],
@@ -317,12 +328,13 @@ def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
 _ERRORS = (PlanLogError, LockTimeout)
 
 
-def _reject(st, key: str, sav: str, exc: Exception) -> None:
+def _journal_rejection(st, key: str, sav: str, exc: Exception) -> None:
+    """Journal a push refused as outdated, with the conflicts that refused it."""
     if isinstance(exc, Outdated):
         journal.append(
             st.world_id,
             "plan.rejected",
-            actor=_page(),
+            actor=page_actor(),
             sav=sav,
             plan=key,
             rev=exc.head,
@@ -371,11 +383,11 @@ def create_plan(
         pushed = log.create(
             body["name"],
             args,
-            actor=_page(),
-            sav=_token(st, None),
+            actor=page_actor(),
+            sav=_save_token(st, None),
             plan_id=stamped["plan_id"],
             provenance=stamped["provenance"],
-            note=_note(body.get("from_entry")),
+            note=_chat_solve_note(body.get("from_entry")),
         )
     except NameTaken as exc:
         return JSONResponse({"error": str(exc), "name_taken": True}, status_code=409)
@@ -412,7 +424,7 @@ def plan_ops(
         head = log.head_rev(key)
     except UnknownPlan as exc:
         raise plan_not_found(key) from exc
-    return {"key": key, "head": head, "commits": [_commit(c) for c in commits]}
+    return {"key": key, "head": head, "commits": [_commit_body(c) for c in commits]}
 
 
 @router.post(
@@ -429,7 +441,7 @@ def push_ops(
 ) -> Any:
     """One gesture as one commit, merged onto the head by rule M1 or refused whole."""
     st, log = _world_and_log(request, key, save, world)
-    sav = _token(st, body.get("sav"))
+    sav = _save_token(st, body.get("sav"))
     try:
         ops, _said = pins.canonical_ops(st, body["ops"])
     except pins.PinError as exc:
@@ -447,13 +459,13 @@ def push_ops(
             key,
             body["base_rev"],
             ops,
-            actor=_page(),
+            actor=page_actor(),
             sav=sav,
             stamp=summary.stamp_for(st.game, st),
             extend=extend,
         )
     except _ERRORS as exc:
-        _reject(st, key, sav, exc)
+        _journal_rejection(st, key, sav, exc)
         return _refused(log, exc, st.game)
     return _pushed(log, pushed, st.game)
 
@@ -472,7 +484,7 @@ def push_args(
 ) -> Any:
     """A whole request, diffed against ``base_rev`` and merged: how a chat solve is applied."""
     st, log = _world_and_log(request, key, save, world)
-    sav = _token(st, body.get("sav"))
+    sav = _save_token(st, body.get("sav"))
     try:
         args, _said = pins.canonical_args(st, body["args"])
     except pins.PinError as exc:
@@ -482,13 +494,13 @@ def push_args(
             key,
             body["base_rev"],
             args,
-            actor=_page(),
+            actor=page_actor(),
             sav=sav,
             stamp=summary.stamp_for(st.game, st),
-            note=_note(body.get("from_entry")),
+            note=_chat_solve_note(body.get("from_entry")),
         )
     except _ERRORS as exc:
-        _reject(st, key, sav, exc)
+        _journal_rejection(st, key, sav, exc)
         return _refused(log, exc, st.game)
     return _pushed(log, pushed, st.game)
 
@@ -507,18 +519,18 @@ def undo_rev(
 ) -> Any:
     """The inverse of commit ``rev`` as a new commit; redo is the undo of that undo."""
     st, log = _world_and_log(request, key, save, world)
-    sav = _token(st, body.get("sav"))
+    sav = _save_token(st, body.get("sav"))
     try:
         pushed = log.undo(
             key,
             body["base_rev"],
             body["rev"],
-            actor=_page(),
+            actor=page_actor(),
             sav=sav,
             stamp=summary.stamp_for(st.game, st),
         )
     except _ERRORS as exc:
-        _reject(st, key, sav, exc)
+        _journal_rejection(st, key, sav, exc)
         return _refused(log, exc, st.game)
     return _pushed(log, pushed, st.game)
 
@@ -537,20 +549,20 @@ def restore_rev(
 ) -> Any:
     """A new commit that makes the head equal ``rev`` again: never a rewind."""
     st, log = _world_and_log(request, key, save, world)
-    sav = _token(st, body.get("sav"))
+    sav = _save_token(st, body.get("sav"))
     try:
         pushed = log.restore_to(
             key,
             body["base_rev"],
             body["rev"],
-            actor=_page(),
+            actor=page_actor(),
             sav=sav,
             stamp=summary.stamp_for(st.game, st),
         )
     except NameTaken as exc:
         return JSONResponse({"error": str(exc), "name_taken": True}, status_code=409)
     except _ERRORS as exc:
-        _reject(st, key, sav, exc)
+        _journal_rejection(st, key, sav, exc)
         return _refused(log, exc, st.game)
     return _pushed(log, pushed, st.game)
 
@@ -581,10 +593,10 @@ def duplicate_plan(
         pushed = manage.duplicate(
             log,
             key,
-            actor=_page(),
+            actor=page_actor(),
             rev=rev,
             name=body.get("name"),
-            sav=_token(st, None),
+            sav=_save_token(st, None),
             stamp=summary.stamp_for(st.game, st),
         )
     except NameTaken as exc:
@@ -610,18 +622,5 @@ def plan_versions(
         "name": head.name,
         "head": head.rev,
         "forgotten": head.forgotten,
-        "versions": [
-            {
-                "rev": r["commit"].rev,
-                "ts": r["commit"].ts,
-                "actor": actor_json(r["commit"].actor),
-                "text": r["commit"].text(),
-                "undoes": r["commit"].undoes,
-                "undone_by": r["undone_by"],
-                "restores": r["restores"],
-                "merged_over": list(r["commit"].merged_over),
-                "note": r["commit"].note,
-            }
-            for r in rows
-        ],
+        "versions": [_version_row(row) for row in rows],
     }

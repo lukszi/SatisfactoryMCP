@@ -11,7 +11,6 @@ Wire rules: docs/web-wire.md.
 
 from __future__ import annotations
 
-import os
 from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
@@ -21,8 +20,7 @@ from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
 from ....domain.planning import journal
 from ....domain.planning import pins as pin_store
-from ....domain.planning.planlog import Actor
-from ..serial import busy_response, error_response, newer_schema_response, require_world
+from ..serial import busy_response, error_response, newer_schema_response, page_actor, require_world
 
 __all__ = ["router"]
 
@@ -99,10 +97,6 @@ class PinStaleResponse(TypedDict):
     pin: PinRow
 
 
-def _page() -> Actor:
-    return Actor("page", "", os.getpid())
-
-
 STORE_NAME = "the pins"
 
 
@@ -126,8 +120,8 @@ def _plan_of(pin: dict) -> str | None:
     return (pin.get("ref") or {}).get("plan") if pin["kind"] in ("plan", "process") else None
 
 
-def _note(st, kind: str, pin: dict, args: dict, text: str) -> None:
-    journal.append(st.world_id, kind, actor=_page(), plan=_plan_of(pin), args=args, text=text)
+def _journal(st, kind: str, pin: dict, args: dict, text: str) -> None:
+    journal.append(st.world_id, kind, actor=page_actor(), plan=_plan_of(pin), args=args, text=text)
 
 
 @router.get("/pins", response_model=PinsResponse)
@@ -165,7 +159,7 @@ def create_pin(
     if existing:
         return JSONResponse({**pin, "existing": True}, status_code=200)
     args = {"n": pin["n"], "kind": pin["kind"]}
-    _note(st, "pin.add", pin, args, f"pinned {pin['id']} {pin['text']}")
+    _journal(st, "pin.add", pin, args, f"pinned {pin['id']} {pin['text']}")
     return {**pin, "existing": False}
 
 
@@ -189,7 +183,7 @@ def rename_pin(
         return _refused(st, exc)
     shown = pin_store.row(st, stored)
     args = {"n": n, "label": shown["label"]}
-    _note(st, "pin.edit", stored, args, f"renamed pin:{n} “{shown['label']}”")
+    _journal(st, "pin.edit", stored, args, f"renamed pin:{n} “{shown['label']}”")
     return shown
 
 
@@ -211,5 +205,5 @@ def drop_pin(
         stored = pin_store.drop(st.world_id, n, body["rev"])
     except _ERRORS as exc:
         return _refused(st, exc)
-    _note(st, "pin.drop", stored, {"n": n}, f"deleted pin:{n}")
+    _journal(st, "pin.drop", stored, {"n": n}, f"deleted pin:{n}")
     return {"ok": True, "n": n}
