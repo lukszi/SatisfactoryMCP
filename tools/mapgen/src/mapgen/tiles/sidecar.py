@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.tiles.recipes import RECIPE, RECIPES
 from satisfactory_mcp.core.gameassets.provenance import read_str_path
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -21,8 +23,11 @@ RENDER_SIDECAR_NAME = "meta.json"
 #: Where a layer sidecar records the heightfield build it was drawn from.
 FIELD_PIN_PATH = ("sources", "heightfield", "game_version_pinned")
 
+#: Where the field's own sidecar records the build it was cut from.
+FIELD_BUILD_PATH = ("sources", "game", "game_version_pinned")
 
-def pinned_field_build(sidecar: dict) -> str | None:
+
+def pinned_field_build(sidecar: Mapping[str, object]) -> str | None:
     """The heightfield build an existing layer sidecar names, or None if it names none."""
     return read_str_path(sidecar.get("_meta"), FIELD_PIN_PATH)
 
@@ -30,16 +35,16 @@ def pinned_field_build(sidecar: dict) -> str | None:
 def build_render_sidecar(
     *,
     layer: str,
-    field_meta: dict,
-    tiles: dict,
-    render: dict,
-    extra: dict,
+    field_meta: JsonObject,
+    tiles: JsonObject,
+    render: JsonObject,
+    extra: JsonObject,
     recipe: int = RECIPE,
-    tiles_2x: dict | None = None,
-    provenance: dict | None = None,
-) -> dict:
+    tiles_2x: JsonObject | None = None,
+    provenance: JsonObject | None = None,
+) -> JsonObject:
     """The file the web API reads for this layer, shaped like ``map.json``, plus provenance."""
-    build = ((field_meta.get("sources") or {}).get("game") or {}).get("game_version_pinned")
+    build = read_str_path(field_meta, FIELD_BUILD_PATH)
     return {
         **BOUNDS_M,
         "_meta": {

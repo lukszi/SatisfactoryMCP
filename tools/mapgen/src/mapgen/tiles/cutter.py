@@ -21,7 +21,8 @@ from concurrent.futures import (
 )
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
-from typing import Self
+from types import ModuleType
+from typing import Self, TypeVar
 
 import numpy as np
 
@@ -46,6 +47,8 @@ __all__ = [
     "strip_spans",
 ]
 
+T = TypeVar("T")
+
 #: Encoders when ``--cut-workers`` is not given.
 CUT_WORKER_CAP = 24
 CUT_WORKERS = min(os.cpu_count() or 1, CUT_WORKER_CAP)
@@ -66,7 +69,9 @@ def strip_spans(source_px: int, side: int, width: int) -> list[tuple[int, int]]:
     return [(r0, min(r0 + rows, side)) for r0 in range(0, side, rows)]
 
 
-def resample_strip(image_mod, src: np.ndarray, out: np.ndarray, r0: int, r1: int) -> None:
+def resample_strip(
+    image_mod: ModuleType, src: np.ndarray, out: np.ndarray, r0: int, r1: int
+) -> None:
     """Rows ``[r0, r1)`` of ``src`` Lanczos'd to ``out``'s size, written into ``out``.
 
     The pixels a resize of the whole sheet gives: Pillow's taps for a row depend only on its
@@ -83,7 +88,7 @@ def resample_strip(image_mod, src: np.ndarray, out: np.ndarray, r0: int, r1: int
     out[r0:r1] = np.asarray(part)
 
 
-def _failure(future: Future) -> BaseException | None:
+def _failure(future: Future[T]) -> BaseException | None:
     return CancelledError() if future.cancelled() else future.exception()
 
 
@@ -94,10 +99,17 @@ class Block:
         self.shape = shape
         self.shm = SharedMemory(create=True, size=int(np.prod(shape)))
         self.array: np.ndarray | None = np.ndarray(shape, np.uint8, buffer=self.shm.buf)
-        self.ready: Future = Future()
+        self.ready: Future[Block] = Future()
         self.freed = False
         self._holds = 1
         self._lock = threading.Lock()
+
+    @property
+    def pixels(self) -> np.ndarray:
+        """The level's pixels, while the block is held."""
+        if self.array is None:
+            raise RuntimeError("a freed block was read")
+        return self.array
 
     def hold(self) -> None:
         with self._lock:
@@ -105,7 +117,7 @@ class Block:
                 raise RuntimeError("a freed block was held again")
             self._holds += 1
 
-    def release(self, _done: Future | None = None) -> None:
+    def release(self, _done: object = None) -> None:
         with self._lock:
             self._holds -= 1
             if self._holds:
@@ -176,13 +188,13 @@ class Tree:
     def __init__(self, out_dir: Path, dir_name: str, tile_px: int, text: str) -> None:
         self.out_dir, self.dir_name, self.tile_px, self.text = out_dir, dir_name, tile_px, text
         self.staging = stage_tree(out_dir, dir_name)
-        self.levels: dict[int, Future] = {}
+        self.levels: dict[int, Future[list[Future[int]]]] = {}
 
 
 class Cutter:
     """One encode pool and one resampling pool for every tree of a layer."""
 
-    def __init__(self, image_mod, workers: int, threads: int = LANCZOS_THREADS) -> None:
+    def __init__(self, image_mod: ModuleType, workers: int, threads: int = LANCZOS_THREADS) -> None:
         free = free_ram_bytes()
         if free is not None:
             workers = max(1, min(workers, (free - RAM_RESERVE) // WORKER_BYTES))
@@ -204,7 +216,7 @@ class Cutter:
         for block in self.blocks:
             block.free()
 
-    def _track(self, future: Future) -> Future:
+    def _track(self, future: Future[T]) -> Future[T]:
         self.inflight.add(future)
         future.add_done_callback(self.inflight.discard)
         return future
@@ -224,7 +236,7 @@ class Cutter:
     def publish(self, sheet: np.ndarray) -> Source:
         """A copy of ``sheet`` the encoders read; ``sheet`` is the caller's again on return."""
         block = self._block(sheet.shape)
-        np.copyto(block.array, sheet)
+        np.copyto(block.pixels, sheet)
         block.ready.set_result(block)
         return Source(self, block)
 
@@ -235,19 +247,19 @@ class Cutter:
         source.ready.add_done_callback(lambda ready: self._strips(ready, source, out))
         return out
 
-    def _strips(self, ready: Future, source: Block, out: Block) -> None:
+    def _strips(self, ready: Future[Block], source: Block, out: Block) -> None:
         if (failed := _failure(ready)) is not None:
             out.ready.set_exception(failed)
             source.release()
             return
         spans = strip_spans(source.shape[0], out.shape[0], source.shape[1])
-        left, failures = [len(spans)], []
+        left, failures = [len(spans)], list[BaseException]()
         lock = threading.Lock()
 
         def strip(r0: int, r1: int) -> None:
-            resample_strip(self.image_mod, source.array, out.array, r0, r1)
+            resample_strip(self.image_mod, source.pixels, out.pixels, r0, r1)
 
-        def done(future: Future) -> None:
+        def done(future: Future[None]) -> None:
             # Settled only once every strip has stopped writing: a failure settled early
             # would let the level be freed under the strips still running.
             with lock:
@@ -273,16 +285,16 @@ class Cutter:
             tree.levels[z] = self._encode(tree, z, source.level(tile_px << z))
         return tree
 
-    def _encode(self, tree: Tree, z: int, block: Block) -> Future:
+    def _encode(self, tree: Tree, z: int, block: Block) -> Future[list[Future[int]]]:
         """The level's row jobs, queued on the encoders once its pixels are ready."""
-        jobs: Future = Future()
+        jobs: Future[list[Future[int]]] = Future()
         block.hold()
 
-        def submit(ready: Future) -> None:
+        def submit(ready: Future[Block]) -> None:
             try:
                 if (failed := _failure(ready)) is not None:
                     raise failed
-                queued = []
+                queued: list[Future[int]] = []
                 for row in range(block.shape[0] // tree.tile_px):
                     block.hold()
                     job = (block.shm.name, block.shape[1], z, row, str(tree.staging), tree.tile_px)
@@ -300,7 +312,7 @@ class Cutter:
 
     def install(self, tree: Tree) -> dict:
         """Wait for every tile of ``tree``, then check it and rename it into place."""
-        levels = []
+        levels: list[dict] = []
         for z in sorted(tree.levels):
             written = sum(future.result() for future in tree.levels[z].result())
             levels.append(level_record(z, written, tree.text, tree.tile_px))

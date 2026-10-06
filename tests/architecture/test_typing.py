@@ -73,7 +73,7 @@ BUDGETS: dict[str, int] = {
     "tools/mapgen/src/mapgen/render": 2,
     "tools/mapgen/src/mapgen/terrain": 15,
     "tools/mapgen/src/mapgen/terrain/heightfield": 0,
-    "tools/mapgen/src/mapgen/tiles": 3,
+    "tools/mapgen/src/mapgen/tiles": 0,
 }
 
 #: The ruff rule that bans ``typing.Any``, and the per-file-ignore that exempts the tests.

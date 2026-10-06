@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from satisfactory_mcp.core.gameassets.pyramid import TILES_DIR_NAME
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = ["IN_USE", "MANIFEST", "OVERRIDE", "add_in_use_flag", "held_types", "in_use_refusal"]
 
@@ -31,7 +32,7 @@ def add_in_use_flag(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _manifest(local: Path) -> dict:
+def _manifest(local: Path) -> JsonObject:
     try:
         data = json.loads((local / MANIFEST).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -52,14 +53,14 @@ def held_types(local: Path, target: Path) -> list[str]:
     root = _real(target) if target.is_dir() else None
     if root is None or not isinstance(types, dict):
         return []
-    held = []
+    held: list[str] = []
     for ident, entry in types.items():
         rel = entry.get("dir") if isinstance(entry, dict) else None
         if not isinstance(rel, str) or not (local / rel / TILES_DIR_NAME).is_dir():
             continue
         where = _real(local / rel)
         if where is not None and where.is_relative_to(root):
-            held.append(str(ident))
+            held.append(ident)
     return held
 
 
