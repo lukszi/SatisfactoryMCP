@@ -412,7 +412,7 @@ blocked machine is a problem, because nothing is taking what it makes, so `todo`
 `health.ACTIONABLE`: `dead node`, `no recipe`, `blocked`, `starved` and `stalled`. The web
 dashboard counts the same tuple (docs/frontend_vision.md §8.6), and so does the map:
 `/api/machines` sends `actionable` per row (`state in health.ACTIONABLE`), and
-`frontend/src/placements.ts` keeps no list of its own.
+`frontend/src/map/drawn/placements.ts` keeps no list of its own.
 
 **How the map marks a machine.** The fill stays the kind's hue (machines blue, extractors
 ultramarine, generators mint); the outline carries the state:
@@ -446,7 +446,7 @@ and appends "need action" for every actionable state. The marker key lists both 
 
 The side panel and the dashboard use the same yellow for anything that names `blocked`: the
 state chips, the machine-row labels, the per-state table cell and its bar. The CSS twin of the
-declared colour is `--blocked` in the `:root` of style.css, and `states.ts` `tone()` picks the
+declared colour is `--blocked` in the `:root` of style.css, and `dash/machine-states.ts` `tone()` picks the
 class, so all three surfaces read one token. The other actionable states stay red. On the
 panel background (`#1f2228`) the yellow has a contrast ratio of about 11:1.
 

@@ -1,0 +1,251 @@
+/* The rules for dashkit.ts's primitives: buttons, level-2 tabs, table extras, states and chips. */
+
+.btn {
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-s);
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-hi);
+}
+
+.btn:disabled {
+  border-color: var(--line);
+  color: var(--dim);
+  cursor: default;
+}
+
+.btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-hi);
+}
+
+.btn-map {
+  color: var(--ink-soft);
+}
+
+.subtabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.subtabs-item {
+  padding: var(--sp-1) var(--sp-3);
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-m);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.subtabs-item:first-child {
+  border-left: 0;
+}
+
+.subtabs-item:hover {
+  color: var(--ink);
+}
+
+.subtabs-item.on {
+  background: var(--line);
+  color: var(--ink-hi);
+}
+
+.subtabs-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.dash-table th.right,
+.dash-table td.right {
+  text-align: right;
+}
+
+.dash-table th.center,
+.dash-table td.center {
+  text-align: center;
+}
+
+.dk-table td.dk-lead {
+  font-weight: 600;
+}
+
+.dk-table tr.bad > td.dk-lead {
+  color: var(--bad);
+}
+
+.dk-table tr.blocked > td.dk-lead {
+  color: var(--blocked);
+}
+
+.dk-table tr.ok > td.dk-lead {
+  color: var(--ok);
+}
+
+.dash-table th.dk-sort {
+  cursor: pointer;
+  user-select: none;
+}
+
+.dash-table th.dk-sort:hover {
+  color: var(--ink-hi);
+}
+
+.dash-table th.dk-sort:focus-visible,
+.dk-table tr.go:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.dash-table th .sort-arrow {
+  display: inline-block;
+  width: 1.2em;
+  text-align: center;
+}
+
+.dk-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.dk-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-2);
+  margin: var(--sp-1) 0 var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-m);
+}
+
+.dk-state .dk-what,
+.dk-state .dk-how {
+  overflow-wrap: anywhere;
+}
+
+.dk-state .dk-how {
+  flex-basis: 100%;
+  font-size: var(--fs-s);
+}
+
+.dk-error {
+  color: var(--bad);
+}
+
+.chip {
+  display: inline-block;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  font-size: var(--fs-s);
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.chip-ok {
+  border-color: color-mix(in srgb, var(--ok) 60%, transparent);
+  color: var(--ok);
+}
+
+.chip-bad {
+  border-color: color-mix(in srgb, var(--bad) 60%, transparent);
+  color: var(--bad);
+}
+
+.chip-blocked {
+  border-color: color-mix(in srgb, var(--blocked) 60%, transparent);
+  color: var(--blocked);
+}
+
+.chip-remove {
+  border-color: color-mix(in srgb, var(--remove) 60%, transparent);
+  color: var(--remove);
+}
+
+.chip-mid {
+  color: var(--mid);
+}
+
+.chip-muted {
+  color: var(--muted);
+}
+
+.chip-id {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.dk-field-error {
+  display: block;
+  margin-top: 2px;
+  color: var(--bad);
+  font-size: var(--fs-s);
+  font-weight: normal;
+}
+
+.dk-table tr.mid > td.dk-lead {
+  color: var(--mid);
+}
+
+.dk-capped-25 tbody tr:nth-child(n + 26),
+.dk-capped-50 tbody tr:nth-child(n + 51) {
+  display: none;
+}
+
+.dk-more {
+  margin-top: var(--sp-2);
+}
+
+.dash-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 22em;
+  max-width: 100%;
+}
+
+.dash-slider input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.dash-slider-ticks,
+.dash-slider-ends {
+  display: flex;
+  justify-content: space-between;
+  padding-inline: 2px;
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+
+.dash-slider-ends {
+  color: var(--dim);
+}

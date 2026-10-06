@@ -1,7 +1,7 @@
 """Every response model publishes under its bare class name.
 
 Two routers that each declare a model with the same class name make FastAPI qualify both
-with their module path, and ``api-shapes.ts`` loses the short alias it reads them by.
+with their module path, and ``api/shapes.ts`` loses the short alias it reads them by.
 """
 
 from __future__ import annotations

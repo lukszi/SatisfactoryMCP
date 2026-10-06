@@ -29,7 +29,7 @@ from mapgen.palette.lightparams import shader_light
 from satisfactory_mcp.core.gameassets.versions import LIGHTS
 
 REPO = Path(__file__).resolve().parents[1]
-SUN_TS = REPO / "src/satisfactory_mcp/interfaces/web/frontend/src/sun.ts"
+SUN_TS = REPO / "src/satisfactory_mcp/interfaces/web/frontend/src/map/sun.ts"
 
 
 def test_game_noon_is_the_default_sun_and_the_page_agrees():

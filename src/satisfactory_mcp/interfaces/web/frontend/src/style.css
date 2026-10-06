@@ -360,7 +360,7 @@ select {
   scrollbar-gutter: stable;
 }
 
-/* The control's folds -- see decorateControl() in layercontrol.ts. These rules match
+/* The control's folds -- see decorateControl() in layercontrol/control.ts. These rules match
    Leaflet's own stylesheet's specificity and win on order, which is the only reason no
    !important is needed; main.ts pins that order.
 
@@ -794,7 +794,7 @@ select {
   border-bottom-color: var(--ok);
 }
 
-/* THE INVENTORY GRID: what is in a crate or a container. See contentsRows() in dom.ts.
+/* THE INVENTORY GRID: what is in a crate or a container. See contentsRows() in map/drawn/inventory-grid.ts.
 
    A wrapping flex row rather than `display: grid`, because a grid with a fixed column count
    reserves the empty cells, and a container holding nine kinds would draw five tiles and five
@@ -802,7 +802,7 @@ select {
    -- so the picture must not imply a layout the data does not have.
 
    7 x 38 + 6 x 4 = 290, inside the value cell of a 380 px card; see CONTENTS_POPUP_PX in
-   dom.ts. `width` and not `max-width`: a wrapping flex box has a min-content width of ONE
+   inventory-grid.ts. `width` and not `max-width`: a wrapping flex box has a min-content width of ONE
    tile, so under `max-width` the table hands this column whatever is left after every other
    row has had its say, and the same twelve stacks wrap 7+5 on one card and 6+6 on another. */
 .item-grid {
@@ -864,7 +864,7 @@ select {
 /* The tile for a class with no picture, and it is a TILE and not a hole: a reader who never
    ran the icon generator has no pictures at all, so this is the ordinary state rather than
    the edge case. Hidden until the <img> above it fails and removes itself; see tile() in
-   dom.ts. */
+   inventory-grid.ts. */
 .item-abbr {
   display: none;
 }
@@ -3625,7 +3625,7 @@ body.site-on #dash {
   }
 }
 
-/* Settings -> maps (maps.ts). One card per block; the type list stacks under 600 px. */
+/* Settings -> maps (settings-maps.ts). One card per block; the type list stacks under 600 px. */
 .maps-status-line,
 .maps-setup,
 .maps-job-head,

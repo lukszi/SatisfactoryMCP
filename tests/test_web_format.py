@@ -18,6 +18,7 @@ FORMAT_TS = (
     / "web"
     / "frontend"
     / "src"
+    / "kit"
     / "format.ts"
 )
 
@@ -75,7 +76,7 @@ def _mw(tmp_path: Path, cases: list[tuple[float, bool]]) -> list[str]:
     return _run(tmp_path, "mw", [[v, {"signed": signed}] for v, signed in cases])
 
 
-def test_num_rounds_a_half_to_even_as_the_tools_format_does(tmp_path):
+def test_format_number_rounds_a_half_to_even_as_the_tools_format_does(tmp_path):
     cases = [
         (472.5, 0),
         (473.5, 0),
@@ -90,7 +91,7 @@ def test_num_rounds_a_half_to_even_as_the_tools_format_does(tmp_path):
         (60.0, 1),
         (-0.4, 0),
     ]
-    got = _run(tmp_path, "num", [list(c) for c in cases])
+    got = _run(tmp_path, "formatNumber", [list(c) for c in cases])
     assert got == [
         f"{v:,.{dp}f}".rstrip("0").rstrip(".") if dp else f"{v:,.0f}".replace("-0", "0")
         for v, dp in cases
@@ -115,10 +116,17 @@ def test_mw_keeps_small_negatives_unsigned_zero(tmp_path):
 
 
 def test_signed_shares_one_sign_rule_across_units(tmp_path):
-    cases = [(3, "count"), (-3, "count"), (0, "count"), (-12.34, "perMin"), (0.04, "bare"), (-0.04, "bare")]
+    cases = [
+        (3, "count"),
+        (-3, "count"),
+        (0, "count"),
+        (-12.34, "perMin"),
+        (0.04, "bare"),
+        (-0.04, "bare"),
+    ]
     got = _run(tmp_path, "signed", [list(c) for c in cases])
     assert got == ["+3", "-3", "0", "-12.3/min", "0", "0"]
 
 
-def test_a_range_reads_with_an_en_dash(tmp_path):
-    assert _run(tmp_path, "range", [[8, 27], [3, 3], [4, None]]) == ["8–27", "3", "4"]
+def test_a_count_range_reads_with_an_en_dash(tmp_path):
+    assert _run(tmp_path, "countRange", [[8, 27], [3, 3], [4, None]]) == ["8–27", "3", "4"]

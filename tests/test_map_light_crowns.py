@@ -24,7 +24,7 @@ from mapgen.palette.lightparams import shader_light  # noqa: E402
 from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-LITLAYER_TS = REPO / "src/satisfactory_mcp/interfaces/web/frontend/src/litlayer.ts"
+LITLAYER_TS = REPO / "src/satisfactory_mcp/interfaces/web/frontend/src/map/litlayer.ts"
 
 
 def _flat_nrm(shape, nx=0.0):

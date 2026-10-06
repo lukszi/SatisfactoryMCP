@@ -1,14 +1,6 @@
 /* The map. Reads /api, draws markers, and refetches when the game writes a save.
  *
- * Two coordinate facts drive everything below.
- *
- *   1. The API already speaks metres. Nothing here divides by 100 -- if a number looks
- *      like centimetres, the bug is server-side.
- *   2. Satisfactory is +X east and +Y SOUTH, while Leaflet's CRS.Simple is +lat north.
- *      So a point is plotted at [-y, x], and that negation lives in map.ts and nowhere else.
- *
- * And one content fact: every string that reaches a popup or a label is DATA, so popup()
- * escapes everything by default and the few rows that need markup say so with html().
+ * Coordinates (metres, plotted at [-y, x]) are map/map.ts's header.
  *
  * This file is the entry point and draws nothing. What it holds is the ORDER of two things
  * neither of which is visible from inside a module: which map events are listened for, and
@@ -18,33 +10,33 @@
 import "leaflet/dist/leaflet.css";
 import "./style.css";
 
-import { listenForCopies } from "./copy";
-import { el } from "./dom";
-import { listenForFinds } from "./finder";
-import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./floors";
-import { listenToFragment } from "./fragment";
-import { inspect } from "./inspector";
-import { declutter } from "./labels";
-import { isBatching, onSettled } from "./layercontrol";
-import { loadLive, loadOne, loadRegions, loadStatic } from "./load";
-import { rememberTick } from "./layers";
-import { fitWorld, map, padPopups, writeHash } from "./map";
-import { listenForEmptyClicks } from "./mapclick";
-import { markHiddenRows, notePickupChoice } from "./markers";
-import { render as renderPanel, showSelector } from "./panel";
-import { listenForPins } from "./pins";
-import { noteRegionChoice, updateRegionBlend } from "./regions";
-import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
-import { wireSearch } from "./search";
-import { syncSharedSettings } from "./shared-settings";
-import { listen } from "./sse";
-import { BOOT, BOOT_GARBLED, garbledNote, state } from "./state";
-import { wireStatus } from "./status";
-import { loadBaseMap } from "./tiles";
-import { onTone } from "./tone";
-import { fail } from "./toast";
-import { listenForTraces } from "./trace";
-import { loadWorlds } from "./worlds";
+import { listenForCopies } from "./kit/copy";
+import { el } from "./kit/dom";
+import { listenForFinds } from "./map/tools/finder";
+import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./map/floors/floors";
+import { listenToFragment } from "./app/fragment";
+import { inspect } from "./map/inspector";
+import { declutter } from "./map/labels";
+import { isBatching, onSettled } from "./map/layercontrol/control";
+import { loadLive, loadOne, loadRegions, loadStatic } from "./app/load";
+import { rememberTick } from "./map/layers";
+import { fitWorld, map, padPopups, writeHash } from "./map/map";
+import { listenForEmptyClicks } from "./map/mapclick";
+import { markHiddenRows, notePickupChoice } from "./map/drawn/markers";
+import { render as renderPanel, showSelector } from "./map/panel";
+import { listenForPins } from "./chat/pins";
+import { noteRegionChoice, updateRegionBlend } from "./map/regions";
+import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./map/drawn/routes";
+import { wireSearch } from "./app/search";
+import { syncSharedSettings } from "./app/shared-settings";
+import { listen } from "./app/sse";
+import { BOOT, BOOT_GARBLED, garbledNote, state } from "./app/state";
+import { wireStatus } from "./app/status";
+import { loadBaseMap } from "./map/tiles";
+import { onTone } from "./map/map-tone";
+import { fail } from "./kit/toast";
+import { listenForTraces } from "./map/tools/trace";
+import { loadWorlds } from "./app/world-picker";
 
 /* ---------------------------------------------------------------- features */
 
@@ -60,21 +52,21 @@ import { loadWorlds } from "./worlds";
  * against the set of modules that call `registerFetch`, in both directions. Three of these are
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
-import "./advice";
-import "./crates";
-import "./header";
-import "./inventory";
-import "./labels";
-import "./markers";
-import "./panel";
-import "./pins";
-import "./placements";
-import "./plans";
-import "./power";
-import "./progress";
-import "./recipes";
-import "./routes";
-import "./world";
+import "./chat/advice";
+import "./map/drawn/crates";
+import "./app/header";
+import "./dash/inventory";
+import "./map/labels";
+import "./map/drawn/markers";
+import "./map/panel";
+import "./chat/pins";
+import "./map/drawn/placements";
+import "./map/drawn/plan-sitings";
+import "./map/drawn/power-wires";
+import "./dash/progress/progress";
+import "./dash/recipes/recipes";
+import "./map/drawn/routes";
+import "./dash/world/world";
 
 /* ------------------------------------------------------------------- wiring */
 

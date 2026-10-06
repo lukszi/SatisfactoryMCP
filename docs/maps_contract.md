@@ -377,7 +377,7 @@ rather than `settings.json` (shared-settings.md §1 says why).
 
 ### 6.2 Settings → maps (`#dash=settings/maps`)
 
-`maps.ts`. One card per block; every confirm is inline.
+`dash/maps/settings-maps.ts`. One card per block; every confirm is inline.
 
 1. **Status**: "N map types · size · free", the raster cache with **clear cache**, a muted
    setup line when generation cannot run, and "found N unregistered pyramids · add".
@@ -406,7 +406,7 @@ rather than `settings.json` (shared-settings.md §1 says why).
 
 ### 6.3 The switcher
 
-`tiles.ts` builds its modes from `mapstore.ts`: every `ready` type ticked "in switcher", the
+`map/tiles.ts` builds its modes from `app/map-types.ts`: every `ready` type ticked "in switcher", the
 default first, plus whatever is on screen or named by the address, plus plain. A row shows the
 title (§3.5) and an amber "older build" or "older data" after a stale one. Its tooltip is the
 technical name and the size, then the stale reason. Each pyramid is HEAD-probed as before. A

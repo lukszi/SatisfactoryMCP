@@ -314,7 +314,7 @@ def test_the_list_scan_buckets_every_unreadable_file_instead_of_aborting(tmp_pat
 
     So: a directory of nothing but junk still exits 0, still emits a complete document, and
     every file lands in ``unsupported`` carrying the reason it landed there -- which is the
-    string ``worlds.ts`` prints when it has nothing else to show.
+    string ``app/world-picker.ts`` prints when it has nothing else to show.
     """
     (tmp_path / "wrong-magic.sav").write_bytes(b"not a save at all, not even close")
     (tmp_path / "empty.sav").write_bytes(b"")

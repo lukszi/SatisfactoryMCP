@@ -28,7 +28,7 @@ means a route on master today.
 6. **Honesty carries over.** Warnings and binding constraints render first, as they do in text.
    Census headers count the world, filters change rows only. `-` for unknown, never 0.
 7. **Selectors are visible.** Every form that takes a selector shows the selector text it built,
-   copyable (the click-to-copy in `copy.ts` already does this for popups). The UI teaches the
+   copyable (the click-to-copy in `kit/copy.ts` already does this for popups). The UI teaches the
    MCP grammar instead of hiding it.
 8. **Reads first, writes later, writes guarded.** The first writes landed on 2026-09-27:
    naming and forgetting a factory label (§9). They came with the Host/Origin guard from
@@ -160,7 +160,7 @@ tool table.
 | `list_plans` | Planner > Plans list | name filter | table: sited, world moved, field moved | exists `/api/plans` (siting only) + new for status |
 | `forget_plan` | Plans list row menu | confirm | row gone | new, W |
 | `rename_plan` | Plans list row menu | text | row renamed | new, W |
-| `site_plan` | Planner > Site | drag/rotate the pad on the map, WxD fields, clear | pad on map; terrain note | new, W (drawing exists in `plans.ts`) |
+| `site_plan` | Planner > Site | drag/rotate the pad on the map, WxD fields, clear | pad on map; terrain note | new, W (drawing exists in `map/drawn/plan-sitings.ts`) |
 | `plan_factory` | Planner workbench | goal, sources builder, exports, minimums, clocks, recipe include/exclude, sloops, sinks, water extractors, supplied, save as, notes, for factory, site at | warnings first, summary, process table with BUILD, logistics flows | new (POST solve) |
 | `plan_layout` | Planner > Layout | view: floors/blocks/buses/trunks/materials/sites; floor cap, belt/pipe tier, fit to factory | floor-by-floor block diagram; fit verdict; pad overlay | new |
 | `diff_vs_save` | Planner > Progress (of a plan) | plan, factory scope, stage | to-place / to-remove / cost; ON SITE census | new |
@@ -280,7 +280,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 - Routes call **domain services**, never the tool functions and never their text.
   Where logic sits in a tool body, move it to the domain first. MCP §10.1e names the cases
   (`search_resource_nodes`, `factory_query` table-building); both tools and routes then share it.
-- Typed `response_model` per route; regenerate `api-schema.d.ts` (docs/web-wire.md).
+- Typed `response_model` per route; regenerate `api/schema.d.ts` (docs/web-wire.md).
 - Solves go through `planning/prepare.py`, the one sequence all planning tools share.
 - Save reads through the injected loader and the single-flight cache, as today.
 - Every route accepts `as_of=`. Refuse on mismatch with the same four messages as MCP.
@@ -418,8 +418,8 @@ Evidence only: each row cites where the decision is written down.
 |---|---|---|
 | Local only, bundled, no CDN | `index.html` head comment; `vite.config.ts` (Leaflet licence copied at build); web `__main__.py` binds 127.0.0.1 | No chart library. Bars are CSS widths; nothing is fetched but `/api` |
 | Palette closed, "lgtm" 2026-08-06 | memory `map-ui-future-ideas` | No new colour. The dashboard uses `--ok`, `--warn`, the panel's accent blue and its greys |
-| Colours are audited, dE 15 across owners | `palette.ts`; commit `db50aa7` | The dashboard declares no map colour, so the audit has nothing new to compare. Its three bar colours are 25.8 or more apart (CIE76) |
-| Comment budget, no exemptions | memory `prose-goes-in-docs` ("No excemptions"); docs/comments.md | `dashboard.ts` has a two-line header and no other comments |
+| Colours are audited, dE 15 across owners | `map/palette.ts`; commit `db50aa7` | The dashboard declares no map colour, so the audit has nothing new to compare. Its three bar colours are 25.8 or more apart (CIE76) |
+| Comment budget, no exemptions | memory `prose-goes-in-docs` ("No excemptions"); docs/comments.md | `dash/shell.ts` has a two-line header and no other comments |
 | Read-only | parked.md §16 "Read-only; no editing"; every route is a GET (`test_every_get_says_what_it_sends`) | The dashboard reads. No POST. **Reversed for labels on 2026-09-27** (§9) |
 | Facts, not advice | commit `deadb0b` "Name the machines no wire reaches, instead of advising a power check"; roadmap §2.3 bans ETAs from one 300 s window | No "next best" score, no ETA, no trend line (the timeline has no consumer yet) |
 | Ask before encoding play patterns | memory `verify-play-patterns` (a hand-feeding setup read as a factory; shoreline siting) | Order comes from the domain. "temporary …" factories are neither hidden nor discounted |
@@ -458,7 +458,7 @@ Evidence only: each row cites where the decision is written down.
    stays the deep answer. A dashboard serves both uses; the panel only serves "map open".
 5. **Cheap, measured.** Warm, on SUCK_DRAIN: `/api/factories/health` 0.09 s / 20 kB,
    `/api/power/circuits` 0.02 s / 2 kB, `/api/progress/milestones` 0.01 s / 18 kB. The
-   dashboard makes **no second request** for the two panel payloads: `panel.ts` keeps the one
+   dashboard makes **no second request** for the two panel payloads: `map/panel.ts` keeps the one
    registry entry per path and hands the same response to the dashboard (`onVitals`).
 
 **Against.**
@@ -478,8 +478,8 @@ fragment key reuses all of that, and a bookmark still lands on the view.
 ### 8.4 What was built
 
 - **Address:** `#…&dash=<tab>[/<subject>]&z=…&c=…`. Tabs are `overview`, `factories`,
-  `factories/<name>`, `power`, `power/<n>` (1-based) and `progress`. `hashFor` in `map.ts`
-  writes it, `fragment.ts` applies it, and `state.dash` holds it.
+  `factories/<name>`, `power`, `power/<n>` (1-based) and `progress`. `hashFor` in `map/map.ts`
+  writes it, `app/fragment.ts` applies it, and `state.dash` holds it.
 - **Switching:** the header has **Map | Dashboard**. Opening the dashboard hides the map with
   `visibility` (Leaflet keeps its size, so nothing re-measures) and hides the panel and legend.
   Moves between views push history, so Back works in both directions.
@@ -527,14 +527,14 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   delivered Space Elevator phases open them, §12.3), plus any tier with a milestone done; the
   tier strip, the tallies and the Overview's "affordable" count follow the same filter. The
   default was on until 2026-09-27. A browser that never set the switch gets a one-time notice
-  saying locked content is now hidden, with a button that shows it. `settings.ts` keeps
+  saying locked content is now hidden, with a button that shows it. `app/settings.ts` keeps
   the values in `localStorage` under `settings`, wrapped in try/catch, so the page still works
   without storage. A new setting is one more entry in `SETTINGS`. Since 2026-09-30 the settings
   chat computes with (stage headroom, biomass) live on the server instead, through
   `/api/settings` ([shared-settings.md](shared-settings.md)).
 - **The page lands on the dashboard.** A fragment with no `dash=` and none of the map's keys
-  (`z`, `c`, `floor`, `mode`, `pickups`) opens the Overview (`dashOf` in `state.ts`, used at
-  boot and by `fragment.ts`). A map deep link still opens the map, because the page writes `z`
+  (`z`, `c`, `floor`, `mode`, `pickups`) opens the Overview (`dashFromFragment` in `app/state.ts`, used at
+  boot and by `app/fragment.ts`). A map deep link still opens the map, because the page writes `z`
   and `c` into every fragment it makes while the map is showing. Back and Forward are
   unchanged.
 - **Headroom is two metrics.** "Actual usage and potential usage": **headroom now** is
@@ -570,7 +570,7 @@ has no automated way to supply either, so their MW lasts as long as someone keep
 
 ### 8.8 One reading of a ledger
 
-`powerview.ts` is the only place a ledger figure turns into text. The Overview, Power, the
+`dash/power-ledger.ts` is the only place a ledger figure turns into text. The Overview, Power, the
 circuit detail, the map panel and the header all go through it. A figure that cannot be read
 shows "–" and the reason: "generation not modelled" when game data cannot rate a generator on
 the circuit, and "no machine measured" when no machine on it carries a productivity monitor.
@@ -605,7 +605,7 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
   The reply also carries the save `token`, the label-store `version`, and how many clusters
   the filters hid and why.
 - **Map.** A row's **map** button switches to the map, flies to the cluster's box and draws the
-  panel's dashed outline around it (`showBox` in `panel.ts`).
+  panel's dashed outline around it (`showBox` in `map/map-highlight.ts`).
 - **Name, edit, skip.** The name is an editable field, prefilled with the suggestion. A guessed
   name has a dashed border. **name** (or Enter) writes it, and Esc restores the suggestion.
   **skip** hides the row for this page session only; nothing is stored.
@@ -859,7 +859,7 @@ the repoint ran inside the label lock, so a failure part-way left a plan pointin
 label held while the reply said nothing was written.
 
 The UI edits in place (Enter saves, Esc cancels) in three places: the Factories table row, the
-factory detail header, and the side panel's selected row (`rename.ts`). After a rename, the
+factory detail header, and the side panel's selected row (`dash/factories/rename.ts`). After a rename, the
 detail view replaces its own address with the new name. The page also remembers renames it made
 in this session, so an old `dash=factories/<name>` link lands on the renamed factory. A link
 from before this session, or a rename made in chat, says the factory "may have been renamed or
@@ -885,13 +885,13 @@ me that graph for a detected factory".
 
   Edges are items with apportioned items/min (§9.4). The payload is grouped by recipe: the
   110-machine cluster is 16 nodes and 20 edges.
-- **Drawing.** `frontend/src/graph.ts` is hand SVG with no library.
+- **Drawing.** `frontend/src/dash/graph.ts` is hand SVG with no library.
   - Inputs sit in the first column. Each group is placed by its longest path from the
     inputs, with cycles cut where the walk meets them. Terminals sit in the last column.
     Three barycentre sweeps order each column.
   - Edges between the same two nodes share one curve and one label. A backward edge dips
     below the nodes.
-  - Each group's third line counts its machines by state through `states.ts`: fine states
+  - Each group's third line counts its machines by state through `dash/machine-states.ts`: fine states
     read "running", every other state by its own name, so paused is never running. The
     outline takes the worst tone: `--bad` when a machine needs action, `--blocked` when the
     worst is blocked, neutral otherwise. Terminals and inputs are neutral; inputs and "goes
@@ -907,7 +907,7 @@ me that graph for a detected factory".
     more is off-screen. The frame is as tall as the graph, up to 80% of the window.
     Ctrl+wheel zooms (a plain wheel scrolls the page), dragging pans and a double-click
     fits again.
-  - One card for both callers: `graphCard(heading, shown, toggle)` in `graph.ts`, with one
+  - One card for both callers: `graphCard(heading, shown, toggle)` in `dash/graph.ts`, with one
     **hide graph** toggle per view. The planner draws its plan with the same component
     (planner_vision.md §4.2); power is not an item there. A process's node shows its MW,
     and exported power is a **power** terminal fed by the generators, labelled in MW.
@@ -923,7 +923,7 @@ me that graph for a detected factory".
 - **Machines on the map.** `GET /api/factories/machines` takes `factory=<name>`, or
   `candidate=proposal:N&token=` like the graph route, and lists each standing machine with its
   building, `x_m`/`y_m` and the label that holds it. A Detect row's **map** button still flies
-  to the box and outlines it, and now also rings every machine of the cluster (`lasso.ts`),
+  to the box and outlines it, and now also rings every machine of the cluster (`map/tools/lasso.ts`),
   with a card that counts them by building. Before, the page showed only the box.
 - **Amend.** The factory detail header has **amend on map**, and the side panel's selected
   factory has **amend**. Both switch to the map, ring the factory's machines in the selection
@@ -979,7 +979,7 @@ Roadmap phase 3: the `stock`, `storage` and `crates` tools as one dashboard sect
   and size (slots, or m³ for a fluid buffer) in one cell. The contents appear once, in
   "holds", and the fill column carries the used-of-size figure as its tooltip. The holds sort
   keeps solids and fluids apart, since counts and m³ do not compare. A crate row uses
-  `crateLabel()` from `crates.ts` (the name the map popup uses) and shows the server's kind
+  `crateLabel()` from `map/drawn/crates.ts` (the name the map popup uses) and shows the server's kind
   sentence under it. Below 600 px the fill bar collapses to its percentage, and the crate
   contents move under the crate's name. A container or crate row with a position has
   **map**, which returns to the map, flies there and draws the panel's highlight ring
@@ -994,8 +994,8 @@ Roadmap phase 3: the `stock`, `storage` and `crates` tools as one dashboard sect
   retry (`loadOne`) when it fails.
 - **Spoilers:** the section lists only what the save holds, so the spoiler setting has
   nothing to hide here.
-- **Code:** `frontend/src/inventory.ts`. `dashboard.ts` only registers the tab and routes to
-  `renderInventory`, passing its `toMap` and `render`.
+- **Code:** `frontend/src/dash/inventory.ts`. `dash/shell.ts` only registers the tab and routes to
+  `renderInventory`, passing its `leaveDashThen` and `render`.
 - **Not yet:** a "storage near here" point filter, `as_of=`, and turning the storage layer
   on when a container row flies to the map (the ring marks the spot, but the box itself is
   hidden while that layer is off).
@@ -1015,10 +1015,10 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
   elevator, `OverclockBudget` for shards and sloops, and `HardDriveDesk` for the drives.
   The tool bodies are unchanged. Every route declares a response model and follows the
   `?save=`/`?world=` convention.
-- **Page.** `frontend/src/progress.ts` holds the section. It was moved out of
-  `dashboard.ts` with the milestone view unchanged. The shared building blocks (tile,
-  note, link, table cell) now sit in `frontend/src/dashkit.ts`, which both modules import.
-- **Layout.** A segmented control (`dashkit.tabs2`) reaches one page per tool. The
+- **Page.** `frontend/src/dash/progress/progress.ts` holds the section. It was moved out of
+  `dash/shell.ts` with the milestone view unchanged. The shared building blocks (tile,
+  note, link, table cell) now sit in `frontend/src/kit/dashkit.ts`, which both modules import.
+- **Layout.** A segmented control (`dashkit.subTabs`) reaches one page per tool. The
   Milestones landing opens with a one-line "next up" strip (T4): parts short for the
   elevator, affordable MAM nodes, pending drives, free shards and free somersloops, each a
   link to its page. Statuses read in lowercase words: done, affordable, short, blocked by…,
@@ -1082,7 +1082,7 @@ Phase 5 of §6. It is a read-only surface over the game data, marked against the
 
   The recipe detail takes a query parameter rather than a path segment, so the page's
   typed `get()` can check the URL against the schema.
-- **Recipes tab** (`dash=recipes`, `frontend/src/recipes.ts`). It has three modes: Items,
+- **Recipes tab** (`dash=recipes`, `frontend/src/dash/recipes/recipes.ts`). It has three modes: Items,
   Recipes (kind picker, alternates only, census line) and Unlocked. The mode and the filters
   live in the address (`dash=recipes/<mode>?q=…&kind=…&alt=1&all=1`), so Back restores
   them, and the list's scroll position comes back with them. The census line leads with the
@@ -1096,14 +1096,14 @@ Phase 5 of §6. It is a read-only surface over the game data, marked against the
   recipes whose names contain it. Item icons come from `/api/icons`. The codex
   sends one HEAD probe first and draws no icons when it answers 204, so an install without
   the icon directory logs no 404 per item.
-- **Header search** (`frontend/src/search.ts`). One box, focused with `/`. Results are
+- **Header search** (`frontend/src/app/search.ts`). One box, focused with `/`. Results are
   grouped as factories, items and recipes of every kind, eight of each, with the totals said
   below. A recipe hit names its machine, "building" or "crafted", so two recipes with one
   name stay apart. Arrow keys and Enter pick a result; Enter pressed before the debounce
   lands waits for the reply to the text typed, not the previous one. The first Escape closes
   the list and keeps the text. A factory opens its dashboard detail, and an item or recipe
   opens its card. The box is an ARIA combobox over the `listbox` of hits.
-- **Freshness.** `recipes.ts` registers `/api/gamedata/unlocked` in the live wave. Each save
+- **Freshness.** `dash/recipes/recipes.ts` registers `/api/gamedata/unlocked` in the live wave. Each save
   event bumps a generation that empties the codex cache, so have and locked follow the game.
   The first reply after a load or a switch only primes the cache, so a cold load fetches
   once.
@@ -1171,7 +1171,7 @@ Phase 7 of §6. What feeds a machine or a factory, or what it feeds, drawn on th
   crossed, as polylines; and `flowgraph.build` over the seeds plus everything reached, which
   gives recipe groups and item flows with apportioned rates. `items` totals what the reached
   machines make (up) or use (down).
-- **Frontend.** `frontend/src/trace.ts`. Entry points: the machine popup, the right-click
+- **Frontend.** `frontend/src/map/tools/trace.ts`. Entry points: the machine popup, the right-click
   inspector when the click lands on a machine (the machine layer has to be on), the selected
   row in the side panel's Factories tab, and "trace supply" on the dashboard's factory page.
   All but the dashboard use one delegated click on `data-trace` buttons, so no drawing module
@@ -1203,7 +1203,7 @@ Phase 7 of §6. What feeds a machine or a factory, or what it feeds, drawn on th
 - **Rates are nameplate**, apportioned by `flowgraph` as on the production graph (§9.8), not
   measured belt throughput. A run on the map carries no item of its own.
 - **Not in the fragment yet.** A trace is not deep-linkable (§1 principle 9); a `trace=` key
-  would need `state.ts` and `fragment.ts`.
+  would need `app/state.ts` and `app/fragment.ts`.
 - **Right-click on a machine under a trace ring** opens the ring's popup rather than the
   machine's; the ring's popup has the same trace buttons.
 
@@ -1237,7 +1237,7 @@ Decided 2026-09-27, binding for the design-system work and the page batches afte
 - **T9 Explanations.** One line at most on the page; longer definitions go to the docs. The
   marker key stays.
 
-The vocabulary that follows from these, one term per concept, lives in `words.ts`:
+The vocabulary that follows from these, one term per concept, lives in `kit/words.ts`:
 
 - **need action** is the count and the column name ("3 need action", "none need action");
   **not running** is the wider set of every state that is not fine, defined in its column
@@ -1276,7 +1276,7 @@ States and actions follow two rules:
   missing and what to do instead; an ambiguous recipe name does the same over its candidates.
   `dashkit.error()` with a retry is only for a read that failed. The server answers every
   missing subject with 404 and `{"error"}`, and so does any `/api/` path or method no route
-  serves; `api.missing()` is the one test the page makes.
+  serves; `isNotFound()` in `api/client.ts` is the one test the page makes.
 - **Actions are buttons, navigation is a link.** `dashkit.button()` does something here
   (rename, trace, detect, show all); a text link goes somewhere else ("open in dashboard",
   the Settings filters). A link never sits in a row of buttons as their peer: it gets its own
@@ -1303,7 +1303,7 @@ What holds at every width from 390 px up, and how the page keeps a keyboard user
 - **One focus ring**: 2 px accent, set once for links, buttons, fields, `summary` and
   anything with a `tabindex`. Components only change its offset.
 - **Focus survives a re-render.** The dashboard, the side panel and the planner rebuild
-  their DOM on every data change; `keepFocus` in dom.ts finds the focused control again by
+  their DOM on every data change; `keepFocus` in kit/focus.ts finds the focused control again by
   its `data-candidate`, `data-ctl`, `aria-label` or text, and falls back to the view's `h1`
   when the control is gone (a navigation). Every view has one `h1`, visually hidden on the
   list pages. A cancelled rename returns focus to its button; a jump from the dashboard to
@@ -1325,7 +1325,7 @@ built on top of it.
 
 ### 16.1 What was built
 
-- **Rail** (`rail.ts`, `#rail`): Map and every dashboard section in one vertical list, left of
+- **Rail** (`app/rail.ts`, `#rail`): Map and every dashboard section in one vertical list, left of
   both views from 900 px up. The current entry carries `aria-current="page"`. Each entry is a
   `dashkit.link`, so its address is rebuilt on click and never carries a stale viewport.
   The rail replaces the dashboard's own tab row at that width; the header's **Map | Dashboard**
@@ -1335,12 +1335,12 @@ built on top of it.
   focus leaving it or picking an entry closes it, and Escape or a pick returns focus to the
   button. The header's **Map | Dashboard** and the dashboard's tab row are hidden there, so
   each section is listed once, in the drawer (§16.4). Nothing scrolls sideways at 390 px.
-- **Selection** (`selection.ts`): one selected thing, a factory, a circuit, a machine, a
+- **Selection** (`app/selection.ts`): one selected thing, a factory, a circuit, a machine, a
   point or a world row. The map sets it (a factory label click, a machine click, a panel row,
   a map fly-to), the side panel follows it
   (row highlight and the dashed outline, without flying), and the dashboard sets it when a
   factory or circuit detail opens. A factory that disappears from the health reply clears it.
-- **Status strip** (`status.ts`, `#status`): one line under the header. It shows the
+- **Status strip** (`app/status.ts`, `#status`): one line under the header. It shows the
   selection with **map** and **clear**, then the vitals, each a link into its section: need
   action (toned as on the Overview), power problems, headroom now and affordable milestones.
   It reads the same replies the Overview reads (`vitals()`, `readyMilestones()`), so it makes
@@ -1392,7 +1392,7 @@ built on top of it.
   A map click on a machine and a table **map** button on a row with an instance select it.
   The status strip says "selected machine" and offers **map**, **trace** (for a machine or
   a factory) and **clear**; chat's `ui_context` prints the ref and names a matching pin.
-- **Empty map ground deselects** (`mapclick.ts`). A plain click that no layer took clears
+- **Empty map ground deselects** (`map/mapclick.ts`). A plain click that no layer took clears
   the selection. A click on a machine, node, label or any other interactive layer is that
   layer's; a drag, a lasso stroke (amend mode swallows the click) and the World Rank
   **pick on map** mode are untouched. A planner context that wants a point instead calls
@@ -1407,10 +1407,10 @@ Phase 2 of §6. The factory page gains level-2 tabs past its overview.
 
 ### 17.1 What was built
 
-- **Address.** `factories/<name>/<aspect>`, one `dashkit.tabs2` strip under the title:
+- **Address.** `factories/<name>/<aspect>`, one `dashkit.subTabs` strip under the title:
   overview, flows, machines, power, nodes, links, floors, sites. A name may itself hold a
   `/`, so the last segment counts as an aspect only when it is one of those ids and the whole
-  subject is not a factory name (`factoryAddress` in `factory-detail.ts`). Renaming keeps the
+  subject is not a factory name (`factoryAddress` in `dash/factories/factory-detail.ts`). Renaming keeps the
   open tab.
 - **`GET /api/factories/aspects?factory=`** (`routers/factory_detail.py`). One
   `query.build_view` pass, the one `factory_query` makes, sent as rows: summary numbers,
@@ -1514,14 +1514,14 @@ actions) is the frontend half of this phase.
 
 Every map type declares a tone, `light` or `dark` (`STYLES[id].tone` in
 `core/gameassets/versions.py`, carried on each `/api/maps` type as `tone`; no imagery is
-`plain_tone`, dark). `tiles.ts` sets it on every base switch through `tone.ts`, which mirrors it
+`plain_tone`, dark). `map/tiles.ts` sets it on every base switch through `map/map-tone.ts`, which mirrors it
 to `<html data-map-tone>` and tells its listeners. Overlays that cannot clear both kinds of ground
 take one value per tone; the state colours (stopped red, blocked yellow, removal amber) never
 change.
 
 | Mark | Light base | Dark base | Why |
 |---|---|---|---|
-| Collected pickup X (`markers.ts`) | `#2a3147` | `#9aa0a8` | the old `#6b7078` was 2.2–4.5 from the ground on every base. The light value is the colour study's `#30374d` nudged 2.7 to clear the foundations by 16.5 |
+| Collected pickup X (`map/drawn/markers.ts`) | `#2a3147` | `#9aa0a8` | the old `#6b7078` was 2.2–4.5 from the ground on every base. The light value is the colour study's `#30374d` nudged 2.7 to clear the foundations by 16.5 |
 | Coal node | `#4c4c4c` | `#8c8f96` | near-black coal vanished on the dark relief (2.0) |
 | Power casing | `#1c1550` | `#08060f` | the indigo was 18 from the dark ground |
 | Belts | casing in the lift fill `#0e1116`, 2 px | no casing | mid steel was 4.8 from bare ground on the artwork |
@@ -1530,7 +1530,7 @@ change.
 
 The dark-tone values sit close to the belt steel in the page's own CIE76 audit (5.7 to 10.0),
 because both are chosen to read against near-black ground; each pair is a different kind of mark
-and is listed in `DISCHARGED` in `palette.ts`. The node dots and pickups repaint from the data
+and is listed in `DISCHARGED` in `map/palette.ts`. The node dots and pickups repaint from the data
 they hold; the belts and power layers are fetched again when the tone changes.
 
 Not done: a 1 px light outline on fluid storage and a lighter foundation edge on dark bases, and

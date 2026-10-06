@@ -71,7 +71,7 @@ def planned(plans_dir, projection, game):
 
 
 def _corners(row: dict) -> list[tuple[float, float]]:
-    """The four corners the PAGE would draw, by ``footprintCorners`` in frontend/src/map.ts.
+    """The four corners the PAGE would draw, by ``footprintCorners`` in frontend/src/map/map.ts.
 
     Reimplemented here rather than approximated, because the whole point of this endpoint is
     that the client's forward rotation and ``Siting.contains_cm``'s inverse are one rectangle.

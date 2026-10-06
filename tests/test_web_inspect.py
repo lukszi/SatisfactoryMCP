@@ -162,7 +162,7 @@ def test_inspect_still_answers_when_the_save_cannot_be_read(game):
 
 
 def test_the_inspector_names_a_resource_the_same_way_a_node_dot_does(client):
-    """format.ts says the node popup and the right-click card must not name one fact two
+    """kit/format.ts says the node popup and the right-click card must not name one fact two
     ways, and the card said "OreIron impure" while the dot beside it said "Iron Ore".
 
     Both now read the server's own ``resource_name``, from the one helper in ``serial``."""

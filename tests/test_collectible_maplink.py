@@ -101,9 +101,7 @@ def _install(tmp_path, monkeypatch, payload) -> None:
     path = tmp_path / collectibles_table.COLLECTIBLES_FILE
     if payload is None:
         return
-    path.write_text(
-        payload if isinstance(payload, str) else json.dumps(payload), encoding="utf-8"
-    )
+    path.write_text(payload if isinstance(payload, str) else json.dumps(payload), encoding="utf-8")
 
 
 @pytest.fixture
@@ -161,7 +159,9 @@ def test_every_key_is_a_category_the_generated_table_actually_places():
     real = config.data_dir() / collectibles_table.COLLECTIBLES_FILE
     if not real.is_file():
         pytest.skip("needs data/world_collectibles.json (tools/gen_world_collectibles.py)")
-    placed = {row["category"] for row in json.loads(real.read_text(encoding="utf-8"))["collectibles"]}
+    placed = {
+        row["category"] for row in json.loads(real.read_text(encoding="utf-8"))["collectibles"]
+    }
     unknown = sorted(set(maplink.COLLECTIBLES) - placed)
     assert not unknown, (
         f"{unknown} name no category the map places, so no answer can ever reach these "
@@ -190,9 +190,7 @@ def test_the_local_link_carries_the_pickup_rows_and_nothing_carries_them_by_defa
 def test_a_hard_drive_answer_carries_a_local_link_with_the_pod_layer_on(
     world, tmp_path, monkeypatch
 ):
-    out = _answer(
-        world, tmp_path, monkeypatch, group="crashed_drop_pod", view="remaining"
-    )
+    out = _answer(world, tmp_path, monkeypatch, group="crashed_drop_pod", view="remaining")
     local = _line(out, "local map: ")
     assert maplink.local_base() + "#" in local
     assert "pickups=crashed_drop_pod" in local
@@ -257,9 +255,7 @@ def test_a_pod_answer_says_which_of_the_two_maps_can_tell_a_looted_pod_from_a_fu
 # ------------------------------------------------------ and the two dataset failures
 
 
-def test_a_dataset_that_was_never_generated_offers_no_link_at_all(
-    world, tmp_path, monkeypatch
-):
+def test_a_dataset_that_was_never_generated_offers_no_link_at_all(world, tmp_path, monkeypatch):
     """A link would open a layer that is empty because nothing was generated, which on a map
     reads as "you have taken them all"."""
     out = _answer(world, tmp_path, monkeypatch, payload=None)
@@ -299,8 +295,8 @@ def test_the_fragment_key_the_link_writes_is_the_one_the_page_reads():
     key = written.split("#")[1].split("=")[0]
     assert key == "pickups"
 
-    reader = (FRONTEND / "fragment.ts").read_text(encoding="utf-8")
-    writer = (FRONTEND / "map.ts").read_text(encoding="utf-8")
+    reader = (FRONTEND / "app" / "fragment.ts").read_text(encoding="utf-8")
+    writer = (FRONTEND / "map" / "map.ts").read_text(encoding="utf-8")
     assert f"asked.{key}" in reader, f"fragment.ts does not read {key}= out of the fragment"
     assert f'"{key}="' in writer, f"writeHash does not put {key}= back into the address bar"
 
@@ -313,7 +309,7 @@ def test_the_page_tells_the_three_loot_states_apart():
     a drive still in it -- and the category name is the other half, because null on a mushroom
     is not a claim about a mushroom at all.
     """
-    drawing = (FRONTEND / "markers.ts").read_text(encoding="utf-8")
+    drawing = (FRONTEND / "map" / "drawn" / "markers.ts").read_text(encoding="utf-8")
     assert 'POD_CATEGORY = "crashed_drop_pod"' in drawing, "the page spells the category itself"
     assert "r.looted === true" in drawing, "markers.ts does not single out a looted pod"
     assert "r.looted === null" in drawing, "markers.ts draws an unread flag as a full pod"

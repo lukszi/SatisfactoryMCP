@@ -38,7 +38,7 @@ def local_base() -> str:
     return config.web_url()
 
 
-#: The local page's own whole-world framing (``HOME_VIEW`` in ``map.ts``). A link whose point
+#: The local page's own whole-world framing (``HOME_VIEW`` in ``map/map.ts``). A link whose point
 #: is a layer has to open far enough out for the layer to be the picture.
 LOCAL_WORLD_ZOOM = -3
 
@@ -156,7 +156,7 @@ def local_map_url(
 ) -> str:
     """A deep link into this project's own web map, centred on a coordinate in METRES.
 
-    The fragment matches the frontend's own writer (``writeHash`` in ``map.ts``):
+    The fragment matches the frontend's own writer (``writeHash`` in ``map/map.ts``):
     ``#world=…&pickups=…&z=…&c=x,y``, with ``c`` in metres on save axes, rounded to one
     decimal. ``save`` is omitted, so an absent save means "follow the newest" -- which is what
     a link pasted later should do.

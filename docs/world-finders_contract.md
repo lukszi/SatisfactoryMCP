@@ -22,7 +22,7 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 | In | Out (and where it goes) |
 |---|---|
 | Dashboard section **World** (`dash=world/...`): here, nodes, fields, rank, conduits, pickups, regions | Transport networks (deferred) |
-| Map finder card (`mapcard.ts`, id `finder`) and a finder pane drawn on the map | "Plan a factory here" from the inspector (planner phase; §17 Q6) |
+| Map finder card (`map/mapcard.ts`, id `finder`) and a finder pane drawn on the map | "Plan a factory here" from the inspector (planner phase; §17 Q6) |
 | Right-click inspector upgrade: here, nearest nodes, fields, conduits, pickups, actions | "Storage near here" (inventory §10 "not yet") |
 | `rank_build_sites` as the World **rank** tab (§2.2) | A pickup route planner (vision Q13 is open) |
 | Spoiler flag on nodes and pickups; locked nodes are drawn faded, the pickup layers follow the switch | Items as spoilers (§12.4, still open) |
@@ -53,7 +53,7 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 2. **rank** tab (its own level-2 tab, address `world/rank?…`; the resource carries over from
    fields) calls `/api/world/sites` once one resource is chosen. Columns are the score and its
    raw components; one line states the weights. No resource: one `dashkit.empty` line.
-3. The rank tab's filter bar (`world-rank.ts`): resource, then
+3. The rank tab's filter bar (`dash/world/world-rank.ts`): resource, then
    **near** anywhere (default, the whole map) | the HUB | the player | a pin | a factory | a
    map point (the selected point, or **pick on map**, one click); **within** a slider from
    0.5 to 5 km, default 1 km; **pure only**, off by default. They go to the route as
@@ -301,7 +301,7 @@ class RegionRow(TypedDict):           # RegionTableResponse = {resource, resourc
 ```
 
 `label` on pickups is the server's word for a category ("blue power slugs"), moved from
-`markers.ts` `PICKUP_NAME` into `domain/collectibles/service.py` so the tool, the layer and the
+`map/drawn/markers.ts` `PICKUP_NAME` into `domain/collectibles/service.py` so the tool, the layer and the
 tables use one vocabulary.
 
 ---
@@ -362,30 +362,30 @@ and `test_surface.py` follow the signature changes.
 
 No new primitive. Every table is `dashkit.table`, every action `dashkit.button`, every toggle
 `dashkit.pressed`, every level-2 switch `dashkit.tabs2`, every state `loading/empty/error`,
-every tag `chip`. Numbers through `format.ts`, words through `words.ts`, addresses through
-`nav.ts`, map moves through `map.flyToBox`/`flyPadded`, the card through `mapcard.ts`.
+every tag `chip`. Numbers through `kit/format.ts`, words through `kit/words.ts`, addresses through
+`app/nav.ts`, map moves through `map.flyToBox`/`flyPadded`, the card through `map/mapcard.ts`.
 
 | Module | Owns | Primitives it must use |
 |---|---|---|
-| `world.ts` (new) | section shell `renderWorld(body, subject)`, `tabs2` of the six views, **here** and **regions** views; registers `/api/world/here` (live wave); exports `here()`, `onHere()` | `tabs2`, `table`, `button`, `link`, `empty/loading/error`, `chip`, `format.num/perMin`, `W`, `nav.dashParts`/`subjectQuery`, `pointButton` |
-| `world-nodes.ts` (new) | nodes and fields | `table` (sortable), `pressed` (free), `button` (map, show all on map), `chip` (status, moved), `code()` copy cells, `latest("world-nodes")` |
-| `world-rank.ts` (new) | the rank tab: resource, near anchor, within slider, pure only, the sites table; `rankSources(params)`, `fromFieldsRank(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (world.ts), `note`, `panel.vitals`, `pins.livePins` |
-| `world-conduits.ts` (new) | runs and networks | `table`, `tabs2` (runs/networks), `button`, `latest("world-conduits")` |
-| `world-pickups.ts` (new) | census and lists | `table`, `tabs2` (remaining/collected/nearest), `chip`, `markers.pickupName`, `crates`-style loot line from `markers.lootLine` (exported), `latest("world-pickups")` |
-| `finder.ts` (new) | the map card `finder`, the `finder` pane (z 445, under trace's 450), `startAt(kind, x, y)`, `showRows(...)`, `showRef(ref)`, delegated click on `data-find` | `mapCard`, `claim`, `cardHead/Row/Line/Heading`, `tabs2`, `table`, `button`, `HIGHLIGHT`, `latest("finder")`, `select()` |
-| `inspector.ts` | new rows and action buttons (popup HTML through `dom.popup`, all data escaped) | `popup`, `code`, `esc`, `traceButtons`, `FIND_ATTR` buttons |
-| `selection.ts` | kinds `node`, `field`, `conduit`, `pickup` added; each carries `x_m`/`y_m` and `ref` | — |
-| `status.ts` | kind words for the new kinds; `fly()` sends the new kinds to `finder.showRef` | existing |
-| `dashboard.ts` | `["world", "World"]` after Inventory in `TABS`; route to `renderWorld` | — |
-| `nav.ts` | `subjectQuery(subject) -> {head, params}` and `withQuery(head, params)`; `recipes.ts` `parseBrowse`/`browseDash` switch to them | — |
-| `markers.ts` | node layer draws `spoiler` rows faded; pickup layer hides `spoiler` rows while the switch is off, redraw on `onSetting`; `PICKUP_NAME` is deleted and `pickupName` reads the census `label` from the collectibles reply (category words as the fallback before it lands); export `pickupName`, `lootLine`, `PICKUP_COLOUR`, `RESOURCE_COLOUR` | `settings.setting` |
-| `panel.ts` | `showSelector` hands `node:`, `chain:`, `pipe:` to `finder.showRef` (one line) | — |
-| `planner.ts` | `focusBody().selection` = the shared selection outside the planner workbench; `onSelect(scheduleFocus)` | — |
-| `settings.ts` | spoiler hint: "later tiers, MAM trees, phases, locked recipes and unfound pickups" | — |
-| `words.ts` | `free`, `tapped`, `locked`, `field`, `node`, `run`, `network`, `remaining`, `collected`, `neverStreamed: "never streamed"`, `mapDataBehind: "map data older than this save"` | — |
-| `dom.ts` | `FIND_ATTR = "data-find"`, `FIND_AT_ATTR = "data-find-at"` beside the trace constants | — |
+| `dash/world/world.ts` (new) | section shell `renderWorld(body, subject)`, `tabs2` of the six views, **here** and **regions** views; registers `/api/world/here` (live wave); exports `here()`, `onHere()` | `tabs2`, `table`, `button`, `link`, `empty/loading/error`, `chip`, `format.num/perMin`, `W`, `nav.dashParts`/`subjectQuery`, `pointButton` |
+| `dash/world/world-nodes.ts` (new) | nodes and fields | `table` (sortable), `pressed` (free), `button` (map, show all on map), `chip` (status, moved), `code()` copy cells, `latest("world-nodes")` |
+| `dash/world/world-rank.ts` (new) | the rank tab: resource, near anchor, within slider, pure only, the sites table; `rankSources(params)`, `fromFieldsRank(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (dash/world/world.ts), `note`, `panel.vitals`, `pins.livePins` |
+| `dash/world/world-conduits.ts` (new) | runs and networks | `table`, `tabs2` (runs/networks), `button`, `latest("world-conduits")` |
+| `dash/world/world-pickups.ts` (new) | census and lists | `table`, `tabs2` (remaining/collected/nearest), `chip`, `markers.pickupName`, `crates`-style loot line from `markers.lootLine` (exported), `latest("world-pickups")` |
+| `map/tools/finder.ts` (new) | the map card `finder`, the `finder` pane (z 445, under trace's 450), `startAt(kind, x, y)`, `showRows(...)`, `showRef(ref)`, delegated click on `data-find` | `mapCard`, `claim`, `cardHead/Row/Line/Heading`, `tabs2`, `table`, `button`, `HIGHLIGHT`, `latest("finder")`, `select()` |
+| `map/inspector.ts` | new rows and action buttons (popup HTML through `dom.popup`, all data escaped) | `popup`, `code`, `esc`, `traceButtons`, `FIND_ATTR` buttons |
+| `app/selection.ts` | kinds `node`, `field`, `conduit`, `pickup` added; each carries `x_m`/`y_m` and `ref` | — |
+| `app/status.ts` | kind words for the new kinds; `fly()` sends the new kinds to `finder.showRef` | existing |
+| `dash/shell.ts` | `["world", "World"]` after Inventory in `TABS`; route to `renderWorld` | — |
+| `app/nav.ts` | `subjectQuery(subject) -> {head, params}` and `withQuery(head, params)`; `dash/recipes/recipes.ts` `parseBrowse`/`browseDash` switch to them | — |
+| `map/drawn/markers.ts` | node layer draws `spoiler` rows faded; pickup layer hides `spoiler` rows while the switch is off, redraw on `onSetting`; `PICKUP_NAME` is deleted and `pickupName` reads the census `label` from the collectibles reply (category words as the fallback before it lands); export `pickupName`, `lootLine`, `PICKUP_COLOUR`, `RESOURCE_COLOUR` | `settings.setting` |
+| `map/panel.ts` | `showSelector` hands `node:`, `chain:`, `pipe:` to `finder.showRef` (one line) | — |
+| `dash/planner/planner.ts` | `focusBody().selection` = the shared selection outside the planner workbench; `onSelect(scheduleFocus)` | — |
+| `app/settings.ts` | spoiler hint: "later tiers, MAM trees, phases, locked recipes and unfound pickups" | — |
+| `kit/words.ts` | `free`, `tapped`, `locked`, `field`, `node`, `run`, `network`, `remaining`, `collected`, `neverStreamed: "never streamed"`, `mapDataBehind: "map data older than this save"` | — |
+| `kit/dom.ts` | `FIND_ATTR = "data-find"`, `FIND_AT_ATTR = "data-find-at"` beside the trace constants | — |
 | `main.ts` | FEATURES line `import "./world";`; `listenForFinds()` beside `listenForTraces()` | — |
-| `api-shapes.ts` | aliases for every §3.2 name | — |
+| `api/shapes.ts` | aliases for every §3.2 name | — |
 | `style.css` | World filter bar, finder pane classes; tokens only, no hex | — |
 
 Addresses: `world` (here), `world/nodes?…`, `world/fields?…`,
@@ -555,13 +555,13 @@ Frontend: `npm ci`, `npx tsc --noEmit`, `npm run build`; schema regenerated offl
 17. Keyboard: every World tab, filter, row and action reachable with Tab, with the one focus
     ring; Enter on a row selects it; Esc closes the finder card.
 18. No raw class id, `null`, `NaN` or `undefined` on screen; unknown values read `–`.
-19. No hex in `style.css` outside `:root`; no new colour declared outside `palette.ts` owners.
+19. No hex in `style.css` outside `:root`; no new colour declared outside `map/palette.ts` owners.
 
 ---
 
 ## 14. File ownership
 
-`api-schema.d.ts` is in neither list; the integrator regenerates it. This contract is
+`api/schema.d.ts` is in neither list; the integrator regenerates it. This contract is
 read-only for both.
 
 **BACKEND**
@@ -578,8 +578,8 @@ read-only for both.
 
 **FRONTEND**
 
-- `frontend/src/world.ts`, `world-nodes.ts`, `world-conduits.ts`, `world-pickups.ts`, `finder.ts` (new)
-- `frontend/src/inspector.ts`, `selection.ts`, `status.ts`, `dashboard.ts`, `nav.ts`, `recipes.ts` (query helper only), `markers.ts`, `panel.ts` (`showSelector` only), `planner.ts` (`focusBody`, `onSelect` only), `settings.ts` (hint only), `words.ts`, `dom.ts` (constants only), `main.ts` (FEATURES line and one listener), `api-shapes.ts`, `style.css`
+- `frontend/src/dash/world/world.ts`, `dash/world/world-nodes.ts`, `dash/world/world-conduits.ts`, `dash/world/world-pickups.ts`, `map/tools/finder.ts` (new)
+- `frontend/src/map/inspector.ts`, `app/selection.ts`, `app/status.ts`, `dash/shell.ts`, `app/nav.ts`, `dash/recipes/recipes.ts` (query helper only), `map/drawn/markers.ts`, `map/panel.ts` (`showSelector` only), `dash/planner/planner.ts` (`focusBody`, `onSelect` only), `app/settings.ts` (hint only), `kit/words.ts`, `kit/dom.ts` (constants only), `main.ts` (FEATURES line and one listener), `api/shapes.ts`, `style.css`
 
 ---
 

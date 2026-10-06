@@ -74,7 +74,7 @@ registration that never ran is a layer that is simply never fetched -- no error,
 space, just an absence. So the two directions are checked as a pair. Every module that calls
 ``registerFetch`` is named in ``main.ts``'s FEATURES block, and nothing in that block fails to
 register; and the mechanism side -- ``load.ts``, ``registry.ts``, ``layers.ts`` and
-``layercontrol.ts`` -- imports none of them, which is what makes the FEATURES block the only
+``layercontrol/control.ts`` -- imports none of them, which is what makes the FEATURES block the only
 thing holding them in. Those same four are held to a second, wider rule: none may import a
 module that imports it. The narrow rule is about the bundle; this one is about rings, and
 ``layers.ts`` is why it exists -- every drawing module reaches it, so anything it reached back
@@ -105,6 +105,7 @@ the parser, because everything else reaches it through the subprocess.
 from __future__ import annotations
 
 import ast
+import posixpath
 import re
 import subprocess
 import sys
@@ -300,20 +301,20 @@ FRONTEND_MAIN_TS = FRONTEND_SRC / "main.ts"
 #: the names in it.
 #:
 #: ``load.ts`` runs the two waves, ``registry.ts`` holds what is in them, ``layers.ts`` hands
-#: out the named groups, ``layercontrol.ts`` is the widget listing them, and ``palette.ts``
+#: out the named groups, ``layercontrol/control.ts`` is the widget listing them, and ``palette.ts``
 #: records what colour each feature chose and checks the choices against each other. Every
 #: feature on the page reaches at least one of these; none of the five may reach a feature.
 #: That is what makes each of them a seam rather than a habit -- see the two rules below for
 #: the two different things that sentence has to mean.
 FRONTEND_MECHANISM = (
-    FRONTEND_SRC / "load.ts",
-    FRONTEND_SRC / "registry.ts",
-    FRONTEND_SRC / "layers.ts",
-    FRONTEND_SRC / "layercontrol.ts",
-    FRONTEND_SRC / "palette.ts",
+    FRONTEND_SRC / "app" / "load.ts",
+    FRONTEND_SRC / "app" / "registry.ts",
+    FRONTEND_SRC / "map" / "layers.ts",
+    FRONTEND_SRC / "map" / "layercontrol" / "control.ts",
+    FRONTEND_SRC / "map" / "palette.ts",
 )
-FRONTEND_REGISTRY_TS = FRONTEND_SRC / "registry.ts"
-FRONTEND_PALETTE_TS = FRONTEND_SRC / "palette.ts"
+FRONTEND_REGISTRY_TS = FRONTEND_SRC / "app" / "registry.ts"
+FRONTEND_PALETTE_TS = FRONTEND_SRC / "map" / "palette.ts"
 
 #: A colour VALUE, in any of the four CSS hex forms, anywhere in ``palette.ts`` -- code or
 #: comment, because the file's old header quoted the values it was arguing about and quoting
@@ -332,13 +333,15 @@ HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b")
 #: explaining what the block of bare imports below it is for.
 REGISTER_CALL = re.compile(r"^registerFetch[<(]", re.MULTILINE)
 
-#: A bare side-effect import of a sibling module: ``import "./markers";`` and nothing else.
-#: Stylesheets are excluded by the pattern itself -- ``"./style.css"`` carries a dot.
-BARE_IMPORT = re.compile(r'^import "\./([A-Za-z0-9_-]+)";$', re.MULTILINE)
+#: A bare side-effect import of a page module: ``import "./map/drawn/markers";`` and nothing
+#: else. Stylesheets are excluded by the pattern itself -- ``"./style.css"`` carries a dot
+#: after the last slash.
+_RELATIVE = r"((?:\./|(?:\.\./)+)[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*)"
+BARE_IMPORT = re.compile(rf'^import "{_RELATIVE}";$', re.MULTILINE)
 
-#: The tail of any other import of a sibling, which is matched rather than the whole
+#: The tail of any other import of a page module, which is matched rather than the whole
 #: statement because several of them span lines.
-FROM_IMPORT = re.compile(r'from "\./([A-Za-z0-9_-]+)"')
+FROM_IMPORT = re.compile(rf'from "{_RELATIVE}"')
 
 # ------------------------------------------------------------------- the routers
 
@@ -1092,7 +1095,7 @@ def test_the_frontend_sources_are_not_reachable_from_python():
 #: The ids are data now, so the compiler checks none of them; the old ones survive only as
 #: what ``registry.LEGACY`` keeps serving unregistered and the one alias tiles.ts keeps.
 REGISTRY_PY = PKG / "domain" / "maps" / "registry.py"
-FRONTEND_TILES_TS = FRONTEND / "src" / "tiles.ts"
+FRONTEND_TILES_TS = FRONTEND_SRC / "map" / "tiles.ts"
 
 
 def test_the_page_and_the_registry_agree_on_the_old_base_map_names():
@@ -1125,22 +1128,39 @@ def test_the_page_and_the_registry_agree_on_the_old_base_map_names():
     )
 
 
+def _module_key(path: Path) -> str:
+    """A page module's name for these rules: its path under ``src/``, without ``.ts``."""
+    relative = path.relative_to(FRONTEND_SRC).as_posix()
+    return relative.removesuffix(".ts").removesuffix(".d")
+
+
+def _resolve_specifiers(importer: Path, specifiers: list[str]) -> set[str]:
+    """Relative import specifiers as module keys, resolved against the importer's folder."""
+    folder = posixpath.dirname(_module_key(importer))
+    return {posixpath.normpath(posixpath.join(folder, specifier)) for specifier in specifiers}
+
+
 def _ts_imports(path: Path) -> set[str]:
-    """Every sibling module a ``.ts`` file imports -- bare, named, value or type.
+    """Every page module a ``.ts`` file imports -- bare, named, value or type.
 
     Two patterns rather than one because the two forms do not look alike: a side-effect
     import is the whole statement on one line, and everything else is recognised by its
     ``from "./x"`` tail, which is the only part guaranteed not to be split across lines.
     """
     text = path.read_text(encoding="utf-8")
-    return set(BARE_IMPORT.findall(text)) | set(FROM_IMPORT.findall(text))
+    found = BARE_IMPORT.findall(text) + FROM_IMPORT.findall(text)
+    return _resolve_specifiers(path, found)
+
+
+def _page_modules() -> list[Path]:
+    return sorted(FRONTEND_SRC.rglob("*.ts"))
 
 
 def _registering_modules() -> set[str]:
-    """Every page module that declares a fetch, by module name."""
+    """Every page module that declares a fetch, by module key."""
     return {
-        path.stem
-        for path in sorted(FRONTEND_SRC.glob("*.ts"))
+        _module_key(path)
+        for path in _page_modules()
         if REGISTER_CALL.search(path.read_text(encoding="utf-8"))
     }
 
@@ -1160,7 +1180,9 @@ def test_every_module_that_fetches_is_named_in_the_features_block():
     failure above. A module listed that no longer registers is the same block turning into a
     list of imports nobody can explain, which is how it stops being read.
     """
-    listed = set(BARE_IMPORT.findall(FRONTEND_MAIN_TS.read_text(encoding="utf-8")))
+    listed = _resolve_specifiers(
+        FRONTEND_MAIN_TS, BARE_IMPORT.findall(FRONTEND_MAIN_TS.read_text(encoding="utf-8"))
+    )
     registering = _registering_modules()
     assert registering, (
         "nothing calls registerFetch at module scope any more -- if the registry is gone, "
@@ -1169,7 +1191,7 @@ def test_every_module_that_fetches_is_named_in_the_features_block():
     missing = sorted(registering - listed)
     assert not missing, (
         "these modules register a fetch and nothing imports them for it -- add a bare "
-        '`import "./name";` to the FEATURES block in main.ts, or their layers are dropped '
+        '`import "./path/name";` to the FEATURES block in main.ts, or their layers are dropped '
         "from the bundle with no error anywhere:\n" + "\n".join(f"  src/{n}.ts" for n in missing)
     )
     stale = sorted(listed - registering)
@@ -1182,11 +1204,11 @@ def test_every_module_that_fetches_is_named_in_the_features_block():
 
 
 def _ts_importers_of(module: str) -> set[str]:
-    """Every page module that imports ``module``, by module name."""
+    """Every page module that imports ``module``, by module key."""
     return {
-        path.stem
-        for path in sorted(FRONTEND_SRC.glob("*.ts"))
-        if path.stem != module and module in _ts_imports(path)
+        _module_key(path)
+        for path in _page_modules()
+        if _module_key(path) != module and module in _ts_imports(path)
     }
 
 
@@ -1199,7 +1221,7 @@ def test_the_mechanism_imports_no_module_that_fetches():
     just be in the bundle for the wrong reason, and the day somebody tidied the import away
     the FEATURES block would take the blame for a failure it did not cause. So the mechanism
     side is required to know none of the names: ``load.ts`` runs waves, ``registry.ts`` holds
-    a list, ``layers.ts`` hands out groups and ``layercontrol.ts`` draws the rows, and not one
+    a list, ``layers.ts`` hands out groups and the control draws the rows, and not one
     of the four can reach a module that declares a fetch.
 
     ``regions.ts`` is the one feature module ``load.ts`` still names, and it is allowed here
@@ -1220,7 +1242,7 @@ def test_the_mechanism_imports_no_module_that_fetches():
     for path in FRONTEND_MECHANISM:
         reached = sorted(_ts_imports(path) & registering)
         assert not reached, (
-            f"src/{path.name} imports a module that registers a fetch, which is what the "
+            f"src/{_module_key(path)}.ts imports a module that registers a fetch, which is what the "
             "registry exists to stop -- the feature declares what it wants fetched and this "
             "side runs the list:\n" + "\n".join(f"  -> src/{n}.ts" for n in reached)
         )
@@ -1248,9 +1270,9 @@ def test_no_mechanism_module_imports_a_module_that_imports_it():
     imported none of the four would break only the other.
     """
     for path in FRONTEND_MECHANISM:
-        reached = sorted(_ts_imports(path) & _ts_importers_of(path.stem))
+        reached = sorted(_ts_imports(path) & _ts_importers_of(_module_key(path)))
         assert not reached, (
-            f"src/{path.name} imports a module that imports it back, which is a ring: this "
+            f"src/{_module_key(path)}.ts imports a module that imports it back, which is a ring: this "
             "side is a mechanism every feature reaches, so whatever it reaches would be "
             "evaluated before all of them:\n" + "\n".join(f"  -> src/{n}.ts" for n in reached)
         )
@@ -1652,7 +1674,7 @@ def test_the_page_frame_matches_geo():
     equal ``geo.MAP_SQUARE_M``, the one frame every Python module reads."""
     from satisfactory_mcp.domain.spatial import geo
 
-    map_ts = SRC / "satisfactory_mcp" / "interfaces" / "web" / "frontend" / "src" / "map.ts"
+    map_ts = FRONTEND_SRC / "map" / "map.ts"
     number = r"(-?\d+(?:\.\d+)?)"
     found = re.search(
         rf"MAP_SQUARE_M = \{{ x_min: {number}, x_max: {number}, y_min: {number}, y_max: {number} \}}",

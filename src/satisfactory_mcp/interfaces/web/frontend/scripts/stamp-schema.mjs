@@ -10,7 +10,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-const FILE = new URL("../src/api-schema.d.ts", import.meta.url);
+const FILE = new URL("../src/api/schema.d.ts", import.meta.url);
 const MARK = "GENERATED from the server's own /openapi.json";
 
 const HEADER = `/**
@@ -35,19 +35,19 @@ const HEADER = `/**
  *
  * \`api-types.ts\` IS GONE, and that is what the paragraph above is worth saying. It held the
  * frontend's own observations of the endpoints that published no schema, read off real
- * payloads from a real save; those endpoints publish one now, and \`api-shapes.ts\` re-exports
+ * payloads from a real save; those endpoints publish one now, and \`api/shapes.ts\` re-exports
  * the components below under the names the page uses. What was in that file and was never a
- * payload lives with the code that uses it instead: the drawing tuples in \`geometry.ts\` and
- * \`ApiError\` in \`api.ts\`.
+ * payload lives with the code that uses it instead: the drawing tuples in \`map/geometry.ts\` and
+ * \`ApiError\` in \`api/client.ts\`.
  *
  * What this file has always been authoritative for is the other half and still is: which
  * paths exist, which query parameters each takes, and what a validation error looks like.
  *
- * NOTHING IMPORTS THE COMPONENT NAMES FROM HERE DIRECTLY except \`api-shapes.ts\`, which
+ * NOTHING IMPORTS THE COMPONENT NAMES FROM HERE DIRECTLY except \`api/shapes.ts\`, which
  * re-exports them under the names the page already used. One indirection, so that a
  * converted endpoint changes one line in one file rather than every module that draws its
  * payload -- and so that the page's names stay the page's while their DEFINITIONS come
- * from the server. \`floors.ts\` predates it and reaches in here itself.
+ * from the server.
  *
  * Committed on purpose (see above), which is also why regenerating it after a server
  * change is part of the same commit: a checked-in record that lags the server is worse
@@ -57,8 +57,8 @@ const HEADER = `/**
 
 const body = readFileSync(FILE, "utf8");
 if (body.includes(MARK)) {
-  console.log("api-schema.d.ts: header already present");
+  console.log("api/schema.d.ts: header already present");
 } else {
   writeFileSync(FILE, HEADER + body, "utf8");
-  console.log("api-schema.d.ts: header stamped");
+  console.log("api/schema.d.ts: header stamped");
 }

@@ -52,7 +52,7 @@ from . import (
 __all__ = ["ALL_ROUTERS"]
 
 #: Mounted in this order, and the tuple is APPEND-ONLY: ``/openapi.json`` emits ``paths`` in
-#: registration order and the committed ``api-schema.d.ts`` inherits it, so a router that
+#: registration order and the committed ``api/schema.d.ts`` inherits it, so a router that
 #: moves within this tuple rewrites the generated file with a diff that means nothing. A new
 #: router goes at the end.
 ALL_ROUTERS: tuple[APIRouter, ...] = (
