@@ -8,6 +8,8 @@ rules and the classes are in docs/spatial-and-map.md section 33.
 from __future__ import annotations
 
 import struct
+from collections.abc import Collection, Mapping, Sequence
+from typing import TypeAlias, TypedDict, cast
 
 import numpy as np
 from scipy import ndimage
@@ -15,8 +17,16 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.water.actors import is_water_class, water_actor_box
-from satisfactory_mcp.core.gameassets.packages import class_name_of, root_component
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I32Grid, U8Grid, U16Grid
+from satisfactory_mcp.core.gameassets.packages import (
+    ClassFacts,
+    PackageView,
+    class_name_of,
+    root_component,
+)
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
     "ACTOR_CLASS",
@@ -37,6 +47,8 @@ __all__ = [
     "SWAMP",
     "WATER_BODIES_NAME",
     "WATER_CLASSES",
+    "WaterActorRow",
+    "WaterBodies",
     "actor_materials",
     "body_class",
     "classify",
@@ -47,7 +59,8 @@ __all__ = [
 
 WATER_BODIES_NAME = "water_bodies.json"
 
-#: Index = value in the class plane. 0 is dry.
+#: The classes ``classify`` writes, by plane value; 0 is dry. The painted style adds its
+#: mouth blends past the end (``palette.painted.water_classes``).
 WATER_CLASSES = (
     "dry",
     "ocean",
@@ -113,11 +126,22 @@ HOT_SPRING_BOX_MAX_M = 150.0
 
 _MATERIAL_KEYS = ("OverrideMaterials", "Material", "WaterMaterial", "OceanMaterial", "LakeMaterial")
 
+#: One water actor in the store: its class, its box (``WaterBox``, rounded) and materials.
+WaterActorRow: TypeAlias = tuple[str, Sequence[float], Sequence[str]]
 
-def actor_materials(view, actor: int) -> tuple[str, ...]:
+
+class WaterBodies(TypedDict):
+    """``water_bodies.json``: every water actor, and every hot-spring terrace's position."""
+
+    actors: list[WaterActorRow]
+    hot_springs: list[list[float]]
+
+
+def actor_materials(view: PackageView, actor: int) -> tuple[str, ...]:
     """Short names of every material the actor's export subtree assigns, sorted."""
     found: set[str] = set()
-    stack, seen = [actor], set()
+    stack: list[int] = [actor]
+    seen: set[int] = set()
     while stack:
         slot = stack.pop()
         if slot in seen:
@@ -140,7 +164,9 @@ def actor_materials(view, actor: int) -> tuple[str, ...]:
     return tuple(sorted(found))
 
 
-def collect_water_bodies(view, classes, meshes, out: dict) -> None:
+def collect_water_bodies(
+    view: PackageView, classes: ClassFacts, meshes: MeshBounds, out: WaterBodies
+) -> None:
     """Add one level's water actors and hot-spring terraces to ``out``."""
     roots = {root_component(view, slot) for slot in view.class_of}
     for slot, class_path in view.class_of.items():
@@ -148,8 +174,8 @@ def collect_water_bodies(view, classes, meshes, out: dict) -> None:
         if is_water_class(name):
             box, _sources = water_actor_box(view, slot, classes, meshes)
             if box is not None:
-                box = [round(v, 1) for v in box]
-                out["actors"].append([name, box, list(actor_materials(view, slot))])
+                rounded = [round(v, 1) for v in box]
+                out["actors"].append((name, rounded, list(actor_materials(view, slot))))
         elif name == "StaticMeshComponent" and slot in roots:
             props = view.props(slot)
             location = props.get("RelativeLocation")
@@ -158,7 +184,9 @@ def collect_water_bodies(view, classes, meshes, out: dict) -> None:
                 out["hot_springs"].append([round(v, 1) for v in struct.unpack("<3d", location)])
 
 
-def body_class(name: str, materials, box, hot_springs: np.ndarray) -> str | None:
+def body_class(
+    name: str, materials: Collection[str], box: Sequence[float], hot_springs: F64Grid
+) -> str | None:
     """One actor's class: its material's, else its actor class's; a lake holding a terrace
     becomes a hot spring."""
     found = next((MATERIAL_CLASS[m] for m in materials if m in MATERIAL_CLASS), None)
@@ -180,7 +208,7 @@ def body_class(name: str, materials, box, hot_springs: np.ndarray) -> str | None
     return "hot_spring" if inside.any() else found
 
 
-def open_sea(level_m: np.ndarray, wet: np.ndarray, ocean_level_m: float) -> np.ndarray:
+def open_sea(level_m: F32Grid, wet: BoolMask, ocean_level_m: float) -> BoolMask:
     """Ocean-level water the map's edge reaches without passing a channel narrower than
     ``2 * OPEN_SEA_RADIUS_M``: a morphological opening on a coarse grid, kept where it
     comes within three radii of the edge."""
@@ -200,18 +228,24 @@ def open_sea(level_m: np.ndarray, wet: np.ndarray, ocean_level_m: float) -> np.n
 
 
 def classify(
-    level_m: np.ndarray, wet: np.ndarray, bodies: dict, biome: tuple, ocean_level_m: float
-) -> tuple[np.ndarray, dict]:
+    level_m: F32Grid,
+    wet: BoolMask,
+    bodies: Mapping[str, object],
+    biome: tuple[U8Grid, Sequence[str | None]],
+    ocean_level_m: float,
+) -> tuple[U8Grid, JsonObject]:
     """The class plane (uint8, ``WATER_CLASSES`` index) on the 1 m grid, and counts.
 
     ``level_m`` is the water level per texel (nan where none), ``wet`` the texels the
-    channel calls water, ``biome`` the biome index grid and the names it indexes. No box
-    but the ocean's claims the open sea, nor water at the ocean's level from under it. A
-    river box's claim stands only on a body it mostly covers (``_settle_rivers``).
+    channel calls water, ``bodies`` the store's ``WaterBodies``, ``biome`` the biome index
+    grid and the names it indexes. No box but the ocean's claims the open sea, nor water at
+    the ocean's level from under it. A river box's claim stands only on a body it mostly
+    covers (``_settle_rivers``).
     """
-    springs = np.asarray(bodies.get("hot_springs") or np.zeros((0, 3)), np.float64)
-    claims = []
-    for name, box, materials in bodies.get("actors", []):
+    stored = cast(WaterBodies, bodies)
+    springs = np.asarray(stored.get("hot_springs") or np.zeros((0, 3)), np.float64)
+    claims: list[tuple[float, int, Sequence[float]]] = []
+    for name, box, materials in stored.get("actors", []):
         found = body_class(name, materials, box, springs)
         if found is not None:
             claims.append(((box[3] - box[0]) * (box[4] - box[1]), _ID[found], box))
@@ -247,7 +281,7 @@ def classify(
     left = wet & (plane == DRY)
     if left.any():
         index, names = biome
-        lut = np.array([_ID[BIOME_CLASS.get(n, "lake")] for n in names], np.uint8)
+        lut = np.array([_ID[BIOME_CLASS.get(n or "", "lake")] for n in names], np.uint8)
         plane[left] = lut[index[left]]
     counts = np.bincount(plane.ravel(), minlength=len(WATER_CLASSES))
     return plane, {
@@ -260,7 +294,7 @@ def classify(
     }
 
 
-def _box_window(box, shape) -> tuple[slice, slice] | None:
+def _box_window(box: Sequence[float], shape: tuple[int, ...]) -> tuple[slice, slice] | None:
     """The texels a world box covers on the 1 m grid, or None off it."""
     x0, y0, _z0, x1, y1, _z1 = box
     c0 = max(int((x0 - ORIGIN_X_CM) / SPACING_CM), 0)
@@ -270,14 +304,15 @@ def _box_window(box, shape) -> tuple[slice, slice] | None:
     return None if c0 >= c1 or r0 >= r1 else (slice(r0, r1), slice(c0, c1))
 
 
-def level_bodies(mask: np.ndarray, level_m: np.ndarray) -> np.ndarray:
+def level_bodies(mask: BoolMask, level_m: F32Grid) -> I32Grid:
     """Labels from 1 of the 8-connected parts of ``mask`` whose neighbours' levels agree
     within ``BODY_STEP_M``, 0 outside it."""
     rows, cols = mask.shape
     index = np.full(mask.shape, -1, np.int32)
     count = int(mask.sum())
     index[mask] = np.arange(count, dtype=np.int32)
-    src, dst = [], []
+    src: list[I32Grid] = []
+    dst: list[I32Grid] = []
     for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
         a = (slice(0, rows - dr), slice(max(-dc, 0), cols - max(dc, 0)))
         b = (slice(dr, rows), slice(max(dc, 0), cols - max(-dc, 0)))
@@ -285,14 +320,18 @@ def level_bodies(mask: np.ndarray, level_m: np.ndarray) -> np.ndarray:
             joined = mask[a] & mask[b] & (np.abs(level_m[a] - level_m[b]) <= BODY_STEP_M)
         src.append(index[a][joined])
         dst.append(index[b][joined])
-    src, dst = np.concatenate(src), np.concatenate(dst)
-    graph = coo_matrix((np.ones(len(src), np.int8), (src, dst)), shape=(count, count))
+    edges_from, edges_to = np.concatenate(src), np.concatenate(dst)
+    graph = coo_matrix(
+        (np.ones(len(edges_from), np.int8), (edges_from, edges_to)), shape=(count, count)
+    )
     labels = np.zeros(mask.shape, np.int32)
     labels[mask] = connected_components(graph, directed=False)[1] + 1
     return labels
 
 
-def _settle_rivers(painted, judged, level_m) -> int:
+def _settle_rivers(
+    painted: tuple[U8Grid, U8Grid, U16Grid], judged: BoolMask, level_m: F32Grid
+) -> int:
     """A river box's texels in each body at one level of ``judged``: where the river holds
     more of it than every other class together and at least ``MAJORITY_SHARE``, the body
     turns river but for what boxes smaller than its river claimed; anywhere else they go
@@ -330,7 +369,7 @@ def _settle_rivers(painted, judged, level_m) -> int:
     return given_back
 
 
-def _fill_by_majority(plane: np.ndarray, wet: np.ndarray) -> None:
+def _fill_by_majority(plane: U8Grid, wet: BoolMask) -> None:
     """Unclaimed texels of an inland body take the body's majority class, if it has one."""
     inland = wet & (plane != OCEAN)
     labels, count = ndimage.label(inland, structure=np.ones((3, 3)))

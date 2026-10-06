@@ -59,7 +59,7 @@ from mapgen.gamedata.meshes import MeshBounds
 from mapgen.gamedata.vegetation import crown_sprites as crown_data
 from mapgen.gamedata.vegetation.carpet import is_carpet, write_carpet
 from mapgen.gamedata.vegetation.trees import canopy_cover, is_tree
-from mapgen.gamedata.water.bodies import WATER_BODIES_NAME, collect_water_bodies
+from mapgen.gamedata.water.bodies import WATER_BODIES_NAME, WaterBodies, collect_water_bodies
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, PackageView, class_name_of
 from satisfactory_mcp.core.gameassets.provenance import (
@@ -109,7 +109,7 @@ def satellite_inputs(store, scripts, decoder, image_mod, planes, table) -> tuple
 def sweep(store, scripts, classes, progress: bool, meshes=None) -> dict:
     """One walk of every level: weight planes, component origins, trees and water bodies."""
     planes: dict[str, np.ndarray] = {}
-    bodies: dict[str, list] = {"actors": [], "hot_springs": []}
+    bodies: WaterBodies = {"actors": [], "hot_springs": []}
     origins: list[tuple[int, int]] = []
     trees: dict[str, list[np.ndarray]] = {}
     carpet: dict[str, list[np.ndarray]] = {}

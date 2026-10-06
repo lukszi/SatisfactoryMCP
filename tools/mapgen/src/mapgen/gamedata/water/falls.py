@@ -8,12 +8,17 @@ top-down map can draw: the lip, its width, the drop and the splashes.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import NotRequired, TypedDict, TypeGuard
 
 import numpy as np
 
-from mapgen.gamedata.level.sweep import flagged_tags, instance_matrices
+from mapgen.gamedata.level.sweep import Sweep, flagged_tags, instance_matrices
+from satisfactory_mcp.core.arrays import F64Grid
 from satisfactory_mcp.core.gameassets.packages import (
+    ClassFacts,
+    PackageView,
     class_name_of,
     compose,
     local_transform,
@@ -23,6 +28,7 @@ from satisfactory_mcp.core.gameassets.packages import (
 )
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 
 __all__ = [
     "FALLS_CACHE_DIR_NAME",
@@ -34,6 +40,8 @@ __all__ = [
     "SPLASH_COMPONENT",
     "TOP_COMPONENT",
     "TOP_MODULE_LENGTH_CM",
+    "FallRecord",
+    "FallsStamp",
     "cached_falls",
     "fall_from_modules",
     "load_or_sweep_falls",
@@ -59,11 +67,35 @@ FALLS_CACHE_NAME = "falls.json"
 _ISM = frozenset({"InstancedStaticMeshComponent", "HierarchicalInstancedStaticMeshComponent"})
 
 
-def _axes(quat) -> np.ndarray:
+class FallRecord(TypedDict):
+    """One waterfall in metres: the lip, its axes, width, drop, top run and splashes."""
+
+    x: float
+    y: float
+    z: float
+    along: list[float]
+    out: list[float]
+    width_m: float
+    height_m: float
+    top_len_m: float
+    splash: list[list[float]]
+    actor: NotRequired[str]
+
+
+class FallsStamp(TypedDict):
+    """What a falls cache must agree with to be read: the build and the reader."""
+
+    game_version_pinned: str | None
+    reader_version: int
+
+
+def _axes(quat: tuple[float, ...]) -> F64Grid:
     return np.stack([np.array(quat_rotate(quat, tuple(a))) for a in np.eye(3)])
 
 
-def _instances(view, slot: int, root_tf, classes) -> np.ndarray | None:
+def _instances(
+    view: PackageView, slot: int, root_tf: tuple[tuple[float, ...], ...], classes: ClassFacts
+) -> F64Grid | None:
     """An instanced component's matrices in world space, rows as UE's (scaled axes, origin)."""
     body = view.pkg.body(view.exports[slot])
     _props, end = flagged_tags(body, view.pkg.names)
@@ -71,6 +103,7 @@ def _instances(view, slot: int, root_tf, classes) -> np.ndarray | None:
     if mats is None:
         return None
     # Attached through the class template, so the instance names no parent of its own.
+    tf: tuple[tuple[float, ...], ...] | None
     if "AttachParent" in view.props(slot):
         tf = world_transform(view, slot, classes)[0]
     else:
@@ -85,7 +118,13 @@ def _instances(view, slot: int, root_tf, classes) -> np.ndarray | None:
     return world
 
 
-def fall_from_modules(lip_cm, axes, side, top, splash) -> dict | None:
+def fall_from_modules(
+    lip_cm: Sequence[float],
+    axes: F64Grid,
+    side: F64Grid | None,
+    top: F64Grid | None,
+    splash: F64Grid | None,
+) -> FallRecord | None:
     """One record from the world matrices of a fall's modules, in metres; ``None`` if empty.
 
     ``axes`` are the actor's local X (along the lip) and Y (upstream) in world space.
@@ -105,7 +144,7 @@ def fall_from_modules(lip_cm, axes, side, top, splash) -> dict | None:
     top_len = 0.0
     if top is not None and len(top):
         top_len = float(np.median(TOP_MODULE_LENGTH_CM * np.linalg.norm(top[:, 1, :3], axis=1)))
-    splashes = []
+    splashes: list[list[float]] = []
     for m in splash if splash is not None else ():
         r = SPLASH_MODULE_RADIUS_CM * max(np.linalg.norm(m[0, :3]), np.linalg.norm(m[1, :3]))
         splashes.append([round(float(v) / 100, 2) for v in (*m[3, :3], r)])
@@ -122,20 +161,23 @@ def fall_from_modules(lip_cm, axes, side, top, splash) -> dict | None:
     }
 
 
-def read_fall(view, slot: int, class_path: str | None, classes) -> dict | None:
+def read_fall(
+    view: PackageView, slot: int, class_path: str | None, classes: ClassFacts
+) -> FallRecord | None:
     """The record of one level actor, or ``None`` if it is not a waterfall tool."""
     if class_name_of(class_path) != FALL_CLASS:
         return None
     root = root_component(view, slot)
+    root_tf: tuple[tuple[float, ...], ...] | None
     root_tf = world_transform(view, root, classes)[0] if root is not None else None
     if root_tf is None:
         return None
-    parts: dict[str, np.ndarray] = {}
+    parts: dict[str, F64Grid] = {}
     lip = root_tf[0]
     for child in view.children.get(slot, []):
-        name = view.exports[child]["name"]
+        name: str = view.exports[child]["name"]
         if name == TOP_CENTRE:
-            found = world_transform(view, child, classes)[0]
+            found: tuple[tuple[float, ...], ...] | None = world_transform(view, child, classes)[0]
             lip = found[0] if found else lip
         elif class_name_of(view.class_of.get(child)) in _ISM and name in (
             SIDE_COMPONENT,
@@ -157,39 +199,53 @@ def read_fall(view, slot: int, class_path: str | None, classes) -> dict | None:
     return record
 
 
-def write_falls(path: Path, falls: list[dict], stamp: dict) -> None:
+def _metres(value: JsonValue) -> float:
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def write_falls(path: Path, falls: Sequence[JsonObject], stamp: FallsStamp) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    falls = sorted(falls, key=lambda f: (f["x"], f["y"], f["z"]))
-    path.write_text(json.dumps({**stamp, "falls": falls}, indent=0), encoding="utf-8")
+    ordered = sorted(falls, key=lambda f: (_metres(f["x"]), _metres(f["y"]), _metres(f["z"])))
+    path.write_text(json.dumps({**stamp, "falls": ordered}, indent=0), encoding="utf-8")
 
 
-def cached_falls(path: Path, stamp: dict) -> list[dict] | None:
+def _is_fall(actor: object) -> TypeGuard[JsonObject]:
+    """Whether a swept level actor is a fall record (``read_fall``'s answer for its class)."""
+    return isinstance(actor, dict) and "width_m" in actor
+
+
+def cached_falls(path: Path, stamp: FallsStamp) -> list[JsonObject] | None:
     """The records at ``path`` if they were read from this build by this reader."""
     try:
-        recorded = json.loads(path.read_text(encoding="utf-8"))
+        recorded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(recorded, dict) or {k: recorded.get(k) for k in stamp} != stamp:
         return None
     falls = recorded.get("falls")
-    return falls if isinstance(falls, list) else None
+    return [f for f in falls if isinstance(f, dict)] if isinstance(falls, list) else None
 
 
-def load_or_sweep_falls(cache_root: Path, build: str | None, sweep_once) -> tuple[list[dict], dict]:
+def load_or_sweep_falls(
+    cache_root: Path, build: str | None, sweep_once: Callable[[], Sweep]
+) -> tuple[list[JsonObject], dict[str, JsonObject]]:
     """The falls from this build's cache, else from ``sweep_once()``, and what the sidecar says."""
     path = cache_root / FALLS_CACHE_DIR_NAME / FALLS_CACHE_NAME
-    stamp = {"game_version_pinned": build, "reader_version": READER_VERSIONS["waterfalls"]}
+    stamp: FallsStamp = {
+        "game_version_pinned": build,
+        "reader_version": READER_VERSIONS["waterfalls"],
+    }
     falls = cached_falls(path, stamp)
     reused = falls is not None
     if falls is None:
-        falls = [f for f in sweep_once().get("actors", ()) if "width_m" in f]
+        falls = [f for f in sweep_once().get("actors", ()) if _is_fall(f)]
         write_falls(path, falls, stamp)
     print(f"  {len(falls)} waterfalls" + (f", reused from {path}" if reused else ""))
-    meta = {
+    meta: JsonObject = {
         "actors": len(falls),
         "reader_version": stamp["reader_version"],
         "reused": reused,
-        "width_m_total": round(sum(f["width_m"] for f in falls), 1),
+        "width_m_total": round(sum(_metres(f["width_m"]) for f in falls), 1),
         "digest": sha256_hex(json.dumps(falls, sort_keys=True).encode("utf-8")),
     }
     return falls, {"waterfalls": meta}

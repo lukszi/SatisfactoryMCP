@@ -1,12 +1,19 @@
-"""The water actors: which classes are water, and each actor's box in the world."""
+"""The water actors: which classes are water, each actor's box in the world, and box tops."""
 
 from __future__ import annotations
 
 import math
 import struct
+from collections.abc import Collection, Iterable, Sequence
+from typing import TypeAlias
 
+import numpy as np
+
+from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.meshes import MeshBounds, bounds_pair
+from satisfactory_mcp.core.arrays import F32Grid
 from satisfactory_mcp.core.gameassets.packages import (
+    ClassFacts,
     PackageView,
     class_name_of,
     property_tags,
@@ -20,9 +27,23 @@ __all__ = [
     "WATER_CLASS_TOKENS",
     "WATER_PLANE_MESH",
     "WATER_SURFACE_CLASSES",
+    "Corners",
+    "WaterBox",
+    "box_texels",
     "is_water_class",
     "water_actor_box",
+    "water_box_tops",
 ]
+
+#: An axis-aligned box in world cm: ``(x0, y0, z0, x1, y1, z1)``.
+WaterBox: TypeAlias = tuple[float, float, float, float, float, float]
+#: A box's low and high corners, each ``[x, y, z]``.
+Corners: TypeAlias = tuple[list[float], list[float]]
+_Triple: TypeAlias = tuple[float, float, float]
+#: A box as ``(origin, extent)``, the way ``FBoxSphereBounds`` and ``ExtendedBounds`` state it.
+_BoundsPair: TypeAlias = tuple[_Triple, _Triple]
+_Transform: TypeAlias = tuple[_Triple, tuple[float, float, float, float], _Triple]
+_IDENTITY: _Transform = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0))
 
 
 #: A water actor is one whose class name carries a water word and one of the game's own
@@ -56,6 +77,7 @@ WATER_BOX_COMPONENTS = frozenset(
         "HierarchicalInstancedStaticMeshComponent",
     }
 )
+_MESH_COMPONENTS = WATER_BOX_COMPONENTS - {"BoxComponent", "BrushComponent"}
 
 #: The plane the water blueprints draw themselves with. Their cooked instances name no
 #: ``StaticMesh`` -- the construction script assigns it -- so this asset's own
@@ -70,16 +92,17 @@ def is_water_class(name: str) -> bool:
     return name.startswith(WATER_CLASS_PREFIXES) and any(t in name for t in WATER_CLASS_TOKENS)
 
 
-def _box_sphere_bounds(payload: bytes, names) -> tuple[tuple, tuple] | None:
+def _box_sphere_bounds(payload: bytes, names: list[str]) -> _BoundsPair | None:
     """An ``FBoxSphereBounds``, unwrapping the ``CachedBounds`` container it arrives in."""
     entries, _end = property_tags(payload, names, 0)
-    found = {name: raw for name, _kind, raw, _value in entries}
+    found = {name: raw for name, _kind, raw, _value in entries if name is not None}
     if "Value" in found:
         return _box_sphere_bounds(found["Value"], names)
-    return bounds_pair(found)
+    pair: _BoundsPair | None = bounds_pair(found)
+    return pair
 
 
-def _agg_geom_box(payload: bytes, names) -> tuple[list[float], list[float]] | None:
+def _agg_geom_box(payload: bytes, names: list[str]) -> Corners | None:
     """The union of every convex element's ``ElemBox`` in a cooked ``FKAggregateGeom``.
 
     This is where an ``FGWaterVolume`` keeps its shape. A cooked BSP brush holds its
@@ -111,7 +134,7 @@ def _agg_geom_box(payload: bytes, names) -> tuple[list[float], list[float]] | No
     return (low, high) if found else None
 
 
-def _corners_to_world(low, high, transform) -> tuple[list[float], list[float]]:
+def _corners_to_world(low: list[float], high: list[float], transform: _Transform) -> Corners:
     """A local box through a world transform, eight corners at a time.
 
     Corner by corner rather than centre-plus-extent, because a rotated volume's world AABB
@@ -132,8 +155,27 @@ def _corners_to_world(low, high, transform) -> tuple[list[float], list[float]]:
     return out_low, out_high
 
 
-def _component_box(view: PackageView, slot: int, name: str, meshes: MeshBounds):
-    """One component's LOCAL box and where it came from, or ``(None, None)``.
+def _mesh_box(
+    view: PackageView, slot: int, name: str, meshes: MeshBounds
+) -> tuple[_BoundsPair | None, str]:
+    """An instanced or static mesh component's ``(origin, extent)`` and its source's name."""
+    props = view.props(slot)
+    if name != "StaticMeshComponent":
+        cached = props.get("CachedBounds")
+        pair = _box_sphere_bounds(cached, view.pkg.names) if cached else None
+        return pair, "InstancedStaticMeshComponent.CachedBounds"
+    mesh = view.import_path(props.get("StaticMesh", b"")) if "StaticMesh" in props else None
+    own: _BoundsPair | None = meshes.extended_bounds(mesh) if mesh else None
+    if own is not None:
+        return own, "StaticMesh.ExtendedBounds"
+    plane: _BoundsPair | None = meshes.extended_bounds(WATER_PLANE_MESH)
+    return plane, "WaterPlane.ExtendedBounds (assumed)"
+
+
+def _component_box(
+    view: PackageView, slot: int, name: str, meshes: MeshBounds
+) -> tuple[Corners, str] | None:
+    """One component's LOCAL box and where it came from, or ``None``.
 
     Four sources, tried in the order they are trustworthy: the component's own
     ``BoxExtent``, a BSP volume's cooked ``BrushBodySetup.AggGeom``, an instanced
@@ -143,35 +185,27 @@ def _component_box(view: PackageView, slot: int, name: str, meshes: MeshBounds):
     """
     props = view.props(slot)
     if len(props.get("BoxExtent", b"")) == 24:
-        extent = struct.unpack("<3d", props["BoxExtent"])
+        extent: tuple[float, float, float] = struct.unpack("<3d", props["BoxExtent"])
         return ([-e for e in extent], list(extent)), "BoxComponent.BoxExtent"
     if name == "BrushComponent":
         setup = view.export_ref(props.get("BrushBodySetup", b""))
         geometry = view.props(setup).get("AggGeom") if setup is not None else None
         box = _agg_geom_box(geometry, view.pkg.names) if geometry else None
-        return (box, "BrushBodySetup.AggGeom") if box else (None, None)
-    if name in ("InstancedStaticMeshComponent", "HierarchicalInstancedStaticMeshComponent"):
-        cached = props.get("CachedBounds")
-        pair = _box_sphere_bounds(cached, view.pkg.names) if cached else None
-        source = "InstancedStaticMeshComponent.CachedBounds"
-    elif name == "StaticMeshComponent":
-        mesh = view.import_path(props.get("StaticMesh", b"")) if "StaticMesh" in props else None
-        pair = meshes.extended_bounds(mesh) if mesh else None
-        source = "StaticMesh.ExtendedBounds"
-        if pair is None:
-            pair = meshes.extended_bounds(WATER_PLANE_MESH)
-            source = "WaterPlane.ExtendedBounds (assumed)"
-    else:
-        return None, None
+        return (box, "BrushBodySetup.AggGeom") if box else None
+    if name not in _MESH_COMPONENTS:
+        return None
+    pair, source = _mesh_box(view, slot, name, meshes)
     if pair is None:
-        return None, None
+        return None
     origin, extent = pair
     low = [origin[axis] - extent[axis] for axis in range(3)]
     high = [origin[axis] + extent[axis] for axis in range(3)]
     return (low, high), source
 
 
-def water_actor_box(view: PackageView, actor: int, classes, meshes: MeshBounds):
+def water_actor_box(
+    view: PackageView, actor: int, classes: ClassFacts, meshes: MeshBounds
+) -> tuple[WaterBox | None, set[str]]:
     """One water actor's world AABB in centimetres, and the box sources it came from.
 
     The union over every box-like component in the actor's export subtree, each taken to
@@ -198,15 +232,15 @@ def water_actor_box(view: PackageView, actor: int, classes, meshes: MeshBounds):
         name = class_name_of(view.class_of.get(slot))
         if name not in WATER_BOX_COMPONENTS:
             continue
-        local, source = _component_box(view, slot, name, meshes)
-        if local is None:
+        found = _component_box(view, slot, name, meshes)
+        if found is None:
             continue
-        transform, _parent = world_transform(view, slot, classes)
-        if transform is None:
-            transform = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0))
+        (local_low, local_high), source = found
+        placed: _Transform | None = world_transform(view, slot, classes)[0]
+        transform = _IDENTITY if placed is None else placed
         if view.props(slot).get("RelativeLocation") is not None or transform[0] != (0.0, 0.0, 0.0):
             positioned = True
-        corner_low, corner_high = _corners_to_world(local[0], local[1], transform)
+        corner_low, corner_high = _corners_to_world(local_low, local_high, transform)
         for axis in range(3):
             low[axis] = min(low[axis], corner_low[axis])
             high[axis] = max(high[axis], corner_high[axis])
@@ -215,4 +249,40 @@ def water_actor_box(view: PackageView, actor: int, classes, meshes: MeshBounds):
         return None, sources
     if not positioned and all("assumed" in source for source in sources):
         return None, set()
-    return tuple(low + high), sources
+    return (low[0], low[1], low[2], high[0], high[1], high[2]), sources
+
+
+def box_texels(box: Sequence[float], shape: tuple[int, int]) -> tuple[slice, slice] | None:
+    """The texels a box covers, vertex-aligned: a texel's own point lies inside it."""
+    x0, y0, _z0, x1, y1, _z1 = box
+    col0 = max(0, math.ceil((x0 - ORIGIN_X_CM) / SPACING_CM))
+    col1 = min(shape[1], math.floor((x1 - ORIGIN_X_CM) / SPACING_CM) + 1)
+    row0 = max(0, math.ceil((y0 - ORIGIN_Y_CM) / SPACING_CM))
+    row1 = min(shape[0], math.floor((y1 - ORIGIN_Y_CM) / SPACING_CM) + 1)
+    return None if col1 <= col0 or row1 <= row0 else (slice(row0, row1), slice(col0, col1))
+
+
+def water_box_tops(
+    boxes: Iterable[tuple[str, Sequence[float]]],
+    classes: Collection[str] = WATER_SURFACE_CLASSES,
+    shape: tuple[int, int] = (GRID_PX, GRID_PX),
+) -> tuple[F32Grid, int]:
+    """The highest top of the ``classes`` boxes over each texel in metres, ``nan`` where none,
+    and how many boxes reached the grid.
+
+    A box's top IS the surface of the volume it bounds, so where several overlap in plan the
+    highest is the one visible from above. The save's 23 water extractors all sit inside a
+    volume and every one of them stands on its box's top to within 0.005 cm.
+    """
+    tops = np.full(shape, np.nan, np.float32)
+    used = 0
+    for name, box in boxes:
+        texels = box_texels(box, shape) if name in classes else None
+        if texels is None:
+            continue
+        used += 1
+        window = tops[texels]
+        top = np.float32(box[5] / 100.0)
+        np.maximum(window, top, out=window, where=np.isfinite(window))
+        window[~np.isfinite(window)] = top
+    return tops, used
