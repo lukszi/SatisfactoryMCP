@@ -1,7 +1,7 @@
 """``/api/world/*``: the World finders -- where I am, nodes, fields, sites, conduits, regions.
 
 Each route calls the domain function its MCP tool calls (``surroundings.player_surroundings``,
-``node_search.find_nodes``, ``node_search.rank``, ``conduits.search``/``networks``,
+``node_search.find_nodes``, ``node_search.rank``, ``conduit_search.search``/``networks``,
 ``regions.region_rows``), so the page and the chat answer one question one way.
 
 WARNING: the function names are operation_ids -- renaming one churns the committed schema.
@@ -24,6 +24,7 @@ from ....domain.spatial import regions as spatial_regions
 from ....domain.spatial.nodes import search as node_search
 from ....domain.spatial.nodes import table as node_table
 from ....domain.spatial.places import resolve_place
+from ....domain.world import conduit_search
 from ....domain.world import conduits as conduits_mod
 from ..serial import (
     FoundField,
@@ -493,7 +494,7 @@ def world_conduits(
     view = view.strip().casefold()
     kind = conduit_kind.strip().casefold()
     refusal = _choice(view, ("runs", "networks"), "view") or _choice(
-        kind, (*conduits_mod.KINDS, "all"), "conduit_kind"
+        kind, (*conduit_search.KINDS, "all"), "conduit_kind"
     )
     if refusal:
         return _fail(refusal)
@@ -526,7 +527,7 @@ def world_conduits(
             origin, where = resolve_place(st, near)
         except ValueError as exc:
             return _fail(f"! {exc}")
-        views = conduits_mod.networks(st, origin)
+        views = conduit_search.networks(st, origin)
         page = views[offset : offset + limit]
         return {
             **base,
@@ -552,7 +553,7 @@ def world_conduits(
             "fluids": sorted({_resource_name(game, v.fluid) for v in views if v.fluid}),
         }
 
-    found = conduits_mod.search(
+    found = conduit_search.search(
         st,
         near,
         radius_m,

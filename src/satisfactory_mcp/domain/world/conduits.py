@@ -1,40 +1,10 @@
 """Belt and pipe runs as queryable things, not just drawable ones.
 
-The projection has carried every conveyor and pipeline polyline since schemas 12 and 13,
-and until this module the only reader was the web map. Every TEXT surface either walked
-through them silently (``trace_upstream`` traverses logistics and reports machines) or
-never looked (``describe_location`` sampled foundations and buildings), so "is there a
-pipe between these extractors and that platform" had no answer at all -- the assistant
-twice told the player a build did not exist when the tools simply could not see it.
-
-A **run** here is the unit a player talks about:
-
-* for belts, the CHAIN -- the game's own grouping of consecutive conveyor pieces, split
-  wherever a splitter, merger or machine interrupts the line. 1,909 chains over 3,085
-  pieces on the reference world, so most runs are one piece and the long haulers are the
-  group-by this module exists for.
-* for pipes, the PIECE -- one placed pipeline actor, which is already one player-built
-  stretch between two joints. Pipes have no chain; their network is a whole plumbing
-  system (19 networks claim all 503 pipes here) and "the run" at network granularity
-  would be a map-wide blob with no endpoints.
-
-Lengths follow the drawn line: a span whose tangents schema 15 records is integrated along
-its own spline, and a span with none is its chord. The projection stores tangents exactly
-where a chord would be out by a centimetre or more, so both branches measure the curve the
-map draws -- a chord across one bend was out by 16.4 m.
-
-Endpoint attachment here is a NEAREST-PORT guess, labelled as one: what stands at an end is
-answered geometrically, by the closest placed thing whose footprint (plus a port's reach)
-covers the endpoint. ``None`` where nothing known stands there -- a pipe ending at a junction
-reports the junction only when the material graph names it, because junctions, pumps and
-valves are not placements in any projection table. Coordinates stay in the save's
-centimetres; every distance routes through ``spatial.geo`` and every threshold is stated in
-the metres it is compared in.
-
-The EXACT answer to "what is on the end of this" is ``domain.world.logistics``, which
-contracts the same conduit out of the save's own connection records; since schema 20 both
-tables carry an actor index, so a run there and a run here share the ``chain:<n>`` and
-``pipe:<row>`` ident and the two views can be read against each other.
+A run is a belt CHAIN or a single pipeline PIECE, measured along the line the map draws, and
+what stands at each end is a NEAREST-PORT guess labelled as one; coordinates stay in the
+save's centimetres, every threshold in the metres it is compared in. The EXACT answer to
+"what is on the end of this" is ``logistics``, which shares the ``chain:<n>``/``pipe:<row>``
+idents. docs/mcp-surface.md §10.1f and docs/save-projection.md §6.15 have the measurements.
 """
 
 from __future__ import annotations
@@ -43,52 +13,43 @@ import itertools
 import math
 import re
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from ...core.saveio import ports
 from ...core.saveio import rows as saverows
 from ..spatial import geo
-from ..spatial.places import resolve_place
 from .flow import BASIS_NONE
 
 __all__ = [
     "JOINT_M",
-    "KINDS",
     "NEAR_RADIUS_M",
     "PORT_REACH_M",
-    "ConduitSearch",
+    "ConduitRun",
     "End",
-    "NetworkView",
-    "Run",
     "build_runs",
     "near_counts",
-    "networks",
-    "search",
 ]
 
 #: How far from a place a run counts as near it: every finder, tool and popup uses this.
 NEAR_RADIUS_M = 250.0
 
-#: Two piece endpoints within this of each other are the same joint. Measured over the
-#: reference world's 254 multi-piece chains: the median end-to-start gap is 0.0 cm and a
-#: real discontinuity (a lift rising out of a belt's plane) is metres, not centimetres.
+#: Two piece endpoints within this are one joint; a real discontinuity is metres off.
 JOINT_M = 1.5
 
-#: How far outside a building's own half-footprint an endpoint may sit and still count
-#: as plugged into it. Ports sit ON the hull; positions are centres; a belt's last point
-#: is at the connector, so the slack only has to cover the port's own depth.
+#: How far outside a building's half-footprint an endpoint may sit and still plug into it.
 PORT_REACH_M = 2.5
 
-#: Fallback half-footprint for a placement the dump has no clearance for -- a splitter
-#: or merger is 4x4 m, so half of that plus the port reach covers it.
+#: Half-footprint of a placement the dump has no clearance for: a 4x4 m splitter or merger.
 _HALF_DEFAULT_M = 2.0
 
-#: Vertical gate for "plugged into": a lift can meet a machine's elevated port, but an
-#: endpoint a whole storey above a small building is passing over it, not feeding it.
+#: An endpoint a whole storey above a small building passes over it rather than feeding it.
 _PORT_Z_M = 12.0
 
-#: The docs dump's native class for a conveyor lift -- the same field
-#: ``domain.world.carriers`` and the belts endpoint classify by, because a substring
-#: match on an engine id is not a classification.
+#: The plug lookup's grid pitch, cm: above the largest reach (~53 m on a Nuclear Power Plant)
+#: so the 3x3 scan cannot miss one.
+_PLUG_CELL_CM = 6400.0
+
+#: A conveyor lift, by the native class ``carriers`` and the belts endpoint classify on.
 _LIFT_NATIVE = "FGBuildableConveyorLift"
 
 _MK = re.compile(r"mk\.?\s*(\d)", re.IGNORECASE)
@@ -105,7 +66,7 @@ class End:
 
 
 @dataclass
-class Run:
+class ConduitRun:
     """One conduit run: a belt chain or a single pipeline piece.
 
     ``a``/``b`` are in travel order for belts (input to output -- the projection stores
@@ -127,26 +88,19 @@ class Run:
     directed: bool
     rate: float | None  # slowest tier's items_per_min, or the pipe class's flow_m3_min
     fluid: str | None = None  # item id, pipes only
-    #: What ``directed`` was inferred FROM, pipes only -- ``domain.world.flow``'s basis, the
-    #: same evidence ``/api/pipes`` publishes. ``None`` on a belt, whose order is the
-    #: pieces' own and is not inferred at all.
+    #: What ``directed`` was inferred from, pipes only: ``flow``'s basis. ``None`` on a belt,
+    #: whose order is its pieces' own.
     basis: str | None = None
-    #: The game's own FGPipeNetwork id, pipes only. The fact that matters for "is there
-    #: a pipe from A to B": every piece of one network is one connected plumbing system,
-    #: so two areas touching the same network ARE joined even when no single piece
-    #: passes near both.
+    #: The game's own FGPipeNetwork id, pipes only: two areas touching one network ARE
+    #: joined even when no single piece passes near both.
     network: int | None = None
     via: list[str] = field(default_factory=list)
     #: The polylines (cm) the distance query runs over; one per piece.
     _lines: list[list[list[float]]] = field(default_factory=list)
 
     def midpoint(self) -> tuple[float, float]:
-        """The point half way along the drawn line, in centimetres.
-
-        Where to centre a search on a run named by its ident. The mean of the two ends is
-        not it: a chain that doubles back around a platform has a mean sitting off the
-        belt entirely.
-        """
+        """The point half way along the drawn line, in centimetres; the mean of the two ends
+        sits off the belt when a chain doubles back around a platform."""
         spans = [
             (p, q, geo.distance_3d_m(p, q))
             for line in self._lines
@@ -168,10 +122,8 @@ class Run:
         return self._lines
 
     def dist_m(self, x: float, y: float) -> float:
-        """Closest 2D approach of the run to a point (cm in, metres out). Segment
-        distance, not point distance: a 500 m straight belt has exactly two stored
-        points, so measuring to the points alone would miss every mid-span crossing --
-        the exact blindness this module exists to remove."""
+        """Closest 2D approach of the run to a point (cm in, metres out), measured to the
+        spans: a 500 m straight belt has two stored points and its middle is on neither."""
         best = math.inf
         for line in self._lines:
             for p, q in itertools.pairwise(line):
@@ -179,6 +131,17 @@ class Run:
             if len(line) == 1:
                 best = min(best, geo.distance_m((x, y), (line[0][0], line[0][1])))
         return best
+
+
+class PlugTarget(NamedTuple):
+    """A placed thing an endpoint could plug into, in cm, with its reach and height in m."""
+
+    x: float
+    y: float
+    z: float
+    reach_m: float
+    height_m: float
+    name: str
 
 
 def _seg_dist_m(x: float, y: float, p: list[float], q: list[float]) -> float:
@@ -193,10 +156,8 @@ def _seg_dist_m(x: float, y: float, p: list[float], q: list[float]) -> float:
     return geo.distance_m((x, y), (px + t * dx, py + t * dy))
 
 
-#: Eight-point Gauss-Legendre quadrature, already mapped onto ``[0, 1]`` as ``(t, weight)``.
-#: The integrand is the norm of a quadratic, so eight nodes hold the arc of the sharpest
-#: elbow the game builds to well under a millimetre -- far below the whole-centimetre
-#: resolution the control points themselves are stored at.
+#: Eight-point Gauss-Legendre on ``[0, 1]`` as ``(t, weight)``: well under a millimetre on
+#: the sharpest elbow the game builds.
 _GAUSS = tuple(
     (0.5 + 0.5 * x, 0.5 * w)
     for x, w in (
@@ -251,13 +212,8 @@ def _tangents(spans, index: int) -> tuple[list[float], list[float]] | None:
 
 
 def _length_m(line: list[list[float]], spans=None) -> float:
-    """3D drawn length in metres: the vertical leg of a lift or a downcomer is real
-    conveyor and real pipe, so a plan-view length would sell every riser short.
-
-    A span whose tangents the save records is INTEGRATED along its spline rather than cut
-    across its chord: a chord is out by up to 16.4 m on a single piece, which is the map's
-    own measurement, and a text answer that disagreed with the drawn line by that much is
-    a different belt."""
+    """3D drawn length in metres, a riser's vertical leg included: a span with recorded
+    tangents is integrated along its spline, one without is its chord."""
     total = 0.0
     for i, (p, q) in enumerate(itertools.pairwise(line)):
         curve = _tangents(spans, i)
@@ -268,7 +224,7 @@ def _length_m(line: list[list[float]], spans=None) -> float:
     return total
 
 
-def _mk_label(kind: str, classes: set[str], game) -> str:
+def _mk_label(kind: str, classes: set[str]) -> str:
     """ "belt mk3", or "belt mk1-mk3" for a mixed chain: the tier off the class id."""
     mks = set()
     for cls in classes:
@@ -283,11 +239,10 @@ def _mk_label(kind: str, classes: set[str], game) -> str:
 def _open_ends(pieces: list) -> tuple[End, End, bool]:
     """A chain's two extremities, oriented input->output where the joints prove it.
 
-    Every piece's first point is its input and its last its output. An extremity is an
-    endpoint no other piece's opposite endpoint sits on (within ``JOINT_M``). With
-    exactly one open input and one open output the run is directed; any other shape --
-    a torn chain, pieces out of order past the tolerance -- falls back to the table
-    order's outer corners, undirected, which costs the arrow and never the run.
+    An extremity is an endpoint no other piece's opposite endpoint sits on (within
+    ``JOINT_M``). Exactly one open input and one open output make the run directed; any other
+    shape falls back to the table order's outer corners, undirected, which costs the arrow
+    and never the run.
     """
     starts = [(p.points[0], i) for i, p in enumerate(pieces)]
     ends = [(p.points[-1], i) for i, p in enumerate(pieces)]
@@ -310,8 +265,8 @@ def _open_ends(pieces: list) -> tuple[End, End, bool]:
     return End(*first[:3]), End(*last[:3]), False
 
 
-def _placements(projection: dict, game) -> list[tuple[float, float, float, float, float, str]]:
-    """Everything an endpoint could plug into: (x, y, z in cm, reach_m, height_m, name)."""
+def _placements(projection: dict, game) -> list[PlugTarget]:
+    """Everything an endpoint could plug into."""
     out = []
     for key in ("machines", "extractors", "generators", "storage", "attachments"):
         for record in projection.get(key) or ():
@@ -327,7 +282,7 @@ def _placements(projection: dict, game) -> list[tuple[float, float, float, float
             height = footprint.height_m if footprint else _PORT_Z_M
             name = (game.building_name(cls) or cls) if cls else "?"
             out.append(
-                (
+                PlugTarget(
                     float(pos[0]),
                     float(pos[1]),
                     float(pos[2]),
@@ -339,43 +294,25 @@ def _placements(projection: dict, game) -> list[tuple[float, float, float, float
     return out
 
 
-def _plug(end: End, placements, cells: dict) -> str | None:
-    """The nearest placement whose reach covers the endpoint, or None. A guess by
-    geometry, and the caller says so -- see the module docstring."""
+def _plug(end: End, targets: list[PlugTarget], cells: dict) -> str | None:
+    """The nearest placement whose reach covers the endpoint, or None: a geometric guess."""
     best, best_score = None, math.inf
-    cx, cy = int(end.x // _CELL), int(end.y // _CELL)
+    cx, cy = int(end.x // _PLUG_CELL_CM), int(end.y // _PLUG_CELL_CM)
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
             for i in cells.get((cx + dx, cy + dy), ()):
-                px, py, pz, reach, height, name = placements[i]
-                if not (-_PORT_Z_M <= (end.z - pz) / geo.CM_PER_M <= height):
+                target = targets[i]
+                if not (-_PORT_Z_M <= (end.z - target.z) / geo.CM_PER_M <= target.height_m):
                     continue
-                d = geo.distance_m((end.x, end.y), (px, py))
-                if d <= reach and d - reach < best_score:
-                    best, best_score = name, d - reach
+                d = geo.distance_m((end.x, end.y), (target.x, target.y))
+                if d <= target.reach_m and d - target.reach_m < best_score:
+                    best, best_score = target.name, d - target.reach_m
     return best
 
 
-#: Placement lookup grid pitch, cm. Must exceed the largest reach a placement can have
-#: or the 3x3 neighbourhood scan misses it -- the Nuclear Power Plant is 101 m long, so
-#: its half-footprint-plus-port reach is ~53 m and the pitch sits above that.
-_CELL = 6400.0
-
-
-def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> list[Run]:
-    """Every conduit run in a projection, belts grouped by chain, pipes one per piece.
-
-    ``pipe_flow`` is ``WorldState.pipe_flow`` -- positional over the raw pipe table --
-    and orients a pipe's ends by flow where the network resolves one. Omitted, every
-    pipe is undirected, which is a lost arrow and nothing else.
-    """
-    placements = _placements(projection, game)
-    cells: dict[tuple[int, int], list[int]] = {}
-    for i, p in enumerate(placements):
-        cells.setdefault((int(p[0] // _CELL), int(p[1] // _CELL)), []).append(i)
-
-    runs: list[Run] = []
-
+def _belt_runs(projection: dict, game) -> list[ConduitRun]:
+    """One run per belt chain, its pieces grouped and its open ends oriented."""
+    runs: list[ConduitRun] = []
     by_chain: dict[int, list] = {}
     for seg in saverows.iter_belt_segments(projection):
         by_chain.setdefault(seg.chain, []).append(seg)
@@ -391,10 +328,10 @@ def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> l
             if c in game.buildings and game.buildings[c].items_per_min
         ]
         runs.append(
-            Run(
+            ConduitRun(
                 kind=kind,
                 ident=f"chain:{chain}",
-                label=_mk_label(kind, classes, game),
+                label=_mk_label(kind, classes),
                 pieces=len(pieces),
                 length_m=sum(_length_m(p.points, p.spans) for p in pieces),
                 a=a,
@@ -406,19 +343,21 @@ def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> l
                 _lines=[p.points for p in pieces],
             )
         )
+    return runs
 
-    networks = list((projection.get("pipes") or {}).get("networks") or ())
+
+def _material_adjacency(projection: dict) -> dict[int, set[int]]:
+    """Actor index to the actor indices it shares a material coupling with; no hypertubes."""
     graph = projection.get("graph") or {}
-    actors = graph.get("actors") or []
     roles = graph.get("roles") or []
 
-    def _role(index: int) -> str:
+    def role(index: int) -> str:
         return roles[index] if isinstance(index, int) and 0 <= index < len(roles) else ""
 
     adjacency: dict[int, set[int]] = {}
     for edge in graph.get("material") or ():
         if isinstance(edge, (list, tuple)) and len(edge) >= 2:
-            if len(edge) >= 4 and ports.is_hypertube_edge(_role(edge[2]), _role(edge[3])):
+            if len(edge) >= 4 and ports.is_hypertube_edge(role(edge[2]), role(edge[3])):
                 continue
             try:
                 ai, bi = int(edge[0]), int(edge[1])
@@ -426,12 +365,19 @@ def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> l
                 continue
             adjacency.setdefault(ai, set()).add(bi)
             adjacency.setdefault(bi, set()).add(ai)
-    # Classes that are themselves conduit geometry: a pipe's graph neighbour of one of
-    # these is plumbing continuing, not a thing the run connects TO.
+    return adjacency
+
+
+def _pipe_runs(projection: dict, game, pipe_flow: list[dict] | None) -> list[ConduitRun]:
+    """One run per pipeline piece, ends in flow order where the network resolves one."""
+    runs: list[ConduitRun] = []
+    networks = list((projection.get("pipes") or {}).get("networks") or ())
+    actors = (projection.get("graph") or {}).get("actors") or []
+    adjacency = _material_adjacency(projection)
+    # Conduit geometry classes: a pipe's graph neighbour of one is plumbing continuing.
     internal = set((projection.get("pipes") or {}).get("classes") or ()) | set(
         (projection.get("belts") or {}).get("classes") or ()
     )
-
     for seg in saverows.iter_pipe_segments(projection):
         entry = networks[seg.network_index] if 0 <= seg.network_index < len(networks) else {}
         fluid = entry.get("fluid") if isinstance(entry, dict) else None
@@ -457,10 +403,10 @@ def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> l
         building = game.buildings.get(seg.cls) if seg.cls else None
         zs = [pt[2] for pt in seg.points]
         runs.append(
-            Run(
+            ConduitRun(
                 kind="pipe",
                 ident=f"pipe:{seg.index}",
-                label=_mk_label("pipe", {seg.cls} if seg.cls else set(), game),
+                label=_mk_label("pipe", {seg.cls} if seg.cls else set()),
                 pieces=1,
                 length_m=_length_m(seg.points, seg.spans),
                 a=a,
@@ -476,24 +422,50 @@ def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> l
                 _lines=[seg.points],
             )
         )
+    return runs
 
+
+def _plug_ends(runs: list[ConduitRun], projection: dict, game) -> None:
+    """Name what stands at each end, and drop a ``via`` an end already names."""
+    targets = _placements(projection, game)
+    cells: dict[tuple[int, int], list[int]] = {}
+    for i, target in enumerate(targets):
+        cells.setdefault(
+            (int(target.x // _PLUG_CELL_CM), int(target.y // _PLUG_CELL_CM)), []
+        ).append(i)
     for run in runs:
-        run.a.plugs = _plug(run.a, placements, cells)
-        run.b.plugs = _plug(run.b, placements, cells)
-        # A graph neighbour already named at an end is not also "via" it.
+        run.a.plugs = _plug(run.a, targets, cells)
+        run.b.plugs = _plug(run.b, targets, cells)
         run.via = [v for v in run.via if v not in (run.a.plugs, run.b.plugs)]
 
-    # An end still unplugged may simply continue into the next piece of plumbing --
-    # pipes are one run per PIECE, so a mid-network joint is the ordinary case, not an
-    # unknown. Named by the neighbouring run's ident, so a route can be followed piece
-    # to piece instead of dead-ending at every joint.
-    joint_cell = JOINT_M * geo.CM_PER_M  # the grid is keyed in the coordinates' own cm
 
-    def _joint_key(end: End) -> tuple[int, int, int]:
-        return (int(end.x // joint_cell), int(end.y // joint_cell), int(end.z // joint_cell))
+def _joint_key(end: End) -> tuple[int, int, int]:
+    """The joint grid cell of an end; the grid is keyed in the coordinates' own cm."""
+    cell = JOINT_M * geo.CM_PER_M
+    return (int(end.x // cell), int(end.y // cell), int(end.z // cell))
 
+
+def _nearest_joint(end: End, run: ConduitRun, joints: dict, owner: dict) -> str | None:
+    """The ident of the nearest other run with an end on this one's joint, if any."""
+    kx, ky, kz = _joint_key(end)
+    best, best_d = None, JOINT_M
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                for other in joints.get((kx + dx, ky + dy, kz + dz), ()):
+                    if owner[id(other)] is run:
+                        continue
+                    d = geo.distance_3d_m((end.x, end.y, end.z), (other.x, other.y, other.z))
+                    if d <= best_d:
+                        best, best_d = owner[id(other)].ident, d
+    return best
+
+
+def _link_joints(runs: list[ConduitRun]) -> None:
+    """Name an end still unplugged by the run it continues into, so a route can be followed
+    piece to piece instead of dead-ending at every joint."""
     joints: dict[tuple[int, int, int], list[End]] = {}
-    owner: dict[int, Run] = {}
+    owner: dict[int, ConduitRun] = {}
     for run in runs:
         for end in (run.a, run.b):
             joints.setdefault(_joint_key(end), []).append(end)
@@ -502,187 +474,28 @@ def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> l
         for end in (run.a, run.b):
             if end.plugs is not None:
                 continue
-            kx, ky, kz = _joint_key(end)
-            best, best_d = None, JOINT_M
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    for dz in (-1, 0, 1):
-                        for other in joints.get((kx + dx, ky + dy, kz + dz), ()):
-                            if owner[id(other)] is run:
-                                continue
-                            d = geo.distance_3d_m(
-                                (end.x, end.y, end.z), (other.x, other.y, other.z)
-                            )
-                            if d <= best_d:
-                                best, best_d = owner[id(other)].ident, d
+            best = _nearest_joint(end, run, joints, owner)
             if best is not None:
                 end.plugs = best
+
+
+def build_runs(projection: dict, game, pipe_flow: list[dict] | None = None) -> list[ConduitRun]:
+    """Every conduit run in a projection, belts grouped by chain, pipes one per piece.
+
+    ``pipe_flow`` is ``WorldState.pipe_flow``, positional over the raw pipe table, and orients
+    a pipe's ends where the network resolves a direction; without it every pipe is undirected.
+    """
+    runs = _belt_runs(projection, game) + _pipe_runs(projection, game, pipe_flow)
+    _plug_ends(runs, projection, game)
+    _link_joints(runs)
     return runs
 
 
-def near_counts(runs: list[Run], x: float, y: float, radius_m: float) -> dict[str, int]:
-    """How many runs pass within ``radius_m`` of a point (cm in, metres for the radius
-    like every caller-facing distance). Keys are ``belt`` (lifts counted in) and
-    ``pipe``; both are ALWAYS present, because the zero is the answer this exists to
-    make trustworthy."""
+def near_counts(runs: list[ConduitRun], x: float, y: float, radius_m: float) -> dict[str, int]:
+    """How many runs pass within ``radius_m`` of a point (cm in): ``belt`` (lifts counted in)
+    and ``pipe``, both ALWAYS present, because the zero is the answer this exists for."""
     out = {"belt": 0, "pipe": 0}
     for run in runs:
         if run.dist_m(x, y) <= radius_m:
             out["pipe" if run.kind == "pipe" else "belt"] += 1
-    return out
-
-
-KINDS = ("belt", "pipe")
-
-
-@dataclass
-class ConduitSearch:
-    """The runs near one place, or between two, as ``search_conduits`` and the page list them."""
-
-    origin: tuple[float, float] | None = None
-    where: str = ""
-    second: tuple[float, float] | None = None
-    where_to: str = ""
-    radius_m: float = 0.0
-    to_radius_m: float | None = None
-    kind: str | None = None
-    network: int | None = None
-    run: str | None = None
-    hits: list[Run] = field(default_factory=list)
-    bridged: list[str] = field(default_factory=list)
-    error: str | None = None
-
-    @property
-    def belts(self) -> list[Run]:
-        return [r for r in self.hits if r.kind != "pipe"]
-
-    @property
-    def pipes(self) -> list[Run]:
-        return [r for r in self.hits if r.kind == "pipe"]
-
-
-def search(
-    st,
-    near: str,
-    radius_m: float = NEAR_RADIUS_M,
-    to: str | None = None,
-    to_radius_m: float | None = None,
-    kind: str | None = None,
-    network: int | None = None,
-    run: str | None = None,
-) -> ConduitSearch:
-    """Runs within ``radius_m`` of ``near`` (and of ``to``), longest first.
-
-    ``kind`` is ``belt``, ``pipe`` or ``None`` for both. ``network`` lists every pipe of one
-    fluid network and ``run`` one run by its ident; both ignore the radii, and distance is
-    still measured from ``near``.
-    """
-    out = ConduitSearch(radius_m=radius_m, kind=kind, network=network, run=run)
-    try:
-        out.origin, out.where = resolve_place(st, near)
-        if to is not None:
-            out.second, out.where_to = resolve_place(st, to)
-    except ValueError as exc:
-        out.error = f"! {exc}"
-        return out
-    if out.second is not None:
-        out.to_radius_m = to_radius_m if to_radius_m is not None else radius_m
-    runs = st.conduit_runs
-    if run is not None:
-        want = run.strip().casefold()
-        out.hits = [r for r in runs if r.ident.casefold() == want]
-        if not out.hits:
-            out.error = f"! no conduit run called {run!r}; search_conduits lists the ids it takes"
-        return out
-    if network is not None:
-        out.hits = sorted(
-            (r for r in runs if r.kind == "pipe" and r.network == network),
-            key=lambda r: -r.length_m,
-        )
-        return out
-
-    bridged: dict[int, dict] = {}
-    direct_nets: set[int] = set()
-    for r in runs:
-        if kind is not None and (r.kind == "pipe") != (kind == "pipe"):
-            continue
-        near_a = r.dist_m(*out.origin) <= radius_m
-        if out.second is None:
-            if near_a:
-                out.hits.append(r)
-            continue
-        near_b = r.dist_m(*out.second) <= out.to_radius_m
-        if near_a and near_b:
-            out.hits.append(r)
-            if r.network is not None:
-                direct_nets.add(r.network)
-        elif r.network is not None and (near_a or near_b):
-            entry = bridged.setdefault(r.network, {"fluid": r.fluid, "a": 0, "b": 0})
-            entry["a"] += near_a
-            entry["b"] += near_b
-    out.hits.sort(key=lambda r: -r.length_m)
-
-    g = st.game
-    out.bridged = [
-        f"pipe network {net} ({g.item_name(entry['fluid']) if entry['fluid'] else '?'}) "
-        f"touches BOTH areas -- one connected plumbing system, {entry['a']} piece(s) near "
-        f"{out.where} and {entry['b']} near {out.where_to}, though no single piece spans both"
-        for net, entry in sorted(bridged.items())
-        if entry["a"] and entry["b"] and net not in direct_nets
-    ]
-    if out.second is not None and kind != "pipe" and (out.hits or out.bridged):
-        out.bridged.append(
-            "a belt route through a splitter is several chains, so a chain near only one "
-            "end may still continue to the other -- follow its connects column, or "
-            "trace_upstream from the machine it feeds"
-        )
-    return out
-
-
-@dataclass
-class NetworkView:
-    """One fluid network: what it carries, how much pipe, where, and what it ends on."""
-
-    network: int | None
-    fluid: str | None
-    runs: list[Run]
-    length_m: float
-    centre: tuple[float, float]
-    z_min_m: float
-    z_max_m: float
-    distance_m: float
-    touches: list[str]
-
-    @property
-    def pieces(self) -> int:
-        return len(self.runs)
-
-
-def networks(st, origin: tuple[float, float]) -> list[NetworkView]:
-    """Every fluid network in the world, most pipe first, placed relative to ``origin``."""
-    grouped: dict[object, list[Run]] = {}
-    for r in st.conduit_runs:
-        if r.kind == "pipe":
-            grouped.setdefault(r.network, []).append(r)
-    out = []
-    for net, runs in sorted(grouped.items(), key=lambda kv: -sum(r.length_m for r in kv[1])):
-        ends = [e for r in runs for e in (r.a, r.b)]
-        touches: list[str] = []
-        for r in runs:
-            for name in (r.a.plugs, r.b.plugs, *r.via):
-                if name and not name.startswith(("pipe:", "chain:")) and name not in touches:
-                    touches.append(name)
-        out.append(
-            NetworkView(
-                network=net,
-                fluid=next((r.fluid for r in runs if r.fluid), None),
-                runs=runs,
-                length_m=sum(r.length_m for r in runs),
-                centre=(sum(e.x for e in ends) / len(ends), sum(e.y for e in ends) / len(ends)),
-                z_min_m=min(r.z_min_m for r in runs),
-                z_max_m=max(r.z_max_m for r in runs),
-                distance_m=min(r.dist_m(*origin) for r in runs),
-                touches=touches,
-            )
-        )
     return out

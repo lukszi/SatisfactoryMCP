@@ -21,6 +21,7 @@ from ....domain.spatial.places import (
     RUN_PREFIXES,
     resolve_place,
 )
+from ....domain.world import conduit_search
 from ....domain.world import conduits as conduits_mod
 from ....presenters.text import primitives as render
 from ..app import (
@@ -302,7 +303,7 @@ def _networks_view(g, st, origin: tuple[float, float], where: str, limit, offset
     a player thinks in and the reason "is there a pipe from here to there" has an answer
     at all.
     """
-    order = conduits_mod.networks(st, origin)
+    order = conduit_search.networks(st, origin)
 
     rows = []
     start = max(0, offset)
@@ -451,7 +452,7 @@ def search_conduits(
             return "! show='networks' lists fluid networks; a belt chain belongs to none"
         return _networks_view(g, st, origin, where, limit, offset)
 
-    found = conduits_mod.search(
+    found = conduit_search.search(
         st, near, radius_m, to=to, to_radius_m=to_radius_m, kind=want, network=network
     )
     if found.error:
