@@ -9,10 +9,17 @@ spatial-and-map.md section 27 has the measurements behind every constant here.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TypedDict
+
 import numpy as np
 from scipy import ndimage
 
+from mapgen.palette.scene import FloatGrid, WaterTerms
+from mapgen.palette.schema import FoamStyle, RiverShoreStyle, ShoreOptics, WetBandStyle
 from mapgen.terrain.render_meshes import MESH_ROCK
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -22,6 +29,7 @@ __all__ = [
     "OCEAN_LEVEL_M",
     "OCEAN_REACH_M",
     "WET_MIX_MOST",
+    "ShoreTerms",
     "add_foam",
     "blend_water",
     "blend_where",
@@ -56,10 +64,28 @@ MESH_FULL_LIFT_M = 0.25
 WET_MIX_MOST = 1 / 3
 
 
+class ShoreTerms(TypedDict):
+    """A water level crossing each pixel: its cover, depth and edge, and the distances across
+    the ground to the waterline from above and below it."""
+
+    cover: FloatGrid
+    depth_m: FloatGrid
+    edge: FloatGrid
+    above_m: FloatGrid
+    below_m: FloatGrid
+
+
+#: A blend worked per pixel: the base, then planes with the same trailing channel axis.
+PixelBlend = Callable[..., FloatGrid]
+
+#: The renderer's raise-only lift of the ground by a mesh plane (``composite_top``).
+MeshLift = Callable[[FloatGrid, FloatGrid, U8Grid], FloatGrid]
+
+
 # ----------------------------------------------------------------------- the shore
 
 
-def ocean_reach(field) -> tuple[np.ndarray, dict]:
+def ocean_reach(field: hf.Field) -> tuple[U8Grid, JsonObject]:
     """1 where the crossing rule applies: within the reach of measured ocean water."""
     water = field.water_raster()
     grades = field.water_quality_raster()
@@ -83,7 +109,9 @@ def ocean_reach(field) -> tuple[np.ndarray, dict]:
     }
 
 
-def shore_terms(z_m: np.ndarray, spacing_m: float, level_m=OCEAN_LEVEL_M) -> dict:
+def shore_terms(
+    z_m: FloatGrid, spacing_m: float, level_m: FloatGrid | float = OCEAN_LEVEL_M
+) -> ShoreTerms:
     """The crossing of a water level (the ocean's, or a river's per pixel) through each pixel:
     coverage, depth, the edge, and how far above the waterline a dry pixel is, in metres
     across the ground."""
@@ -100,7 +128,13 @@ def shore_terms(z_m: np.ndarray, spacing_m: float, level_m=OCEAN_LEVEL_M) -> dic
     }
 
 
-def blend_water(reach, old_cover, old_depth_fraction, shore: dict | None, full_m: float) -> dict:
+def blend_water(
+    reach: FloatGrid | None,
+    old_cover: FloatGrid,
+    old_depth_fraction: FloatGrid,
+    shore: ShoreTerms | None,
+    full_m: float,
+) -> dict[str, FloatGrid]:
     """Recipe 6's water where ``reach`` is 1 and recipe 5's where it is 0, blended between.
 
     Returns ``cover`` (water share of the pixel), ``depth`` (the tint fraction),
@@ -109,10 +143,11 @@ def blend_water(reach, old_cover, old_depth_fraction, shore: dict | None, full_m
     crossing passes through the pixel). ``river`` and ``river_below_m`` stay empty here.
     """
     zero = np.zeros_like(old_cover)
-    rivers = {"river": zero, "river_below_m": np.full_like(old_cover, np.inf)}
-    if shore is None:
+    no_river = np.full_like(old_cover, np.inf)
+    if shore is None or reach is None:
         return {
-            **rivers,
+            "river": zero,
+            "river_below_m": no_river,
             "banks": zero,
             "cover": old_cover,
             "depth": old_depth_fraction,
@@ -124,7 +159,8 @@ def blend_water(reach, old_cover, old_depth_fraction, shore: dict | None, full_m
         }
     keep = 1.0 - reach
     return {
-        **rivers,
+        "river": zero,
+        "river_below_m": no_river,
         "banks": reach,
         "cover": reach * shore["cover"] + keep * old_cover,
         "depth": reach * np.clip(shore["depth_m"] / full_m, 0.0, 1.0) + keep * old_depth_fraction,
@@ -137,8 +173,15 @@ def blend_water(reach, old_cover, old_depth_fraction, shore: dict | None, full_m
 
 
 def water_composite(
-    land, water: dict, shade, optics: dict, shallow, deep, shade_floor, shade_range
-):
+    land: FloatGrid,
+    water: WaterTerms,
+    shade: FloatGrid,
+    optics: ShoreOptics,
+    shallow: F32Grid,
+    deep: F32Grid,
+    shade_floor: float,
+    shade_range: float,
+) -> FloatGrid:
     """Ground and water in one pass, sRGB 0..255. Outside the ocean reach this is recipe 5.
 
     Over the sea the water's opacity rises from ``edge_alpha`` at the line to one with an
@@ -163,7 +206,9 @@ def water_composite(
     return add_foam(rgb, water, optics.get("foam"), np.float32(255.0))
 
 
-def blend_where(touched, most: float, blend, base, *planes):
+def blend_where(
+    touched: BoolMask, most: float, blend: PixelBlend, base: FloatGrid, *planes: FloatGrid
+) -> FloatGrid:
     """``blend(base, *planes)``, worked only on the ``touched`` pixels, where it may differ
     from ``base``, unless they are more than ``most`` of them. Every array has a trailing
     channel axis; docs/spatial-and-map.md section 26, "Drawing less"."""
@@ -177,16 +222,16 @@ def blend_where(touched, most: float, blend, base, *planes):
     return out
 
 
-def wet_mix(land, under, cover):
+def wet_mix(land: FloatGrid, under: FloatGrid, cover: FloatGrid) -> FloatGrid:
     """``land * (1 - cover) + under * cover``; ``cover`` has the trailing channel axis."""
     return blend_where(cover[..., 0] != 0, WET_MIX_MOST, _mix, land, under, cover)
 
 
-def _mix(land, under, cover):
+def _mix(land: FloatGrid, under: FloatGrid, cover: FloatGrid) -> FloatGrid:
     return land * (1.0 - cover) + under * cover
 
 
-def wet_band(land, water: dict, band: dict | None):
+def wet_band(land: FloatGrid, water: WaterTerms, band: WetBandStyle | None) -> FloatGrid:
     """Ground within ``band["m"]`` of the waterline, multiplied towards ``band["tint"]``."""
     if not band or not band.get("m"):
         return land
@@ -195,7 +240,7 @@ def wet_band(land, water: dict, band: dict | None):
     return land * (1.0 - weight + weight * np.asarray(band["tint"], np.float32))
 
 
-def optical_depth(water: dict, river: dict | None):
+def optical_depth(water: WaterTerms, river: RiverShoreStyle | None) -> FloatGrid:
     """The depth the optics see: a river reads at least ``min_depth_m`` deep once ``bank_m``
     in from its waterline, so a shallow bed does not draw it as a pale path."""
     if not river or not river.get("min_depth_m") or "river" not in water:
@@ -205,7 +250,9 @@ def optical_depth(water: dict, river: dict | None):
     return np.maximum(water["depth_m"], floor)
 
 
-def add_foam(rgb, water: dict, foam: dict | None, white):
+def add_foam(
+    rgb: FloatGrid, water: WaterTerms, foam: FoamStyle | None, white: np.float32
+) -> FloatGrid:
     """A faint line along the waterline, towards ``white``: water shallower than
     ``max_depth_m`` and within ``width_m`` of the line across the ground."""
     if not foam or not foam.get("strength"):
@@ -216,7 +263,7 @@ def add_foam(rgb, water: dict, foam: dict | None, white):
     return rgb * (1.0 - weight) + white * np.float32(foam.get("white", 1.0)) * weight
 
 
-def seabed_keeps(mesh_class_band, top_m, water_level_m) -> np.ndarray:
+def seabed_keeps(mesh_class_band: U8Grid, top_m: FloatGrid, water_level_m: FloatGrid) -> BoolMask:
     """Where a style that draws ground and water only keeps a mesh: on dry land, or a rock
     whose top stands above the surface."""
     dry = ~np.isfinite(water_level_m)
@@ -224,7 +271,14 @@ def seabed_keeps(mesh_class_band, top_m, water_level_m) -> np.ndarray:
     return dry | ((mesh_class_band == MESH_ROCK) & (top_m > level))
 
 
-def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite, seabed=False):
+def composite_meshes(
+    z_m: FloatGrid,
+    mesh_z_cm: FloatGrid,
+    mesh_class_band: U8Grid,
+    water_level_m: FloatGrid,
+    composite: MeshLift,
+    seabed: bool = False,
+) -> tuple[FloatGrid, FloatGrid, U8Grid]:
     """``z_m`` raised by the meshes standing near or above the water; and their weight.
 
     ``composite`` is the renderer's raise-only lift (``composite_top``). The weight is how

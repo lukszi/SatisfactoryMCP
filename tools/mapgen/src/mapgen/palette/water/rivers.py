@@ -9,17 +9,23 @@ constant is what it is: docs/spatial-and-map.md section 34.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeAlias, TypedDict, cast
 
 import numpy as np
 
 from mapgen.cache import RIVER_CACHE_DIR_NAME, cached_rivers, river_stamp, write_rivers
+from mapgen.gamedata.level.sweep import Sweep
 from mapgen.gamedata.water.channel import lower_bodies
 from mapgen.gamedata.water.rivers import box_tops, ribbon_planes, sample_rivers
+from mapgen.palette.scene import BandTaps, FloatGrid, WaterTerms, field_heights, field_water
 from mapgen.palette.water.shore import OCEAN_LEVEL_M, shore_terms
 from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_planes
 from mapgen.terrain.sample import sample_plain, sample_surface
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I16Grid, U8Grid
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
+from satisfactory_mcp.core.jsontypes import JsonArray, JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -29,6 +35,7 @@ __all__ = [
     "RIVER_OVER_WATER_M",
     "RIVER_STEP_M",
     "RIVER_TIE_M",
+    "RiverCache",
     "RiverWater",
     "load_rivers",
     "river_terms",
@@ -53,19 +60,30 @@ RIVER_STEP_M = 0.5
 #: Where a river meets other water, it is drawn unless that surface stands this much higher.
 RIVER_TIE_M = 0.05
 
+#: The water boxes by actor name: the river boxes, and every other surface box.
+Boxes: TypeAlias = list[tuple[str, tuple[float, ...]]]
+
+
+class RiverCache(TypedDict):
+    """``rivers.cache``: its stamp, the river splines as swept, and every water box."""
+
+    stamp: JsonObject
+    rivers: list[JsonObject]
+    boxes: list[tuple[str, list[float]]]
+
 
 class RiverWater:
     """The ribbons and the field's water with the river boxes' share taken back out."""
 
-    def __init__(self, cached: dict, field):
+    def __init__(self, cached: RiverCache, field: hf.Field) -> None:
         samples = sample_rivers(cached["rivers"])
-        shape = field.height_dm.shape
-        heights = field.height_dm
+        heights = field_heights(field)
+        shape = heights.shape
         ground = np.where(
             heights == hf.NODATA, np.float32(np.nan), heights / np.float32(hf.DM_PER_M)
         )
         planes = ribbon_planes(samples, shape=shape, hang=(ground, RIVER_MAX_DEPTH_M))
-        boxes = [(name, tuple(box)) for name, box in cached["boxes"]]
+        boxes: Boxes = [(name, tuple(box)) for name, box in cached["boxes"]]
         river_top, other_top = box_tops(boxes, True, shape), box_tops(boxes, False, shape)
         level, u, half = planes["level_m"], planes["u"], planes["half_m"]
         zone = np.isfinite(u)
@@ -74,27 +92,34 @@ class RiverWater:
             fade = np.clip((1.0 - u) * half / RIVER_EDGE_FADE_M, 0.0, 1.0)
             fade *= np.clip((RIVER_MAX_DEPTH_M - (level - ground)) / RIVER_EDGE_FADE_M, 0, 1)
         speaks = zone & ~deep
-        steps = _steps(level)
+        steps = _beside_a_step(level)
         with np.errstate(invalid="ignore"):
             valley = speaks & (ground - level <= RIVER_MAX_DEPTH_M)
             draws = speaks & (u <= 1.0) & ~steps & (level > ground)
         tops = (river_top, other_top, boxes)
+        self.water_dm: I16Grid
+        self.grades: U8Grid
+        self.stats: JsonObject
         self.water_dm, self.grades, self.stats = _reconcile(
             field, ground, (speaks, valley, draws), level, tops
         )
         del valley, draws
         fade *= _below_other(level, self.water_dm, self.grades) * ~steps
         fade = np.where(speaks, fade, 0.0)
-        self.presence = np.round(fade * 255).astype(np.uint8)
-        self.level_dm = np.where(zone, np.round(level * hf.DM_PER_M), hf.NODATA).astype(np.int16)
+        self.presence: U8Grid = np.round(fade * 255).astype(np.uint8)
+        self.level_dm: I16Grid = np.where(zone, np.round(level * hf.DM_PER_M), hf.NODATA).astype(
+            np.int16
+        )
         self.stats.update(
             rivers=len(cached["rivers"]),
-            sections=sum(len(r["sections"]) for r in cached["rivers"]),
+            sections=sum(len(cast(JsonArray, r["sections"])) for r in cached["rivers"]),
             centreline_km=round(_length_m(samples) / 1000, 2),
             ribbon_km2=round(float((self.presence > 0).sum()) / 1e6, 4),
         )
 
-    def over(self, terms: dict, z_m, linear, spacing_m: float) -> dict:
+    def over(
+        self, terms: WaterTerms, z_m: FloatGrid, linear: BandTaps, spacing_m: float
+    ) -> WaterTerms:
         """The band's water with the ribbons laid over it."""
         level_dm, missing = sample_surface(self.level_dm, linear, linear, hf.NODATA)
         river_m = np.where(missing, np.nan, level_dm / np.float32(hf.DM_PER_M))
@@ -102,7 +127,7 @@ class RiverWater:
         return river_terms(terms, z_m, river_m, presence, spacing_m)
 
 
-def _steps(level) -> np.ndarray:
+def _beside_a_step(level: F32Grid) -> BoolMask:
     """Texels beside a step between two overlapping planes, where no sampler can be right."""
     step = np.zeros(level.shape, bool)
     with np.errstate(invalid="ignore"):
@@ -115,7 +140,7 @@ def _steps(level) -> np.ndarray:
     return step
 
 
-def _below_other(level, water_dm, grades):
+def _below_other(level: F32Grid, water_dm: I16Grid, grades: U8Grid) -> FloatGrid:
     """1 where the plane is not hanging over other water, fading to 0 by twice the margin."""
     other = np.where(grades != hf.WATER_DRY, water_dm / np.float32(hf.DM_PER_M), np.nan)
     with np.errstate(invalid="ignore"):
@@ -123,28 +148,35 @@ def _below_other(level, water_dm, grades):
     return np.clip(2.0 - excess / RIVER_OVER_WATER_M, 0.0, 1.0)
 
 
-def _length_m(samples: dict) -> float:
+def _length_m(samples: dict[str, np.ndarray]) -> float:
     step = np.hypot(np.diff(samples["x"]), np.diff(samples["y"]))
     return float(step[samples["section"][1:] == samples["section"][:-1]].sum())
 
 
-def _reconcile(field, ground, ribbon, plane_m, tops):
+def _reconcile(
+    field: hf.Field,
+    ground: FloatGrid,
+    ribbon: tuple[BoolMask, BoolMask, BoolMask],
+    plane_m: F32Grid,
+    tops: tuple[F32Grid, F32Grid, Boxes],
+) -> tuple[I16Grid, U8Grid, JsonObject]:
     """The field's water planes with every texel a river box levelled taken back.
 
     A texel under another water box (a lake the river's AABB overhangs) takes that box's
     level, or goes dry where the ground stands above it, unless the ribbon speaks there and
-    runs above that level: then the box is a lake's AABB reaching over the river's valley. Any other where the ribbon speaks
-    (its reach, minus where the plane hangs too far over the ground) is dropped: the ribbon
-    draws the river there. Then a lower body takes back the box tops over it
-    (``gamedata.water.channel.lower_bodies``). ``ribbon`` is ``(speaks, valley, draws)``: ``valley``
-    where the ground stands at most ``RIVER_MAX_DEPTH_M`` over the plane, ``draws`` where the
-    ribbon covers the texel. Water in the valley more than that above the plane is a higher
-    body's box over the river (``_over_the_river``).
+    runs above that level: then the box is a lake's AABB reaching over the river's valley.
+    Any other where the ribbon speaks (its reach, minus where the plane hangs too far over the
+    ground) is dropped: the ribbon draws the river there. Then a lower body takes back the box
+    tops over it (``gamedata.water.channel.lower_bodies``). ``ribbon`` is
+    ``(speaks, valley, draws)``: ``valley`` where the ground stands at most
+    ``RIVER_MAX_DEPTH_M`` over the plane, ``draws`` where the ribbon covers the texel. Water in
+    the valley more than that above the plane is a higher body's box over the river
+    (``_over_the_river``).
     """
     speaks, valley, draws = ribbon
     river_top, other_top, boxes = tops
-    water = field.water_raster().copy()
-    grades = field.water_quality_raster().copy()
+    level_dm, quality = field_water(field)
+    water, grades = level_dm.copy(), quality.copy()
     level = water / np.float32(hf.DM_PER_M)
     wet = grades != hf.WATER_DRY
     with np.errstate(invalid="ignore"):
@@ -161,7 +193,7 @@ def _reconcile(field, ground, ribbon, plane_m, tops):
     del level
     water[drop] = hf.NODATA
     grades[drop] = hf.WATER_DRY
-    water, lowered = lower_bodies(water, grades, field.height_dm, boxes, OCEAN_LEVEL_M)
+    water, lowered = lower_bodies(water, grades, field_heights(field), boxes, OCEAN_LEVEL_M)
     hung = _over_the_river(water, grades != hf.WATER_DRY, plane_m, valley)
     water[hung] = np.round(plane_m[hung] * hf.DM_PER_M).astype(np.int16)
     with np.errstate(invalid="ignore"):
@@ -181,14 +213,20 @@ def _reconcile(field, ground, ribbon, plane_m, tops):
     )
 
 
-def _over_the_river(water, wet, plane_m, valley) -> np.ndarray:
+def _over_the_river(water: I16Grid, wet: BoolMask, plane_m: F32Grid, valley: BoolMask) -> BoolMask:
     """Wet texels in ``valley`` whose level stands more than ``RIVER_MAX_DEPTH_M`` above the
     ribbon's plane: a higher body's box reaching over the river, as over a fall's basin."""
     with np.errstate(invalid="ignore"):
         return valley & wet & (water / np.float32(hf.DM_PER_M) - plane_m > RIVER_MAX_DEPTH_M)
 
 
-def river_terms(terms: dict, z_m, river_m, presence, spacing_m: float) -> dict:
+def river_terms(
+    terms: WaterTerms,
+    z_m: FloatGrid,
+    river_m: FloatGrid,
+    presence: FloatGrid,
+    spacing_m: float,
+) -> WaterTerms:
     """Lay a river surface over the band's other water: whichever surface is higher shows.
 
     The river's coverage is its plane crossing the drawn ground, one pixel wide, so the
@@ -205,7 +243,7 @@ def river_terms(terms: dict, z_m, river_m, presence, spacing_m: float) -> dict:
     cover = mine + (1.0 - mine) * terms["cover"]
     share = mine / np.maximum(cover, np.float32(1e-6))
     depth_m = cross["depth_m"]
-    out = dict(terms)
+    out = terms.copy()
     out.update(
         cover=cover,
         depth_m=share * depth_m + (1.0 - share) * terms["depth_m"],
@@ -221,7 +259,12 @@ def river_terms(terms: dict, z_m, river_m, presence, spacing_m: float) -> dict:
     return out
 
 
-def water_sources(field, rivers: RiverWater | None, level=None, grades=None):
+def water_sources(
+    field: hf.Field,
+    rivers: RiverWater | None,
+    level: I16Grid | None = None,
+    grades: U8Grid | None = None,
+) -> tuple[I16Grid | None, U8Grid | None, U8Grid | None]:
     """``(water level plane, wet, measured)``: the field's, or the reconciled ones.
 
     ``level`` replaces the level plane: the same water, re-levelled where it was perched.
@@ -240,7 +283,9 @@ def water_sources(field, rivers: RiverWater | None, level=None, grades=None):
     return level, wet, measured
 
 
-def load_rivers(cache_root: Path, build, sweep_once, field) -> tuple[RiverWater, dict]:
+def load_rivers(
+    cache_root: Path, build: str | None, sweep_once: Callable[[], Sweep], field: hf.Field
+) -> tuple[RiverWater, JsonObject]:
     """The rivers from the cache, or from the shared sweep into it; and what to record."""
     cache_dir = cache_root / RIVER_CACHE_DIR_NAME
     started = time.time()
@@ -249,9 +294,12 @@ def load_rivers(cache_root: Path, build, sweep_once, field) -> tuple[RiverWater,
     reused = cached is not None
     if cached is None:
         sweep = sweep_once()
+        if "rivers" not in sweep or "water" not in sweep:
+            raise ValueError("the level sweep came back without its rivers and water boxes")
         cached = write_rivers(cache_dir, stamp, sweep["rivers"], sweep["water"])
-    rivers = RiverWater(cached, field)
-    source = {**rivers.stats, "cache": "reused" if reused else "swept",
-              "seconds": round(time.time() - started, 1)}  # fmt: skip
+    # The stamp matched, or the sweep was just written: the cache has its shape.
+    rivers = RiverWater(cast(RiverCache, cached), field)
+    source: JsonObject = {**rivers.stats, "cache": "reused" if reused else "swept",
+                          "seconds": round(time.time() - started, 1)}  # fmt: skip
     print(f"  rivers: {source}")
     return rivers, source
