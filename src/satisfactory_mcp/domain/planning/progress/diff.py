@@ -85,15 +85,15 @@ class DiffRow:
     key: JobKey = ()
     #: instanceNames of the machines counted in ``have``, so a caller can ask the save
     #: what those machines are actually doing rather than only how many there are.
-    have_instances: list[str] = field(default_factory=list)
+    have_instances: list[str] = field(default_factory=list[str])
     #: instanceNames the VERB applies to: the paused machines for UNPAUSE, the idle ones
     #: being re-recipe'd for SETRECIPE. Never ``have_instances[:count]`` -- the paused
     #: three are anywhere in the matched set, and the idle ones are not in it at all.
-    act_instances: list[str] = field(default_factory=list)
+    act_instances: list[str] = field(default_factory=list[str])
     #: Distance in metres of each matched machine from the plan's ground anchor.
-    have_distances: list[float] = field(default_factory=list)
+    have_distances: list[float] = field(default_factory=list[float])
     #: (node id, metres from the anchor) to build on. Ids paste back as node: selectors.
-    targets: list[tuple[str, float]] = field(default_factory=list)
+    targets: list[tuple[str, float]] = field(default_factory=list[tuple[str, float]])
     #: Idle machines re-recipe'd into this row rather than built.
     reuse: int = 0
     note: str = ""
@@ -109,7 +109,7 @@ class DiffRow:
     have_rate: float = 0.0
     plan_clock: float = 1.0
     #: Each counted machine's clock, beside ``have_instances``.
-    have_clocks: list[float] = field(default_factory=list)
+    have_clocks: list[float] = field(default_factory=list[float])
 
     @property
     def actionable(self) -> bool:
@@ -367,8 +367,8 @@ def _reclock_note(records: Sequence[BuildableRecord], to_build: int, job: BuildJ
 class _Notes:
     """A row's notes in chat's words and in the page's, which leave some out or reword them."""
 
-    chat: list[str] = field(default_factory=list)
-    page: list[str] = field(default_factory=list)
+    chat: list[str] = field(default_factory=list[str])
+    page: list[str] = field(default_factory=list[str])
 
     def both(self, text: str) -> None:
         self.chat.append(text)
@@ -543,7 +543,7 @@ class _Built:
     near: list[BuildableRecord] = field(default_factory=list[BuildableRecord])
     build_max: int | None = None
     have_min: int | None = None
-    targets: list[tuple[str, float]] = field(default_factory=list)
+    targets: list[tuple[str, float]] = field(default_factory=list[tuple[str, float]])
 
 
 def _count_built(

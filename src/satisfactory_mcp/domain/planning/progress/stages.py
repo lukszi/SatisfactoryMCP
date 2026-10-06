@@ -119,7 +119,7 @@ class Stage:
     """One startup wave, matched against the save."""
 
     index: int
-    rows: list[StageRow] = field(default_factory=list)
+    rows: list[StageRow] = field(default_factory=list[StageRow])
     draw_mw: float = 0.0
     generation_mw: float = 0.0
     available_before: float = 0.0
@@ -191,7 +191,7 @@ class Stage:
 
 @dataclass
 class Tracking:
-    stages: list[Stage] = field(default_factory=list)
+    stages: list[Stage] = field(default_factory=list[Stage])
     ok: bool = True
     #: The stage the player is in: the first one not fully built. 0 when the whole plan
     #: stands, because the save cannot say which block of a built plant is energised.
@@ -199,7 +199,7 @@ class Tracking:
     #: Name of the stored plan this partition came from. Empty means the numbering was
     #: derived from arguments given on the call and will renumber when they change.
     plan_name: str = ""
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list[str])
 
     @property
     def machines(self) -> int:

@@ -85,7 +85,7 @@ class DiffVsSaveReport:
     #: The startup order the partition came from, beside ``tracking``.
     startup: Commissioning | None = None
     #: graph.health state per matched machine, from the one pass ``tracking`` also read.
-    health: dict[str, str] = field(default_factory=dict)
+    health: dict[str, str] = field(default_factory=dict[str, str])
     #: What the scope costs the reader, when a factory narrowed what counts as built.
     scope_note: str = ""
     #: Said when a stored plan re-solves to a different plan_id than it was saved with.

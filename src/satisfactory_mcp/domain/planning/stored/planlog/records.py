@@ -183,7 +183,7 @@ class Commit:
     actor: Actor
     sav: str
     ops: list[PlanOp]
-    merged_over: list[int] = field(default_factory=list)
+    merged_over: list[int] = field(default_factory=list[int])
     undoes: int | None = None
     note: str = ""
 

@@ -45,7 +45,7 @@ VersionRow: TypeAlias = dict[str, Commit | int | None]
 class PlanStatus:
     """What moved under a stored plan. An empty ``flags`` with ``recorded`` False is unchecked."""
 
-    flags: list[str] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list[str])
     drift: bool = False
     recorded: bool = True
     broken: bool = False

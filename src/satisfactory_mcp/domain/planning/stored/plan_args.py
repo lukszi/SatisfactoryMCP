@@ -10,7 +10,7 @@ import json
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
-from typing import TypeAlias, TypeVar
+from typing import TypeAlias, TypeGuard, TypeVar
 
 from .views import PlanArgsBody
 
@@ -243,13 +243,20 @@ def checked_map_key(fieldname: str, value: object) -> str:
     return canonical_power(fieldname, value)
 
 
+def _is_list(value: object) -> TypeGuard[Sequence[object]]:
+    return isinstance(value, list | tuple)
+
+
+def _is_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, dict)
+
+
 def _checked_set(name: str, value: object) -> list[Member]:
-    if not isinstance(value, list | tuple):
+    if not _is_list(value):
         raise InvalidOp(f"{name} must be a list, not {value!r}")
-    members: Sequence[object] = value
     out: list[Member] = []
     seen: set[str] = set()
-    for raw in members:
+    for raw in value:
         member = checked_member(name, raw)
         if member_key(name, member) not in seen:
             seen.add(member_key(name, member))
@@ -258,12 +265,9 @@ def _checked_set(name: str, value: object) -> list[Member]:
 
 
 def _checked_map(name: str, value: object) -> dict[str, Member]:
-    if not isinstance(value, dict):
+    if not _is_mapping(value):
         raise InvalidOp(f"{name} must be a mapping, not {value!r}")
-    entries: Mapping[object, object] = value
-    return {
-        checked_map_key(name, k): checked_map_value(name, str(k), v) for k, v in entries.items()
-    }
+    return {checked_map_key(name, k): checked_map_value(name, str(k), v) for k, v in value.items()}
 
 
 def _check_field(name: str, value: object) -> Scalar | list[Member] | dict[str, Member]:
@@ -285,28 +289,28 @@ _MAP = {"kind": "map"}
 class PlanArgs:
     objective: str = field(default="max_mw", metadata=_SCALAR)
     target_item: str | None = field(default=None, metadata=_SCALAR)
-    sources: list[str] = field(default_factory=list, metadata=_SET)
-    exports: list[str] = field(default_factory=list, metadata=_SET)
-    export_minimums: dict[str, float] = field(default_factory=dict, metadata=_MAP)
+    sources: list[str] = field(default_factory=list[str], metadata=_SET)
+    exports: list[str] = field(default_factory=list[str], metadata=_SET)
+    export_minimums: dict[str, float] = field(default_factory=dict[str, float], metadata=_MAP)
     only_free_nodes: bool = field(default=False, metadata=_SCALAR)
     allow_sinks: bool = field(default=True, metadata=_SCALAR)
-    clocks: list[float] = field(default_factory=list, metadata=_SET)
-    extractor_clocks: list[float] = field(default_factory=list, metadata=_SET)
+    clocks: list[float] = field(default_factory=list[float], metadata=_SET)
+    extractor_clocks: list[float] = field(default_factory=list[float], metadata=_SET)
     machine_cost_mw: float = field(default=5.0, metadata=_SCALAR)
-    banned: list[str] = field(default_factory=list, metadata=_SET)
-    required: list[str] = field(default_factory=list, metadata=_SET)
-    only_recipes: list[str] = field(default_factory=list, metadata=_SET)
+    banned: list[str] = field(default_factory=list[str], metadata=_SET)
+    required: list[str] = field(default_factory=list[str], metadata=_SET)
+    only_recipes: list[str] = field(default_factory=list[str], metadata=_SET)
     water_extractors: int | None = field(default=None, metadata=_SCALAR)
     sloops: int = field(default=0, metadata=_SCALAR)
     belt_ipm: float | None = field(default=None, metadata=_SCALAR)
     pipe_m3min: float | None = field(default=None, metadata=_SCALAR)
-    recycle_once: list[str] = field(default_factory=list, metadata=_SET)
-    supplied: dict[str, float] = field(default_factory=dict, metadata=_MAP)
-    logistics_items: list[str] = field(default_factory=list, metadata=_SET)
+    recycle_once: list[str] = field(default_factory=list[str], metadata=_SET)
+    supplied: dict[str, float] = field(default_factory=dict[str, float], metadata=_MAP)
+    logistics_items: list[str] = field(default_factory=list[str], metadata=_SET)
     payback_hours: float | None = field(default=None, metadata=_SCALAR)
     overclock_last: bool | None = field(default=None, metadata=_SCALAR)
     power_price: float | None = field(default=None, metadata=_SCALAR)
-    row_overclock: dict[str, str] = field(default_factory=dict, metadata=_MAP)
+    row_overclock: dict[str, str] = field(default_factory=dict[str, str], metadata=_MAP)
 
     @classmethod
     def from_dict(
@@ -314,7 +318,7 @@ class PlanArgs:
     ) -> PlanArgs:
         """Absent, None, [] and {} mean the default. ``lenient`` collects refused fields
         as ``(name, value)`` instead of raising, for migration."""
-        given = dict(raw or {})
+        given: dict[str, object] = dict(raw) if raw else {}
         step = given.pop("power_priority", None)
         if given.get("payback_hours") is None and step is not None:
             given["payback_hours"] = legacy_hours(step)

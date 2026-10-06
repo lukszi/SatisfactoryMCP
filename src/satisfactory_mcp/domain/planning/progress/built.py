@@ -111,10 +111,10 @@ class BuiltAt:
     area: SearchArea | None = None
     scope: set[str] | None = None
     scope_low: set[str] | None = None
-    candidates: list[Candidate] = field(default_factory=list)
+    candidates: list[Candidate] = field(default_factory=list[Candidate])
     picked: str = ""
-    foreign: list[tuple[str, int]] = field(default_factory=list)
-    also_here: list[str] = field(default_factory=list)
+    foreign: list[tuple[str, int]] = field(default_factory=list[tuple[str, int]])
+    also_here: list[str] = field(default_factory=list[str])
     node_owner: str = ""
     hint: str = ""
     fallback: str = ""
@@ -123,7 +123,7 @@ class BuiltAt:
     total: int = 0
     percent: float | None = None
     percent_max: float | None = None
-    missing: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list[str])
 
     @property
     def top(self) -> Candidate | None:

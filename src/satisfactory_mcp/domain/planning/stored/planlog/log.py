@@ -165,7 +165,7 @@ class PlanView:
 
     world_id: str
     session_name: str = ""
-    plans: list[Plan] = field(default_factory=list)
+    plans: list[Plan] = field(default_factory=list[Plan])
 
     def find(self, name: str) -> Plan | None:
         by_key = [p for p in self.plans if p.key == name.strip().lower()]

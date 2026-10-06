@@ -83,7 +83,9 @@ class PreviewSession:
     pump_head_m: float = 0.0
     #: The built figure at the stored site, as ``_built_progress`` words it.
     built_now: SiteBuilt = field(default_factory=_empty_built)
-    pads: list[tuple[str, siting_mod.Siting]] = field(default_factory=list)
+    pads: list[tuple[str, siting_mod.Siting]] = field(
+        default_factory=list[tuple[str, siting_mod.Siting]]
+    )
 
 
 def _pump_head(g: GameData, st: WorldState) -> float:

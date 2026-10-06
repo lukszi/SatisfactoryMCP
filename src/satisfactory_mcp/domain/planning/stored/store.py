@@ -87,7 +87,7 @@ _FIELDS = frozenset(f.name for f in fields(Plan))
 class PlanStore:
     world_id: str
     session_name: str = ""
-    plans: list[Plan] = field(default_factory=list)
+    plans: list[Plan] = field(default_factory=list[Plan])
     version: int = 0
 
     @staticmethod
