@@ -1,27 +1,17 @@
 /* The fields this page hangs off Leaflet objects, declared so that `L` can be typed.
  *
- * Two kinds live here. The leading-underscore marks (`_rank`, `_chevron`, `_labelWeight`,
- * `_section`, `_part`, `_inspected`, `_floor…`) are this page's own, set on objects Leaflet
- * owns to save a WeakMap probe per mark, and optional because an object that never passed
- * through the code that sets one does not have it. `_handlingClick`, `_update`, `layerId` and
- * `_getBoundsOffset` are real Leaflet internals that `@types/leaflet` does not publish -- four places where
- * this page is coupled to Leaflet 1.9.4, greppable before an upgrade.
+ * The underscore marks are the page's own, optional because only some objects get one;
+ * `_handlingClick`, `_update`, `layerId` and `_getBoundsOffset` are Leaflet 1.9.4 internals
+ * to check before an upgrade. frontend/README.md has the longer note.
  */
 
 import type * as L from "leaflet";
 import "leaflet";
 
-/* What the floor view needs to know about one drawn piece, hung on the piece.
- *
- * A mark rather than a lookup table: the filter walks tens of thousands of drawn pieces. What
- * is in it is the JOIN, never the answer -- which floor a piece is on is `/api/floors`'
- * business, and this is only enough to ask it.
- *
- * Every field is optional and the groups are alternatives, because the layers this filters are
- * joined five different ways: a machine by its instance id, a belt chain or pipe row by the
- * key `/api/floors` groups it under, a foundation piece by its position in `/api/structures`
- * (the only name a lightweight buildable has), a storage box by where it stands, and the power
- * grid by where the ends of its wires are. */
+/* What the floor view needs to know about one drawn piece: the JOIN to `/api/floors`, never
+ * the answer. A mark rather than a lookup table, because the filter walks tens of thousands
+ * of pieces. The fields are alternatives, one per way a layer is joined: machine id, belt or
+ * pipe key, structure row, storage position, wire ends. */
 export interface FloorMark {
   /** An instance leaf: how a band lists its machines and its belt attachments. */
   id?: string;
@@ -87,24 +77,12 @@ declare module "leaflet" {
      *  second guess at the drawing module's own options. Its presence IS "this path is
      *  ghosted right now". See ghost() in floors.ts. */
     _floorStyle?: L.PathOptions;
-    /** ...and the CONTENT of the card it was carrying, for the same reason and at the same
-     *  time: a machine that stops being a ghost must stop saying what a ghost says.
-     *
-     *  The content and not the popup: Leaflet's `bindPopup` REUSES an existing `L.Popup`
-     *  when it is handed a string, so keeping the popup object keeps a reference to the very
-     *  thing the ghost is about to overwrite.
-     *
-     *  Narrower than Leaflet's own `Content`, which also allows a FUNCTION of the layer:
-     *  every popup on this page is a string built by `popup()` or -- for the factory card --
-     *  an element, and declaring a case the page cannot produce would put an untestable
-     *  branch in the one place that has to put a card back exactly as it found it. */
+    /** ...and the CONTENT of the card it carried, so an unghosted machine stops saying what a
+     *  ghost says. The content and not the popup: `bindPopup` REUSES an existing popup when
+     *  handed a string. No function case, because no popup on this page is one. */
     _floorCard?: string | HTMLElement | null;
-    /** Extra stroke width, in SCREEN pixels, on top of whatever this piece's layer is worth
-     *  at the current scale.
-     *
-     * The casing under a power line, and nothing else on this page. A casing is a fixed rim
-     * around a line whose own width follows the map, so the two cannot be added up once at
-     * the draw: styleRoutes re-adds this at every zoom. See WIRE_CASING_PX in power-wires.ts. */
+    /** Extra stroke width in SCREEN pixels: the casing under a power line, a fixed rim that
+     *  styleRoutes re-adds at every zoom. See WIRE_CASING_PX in power-wires.ts. */
     _widen?: number;
     /** The route this polyline was tessellated FROM, kept so it can be tessellated again at
      *  another scale: the drawn latlngs are an output and cannot be re-subdivided from

@@ -189,6 +189,7 @@ What is still `any`, in full:
   that stopped being true when the routers declared their response models.
 
 `src/map/leaflet-private.d.ts` declares the fields this page hangs off Leaflet objects. It keeps
-two kinds apart on purpose: the page's own marks (`_rank`, `_chevron`, `_labelWeight`), and
-three real Leaflet internals it deliberately uses (`_handlingClick`, `_update`, `layerId`).
-The second list is what to read before upgrading Leaflet.
+two kinds apart on purpose: the page's own marks (`_rank`, `_chevron`, `_labelWeight`, `_floor…`),
+set on objects Leaflet owns to save a WeakMap probe per mark, and four real Leaflet internals
+it deliberately uses (`_handlingClick`, `_update`, `layerId`, `_getBoundsOffset`). The second
+list is what to read before upgrading Leaflet.
