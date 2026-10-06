@@ -2,7 +2,7 @@
  * colour every "show it on the map" shares. Drawing a new one clears the last. */
 
 import { esc } from "../kit/dom";
-import { flyToFactory, reveal } from "./labels";
+import { flyToBuiltArea, reveal } from "./labels";
 import { L } from "./leaflet";
 import { flyToPoint, latLngOf, map } from "./map";
 import { declareColours } from "./palette";
@@ -71,6 +71,6 @@ export function showMachine(instance: string, name: string, x_m: number, y_m: nu
 
 export function showBox(bbox_m: [number, number, number, number], options?: { layers?: string[] }): void {
   if (options && options.layers) reveal(options.layers);
-  var bounds = flyToFactory(bbox_m);
+  var bounds = flyToBuiltArea(bbox_m);
   if (bounds) outline(bounds);
 }

@@ -237,8 +237,8 @@ registerFetch<MachinesResponse>({
  * buffer and a storage container are both boxes the player put things in, so they belong to one
  * checkbox; a second hue would make the legend claim these are two networks.
  *
- * OFF BY DEFAULT, and NOT part of the reveal a factory label triggers -- see FACTORY_LAYERS in
- * labels.ts.
+ * OFF BY DEFAULT, and NOT part of the reveal a factory label triggers -- see BUILT_AREA_LAYERS in
+ * layers.ts.
  */
 
 /* Storage, measured. A container is drawn as a filled footprint box, so what it has to

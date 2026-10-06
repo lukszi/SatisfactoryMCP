@@ -9,10 +9,9 @@
 
 import { code, esc, popup } from "../kit/dom";
 import { cardWithFloors } from "./floors/floors";
-import { coords } from "../kit/format";
-import { batch } from "./layercontrol/control";
+import { coords, joinWithConjunction } from "../kit/format";
 import { L } from "./leaflet";
-import { BAND, layer } from "./layers";
+import { BAND, BUILT_AREA_LAYERS, layer, turnOnLayers } from "./layers";
 import { layerWord } from "./drawn/markers";
 import { boundsOfBbox, flyPadded, latLngOf, map } from "./map";
 import { regionLabels } from "./regions";
@@ -25,51 +24,19 @@ import type { FactoriesResponse, FactoryRow, ProposalRow } from "../api/shapes";
 import type { BboxM, PointM } from "./geometry";
 import type { Row } from "../kit/dom";
 
-/* Turn on the factory-scale layers, once, and say so.
- *
- * TRIGGERED BY THE CLICK AND NOT BY THE ZOOM. A layer that ticked and unticked itself as the
- * map moved would be the only control on this page the player does not own, and the checkbox
- * would be lying about who decided. One function and one NOTE for the whole set, because the
- * player made one gesture.
- *
- * ...and ONE RENDER, which is what `batch` is for: three `addTo(map)` calls outside it are
- * three `overlayadd` events, each re-rendering the layer control twice and re-running the
- * declutter pass -- against a half-revealed map, so the "+n" badges would be computed from
- * views nobody is shown. */
+/* Turn these layers on, once, and say so. TRIGGERED BY THE CLICK AND NOT BY THE ZOOM: a layer
+ * that ticked itself as the map moved would make the checkbox lie about who decided. One toast
+ * for the set, because the player made one gesture. */
 export function reveal(names: string[]): void {
-  var turned: string[] = [];
-  batch(function () {
-    names.forEach(function (name) {
-      var group = state.layers[name];
-      if (!group || map.hasLayer(group)) return;
-      group.addTo(map);
-      turned.push(layerWord(name));
-    });
-  });
+  const turned = turnOnLayers(names).map(layerWord);
   if (!turned.length) return;
   notify(
-    // "a and b" for two, "a, b and c" for three -- an Oxford-less list rather than
-    // "a and b and c", which is what a plain join gives once there are three of these.
-    (turned.length > 1
-      ? turned.slice(0, -1).join(", ") + " and " + turned[turned.length - 1]
-      : turned[0]) +
+    joinWithConjunction(turned, "and") +
       " turned on; untick " +
       (turned.length > 1 ? "those layers" : "the " + turned[0] + " layer") +
       " to hide them again"
   );
 }
-
-/* What "show me this factory" means, in layers: what a factory is MADE OF. Take the belts away
- * and the machines are a scatter of rectangles; take the pipes away and a refinery block is
- * half missing. All three are unreadable at the zoom the click starts from.
- *
- * STORAGE IS NOT THE FOURTH: containers are what is standing in a factory rather than what it
- * is made of, and the layer is a toggle a player asks for on purpose.
- *
- * POWER IS NOT EITHER, because it starts ticked -- so the only case where `reveal` would do
- * anything to it is a reader who had just unticked it, and re-ticking that box is the one
- * thing this function must never do. */
-var FACTORY_LAYERS = ["machines", "belts", "pipes"];
 
 export var FACTORY_PICKED = "factory-picked";
 
@@ -101,10 +68,18 @@ function anchorMarker(centroid_m: PointM): L.Marker {
   });
 }
 
-/* A server bbox_m as Leaflet bounds, with the breathing room every factory flight gets. */
-function factoryBounds(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
-  if (!bbox_m) return null;
-  return boundsOfBbox(bbox_m, FACTORY_PAD_M);
+/** A server bbox_m as Leaflet bounds, with the breathing room every factory flight gets. */
+export function paddedBounds(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
+  return bbox_m ? boundsOfBbox(bbox_m, FACTORY_PAD_M) : null;
+}
+
+/** Fly to a built area and turn on what it is made of; null when there is no box to fly to. */
+export function flyToBuiltArea(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
+  const bounds = paddedBounds(bbox_m);
+  if (!bounds) return null;
+  reveal(BUILT_AREA_LAYERS);
+  flyPadded(bounds, FACTORY_MAX_ZOOM);
+  return bounds;
 }
 
 /* The card, and the one action on it. `factory` is a NAME for a named factory and null for a
@@ -121,7 +96,7 @@ function factoryAnchor(
   rows: Row[],
   factory: string | null
 ): L.Marker {
-  var marker = anchorMarker(row.centroid_m);
+  const marker = anchorMarker(row.centroid_m);
   marker._labelWeight = row.machines || 0; // declutter priority: big factories win
   marker._labelName = factory || "";
   marker.bindTooltip(esc(text), {
@@ -133,78 +108,64 @@ function factoryAnchor(
   // autoPan off: the card would otherwise shove the map sideways mid-flight, and the
   // flight already puts the factory in view.
   marker.bindPopup(cardFor(rows, factory), { autoPan: false });
-  var bounds = factoryBounds(row.bbox_m);
-  if (bounds) {
-    var to = bounds;
+  const bbox = row.bbox_m;
+  if (bbox) {
     marker.on("click", function () {
-      reveal(FACTORY_LAYERS);
-      flyPadded(to, FACTORY_MAX_ZOOM);
+      flyToBuiltArea(bbox);
     });
   }
   if (factory !== null) {
-    var picked = factory;
     marker.on("click", function () {
-      chooseLabel(picked);
-      document.dispatchEvent(new CustomEvent(FACTORY_PICKED, { detail: picked }));
+      prioritiseLabel(factory);
+      document.dispatchEvent(new CustomEvent(FACTORY_PICKED, { detail: factory }));
     });
   }
   return marker;
 }
 
-export function flyToFactory(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
-  var bounds = factoryBounds(bbox_m);
-  if (!bounds) return null;
-  reveal(FACTORY_LAYERS);
-  flyPadded(bounds, FACTORY_MAX_ZOOM);
-  return bounds;
-}
+/** The factory whose label outranks every other one, because the reader just picked it. */
+var prioritisedLabel = "";
 
-var chosen = "";
-
-export function chooseLabel(name: string): void {
-  if (chosen === name) return;
-  chosen = name;
+export function prioritiseLabel(name: string): void {
+  if (prioritisedLabel === name) return;
+  prioritisedLabel = name;
   declutter();
-}
-
-export function paddedBounds(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
-  return factoryBounds(bbox_m);
 }
 
 export function drawFactories(data: FactoriesResponse): void {
   // Chrome rather than built: a label is the page's name for a place, not a thing standing
   // in it -- the same kind of row as the region names two slots up, and read the same way.
-  var named = layer("factory labels", true, undefined, [BAND.chrome, 30, "factory labels"]);
-  data.labels.forEach(function (f) {
+  const named = layer("factory labels", true, undefined, [BAND.chrome, 30, "factory labels"]);
+  data.labels.forEach(function (factoryRow) {
     factoryAnchor(
-      f,
-      f.name,
+      factoryRow,
+      factoryRow.name,
       "factory-label",
       [
-        ["factory", f.name],
-        ["machines", f.machines],
-        ["notes", f.notes],
-        ["at", coords(f.centroid_m[0], f.centroid_m[1])],
-        ["selector", code("label:" + f.name)],
+        ["factory", factoryRow.name],
+        ["machines", factoryRow.machines],
+        ["notes", factoryRow.notes],
+        ["at", coords(factoryRow.centroid_m[0], factoryRow.centroid_m[1])],
+        ["selector", code("label:" + factoryRow.name)],
       ],
-      f.name
+      factoryRow.name
     ).addTo(named);
   });
   // Directly under the labels it is the machine-made version of, and last of the chrome:
   // a proposal names a place nobody has named yet, which is the weakest claim in the band.
-  var proposed = layer("proposals", false, undefined, [BAND.chrome, 40, "proposals"], WORDS.unnamedClusters);
-  data.proposals.forEach(function (p) {
+  const proposed = layer("proposals", false, undefined, [BAND.chrome, 40, "proposals"], WORDS.unnamedClusters);
+  data.proposals.forEach(function (proposal) {
     // No cohesion row: the clusterer does not compute the score yet (every proposal
     // reports 0.0), and a constant 0 reads as "this cluster scored zero".
     factoryAnchor(
-      p,
-      p.label + " (" + p.machines + ")",
+      proposal,
+      proposal.label + " (" + proposal.machines + ")",
       "factory-label proposal",
       [
-        [WORDS.unnamedCluster, p.label],
-        ["machines", p.machines],
-        ["spread", p.spread_m + " m"],
-        ["selector", code("proposal:" + p.index)],
+        [WORDS.unnamedCluster, proposal.label],
+        ["machines", proposal.machines],
+        ["spread", proposal.spread_m + " m"],
+        ["selector", code("proposal:" + proposal.index)],
       ],
       null
     ).addTo(proposed);
@@ -259,6 +220,45 @@ interface Measured {
   rect: DOMRect;
 }
 
+/** Every label on a ticked layer: factories by name, proposals after them, region names last. */
+function collectLabelEntries(): Entry[] {
+  const entries: Entry[] = [];
+  ["factory labels", "proposals"].forEach(function (name, groupRank) {
+    const group = state.layers[name];
+    if (!group || !map.hasLayer(group)) return;
+    group.eachLayer(function (layer) {
+      const marker = layer as L.Marker;
+      const tip = marker.getTooltip && marker.getTooltip();
+      const node = tip && tip.getElement && tip.getElement();
+      if (node) {
+        entries.push({
+          node: node,
+          marker: marker,
+          rank: prioritisedLabel && marker._labelName === prioritisedLabel ? -1 : groupRank,
+          weight: marker._labelWeight || 0,
+        });
+      }
+    });
+  });
+  const names = state.layers["region names"];
+  if (names && map.hasLayer(names)) {
+    regionLabels().forEach(function (node) {
+      entries.push({ node: node, marker: null, rank: 2, weight: 0 });
+    });
+  }
+  return entries;
+}
+
+/** Undo the last pass: every label shown, unmarked, and without a badge. */
+function resetLabelDecorations(entries: Entry[]): void {
+  entries.forEach(function (entry) {
+    L.DomUtil.removeClass(entry.node, "label-hidden");
+    L.DomUtil.removeClass(entry.node, "label-chosen");
+    const old = entry.node.querySelector(".label-more");
+    if (old) old.parentNode!.removeChild(old);
+  });
+}
+
 /* READ EVERYTHING, THEN WRITE, which is the only reason this is its own function.
  *
  * `getBoundingClientRect` cannot be answered while a style change is pending, so hiding inside
@@ -272,62 +272,36 @@ function measureAll(entries: Entry[]): Measured[] {
   });
 }
 
+/* Keep every label no higher-ranked kept label overlaps, in rank order, and hide the rest. The
+ * first overlap found is the highest-ranked cover, so it owns the badge. */
+function keepNonOverlapping(measured: Measured[]): Kept[] {
+  const kept: Kept[] = [];
+  measured.forEach(function (label) {
+    const rect = label.rect;
+    const cover = kept.find(function (other) {
+      const box = other.rect;
+      return rect.left < box.right && box.left < rect.right && rect.top < box.bottom && box.top < rect.bottom;
+    });
+    if (cover) {
+      L.DomUtil.addClass(label.entry.node, "label-hidden");
+      if (label.entry.marker) cover.hidden.push(label.entry);
+    } else {
+      kept.push({ rect: rect, entry: label.entry, hidden: [] });
+    }
+  });
+  return kept;
+}
+
 export function declutter(): void {
-  var entries: Entry[] = [];
-  ["factory labels", "proposals"].forEach(function (name, groupRank) {
-    var group = state.layers[name];
-    if (!group || !map.hasLayer(group)) return;
-    group.eachLayer(function (layer) {
-      var marker = layer as L.Marker;
-      var tip = marker.getTooltip && marker.getTooltip();
-      var node = tip && tip.getElement && tip.getElement();
-      if (node) {
-        entries.push({
-          node: node,
-          marker: marker,
-          rank: chosen && marker._labelName === chosen ? -1 : groupRank,
-          weight: marker._labelWeight || 0,
-        });
-      }
-    });
-  });
-  var names = state.layers["region names"];
-  if (names && map.hasLayer(names)) {
-    regionLabels().forEach(function (node) {
-      entries.push({ node: node, marker: null, rank: 2, weight: 0 });
-    });
-  }
-  entries.forEach(function (entry) {
-    L.DomUtil.removeClass(entry.node, "label-hidden");
-    L.DomUtil.removeClass(entry.node, "label-chosen");
-    var old = entry.node.querySelector(".label-more");
-    if (old) old.parentNode!.removeChild(old);
-  });
+  const entries = collectLabelEntries();
+  resetLabelDecorations(entries);
   entries.sort(function (a, b) {
     return a.rank - b.rank || b.weight - a.weight;
   });
-  // Sorted before measuring, so `kept` is built in rank order and `find` below can stop at
-  // the first overlap; measured before deciding, so the decisions cost no layout. See above.
-  var measured = measureAll(entries);
-  var kept: Kept[] = [];
-  measured.forEach(function (m) {
-    var r = m.rect;
-    // `find`, because the highest-ranked cover owns the badge and `kept` is already in rank
-    // order, so the first overlap is the right one.
-    var covered = kept.find(function (k) {
-      var b = k.rect;
-      return r.left < b.right && b.left < r.right && r.top < b.bottom && b.top < r.bottom;
-    });
-    if (covered) {
-      L.DomUtil.addClass(m.entry.node, "label-hidden");
-      if (m.entry.marker) covered.hidden.push(m.entry);
-    } else {
-      kept.push({ rect: r, entry: m.entry, hidden: [] });
-    }
-  });
-  kept.forEach(function (k) {
-    if (k.entry.rank < 0) L.DomUtil.addClass(k.entry.node, "label-chosen");
-    if (k.hidden.length) badgeHidden(k.entry, k.hidden);
+  // Sorted before measuring, so the kept list is built in rank order.
+  keepNonOverlapping(measureAll(entries)).forEach(function (label) {
+    if (label.entry.rank < 0) L.DomUtil.addClass(label.entry.node, "label-chosen");
+    if (label.hidden.length) addHiddenCountBadge(label.entry, label.hidden);
   });
 }
 
@@ -337,17 +311,17 @@ export function declutter(): void {
  * there, so the step simply repeats. */
 var LABEL_STEP_ZOOM = 2;
 
-function badgeHidden(entry: Entry, hidden: Entry[]): void {
+function addHiddenCountBadge(entry: Entry, hidden: Entry[]): void {
   // Absolutely positioned, so it hangs off the label's corner without changing the
   // rectangle this same pass just measured -- a badge that grew the box would make the
   // next run hide a label because of the badge on the one before it.
-  var badge = L.DomUtil.create("span", "label-more", entry.node);
+  const badge = L.DomUtil.create("span", "label-more", entry.node);
   badge.textContent = "+" + hidden.length;
   badge.title =
     hidden.length === 1
       ? "1 more factory label is hidden under this one; click to zoom in"
       : hidden.length + " more factory labels are hidden here; click to zoom in";
-  var points = [entry.marker!.getLatLng()];
+  const points = [entry.marker!.getLatLng()];
   hidden.forEach(function (other) {
     points.push(other.marker!.getLatLng());
   });
@@ -355,9 +329,9 @@ function badgeHidden(entry: Entry, hidden: Entry[]): void {
     // Without this the label's own click wins and flies to the covering factory's extent,
     // which is the one place the hidden names are guaranteed still to be hidden.
     L.DomEvent.stop(event);
-    var bounds = L.latLngBounds(points);
-    var fit = map.getBoundsZoom(bounds, false, L.point(80, 80));
-    var zoom = Math.min(fit, map.getZoom() + LABEL_STEP_ZOOM);
+    const bounds = L.latLngBounds(points);
+    const fit = map.getBoundsZoom(bounds, false, L.point(80, 80));
+    let zoom = Math.min(fit, map.getZoom() + LABEL_STEP_ZOOM);
     zoom = Math.min(Math.max(zoom, map.getZoom() + 1), map.getMaxZoom());
     map.flyTo(bounds.getCenter(), zoom);
   });

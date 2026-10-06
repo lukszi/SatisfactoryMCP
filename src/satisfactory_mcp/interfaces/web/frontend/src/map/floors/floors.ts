@@ -29,6 +29,7 @@ import { get, latest } from "../../api/client";
 import { popup } from "../../kit/dom";
 import { pct } from "../../kit/format";
 import { batch, hideFloors, onFloorExit, onFloorPick, showFloors } from "../layercontrol/control";
+import { BUILT_AREA_LAYERS, turnOnLayers } from "../layers";
 import { L } from "../leaflet";
 import { flyPadded, map, writeHash } from "../map";
 import { state } from "../../app/state";
@@ -40,10 +41,6 @@ import { bandOf, busiestBand, GROUND, groundPlacements, groundRuns, hasGround } 
 import type { FloorPlatform, FloorsResponse } from "../../api/shapes";
 import type { Row } from "../../kit/dom";
 import type { FloorChoice } from "../layercontrol/control";
-
-/* What "show me this factory" means, borrowed from labels.ts rather than restated. Storage is
- * still FILTERED when the reader has ticked it: a gesture turns layers on, a mode filters them. */
-var FLOOR_LAYERS = ["machines", "belts", "pipes"];
 
 /* How close the flight to a platform may get: the factory-label flight's limit, for the same
  * reason as the padding in filter.ts. */
@@ -177,19 +174,11 @@ function flyToPlatform(): void {
 }
 
 /* Turn on what a floor is made of, and return what this mode turned on. Usually nothing: the
- * card is reached by clicking a factory label, which has already revealed these layers. */
+ * card is reached by clicking a factory label, which has already revealed these layers.
+ * Storage is still filtered when ticked: a gesture turns layers on, a mode filters them. */
 function revealFor(): string[] {
   return withFilterGuard(function () {
-    const turned: string[] = [];
-    batch(function () {
-      FLOOR_LAYERS.forEach(function (name) {
-        const group = state.layers[name];
-        if (!group || map.hasLayer(group)) return;
-        group.addTo(map);
-        turned.push(name);
-      });
-    });
-    return turned;
+    return turnOnLayers(BUILT_AREA_LAYERS);
   });
 }
 

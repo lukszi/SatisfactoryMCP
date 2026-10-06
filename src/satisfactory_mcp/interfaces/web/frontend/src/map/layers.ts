@@ -12,7 +12,7 @@
 
 import { esc } from "../kit/dom";
 import { L } from "./leaflet";
-import { control } from "./layercontrol/control";
+import { batch, control } from "./layercontrol/control";
 import { map } from "./map";
 import { state } from "../app/state";
 
@@ -134,6 +134,26 @@ export function layer(name: string, on?: boolean, colour?: string, rank?: Rank, 
   // restore a world that has been replaced. floors/filter.ts takes a fresh one on its next pass.
   delete group._floorAll;
   return group.clearLayers();
+}
+
+/* What a factory is MADE OF, turned on by the gestures that fly to one: without belts the
+ * machines are a scatter, without pipes a refinery block is half missing. Not storage, a toggle
+ * asked for on purpose; not power, which starts ticked, so re-ticking it would overrule the
+ * reader who unticked it. */
+export var BUILT_AREA_LAYERS = ["machines", "belts", "pipes"];
+
+/** Turn these layers on in one control render, and return the names that were off. */
+export function turnOnLayers(names: string[]): string[] {
+  const turned: string[] = [];
+  batch(function () {
+    names.forEach(function (name) {
+      const group = state.layers[name];
+      if (!group || map.hasLayer(group)) return;
+      group.addTo(map);
+      turned.push(name);
+    });
+  });
+  return turned;
 }
 
 /* Layers whose names are data-driven (one per resource, one per pickup category) can go

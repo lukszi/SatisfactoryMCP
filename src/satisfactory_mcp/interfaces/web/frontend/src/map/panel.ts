@@ -7,7 +7,7 @@ import { el, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
 import { showRef } from "./tools/finder";
 import { count, mw, pct } from "../kit/format";
-import { chooseLabel, FACTORY_PICKED, flyToFactory, paddedBounds, reveal } from "./labels";
+import { prioritiseLabel, FACTORY_PICKED, flyToBuiltArea, paddedBounds, reveal } from "./labels";
 import { onLayersToggle, setLayersOpen } from "./layercontrol/control";
 import { loadOne } from "../app/load";
 import { flyPadded, NARROW } from "./map";
@@ -120,8 +120,8 @@ function say(body: HTMLElement, text: string): void {
 
 function selectFactory(row: FactoryHealthRow, fly: boolean): void {
   view.factory = row.name;
-  chooseLabel(row.name);
-  var bounds = fly ? flyToFactory(row.bbox_m) : paddedBounds(row.bbox_m);
+  prioritiseLabel(row.name);
+  var bounds = fly ? flyToBuiltArea(row.bbox_m) : paddedBounds(row.bbox_m);
   if (bounds) outline(bounds);
   else clearMark();
   render();
