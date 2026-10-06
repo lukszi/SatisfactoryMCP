@@ -443,8 +443,13 @@ def main() -> int:
     # The trailing newline is load-bearing: the committed blob carries one, and without it
     # every regeneration reports a diff and so says nothing on any run.
     dest.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"wrote {dest.relative_to(ROOT)}  {dest.stat().st_size} B  {len(regions)} regions")
+    print(f"wrote {_shown(dest)}  {dest.stat().st_size} B  {len(regions)} regions")
     return 0
+
+
+def _shown(path: Path) -> Path:
+    """``path`` relative to the repository when it is inside it, as given otherwise."""
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
 
 
 def check_existing_pin(dest: Path, build_pin: str) -> bool:
@@ -461,7 +466,7 @@ def check_existing_pin(dest: Path, build_pin: str) -> bool:
     if pinned is None or pinned == build_pin:
         return True
     print(
-        f"{dest.relative_to(ROOT)} was cut from another build, and a region table from "
+        f"{_shown(dest)} was cut from another build, and a region table from "
         "another build describes another world's coastline.\n"
         f"  installed:   {build_pin}\n"
         f"  that table:  {pinned}\n"

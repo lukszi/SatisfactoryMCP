@@ -397,7 +397,8 @@ def main() -> int:
         versions=versions,
     )
     args.out.write_text(json.dumps({"_meta": meta, "nodes": rows}, indent=1) + "\n", "utf-8")
-    print(f"wrote {args.out.relative_to(ROOT)}  {len(rows)} rows  {args.out.stat().st_size} B")
+    shown = args.out.relative_to(ROOT) if args.out.is_relative_to(ROOT) else args.out
+    print(f"wrote {shown}  {len(rows)} rows  {args.out.stat().st_size} B")
     print("by class:", meta["by_class"])
     print("by purity:", meta["by_purity"])
     print(
