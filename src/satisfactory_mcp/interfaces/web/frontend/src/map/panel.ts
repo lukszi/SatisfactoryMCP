@@ -12,18 +12,17 @@ import { onLayersToggle, setLayersOpen } from "./layercontrol/control";
 import { loadOne } from "../app/load";
 import { flyPadded, NARROW } from "./map";
 import {
-  bar,
   biomassLine,
   biomassQuery,
   circuitName,
-  LEDGER,
+  ledgerBar,
   onBiomass,
   ratedCircuit,
   ratedWorld,
-  readFull,
   readGeneration,
-  readMeasured,
-  readNow,
+  readHeadroomFull,
+  readHeadroomNow,
+  readMeasuredDraw,
   whereOf,
 } from "../dash/power-ledger";
 import { registerFetch } from "../app/registry";
@@ -240,7 +239,7 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
         " · " +
         mw(row.measured_mw) +
         " " +
-        LEDGER.measuredDraw +
+        WORDS.measuredDraw +
         " of " +
         mw(row.nameplate_mw)
     )
@@ -333,11 +332,11 @@ function ledgerBlock(r: Rated, starved: number): HTMLElement {
   var box = make("div", "panel-ledger");
   var grid = make("div", "panel-kv");
   var pairs: [string, Reading][] = [
-    [LEDGER.generation, readGeneration(r)],
-    [LEDGER.measuredDraw, readMeasured(r)],
-    [LEDGER.nameplateDraw, { value: mw(r.ledger.draw_mw), bad: false, why: "" }],
-    [LEDGER.headroomNow, readNow(r)],
-    [LEDGER.headroomFull, readFull(r)],
+    [WORDS.generation, readGeneration(r)],
+    [WORDS.measuredDraw, readMeasuredDraw(r)],
+    [WORDS.nameplateDraw, { value: mw(r.ledger.draw_mw), bad: false, why: "" }],
+    [WORDS.headroomNow, readHeadroomNow(r)],
+    [WORDS.headroomFull, readHeadroomFull(r)],
   ];
   if (starved) pairs.splice(1, 0, ["of it starved", { value: mw(starved), bad: true, why: "" }]);
   pairs.forEach(function (p) {
@@ -346,7 +345,7 @@ function ledgerBlock(r: Rated, starved: number): HTMLElement {
     if (p[1].why) v.title = p[1].why;
     grid.appendChild(v);
   });
-  box.appendChild(bar(r.ledger));
+  box.appendChild(ledgerBar(r.ledger));
   box.appendChild(grid);
   var extra = biomassLine(r.ledger);
   if (extra) box.appendChild(make("p", "panel-note", extra));
@@ -391,26 +390,26 @@ function circuitRow(row: CircuitRow): HTMLElement {
       selectCircuit(row);
     })
   );
-  var now = r.dark ? readGeneration(r) : readNow(r);
+  var now = r.dark ? readGeneration(r) : readHeadroomNow(r);
   var tone = now.bad || led.starved_generation_mw > 0 ? " bad" : now.why ? "" : " ok";
   var badge = make("span", "panel-badge" + tone, now.value);
-  badge.title = now.why || LEDGER.headroomNow;
+  badge.title = now.why || WORDS.headroomNow;
   head.appendChild(badge);
   item.appendChild(head);
   item.appendChild(
     make(
       "div",
       "panel-row-sub",
-      readMeasured(r).value +
+      readMeasuredDraw(r).value +
         " of " +
         (r.dark ? mw(led.generation_mw) : readGeneration(r).value) +
         " · " +
         counted(row.consumers, "consumer") +
         " · " +
-        counted(row.poles, "pole or tower", LEDGER.poles)
+        counted(row.poles, "pole or tower", WORDS.polesAndTowers)
     )
   );
-  if (led.generation_mw > 0 || led.draw_mw > 0) item.appendChild(bar(led));
+  if (led.generation_mw > 0 || led.draw_mw > 0) item.appendChild(ledgerBar(led));
   if (selected) {
     item.appendChild(link("power/" + (row.index + 1), "open in dashboard", "panel-dash"));
     item.appendChild(ledgerBlock(r, led.starved_generation_mw));

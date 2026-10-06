@@ -8,20 +8,11 @@ import { WORDS } from "../kit/words";
 
 import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, SummaryResponse } from "../api/shapes";
 
-export var LEDGER = {
-  generation: WORDS.generation,
-  measuredDraw: WORDS.measuredDraw,
-  nameplateDraw: WORDS.nameplateDraw,
-  headroomNow: WORDS.headroomNow,
-  headroomFull: WORDS.headroomFull,
-  poles: WORDS.polesAndTowers,
-};
+export const NONE = "–";
 
-export var NONE = "–";
+const UNRATED = "generation not modelled";
 
-export var UNRATED = "generation not modelled";
-
-export var UNMEASURED = "no machine measured";
+const UNMEASURED = "no machine measured";
 
 export type Figures = Pick<
   Ledger,
@@ -45,15 +36,16 @@ export function biomassQuery(): string {
 }
 
 export function onBiomass(listener: () => void): void {
-  var last = biomassQuery();
+  let last = biomassQuery();
   onSetting(function () {
-    var now = biomassQuery();
+    const now = biomassQuery();
     if (now === last) return;
     last = now;
     listener();
   });
 }
 
+/* Consumers and no generator at all, burners included: the circuit draws from nothing. */
 export function circuitDark(row: CircuitRow): boolean {
   return row.ledger.generation_mw <= 0 && row.ledger.biomass_generators === 0 && row.consumers > 0;
 }
@@ -70,42 +62,42 @@ export function ratedSummary(data: SummaryResponse): Rated {
   return { ledger: data.power, unmodellable: [], dark: false };
 }
 
-export function unrated(r: Rated): boolean {
-  return r.unmodellable.length > 0;
+export function unrated(rated: Rated): boolean {
+  return rated.unmodellable.length > 0;
 }
 
-export function unmeasured(r: Rated): boolean {
-  return r.ledger.monitored === 0;
+function unmeasured(rated: Rated): boolean {
+  return rated.ledger.monitored === 0;
 }
 
-export function unratedTitle(r: Rated): string {
-  return "game data cannot rate " + r.unmodellable.join(", ") + ", so this circuit's output is unknown";
+export function unratedTitle(rated: Rated): string {
+  return "game data cannot rate " + rated.unmodellable.join(", ") + ", so this circuit's output is unknown";
 }
 
 export function headroom(value: number): string {
   return mw(value, { signed: true });
 }
 
-export function readGeneration(r: Rated): Reading {
-  if (unrated(r)) return { value: NONE, bad: false, why: UNRATED };
-  if (r.dark) return { value: WORDS.noGenerator, bad: true, why: "" };
-  return { value: mw(r.ledger.generation_mw), bad: false, why: "" };
+export function readGeneration(rated: Rated): Reading {
+  if (unrated(rated)) return { value: NONE, bad: false, why: UNRATED };
+  if (rated.dark) return { value: WORDS.noGenerator, bad: true, why: "" };
+  return { value: mw(rated.ledger.generation_mw), bad: false, why: "" };
 }
 
-export function readMeasured(r: Rated): Reading {
-  if (unmeasured(r)) return { value: NONE, bad: false, why: UNMEASURED };
-  return { value: mw(r.ledger.measured_draw_mw), bad: false, why: "" };
+export function readMeasuredDraw(rated: Rated): Reading {
+  if (unmeasured(rated)) return { value: NONE, bad: false, why: UNMEASURED };
+  return { value: mw(rated.ledger.measured_draw_mw), bad: false, why: "" };
 }
 
-export function readNow(r: Rated): Reading {
-  if (unrated(r)) return { value: NONE, bad: false, why: UNRATED };
-  if (unmeasured(r)) return { value: NONE, bad: false, why: UNMEASURED + "; see " + LEDGER.headroomFull };
-  return { value: headroom(r.ledger.measured_headroom_mw), bad: r.ledger.measured_headroom_mw < 0, why: "" };
+export function readHeadroomNow(rated: Rated): Reading {
+  if (unrated(rated)) return { value: NONE, bad: false, why: UNRATED };
+  if (unmeasured(rated)) return { value: NONE, bad: false, why: UNMEASURED + "; see " + WORDS.headroomFull };
+  return { value: headroom(rated.ledger.measured_headroom_mw), bad: rated.ledger.measured_headroom_mw < 0, why: "" };
 }
 
-export function readFull(r: Rated): Reading {
-  if (unrated(r)) return { value: NONE, bad: false, why: UNRATED };
-  return { value: headroom(r.ledger.headroom_mw), bad: r.ledger.headroom_mw < 0, why: "" };
+export function readHeadroomFull(rated: Rated): Reading {
+  if (unrated(rated)) return { value: NONE, bad: false, why: UNRATED };
+  return { value: headroom(rated.ledger.headroom_mw), bad: rated.ledger.headroom_mw < 0, why: "" };
 }
 
 export function biomassLine(ledger: Figures): string {
@@ -117,53 +109,55 @@ export interface Where {
   dash: string;
 }
 
-export function whereOf(m: MachineRef): Where {
-  if (m.factory) return { where: m.factory, dash: "factories/" + m.factory };
-  if (m.circuit !== null) return { where: "circuit " + (m.circuit + 1), dash: "power/" + (m.circuit + 1) };
-  return { where: m.region ? regionLine(m.region) : "", dash: "" };
+/* A machine's place as the tables name it: its factory, else its circuit, else its region. */
+export function whereOf(machine: MachineRef): Where {
+  if (machine.factory) return { where: machine.factory, dash: "factories/" + machine.factory };
+  if (machine.circuit !== null) return { where: "circuit " + (machine.circuit + 1), dash: "power/" + (machine.circuit + 1) };
+  return { where: machine.region ? regionLine(machine.region) : "", dash: "" };
 }
 
-function key(parent: HTMLElement, className: string, text: string): void {
-  var item = make("span", "bar-key-item");
+function legendKey(parent: HTMLElement, className: string, text: string): void {
+  const item = make("span", "bar-key-item");
   item.appendChild(make("span", "bar-key-swatch " + className));
   item.appendChild(document.createTextNode(text));
   parent.appendChild(item);
 }
 
-export function bar(ledger: Figures, legend?: boolean): HTMLElement {
-  var track = make("div", "panel-bar dash-bar");
-  var cap = Math.max(ledger.generation_mw, ledger.draw_mw, 1);
-  var nameplate = make("span", "panel-bar-nameplate");
+/* Nameplate and measured draw as fills, generation as a cap mark, on one scale. */
+export function ledgerBar(ledger: Figures, legend?: boolean): HTMLElement {
+  const track = make("div", "panel-bar dash-bar");
+  const cap = Math.max(ledger.generation_mw, ledger.draw_mw, 1);
+  const nameplate = make("span", "panel-bar-nameplate");
   nameplate.style.width = Math.min(100, (ledger.draw_mw / cap) * 100) + "%";
   track.appendChild(nameplate);
   if (ledger.monitored) {
-    var measured = make("span", "panel-bar-measured");
+    const measured = make("span", "panel-bar-measured");
     measured.style.width = Math.min(100, (ledger.measured_draw_mw / cap) * 100) + "%";
     track.appendChild(measured);
   }
-  var generation = make("span", "panel-bar-cap");
+  const generation = make("span", "panel-bar-cap");
   generation.style.left = Math.min(100, (ledger.generation_mw / cap) * 100) + "%";
   track.appendChild(generation);
   track.title =
-    (ledger.monitored ? mw(ledger.measured_draw_mw) + " " + LEDGER.measuredDraw : UNMEASURED) +
+    (ledger.monitored ? mw(ledger.measured_draw_mw) + " " + WORDS.measuredDraw : UNMEASURED) +
     ", " +
     mw(ledger.draw_mw) +
     " " +
-    LEDGER.nameplateDraw +
+    WORDS.nameplateDraw +
     ", against " +
     mw(ledger.generation_mw) +
     " " +
-    LEDGER.generation;
+    WORDS.generation;
   track.setAttribute("role", "img");
   track.setAttribute("aria-label", track.title);
   if (!legend) return track;
-  var wrap = make("div", "bar-keyed");
+  const wrap = make("div", "bar-keyed");
   wrap.appendChild(track);
-  var keys = make("div", "bar-key");
+  const keys = make("div", "bar-key");
   keys.setAttribute("aria-hidden", "true");
-  key(keys, "panel-bar-measured", LEDGER.measuredDraw);
-  key(keys, "panel-bar-nameplate", LEDGER.nameplateDraw);
-  key(keys, "panel-bar-cap", LEDGER.generation);
+  legendKey(keys, "panel-bar-measured", WORDS.measuredDraw);
+  legendKey(keys, "panel-bar-nameplate", WORDS.nameplateDraw);
+  legendKey(keys, "panel-bar-cap", WORDS.generation);
   wrap.appendChild(keys);
   return wrap;
 }

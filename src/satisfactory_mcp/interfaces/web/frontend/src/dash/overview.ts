@@ -23,7 +23,7 @@ import {
   problemTable,
   retryCircuits,
 } from "./power-tab";
-import { bar as powerBar, ratedWorld } from "./power-ledger";
+import { ledgerBar, ratedWorld } from "./power-ledger";
 import { counted, WORDS } from "../kit/words";
 
 import type { FactoryHealthRow } from "../api/shapes";
@@ -76,9 +76,9 @@ function tiles(body: HTMLElement): void {
       gens += g.count;
     });
     var gen = generationTile(ratedWorld(v.circuits), counted(gens, "generator"), v.circuits.world.starved_generation_mw > 0, power);
-    gen.appendChild(powerBar(v.circuits.world));
+    gen.appendChild(ledgerBar(v.circuits.world));
     row.appendChild(gen);
-    headroomTiles(ratedWorld(v.circuits), power).forEach(function (t) {
+    headroomTiles(ratedWorld(v.circuits), { href: power }).forEach(function (t) {
       row.appendChild(t);
     });
     var faults = faultsOf(v.circuits);

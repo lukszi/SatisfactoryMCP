@@ -14,7 +14,7 @@ import { rowOverclock } from "./planner-power";
 import { renderSite } from "./planner-site";
 import { renderTrack } from "./planner-track";
 import { pinsFor, pinThis } from "../../chat/pins";
-import { headroom, LEDGER } from "../power-ledger";
+import { headroom } from "../power-ledger";
 import { WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
@@ -116,8 +116,8 @@ function budget(parent: HTMLElement, data: SolveResponse): void {
   }
   var net = data.mw_net;
   var rows: BudgetRow[] = [
-    { label: LEDGER.headroomNow, now: ledger.measured_headroom_mw, after: net === null ? null : ledger.measured_headroom_mw + net },
-    { label: LEDGER.headroomFull, now: ledger.headroom_mw, after: net === null ? null : ledger.headroom_mw + net },
+    { label: WORDS.headroomNow, now: ledger.measured_headroom_mw, after: net === null ? null : ledger.measured_headroom_mw + net },
+    { label: WORDS.headroomFull, now: ledger.headroom_mw, after: net === null ? null : ledger.headroom_mw + net },
   ];
   var columns: Column<BudgetRow>[] = [
     {
