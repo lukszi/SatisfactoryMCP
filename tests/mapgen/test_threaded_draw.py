@@ -19,13 +19,13 @@ from mapgen.bandstore import BandArray, BandWriter
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.palette.shore import OCEAN_LEVEL_M
 from mapgen.palette.water import open_sea
+from mapgen.pools import free_ram_bytes
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.tiles import compose, drawpool
 from mapgen.tiles.compose import BAND_ROWS, render_layer
 from mapgen.tiles.drawpool import (
     AHEAD,
     add_draw_flags,
-    available_memory,
     bands_held,
     draw_threads,
     in_order,
@@ -246,12 +246,12 @@ def test_the_thread_count_is_the_request_or_the_default_capped_by_memory(monkeyp
     assert draw_threads(None, "painted", 2048, free=4 * gb) == drawpool.DRAW_THREADS
     monkeypatch.setattr(drawpool.os, "cpu_count", lambda: 4)
     assert draw_threads(None, "terrain", 2048, free=60 * gb) == 4
-    monkeypatch.setattr(drawpool, "available_memory", lambda: None)
+    monkeypatch.setattr(drawpool, "free_ram_bytes", lambda: None)
     assert draw_threads(None, "painted", 32768) == 4
 
 
 def test_free_memory_reads_on_this_machine_and_the_flag_parses():
-    free = available_memory()
+    free = free_ram_bytes()
     assert free is None or free > 0
     parser = argparse.ArgumentParser()
     add_draw_flags(parser)

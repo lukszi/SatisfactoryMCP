@@ -61,11 +61,6 @@ Planned as 0.2.0.
   the painted layer, because the tree crowns are written once, where the bake reads them.
   `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
   after the run that wrote it.
-- Map generator: a layer is drawn on several threads, 8 by default and fewer when free memory
-  is short, so the draw stage of a full-size render takes about a third as long, about an
-  hour less; the tiles are the same bytes. It needs about 2 GB of memory a thread at full
-  size, 3.4 GB for the painted layer. `--draw-threads 1` draws one band at a time as before.
-  The render's `meta.json` records the count as `draw_threads`.
 - `pioneersav`'s submodules re-export less; the top-level `pioneersav` API is unchanged.
   `pioneersav.properties` no longer exposes `ObjectReference`, `ObjectSlice`, `ParseError`,
   `Reader`, `FIRST_MODERN_BODY` or `TAG_EXTENSIONS`; `objects` no longer lists `ParseError`,
@@ -77,6 +72,11 @@ Planned as 0.2.0.
   sampled without the weight sums nothing read, and the void and the water are blended only
   on the pixels they cover. A full-size render draws about 12% faster, 10 to 15 minutes of
   one core over the five layers; the tiles are the same bytes.
+- Map generator: a layer is drawn on several threads, 8 by default and fewer when free memory
+  is short, so the draw stage of a full-size render takes about a third as long, about an
+  hour less; the tiles are the same bytes. It needs about 2 GB of memory a thread at full
+  size, 3.4 GB for the painted layer. `--draw-threads 1` draws one band at a time as before.
+  The render's `meta.json` records the count as `draw_threads`.
 - Map generator: the light bake is about 2.7 times faster at full size on 8 workers (about
   18 minutes instead of 48) and 3.5 times on 16, with the same bytes. Each of its processes
   peaks at 1.1 GB instead of 3.9 GB, and starts numpy with one BLAS thread, which saves

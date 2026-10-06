@@ -4383,8 +4383,9 @@ planes, about 125 MB a band.
 
 `--draw-threads N`; by default 8 (`DRAW_THREADS`), and no more than the machine has cores.
 Before each layer the count is cut to what free memory holds: the free memory, less the sheet
-(3 bytes a pixel) and 2 GiB, over the peak one band in flight takes. On Windows free memory is
-the lesser of the free physical memory and the commit left, because an array commits its
+(3 bytes a pixel) and 2 GiB, over the peak one band in flight takes. The free memory is the
+one `mapgen/pools.py` reads for the light bake and the cutter too. On Windows it is the
+lesser of the free physical memory and the commit left, because an array commits its
 whole size when it is allocated: with other work running, the commit ran out at 17 GB while
 37 GB of RAM stood free, and an allocation failed. One more band in flight costs about
 1.9 GB, and 3.4 GB for the painted layer, at 32768 wide, scaled by the width: the working set

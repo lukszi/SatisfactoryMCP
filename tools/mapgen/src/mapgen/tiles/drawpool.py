@@ -6,13 +6,13 @@ The measurements behind the numbers: docs/spatial-and-map.md section 40.
 from __future__ import annotations
 
 import argparse
-import ctypes
 import os
-import sys
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import TypeVar
+
+from mapgen.pools import free_ram_bytes
 
 __all__ = [
     "AHEAD",
@@ -20,7 +20,6 @@ __all__ = [
     "DRAW_THREADS",
     "RESERVE_BYTES",
     "add_draw_flags",
-    "available_memory",
     "bands_held",
     "draw_threads",
     "in_order",
@@ -45,54 +44,15 @@ BAND_BYTES_WIDTH = 32768
 RESERVE_BYTES = 2 << 30
 
 
-class _MemoryStatus(ctypes.Structure):
-    _fields_ = [
-        ("length", ctypes.c_uint32),
-        ("load", ctypes.c_uint32),
-        ("total_phys", ctypes.c_uint64),
-        ("avail_phys", ctypes.c_uint64),
-        ("total_page", ctypes.c_uint64),
-        ("avail_page", ctypes.c_uint64),
-        ("total_virtual", ctypes.c_uint64),
-        ("avail_virtual", ctypes.c_uint64),
-        ("avail_extended", ctypes.c_uint64),
-    ]
-
-
-def available_memory() -> int | None:
-    """Memory free for new work now, in bytes; None where it cannot be read.
-
-    On Windows the lesser of free physical memory and the commit left: an array commits its
-    whole size when it is allocated, so a full commit refuses it with RAM to spare.
-    """
-    if sys.platform == "win32":
-        status = _MemoryStatus()
-        status.length = ctypes.sizeof(status)
-        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-            return int(min(status.avail_phys, status.avail_page))
-        return None
-    try:
-        with open("/proc/meminfo", encoding="ascii") as f:
-            for line in f:
-                if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) * 1024
-    except (OSError, ValueError, IndexError):
-        pass
-    try:
-        return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
-    except (ValueError, OSError, AttributeError):
-        return None
-
-
 def draw_threads(requested: int | None, layer: str, size: int, free: int | None = None) -> int:
     """Threads to draw ``layer`` of a ``size`` sheet on; at least one.
 
     ``requested``, or ``DRAW_THREADS`` but no more than the cores; then no more bands in flight
-    than ``free`` bytes hold (``available_memory()`` when None) once the sheet and
+    than ``free`` bytes hold (``free_ram_bytes()`` when None) once the sheet and
     ``RESERVE_BYTES`` are set aside.
     """
     want = min(DRAW_THREADS, os.cpu_count() or 1) if requested is None else requested
-    free = available_memory() if free is None else free
+    free = free_ram_bytes() if free is None else free
     if free is None:
         return max(1, want)
     band = BAND_BYTES.get(layer, BAND_BYTES[None]) * size / BAND_BYTES_WIDTH

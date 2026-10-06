@@ -208,6 +208,7 @@ be traced to the axis it should move.
 | `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |
+| `tiles/drawpool.py` | | How many threads draw a layer's bands, and the pool that keeps their order |
 | `tiles/pyramid.py` | | Installing a layer and cutting its pyramid; the worker flags |
 | `tiles/cutter.py` | | The parallel cutter: a layer's tile trees through one encode pool |
 | `tiles/sidecar.py` | | The render sidecar |
