@@ -19,7 +19,7 @@ the code carries one line per colour and points here. Module paths are relative 
   large flat area or a thin line, which the eye does not confuse even close in colour.
 - **Game tints do not move.** The ore dots use the in-game item tints, so where one collides the
   other side moves, and where neither can the pair is discharged.
-- **Tone variants.** Some colours have a `dark` twin picked through `toned()` in `map-tone.ts`
+- **Tone variants.** Some colours have a `dark` twin picked through `byMapTone()` in `map-tone.ts`
   when the base map's picture is dark; both are declared and both are audited.
 
 ## Cased lines

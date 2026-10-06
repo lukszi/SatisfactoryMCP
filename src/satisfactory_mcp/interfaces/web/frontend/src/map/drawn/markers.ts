@@ -18,7 +18,7 @@ import { registerFetch } from "../../app/registry";
 import { onSetting } from "../../app/settings";
 import { state } from "../../app/state";
 import { fail } from "../../kit/toast";
-import { onTone, toned } from "../map-tone";
+import { byMapTone, onMapTone } from "../map-tone";
 
 import type { OnMap } from "../leaflet-private";
 
@@ -81,7 +81,7 @@ var PURITY_RADIUS: Record<string, number> = { impure: 3, normal: 4.5, pure: 6 };
 var TONED = declareColours("markers", { "coal dark": "#8c8f96", "locked casing": "#262040" });
 
 function nodeColour(resource: string): string {
-  if (resource === "Desc_Coal_C") return toned(RESOURCE_COLOUR[resource]!, TONED["coal dark"]);
+  if (resource === "Desc_Coal_C") return byMapTone(RESOURCE_COLOUR[resource]!, TONED["coal dark"]);
   return RESOURCE_COLOUR[resource] || "#888";
 }
 
@@ -203,7 +203,7 @@ function repaint(): void {
 }
 
 onSetting(repaint);
-onTone(repaint);
+onMapTone(repaint);
 
 /* The `node: ` rows as a family: one fold, one tri-state box, one "n of m". Declared here
  * because this is the file that makes those rows, and a prefix spelled in one file and created

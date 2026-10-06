@@ -7,7 +7,7 @@ import { batch, control, registerSection } from "../layercontrol/control";
 import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
 import { latLngOf, map } from "../map";
-import { onTone, toned } from "../map-tone";
+import { byMapTone, onMapTone } from "../map-tone";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
 import { onSetting, settingOn } from "../../app/settings";
@@ -45,7 +45,7 @@ var COLLECTED_MARK_COLOURS = declareColours("markers", {
 });
 
 function collectedMarkColour(): string {
-  return toned(COLLECTED_MARK_COLOURS["pickup collected"], COLLECTED_MARK_COLOURS["pickup collected dark"]);
+  return byMapTone(COLLECTED_MARK_COLOURS["pickup collected"], COLLECTED_MARK_COLOURS["pickup collected dark"]);
 }
 
 /* The prefix that makes a layer name a pickup row, and the whole of the join between a
@@ -219,7 +219,7 @@ function repaint(): void {
 }
 
 onSetting(repaint);
-onTone(repaint);
+onMapTone(repaint);
 new MutationObserver(markHiddenRows).observe(control.getContainer()!, { childList: true, subtree: true });
 
 /* The `pickup: ` rows as a family, on the same terms as the node rows and shut for the same

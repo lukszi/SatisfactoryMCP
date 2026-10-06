@@ -2,6 +2,7 @@
  * slider on the game's sun path, four presets, the shadow and sky switches, and under
  * "advanced" a free compass. It moves the sun for this visit; Settings → map keeps the default. */
 
+import { make } from "../kit/dom";
 import { L } from "./leaflet";
 import { map } from "./map";
 import { setSetting } from "../app/settings";
@@ -12,71 +13,72 @@ import {
   hourText,
   LAST_HOUR,
   MAP_NW,
-  MIN_EL,
+  MIN_ELEVATION_DEG,
   NOON_HOUR,
   onSun,
   placeSun,
   resetSun,
   setHour,
+  SUN_PRESETS,
   sunOverridden,
 } from "./sun";
 
 import type { Sun } from "./sun";
 
-var R = 46;
+/** The compass dial's radius, in its own SVG units: the horizon ring. */
+var COMPASS_RADIUS_PX = 46;
 var control: L.Control | null = null;
 var root: HTMLElement | null = null;
 var refresh: ((sun: Sun) => void) | null = null;
 
-function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
-  var made = document.createElement(tag);
-  if (cls) made.className = cls;
-  if (text !== undefined) made.textContent = text;
-  return made;
-}
-
 var SVG = "http://www.w3.org/2000/svg";
 
 function svg(tag: string, attrs: Record<string, string | number>): SVGElement {
-  var made = document.createElementNS(SVG, tag) as SVGElement;
-  Object.keys(attrs).forEach(function (k) {
-    made.setAttribute(k, String(attrs[k]));
+  const made = document.createElementNS(SVG, tag) as SVGElement;
+  Object.keys(attrs).forEach(function (name) {
+    made.setAttribute(name, String(attrs[name]));
   });
   return made;
 }
 
-function polar(az: number, el: number): [number, number] {
-  var r = ((90 - el) / 90) * R;
-  var a = (az * Math.PI) / 180;
-  return [r * Math.sin(a), -r * Math.cos(a)];
+/** Where a sun position sits on the dial: the zenith at the centre, the horizon on the ring. */
+function polar(azimuthDeg: number, elevationDeg: number): [number, number] {
+  const radius = ((90 - elevationDeg) / 90) * COMPASS_RADIUS_PX;
+  const angle = (azimuthDeg * Math.PI) / 180;
+  return [radius * Math.sin(angle), -radius * Math.cos(angle)];
 }
 
 function compass(): { el: SVGElement; show: (sun: Sun) => void } {
-  var box = svg("svg", { viewBox: "-52 -52 104 104", width: 104, height: 104, class: "sun-compass", role: "img" });
+  const box = svg("svg", { viewBox: "-52 -52 104 104", width: 104, height: 104, class: "sun-compass", role: "img" });
   box.setAttribute("aria-label", "sun position: drag to move the sun anywhere");
-  box.appendChild(svg("circle", { r: R, class: "sun-ring" }));
-  box.appendChild(svg("circle", { r: R / 2, class: "sun-ring-in" }));
-  var points: string[] = [];
-  for (var h = FIRST_HOUR; h <= LAST_HOUR; h += 0.1) {
-    var at = gameSun(h);
+  box.appendChild(svg("circle", { r: COMPASS_RADIUS_PX, class: "sun-ring" }));
+  box.appendChild(svg("circle", { r: COMPASS_RADIUS_PX / 2, class: "sun-ring-in" }));
+  const points: string[] = [];
+  for (let hour = FIRST_HOUR; hour <= LAST_HOUR; hour += 0.1) {
+    const at = gameSun(hour);
     if (at[1] < 0) continue;
-    var p = polar(at[0], at[1]);
-    points.push(p[0].toFixed(1) + "," + p[1].toFixed(1));
+    const point = polar(at[0], at[1]);
+    points.push(point[0].toFixed(1) + "," + point[1].toFixed(1));
   }
   box.appendChild(svg("path", { d: "M" + points.join("L"), class: "sun-path" }));
-  [["N", 0, -R + 9], ["E", R - 7, 3], ["S", 0, R - 3], ["W", -R + 7, 3]].forEach(function (t) {
-    var label = svg("text", { x: t[1]!, y: t[2]!, class: "sun-cardinal" });
-    label.textContent = String(t[0]);
+  ([
+    ["N", 0, -COMPASS_RADIUS_PX + 9],
+    ["E", COMPASS_RADIUS_PX - 7, 3],
+    ["S", 0, COMPASS_RADIUS_PX - 3],
+    ["W", -COMPASS_RADIUS_PX + 7, 3],
+  ] as [string, number, number][]).forEach(function (cardinal) {
+    const label = svg("text", { x: cardinal[1], y: cardinal[2], class: "sun-cardinal" });
+    label.textContent = cardinal[0];
     box.appendChild(label);
   });
-  var dot = svg("circle", { r: 5, class: "sun-dot" });
+  const dot = svg("circle", { r: 5, class: "sun-dot" });
   box.appendChild(dot);
   function place(event: PointerEvent): void {
-    var rect = box.getBoundingClientRect();
-    var x = ((event.clientX - rect.left) / rect.width) * 104 - 52;
-    var y = ((event.clientY - rect.top) / rect.height) * 104 - 52;
-    var az = (Math.atan2(x, -y) * 180) / Math.PI;
-    placeSun(az, 90 - (Math.min(R, Math.hypot(x, y)) / R) * 90, null);
+    const rect = box.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 104 - 52;
+    const y = ((event.clientY - rect.top) / rect.height) * 104 - 52;
+    const azimuthDeg = (Math.atan2(x, -y) * 180) / Math.PI;
+    placeSun(azimuthDeg, 90 - (Math.min(COMPASS_RADIUS_PX, Math.hypot(x, y)) / COMPASS_RADIUS_PX) * 90, null);
   }
   box.addEventListener("pointerdown", function (event) {
     box.setPointerCapture(event.pointerId);
@@ -89,17 +91,17 @@ function compass(): { el: SVGElement; show: (sun: Sun) => void } {
   return {
     el: box,
     show: function (sun) {
-      var p = polar(sun.az, sun.el);
-      dot.setAttribute("cx", p[0].toFixed(1));
-      dot.setAttribute("cy", p[1].toFixed(1));
+      const point = polar(sun.azimuthDeg, sun.elevationDeg);
+      dot.setAttribute("cx", point[0].toFixed(1));
+      dot.setAttribute("cy", point[1].toFixed(1));
     },
   };
 }
 
-function slider(label: string, min: number, max: number, step: number, input: (v: number) => void) {
-  var row = node("label", "sun-row");
-  row.appendChild(node("span", "sun-k", label));
-  var range = node("input", "");
+function slider(label: string, min: number, max: number, step: number, input: (value: number) => void) {
+  const row = make("label", "sun-row");
+  row.appendChild(make("span", "sun-k", label));
+  const range = make("input", "");
   range.type = "range";
   range.min = String(min);
   range.max = String(max);
@@ -107,15 +109,15 @@ function slider(label: string, min: number, max: number, step: number, input: (v
   range.addEventListener("input", function () {
     input(+range.value);
   });
-  var out = node("output", "sun-v");
+  const out = make("output", "sun-v");
   row.appendChild(range);
   row.appendChild(out);
   return { row: row, range: range, out: out };
 }
 
 function toggle(label: string, key: string, read: (sun: Sun) => boolean) {
-  var row = node("label", "sun-check");
-  var box = node("input", "");
+  const row = make("label", "sun-check");
+  const box = make("input", "");
   box.type = "checkbox";
   box.addEventListener("change", function () {
     setSetting(key, box.checked);
@@ -131,12 +133,12 @@ function toggle(label: string, key: string, read: (sun: Sun) => boolean) {
 }
 
 function panel(): HTMLElement {
-  var box = node("div", "sun-panel");
+  const box = make("div", "sun-panel");
   box.hidden = true;
-  var head = node("div", "sun-head");
-  var title = node("span", "sun-title", "sun");
-  var readout = node("span", "sun-readout");
-  var reset = node("button", "sun-reset", "default");
+  const head = make("div", "sun-head");
+  const title = make("span", "sun-title", "sun");
+  const readout = make("span", "sun-readout");
+  const reset = make("button", "sun-reset", "default");
   reset.type = "button";
   reset.title = "back to the sun Settings → map picks";
   reset.addEventListener("click", function () {
@@ -146,58 +148,58 @@ function panel(): HTMLElement {
   head.appendChild(readout);
   head.appendChild(reset);
   box.appendChild(head);
-  var time = slider("time", FIRST_HOUR, LAST_HOUR, 0.05, setHour);
+  const time = slider("time", FIRST_HOUR, LAST_HOUR, 0.05, setHour);
   box.appendChild(time.row);
-  var presets = node("div", "sun-presets");
-  ([["noon", NOON_HOUR], ["09:00", 9], ["16:00", 16]] as [string, number][]).forEach(function (p) {
-    var b = node("button", "", p[0]);
-    b.type = "button";
-    b.addEventListener("click", function () {
-      setHour(p[1]);
+  const presets = make("div", "sun-presets");
+  SUN_PRESETS.forEach(function (preset) {
+    const presetButton = make("button", "", preset.label);
+    presetButton.type = "button";
+    presetButton.addEventListener("click", function () {
+      setHour(preset.hour);
     });
-    presets.appendChild(b);
+    presets.appendChild(presetButton);
   });
-  var nw = node("button", "", "map NW");
-  nw.type = "button";
-  nw.title = "north-west at 45°, the relief-map convention";
-  nw.addEventListener("click", function () {
+  const northWest = make("button", "", "map NW");
+  northWest.type = "button";
+  northWest.title = "north-west at 45°, the relief-map convention";
+  northWest.addEventListener("click", function () {
     placeSun(MAP_NW[0], MAP_NW[1], null);
   });
-  presets.appendChild(nw);
+  presets.appendChild(northWest);
   box.appendChild(presets);
-  var shadows = toggle("shadows", "sunShadows", function (s) {
-    return s.shadows;
+  const shadows = toggle("shadows", "sunShadows", function (sun) {
+    return sun.shadows;
   });
-  var sky = toggle("sky light", "sunSky", function (s) {
-    return s.sky;
+  const sky = toggle("sky light", "sunSky", function (sun) {
+    return sun.sky;
   });
-  var checks = node("div", "sun-checks");
+  const checks = make("div", "sun-checks");
   checks.appendChild(shadows.row);
   checks.appendChild(sky.row);
   box.appendChild(checks);
-  var more = node("details", "sun-more");
-  more.appendChild(node("summary", "", "advanced"));
-  var dial = compass();
+  const more = make("details", "sun-more");
+  more.appendChild(make("summary", "", "advanced"));
+  const dial = compass();
   more.appendChild(dial.el);
-  var az = slider("azimuth", 0, 360, 0.5, function (v) {
-    placeSun(v, currentSun().el, null);
+  const azimuth = slider("azimuth", 0, 360, 0.5, function (value) {
+    placeSun(value, currentSun().elevationDeg, null);
   });
-  var el = slider("elevation", MIN_EL, 90, 0.5, function (v) {
-    placeSun(currentSun().az, v, null);
+  const elevation = slider("elevation", MIN_ELEVATION_DEG, 90, 0.5, function (value) {
+    placeSun(currentSun().azimuthDeg, value, null);
   });
-  more.appendChild(az.row);
-  more.appendChild(el.row);
+  more.appendChild(azimuth.row);
+  more.appendChild(elevation.row);
   box.appendChild(more);
   refresh = function (sun) {
     readout.textContent =
-      (sun.hour !== null ? hourText(sun.hour) + " · " : "") + Math.round(sun.az) + "° / " + Math.round(sun.el) + "°";
+      (sun.hour !== null ? hourText(sun.hour) + " · " : "") + Math.round(sun.azimuthDeg) + "° / " + Math.round(sun.elevationDeg) + "°";
     reset.hidden = !sunOverridden();
     time.range.value = String(sun.hour !== null ? sun.hour : NOON_HOUR);
     time.out.textContent = sun.hour !== null ? hourText(sun.hour) : "—";
-    az.range.value = String(sun.az);
-    az.out.textContent = Math.round(sun.az) + "°";
-    el.range.value = String(sun.el);
-    el.out.textContent = Math.round(sun.el) + "°";
+    azimuth.range.value = String(sun.azimuthDeg);
+    azimuth.out.textContent = Math.round(sun.azimuthDeg) + "°";
+    elevation.range.value = String(sun.elevationDeg);
+    elevation.out.textContent = Math.round(sun.elevationDeg) + "°";
     shadows.show(sun);
     sky.show(sun);
     dial.show(sun);
@@ -207,17 +209,17 @@ function panel(): HTMLElement {
 }
 
 function build(): L.Control {
-  var made = new L.Control({ position: "topleft" });
+  const made = new L.Control({ position: "topleft" });
   made.onAdd = function () {
     root = L.DomUtil.create("div", "leaflet-bar sun-control");
-    var button = L.DomUtil.create("a", "sun-button", root);
+    const button = L.DomUtil.create("a", "sun-button", root);
     button.href = "#";
     button.innerHTML = "&#9728;";
     button.title = "sun: time of day and shadows";
     button.setAttribute("aria-label", "sun");
     button.setAttribute("role", "button");
     button.setAttribute("aria-expanded", "false");
-    var box = panel();
+    const box = panel();
     root.appendChild(box);
     L.DomEvent.disableClickPropagation(root);
     L.DomEvent.disableScrollPropagation(root);

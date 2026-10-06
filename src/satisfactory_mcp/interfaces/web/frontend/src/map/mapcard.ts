@@ -1,4 +1,5 @@
-/* The floating card beside the map that trace and lasso draw into; one is open at a time. */
+/* The floating card beside the map that the finder, trace and lasso draw into; one is open at
+ * a time. */
 
 import { make } from "../kit/dom";
 
@@ -6,7 +7,7 @@ var closers: Record<string, () => void> = {};
 
 export function mapCard(id: string, label: string, close: () => void): HTMLElement {
   closers[id] = close;
-  var box = document.getElementById(id);
+  let box = document.getElementById(id);
   if (box) return box;
   box = make("aside", "mapcard");
   box.id = id;
@@ -16,20 +17,23 @@ export function mapCard(id: string, label: string, close: () => void): HTMLEleme
   return box;
 }
 
-export function claim(id: string): void {
+/** Close every open card but this one. */
+export function closeOtherCards(id: string): void {
   Object.keys(closers).forEach(function (other) {
-    var box = document.getElementById(other);
+    const box = document.getElementById(other);
     if (other !== id && box && !box.hidden) closers[other]!();
   });
 }
 
-export function cardHead(title: string): HTMLElement {
-  var head = make("div", "mapcard-head");
+/** The card's top row: its title, with room for the buttons a tool adds after it. */
+export function cardTitleBar(title: string): HTMLElement {
+  const head = make("div", "mapcard-head");
   head.appendChild(make("strong", "", title));
   return head;
 }
 
-export function cardRow(): HTMLElement {
+/** A row of controls, laid out like the title bar. */
+export function cardToolbar(): HTMLElement {
   return make("div", "mapcard-head");
 }
 
@@ -37,12 +41,12 @@ export function cardSubject(parent: HTMLElement, text: string): void {
   parent.appendChild(make("div", "mapcard-subject", text));
 }
 
-export function cardHeading(parent: HTMLElement, text: string): void {
+export function cardSectionHeading(parent: HTMLElement, text: string): void {
   parent.appendChild(make("h4", "mapcard-h", text));
 }
 
 export function cardLine(parent: HTMLElement, text: string, className?: string): HTMLElement {
-  var p = make("p", "mapcard-note" + (className ? " " + className : ""), text);
-  parent.appendChild(p);
-  return p;
+  const line = make("p", "mapcard-note" + (className ? " " + className : ""), text);
+  parent.appendChild(line);
+  return line;
 }

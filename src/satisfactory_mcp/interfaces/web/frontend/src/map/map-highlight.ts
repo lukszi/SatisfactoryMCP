@@ -9,8 +9,9 @@ import { declareColours } from "./palette";
 import { machineSelection, select } from "../app/selection";
 
 import type { Selection } from "../app/selection";
+import type { BboxM } from "./geometry";
 
-export var HIGHLIGHT = declareColours("map-highlight",{ highlight: "#ff4fd8" }).highlight;
+export var HIGHLIGHT = declareColours("map-highlight", { highlight: "#ff4fd8" }).highlight;
 
 var MACHINE_ZOOM = 2;
 
@@ -69,7 +70,7 @@ export function showMachine(instance: string, name: string, x_m: number, y_m: nu
   selectAndRing(x_m, y_m, name, options && options.stay, machineSelection(instance, name, x_m, y_m));
 }
 
-export function showBox(bbox_m: [number, number, number, number], options?: { layers?: string[] }): void {
+export function showBox(bbox_m: BboxM, options?: { layers?: string[] }): void {
   if (options && options.layers) reveal(options.layers);
   var bounds = flyToBuiltArea(bbox_m);
   if (bounds) outline(bounds);

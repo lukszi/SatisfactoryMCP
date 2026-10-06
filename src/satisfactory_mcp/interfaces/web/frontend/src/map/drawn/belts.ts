@@ -19,7 +19,7 @@ import { code, popup, popupTitleRow } from "../../kit/dom";
 import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, latLngOf, pixelsPerMetre } from "../map";
-import { tone } from "../map-tone";
+import { mapTone } from "../map-tone";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
 import { routePolyline } from "./route-geometry";
@@ -192,7 +192,7 @@ export function drawBelts(data: BeltsResponse): void {
     piece.bindPopup(beltPopup(belt, liftNote(belt, drawAsRing), first, last)).addTo(group);
     if (!drawAsRing) runs.push(piece as L.Polyline);
   });
-  if (tone() === "light") caseBeltRuns(runs, group, ppm);
+  if (mapTone() === "light") caseBeltRuns(runs, group, ppm);
   (data.attachments || []).forEach(function (attachment) {
     if (attachment.x_m === null || attachment.y_m === null) return;
     junctionSquare(attachment, attachment.x_m, attachment.y_m).addTo(group);

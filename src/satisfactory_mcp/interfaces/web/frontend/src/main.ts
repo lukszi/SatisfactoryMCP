@@ -23,7 +23,7 @@ import { rememberTick } from "./map/layers";
 import { fitWorld, map, padPopups, writeHash } from "./map/map";
 import { listenForEmptyClicks } from "./map/mapclick";
 import { markHiddenRows, notePickupChoice } from "./map/drawn/pickups";
-import { render as renderPanel, showSelector } from "./map/panel";
+import { renderPanel, showSelector } from "./map/panel";
 import { listenForPins } from "./chat/pins";
 import { noteRegionChoice, updateRegionBlend } from "./map/regions";
 import { restyleRoutesForZoom, ROUTE_LAYERS, sinkRoutes } from "./map/drawn/route-passes";
@@ -33,7 +33,7 @@ import { listen } from "./app/sse";
 import { BOOT, BOOT_GARBLED, garbledNote, state } from "./app/state";
 import { wireStatus } from "./app/status";
 import { loadBaseMap } from "./map/tiles";
-import { onTone } from "./map/map-tone";
+import { onMapTone } from "./map/map-tone";
 import { fail } from "./kit/toast";
 import { listenForTraces } from "./map/tools/trace";
 import { loadWorlds } from "./app/world-picker";
@@ -90,7 +90,7 @@ import "./dash/world/world";
 map.on("moveend zoomend", writeHash);
 map.on("layeradd layerremove", updateRegionBlend);
 // Which of the region box's ticks were the player's, which is what makes the base map's
-// default for it a default rather than an override. See regionsUnderMode.
+// default for it a default rather than an override. See applyRegionDefaultForMode.
 map.on("overlayadd overlayremove", noteRegionChoice);
 // The same question for floor mode -- and a layer ticked on mid-mode owes the floor filter a
 // pass, which this does too.
@@ -122,7 +122,7 @@ map.on("zoomend", markHiddenRows);
 
 /* The layers whose colours follow the base map's tone and keep no copy of their data to repaint
  * from; the node dots and pickups repaint themselves. */
-onTone(function () {
+onMapTone(function () {
   if (!state.worlds.length) return;
   loadOne("/api/belts");
   loadOne("/api/power");

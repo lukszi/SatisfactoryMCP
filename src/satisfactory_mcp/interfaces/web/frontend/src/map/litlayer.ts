@@ -314,13 +314,13 @@ function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, lig
 function uploadSunUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, light: LightHeader, sun: Sun): void {
   const model = light.model;
   const toRadians = Math.PI / 180;
-  const azimuth = sun.az * toRadians;
-  const elevation = sun.el * toRadians;
+  const azimuth = sun.azimuthDeg * toRadians;
+  const elevation = sun.elevationDeg * toRadians;
   gl.uniform3f(uniforms.uL!, Math.cos(elevation) * Math.sin(azimuth), -Math.cos(elevation) * Math.cos(azimuth), Math.sin(elevation));
-  gl.uniform1f(uniforms.uEl!, sun.el);
+  gl.uniform1f(uniforms.uEl!, sun.elevationDeg);
   gl.uniform1f(uniforms.uInvNorm!, 1 / Math.max(Math.sin(elevation), Math.sin(model.normalise_min_el * toRadians)));
   const dirs = model.dirs;
-  const direction = sun.az / (360 / dirs);
+  const direction = sun.azimuthDeg / (360 / dirs);
   const lower = Math.floor(direction) % dirs;
   gl.uniform1i(uniforms.uI0!, lower);
   gl.uniform1i(uniforms.uI1!, (lower + 1) % dirs);

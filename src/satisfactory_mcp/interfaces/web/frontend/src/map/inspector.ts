@@ -8,7 +8,7 @@
  */
 
 import { get } from "../api/client";
-import { code, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "../kit/dom";
+import { code, dataButton, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "../kit/dom";
 import { pickupPlace } from "../dash/world/world-finds";
 import { coords, count, formatNumber, metres, perMin, regionLine } from "../kit/format";
 import { L } from "./leaflet";
@@ -109,21 +109,10 @@ function shown<T extends { spoiler: boolean }>(rows: T[]): T[] {
 }
 
 function findButton(kind: string, spot: string, text: string, title: string): string {
-  return (
-    '<button type="button" class="btn" ' +
-    FIND_ATTR +
-    '="' +
-    kind +
-    '" ' +
-    FIND_AT_ATTR +
-    '="' +
-    esc(spot) +
-    '" title="' +
-    title +
-    '">' +
-    text +
-    "</button>"
-  );
+  const attrs: Record<string, string> = {};
+  attrs[FIND_ATTR] = kind;
+  attrs[FIND_AT_ATTR] = spot;
+  return dataButton(attrs, text, title);
 }
 
 function actions(x: number, y: number): string {

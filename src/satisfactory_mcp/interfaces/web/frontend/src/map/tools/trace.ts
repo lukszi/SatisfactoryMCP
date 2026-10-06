@@ -3,11 +3,11 @@
 
 import { get, latest } from "../../api/client";
 import { button, chip, table, toggleButton } from "../../kit/dashkit";
-import { code, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
+import { code, esc, make, onAttributeClick, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
 import { count, perMin } from "../../kit/format";
 import { L } from "../leaflet";
 import { boundsOfBbox, flyPadded, latLngOf, map } from "../map";
-import { cardHead, cardHeading, cardLine, cardSubject, claim, mapCard } from "../mapcard";
+import { cardLine, cardSectionHeading, cardSubject, cardTitleBar, closeOtherCards, mapCard } from "../mapcard";
 import { makeRoom } from "../panel";
 import { HIGHLIGHT } from "../map-highlight";
 import { onVitals } from "../../app/vitals";
@@ -26,7 +26,8 @@ type TraceItem = TraceResponse["items"][number];
 
 type TraceEdge = TraceResponse["edges"][number];
 
-var SHOWN = 10;
+/** How many rows each table in the card lists; the rest are counted. */
+var MAX_TABLE_ROWS = 10;
 
 var TRACE_MAX_ZOOM = 2;
 
@@ -48,11 +49,11 @@ var view = {
   error: "",
 };
 
-function card(): HTMLElement {
+function traceCard(): HTMLElement {
   return mapCard("trace", "trace", clearTrace);
 }
 
-function colour(m: TraceMachine): string {
+function machineRingColour(m: TraceMachine): string {
   var t = tone(m.state, m.actionable);
   return t === "blocked" ? BLOCKED_COLOUR : t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
 }
@@ -97,9 +98,9 @@ function draw(data: TraceResponse): void {
     if (m.x_m === null || m.y_m === null) return;
     var ring = L.circleMarker(latLngOf([m.x_m, m.y_m]), {
       radius: m.seed ? 11 : 7,
-      color: colour(m),
+      color: machineRingColour(m),
       weight: m.seed ? 4 : 3,
-      fillColor: colour(m),
+      fillColor: machineRingColour(m),
       fillOpacity: m.actionable ? 0.45 : 0.2,
       renderer: renderer,
       pane: "trace",
@@ -155,7 +156,7 @@ function itemTable(rows: TraceItem[]): HTMLElement {
         },
       },
     ],
-    rows.slice(0, SHOWN)
+    rows.slice(0, MAX_TABLE_ROWS)
   );
 }
 
@@ -186,19 +187,19 @@ function flowTable(data: TraceResponse, rows: TraceEdge[]): HTMLElement {
         },
       },
     ],
-    rows.slice(0, SHOWN)
+    rows.slice(0, MAX_TABLE_ROWS)
   );
 }
 
 function render(): void {
-  var box = card();
+  var box = traceCard();
   box.textContent = "";
   if (!view.seed) {
     box.hidden = true;
     return;
   }
   box.hidden = false;
-  var head = cardHead(view.direction === "up" ? "Supply" : "Output");
+  var head = cardTitleBar(view.direction === "up" ? "Supply" : "Output");
   head.appendChild(
     toggleButton("↑ supply", view.direction === "up", function () {
       startTrace(view.seed, "up");
@@ -250,9 +251,9 @@ function render(): void {
     );
   }
   if (data.items.length) {
-    cardHeading(box, view.direction === "up" ? "made along the path" : "used along the path");
+    cardSectionHeading(box, view.direction === "up" ? "made along the path" : "used along the path");
     box.appendChild(itemTable(data.items));
-    if (data.items.length > SHOWN) cardLine(box, data.items.length - SHOWN + " more");
+    if (data.items.length > MAX_TABLE_ROWS) cardLine(box, data.items.length - MAX_TABLE_ROWS + " more");
   }
   var groupIds = new Set(
     data.groups.map(function (g) {
@@ -266,9 +267,9 @@ function render(): void {
     return (b.per_min || 0) - (a.per_min || 0);
   });
   if (flows.length) {
-    cardHeading(box, "flows between groups");
+    cardSectionHeading(box, "flows between groups");
     box.appendChild(flowTable(data, flows));
-    if (flows.length > SHOWN) cardLine(box, flows.length - SHOWN + " more");
+    if (flows.length > MAX_TABLE_ROWS) cardLine(box, flows.length - MAX_TABLE_ROWS + " more");
   }
 }
 
@@ -314,13 +315,14 @@ export function startTrace(seed: string, direction: Direction): void {
   view.epoch = state.epoch;
   view.data = null;
   view.error = "";
-  claim("trace");
+  closeOtherCards("trace");
   makeRoom("trace");
   render();
   fetchTrace(true);
 }
 
-var pending = 0;
+/** The debounce on a vitals-driven refetch. */
+var refreshTimer = 0;
 
 function refresh(): void {
   if (!view.seed) return;
@@ -329,26 +331,17 @@ function refresh(): void {
     return;
   }
   if (view.busy) return;
-  clearTimeout(pending);
-  pending = window.setTimeout(function () {
+  clearTimeout(refreshTimer);
+  refreshTimer = window.setTimeout(function () {
     fetchTrace(false);
   }, 50);
 }
 
 export function listenForTraces(): void {
-  document.addEventListener(
-    "click",
-    function (event) {
-      var target = event.target as Element | null;
-      var hit = target && target.closest ? target.closest("[" + TRACE_ATTR + "]") : null;
-      if (!hit) return;
-      event.stopPropagation();
-      event.preventDefault();
-      var dir: Direction = hit.getAttribute(TRACE_DIR_ATTR) === "down" ? "down" : "up";
-      map.closePopup();
-      startTrace(hit.getAttribute(TRACE_ATTR) || "", dir);
-    },
-    true
-  );
+  onAttributeClick(TRACE_ATTR, function (hit) {
+    const direction: Direction = hit.getAttribute(TRACE_DIR_ATTR) === "down" ? "down" : "up";
+    map.closePopup();
+    startTrace(hit.getAttribute(TRACE_ATTR) || "", direction);
+  });
   onVitals(refresh);
 }

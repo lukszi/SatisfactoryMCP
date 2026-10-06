@@ -9,7 +9,7 @@ import { coords, count, formatNumber, metres, perMin } from "../../kit/format";
 import { reveal } from "../labels";
 import { L } from "../leaflet";
 import { boundsOfBbox, FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, latLngOf } from "../map";
-import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
+import { cardTitleBar, cardLine, cardToolbar, cardSubject, closeOtherCards, mapCard } from "../mapcard";
 import { knownNodes } from "../drawn/markers";
 import { pickupName } from "../drawn/pickups";
 import { withQuery } from "../../app/nav";
@@ -360,7 +360,7 @@ function renderResultTable(box: HTMLElement, results: FinderResults): void {
 }
 
 function filterRow(box: HTMLElement): void {
-  const row = cardRow();
+  const row = cardToolbar();
   row.classList.add("finder-filter");
   const filter = view.filter;
   if (view.kind === "nodes") {
@@ -432,7 +432,7 @@ function fillFinderCard(card: HTMLElement): void {
     return;
   }
   card.hidden = false;
-  const head = cardHead(view.at ? "Near this point" : "On the map");
+  const head = cardTitleBar(view.at ? "Near this point" : "On the map");
   if (view.note) head.title = view.note;
   head.appendChild(button("×", closeFinder, { title: "close the finder", label: "close the finder and clear its rings" }));
   card.appendChild(head);
@@ -459,7 +459,7 @@ function fillFinderCard(card: HTMLElement): void {
   else if (view.results) renderResultTable(card, view.results);
   else if (view.busy) cardLine(card, "finding…");
   if (view.dash) {
-    const foot = cardRow();
+    const foot = cardToolbar();
     foot.appendChild(link(view.dash, "open in World"));
     card.appendChild(foot);
   }
@@ -489,7 +489,7 @@ function openFinder(title: string, dash: string): void {
   const from = document.activeElement as HTMLElement | null;
   if (!view.open) view.returnFocusTo = from && from !== document.body && !finderCard().contains(from) ? from : null;
   view.focusOnRender = true;
-  claim("finder");
+  closeOtherCards("finder");
   makeRoom("trace");
   view.open = true;
   view.title = title;

@@ -161,23 +161,25 @@ export var map = L.map("map", {
 });
 state.map = map;
 
+// Leaflet's `_rebound` without the centring: where the bounds fit, move only an edge that is out.
 function rebound(lo: number, hi: number): number {
   if (lo + hi > 0) return lo < 0 ? lo : hi < 0 ? -hi : 0;
   return Math.max(0, Math.ceil(lo)) - Math.max(0, Math.floor(hi));
 }
 
+// Leaflet's maxBounds check, measured against the part of the map no card or panel covers.
 map._getBoundsOffset = function (px: L.Bounds, bounds: L.LatLngBounds, zoom?: number): L.Point {
-  var pad = overlayPad();
-  var min = px.min!.add(pad.topLeft);
-  var max = px.max!.subtract(pad.bottomRight);
+  const pad = overlayPad();
+  let min = px.min!.add(pad.topLeft);
+  let max = px.max!.subtract(pad.bottomRight);
   if (min.x >= max.x || min.y >= max.y) {
     min = px.min!;
     max = px.max!;
   }
-  var a = map.project(bounds.getNorthEast(), zoom);
-  var b = map.project(bounds.getSouthWest(), zoom);
-  var lo = L.point(Math.min(a.x, b.x) - min.x, Math.min(a.y, b.y) - min.y);
-  var hi = L.point(max.x - Math.max(a.x, b.x), max.y - Math.max(a.y, b.y));
+  const northEastPx = map.project(bounds.getNorthEast(), zoom);
+  const southWestPx = map.project(bounds.getSouthWest(), zoom);
+  const lo = L.point(Math.min(northEastPx.x, southWestPx.x) - min.x, Math.min(northEastPx.y, southWestPx.y) - min.y);
+  const hi = L.point(max.x - Math.max(northEastPx.x, southWestPx.x), max.y - Math.max(northEastPx.y, southWestPx.y));
   return L.point(rebound(lo.x, hi.x), rebound(lo.y, hi.y));
 };
 

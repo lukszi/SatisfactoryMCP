@@ -211,11 +211,9 @@ export function isBatching() {
  * `declutter()` by name here would make the layer control import the module that draws factory
  * labels, which imports the module that creates layers, which imports this one. The control's
  * claim is only that the list has stopped changing; who cares is main.ts's business. */
-var settled: Array<() => void> = [];
+var settled = createListeners();
 
-export function onSettled(pass: () => void): void {
-  settled.push(pass);
-}
+export var onSettled = settled.on;
 
 /* The radio sections above the overlays, refreshed after every render of the list in the order
  * they registered; REGISTERED for the same reason as `onSettled`, since they import this file. */
@@ -238,9 +236,7 @@ export function batch(action: () => void): void {
     batching = false;
   }
   control._update(); // one render, which re-runs decorateControl with the settled state
-  settled.forEach(function (pass) {
-    pass();
-  });
+  settled.emit();
 }
 
 /* Every layer of one family at once. The layers are toggled directly rather than by
@@ -321,9 +317,7 @@ function panelHead(rows: HTMLElement[]): HTMLElement {
     head = L.DomUtil.create("div", "layers-head");
     onActivate(head, function () {
       setLayersOpen(!state.panel.open);
-      toggled.forEach(function (listener) {
-        listener(state.panel.open);
-      });
+      layersToggled.emit(state.panel.open);
     });
     // First child, ahead of Leaflet's own (permanently hidden) toggle anchor: the head is
     // what stays on screen when the list folds, so it has to be the top of the box.
@@ -337,11 +331,10 @@ function panelHead(rows: HTMLElement[]): HTMLElement {
   return head;
 }
 
-var toggled: Array<(open: boolean) => void> = [];
+/** Who to tell when the reader folds or unfolds the whole list from its head. */
+var layersToggled = createListeners<[boolean]>();
 
-export function onLayersToggle(listener: (open: boolean) => void): void {
-  toggled.push(listener);
-}
+export var onLayersToggle = layersToggled.on;
 
 export function setLayersOpen(open: boolean): void {
   state.panel.open = open;

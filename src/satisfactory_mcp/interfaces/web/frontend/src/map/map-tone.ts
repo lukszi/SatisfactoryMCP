@@ -1,31 +1,30 @@
 /* The base map's tone: light or dark, as its map type declares it (docs/maps_contract.md §3.2).
- * Overlay colours that cannot clear both kinds of ground pick a value per tone through `toned`,
- * and redraw when the tone changes. Imports nothing, so any drawing module may use it. */
+ * Overlay colours that cannot clear both kinds of ground pick a value per tone through
+ * `byMapTone`, and redraw when the tone changes. Imports only listeners.ts, which imports
+ * nothing, so any drawing module may use it. */
 
-export type Tone = "light" | "dark";
+import { createListeners } from "../app/listeners";
 
-var current: Tone = "light";
-var listeners: Array<() => void> = [];
+export type MapTone = "light" | "dark";
 
-export function tone(): Tone {
+var current: MapTone = "light";
+var listeners = createListeners();
+
+export function mapTone(): MapTone {
   return current;
 }
 
 /** The value for the base under the map now. */
-export function toned<T>(light: T, dark: T): T {
+export function byMapTone<T>(light: T, dark: T): T {
   return current === "dark" ? dark : light;
 }
 
-export function onTone(listener: () => void): void {
-  listeners.push(listener);
-}
+export var onMapTone = listeners.on;
 
 /** Set by tiles.ts on every base switch; mirrored to `<html data-map-tone>` for CSS. */
-export function setTone(next: Tone): void {
+export function setMapTone(next: MapTone): void {
   document.documentElement.dataset.mapTone = next;
   if (next === current) return;
   current = next;
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  listeners.emit();
 }

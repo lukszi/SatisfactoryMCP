@@ -278,7 +278,7 @@ export function pickBand(key: string): void {
 /* ---------------------------------------------------------------- the fragment */
 
 /** `floor=<platform>/<band>`, where band is an ordinal or `ground`. Anything else is ignored
- *  rather than resolved to a guess -- the same refusal `knownMode` makes about a mode this
+ *  rather than resolved to a guess -- the same refusal `servableMode` makes about a mode this
  *  server does not serve. */
 export function parseFloorFragment(raw: string | undefined): { platform: number; band: string } | null {
   if (!raw) return null;

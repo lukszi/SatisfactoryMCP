@@ -14,7 +14,7 @@ import { latLngOf, pixelsPerMetre } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
 import { ROUTE_FLOOR_PX, ROUTE_WIDTH_M, routeWeight, sinkRoutes } from "./route-passes";
-import { toned } from "../map-tone";
+import { byMapTone } from "../map-tone";
 
 import type { PoleRow, PowerResponse, WireRow } from "../../api/shapes";
 import type { Point3M } from "../geometry";
@@ -23,7 +23,7 @@ import type { Point3M } from "../geometry";
 var CASINGS = declareColours("power", { casing: "#1c1550", "casing dark": "#08060f" });
 
 function casingColour(): string {
-  return toned(CASINGS.casing, CASINGS["casing dark"]);
+  return byMapTone(CASINGS.casing, CASINGS["casing dark"]);
 }
 
 // The wire's core: violet, the hue this layer has to itself.
