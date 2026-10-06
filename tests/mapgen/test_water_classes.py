@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.waterbodies import (
+from mapgen.gamedata.water.bodies import (
     ACTOR_CLASS,
     BODY_STEP_M,
     CLASSES,

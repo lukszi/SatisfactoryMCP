@@ -65,7 +65,6 @@ MODULE_MAX_LINES = 800
 #: thin under it. Shrink-only: a ceiling may be lowered, never raised, and one more than
 #: ``CEILING_SLACK`` above the file is stale. Measured after the move.
 MODULE_CEILINGS: dict[str, int] = {
-    "gamedata/mesh.py": 825,
     "commands/renders.py": 1013,
     "commands/heightmap.py": 310,
     # A thin command, held at its size so the stages stay in their modules.

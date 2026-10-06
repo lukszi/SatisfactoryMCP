@@ -13,9 +13,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.gamedata import rockfamily
-from mapgen.gamedata.crowns import CROWN_RECORD, SPRITE_M
-from mapgen.gamedata.waterbodies import CLASSES, OCEAN
+from mapgen.gamedata.rocks import families as rockfamily
+from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD, SPRITE_M
+from mapgen.gamedata.water.bodies import CLASSES, OCEAN
 from mapgen.palette.calibration import (
     display_to_crown,
     display_to_ground,

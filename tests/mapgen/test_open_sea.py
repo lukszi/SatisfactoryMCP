@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.water import VOID_ARTWORK_LUMA_MAX, artwork_planes
+from mapgen.gamedata.water.channel import VOID_ARTWORK_LUMA_MAX, artwork_planes
 from mapgen.palette.relief import water_tint_plane
 from mapgen.palette.rivers import water_sources
 from mapgen.palette.shore import OCEAN_LEVEL_M, composite_meshes

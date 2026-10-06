@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from mapgen.gamedata.sweep import flagged_tags, instance_matrices
+from mapgen.gamedata.level.sweep import flagged_tags, instance_matrices
 from satisfactory_mcp.core.gameassets.packages import (
     class_name_of,
     compose,

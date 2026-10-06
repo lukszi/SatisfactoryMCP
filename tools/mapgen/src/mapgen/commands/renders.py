@@ -66,12 +66,12 @@ from mapgen.cache import (
     top_cache_dir,
 )
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, base_parser, require_gen
-from mapgen.gamedata.bake import oil_nodes
-from mapgen.gamedata.biome import calibrate_biome, read_biome, region_table_is_current
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
-from mapgen.gamedata.paint import PAINT_DIR
-from mapgen.gamedata.rockfamily import placement_families
-from mapgen.gamedata.water import artwork_planes
+from mapgen.gamedata.ground.biome import calibrate_biome, read_biome, region_table_is_current
+from mapgen.gamedata.ground.paint_store import PAINT_DIR
+from mapgen.gamedata.nodes import oil_nodes
+from mapgen.gamedata.rocks.families import placement_families
+from mapgen.gamedata.water.channel import artwork_planes
 from mapgen.lighting.hillshade import (
     BORROW_DETAIL_SIGMA_PX,
     BORROW_FEATHER_M,

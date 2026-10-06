@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from mapgen.gamedata.rockfamily import FAMILIES
+from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.palette.calibration import display_to_ground
 from mapgen.palette.colour import oklab
 from mapgen.palette.styles import PAINTED_PALETTE

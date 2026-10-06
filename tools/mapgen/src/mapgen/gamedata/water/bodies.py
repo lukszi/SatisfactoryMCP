@@ -15,7 +15,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.mesh import is_water_class, water_actor_box
+from mapgen.gamedata.water.actors import is_water_class, water_actor_box
 from satisfactory_mcp.core.gameassets.packages import class_name_of, root_component
 
 __all__ = [

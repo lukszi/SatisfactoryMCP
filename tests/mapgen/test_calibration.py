@@ -10,9 +10,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.gamedata.paint import LAYERS
-from mapgen.gamedata.rockfamily import FAMILIES
-from mapgen.gamedata.waterbodies import CLASSES
+from mapgen.gamedata.ground.landscape_albedo import LAYERS
+from mapgen.gamedata.rocks.families import FAMILIES
+from mapgen.gamedata.water.bodies import CLASSES
 from mapgen.palette.calibration import scoped_planes
 from mapgen.palette.painted import (
     ROCK_GRID_M,

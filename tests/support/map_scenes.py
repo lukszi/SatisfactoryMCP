@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from mapgen.gamedata.waterbodies import CLASSES
+from mapgen.gamedata.water.bodies import CLASSES
 from mapgen.palette.painted import WATER_TABLE_COLUMNS, srgb_to_linear, water_table
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES

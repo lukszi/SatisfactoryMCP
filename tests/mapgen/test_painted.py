@@ -14,12 +14,8 @@ import pytest
 
 from mapgen.commands.renders import LAYERS
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.paint import (
-    component_origin,
-    layer_albedo,
-    place,
-    weightmap_channels,
-)
+from mapgen.gamedata.ground.landscape_albedo import layer_albedo
+from mapgen.gamedata.ground.weightmaps import component_origin, place, weightmap_channels
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette import styles
 from mapgen.palette.painted import layer_table, mix_layers, oklab, seam_blend

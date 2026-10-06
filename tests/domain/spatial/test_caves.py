@@ -11,8 +11,8 @@ import os
 import numpy as np
 import pytest
 
-from mapgen.gamedata.caves import CAVE_BUFFER_CELLS, CAVE_CELL_CM, CAVE_MASK_PX, build_caves
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.rocks.caves import CAVE_BUFFER_CELLS, CAVE_CELL_CM, CAVE_MASK_PX, build_caves
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf

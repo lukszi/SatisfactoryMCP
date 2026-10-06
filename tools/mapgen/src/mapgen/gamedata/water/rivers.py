@@ -14,7 +14,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.mesh import WATER_SURFACE_CLASSES
+from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES
 from satisfactory_mcp.core.gameassets.packages import class_name_of, quat_rotate, world_transform
 
 __all__ = [

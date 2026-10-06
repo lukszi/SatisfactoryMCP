@@ -1,1 +1,1 @@
-"""Inputs read out of the installed game: frame, level sweep, meshes, paint, biome, caves, rocks."""
+"""Inputs read out of the installed game: frame, levels, meshes, rocks, water, plants, ground."""

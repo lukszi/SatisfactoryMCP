@@ -3,7 +3,7 @@
     uv run --extra gen python tools/gen_region_names.py
 
 docs/spatial-and-map.md §7.2 is the design. ``core.gameassets.maparea`` reads the area raster,
-the same asset ``mapgen.gamedata.biome`` pins to the map square. Two grids come out, each with
+the same asset ``mapgen.gamedata.ground.biome`` pins to the map square. Two grids come out, each with
 a confidence grid of its own shape: 256 m for ``/api/regions`` and 64 m for
 ``domain.spatial.regions``. The emitted ``_meta`` carries the naming rules and the measurements.
 """
@@ -26,8 +26,8 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
 # The corners and the edge-ratio statistic come from the generators that measured them, so
 # three artifacts cannot drift into three opinions about where the world is.
 from mapgen.common import base_parser, require_gen
-from mapgen.gamedata.biome import calibrate_biome
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.ground.biome import calibrate_biome
 from satisfactory_mcp.core.gameassets.container import (
     CONTAINER,
     open_container,

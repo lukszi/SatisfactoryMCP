@@ -10,9 +10,9 @@ import json
 import numpy as np
 import pytest
 
-from mapgen.gamedata import crowns as data
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
-from mapgen.gamedata.paint import RADIUS_BINS_M, canopy_cover
+from mapgen.gamedata.vegetation import crown_sprites as data
+from mapgen.gamedata.vegetation.trees import RADIUS_BINS_M, canopy_cover
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.trees import crown_layer, over_crowns
 from mapgen.terrain.crowns import crown_band, load_crowns, meshed_species, sprite_levels

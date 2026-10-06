@@ -14,8 +14,8 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-from mapgen.gamedata.carpet import COVER_NAME, TOP_NAME
-from mapgen.gamedata.waterbodies import (
+from mapgen.gamedata.vegetation.carpet import COVER_NAME, TOP_NAME
+from mapgen.gamedata.water.bodies import (
     CLASSES,
     OCEAN,
     WATER_BODIES_NAME,

@@ -20,42 +20,45 @@ from pathlib import Path
 import numpy as np
 
 from mapgen.common import ROOT, base_parser, require_gen
-from mapgen.gamedata import crowns as crown_data
-from mapgen.gamedata.bake import BAKE_NAME, fit_layer_table, read_bake
-from mapgen.gamedata.carpet import is_carpet, write_carpet
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.mesh import MeshBounds
-from mapgen.gamedata.paint import (
-    CANOPY_NAME,
+from mapgen.gamedata.ground.bake import BAKE_NAME, fit_layer_table, read_bake
+from mapgen.gamedata.ground.landscape_albedo import (
     CANOPY_TEXTURE,
     GAME_ROOT,
-    GRID,
     LAYERS,
     MATERIAL,
-    META_NAME,
     OVERLAYS,
-    PAINT_DIR_NAME,
     PIGMENT,
     PIGMENT_MAX_PX,
-    PIGMENT_NAME,
     ROCK_TEXTURES,
     TEXTURES,
-    WEIGHT_PREFIX,
-    WEIGHT_SUFFIX,
-    WEIGHTMAP_PX,
-    canopy_cover,
-    component_layers,
-    component_origin,
     decode_texture,
-    is_tree,
     layer_albedo,
     material_vectors,
-    place,
     rock_family_colours,
     srgb_to_linear,
 )
-from mapgen.gamedata.sweep import FOLIAGE_CLASSES, LEVEL_DIR, LEVEL_SUFFIX, foliage_instances
-from mapgen.gamedata.waterbodies import WATER_BODIES_NAME, harvest
+from mapgen.gamedata.ground.paint_store import (
+    CANOPY_NAME,
+    GRID,
+    META_NAME,
+    PAINT_DIR_NAME,
+    PIGMENT_NAME,
+    WEIGHT_PREFIX,
+    WEIGHT_SUFFIX,
+)
+from mapgen.gamedata.ground.weightmaps import (
+    WEIGHTMAP_PX,
+    component_layers,
+    component_origin,
+    place,
+)
+from mapgen.gamedata.level.sweep import FOLIAGE_CLASSES, LEVEL_DIR, LEVEL_SUFFIX, foliage_instances
+from mapgen.gamedata.meshes import MeshBounds
+from mapgen.gamedata.vegetation import crown_sprites as crown_data
+from mapgen.gamedata.vegetation.carpet import is_carpet, write_carpet
+from mapgen.gamedata.vegetation.trees import canopy_cover, is_tree
+from mapgen.gamedata.water.bodies import WATER_BODIES_NAME, harvest
 from satisfactory_mcp.core.gameassets.container import open_container
 from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels

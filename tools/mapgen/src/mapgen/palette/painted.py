@@ -20,10 +20,10 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-from mapgen.gamedata.bake import BAKE_NAME, STAMP_RING_MIN, bake_have, stamp_windows
 from mapgen.gamedata.frame import SPACING_CM
-from mapgen.gamedata.paint import CANOPY_NAME, CROWN_NAME, META_NAME, PIGMENT_NAME
-from mapgen.gamedata.waterbodies import CLASSES
+from mapgen.gamedata.ground.bake import BAKE_NAME, STAMP_RING_MIN, bake_have, stamp_windows
+from mapgen.gamedata.ground.paint_store import CANOPY_NAME, CROWN_NAME, META_NAME, PIGMENT_NAME
+from mapgen.gamedata.water.bodies import CLASSES
 from mapgen.palette.calibration import (
     area_ids,
     display_to_ground,

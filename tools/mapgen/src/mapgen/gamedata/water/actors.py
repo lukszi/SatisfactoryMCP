@@ -1,0 +1,218 @@
+"""The water actors: which classes are water, and each actor's box in the world."""
+
+from __future__ import annotations
+
+import math
+import struct
+
+from mapgen.gamedata.meshes import MeshBounds, bounds_pair
+from satisfactory_mcp.core.gameassets.packages import (
+    PackageView,
+    class_name_of,
+    property_tags,
+    quat_rotate,
+    world_transform,
+)
+
+__all__ = [
+    "WATER_BOX_COMPONENTS",
+    "WATER_CLASS_PREFIXES",
+    "WATER_CLASS_TOKENS",
+    "WATER_PLANE_MESH",
+    "WATER_SURFACE_CLASSES",
+    "is_water_class",
+    "water_actor_box",
+]
+
+
+#: A water actor is one whose class name carries a water word and one of the game's own
+#: class prefixes. Deliberately a shape rather than a list: 849 actors on build 495413
+#: across nine classes, and a build that adds a tenth should be found, not missed.
+WATER_CLASS_TOKENS = ("Water", "Ocean", "Lake", "River")
+WATER_CLASS_PREFIXES = ("BP_", "FG", "BPW")
+
+#: Which of those classes are a water SURFACE, i.e. whose box top may set a level. The
+#: exclusions are the argument. ``BP_WaterFallTool_02_C`` is water and is not a surface --
+#: its box top is the lip of the fall, tens of metres above the pool it feeds -- and the
+#: two ``BP_WaterPlane_C`` are developer backdrops carrying no transform at all.
+WATER_SURFACE_CLASSES = frozenset(
+    {
+        "FGWaterVolume",
+        "BP_Water_C",
+        "BP_LakeWater_C",
+        "BPW_OceanSplineTool_02_C",
+        "BP_TranslucentWater_C",
+        "BP_River_PROT_C",
+    }
+)
+
+#: Component classes that can state a box. Order of preference is in ``_component_box``.
+WATER_BOX_COMPONENTS = frozenset(
+    {
+        "BoxComponent",
+        "BrushComponent",
+        "StaticMeshComponent",
+        "InstancedStaticMeshComponent",
+        "HierarchicalInstancedStaticMeshComponent",
+    }
+)
+
+#: The plane the water blueprints draw themselves with. Their cooked instances name no
+#: ``StaticMesh`` -- the construction script assigns it -- so this asset's own
+#: ``ExtendedBounds`` stands in: of 215 such planes, the 187 whose centre falls inside an
+#: ``FGWaterVolume`` sit on that volume's top to a median of 1.3 cm. Read from the container
+#: rather than hard-coded, so a resized plane moves it.
+WATER_PLANE_MESH = "/Game/FactoryGame/World/Environment/Water/Mesh/WaterPlane"
+
+
+def is_water_class(name: str) -> bool:
+    """Whether a class name is one of the world's water actors. A shape, not a list."""
+    return name.startswith(WATER_CLASS_PREFIXES) and any(t in name for t in WATER_CLASS_TOKENS)
+
+
+def _box_sphere_bounds(payload: bytes, names) -> tuple[tuple, tuple] | None:
+    """An ``FBoxSphereBounds``, unwrapping the ``CachedBounds`` container it arrives in."""
+    entries, _end = property_tags(payload, names, 0)
+    found = {name: raw for name, _kind, raw, _value in entries}
+    if "Value" in found:
+        return _box_sphere_bounds(found["Value"], names)
+    return bounds_pair(found)
+
+
+def _agg_geom_box(payload: bytes, names) -> tuple[list[float], list[float]] | None:
+    """The union of every convex element's ``ElemBox`` in a cooked ``FKAggregateGeom``.
+
+    This is where an ``FGWaterVolume`` keeps its shape. A cooked BSP brush holds its
+    vertices in WORLD space and its component transform is legitimately the identity, so 270
+    of these decode with no ``RelativeLocation`` anywhere on the actor. An ``FBox`` is 3
+    doubles of min, 3 of max and a validity byte.
+    """
+    entries, _end = property_tags(payload, names, 0)
+    low = [math.inf] * 3
+    high = [-math.inf] * 3
+    found = 0
+    for name, _kind, array, _value in entries:
+        if name not in ("ConvexElems", "BoxElems") or len(array) < 4:
+            continue
+        count = struct.unpack_from("<I", array, 0)[0]
+        position = 4
+        for _ in range(count):
+            elements, position = property_tags(array, names, position)
+            for inner, _k, blob, _v in elements:
+                if inner == "ElemBox" and len(blob) >= 48:
+                    minimum = struct.unpack_from("<3d", blob, 0)
+                    maximum = struct.unpack_from("<3d", blob, 24)
+                    for axis in range(3):
+                        low[axis] = min(low[axis], minimum[axis])
+                        high[axis] = max(high[axis], maximum[axis])
+                    found += 1
+            if position >= len(array):
+                break
+    return (low, high) if found else None
+
+
+def _corners_to_world(low, high, transform) -> tuple[list[float], list[float]]:
+    """A local box through a world transform, eight corners at a time.
+
+    Corner by corner rather than centre-plus-extent, because a rotated volume's world AABB
+    is the box AROUND the rotated box, not the unrotated box moved. 486 of the 837 water
+    actors are rotated.
+    """
+    location, rotation, scale = transform
+    out_low = [math.inf] * 3
+    out_high = [-math.inf] * 3
+    for x in (low[0], high[0]):
+        for y in (low[1], high[1]):
+            for z in (low[2], high[2]):
+                turned = quat_rotate(rotation, (x * scale[0], y * scale[1], z * scale[2]))
+                for axis in range(3):
+                    value = location[axis] + turned[axis]
+                    out_low[axis] = min(out_low[axis], value)
+                    out_high[axis] = max(out_high[axis], value)
+    return out_low, out_high
+
+
+def _component_box(view: PackageView, slot: int, name: str, meshes: MeshBounds):
+    """One component's LOCAL box and where it came from, or ``(None, None)``.
+
+    Four sources, tried in the order they are trustworthy: the component's own
+    ``BoxExtent``, a BSP volume's cooked ``BrushBodySetup.AggGeom``, an instanced
+    component's ``CachedBounds``, and a ``StaticMeshComponent``'s mesh ``ExtendedBounds``.
+    That last falls back to the water plane's when the cooked instance names no mesh, which
+    is the normal case here and is flagged in the returned source name rather than hidden.
+    """
+    props = view.props(slot)
+    if len(props.get("BoxExtent", b"")) == 24:
+        extent = struct.unpack("<3d", props["BoxExtent"])
+        return ([-e for e in extent], list(extent)), "BoxComponent.BoxExtent"
+    if name == "BrushComponent":
+        setup = view.export_ref(props.get("BrushBodySetup", b""))
+        geometry = view.props(setup).get("AggGeom") if setup is not None else None
+        box = _agg_geom_box(geometry, view.pkg.names) if geometry else None
+        return (box, "BrushBodySetup.AggGeom") if box else (None, None)
+    if name in ("InstancedStaticMeshComponent", "HierarchicalInstancedStaticMeshComponent"):
+        cached = props.get("CachedBounds")
+        pair = _box_sphere_bounds(cached, view.pkg.names) if cached else None
+        source = "InstancedStaticMeshComponent.CachedBounds"
+    elif name == "StaticMeshComponent":
+        mesh = view.import_path(props.get("StaticMesh", b"")) if "StaticMesh" in props else None
+        pair = meshes.of(mesh) if mesh else None
+        source = "StaticMesh.ExtendedBounds"
+        if pair is None:
+            pair = meshes.of(WATER_PLANE_MESH)
+            source = "WaterPlane.ExtendedBounds (assumed)"
+    else:
+        return None, None
+    if pair is None:
+        return None, None
+    origin, extent = pair
+    low = [origin[axis] - extent[axis] for axis in range(3)]
+    high = [origin[axis] + extent[axis] for axis in range(3)]
+    return (low, high), source
+
+
+def water_actor_box(view: PackageView, actor: int, classes, meshes: MeshBounds):
+    """One water actor's world AABB in centimetres, and the box sources it came from.
+
+    The union over every box-like component in the actor's export subtree, each taken to
+    world space through its own composed ``AttachParent`` chain.
+
+    The last block is a refusal: a mesh's ``ExtendedBounds`` is centred on the mesh's own
+    origin, so an actor whose only box is an assumed plane and which states no transform
+    anywhere would land at the world origin -- a parse artefact, not a placement. It cannot
+    catch a ``BrushComponent``, whose vertices are already world-space and whose identity
+    transform is correct.
+    """
+    stack = [actor]
+    seen: set[int] = set()
+    low = [math.inf] * 3
+    high = [-math.inf] * 3
+    sources: set[str] = set()
+    positioned = view.props(actor).get("RelativeLocation") is not None
+    while stack:
+        slot = stack.pop()
+        if slot in seen:
+            continue
+        seen.add(slot)
+        stack.extend(view.children.get(slot, []))
+        name = class_name_of(view.class_of.get(slot))
+        if name not in WATER_BOX_COMPONENTS:
+            continue
+        local, source = _component_box(view, slot, name, meshes)
+        if local is None:
+            continue
+        transform, _parent = world_transform(view, slot, classes)
+        if transform is None:
+            transform = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0))
+        if view.props(slot).get("RelativeLocation") is not None or transform[0] != (0.0, 0.0, 0.0):
+            positioned = True
+        corner_low, corner_high = _corners_to_world(local[0], local[1], transform)
+        for axis in range(3):
+            low[axis] = min(low[axis], corner_low[axis])
+            high[axis] = max(high[axis], corner_high[axis])
+        sources.add(source)
+    if not sources or not all(math.isfinite(v) for v in low + high):
+        return None, sources
+    if not positioned and all("assumed" in source for source in sources):
+        return None, set()
+    return tuple(low + high), sources

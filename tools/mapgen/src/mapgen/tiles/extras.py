@@ -15,7 +15,7 @@ from mapgen.cache import (
     TITAN_CACHE_DIR_NAME,
     TITAN_FACTOR,
 )
-from mapgen.gamedata.waterfalls import FALLS_CACHE_DIR_NAME
+from mapgen.gamedata.water.falls import FALLS_CACHE_DIR_NAME
 from mapgen.palette.falls import load_falls
 from mapgen.palette.rivers import load_rivers
 from mapgen.terrain.rasters import mesh_items, mesh_pass, titan_items

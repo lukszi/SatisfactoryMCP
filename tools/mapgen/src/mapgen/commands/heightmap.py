@@ -48,10 +48,14 @@ from pathlib import Path
 from mapgen.commands.caves import write_caves
 from mapgen.commands.rocks import write_rocks
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
-from mapgen.gamedata.mesh import MeshBounds, rasterise_cliffs, rasterise_top, read_mesh_geometry
-from mapgen.gamedata.rocks import rock_pack
-from mapgen.gamedata.sweep import drop_offsets, landscape_frame, read_baseline, sweep_levels
-from mapgen.gamedata.water import artwork_water_mask, water_surface
+from mapgen.gamedata.level.fill_raster import read_baseline
+from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
+from mapgen.gamedata.level.sweep import sweep_levels
+from mapgen.gamedata.meshes import MeshBounds, read_mesh_geometry
+from mapgen.gamedata.nodes import NODE_TABLE
+from mapgen.gamedata.rocks.cliffs import rasterise_cliffs, rasterise_top
+from mapgen.gamedata.rocks.collision_pack import rock_pack
+from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
 from mapgen.terrain.field import (
     add_planes,
     compose,
@@ -68,7 +72,6 @@ from mapgen.terrain.sidecar import (
     report_sweep,
 )
 from mapgen.terrain.validate import (
-    NODE_TABLE,
     TERRAIN_NODE_MEDIAN_MAX_M,
     VALIDATION_TRIM_RMS_MAX_M,
     report_validation,

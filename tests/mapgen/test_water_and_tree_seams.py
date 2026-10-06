@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.waterbodies import CLASSES, OCEAN
+from mapgen.gamedata.water.bodies import CLASSES, OCEAN
 from mapgen.lighting.occluders import sheet_crowns
 from mapgen.palette.painted import (
     WATER_TABLE_COLUMNS,

@@ -10,7 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
-from mapgen.gamedata.caves import (
+from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.rocks.caves import (
     CAVE_BUFFER_CELLS,
     CAVE_CELL_CM,
     CAVE_MARKER_DIRS,
@@ -18,7 +19,6 @@ from mapgen.gamedata.caves import (
     build_caves,
     sweep_caves,
 )
-from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from satisfactory_mcp.core.gameassets.container import open_container
 from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects

@@ -6,9 +6,9 @@ import json
 import time
 from pathlib import Path
 
-from mapgen.gamedata.mesh import MeshBounds
-from mapgen.gamedata.rocks import rock_pack
-from mapgen.gamedata.sweep import sweep_levels
+from mapgen.gamedata.level.sweep import sweep_levels
+from mapgen.gamedata.meshes import MeshBounds
+from mapgen.gamedata.rocks.collision_pack import rock_pack
 from satisfactory_mcp.core.gameassets.container import open_container
 from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.packages import AssetIndex, ClassFacts, ScriptObjects

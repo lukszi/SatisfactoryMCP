@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mapgen.gamedata.waterfalls import falls_input
+from mapgen.gamedata.water.falls import falls_input
 from mapgen.palette.shore import OCEAN_LEVEL_M
 from mapgen.palette.styles import PAINTED_PALETTE, SATELLITE_PALETTE
 from satisfactory_mcp.domain.spatial import heightfield as hf

@@ -12,7 +12,7 @@ import pytest
 
 from mapgen.cache import cached_rivers, river_stamp, write_rivers
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
-from mapgen.gamedata.rivers import (
+from mapgen.gamedata.water.rivers import (
     RIVER_CLASS,
     box_tops,
     hermite,

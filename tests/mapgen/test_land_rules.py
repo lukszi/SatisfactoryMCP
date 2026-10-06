@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 
 from mapgen.cache import cached_mesh_family, cached_meshes, mesh_stamp
-from mapgen.gamedata import rockfamily
-from mapgen.gamedata.crowns import CROWN_RECORD
 from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.rocks import families as rockfamily
+from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
 from mapgen.palette.calibration import (
     derived_hex,
     display_to_crown,

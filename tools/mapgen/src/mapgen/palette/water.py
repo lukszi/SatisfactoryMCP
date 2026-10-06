@@ -15,7 +15,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy import ndimage
 
-from mapgen.gamedata.waterbodies import OCEAN_BAND_M
+from mapgen.gamedata.water.bodies import OCEAN_BAND_M
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette.perched import water_surfaces
 from mapgen.palette.shore import OCEAN_LEVEL_M, OCEAN_REACH_M

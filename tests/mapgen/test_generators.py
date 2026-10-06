@@ -56,7 +56,7 @@ from mapgen.enhance.upscaler import (
     ENHANCE_URL,
 )
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_2X_PX, RENDER_PX
-from mapgen.gamedata.mesh import EXCLUDED_OWNERS
+from mapgen.gamedata.placements import EXCLUDED_OWNERS
 from mapgen.lighting.hillshade import (
     SHADE_FLOOR,
     SHADE_RANGE,

@@ -15,8 +15,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mapgen.gamedata.mesh import winding_sign
-from mapgen.gamedata.rocks import _element_points, build_rock_pack
+from mapgen.gamedata.meshes import winding_sign
+from mapgen.gamedata.rocks.collision_pack import _element_points, build_rock_pack
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.spatial import caves, rocks
 from satisfactory_mcp.domain.spatial import heightfield as hf

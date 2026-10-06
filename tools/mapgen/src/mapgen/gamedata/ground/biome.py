@@ -8,7 +8,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.common import ROOT
-from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.frame import BOUNDS_M, GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND, MapAreaError, read_map_areas
 
@@ -265,3 +265,28 @@ def region_table_is_current(biome: dict) -> dict:
             "was: the corners come from the edge ratio next door."
         ),
     }
+
+
+def region_mask(name: str) -> np.ndarray | None:
+    """One named region of ``data/region_names.json``, on this grid. Independent evidence.
+
+    That table is derived from the game's own ``FGMapAreaTexture`` -- exact area boundaries
+    at 1.83 m, downsampled to 256 m -- and from nothing in this pipeline, which is the only
+    reason a recall measured against it means anything. ``None`` if the table or the name is
+    missing: a gate that cannot find its own reference must say so rather than pass.
+    """
+    if not REGION_TABLE.is_file():
+        return None
+    table = json.loads(REGION_TABLE.read_text(encoding="utf-8"))
+    letters = {region: key for key, region in table["legend"].items()}
+    if name not in letters:
+        return None
+    letter = letters[name]
+    grid = table["region_grid"]
+    meta = table["grid_meta"]
+    cells = np.array([[1 if ch == letter else 0 for ch in row] for row in grid], dtype=bool)
+    columns = ORIGIN_X_CM + np.arange(GRID_PX) * SPACING_CM
+    rows = ORIGIN_Y_CM + np.arange(GRID_PX) * SPACING_CM
+    ci = np.clip(((columns - meta["x0"]) / meta["cell"]).astype(int), 0, meta["nx"] - 1)
+    ri = np.clip(((rows - meta["y0"]) / meta["cell"]).astype(int), 0, meta["ny"] - 1)
+    return cells[ri][:, ci]

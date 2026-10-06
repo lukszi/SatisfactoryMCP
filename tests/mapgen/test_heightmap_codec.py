@@ -11,13 +11,13 @@ import pytest
 
 import mapgen.commands.heightmap
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM, sample_grid
-from mapgen.gamedata.mesh import MaxZRaster
-from mapgen.gamedata.sweep import (
+from mapgen.gamedata.level.fill_raster import (
     BASELINE_OFFSET_CM,
     BASELINE_SCALE_CM_PER_RAW,
     FILL_FLOOR_CM,
     decode_baseline,
 )
+from mapgen.gamedata.maxz_raster import MaxZRaster
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 

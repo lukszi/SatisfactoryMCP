@@ -9,14 +9,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from scipy import ndimage
 
-from mapgen.gamedata.paint import is_tree
+from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 
 __all__ = [
+    "CROWN_DEFAULT_M",
+    "CROWN_M",
     "CROWN_MIN_RADIUS_M",
     "CROWN_TOP_MAX_M",
+    "RADIUS_BINS_M",
+    "TREE_MARKS",
     "Crown",
     "TreeTable",
+    "canopy_cover",
+    "crown_radius",
     "crown_species",
     "is_tree",
     "tree_table",
@@ -119,3 +126,89 @@ def tree_table(trees: dict[str, np.ndarray], species: dict[str, Crown]) -> TreeT
         kind.astype(np.uint8),
         names,
     )
+
+
+#: Tree foliage, and a crown radius in metres by name fragment (first match wins).
+TREE_MARKS = (
+    "/Foliage/Trees/",
+    "/Coral/CoralTree",
+    "Bamboo",
+    "Palm",
+    "palm",
+    "Kapok",
+    "Mangrove",
+    "SM_Trunk_01",
+    "CraterTree",
+)
+CROWN_M = (
+    ("Kapok", 14.0),
+    ("DioTree", 10.0),
+    ("Diospyros", 9.0),
+    ("AncientPine", 9.0),
+    ("GreenTree", 8.0),
+    ("PollenTree", 7.0),
+    ("PurpleTree", 7.0),
+    ("AmberTree", 7.0),
+    ("BalloonTree", 6.0),
+    ("FunnelTree", 6.0),
+    ("SnakeLegs", 6.0),
+    ("CraterTree", 6.0),
+    ("SnailBottom", 6.0),
+    ("Mangrove", 6.0),
+    ("SwampTree", 5.0),
+    ("Uppochner", 5.0),
+    ("BananaTree", 4.0),
+    ("SM_Trunk_01", 4.0),
+    ("Palm", 3.5),
+    ("palm", 3.5),
+    ("Yucca", 3.0),
+    ("CoralTree", 3.0),
+    ("Stump", 1.5),
+    ("Bamboo", 1.5),
+)
+CROWN_DEFAULT_M = 4.0
+#: Measured radii are snapped to these, so the canopy costs one blur per bin.
+RADIUS_BINS_M = np.array([0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 11.0, 15.0, 20.0])
+
+
+def is_tree(mesh: str) -> bool:
+    return any(mark in mesh for mark in TREE_MARKS) and "Fallen" not in mesh
+
+
+def crown_radius(mesh: str) -> float:
+    return next((r for key, r in CROWN_M if key in mesh), CROWN_DEFAULT_M)
+
+
+def canopy_cover(
+    trees: dict[str, np.ndarray], grid: int, radii: dict[str, float] | None = None
+) -> tuple[np.ndarray, dict]:
+    """Crown cover in [0, 1]: ``1 - exp(-crown area per m^2)``, crowns blurred by radius.
+
+    ``trees`` holds each mesh's 4x4 matrices. ``radii`` is the measured crown radius per
+    mesh, scaled per tree; a mesh without one keeps the guessed ``crown_radius``.
+    """
+    by_radius: dict[float, list[np.ndarray]] = {}
+    for mesh, mats in trees.items():
+        mats = np.asarray(mats)
+        measured = (radii or {}).get(mesh)
+        if measured is None:
+            by_radius.setdefault(crown_radius(mesh), []).append(mats[:, 3, :3])
+            continue
+        scale = np.linalg.norm(mats[:, :3, :3][:, :2], axis=2).mean(1)
+        snapped = RADIUS_BINS_M[
+            np.abs(np.subtract.outer(measured * scale, RADIUS_BINS_M)).argmin(1)
+        ]
+        for radius in np.unique(snapped):
+            by_radius.setdefault(float(radius), []).append(mats[snapped == radius, 3, :3])
+    area = np.zeros((grid, grid), np.float32)
+    counts = {}
+    for radius, parts in sorted(by_radius.items()):
+        points = np.concatenate(parts)
+        col = np.floor((points[:, 0] - ORIGIN_X_CM) / SPACING_CM).astype(np.int64)
+        row = np.floor((points[:, 1] - ORIGIN_Y_CM) / SPACING_CM).astype(np.int64)
+        ok = (col >= 0) & (col < grid) & (row >= 0) & (row < grid)
+        hits = np.zeros((grid, grid), np.float32)
+        np.add.at(hits, (row[ok], col[ok]), np.float32(np.pi * radius * radius))
+        area += ndimage.gaussian_filter(hits, radius / 1.5)
+        counts[str(radius)] = int(ok.sum())
+    return 1.0 - np.exp(-area), counts

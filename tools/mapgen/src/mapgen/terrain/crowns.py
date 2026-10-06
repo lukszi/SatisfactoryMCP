@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-from mapgen.gamedata.crowns import (
+from mapgen.gamedata.vegetation.crown_sprites import (
     CROWNS_NAME,
     MATERIAL_NONE,
     SPRITE_M,

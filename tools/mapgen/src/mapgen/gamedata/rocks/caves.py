@@ -10,7 +10,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM, sample_grid
-from mapgen.gamedata.sweep import (
+from mapgen.gamedata.level.sweep import (
     FOLIAGE_CLASSES,
     LEVEL_DIR,
     LEVEL_SUFFIX,

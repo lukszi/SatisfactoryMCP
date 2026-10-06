@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from mapgen.gamedata.crowns import SPRITE_M
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.vegetation.crown_sprites import SPRITE_M
 from mapgen.lighting.hillshade import sun_dot
 from mapgen.palette.calibration import (
     display_to_crown,

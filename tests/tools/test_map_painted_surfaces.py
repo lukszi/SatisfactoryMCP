@@ -21,8 +21,8 @@ from mapgen.cache import (
     cached_family,
     direct_cache_stamp,
 )
-from mapgen.gamedata import rockfamily
-from mapgen.gamedata.bake import (
+from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.ground.bake import (
     BAKE_NAME,
     STAMP_INNER_M,
     STAMP_OUTER_M,
@@ -30,14 +30,12 @@ from mapgen.gamedata.bake import (
     bake_have,
     demorton,
     fit_layer_table,
-    oil_nodes,
     stamp_windows,
 )
-from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM
-from mapgen.gamedata.paint import (
-    component_origin,
-)
-from mapgen.gamedata.sweep import first_override
+from mapgen.gamedata.ground.weightmaps import component_origin
+from mapgen.gamedata.level.sweep import first_override
+from mapgen.gamedata.nodes import oil_nodes
+from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.palette.painted import (
     PaintedGround,
     bake_table,

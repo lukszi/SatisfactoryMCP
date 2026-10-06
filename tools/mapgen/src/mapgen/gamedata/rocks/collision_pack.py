@@ -10,17 +10,16 @@ from datetime import UTC, datetime
 
 import numpy as np
 
-from mapgen.gamedata.caves import CAVE_FLOOR_CLASS
-from mapgen.gamedata.mesh import (
+from mapgen.gamedata.level.sweep import LEVEL_DIR, LEVEL_SUFFIX, flagged_tags
+from mapgen.gamedata.meshes import ROCK_DIRS, winding_sign
+from mapgen.gamedata.placements import (
     ARCH_MARK,
     EXCLUDED_MESHES,
     EXCLUDED_OWNERS,
     OVERSIZE_CM,
-    ROCK_DIRS,
     rotation_matrix,
-    winding_sign,
 )
-from mapgen.gamedata.sweep import LEVEL_DIR, LEVEL_SUFFIX, flagged_tags
+from mapgen.gamedata.rocks.caves import CAVE_FLOOR_CLASS
 from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
 from satisfactory_mcp.core.gameassets.packages import (

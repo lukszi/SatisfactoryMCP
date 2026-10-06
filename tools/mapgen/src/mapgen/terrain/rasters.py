@@ -26,23 +26,26 @@ from mapgen.cache import (
     plane_writer,
 )
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.mesh import (
-    ARCH_MARK,
-    EXCLUDED_MESHES,
-    EXCLUDED_OWNERS,
-    OVERSIZE_CM,
-    MaxZRaster,
+from mapgen.gamedata.level.sweep import is_top_foliage, sweep_levels
+from mapgen.gamedata.maxz_raster import MaxZRaster
+from mapgen.gamedata.meshes import (
     MeshBounds,
     finer_source,
     read_hull,
     read_mesh_geometry,
-    rotation_matrix,
     winding_sign,
 )
-from mapgen.gamedata.rockfamily import FAMILIES, placement_material, worn_family
-from mapgen.gamedata.sweep import is_top_foliage, sweep_levels
-from mapgen.gamedata.trees import is_tree
-from mapgen.gamedata.waterfalls import read_fall
+from mapgen.gamedata.placements import (
+    ARCH_MARK,
+    EXCLUDED_MESHES,
+    EXCLUDED_OWNERS,
+    OVERSIZE_CM,
+    placement_material,
+    rotation_matrix,
+)
+from mapgen.gamedata.rocks.families import FAMILIES, worn_family
+from mapgen.gamedata.vegetation.trees import is_tree
+from mapgen.gamedata.water.falls import read_fall
 from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.packages import PackageView
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS

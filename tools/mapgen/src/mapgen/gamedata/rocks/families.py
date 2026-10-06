@@ -13,6 +13,7 @@ import struct
 
 import numpy as np
 
+from mapgen.gamedata.placements import placement_material
 from satisfactory_mcp.core.gameassets.packages import PackageView, property_tags
 
 __all__ = [
@@ -28,7 +29,6 @@ __all__ = [
     "material_parent",
     "mesh_material",
     "placement_families",
-    "placement_material",
     "worn_family",
 ]
 
@@ -142,13 +142,6 @@ def worn_family(store, scripts, index, mesh: str, material: str | None, caches: 
     if material is None:
         material = mesh_material(store, scripts, index, mesh, caches[0])
     return family_of(store, scripts, index, material, caches[1])
-
-
-def placement_material(sweep: dict, row: int) -> str | None:
-    """The override material the sweep recorded for placement ``row``, if any."""
-    chosen = sweep.get("placement_materials")
-    pick = int(chosen[row]) if chosen is not None and row < len(chosen) else -1
-    return sweep.get("materials", [])[pick] if pick >= 0 else None
 
 
 def placement_families(store, scripts, index, sweep: dict) -> np.ndarray:

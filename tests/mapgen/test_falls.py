@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.gamedata import waterfalls
-from mapgen.gamedata.waterfalls import (
+from mapgen.gamedata.water import falls as waterfalls
+from mapgen.gamedata.water.falls import (
     FALLS_CACHE_DIR_NAME,
     FALLS_CACHE_NAME,
     fall_from_modules,

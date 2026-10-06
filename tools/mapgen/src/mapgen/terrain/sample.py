@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.mesh import DIRECT_SAMPLES_MIN
+from mapgen.gamedata.meshes import DIRECT_SAMPLES_MIN
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [

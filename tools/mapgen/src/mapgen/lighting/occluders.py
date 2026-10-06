@@ -10,8 +10,8 @@ from __future__ import annotations
 import numpy as np
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.mesh import MeshBounds
-from mapgen.gamedata.trees import TreeTable, crown_species, tree_table
+from mapgen.gamedata.meshes import MeshBounds
+from mapgen.gamedata.vegetation.trees import TreeTable, crown_species, tree_table
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [

@@ -10,9 +10,11 @@ from scipy import ndimage
 
 from mapgen.common import ROOT
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM, sample_grid
-from mapgen.gamedata.mesh import WATER_SURFACE_CLASSES
-from mapgen.gamedata.sweep import LANDSCAPE_PER_UNIT, LANDSCAPE_SCALE_CM
-from mapgen.gamedata.water import WATER_ARTWORK_BLUE_OVER_RED, region_mask
+from mapgen.gamedata.ground.biome import region_mask
+from mapgen.gamedata.level.landscape import LANDSCAPE_PER_UNIT, LANDSCAPE_SCALE_CM
+from mapgen.gamedata.nodes import NODE_TABLE
+from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES
+from mapgen.gamedata.water.channel import WATER_ARTWORK_BLUE_OVER_RED
 from mapgen.terrain.field import FILL_HORIZONTAL_M, FILL_VERTICAL_M
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -48,12 +50,9 @@ WATER_OCEAN_CLASS = "BPW_OceanSplineTool_02_C"
 WATER_GATE_REGION = "Spire Coast"
 
 
-#: The node table the run validates against, and the gate it has to clear. This pipeline
-#: measures 0.368 m trimmed RMS and the interface raster alone manages 1.08 m, so 0.5 m is
-#: the band in which a decode regression cannot pass as a refresh.
-NODE_TABLE = ROOT / "data" / "world_resource_nodes.json"
-
-
+#: The gate the run has to clear against the node table. This pipeline measures 0.368 m
+#: trimmed RMS and the interface raster alone manages 1.08 m, so 0.5 m is the band in
+#: which a decode regression cannot pass as a refresh.
 VALIDATION_TRIM = 0.90
 
 

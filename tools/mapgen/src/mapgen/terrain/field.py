@@ -14,18 +14,21 @@ from mapgen.gamedata.frame import (
     Z6_TEXEL_M,
     Z7_TEXEL_M,
 )
-from mapgen.gamedata.mesh import ARCH_MARK, CLIFF_SOURCES, DIRECT_SAMPLES_MIN, OVERSIZE_CM
-from mapgen.gamedata.sweep import (
+from mapgen.gamedata.level.fill_raster import (
     BASELINE_OFFSET_CM,
     BASELINE_PX,
     BASELINE_SCALE_CM_PER_RAW,
     FILL_FLOOR_CM,
+)
+from mapgen.gamedata.level.landscape import (
     LANDSCAPE_N,
     LANDSCAPE_PER_UNIT,
     LANDSCAPE_SCALE_CM,
     LANDSCAPE_ZERO,
     drop_offsets,
 )
+from mapgen.gamedata.meshes import CLIFF_SOURCES, DIRECT_SAMPLES_MIN
+from mapgen.gamedata.placements import ARCH_MARK, OVERSIZE_CM
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.domain.spatial import heightfield as hf
 

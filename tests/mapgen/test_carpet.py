@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.gamedata.carpet import (
+from mapgen.gamedata.vegetation.carpet import (
     COVER_NAME,
     TOP_NAME,
     carpet_planes,

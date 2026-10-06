@@ -4,7 +4,7 @@
 
 The heightfield's cliff layer is built from one geometry source; this asks whether a
 different source would be better, and by how much. It calls the same rasteriser, transforms
-and cull rules the field is built with (``mapgen.gamedata.mesh`` and ``mapgen.gamedata.sweep``),
+and cull rules the field is built with (``mapgen.gamedata.meshes`` and ``mapgen.gamedata.level.sweep``),
 so the geometry dict is the only thing that differs between a candidate and the field that
 ships. Nothing here writes to ``data/local``.
 
@@ -47,9 +47,12 @@ for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
 
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.mesh import ROCK_DIRS, MeshBounds, rasterise_cliffs
-from mapgen.gamedata.sweep import drop_offsets, landscape_frame, sweep_levels
-from mapgen.terrain.validate import NODE_TABLE, VALIDATION_TRIM
+from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
+from mapgen.gamedata.level.sweep import sweep_levels
+from mapgen.gamedata.meshes import ROCK_DIRS, MeshBounds
+from mapgen.gamedata.nodes import NODE_TABLE
+from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
+from mapgen.terrain.validate import VALIDATION_TRIM
 from satisfactory_mcp.core.gameassets import nanite, staticmesh
 from satisfactory_mcp.core.gameassets.container import CONTAINER, open_container, paks_dir
 from satisfactory_mcp.core.gameassets.iostore import oodle_decompress

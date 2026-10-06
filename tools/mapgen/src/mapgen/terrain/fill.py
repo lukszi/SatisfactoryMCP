@@ -25,7 +25,7 @@ import scipy.sparse.linalg as spla
 from scipy import ndimage
 
 from mapgen.gamedata.frame import BASELINE_BOX_CM
-from mapgen.gamedata.sweep import BASELINE_PATH, read_baseline
+from mapgen.gamedata.level.fill_raster import BASELINE_PATH, read_baseline
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [

@@ -8,7 +8,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.gamedata.rockfamily import FAMILIES
+from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.palette.calibration import display_to_ground, sampled_rgb
 from mapgen.palette.colour import linear_from_oklab
 from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK
