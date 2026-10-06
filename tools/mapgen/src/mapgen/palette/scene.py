@@ -30,8 +30,8 @@ __all__ = [
     "field_water",
 ]
 
-#: A float plane of either width. numpy's stubs widen float32 arithmetic to float64, so a
-#: painter's planes are typed by kind; the dtype they hold is float32 throughout.
+#: A float plane of either width: numpy's stubs widen float32 arithmetic to float64, so a
+#: painter's planes are typed by kind rather than by width.
 FloatGrid: TypeAlias = NDArray[np.floating]
 
 #: The water a run draws: the level plane in decimetres and its quality grades, which a field
