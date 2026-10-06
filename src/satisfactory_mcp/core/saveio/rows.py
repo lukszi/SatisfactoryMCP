@@ -1,15 +1,12 @@
 """The interned tables of the projection, decoded in one place.
 
-``extract`` emits five tables as bare positional rows rather than as records, because a
-record per piece would be megabytes -- so every reader has to decode one, and this is the
-only module that does. A row comes out as the numbers it holds: raw centimetres, no
-rounding, no unit conversion, no display names, no game concepts, and the one lookup done
-here is the interned class index against the table's own ``classes`` list, which has no
-meaning outside the table it was written with. Two shapes to trip on: trailing columns are
-additive, so a row shorter than its ``*_ROW_WIDTH`` means "the projection does not carry
-that column" rather than a tear, and a row that will not decode leaves a HOLE -- ``index``
-is the row's position in the raw list, because ``pipe_flow`` and ``/api/pipes`` join by
-position and a consumer sizes its array with ``*_count``.
+``extract`` emits its big tables as bare positional rows (layouts in
+``docs/save-projection.md`` §6.16), and this is the only module that decodes them. A row comes
+out as the numbers it holds -- raw centimetres, no unit conversion, no display names -- and
+the one lookup done here is the interned class index against the table's own ``classes``.
+Trailing columns are additive, so a short row means "the projection does not carry that
+column", and a row that will not decode leaves a HOLE: ``index`` is the row's position in the
+raw list, because ``pipe_flow`` and ``/api/pipes`` join by position.
 """
 
 from __future__ import annotations
@@ -38,9 +35,8 @@ __all__ = [
     "wire_count",
 ]
 
-# ``test_saveio_rows`` holds these five widths against the widest row the committed
-# projection contains, so a new column fails a test here until a reader has decided it wants
-# it.
+# ``test_saveio_rows`` holds these widths against the widest row the committed projection
+# contains, so a new column fails a test here until a reader has decided it wants it.
 
 #: Columns of ``structures["instances"]``: ``[classIndex, x, y, z, yaw]``. Yaw arrived in
 #: schema 12.
@@ -142,7 +138,7 @@ class Wire(NamedTuple):
     ``index`` is the row's position in ``power["wires"]``, which is also its position in
     ``graph["power"]`` -- the two lists are written in one pass for exactly that reason -- so
     ``wire.index`` is how a caller reaches the pair of actors this span joins. ``a`` is the
-    end at ``graph["power"][index][0]`` and ``b`` the end at ``[1]``, an order ``extract._power``
+    end at ``graph["power"][index][0]`` and ``b`` the end at ``[1]``, an order ``extract.power``
     establishes by measurement because the save's own agrees with the edge's about half the time.
     """
 
@@ -201,6 +197,70 @@ def _column(row: Any, index: int) -> Any | None:
     return row[index] if len(row) > index else None
 
 
+def _actor_index(value: Any) -> int:
+    """An actor column as an index into ``graph["actors"]``, ``-1`` for none.
+
+    ``isinstance``, not ``int()``: the index is a position in a list this projection also
+    carries, so a float or a string here is a torn row rather than a number in the wrong type.
+    """
+    return value if isinstance(value, int) and value >= 0 else -1
+
+
+class _Placement(NamedTuple):
+    class_index: int
+    x: float
+    y: float
+    z: float
+    yaw: float | None
+
+
+def _placement(row: Any) -> _Placement | None:
+    """A placement row's ``[classIndex, x, y, z, yaw]``, or None where it will not decode.
+
+    An unreadable yaw is ``None`` rather than a dropped row: the place is still real.
+    """
+    if not isinstance(row, (list, tuple)) or len(row) < 4:
+        return None
+    try:
+        class_index = int(row[0])
+        x, y, z = float(row[1]), float(row[2]), float(row[3])
+    except (TypeError, ValueError):
+        return None
+    raw_yaw = _column(row, 4)
+    try:
+        yaw = None if raw_yaw is None else float(raw_yaw)
+    except (TypeError, ValueError):
+        yaw = None
+    return _Placement(class_index, x, y, z, yaw)
+
+
+class _Route(NamedTuple):
+    group: int
+    class_index: int
+    points: list[list[float]]
+    actor_index: int
+    spans: Any | None
+
+
+def _route(row: Any) -> _Route | None:
+    """A belt or pipe row's ``[group, classIndex, points, actorIndex, spans]``, or None.
+
+    A row whose points do not decode at all is dropped: a piece with no geometry is not a
+    piece. An unknown actor is ``-1`` rather than a dropped row: it is still drawn.
+    """
+    if not isinstance(row, (list, tuple)) or len(row) < 3:
+        return None
+    try:
+        group = int(row[0])
+        class_index = int(row[1])
+    except (TypeError, ValueError):
+        return None
+    points = _points(row[2])
+    if not points:
+        return None
+    return _Route(group, class_index, points, _actor_index(_column(row, 3)), _column(row, 4))
+
+
 def iter_structures(projection: dict) -> Iterator[Structure]:
     """Every lightweight buildable in ``structures``, decoded, in the table's own order.
 
@@ -210,25 +270,16 @@ def iter_structures(projection: dict) -> Iterator[Structure]:
     table = _table(projection, "structures")
     classes = _classes(table)
     for row in _rows(table, "instances"):
-        if not isinstance(row, (list, tuple)) or len(row) < 4:
+        placement = _placement(row)
+        if placement is None:
             continue
-        try:
-            class_index = int(row[0])
-            x, y, z = float(row[1]), float(row[2]), float(row[3])
-        except (TypeError, ValueError):
-            continue
-        raw_yaw = _column(row, 4)
-        try:
-            yaw = None if raw_yaw is None else float(raw_yaw)
-        except (TypeError, ValueError):
-            yaw = None
         yield Structure(
-            class_index=class_index,
-            cls=_class_at(classes, class_index),
-            x=x,
-            y=y,
-            z=z,
-            yaw=yaw,
+            class_index=placement.class_index,
+            cls=_class_at(classes, placement.class_index),
+            x=placement.x,
+            y=placement.y,
+            z=placement.z,
+            yaw=placement.yaw,
         )
 
 
@@ -238,34 +289,21 @@ def belt_segment_count(projection: dict) -> int:
 
 
 def iter_belt_segments(projection: dict) -> Iterator[BeltSegment]:
-    """Every conveyor piece in ``belts``, decoded, in the table's own order.
-
-    A row whose points do not decode at all is dropped: a piece with no geometry is not a
-    piece. ``actor_index`` normalises to ``-1`` rather than dropping the row, on a pipe
-    segment's terms: a belt the graph does not name is still a belt, and is still drawn.
-    """
+    """Every conveyor piece in ``belts``, decoded, in the table's own order."""
     table = _table(projection, "belts")
     classes = _classes(table)
     for index, row in enumerate(_rows(table, "segments")):
-        if not isinstance(row, (list, tuple)) or len(row) < 3:
+        route = _route(row)
+        if route is None:
             continue
-        try:
-            chain = int(row[0])
-            class_index = int(row[1])
-        except (TypeError, ValueError):
-            continue
-        points = _points(row[2])
-        if not points:
-            continue
-        actor = _column(row, 3)
         yield BeltSegment(
             index=index,
-            chain=chain,
-            class_index=class_index,
-            cls=_class_at(classes, class_index),
-            points=points,
-            actor_index=actor if isinstance(actor, int) and actor >= 0 else -1,
-            spans=_column(row, 4),
+            chain=route.group,
+            class_index=route.class_index,
+            cls=_class_at(classes, route.class_index),
+            points=route.points,
+            actor_index=route.actor_index,
+            spans=route.spans,
         )
 
 
@@ -281,35 +319,22 @@ def pipe_segment_count(projection: dict) -> int:
 def iter_pipe_segments(projection: dict) -> Iterator[PipeSegment]:
     """Every fluid pipe in ``pipes``, decoded, in the table's own order.
 
-    Dropped on a belt segment's terms. ``actor_index`` and ``network_index`` normalise to
-    ``-1`` rather than dropping the row: a pipe no network claims and a pipe the graph does
-    not name are both ordinary, and both are drawn.
+    ``network_index`` is ``-1`` for a pipe no network claims, which is ordinary and drawn.
     """
     table = _table(projection, "pipes")
     classes = _classes(table)
     for index, row in enumerate(_rows(table, "segments")):
-        if not isinstance(row, (list, tuple)) or len(row) < 3:
+        route = _route(row)
+        if route is None:
             continue
-        try:
-            network_index = int(row[0])
-            class_index = int(row[1])
-        except (TypeError, ValueError):
-            continue
-        points = _points(row[2])
-        if not points:
-            continue
-        actor = _column(row, 3)
         yield PipeSegment(
             index=index,
-            network_index=network_index,
-            class_index=class_index,
-            cls=_class_at(classes, class_index),
-            points=points,
-            # ``isinstance``, not ``int()``: an actor index is a position in a list this
-            # projection also carries, so a float or a string here is a torn row rather than
-            # a number in the wrong type.
-            actor_index=actor if isinstance(actor, int) and actor >= 0 else -1,
-            spans=_column(row, 4),
+            network_index=route.group,
+            class_index=route.class_index,
+            cls=_class_at(classes, route.class_index),
+            points=route.points,
+            actor_index=route.actor_index,
+            spans=route.spans,
         )
 
 
@@ -322,27 +347,17 @@ def iter_power_poles(projection: dict) -> Iterator[PowerPole]:
     table = _table(_table(projection, "power"), "poles")
     classes = _classes(table)
     for row in _rows(table, "instances"):
-        if not isinstance(row, (list, tuple)) or len(row) < 4:
+        placement = _placement(row)
+        if placement is None:
             continue
-        try:
-            class_index = int(row[0])
-            x, y, z = float(row[1]), float(row[2]), float(row[3])
-        except (TypeError, ValueError):
-            continue
-        raw_yaw = _column(row, 4)
-        try:
-            yaw = None if raw_yaw is None else float(raw_yaw)
-        except (TypeError, ValueError):
-            yaw = None
-        actor = _column(row, 5)
         yield PowerPole(
-            class_index=class_index,
-            cls=_class_at(classes, class_index),
-            x=x,
-            y=y,
-            z=z,
-            yaw=yaw,
-            actor_index=actor if isinstance(actor, int) and actor >= 0 else -1,
+            class_index=placement.class_index,
+            cls=_class_at(classes, placement.class_index),
+            x=placement.x,
+            y=placement.y,
+            z=placement.z,
+            yaw=placement.yaw,
+            actor_index=_actor_index(_column(row, 5)),
         )
 
 

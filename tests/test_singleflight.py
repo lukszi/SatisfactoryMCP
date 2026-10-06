@@ -120,10 +120,10 @@ def test_the_memo_is_bounded():
 @pytest.fixture
 def isolated_memos():
     """The module-level memos are process-wide; a test that fills them must empty them."""
-    proj._MEM.clear()
+    proj._PROJECTION_MEMO.clear()
     world_state._DERIVED.clear()
     yield
-    proj._MEM.clear()
+    proj._PROJECTION_MEMO.clear()
     world_state._DERIVED.clear()
 
 
@@ -151,7 +151,7 @@ def test_concurrent_scans_of_one_directory_run_one_subprocess(monkeypatch, tmp_p
     """What invalidates a stored scan is ``tests/test_scan_fingerprint.py``'s subject; this
     is only that eleven layers arriving together do not become eleven subprocesses."""
     spawns: list[list[str]] = []
-    proj._SCANS.clear()
+    proj._SCAN_MEMO.clear()
 
     def fake_sidecar(args, timeout=180.0):
         spawns.append(args)

@@ -39,7 +39,7 @@ def tree(tmp_path, monkeypatch):
     No real ``.sav`` bytes anywhere: what is under test is which changes reach the
     fingerprint, and the fingerprint reads no file contents at all.
     """
-    proj._SCANS.clear()
+    proj._SCAN_MEMO.clear()
     account = tmp_path / "76561190000000001"
     account.mkdir()
     write(account / "Han Solo_autosave_0.sav", b"x" * 100)
@@ -52,7 +52,7 @@ def tree(tmp_path, monkeypatch):
 
     monkeypatch.setattr(proj, "_run_sidecar", fake_sidecar)
     yield tmp_path, account, spawns
-    proj._SCANS.clear()
+    proj._SCAN_MEMO.clear()
 
 
 # ---- promptness ---------------------------------------------------------
