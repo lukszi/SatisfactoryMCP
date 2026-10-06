@@ -22,7 +22,7 @@ from ....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock
 from ....domain.progression.ladder import SchematicLadder
 from ....domain.progression.phases import opened_tier, opening_phase, phase_number
 from ....domain.world.state import WorldState
-from ..serial import error_response, world_state, xyz_m
+from ..serial import require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -88,10 +88,7 @@ def progress_milestones(
     A tier above both the highest one with a finished milestone and the highest one the
     delivered Space Elevator phases open is a spoiler.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     g = st.game
     ladder = SchematicLadder(game=g, unlocks=st.unlocks, inventory=st.inventory)
@@ -203,10 +200,7 @@ def progress_mam(
 
     A node or capability in a tree not opened yet is a spoiler.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     research = st.research
     gates = {v: k for k, v in CAPABILITY_SCHEMATICS.items()}
@@ -292,10 +286,7 @@ def progress_phase(
     A phase numbered past the target phase is a spoiler, and every phase is one on a save
     with no target phase.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     req = st.phase_requirements()
     stock = st.stock()
@@ -405,10 +396,7 @@ def _nowhere() -> dict[str, float | None]:
 @router.get("/progress/shards", response_model=ShardsResponse)
 def progress_shards(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """The ``power_shards`` budget: free, craftable from slugs, committed, and who holds them."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     budget = st.shard_budget()
     per_shard = max(budget["shard_items"].values()) if budget["shard_items"] else 0.0
@@ -500,10 +488,7 @@ def progress_sloops(
 
     With ``spoilers=0`` a spoiler amplifier research loses its name and bill.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     budget = st.sloop_budget()
     gate = st.research_gate("production_boost")
@@ -572,10 +557,7 @@ class HardDrivesResponse(TypedDict):
 @router.get("/progress/harddrives", response_model=HardDrivesResponse)
 def progress_harddrives(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """``list_pending_hard_drive_choices``: each unclaimed drive's two options and rerolls."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     g = st.game
     drives = []

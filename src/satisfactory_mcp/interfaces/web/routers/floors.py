@@ -21,7 +21,7 @@ from ....domain.factories import floors as ffloors
 from ....domain.factories import select as fselect
 from ....domain.world.state import WorldState
 from .. import terrain
-from ..serial import cm_to_m, error_response, world_state, xyz_m
+from ..serial import cm_to_m, error_response, require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -293,10 +293,7 @@ def floors_view(
     ``note``**, not an error and not an empty list: the world has floors, this file cannot
     show them, and those are different sentences.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     try:
         report = ffloors.floor_decomposition(

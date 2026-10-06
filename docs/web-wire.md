@@ -104,6 +104,38 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
   newest, before it applies `limit`. Every row carries `count`: the entries it stands for,
   1 unless collapsed. A collapsed `plan.view` run counts the same way.
 
+## Placements
+
+`/api/machines` and `/api/structures` (`routers/placements.py`) answer one question in two
+resolutions, and the line between them decides every nullable field on the placement layers.
+
+- An **actor** record has an instance id, a recipe and a clock. The projection writes
+  machines, extractors and generators only behind `cls.startswith("Build_")`, so their `cls`
+  is a non-empty string and `name` never falls through to null. Splitters, mergers,
+  containers, fluid buffers and crates are actors too.
+- An **interned** row is a lightweight buildable (foundation, ramp, wall, catwalk), a belt or
+  pipe piece, or a power pole, kept in a positional table because a record per piece would be
+  megabytes: `{"classes": [...], "instances": [[class_index, x, y, z, yaw], ...]}` in
+  centimetres. Its class is an index into a legend, and a row whose index points past the end
+  is a real piece at a real place with no name, so `cls` and `name` are nullable there.
+- `w_m`/`l_m` are the X and Y extent of the union of a building's clearance boxes, which is
+  what makes a Manufacturer draw bigger than a Constructor; `h_m` is the third side, which a
+  floor view needs (a Refinery is 15 m tall on a 12 m storey, so it comes through the deck
+  above). They are null, never guessed, for a class the docs dump does not describe: the
+  client picks the fallback, because one drawn on the server would look measured.
+- `yaw` turns those extents into the rectangle the player placed, so the two are read
+  together or not at all.
+- `uptime` keeps three decimals: at two, 0.9994 rounds onto 1.0 and `health.SATURATED`'s line
+  vanishes.
+- `/api/machines` asks `health.assess` once for the whole world rather than per row (on the
+  reference projection's 570 actors, 1.3 ms without it and 2.5 ms with) and keys the verdicts
+  on the instance leaf that `/api/floors` and the page's floor ids join on.
+- `/api/structures` sends the reference world's 8,347 pieces one row each, ungrouped: 708 KB,
+  the same order as `/api/collectibles`. Grouping into grid cells would halve a payload that is
+  not the bottleneck and lose the per-piece class the popup and the inspector read. None of
+  these classes has clearance data, so they share one grid whose edge `tile_m` reports from
+  `FOUNDATION_M`.
+
 ## Terrain
 
 - `/api/inspect` `elevation.terrain_cave` is `none`, `below` or `inside`

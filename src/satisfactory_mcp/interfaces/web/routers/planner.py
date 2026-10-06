@@ -23,7 +23,7 @@ from fastapi import APIRouter, Body, Request
 from ....domain.planning import focus, journal, manage, summary, swaps
 from ....domain.planning.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
 from ....domain.planning.scenario import resolve_item
-from ..serial import ActorBody, PlanOpBody, actor_json, error_response, world_state
+from ..serial import ActorBody, PlanOpBody, actor_json, error_response, require_world
 
 __all__ = ["router"]
 
@@ -371,10 +371,7 @@ def solve_plan(
     args, key = body.get("args"), body.get("key")
     if (args is None) == (key is None):
         return error_response("send exactly one of args and key", 400)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     if key is not None:
         if not _KEY.fullmatch(key):
             return error_response(f"no plan “{key}” in this world", 404)
@@ -403,10 +400,7 @@ def put_focus(
     world: str | None = None,
 ) -> Any:
     """Record what the page has open, stamped with a heartbeat. The page's only focus write."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         written = focus.write(st.world_id, dict(body))
     except focus.InvalidFocus as exc:
@@ -464,10 +458,7 @@ def activity(
     world: str | None = None,
 ) -> Any:
     """Plan commits and journal entries after ``since``, oldest first, the newest ``limit``."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     now = time.time()
     limit = max(0, min(limit, 500))
     log = PlanLog(st.world_id, st.header.get("session_name") or "")
@@ -514,10 +505,7 @@ def plan_delta(
     """The result deltas between two versions of one plan, both re-solved against this save."""
     if not _KEY.fullmatch(key):
         return error_response(f"no plan “{key}” in this world", 404)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     log = PlanLog(st.world_id)
     try:
         to = log.head_rev(key) if to_rev is None else to_rev
@@ -548,10 +536,7 @@ def plan_alternates(
     key = body["key"]
     if not _KEY.fullmatch(key):
         return error_response(f"no plan “{key}” in this world", 404)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     g = st.game
     item = resolve_item(g, body["item"]) if body["item"] else None
     if item is None:

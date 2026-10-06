@@ -34,6 +34,7 @@ from .guard import guard
 from .mapjobs import MapJobRunner
 from .pinning import pinning
 from .routers import ALL_ROUTERS
+from .serial import RequestRefused
 from .watch import SaveWatcher
 
 __all__ = ["STATIC_DIR", "app", "create_app"]
@@ -60,6 +61,10 @@ def _newer(request: Request, exc: NewerSchema) -> JSONResponse:
         f"one reads up to {exc.known}). Upgrade to read them; nothing was changed"
     )
     return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
+
+
+async def _request_refused(request: Request, exc: RequestRefused) -> JSONResponse:
+    return JSONResponse({"error": exc.message}, status_code=exc.status)
 
 
 async def _http(request: Request, exc: HTTPException):
@@ -134,6 +139,7 @@ def create_app(
     instance.middleware("http")(pinning)
     instance.middleware("http")(guard)
     instance.add_exception_handler(NewerSchema, _newer)
+    instance.add_exception_handler(RequestRefused, _request_refused)
     instance.add_exception_handler(HTTPException, _http)
     # The whole JSON surface, in one loop over one tuple: there is no second include, so
     # ``ALL_ROUTERS`` alone decides registration order. See its declaration.

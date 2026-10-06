@@ -26,7 +26,7 @@ from ..serial import (
     error_response,
     flow_json,
     machine_spots,
-    world_state,
+    require_world,
 )
 
 __all__ = ["router"]
@@ -107,10 +107,7 @@ def _subject(
     ``(state, machines, title)``, or the refusal to send."""
     if bool(factory) == bool(candidate):
         return error_response("pass exactly one of factory= or candidate=", 400)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     if factory:
         label = next((x for x in st.labels.labels if x.name == factory), None)
         if label is None:

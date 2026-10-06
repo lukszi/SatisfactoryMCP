@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.world.inventory import CRATE_KIND_TEXT
 from ....domain.world.state import WorldState
-from ..serial import error_response, world_state, xyz_m, yaw_deg
+from ..serial import require_world, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -103,10 +103,7 @@ def crates(request: Request, save: str | None = None, world: str | None = None) 
     property, so there is no owning player, no timestamp and no cause to report. Rows are
     sorted by kind, and contents are the whole crate.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     rows = [
         _crate_row(st, row) for row in st.projection.get("crates") or () if isinstance(row, dict)

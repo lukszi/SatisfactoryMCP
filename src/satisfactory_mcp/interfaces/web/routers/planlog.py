@@ -40,7 +40,7 @@ from ....domain.planning.planlog import (
     UnknownPlan,
 )
 from ....domain.world import pin
-from ..serial import ActorBody, PlanOpBody, actor_json, error_response, world_state
+from ..serial import ActorBody, PlanOpBody, actor_json, error_response, require_world, world_state
 
 __all__ = ["router"]
 
@@ -354,10 +354,7 @@ def create_plan(
     world: str | None = None,
 ) -> Any:
     """A new plan at v1, stamped against the save this request read."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     log = _log(st)
     try:
         canon, _said = pins.canonical_args(st, body["args"])

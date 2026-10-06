@@ -3,7 +3,7 @@
 The three conventions it serves are rules 8 to 10 of docs/web-wire.md.
 """
 
-from .responses import error_response, world_state
+from .responses import RequestRefused, error_response, require_world, world_state
 from .shapes import (
     ActorBody,
     Biomass,
@@ -34,6 +34,7 @@ __all__ = [
     "MachineSpot",
     "PlanOpBody",
     "Region",
+    "RequestRefused",
     "TableAge",
     "actor_json",
     "cm_to_m",
@@ -43,6 +44,7 @@ __all__ = [
     "found_field_json",
     "machine_spots",
     "region_json",
+    "require_world",
     "resource_name",
     "settings_json",
     "world_state",

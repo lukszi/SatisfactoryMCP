@@ -16,7 +16,13 @@ from fastapi import APIRouter, Query, Request
 
 from ....domain.collectibles import service
 from ....domain.collectibles.service import collect_view
-from ..serial import CollectibleRow, TableAge, collectible_json, error_response, world_state
+from ..serial import (
+    CollectibleRow,
+    TableAge,
+    collectible_json,
+    error_response,
+    require_world,
+)
 
 __all__ = ["router"]
 
@@ -94,10 +100,7 @@ def collectibles(
     census, and ``hidden_spoilers`` says how many categories went; absent, every row comes
     with its ``spoiler`` flag.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     view = collect_view(st, group, mode, near)
     if view.error:

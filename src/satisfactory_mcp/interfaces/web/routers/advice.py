@@ -23,7 +23,7 @@ from ....domain.advice import store as hidden_store
 from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
 from ....domain.world import pin
-from ..serial import error_response, world_state
+from ..serial import error_response, require_world
 
 __all__ = ["router"]
 
@@ -193,10 +193,7 @@ def advice_list(
 ) -> Any:
     """Every advisory firing on this save, active and hidden. ``biomass`` overrides the
     shared setting for this read; ``spoilers=1`` counts pickups not found yet."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     wants = None if biomass is None else biomass == "include"
     try:
         cur = advice.current(st, biomass=wants, spoilers=bool(spoilers))
@@ -225,10 +222,7 @@ def hide_advice(
     spoilers: int = 0,
 ) -> Any:
     """Dismiss an advisory until it gets worse, or snooze it for hours of play time."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         cur = advice.current(st, spoilers=bool(spoilers))
         adv = next((a for a in cur.items if a.key == body["key"]), None)
@@ -269,10 +263,7 @@ def restore_advice(
     world: str | None = None,
 ) -> Any:
     """Show a hidden advisory again; a ``rev`` that is not its current one is a 409."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         cur = advice.current(st)
         adv = cur.find(adv_id)

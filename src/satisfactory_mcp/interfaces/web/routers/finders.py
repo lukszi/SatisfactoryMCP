@@ -31,6 +31,7 @@ from ..serial import (
     error_response,
     found_field_json,
     region_json,
+    require_world,
     resource_name,
     world_state,
     xyz_m,
@@ -398,10 +399,7 @@ def world_sites(
     rid = resolve_item(game, resource)
     if rid is None:
         return error_response(f"unknown resource {resource!r}")
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     ranked = finder.rank(st, game, rid, source, resolve_resource=_resolver(game))
     if ranked.unselected:
         return error_response("no selector resolved: " + "; ".join(ranked.selection.errors))
@@ -497,10 +495,7 @@ def world_conduits(
         return error_response(refusal)
     if view == "networks" and kind == "belt":
         return error_response("view=networks lists fluid networks; a belt chain belongs to none")
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     game = request.app.state.game()
     base = {
         "view": view,
@@ -587,10 +582,7 @@ def world_here(
     world: str | None = None,
 ) -> Any:
     """Where the player stands and the nodes around them, as ``whereami`` answers it."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     game = request.app.state.game()
     found = place.here(st, game, radius_m)
     rows = found.nodes

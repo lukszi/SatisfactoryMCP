@@ -19,7 +19,13 @@ from ....domain.factories.health import assess
 from ....domain.power.report import PowerLedger, starved_cause
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
-from ..serial import Biomass, Region, cm_to_m, error_response, region_json, world_state
+from ..serial import (
+    Biomass,
+    Region,
+    cm_to_m,
+    region_json,
+    require_world,
+)
 
 __all__ = ["router"]
 
@@ -183,10 +189,7 @@ def power_circuits(
     world: no power edge at all, and a wire to a circuit no generator stands on. The world
     ledger counts only what stands on a wire, so it is the sum of the circuits.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     counted = biomass == "include"
     graph = st.graph

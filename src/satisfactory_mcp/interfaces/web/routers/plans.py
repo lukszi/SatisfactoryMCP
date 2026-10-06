@@ -20,7 +20,7 @@ from ....domain.planning import siting as planning_siting
 from ....domain.planning.diff_service import plan_progress
 from ....domain.planning.planlog import PlanLog
 from ....domain.world import pin
-from ..serial import ActorBody, actor_json, error_response, world_state
+from ..serial import ActorBody, actor_json, require_world
 
 __all__ = ["router"]
 
@@ -137,10 +137,7 @@ def plans(request: Request, save: str | None = None, world: str | None = None) -
     derived from the layout -- so a footprintless record is a hand-edited file, and an
     origin alone bounds nothing this layer could draw.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     rows = []
     for plan in st.plans.plans:
@@ -233,10 +230,7 @@ def _built_row(st, state) -> PlanBuiltRow:
 def plans_built(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Every live plan's built progress, for the Planner's list: a solve per plan, cached
     per plan version, save and factory names."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     token = pin.check(st.header, None)
     log = PlanLog(st.world_id, st.header.get("session_name") or "")
     rows = []

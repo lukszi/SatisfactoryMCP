@@ -8,7 +8,7 @@ spawns the sidecar or reads a ``.sav``. ``/api/worlds`` is the one route that sc
 save directory on its own, and its one test stubs the scanner.
 
 The surface-wide "could not read save" refusal is pinned here too, on ``/api/summary``:
-every handler makes it the same way through ``serial.world_state``, and this is the endpoint
+every handler makes it the same way through ``serial.require_world``, and this is the endpoint
 the page opens with.
 """
 
@@ -122,9 +122,9 @@ def test_summary_reports_the_header_power_and_progression(client, state):
 
 
 def test_a_save_that_cannot_be_read_is_a_404_with_a_reason(game):
-    """The refusal ``world_state`` makes, on the endpoint the page opens with.
+    """The refusal ``require_world`` makes, on the endpoint the page opens with.
 
-    Every handler on this surface spends ``?save=``/``?world=`` through ``serial.world_state``
+    Every handler on this surface spends ``?save=``/``?world=`` through ``serial.require_world``
     and turns a loader failure into the same 404, so the shape is pinned once here rather
     than in a file per router -- and it is pinned on ``/api/summary`` because that is the
     first request the page makes, and the one whose failure the header has to explain.

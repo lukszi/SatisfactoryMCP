@@ -21,7 +21,7 @@ from ....domain.planning import site_preview, siting
 from ....domain.planning.planlog import InvalidOp, PlanLog, UnknownPlan
 from ....domain.world import pin
 from .. import terrain
-from ..serial import Biomass, error_response, world_state
+from ..serial import Biomass, error_response, require_world
 
 __all__ = ["router"]
 
@@ -192,10 +192,7 @@ def plan_site_preview(
     site, else from where a first placement starts. ``full`` reads the terrain at 1 m."""
     if not _KEY.fullmatch(key):
         return error_response(f"no plan “{key}” in this world", 404)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         state = PlanLog(st.world_id).state(key, rev)
     except UnknownPlan:

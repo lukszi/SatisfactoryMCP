@@ -22,7 +22,7 @@ from ....core.schema import NewerSchema
 from ....domain.planning import journal
 from ....domain.planning import pins as pin_store
 from ....domain.planning.planlog import Actor
-from ..serial import error_response, world_state
+from ..serial import error_response, require_world
 
 __all__ = ["router"]
 
@@ -138,10 +138,7 @@ def _note(st, kind: str, pin: dict, args: dict, text: str) -> None:
 @router.get("/pins", response_model=PinsResponse)
 def pins(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Every live pin of this world, ascending by number, gone ones included and marked."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         version = pin_store.read(st.world_id)["version"]
         rows = pin_store.live(st)
@@ -163,10 +160,7 @@ def create_pin(
     world: str | None = None,
 ) -> Any:
     """Pin an object; pinning one that already has a live pin returns that pin with a 200."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         pin, existing = pin_store.create(
             st, body["kind"], dict(body["ref"]), body.get("label") or ""
@@ -193,10 +187,7 @@ def rename_pin(
     world: str | None = None,
 ) -> Any:
     """A new label for one pin, refused with a 409 when ``rev`` is not the pin's current one."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         stored = pin_store.rename(st.world_id, n, body["rev"], body["label"])
     except _ERRORS as exc:
@@ -220,10 +211,7 @@ def drop_pin(
     world: str | None = None,
 ) -> Any:
     """Delete one pin. Not undoable, and its number is never given out again."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         stored = pin_store.drop(st.world_id, n, body["rev"])
     except _ERRORS as exc:

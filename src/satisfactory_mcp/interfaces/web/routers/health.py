@@ -17,7 +17,7 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories.health import ACTIONABLE, OK, STATES
 from ....domain.factories.sweep import sweep
 from ....domain.spatial import geo
-from ..serial import cm_to_m, error_response, world_state
+from ..serial import cm_to_m, require_world
 
 __all__ = ["router"]
 
@@ -82,10 +82,7 @@ class FactoryHealthResponse(TypedDict):
 @router.get("/factories/health", response_model=FactoryHealthResponse)
 def factory_health(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Uptime, states and the worst machines of every named factory, worst factory first."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     alive_set = set(st.graph.machines())
     placed = fidentity.positions(st.projection)

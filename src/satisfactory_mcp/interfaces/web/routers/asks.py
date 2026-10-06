@@ -22,7 +22,7 @@ from ....core.schema import NewerSchema
 from ....domain.planning import asks as ask_store
 from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
-from ..serial import error_response, world_state
+from ..serial import error_response, require_world
 
 __all__ = ["router"]
 
@@ -132,10 +132,7 @@ def _note(world_id: str, kind: str, ask: dict, text: str) -> None:
 @router.get("/asks", response_model=AsksResponse)
 def asks(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Every live ask of this world, ascending by number, answered ones included."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         version = ask_store.read(st.world_id)["version"]
         rows = ask_store.live(st.world_id)
@@ -152,10 +149,7 @@ def create_ask(
     world: str | None = None,
 ) -> Any:
     """Queue one question for chat; the player pastes its ``copy`` into chat."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         ask = ask_store.create(st.world_id, body["text"], dict(body["about"]))
     except _ERRORS as exc:
@@ -177,10 +171,7 @@ def drop_ask(
     world: str | None = None,
 ) -> Any:
     """Delete one ask, refused with a 409 when ``rev`` is not its current one."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         ask = ask_store.drop(st.world_id, n, body["rev"])
     except _ERRORS as exc:

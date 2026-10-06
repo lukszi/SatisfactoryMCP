@@ -18,7 +18,7 @@ from fastapi import APIRouter, Request
 
 from ....core.saveio import projection as proj
 from ....domain.world import pin
-from ..serial import Biomass, error_response, world_state, xyz_m
+from ..serial import Biomass, error_response, require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -209,10 +209,7 @@ def summary(
     world: str | None = None,
     biomass: Biomass = "exclude",
 ) -> Any:
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     return {
         "header": st.header,
         # Recorded as well as sent: a token the page shows and the assistant is then handed

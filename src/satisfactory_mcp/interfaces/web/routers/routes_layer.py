@@ -24,7 +24,7 @@ from fastapi import APIRouter, Request
 
 from ....core.saveio import rows as saverows
 from ....domain.world.state import WorldState
-from ..serial import cm_to_m, error_response, world_state, xyz_m, yaw_deg
+from ..serial import cm_to_m, require_world, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -218,10 +218,7 @@ def belts(request: Request, save: str | None = None, world: str | None = None) -
     Sent one row per piece, ungrouped, the same posture ``/api/structures`` takes: the
     per-piece class is what a popup reads.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     resolved: dict[int, BeltClass] = {}
     rows = []
@@ -360,10 +357,7 @@ def pipes(request: Request, save: str | None = None, world: str | None = None) -
     only a header position, so they are a different row shape -- the same question the belts
     key leaves open about splitters and mergers.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     networks = list((st.projection.get("pipes") or {}).get("networks") or ())
     # Positional against ``segments``, so a projection too old to carry the join reads as one

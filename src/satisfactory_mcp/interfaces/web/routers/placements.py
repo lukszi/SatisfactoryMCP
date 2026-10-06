@@ -1,20 +1,7 @@
 """``/api/machines`` and ``/api/structures``: everything the player physically placed.
 
-Two endpoints and one row builder, because they answer one question in two resolutions. A
-machine is an ACTOR -- it has an instance id, a recipe, a clock -- and a foundation is a
-lightweight buildable with none of those, interned into a positional table because a record
-per piece would be megabytes.
-
-**THE LINE THIS FILE DRAWS, which its neighbours cite:** an ACTOR record always carries a
-class, and an INTERNED table row may not. ``machines``/``extractors``/``generators`` are
-actor records, written behind ``cls.startswith("Build_")``, so ``cls`` is a non-empty string
-and ``building_name`` never falls through to ``None``. ``structures`` is the interned table,
-where a class is an INDEX into a legend and the row whose index points past the end is a real
-piece at a real place with no name.
-
-WARNING: the function name is the operation_id -- renaming it churns the committed schema.
-
-Wire rules: docs/web-wire.md.
+Actor records against interned rows, the line every placement layer's nullability follows:
+docs/web-wire.md "Placements". Handler names are operation_ids (wire rule 1).
 """
 
 from __future__ import annotations
@@ -28,7 +15,7 @@ from ....core.gamedata.model import pretty_class
 from ....core.saveio import rows as saverows
 from ....domain.factories import health
 from ....domain.world.state import WorldState
-from ..serial import cm_to_m, error_response, world_state, xyz_m, yaw_deg
+from ..serial import cm_to_m, require_world, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -128,18 +115,7 @@ def _leaf(row: dict) -> str:
 def _record_row(
     st: WorldState, row: dict, verdict: health.MachineHealth, owners: dict[str, str]
 ) -> PlacementRow:
-    """One machine/extractor/generator, flattened for the map.
-
-    ``w_m``/``l_m`` are the X and Y extent of the union of the building's clearance boxes,
-    which is what makes a Manufacturer draw bigger than a Constructor; ``h_m`` is the third
-    side, and it is here because a floor view needs it -- a Refinery is 15 m tall on a 12 m
-    storey, so it comes through the deck above and is in the way of anything built there.
-    Null rather than guessed for a class the docs dump does not describe: the client picks
-    the fallback, because a fallback drawn here would be indistinguishable from a measurement.
-
-    ``yaw`` is what turns those extents from an axis-aligned box into the rectangle the
-    player actually placed, so the two are read together or not at all.
-    """
+    """One machine/extractor/generator, flattened for the map; extents per docs/web-wire.md."""
     cls = row.get("cls") or ""
     building = st.game.buildings.get(cls)
     footprint = getattr(building, "footprint", None) if building else None
@@ -148,8 +124,6 @@ def _record_row(
     return {
         "instance_leaf": _leaf(row),
         "cls": row.get("cls"),
-        # Readable words either way; the raw class stays in ``cls`` for anything that needs
-        # the exact id, and the same holds for the recipe below.
         "name": st.game.building_name(cls),
         **xyz_m(row.get("pos")),
         "recipe": recipe_id,
@@ -158,7 +132,6 @@ def _record_row(
         "paused": bool(row.get("paused", False)),
         "state": verdict.state,
         "actionable": verdict.state in health.ACTIONABLE,
-        # Three decimals: at two, 0.9994 rounds onto 1.0 and health.SATURATED's line vanishes.
         "uptime": None if verdict.uptime is None else round(verdict.uptime, 3),
         "yaw": yaw_deg(row.get("yaw")),
         # Footprint is already metres; the projection's coordinates are not.
@@ -182,14 +155,10 @@ def machines(request: Request, save: str | None = None, world: str | None = None
     195 of those 570 are ``blocked``: a full output box, and ``actionable`` like the other
     states in ``health.ACTIONABLE``. How the map marks it: docs/save-projection.md §6.2d.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     p = st.projection
     leaves = [_leaf(row) for kind in MACHINE_KINDS for row in p.get(kind, ())]
-    # Total by construction -- assess walks MACHINE_KINDS too -- and keyed on the leaf
-    # /api/floors and the frontend's `_floor.id` already join on, so the lookup cannot miss.
+    # Total by construction: assess walks MACHINE_KINDS too, so the lookup cannot miss.
     verdicts = {m.instance: m for m in health.assess("map", leaves, st.game, p, st.graph).machines}
     owners = {leaf: label.name for label in st.labels.labels for leaf in label.anchors}
     return {
@@ -237,10 +206,7 @@ def structures(request: Request, save: str | None = None, world: str | None = No
     payload that is not the bottleneck and would cost the per-piece class the popup and
     the point inspector read.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     out = [
         {

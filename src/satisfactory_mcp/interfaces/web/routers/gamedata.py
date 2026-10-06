@@ -16,7 +16,7 @@ from ....core.gamedata.model import GameData, Recipe
 from ....core.gamedata.unlocks import granted_by
 from ....core.text import ago
 from ....domain.planning.scenario import find_recipe, resolve_item
-from ..serial import error_response, world_state
+from ..serial import error_response, require_world, world_state
 
 __all__ = ["router"]
 
@@ -368,10 +368,7 @@ def gamedata_unlocked(
     world: str | None = None,
 ) -> Any:
     """``unlocked_recipes``: the recipes this save has, alternates only by default."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     picks = st.unlocked_alternates if only_alternates else st.unlocked_recipes("part")
     return {
         "age_note": st.age_note,

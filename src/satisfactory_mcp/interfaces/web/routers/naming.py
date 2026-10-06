@@ -43,7 +43,7 @@ from ..serial import (
     error_response,
     flow_json,
     machine_spots,
-    world_state,
+    require_world,
 )
 
 __all__ = ["router"]
@@ -197,10 +197,7 @@ def factory_candidates(
         return error_response(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
     if min_machines < 1:
         return error_response("min_machines is at least 1", 400)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         rmap = spatial_regions.load_regions()
     except FileNotFoundError:
@@ -279,10 +276,7 @@ def name_candidate(
     world: str | None = None,
 ) -> Any:
     """Name one proposal as a new factory. 409 for a taken name, a moved save or store."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         pin.check(st.header, as_of)
     except pin.PinRefused as exc:
@@ -327,10 +321,7 @@ def rename_label(
     world: str | None = None,
 ) -> Any:
     """Rename a label by its exact name; its machines stay and plans scoped to it follow."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     page = Actor("page", "", os.getpid())
     try:
         done = edits.rename(
@@ -366,10 +357,7 @@ def forget_label(
     world: str | None = None,
 ) -> Any:
     """Delete a label by its exact name. The machines are untouched."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         label, written = edits.forget(st.world_id, _session(st), name, exact=True, expect=version)
     except (StaleStore, LabelError, LockTimeout) as exc:
@@ -432,10 +420,7 @@ def amend_label(
     areas = [body["area"], *body.get("extra_areas", [])]
     if any(len(a) < 3 for a in areas):
         return error_response("an area needs at least three corners", 400)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         pin.check(st.header, body["as_of"])
     except pin.PinRefused as exc:

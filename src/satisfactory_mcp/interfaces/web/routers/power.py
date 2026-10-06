@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request
 from ....core.saveio import rows as saverows
 from ....domain.spatial import geo
 from ....domain.world.state import WorldState
-from ..serial import cm_to_m, error_response, world_state, yaw_deg
+from ..serial import cm_to_m, require_world, yaw_deg
 
 __all__ = ["router"]
 
@@ -151,10 +151,7 @@ def power(request: Request, save: str | None = None, world: str | None = None) -
     ``from`` and ``to`` are in the EDGE's order, which the projection measured: the save's
     own endpoint order agrees with it only about half the time.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     projection = st.projection
     actors = projection.get("graph", {}).get("actors") or []

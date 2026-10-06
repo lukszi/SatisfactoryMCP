@@ -22,7 +22,7 @@ from ....domain.factories.select import SelectorError
 from ....domain.factories.trace import resolve_seeds, trace
 from ....domain.spatial import geo
 from ....domain.world import pin
-from ..serial import cm_to_m, error_response, world_state
+from ..serial import cm_to_m, error_response, require_world
 
 __all__ = ["router"]
 
@@ -160,10 +160,7 @@ def trace_path(
     way = direction.strip().casefold()
     if way not in ("up", "down"):
         return error_response(f"unknown direction “{direction}”: up or down", 400)
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     try:
         token = pin.check(st.header, as_of)
     except pin.PinRefused:

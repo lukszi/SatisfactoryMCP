@@ -17,7 +17,7 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories.query import build_view
 from ....domain.spatial import geo
 from ....domain.spatial import nodes as nodes_mod
-from ..serial import cm_to_m, error_response, world_state, xyz_m
+from ..serial import cm_to_m, error_response, require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -142,10 +142,7 @@ def factory_aspects(
 
     Rates are items/min at the saved clocks, nameplate and measured, never blended.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     found = _label_machines(st, factory)
     if found is None:
         return error_response(f"no factory named “{factory}” in this world", 404)
@@ -259,10 +256,7 @@ def factory_sites(
     the count it holds: a factory that is a small part of a big site is a grown-together
     base, and one spread over several sites is not one place.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
     mine: set[str] = set()
     if factory is not None:
         found = _label_machines(st, factory)

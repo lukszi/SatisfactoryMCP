@@ -24,7 +24,7 @@ from typing import Any, Literal, TypedDict
 from fastapi import APIRouter, Request
 
 from ....domain.world.state import WorldState
-from ..serial import error_response, world_state, xyz_m, yaw_deg
+from ..serial import require_world, xyz_m, yaw_deg
 
 __all__ = ["router"]
 
@@ -217,10 +217,7 @@ def storage(request: Request, save: str | None = None, world: str | None = None)
 
     Sent in one payload, ungrouped, the posture every placement endpoint here takes.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     rows = [
         _storage_row(st, row) for row in st.projection.get("storage") or () if isinstance(row, dict)

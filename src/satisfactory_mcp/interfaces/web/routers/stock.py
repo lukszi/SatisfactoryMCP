@@ -16,7 +16,7 @@ from fastapi import APIRouter, Request
 
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world.inventory import CRATE_KIND_TEXT, Holding
-from ..serial import Region, cm_to_m, error_response, region_json, world_state, xyz_m
+from ..serial import Region, cm_to_m, region_json, require_world, xyz_m
 
 __all__ = ["router"]
 
@@ -120,10 +120,7 @@ def _place(st, rmap, me, h: Holding) -> StockPlace:
 @router.get("/stock", response_model=StockResponse)
 def stock(request: Request, save: str | None = None, world: str | None = None) -> Any:
     """Every item held, split into piles, and every place holding something, biggest first."""
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     g = st.game
     inv = st.inventory

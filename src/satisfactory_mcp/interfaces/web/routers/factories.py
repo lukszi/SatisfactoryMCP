@@ -23,7 +23,7 @@ from ....domain.factories import identity as fidentity
 from ....domain.factories import naming
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
-from ..serial import cm_to_m, error_response, world_state
+from ..serial import cm_to_m, error_response, require_world
 
 __all__ = ["router"]
 
@@ -90,10 +90,7 @@ def factories(
     runs over the whole world, so it rediscovers every named factory, and any proposal in
     which named anchors are the majority is dropped here.
     """
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        return error_response(f"could not read save: {exc}", 404)
+    st = require_world(request, save, world)
 
     if style not in naming.STYLES:
         return error_response(f"unknown style “{style}”; known: {', '.join(naming.STYLES)}", 400)
