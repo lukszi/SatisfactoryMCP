@@ -74,7 +74,7 @@ registration that never ran is a layer that is simply never fetched -- no error,
 space, just an absence. So the two directions are checked as a pair. Every module that calls
 ``registerFetch`` is named in ``main.ts``'s FEATURES block, and nothing in that block fails to
 register; and the mechanism side -- ``load.ts``, ``registry.ts``, ``layers.ts`` and
-``layercontrol.ts`` -- imports none of them, which is what makes the FEATURES block the only
+``layercontrol/control.ts`` -- imports none of them, which is what makes the FEATURES block the only
 thing holding them in. Those same four are held to a second, wider rule: none may import a
 module that imports it. The narrow rule is about the bundle; this one is about rings, and
 ``layers.ts`` is why it exists -- every drawing module reaches it, so anything it reached back
@@ -301,7 +301,7 @@ FRONTEND_MAIN_TS = FRONTEND_SRC / "main.ts"
 #: the names in it.
 #:
 #: ``load.ts`` runs the two waves, ``registry.ts`` holds what is in them, ``layers.ts`` hands
-#: out the named groups, ``layercontrol.ts`` is the widget listing them, and ``palette.ts``
+#: out the named groups, ``layercontrol/control.ts`` is the widget listing them, and ``palette.ts``
 #: records what colour each feature chose and checks the choices against each other. Every
 #: feature on the page reaches at least one of these; none of the five may reach a feature.
 #: That is what makes each of them a seam rather than a habit -- see the two rules below for
@@ -1221,7 +1221,7 @@ def test_the_mechanism_imports_no_module_that_fetches():
     just be in the bundle for the wrong reason, and the day somebody tidied the import away
     the FEATURES block would take the blame for a failure it did not cause. So the mechanism
     side is required to know none of the names: ``load.ts`` runs waves, ``registry.ts`` holds
-    a list, ``layers.ts`` hands out groups and ``layercontrol.ts`` draws the rows, and not one
+    a list, ``layers.ts`` hands out groups and the control draws the rows, and not one
     of the four can reach a module that declares a fetch.
 
     ``regions.ts`` is the one feature module ``load.ts`` still names, and it is allowed here
