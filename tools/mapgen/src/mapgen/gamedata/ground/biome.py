@@ -11,7 +11,7 @@ from scipy import ndimage
 
 from mapgen.common import ROOT
 from mapgen.gamedata.frame import BOUNDS_M, GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I32Grid, U8Grid
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND, MapAreaError, read_map_areas
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
@@ -328,6 +328,6 @@ def region_mask(name: str) -> BoolMask | None:
     cells = np.array([[1 if ch == letter else 0 for ch in row] for row in grid], dtype=bool)
     columns = ORIGIN_X_CM + np.arange(GRID_PX) * SPACING_CM
     rows = ORIGIN_Y_CM + np.arange(GRID_PX) * SPACING_CM
-    ci: I32Grid = np.clip(((columns - meta["x0"]) / meta["cell"]).astype(int), 0, meta["nx"] - 1)
-    ri: I32Grid = np.clip(((rows - meta["y0"]) / meta["cell"]).astype(int), 0, meta["ny"] - 1)
+    ci = np.clip(((columns - meta["x0"]) / meta["cell"]).astype(np.intp), 0, meta["nx"] - 1)
+    ri = np.clip(((rows - meta["y0"]) / meta["cell"]).astype(np.intp), 0, meta["ny"] - 1)
     return cells[ri][:, ci]

@@ -13,6 +13,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from types import ModuleType
 
 import numpy as np
+import numpy.typing as npt
 
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.ground.landscape_albedo import srgb_unit_to_linear
@@ -71,8 +72,8 @@ STAMP_OUTER_M = 15.0
 STAMP_RING_MIN = 50
 
 
-def smoothstep(t: F64Grid) -> F64Grid:
-    """``3t^2 - 2t^3`` on ``t`` in [0, 1]."""
+def smoothstep(t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+    """``3t^2 - 2t^3`` on ``t`` in [0, 1], in ``t``'s own float type."""
     return t * t * (3.0 - 2.0 * t)
 
 
