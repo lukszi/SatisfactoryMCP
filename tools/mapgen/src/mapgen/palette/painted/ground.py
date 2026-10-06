@@ -48,17 +48,12 @@ from mapgen.palette.painted.calibration import (
     transfer_op,
     with_derived,
 )
-from mapgen.palette.painted.optics import (
-    base_water,
-    class_optics,
-    load_carpet,
-    water_table,
-)
+from mapgen.palette.painted.optics import base_water, class_optics, load_carpet, water_table
 from mapgen.palette.painted.shapes import (
-    AreaTarget,
     BandTaps,
     BiomeGrid,
-    CalibrationTargets,
+    CalibrationArea,
+    CalibrationStyle,
     Carpet,
     ClassOptics,
     ColourPlanes,
@@ -66,26 +61,16 @@ from mapgen.palette.painted.shapes import (
     FieldPlanes,
     FloatGrid,
     OpaqueWater,
-    PaintedStyle,
+    PaintedPalette,
     PaintPlane,
     Ramp,
     WaterBase,
 )
-from mapgen.palette.painted.surfaces import (
-    family_cells,
-    family_tables,
-    family_targets,
-)
-from mapgen.palette.painted.trees import (
-    crown_calibration,
-    titan_colours,
-)
+from mapgen.palette.painted.surfaces import family_cells, family_tables, family_targets
+from mapgen.palette.painted.trees import crown_calibration, titan_colours
 from mapgen.palette.painted.water_classes import water_classes
 from mapgen.palette.styles import dry_land_range
-from mapgen.palette.water.shore import (
-    OCEAN_LEVEL_BAND_M,
-    OCEAN_LEVEL_M,
-)
+from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M
 from mapgen.terrain.crown_stamp import CrownSet, load_crowns
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_SHELL, MESH_TERRACE
 from satisfactory_mcp.core.arrays import BoolMask, F16Grid, F64Grid, I16Grid, U8Grid
@@ -163,7 +148,7 @@ class PaintedGround:
             raise FileNotFoundError(f"no paint store at {paint_dir}")
         self.meta = meta
         # The palette file's JSON; styles.painted_style hands it over untyped.
-        self.palette: PaintedStyle = cast(PaintedStyle, palette)
+        self.palette: PaintedPalette = cast(PaintedPalette, palette)
         self.source: JsonObject = {}
         self._stamps = stamps
         rows, cols = meta["grid"]["height"], meta["grid"]["width"]
@@ -301,7 +286,6 @@ class PaintedGround:
         else:
             blur = palette["have_blur_m"]
             albedo, have, self.bake_weight = ground_albedo(albedo, have, bake, blur)
-        self.albedo_source = "paint" if self.bake_weight is None else "bake"
         return albedo, have, weights, seam_texels
 
     def _trees(self, paint_dir: Path) -> None:
@@ -336,7 +320,7 @@ class PaintedGround:
         return canopy * np.float32(self.palette["canopy_dark"])
 
     def _area_targets(
-        self, pick: Callable[[AreaTarget], str | None]
+        self, pick: Callable[[CalibrationArea], str | None]
     ) -> list[tuple[FloatGrid, FloatGrid]]:
         """Each area entry ``pick`` finds a target in: its weight and the target as colour."""
         found: list[tuple[FloatGrid, FloatGrid]] = []
@@ -365,7 +349,7 @@ class PaintedGround:
             )
         return found
 
-    def _calibrate_crowns(self, targets: CalibrationTargets) -> None:
+    def _calibrate_crowns(self, targets: CalibrationStyle) -> None:
         """The crowns moved onto their species targets, and their transfers and what was
         measured (``trees.crown_calibration``); nothing without crowns."""
         if self.crowns is None:
@@ -528,7 +512,7 @@ class PaintedGround:
 
     def _area_layer_jobs(
         self,
-        cal: CalibrationTargets,
+        cal: CalibrationStyle,
         weights: Mapping[str, PaintPlane],
         split: dict[str, PaintPlane],
         shape: tuple[int, int],
@@ -603,5 +587,5 @@ class PaintedGround:
         return lab
 
 
-def _mesh_target(name: str) -> Callable[[AreaTarget], str | None]:
+def _mesh_target(name: str) -> Callable[[CalibrationArea], str | None]:
     return lambda entry: entry.get("meshes", {}).get(name)

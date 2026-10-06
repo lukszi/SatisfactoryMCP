@@ -22,12 +22,12 @@ from mapgen.colour import (
     unit_luminance,
 )
 from mapgen.palette.painted.shapes import (
-    AreaTarget,
-    CalibrationTargets,
+    CalibrationArea,
+    CalibrationStyle,
     ColourPlanes,
-    DerivedTarget,
+    DerivedLayer,
     FloatGrid,
-    PaintedStyle,
+    PaintedPalette,
     PaintPlane,
     Sampler,
 )
@@ -69,7 +69,7 @@ def tone(luminance: npt.ArrayLike, knee: float, white: float) -> FloatGrid:
     return np.where(y > knee, shoulder, y).astype(np.float32)
 
 
-def flat_ground_light(palette: PaintedStyle) -> FloatGrid:
+def flat_ground_light(palette: PaintedPalette) -> FloatGrid:
     """The flat-ground sky-and-sun light as a colour of unit luminance per term."""
     a = np.float32(palette["ambient"])
     return a * unit_luminance(palette["sky"]) + (1 - a) * unit_luminance(palette["sun"])
@@ -86,7 +86,7 @@ def chroma_turn(turn: float | np.floating, scale: float | np.floating) -> FloatG
     return np.array([[c, -s], [s, c]], np.float32)
 
 
-def display_to_linear(palette: PaintedStyle, hex_colour: str) -> FloatGrid:
+def display_to_linear(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     """A display sRGB colour back through the tone: the linear colour the tone maps onto it."""
     rgb = srgb_to_linear(hex_rgb(hex_colour))
     curve = palette["tone"]
@@ -96,7 +96,7 @@ def display_to_linear(palette: PaintedStyle, hex_colour: str) -> FloatGrid:
     return rgb * np.float32(y0 / max(y, 1e-6))
 
 
-def display_to_ground(palette: PaintedStyle, hex_colour: str) -> FloatGrid:
+def display_to_ground(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     """A display sRGB target back through flat light, exposure, tone and chroma: OKLab."""
     exposure = palette["exposure"] * palette["tone"]["gain"]
     rgb = display_to_linear(palette, hex_colour) / np.float32(exposure)
@@ -106,7 +106,7 @@ def display_to_ground(palette: PaintedStyle, hex_colour: str) -> FloatGrid:
     return lab
 
 
-def display_to_crown(palette: PaintedStyle, hex_colour: str) -> FloatGrid:
+def display_to_crown(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     """A display target as a tree crown's OKLab: the ground's, without the altitude lift."""
     lab = display_to_ground(palette, hex_colour)
     lab[0] += np.float32(palette["altitude_lift"] * 0.5)
@@ -204,7 +204,7 @@ def split_weight(weight: PaintPlane, share_u8: U8Grid) -> tuple[U8Grid, PaintPla
     return inside, weight - inside
 
 
-def derived_hex(hex_colour: str, rule: DerivedTarget) -> str:
+def derived_hex(hex_colour: str, rule: DerivedLayer) -> str:
     """A display colour moved in its OKLab by ``rule``: the lightness times ``lightness``, the
     chroma times ``chroma``, the hue turned by ``hue_deg``."""
     lab = oklab(srgb_to_linear(hex_rgb(hex_colour)))
@@ -221,7 +221,7 @@ def derived_hex(hex_colour: str, rule: DerivedTarget) -> str:
     return "#" + "".join(f"{v:02x}" for v in rgb)
 
 
-def with_derived(cal: CalibrationTargets) -> CalibrationTargets:
+def with_derived(cal: CalibrationStyle) -> CalibrationStyle:
     """The calibration with each ``derived`` rule's target added to every layer scope where its
     ``from`` layer has one and it has none."""
     rules = cal.get("derived", {})
@@ -231,7 +231,7 @@ def with_derived(cal: CalibrationTargets) -> CalibrationTargets:
                  if rule["from"] in layers and name not in layers}  # fmt: skip
         return {**layers, **found}
 
-    areas: list[AreaTarget] = [{**e, "layers": scope(e["layers"])} if "layers" in e else e
+    areas: list[CalibrationArea] = [{**e, "layers": scope(e["layers"])} if "layers" in e else e
                                for e in cal.get("areas", [])]  # fmt: skip
     return {**cal, "layers": scope(cal.get("layers", {})), "areas": areas}
 

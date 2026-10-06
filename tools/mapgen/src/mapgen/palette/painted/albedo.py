@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import numpy.typing as npt
@@ -15,9 +16,9 @@ from mapgen.colour import linear_from_oklab, linear_to_srgb, oklab, srgb_to_line
 from mapgen.gamedata.ground.bake import BAKE_NAME, STAMP_RING_MIN, stamp_windows
 from mapgen.gamedata.ground.paint_store import META_NAME
 from mapgen.gamedata.water.bodies import WATER_BODIES_NAME
-from mapgen.palette.painted.shapes import FloatGrid, PaintedStyle, PaintMeta, PaintPlane
+from mapgen.palette.painted.shapes import FloatGrid, PaintedPalette, PaintMeta, PaintPlane
 from satisfactory_mcp.core.arrays import BoolMask, F64Grid
-from satisfactory_mcp.core.jsontypes import JsonObject
+from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -36,11 +37,13 @@ __all__ = [
 
 
 def load_paint_meta(paint_dir: Path) -> PaintMeta | None:
-    """The paint store's ``meta.json``; None where there is no store."""
+    """The paint store's ``meta.json``, as the paint command writes it; None where there is no
+    store, or its file holds no JSON object."""
     try:
-        return json.loads((paint_dir / META_NAME).read_text(encoding="utf-8"))
+        meta: JsonValue = json.loads((paint_dir / META_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+    return cast(PaintMeta, meta) if isinstance(meta, dict) else None
 
 
 def bake_table(meta: PaintMeta) -> dict[str, FloatGrid] | None:
@@ -57,7 +60,7 @@ def hidden_ground(ok: BoolMask) -> BoolMask:
     return ndimage.binary_fill_holes(ok) & ~ok
 
 
-def layer_table(meta: PaintMeta, palette: PaintedStyle) -> dict[str, FloatGrid]:
+def layer_table(meta: PaintMeta, palette: PaintedPalette) -> dict[str, FloatGrid]:
     """Linear albedo per paint layer, with the palette's WetSand correction applied."""
     darkening = np.float32(palette["albedo_darkening"])
     table = {
@@ -89,7 +92,7 @@ def mix_layers(
 
 
 def seam_blend(
-    rgb: FloatGrid, origins: Sequence[Sequence[int]], size_px: int, palette: PaintedStyle
+    rgb: FloatGrid, origins: Sequence[Sequence[int]], size_px: int, palette: PaintedPalette
 ) -> tuple[FloatGrid, int]:
     """Soften paint steps that sit exactly on landscape-component edges.
 
@@ -190,4 +193,8 @@ def load_water_bodies(paint_dir: Path, meta: PaintMeta) -> JsonObject | None:
     """The store's water actors and hot-spring terraces; None for a store that predates them."""
     if WATER_BODIES_NAME not in meta.get("files", {}):
         return None
-    return json.loads((paint_dir / WATER_BODIES_NAME).read_text(encoding="utf-8"))
+    path = paint_dir / WATER_BODIES_NAME
+    bodies: JsonValue = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(bodies, dict):
+        raise TypeError(f"{path} holds no JSON object")
+    return bodies

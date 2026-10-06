@@ -17,33 +17,33 @@ from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = [
     "AlbedoTable",
-    "AreaTarget",
     "BandTaps",
     "BandWater",
     "BiomeGrid",
-    "CalibrationTargets",
+    "CalibrationArea",
+    "CalibrationStyle",
     "Carpet",
     "CarpetStyle",
     "ClassOptics",
     "ColourPlanes",
+    "CrownLayer",
     "CrownOp",
     "CrownTerms",
-    "DerivedTarget",
+    "DerivedLayer",
     "FieldPlanes",
     "FloatGrid",
-    "LitCrowns",
     "OpaqueWater",
     "PaintFile",
     "PaintGrid",
     "PaintMeta",
     "PaintPlane",
+    "PaintedPalette",
     "PaintedScene",
-    "PaintedStyle",
     "PaintedSurface",
     "Ramp",
     "RockFamilyEntry",
-    "RockPatches",
-    "RockTop",
+    "RockPatchesStyle",
+    "RockTopStyle",
     "Sampler",
     "TitanTreesStyle",
     "WaterBase",
@@ -52,14 +52,15 @@ __all__ = [
 
 # -- the palette file ----------------------------------------------------------------------
 
-DerivedTarget = TypedDict(
-    "DerivedTarget",
+#: ``calibration.derived``: a layer's target made by rule from another's (``from``, a keyword).
+DerivedLayer = TypedDict(
+    "DerivedLayer",
     {"from": Required[str], "lightness": float, "chroma": float, "hue_deg": float},
     total=False,
 )
 
 
-class AreaTarget(TypedDict, total=False):
+class CalibrationArea(TypedDict, total=False):
     """One ``calibration.areas`` entry: the areas it scopes, and its targets inside them."""
 
     areas: Required[list[str]]
@@ -71,7 +72,7 @@ class AreaTarget(TypedDict, total=False):
     water_class: str
 
 
-class CalibrationTargets(TypedDict, total=False):
+class CalibrationStyle(TypedDict, total=False):
     """``calibration``: display sRGB targets by layer, family, top, mesh, crown and area."""
 
     about: str
@@ -79,7 +80,7 @@ class CalibrationTargets(TypedDict, total=False):
     min_texels: Required[int]
     area_blur_m: Required[float]
     layers: Required[dict[str, str]]
-    derived: dict[str, DerivedTarget]
+    derived: dict[str, DerivedLayer]
     canopy: str
     rock: str
     rock_keeps_exposure: bool
@@ -88,7 +89,7 @@ class CalibrationTargets(TypedDict, total=False):
     meshes: dict[str, str]
     crowns: dict[str, str]
     species: dict[str, str]
-    areas: list[AreaTarget]
+    areas: list[CalibrationArea]
 
 
 class WaterClassStyle(TypedDict):
@@ -102,7 +103,7 @@ class WaterClassStyle(TypedDict):
     bed_tint: list[float]
 
 
-class RockPatches(TypedDict):
+class RockPatchesStyle(TypedDict):
     """``rock_top.patches``: the noise that breaks a family's top layer into patches."""
 
     seed: int
@@ -113,11 +114,11 @@ class RockPatches(TypedDict):
     flat_gain: float
 
 
-class RockTop(TypedDict):
+class RockTopStyle(TypedDict):
     """``rock_top``: the up-facing ramp a family's top layer takes, and its patches."""
 
     up: list[float]
-    patches: NotRequired[RockPatches]
+    patches: NotRequired[RockPatchesStyle]
 
 
 class TitanTreesStyle(TypedDict, total=False):
@@ -138,7 +139,7 @@ class CarpetStyle(TypedDict):
     gain: float
 
 
-class PaintedStyle(TypedDict):
+class PaintedPalette(TypedDict):
     """``palettes/satellite-painted.json``: every number the painted style draws with."""
 
     id: str
@@ -176,11 +177,11 @@ class PaintedStyle(TypedDict):
     water: PaintedWaterStyle
     water_classes: NotRequired[dict[str, WaterClassStyle | str]]
     falls: NotRequired[JsonObject]
-    rock_top: RockTop
+    rock_top: RockTopStyle
     titan_trees: NotRequired[TitanTreesStyle]
     carpet: NotRequired[CarpetStyle]
     tone: ToneStyle
-    calibration: CalibrationTargets
+    calibration: CalibrationStyle
 
 
 # -- the paint store -----------------------------------------------------------------------
@@ -310,7 +311,7 @@ class ClassOptics(WaterBase):
     share: NotRequired[dict[int, F32Grid]]
 
 
-class LitCrowns(TypedDict):
+class CrownLayer(TypedDict):
     """A band's crowns lit and ready to lay over the pixel: alpha, colour, top, sunk share."""
 
     alpha: FloatGrid
@@ -359,7 +360,7 @@ class Carpet(NamedTuple):
 class PaintedSurface(Protocol):
     """What the painted painters read of the ground (``ground.PaintedGround``)."""
 
-    palette: PaintedStyle
+    palette: PaintedPalette
     albedo: list[F16Grid]
     canopy: PaintPlane
     canopy_rgb: ColourPlanes

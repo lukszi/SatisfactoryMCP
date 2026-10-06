@@ -26,13 +26,13 @@ from mapgen.palette.painted.calibration import (
     weighted_median,
 )
 from mapgen.palette.painted.shapes import (
-    CalibrationTargets,
+    CalibrationStyle,
+    CrownLayer,
     CrownOp,
     CrownTerms,
     FloatGrid,
-    LitCrowns,
+    PaintedPalette,
     PaintedScene,
-    PaintedStyle,
     PaintedSurface,
     Sampler,
     TitanTreesStyle,
@@ -180,7 +180,7 @@ def crown_ops(
 
 
 def species_targets(
-    crowns: CrownSet, style: CrownStyle, targets: Mapping[str, str], palette: PaintedStyle
+    crowns: CrownSet, style: CrownStyle, targets: Mapping[str, str], palette: PaintedPalette
 ) -> tuple[list[list[FloatGrid]], JsonObject]:
     """Every species' mips with each named species moved onto its target, and what was
     measured: one step from its colour as drawn (``crown_lab``) to the target as a crown."""
@@ -215,8 +215,8 @@ def _moved_level(level: FloatGrid, step: float, matrix: FloatGrid, style: CrownS
 
 def crown_calibration(
     crowns: CrownSet,
-    palette: PaintedStyle,
-    targets: CalibrationTargets,
+    palette: PaintedPalette,
+    targets: CalibrationStyle,
     grid: tuple[tuple[int, int], float],
     area_weight: Callable[[Sequence[str]], FloatGrid],
 ) -> CrownCalibration:
@@ -295,7 +295,7 @@ def sample_titan(
     return z, cover, nearest
 
 
-def titan_colours(palette: PaintedStyle) -> dict[int, FloatGrid]:
+def titan_colours(palette: PaintedPalette) -> dict[int, FloatGrid]:
     """The Titan trees' leaves and trunk in linear colour; black where the palette has none."""
     style: TitanTreesStyle = palette.get("titan_trees") or {}
     return {
@@ -332,11 +332,11 @@ def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> F
 def crown_layer(
     crowns: CrownTerms,
     scene: PaintedScene,
-    palette: PaintedStyle,
+    palette: PaintedPalette,
     ambient: float | np.float32,
     exposure: float | np.float32,
     ops: Sequence[tuple[FloatGrid, tuple[float, float]]] = (),
-) -> LitCrowns:
+) -> CrownLayer:
     """The crowns of a band, lit by their own domes: ``alpha``, ``colour``, ``top_m``, and
     ``sunk``, the share of each pixel's crown that stands under the water's surface.
 
@@ -369,7 +369,7 @@ def lit_crowns(
     ground: PaintedSurface,
     sample_rock: Sampler,
     exposure: float | np.float32,
-) -> LitCrowns | None:
+) -> CrownLayer | None:
     """The band's ``crown_layer`` with the ground's calibration ops on it; None without crowns."""
     crowns, palette = scene.get("crowns"), ground.palette
     if crowns is None:
@@ -378,7 +378,7 @@ def lit_crowns(
     return crown_layer(crowns, scene, palette, np.float32(palette["ambient"]), exposure, ops)
 
 
-def over_crowns(out: FloatGrid, crowns: LitCrowns) -> FloatGrid:
+def over_crowns(out: FloatGrid, crowns: CrownLayer) -> FloatGrid:
     """The crowns that stand out of the water, over the finished pixel and its water."""
     alpha = (crowns["alpha"] * (1.0 - crowns["sunk"]))[..., None]
     return out * (1.0 - alpha) + crowns["colour"] * alpha

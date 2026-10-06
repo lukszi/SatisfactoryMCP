@@ -19,8 +19,8 @@ from mapgen.palette.painted.calibration import sampled_rgb, tone
 from mapgen.palette.painted.optics import underwater
 from mapgen.palette.painted.shapes import (
     FloatGrid,
+    PaintedPalette,
     PaintedScene,
-    PaintedStyle,
     PaintedSurface,
     Sampler,
 )
@@ -111,7 +111,7 @@ def _lit_and_wet(
     return titan_over(out, scene, ground)
 
 
-def _toned(out: FloatGrid, palette: PaintedStyle) -> FloatGrid:
+def _toned(out: FloatGrid, palette: PaintedPalette) -> FloatGrid:
     """Linear light through the style's luminance shoulder, as sRGB 0..255."""
     y = np.maximum(out @ LUMA, 1e-7)
     curve = palette["tone"]

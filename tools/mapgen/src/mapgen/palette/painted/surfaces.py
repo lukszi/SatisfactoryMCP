@@ -18,8 +18,8 @@ from mapgen.palette.painted.calibration import display_to_ground, sampled_rgb
 from mapgen.palette.painted.shapes import (
     BandWater,
     FloatGrid,
+    PaintedPalette,
     PaintedScene,
-    PaintedStyle,
     PaintedSurface,
     RockFamilyEntry,
     Sampler,
@@ -57,7 +57,7 @@ def family_code(name: str, block: str) -> int:
 
 
 def family_tables(
-    families: Mapping[str, RockFamilyEntry], palette: PaintedStyle | None = None
+    families: Mapping[str, RockFamilyEntry], palette: PaintedPalette | None = None
 ) -> tuple[FloatGrid, FloatGrid, FloatGrid]:
     """By family code: the tint relative to the families' median, the top layer, and whether
     there is one. With ``palette``, its ``calibration.tops`` replace their families' tops
@@ -104,7 +104,7 @@ def family_targets(
     base_lab: FloatGrid,
     codes: U8Grid,
     targets: Mapping[str, str],
-    palette: PaintedStyle,
+    palette: PaintedPalette,
     min_cells: int,
 ) -> tuple[dict[int, list[FloatGrid]], JsonObject]:
     """Per family with a target, its rock on the rock grid, and the step measured for it.
@@ -131,7 +131,9 @@ def family_targets(
     return planes, measured
 
 
-def top_targets(top: npt.ArrayLike, targets: Mapping[str, str], palette: PaintedStyle) -> FloatGrid:
+def top_targets(
+    top: npt.ArrayLike, targets: Mapping[str, str], palette: PaintedPalette
+) -> FloatGrid:
     """The top layer table with each named family's display target, as ground colour, in
     place of its texture's mean."""
     table = np.array(top, np.float32)

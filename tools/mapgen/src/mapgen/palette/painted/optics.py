@@ -23,10 +23,10 @@ from mapgen.palette.painted.shapes import (
     BandWater,
     Carpet,
     ClassOptics,
+    CrownLayer,
     FloatGrid,
-    LitCrowns,
+    PaintedPalette,
     PaintedScene,
-    PaintedStyle,
     PaintedSurface,
     PaintMeta,
     Sampler,
@@ -56,7 +56,7 @@ WATER_TABLE_COLUMNS = (3, 3, 3, 1, 1, 3)
 _RIVER = WATER_CLASSES.index("river")
 
 
-def base_water(palette: PaintedStyle) -> WaterBase:
+def base_water(palette: PaintedPalette) -> WaterBase:
     """The palette's ocean optics, linear: what every wet pixel without a class takes."""
     water = palette["water"]
     return {
@@ -71,7 +71,7 @@ def base_water(palette: PaintedStyle) -> WaterBase:
     }
 
 
-def water_table(palette: PaintedStyle) -> FloatGrid:
+def water_table(palette: PaintedPalette) -> FloatGrid:
     """A row of linear optics per class plane value; a class the palette leaves out draws as
     the ocean, a mouth blend mixes its classes' rows by ``class_shares``."""
     water = palette["water"]
@@ -148,7 +148,7 @@ def opaque_share(
     return None
 
 
-def load_carpet(paint_dir: Path, meta: PaintMeta, palette: PaintedStyle) -> Carpet | None:
+def load_carpet(paint_dir: Path, meta: PaintMeta, palette: PaintedPalette) -> Carpet | None:
     """The seabed carpet's cover (u8) and top (metres, float16), or ``None`` without it.
 
     The rosettes are spread into patches, ``1 - exp(-gain * blurred share)``. No-data tops take
@@ -194,7 +194,7 @@ def underwater(
     sample: Sampler,
     sample_rock: Sampler,
     exposure: float | np.float32,
-    crowns: LitCrowns | None = None,
+    crowns: CrownLayer | None = None,
 ) -> FloatGrid:
     """The colour under the water surface: the bed through the class's optics, the carpet,
     the ``crowns`` under the surface, the open-sea term, and the opaque area water where its
