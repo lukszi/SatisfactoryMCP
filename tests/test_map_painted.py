@@ -14,6 +14,7 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("scipy")
 
+from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
 from mapgen.gamedata.paint import (  # noqa: E402
     component_origin,
     layer_albedo,
@@ -55,6 +56,7 @@ from mapgen.terrain.rasters import (  # noqa: E402
     is_render_only_static,
     mesh_class,
 )
+from mapgen.terrain.sample import sample_plain, taps_footprint, taps_linear  # noqa: E402
 from mapgen.tiles.compose import composite_top  # noqa: E402
 from mapgen.tiles.recipes import RECIPE  # noqa: E402
 from satisfactory_mcp.core.gameassets import provenance, versions  # noqa: E402
@@ -332,3 +334,65 @@ def test_foam_is_a_line_and_the_wet_band_sits_just_above_it():
     assert 0 < len(lit) <= 6, "a line of about a metre, not the whole flat sandbar"
     banded = wet_band(grey, water, {"m": 3.0, "tint": [0.5, 0.5, 0.5]})[3, :, 0]
     assert banded[101] < 0.3 and banded[100 + int(3.0 / spacing) + 2] == pytest.approx(0.3)
+
+
+# ------------------------------------------------- the ground on a sheet coarser than the grid
+
+
+def test_a_pixel_no_wider_than_a_texel_samples_bilinear_and_a_wider_one_its_footprint():
+    position = np.array([0.0, 3.7, 10.25, 49.0])
+    for width in (0.229, 0.9155, 1.0):
+        got, want = taps_footprint(position, width, 50), taps_linear(position, 50)
+        assert all(np.array_equal(a, b) for a, b in zip(got, want, strict=True))
+    index, weight = taps_footprint(position, 7500 / 2048, 50)
+    assert np.allclose(weight.sum(axis=0), 1.0) and index.min() >= 0 and index.max() <= 49
+    ramp = np.tile(np.arange(50, dtype=np.float32), (2, 1))
+    rows = taps_linear(np.zeros(1), 2)
+    got = sample_plain(ramp, (rows, (index, weight)))[0]
+    assert np.allclose(got[1:3], position[1:3], atol=0.05), "a slope keeps its value"
+
+
+def test_a_trail_narrower_than_the_pixel_is_drawn_at_every_phase_not_as_dots():
+    width = 7500 / 2048
+    trail = np.zeros((1, 400), np.float32)
+    trail[0, 200] = 1.0  # a path one texel wide
+    rows = taps_linear(np.zeros(1), 1)
+    seen = {"point": [], "footprint": []}
+    for phase in np.linspace(0.0, width, 9, endpoint=False):
+        position = 150.0 + phase + np.arange(30) * width
+        seen["point"].append(sample_plain(trail, (rows, taps_linear(position, 400))).sum())
+        footprint = taps_footprint(position, width, 400)
+        seen["footprint"].append(sample_plain(trail, (rows, footprint)).sum())
+    assert np.ptp(seen["point"]) > 0.5, "one sample a pixel: there at one phase, gone at another"
+    assert np.allclose(seen["footprint"], 1.0 / width, atol=1e-5)
+
+
+def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkeypatch):
+    from mapgen.tiles import compose
+
+    n = 400  # texels over the frame, 18.75 m each
+    spacing_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / n
+    height = np.full((n, n), 100, np.int16)
+    field = SimpleNamespace(
+        _height_dm=height, _prov=np.ones((n, n), np.uint8), _water_raster=lambda: None,
+        _water_quality_raster=lambda: None, x0_cm=BOUNDS_M["x_min_m"] * 100 + spacing_cm / 2,
+        y0_cm=BOUNDS_M["y_min_m"] * 100 + spacing_cm / 2, spacing_cm=spacing_cm, width=n, height=n,
+    )  # fmt: skip
+    stripes = np.tile((np.arange(n) % 4 == 0).astype(np.float32), (n, 1))
+    seen: dict = {}
+
+    def grab(scene, ground, sample, sample_rock):
+        seen.setdefault(len(scene["z_m"][0]), []).append(sample(stripes))
+        return np.zeros(scene["z_m"].shape + (3,), np.float32)
+
+    monkeypatch.setattr(compose, "painted_colours", grab)
+    ground = SimpleNamespace(rock=[np.zeros((n // 4, n // 4), np.float32)], crowns=None,
+                             water_optics=lambda taps, river=None: None)  # fmt: skip
+    borrow = (np.broadcast_to(np.int8(0), (8192, 8192)), np.zeros((n, n), np.uint8))
+    biome = {"width": 1, "area": np.zeros((1, 1), np.uint8)}
+    for size in (n // 4, n):
+        compose.render_layer("painted", field, None, biome, borrow, size, False,
+                             height_dm=height.astype(np.float32), painted=ground)  # fmt: skip
+    coarse, fine = (np.concatenate(seen[size]) for size in (n // 4, n))
+    assert np.allclose(coarse[2:-2, 2:-2], 0.25, atol=1e-5), "four texels a pixel: their mean"
+    assert set(np.unique(fine[2:-2, 2:-2]).round(4)) <= {0.0, 1.0}, "a texel a pixel: as before"
