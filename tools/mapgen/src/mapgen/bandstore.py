@@ -9,8 +9,10 @@ from __future__ import annotations
 import operator
 import os
 import struct
+import threading
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Self
 
@@ -110,7 +112,8 @@ class BandArray:
     """A read-only plane decoded a band at a time, the last ``keep`` bands kept.
 
     Indexing takes a row, a row slice, an integer array of rows, and any column index after
-    them. ``on_corrupt`` is called before a corrupt band raises.
+    them. ``on_corrupt`` is called before a corrupt band raises. Threads may share one: the
+    cache and the decoder are behind a lock.
     """
 
     ndim = 2
@@ -124,7 +127,24 @@ class BandArray:
         self.keep, self.on_corrupt = keep, on_corrupt
         self._zstd, self._zd = zstandard, zstandard.ZstdDecompressor()
         self._cache: OrderedDict[int, np.ndarray] = OrderedDict()
+        self._lock = threading.Lock()
         self.band_rows, self._offsets = self._read_table()
+
+    @contextmanager
+    def holding(self, bands: int) -> Iterator[Self]:
+        """Keep at least ``bands`` decoded inside the block, and as many as before after it."""
+        before = self._resize(max(self.keep, int(bands)))
+        try:
+            yield self
+        finally:
+            self._resize(before)
+
+    def _resize(self, keep: int) -> int:
+        with self._lock:
+            before, self.keep = self.keep, keep
+            while len(self._cache) > self.keep:
+                self._cache.popitem(last=False)
+            return before
 
     def _read_table(self) -> tuple[int, np.ndarray]:
         with open(self.path, "rb") as f:
@@ -164,6 +184,10 @@ class BandArray:
         return whole if dtype is None else whole.astype(dtype)
 
     def _band(self, k: int) -> np.ndarray:
+        with self._lock:
+            return self._decoded(k)
+
+    def _decoded(self, k: int) -> np.ndarray:
         hit = self._cache.get(k)
         if hit is not None:
             self._cache.move_to_end(k)

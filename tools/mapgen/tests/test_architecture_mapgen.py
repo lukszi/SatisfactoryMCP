@@ -69,7 +69,6 @@ FUNCTION_CEILINGS: dict[str, int] = {
     "terrain/sidecar.py::build_meta": 156,
     "artwork.py::main": 119,
     "enhance/levels.py::enhance_levels": 249,
-    "tiles/compose.py::render_layer": 222,
 }
 
 #: The entry scripts that became shims, and the ``mapgen`` command each one runs.

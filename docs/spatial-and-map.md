@@ -1875,7 +1875,8 @@ from the downsampled heights, sky view and horizons by mean.
 ### The stage
 
 `render_layer` hands the first layer's drawn heights and land weight to a `Surface` (two
-memory maps in the light's scratch, 5.4 GB at 32768). After that layer is drawn,
+memory maps in the light's scratch, 5.4 GB at 32768), each band its own rows from whichever
+thread drew it (section 40). After that layer is drawn,
 `lighting/stage.py` cuts the sheet into blocks of 16 × 16 native tiles, each with a 150 m
 halo, and a process pool computes per block: the ground's horizons and the crowns' at half
 resolution, sky view, normals, the native tiles, and the light at the default sun for the
@@ -4038,6 +4039,9 @@ trees through `cached_meshes`. Nothing that draws changed.
 
 - `BandArray` decodes a band when it is first asked for and keeps the last three. A band
   loop read spans three bands at most, in order, so each band is decoded once per layer.
+  A layer drawn on threads (section 40) shares each `BandArray` between them: a lock covers
+  the cache and the decoder, one per plane, and while the layer is drawn the plane keeps
+  `2 × threads + 2` bands, the bands in flight and a halo band either side.
 - It takes a row, a row slice, or an integer array of rows, then any column index. The
   family gather is decoded band by band. Results are read-only, as the memory maps' were.
 - It opens the file for each band and holds no handle between reads. Clearing the cache
@@ -4137,3 +4141,161 @@ planes round-trip bit for bit, so identical tiles are expected there too.
   nothing reads it after the run that wrote it, which deletes it. Its planes are dense and
   compress 2.6 times, not 20, and the bake reads them in blocks with a halo and writes some a
   block at a time from its processes. `--scratch-dir` moves it off the cache drive instead.
+
+## 40. Drawing a layer's bands on threads (2026-10-06)
+
+`render_layer` drew its 256-row bands one after another on one core. In the lit full-size run
+measured for the performance plan, the draw took 5,810 s of 11,452, and a band is bound by
+memory bandwidth more than by arithmetic: nearly every step allocates a fresh band-sized
+array. The bands now run on a pool of threads, several at once, and the tiles are the same
+bytes.
+
+### What runs where
+
+- **The bands are unchanged:** 256 rows, with `BAND_HALO` (8) rows either side, cropped. A
+  band on a thread computes exactly what it computed in turn; only when it runs changes.
+  128-row bands were tried in the research and changed pixels, so the band and block
+  geometry stay. So does the known seam where the halo is narrower than the 13 px water blur
+  at 32768: widening the halo changes pixels and is a separate item.
+- `_layer_job` builds what every band of a layer shares, once, before any band starts: the
+  arguments, the column taps, the satellite noise and the water planes. The bands only read
+  it.
+- `_draw_band` writes its own rows of the sheet and, for the first layer, its own rows of
+  the light's `Surface` (section 29). From a band's thread nothing else shared is written.
+- **The seam trace and the regime table** are measured per band on the band's thread
+  (`SeamTrace.measure`, `RegimeCoverage.measure`, which touch nothing shared) and merged by
+  the caller in band order (`merge`). The pools, the float sums and the order the provinces
+  are first seen in are the serial loop's, so the sidecar's numbers are too. `add` is
+  `merge(measure(...))`.
+- `tiles/drawpool.in_order` runs the pool. Results come back in band order, at most
+  `2 × threads` bands are submitted past the one being waited on, and a failure is raised
+  when its band's turn comes, after the bands not yet started are cancelled and the running
+  ones have finished. On one thread it is a plain loop on the caller's thread: the serial
+  path.
+
+### The band stores
+
+The draw's threads share each `BandArray` (section 39). Its cache and its zstd decoder are
+not safe to use from two threads at once, so a lock covers both: one lock per plane, so two
+planes decode at once and one plane decodes one band at a time. While a layer is drawn on N
+threads, each plane keeps `2N + 2` decoded bands (`bands_held`), because the bands in flight
+span that many stored bands with their halos. The count drops back to three when the layer
+is done. At 32768 one stored band of every plane the painted layer reads comes to about
+160 MB, so on 8 threads it holds about 2.9 GB of decoded bands; the other layers read fewer
+planes, about 125 MB a band.
+
+### How many threads
+
+`--draw-threads N`; by default 8 (`DRAW_THREADS`), and no more than the machine has cores.
+Before each layer the count is cut to what free memory holds: the free memory, less the sheet
+(3 bytes a pixel) and 2 GiB, over the peak one band in flight takes. On Windows free memory is
+the lesser of the free physical memory and the commit left, because an array commits its
+whole size when it is allocated: with other work running, the commit ran out at 17 GB while
+37 GB of RAM stood free, and an allocation failed. One more band in flight costs about
+1.9 GB, and 3.4 GB for the painted layer, at 32768 wide, scaled by the width: the working set
+measured at 1, 4 and 8 threads below, so the decoded bands it keeps are counted too. The
+performance plan had estimated 1.4 and 2.9 GB. With nothing else running, a 64 GB machine
+draws every layer on 8 threads. `1` draws the bands in turn. The run prints the count per
+layer, and the layer's `meta.json` records it as `render.draw_threads`, beside `cut_workers`.
+
+### What the threads share, audited
+
+| Shared | Why it is safe |
+| --- | --- |
+| The heights, lattices, water and void planes, and the rasters | Read only: numpy arrays, `r` memory maps, or band stores whose bands are read-only |
+| The field | Its planes are decoded when it loads; the water planes are read in `_layer_job`, before any band |
+| `PaintedGround`, `ReliefGround`, `RiverWater`, `OpenSea` | Built before the draw. The crowns' calibrated sprites, the water classes and the family targets are written in setup, never by a band |
+| Random numbers | The satellite noise comes from a seeded generator, once per layer in `_layer_job`; the moss patches hash each pixel's position |
+| numpy's error state | Per thread since numpy 2; the band code sets no warnings filters, which are process-wide |
+| Palettes and colour tables | Module constants, read only |
+| The sheet and the light's surface | Each band writes only its own rows |
+
+### The GIL
+
+The band's hot calls are numpy and scipy, and they release the GIL. Measured on this
+machine (32 logical cores) with one 32768 band, 272 × 32768 float32: eight calls in turn
+against eight at once on eight threads.
+
+| Call | In turn, s | On 8 threads, s | Faster |
+| --- | --- | --- | --- |
+| `(a * b + a) / (b + 1)` | 0.165 | 0.107 | 1.55× |
+| `np.where` | 0.114 | 0.037 | 3.1× |
+| `np.clip`, `astype(uint8)` | 0.141 | 0.052 | 2.7× |
+| `np.gradient` | 0.268 | 0.123 | 2.2× |
+| Column gather `a[:, idx]` (the samplers) | 0.399 | 0.061 | 6.5× |
+| Boolean compaction `a[mask]` | 0.313 | 0.059 | 5.3× |
+| `np.sqrt`, `**`, `np.cbrt` | 1.300 | 0.269 | 4.8× |
+| `(N, 3) @ (3, 3)` (OKLab) | 0.267 | 0.073 | 3.7× |
+| `ndimage.gaussian_filter`, σ 13 px (the water edge) | 3.907 | 0.676 | 5.8× |
+| `ndimage.uniform_filter` 3 | 1.070 | 0.177 | 6.1× |
+| `ndimage.maximum_filter1d` (the seam trace) | 0.432 | 0.097 | 4.4× |
+| `np.unique` on bytes (the regime table) | 0.175 | 0.036 | 4.8× |
+| zstd, one 35 MB band | 0.275 | 0.067 | 4.1× |
+
+None runs at the speed of one thread, which is what a call holding the GIL would do. The
+plain arithmetic gains least, because it waits on memory.
+
+What holds the GIL is Python-level looping: the crowns are stamped tree by tree, each stamp
+a few small array operations, and the waterfalls and the regime table's provinces loop the
+same way. At full size a tree covers hundreds of pixels and the painted layer still draws
+2.8 to 3.7 times faster on 8 threads. At 2048 a tree is a few pixels: profiled there, 106,237
+stamps took 8.7 s of the painted layer's 24.1 s, and it draws only 1.65 times faster on 8
+threads (24.1 s against 14.6 s).
+
+### Measured (2026-10-06, the 32768 sheet, build 502094)
+
+A window of the full-size sheet: rows 12288 to 16384, which is 16 bands across the middle of
+the map, and columns 8192 to 24576, half the width so that 16 threads fit in memory beside
+other work. It was drawn through the run's own preparation, unlit and without the light's
+surface, with every raster the bands read cut to the window and stored as a band store, so
+the threads shared `BandArray`s as in a full render. `master` drew it in turn; this change
+drew it on 1, 4, 8 and 16 threads, in one process, one after the other. Seconds, and how many
+times faster than this change on one thread:
+
+| Layer | `master` | 1 thread | 4 | 8 | 16 |
+| --- | --- | --- | --- | --- | --- |
+| terrain | 51.1 | 52.1 | 24.8 (2.1×) | 20.6 (2.5×) | 19.3 (2.7×) |
+| satellite | 56.7 | 61.3 | 27.8 (2.2×) | 21.3 (2.9×) | 18.5 (3.3×) |
+| painted | 160.7 | 158.1 | 65.0 (2.4×) | 43.0 (3.7×) | not run |
+| relief | 57.3 | 57.9 | 23.5 (2.5×) | 19.8 (2.9×) | 21.0 (2.8×) |
+| relief-dark | 58.5 | 59.7 | 22.5 (2.7×) | 19.2 (3.1×) | 19.4 (3.1×) |
+
+- **Every array is byte-identical** by SHA-256: each layer's `master` draw and its four
+  threaded draws.
+- Painted on 8 threads and satellite on 16 ran in a second process, when the machine had the
+  memory free. Painted on 16 threads needs about 28 GB at half width, so it ran on a quarter
+  of the width instead (columns 12288 to 20480): 60.8 s on one thread, 21.8 s on 8 and 21.7 s
+  on 16, all three byte-identical.
+- The machine ran other renders and tests throughout, so single timings carry some noise;
+  each row was measured in one process within minutes.
+- **Memory.** The peak working set over the process's own grew by 0.8 to 1.0 GB a thread at
+  half width, and by 1.5 to 1.7 GB for the painted layer, the two more decoded bands per
+  plane each thread brings included. Doubled for the full width, that is `BAND_BYTES`.
+- **At full size.** Per pixel, the five layers take 6,230 s on one thread and 1,980 s on 8,
+  about 3.1 times faster. Scaled to the 5,810 s the draw took in the measured full run, it
+  would be about 1,850 s, about 66 minutes less. 16 threads would save under a minute more
+  for twice the memory, so 8 is the default.
+
+### Checked at 2048 (2026-10-06)
+
+The same 2048 render, all five layers, lit, `--workers 2`, ran from `master` and then from
+this change, one after the other, with the field and paint copied off the data drive. The
+second drew every layer on 8 threads.
+
+- All 1,131 files are byte-identical by SHA-256: 955 PNG tiles across `tiles/`, `tiles@2x/`
+  and `unlit/`, the 170 WebP tiles of the light pyramid, and the six sidecars once their
+  timings are left out.
+- The raw sidecars differ only in timings and the new `render.draw_threads`.
+- The draw took 13.2, 10.4, 30.0, 10.7 and 10.8 s for terrain, satellite, painted, relief and
+  relief-dark before, and 3.8, 3.9, 21.4, 3.6 and 3.7 s after, on a machine running other
+  work.
+- Both runs peaked at a working set of 8.0 GB, the run's setup rather than its draw.
+
+### Known limits
+
+- More threads than 8 drew little faster, and relief slower: the bands wait on memory, not
+  on cores.
+- The decoded bands the threads need, and the bands in flight, are memory the serial loop
+  did not take; the thread count is cut to fit, and `--draw-threads` lowers it further.
+- The layers still recompute the same heights, water and meshes band by band, each layer
+  again. Drawing all layers in one pass over the bands is the next step, and a larger one.

@@ -120,6 +120,7 @@ from mapgen.terrain.sample import direct_weight, taps_cubic, taps_pchip
 from mapgen.terrain.sidecar import GENERATOR_VERSION
 from mapgen.tiles.borrowmeta import borrow_metadata
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
+from mapgen.tiles.drawpool import add_draw_flags, draw_threads
 from mapgen.tiles.extras import KEPT_CACHE_DIRS, load_extras
 from mapgen.tiles.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.tiles.lit import add_light_flags, claim_scratch, light_run
@@ -153,10 +154,7 @@ from satisfactory_mcp.core.gameassets.provenance import (
     provenance_block,
     sha256_hex,
 )
-from satisfactory_mcp.core.gameassets.pyramid import (
-    TILES_DIR_NAME,
-    PyramidError,
-)
+from satisfactory_mcp.core.gameassets.pyramid import TILES_DIR_NAME, PyramidError
 from satisfactory_mcp.core.gameassets.versions import (
     READER_VERSIONS,
     RENDER_RECIPES,
@@ -334,6 +332,7 @@ def main() -> int:
         help="replace layers this run cannot show were drawn from the field now on disk",
     )
     add_light_flags(parser)
+    add_draw_flags(parser)
     parser.add_argument("--quiet", action="store_true", help="no per-band progress lines")
     add_in_use_flag(parser)
     args = parser.parse_args()
@@ -822,7 +821,8 @@ def main() -> int:
         regimes = RegimeCoverage() if direct is not None else None
         measured: dict = {}
         for layer in layers:
-            print(f"drawing {layer} at {args.size}x{args.size}")
+            threads = draw_threads(args.draw_threads, layer, args.size)
+            print(f"drawing {layer} at {args.size}x{args.size} on {threads} thread(s)")
             print(encode_stage(f"draw:{layer}", 0.0), flush=True)
             started = time.time()
             sheet = render_layer(
@@ -852,6 +852,7 @@ def main() -> int:
                 regimes=regimes if not measured else None,
                 unlit=light is not None,
                 surface=light.surface_for() if light else None,
+                threads=threads,
             )
             drew = time.time() - started
             if seam is not None and not measured:
@@ -934,6 +935,7 @@ def main() -> int:
                     "rivers": extras.river_meta or None,
                 },
                 "seconds_to_draw": round(drew, 1),
+                "draw_threads": threads,
                 "seconds_to_cut": round(cut, 1),
                 "cut_workers": workers,
                 **({"parallel_cutter_check": parallel_check} if parallel_check else {}),

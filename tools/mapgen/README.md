@@ -116,6 +116,9 @@ as the artwork. The main options:
   was cut for another size or build, so a palette change never turns into a full render.
 - `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
   with its own digest (§30).
+- `--draw-threads N` draws N bands of a layer at once. The default is 8, no more than the
+  cores, and fewer when free memory holds fewer bands in flight; `1` draws them in turn. The
+  tiles are the same bytes either way (§40).
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
@@ -231,7 +234,10 @@ measuring accumulators, passed for the first layer only since every layer draws 
 applies (`None` keeps recipe 5's water). `painted` and `relief` are the prepared grounds of
 those styles, built once per run. `falls` are the prepared waterfalls and `rivers` the
 `RiverWater` whose ribbons replace the field's river water. `window` draws part of the sheet,
-which is how crops are compared.
+which is how crops are compared. `threads` draws that many bands at once to the same bytes
+(`tiles/drawpool.py`, `--draw-threads`): the bands share the layer's inputs read-only, each
+writes its own rows, and their seam and regime measurements are merged in band order
+(docs/spatial-and-map.md section 40).
 
 On a sheet coarser than the paint's 1 m grid (4096 px and below) the painted layer samples
 its ground over each pixel's footprint (`terrain.sample.taps_footprint`). One bilinear sample
