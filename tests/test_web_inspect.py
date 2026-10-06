@@ -204,7 +204,7 @@ def test_inspect_counts_every_pickup_within_reach_not_just_the_five_it_lists(cli
     from satisfactory_mcp.domain.spatial import surroundings
 
     x_m, y_m = IN_THE_FIELD
-    found = surroundings._pickups_near(state, x_m * 100, y_m * 100)
+    found = surroundings.pickups_near(state, x_m * 100, y_m * 100)
     body = client.get("/api/inspect", params={"x_m": x_m, "y_m": y_m}).json()
     assert body["pickups_within"] == len(found)
     assert body["pickups_within_spoilers"] == sum(1 for p in found if p["spoiler"])

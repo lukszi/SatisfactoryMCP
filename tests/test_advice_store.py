@@ -11,7 +11,7 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.core.schema import NewerSchema
-from satisfactory_mcp.domain.advice import rules, store
+from satisfactory_mcp.domain.advice import advisory, store
 
 WORLD = "W1"
 BY = {"kind": "page", "client": "", "pid": 1}
@@ -25,11 +25,11 @@ def advice_dir(tmp_path, monkeypatch):
 
 
 def _adv(members=("M_1", "M_2"), kind="starved", weight=None, subject="tor factory"):
-    return rules.Advisory(
-        key=rules.key_for(kind, "factory", subject),
+    return advisory.Advisory(
+        key=advisory.key_for(kind, "factory", subject),
         id="",
         kind=kind,
-        severity=rules.SEVERITY[kind],
+        severity=advisory.SEVERITY[kind],
         subject_kind="factory",
         subject=subject,
         text="t",

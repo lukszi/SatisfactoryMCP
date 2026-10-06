@@ -23,8 +23,9 @@ Backend paths are relative to `src/satisfactory_mcp/`; frontend paths to
 
 | Module | Does |
 |---|---|
-| `domain/advice/rules.py` | The pass: `compute(st, biomass=, headroom=, box_fed=, spoilers=)` returns every firing row, ranked; `with_ids`, `key_for`, `ids_for`, `capped` |
-| `domain/advice/store.py` | Dismissed and snoozed rows, one file per world: `read`, `hide`, `restore`, `split`, `worse` |
+| `domain/advice/advisory.py` | The row contract: `Advisory`, `Spot`, the kinds, severities and caps, `key_for`, `ids_for`, `capped` |
+| `domain/advice/rules.py` | The pass: `compute(st, biomass=, headroom=, box_fed=, spoilers=)` returns every firing row, ranked; `with_ids` |
+| `domain/advice/store.py` | Dismissed and snoozed rows, one file per world: `read`, `hide`, `restore`, `split`, `got_worse` |
 | `domain/advice/__init__.py` | `current(st, …)`: the shared settings read, the rows cached, the store applied. The page and chat both read through it |
 | `interfaces/web/routers/advice.py` | `GET /api/advice`, `POST /api/advice/hidden`, `DELETE /api/advice/hidden/{adv_id}` |
 | `presenters/text/advice.py` | The `ui_context` line, the `world_summary` block, the `dismissed=` grammar |
@@ -75,7 +76,7 @@ starvation by default (hand-fed boxes are temporary setups), and "unlocking X ch
 1. Order is `(severity, kind, -weight, subject)`. Severity is act, consider, note; kind order
    is the table above. Weight is machines, MW for K4 and K5, the line count for K8 and the
    pickup count for K9. The same save always gives the same list.
-2. The card shows 5 rows and at most 3 of one kind (`rules.capped`; `advice.ts` applies the
+2. The card shows 5 rows and at most 3 of one kind (`advisory.capped`; `advice.ts` applies the
    same rule). The rest fold into `+N more (2 starved, power, …)`, a link that expands in place.
 3. `key` = `<kind>|<subject kind>:<subject>`, a `|` inside the subject written `%7C`; world rows
    are `<kind>|world`. A plan's subject is its name.

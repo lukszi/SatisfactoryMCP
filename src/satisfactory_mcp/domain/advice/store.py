@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ... import config
 from ...core import atomic, filelock, schema
-from .rules import SEVERITIES, Advisory
+from .advisory import SEVERITIES, Advisory
 
 __all__ = [
     "HOURS",
@@ -23,12 +23,12 @@ __all__ = [
     "AdviceError",
     "AdviceMissing",
     "AdviceStale",
+    "got_worse",
     "hide",
     "path_for",
     "read",
     "restore",
     "split",
-    "worse",
 ]
 
 SCHEMA = 1
@@ -56,8 +56,7 @@ class AdviceStale(AdviceError):
 
 
 def path_for(world_id: str) -> Path:
-    safe = "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"
-    return config.advice_dir() / f"{safe}.json"
+    return config.advice_dir() / f"{config.world_file_stem(world_id)}.json"
 
 
 def _empty() -> dict:
@@ -169,7 +168,7 @@ def restore(world_id: str, key: str, rev: int | None = None) -> dict:
     return _write(world_id, change)
 
 
-def worse(adv: Advisory, entry: dict) -> bool:
+def got_worse(adv: Advisory, entry: dict) -> bool:
     """A machine not in the hidden set joined, the severity rose, or (past the id cap, or
     with no members at all) the weight grew by half."""
     stored = entry.get("severity")
@@ -192,7 +191,7 @@ def split(items: list[Advisory], data: dict, play_s: float):
             active.append((adv, False, 0))
             continue
         rev = int(entry.get("rev") or 0)
-        if worse(adv, entry):
+        if got_worse(adv, entry):
             active.append((adv, True, rev))
             continue
         until = entry.get("until_play_s")

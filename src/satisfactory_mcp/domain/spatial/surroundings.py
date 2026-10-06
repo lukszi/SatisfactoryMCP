@@ -21,6 +21,7 @@ __all__ = [
     "PointDescription",
     "describe_point",
     "nearest_nodes",
+    "pickups_near",
     "player_surroundings",
 ]
 
@@ -119,7 +120,7 @@ def _fields_near(st, game, x: float, y: float) -> list[node_search.FieldView]:
     return out
 
 
-def _pickups_near(st, x: float, y: float) -> list[dict]:
+def pickups_near(st, x: float, y: float) -> list[dict]:
     table = st.collectibles
     if table is None:
         return []
@@ -192,7 +193,7 @@ def describe_point(
         hint_z_cm=hint_z_cm,
     )
     fields = _fields_near(st, game, x, y)
-    pickups = _pickups_near(st, x, y) if st is not None else []
+    pickups = pickups_near(st, x, y) if st is not None else []
     skew = nodes_mod.skew_for_save(st.header if st else None, table)
     return PointDescription(
         x=x,

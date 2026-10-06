@@ -7,12 +7,12 @@ a score.
 
 from __future__ import annotations
 
-import hashlib
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import replace
 
+from ...core.saveio.records import instance_leaf, iter_machine_records
 from ...core.singleflight import Singleflight
-from ...core.text import plural
+from ...core.text import ellipsize, plural
 from ..factories import health
 from ..planning.progress.diff_service import match_scope
 from ..planning.solver.prepare import prepare
@@ -21,79 +21,21 @@ from ..planning.stored.planlog import PlanLog, PlanLogError
 from ..spatial import nodes as nodes_mod
 from ..spatial import regions, surroundings
 from ..world.headlift import head_lift
+from .advisory import SEVERITY, SPOTS_SENT, TEXT_MAX, TOOL_MAX, Advisory, Spot, ids_for, key_for
 
-__all__ = [
-    "HEADROOM_SHARE",
-    "KINDS",
-    "PER_KIND",
-    "SEVERITIES",
-    "SEVERITY",
-    "TONE",
-    "VISIBLE",
-    "WORDS",
-    "Advisory",
-    "Spot",
-    "capped",
-    "compute",
-    "ids_for",
-    "key_for",
-    "with_ids",
-]
+__all__ = ["HEADROOM_SHARE", "RuleContext", "compute", "plan_heads", "with_ids"]
 
-SEVERITIES = ("act", "consider", "note")
-TONE = {"act": "blocked", "consider": "mid", "note": "muted"}
-#: Rank order, which is also the order of the kinds in docs/advisors_contract.md §2.
-KINDS = (
-    "unconnected",
-    "dead_node",
-    "starved",
-    "power",
-    "underclock",
-    "headroom",
-    "no_recipe",
-    "plan",
-    "pickups",
-    "box_empty",
-)
-SEVERITY = {
-    "unconnected": "act",
-    "dead_node": "act",
-    "starved": "act",
-    "power": "act",
-    "underclock": "consider",
-    "headroom": "consider",
-    "no_recipe": "consider",
-    "plan": "consider",
-    "pickups": "note",
-    "box_empty": "note",
-}
-#: The chip word of each kind, on the page and in chat.
-WORDS = {
-    "unconnected": "unconnected",
-    "dead_node": "no node",
-    "starved": "starved",
-    "power": "power",
-    "underclock": "underclock",
-    "headroom": "headroom",
-    "no_recipe": "no recipe",
-    "plan": "plan",
-    "pickups": "pickups",
-    "box_empty": "box empty",
-}
-VISIBLE = 5
-PER_KIND = 3
 HEADROOM_SHARE = 0.05
-SPOTS_SENT = 50
-TEXT_MAX = 90
-TOOL_MAX = 160
 FULL_CLOCK = 0.999
 #: Pickup kinds a row never counts: hard drives are hoarded on purpose (contract §2, K9).
 NO_PICKUP = frozenset({"hard_drive", "crashed_drop_pod"})
 RARE_FIRST = ("somersloop", "mercer_sphere", "power_slug_purple", "power_slug_yellow")
+#: Recipe depth of an item no recipe reaches; sorts it after every real one.
+UNKNOWN_DEPTH = 99
 #: The head-lift model per projection; the entry holds the projection, the key is its id().
-_HEADS = Singleflight(maxsize=3)
+_HEAD_LIFT_CACHE = Singleflight(maxsize=3)
 
-STORAGE = (
+STORAGE_CLASS_PREFIXES = (
     "Build_StorageContainer",
     "Build_StorageIntegrated",
     "Build_StoragePlayer",
@@ -103,98 +45,22 @@ STORAGE = (
 )
 
 
-@dataclass(frozen=True)
-class Spot:
-    """One place a row names: a machine (``instance`` its leaf) or a pickup (``instance`` "")."""
-
-    instance: str
-    name: str
-    x_m: float | None
-    y_m: float | None
-
-
-@dataclass(frozen=True)
-class Advisory:
-    key: str
-    id: str
-    kind: str
-    severity: str
-    subject_kind: str
-    subject: str
-    text: str
-    tool_text: str
-    weight: float
-    members: tuple[str, ...]
-    spots: tuple[Spot, ...]
-    bbox_m: tuple[float, float, float, float] | None
-    lines: tuple[str, ...]
-    next_call: str
-    seed: str | None
-    reveal: tuple[str, ...]
-    plan: str | None
-    source: str
-
-    @property
-    def tone(self) -> str:
-        return TONE[self.severity]
-
-    def rank(self) -> tuple:
-        return (
-            SEVERITIES.index(self.severity),
-            KINDS.index(self.kind),
-            -self.weight,
-            self.subject,
-        )
-
-
-def key_for(kind: str, subject_kind: str, subject: str) -> str:
-    """``<kind>|<subject kind>:<subject>``; a ``|`` inside the subject is written ``%7C``."""
-    if subject_kind == "world":
-        return f"{kind}|world"
-    return f"{kind}|{subject_kind}:{subject.replace('|', '%7C')}"
-
-
-def ids_for(keys) -> dict[str, str]:
-    """``adv:`` plus four hex of sha1(key); keys sharing a prefix get six hex each."""
-    keys = sorted(set(keys))
-    full = {k: hashlib.sha1(k.encode("utf-8")).hexdigest() for k in keys}
-    short = Counter(h[:4] for h in full.values())
-    return {k: "adv:" + (h[:4] if short[h[:4]] == 1 else h[:6]) for k, h in full.items()}
-
-
-def capped(rows: list, visible: int = VISIBLE, per_kind: int = PER_KIND) -> tuple[list, list]:
-    """``(shown, rest)``: the first rows a card shows, at most ``per_kind`` of one kind and
-    ``visible`` in all, keeping rank order. advice.ts applies the same rule."""
-    per: Counter = Counter()
-    shown, rest = [], []
-    for row in rows:
-        per[row.kind] += 1
-        (shown if per[row.kind] <= per_kind and len(shown) < visible else rest).append(row)
-    return shown, rest
-
-
-def _leaf(text) -> str:
-    return str(text or "").rsplit(".", 1)[-1]
-
-
-def _cut(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
-
-
-def _bare(cause: str) -> str:
+def _cause_item(cause: str) -> str:
+    """The item a health cause names, without its ``(detail)``."""
     return cause.split(" (", 1)[0]
 
 
-def _names(name: str, n: int) -> str:
+def _plural_building_name(name: str, count: int) -> str:
+    """``Miner Mk.2`` -> ``Miners Mk.2``: the tier mark stays after the plural."""
     head, mark, tail = name.partition(" Mk.")
-    return plural(head, n) + mark + tail if mark else plural(name, n)
+    return plural(head, count) + mark + tail if mark else plural(name, count)
 
 
-def _verb(n: int, one: str, many: str) -> str:
-    return one if n == 1 else many
+def _verb(count: int, one: str, many: str) -> str:
+    return one if count == 1 else many
 
 
-def _list(items: list[str], shown: int = 2) -> str:
+def _short_list(items: list[str], shown: int = 2) -> str:
     out = ", ".join(items[:shown])
     return out + (f" +{len(items) - shown}" if len(items) > shown else "")
 
@@ -203,22 +69,21 @@ def _mw(value: float) -> str:
     return f"{value:,.0f}"
 
 
-class _World:
+class RuleContext:
     """What every rule reads: one world-wide ``assess``, owners, positions and depths."""
 
     def __init__(self, st) -> None:
         self.st = st
-        self.g = st.game
+        self.game = st.game
         self.records: dict[str, tuple[str, dict]] = {}
-        for group in ("machines", "extractors", "generators"):
-            for r in st.projection.get(group, ()):
-                self.records[_leaf(r["instance"])] = (group, r)
-        heads = _HEADS.get(
-            (id(st.projection), id(self.g)),
-            lambda: (st.projection, self.g, head_lift(st.projection, self.g, st.graph)),
+        for group, leaf, record in iter_machine_records(st.projection):
+            self.records[leaf] = (group, record)
+        lift = _HEAD_LIFT_CACHE.get(
+            (id(st.projection), id(self.game)),
+            lambda: (st.projection, self.game, head_lift(st.projection, self.game, st.graph)),
         )[2]
         self.report = health.assess(
-            "world", list(self.records), self.g, st.projection, st.graph, st.physical, heads
+            "world", list(self.records), self.game, st.projection, st.graph, st.physical, lift
         )
         self.owner: dict[str, str] = {}
         for label in st.labels.labels:
@@ -227,13 +92,13 @@ class _World:
         self.regions = regions.load_regions()
         self._region: dict[str, str] = {}
         self._depth: dict[str, int] = {}
-        self._by_name = {self.g.item_name(c): c for c in self.g.items}
+        self._by_name = {self.game.item_name(c): c for c in self.game.items}
 
     def spot(self, leaf: str) -> Spot:
-        group_rec = self.records.get(leaf)
-        rec = group_rec[1] if group_rec else {}
-        pos = rec.get("pos")
-        name = self.g.building_name(rec.get("cls")) or str(rec.get("cls") or "machine")
+        group_record = self.records.get(leaf)
+        record = group_record[1] if group_record else {}
+        pos = record.get("pos")
+        name = self.game.building_name(record.get("cls")) or str(record.get("cls") or "machine")
         if not pos:
             return Spot(leaf, name, None, None)
         return Spot(leaf, name, round(pos[0] / 100.0, 1), round(pos[1] / 100.0, 1))
@@ -251,28 +116,33 @@ class _World:
         """Steps from a raw resource by standard recipes; lower is rawer."""
         cls = self._by_name.get(item_name)
         if cls is None:
-            return 99
+            return UNKNOWN_DEPTH
         return self._depth_of(cls, set())
 
     def _depth_of(self, cls: str, seen: set) -> int:
         if cls in self._depth:
             return self._depth[cls]
-        item = self.g.items.get(cls)
+        item = self.game.items.get(cls)
         if item is not None and item.is_resource:
             self._depth[cls] = 0
             return 0
         if cls in seen:
-            return 99
+            return UNKNOWN_DEPTH
         seen.add(cls)
         best = None
-        for r in self.g.recipes.values():
-            if r.kind != "part" or r.is_alternate or r.is_event or r.machine is None:
+        for recipe in self.game.recipes.values():
+            if (
+                recipe.kind != "part"
+                or recipe.is_alternate
+                or recipe.is_event
+                or recipe.machine is None
+            ):
                 continue
-            if not any(p.item == cls for p in r.products):
+            if not any(p.item == cls for p in recipe.products):
                 continue
-            if any(i.item == cls for i in r.ingredients):
+            if any(i.item == cls for i in recipe.ingredients):
                 continue
-            step = 1 + max((self._depth_of(i.item, seen) for i in r.ingredients), default=0)
+            step = 1 + max((self._depth_of(i.item, seen) for i in recipe.ingredients), default=0)
             best = step if best is None else min(best, step)
         seen.discard(cls)
         self._depth[cls] = 0 if best is None else best
@@ -285,13 +155,14 @@ def _where(subject_kind: str, subject: str) -> str:
     return f"in {subject}, outside factories"
 
 
-def _count(w: _World, leaves: list[str]) -> str:
-    classes = {(w.records.get(m, ("", {}))[1]).get("cls") for m in leaves}
-    n = len(leaves)
+def _machines_phrase(ctx: RuleContext, leaves: list[str]) -> str:
+    """``3 Foundries`` when the machines share a building, else ``3 machines``."""
+    classes = {(ctx.records.get(m, ("", {}))[1]).get("cls") for m in leaves}
+    count = len(leaves)
     if len(classes) == 1:
-        name = w.g.building_name(next(iter(classes))) or "machine"
-        return f"{n} {_names(name, n)}"
-    return f"{n} {plural('machine', n)}"
+        name = ctx.game.building_name(next(iter(classes))) or "machine"
+        return f"{count} {_plural_building_name(name, count)}"
+    return f"{count} {plural('machine', count)}"
 
 
 def _bbox(spots) -> tuple[float, float, float, float] | None:
@@ -312,7 +183,7 @@ def _health_call(subject_kind: str, subject: str, bbox) -> str:
 
 
 def _row(
-    w: _World | None,
+    ctx: RuleContext | None,
     kind: str,
     subject_kind: str,
     subject: str,
@@ -330,7 +201,7 @@ def _row(
     source: str,
 ) -> Advisory:
     if spots is None:
-        spots = [w.spot(m) for m in members] if w is not None else []
+        spots = [ctx.spot(m) for m in members] if ctx is not None else []
     return Advisory(
         key=key_for(kind, subject_kind, subject),
         id="",
@@ -338,13 +209,13 @@ def _row(
         severity=SEVERITY[kind],
         subject_kind=subject_kind,
         subject=subject,
-        text=_cut(text, TEXT_MAX),
-        tool_text=_cut(tool_text, TOOL_MAX),
+        text=ellipsize(text, TEXT_MAX),
+        tool_text=ellipsize(tool_text, TOOL_MAX),
         weight=float(weight),
         members=tuple(members),
         spots=tuple(spots[:SPOTS_SENT]),
         bbox_m=_bbox(spots),
-        lines=tuple(_cut(line, TOOL_MAX) for line in lines[:3]),
+        lines=tuple(ellipsize(line, TOOL_MAX) for line in lines[:3]),
         next_call=next_call,
         seed=seed,
         reveal=reveal,
@@ -356,219 +227,268 @@ def _row(
 # ------------------------------------------------------------------ machine rules
 
 
-def _unconnected(m: health.MachineHealth) -> bool:
-    if not m.feeds:
+def _unconnected(machine: health.MachineHealth) -> bool:
+    if not machine.feeds:
         return False
     by_item: dict[str, list[health.Feed]] = {}
-    for f in m.feeds:
-        by_item.setdefault(f.item, []).append(f)
-    for rows in by_item.values():
-        if all(f.verdict == health.NOTHING for f in rows):
+    for feed in machine.feeds:
+        by_item.setdefault(feed.item, []).append(feed)
+    for feeds in by_item.values():
+        if all(f.verdict == health.NOTHING for f in feeds):
             continue
-        if any(f.verdict == health.UNFED for f in rows):
+        if any(f.verdict == health.UNFED for f in feeds):
             continue
-        if rows[0].medium == "pipe" and rows[0].rung == health.CONNECTION:
+        if feeds[0].medium == "pipe" and feeds[0].rung == health.CONNECTION:
             continue
         return False
     return True
 
 
-def _box_fed(m: health.MachineHealth) -> bool:
-    return bool(m.feeds) and all(f.far.startswith(STORAGE) for f in m.feeds)
+def _box_fed(machine: health.MachineHealth) -> bool:
+    return bool(machine.feeds) and all(
+        f.far.startswith(STORAGE_CLASS_PREFIXES) for f in machine.feeds
+    )
 
 
-def _grouped(w: _World, leaves) -> dict[tuple[str, str], list[str]]:
+def _grouped(ctx: RuleContext, leaves) -> dict[tuple[str, str], list[str]]:
     out: dict[tuple[str, str], list[str]] = {}
     for leaf in leaves:
-        out.setdefault(w.subject(leaf), []).append(leaf)
+        out.setdefault(ctx.subject(leaf), []).append(leaf)
     return out
 
 
-def _items(w: _World, ms: list[health.MachineHealth]) -> list[str]:
-    counts = Counter(_bare(c) for m in ms for c in m.cause)
-    return sorted(counts, key=lambda i: (w.depth(i), -counts[i], i))
+def _missing_items_rawest_first(
+    ctx: RuleContext, machines: list[health.MachineHealth]
+) -> list[str]:
+    counts = Counter(_cause_item(c) for m in machines for c in m.cause)
+    return sorted(counts, key=lambda item: (ctx.depth(item), -counts[item], item))
 
 
-def _machine_rows(w: _World, box_fed: bool) -> list[Advisory]:
-    out: list[Advisory] = []
-    by_leaf = {m.instance: m for m in w.report.machines}
+def _split_starved(ctx: RuleContext) -> tuple[list, list, list]:
+    """Starved non-generators as ``(unconnected, box-fed only, other starved)``."""
     starved = [
         m
-        for m in w.report.machines
-        if m.state == "starved" and w.records[m.instance][0] != "generators"
+        for m in ctx.report.machines
+        if m.state == "starved" and ctx.records[m.instance][0] != "generators"
     ]
-    cut = [m for m in starved if _unconnected(m)]
-    boxed = [m for m in starved if m not in cut and _box_fed(m)]
-    pool = [m for m in starved if m not in cut and m not in boxed]
+    unconnected = [m for m in starved if _unconnected(m)]
+    box_fed_only = [m for m in starved if m not in unconnected and _box_fed(m)]
+    other_starved = [m for m in starved if m not in unconnected and m not in box_fed_only]
+    return unconnected, box_fed_only, other_starved
 
-    for (sk, subject), leaves in sorted(_grouped(w, [m.instance for m in cut]).items()):
-        ms = [by_leaf[x] for x in leaves]
-        items = _items(w, ms)
-        who = _count(w, leaves)
-        out.append(
+
+def _unconnected_rows(ctx: RuleContext, unconnected: list, by_leaf: dict) -> list[Advisory]:
+    rows = []
+    grouped = _grouped(ctx, [m.instance for m in unconnected])
+    for (subject_kind, subject), leaves in sorted(grouped.items()):
+        machines = [by_leaf[leaf] for leaf in leaves]
+        items = _missing_items_rawest_first(ctx, machines)
+        who = _machines_phrase(ctx, leaves)
+        where = _where(subject_kind, subject)
+        rows.append(
             _row(
-                w,
+                ctx,
                 "unconnected",
-                sk,
+                subject_kind,
                 subject,
-                text=f"nothing brings {_list(items)} to {who} {_where(sk, subject)}",
-                tool_text=f"no belt or pipe brings {', '.join(items)} to {who} "
-                f"{_where(sk, subject)}",
+                text=f"nothing brings {_short_list(items)} to {who} {where}",
+                tool_text=f"no belt or pipe brings {', '.join(items)} to {who} {where}",
                 weight=len(leaves),
                 members=leaves,
-                lines=[f"missing: {', '.join(sorted({c for m in ms for c in m.cause}))}"],
+                lines=[f"missing: {', '.join(sorted({c for m in machines for c in m.cause}))}"],
                 next_call=f"trace_upstream seed={leaves[0]}",
                 seed=leaves[0],
                 source="health.assess",
             )
         )
+    return rows
 
-    for (sk, subject), leaves in sorted(_grouped(w, [m.instance for m in boxed]).items()):
-        if not box_fed:
-            break
-        who = _count(w, leaves)
-        out.append(
+
+def _box_empty_rows(ctx: RuleContext, box_fed_only: list, by_leaf: dict) -> list[Advisory]:
+    rows = []
+    grouped = _grouped(ctx, [m.instance for m in box_fed_only])
+    for (subject_kind, subject), leaves in sorted(grouped.items()):
+        who = _machines_phrase(ctx, leaves)
+        where = _where(subject_kind, subject)
+        items = _missing_items_rawest_first(ctx, [by_leaf[leaf] for leaf in leaves])
+        rows.append(
             _row(
-                w,
+                ctx,
                 "box_empty",
-                sk,
+                subject_kind,
                 subject,
-                text=f"{who} {_where(sk, subject)} emptied the box that feeds "
+                text=f"{who} {where} emptied the box that feeds "
                 + _verb(len(leaves), "it", "them"),
-                tool_text=f"{who} {_where(sk, subject)} starve, fed only from a storage box "
-                f"that is empty of {', '.join(_items(w, [by_leaf[x] for x in leaves]))}",
+                tool_text=f"{who} {where} starve, fed only from a storage box "
+                f"that is empty of {', '.join(items)}",
                 weight=len(leaves),
                 members=leaves,
-                next_call=_health_call(sk, subject, _bbox([w.spot(x) for x in leaves])),
+                next_call=_health_call(
+                    subject_kind, subject, _bbox([ctx.spot(leaf) for leaf in leaves])
+                ),
                 seed=leaves[0],
                 source="health.assess",
             )
         )
+    return rows
 
-    pool, under = _underclock(w, pool)
-    out += under
 
+def _blocked_by_item(ctx: RuleContext) -> dict[str, Counter]:
+    """Blocked machines per item they hold, counted by subject."""
     blocked: dict[str, Counter] = {}
-    for m in w.report.machines:
-        if m.state == "blocked":
-            for item in m.cause:
-                blocked.setdefault(item, Counter())[w.subject(m.instance)] += 1
+    for machine in ctx.report.machines:
+        if machine.state == "blocked":
+            for item in machine.cause:
+                blocked.setdefault(item, Counter())[ctx.subject(machine.instance)] += 1
+    return blocked
 
-    for (sk, subject), leaves in sorted(_grouped(w, [m.instance for m in pool]).items()):
-        ms = [by_leaf[x] for x in leaves]
-        items = _items(w, ms)
+
+def _starved_rows(ctx: RuleContext, other_starved: list, by_leaf: dict) -> list[Advisory]:
+    rows = []
+    blocked = _blocked_by_item(ctx)
+    grouped = _grouped(ctx, [m.instance for m in other_starved])
+    for (subject_kind, subject), leaves in sorted(grouped.items()):
+        here_key = (subject_kind, subject)
+        machines = [by_leaf[leaf] for leaf in leaves]
+        items = _missing_items_rawest_first(ctx, machines)
         seed_item = items[0]
-        raw = next((i for i in items if blocked.get(i, {}).get((sk, subject))), seed_item)
-        held = blocked.get(raw, Counter())
-        here = held.get((sk, subject), 0)
-        elsewhere = [(s, n) for s, n in held.most_common() if s != (sk, subject)][:2]
-        who = _count(w, leaves)
+        blocking_item = next(
+            (item for item in items if blocked.get(item, {}).get(here_key)), seed_item
+        )
+        blocked_by_subject = blocked.get(blocking_item, Counter())
+        here = blocked_by_subject.get(here_key, 0)
+        elsewhere = [(s, n) for s, n in blocked_by_subject.most_common() if s != here_key][:2]
+        who = _machines_phrase(ctx, leaves)
+        where = _where(subject_kind, subject)
         verb = _verb(len(leaves), "starves", "starve")
-        tail = f" · {here} blocked here hold {raw if raw != items[0] else 'it'}" if here else ""
-        text = f"{who} {_where(sk, subject)} {verb} of {_list(items)}{tail}"
+        held_word = blocking_item if blocking_item != items[0] else "it"
+        tail = f" · {here} blocked here hold {held_word}" if here else ""
+        text = f"{who} {where} {verb} of {_short_list(items)}{tail}"
         if len(text) > TEXT_MAX:
-            text = f"{who} {_where(sk, subject)} {verb} of {_list(items, 1)}{tail}"
-        seed = next(m.instance for m in ms if seed_item in {_bare(c) for c in m.cause})
+            text = f"{who} {where} {verb} of {_short_list(items, 1)}{tail}"
+        seed = next(m.instance for m in machines if seed_item in {_cause_item(c) for c in m.cause})
         lines = []
         if here or elsewhere:
             parts = [f"{here} here"] if here else []
             parts += [f"{s[1]} {n}" for s, n in elsewhere]
-            lines.append(f"blocked holding {raw}: " + " · ".join(parts))
+            lines.append(f"blocked holding {blocking_item}: " + " · ".join(parts))
         feeds = Counter(
             f"{f.far_name or 'nothing'} ({f.verdict})"
-            for m in ms
+            for m in machines
             for f in m.feeds
-            if f.item == raw or _bare(f.item) == raw
+            if f.item == blocking_item or _cause_item(f.item) == blocking_item
         )
         if feeds:
             lines.append("feed: " + ", ".join(k for k, _ in feeds.most_common(2)))
         lines.append("window: last 300 s before the save")
-        out.append(
+        rows.append(
             _row(
-                w,
+                ctx,
                 "starved",
-                sk,
+                subject_kind,
                 subject,
                 text=text,
-                tool_text=f"{who} {_where(sk, subject)} {verb} of {', '.join(items)}"
-                + (f"; {here} blocked machines here hold {raw}" if here else ""),
+                tool_text=f"{who} {where} {verb} of {', '.join(items)}"
+                + (f"; {here} blocked machines here hold {blocking_item}" if here else ""),
                 weight=len(leaves),
                 members=leaves,
                 lines=lines,
-                next_call=_health_call(sk, subject, _bbox([w.spot(x) for x in leaves]))
+                next_call=_health_call(
+                    subject_kind, subject, _bbox([ctx.spot(leaf) for leaf in leaves])
+                )
                 + f" then trace_upstream seed={seed}",
                 seed=seed,
                 source="health.assess",
             )
         )
+    return rows
 
+
+def _state_rows(ctx: RuleContext) -> list[Advisory]:
+    """The ``dead node`` and ``no recipe`` rows, one per subject."""
+    rows = []
     for state, kind, words in (
         ("dead node", "dead_node", ("stands on no node", "stand on no node")),
         ("no recipe", "no_recipe", ("has no recipe", "have no recipe")),
     ):
-        hit = [m.instance for m in w.report.machines if m.state == state]
-        for (sk, subject), leaves in sorted(_grouped(w, hit).items()):
-            who = _count(w, leaves)
-            phrase = f"{who} {_where(sk, subject)} {_verb(len(leaves), *words)}"
-            out.append(
+        hit = [m.instance for m in ctx.report.machines if m.state == state]
+        for (subject_kind, subject), leaves in sorted(_grouped(ctx, hit).items()):
+            who = _machines_phrase(ctx, leaves)
+            phrase = f"{who} {_where(subject_kind, subject)} {_verb(len(leaves), *words)}"
+            rows.append(
                 _row(
-                    w,
+                    ctx,
                     kind,
-                    sk,
+                    subject_kind,
                     subject,
                     text=phrase,
                     tool_text=phrase,
                     weight=len(leaves),
                     members=leaves,
-                    next_call=_health_call(sk, subject, _bbox([w.spot(x) for x in leaves])),
+                    next_call=_health_call(
+                        subject_kind, subject, _bbox([ctx.spot(leaf) for leaf in leaves])
+                    ),
                     seed=leaves[0],
                     source="health.assess",
                 )
             )
-    return out
+    return rows
 
 
-def _underclock(w: _World, pool):
+def _machine_rows(ctx: RuleContext, box_fed: bool) -> list[Advisory]:
+    by_leaf = {m.instance: m for m in ctx.report.machines}
+    unconnected, box_fed_only, other_starved = _split_starved(ctx)
+    rows = _unconnected_rows(ctx, unconnected, by_leaf)
+    if box_fed:
+        rows += _box_empty_rows(ctx, box_fed_only, by_leaf)
+    other_starved, underclock_rows = _underclock(ctx, other_starved)
+    rows += underclock_rows
+    rows += _starved_rows(ctx, other_starved, by_leaf)
+    rows += _state_rows(ctx)
+    return rows
+
+
+def _underclock(ctx: RuleContext, other_starved):
     """K6: an extractor below 100 % in a named factory where a machine starves of its item."""
-    resource = {_leaf(n["instance"]): n["resource"] for n in nodes_mod.load_nodes().nodes}
+    resource = {instance_leaf(n["instance"]): n["resource"] for n in nodes_mod.load_nodes().nodes}
     rows, taken = [], set()
     found: dict[str, list[tuple[str, set[str]]]] = {}
-    for leaf, (group, rec) in w.records.items():
-        if group != "extractors" or float(rec.get("clock") or 1.0) >= FULL_CLOCK:
+    for leaf, (group, record) in ctx.records.items():
+        if group != "extractors" or float(record.get("clock") or 1.0) >= FULL_CLOCK:
             continue
-        factory = w.owner.get(leaf)
+        factory = ctx.owner.get(leaf)
         if factory is None:
             continue
-        out = ((rec.get("buffers") or {}).get("out") or {}).get("items") or {}
-        made = {w.g.item_name(c) for c in out}
-        node = resource.get(_leaf(rec.get("node") or ""))
+        out = ((record.get("buffers") or {}).get("out") or {}).get("items") or {}
+        made = {ctx.game.item_name(c) for c in out}
+        node = resource.get(instance_leaf(record.get("node") or ""))
         if node:
-            made.add(w.g.item_name(node))
+            made.add(ctx.game.item_name(node))
         found.setdefault(factory, []).append((leaf, made))
     for factory, extractors in sorted(found.items()):
         made = set().union(*(m for _, m in extractors))
         hungry = [
             m
-            for m in pool
-            if w.owner.get(m.instance) == factory and made & {_bare(c) for c in m.cause}
+            for m in other_starved
+            if ctx.owner.get(m.instance) == factory and made & {_cause_item(c) for c in m.cause}
         ]
         if not hungry:
             continue
         taken |= {m.instance for m in hungry}
-        items = sorted(made & {_bare(c) for m in hungry for c in m.cause})
-        first = w.records[extractors[0][0]][1]
-        name = w.g.building_name(first.get("cls")) or "extractor"
+        items = sorted(made & {_cause_item(c) for m in hungry for c in m.cause})
+        first = ctx.records[extractors[0][0]][1]
+        name = ctx.game.building_name(first.get("cls")) or "extractor"
         if len(extractors) == 1:
             lead = f"{name} at {float(first.get('clock') or 1.0):.0%}"
         else:
             lead = f"{len(extractors)} extractors below 100 %"
-        who = _count(w, [m.instance for m in hungry])
+        who = _machines_phrase(ctx, [m.instance for m in hungry])
         verb = _verb(len(hungry), "starves", "starve")
-        text = f"{lead} while {who} in “{factory}” {verb} of {_list(items)}"
+        text = f"{lead} while {who} in “{factory}” {verb} of {_short_list(items)}"
         leaves = [e for e, _ in extractors] + [m.instance for m in hungry]
         rows.append(
             _row(
-                w,
+                ctx,
                 "underclock",
                 "factory",
                 factory,
@@ -581,55 +501,56 @@ def _underclock(w: _World, pool):
                 source="health.assess",
             )
         )
-    return [m for m in pool if m.instance not in taken], rows
+    return [m for m in other_starved if m.instance not in taken], rows
 
 
 # ------------------------------------------------------------------ world rules
 
 
-def _power(w: _World, biomass: bool, headroom: str) -> list[Advisory]:
-    pw = w.st.power_report(biomass=biomass)
+def _power(ctx: RuleContext, biomass: bool, headroom: str) -> list[Advisory]:
+    report = ctx.st.power_report(biomass=biomass)
     out = []
-    starved = pw["starved_generators"]
-    unwired = pw["unwired_consumers"]
+    starved = report["starved_generators"]
+    unwired = report["unwired_consumers"]
     if starved or unwired:
         parts, members = [], []
         if starved:
-            n = len(starved)
+            count = len(starved)
             parts.append(
-                f"{n} {plural('generator', n)} ran dry ({_mw(pw['starved_generation_mw'])} MW)"
+                f"{count} {plural('generator', count)} ran dry "
+                f"({_mw(report['starved_generation_mw'])} MW)"
             )
             members += [s["instance"] for s in starved]
         if unwired:
             parts.append(
                 f"{unwired} {plural('machine', unwired)} on no power wire "
-                f"({_mw(pw['unwired_draw_mw'])} MW)"
+                f"({_mw(report['unwired_draw_mw'])} MW)"
             )
-            members += list(w.report.unwired)
+            members += list(ctx.report.unwired)
         text = " · ".join(parts)
         out.append(
             _row(
-                w,
+                ctx,
                 "power",
                 "world",
                 "world",
                 text=text,
                 tool_text=text,
-                weight=pw["starved_generation_mw"] + pw["unwired_draw_mw"],
+                weight=report["starved_generation_mw"] + report["unwired_draw_mw"],
                 members=members,
                 next_call="power_report",
                 seed=members[0] if members else None,
                 source="power_report",
             )
         )
-    gen = pw["generation_mw"]
-    free = pw["measured_headroom_mw"] if headroom == "measured" else pw["headroom_mw"]
-    if gen > 0 and free < HEADROOM_SHARE * gen:
+    generation = report["generation_mw"]
+    free = report["measured_headroom_mw"] if headroom == "measured" else report["headroom_mw"]
+    if generation > 0 and free < HEADROOM_SHARE * generation:
         word = "headroom now" if headroom == "measured" else "headroom at full rate"
-        text = f"{word} is {_mw(free)} MW of {_mw(gen)} MW"
+        text = f"{word} is {_mw(free)} MW of {_mw(generation)} MW"
         lines = [f"under {HEADROOM_SHARE:.0%} of generation · stage headroom: {headroom}"]
-        if not biomass and pw["biomass_generators"]:
-            lines.append(f"{pw['biomass_generators']} biomass burners not counted")
+        if not biomass and report["biomass_generators"]:
+            lines.append(f"{report['biomass_generators']} biomass burners not counted")
         out.append(
             _row(
                 None,
@@ -638,7 +559,7 @@ def _power(w: _World, biomass: bool, headroom: str) -> list[Advisory]:
                 "world",
                 text=text,
                 tool_text=text + f", under {HEADROOM_SHARE:.0%} of generation",
-                weight=HEADROOM_SHARE * gen - free,
+                weight=HEADROOM_SHARE * generation - free,
                 spots=[],
                 lines=lines,
                 next_call="power_report",
@@ -654,6 +575,14 @@ _PLANS: dict[tuple, tuple[str, list[str], str]] = {}
 _PLANS_MAX = 256
 
 
+def plan_heads(st) -> list:
+    """The world's live plan heads; none when the plan log cannot be read."""
+    try:
+        return PlanLog(st.world_id, st.header.get("session_name") or "").heads()
+    except (PlanLogError, OSError):
+        return []
+
+
 def _plan_facts(st, state) -> tuple[str, list[str], str]:
     status = manage.plan_status(st, state)
     drift = [f for f in status.flags if f.startswith("field ")]
@@ -664,18 +593,14 @@ def _plan_facts(st, state) -> tuple[str, list[str], str]:
         return "it no longer solves", drift, ""
     if not prepared.solution.processes:
         return "", drift, ""
-    rep, _ = match_scope(st.game, st, prepared, None, False, stored=state)
-    built = rep.built_at
+    report, _ = match_scope(st.game, st, prepared, None, False, stored=state)
+    built = report.built_at
     return "", drift, (built.node_owner if built is not None else "")
 
 
 def _plans(st) -> list[Advisory]:
-    try:
-        heads = PlanLog(st.world_id, st.header.get("session_name") or "").heads()
-    except (PlanLogError, OSError):
-        return []
     out = []
-    for state in heads:
+    for state in plan_heads(st):
         key = (st.world_id, state.key, state.rev, st.token, st.labels.version)
         facts = _PLANS.get(key)
         if facts is None:
@@ -693,14 +618,13 @@ def _plans(st) -> list[Advisory]:
             lines.insert(0, failure)
         if not lines:
             continue
-        head = lines[0]
         out.append(
             _row(
                 None,
                 "plan",
                 "plan",
                 state.name,
-                text=f"plan “{state.name}”: {head}",
+                text=f"plan “{state.name}”: {lines[0]}",
                 tool_text=f"plan “{state.name}”: " + "; ".join(lines),
                 weight=len(lines),
                 spots=[],
@@ -724,7 +648,7 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
         return []
     near = [
         r
-        for r in surroundings._pickups_near(st, me[0], me[1])
+        for r in surroundings.pickups_near(st, me[0], me[1])
         if r["category"] not in NO_PICKUP and (spoilers or not r["spoiler"])
     ]
     if not near:
@@ -735,9 +659,9 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
         if rare:
             pick = rare[0]
             break
-    n = len(near)
+    count = len(near)
     reach = f"{surroundings.PICKUP_REACH_M:.0f} m"
-    lead = f"{n} {plural('pickup', n)} within {reach} of where you saved"
+    lead = f"{count} {plural('pickup', count)} within {reach} of where you saved"
     text = f"{lead} · {_singular(pick['label'])} {pick['distance_m']:.0f} m"
     kinds = Counter(_singular(r["label"]) for r in near)
     spots = [
@@ -757,7 +681,7 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
             "world",
             text=text,
             tool_text=lead + ": " + ", ".join(f"{c} {k}" for k, c in kinds.most_common()),
-            weight=n,
+            weight=count,
             members=[f"{r['category']}:{r['name']}" for r in near],
             spots=spots,
             next_call="collected_from_world show=nearest near=me",
@@ -776,8 +700,8 @@ def compute(
     spoilers: bool = False,
 ) -> list[Advisory]:
     """Every advisory that fires on this save, ranked, ids not yet assigned (``with_ids``)."""
-    w = _World(st)
-    rows = _machine_rows(w, box_fed) + _power(w, biomass, headroom) + _plans(st)
+    ctx = RuleContext(st)
+    rows = _machine_rows(ctx, box_fed) + _power(ctx, biomass, headroom) + _plans(st)
     rows += _pickups(st, spoilers)
     return sorted(rows, key=Advisory.rank)
 
