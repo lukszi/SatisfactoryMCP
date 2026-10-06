@@ -1513,6 +1513,22 @@ Known limits:
   and a tone's anti-aliased edge against land can read a metre or two too deep.
 - The falls off the edge of the world are still left out (section 35).
 
+### Sunken strips between the open sea and the void (2026-10-06)
+
+The third review found a dotted 1 px dark line along the void beside the waterfall_1 islands
+(2048 rows 1884 to 1963, columns 440 to 452), and the same on the void's edge in waterfall_0
+and on the north edge. Under it lies fill ground 55 to 165 m under the sea's level that the
+artwork's mask leaves dry, where the artwork draws a thin land strip and its rim. The coast
+rule joins dry ground under the band's top only within 3 m of the open sea, so the rest was
+drawn as land, and at 3.66 m to the pixel only some pixels caught it. The game's ocean box at
+-17 m covers it, and the 638 m falls pour over that edge. Dry ground under the band's top in a
+gap at most 8 m wide (`VOID_STRIP_M`) between the open sea and the void past the world's edge,
+measured through that ground, now joins the sea: it takes the open sea's bed and fades into
+the void. Ground beside a pit and wider bands stay the land the artwork draws; at 12 m the
+rule cut a 15 m spit on the north edge (x 1,460, y -3,700) into pieces. On the whole field
+1,316 texels join, all within 8 m of the void, and 23 of the line's 689 texels stay land. The
+sidecar records `strip_m` and `strip_texels_joined` under `water.level_only`.
+
 ### Cost and output
 
 A full run of both layers took about 37 min wall time on 2026-10-05. The lattice rebuild took
@@ -1958,6 +1974,14 @@ with the refit, and 0 with the bake. Wet sand stops reading as shallow water. Th
 out darker (0.69 to 0.96 of the old luminance); retuning exposure and colour targets is the
 colour calibration's job, not this one's.
 
+On a sheet coarser than the 1 m grid (4096 px and below) the painted layer samples its ground
+over each pixel's footprint, every texel it covers weighted by its share
+(`terrain.sample.taps_footprint`). One bilinear sample per 3.66 m pixel drew the bake's
+stippled blends as speckle and its 1 to 2 m trails as dotted lines: the Rocky Desert trail
+speckle of the third review. Over the river_0 area isolated speck pixels go from 218 to 51. A
+pixel no wider than a texel keeps the bilinear taps, so 8192 px and up, the full-size render
+included, draw exactly as before.
+
 ### Rock surfaces
 
 **Families.** The sweep now records each placement's first `OverrideMaterials` entry. A rock
@@ -2052,10 +2076,10 @@ not been measured.
 The painted style is calibrated against in-game screenshots: first the Spire Coast, the Dune
 Desert, the Western Beaches and the Eastern Dune Forest, then a second pass over the biomes
 those left out (see "Area targets"). Style `satellite-painted` version 3; the crowns, the
-gated swamp water and the mesh colours below are version 6. Code: `palette/painted.py`,
-`palette/calibration.py`, `palette/trees.py` (crowns), `palette/optics.py` (water) and
-`palette/surfaces.py` (rock and meshes). Numbers: the `tone` and `calibration` blocks of
-`palette/palettes/satellite-painted.json`.
+gated swamp water and the mesh colours below are version 6, the blue palms' own crown target
+version 9. Code: `palette/painted.py`, `palette/calibration.py`, `palette/trees.py` (crowns),
+`palette/optics.py` (water) and `palette/surfaces.py` (rock and meshes). Numbers: the `tone`
+and `calibration` blocks of `palette/palettes/satellite-painted.json`.
 
 ### The ground albedo source
 
@@ -2175,6 +2199,7 @@ references were used:
 | Canopy | Western Dune Forest | #7c9573 | [Western Dune Forest](https://satisfactory.wiki.gg/images/Western_Dune_Forest.png) |
 | Canopy | Jungle Spires | #6c7f5b | [Jungle Spires](https://satisfactory.wiki.gg/images/Jungle_Spires.png) for hue and chroma; the Spire Coast lightness, as the shot is low-angle |
 | Canopy | Red Jungle | #7c4955 | [Red Jungle from above](https://steamcommunity.com/sharedfiles/filedetails/?id=3776654401), [Red Jungle 2021](https://steamcommunity.com/sharedfiles/filedetails/?id=2627451942) |
+| Crowns, blue palms | everywhere, by hue | #3d627d | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit |
 | CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
 | Shell meshes (the pale plates) | Blue Crater | #747b85 | [Blue Crater aerial](https://steamcommunity.com/sharedfiles/filedetails/?id=3579556500), [Blue Crater](https://satisfactory.wiki.gg/images/Blue_Crater.png), the noon crater shot |
 | Water, opaque | Swamp | #7e7372 | [Swamp](https://satisfactory.wiki.gg/images/Swamp.png), [Swamp 2024](https://steamcommunity.com/sharedfiles/filedetails/?id=3202456199), [Swamp 1.0](https://steamcommunity.com/sharedfiles/filedetails/?id=3344959083) |
@@ -2205,7 +2230,9 @@ Two readings in these references:
   cap colour, and so does coral on land: the Spire Coast's coral trees stand a median 23 m
   above the sea and are the caps the #99868e target was measured on. At 2048 px this sinks
   823 coral pixels of the sheet, 260 of them in the Spire Coast crop at (16, -2137), whose
-  median goes from mauve #898189 to the water's #56787d.
+  median goes from mauve #898189 to the water's #56787d. The specks left in the Spire lagoon
+  at 2048 are coral pieces 2 to 75 px across standing a median 6.5 m out of the water, and
+  boulders and ground a median 0.33 m over the sea's level: game data, kept.
 - **Shells** (`SM_BigShell_01`, `PlateauShell`, `SmallShell`: everything the `Shell` class
   takes) wear their own material's colour: the mean of their BaseColor textures in linear
   light is 0.08 to 0.11 neutral grey, kept as the albedo sRGB (88, 85, 83). The #d6ccba cream
@@ -2229,12 +2256,21 @@ saturated red against its #7c4955. The targets now move the crowns (`palette/tre
   (`display_to_crown`). Per pixel the ops are mixed by the area weights on the 4 m grid, as
   the canopy colour planes were.
 - **Hue gate.** A target was measured on canopy of one hue. A crown takes all of its scope's
-  step within 20 degrees of the target's hue and none past 40 (`HUE_GATE_DEG`), and greys
-  under chroma 0.02 never move; the source median is taken over the gated crowns only. Pink
-  bamboo, blue palms, coral trees and the yellow pines of the Northern and Lake Forests keep
-  their texture colours. Without the gate one step over every species drew the Red Bamboo
-  orange: a per-channel median over mixed hues has almost no chroma, so the global scale came
-  out x1.7.
+  step within 20 degrees of the target's hue and none past 40 (`HUE_GATE_DEG`), scaled by its
+  chroma from none at grey to all at 0.02 (`CANOPY_GREY`); the source median is taken over the
+  gated crowns only. Pink bamboo, coral trees and the yellow pines of the Northern and Lake
+  Forests keep their texture colours; the blue palms take a target of their own (below).
+  Without the gate one step over every species drew the Red Bamboo orange: a per-channel
+  median over mixed hues has almost no chroma, so the global scale came out x1.7.
+- **Named crown targets.** `calibration.crowns` names targets for crowns that no canopy target
+  was measured on. Each is one more scope over every tree on the map, gated by its own hue, so
+  it moves the crowns of that hue wherever they grow. Its gate opens only past the grey line:
+  none under chroma 0.02, all from 0.025 (`TARGET_GREY`). The canopy gate keeps its ramp from
+  0 (`CANOPY_GREY`), which the Orange palms at 0.020 sit on. So the near-grey balloon tree
+  `SM_BalloonTree_02_T` (chroma 0.012, the palms' hue) keeps its colour, as do its crown edges
+  against the purple tree (0.016 to 0.019). Each op is gated on the crown's colour before any
+  op; the canopy and palm gates do not overlap. The blue palms' target is #3d627d: 3,332
+  trees, step -0.285 and ×1.51 (sidecar `crowns@blue_palm`).
 
 Measured at 2048 px on build 502094: the median of crown pixels at least 95% covered and dry,
 per area, Delta E (OKLab x100) to the target before and after.
@@ -2823,17 +2859,22 @@ which took 65 to 108 s in all on a loaded machine; the store grows from 54 to 66
 
 ### Known limits
 
-- **Colours are the textures', moved by the canopy targets.** Crowns of a target's own hue
-  are calibrated (section 31, "Crowns"); every other crown keeps its texture mean: bamboo is a
-  saturated pink-red, the tall mangroves' tops are their bark texture. The style's `chroma`
-  of 0.8 is a taste call.
-- **Blue palms are blue.** `BluePalm_01` and `_02` (3,332 trees: 1,747 in the Rocky Desert,
-  768 in the Savanna, 344 on the Spire Coast) draw pale blue. Their leaf colour is the leaf
-  half of `TX_BluePalm_01_Alb`, light blue with white midribs, linear (0.27, 0.40, 0.46).
-  Their instances `MI_BluePalm_03` and `_04` carry no vector parameter but the wind pivot,
-  and the parent `MM_WindPlants` is cooked without its graph, so no tint is skipped that could
-  be read. The wiki's Rocky Desert area, Rocky Desert river and Spire Coast shots show blue
-  palms in both biomes, so they stay blue.
+- **Colours are the textures', moved by the canopy targets and, for the blue palms, a target
+  of their own.** Crowns of a target's own hue are calibrated (section 31, "Crowns"); every
+  other crown keeps its texture mean: bamboo is a saturated pink-red, the tall mangroves' tops
+  are their bark texture. The style's `chroma` of 0.8 is a taste call.
+- **Blue palms are blue, on a target of their own.** `BluePalm_01` and `_02` (3,332 trees:
+  1,747 in the Rocky Desert, 768 in the Savanna, 344 on the Spire Coast) have one leaf colour,
+  the leaf half of `TX_BluePalm_01_Alb`: light blue with white midribs, linear (0.27, 0.40,
+  0.46). Their instances `MI_BluePalm_03` and `_04` carry no vector parameter but the wind
+  pivot, and the parent `MM_WindPlants` is cooked without its graph, so no tint is skipped
+  that could be read. Drawn as that texture mean through the crown style, they came out
+  near-white powder blue (#a3c3d3, L 0.80), where the game shows a saturated mid blue from
+  above. They now take the named crown target #3d627d (section 31, "Crowns"). Over the Rocky
+  Desert windows at 0.92 m/px, palm pixels draw #3a5e78 with lit tops #416783: ΔE 4.7 to the
+  Rocky Desert area shot's #2e6695, and 5.5 to the river split's lit tops #3e5579. The wiki's
+  Rocky Desert and Spire Coast shots show blue palms in both biomes, so they stay blue
+  everywhere.
 - A crown is lit by the fixed north-west sun of the painted style. The live sun shading takes
   the crown tops as its occluder (section 29); the crown domes are not yet in its normal
   pyramid.
@@ -2852,16 +2893,16 @@ pixel, these rules decide.
 | River ribbons | A pixel's share of ribbon water (section 34) takes the `river` class's optics, whatever the class plane says under it. The class plane was built from the field's water, which the ribbon partly replaces. |
 | Crown tops | One producer: the measured tops of section 36 write `crown.i16.z`. Section 30's estimate from the radius is gone. Section 30's trees-over-rock reads the same plane. |
 | Canopy over rock | With crowns drawn the soft canopy is off (`canopy_kept` 0), so section 30's rule draws nothing and the crowns' own "hidden under a higher surface" test decides. |
-| Canopy targets | Section 31's canopy targets move the crowns of section 36, each scope's step taken by the crowns near the target's hue; the soft canopy they used to colour stays off. |
+| Canopy targets | Section 31's canopy targets move the crowns of section 36, each scope's step taken by the crowns near the target's hue; the soft canopy they used to colour stays off. Its named crown targets (the blue palms) move the crowns of their own hue wherever they grow, gated apart from the canopy targets. |
 | Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. Render-only rocks take the area's rock. |
 | Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 5, satellite 5, relief 3, relief dark 3 (the open sea, void and pits below, and section 38's water below a drop), game-painted 7 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop and section 31's offshore pieces). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
+| Versions | Paint generator version 3. Styles: terrain 7, satellite 7, relief 5, relief dark 5 (the open sea, void and pits below, and section 38's water below a drop), game-painted 9 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
-| Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes); its second pass, the bed smooth in slope and the pits apart from the void, terrain 5, satellite 5, relief 3, relief dark 3 and game-painted 7. |
+| Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes); its second pass, the bed smooth in slope and the pits apart from the void, terrain 5, satellite 5, relief 3, relief dark 3 and game-painted 7; the sunken rock under the void, terrain 6, satellite 6, relief 4, relief dark 4 and game-painted 8; the sunken strips between the open sea and the void, terrain 7, satellite 7, relief 5, relief dark 5 and game-painted 9. |
 
 ### Known limits
 
