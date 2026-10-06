@@ -20,6 +20,7 @@ from mapgen.gamedata.vegetation.crown_sprites import SPRITE_M
 from mapgen.lighting.hillshade import sun_dot
 from mapgen.palette.painted.calibration import (
     display_to_crown,
+    exposure_gain,
     sampled_rgb,
     scoped_planes,
     transfer_op,
@@ -321,7 +322,7 @@ def titan_over(out: FloatGrid, scene: PaintedScene, ground: PaintedSurface) -> F
     albedo = np.zeros(out.shape, np.float32)
     for which, rgb in ground.titan_rgb.items():
         albedo = np.where((cls == which)[..., None], rgb, albedo)
-    exposure = np.float32(palette["exposure"] * palette["tone"]["gain"])
+    exposure = exposure_gain(palette)
     light = flat_light(cast("dict[str, object]", palette), sun_dot(surface, spacing_m),
                        scene["ndl_flat"])  # fmt: skip
     lit = albedo * light * exposure

@@ -41,6 +41,7 @@ __all__ = [
     "display_to_crown",
     "display_to_ground",
     "display_to_linear",
+    "exposure_gain",
     "flat_ground_light",
     "hex_rgb",
     "layer_transfer",
@@ -67,6 +68,11 @@ def tone(luminance: npt.ArrayLike, knee: float, white: float) -> FloatGrid:
     top = np.float32((white - knee) / span)
     shoulder = knee + span * x * (1.0 + x / (top * top)) / (1.0 + x)
     return np.where(y > knee, shoulder, y).astype(np.float32)
+
+
+def exposure_gain(palette: PaintedPalette) -> np.float32:
+    """The linear gain before the tone: the style's exposure times the tone's gain."""
+    return np.float32(palette["exposure"] * palette["tone"]["gain"])
 
 
 def flat_ground_light(palette: PaintedPalette) -> FloatGrid:
@@ -98,8 +104,7 @@ def display_to_linear(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
 
 def display_to_ground(palette: PaintedPalette, hex_colour: str) -> FloatGrid:
     """A display sRGB target back through flat light, exposure, tone and chroma: OKLab."""
-    exposure = palette["exposure"] * palette["tone"]["gain"]
-    rgb = display_to_linear(palette, hex_colour) / np.float32(exposure)
+    rgb = display_to_linear(palette, hex_colour) / exposure_gain(palette)
     lab = oklab(rgb / flat_ground_light(palette))
     lab[0] -= np.float32(palette["altitude_lift"] * 0.5)
     lab[1:] /= np.float32(palette["chroma_gain"])

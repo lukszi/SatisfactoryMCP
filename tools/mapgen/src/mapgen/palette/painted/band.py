@@ -15,7 +15,7 @@ import numpy as np
 from mapgen.colour import LUMA, flat_light, linear_from_oklab, linear_to_srgb, oklab
 from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
 from mapgen.lighting.model import surface_direct
-from mapgen.palette.painted.calibration import sampled_rgb, tone
+from mapgen.palette.painted.calibration import exposure_gain, sampled_rgb, tone
 from mapgen.palette.painted.optics import underwater
 from mapgen.palette.painted.shapes import (
     FloatGrid,
@@ -94,7 +94,7 @@ def _lit_and_wet(
     damp = np.float32(palette["borrow_ink_damp"])
     borrow = np.where(borrow < 1.0, 1.0 + (borrow - 1.0) * damp, borrow)
     light = flat_light(cast("dict[str, object]", palette), scene["ndl"], scene["ndl_flat"])
-    exposure = np.float32(palette["exposure"] * palette["tone"]["gain"])
+    exposure = exposure_gain(palette)
     lit = g * light * (exposure * borrow)[..., None]
 
     water, shore = scene["water"], palette["shore"]
