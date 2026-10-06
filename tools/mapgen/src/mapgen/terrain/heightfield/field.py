@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from mapgen.gamedata.frame import BASELINE_BOX_CM, GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.gamedata.level.fill_raster import BASELINE_PX, BASELINE_SCALE_CM_PER_RAW
+from mapgen.gamedata.frame import FILL_RASTER_BOX_CM, GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from mapgen.gamedata.level.fill_raster import FILL_RASTER_PX, FILL_RASTER_SCALE_CM_PER_RAW
 from mapgen.gamedata.level.landscape import drop_offsets
 from mapgen.gamedata.meshes import DIRECT_SAMPLES_MIN
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 #: The interface raster's own resolution, for the accuracy the fill layer inherits.
-FILL_HORIZONTAL_M = 7500.0 / BASELINE_PX
+FILL_HORIZONTAL_M = 7500.0 / FILL_RASTER_PX
 
 
-FILL_VERTICAL_M = BASELINE_SCALE_CM_PER_RAW / 255.0 / 100.0
+FILL_VERTICAL_M = FILL_RASTER_SCALE_CM_PER_RAW / 255.0 / 100.0
 
 
 def compose_top(height_dm: np.ndarray, frame: dict, top: dict) -> tuple[np.ndarray, int]:
@@ -29,20 +29,22 @@ def compose_top(height_dm: np.ndarray, frame: dict, top: dict) -> tuple[np.ndarr
     return out, int(raise_.sum())
 
 
-def baseline_indices() -> tuple[np.ndarray, np.ndarray]:
+def fill_raster_indices() -> tuple[np.ndarray, np.ndarray]:
     """Which baseline texel each output column and row falls in. Nearest, never blended.
 
     The fill is 3.66 m data read at 1 m, so an interpolation would draw a smooth surface out
     of a raster that has none and hide the coarseness the provenance byte declares.
     """
-    x0, x1, y0, y1 = BASELINE_BOX_CM
+    x0, x1, y0, y1 = FILL_RASTER_BOX_CM
     columns = ORIGIN_X_CM + np.arange(GRID_PX) * SPACING_CM
     rows = ORIGIN_Y_CM + np.arange(GRID_PX) * SPACING_CM
     bi = np.clip(
-        ((columns - x0) / (x1 - x0) * BASELINE_PX - 0.5).round().astype(int), 0, BASELINE_PX - 1
+        ((columns - x0) / (x1 - x0) * FILL_RASTER_PX - 0.5).round().astype(int),
+        0,
+        FILL_RASTER_PX - 1,
     )
     bj = np.clip(
-        ((rows - y0) / (y1 - y0) * BASELINE_PX - 0.5).round().astype(int), 0, BASELINE_PX - 1
+        ((rows - y0) / (y1 - y0) * FILL_RASTER_PX - 0.5).round().astype(int), 0, FILL_RASTER_PX - 1
     )
     return bi, bj
 
@@ -57,7 +59,7 @@ def compose(frame: dict, cliffs: dict, baseline_cm: np.ndarray, valid: np.ndarra
     still a measurement.
     """
     dx, dy = drop_offsets(frame)
-    bi, bj = baseline_indices()
+    bi, bj = fill_raster_indices()
 
     z_m = np.where(valid, baseline_cm / 100.0, np.nan).astype(np.float32)[np.ix_(bj, bi)]
     prov = np.where(np.isnan(z_m), hf.PROV_NODATA, hf.PROV_FILL).astype(np.uint8)

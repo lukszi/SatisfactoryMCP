@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from mapgen.gamedata.frame import GRID_PX, Z6_TEXEL_M, Z7_TEXEL_M
 from mapgen.gamedata.level.fill_raster import (
-    BASELINE_OFFSET_CM,
-    BASELINE_PX,
-    BASELINE_SCALE_CM_PER_RAW,
     FILL_FLOOR_CM,
+    FILL_RASTER_OFFSET_CM,
+    FILL_RASTER_PX,
+    FILL_RASTER_SCALE_CM_PER_RAW,
 )
 from mapgen.gamedata.level.landscape import (
     LANDSCAPE_N,
@@ -224,8 +224,8 @@ def fill_source() -> dict:
     return {
         "asset": "/Game/FactoryGame/Interface/UI/Assets/MapTest/HeightData_Test",
         "derivation": (
-            f"{BASELINE_PX}x{BASELINE_PX} float16 mip 0; "
-            f"z_cm = {BASELINE_SCALE_CM_PER_RAW:.4f}*raw + {BASELINE_OFFSET_CM:.4f}, "
+            f"{FILL_RASTER_PX}x{FILL_RASTER_PX} float16 mip 0; "
+            f"z_cm = {FILL_RASTER_SCALE_CM_PER_RAW:.4f}*raw + {FILL_RASTER_OFFSET_CM:.4f}, "
             "from a robust fit against the 626 static nodes (569 inliers, 1.07 m RMS)"
         ),
         "nodata_rule": (

@@ -24,8 +24,8 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy import ndimage
 
-from mapgen.gamedata.frame import BASELINE_BOX_CM
-from mapgen.gamedata.level.fill_raster import BASELINE_PATH, read_baseline
+from mapgen.gamedata.frame import FILL_RASTER_BOX_CM
+from mapgen.gamedata.level.fill_raster import FILL_RASTER_PATH, read_fill_raster
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -495,16 +495,16 @@ def fill_from_raster(field, ground, raster_m, raster_ok, void=None) -> tuple:
         raster_ok=raster_ok,
         field_origin_cm=(field.x0_cm, field.y0_cm),
         spacing_cm=field.spacing_cm,
-        raster_box_cm=BASELINE_BOX_CM,
+        raster_box_cm=FILL_RASTER_BOX_CM,
         nodata=hf.NODATA,
         fill_value=hf.PROV_FILL,
         rock_values=hf.PROV_CLIFF_VALUES,
         void=void,
     )
-    return heights, rebuilt, {"raster": BASELINE_PATH.rsplit("/", 1)[-1], **meta}
+    return heights, rebuilt, {"raster": FILL_RASTER_PATH.rsplit("/", 1)[-1], **meta}
 
 
 def rebuild_lattice(field, ground, store, void=None) -> tuple[np.ndarray, np.ndarray, dict]:
     """The interface raster read out of the container, then ``fill_from_raster``."""
-    z_cm, ok = read_baseline(store)
+    z_cm, ok = read_fill_raster(store)
     return fill_from_raster(field, ground, z_cm / np.float32(100.0), ok, void)

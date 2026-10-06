@@ -14,7 +14,7 @@ __all__ = [
     "ClassMix",
     "PchipTaps",
     "class_taps",
-    "direct_weight",
+    "direct_mask",
     "frame_coordinates",
     "grid_position",
     "patch_noise",
@@ -52,8 +52,8 @@ DIRECT_SAMPLES_PER_TEXEL = DIRECT_SAMPLES_MIN
 # --------------------------------------------------------------------------------------
 
 
-def direct_weight(field, spacing_m: float) -> tuple[np.ndarray | None, dict]:
-    """Where the geometry outvotes the kernel, as a feathered 0..255 mask at 1 m.
+def direct_mask(field, spacing_m: float) -> tuple[np.ndarray | None, dict]:
+    """Where the geometry was sampled finer than the output texel: a 0/255 mask at 1 m.
 
     ``None`` when the field carries no ``density.u8.z``, which is not "no samples anywhere"
     and must never be read as one: a field written before the plane existed knows nothing

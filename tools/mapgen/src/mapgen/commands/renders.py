@@ -121,7 +121,7 @@ from mapgen.terrain.rasters import (
     sweep_world,
     top_items,
 )
-from mapgen.terrain.sample import direct_weight, taps_cubic, taps_pchip
+from mapgen.terrain.sample import direct_mask, taps_cubic, taps_pchip
 from mapgen.tiles.pyramid import (
     add_worker_flags,
     check_parallel,
@@ -349,8 +349,10 @@ def main() -> int:
     )
 
     spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / args.size
-    weight_plane, weight_meta = (None, {}) if args.kernel_only else direct_weight(field, spacing_m)
-    if weight_plane is None and not args.kernel_only:
+    direct_mask_plane, direct_mask_meta = (
+        (None, {}) if args.kernel_only else direct_mask(field, spacing_m)
+    )
+    if direct_mask_plane is None and not args.kernel_only:
         print(
             f"this field carries no {hf.DENSITY_NAME}, so it cannot say which of its texels "
             "are measurements and which are the cliff rasteriser interpolating across a "
@@ -362,11 +364,11 @@ def main() -> int:
             "sidecar."
         )
         return 6
-    if weight_plane is not None:
+    if direct_mask_plane is not None:
         print(
-            f"  a measurement where {weight_meta['rule']} -- "
-            f"{weight_meta['qualifying_share_of_the_field']}% of the field, "
-            f"{weight_meta['qualifying_share_of_the_cliff_province']}% of its cliff "
+            f"  a measurement where {direct_mask_meta['rule']} -- "
+            f"{direct_mask_meta['qualifying_share_of_the_field']}% of the field, "
+            f"{direct_mask_meta['qualifying_share_of_the_cliff_province']}% of its cliff "
             "province. Provenance, not a gate: the rocks are drawn wherever they cover a "
             "pixel"
         )
@@ -414,7 +416,7 @@ def main() -> int:
                     "replace it anyway."
                 )
                 return 3
-    if args.restyle and weight_plane is not None:
+    if args.restyle and direct_mask_plane is not None:
         root = args.cache_dir or out_dir / args.renders_name
         titan = "painted" in layers and not args.no_titan_trees
         gaps = restyle_gaps(root, args.size, args.direct_subsamples, field_build,
@@ -644,7 +646,7 @@ def main() -> int:
             )
         return loaded["geometry"]
 
-    if weight_plane is not None:
+    if direct_mask_plane is not None:
         cache = (
             args.cache_dir / DIRECT_CACHE_DIR_NAME
             if args.cache_dir
@@ -773,8 +775,8 @@ def main() -> int:
     cache_root = args.cache_dir or out_dir / args.renders_name
     extras = load_extras(
         cache_root, args.size, field_build, store, scripts, sweep_once, field,
-        meshes=weight_plane is not None and not args.no_meshes,
-        titan=weight_plane is not None and painted is not None and not args.no_titan_trees,
+        meshes=direct_mask_plane is not None and not args.no_meshes,
+        titan=direct_mask_plane is not None and painted is not None and not args.no_titan_trees,
         rivers=not args.kernel_only, quiet=args.quiet,
     )  # fmt: skip
     meshes, mesh_source = extras.meshes, extras.mesh_source
@@ -816,7 +818,7 @@ def main() -> int:
                 not args.quiet,
                 height_dm=heights,
                 direct=direct,
-                measured_plane_u8=weight_plane,
+                measured_plane_u8=direct_mask_plane,
                 overlay=top,
                 kernel=taps_cubic if args.kernel_only else taps_pchip,
                 meshes=meshes,
@@ -881,7 +883,7 @@ def main() -> int:
                     "ground_lattice": ground_meta,
                     "terrain_lattice": terrain_meta,
                     "top_overlay": top is not None,
-                    "measurement_rule": weight_meta,
+                    "measurement_rule": direct_mask_meta,
                     "lift_knee_m": DIRECT_LIFT_KNEE_M,
                     "fill_rebuild": fill_meta,
                     **measured,

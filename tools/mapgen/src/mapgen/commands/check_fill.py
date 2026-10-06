@@ -28,8 +28,8 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.common import ROOT, base_parser, require_gen
-from mapgen.gamedata.frame import BASELINE_BOX_CM, ORIGIN_X_CM, ORIGIN_Y_CM, RENDER_PX
-from mapgen.gamedata.level.fill_raster import BASELINE_PX, read_baseline
+from mapgen.gamedata.frame import FILL_RASTER_BOX_CM, ORIGIN_X_CM, ORIGIN_Y_CM, RENDER_PX
+from mapgen.gamedata.level.fill_raster import FILL_RASTER_PX, read_fill_raster
 from mapgen.terrain.fill import (
     blend_seam,
     fill_from_raster,
@@ -123,15 +123,15 @@ def terrain_m(field) -> np.ndarray:
 
 def raster_grid(field):
     """Fractional raster rows and columns of every field vertex."""
-    x0, x1, y0, y1 = BASELINE_BOX_CM
-    px = BASELINE_PX
+    x0, x1, y0, y1 = FILL_RASTER_BOX_CM
+    px = FILL_RASTER_PX
     rows = raster_positions(field.height, field.y0_cm, field.spacing_cm, y0, y1, px)
     cols = raster_positions(field.width, field.x0_cm, field.spacing_cm, x0, x1, px)
     return rows, cols
 
 
 def nearest_index(position: np.ndarray) -> np.ndarray:
-    return np.clip(np.round(position).astype(int), 0, BASELINE_PX - 1)
+    return np.clip(np.round(position).astype(int), 0, FILL_RASTER_PX - 1)
 
 
 def check_fill(field, land, raster_m, ok, rec) -> dict:
@@ -336,7 +336,7 @@ def main() -> int:
         print(f"no field with {hf.TERRAIN_NAME} at {args.field}")
         return 4
     store = open_container(args.game)
-    z_cm, ok = read_baseline(store)
+    z_cm, ok = read_fill_raster(store)
     raster_m = z_cm.astype(np.float64) / 100.0
     land = terrain_m(field)
     rows, cols = raster_grid(field)

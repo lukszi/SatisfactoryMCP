@@ -9,8 +9,8 @@ from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
-    "BASELINE_BOX_CM",
     "BOUNDS_M",
+    "FILL_RASTER_BOX_CM",
     "GRID_PX",
     "ORIGIN_X_CM",
     "ORIGIN_Y_CM",
@@ -31,7 +31,7 @@ BOUNDS_M = {"x_min_m": _X0, "x_max_m": _X1, "y_min_m": _Y0, "y_max_m": _Y1}
 
 
 #: The raster's own box, metres of world per texel column. The in-game map square.
-BASELINE_BOX_CM = (_X0 * 100, _X1 * 100, _Y0 * 100, _Y1 * 100)
+FILL_RASTER_BOX_CM = (_X0 * 100, _X1 * 100, _Y0 * 100, _Y1 * 100)
 
 
 #: The output grid. 7500 x 7500 at 1 m, vertex-aligned, over the in-game map square.

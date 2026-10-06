@@ -12,10 +12,10 @@ import pytest
 import mapgen.commands.heightmap
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM, sample_grid
 from mapgen.gamedata.level.fill_raster import (
-    BASELINE_OFFSET_CM,
-    BASELINE_SCALE_CM_PER_RAW,
     FILL_FLOOR_CM,
-    decode_baseline,
+    FILL_RASTER_OFFSET_CM,
+    FILL_RASTER_SCALE_CM_PER_RAW,
+    decode_fill_raster,
 )
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -136,7 +136,7 @@ def test_the_fill_layers_no_data_test_is_on_the_decoded_height_not_the_raw_value
     everything.
     """
     blank = np.zeros((2, 2), np.float32)
-    z_cm, valid = decode_baseline(blank)
+    z_cm, valid = decode_fill_raster(blank)
     assert z_cm[0, 0] / 100.0 == pytest.approx(-522.8, abs=0.5), "the blank is not near -522 m"
     assert not valid.any(), "the blank value was admitted into the fill"
     assert (blank > 0).sum() == valid.sum() == 0
@@ -145,10 +145,10 @@ def test_the_fill_layers_no_data_test_is_on_the_decoded_height_not_the_raw_value
     # is exactly what the naive `raw > 0` test and the right one disagree about keeping.
     shelf = np.full(
         (2, 2),
-        (FILL_FLOOR_CM - BASELINE_OFFSET_CM) / BASELINE_SCALE_CM_PER_RAW + 0.01,
+        (FILL_FLOOR_CM - FILL_RASTER_OFFSET_CM) / FILL_RASTER_SCALE_CM_PER_RAW + 0.01,
         np.float32,
     )
-    _z, shelf_valid = decode_baseline(shelf)
+    _z, shelf_valid = decode_fill_raster(shelf)
     assert shelf_valid.all(), "real low ground was rejected along with the blank"
 
     # And the world's own floor is above the cut, so nothing real is ever near it.

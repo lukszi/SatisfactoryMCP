@@ -49,7 +49,7 @@ from mapgen.commands.caves import write_caves
 from mapgen.commands.rocks import write_rocks
 from mapgen.common import LOCAL_DIR, base_parser, require_gen
 from mapgen.gamedata.install import GameReader, missing_container, open_game
-from mapgen.gamedata.level.fill_raster import read_baseline
+from mapgen.gamedata.level.fill_raster import read_fill_raster
 from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
 from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.meshes import MeshBounds, read_mesh_geometry
@@ -209,7 +209,7 @@ def main() -> int:
     )
 
     started = time.time()
-    baseline_cm, baseline_valid = read_baseline(store)
+    baseline_cm, baseline_valid = read_fill_raster(store)
     timings["fill"] = round(time.time() - started, 1)
     print(f"  interface raster decoded, {baseline_valid.mean() * 100:.1f}% of it says something")
 

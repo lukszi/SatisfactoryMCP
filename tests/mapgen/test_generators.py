@@ -99,7 +99,7 @@ from mapgen.terrain.rasters import (
     rasterise_top_band,
     reduce_direct,
 )
-from mapgen.terrain.sample import direct_weight, sample_surface, taps_cubic, taps_linear, taps_pchip
+from mapgen.terrain.sample import direct_mask, sample_surface, taps_cubic, taps_linear, taps_pchip
 from mapgen.tiles import artwork_output
 from mapgen.tiles import sidecar as render_sidecar
 from mapgen.tiles.artwork_output import (
@@ -351,7 +351,7 @@ class _Field:
 
 
 def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent():
-    """``direct_weight``: the rule scales with the output texel, and absent is not zero.
+    """``direct_mask``: the rule scales with the output texel, and absent is not zero.
 
     Two claims, and the second one is the one that could ship a wrong picture quietly. The
     rule is "one source vertex under an output texel", so halving the texel quadruples the
@@ -367,8 +367,8 @@ def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent(
     prov = numpy.full((41, 41), hf.PROV_CLIFF_DIRECT, numpy.uint8)
     field = _Field(numpy.zeros((41, 41), numpy.int16), prov, density)
 
-    coarse, coarse_meta = direct_weight(field, 0.4578)  # a z6 texel
-    fine, fine_meta = direct_weight(field, 0.2289)  # a z7 texel
+    coarse, coarse_meta = direct_mask(field, 0.4578)  # a z6 texel
+    fine, fine_meta = direct_mask(field, 0.2289)  # a z7 texel
     assert coarse_meta["density_min_per_field_texel"] == pytest.approx(4.77, abs=0.01)
     assert fine_meta["density_min_per_field_texel"] == pytest.approx(19.09, abs=0.01)
     # Ten vertices is enough for a z6 texel and not for a z7 one, from the same plane.
@@ -379,7 +379,7 @@ def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent(
     assert set(numpy.unique(coarse)) == {0, 255}
     assert coarse[20, 20] == 255 and coarse[20, 27] == 0
 
-    absent, absent_meta = direct_weight(_Field(field.height_dm, prov), 0.2289)
+    absent, absent_meta = direct_mask(_Field(field.height_dm, prov), 0.2289)
     assert absent is None and hf.DENSITY_NAME in absent_meta["absent"]
 
 
