@@ -46,6 +46,7 @@ from __future__ import annotations
 from .errors import ParseError
 from .reader import Reader
 from .references import read_reference
+from .values import SaveValue
 
 __all__ = ["LIGHTWEIGHT_SUBSYSTEM", "VERSION", "read_lightweight"]
 
@@ -71,7 +72,7 @@ MAX_PATH = 512
 MAX_DATA_BLOCKS = 8
 
 
-def _read_type_data(r: Reader, count: int, end: int) -> list:
+def _read_type_data(r: Reader, count: int, end: int) -> list[SaveValue]:
     """The type-specific data blocks: ``[[typeReference, rawBytes], ...]``.
 
     Raw bytes, because each block is size-prefixed: consuming it exactly needs no tag reader.
@@ -83,7 +84,7 @@ def _read_type_data(r: Reader, count: int, end: int) -> list:
             "out of step"
         )
     # nested list on purpose: extract.structures.placed scans only top-level fields
-    blocks = []
+    blocks: list[SaveValue] = []
     for _ in range(count):
         type_ref = read_reference(r)
         at = r.pos
@@ -97,11 +98,11 @@ def _read_type_data(r: Reader, count: int, end: int) -> list:
     return blocks
 
 
-def _read_instance(r: Reader, version: int, end: int) -> list:
+def _read_instance(r: Reader, version: int, end: int) -> list[SaveValue]:
     """One buildable, fields in the file's order: the projection reads ``inst[1]`` for the
     position. The type-data list is appended last so every older index keeps its meaning.
     """
-    out = [
+    out: list[SaveValue] = [
         [r.f64(), r.f64(), r.f64(), r.f64()],
         [r.f64(), r.f64(), r.f64()],
         [r.f64(), r.f64(), r.f64()],
@@ -114,9 +115,10 @@ def _read_instance(r: Reader, version: int, end: int) -> list:
         r.i8(),
         read_reference(r),
         read_reference(r),
-        r.i32(),
     ]
-    data = _read_type_data(r, out[12], end)
+    block_count = r.i32()
+    out.append(block_count)
+    data = _read_type_data(r, block_count, end)
     if version >= 4:
         out += [r.i8(), r.i32()]
     out.append(data)
@@ -149,7 +151,7 @@ def _read_class_path(r: Reader, number: int, class_count: int) -> str:
     return path
 
 
-def read_lightweight(body: bytes, offset: int, length: int) -> list:
+def read_lightweight(body: bytes, offset: int, length: int) -> list[SaveValue]:
     """Decode the subsystem's trailing bytes into ``[version, [classPath, [instance, ...]], ...]``.
 
     ``offset``/``length`` are the object's ``extra`` span including its 4-byte trailer, so the
@@ -171,7 +173,7 @@ def read_lightweight(body: bytes, offset: int, length: int) -> list:
             f"at body offset {r.pos - 4}: {class_count} buildable classes is implausible"
         )
 
-    decoded: list = [version]
+    decoded: list[SaveValue] = [version]
     for class_index in range(class_count):
         path = _read_class_path(r, class_index + 1, class_count)
         instance_count = r.i32()

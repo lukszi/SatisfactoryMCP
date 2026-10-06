@@ -164,7 +164,7 @@ class Grid:
     name: str
     cell_size: int
     content_id: int
-    cell_names: list[str] = field(default_factory=list)
+    cell_names: list[str] = field(default_factory=list[str])
 
 
 @dataclass
@@ -187,7 +187,7 @@ class BodyPreamble:
     #: Kept unmasked, so a caller sees the top bit rather than a number this module has edited.
     changelist: int | None = None
     branch: str = ""
-    custom_versions: list[tuple[bytes, int]] = field(default_factory=list)
+    custom_versions: list[tuple[bytes, int]] = field(default_factory=list[tuple[bytes, int]])
 
     @property
     def has_archive_header(self) -> bool:
@@ -211,7 +211,7 @@ class Level:
     toc_extra_bytes: int = 0
     #: Actors the save records as gone: ``(level cell, actor path)`` pairs from this level's
     #: header block. See ``destroyed.read_destroyed_block``.
-    destroyed: list[tuple[str, str]] = field(default_factory=list)
+    destroyed: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
 
     @property
     def actorAndComponentObjectHeaders(self) -> list[ActorHeader | ComponentHeader]:
@@ -225,12 +225,12 @@ class SaveBody:
     levels: list[Level]
     #: Anything skipped rather than understood, as ``(offset, what)``. A future patch that adds
     #: a structure should show up here rather than as silently wrong output.
-    warnings: list[tuple[int, str]] = field(default_factory=list)
+    warnings: list[tuple[int, str]] = field(default_factory=list[tuple[int, str]])
     #: Destroyed actors from the sub-level trailers, and from the table that closes the body.
     #: Kept apart from ``Level.destroyed`` because the three are three different lists; see
     #: ``destroyed_actors``.
-    trailer_destroyed: list[tuple[str, str]] = field(default_factory=list)
-    closing_destroyed: list[tuple[str, str]] = field(default_factory=list)
+    trailer_destroyed: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
+    closing_destroyed: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
 
     @property
     def object_count(self) -> int:
@@ -343,7 +343,7 @@ def _read_grids(r: Reader) -> list[Grid]:
     """
     count = r.i32()
     expect(0 <= count <= 256, r.pos - 4, f"grid count {count} is not plausible")
-    grids = []
+    grids: list[Grid] = []
     for _ in range(count):
         name = r.string()
         cell_size = r.i32()
@@ -354,7 +354,7 @@ def _read_grids(r: Reader) -> list[Grid]:
             r.pos - 4,
             f"grid {name!r} claims {cell_count} cells",
         )
-        cells = []
+        cells: list[str] = []
         for _ in range(cell_count):
             cells.append(r.string())
             r.u32()  # per-cell content id, unread by anything above this
@@ -431,7 +431,7 @@ def _read_object_entries(
     r: Reader, count: int, end: int, save_version: int, where: str
 ) -> list[ObjectSlice]:
     """``count`` object entries, each payload stepped over and refused if it runs past ``end``."""
-    slots = []
+    slots: list[ObjectSlice] = []
     for index in range(count):
         slot = _read_object_entry(r, save_version)
         expect(

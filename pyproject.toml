@@ -108,6 +108,23 @@ pythonPlatform = "Windows"
 typeCheckingMode = "standard"
 # A package or module joins this list when it reaches zero strict errors.
 strict = [
+    "src/pioneersav/__init__.py",
+    "src/pioneersav/chunks.py",
+    "src/pioneersav/destroyed.py",
+    "src/pioneersav/errors.py",
+    "src/pioneersav/header.py",
+    "src/pioneersav/lightweight.py",
+    "src/pioneersav/objects.py",
+    "src/pioneersav/properties/__init__.py",
+    "src/pioneersav/properties/decoder.py",
+    "src/pioneersav/properties/structs.py",
+    "src/pioneersav/properties/tags.py",
+    "src/pioneersav/reader.py",
+    "src/pioneersav/references.py",
+    "src/pioneersav/save.py",
+    "src/pioneersav/trailers.py",
+    "src/pioneersav/values.py",
+    "src/pioneersav/versions.py",
     "src/satisfactory_mcp/core/arrays.py",
     "src/satisfactory_mcp/core/jsontypes.py",
     "src/satisfactory_mcp/core/saveio/schema.py",

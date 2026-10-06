@@ -66,12 +66,12 @@ class ParsedSave:
     #: placed by the map and not saved, so this negative record is the only thing that says
     #: which of them the player has taken. Merged from the three lists the save keeps; see
     #: ``objects.SaveBody.destroyed_actors``.
-    destroyed_actors: list[tuple[str, str]] = field(default_factory=list)
+    destroyed_actors: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
     #: Everything skipped rather than understood, as ``(body offset, what)``, merged from the
     #: level walk and every object's property list. Diagnostics, not projection data: nothing
     #: above reads the fields they name, and the sidecar prints them to stderr rather than into
     #: the projection.
-    warnings: list[tuple[int, str]] = field(default_factory=list)
+    warnings: list[tuple[int, str]] = field(default_factory=list[tuple[int, str]])
 
     @property
     def object_count(self) -> int:
@@ -119,16 +119,15 @@ def _attach_trailer(
     stopped early. It warns rather than refuses, because a modded or future class carrying its
     own data looks the same.
     """
-    class_path = getattr(header, "typePath", None)
+    class_path: str | None = getattr(header, "typePath", None)
     if save_version < FIRST_MODERN_BODY:
         # no reader is verified on pre-1.0 bytes, though Build_PowerLine_C kept its class path;
         # leaving decode_trailer unset keeps actorSpecificInfo None, "not decoded"
-        unexplained = (
+        if (
             class_path is not None
             and obj.extra_length not in PLAIN_TRAILER
             and class_path not in UNDECODED_TRAILER_CLASSES
-        )
-        if unexplained:
+        ):
             what = (
                 f"{class_path.rsplit('.', 1)[-1]} left {obj.extra_length} trailing bytes on a "
                 f"saveVersion {save_version} save, and no class is known to"
@@ -164,9 +163,9 @@ def read_full_save_bytes(data: bytes) -> ParsedSave:
     body = decompress_body(data, info.body_offset, old=old)
     parsed = read_body(body, info.save_version, info.build_version)
     warnings = list(parsed.warnings)
-    levels = []
+    levels: list[ParsedLevel] = []
     for level in parsed.levels:
-        objects = []
+        objects: list[ParsedObject] = []
         for header, slot in zip(level.headers, level.objects, strict=True):
             actor = isinstance(header, ActorHeader)
             obj = read_object(body, slot, actor=actor, save_version=info.save_version)

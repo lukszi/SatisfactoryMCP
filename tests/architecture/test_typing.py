@@ -29,7 +29,7 @@ PYRIGHT_THREADS = 8
 #: it. A number only goes down: lower it when the count falls, and fix new errors instead of
 #: raising it.
 BUDGETS: dict[str, int] = {
-    "src/pioneersav": 2,
+    "src/pioneersav": 0,
     "src/satisfactory_mcp": 0,
     "src/satisfactory_mcp/core": 0,
     "src/satisfactory_mcp/core/gameassets": 8,
