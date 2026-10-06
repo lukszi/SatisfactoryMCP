@@ -8,14 +8,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
-from mapgen.terrain.field import (
+from mapgen.terrain.heightfield.sidecar_blocks import (
+    accuracy_block,
     cliff_source,
     container_block,
     density_block,
     fill_source,
     landscape_source,
+    water_source,
 )
-from mapgen.terrain.validate import accuracy_block, water_source
 from satisfactory_mcp.core.gameassets.provenance import files_digest, read_str_path
 from satisfactory_mcp.core.gameassets.versions import HEIGHTFIELD_GENERATOR_VERSION
 from satisfactory_mcp.domain.spatial import heightfield as hf

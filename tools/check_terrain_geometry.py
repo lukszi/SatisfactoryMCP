@@ -52,7 +52,7 @@ from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.meshes import ROCK_DIRS, MeshBounds
 from mapgen.gamedata.nodes import NODE_TABLE
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
-from mapgen.terrain.validate import VALIDATION_TRIM
+from mapgen.terrain.heightfield.validate import VALIDATION_TRIM
 from satisfactory_mcp.core.gameassets import nanite, staticmesh
 from satisfactory_mcp.core.gameassets.container import CONTAINER, open_container, paks_dir
 from satisfactory_mcp.core.gameassets.iostore import oodle_decompress

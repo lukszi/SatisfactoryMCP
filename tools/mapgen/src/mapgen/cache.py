@@ -73,6 +73,12 @@ STORAGE_BANDS = "zstd-bands-v1"
 STORAGES = (STORAGE_RAW, STORAGE_BANDS)
 BANDS_SUFFIX = ".bands"
 
+#: Rows of the output the direct pass rasterises at a time. A whole 32768 square of float32
+#: is 4.3 GB and the render already holds 3.2 GB of output; 256 rows is 34 MB, and a
+#: triangle at the 0.48 m median touches one band or two, so a per-placement y-bbox test is
+#: all the selection needed. Also the colour bands' size and one row of 256 px tiles.
+DIRECT_BAND_ROWS = 256
+
 
 def direct_cache_dir(out_dir: Path, name: str = RENDERS_DIR_NAME) -> Path:
     return out_dir / name / DIRECT_CACHE_DIR_NAME

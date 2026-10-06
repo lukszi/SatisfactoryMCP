@@ -42,7 +42,7 @@ from mapgen.palette.styles import (
     load_palette,
 )
 from mapgen.palette.water import WATER_DEPTH_FULL_M, water_over
-from mapgen.terrain.rasters import (
+from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_ROCK,
     MESH_SHELL,

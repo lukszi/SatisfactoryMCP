@@ -105,6 +105,7 @@ from mapgen.palette.water import (
     water_planes,
 )
 from mapgen.terrain.fill import ground_lattice, rebuild_lattice, terrain_lattice
+from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import (
     DIRECT_SUBSAMPLES,
@@ -117,7 +118,6 @@ from mapgen.terrain.rasters import (
     top_items,
 )
 from mapgen.terrain.sample import direct_weight, taps_cubic, taps_pchip
-from mapgen.terrain.sidecar import GENERATOR_VERSION
 from mapgen.tiles.borrowmeta import borrow_metadata
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
 from mapgen.tiles.drawpool import add_draw_flags, draw_threads

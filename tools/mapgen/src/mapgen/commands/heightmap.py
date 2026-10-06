@@ -56,22 +56,16 @@ from mapgen.gamedata.nodes import NODE_TABLE
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs, rasterise_top
 from mapgen.gamedata.rocks.collision_pack import rock_pack
 from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
-from mapgen.terrain.field import (
-    add_planes,
-    compose,
-    compose_top,
-    describe_files,
-    encode_planes,
-    report_field,
-)
-from mapgen.terrain.sidecar import (
+from mapgen.terrain.heightfield.field import compose, compose_top, encode_planes, report_field
+from mapgen.terrain.heightfield.sidecar import (
     build_meta,
     refuse_stale,
     report_frame,
     report_meshes,
     report_sweep,
 )
-from mapgen.terrain.validate import (
+from mapgen.terrain.heightfield.sidecar_blocks import add_planes, describe_files
+from mapgen.terrain.heightfield.validate import (
     TERRAIN_NODE_MEDIAN_MAX_M,
     VALIDATION_TRIM_RMS_MAX_M,
     report_validation,

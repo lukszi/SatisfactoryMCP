@@ -21,7 +21,7 @@ from mapgen.gamedata.vegetation.crown_sprites import (
     decode_records,
     decode_sprites,
 )
-from mapgen.terrain.rasters import is_render_only_foliage
+from mapgen.terrain.render_meshes import is_render_only_foliage
 
 __all__ = [
     "COVER_TOP_MIN",

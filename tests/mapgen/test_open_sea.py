@@ -23,7 +23,7 @@ from mapgen.palette.water import (
     open_sea,
 )
 from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pits, relax
-from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL
+from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, composite_top, render_layer
 from satisfactory_mcp.domain.spatial import heightfield as hf
 

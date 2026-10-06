@@ -28,9 +28,9 @@ from mapgen.palette.painted import ROCK_GRID_M, PaintedGround
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.palette.surfaces import mesh_surface
 from mapgen.palette.trees import crown_lab, crown_layer, over_crowns, species_targets
-from mapgen.terrain import rasters
-from mapgen.terrain.crowns import CrownSet
-from mapgen.terrain.rasters import (
+from mapgen.terrain import render_meshes
+from mapgen.terrain.crown_stamp import CrownSet
+from mapgen.terrain.render_meshes import (
     MESH_CLASS_MASK,
     MESH_CORAL,
     MESH_FAMILY_SHIFT,
@@ -104,14 +104,14 @@ def test_a_render_only_rock_wears_its_own_family_and_top_layer():
 
 def test_mesh_items_carry_each_rock_s_family_and_leave_coral_alone(monkeypatch):
     shape = (np.array([[0, 0, 0], [100, 0, 0], [0, 100, 0]], np.float32), np.array([[0, 1, 2]]))
-    monkeypatch.setattr(rasters, "read_shape", lambda *a: (shape, "test"))
+    monkeypatch.setattr(render_meshes, "read_shape", lambda *a: (shape, "test"))
     asked: list = []
 
     def worn(_s, _c, _i, mesh, material, _caches):
         asked.append((mesh, material))
         return {"MI_Forest": FOREST, None: GRASS}[material]
 
-    monkeypatch.setattr(rasters, "worn_family", worn)
+    monkeypatch.setattr(render_meshes, "worn_family", worn)
     row = lambda mesh: (mesh, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1)
     sweep = {
         "meshes": [PILLAR, CORAL],
@@ -152,14 +152,14 @@ def test_the_mesh_cache_holds_a_family_plane_and_the_pass_hands_it_on(tmp_path, 
         code[:, cols // 2 :] = MESH_CORAL
         return np.full((rows, cols), 900.0, np.float32), code
 
-    monkeypatch.setattr(rasters, "rasterise_mesh_band", band)
+    monkeypatch.setattr(render_meshes, "rasterise_mesh_band", band)
     build = lambda: ({"items": {}, "shapes": {}, "families": True}, {"instances": {}})
     maps, _source = mesh_pass(tmp_path, 32, "b1", "render_meshes", build, "m", True)
     assert len(maps) == 3
     z, cls, family = (np.asarray(m[:]) for m in maps)
     assert cls[0, 0] == MESH_ROCK and cls[0, 31] == MESH_CORAL
     assert family[0, 0] == FOREST and family[0, 31] == 0
-    stamp = mesh_stamp(32, "b1", rasters.READER_VERSIONS["render_meshes"])
+    stamp = mesh_stamp(32, "b1", render_meshes.READER_VERSIONS["render_meshes"])
     assert cached_meshes(tmp_path, stamp) is not None
     assert cached_mesh_family(tmp_path, stamp) is not None
     assert _band_family(maps, slice(0, 2)).shape == (2, 32)

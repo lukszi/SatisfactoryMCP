@@ -14,7 +14,7 @@ from scipy import ndimage
 
 from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
 from mapgen.lighting.model import surface_direct
-from mapgen.terrain.rasters import MESH_ROCK
+from mapgen.terrain.render_meshes import MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [

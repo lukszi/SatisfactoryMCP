@@ -1,19 +1,8 @@
-"""The heightfield's planes: fill, landscape and cliff fused onto the 1 m grid, encoded and
-described layer by layer for the sidecar."""
+"""The heightfield sidecar's blocks: files, sources, density, container and accuracy."""
 
 from __future__ import annotations
 
-import numpy as np
-
-from mapgen.gamedata.frame import (
-    BASELINE_BOX_CM,
-    GRID_PX,
-    ORIGIN_X_CM,
-    ORIGIN_Y_CM,
-    SPACING_CM,
-    Z6_TEXEL_M,
-    Z7_TEXEL_M,
-)
+from mapgen.gamedata.frame import GRID_PX, Z6_TEXEL_M, Z7_TEXEL_M
 from mapgen.gamedata.level.fill_raster import (
     BASELINE_OFFSET_CM,
     BASELINE_PX,
@@ -25,144 +14,15 @@ from mapgen.gamedata.level.landscape import (
     LANDSCAPE_PER_UNIT,
     LANDSCAPE_SCALE_CM,
     LANDSCAPE_ZERO,
-    drop_offsets,
 )
 from mapgen.gamedata.meshes import CLIFF_SOURCES, DIRECT_SAMPLES_MIN
 from mapgen.gamedata.placements import ARCH_MARK, OVERSIZE_CM
+from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES
+from mapgen.gamedata.water.channel import WATER_ARTWORK_BLUE_OVER_RED
+from mapgen.terrain.heightfield.field import FILL_HORIZONTAL_M, FILL_VERTICAL_M
+from mapgen.terrain.heightfield.validate import ACCURACY_MIN_SAMPLES
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.domain.spatial import heightfield as hf
-
-#: The interface raster's own resolution, for the accuracy the fill layer inherits.
-FILL_HORIZONTAL_M = 7500.0 / BASELINE_PX
-
-
-FILL_VERTICAL_M = BASELINE_SCALE_CM_PER_RAW / 255.0 / 100.0
-
-
-def compose_top(height_dm: np.ndarray, frame: dict, top: dict) -> tuple[np.ndarray, int]:
-    """``height_dm`` max-folded with the overlay, and how many texels the overlay raised."""
-    dx, dy = drop_offsets(frame)
-    out = height_dm.copy()
-    window = out[dy : dy + frame["height"], dx : dx + frame["width"]]
-    over_dm = np.clip(np.round(np.nan_to_num(top["z_cm"], nan=-1e9) / 10.0), -32767, 32767)
-    over_dm = np.where(np.isfinite(top["z_cm"]), over_dm, hf.NODATA).astype(np.int16)
-    raise_ = (over_dm != hf.NODATA) & ((window == hf.NODATA) | (over_dm > window))
-    window[raise_] = over_dm[raise_]
-    return out, int(raise_.sum())
-
-
-def baseline_indices() -> tuple[np.ndarray, np.ndarray]:
-    """Which baseline texel each output column and row falls in. Nearest, never blended.
-
-    The fill is 3.66 m data read at 1 m, so an interpolation would draw a smooth surface out
-    of a raster that has none and hide the coarseness the provenance byte declares.
-    """
-    x0, x1, y0, y1 = BASELINE_BOX_CM
-    columns = ORIGIN_X_CM + np.arange(GRID_PX) * SPACING_CM
-    rows = ORIGIN_Y_CM + np.arange(GRID_PX) * SPACING_CM
-    bi = np.clip(
-        ((columns - x0) / (x1 - x0) * BASELINE_PX - 0.5).round().astype(int), 0, BASELINE_PX - 1
-    )
-    bj = np.clip(
-        ((rows - y0) / (y1 - y0) * BASELINE_PX - 0.5).round().astype(int), 0, BASELINE_PX - 1
-    )
-    return bi, bj
-
-
-def compose(frame: dict, cliffs: dict, baseline_cm: np.ndarray, valid: np.ndarray) -> dict:
-    """Fuse the layers into the output grid: fill, then landscape, then cliff over both.
-
-    The fill is everywhere the interface raster says anything, so it goes down first and is
-    the answer only where nothing better arrives. The landscape drops in index-aligned over
-    its own frame. The cliff overlay then wins any texel where real geometry stands above
-    the sculpted ground, and any texel the landscape left as a hole: a cave mouth's rock is
-    still a measurement.
-    """
-    dx, dy = drop_offsets(frame)
-    bi, bj = baseline_indices()
-
-    z_m = np.where(valid, baseline_cm / 100.0, np.nan).astype(np.float32)[np.ix_(bj, bi)]
-    prov = np.where(np.isnan(z_m), hf.PROV_NODATA, hf.PROV_FILL).astype(np.uint8)
-
-    land_m = np.where(frame["good"], frame["z_cm"] / 100.0, np.nan).astype(np.float32)
-    sub_prov = np.where(frame["good"], hf.PROV_LANDSCAPE, hf.PROV_NODATA).astype(np.uint8)
-
-    cliff_m = (cliffs["z_cm"] / 100.0).astype(np.float32)
-    take = np.isfinite(cliff_m) & (~np.isfinite(land_m) | (cliff_m > land_m))
-    sub_z = np.where(take, cliff_m, land_m)
-    # Two cliff values, one layer, equally accurate at 1 m: 5 says a source vertex landed in
-    # this texel, 4 says the rasteriser reached it by interpolating the plane of a triangle
-    # wider than the texel. The split exists for renders drawing finer than 1 m.
-    direct = take & (cliffs["density"] >= DIRECT_SAMPLES_MIN)
-    sub_prov = np.where(take, hf.PROV_CLIFF, sub_prov)
-    sub_prov = np.where(direct, hf.PROV_CLIFF_DIRECT, sub_prov).astype(np.uint8)
-    sub_density = np.where(take, np.minimum(cliffs["density"], 255), 0).astype(np.uint8)
-
-    window = np.isfinite(sub_z)
-    z_m[dy : dy + frame["height"], dx : dx + frame["width"]][window] = sub_z[window]
-    prov[dy : dy + frame["height"], dx : dx + frame["width"]][window] = sub_prov[window]
-    density = np.zeros((GRID_PX, GRID_PX), np.uint8)
-    density[dy : dy + frame["height"], dx : dx + frame["width"]][window] = sub_density[window]
-
-    known = np.isfinite(z_m)
-    height_dm = np.where(known, np.clip(np.round(z_m * 10.0), -32767, 32767), hf.NODATA)
-    error = np.abs(height_dm.astype(np.float32) / 10.0 - z_m)[known]
-    cliff = np.isin(prov, hf.PROV_CLIFF_VALUES)
-    return {
-        "height_dm": height_dm.astype(np.int16),
-        "prov": prov,
-        "density": density,
-        "drop": (dx, dy),
-        "coverage": {
-            hf.PROV_NAMES[value]: float((prov == value).mean())
-            for value in (
-                hf.PROV_NODATA,
-                hf.PROV_LANDSCAPE,
-                hf.PROV_FILL,
-                hf.PROV_CLIFF,
-                hf.PROV_CLIFF_DIRECT,
-            )
-        },
-        "cliff_texels": int(cliff.sum()),
-        "cliff_direct_fraction": float((prov == hf.PROV_CLIFF_DIRECT).sum() / max(cliff.sum(), 1)),
-        "density_p50": int(np.median(density[cliff])) if cliff.any() else 0,
-        "z_range_m": [float(np.nanmin(z_m)), float(np.nanmax(z_m))],
-        "quantisation_max_m": float(error.max()),
-        "quantisation_rms_m": float(np.sqrt((error**2).mean())),
-    }
-
-
-def report_field(field: dict) -> None:
-    """The composed field's coverage, range and cliff province, one progress line each."""
-    for name, fraction in field["coverage"].items():
-        print(f"  {name:>10}: {fraction * 100:6.2f}% of the box")
-    print(
-        f"  z range {field['z_range_m'][0]:.1f} .. {field['z_range_m'][1]:.1f} m; "
-        f"int16-decimetre quantisation RMS {field['quantisation_rms_m']:.4f} m"
-    )
-    print(
-        f"  cliff province {field['cliff_texels']} texels, "
-        f"{field['cliff_direct_fraction'] * 100:.1f}% with a source vertex in them "
-        f"(median {field['density_p50']} samples per cliff texel)"
-    )
-
-
-def encode_planes(field: dict, water: dict, frame: dict, top_dm: np.ndarray) -> dict[str, bytes]:
-    """Every plane of the field, encoded with the shipped codec, keyed by file name."""
-    water_dm = np.where(
-        np.isfinite(water["level_m"]),
-        np.clip(np.round(np.nan_to_num(water["level_m"]) * hf.DM_PER_M), -32767, 32767),
-        hf.NODATA,
-    ).astype(np.int16)
-    return {
-        hf.HEIGHT_NAME: hf.encode_i16(field["height_dm"]),
-        hf.PROV_NAME: hf.encode_u8(field["prov"]),
-        hf.WATER_NAME: hf.encode_i16(water_dm),
-        hf.WATER_QUALITY_NAME: hf.encode_u8(water["quality"]),
-        hf.DENSITY_NAME: hf.encode_u8(field["density"]),
-        hf.TERRAIN_NAME: hf.encode_u16(frame["raw"]),
-        hf.TOP_NAME: hf.encode_i16(top_dm),
-    }
 
 
 def describe_files(payload: dict[str, bytes], frame: dict) -> dict:
@@ -413,5 +273,180 @@ def container_block(field: dict) -> dict:
         "why": (
             "int16 decimetres. The rounding costs the RMS above, which is an eighth of "
             "the field's own measured accuracy; int32 would double the file for nothing."
+        ),
+    }
+
+
+def accuracy_block(validation: dict) -> dict:
+    """What each provenance value means, and how well it was measured to do.
+
+    ``accuracy_m`` is the measured median absolute error where enough nodes fell on that
+    layer to mean anything and the layer's own vertical step where they did not, and
+    ``accuracy_from`` says which of the two it is.
+    """
+    derived = {
+        hf.PROV_LANDSCAPE: (1.0, LANDSCAPE_SCALE_CM / LANDSCAPE_PER_UNIT / 100.0),
+        hf.PROV_CLIFF: (1.0, 0.0),
+        hf.PROV_CLIFF_DIRECT: (1.0, 0.0),
+        hf.PROV_FILL: (FILL_HORIZONTAL_M, FILL_VERTICAL_M),
+    }
+    notes = {
+        hf.PROV_LANDSCAPE: (
+            "the cooked UE Landscape heightfield: a true 1 m grid, 7.8 mm vertical "
+            "quantisation, no resampling anywhere between the component and this texel"
+        ),
+        hf.PROV_CLIFF: (
+            "rasterised triangles from a placed rock or cliff, at a texel NO SOURCE VERTEX "
+            "landed in: the height is this file's own plane interpolation across a triangle "
+            "wider than the texel. Exactly as accurate as value 5 at 1 m, and not a "
+            "measurement below it -- which is the only thing the two values distinguish"
+        ),
+        hf.PROV_CLIFF_DIRECT: (
+            "rasterised triangles from a placed rock or cliff, at a texel at least one "
+            "source vertex landed in. density.u8.z says how many. This is where a render "
+            "finer than 1 m is reading geometry rather than a kernel"
+        ),
+        hf.PROV_FILL: (
+            "the 2048 px HeightData_Test interface raster, outside the landscape frame. "
+            "3.66 m horizontally and 3.897 m per quantisation step: this is the old "
+            "baseline unchanged, and it is the coarsest thing in the field"
+        ),
+    }
+    out: dict[str, dict] = {
+        str(hf.PROV_NODATA): {
+            "name": hf.PROV_NAMES[hf.PROV_NODATA],
+            "accuracy_m": None,
+            "note": (
+                "open ocean past the landscape edge, and two cave-mouth blobs. Explicit, "
+                "never zero-filled: say nothing here."
+            ),
+        }
+    }
+    for value, (horizontal, vertical) in derived.items():
+        name = hf.PROV_NAMES[value]
+        measured = validation["per_layer"].get(name, {})
+        enough = measured.get("n", 0) >= ACCURACY_MIN_SAMPLES
+        # A cliff split too thin to believe falls back to the province WHOLE rather than to
+        # a derived step: a rasterised triangle has no vertical quantisation, so the derived
+        # floor of 0.1 m would be a better number than the layer has ever measured.
+        fallback = validation["per_layer"].get("cliff, both", {})
+        pooled = value in hf.PROV_CLIFF_VALUES and fallback.get("n", 0) >= ACCURACY_MIN_SAMPLES
+        if enough:
+            accuracy, source = (
+                measured["medabs_m"],
+                (
+                    f"measured: median absolute error over {measured['n']} static resource "
+                    "nodes that fell on this layer"
+                ),
+            )
+        elif pooled:
+            accuracy, source = (
+                fallback["medabs_m"],
+                (
+                    f"measured over the cliff province WHOLE ({fallback['n']} nodes), because "
+                    f"only {measured.get('n', 0)} fell on this half of it and that is fewer "
+                    f"than {ACCURACY_MIN_SAMPLES}. The two halves differ in what a finer render "
+                    "may claim, not in how accurate they are at 1 m"
+                ),
+            )
+        else:
+            accuracy, source = (
+                round(max(vertical, 0.1), 3),
+                (
+                    f"derived: this layer's own vertical step, because only "
+                    f"{measured.get('n', 0)} nodes fell on it and that is fewer than "
+                    f"{ACCURACY_MIN_SAMPLES}"
+                ),
+            )
+        out[str(value)] = {
+            "name": name,
+            "horizontal_m": round(horizontal, 4),
+            "vertical_step_m": round(vertical, 4),
+            "accuracy_m": accuracy,
+            "accuracy_from": source,
+            "measured": measured,
+            "note": notes[value],
+        }
+    return out
+
+
+def water_source(sweep: dict, water: dict, water_checks: dict) -> dict:
+    """The sidecar's ``sources.water`` block: how the channel was made and how it measured."""
+    return {
+        "recipe": (
+            "the game's own map artwork for the plan shape, the cooked water "
+            "volumes' own bounding boxes for the level. Neither source is asked "
+            "for what it does not know: the artwork has no Z at all, and the "
+            "volumes are far too sparse to draw a coastline with"
+        ),
+        "shape": {
+            "asset": (
+                "/Game/FactoryGame/Interface/UI/Assets/MapTest/SlicedMap/Map_<c>-<r>, "
+                "the same four BC1 slices tools/gen_map_image.py draws"
+            ),
+            "classifier": f"blue - red >= {WATER_ARTWORK_BLUE_OVER_RED} on the 8192 sheet",
+            "registration": (
+                "(0, 0) sheet pixels, measured by a +/-2 px sweep rather than "
+                "assumed. The sheet's box and this grid's are the same 7500 m "
+                "square, so the resample is nearest at 0.92 m to the pixel"
+            ),
+            "artwork_water_km2": round(water["artwork_texels"] / 1e6, 4),
+        },
+        "level": {
+            "actors": sum(sweep["water_actors"].values()),
+            "by_class": dict(sorted(sweep["water_actors"].items())),
+            "with_a_world_box": len(sweep["water"]),
+            "without_a_box": len(sweep["water_boxless"]),
+            "boxless": [
+                {"class": cls, "actor": actor, "cell": cell}
+                for cls, actor, cell in sweep["water_boxless"]
+            ],
+            "box_sources": dict(sorted(sweep["water_box_sources"].items())),
+            "surface_classes": sorted(WATER_SURFACE_CLASSES),
+            "boxes_rasterised": water["boxes_rasterised"],
+            "rule": (
+                "the highest surface-class box top standing over the texel. A box "
+                "top is a surface, so where several overlap in plan the highest is "
+                "the one visible from above; one median per drawn body was measured "
+                "to invent up to 157 m of depth over 0.06 km2, because the ocean "
+                "and its rivers are one drawn shape spanning 141 m of box top"
+            ),
+            "oracle": (
+                "the save's 23 water extractors all sit inside a volume box and "
+                "stand on its top to within 0.005 cm, which is what says a box top "
+                "is the water surface rather than merely near it"
+            ),
+        },
+        "combine": {
+            "bodies": water["bodies"],
+            "texels_with_no_box_over_them": water["uncovered_texels"],
+            "texels_dropped_as_ground_above_the_level": water["dropped_standing_out_texels"],
+            "water_km2": round(water["water_texels"] / 1e6, 4),
+            "depth_measured_km2": round(water["measured_texels"] / 1e6, 4),
+            "depth_unknown_km2": round(water["level_only_texels"] / 1e6, 4),
+            "depth_p50_m": water["depth_p50_m"],
+            "depth_p90_m": water["depth_p90_m"],
+            "unknown_depth_rule": (
+                "where the ground under the water is the fill layer or no data, "
+                "the depth is not knowable and waterq.u8.z says so. Nothing may "
+                "gate on water > terrain there: the fill raster's 3.9 m step "
+                "routinely rounds above a sea surface 17 m down, which reads the "
+                "open ocean as dry"
+            ),
+        },
+        "validation": water_checks,
+        "accuracy_m": 0.05,
+        "supersedes": (
+            "a flatness detector over the interface raster, which found 20.4% of "
+            "the sheet as water against the artwork's 39.0% -- 46.7% recall, 35.8% "
+            "over Spire Coast -- and invented plateau lakes on flat mesas. Its "
+            "failures were structural: 3.9 m of quantisation against 2.1 m of "
+            "water, rivers below the raster's resolution, and a fill province where "
+            "the terrain it compared against IS the water surface"
+        ),
+        "role": (
+            "INFORMATION ONLY. Nothing downstream moves ground because of it, and "
+            "that stays measured rather than assumed: a lake gate built on the old "
+            "detector made the field worse, nodes trim90 0.93 against 0.77."
         ),
     }

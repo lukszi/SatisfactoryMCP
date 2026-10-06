@@ -74,8 +74,14 @@ from mapgen.palette.trees import (
     sample_titan,
     titan_over,
 )
-from mapgen.terrain.crowns import load_crowns
-from mapgen.terrain.rasters import MESH_CORAL, MESH_SHELL, MESH_TERRACE, TITAN_LEAVES, TITAN_TRUNK
+from mapgen.terrain.crown_stamp import load_crowns
+from mapgen.terrain.render_meshes import (
+    MESH_CORAL,
+    MESH_SHELL,
+    MESH_TERRACE,
+    TITAN_LEAVES,
+    TITAN_TRUNK,
+)
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.domain.spatial import heightfield as hf
 

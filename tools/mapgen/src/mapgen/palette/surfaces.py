@@ -11,7 +11,7 @@ from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.palette.calibration import display_to_ground, sampled_rgb
 from mapgen.palette.colour import linear_from_oklab
-from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK
+from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [

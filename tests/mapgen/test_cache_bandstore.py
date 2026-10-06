@@ -37,13 +37,9 @@ from mapgen.cache import (
 )
 from mapgen.commands.compress_cache import Refused, compress
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.terrain import rasters
-from mapgen.terrain.rasters import (
-    rasterise_direct,
-    rasterise_meshes,
-    reduce_direct,
-    reduce_source,
-)
+from mapgen.terrain import render_meshes
+from mapgen.terrain.rasters import rasterise_direct, reduce_direct, reduce_source
+from mapgen.terrain.render_meshes import rasterise_meshes
 
 pytest.importorskip("zstandard")
 
@@ -206,7 +202,7 @@ def test_both_storages_hit_and_hold_the_same_planes(tmp_path, monkeypatch, stora
         [DIRECT_CACHE_SIDECAR] + [name + suffix for name in DIRECT_PLANES]
     )
 
-    monkeypatch.setattr(rasters, "rasterise_mesh_band", _mesh_band)
+    monkeypatch.setattr(render_meshes, "rasterise_mesh_band", _mesh_band)
     meshes, key = tmp_path / MESH_CACHE_DIR_NAME, mesh_stamp(SIZE, "b1", 2)
     rasterise_meshes({}, meshes, key, BOUNDS_M, 256, False, storage)
     mesh_z, mesh_class = cached_meshes(meshes, key)

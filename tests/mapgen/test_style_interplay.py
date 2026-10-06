@@ -29,7 +29,7 @@ from mapgen.palette.painted import tone
 from mapgen.palette.relief import FLAT_LIT, _shade
 from mapgen.palette.shore import OCEAN_LEVEL_M, painted_ndl
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK
+from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from tests.support.map_scenes import relief_ground
 

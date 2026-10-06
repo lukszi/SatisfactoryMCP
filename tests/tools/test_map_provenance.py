@@ -18,7 +18,7 @@ from mapgen.palette.styles import (
     TERRAIN_PALETTE,
     load_palette,
 )
-from mapgen.terrain.sidecar import GENERATOR_VERSION
+from mapgen.terrain.heightfield.sidecar import GENERATOR_VERSION
 from mapgen.tiles.artwork_output import artwork_provenance
 from mapgen.tiles.recipes import (
     ENHANCE_RECIPE,

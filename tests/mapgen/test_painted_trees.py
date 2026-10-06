@@ -43,7 +43,7 @@ from mapgen.palette.trees import (
     hue_gate,
     over_crowns,
 )
-from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL
+from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from mapgen.terrain.sample import taps_linear
 
 SWAMP = CLASSES.index("swamp")

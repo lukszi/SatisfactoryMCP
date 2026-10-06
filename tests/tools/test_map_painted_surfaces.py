@@ -48,15 +48,8 @@ from mapgen.palette.painted import (
     titan_over,
 )
 from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style
-from mapgen.terrain.rasters import (
-    TITAN_LEAVES,
-    TITAN_TRUNK,
-    direct_placements,
-    mesh_pass,
-    rasterise_direct_band,
-    reduce_source,
-    titan_class,
-)
+from mapgen.terrain.rasters import direct_placements, rasterise_direct_band, reduce_source
+from mapgen.terrain.render_meshes import TITAN_LEAVES, TITAN_TRUNK, mesh_pass, titan_class
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.domain.maps.axes import INPUT_NAMES
 from satisfactory_mcp.domain.maps.presets import normalise

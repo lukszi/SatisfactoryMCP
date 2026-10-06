@@ -49,7 +49,7 @@ from mapgen.palette.water import (
     water_alpha,
     water_depth_fraction,
 )
-from mapgen.terrain.crowns import crown_band
+from mapgen.terrain.crown_stamp import crown_band
 from mapgen.terrain.measure import SEAM_MID
 from mapgen.terrain.rasters import pixel_coverage
 from mapgen.terrain.sample import (

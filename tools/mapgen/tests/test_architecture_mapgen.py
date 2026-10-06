@@ -77,7 +77,7 @@ CEILING_SLACK = 25
 FUNCTION_MAX_LINES = 150
 FUNCTION_CEILINGS: dict[str, int] = {
     "commands/renders.py::main": 812,
-    "terrain/sidecar.py::build_meta": 156,
+    "terrain/heightfield/sidecar.py::build_meta": 156,
     "commands/artwork.py::main": 119,
     "enhance/levels.py::enhance_levels": 249,
 }
