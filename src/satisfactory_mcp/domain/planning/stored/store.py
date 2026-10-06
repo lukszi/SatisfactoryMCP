@@ -18,7 +18,7 @@ from typing import Protocol, TypeVar
 
 from .... import config
 from ....core import schema
-from ....core.jsontypes import JsonObject
+from ....core.jsontypes import JsonObject, JsonValue
 from .plan_args import PLAN_ARGS
 
 __all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore", "StoredPlan", "find_by_name"]
@@ -68,10 +68,10 @@ class Plan:
     created: str = ""
     #: What each source selector RESOLVED to when saved; ``provenance`` owns the shape.
     #: Empty means "not recorded", which a recall reports as such and not as "unchanged".
-    provenance: JsonObject = field(default_factory=dict)
+    provenance: JsonObject = field(default_factory=dict[str, JsonValue])
     #: Where this plan is to STAND; ``planning.siting`` owns the shape and empty means "not
     #: sited". Untouched by a re-save: where a plan goes has its own verb.
-    siting: JsonObject = field(default_factory=dict)
+    siting: JsonObject = field(default_factory=dict[str, JsonValue])
     key: str = ""
     rev: int = 0
 

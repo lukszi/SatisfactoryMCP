@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import cast
 
-from .....core.jsontypes import JsonObject
+from .....core.jsontypes import JsonObject, JsonValue
 from ..plan_args import InvalidOp, PlanArgs, PlanLogError, checked_headroom, legacy_hours
 from ..views import (
     ActorRecord,
@@ -88,9 +88,9 @@ class PlanState:
     created: str = ""
     plan_id: str = ""
     #: ``provenance.record``'s block as stored; empty means "not recorded".
-    provenance: JsonObject = field(default_factory=dict)
+    provenance: JsonObject = field(default_factory=dict[str, JsonValue])
     #: ``siting.normalise_record``'s record as stored; empty means "not sited".
-    siting: JsonObject = field(default_factory=dict)
+    siting: JsonObject = field(default_factory=dict[str, JsonValue])
     args: PlanArgs = field(default_factory=PlanArgs)
     headroom_mw: float | None = None
 
