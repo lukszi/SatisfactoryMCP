@@ -95,6 +95,8 @@ Planned as 0.2.0.
 - `python -m mapgen renders` no longer overwrites a map the registry lists: a run into its
   folder, through a junction or link too, is refused and names it. `--renders-name` writes
   beside it, and `--overwrite-in-use` replaces it anyway.
+- The Maps tab's render estimate follows the "live sun" box, counts the light cache's
+  scratch space against the free disk, and times a lit render only from an earlier lit one.
 
 ## [0.1.0] - 2026-09-27
 

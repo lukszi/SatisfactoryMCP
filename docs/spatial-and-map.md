@@ -1903,6 +1903,14 @@ nothing. The crown cells are 0 wherever no crown stands above the ground's horiz
 they take the light pyramid from 18.8 to 24.2 MB. The unlit colour adds about half the
 colour pyramid again.
 
+**Scratch.** While the run lasts, `light.cache/` beside the raster caches holds 13.5 bytes a
+pixel, 14.5 GB at full size: the surface (heights 4, land 1), the default-sun terms (3), and
+the bake's half-resolution heights, land and sky view (1.5) and quarter-resolution horizons
+(4). With the painted layer the crown tops and cover (5) are written there and copied into
+the bake's own occluder files (5), 10.7 GB more. The cache is removed at the end of the run.
+The Maps tab's estimate counts it as `presets.LIGHT_SCRATCH_BYTES` and
+`CROWN_SCRATCH_BYTES`, scaled by area; a test holds the first to the stage's allocation.
+
 ### Hooks
 
 `bake_light` takes two optional rasters on the sheet's grid, both of which only cast:

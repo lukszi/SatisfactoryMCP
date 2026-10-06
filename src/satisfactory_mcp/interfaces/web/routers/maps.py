@@ -357,6 +357,7 @@ def map_estimate(
     top: bool = True,
     keep_cache: bool = False,
     restyle: bool = False,
+    light: bool = True,
     enhance: bool = False,
     tiles_2x: bool = True,
 ) -> Any:
@@ -368,6 +369,7 @@ def map_estimate(
         "top": top,
         "keep_cache": keep_cache,
         "restyle": restyle,
+        "light": light,
         "enhance": enhance,
         "tiles_2x": tiles_2x,
     }

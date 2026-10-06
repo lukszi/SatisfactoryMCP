@@ -113,7 +113,8 @@ as the artwork. The main options:
 - `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
   with its own digest (§30).
 
-A full-size run needs about 10.7 GB of scratch space for those caches. See §25 to §27, and
+A full-size run needs about 10.7 GB of scratch space for those caches. The light cache adds
+14.5 GB, and 10.7 GB more with the painted layer (§29, "Scratch"). See §25 to §27, and
 [maps_contract.md](../../docs/maps_contract.md) for how the server registers the result.
 
 ### check-fill

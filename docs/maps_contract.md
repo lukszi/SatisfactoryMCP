@@ -292,15 +292,17 @@ for a missing `gen` extra says to stop satisfactory-mcp first, because uv cannot
 ### 4.2 Disk
 
 A job is refused (507) unless free space covers what it keeps, what it needs while running
-(the raster caches, about 10.7 GB at 32768, scaled by area) and 2 GB more. Checked at the form,
-at submit and again at start.
+(the raster caches, about 10.7 GB at 32768, and with the light its cache, 14.5 GB and 10.7 GB
+more with the painted layer, all scaled by area) and 2 GB more. Checked at the form, at submit
+and again at start.
 
 ### 4.3 Estimates
 
 From the stage seconds of one measured full render (prep 30, sweep 36, direct 692, top 119,
 draw 355 and cut 122 per layer), area-scaled, with the direct and top passes floored because
-the triangles are the same at any size. Once a job of the same preset and recipe has finished,
-its wall time scaled by area replaces the constants, and the form says "(from the last run)".
+the triangles are the same at any size. Once a job of the same preset and recipe, restyle or
+not and light or not, has finished, its wall time scaled by area replaces the constants, and
+the form says "(from the last run)".
 
 ---
 
@@ -440,7 +442,7 @@ a visible confirm. No tool was added.
 | Method + path | Does | Refuses |
 |---|---|---|
 | `GET /api/maps` | `MapsResponse {version, default, types[] (each with title, name and tone), jobs[], can_generate (with vulkan), inputs[], disk, game_cl, unregistered[], queue_max, sizes[], styles[] {layer, style, label, tone}, cached_sizes[], plain_tone}` | 503 newer manifest |
-| `GET /api/maps/estimate?preset=&layers=&size=&recipe=&top=&keep_cache=&restyle=&enhance=&tiles_2x=` | `MapEstimateResponse {seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason, measured}` | 400 bad option |
+| `GET /api/maps/estimate?preset=&layers=&size=&recipe=&top=&keep_cache=&restyle=&light=&enhance=&tiles_2x=` | `MapEstimateResponse {seconds, keep_bytes, transient_bytes, free_bytes, needs_bytes, ok, reason, measured}` | 400 bad option |
 | `PUT /api/maps/default {id, version?}` | `MapsResponse` | 404 unknown, 409 not ready or stale version |
 | `POST /api/maps/adopt` | `MapsResponse` | |
 | `DELETE /api/maps/cache` | `{freed_bytes}` | 409 while a job runs |
@@ -468,8 +470,9 @@ max_z, unlit_max_z, params, baked_sun, model}`. `?kind=unlit` serves the unlit c
 immutable. Any other `kind`, or a layer drawn with `--no-light` or before the light existed,
 is a 404. The `render` preset takes `light`, default true since 2026-10-06, and passes
 `--light`, or `--no-light` when it is false. With the light the plan adds a `light` stage
-after the first layer's draw, and the unlit and light trees to the estimate's bytes.
-docs/spatial-and-map.md §29 describes the light.
+after the first layer's draw, the unlit and light trees to the estimate's kept bytes, and the
+light cache (§4.2) to its bytes while running. docs/spatial-and-map.md §29 describes the
+light.
 
 ## 9. Verified
 

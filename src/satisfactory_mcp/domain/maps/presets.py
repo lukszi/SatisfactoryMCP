@@ -75,10 +75,13 @@ GEN_MODULES = ("ooz", "texture2ddecoder", "PIL")
 RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
 RENDER_LAYER_S = {"draw": 355.0, "cut": 122.0}
 #: ``--light``: the lighting bake once (projected, docs/spatial-and-map.md section 29), and per
-#: layer the unlit tree cut beside the baked one.
+#: layer the unlit tree cut beside the baked one. The scratch is the light cache while it runs,
+#: and the crown occluder a painted layer adds to it (section 29, "Scratch").
 LIGHT_STAGE_S = 600.0
 LIGHT_KEEP_BYTES = 1_000_000_000
 UNLIT_KEEP_BYTES = 420_000_000
+LIGHT_SCRATCH_BYTES = 14_500_000_000
+CROWN_SCRATCH_BYTES = 10_700_000_000
 DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
 RENDER_KEEP_BYTES = 830_000_000
@@ -203,7 +206,7 @@ def _scaled_history(preset: str, options: dict) -> float | None:
         was = row.get("options") or {}
         if was.get("recipe") != options["recipe"] or not was.get("size"):
             continue
-        if bool(was.get("restyle")) != options["restyle"]:
+        if any(bool(was.get(key)) != options[key] for key in ("restyle", "light")):
             continue
         layers = max(1, len(was.get("layers") or []))
         per_layer = row["seconds"] / layers
@@ -245,6 +248,9 @@ def estimate(preset: str, options: dict) -> dict:
         keep = len(options["layers"]) * max(RENDER_KEEP_FLOOR, int(per_layer * area))
         keep += int(LIGHT_KEEP_BYTES * area) if options["light"] else 0
         transient = int(CACHE_BYTES_FULL * area) + keep // max(1, len(options["layers"]))
+        if options["light"]:
+            crowns = CROWN_SCRATCH_BYTES if "painted" in options["layers"] else 0
+            transient += int((LIGHT_SCRATCH_BYTES + crowns) * area)
     elif preset == "artwork":
         seconds, keep = FIXED["artwork"]["enhanced" if options["enhance"] else "plain"]
         transient = keep
