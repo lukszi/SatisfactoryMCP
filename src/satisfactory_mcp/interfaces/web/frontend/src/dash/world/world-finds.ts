@@ -11,16 +11,16 @@ import type { CollectibleRow, FoundField, FoundNode, RankedSite, RunRow } from "
 import type { Selection } from "../../app/selection";
 
 export function worldUrl(path: ApiPath, params: Record<string, string>): ApiUrl {
-  var query = withQuery("", params).slice(1);
+  const query = withQuery("", params).slice(1);
   return query ? `${path}?${query}` : path;
 }
 
 export function resourceOptions(anyLabel: string, current: string): [string, string][] {
-  var names: Record<string, string> = {};
-  knownNodes().forEach(function (n) {
-    if (n.kind !== "geyser") names[n.resource] = n.resource_name;
+  const names: Record<string, string> = {};
+  knownNodes().forEach(function (node) {
+    if (node.kind !== "geyser") names[node.resource] = node.resource_name;
   });
-  var options = Object.keys(names)
+  const options = Object.keys(names)
     .map(function (id): [string, string] {
       return [id, names[id]!];
     })
@@ -44,7 +44,7 @@ export function nodeRate(n: FoundNode): string {
 }
 
 export function carriesText(r: RunRow): string {
-  var parts: string[] = [];
+  const parts: string[] = [];
   if (r.carries) parts.push(r.carries);
   else if (r.kind === "pipe") parts.push("nothing known");
   if (r.rate !== null) parts.push((r.kind === "pipe" ? formatNumber(r.rate, 0) + " m³/min" : perMin(r.rate)) + " max");

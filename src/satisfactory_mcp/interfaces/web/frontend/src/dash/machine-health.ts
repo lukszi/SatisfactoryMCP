@@ -21,68 +21,69 @@ export interface IssueGroup {
 
 function issueCauseText(issue: MachineIssue): string {
   if (!issue.cause.length) return "";
-  var items = issue.cause.join(", ");
+  const items = issue.cause.join(", ");
   if (issue.state === WORDS.blocked) return "can't output " + items;
   if (issue.state === "starved") return "short of " + items;
   return items;
 }
 
+/* One row per factory, state, machine kind and cause. */
 export function issueGroups(rows: { name: string; worst_actionable: MachineIssue[] }[]): IssueGroup[] {
-  var found: IssueGroup[] = [];
-  rows.forEach(function (r) {
-    r.worst_actionable.forEach(function (issue) {
-      var cause = issueCauseText(issue);
-      var same = found.filter(function (g) {
-        return g.factory === r.name && g.state === issue.state && g.what === issue.what && g.cause === cause;
+  const found: IssueGroup[] = [];
+  rows.forEach(function (row) {
+    row.worst_actionable.forEach(function (issue) {
+      const cause = issueCauseText(issue);
+      const same = found.filter(function (group) {
+        return group.factory === row.name && group.state === issue.state && group.what === issue.what && group.cause === cause;
       })[0];
       if (same) same.issues.push(issue);
-      else found.push({ factory: r.name, state: issue.state, what: issue.what, cause: cause, issues: [issue] });
+      else found.push({ factory: row.name, state: issue.state, what: issue.what, cause: cause, issues: [issue] });
     });
   });
   return found;
 }
 
 export function issueCount(groups: IssueGroup[]): number {
-  var n = 0;
-  groups.forEach(function (g) {
-    n += g.issues.length;
+  let total = 0;
+  groups.forEach(function (group) {
+    total += group.issues.length;
   });
-  return n;
+  return total;
 }
 
 export function issueTable(
   groups: IssueGroup[],
-  place: (g: IssueGroup) => HTMLElement,
+  place: (group: IssueGroup) => HTMLElement,
   withFactory: boolean
 ): HTMLElement {
-  var columns: Column<IssueGroup>[] = [
+  const columns: Column<IssueGroup>[] = [
     {
       key: "state",
       label: "state",
       className: "dash-nowrap",
-      tone: function (g) {
-        return stateTone(g.state, true);
+      tone: function (group) {
+        return stateTone(group.state, true);
       },
-      render: function (g) {
-        return g.state;
+      render: function (group) {
+        return group.state;
       },
     },
     {
       key: "n",
       label: "machines",
       align: "right",
-      render: function (g) {
-        return count(g.issues.length);
+      render: function (group) {
+        return count(group.issues.length);
       },
     },
     {
       key: "what",
       label: "machine",
       className: "dash-wide",
-      render: function (g) {
-        if (!g.cause) return g.what;
-        var cell = make("span", "", g.what);
-        cell.appendChild(make("span", "dash-sub", g.cause));
+      render: function (group) {
+        if (!group.cause) return group.what;
+        const cell = make("span", "", group.what);
+        cell.appendChild(make("span", "dash-sub", group.cause));
         return cell;
       },
     },
@@ -91,19 +92,19 @@ export function issueTable(
     columns.push({
       key: "factory",
       label: WORDS.factory,
-      render: function (g) {
-        var a = link("factories/" + g.factory, g.factory, "dash-trunc");
-        a.title = g.factory;
-        return a;
+      render: function (group) {
+        const anchor = link("factories/" + group.factory, group.factory, "dash-trunc");
+        anchor.title = group.factory;
+        return anchor;
       },
     });
   }
   columns.push({ key: "map", label: "", align: "right", render: place });
   return table<IssueGroup>(columns, groups, {
-    rowTitle: function (g) {
-      return g.issues
-        .map(function (i) {
-          return i.instance;
+    rowTitle: function (group) {
+      return group.issues
+        .map(function (issue) {
+          return issue.instance;
         })
         .join(", ");
     },
@@ -153,17 +154,17 @@ function mixWords(): [keyof Mix, string][] {
 }
 
 export function mixBar(mix: Mix): HTMLElement {
-  var total = mix.bad + mix.blocked + mix.mid + mix.ok;
-  var bar = make("div", "dash-mix");
+  const total = mix.bad + mix.blocked + mix.mid + mix.ok;
+  const bar = make("div", "dash-mix");
   bar.setAttribute("role", "img");
-  var words: string[] = [];
-  mixWords().forEach(function (p) {
-    var n = mix[p[0]];
-    words.push(count(n) + " " + p[1]);
-    if (!n || !total) return;
-    var seg = make("span", "dash-mix-" + p[0]);
-    seg.style.width = (n / total) * 100 + "%";
-    bar.appendChild(seg);
+  const words: string[] = [];
+  mixWords().forEach(function (entry) {
+    const machines = mix[entry[0]];
+    words.push(count(machines) + " " + entry[1]);
+    if (!machines || !total) return;
+    const segment = make("span", "dash-mix-" + entry[0]);
+    segment.style.width = (machines / total) * 100 + "%";
+    bar.appendChild(segment);
   });
   bar.title = words.join(", ");
   bar.setAttribute("aria-label", bar.title);
@@ -171,12 +172,12 @@ export function mixBar(mix: Mix): HTMLElement {
 }
 
 export function mixLegend(mix: Mix): HTMLElement {
-  var legend = make("div", "dash-mix-legend");
+  const legend = make("div", "dash-mix-legend");
   legend.setAttribute("aria-hidden", "true");
-  mixWords().forEach(function (p) {
-    var item = make("span", "dash-key");
-    item.appendChild(make("i", "dash-swatch dash-mix-" + p[0]));
-    item.appendChild(document.createTextNode(count(mix[p[0]]) + " " + p[1]));
+  mixWords().forEach(function (entry) {
+    const item = make("span", "dash-key");
+    item.appendChild(make("i", "dash-swatch dash-mix-" + entry[0]));
+    item.appendChild(document.createTextNode(count(mix[entry[0]]) + " " + entry[1]));
     legend.appendChild(item);
   });
   return legend;

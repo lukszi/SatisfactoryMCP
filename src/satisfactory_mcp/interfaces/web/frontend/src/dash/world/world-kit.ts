@@ -3,7 +3,7 @@
  * docs/world-finders_contract.md §7. */
 
 import { get, latest } from "../../api/client";
-import { appendNote, capRows, error, loading, selectBox, settingsLinkNote } from "../../kit/dashkit";
+import { appendNote, capRows, loading, pendingNotice, selectBox, settingsLinkNote } from "../../kit/dashkit";
 import { code, make } from "../../kit/dom";
 import { isRebuilding } from "../../kit/focus";
 import { count, formatNumber, metres, regionLine } from "../../kit/format";
@@ -144,15 +144,11 @@ export function want<T extends ApiError>(slot: string, box: Loaded<T>, url: ApiU
 
 /* True while there is nothing to draw; a read in flight over old data says so and draws on. */
 export function waiting<T>(parent: HTMLElement, box: Loaded<T>, what: string): boolean {
-  if (box.failed) {
-    error(parent, what, box.reason, function () {
+  if (box.failed || !box.data) {
+    pendingNotice(parent, what, box.reason, box.failed, function () {
       box.key = "";
       redraw();
     });
-    return true;
-  }
-  if (!box.data) {
-    loading(parent, what);
     return true;
   }
   if (box.busy) loading(parent, "the new " + what);
