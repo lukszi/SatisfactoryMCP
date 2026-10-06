@@ -1472,7 +1472,9 @@ there would otherwise be no way to target a single recipe whose name is a substr
 **A pattern matching nothing is reported, never ignored.** A silently dropped ban returns a plan happily
 using the recipe the user forbade, which is worse than refusing because it looks like compliance. The
 `plan_id` also covers the recipe set, so a banned-recipe plan cannot be confused with an unbanned one by
-`diff_vs_save`.
+`diff_vs_save`. A banned generator or extractor process is not a recipe, so the banned processes are
+hashed as well, but only when there are any (decided 2026-10-06). A plan without one keeps its id. A
+stored plan with one gets a new id, and reads as "world moved" once, until its next push.
 
 Worked example on the reference save — max MW from Spire Coast with 300 plastic and 300 rubber required:
 

@@ -210,3 +210,24 @@ def test_plan_id_is_stable_for_identical_arguments(game, state):
     a = build_scenario(game, state, sources=list(REFERENCE_FIELD))
     b = build_scenario(game, state, sources=list(REFERENCE_FIELD))
     assert a.plan_id == b.plan_id
+
+
+def _max_mw(game, state, **bans):
+    return build_scenario(
+        game, state, sources=list(REFERENCE_FIELD), objective="max_mw", exports=["MW"], **bans
+    )
+
+
+def test_plan_id_changes_when_only_a_process_is_banned(game, state):
+    """A generator ban leaves the recipe set alone, which was all the id hashed."""
+    plain = _max_mw(game, state)
+    banned = _max_mw(game, state, exclude_recipes=["Coal-Powered Generator"])
+    assert banned.scenario.excluded_pids
+    assert sorted(banned.scenario.recipes) == sorted(plain.scenario.recipes)
+    assert banned.plan_id != plain.plan_id
+
+
+def test_a_plan_without_bans_keeps_the_id_it_was_stored_under(game, state):
+    """Bans enter the hash only when present, so a stored ban-free plan is not flagged as
+    moved. Moves only when the fixture is re-cut."""
+    assert _max_mw(game, state).plan_id == "69984888"
