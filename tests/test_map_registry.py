@@ -51,7 +51,7 @@ def link(target: Path, at: Path) -> None:
 @pytest.fixture
 def local(tmp_path, monkeypatch) -> Path:
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    monkeypatch.setattr(registry, "game_cl", lambda: 502094)
+    monkeypatch.setattr(registry, "installed_changelist", lambda: 502094)
     root = tmp_path / "local"
     root.mkdir()
     pyramid(

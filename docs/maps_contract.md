@@ -174,7 +174,7 @@ light, and every type on `GET /api/maps` carries it. The page's overlay colours 
 
 ### 3.3 Verdicts
 
-Computed on every read by `domain/maps/axes.py` `verdict(axes, current)`; nothing is stored.
+Computed on every read by `domain/maps/axes.py` `freshness(axes, current)`; nothing is stored.
 
 | Verdict | When | Shown as |
 |---|---|---|

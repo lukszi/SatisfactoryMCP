@@ -51,40 +51,40 @@ def _now(game=502094, hf=5, digest="sha256:hf", planes=None):
 
 
 def test_a_current_map_is_neither_stale_nor_offered_anything():
-    got = ax.verdict(_axes(), _now())
+    got = ax.freshness(_axes(), _now())
     assert got == {"stale": [], "rerender": None, "restyle": False, "incomplete": False}
 
 
 def test_a_newer_game_build_makes_every_map_drawn_from_the_old_one_stale():
-    got = ax.verdict(_axes(), _now(game=503001))
+    got = ax.freshness(_axes(), _now(game=503001))
     assert got["stale"] == [{"axis": "game", "text": "older game build (502094 → 503001)"}]
 
 
 def test_a_newer_heightfield_is_stale_data_and_says_which_versions():
-    got = ax.verdict(_axes(hf=3), _now(hf=5))
+    got = ax.freshness(_axes(hf=3), _now(hf=5))
     assert {"axis": "heightfield", "text": "newer heightfield (v3 → v5)"} in got["stale"]
 
 
 def test_a_changed_digest_is_stale_only_when_both_sides_have_one():
-    assert ax.verdict(_axes(digest="sha256:old"), _now())["stale"] == [
+    assert ax.freshness(_axes(digest="sha256:old"), _now())["stale"] == [
         {"axis": "heightfield", "text": "heightfield changed"}
     ]
-    missing = ax.verdict(_axes(digest=None), _now())
+    missing = ax.freshness(_axes(digest=None), _now())
     assert missing["stale"] == [] and missing["incomplete"] is True
-    assert ax.verdict(_axes(), _now(digest=None))["stale"] == []
+    assert ax.freshness(_axes(), _now(digest=None))["stale"] == []
 
 
 def test_a_newer_reader_of_an_install_input_is_stale_data(monkeypatch):
     now = _now()
     now["readers"]["artwork_sheet"] = 2
-    got = ax.verdict(_axes(), now)
+    got = ax.freshness(_axes(), now)
     assert got["stale"] == [
         {"axis": "artwork_sheet", "text": "newer artwork sheet reader (v1 → v2)"}
     ]
 
 
 def test_a_newer_renderer_is_an_offer_and_never_stale():
-    got = ax.verdict(_axes(recipe=4), _now())
+    got = ax.freshness(_axes(recipe=4), _now())
     assert got["stale"] == []
     assert got["rerender"] == {
         "recipe": versions.RENDER_RECIPE_CURRENT,
@@ -95,7 +95,7 @@ def test_a_newer_renderer_is_an_offer_and_never_stale():
 
 
 def test_the_offer_names_the_input_to_rebuild_first():
-    got = ax.verdict(_axes(recipe=3, hf=3), _now(hf=3, planes=["height.i16.z"]))
+    got = ax.freshness(_axes(recipe=3, hf=3), _now(hf=3, planes=["height.i16.z"]))
     assert got["rerender"]["needs"] == ["heightfield"]
     assert got["rerender"]["text"].endswith("after rebuilding the heightfield")
 
@@ -106,7 +106,7 @@ def test_a_newer_palette_is_an_offer(monkeypatch):
         "terrain-hypsometric",
         {**versions.STYLES["terrain-hypsometric"], "version": 3},
     )
-    got = ax.verdict(_axes(style_version=2), _now())
+    got = ax.freshness(_axes(style_version=2), _now())
     assert got["restyle"] is True and got["stale"] == []
 
 
@@ -136,7 +136,7 @@ def test_a_legacy_render_sidecar_is_read_into_axes_and_flagged_inferred():
     assert got["style"]["id"] == "satellite-biome"
     assert set(got["inputs"]) == {"heightfield", "artwork_sheet", "biome_raster", "cliff_geometry"}
     assert ax.display_name(got) == "satellite · two-regime r3 · data 502094/hf v3"
-    verdict = ax.verdict(got, _now())
+    verdict = ax.freshness(got, _now())
     assert [s["axis"] for s in verdict["stale"]] == ["heightfield"]
     assert verdict["rerender"]["label"] == "river splines r7"
     assert verdict["incomplete"] is True
@@ -152,7 +152,7 @@ def test_a_legacy_artwork_sidecar_reads_its_build_and_enhancement():
     }
     got = ax.axes_from_sidecar(sidecar, "artwork")
     assert ax.display_name(got) == "artwork · ESRGAN r2 · data 502094"
-    assert ax.verdict(got, _now())["rerender"] is None
+    assert ax.freshness(got, _now())["rerender"] is None
 
 
 def test_older_data_drawn_with_a_newer_renderer_sorts_below_newer_data():

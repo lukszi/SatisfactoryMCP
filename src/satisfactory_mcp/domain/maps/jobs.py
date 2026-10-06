@@ -166,7 +166,7 @@ class Progress:
             if self.order:
                 self._enter(self.order[-1], 1.0)
 
-    def pct(self) -> float | None:
+    def fraction_done(self) -> float | None:
         """Overall fraction 0..1, or ``None`` for a job whose lines this cannot read."""
         if self.order == ["run"]:
             return 1.0 if self.finished else None
@@ -175,10 +175,10 @@ class Progress:
         return min(1.0, (before + self.weights[self.stage] * self.fraction) / total)
 
     def eta(self, elapsed: float) -> float | None:
-        pct = self.pct()
-        if pct is None or pct < ETA_FROM or pct >= 1.0:
+        done = self.fraction_done()
+        if done is None or done < ETA_FROM or done >= 1.0:
             return None
-        return elapsed / pct * (1 - pct)
+        return elapsed / done * (1 - done)
 
     def stage_words(self) -> str:
         names = {"prep": "reading the field", "sweep": "reading the rock meshes",

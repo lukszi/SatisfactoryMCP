@@ -77,7 +77,7 @@ def run(monkeypatch, *argv: str) -> int:
 def local(tmp_path, monkeypatch) -> Path:
     root = tmp_path / "local"
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    monkeypatch.setattr(registry, "game_cl", lambda: 502094)
+    monkeypatch.setattr(registry, "installed_changelist", lambda: 502094)
     monkeypatch.setattr(pipeline, "LOCAL_DIR", root)
     root.mkdir()
     pyramid(root, "map.json", {"_meta": {"generator": "tools/gen_map_image.py"}})

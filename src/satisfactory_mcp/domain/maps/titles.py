@@ -19,8 +19,8 @@ SHOWN = frozenset({"ready", "missing"})
 
 def style_name(axes: dict) -> str:
     """The style table's ``name``, the artwork's for any artwork, else the label capitalised."""
-    style = axes.get("style") if isinstance(axes.get("style"), dict) else {}
-    renderer = axes.get("renderer") if isinstance(axes.get("renderer"), dict) else {}
+    style = ax.dict_at(axes, "style")
+    renderer = ax.dict_at(axes, "renderer")
     known = STYLES.get(str(style.get("id")))
     if known is None and renderer.get("family") == "artwork":
         known = STYLES["artwork"]
