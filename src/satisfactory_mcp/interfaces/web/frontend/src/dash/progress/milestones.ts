@@ -15,7 +15,7 @@ const milestoneSort: SortState = { key: "tier", desc: false };
 let showDone = false;
 
 function milestoneStatus(milestone: MilestoneRow): string {
-  if (milestone.opens_at !== null && milestone.status !== "DONE") return "locked (phase " + milestone.opens_at + ")";
+  if (milestone.opens_at !== null && milestone.status !== "DONE") return "locked (phase " + milestone.opens_at + ")";
   if (milestone.status === "DONE") return "done";
   if (milestone.status === "READY") return "affordable";
   if (milestone.status === "BLOCKED") return "needs " + milestone.blocked_by.join(", ") + " first";
