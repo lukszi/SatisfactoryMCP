@@ -81,7 +81,7 @@ def positions(projection: Projection) -> dict[str, tuple[float, float, float]]:
     for _group, leaf, record in iter_machine_records(projection):
         pos = record.get("pos")
         if pos:
-            out[leaf] = tuple(pos)
+            out[leaf] = (pos[0], pos[1], pos[2])
     return out
 
 
