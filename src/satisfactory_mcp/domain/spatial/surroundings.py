@@ -55,17 +55,17 @@ def _with_distances(rows: list[dict], x: float, y: float, *, direction: bool = F
 
 def _nearest_building(st, game, x: float, y: float) -> tuple[str, float] | None:
     """The closest placed record's building name and distance, or ``None`` for none."""
-    builds = [r for r in st.all_records() if r.get("pos")]
+    builds = [(r["cls"], pos) for r in st.all_records() if (pos := r.get("pos"))]
     closest = min(
         builds,
-        key=lambda r: geo.distance_m((r["pos"][0], r["pos"][1]), (x, y)),
+        key=lambda build: geo.distance_m((build[1][0], build[1][1]), (x, y)),
         default=None,
     )
     if closest is None:
         return None
-    cls = closest["cls"]
+    cls, pos = closest
     name = game.buildings[cls].name if cls in game.buildings else cls
-    return name, geo.distance_m((closest["pos"][0], closest["pos"][1]), (x, y))
+    return name, geo.distance_m((pos[0], pos[1]), (x, y))
 
 
 def player_surroundings(st, game, radius_m: float = 500.0) -> PlayerSurroundings:

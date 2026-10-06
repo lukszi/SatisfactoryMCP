@@ -26,11 +26,9 @@ def _built_hint_m(st: WorldState | None, probe: Siting) -> float | None:
     if st is None or not probe.has_footprint:
         return None
     zs = [
-        record["pos"][2] / 100.0
+        pos[2] / 100.0
         for record in st.all_records()
-        if record.get("pos")
-        and len(record["pos"]) > 2
-        and probe.contains_cm(record["pos"][0], record["pos"][1])
+        if (pos := record.get("pos")) and len(pos) > 2 and probe.contains_cm(pos[0], pos[1])
     ]
     return statistics.median(zs) if zs else None
 

@@ -225,12 +225,12 @@ def _index_save(
     for entry in state.projection.get("extractors", ()):
         if inside(entry):
             by_extractor_class.setdefault(entry["cls"], []).append(entry)
-            if entry.get("node"):
-                in_scope_nodes.add(entry["node"])
-        if entry.get("node"):
+            if node := entry.get("node"):
+                in_scope_nodes.add(node)
+        if node := entry.get("node"):
             # Kept whole: a node tapped by ANOTHER factory is still occupied, and the
             # plan must not be told it is free.
-            extractor_on[entry["node"]] = entry
+            extractor_on[node] = entry
 
     # The one exact machine match available: annotate() resolved node -> extractor from
     # mExtractableResource, and the plan's extractor columns were built from these very
