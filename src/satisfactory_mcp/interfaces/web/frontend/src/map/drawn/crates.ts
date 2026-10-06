@@ -14,6 +14,7 @@ import { count } from "../../kit/format";
 import { CONTENTS_POPUP_PX, contentsRows } from "./inventory-grid";
 import { L } from "../leaflet";
 import { BAND, layer } from "../layers";
+import { latLngOf } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
 
@@ -127,7 +128,7 @@ export function drawCrates(data: CratesResponse): void {
     // A crate whose position would not read is still SENT -- the projection knows it exists.
     // Skipping it is this page's call, and the same one every drawing module here makes.
     if (c.x_m === null || c.y_m === null) return;
-    L.marker([-c.y_m, c.x_m], {
+    L.marker(latLngOf([c.x_m, c.y_m]), {
       /* A divIcon rather than a path, for the reason floors.ts's connector arrows are one: a
        * crate is a SHAPE at a fixed pixel size, and the canvas renderer this page draws paths
        * on offers a fixed-size circle and nothing else. A square drawn as a polygon would be

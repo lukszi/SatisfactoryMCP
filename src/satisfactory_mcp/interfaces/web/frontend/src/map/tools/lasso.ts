@@ -5,7 +5,7 @@ import { get, latest, send } from "../../api/client";
 import { button, chip, toggleButton } from "../../kit/dashkit";
 import { LASSO_ATTR, make } from "../../kit/dom";
 import { L } from "../leaflet";
-import { flyPadded, map } from "../map";
+import { flyPadded, gameXY, latLngOf, map } from "../map";
 import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
 import { makeRoom } from "../panel";
 import { onVitals } from "../../app/vitals";
@@ -15,10 +15,10 @@ import { fail, friendlyError, notify } from "../../kit/toast";
 import { counted, WORDS } from "../../kit/words";
 
 import type { AmendedResponse, FactoryMachinesResponse, MachineSpot } from "../../api/shapes";
+import type { PointM } from "../geometry";
 
 type Mode = "add" | "drop";
 
-type Corner = [number, number];
 
 var FLY_ZOOM = 2;
 
@@ -39,7 +39,7 @@ var view = {
   token: "",
   members: null as MachineSpot[] | null,
   error: "",
-  areas: [] as Corner[][],
+  areas: [] as PointM[][],
   more: false,
   preview: null as AmendedResponse | null,
   busy: false,
@@ -56,7 +56,7 @@ function card(): HTMLElement {
 }
 
 function ring(spot: MachineSpot, className: string, radius: number): void {
-  L.circleMarker([-spot.y_m, spot.x_m], {
+  L.circleMarker(latLngOf(spot), {
     radius: radius,
     className: className,
     renderer: renderer,
@@ -87,7 +87,7 @@ function fly(spots: MachineSpot[]): void {
   if (!spots.length) return;
   var bounds = L.latLngBounds(
     spots.map(function (s) {
-      return [-s.y_m, s.x_m] as L.LatLngTuple;
+      return latLngOf(s);
     })
   );
   flyPadded(bounds.pad(0.15), FLY_ZOOM);
@@ -402,7 +402,7 @@ function onUp(): void {
   L.polygon(points, { className: "lasso-area", renderer: renderer, pane: "lasso", interactive: false }).addTo(ink);
   view.areas.push(
     points.map(function (p) {
-      return [p.lng, -p.lat] as Corner;
+      return gameXY(p);
     })
   );
   view.more = false;

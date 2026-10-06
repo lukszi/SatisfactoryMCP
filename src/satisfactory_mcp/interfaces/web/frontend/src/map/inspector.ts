@@ -12,7 +12,7 @@ import { code, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from ".
 import { pickupPlace } from "../dash/world/world-finds";
 import { coords, count, formatNumber, metres, perMin, regionLine } from "../kit/format";
 import { L } from "./leaflet";
-import { hashFor, map, MAP_SQUARE_M, NARROW } from "./map";
+import { gameXY, hashFor, map, MAP_SQUARE_M, NARROW } from "./map";
 import { withQuery } from "../app/nav";
 import { pinButtons } from "../chat/pins";
 import { settingOn } from "../app/settings";
@@ -227,11 +227,11 @@ export function inspect(e: L.LeafletMouseEvent): void {
     dom._inspected = true;
   }
   var machine = dom ? dom._machine : undefined;
-  // The inverse of the page's one coordinate rule: a point plotted at [-y, x] reads back as
-  // x = lng, y = -lat. Rounded to a decimetre because the popup prints the same numbers it
-  // asked with, and a coordinate you cannot retype is not a copyable coordinate.
-  var x = Math.round(e.latlng.lng * 10) / 10;
-  var y = Math.round(-e.latlng.lat * 10) / 10;
+  // Rounded to a decimetre because the popup prints the same numbers it asked with, and a
+  // coordinate you cannot retype is not a copyable coordinate.
+  var at = gameXY(e.latlng);
+  var x = Math.round(at[0] * 10) / 10;
+  var y = Math.round(at[1] * 10) / 10;
   // Opened before the fetch, so the click has a visible effect on a slow answer and the
   // popup lands exactly where the pointer was rather than where the map has drifted to.
   var card = L.popup({ maxWidth: 340, autoPanPaddingTopLeft: clearOfControls() })

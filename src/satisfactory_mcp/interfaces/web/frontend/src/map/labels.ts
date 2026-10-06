@@ -14,7 +14,7 @@ import { batch } from "./layercontrol/control";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
 import { layerWord } from "./drawn/markers";
-import { flyPadded, map } from "./map";
+import { boundsOfBbox, flyPadded, latLngOf, map } from "./map";
 import { regionLabels } from "./regions";
 import { registerFetch } from "../app/registry";
 import { state } from "../app/state";
@@ -95,20 +95,16 @@ var FACTORY_PAD_M = 40;
 var FACTORY_MAX_ZOOM = 1;
 
 function anchorMarker(centroid_m: PointM): L.Marker {
-  return L.marker([-centroid_m[1], centroid_m[0]], {
+  return L.marker(latLngOf(centroid_m), {
     icon: L.divIcon({ className: "factory-anchor", iconSize: [0, 0] }),
     keyboard: false,
   });
 }
 
-/* A server bbox_m ([x_min, y_min, x_max, y_max], game axes) as Leaflet bounds. The y ends
- * swap, exactly as they do for the biome cells, because latitude is -y. */
+/* A server bbox_m as Leaflet bounds, with the breathing room every factory flight gets. */
 function factoryBounds(bbox_m: BboxM | null | undefined): L.LatLngBounds | null {
   if (!bbox_m) return null;
-  return L.latLngBounds(
-    [-(bbox_m[3] + FACTORY_PAD_M), bbox_m[0] - FACTORY_PAD_M],
-    [-(bbox_m[1] - FACTORY_PAD_M), bbox_m[2] + FACTORY_PAD_M]
-  );
+  return boundsOfBbox(bbox_m, FACTORY_PAD_M);
 }
 
 /* The card, and the one action on it. `factory` is a NAME for a named factory and null for a

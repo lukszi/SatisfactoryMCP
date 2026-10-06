@@ -8,7 +8,7 @@ import { keepFocus } from "../../kit/focus";
 import { coords, count, formatNumber, metres, perMin } from "../../kit/format";
 import { reveal } from "../labels";
 import { L } from "../leaflet";
-import { FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, latLngOf } from "../map";
+import { boundsOfBbox, FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, latLngOf } from "../map";
 import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
 import { knownNodes, pickupName } from "../drawn/markers";
 import { withQuery } from "../../app/nav";
@@ -37,6 +37,7 @@ import { WORDS } from "../../kit/words";
 
 import type { ApiUrl } from "../../api/client";
 import type { Column } from "../../kit/dashkit";
+import type { BboxM } from "../geometry";
 import type {
   CollectibleRow,
   CollectiblesResponse,
@@ -115,8 +116,8 @@ function ring(at: { x_m: number; y_m: number }, seed: boolean): void {
   }).addTo(group);
 }
 
-function box(b: [number, number, number, number]): void {
-  L.rectangle(L.latLngBounds([latLngOf({ x_m: b[0], y_m: b[1] }), latLngOf({ x_m: b[2], y_m: b[3] })]), {
+function box(b: BboxM): void {
+  L.rectangle(boundsOfBbox(b), {
     color: HIGHLIGHT,
     weight: 2,
     dashArray: "6 4",
@@ -130,7 +131,7 @@ function box(b: [number, number, number, number]): void {
 function latlngs(r: RunRow): L.LatLngTuple[][] {
   return r.lines_m.map(function (points) {
     return points.map(function (p) {
-      return [-p[1], p[0]] as L.LatLngTuple;
+      return latLngOf(p);
     });
   });
 }
@@ -177,7 +178,7 @@ function draw(set: Shown, seed: number): L.LatLngBounds | null {
     set.rows.forEach(function (f, i) {
       box(f.bbox_m);
       if (i === seed) members(f);
-      grow(L.latLngBounds([latLngOf({ x_m: f.bbox_m[0], y_m: f.bbox_m[1] }), latLngOf({ x_m: f.bbox_m[2], y_m: f.bbox_m[3] })]));
+      grow(boundsOfBbox(f.bbox_m));
     });
   } else {
     set.rows.forEach(function (r, i) {

@@ -4,7 +4,7 @@
 import { esc } from "../kit/dom";
 import { flyToFactory, reveal } from "./labels";
 import { L } from "./leaflet";
-import { flyToPoint, map } from "./map";
+import { flyToPoint, latLngOf, map } from "./map";
 import { declareColours } from "./palette";
 import { machineSelection, select } from "../app/selection";
 
@@ -40,7 +40,7 @@ export function clearMark(): void {
 export function ringAt(x_m: number, y_m: number, label: string, key: string): void {
   clearMark();
   ringedKey = key;
-  var ring = L.circleMarker([-y_m, x_m], {
+  var ring = L.circleMarker(latLngOf([x_m, y_m]), {
     radius: 14,
     color: HIGHLIGHT,
     weight: 3,
@@ -56,7 +56,7 @@ export function selectAndRing(x_m: number, y_m: number, label?: string, stay?: b
   var s = as || { kind: "point", key: x_m + "," + y_m, label: label || "a point", x_m: x_m, y_m: y_m };
   select(s);
   ringAt(x_m, y_m, as ? s.label : label || "", s.kind + ":" + s.key);
-  if (!stay) flyToPoint([-y_m, x_m], Math.max(map.getZoom(), MACHINE_ZOOM));
+  if (!stay) flyToPoint(latLngOf([x_m, y_m]), Math.max(map.getZoom(), MACHINE_ZOOM));
 }
 
 export function showPoint(x_m: number, y_m: number, options?: { label?: string; layers?: string[]; stay?: boolean }): void {

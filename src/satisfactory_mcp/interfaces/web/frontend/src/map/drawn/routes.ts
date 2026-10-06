@@ -12,7 +12,7 @@
 import { code, popup } from "../../kit/dom";
 import { L } from "../leaflet";
 import { BAND, layer } from "../layers";
-import { footprintCorners, map, pixelsPerMetre } from "../map";
+import { footprintCorners, latLngOf, map, pixelsPerMetre } from "../map";
 import { raiseNodeDots } from "./markers";
 import { declareColours } from "../palette";
 import { tone } from "../map-tone";
@@ -127,14 +127,13 @@ function hermite(p0: Point3M, p1: Point3M, span: SpanCurveM, t: number): PointM 
 }
 
 /* A route as the latlngs Leaflet draws, tessellated for the scale given, plus the step counts.
- * The `[-y, x]` flip is applied to the tessellated result rather than to the spline, so the
- * curve is computed in game metres and flipped once. */
+ * The curve is computed in game metres and only its result is plotted. */
 function routeLatLngs(
   points_m: Point3M[],
   curve_m: RouteCurveM,
   ppm: number
 ): { latlngs: L.LatLngTuple[]; steps: number[] } {
-  var latlngs: L.LatLngTuple[] = [[-points_m[0]![1], points_m[0]![0]]];
+  var latlngs: L.LatLngTuple[] = [latLngOf(points_m[0]!)];
   var steps: number[] = [];
   for (var i = 0; i < points_m.length - 1; i++) {
     var a = points_m[i]!;
@@ -143,10 +142,9 @@ function routeLatLngs(
     var n = span ? spanSteps(spanFlatnessM(a, b, span), ppm) : 1;
     steps.push(n);
     for (var k = 1; k < n; k++) {
-      var q = hermite(a, b, span!, k / n);
-      latlngs.push([-q[1], q[0]]);
+      latlngs.push(latLngOf(hermite(a, b, span!, k / n)));
     }
-    latlngs.push([-b[1], b[0]]);
+    latlngs.push(latLngOf(b));
   }
   return { latlngs: latlngs, steps: steps };
 }
@@ -348,7 +346,7 @@ export function drawBelts(data: BeltsResponse): void {
     // polyline through coincident points draws nothing at all.
     var ring = b.lift === true || (b.lift === null && !coversGround(b.points_m));
     if (ring) {
-      piece = L.circleMarker([-first[1], first[0]], {
+      piece = L.circleMarker(latLngOf(first), {
         radius: liftRadius(ppm),
         color: beltColour(b.items_per_min),
         weight: 1.5,
@@ -693,7 +691,7 @@ export function drawPipes(data: PipesResponse): void {
     routeChevrons(p.points_m, p.direction === "reverse").forEach(function (mark) {
       var piece = L.polyline(
         mark.map(function (q): L.LatLngTuple {
-          return [-q[1], q[0]];
+          return latLngOf(q);
         }),
         {
           color: CHEVRON_COLOUR,

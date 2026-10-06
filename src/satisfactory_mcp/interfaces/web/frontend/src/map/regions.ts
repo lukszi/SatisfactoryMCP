@@ -8,7 +8,7 @@
 import { esc } from "../kit/dom";
 import { L } from "./leaflet";
 import { BAND, layer } from "./layers";
-import { map } from "./map";
+import { boundsOfBbox, latLngOf, map } from "./map";
 import { declareColours } from "./palette";
 import { state } from "../app/state";
 
@@ -137,12 +137,9 @@ var REGION_COLOUR: Record<string, string> = declareColours("regions", {
   S: "#585d40", // Western Dune Forest
 });
 
-/* The base map: one flat rectangle per 256 m raster cell, plus a name per region.
- *
- * Orientation is the trap: grid row 0 is the NORTH edge because y0_m is the smallest y and
- * game +Y is south, so cell (i, j) spanning y in [y, y+cell] is latitude [-(y+cell), -y] and
- * the y bounds swap here and only here. Void cells are left unpainted: the sea colour showing
- * through them is the coastline.
+/* The base map: one flat rectangle per 256 m raster cell, plus a name per region. Grid row 0
+ * is the NORTH edge, because y0_m is the smallest y and game +Y is south. Void cells are left
+ * unpainted: the sea colour showing through them is the coastline.
  *
  * Names print at `label_m`, not the centroid: a concave region's centroid can sit on a
  * neighbour's ground, and a name printed there contradicts the same page's right-click
@@ -183,11 +180,9 @@ export function drawRegions(data: RegionsResponse): void {
       var colour = REGION_COLOUR[letter] || "#3f4640";
       var x = data.x0_m + i * cell;
       var y = data.y0_m + j * cell;
+      // Cell (i, j) spans [x, x + cell] by [y, y + cell] in game metres; row 0 is the north edge.
       L.rectangle(
-        [
-          [-(y + cell), x],
-          [-y, x + cell],
-        ],
+        boundsOfBbox([x, y, x + cell, y + cell]),
         {
           // Stroked in its own fill colour so neighbouring cells of one biome merge into
           // a shape instead of showing a grid; interactive:false so the region fill never
@@ -212,7 +207,7 @@ export function drawRegions(data: RegionsResponse): void {
     var at = here.label_m || here.centroid_m;
     tips.push(
       L.tooltip({ permanent: true, direction: "center", className: "region-label" })
-        .setLatLng([-at[1], at[0]])
+        .setLatLng(latLngOf(at))
         .setContent(esc(name))
         .addTo(names)
     );

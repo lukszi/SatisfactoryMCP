@@ -15,7 +15,7 @@ import { onModePick, showModes } from "./layercontrol/control";
 import { L } from "./leaflet";
 import { makeLitLayer, parseLight, webglReady } from "./litlayer";
 import { fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "../app/map-types";
-import { MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
+import { boundsOfBbox, MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
 import { regionsUnderMode, updateRegionBlend } from "./regions";
 import { BOOT, state } from "../app/state";
 import { showSunControl } from "./suncontrol";
@@ -23,6 +23,7 @@ import { fail, offer } from "../kit/toast";
 import { setTone } from "./map-tone";
 
 import type { MapTypeBody } from "../api/shapes";
+import type { BboxM } from "./geometry";
 import type { ModeChoice } from "./layercontrol/control";
 import type { Tone } from "./map-tone";
 import type { BaseMode } from "../app/state";
@@ -174,18 +175,10 @@ function specFor(key: string): ModeSpec | null {
 }
 
 /* The corners a base-map probe answered with, as [x_min, y_min, x_max, y_max] metres. */
-function mapImageBounds(response: Response): number[] {
+function mapImageBounds(response: Response): BboxM {
   var raw = (response.headers.get("X-Map-Bounds-M") || "").split(",").map(Number);
-  if (raw.length === 4 && raw.every(isFinite)) return raw;
+  if (raw.length === 4 && raw.every(isFinite)) return [raw[0]!, raw[1]!, raw[2]!, raw[3]!];
   return [MAP_SQUARE_M.x_min, MAP_SQUARE_M.y_min, MAP_SQUARE_M.x_max, MAP_SQUARE_M.y_max];
-}
-
-/* Those corners as Leaflet bounds -- the [-y, x] flip, so the y ends swap. */
-function mapImageLatLngBounds(b: number[]): L.LatLngBounds {
-  return L.latLngBounds([
-    [-b[3]!, b[0]!],
-    [-b[1]!, b[2]!],
-  ]);
 }
 
 /* A picture that turns out not to draw stops being a mode.
@@ -321,7 +314,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => L.Layer) | 
   var url =
     tilePath(spec.layer, "{z}", "{x}", "{y}") + (query.length ? "?" + query.join("&") : "");
   var denseQuery = dense ? (query.length ? "&" : "?") + "px=" + densePx : "";
-  var bounds = mapImageLatLngBounds(b);
+  var bounds = boundsOfBbox(b);
   var light = parseLight(response.headers.get("X-Map-Light"));
 
   return function () {
@@ -376,7 +369,7 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => L.Layer) | 
 /* The whole sheet as one imageOverlay: the artwork mode's fallback, and what any render that
  * is not this generator's -- other corners, no pyramid -- is drawn as. */
 function overlayMaker(spec: ModeSpec, response: Response): () => L.Layer {
-  var bounds = mapImageLatLngBounds(mapImageBounds(response));
+  var bounds = boundsOfBbox(mapImageBounds(response));
   return function () {
     var image = L.imageOverlay("/api/mapimage", bounds, {
       pane: "basemap",

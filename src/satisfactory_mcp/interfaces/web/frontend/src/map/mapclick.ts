@@ -3,7 +3,7 @@
 
 import { coords } from "../kit/format";
 import { L } from "./leaflet";
-import { map } from "./map";
+import { gameXY, map } from "./map";
 import { showPoint } from "./map-highlight";
 import { select } from "../app/selection";
 
@@ -35,8 +35,9 @@ function clicked(e: L.LeafletMouseEvent): void {
   var dom = e.originalEvent as Marked | undefined;
   if (!dom || dom._onLayer || map.getContainer().classList.contains("map-picking")) return;
   if (Object.keys(pointOwners).length) {
-    var x = Math.round(e.latlng.lng);
-    var y = Math.round(-e.latlng.lat);
+    var at = gameXY(e.latlng);
+    var x = Math.round(at[0]);
+    var y = Math.round(at[1]);
     showPoint(x, y, { label: coords(x, y), stay: true });
   } else select(null);
 }

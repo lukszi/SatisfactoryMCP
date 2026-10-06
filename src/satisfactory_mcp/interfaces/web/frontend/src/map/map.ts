@@ -2,8 +2,8 @@
  *
  * The page's one coordinate rule lives here and nowhere else: the API speaks metres (nothing on
  * the page divides by 100), and Satisfactory is +X east and +Y SOUTH while Leaflet is +lat
- * north, so a point is plotted at [-y, x]. `latLngOf`, `boundsOfBbox` and `footprintCorners`
- * apply it, and `gameXY` and `writeHash` invert it.
+ * north, so a point is plotted at [-y, x]. `latLngOf` and `boundsOfBbox` apply it and `gameXY`
+ * inverts it; everything else goes through those three.
  *
  * Creating the map is a SIDE EFFECT of importing this module, and the modules that decorate
  * it get their ordering from importing this one.
@@ -112,10 +112,7 @@ export function fitWorld(): void {
   var snap = map.options.zoomSnap;
   map.options.zoomSnap = FIT_SNAP;
   map.fitBounds(
-    L.latLngBounds(
-      [-MAP_SQUARE_M.y_max, MAP_SQUARE_M.x_min],
-      [-MAP_SQUARE_M.y_min, MAP_SQUARE_M.x_max]
-    ),
+    boundsOfBbox([MAP_SQUARE_M.x_min, MAP_SQUARE_M.y_min, MAP_SQUARE_M.x_max, MAP_SQUARE_M.y_max]),
     { paddingTopLeft: pad.topLeft, paddingBottomRight: pad.bottomRight }
   );
   map.options.zoomSnap = snap;
@@ -192,7 +189,7 @@ map._getBoundsOffset = function (px: L.Bounds, bounds: L.LatLngBounds, zoom?: nu
   var centre = HOME_VIEW.centre;
   if (BOOT.c) {
     var raw = BOOT.c.split(",");
-    if (raw.length === 2 && isFinite(+raw[0]!) && isFinite(+raw[1]!)) centre = [-+raw[1]!, +raw[0]!];
+    if (raw.length === 2 && isFinite(+raw[0]!) && isFinite(+raw[1]!)) centre = latLngOf([+raw[0]!, +raw[1]!]);
   }
   map.setView(centre, zoom);
 })();
@@ -259,9 +256,9 @@ export function hashFor(dash: string): string {
   // API's own snake_case, so joining them needs no escaping.
   if (state.pickups.length) parts.push("pickups=" + state.pickups.join(","));
   if (dash) parts.push("dash=" + encodeURIComponent(dash).replace(/%2F/g, "/"));
-  var c = map.getCenter();
+  var centre = gameXY(map.getCenter());
   parts.push("z=" + map.getZoom());
-  parts.push("c=" + Math.round(c.lng * 10) / 10 + "," + Math.round(-c.lat * 10) / 10);
+  parts.push("c=" + Math.round(centre[0] * 10) / 10 + "," + Math.round(centre[1] * 10) / 10);
   return "#" + parts.join("&");
 }
 
@@ -310,6 +307,6 @@ export function footprintCorners(
     [-w, l],
   ];
   return offsets.map(function (d): L.LatLngTuple {
-    return [-(y + d[0] * sin + d[1] * cos), x + d[0] * cos - d[1] * sin];
+    return latLngOf([x + d[0] * cos - d[1] * sin, y + d[0] * sin + d[1] * cos]);
   });
 }

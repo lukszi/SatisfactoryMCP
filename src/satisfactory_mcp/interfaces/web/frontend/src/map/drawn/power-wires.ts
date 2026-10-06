@@ -13,7 +13,7 @@
 import { popup } from "../../kit/dom";
 import { L } from "../leaflet";
 import { BAND, layer } from "../layers";
-import { pixelsPerMetre } from "../map";
+import { latLngOf, pixelsPerMetre } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
 import { ROUTE_FLOOR_PX, ROUTE_WIDTH_M, routeWeight, sinkRoutes } from "./routes";
@@ -208,10 +208,7 @@ export function drawPower(data: PowerResponse): void {
    * would show one line breaking the other.
    */
   function chord(w: WireRow): L.LatLngTuple[] {
-    return [
-      [-w.a_m[1], w.a_m[0]],
-      [-w.b_m[1], w.b_m[0]],
-    ];
+    return [latLngOf(w.a_m), latLngOf(w.b_m)];
   }
 
   /* Both endpoints, in the payload's own [x, y, z] order, which is the shape the floor
@@ -271,7 +268,7 @@ export function drawPower(data: PowerResponse): void {
   data.poles.forEach(function (p) {
     var tower = p.cls === TOWER_CLASS;
     var radius = poleRadius(p.cls);
-    var piece = L.circleMarker([-p.y_m, p.x_m], {
+    var piece = L.circleMarker(latLngOf(p), {
       radius: radius,
       // A DISC IS CASED BY ITS OWN OUTLINE, in the casing colour, which turns a flat dot into
       // an edged mark for no extra path. A ring cannot do that -- its stroke IS the mark -- so
@@ -287,7 +284,7 @@ export function drawPower(data: PowerResponse): void {
     piece._floor = { power: "pole", x_m: p.x_m, y_m: p.y_m, z_m: p.z_m };
     piece.bindPopup(polePopup(p)).addTo(group);
     if (!tower) return;
-    var cased = L.circleMarker([-p.y_m, p.x_m], {
+    var cased = L.circleMarker(latLngOf(p), {
       radius: radius,
       color: casingColour(),
       weight: TOWER_WEIGHT_PX + WIRE_CASING_PX,

@@ -6,7 +6,7 @@ import { button, chip, table, toggleButton } from "../../kit/dashkit";
 import { code, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
 import { count, perMin } from "../../kit/format";
 import { L } from "../leaflet";
-import { flyPadded, map } from "../map";
+import { boundsOfBbox, flyPadded, latLngOf, map } from "../map";
 import { cardHead, cardHeading, cardLine, cardSubject, claim, mapCard } from "../mapcard";
 import { makeRoom } from "../panel";
 import { HIGHLIGHT } from "../map-highlight";
@@ -85,7 +85,7 @@ function draw(data: TraceResponse): void {
     var line = L.polyline(
       run.lines_m.map(function (points) {
         return points.map(function (p) {
-          return [-p[1], p[0]] as L.LatLngTuple;
+          return latLngOf(p);
         });
       }),
       { color: HIGHLIGHT, weight: 4, opacity: 0.8, renderer: renderer, pane: "trace" }
@@ -95,7 +95,7 @@ function draw(data: TraceResponse): void {
   });
   data.machines.forEach(function (m) {
     if (m.x_m === null || m.y_m === null) return;
-    var ring = L.circleMarker([-m.y_m, m.x_m], {
+    var ring = L.circleMarker(latLngOf([m.x_m, m.y_m]), {
       radius: m.seed ? 11 : 7,
       color: colour(m),
       weight: m.seed ? 4 : 3,
@@ -113,7 +113,7 @@ function draw(data: TraceResponse): void {
 function fly(data: TraceResponse): void {
   var b = data.bbox_m;
   if (!b) return;
-  flyPadded(L.latLngBounds([-b[1], b[0]], [-b[3], b[2]]).pad(0.15), TRACE_MAX_ZOOM);
+  flyPadded(boundsOfBbox(b).pad(0.15), TRACE_MAX_ZOOM);
 }
 
 function stateCounts(data: TraceResponse): { stopped: number; blocked: number } {
