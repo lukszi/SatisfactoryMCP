@@ -345,6 +345,11 @@ shade for any sun.
   anything is drawn, or the lighting stage would shade the void over it as land. A floor the
   fill emptied beside the void past the edge is part of that void. Drawn as a pit, the
   north-east corner's floor was a black rectangle on the page's navy.
+- **`VOID_STRIP_M`**: dry ground under the sea's level in a gap at most 8 m wide between the
+  open sea and the void past the edge, measured through that ground, is sea as well. The
+  artwork's mask leaves it dry, and drawn as land it was a dotted dark line along the void
+  beside the 638 m falls and on the north edge. A wider band stays the land the artwork
+  draws: at 12 m the rule cut a 15 m spit on the north edge into pieces.
 - **Perched water**: a sloped river's box top is its upstream end, and one body's box can
   cover a lower body. `palette/perched.py` re-levels such water from its own shoreline
   before it is drawn. A box can also reach past its own fall's lip: **`LIP_DROP_M`** cuts a
