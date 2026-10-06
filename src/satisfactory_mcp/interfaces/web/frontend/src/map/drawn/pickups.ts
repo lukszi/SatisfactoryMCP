@@ -1,6 +1,6 @@
 /* The pickups lying on the ground: one control row per category, the spoiler rows the settings
- * hide, and the `pickups=` half of the address bar. Their colours share the node dots' owner
- * in the palette audit. */
+ * hide, and the `pickups=` half of the address bar. Their colours are their own owner in the
+ * palette audit, so it measures them against the node dots. */
 
 import { code, popup } from "../../kit/dom";
 import { batch, control, registerSection } from "../layercontrol/control";
@@ -18,7 +18,7 @@ import type { CollectibleRow, CollectiblesResponse } from "../../api/shapes";
 
 // One colour per pickup category, so the category rows do not all draw one teal dot; unlisted
 // categories share the fallback below (docs/frontend_palette.md).
-export var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
+export var PICKUP_COLOUR: Record<string, string> = declareColours("pickups", {
   somersloop: "#d84378",
   mercer_sphere: "#b06ae0",
   hard_drive: "#5468d4",
@@ -34,12 +34,12 @@ export var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
 /* For the categories the table above does not name, and DECLARED rather than left a bare
  * literal: a stand-in that reaches the screen is a colour on the page and belongs in the
  * comparison. */
-var PICKUP_FALLBACK = declareColours("markers", { "pickup fallback": "#7fd1b9" })[
+var PICKUP_FALLBACK = declareColours("pickups", { "pickup fallback": "#7fd1b9" })[
   "pickup fallback"
 ];
 
 /* The X over a collected pickup: dark on a light base, light on a dark one. */
-var COLLECTED_MARK_COLOURS = declareColours("markers", {
+var COLLECTED_MARK_COLOURS = declareColours("pickups", {
   "pickup collected": "#2a3147",
   "pickup collected dark": "#9aa0a8",
 });

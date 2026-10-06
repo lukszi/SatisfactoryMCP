@@ -39,66 +39,76 @@ carried on the path as `_widen`) and is re-added at every zoom, so the rim stays
 ## The table
 
 Nearest neighbour is the closest colour of any OTHER owner, as the audit computes it today.
-"Discharged" means the pair is listed in `palette.ts`.
+"Discharged" means the pair is listed in `DISCHARGED` in `palette.ts`; "standing" means it is on
+the debt list there, `STANDING`, which prints one warning at boot.
 
-### `markers` — node dots and the player (`drawn/markers.ts`), pickups (`drawn/pickups.ts`)
+### `markers` — node dots and the player (`drawn/markers.ts`)
 
 | key | hex | role | nearest cross-owner neighbour | constraint |
 | --- | --- | --- | --- | --- |
 | `Desc_OreIron_C` | `#c8b6a6` | iron ore node | routes/chevrons 10.1, discharged | game tint |
-| `Desc_OreCopper_C` | `#e08a4b` | copper ore node | placements/stopped 32.2 | game tint |
+| `Desc_OreCopper_C` | `#e08a4b` | copper ore node | pickups/tape_pickup 15.0 | game tint |
 | `Desc_Stone_C` | `#cfcfcf` | limestone node | routes/belt fast 13.2, discharged | game tint |
 | `Desc_Coal_C` | `#4c4c4c` | coal node | regions/A 6.3, discharged with seven other grounds | game tint, near-black because coal is |
-| `Desc_OreGold_C` | `#e3c74a` | caterium node | placements/blocked 23.4 | game tint |
-| `Desc_Sulfur_C` | `#e8e35c` | sulfur node | placements/blocked 27.0 | game tint |
+| `Desc_OreGold_C` | `#e3c74a` | caterium node | pickups/power_slug_yellow 6.5, standing | game tint |
+| `Desc_Sulfur_C` | `#e8e35c` | sulfur node | pickups/power_slug_yellow 8.8, standing | game tint |
 | `Desc_RawQuartz_C` | `#e59ce0` | raw quartz node | power/wires 22.8 | game tint |
-| `Desc_OreBauxite_C` | `#b06a4a` | bauxite node | routes/pipe mk2 21.4 | game tint; pipes run where bauxite is refined |
+| `Desc_OreBauxite_C` | `#b06a4a` | bauxite node | pickups/tape_pickup 18.4 | game tint; pipes run where bauxite is refined |
 | `Desc_OreUranium_C` | `#7ce07c` | uranium node | placements/generators 21.7 | game tint |
 | `Desc_LiquidOil_C` | `#6b4bb0` | crude oil node | placements/storage fluid 16.2 | game tint |
-| `Desc_NitrogenGas_C` | `#6ec5e0` | nitrogen node | routes/belt fast 20.0 | game tint |
+| `Desc_NitrogenGas_C` | `#6ec5e0` | nitrogen node | pickups/power_slug_blue 4.6, standing | game tint |
 | `Desc_Water_C` | `#3f8fd0` | water node | placements/machines 8.6, discharged | game tint |
-| `Desc_SAM_C` | `#b04bd0` | SAM node | map-highlight/highlight 27.6 | game tint |
-| `Desc_Geyser_C` | `#d97b4f` | geyser node (a placement target, not an item) | placements/stopped 23.1 | |
+| `Desc_SAM_C` | `#b04bd0` | SAM node | pickups/power_slug_purple 8.0, standing | game tint |
+| `Desc_Geyser_C` | `#d97b4f` | geyser node (a placement target, not an item) | pickups/tape_pickup 15.3 | |
 | `coal dark` | `#8c8f96` | coal node on a dark base | routes/belt slow 6.1, discharged | near-black coal vanishes on a dark base |
-| `locked casing` | `#262040` | dark ring under a locked node's hollow dot | power/casing 19.3 | must read on every base |
+| `locked casing` | `#262040` | dark ring under a locked node's hollow dot | pickups/pickup collected 11.5, discharged | must read on every base |
 | `player` | `#f5f0e8` | where the player last stood | routes/chevrons 17.0 | the value nothing else spends |
-| `somersloop` | `#d84378` | pickup | placements/stopped 28.3 | the rose the page's reds leave free |
-| `mercer_sphere` | `#b06ae0` | pickup | placements/storage 33.4 | |
-| `hard_drive` | `#5468d4` | pickup | placements/storage 18.0 | indigo: blue enough to be a drive, clear of the machine blue |
-| `loot_cache` | `#d8b46e` | pickup | routes/chevrons 26.7 | |
-| `crashed_drop_pod` | `#838d3f` | pickup | regions/E 28.1 | the drab olive no network or ground spends |
-| `power_slug_blue` | `#5cc8e8` | pickup | placements/machines 22.2 | |
-| `power_slug_yellow` | `#e8d55c` | pickup | placements/blocked 26.9 | |
-| `power_slug_purple` | `#c85ce8` | pickup | map-highlight/highlight 24.4 | |
-| `mushroom` | `#a8c86e` | pickup | placements/generators 25.6 | |
-| `tape_pickup` | `#e09a6e` | pickup | routes/chevrons 27.4 | |
-| `pickup fallback` | `#7fd1b9` | a category the table does not name | placements/generators 24.0 | a stand-in that reaches the screen is still audited |
-| `pickup collected` | `#2a3147` | the X over a collected pickup, light base | placements/foundations 16.5 | |
-| `pickup collected dark` | `#9aa0a8` | the same X on a dark base | routes/belts 5.7, discharged | two crossed strokes, never a run |
 
-The pickups and the node dots share the `markers` owner, so the audit never compares them with
-each other: `power_slug_blue` and `Desc_NitrogenGas_C` are dE 4.6 apart and nothing flags it.
+### `pickups` — what lies on the ground (`drawn/pickups.ts`)
+
+| key | hex | role | nearest cross-owner neighbour | constraint |
+| --- | --- | --- | --- | --- |
+| `somersloop` | `#d84378` | pickup | placements/stopped 28.3 | the rose the page's reds leave free |
+| `mercer_sphere` | `#b06ae0` | pickup | markers/Desc_SAM_C 13.5, standing | |
+| `hard_drive` | `#5468d4` | pickup | markers/Desc_LiquidOil_C 16.3 | indigo: blue enough to be a drive, clear of the machine blue |
+| `loot_cache` | `#d8b46e` | pickup | markers/Desc_OreGold_C 25.2 | |
+| `crashed_drop_pod` | `#838d3f` | pickup | regions/E 28.1 | the drab olive no network or ground spends |
+| `power_slug_blue` | `#5cc8e8` | pickup | markers/Desc_NitrogenGas_C 4.6, standing | |
+| `power_slug_yellow` | `#e8d55c` | pickup | markers/Desc_OreGold_C 6.5, standing | |
+| `power_slug_purple` | `#c85ce8` | pickup | markers/Desc_SAM_C 8.0, standing | |
+| `mushroom` | `#a8c86e` | pickup | markers/Desc_OreUranium_C 24.4 | |
+| `tape_pickup` | `#e09a6e` | pickup | markers/Desc_OreCopper_C 15.0 | |
+| `pickup fallback` | `#7fd1b9` | a category the table does not name | placements/generators 24.0 | a stand-in that reaches the screen is still audited |
+| `pickup collected` | `#2a3147` | the X over a collected pickup, light base | markers/locked casing 11.5, discharged | two crossed strokes, never a ring |
+| `pickup collected dark` | `#9aa0a8` | the same X on a dark base | routes/belts 5.7, discharged | two crossed strokes, never a run or a disc |
+
+A pickup is the same filled disc as a node dot, on the same ground, so the two are their own
+owners and the audit measures every pickup against every node. Node colours are game tints, so
+where a pair is too close the pickup moves. Five pairs stand on the debt list until it does: the
+three power slugs and the mercer sphere against nitrogen, caterium, sulfur and SAM, the closest
+`power_slug_blue` against `Desc_NitrogenGas_C` at 4.6. The two X marks are a different kind of
+mark from a disc or a ring, and are discharged.
 
 ### `placements` — `drawn/placements.ts`
 
 | key | hex | role | nearest cross-owner neighbour | constraint |
 | --- | --- | --- | --- | --- |
-| `foundations` | `#545470` | the concrete, one 8 m tile per piece | markers/pickup collected 16.5 | a large area at full strength over the biome fill, so it must clear the grounds: slate violet is the cool direction they leave open; dE 15.3 from the nearest artwork tone, which REGION_BLEND does not soften |
+| `foundations` | `#545470` | the concrete, one 8 m tile per piece | pickups/pickup collected 16.5 | a large area at full strength over the biome fill, so it must clear the grounds: slate violet is the cool direction they leave open; dE 15.3 from the nearest artwork tone, which REGION_BLEND does not soften |
 | `machines` | `#4aa3df` | machine footprints | markers/Desc_Water_C 8.6, discharged | the page's oldest colour; the only machine on a water node is an extractor, drawn ultramarine |
 | `extractors` | `#19039c` | extractor footprints | markers/Desc_LiquidOil_C 36.2 | not amber, which the page spends on a pending removal |
 | `generators` | `#a3f5b4` | generator footprints | crates/crates 21.5 | not tan, which vanished on sand |
 | `blocked` | `#ffd000` | thick outline: output full | markers/Desc_OreGold_C 23.4 | CSS twin is `--blocked`; docs/save-projection.md §6.2d |
 | `stopped` | `#d9534f` | thick outline: stopped and needs action | markers/Desc_Geyser_C 23.1 | |
-| `storage` | `#6a78c8` | a solid container, filled box | markers/hard_drive 18.0 | must clear the other filled boxes and the selection pink (dE 64.1) |
+| `storage` | `#6a78c8` | a solid container, filled box | pickups/hard_drive 18.0 | must clear the other filled boxes and the selection pink (dE 64.1) |
 | `storage fluid` | `#253496` | a fluid buffer, one value step below | markers/Desc_LiquidOil_C 16.2 | |
 
 ### `routes` — the belts and the pipes (`drawn/belts.ts`, `drawn/pipes.ts`)
 
 | key | hex | role | nearest cross-owner neighbour | constraint |
 | --- | --- | --- | --- | --- |
-| `belts` | `#93a5b4` | Mk3 belts and unknown tiers, and the layer swatch | markers/pickup collected dark 5.7, discharged | mid steel: has to read over dark concrete AND pale sand; never re-measured, everything else moves around it |
+| `belts` | `#93a5b4` | Mk3 belts and unknown tiers, and the layer swatch | pickups/pickup collected dark 5.7, discharged | mid steel: has to read over dark concrete AND pale sand; never re-measured, everything else moves around it |
 | `belt slow` | `#7f8f9d` | Mk1 and Mk2 belts | markers/coal dark 6.1, discharged | one value step below the middle |
-| `belt fast` | `#a7b9c7` | Mk4 and Mk5 belts | markers/pickup collected dark 10.0, discharged | one value step above; dE 15.6 slow to fast is the house step |
+| `belt fast` | `#a7b9c7` | Mk4 and Mk5 belts | pickups/pickup collected dark 10.0, discharged | one value step above; dE 15.6 slow to fast is the house step |
 | `lift fill` | `#0e1116` | the hole inside a conveyor lift's ring, and the belt casing | power/casing dark 3.5, discharged | near-black, because a hole can always get darker |
 | `pipes` | `#7d221a` | pipes of unknown tier, and the layer swatch | markers/Desc_OreBauxite_C 27.4 | oxide: amber is the pending removal's family and mid-rust is the bauxite dot's neighbourhood; dE 49.0 from the nearest artwork tone |
 | `pipe mk1` | `#690e06` | Mk1 pipes | regions/L 32.6 | one value step below the middle |
@@ -161,4 +171,4 @@ against a 256 m flat fill faded to 0.45 wherever there is imagery.
 | --- | --- | --- | --- | --- | --- |
 | `crates` | `crates` | `#3fcc94` | crate glyphs (`drawn/crates.ts`) | placements/generators 21.5 | a 13 px glyph found on open terrain at world zoom: dE 50.2 from the nearest ground |
 | `plans` | `plans` | `#4ec22e` | a sited plan's dashed outline (`drawn/plan-sitings.ts`) | markers/Desc_OreUranium_C 25.0 | green, which nothing built spends; dE 105.5 from the concrete and 110.7 from the machine blue it is laid over |
-| `map-highlight` | `highlight` | `#ff4fd8` | the one selection outline or ring (`map/map-highlight.ts`) | markers/power_slug_purple 24.4 | |
+| `map-highlight` | `highlight` | `#ff4fd8` | the one selection outline or ring (`map/map-highlight.ts`) | pickups/power_slug_purple 24.4 | |
