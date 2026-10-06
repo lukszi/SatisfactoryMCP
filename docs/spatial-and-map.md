@@ -262,7 +262,7 @@ collectible tables' ages when either is behind the save.
 
 **Decision: one selector language, used by every spatial and planning tool.** `plan_factory` takes no
 `direction` parameter; it takes `sources`, a list of selectors that say which nodes may feed the plan.
-Implemented in `spatial/select.py`. The terms themselves are tabulated once, next to the machine
+Implemented in `spatial/nodes/selectors.py`. The terms themselves are tabulated once, next to the machine
 selectors and the place grammar they share a spelling with, in [selectors.md](selectors.md).
 
 **Locations union; filters intersect.** So `["north", "resource:Crude Oil"]` is "crude oil in the

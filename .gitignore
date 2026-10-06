@@ -14,6 +14,7 @@ data/local/
 
 # Build output. The web page is compiled by Vite from interfaces/web/frontend/ into
 # static/, Leaflet and all, and a dependency's compiled code does not belong in this
-# tree: run `npm ci && npm run build` there to produce it. tests/test_architecture.py
-# enforces that nothing under static/ is ever tracked again.
+# tree: run `npm ci && npm run build` there to produce it.
+# tests/architecture/test_frontend_layout.py enforces that nothing under static/ is ever
+# tracked again.
 src/satisfactory_mcp/interfaces/web/static/

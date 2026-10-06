@@ -3,8 +3,8 @@
 ``ooz`` (from ``pyooz``), ``texture2ddecoder``, Pillow and ``zstandard`` (the render caches'
 codec) are the ``gen`` extra, pinned exactly because they decide the bytes a generator
 writes, and imported at module scope nowhere in this repository --
-``tests/test_architecture.py`` holds that line, so ``require_gen`` proves them present at run
-time instead::
+``tests/architecture/test_optional_extras.py`` holds that line, so ``require_gen`` proves them
+present at run time instead::
 
     uv run --extra gen python tools/gen_world_collectibles.py
 """

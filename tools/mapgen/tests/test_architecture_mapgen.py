@@ -1,7 +1,8 @@
 """The shape of the ``mapgen`` package, read off the AST. Standard library only.
 
-No ``pytest`` import on purpose: ``tests/test_architecture.py`` walks every file under
-``tools/`` and allows only the stdlib, the ``gen`` extra, ``core`` and ``mapgen`` there.
+No ``pytest`` import on purpose: ``tests/architecture/test_import_direction.py`` walks every
+file under ``tools/`` and allows only the stdlib, the ``gen`` extra, ``core`` and ``mapgen``
+there.
 """
 
 from __future__ import annotations
