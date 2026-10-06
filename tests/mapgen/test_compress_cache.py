@@ -32,7 +32,8 @@ from mapgen.cache import (
     direct_cache_stamp,
 )
 from mapgen.commands import compress_cache
-from mapgen.commands.compress_cache import Refused, compress
+from mapgen.commands.compress_cache import compress
+from mapgen.common import Refusal
 
 pytest.importorskip("zstandard")
 
@@ -162,7 +163,7 @@ def test_compress_refuses_a_target_on_its_source(tmp_path):
     kept, before = kept_folder(tmp_path)
     cache = kept / DIRECT_CACHE_DIR_NAME
     for target in (cache, kept, cache / "copy"):
-        with pytest.raises(Refused, match="the source"):
+        with pytest.raises(Refusal, match="the source"):
             compress(cache, target)
     assert {c: files(c) for c in before} == before
 
@@ -172,7 +173,7 @@ def test_a_target_holding_raw_planes_is_not_overwritten(tmp_path):
     raw_cache(source)
     other = tmp_path / "b" / DIRECT_CACHE_DIR_NAME
     before = raw_cache(other, seed=1)
-    with pytest.raises(Refused, match="raw planes"):
+    with pytest.raises(Refusal, match="raw planes"):
         compress(source, other)
     assert files(other) == before
 
@@ -334,7 +335,7 @@ def test_a_plane_left_under_its_probe_name_stops_the_conversion(tmp_path):
     raw_cache(cache)
     (cache / DIRECT_FAMILY_NAME).rename(cache / (DIRECT_FAMILY_NAME + ".probe"))
     before = files(cache)
-    with pytest.raises(Refused, match="rename it back"):
+    with pytest.raises(Refusal, match="rename it back"):
         compress(cache)
     assert files(cache) == before
 

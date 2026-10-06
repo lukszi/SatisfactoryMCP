@@ -162,15 +162,6 @@ from satisfactory_mcp.core.mapprogress import encode_stage
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 
-class Refusal(Exception):
-    """A run the generator will not do, with the exit code ``main`` returns for it."""
-
-    def __init__(self, code: int, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
 @dataclass(frozen=True)
 class Step:
     id: str

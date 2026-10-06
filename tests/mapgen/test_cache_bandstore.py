@@ -35,7 +35,8 @@ from mapgen.cache import (
     mesh_stamp,
     missing_caches,
 )
-from mapgen.commands.compress_cache import Refused, compress
+from mapgen.commands.compress_cache import compress
+from mapgen.common import Refusal
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.terrain import render_meshes
 from mapgen.terrain.rasters import rasterise_direct, reduce_direct, reduce_source
@@ -310,7 +311,7 @@ def test_the_converter_refuses_a_cache_being_written(tmp_path, monkeypatch, caps
     _raw_caches(tmp_path)
     folder = tmp_path / DIRECT_CACHE_DIR_NAME
     (folder / DIRECT_CACHE_SIDECAR).unlink()
-    with pytest.raises(Refused, match="still being written"):
+    with pytest.raises(Refusal, match="still being written"):
         compress(folder)
     assert cli.main(["compress-cache", str(folder)]) == 1
     assert "still being written" in capsys.readouterr().out
@@ -322,7 +323,7 @@ def test_the_converter_refuses_a_cache_a_render_holds_open(tmp_path):
     stamp, _key = _raw_caches(tmp_path)
     folder = tmp_path / DIRECT_CACHE_DIR_NAME
     held = cached_direct(folder, stamp)
-    with pytest.raises(Refused, match="held open"):
+    with pytest.raises(Refusal, match="held open"):
         compress(folder)
     del held
     recorded = json.loads((folder / DIRECT_CACHE_SIDECAR).read_text("utf-8"))

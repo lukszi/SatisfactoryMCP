@@ -29,15 +29,12 @@ from mapgen.cache import (
     held_open,
     plane_file,
 )
+from mapgen.common import Refusal
 
-__all__ = ["REFUSED", "Refused", "caches_under", "compress", "held_open", "main"]
+__all__ = ["REFUSED", "caches_under", "compress", "held_open", "main"]
 
 REFUSED = 1
 SIDECAR = DIRECT_CACHE_SIDECAR
-
-
-class Refused(Exception):
-    """A cache this command will not convert, with the reason."""
 
 
 def caches_under(root: Path) -> list[Path]:
@@ -82,7 +79,7 @@ def _check(dst: Path, size: int, dtype: np.dtype, digests: list[bytes]) -> None:
     back = BandArray(dst, (size, size), dtype, keep=1)
     for k, top in enumerate(range(0, size, BAND_ROWS)):
         if _digest(back[top : top + BAND_ROWS]) != digests[k]:
-            raise Refused(f"{dst.name}: band {k} does not match the raw plane")
+            raise Refusal(REFUSED, f"{dst.name}: band {k} does not match the raw plane")
 
 
 def _convert_plane(src: Path, dst: Path, size: int, dtype: np.dtype) -> None:
@@ -97,9 +94,9 @@ def _convert_plane(src: Path, dst: Path, size: int, dtype: np.dtype) -> None:
 def _matches_its_bands(cache: Path, size: int, name: str) -> None:
     dtype, bands = PLANE_DTYPES[name], plane_file(cache, name, STORAGE_BANDS)
     if not bands.is_file():
-        raise Refused(f"no {bands.name} beside it")
+        raise Refusal(REFUSED, f"no {bands.name} beside it")
     if (cache / name).stat().st_size != size * size * dtype.itemsize:
-        raise Refused(f"not a {size} px square of {dtype}")
+        raise Refusal(REFUSED, f"not a {size} px square of {dtype}")
     _check(bands, size, dtype, [_digest(b) for _top, b in _raw_bands(cache / name, size, dtype)])
 
 
@@ -110,7 +107,7 @@ def _drop_raw(cache: Path, names: list[str], verify=None) -> dict:
             if verify is not None:
                 verify(name)
             (cache / name).unlink()
-        except (Refused, OSError, ValueError) as exc:
+        except (Refusal, OSError, ValueError) as exc:
             kept[name] = str(exc)
         else:
             removed.append(name)
@@ -133,32 +130,36 @@ def _write_sidecar(path: Path, recorded: dict) -> None:
 def compress(cache: Path, target: Path | None = None) -> dict:
     """Convert one cache in place, or into ``target`` leaving ``cache`` as it was."""
     if target is not None and (on := _clash(cache, target)):
-        raise Refused(f"{on}; --to takes a folder outside it")
+        raise Refusal(REFUSED, f"{on}; --to takes a folder outside it")
     try:
         recorded = json.loads((cache / SIDECAR).read_text(encoding="utf-8"))
         size = int(recorded["size"])
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        raise Refused(f"no readable {SIDECAR} naming a size: still being written, or not a "
-                      f"raster cache ({exc})") from exc  # fmt: skip
+        raise Refusal(REFUSED, f"no readable {SIDECAR} naming a size: still being written, "
+                               f"or not a raster cache ({exc})") from exc  # fmt: skip
     storage = recorded.get("storage", STORAGE_RAW)
     names = [name for name in PLANE_DTYPES if (cache / name).is_file()]
     if probed := [n for n in PLANE_DTYPES if (cache / (n + ".probe")).is_file()]:
-        raise Refused(f"{probed[0]}.probe is a plane an interrupted open-file check renamed; "
-                      f"rename it back to {probed[0]}")  # fmt: skip
+        raise Refusal(REFUSED, f"{probed[0]}.probe is a plane an interrupted open-file check "
+                               f"renamed; rename it back to {probed[0]}")  # fmt: skip
     if storage == STORAGE_BANDS:
         if target is not None:
-            raise Refused("already in the band store")
+            raise Refusal(REFUSED, "already in the band store")
         verify = partial(_matches_its_bands, cache, size)
         return {"already": True, **_drop_raw(cache, names, verify)}
     if storage != STORAGE_RAW or not names:
-        raise Refused(f"storage {storage!r} with planes {names}: nothing this command converts")
+        raise Refusal(
+            REFUSED, f"storage {storage!r} with planes {names}: nothing this command converts"
+        )
     for name in names:
         if (cache / name).stat().st_size != size * size * PLANE_DTYPES[name].itemsize:
-            raise Refused(f"{name} is not a {size} px square of {PLANE_DTYPES[name]}")
+            raise Refusal(REFUSED, f"{name} is not a {size} px square of {PLANE_DTYPES[name]}")
     if target is None and (held := held_open([cache / n for n in names])):
-        raise Refused(f"{held.name} is held open, by a render reading this cache")
+        raise Refusal(REFUSED, f"{held.name} is held open, by a render reading this cache")
     if target is not None and (raw := [n for n in PLANE_DTYPES if (target / n).is_file()]):
-        raise Refused(f"{target} holds raw planes {raw}: not a band store this command wrote")
+        raise Refusal(
+            REFUSED, f"{target} holds raw planes {raw}: not a band store this command wrote"
+        )
     out = cache if target is None else target
     out.mkdir(parents=True, exist_ok=True)
     if target is not None:
@@ -227,7 +228,7 @@ def main() -> int:
     for cache in caches:
         try:
             done = compress(cache, targets[cache])
-        except (Refused, OSError, ValueError) as exc:
+        except (Refusal, OSError, ValueError) as exc:
             kept = "the source" if args.to is not None else "its raw planes and sidecar"
             print(f"{cache}: not converted, {kept} untouched. {exc}")
             status = REFUSED

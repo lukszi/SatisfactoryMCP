@@ -89,3 +89,12 @@ def _installed_version(distribution: str) -> str:
         return version(distribution)
     except Exception:
         return "unknown"
+
+
+class Refusal(Exception):
+    """A run the generator will not do, with the exit code ``main`` returns for it."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
