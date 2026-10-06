@@ -14,11 +14,11 @@ import type { MapsResponse, MapTypeBody } from "../../api/shapes";
 /* The id whose label is being edited; "" when none is. */
 let renaming = "";
 
-/* A re-render that needs the heightfield queues its rebuild first; an otherwise current map
- * restyles from a kept raster cache. */
+/* A re-render that needs the heightfield queues its rebuild first, and nothing if that is
+ * refused; an otherwise current map restyles from a kept raster cache. */
 function rerender(row: MapTypeBody): void {
   const pending = row.freshness.rerender;
-  let chain: Promise<void> = Promise.resolve();
+  let chain: Promise<boolean> = Promise.resolve(true);
   if (pending && pending.needs.indexOf("heightfield") >= 0) chain = submit("heightmap", {}, "", null);
   const body = mapRegistry.body;
   const size = row.size_px || 32768;
@@ -33,8 +33,9 @@ function rerender(row: MapTypeBody): void {
           light: !!row.axes.light,
           restyle: !pending && !row.freshness.stale.length && row.freshness.restyle && !!body && body.cached_sizes.indexOf(size) >= 0,
         };
-  chain.then(function () {
-    return submit(row.kind === "artwork" ? "artwork" : "render", options, row.label || "", row.id);
+  chain.then(function (ok) {
+    if (ok) return submit(row.kind === "artwork" ? "artwork" : "render", options, row.label || "", row.id);
+    return false;
   });
 }
 

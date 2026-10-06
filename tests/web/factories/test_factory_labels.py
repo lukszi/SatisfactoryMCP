@@ -206,6 +206,18 @@ def test_a_named_factory_draws_the_same_graph_as_its_candidate(fresh_state_clien
     assert all(d == "enters the factory" for d in inputs)
 
 
+def test_a_factory_with_every_anchor_dismantled_draws_an_empty_graph(fresh_state_client):
+    from satisfactory_mcp.domain.factories.labels import LabelStore
+
+    body, row = _first(fresh_state_client)
+    _name(fresh_state_client, body, row, name="gone")
+    with LabelStore.editing("X2faPVKjX06VaRzClNv5KQ") as store:
+        store.labels[0].anchors = ["Build_ConstructorMk1_C_999999999"]
+    reply = _graph(fresh_state_client, factory="gone")
+    assert reply.status_code == 200, reply.text
+    assert reply.json()["nodes"] == [] and reply.json()["edges"] == []
+
+
 def test_the_graph_route_refuses_what_it_cannot_answer(fresh_state_client):
     _body, row = _first(fresh_state_client)
     assert _graph(fresh_state_client).status_code == 400
