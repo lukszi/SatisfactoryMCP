@@ -20,15 +20,15 @@ from .....presenters.text import primitives as render
 from ... import app
 from ...params import AsOf, BaseRev, Limit
 from ._plan_log import (
-    _age,
-    _commit_text,
-    _head_stamper,
-    _needs_base,
-    _ops_text,
-    _world_plan_log,
-    _write,
+    age,
+    commit_text,
+    head_stamper,
+    needs_base,
+    ops_text,
+    world_plan_log,
+    write,
 )
-from ._requests import _find_stored_plan, _pinned_plan_name, _unknown_plan
+from ._requests import find_stored_plan, pinned_plan_name, unknown_plan
 
 LAST_CHANGE_WIDTH = 36
 
@@ -47,10 +47,10 @@ def _arg_text(value) -> str:
 def _last_change(log: PlanLog, key: str, names: dict[str, str], now: float) -> str:
     """Who last changed the plan ``key``, how long ago, and what, cut to the column."""
     for commit in reversed(log.commits(key)):
-        text = _ops_text(commit.ops, names)
+        text = ops_text(commit.ops, names)
         if text:
             return render.cut(
-                f"{commit.actor.display()} {_age(now - commit.ts)}: {text}", LAST_CHANGE_WIDTH
+                f"{commit.actor.display()} {age(now - commit.ts)}: {text}", LAST_CHANGE_WIDTH
             )
     return "-"
 
@@ -195,13 +195,13 @@ def list_plans(
     """
     st = app.load_world(save, world, as_of)
     if name:
-        return _plan_detail(st, _find_stored_plan(st, name))
+        return _plan_detail(st, find_stored_plan(st, name))
     if not st.plans.plans:
         return render.envelope(
             f"# no plans saved for world {st.plans.world_id!r}",
             "Pass save_as=<name> to plan_factory to store one.",
         )
-    log = _world_plan_log(st)
+    log = world_plan_log(st)
     names = app.recipe_names()
     now = time.time()
     rows = []
@@ -263,13 +263,13 @@ def forget_plan(
 ) -> str:
     """Delete a saved plan. Nothing in the world is touched, and plan_log can undo it."""
     st = app.load_world(save, world, as_of)
-    stored = _find_stored_plan(st, name)
+    stored = find_stored_plan(st, name)
     if base_rev is None:
-        return _needs_base(stored.name, stored.rev, "nothing forgotten")
-    pushed, text = _write(
+        return needs_base(stored.name, stored.rev, "nothing forgotten")
+    pushed, text = write(
         stored.name,
         "nothing forgotten",
-        lambda: _world_plan_log(st).push(
+        lambda: world_plan_log(st).push(
             stored.key,
             base_rev,
             [{"op": "forget"}],
@@ -300,20 +300,20 @@ def rename_plan(
     The plan keeps its key, its recorded field, its siting and its notes.
     """
     st = app.load_world(save, world, as_of)
-    stored = _find_stored_plan(st, name)
+    stored = find_stored_plan(st, name)
     try:
-        wanted = _world_plan_log(st).free_name(to, stored.key)
+        wanted = world_plan_log(st).free_name(to, stored.key)
     except PlanLogError as exc:
         return f"! {exc}"
     was = stored.name
     if was == wanted:
         return f"plan {was!r} already has that name"
     if base_rev is None:
-        return _needs_base(was, stored.rev, "nothing renamed")
-    pushed, text = _write(
+        return needs_base(was, stored.rev, "nothing renamed")
+    pushed, text = write(
         was,
         "nothing renamed",
-        lambda: _world_plan_log(st).push(
+        lambda: world_plan_log(st).push(
             stored.key,
             base_rev,
             [{"op": "rename", "name": wanted}],
@@ -345,12 +345,12 @@ def _history(log: PlanLog, found, since: int | None, limit: int) -> str:
     shown = [c for c in reversed(commits) if c.rev > (since or 0)]
     lines = []
     for commit in shown[:limit]:
-        flags = [f"{_age(now - commit.ts)} ago"]
+        flags = [f"{age(now - commit.ts)} ago"]
         if commit.merged_over:
             flags.append("merged over " + ",".join(f"v{r}" for r in commit.merged_over))
         if commit.rev in undone:
             flags.append(f"undone in v{undone[commit.rev]}")
-        lines.append(f"{_commit_text(commit, names)}  ({'; '.join(flags)})")
+        lines.append(f"{commit_text(commit, names)}  ({'; '.join(flags)})")
     if len(shown) > limit:
         lines.append(f"(+{len(shown) - limit} more: raise limit, or pass since=)")
     head = f'# plan "{found.name}" v{found.rev} (key {found.key})'
@@ -388,11 +388,11 @@ def plan_log(
     forgotten plan is found too, so its forget can be undone.
     """
     st = app.load_world(save, world, as_of)
-    name = _pinned_plan_name(st, name)
-    log = _world_plan_log(st)
+    name = pinned_plan_name(st, name)
+    log = world_plan_log(st)
     found = log.find(name, include_forgotten=True)
     if found is None:
-        raise _unknown_plan(st, name)
+        raise unknown_plan(st, name)
     if undo is None and restore is None:
         try:
             return _history(log, found, since, render.clamp(limit, default=15))
@@ -402,17 +402,17 @@ def plan_log(
         return "! pass undo= or restore=, not both; nothing changed"
     verb = "undone" if undo is not None else "restored"
     if base_rev is None:
-        return _needs_base(found.name, found.rev, f"nothing {verb}")
-    who, sav, stamp = app.actor(ctx), app.save_token(st), _head_stamper(st)
+        return needs_base(found.name, found.rev, f"nothing {verb}")
+    who, sav, stamp = app.actor(ctx), app.save_token(st), head_stamper(st)
     if undo is not None:
-        pushed, text = _write(
+        pushed, text = write(
             found.name,
             "nothing undone",
             lambda: log.undo(found.key, base_rev, undo, actor=who, sav=sav, stamp=stamp),
         )
         done = f"undid v{undo}"
     else:
-        pushed, text = _write(
+        pushed, text = write(
             found.name,
             "nothing restored",
             lambda: log.restore_to(found.key, base_rev, restore, actor=who, sav=sav, stamp=stamp),
@@ -420,5 +420,5 @@ def plan_log(
         done = f"restored v{restore}"
     if pushed is None:
         return text
-    changes = _ops_text(pushed.applied, app.recipe_names()) or "no change"
+    changes = ops_text(pushed.applied, app.recipe_names()) or "no change"
     return f'# {done} of plan "{pushed.state.name}": {changes}\n{text}'

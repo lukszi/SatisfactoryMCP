@@ -52,7 +52,7 @@ def _clock_at(points: float, per_mw: float, draw: float, exponent: float, floor:
     return min(1.0, max(floor, (points / per_mw / ((exponent - 1) * draw)) ** (1 / exponent)))
 
 
-def _spreadable(process: Process) -> bool:
+def spreadable(process: Process) -> bool:
     """A row the horizon may spread: production at or below 100% with no sloops, on a building
     whose power is convex in clock. Extractors are bound by their nodes."""
     return (
@@ -64,7 +64,7 @@ def _spreadable(process: Process) -> bool:
 
 
 @dataclass
-class _SpreadableRow:
+class SpreadableRow:
     """One recipe row the horizon may spread: its throughput in machine-units at 100%."""
 
     process: Process
@@ -115,12 +115,12 @@ class _HorizonReadout:
     options: dict[int, tuple[int, float, int]] = field(default_factory=dict)
 
 
-def _pinned(sc: Scenario, row: _SpreadableRow) -> str | None:
+def _pinned(sc: Scenario, row: SpreadableRow) -> str | None:
     """The row's own choice, ``"last"`` or ``"spread"``, or None to follow the plan."""
     return sc.row_overclock.get(row.process.recipe or "")
 
 
-def _applies(sc: Scenario, row: _SpreadableRow, on: bool | None) -> bool:
+def _applies(sc: Scenario, row: SpreadableRow, on: bool | None) -> bool:
     """Whether a row's overclock pick is built: its own choice wins over the plan's switch;
     ``on`` None is the plain build, which never overclocks (contract §4)."""
     if on is None:
@@ -129,8 +129,8 @@ def _applies(sc: Scenario, row: _SpreadableRow, on: bool | None) -> bool:
     return pinned == "last" or (on and pinned is None)
 
 
-def _horizon_readout(
-    sc: Scenario, rows: list[_SpreadableRow], hours: float, per_shard: float
+def horizon_readout(
+    sc: Scenario, rows: list[SpreadableRow], hours: float, per_shard: float
 ) -> _HorizonReadout:
     """Machines per row at ``hours``: the cheapest spread, or one fewer with the last machine
     overclocked where that is cheaper still and shards last (contract §4-§5). A row set to
@@ -176,7 +176,7 @@ def _horizon_readout(
     return readout
 
 
-def _overclock_option(sc: Scenario, row: _SpreadableRow, i: int, readout: _HorizonReadout) -> dict:
+def overclock_option(sc: Scenario, row: SpreadableRow, i: int, readout: _HorizonReadout) -> dict:
     """A row's two builds, for the per-row choice: one fewer with the last overclocked, or
     the spread; ``applied`` says which is built."""
     machines, top, shards = readout.options[i]
@@ -195,7 +195,7 @@ def _overclock_option(sc: Scenario, row: _SpreadableRow, i: int, readout: _Horiz
     }
 
 
-def _row_names(rows: list[_SpreadableRow], indexes: list[int]) -> list[dict]:
+def _row_names(rows: list[SpreadableRow], indexes: list[int]) -> list[dict]:
     return [
         {
             "label": rows[i].process.label,
@@ -205,7 +205,7 @@ def _row_names(rows: list[_SpreadableRow], indexes: list[int]) -> list[dict]:
     ]
 
 
-def _overclock_view(sc: Scenario, rows: list[_SpreadableRow], readout: _HorizonReadout) -> dict:
+def overclock_view(sc: Scenario, rows: list[SpreadableRow], readout: _HorizonReadout) -> dict:
     """``Solution.overclock``: the rows picked at this horizon, and the ones left out."""
     picked = []
     for i, (machines, top, shards) in sorted(readout.picks.items()):
@@ -238,15 +238,15 @@ def _overclock_view(sc: Scenario, rows: list[_SpreadableRow], readout: _HorizonR
     }
 
 
-def _payback_curve(
-    sc: Scenario, fixed: tuple[float, float], rows: list[_SpreadableRow], per_shard: float
+def payback_curve(
+    sc: Scenario, fixed: tuple[float, float], rows: list[SpreadableRow], per_shard: float
 ) -> list[dict]:
     """One readout per stop, plus ``plain``: 0 h with no overclock, what stops compare to."""
     machines_fixed, draw_fixed = fixed
     out = []
     stops = [(h, sc.overclock_last) for h in sorted({*PAYBACK_STOPS, float(sc.payback_hours)})]
     for hours, overclock_last_on in [*stops, (0.0, None)]:
-        readout = _horizon_readout(sc, rows, hours, per_shard)
+        readout = horizon_readout(sc, rows, hours, per_shard)
         machines, draw, buildings = machines_fixed, draw_fixed, {}
         shards = 0
         for i, row in enumerate(rows):

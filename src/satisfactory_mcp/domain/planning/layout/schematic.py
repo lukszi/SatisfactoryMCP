@@ -13,7 +13,7 @@ from ....core.gamedata.model import GameData
 from ..solver.carrier import carrier_for
 from ..solver.graph import chain_depth
 from ..solver.model import MW, Solution
-from .head import _pump_total, order_stages_by_head
+from .head import order_stages_by_head, pump_total
 from .model import (
     FLOOR_HEADROOM_M,
     FLOOR_STEP_M,
@@ -244,7 +244,7 @@ def build_layout(
         chain_floors = _floors(blocks, buses, max_floor_foundations, None)
         head_floors = _floors(blocks, buses, max_floor_foundations, order)
         floors, order = min(
-            (chain_floors, None), (head_floors, order), key=lambda pair: _pump_total(pair[0], buses)
+            (chain_floors, None), (head_floors, order), key=lambda pair: pump_total(pair[0], buses)
         )
         if order is None:
             warnings.append(

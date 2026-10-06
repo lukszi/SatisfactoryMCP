@@ -16,6 +16,7 @@ from .model import MW, Process, Scenario, Solution
 from .overclock import machine_price_mw
 
 __all__ = [
+    "Columns",
     "balance_rows",
     "bounds_and_group_caps",
     "goal_vector",
@@ -31,7 +32,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class _Columns:
+class Columns:
     """Where each variable sits: processes, then raw, export and sink flows, then grid import."""
 
     n_processes: int
@@ -40,7 +41,7 @@ class _Columns:
     sink_items: tuple[str, ...]
 
     @classmethod
-    def for_scenario(cls, scenario: Scenario, processes: list[Process]) -> _Columns:
+    def for_scenario(cls, scenario: Scenario, processes: list[Process]) -> Columns:
         items = sorted({item for process in processes for item in process.rates})
         return cls(
             n_processes=len(processes),
@@ -87,7 +88,7 @@ def _sinkable(scenario: Scenario, item_id: str) -> bool:
     return bool(item and item.sinkable)
 
 
-def balance_rows(processes: list[Process], columns: _Columns) -> list[np.ndarray]:
+def balance_rows(processes: list[Process], columns: Columns) -> list[np.ndarray]:
     """One equality row per item: process nets, plus raw in and export and sink out."""
     items = sorted({item for process in processes for item in process.rates})
     balanced = items + [i for i in columns.raw_items if i not in items]
@@ -110,7 +111,7 @@ def balance_rows(processes: list[Process], columns: _Columns) -> list[np.ndarray
     return rows
 
 
-def power_row(scenario: Scenario, processes: list[Process], columns: _Columns) -> np.ndarray:
+def power_row(scenario: Scenario, processes: list[Process], columns: Columns) -> np.ndarray:
     """The ``MW`` balance: machines and sinks draw, generators and the grid supply."""
     row = np.zeros(columns.size)
     for i, process in enumerate(processes):
@@ -125,7 +126,7 @@ def power_row(scenario: Scenario, processes: list[Process], columns: _Columns) -
 
 
 def bounds_and_group_caps(
-    scenario: Scenario, processes: list[Process], columns: _Columns
+    scenario: Scenario, processes: list[Process], columns: Columns
 ) -> tuple[np.ndarray, np.ndarray, list[LinearConstraint]]:
     """Lower and upper bounds per column, and one shared cap per group of clock modes."""
     lower = np.zeros(columns.size)
@@ -164,7 +165,7 @@ def bounds_and_group_caps(
 
 
 def recycle_once_rows(
-    scenario: Scenario, processes: list[Process], columns: _Columns
+    scenario: Scenario, processes: list[Process], columns: Columns
 ) -> list[LinearConstraint]:
     """Per item the named set makes and eats: consumed inside <= produced outside (§8.2h)."""
     if not scenario.recycle_once:
@@ -190,7 +191,7 @@ def recycle_once_rows(
 
 
 def sloop_budget_row(
-    scenario: Scenario, processes: list[Process], columns: _Columns
+    scenario: Scenario, processes: list[Process], columns: Columns
 ) -> LinearConstraint | None:
     """Somersloops spent across every column, at most the budget; None when nothing spends."""
     if not scenario.sloop_budget:
@@ -204,7 +205,7 @@ def sloop_budget_row(
     return LinearConstraint(row, -np.inf, scenario.sloop_budget) if used else None
 
 
-def max_machines_row(scenario: Scenario, columns: _Columns) -> LinearConstraint | None:
+def max_machines_row(scenario: Scenario, columns: Columns) -> LinearConstraint | None:
     if scenario.max_machines is None:
         return None
     row = np.zeros(columns.size)
@@ -213,7 +214,7 @@ def max_machines_row(scenario: Scenario, columns: _Columns) -> LinearConstraint 
     return LinearConstraint(row, -np.inf, scenario.max_machines)
 
 
-def integrality_vector(scenario: Scenario, columns: _Columns) -> np.ndarray:
+def integrality_vector(scenario: Scenario, columns: Columns) -> np.ndarray:
     integrality = np.zeros(columns.size)
     if scenario.integral:
         for i in range(columns.n_processes):
@@ -222,7 +223,7 @@ def integrality_vector(scenario: Scenario, columns: _Columns) -> np.ndarray:
 
 
 def goal_vector(
-    scenario: Scenario, processes: list[Process], columns: _Columns
+    scenario: Scenario, processes: list[Process], columns: Columns
 ) -> np.ndarray | Solution:
     """Phase 1's objective, minimised, or an infeasible Solution naming what is missing."""
     goal = np.zeros(columns.size)
@@ -260,7 +261,7 @@ def goal_vector(
 
 
 def price_machines_for_power(
-    goal: np.ndarray, scenario: Scenario, processes: list[Process], columns: _Columns
+    goal: np.ndarray, scenario: Scenario, processes: list[Process], columns: Columns
 ) -> np.ndarray:
     """``goal`` with each machine priced in MW when the objective is power (§8.4)."""
     priced = goal.copy()
@@ -271,7 +272,7 @@ def price_machines_for_power(
 
 
 def machine_price_vector(
-    scenario: Scenario, processes: list[Process], columns: _Columns
+    scenario: Scenario, processes: list[Process], columns: Columns
 ) -> np.ndarray:
     """Phase 2's cost per machine: 1 each, or build points plus running power at a horizon."""
     machine_cost = np.zeros(columns.size)

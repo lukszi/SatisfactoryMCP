@@ -21,7 +21,7 @@ from .....domain.session import asks, focus, journal, pins
 from .....presenters.text import advice as advice_text
 from .....presenters.text import primitives as render
 from ... import app
-from ._plan_log import _age, _ops_text, _world_plan_log
+from ._plan_log import age, ops_text, world_plan_log
 
 CONTEXT_PLANS = 8
 CONTEXT_COMMITS = 6
@@ -59,7 +59,7 @@ def _head_line(st, page: dict | None, is_open: bool) -> str:
     shown_world = st.session_name or st.world_id
     if page is None:
         return f'# page never opened for this world · world "{shown_world}"'
-    beat = _age(time.time() - float(page.get("heartbeat") or 0))
+    beat = age(time.time() - float(page.get("heartbeat") or 0))
     if is_open:
         head = f"# page open (heartbeat {beat} ago)"
     else:
@@ -149,7 +149,7 @@ def _plan_news(
         commits = sorted(by_plan[key], key=lambda c: c.rev)
         who = ", ".join(dict.fromkeys(c.actor.display() for c in commits))
         items = [
-            f"v{c.rev} " + (_ops_text(c.ops, names) or c.note or "recorded")
+            f"v{c.rev} " + (ops_text(c.ops, names) or c.note or "recorded")
             for c in commits[-CONTEXT_COMMITS:]
         ]
         if len(commits) > CONTEXT_COMMITS:
@@ -385,7 +385,7 @@ def ui_context(
     """
     st = app.load_world(save, world)
     world_id = st.world_id
-    log = _world_plan_log(st)
+    log = world_plan_log(st)
     page, is_open = _page_focus(world_id)
 
     lines = [_head_line(st, page, is_open)]

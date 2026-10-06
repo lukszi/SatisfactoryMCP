@@ -118,7 +118,7 @@ def order_stages_by_head(blocks: list[Block], buses: list[Bus]) -> tuple[list[in
     return best, notes
 
 
-def _pump_total(floors: list[Floor], buses: list[Bus], pump_head_m: float = 50.0) -> int:
+def pump_total(floors: list[Floor], buses: list[Bus], pump_head_m: float = 50.0) -> int:
     """Pumps a floor arrangement needs, for comparing two candidate stacks; at the Mk2's
     head, since the tier scales every riser together and so rarely changes the ranking."""
     stub = Layout(blocks=[], buses=buses, floors=floors)

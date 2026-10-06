@@ -23,8 +23,8 @@ from ...params import (
     Sloops,
     WaterExtractors,
 )
-from ._plan_log import _journal_view
-from ._requests import _power_refusal, _recall_request, _resolve_row_overclock, _solve_args
+from ._plan_log import journal_view
+from ._requests import power_refusal, recall_request, resolve_row_overclock, solve_args
 
 
 def _payback_notes(g, st, prepared) -> list[str]:
@@ -111,7 +111,7 @@ def plan_layout(
         return gone
     st = app.load_world(save, world, as_of)
 
-    row_overclock, refused = _resolve_row_overclock(row_overclock)
+    row_overclock, refused = resolve_row_overclock(row_overclock)
     if refused:
         return refused
     tiers = resolve_tiers(g, st, belt_tier, pipe_tier)
@@ -125,7 +125,7 @@ def plan_layout(
             limit=limit,
         )
 
-    supplied = _solve_args(
+    supplied = solve_args(
         objective=objective,
         target_item=target_item,
         sources=sources,
@@ -149,9 +149,9 @@ def plan_layout(
         power_price=power_price,
         row_overclock=row_overclock,
     )
-    if refused := _power_refusal(supplied):
+    if refused := power_refusal(supplied):
         return refused
-    request = _recall_request(st, plan, supplied)
+    request = recall_request(st, plan, supplied)
     plan_notes = list(request.notes)
 
     report = build_layout_report(
@@ -167,7 +167,7 @@ def plan_layout(
         factory=factory,
         plan=request.plan,
     )
-    _journal_view(st, request.plan, "plan_layout", ctx)
+    journal_view(st, request.plan, "plan_layout", ctx)
     if report.prepared is not None and report.prepared.ok:
         plan_notes += _payback_notes(g, st, report.prepared)
 

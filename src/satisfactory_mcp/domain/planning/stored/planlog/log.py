@@ -17,23 +17,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .....core import atomic, filelock, schema
-from ..plan_args import PLAN_SCALARS, InvalidOp, PlanArgs, _text
+from ..plan_args import PLAN_SCALARS, InvalidOp, PlanArgs, checked_text
 from ..store import Plan, PlanStore, find_by_name
 from . import migrate as migration
 from .ops import (
-    _apply,
-    _canonical_op,
-    _check_lifecycle,
-    _clash,
-    _is_noop,
-    _needs_world_lock,
-    _replay,
-    _revs_undo_ignores,
-    _standing_undo_of,
-    _with_was,
+    apply,
+    canonical_op,
+    check_lifecycle,
+    clash,
     diff_args,
     inverse,
+    is_noop,
     merge_key,
+    needs_world_lock,
+    replay,
+    revs_undo_ignores,
+    standing_undo_of,
+    with_was,
 )
 from .records import (
     SCHEMA,
@@ -119,7 +119,7 @@ def _find_conflicts(mine: list[dict], against: list[Commit]) -> list[Conflict]:
     for op in mine:
         for commit in against:
             for theirs in commit.ops:
-                if _clash(op, theirs) == "conflict":
+                if clash(op, theirs) == "conflict":
                     conflicts.append(
                         Conflict(merge_key(op) or "", op, theirs, commit.rev, commit.actor)
                     )
@@ -133,12 +133,12 @@ def _apply_ops(
     applied, dropped = [], []
     restored = any(t.get("op") == "restore" for c in since for t in c.ops)
     for op in mine:
-        if _is_noop(work, op) or (op["op"] == "restore" and restored and not work.forgotten):
+        if is_noop(work, op) or (op["op"] == "restore" and restored and not work.forgotten):
             dropped.append(op)
             continue
-        _check_lifecycle(work, op)
-        filled = _with_was(work, op)
-        _apply(work, filled)
+        check_lifecycle(work, op)
+        filled = with_was(work, op)
+        apply(work, filled)
         applied.append(filled)
     return applied, dropped
 
@@ -211,7 +211,7 @@ class PlanLog:
             raise InvalidOp(f"plan {key} has no v{rev}; it is at v{head}")
         base = self._newest_snapshot(key, rev)
         start = base.rev if base is not None else 0
-        state = _replay(base, [c for c in commits if start < c.rev <= rev], key)
+        state = replay(base, [c for c in commits if start < c.rev <= rev], key)
         if state is None:
             raise UnknownPlan(key, [])
         return state
@@ -265,7 +265,7 @@ class PlanLog:
     def free_name(self, name: str, key: str | None = None) -> str:
         """``name`` stripped, or ``InvalidOp`` / ``NameTaken`` saying why a plan other than
         ``key`` cannot take it. Case-insensitive, as ``find`` is. Unlocked: a write re-checks."""
-        wanted = _text("name", name).strip()
+        wanted = checked_text("name", name).strip()
         if not wanted:
             raise InvalidOp("a plan name cannot be blank")
         if self._taken(wanted, key):
@@ -307,10 +307,10 @@ class PlanLog:
             key="",
             rev=1,
             name=wanted,
-            notes=_text("notes", notes),
-            factory=_text("factory", factory),
-            created=_text("created", created),
-            plan_id=_text("plan_id", plan_id),
+            notes=checked_text("notes", notes),
+            factory=checked_text("factory", factory),
+            created=checked_text("created", created),
+            plan_id=checked_text("plan_id", plan_id),
             provenance=copy.deepcopy(provenance or {}),
             siting=copy.deepcopy(siting or {}),
             args=args if isinstance(args, PlanArgs) else PlanArgs.from_dict(args),
@@ -357,10 +357,10 @@ class PlanLog:
     ) -> Pushed:
         """``extend`` adds ops worked out from the head under the plan lock; they merge by
         M1 like the rest, so one that clashes with a commit since ``base_rev`` refuses."""
-        mine = [_canonical_op(op) for op in ops]
+        mine = [canonical_op(op) for op in ops]
 
         def run(commits: list[Commit]) -> Pushed:
-            more = [_canonical_op(op) for op in extend(self._state(key, commits))] if extend else []
+            more = [canonical_op(op) for op in extend(self._state(key, commits))] if extend else []
             return self._merge(
                 key,
                 commits,
@@ -373,7 +373,7 @@ class PlanLog:
                 undoes=None,
             )
 
-        return self._locked(_needs_world_lock(mine), key, run)
+        return self._locked(needs_world_lock(mine), key, run)
 
     def push_args(
         self,
@@ -410,10 +410,10 @@ class PlanLog:
         if rev == 1:
             raise InvalidOp("v1 created the plan and cannot be undone; forget the plan instead")
         target = commits[rev - 1]
-        renames = _needs_world_lock(inverse(target.ops))
+        renames = needs_world_lock(inverse(target.ops))
 
         def run(current: list[Commit]) -> Pushed:
-            by = _standing_undo_of(current, rev)
+            by = standing_undo_of(current, rev)
             if by is not None:
                 raise AlreadyUndone(rev, by.rev)
             return self._merge(
@@ -426,7 +426,7 @@ class PlanLog:
                 stamp=stamp,
                 note="",
                 undoes=rev,
-                window=_revs_undo_ignores(current, rev),
+                window=revs_undo_ignores(current, rev),
             )
 
         return self._locked(renames, key, run)
@@ -458,7 +458,7 @@ class PlanLog:
                 key,
                 current,
                 base_rev=base_rev,
-                mine=[_canonical_op(op) for op in ops],
+                mine=[canonical_op(op) for op in ops],
                 actor=actor,
                 sav=sav,
                 stamp=stamp,
@@ -472,7 +472,7 @@ class PlanLog:
         return self._locked(True, key, run)
 
     def push_at_head(self, key: str, ops: list[dict], *, actor: Actor, note: str = "") -> Pushed:
-        mine = [_canonical_op(op) for op in ops]
+        mine = [canonical_op(op) for op in ops]
 
         def run(current: list[Commit]) -> Pushed:
             return self._merge(
@@ -487,7 +487,7 @@ class PlanLog:
                 undoes=None,
             )
 
-        return self._locked(_needs_world_lock(mine), key, run)
+        return self._locked(needs_world_lock(mine), key, run)
 
     def _locked(self, world: bool, key: str, run: Callable[[list[Commit]], Pushed]) -> Pushed:
         self._all(key)
@@ -543,12 +543,12 @@ class PlanLog:
                 noop=True,
                 state=head,
             )
-        if _needs_world_lock(applied) and not work.forgotten and self._taken(work.name, key):
+        if needs_world_lock(applied) and not work.forgotten and self._taken(work.name, key):
             raise NameTaken(work.name)
         applied += self._stamped(work, stamp)
         for op in applied:
             if op["op"] == "record":
-                _apply(work, op)
+                apply(work, op)
         work.rev = head_rev + 1
         merged = [c.rev for c in since]
         commit = Commit(
@@ -601,7 +601,7 @@ class PlanLog:
         for name in ("plan_id", "provenance"):
             if name in got and got[name] != getattr(work, name):
                 try:
-                    out.append(_canonical_op({"op": "record", "field": name, "value": got[name]}))
+                    out.append(canonical_op({"op": "record", "field": name, "value": got[name]}))
                 except InvalidOp:
                     continue
         return out

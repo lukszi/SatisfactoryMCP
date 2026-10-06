@@ -18,7 +18,7 @@ from .....presenters.text.byproducts import render_byproducts
 from .....presenters.text.compare import render_comparison
 from ... import app
 from ...params import AsOf, Limit, PlanName
-from ._requests import _recall_request, _solve_args
+from ._requests import recall_request, solve_args
 
 
 @app.tool()
@@ -237,7 +237,7 @@ def rank_unlocks(
     g = app.game()
     st = app.load_world(save, world, as_of)
 
-    supplied = _solve_args(
+    supplied = solve_args(
         objective=objective,
         target_item=target_item,
         sources=sources,
@@ -253,7 +253,7 @@ def rank_unlocks(
         water_extractors=water_extractors,
         sloops=sloops,
     )
-    request = _recall_request(st, plan, supplied)
+    request = recall_request(st, plan, supplied)
 
     prepared = prepare(g, st, request.kwargs, objective_label=request.objective, diagnose=False)
     if prepared.failure:

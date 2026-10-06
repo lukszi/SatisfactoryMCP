@@ -14,7 +14,7 @@ from scipy.optimize import LinearConstraint
 
 from .build_table import binding_constraints, build_rows, logistics, solution_warnings
 from .lp import (
-    _Columns,
+    Columns,
     balance_rows,
     bounds_and_group_caps,
     goal_vector,
@@ -49,7 +49,7 @@ def solve(sc: Scenario) -> Solution:
     processes = build_processes(sc)
     if not processes:
         return Solution.infeasible("no processes available")
-    columns = _Columns.for_scenario(sc, processes)
+    columns = Columns.for_scenario(sc, processes)
 
     equalities = np.vstack([*balance_rows(processes, columns), power_row(sc, processes, columns)])
     zeros = np.zeros(len(equalities))

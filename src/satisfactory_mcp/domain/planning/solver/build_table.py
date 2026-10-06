@@ -12,15 +12,15 @@ import numpy as np
 
 from ....core.gamedata.model import GameData
 from .carrier import carrier_for
-from .lp import _Columns
+from .lp import Columns
 from .model import NEGLIGIBLE_IPM, Process, Scenario
 from .overclock import (
-    _horizon_readout,
-    _overclock_option,
-    _overclock_view,
-    _payback_curve,
-    _spreadable,
-    _SpreadableRow,
+    SpreadableRow,
+    horizon_readout,
+    overclock_option,
+    overclock_view,
+    payback_curve,
+    spreadable,
 )
 
 __all__ = ["BuildRows", "binding_constraints", "build_rows", "logistics", "solution_warnings"]
@@ -98,7 +98,7 @@ class _RowWriter:
 
 
 def pool_extractor_modes(
-    processes: list[Process], x: np.ndarray, columns: _Columns
+    processes: list[Process], x: np.ndarray, columns: Columns
 ) -> dict[str, tuple[float, float]]:
     """Per extractor group, ``(machines, node-units)`` summed over its clock modes (§8.2c)."""
     pooled: dict[str, tuple[float, float]] = {}
@@ -115,7 +115,7 @@ def _fixed_draw(process: Process, built: int, units: float) -> float:
 
 
 def build_rows(
-    scenario: Scenario, processes: list[Process], x: np.ndarray, columns: _Columns
+    scenario: Scenario, processes: list[Process], x: np.ndarray, columns: Columns
 ) -> BuildRows:
     """Whole machines at a derived clock per column, extractor modes folded, spreadable rows
     read out at the scenario's horizon."""
@@ -124,7 +124,7 @@ def build_rows(
     writer = _RowWriter(game)
     out = BuildRows()
     folded: set[str] = set()
-    spread: list[_SpreadableRow] = []
+    spread: list[SpreadableRow] = []
     deferred: list[float] = []
     fixed_machines, fixed_draw = 0, 0.0
     for i, process in enumerate(processes):
@@ -156,10 +156,8 @@ def build_rows(
         # ceil(v) machines all at v/ceil(v): exact and power-optimal (§8.4).
         built = max(1, math.ceil(count - 1e-9))
         units = process.clock * count
-        if _spreadable(process) and not negligible:
-            spread.append(
-                _SpreadableRow(process, units, game.buildings.get(process.building or ""))
-            )
+        if spreadable(process) and not negligible:
+            spread.append(SpreadableRow(process, units, game.buildings.get(process.building or "")))
             deferred.append(count)
             continue
         fixed_machines += built
@@ -169,9 +167,9 @@ def build_rows(
     # The LP column already runs at the horizon's best clock; overclock-last is the one
     # readout choice the LP never sees.
     per_shard = max(game.clock_shards().values(), default=0.0)
-    readout = _horizon_readout(scenario, spread, scenario.payback_hours, per_shard)
+    readout = horizon_readout(scenario, spread, scenario.payback_hours, per_shard)
     for i, (row, count) in enumerate(zip(spread, deferred, strict=True)):
-        option = _overclock_option(scenario, row, i, readout) if i in readout.options else None
+        option = overclock_option(scenario, row, i, readout) if i in readout.options else None
         if option is not None and option["applied"]:
             built, top, _ = readout.picks[i]
             writer.write(
@@ -184,13 +182,13 @@ def build_rows(
 
     out.rows = writer.rows
     out.machines_total = writer.machines_total
-    out.payback_curve = _payback_curve(scenario, (fixed_machines, fixed_draw), spread, per_shard)
-    out.overclock = _overclock_view(scenario, spread, readout)
+    out.payback_curve = payback_curve(scenario, (fixed_machines, fixed_draw), spread, per_shard)
+    out.overclock = overclock_view(scenario, spread, readout)
     return out
 
 
 def binding_constraints(
-    scenario: Scenario, processes: list[Process], x: np.ndarray, columns: _Columns
+    scenario: Scenario, processes: list[Process], x: np.ndarray, columns: Columns
 ) -> list[str]:
     """Node caps and raw caps the solve used up, a clock-mode group tested as one (§8.2c)."""
     binding = []
@@ -220,7 +218,7 @@ def logistics(
     scenario: Scenario,
     processes: list[Process],
     x: np.ndarray,
-    columns: _Columns,
+    columns: Columns,
     raw_used: dict[str, float] | None = None,
 ) -> list[dict]:
     """Each item's flow and the belt or pipe lines it needs; reported, never constrained (§8.4)."""
@@ -257,7 +255,7 @@ def solution_warnings(
     scenario: Scenario,
     processes: list[Process],
     x: np.ndarray,
-    columns: _Columns,
+    columns: Columns,
     dropped: list[tuple[str, float]],
     flows: list[dict],
     sunk: dict[str, float],

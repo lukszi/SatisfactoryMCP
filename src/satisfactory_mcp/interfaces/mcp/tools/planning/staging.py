@@ -15,8 +15,8 @@ from .....presenters.text.commission import render_commission
 from .....presenters.text.diff import render_diff
 from ... import app
 from ...params import AsOf, Biomass, Limit, PlanName
-from ._plan_log import _journal_view, _world_plan_log
-from ._requests import _factory_value, _recall_request, _solve_args
+from ._plan_log import journal_view, world_plan_log
+from ._requests import factory_value, recall_request, solve_args
 
 
 class StagePosition(NamedTuple):
@@ -39,7 +39,7 @@ def _stored_plan_state(st, plan: str | None):
     if found is None:
         return None
     try:
-        return _world_plan_log(st).state(found.key)
+        return world_plan_log(st).state(found.key)
     except PlanLogError:
         return None
 
@@ -135,7 +135,7 @@ def diff_vs_save(
     g = app.game()
     st = app.load_world(save, world, as_of)
 
-    supplied = _solve_args(
+    supplied = solve_args(
         objective=objective,
         target_item=target_item,
         sources=sources,
@@ -149,7 +149,7 @@ def diff_vs_save(
         exclude_recipes=exclude_recipes,
         only_recipes=only_recipes,
     )
-    request = _recall_request(st, plan, supplied)
+    request = recall_request(st, plan, supplied)
     plan_notes = list(request.notes)
     stored = _stored_plan_state(st, request.plan)
     biomass, default, unread = _shared_power(biomass)
@@ -163,13 +163,13 @@ def diff_vs_save(
         plan=request.plan,
         plan_name=request.name,
         stage=stage,
-        factory=_factory_value(factory),
+        factory=factory_value(factory),
         biomass=biomass,
         stored=stored,
         default=default,
     )
     view = {"view": "track", "stage": stage if stage and stage >= 1 else None, "section": "stages"}
-    _journal_view(st, request.plan, "diff_vs_save", ctx, view)
+    journal_view(st, request.plan, "diff_vs_save", ctx, view)
     moved = _renumbered(st, stored, report.tracking)
     if moved:
         plan_notes = [moved, *plan_notes]
@@ -232,7 +232,7 @@ def commission_plan(
     g = app.game()
     st = app.load_world(save, world, as_of)
 
-    supplied = _solve_args(
+    supplied = solve_args(
         objective=objective,
         target_item=target_item,
         sources=sources,
@@ -248,7 +248,7 @@ def commission_plan(
         water_extractors=water_extractors,
         sloops=sloops,
     )
-    request = _recall_request(st, plan, supplied)
+    request = recall_request(st, plan, supplied)
     plan_notes = list(request.notes)
 
     stored = _stored_plan_state(st, request.plan)
@@ -265,7 +265,7 @@ def commission_plan(
         default=default,
     )
     view = {"view": "track", "stage": None, "section": "startup"}
-    _journal_view(st, request.plan, "commission_plan", ctx, view)
+    journal_view(st, request.plan, "commission_plan", ctx, view)
     moved = _renumbered(st, stored, report.tracking) if headroom_mw is None else ""
     if moved:
         plan_notes = [moved, *plan_notes]

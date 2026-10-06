@@ -604,7 +604,7 @@ ignores `base_rev` and says so. A write that finds the plan lock held for 10 s a
 `! plans are busy (another writer held the lock 10 s); nothing written`.
 
 The store stamps each landing version with the new head's `plan_id` and resolved field
-(`_head_stamper` in `tools/planning/_plan_log.py`), so `world moved` stays honest after merged edits and page
+(`head_stamper` in `tools/planning/_plan_log.py`), so `world moved` stays honest after merged edits and page
 edits alike.
 
 **`required`** on `plan_factory` takes recipe names or class ids. The tool resolves each to a

@@ -25,7 +25,7 @@ from ... import app
 BUSY = "! plans are busy (another writer held the lock 10 s); nothing written"
 
 
-def _age(seconds: float) -> str:
+def age(seconds: float) -> str:
     """A duration in its largest whole unit: ``42s``, ``5m``, ``3h``, ``2d``."""
     s = max(0, int(seconds))
     if s < 60:
@@ -37,7 +37,7 @@ def _age(seconds: float) -> str:
     return f"{s // 86400}d"
 
 
-def _world_plan_log(st) -> PlanLog:
+def world_plan_log(st) -> PlanLog:
     return PlanLog(st.world_id, st.session_name)
 
 
@@ -50,31 +50,31 @@ def _with_recipe_names(ops: list[dict], names: dict[str, str]) -> list[dict]:
     return out
 
 
-def _ops_text(ops: list[dict], names: dict[str, str]) -> str:
+def ops_text(ops: list[dict], names: dict[str, str]) -> str:
     return " · ".join(t for t in (describe_op(o) for o in _with_recipe_names(ops, names)) if t)
 
 
-def _commit_text(commit: Commit, names: dict[str, str]) -> str:
+def commit_text(commit: Commit, names: dict[str, str]) -> str:
     shown = copy.copy(commit)
     shown.ops = _with_recipe_names(commit.ops, names)
     return describe_commit(shown)
 
 
-def _needs_base(name: str, head: int, nothing: str) -> str:
+def needs_base(name: str, head: int, nothing: str) -> str:
     return (
         f'! plan "{name}" exists at v{head}: read it (list_plans name="{name}") and pass '
         f"base_rev={head}; {nothing}"
     )
 
 
-def _write(name: str, nothing: str, push: Callable[[], Pushed]) -> tuple[Pushed | None, str]:
+def write(name: str, nothing: str, push: Callable[[], Pushed]) -> tuple[Pushed | None, str]:
     """Run one plan write and word its outcome: the merged note, or why nothing landed."""
     try:
         pushed = push()
     except Outdated as exc:
         return None, exc.text(name)
     except BaseRevRequired as exc:
-        return None, _needs_base(name, exc.head, nothing)
+        return None, needs_base(name, exc.head, nothing)
     except Forgotten as exc:
         return None, (
             f'! plan "{name}" was forgotten in v{exc.rev}; plan_log name="{name}" '
@@ -89,12 +89,12 @@ def _write(name: str, nothing: str, push: Callable[[], Pushed]) -> tuple[Pushed 
     return pushed, pushed.text(pushed.state.name or name)
 
 
-def _head_stamper(st) -> Callable:
+def head_stamper(st) -> Callable:
     """What the store records on the new head: its solve-input hash and resolved field."""
     return summary.stamp_for(app.game(), st)
 
 
-def _journal_view(st, plan: str | None, tool: str, ctx, args: dict | None = None) -> None:
+def journal_view(st, plan: str | None, tool: str, ctx, args: dict | None = None) -> None:
     if not plan:
         return
     stored = st.plans.find(plan)

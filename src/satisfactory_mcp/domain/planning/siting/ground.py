@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from ...spatial import caves, heightfield
-from .record import Siting, _ground, footprint_box_cm
+from .record import Siting, footprint_box_cm, ground_provider
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
@@ -220,5 +220,5 @@ def terrain_provider(load=heightfield.load_field) -> TerrainGround:
 
 def _installed_field():
     """The field behind the installed provider, or ``None`` with no terrain provider."""
-    load = getattr(_ground[0], "load", None)
+    load = getattr(ground_provider[0], "load", None)
     return load() if load is not None else None

@@ -524,7 +524,7 @@ def test_a_recalled_plan_prints_its_version_and_journals_a_view(game):
 def test_required_names_are_resolved_or_refused_by_name(game):
     assert "no recipe is called 'Nonsuch'" in srv.plan_factory(required=["Nonsuch"], **PROBE)
     rid = next(r.cls for r in game.recipes.values() if r.name == "Iron Plate")
-    ids, refused = _requests._resolve_required(["iron plate", rid])
+    ids, refused = _requests.resolve_required(["iron plate", rid])
     assert refused == "" and ids == [rid, rid]
 
 

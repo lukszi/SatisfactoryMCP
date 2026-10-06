@@ -136,7 +136,7 @@ def describe_commit(commit: Commit) -> str:
     return f"{head}: {ops or commit.note or 'recorded'}"
 
 
-def _conflict_subject(op: dict) -> str:
+def conflict_subject(op: dict) -> str:
     """What a conflict line says both sides touched: ``rate Plastic``, ``site``, ``name``."""
     kind, name = op["op"], op.get("field", "")
     if kind in ("put", "del") and name == "row_overclock":
@@ -154,7 +154,7 @@ def _conflict_subject(op: dict) -> str:
     return "plan"
 
 
-def _value_word(op: dict) -> str:
+def value_word(op: dict) -> str:
     if op.get("field") == "row_overclock":
         return ROW_CHOICES.get(op.get("value"), _fmt(op.get("value")))
     if op.get("field") in _POWER_WORDS:
@@ -165,11 +165,11 @@ def _value_word(op: dict) -> str:
     return _fmt(op["value"])
 
 
-def _action_words(op: dict) -> str:
+def action_words(op: dict) -> str:
     """What one side of a conflict did, as a verb phrase: ``set 2,000 MW``, ``renamed it "x"``."""
     kind = op["op"]
     if kind in ("set", "put"):
-        return f"set {_value_word(op)}"
+        return f"set {value_word(op)}"
     if kind == "del" and op.get("field") == "row_overclock":
         return "put it back on the plan's setting"
     if kind == "del":
@@ -187,5 +187,5 @@ def _action_words(op: dict) -> str:
     return {"forget": "forgot the plan", "restore": "restored the plan"}.get(kind, kind)
 
 
-def _other_text(commit: Commit) -> str:
+def other_text(commit: Commit) -> str:
     return f"v{commit.rev} {_ops_text(commit.ops) or 'recorded'} ({commit.actor.display()})"

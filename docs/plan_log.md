@@ -57,7 +57,7 @@ world id the same way.
 
 ## The merge, in detail
 
-`_clash(mine, theirs)` compares one op of mine with one op of theirs. Every pair is checked;
+`clash(mine, theirs)` compares one op of mine with one op of theirs. Every pair is checked;
 any `conflict` makes the whole push `Outdated` and nothing is written.
 
 - `record` ops never clash.

@@ -1,7 +1,7 @@
 """The payback trade-off of one solve: machines, draw and build cost at every horizon.
 
 docs/planner-payback-horizon_contract.md is the specification. The solve is read out once
-per stop by ``overclock._payback_curve``; this turns those readouts into what a player weighs.
+per stop by ``overclock.payback_curve``; this turns those readouts into what a player weighs.
 """
 
 from __future__ import annotations

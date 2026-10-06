@@ -22,12 +22,20 @@ __all__ = [
     "PLAN_SCALARS",
     "POWER",
     "ROW_CHOICES",
+    "SCALAR_CHECK",
     "InvalidOp",
     "PlanArgs",
     "PlanLogError",
+    "canonical_power",
+    "checked_headroom",
+    "checked_map_key",
+    "checked_map_value",
+    "checked_member",
+    "checked_text",
     "inherits_default",
     "is_power",
     "legacy_hours",
+    "member_key",
 ]
 
 OBJECTIVES = ("max_mw", "max_item", "min_raw", "min_machines", "min_power")
@@ -64,7 +72,7 @@ def is_power(name) -> bool:
     return isinstance(name, str) and name.strip().casefold() in _POWER_SPELLINGS
 
 
-def _canonical_power(fieldname: str, name):
+def canonical_power(fieldname: str, name):
     """``POWER`` for any spelling of power in the fields that take it, else ``name``."""
     return POWER if fieldname in _POWER_FIELDS and is_power(name) else name
 
@@ -91,7 +99,7 @@ def _count(name: str, value, optional: bool = False) -> int | None:
     return value
 
 
-def _text(name: str, value, optional: bool = False) -> str | None:
+def checked_text(name: str, value, optional: bool = False) -> str | None:
     if value is None and optional:
         return None
     if not isinstance(value, str):
@@ -100,7 +108,7 @@ def _text(name: str, value, optional: bool = False) -> str | None:
 
 
 def _factory(name: str, value) -> str:
-    text = _text(name, value)
+    text = checked_text(name, value)
     if text.startswith("/") and text not in FACTORY_SENTINELS:
         raise InvalidOp(f"{name} is a factory name, {' or '.join(FACTORY_SENTINELS)}, not {text!r}")
     return text
@@ -112,7 +120,7 @@ def _flag(name: str, value) -> bool:
     return value
 
 
-def _headroom(name: str, value) -> float | None:
+def checked_headroom(name: str, value) -> float | None:
     number = _number(name, value, optional=True)
     if number is not None and not 0 < number <= HEADROOM_MAX_MW:
         raise InvalidOp(
@@ -160,7 +168,7 @@ def _row_choice(name: str, value) -> str:
 _MAP_VALUE: dict[str, Callable] = {"row_overclock": _row_choice}
 
 
-def _map_value(fieldname: str, item: str, value):
+def checked_map_value(fieldname: str, item: str, value):
     return _MAP_VALUE.get(fieldname, _number)(f"{fieldname}[{item}]", value)
 
 
@@ -177,9 +185,9 @@ def _objective(name: str, value) -> str:
     return value
 
 
-_SCALAR_CHECK: dict[str, Callable] = {
+SCALAR_CHECK: dict[str, Callable] = {
     "objective": _objective,
-    "target_item": lambda n, v: _text(n, v, optional=True),
+    "target_item": lambda n, v: checked_text(n, v, optional=True),
     "only_free_nodes": _flag,
     "allow_sinks": _flag,
     "machine_cost_mw": _number,
@@ -187,52 +195,52 @@ _SCALAR_CHECK: dict[str, Callable] = {
     "sloops": _count,
     "belt_ipm": lambda n, v: _number(n, v, optional=True),
     "pipe_m3min": lambda n, v: _number(n, v, optional=True),
-    "notes": _text,
+    "notes": checked_text,
     "factory": _factory,
-    "headroom_mw": _headroom,
+    "headroom_mw": checked_headroom,
     "payback_hours": _hours,
     "overclock_last": _switch,
     "power_price": _price,
 }
 
 
-def _member(fieldname: str, value):
+def checked_member(fieldname: str, value):
     if fieldname in FLOAT_SETS:
         return _number(f"{fieldname} member", value)
-    text = _text(f"{fieldname} member", value)
+    text = checked_text(f"{fieldname} member", value)
     if not text:
         raise InvalidOp(f"{fieldname} member cannot be blank")
-    return _canonical_power(fieldname, text)
+    return canonical_power(fieldname, text)
 
 
-def _member_key(fieldname: str, member) -> str:
+def member_key(fieldname: str, member) -> str:
     """What two members of a set field are compared on: floats by value, names by spelling."""
-    return f"{member:g}" if fieldname in FLOAT_SETS else _canonical_power(fieldname, member)
+    return f"{member:g}" if fieldname in FLOAT_SETS else canonical_power(fieldname, member)
 
 
-def _checked_map_key(fieldname: str, value) -> str:
+def checked_map_key(fieldname: str, value) -> str:
     if not isinstance(value, str) or not value.strip():
         raise InvalidOp(f"{fieldname} needs an item name, not {value!r}")
-    return _canonical_power(fieldname, value)
+    return canonical_power(fieldname, value)
 
 
 def _check_field(name: str, value):
     kind = KINDS[name]
     if kind == "scalar":
-        return _SCALAR_CHECK[name](name, value)
+        return SCALAR_CHECK[name](name, value)
     if kind == "set":
         if not isinstance(value, list | tuple):
             raise InvalidOp(f"{name} must be a list, not {value!r}")
         out, seen = [], set()
         for raw in value:
-            member = _member(name, raw)
-            if _member_key(name, member) not in seen:
-                seen.add(_member_key(name, member))
+            member = checked_member(name, raw)
+            if member_key(name, member) not in seen:
+                seen.add(member_key(name, member))
                 out.append(member)
         return out
     if not isinstance(value, dict):
         raise InvalidOp(f"{name} must be a mapping, not {value!r}")
-    return {_checked_map_key(name, k): _map_value(name, k, v) for k, v in value.items()}
+    return {checked_map_key(name, k): checked_map_value(name, k, v) for k, v in value.items()}
 
 
 #: Each field's kind, as ``PlanArgs`` metadata: how it is checked, edited and merged.

@@ -65,18 +65,18 @@ class GroundZ(Protocol):
     ) -> float | None: ...
 
 
-_ground: list[GroundZ | None] = [None]
+ground_provider: list[GroundZ | None] = [None]
 
 
 def set_ground_z(provider: GroundZ | None) -> None:
     """Install the terrain height lookup every siting write and preview uses."""
-    _ground[0] = provider
+    ground_provider[0] = provider
 
 
 def ground_z(
     x_m: float, y_m: float, yaw_deg: float, width_m: float, depth_m: float
 ) -> float | None:
-    provider = _ground[0]
+    provider = ground_provider[0]
     if provider is None:
         return None
     try:

@@ -16,8 +16,8 @@ from .....presenters.text import primitives as render
 from .....presenters.text.site_preview import render_site_preview
 from ... import app
 from ...params import AsOf, BaseRev
-from ._plan_log import _journal_view, _needs_base, _world_plan_log, _write
-from ._requests import _find_stored_plan
+from ._plan_log import journal_view, needs_base, world_plan_log, write
+from ._requests import find_stored_plan
 
 
 @app.tool()
@@ -68,13 +68,13 @@ def site_plan(
     """
     g = app.game()
     st = app.load_world(save, world, as_of)
-    stored = _find_stored_plan(st, plan)
+    stored = find_stored_plan(st, plan)
 
     def push(value: dict | None, nothing: str) -> tuple[Pushed | None, str]:
-        return _write(
+        return write(
             stored.name,
             nothing,
-            lambda: _world_plan_log(st).push(
+            lambda: world_plan_log(st).push(
                 stored.key,
                 base_rev,
                 [{"op": "site", "value": value}],
@@ -87,7 +87,7 @@ def site_plan(
         if not stored.siting:
             return f"plan {stored.name!r} carries no siting; nothing to clear"
         if base_rev is None:
-            return _needs_base(stored.name, stored.rev, "nothing cleared")
+            return needs_base(stored.name, stored.rev, "nothing cleared")
         pushed, text = push(None, "nothing cleared")
         if pushed is None:
             return text
@@ -102,7 +102,7 @@ def site_plan(
             "pass at='x,y[,z]' in metres, 'me', a factory name, 'slab:<n>' or a run id"
         )
     if base_rev is None:
-        return _needs_base(stored.name, stored.rev, "not sited")
+        return needs_base(stored.name, stored.rev, "not sited")
 
     when = str(st.header.get("save_datetime") or st.header.get("filename") or "")
     try:
@@ -185,7 +185,7 @@ def _snapped(sit: siting_mod.Siting) -> siting_mod.Siting:
 
 def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx) -> str:
     """``site_plan(preview=True)``: the page's preview in words, and a ghost pad there."""
-    state = _world_plan_log(st).state(stored.key)
+    state = world_plan_log(st).state(stored.key)
     biomass, _unread = app.shared_setting("biomass")
     headroom, _unread = app.shared_setting("stage_headroom")
     sess = site_preview.open_session(g, st, state, biomass=biomass, default=headroom)
@@ -223,7 +223,7 @@ def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx
         "w_m": sit.width_m,
         "d_m": sit.depth_m,
     }
-    _journal_view(st, stored.name, "site_plan", ctx, args)
+    journal_view(st, stored.name, "site_plan", ctx, args)
     head = (
         f"# preview of plan {stored.name!r} v{stored.rev} at {sit.x_m:,.0f}, {sit.y_m:,.0f}, "
         f"yaw {sit.yaw_deg:g}°, {sit.width_m:g}×{sit.depth_m:g} m -- nothing written"

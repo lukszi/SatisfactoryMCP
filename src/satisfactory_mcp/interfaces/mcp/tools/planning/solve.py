@@ -33,17 +33,17 @@ from ...params import (
     Supplied,
     WaterExtractors,
 )
-from ._plan_log import BUSY, _head_stamper, _needs_base, _world_plan_log, _write
+from ._plan_log import BUSY, head_stamper, needs_base, world_plan_log, write
 from ._requests import (
     RecalledRequest,
-    _factory_value,
-    _plan_pin,
-    _power_refusal,
-    _recall_request,
-    _refusal,
-    _resolve_required,
-    _resolve_row_overclock,
-    _solve_args,
+    factory_value,
+    plan_pin,
+    power_refusal,
+    recall_request,
+    refusal_text,
+    resolve_required,
+    resolve_row_overclock,
+    solve_args,
 )
 
 
@@ -88,7 +88,7 @@ def _plan_by_live_name(st, name: str):
 def _canonical_pins(st, plan, sources, required, exclude_recipes) -> PinnedArgs:
     """Every pin in the pinnable arguments resolved, with its echo; else a ``Refusal``."""
     try:
-        plan, notes = _plan_pin(st, plan)
+        plan, notes = plan_pin(st, plan)
         sources, said = pins.expand(st, "sources", sources) if sources else (sources, [])
         notes += said
         required, said = pins.expand(st, "required", required) if required else (required, [])
@@ -97,7 +97,7 @@ def _canonical_pins(st, plan, sources, required, exclude_recipes) -> PinnedArgs:
             exclude_recipes, said = pins.expand(st, "exclude_recipes", exclude_recipes)
             notes += said
     except (KeyError, pins.PinError) as exc:
-        raise app.Refusal(f"! {_refusal(exc)}; nothing solved") from None
+        raise app.Refusal(f"! {refusal_text(exc)}; nothing solved") from None
     return PinnedArgs(plan, sources, required, exclude_recipes, notes)
 
 
@@ -131,7 +131,7 @@ def _journal_solve(st, ctx, request: RecalledRequest, logistics_items, feasible:
     stored = st.plans.find(request.plan) if request.plan else None
     kept = logistics_items
     if kept is None and stored is not None:
-        kept = list(_world_plan_log(st).state(stored.key, stored.rev).args.logistics_items)
+        kept = list(world_plan_log(st).state(stored.key, stored.rev).args.logistics_items)
     journal.append(
         st.world_id,
         "plan.solve",
@@ -149,7 +149,7 @@ def _save_new(st, name, plan_kwargs, logistics, meta: PlanMeta, field, plan_id, 
     args = dict(plan_kwargs)
     if logistics:
         args["logistics_items"] = list(logistics)
-    return _world_plan_log(st).create(
+    return world_plan_log(st).create(
         name,
         args,
         actor=app.actor(ctx),
@@ -172,7 +172,7 @@ def _save_target(st, save_as: str, base_rev):
     live = _plan_by_live_name(st, save_as)
     if live is not None or base_rev is None:
         return live, ""
-    log = _world_plan_log(st)
+    log = world_plan_log(st)
     wanted = save_as.strip().casefold()
     hits = []
     for state in log.heads(include_forgotten=True):
@@ -199,7 +199,7 @@ def _save_over(
     st, existing, base_rev, plan_kwargs, logistics, meta: PlanMeta, sit, ctx, overrides=None
 ):
     """Write the request over ``existing`` at ``base_rev``; ``overrides`` merges a recall."""
-    log = _world_plan_log(st)
+    log = world_plan_log(st)
 
     def push() -> Pushed:
         base = log.state(existing.key, base_rev)
@@ -224,10 +224,10 @@ def _save_over(
             actor=app.actor(ctx),
             sav=app.save_token(st),
             extra=extra,
-            stamp=_head_stamper(st),
+            stamp=head_stamper(st),
         )
 
-    return _write(existing.name, "nothing saved", push)
+    return write(existing.name, "nothing saved", push)
 
 
 def _store_request(
@@ -446,10 +446,10 @@ def plan_factory(
     pinned = _canonical_pins(st, plan, sources, required, exclude_recipes)
     plan = pinned.plan
 
-    required_ids, refused = _resolve_required(pinned.required)
+    required_ids, refused = resolve_required(pinned.required)
     if refused:
         return refused
-    row_overclock, refused = _resolve_row_overclock(row_overclock)
+    row_overclock, refused = resolve_row_overclock(row_overclock)
     if refused:
         return refused
 
@@ -457,7 +457,7 @@ def plan_factory(
     if refusal:
         return refusal
     if existing is not None and base_rev is None:
-        return _needs_base(existing.name, existing.rev, "nothing saved")
+        return needs_base(existing.name, existing.rev, "nothing saved")
     if (
         plan
         and existing is not None
@@ -466,7 +466,7 @@ def plan_factory(
     ):
         plan = existing.key
 
-    supplied = _solve_args(
+    supplied = solve_args(
         objective=objective,
         target_item=target_item,
         sources=pinned.sources,
@@ -489,9 +489,9 @@ def plan_factory(
         power_price=power_price,
         row_overclock=row_overclock,
     )
-    if refused := _power_refusal(supplied):
+    if refused := power_refusal(supplied):
         return refused
-    request = _recall_request(st, plan, supplied)
+    request = recall_request(st, plan, supplied)
 
     # Its own pair, never written back over the arguments: a recalled plan's site is
     # measured here, and re-saving that plan must not turn its stored yaw and z into the
@@ -516,7 +516,7 @@ def plan_factory(
             name=save_as,
             base_rev=base_rev,
             existing=existing,
-            meta=PlanMeta(plan_notes_text, _factory_value(for_factory), when),
+            meta=PlanMeta(plan_notes_text, factory_value(for_factory), when),
             logistics_items=logistics_items,
             site_at=site_at,
             site_yaw_deg=site_yaw_deg,

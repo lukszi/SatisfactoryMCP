@@ -6,13 +6,13 @@ import copy
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from ..plan_args import InvalidOp, PlanArgs, PlanLogError, _headroom, legacy_hours
+from ..plan_args import InvalidOp, PlanArgs, PlanLogError, checked_headroom, legacy_hours
 from .wording import (
-    _action_words,
-    _conflict_subject,
-    _other_text,
-    _value_word,
+    action_words,
+    conflict_subject,
     describe_commit,
+    other_text,
+    value_word,
 )
 
 #: The version of every file the log writes: snapshots and the migration marker.
@@ -57,7 +57,7 @@ class BaseRevRequired(PlanLogError):
 
 def _stored_headroom(value) -> float | None:
     try:
-        return _headroom("headroom_mw", value)
+        return checked_headroom("headroom_mw", value)
     except InvalidOp:
         return None
 
@@ -210,13 +210,13 @@ class Conflict:
 
     def text(self) -> str:
         if self.mine["op"] in ("set", "put"):
-            mine = _value_word(self.mine)
+            mine = value_word(self.mine)
         else:
-            mine = _action_words(self.mine)
+            mine = action_words(self.mine)
         who = self.theirs_actor.display()
         return (
-            f"{_conflict_subject(self.mine)}: you {mine}, "
-            f"{who} {_action_words(self.theirs)} in v{self.theirs_rev}"
+            f"{conflict_subject(self.mine)}: you {mine}, "
+            f"{who} {action_words(self.theirs)} in v{self.theirs_rev}"
         )
 
     def to_dict(self) -> dict:
@@ -246,7 +246,7 @@ class Pushed:
         if self.noop:
             return f'nothing changed: plan "{name}" is still v{self.rev}'
         if self.merged_over:
-            others = ", ".join(_other_text(c) for c in self.others)
+            others = ", ".join(other_text(c) for c in self.others)
             return (
                 f"merged onto v{self.rev - 1} (you were on v{self.base_rev}) -> now "
                 f"v{self.rev}; others changed: {others}"
