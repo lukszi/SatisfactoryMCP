@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TypeVar, cast
 
 from ...core import filelock
-from ...core.jsontypes import JsonValue
+from ...core.jsontypes import JsonObject, JsonValue
 
 __all__ = ["count", "locked_update"]
 
@@ -25,7 +25,10 @@ def locked_update(
 ) -> T:
     """Run ``change(read()) -> (result, dirty)`` under ``path``'s lock; write when dirty."""
 
-    def apply(data: dict[str, object]) -> tuple[T, bool]:
+    def load() -> JsonObject:
+        return cast(JsonObject, read())
+
+    def apply(data: JsonObject) -> tuple[T, bool]:
         return change(cast(Doc, data))
 
-    return filelock.update_versioned_json(path, lambda: dict(read()), apply)
+    return filelock.update_versioned_json(path, load, apply)
