@@ -1151,8 +1151,9 @@ sinks — and not merely the drawing.
 underneath — across every alternate *not* unlocked, which would change the factory being
 built — was being answered by tracing the recipe tree by hand.
 
-`rank_unlocks` is one counterfactual per candidate, reusing `advisor._solve_with` rather
-than growing a second copy of that machinery. On the measured Spire Coast plan:
+`rank_unlocks` is one counterfactual per candidate, adding it through `scenario.with_recipes`
+as the hard-drive advisor does rather than growing a second copy of that machinery. On the
+measured Spire Coast plan:
 
 ```
 baseline=107257.64  candidates=79  movers=1
