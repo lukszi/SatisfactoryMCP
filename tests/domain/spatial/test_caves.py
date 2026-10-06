@@ -75,7 +75,7 @@ def test_a_pad_reports_the_share_with_a_cave_under_it(field):
 
 
 def test_rewritten_masks_are_picked_up(field, tmp_path, monkeypatch):
-    monkeypatch.setattr(hf.field, "CAVES_RECHECK_S", 0.0)
+    monkeypatch.setattr(hf.store, "SIDECAR_RECHECK_S", 0.0)
     assert field.height_at(100, 300).cave == cave_masks.NONE
     mask = fixture_mask()
     mask[1, 0] = cave_masks.BIT_MARKERS

@@ -192,9 +192,9 @@ def test_describe_location_reports_elevation(game):
 
 
 class _OneTexel:
-    """As much of a ``heightfield.Field`` as ``probe`` uses: ``z`` (and ``at``). A synthetic
-    reading, so these tests answer the same on a machine that has run the generator and one
-    that never will."""
+    """As much of a ``heightfield.Field`` as ``probe`` uses: ``height_at`` (and
+    ``texel_reading``). A synthetic reading, so these tests answer the same on a machine that
+    has run the generator and one that never will."""
 
     def __init__(self, reading: heightfield.Reading | None) -> None:
         self._reading = reading

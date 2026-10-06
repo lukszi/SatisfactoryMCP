@@ -54,12 +54,9 @@ CACHE_DIR_NAME = "cache"
 #: real answer, so a no-data texel read as zero is a flat sea at the map's edge.
 NODATA = -32768
 
-#: Which layer answered a texel. The numbers are the file format and must not be
-#: renumbered; 2 is unused. 5 splits the cliff province by HOW the texel was answered -- a
-#: source vertex landed in it, against 4 where the rasteriser interpolated across a
-#: triangle wider than the texel -- and is additive: a reader testing ``== PROV_CLIFF``
-#: reads 5 as the whole of what 4 meant before. The split is announced by the presence of
-#: ``density.u8.z`` and never inferred from a texel being 4.
+#: Which layer answered a texel; the file format, so never renumber (2 is unused). 5 is a
+#: cliff texel a source vertex landed in, 4 one the rasteriser interpolated. Only the
+#: presence of ``density.u8.z`` announces that split, never a texel being 4.
 PROV_NODATA = 0
 PROV_LANDSCAPE = 1
 PROV_FILL = 3
@@ -70,7 +67,7 @@ PROV_CLIFF_DIRECT = 5
 #: testing ``== PROV_CLIFF`` alone misses 5.
 PROV_CLIFF_VALUES = (PROV_CLIFF, PROV_CLIFF_DIRECT)
 
-PROV_NAMES = {
+PROV_NAMES: dict[int, str] = {
     PROV_NODATA: "no data",
     PROV_LANDSCAPE: "landscape",
     PROV_FILL: "fill",
@@ -82,17 +79,13 @@ PROV_NAMES = {
 #: is a second surface over the same texel, not a different source for the ground.
 PROV_WATER_NAME = "water"
 
-#: ``waterq.u8.z``'s values, which are the file format: do not renumber. A water LEVEL
-#: comes from a cooked water volume's own box and is good to centimetres wherever there is
-#: water; a DEPTH is that level minus the ground, so it exists only where the ground was
-#: measured at 1 m -- the landscape and cliff layers. Over the fill layer and over no-data
-#: the bed is unknown, and ``WATER_LEVEL_ONLY`` says so rather than subtracting a number
-#: it does not have.
+#: ``waterq.u8.z``'s values; the file format, so never renumber. A depth exists only where
+#: the ground under the level was measured at 1 m (docs/map/heightfield.md section 19).
 WATER_DRY = 0
 WATER_MEASURED = 1
 WATER_LEVEL_ONLY = 2
 
-WATER_QUALITY_NAMES = {
+WATER_QUALITY_NAMES: dict[int, str] = {
     WATER_DRY: "dry",
     WATER_MEASURED: "water, depth measured",
     WATER_LEVEL_ONLY: "water, depth unknown",
