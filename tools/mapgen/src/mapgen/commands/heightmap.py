@@ -55,7 +55,7 @@ from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.meshes import MeshBounds, read_mesh_geometry
 from mapgen.gamedata.nodes import NODE_TABLE
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs, rasterise_top
-from mapgen.gamedata.rocks.collision_pack import rock_pack
+from mapgen.gamedata.rocks.collision_pack import encode_rock_pack
 from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
 from mapgen.terrain.heightfield.field import (
     compose_field,
@@ -224,7 +224,7 @@ def main() -> int:
     report_field(field)
 
     print("rasterising arches and foliage boulders for the top plane")
-    top = rasterise_top(sweep, frame, store, scripts, index, loud)
+    top = rasterise_top(sweep, frame, reader, loud)
     timings["top"] = round(top["seconds"], 1)
     top_dm, top_raised = fold_top_overlay(field["height_dm"], frame, top)
     print(
@@ -290,7 +290,7 @@ def main() -> int:
     add_planes(meta, frame, terrain_check, top, top_raised)
     print("packing every rock's collision mesh for exact heights")
     started = time.time()
-    payload.update(rock_pack(store, scripts, index, classes, sweep, build_pin, build_raw))
+    payload.update(encode_rock_pack(reader, sweep, build_pin, build_raw))
     timings["rocks"] = round(time.time() - started, 1)
     payload[hf.META_NAME] = json.dumps(meta, indent=1).encode("utf-8")
     written = install_directory(out_dir, payload)

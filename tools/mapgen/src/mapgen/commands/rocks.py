@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import time
 from pathlib import Path
@@ -9,7 +10,8 @@ from pathlib import Path
 from mapgen.gamedata.install import missing_container, open_game
 from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.meshes import MeshBounds
-from mapgen.gamedata.rocks.collision_pack import rock_pack
+from mapgen.gamedata.rocks.collision_pack import encode_rock_pack
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -17,7 +19,7 @@ __all__ = [
 ]
 
 
-def write_rocks(args, build_pin: str, build_raw) -> int:
+def write_rocks(args: argparse.Namespace, build_pin: str, build_raw: JsonObject) -> int:
     """``--rocks``: add the collision pack to the field at ``--field``, beside its planes."""
     from satisfactory_mcp.domain.spatial import rocks
 
@@ -38,10 +40,10 @@ def write_rocks(args, build_pin: str, build_raw) -> int:
         return 1
     started = time.time()
     reader = open_game(args.game)
-    store, scripts, index, classes = reader.store, reader.scripts, reader.index, reader.classes
     print("sweeping the world for rock placements and cave floors")
-    sweep = sweep_levels(store, scripts, classes, MeshBounds(store, scripts, index), not args.quiet)
-    payload = rock_pack(store, scripts, index, classes, sweep, build_pin, build_raw)
+    bounds = MeshBounds(reader.store, reader.scripts, reader.index)
+    sweep = sweep_levels(reader.store, reader.scripts, reader.classes, bounds, not args.quiet)
+    payload = encode_rock_pack(reader, sweep, build_pin, build_raw)
     for name, blob in payload.items():
         tmp = field_dir / f"{name}.tmp"
         tmp.write_bytes(blob)

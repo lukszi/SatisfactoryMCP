@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 from mapgen.gamedata.meshes import winding_sign
-from mapgen.gamedata.rocks.collision_pack import _element_points, build_rock_pack
+from mapgen.gamedata.rocks.collision_pack import _element_points, rock_pack_arrays
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.spatial import caves, rocks
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -94,7 +94,7 @@ def pack_arrays() -> tuple[dict, dict]:
         [[400, 200, -500], [600, 200, -500], [600, 400, -500], [400, 400, -500]], float
     )
     floors = {"pieces": [(sheet, np.array([[0, 1, 2], [0, 2, 3]]))], "actors": 1, "undecoded": 0}
-    return build_rock_pack(sweep, collision, floors)
+    return rock_pack_arrays(sweep, collision, floors)
 
 
 def write_pack(directory: Path, build: str = BUILD) -> None:
