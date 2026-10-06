@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 __all__ = [
@@ -110,7 +111,7 @@ class Advisory:
     def tone(self) -> str:
         return TONE[self.severity]
 
-    def rank(self) -> tuple:
+    def rank(self) -> tuple[int, int, float, str]:
         return (
             SEVERITIES.index(self.severity),
             KINDS.index(self.kind),
@@ -126,10 +127,9 @@ def key_for(kind: str, subject_kind: str, subject: str) -> str:
     return f"{kind}|{subject_kind}:{subject.replace('|', '%7C')}"
 
 
-def ids_for(keys) -> dict[str, str]:
+def ids_for(keys: Iterable[str]) -> dict[str, str]:
     """``adv:`` plus four hex of sha1(key); keys sharing a prefix get six hex each."""
-    keys = sorted(set(keys))
-    digests = {key: hashlib.sha1(key.encode("utf-8")).hexdigest() for key in keys}
+    digests = {key: hashlib.sha1(key.encode("utf-8")).hexdigest() for key in sorted(set(keys))}
     prefixes = Counter(digest[:4] for digest in digests.values())
     return {
         key: "adv:" + (digest[:4] if prefixes[digest[:4]] == 1 else digest[:6])
@@ -137,11 +137,14 @@ def ids_for(keys) -> dict[str, str]:
     }
 
 
-def capped(rows: list, visible: int = VISIBLE, per_kind: int = PER_KIND) -> tuple[list, list]:
+def capped(
+    rows: Sequence[Advisory], visible: int = VISIBLE, per_kind: int = PER_KIND
+) -> tuple[list[Advisory], list[Advisory]]:
     """``(shown, rest)``: the first rows a card shows, at most ``per_kind`` of one kind and
     ``visible`` in all, keeping rank order. chat/advice.ts applies the same rule."""
-    seen_of_kind: Counter = Counter()
-    shown, rest = [], []
+    seen_of_kind: Counter[str] = Counter()
+    shown: list[Advisory] = []
+    rest: list[Advisory] = []
     for row in rows:
         seen_of_kind[row.kind] += 1
         fits = seen_of_kind[row.kind] <= per_kind and len(shown) < visible
