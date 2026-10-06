@@ -29,8 +29,8 @@ export var control = L.control.layers(
      * `[9, 0, ""]` sorts a group that reached the control without a rank below every band;
      * `clearedLayer()` requires one, so it is only a defence. */
     sortFunction: function (a: L.Layer, b: L.Layer) {
-      var ra = a._rank || [9, 0, ""];
-      var rb = b._rank || [9, 0, ""];
+      const ra = a._rank || [9, 0, ""];
+      const rb = b._rank || [9, 0, ""];
       if (ra[0] !== rb[0]) return ra[0] - rb[0];
       if (ra[1] !== rb[1]) return ra[1] - rb[1];
       return ra[2] < rb[2] ? -1 : ra[2] > rb[2] ? 1 : 0;
@@ -88,7 +88,7 @@ var SECTIONS: Section[] = [];
 
 export function registerSection(section: Section): void {
   if (import.meta.env.DEV) {
-    var clash = SECTIONS.filter(function (other) {
+    const clash = SECTIONS.filter(function (other) {
       return other.key === section.key || other.prefix === section.prefix;
     });
     if (clash.length) {
@@ -109,7 +109,7 @@ state.panel = {
 };
 
 function sectionFor(name: string): Section | null {
-  var found: Section | null = null;
+  let found: Section | null = null;
   SECTIONS.forEach(function (section) {
     if (name.indexOf(section.prefix) === 0) found = section;
   });
@@ -120,19 +120,19 @@ function sectionFor(name: string): Section | null {
  * checkbox it builds, and clearedLayer() files the name under that same stamp, so the mapping
  * survives every re-render of the list without parsing the row's text back. */
 function rowName(row: HTMLElement): string {
-  var input = row.querySelector<LayerInput>("input");
+  const input = row.querySelector<LayerInput>("input");
   return (input && state.layerName[input.layerId]) || "";
 }
 
 function rowOn(row: HTMLElement): boolean {
-  var input = row.querySelector("input");
+  const input = row.querySelector("input");
   return !!(input && input.checked);
 }
 
 /* A control row back to the LayerGroup itself, for the one caller that has to toggle a
  * layer without a human clicking its box -- see setSection. */
 function rowLayer(row: HTMLElement): L.LayerGroup | null {
-  var input = row.querySelector<LayerInput>("input");
+  const input = row.querySelector<LayerInput>("input");
   return (input && state.layers[state.layerName[input.layerId]!]) || null;
 }
 
@@ -183,7 +183,7 @@ export function onActivate(element: HTMLElement, action: () => void): void {
     action();
   });
   L.DomEvent.on(element, "keydown", function (event) {
-    var key = (event as KeyboardEvent).key;
+    const key = (event as KeyboardEvent).key;
     if (key !== "Enter" && key !== " ") return;
     L.DomEvent.stop(event);
     action();
@@ -246,7 +246,7 @@ export function batch(action: () => void): void {
 function setSection(rows: HTMLElement[], on: boolean): void {
   batch(function () {
     rows.forEach(function (row) {
-      var group = rowLayer(row);
+      const group = rowLayer(row);
       if (!group) return;
       if (on) map.addLayer(group);
       else map.removeLayer(group);
@@ -264,8 +264,8 @@ function setSection(rows: HTMLElement[], on: boolean): void {
  * "some are on, so turn them all on" is the rule regardless.
  */
 function sectionBox(section: Section, rows: HTMLElement[]): HTMLInputElement {
-  var on = rows.filter(rowOn).length;
-  var box = L.DomUtil.create("input", "layer-section-box") as HTMLInputElement & SectionPart;
+  const on = rows.filter(rowOn).length;
+  const box = L.DomUtil.create("input", "layer-section-box") as HTMLInputElement & SectionPart;
   box.type = "checkbox";
   box._section = section.key;
   box._part = "box";
@@ -288,13 +288,13 @@ function sectionBox(section: Section, rows: HTMLElement[]): HTMLInputElement {
  * row would also fire for a click on the box -- ticking "pickups" would fold the section shut
  * under the pointer in the same gesture. */
 function sectionHead(section: Section, rows: HTMLElement[]): HTMLElement {
-  var head = L.DomUtil.create("div", "layer-section");
+  const head = L.DomUtil.create("div", "layer-section");
   head.appendChild(sectionBox(section, rows));
-  var text = L.DomUtil.create("span", "layer-fold", head) as HTMLSpanElement & SectionPart;
+  const text = L.DomUtil.create("span", "layer-fold", head) as HTMLSpanElement & SectionPart;
   text._section = section.key;
   text._part = "fold";
-  var open = state.panel.sections[section.key];
-  var tail = drawnOf(rows.filter(rowOn).length, rows.length);
+  const open = state.panel.sections[section.key];
+  const tail = drawnOf(rows.filter(rowOn).length, rows.length);
   foldHead(text, open, section.title, tail, tail + " drawn right now");
   onActivate(text, function () {
     state.panel.sections[section.key] = !state.panel.sections[section.key];
@@ -311,8 +311,8 @@ function sectionHead(section: Section, rows: HTMLElement[]): HTMLElement {
  * The MODE radios are not counted here: they are not overlays, they live outside the list this
  * head measures, and "how many of four modes are drawn" has one answer forever. */
 function panelHead(rows: HTMLElement[]): HTMLElement {
-  var container = control.getContainer()!;
-  var head = container.querySelector<HTMLElement>(".layers-head");
+  const container = control.getContainer()!;
+  let head = container.querySelector<HTMLElement>(".layers-head");
   if (!head) {
     head = L.DomUtil.create("div", "layers-head");
     onActivate(head, function () {
@@ -323,7 +323,7 @@ function panelHead(rows: HTMLElement[]): HTMLElement {
     // what stays on screen when the list folds, so it has to be the top of the box.
     container.insertBefore(head, container.firstChild);
   }
-  var tail = drawnOf(rows.filter(rowOn).length, rows.length);
+  const tail = drawnOf(rows.filter(rowOn).length, rows.length);
   foldHead(head, state.panel.open, "layers", tail, tail + " drawn right now");
   fold(head, false);
   if (state.panel.open) L.DomUtil.removeClass(head, "shut");
@@ -342,10 +342,10 @@ export function setLayersOpen(open: boolean): void {
 }
 
 function dockLegend(list: HTMLElement): void {
-  var legend = document.getElementById("legend") as HTMLDetailsElement | null;
+  const legend = document.getElementById("legend") as HTMLDetailsElement | null;
   if (!legend || legend.parentNode === list) return;
   list.appendChild(legend);
-  var key = legend;
+  const key = legend;
   L.DomEvent.on(key, "keydown", function (event) {
     if ((event as KeyboardEvent).key !== "Escape" || !key.open) return;
     L.DomEvent.stop(event);
@@ -366,7 +366,7 @@ interface FocusMark {
 }
 
 function focusMark(): FocusMark | null {
-  var active = document.activeElement as SectionPart | null;
+  const active = document.activeElement as SectionPart | null;
   return active && active._section ? { key: active._section, part: active._part } : null;
 }
 
@@ -376,36 +376,36 @@ var pendingFocus: FocusMark | null = null;
  * list on each `_update`, so the section heads are rebuilt rather than moved. */
 function decorateControl(): void {
   if (batching) return; // one render at the end of the batch, not one per member layer
-  var container = control.getContainer();
+  const container = control.getContainer();
   if (!container) return;
-  var list = container.querySelector(".leaflet-control-layers-overlays");
+  const list = container.querySelector(".leaflet-control-layers-overlays");
   if (!list) return;
   // A section head is replaced, not updated, so keyboard focus would land on a removed node and
   // the next Enter would go to the document. Restored below.
-  var focused = focusMark() || pendingFocus;
+  const focused = focusMark() || pendingFocus;
   pendingFocus = null;
-  var heads: Element[] = Array.prototype.slice.call(list.querySelectorAll(".layer-section"));
+  const heads: Element[] = Array.prototype.slice.call(list.querySelectorAll(".layer-section"));
   heads.forEach(function (head) {
     head.parentNode!.removeChild(head);
   });
-  var rows: HTMLElement[] = Array.prototype.slice.call(list.querySelectorAll("label"));
-  var grouped: Record<string, HTMLElement[]> = {};
+  const rows: HTMLElement[] = Array.prototype.slice.call(list.querySelectorAll("label"));
+  const grouped: Record<string, HTMLElement[]> = {};
   rows.forEach(function (row) {
     fold(row, false);
-    var section = sectionFor(rowName(row));
+    const section = sectionFor(rowName(row));
     if (section) (grouped[section.key] = grouped[section.key] || []).push(row);
   });
   SECTIONS.forEach(function (section) {
-    var members = grouped[section.key];
+    const members = grouped[section.key];
     if (!members || !members.length) return;
-    var open = state.panel.sections[section.key];
+    const open = state.panel.sections[section.key];
     members.forEach(function (row) {
       fold(row, !open);
     });
-    var head = sectionHead(section, members);
+    const head = sectionHead(section, members);
     list!.insertBefore(head, members[0]!);
     if (focused && focused.key === section.key) {
-      var again = head.querySelector<HTMLElement>(
+      const again = head.querySelector<HTMLElement>(
         focused.part === "box" ? ".layer-section-box" : ".layer-fold"
       );
       if (again) again.focus();
@@ -413,16 +413,16 @@ function decorateControl(): void {
   });
   panelHead(rows);
   decorators.emit();
-  var whole = container.querySelector<HTMLElement>(".leaflet-control-layers-list");
+  const whole = container.querySelector<HTMLElement>(".leaflet-control-layers-list");
   if (whole) dockLegend(whole);
   fold(whole, !state.panel.open);
 }
 
 (function () {
-  var update = control._update;
+  const update = control._update;
   control._update = function (this: L.Control.Layers, ...args: unknown[]) {
     pendingFocus = focusMark() || pendingFocus; // before the wipe; see focusMark
-    var result = (update as (...a: unknown[]) => unknown).apply(this, args);
+    const result = (update as (...a: unknown[]) => unknown).apply(this, args);
     decorateControl();
     return result as void;
   };
@@ -435,10 +435,10 @@ function decorateControl(): void {
 /* Flying to a factory label is one click; getting back out was zoom-out spam. One
  * house-shaped button under the zoom control reframes the whole world. */
 (function () {
-  var home = new L.Control({ position: "topleft" });
+  const home = new L.Control({ position: "topleft" });
   home.onAdd = function () {
-    var bar = L.DomUtil.create("div", "leaflet-bar");
-    var a = L.DomUtil.create("a", "", bar);
+    const bar = L.DomUtil.create("div", "leaflet-bar");
+    const a = L.DomUtil.create("a", "", bar);
     a.href = "#";
     a.innerHTML = "&#8962;";
     a.title = "whole world";

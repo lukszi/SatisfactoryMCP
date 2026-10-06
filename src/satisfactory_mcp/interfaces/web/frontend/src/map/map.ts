@@ -26,7 +26,7 @@ export function latLngOf(point: { x_m: number; y_m: number } | PointM | Point3M)
 
 /** A `[x_min, y_min, x_max, y_max]` box as Leaflet bounds, grown by `padM` metres a side. */
 export function boundsOfBbox(bbox: BboxM, padM?: number): L.LatLngBounds {
-  var pad = padM || 0;
+  const pad = padM || 0;
   return L.latLngBounds([latLngOf([bbox[0] - pad, bbox[1] - pad]), latLngOf([bbox[2] + pad, bbox[3] + pad])]);
 }
 
@@ -36,8 +36,8 @@ export function gameXY(latlng: L.LatLng | L.LatLngLiteral): PointM {
 }
 
 export function flyToBox(box: BboxM, options?: { maxZoom?: number; padLeft?: number }): void {
-  var bounds = boundsOfBbox(box);
-  var pad = overlayPad();
+  const bounds = boundsOfBbox(box);
+  const pad = overlayPad();
   if (options && options.padLeft !== undefined) pad.topLeft.x = options.padLeft;
   map.flyToBounds(bounds, {
     maxZoom: options ? options.maxZoom : undefined,
@@ -53,27 +53,27 @@ var GAP_PX = 12;
 var SHEET_SHARE = 0.9;
 
 function shown(id: string): DOMRect | null {
-  var node = document.getElementById(id);
+  const node = document.getElementById(id);
   if (!node || node.hidden || !node.getClientRects().length) return null;
   return node.getBoundingClientRect();
 }
 
 export function overlayPad(): { topLeft: L.Point; bottomRight: L.Point } {
-  var frame = map.getContainer().getBoundingClientRect();
-  var topLeft = L.point(GAP_PX, GAP_PX);
-  var bottomRight = L.point(GAP_PX, GAP_PX);
-  var cards: string[] = [];
+  const frame = map.getContainer().getBoundingClientRect();
+  const topLeft = L.point(GAP_PX, GAP_PX);
+  const bottomRight = L.point(GAP_PX, GAP_PX);
+  const cards: string[] = [];
   document.querySelectorAll<HTMLElement>(".mapcard[id]").forEach(function (card) {
     cards.push(card.id);
   });
   ["panel"].concat(cards).forEach(function (id) {
-    var r = shown(id);
+    const r = shown(id);
     if (!r) return;
     if (id !== "panel" || r.width >= frame.width * SHEET_SHARE) {
       bottomRight.y = Math.max(bottomRight.y, frame.bottom - r.top + GAP_PX);
     } else topLeft.x = Math.max(topLeft.x, r.right - frame.left + GAP_PX);
   });
-  var layers = map.getContainer().querySelector<HTMLElement>(".leaflet-control-layers");
+  const layers = map.getContainer().querySelector<HTMLElement>(".leaflet-control-layers");
   if (layers && layers.offsetHeight > 60) {
     bottomRight.x = Math.max(bottomRight.x, frame.right - layers.getBoundingClientRect().left + GAP_PX);
   }
@@ -86,7 +86,7 @@ var POPUP_BOTTOM_RIGHT = L.point(GAP_PX, GAP_PX);
 L.Popup.mergeOptions({ autoPanPaddingTopLeft: POPUP_TOP_LEFT, autoPanPaddingBottomRight: POPUP_BOTTOM_RIGHT });
 
 export function padPopups(): void {
-  var pad = overlayPad();
+  const pad = overlayPad();
   POPUP_TOP_LEFT.x = pad.topLeft.x;
   POPUP_TOP_LEFT.y = pad.topLeft.y;
   POPUP_BOTTOM_RIGHT.x = pad.bottomRight.x;
@@ -94,8 +94,8 @@ export function padPopups(): void {
 }
 
 export function flyPadded(bounds: L.LatLngBounds, maxZoom: number, snap?: number): void {
-  var pad = overlayPad();
-  var was = map.options.zoomSnap;
+  const pad = overlayPad();
+  const was = map.options.zoomSnap;
   if (snap) map.options.zoomSnap = snap;
   map.flyToBounds(bounds, { maxZoom: maxZoom, paddingTopLeft: pad.topLeft, paddingBottomRight: pad.bottomRight });
   map.options.zoomSnap = was;
@@ -108,8 +108,8 @@ export function flyToPoint(at: L.LatLngTuple, zoom: number): void {
 export var FIT_SNAP = 0.25;
 
 export function fitWorld(): void {
-  var pad = overlayPad();
-  var snap = map.options.zoomSnap;
+  const pad = overlayPad();
+  const snap = map.options.zoomSnap;
   map.options.zoomSnap = FIT_SNAP;
   map.fitBounds(
     boundsOfBbox([MAP_SQUARE_M.x_min, MAP_SQUARE_M.y_min, MAP_SQUARE_M.x_max, MAP_SQUARE_M.y_max]),
@@ -187,10 +187,10 @@ map._getBoundsOffset = function (px: L.Bounds, bounds: L.LatLngBounds, zoom?: nu
   // The viewport the page opens on: the URL's, if the fragment carries one.
   // `+undefined` is NaN, which is precisely the "no z in the fragment" branch, so the
   // assertions below are about the type and not about the value.
-  var zoom = isFinite(+BOOT.z!) ? +BOOT.z! : HOME_VIEW.zoom;
-  var centre = HOME_VIEW.centre;
+  const zoom = isFinite(+BOOT.z!) ? +BOOT.z! : HOME_VIEW.zoom;
+  let centre = HOME_VIEW.centre;
   if (BOOT.c) {
-    var raw = BOOT.c.split(",");
+    const raw = BOOT.c.split(",");
     if (raw.length === 2 && isFinite(+raw[0]!) && isFinite(+raw[1]!)) centre = latLngOf([+raw[0]!, +raw[1]!]);
   }
   map.setView(centre, zoom);
@@ -206,7 +206,7 @@ map._getBoundsOffset = function (px: L.Bounds, bounds: L.LatLngBounds, zoom?: nu
  * given a size in metres instead. Polygons never need it: they are already in map units and
  * scale for free. */
 export function pixelsPerMetre(zoom?: number): number {
-  var z = zoom === undefined ? map.getZoom() : zoom;
+  const z = zoom === undefined ? map.getZoom() : zoom;
   return map.project([0, 1], z).x - map.project([0, 0], z).x;
 }
 
@@ -247,9 +247,9 @@ map.getPane("foundations")!.style.zIndex = "360";
  * yet: the fragment would say `plain` on a machine whose artwork was about to load, and the
  * next reload would honour it. */
 export function hashFor(dash: string): string {
-  var parts: string[] = [];
+  const parts: string[] = [];
   if (state.world) parts.push("world=" + encodeURIComponent(state.world));
-  var pinned = pinnedFilename();
+  const pinned = pinnedFilename();
   if (pinned) parts.push("save=" + encodeURIComponent(pinned));
   if (state.floor) parts.push("floor=" + state.floor.platform + "/" + state.floor.band);
   if (state.mode) parts.push("mode=" + state.mode);
@@ -258,7 +258,7 @@ export function hashFor(dash: string): string {
   // API's own snake_case, so joining them needs no escaping.
   if (state.pickups.length) parts.push("pickups=" + state.pickups.join(","));
   if (dash) parts.push("dash=" + encodeURIComponent(dash).replace(/%2F/g, "/"));
-  var centre = gameXY(map.getCenter());
+  const centre = gameXY(map.getCenter());
   parts.push("z=" + map.getZoom());
   parts.push("c=" + Math.round(centre[0] * 10) / 10 + "," + Math.round(centre[1] * 10) / 10);
   return "#" + parts.join("&");
@@ -299,10 +299,10 @@ export function footprintCorners(
   l: number,
   yaw: number | null | undefined
 ): L.LatLngTuple[] {
-  var a = ((yaw || 0) * Math.PI) / 180;
-  var cos = Math.cos(a);
-  var sin = Math.sin(a);
-  var offsets: [number, number][] = [
+  const a = ((yaw || 0) * Math.PI) / 180;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  const offsets: [number, number][] = [
     [-w, -l],
     [w, -l],
     [w, l],

@@ -41,7 +41,7 @@ export function clearMark(): void {
 export function ringAt(x_m: number, y_m: number, label: string, key: string): void {
   clearMark();
   ringedKey = key;
-  var ring = L.circleMarker(latLngOf([x_m, y_m]), {
+  const ring = L.circleMarker(latLngOf([x_m, y_m]), {
     radius: 14,
     color: HIGHLIGHT,
     weight: 3,
@@ -54,7 +54,7 @@ export function ringAt(x_m: number, y_m: number, label: string, key: string): vo
 }
 
 export function selectAndRing(x_m: number, y_m: number, label?: string, stay?: boolean, as?: Selection): void {
-  var s = as || { kind: "point", key: x_m + "," + y_m, label: label || "a point", x_m: x_m, y_m: y_m };
+  const s = as || { kind: "point", key: x_m + "," + y_m, label: label || "a point", x_m: x_m, y_m: y_m };
   select(s);
   ringAt(x_m, y_m, as ? s.label : label || "", s.kind + ":" + s.key);
   if (!stay) flyToPoint(latLngOf([x_m, y_m]), Math.max(map.getZoom(), MACHINE_ZOOM));
@@ -72,6 +72,6 @@ export function showMachine(instance: string, name: string, x_m: number, y_m: nu
 
 export function showBox(bbox_m: BboxM, options?: { layers?: string[] }): void {
   if (options && options.layers) reveal(options.layers);
-  var bounds = flyToBuiltArea(bbox_m);
+  const bounds = flyToBuiltArea(bbox_m);
   if (bounds) outline(bounds);
 }

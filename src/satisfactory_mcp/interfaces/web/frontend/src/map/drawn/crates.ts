@@ -48,9 +48,9 @@ var CRATE_PX = 13;
  * A fourth kind a later extractor learns is drawn as `none`, for the same reason.
  */
 function crateGlyph(kind: string): string {
-  var death = kind === "death";
-  var told = death || kind === "dismantle";
-  var box = CRATE_PX;
+  const death = kind === "death";
+  const told = death || kind === "dismantle";
+  const box = CRATE_PX;
   return (
     '<svg width="' + box + '" height="' + box + '" viewBox="0 0 ' + box + " " + box + '" ' +
     'aria-hidden="true" focusable="false">' +
@@ -86,7 +86,7 @@ export function crateLabel(kind: string): string {
  * no cause -- so in a co-op world nothing here can say whose death this was, and a row that
  * guessed would arrive looking exactly like a row that knew. */
 function cratePopup(c: CrateRow): Row[] {
-  var rows: Row[] = [[crateLabel(c.kind), c.kind_text || c.kind]];
+  const rows: Row[] = [[crateLabel(c.kind), c.kind_text || c.kind]];
   /* The same inventory grid a storage box gets, out of the same helper: "what is in it" is
    * one question wherever it is asked. The server sends every kind, so `more` arrives as 0 and
    * contentsRows' "+N" tile is the net under any server that truncates again. */
@@ -115,7 +115,7 @@ export function drawCrates(data: CratesResponse): void {
    * once, in a hurry, and an answer behind a checkbox nobody has noticed is not an answer.
    *
    * Last of the built band, after the containers: a crate is the inventory nobody built. */
-  var group = clearedLayer("crates", { on: true, colour: CRATE_COLOUR, rank: [BAND.built, 80, "crates"] });
+  const group = clearedLayer("crates", { on: true, colour: CRATE_COLOUR, rank: [BAND.built, 80, "crates"] });
 
   data.crates.forEach(function (c) {
     // A crate whose position would not read is still SENT -- the projection knows it exists.

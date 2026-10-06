@@ -85,7 +85,7 @@ function polePopup(p: PoleRow): string {
 }
 
 function wirePopup(w: WireRow): string {
-  var unnamed = "not a building this projection names";
+  const unnamed = "not a building this projection names";
   return popup([
     /* A DASH and not an arrow, because a wire has no from and no to. The ORDER still lines up
      * with the two coordinates in `ends` below: the server matches each endpoint to its actor,
@@ -102,9 +102,9 @@ export function drawPower(data: PowerResponse): void {
   /* ON at the whole-world zoom, the one network layer that is: wires are mostly long lines
    * between distant bases and read as a world's spine, where belts and pipes smear. The poles
    * are drawn too; they are the layer at factory zoom. Last of the three networks. */
-  var group = clearedLayer("power", { on: true, colour: WIRE_COLOUR, rank: [BAND.built, 30, "power"] });
+  const group = clearedLayer("power", { on: true, colour: WIRE_COLOUR, rank: [BAND.built, 30, "power"] });
   // The same expression the zoom pass restyles these with, off the same two tables.
-  var weight = routeWeight(ROUTE_WIDTH_M.power, pixelsPerMetre(), ROUTE_FLOOR_PX.power);
+  const weight = routeWeight(ROUTE_WIDTH_M.power, pixelsPerMetre(), ROUTE_FLOOR_PX.power);
 
   /* THE CORES FIRST AND THE CASINGS AFTER THEM, WHICH IS WHAT PUTS THE CASINGS UNDERNEATH:
    * `sinkRoutes` at the end calls `bringToBack` down the list, so the piece sunk last ends up at
@@ -125,7 +125,7 @@ export function drawPower(data: PowerResponse): void {
    * a wire and its pole land on one storey. An endpoint is a connector up to 24 m above that
    * base. An end with no pole keeps its endpoint. */
   function anchor(at: Point3M, pole: number | null, poles: PoleRow[]): Point3M {
-    var p = pole === null ? undefined : poles[pole];
+    const p = pole === null ? undefined : poles[pole];
     return p ? [p.x_m, p.y_m, p.z_m] : at;
   }
 
@@ -134,7 +134,7 @@ export function drawPower(data: PowerResponse): void {
   }
 
   data.wires.forEach(function (w) {
-    var core = L.polyline(chord(w), {
+    const core = L.polyline(chord(w), {
       color: WIRE_COLOUR,
       weight: weight,
       opacity: WIRE_OPACITY,
@@ -144,7 +144,7 @@ export function drawPower(data: PowerResponse): void {
   });
 
   data.wires.forEach(function (w) {
-    var cased = L.polyline(chord(w), {
+    const cased = L.polyline(chord(w), {
       color: casingColour(),
       weight: weight + WIRE_CASING_PX,
       opacity: WIRE_OPACITY,
@@ -159,12 +159,12 @@ export function drawPower(data: PowerResponse): void {
 
   /* A tower's casing is a second RING, added after every disc and core ring for the same
    * reversal reason as the wires. */
-  var towerCasings: L.CircleMarker[] = [];
+  const towerCasings: L.CircleMarker[] = [];
 
   data.poles.forEach(function (p) {
-    var tower = p.cls === TOWER_CLASS;
-    var radius = poleRadius(p.cls);
-    var piece = L.circleMarker(latLngOf(p), {
+    const tower = p.cls === TOWER_CLASS;
+    const radius = poleRadius(p.cls);
+    const piece = L.circleMarker(latLngOf(p), {
       radius: radius,
       // A disc is cased by its own outline; a ring's stroke IS the mark, hence the second ring.
       color: tower ? POLE_COLOUR : casingColour(),
@@ -176,7 +176,7 @@ export function drawPower(data: PowerResponse): void {
     piece._floor = { power: "pole", x_m: p.x_m, y_m: p.y_m, z_m: p.z_m };
     piece.bindPopup(polePopup(p)).addTo(group);
     if (!tower) return;
-    var cased = L.circleMarker(latLngOf(p), {
+    const cased = L.circleMarker(latLngOf(p), {
       radius: radius,
       color: casingColour(),
       weight: TOWER_WEIGHT_PX + WIRE_CASING_PX,

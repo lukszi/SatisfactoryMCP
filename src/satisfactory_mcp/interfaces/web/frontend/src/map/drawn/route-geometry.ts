@@ -34,24 +34,24 @@ var CURVE_MAX_STEPS = 8;
  * Measured IN THE PLAN, x and y only, because that is what this map draws -- including z would
  * demand eight subdivisions of a conveyor lift, which occupies one pixel. */
 function spanFlatnessM(p0: Point3M, p1: Point3M, span: SpanCurveM): number {
-  var ax = p0[0];
-  var ay = p0[1];
-  var vx = p1[0] - ax;
-  var vy = p1[1] - ay;
-  var chord = Math.sqrt(vx * vx + vy * vy);
-  var b1x = ax + span[0][0] / 3;
-  var b1y = ay + span[0][1] / 3;
-  var b2x = p1[0] - span[1][0] / 3;
-  var b2y = p1[1] - span[1][1] / 3;
+  const ax = p0[0];
+  const ay = p0[1];
+  const vx = p1[0] - ax;
+  const vy = p1[1] - ay;
+  const chord = Math.sqrt(vx * vx + vy * vy);
+  const b1x = ax + span[0][0] / 3;
+  const b1y = ay + span[0][1] / 3;
+  const b2x = p1[0] - span[1][0] / 3;
+  const b2y = p1[1] - span[1][1] / 3;
   if (!(chord > 0)) {
     // Coincident ends -- the joint where a lift meets its belt. There is no chord to measure
     // against, so the control points' own offset is the whole of the departure.
-    var d1 = Math.hypot(b1x - ax, b1y - ay);
-    var d2 = Math.hypot(b2x - ax, b2y - ay);
+    const d1 = Math.hypot(b1x - ax, b1y - ay);
+    const d2 = Math.hypot(b2x - ax, b2y - ay);
     return 0.75 * Math.max(d1, d2);
   }
-  var off1 = Math.abs((b1x - ax) * vy - (b1y - ay) * vx) / chord;
-  var off2 = Math.abs((b2x - ax) * vy - (b2y - ay) * vx) / chord;
+  const off1 = Math.abs((b1x - ax) * vy - (b1y - ay) * vx) / chord;
+  const off2 = Math.abs((b2x - ax) * vy - (b2y - ay) * vx) / chord;
   return 0.75 * Math.max(off1, off2);
 }
 
@@ -61,7 +61,7 @@ function spanFlatnessM(p0: Point3M, p1: Point3M, span: SpanCurveM): number {
  * that puts that under the tolerance is the square root of the ratio -- which is why a curve
  * ten times bigger costs three times the points and not ten. */
 function spanSteps(flat_m: number, ppm: number): number {
-  var px = flat_m * ppm;
+  const px = flat_m * ppm;
   if (!(px > CURVE_TOLERANCE_PX)) return 1;
   return Math.min(CURVE_MAX_STEPS, Math.ceil(Math.sqrt(px / CURVE_TOLERANCE_PX)));
 }
@@ -70,12 +70,12 @@ function spanSteps(flat_m: number, ppm: number): number {
  * units as the points -- which is what `/api/belts` promises about `curve_m` -- so this is the
  * plain basis, and the y-flip below can be applied to the RESULT rather than to the inputs. */
 function hermite(p0: Point3M, p1: Point3M, span: SpanCurveM, t: number): PointM {
-  var t2 = t * t;
-  var t3 = t2 * t;
-  var h00 = 2 * t3 - 3 * t2 + 1;
-  var h10 = t3 - 2 * t2 + t;
-  var h01 = -2 * t3 + 3 * t2;
-  var h11 = t3 - t2;
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
   return [
     h00 * p0[0] + h10 * span[0][0] + h01 * p1[0] + h11 * span[1][0],
     h00 * p0[1] + h10 * span[0][1] + h01 * p1[1] + h11 * span[1][1],
@@ -89,15 +89,15 @@ function routeLatLngs(
   curve_m: RouteCurveM,
   ppm: number
 ): { latlngs: L.LatLngTuple[]; steps: number[] } {
-  var latlngs: L.LatLngTuple[] = [latLngOf(points_m[0]!)];
-  var steps: number[] = [];
-  for (var i = 0; i < points_m.length - 1; i++) {
-    var a = points_m[i]!;
-    var b = points_m[i + 1]!;
-    var span = curve_m ? curve_m[i] : null;
-    var n = span ? spanSteps(spanFlatnessM(a, b, span), ppm) : 1;
+  const latlngs: L.LatLngTuple[] = [latLngOf(points_m[0]!)];
+  const steps: number[] = [];
+  for (let i = 0; i < points_m.length - 1; i++) {
+    const a = points_m[i]!;
+    const b = points_m[i + 1]!;
+    const span = curve_m ? curve_m[i] : null;
+    const n = span ? spanSteps(spanFlatnessM(a, b, span), ppm) : 1;
     steps.push(n);
-    for (var k = 1; k < n; k++) {
+    for (let k = 1; k < n; k++) {
       latlngs.push(latLngOf(hermite(a, b, span!, k / n)));
     }
     latlngs.push(latLngOf(b));
@@ -116,8 +116,8 @@ export function routePolyline(
   ppm: number,
   options: L.PolylineOptions
 ): L.Polyline {
-  var shape = routeLatLngs(points_m, curve_m, ppm);
-  var piece = L.polyline(shape.latlngs, options);
+  const shape = routeLatLngs(points_m, curve_m, ppm);
+  const piece = L.polyline(shape.latlngs, options);
   piece._route = { points_m: points_m, curve_m: curve_m, steps: shape.steps };
   return piece;
 }
@@ -127,11 +127,11 @@ export function routePolyline(
  * with no bend never changes at all, and a gentle one holds the same subdivision across several
  * steps. */
 export function retessellate(piece: L.Polyline, ppm: number): boolean {
-  var route = piece._route;
+  const route = piece._route;
   if (!route || !route.curve_m) return false;
-  var shape = routeLatLngs(route.points_m, route.curve_m, ppm);
-  var same = shape.steps.length === route.steps.length;
-  for (var i = 0; same && i < shape.steps.length; i++) same = shape.steps[i] === route.steps[i];
+  const shape = routeLatLngs(route.points_m, route.curve_m, ppm);
+  let same = shape.steps.length === route.steps.length;
+  for (let i = 0; same && i < shape.steps.length; i++) same = shape.steps[i] === route.steps[i];
   if (same) return false;
   route.steps = shape.steps;
   piece.setLatLngs(shape.latlngs);

@@ -49,14 +49,14 @@ var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).
 export function drawStructures(data: StructuresResponse): void {
   // First of the built band, because the concrete is what everything else in it stands on
   // or runs over -- the legend reads a base bottom-up, exactly as the player laid it.
-  var group = clearedLayer("foundations", { on: true, colour: STRUCTURE_COLOUR, rank: [BAND.built, 0, "foundations"] });
+  const group = clearedLayer("foundations", { on: true, colour: STRUCTURE_COLOUR, rank: [BAND.built, 0, "foundations"] });
   // No `|| 8`: `tile_m` is the server's FOUNDATION_M constant and is always sent, and a
   // fallback here would be the second copy of the number this field exists to prevent.
-  var half = data.tile_m / 2;
+  const half = data.tile_m / 2;
   data.structures.forEach(function (s, row) {
     // No position guard: `iter_structures` DROPS a row whose x, y or z will not read as a
     // number, so a piece that arrives here has all three and `StructureRow` declares that.
-    var piece = L.polygon(footprintCorners(s.x_m, s.y_m, half, half, s.yaw), {
+    const piece = L.polygon(footprintCorners(s.x_m, s.y_m, half, half, s.yaw), {
       color: STRUCTURE_COLOUR,
       weight: 1,
       opacity: 0.9,
@@ -122,7 +122,7 @@ export var STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" })
 
 export function drawMachines(data: MachinesResponse): void {
   MACHINE_KINDS.forEach(function (kind) {
-    var group = clearedLayer(kind, {
+    const group = clearedLayer(kind, {
       on: kind !== "machines",
       colour: KIND_COLOUR[kind],
       rank: [BAND.built, MACHINE_SLOT[kind], kind],
@@ -132,15 +132,15 @@ export function drawMachines(data: MachinesResponse): void {
       // is that claim not being acted on: if the projection ever sends half a position it
       // should be visible rather than silently skipped.
       if (m.x_m === null) return;
-      var w = (m.w_m || MACHINE_FALLBACK_M) / 2;
-      var l = (m.l_m || MACHINE_FALLBACK_M) / 2;
+      const w = (m.w_m || MACHINE_FALLBACK_M) / 2;
+      const l = (m.l_m || MACHINE_FALLBACK_M) / 2;
       // Read off `state` and not off `paused`, though the two agree: `paused` is first in
       // health.STATES, so one field decides the whole mark and the two can never disagree
       // about the same rectangle.
-      var blocked = m.state === BLOCKED;
-      var stopped = m.actionable && !blocked;
-      var idle = stopped || m.state === "paused";
-      var piece = L.polygon(footprintCorners(m.x_m, m.y_m!, w, l, m.yaw), {
+      const blocked = m.state === BLOCKED;
+      const stopped = m.actionable && !blocked;
+      const idle = stopped || m.state === "paused";
+      const piece = L.polygon(footprintCorners(m.x_m, m.y_m!, w, l, m.yaw), {
         color: blocked ? BLOCKED_COLOUR : stopped ? STOPPED_COLOUR : KIND_COLOUR[kind],
         fillColor: KIND_COLOUR[kind],
         weight: m.actionable ? 3 : 1,
@@ -180,13 +180,13 @@ export function drawMachines(data: MachinesResponse): void {
           ["trace", traceButtons(m.instance_leaf)],
         ])
       );
-      var mark = { leaf: m.instance_leaf, name: m.name };
-      var at = { x_m: m.x_m, y_m: m.y_m! };
+      const mark = { leaf: m.instance_leaf, name: m.name };
+      const at = { x_m: m.x_m, y_m: m.y_m! };
       piece.on("click", function () {
         showMachine(mark.leaf, mark.name, at.x_m, at.y_m, { stay: true });
       });
       piece.on("contextmenu", function (e: L.LeafletMouseEvent) {
-        var dom = e.originalEvent as InspectedEvent | undefined;
+        const dom = e.originalEvent as InspectedEvent | undefined;
         if (dom && !dom._machine) dom._machine = mark;
       });
       // What the floor filter joins a machine by, and what it needs to know to tell whether
@@ -253,9 +253,9 @@ var STORAGE_FALLBACK_M = 4;
  */
 function storageContents(s: StorageRow): Row[] {
   if (s.kind === "fluid") {
-    var stored = s.stored_m3;
+    const stored = s.stored_m3;
     if (stored === null || stored === undefined) return [["contents", "not recorded"]];
-    var level = count(Math.round(stored * 10) / 10) + " m³";
+    let level = count(Math.round(stored * 10) / 10) + " m³";
     // The capacity is what turns a level into a reading, and it comes from the docs dump
     // rather than the save -- so where the dump is silent the row says the level alone
     // instead of inventing a denominator.
@@ -280,7 +280,7 @@ function storageContents(s: StorageRow): Row[] {
  * was answered by the click.
  */
 function storagePopup(s: StorageRow): Row[] {
-  var rows: Row[] = [["storage", s.name]];
+  const rows: Row[] = [["storage", s.name]];
   storageContents(s).forEach(function (row) {
     rows.push(row);
   });
@@ -298,13 +298,13 @@ export function drawStorage(data: StorageResponse): void {
   // Off at the whole-world zoom, like the machines and the routes: a world's boxes are a
   // scatter of specks. Near the bottom of the built band, because the row is off by default
   // and the bottom of the list is where a reader who wants it goes looking.
-  var group = clearedLayer("storage", { on: false, colour: STORAGE_COLOUR, rank: [BAND.built, 70, "storage"] });
+  const group = clearedLayer("storage", { on: false, colour: STORAGE_COLOUR, rank: [BAND.built, 70, "storage"] });
   data.storage.forEach(function (s) {
     if (s.x_m === null || s.y_m === null) return;
-    var colour = s.kind === "fluid" ? STORAGE_FLUID_COLOUR : STORAGE_COLOUR;
-    var w = (s.w_m || STORAGE_FALLBACK_M) / 2;
-    var l = (s.l_m || STORAGE_FALLBACK_M) / 2;
-    var box = L.polygon(footprintCorners(s.x_m, s.y_m, w, l, s.yaw), {
+    const colour = s.kind === "fluid" ? STORAGE_FLUID_COLOUR : STORAGE_COLOUR;
+    const w = (s.w_m || STORAGE_FALLBACK_M) / 2;
+    const l = (s.l_m || STORAGE_FALLBACK_M) / 2;
+    const box = L.polygon(footprintCorners(s.x_m, s.y_m, w, l, s.yaw), {
       color: colour,
       weight: 1,
       fillColor: colour,

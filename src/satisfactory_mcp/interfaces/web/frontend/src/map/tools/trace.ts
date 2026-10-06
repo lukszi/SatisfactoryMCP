@@ -54,7 +54,7 @@ function traceCard(): HTMLElement {
 }
 
 function machineRingColour(m: TraceMachine): string {
-  var t = tone(m.state, m.actionable);
+  const t = tone(m.state, m.actionable);
   return t === "blocked" ? BLOCKED_COLOUR : t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
 }
 
@@ -67,7 +67,7 @@ function rateText(rows: { item: string; per_min: number }[]): string {
 }
 
 function machinePopup(m: TraceMachine): string {
-  var rows: Row[] = [
+  const rows: Row[] = [
     ["building", m.name],
     ["recipe", m.recipe],
     ["makes", m.makes.length ? rateText(m.makes) : null],
@@ -83,7 +83,7 @@ function machinePopup(m: TraceMachine): string {
 function draw(data: TraceResponse): void {
   group.clearLayers();
   data.runs.forEach(function (run) {
-    var line = L.polyline(
+    const line = L.polyline(
       run.lines_m.map(function (points) {
         return points.map(function (p) {
           return latLngOf(p);
@@ -96,7 +96,7 @@ function draw(data: TraceResponse): void {
   });
   data.machines.forEach(function (m) {
     if (m.x_m === null || m.y_m === null) return;
-    var ring = L.circleMarker(latLngOf([m.x_m, m.y_m]), {
+    const ring = L.circleMarker(latLngOf([m.x_m, m.y_m]), {
       radius: m.seed ? 11 : 7,
       color: machineRingColour(m),
       weight: m.seed ? 4 : 3,
@@ -112,16 +112,16 @@ function draw(data: TraceResponse): void {
 }
 
 function fly(data: TraceResponse): void {
-  var b = data.bbox_m;
+  const b = data.bbox_m;
   if (!b) return;
   flyPadded(boundsOfBbox(b).pad(0.15), TRACE_MAX_ZOOM);
 }
 
 function stateCounts(data: TraceResponse): { stopped: number; blocked: number } {
-  var out = { stopped: 0, blocked: 0 };
+  const out = { stopped: 0, blocked: 0 };
   data.machines.forEach(function (m) {
     if (m.seed) return;
-    var t = tone(m.state, m.actionable);
+    const t = tone(m.state, m.actionable);
     if (t === "blocked") out.blocked += 1;
     else if (t === "bad") out.stopped += 1;
   });
@@ -130,7 +130,7 @@ function stateCounts(data: TraceResponse): { stopped: number; blocked: number } 
 
 function groupName(data: TraceResponse, id: string): string {
   if (id.indexOf("in:") === 0) return "outside the traced set";
-  var found = data.groups.filter(function (g) {
+  const found = data.groups.filter(function (g) {
     return g.id === id;
   })[0];
   return found ? found.label + " (" + found.detail + ")" : id;
@@ -192,14 +192,14 @@ function flowTable(data: TraceResponse, rows: TraceEdge[]): HTMLElement {
 }
 
 function render(): void {
-  var box = traceCard();
+  const box = traceCard();
   box.textContent = "";
   if (!view.seed) {
     box.hidden = true;
     return;
   }
   box.hidden = false;
-  var head = cardTitleBar(view.direction === "up" ? "Supply" : "Output");
+  const head = cardTitleBar(view.direction === "up" ? "Supply" : "Output");
   head.appendChild(
     toggleButton("↑ supply", view.direction === "up", function () {
       startTrace(view.seed, "up");
@@ -212,7 +212,7 @@ function render(): void {
   );
   head.appendChild(button("×", clearTrace, { title: "clear the trace", label: "clear the trace" }));
   box.appendChild(head);
-  var data = view.data;
+  const data = view.data;
   if (view.error) {
     cardLine(box, view.error, "bad");
     return;
@@ -221,7 +221,7 @@ function render(): void {
     cardLine(box, "tracing " + view.seed.replace(/^label:/, "") + "…");
     return;
   }
-  var only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;
+  const only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;
   cardSubject(box, only ? only.name + (only.recipe ? " · " + only.recipe : "") : data.subject);
   if (data.truncated) {
     cardLine(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "blocked");
@@ -232,9 +232,9 @@ function render(): void {
       count(data.ambiguous) +
       " belt or pipe joins that state no direction; the walk takes them both ways, so it can over-report a feeder but never miss one";
   }
-  var others = data.machines.length - data.seeds;
-  var states = stateCounts(data);
-  var chips = make("div", "panel-chips");
+  const others = data.machines.length - data.seeds;
+  const states = stateCounts(data);
+  const chips = make("div", "panel-chips");
   chips.appendChild(chip(counted(others, "machine") + " " + (view.direction === "up" ? "upstream" : "downstream"), "muted"));
   if (states.stopped) chips.appendChild(chip(states.stopped + " " + WORDS.needAction, "bad"));
   if (states.blocked) chips.appendChild(chip(states.blocked + " " + WORDS.blocked, "blocked"));
@@ -255,12 +255,12 @@ function render(): void {
     box.appendChild(itemTable(data.items));
     if (data.items.length > MAX_TABLE_ROWS) cardLine(box, data.items.length - MAX_TABLE_ROWS + " more");
   }
-  var groupIds = new Set(
+  const groupIds = new Set(
     data.groups.map(function (g) {
       return g.id;
     })
   );
-  var flows = data.edges.filter(function (e) {
+  const flows = data.edges.filter(function (e) {
     return e.per_min !== null && groupIds.has(e.target);
   });
   flows.sort(function (a, b) {
@@ -284,9 +284,9 @@ export function clearTrace(): void {
 }
 
 function fetchTrace(flyAfter: boolean): void {
-  var ticket = latest("trace");
+  const ticket = latest("trace");
   view.busy = true;
-  var path = ("/api/trace?seed=" + encodeURIComponent(view.seed) + "&direction=" + view.direction) as `/api/trace?${string}`;
+  const path = ("/api/trace?seed=" + encodeURIComponent(view.seed) + "&direction=" + view.direction) as `/api/trace?${string}`;
   get<TraceResponse>(path)
     .then(function (data) {
       if (!ticket.fresh()) return;

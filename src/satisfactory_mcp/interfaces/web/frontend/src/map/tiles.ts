@@ -109,14 +109,14 @@ export function aliasMode(raw: string): string {
 /* The modes the switcher lists: every ticked type that can be served, the default first, and
  * also whatever is on screen or was asked for by the address, ticked or not. */
 function wantedModes(): ModeSpec[] {
-  var body = mapState.body;
+  const body = mapState.body;
   if (!body) return LEGACY.concat([PLAIN]);
-  var chosen = body.default;
-  var keep: Record<string, boolean> = {};
+  const chosen = body.default;
+  const keep: Record<string, boolean> = {};
   keep[aliasMode(BOOT.mode || "")] = true;
   if (state.mode) keep[state.mode] = true;
   if (chosen) keep[chosen] = true;
-  var rows = body.types.filter(function (row) {
+  const rows = body.types.filter(function (row) {
     return (row.status === "ready" || row.status === "missing") && (row.in_switcher || !!keep[row.id]);
   });
   rows.sort(function (a, b) {
@@ -128,9 +128,9 @@ function wantedModes(): ModeSpec[] {
 /** Whether `raw` names a mode this page can be asked for: plain, or a type the server serves. */
 export function servableMode(raw: string | undefined): BaseMode | null {
   if (!raw) return null;
-  var id = aliasMode(raw);
+  const id = aliasMode(raw);
   if (id === "plain") return id;
-  var body = mapState.body;
+  const body = mapState.body;
   if (!body) {
     return LEGACY.some(function (spec) {
       return spec.key === id;
@@ -170,7 +170,7 @@ var baseLayer: L.Layer | null = null;
 var litOff: Partial<Record<BaseMode, string>> = {};
 
 function specFor(key: string): ModeSpec | null {
-  var found: ModeSpec | null = null;
+  let found: ModeSpec | null = null;
   MODES.forEach(function (spec) {
     if (spec.key === key) found = spec;
   });
@@ -179,7 +179,7 @@ function specFor(key: string): ModeSpec | null {
 
 /* The corners a base-map probe answered with, as [x_min, y_min, x_max, y_max] metres. */
 function mapImageBounds(response: Response): BboxM {
-  var raw = (response.headers.get("X-Map-Bounds-M") || "").split(",").map(Number);
+  const raw = (response.headers.get("X-Map-Bounds-M") || "").split(",").map(Number);
   if (raw.length === 4 && raw.every(isFinite)) return [raw[0]!, raw[1]!, raw[2]!, raw[3]!];
   return [MAP_SQUARE_M.x_min, MAP_SQUARE_M.y_min, MAP_SQUARE_M.x_max, MAP_SQUARE_M.y_max];
 }
@@ -228,12 +228,12 @@ var PyramidLayer = L.TileLayer.extend({
   getTileUrl: function (this: L.TileLayer, coords: L.Coords) {
     // Asserted rather than defaulted: this layer is only ever constructed below, with a
     // zoomOffset, and `|| 0` here would be a silently different grid rather than a fix.
-    var span = 1 << (coords.z + this.options.zoomOffset!);
+    const span = 1 << (coords.z + this.options.zoomOffset!);
     if (coords.x < 0 || coords.y < 0 || coords.x >= span || coords.y >= span) {
       return L.Util.emptyImageUrl;
     }
-    var url = L.TileLayer.prototype.getTileUrl.call(this, coords);
-    var options = this.options as PyramidOptions;
+    let url = L.TileLayer.prototype.getTileUrl.call(this, coords);
+    const options = this.options as PyramidOptions;
     // The same arithmetic as `span`: coords.z + zoomOffset is the pyramid's own z, already
     // clamped to maxNativeZoom by Leaflet, so past the dense tree's top this asks for the
     // 1x tile of the SAME level -- the identical square of the world, standard density.
@@ -276,32 +276,32 @@ function wantsDenseTiles(): boolean {
  * single-image fallback; for a render it means the mode is not offered, because a tile grid
  * quietly offset from its own picture is worse than no picture. */
 function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) | null {
-  var b = mapImageBounds(response);
-  var anchored = [
+  const b = mapImageBounds(response);
+  const anchored = [
     MAP_SQUARE_M.x_min,
     MAP_SQUARE_M.y_min,
     MAP_SQUARE_M.x_max,
     MAP_SQUARE_M.y_max,
   ];
-  var moved = b.some(function (v, i) {
+  const moved = b.some(function (v, i) {
     return Math.abs(v - anchored[i]!) > 1;
   });
   if (moved) return null;
 
-  var tilePx = +response.headers.get("X-Map-Tile-Px")! || 256;
+  const tilePx = +response.headers.get("X-Map-Tile-Px")! || 256;
   // Each layer's OWN depth, stated in its sidecar. Past it Leaflet upscales the deepest level
   // it has instead of asking for one that is not there.
-  var maxZ = +response.headers.get("X-Map-Tile-Max-Z")!;
+  let maxZ = +response.headers.get("X-Map-Tile-Max-Z")!;
   if (!isFinite(maxZ) || maxZ < 0) maxZ = 5;
-  var top = Math.log2(MAP_SHEET_PX / tilePx); // the pyramid z that IS the sheet: 5.
+  const top = Math.log2(MAP_SHEET_PX / tilePx); // the pyramid z that IS the sheet: 5.
   if (!isFinite(top) || top !== Math.round(top)) return null;
 
   // ...and, when this layer has a denser tree and this display can use it, that tree's size
   // and depth as well. `tileSize` stays `tilePx`, which is the CSS size of a tile: the grid
   // must not move, only how many pixels arrive inside it.
-  var densePx = +response.headers.get("X-Map-Tile-2x-Px")!;
-  var denseMaxZ = +response.headers.get("X-Map-Tile-2x-Max-Z")!;
-  var dense = wantsDenseTiles() && isFinite(densePx) && densePx > 0 && isFinite(denseMaxZ);
+  const densePx = +response.headers.get("X-Map-Tile-2x-Px")!;
+  const denseMaxZ = +response.headers.get("X-Map-Tile-2x-Max-Z")!;
+  const dense = wantsDenseTiles() && isFinite(densePx) && densePx > 0 && isFinite(denseMaxZ);
   if (dense) maxZ = Math.max(maxZ, denseMaxZ);
 
   // The build tag makes every URL change when the pyramid is recut, which is what lets the
@@ -311,14 +311,14 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
   // `px=` is NOT in this query: it is per tile, because one layer spans levels the dense tree
   // has and levels only the 1x tree reaches. PyramidLayer appends `denseQuery` -- separator
   // and all, which is why it is cut here where the rest of the query is known.
-  var tag = response.headers.get("X-Map-Build");
-  var query = [];
+  const tag = response.headers.get("X-Map-Build");
+  const query = [];
   if (tag) query.push("v=" + encodeURIComponent(tag));
-  var url =
+  const url =
     tilePath(spec.typeId, "{z}", "{x}", "{y}") + (query.length ? "?" + query.join("&") : "");
-  var denseQuery = dense ? (query.length ? "&" : "?") + "px=" + densePx : "";
-  var bounds = boundsOfBbox(b);
-  var light = parseLight(response.headers.get("X-Map-Light"));
+  const denseQuery = dense ? (query.length ? "&" : "?") + "px=" + densePx : "";
+  const bounds = boundsOfBbox(b);
+  const light = parseLight(response.headers.get("X-Map-Light"));
 
   return function (): BaseLayer {
     if (light && webglReady() && !litOff[spec.key]) {
@@ -393,7 +393,7 @@ function probePyramid(spec: PyramidSpec): Promise<void> {
   return fetch(tilePath(spec.typeId, 0, 0, 0), { method: "HEAD" })
     .then(function (r) {
       if (r.status !== 200) return; // 204: never generated, and that is not an error
-      var factory = pyramidMaker(spec, r);
+      const factory = pyramidMaker(spec, r);
       if (factory) layerFactories[spec.key] = factory;
     })
     .catch(function () {
@@ -416,7 +416,7 @@ function probeMapImage(spec: ModeSpec): Promise<void> {
 /** The rows layercontrol/mode-picker.ts draws, rebuilt from the probes every time anything changes. */
 function modeChoices(): ModeChoice[] {
   return MODES.map(function (spec): ModeChoice {
-    var ready = spec.key === "plain" || !!layerFactories[spec.key];
+    const ready = spec.key === "plain" || !!layerFactories[spec.key];
     return {
       key: spec.key,
       label: spec.label,
@@ -432,9 +432,9 @@ function modeChoices(): ModeChoice[] {
 
 /** The tone a mode's picture declares; plain is the page's own dark sea. */
 function toneOf(mode: BaseMode): MapTone {
-  var body = mapState.body;
+  const body = mapState.body;
   if (mode === "plain") return body ? body.plain_tone : "dark";
-  var row = body
+  const row = body
     ? body.types.filter(function (t) {
         return t.id === mode;
       })[0]
@@ -478,9 +478,9 @@ function showBaseMode(key: BaseMode, recordInHash: boolean): void {
  * there and plain if it is not. A render is opened on only when someone made it the default:
  * the page does not choose an interpretation of the world for anyone. */
 function bootMode(): BaseMode {
-  var asked = aliasMode(BOOT.mode || "");
+  const asked = aliasMode(BOOT.mode || "");
   if (asked && (asked === "plain" || layerFactories[asked])) return asked;
-  var chosen = mapState.body ? mapState.body.default : null;
+  const chosen = mapState.body ? mapState.body.default : null;
   if (chosen && (chosen === "plain" || layerFactories[chosen])) return chosen;
   return layerFactories[ARTWORK] ? ARTWORK : "plain";
 }
@@ -489,7 +489,7 @@ function bootMode(): BaseMode {
  * pyramid did not answer. A probe is per id, so a type that was recut gets its new tag. */
 function probeAll(specs: ModeSpec[]): Promise<void> {
   return Promise.all(specs.filter(isPyramid).map(probePyramid)).then(function () {
-    var artwork = specFor(ARTWORK);
+    const artwork = specFor(ARTWORK);
     if (!artwork || layerFactories[ARTWORK]) return;
     return probeMapImage(artwork);
   });
@@ -499,7 +499,7 @@ var booted = false;
 var readyBefore: Record<string, boolean> = {};
 
 function readyIds(): Record<string, boolean> {
-  var out: Record<string, boolean> = {};
+  const out: Record<string, boolean> = {};
   (mapState.body ? mapState.body.types : []).forEach(function (row) {
     if (row.status === "ready") out[row.id] = true;
   });
@@ -510,7 +510,7 @@ function readyIds(): Record<string, boolean> {
  * The switcher is rebuilt from it and every pyramid re-probed; a type that has just become
  * ready is offered with a toast rather than switched to. */
 function rebuildModes(): void {
-  var before = readyBefore;
+  const before = readyBefore;
   readyBefore = readyIds();
   MODES = wantedModes();
   layerFactories = {};
@@ -523,7 +523,7 @@ function rebuildModes(): void {
     }
     Object.keys(readyBefore).forEach(function (id) {
       if (before[id]) return;
-      var spec = specFor(id);
+      const spec = specFor(id);
       offer((spec ? spec.label : id) + " is ready", "show", function () {
         requestBaseMode(id, true);
       });
@@ -538,17 +538,17 @@ export function requestBaseMode(key: BaseMode, recordInHash: boolean): void {
     showBaseMode(key, recordInHash);
     return;
   }
-  var row = mapState.body
+  const row = mapState.body
     ? mapState.body.types.filter(function (t) {
         return t.id === key;
       })[0]
     : undefined;
-  var spec = row ? specOf(row) : specFor(key);
+  const spec = row ? specOf(row) : specFor(key);
   if (!spec || !isPyramid(spec)) {
     showBaseMode(key, recordInHash);
     return;
   }
-  var known = spec;
+  const known = spec;
   if (!specFor(key)) MODES.splice(MODES.length - 1, 0, known);
   probePyramid(known).then(function () {
     showBaseMode(key, recordInHash);

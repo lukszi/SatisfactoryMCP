@@ -29,14 +29,14 @@ function elevationRows(e: Elevation): Row[] {
   // measured AT the point rather than near it. Which layer of the field answered rides along
   // with it: a landscape texel is a metre good and a fill texel four, so quoting one number
   // for both would be the same overclaim as one median over nodes and foundations.
-  var rows: Row[] = [];
-  var measured = e.terrain_m !== null && e.terrain_m !== undefined;
+  const rows: Row[] = [];
+  const measured = e.terrain_m !== null && e.terrain_m !== undefined;
   if (measured) {
-    var acc = e.terrain_accuracy_m === null ? "" : " ±" + e.terrain_accuracy_m + " m";
+    const acc = e.terrain_accuracy_m === null ? "" : " ±" + e.terrain_accuracy_m + " m";
     rows.push(["terrain", e.terrain_m + " m (" + e.terrain_source + acc + ")"]);
     if (e.terrain_cave_note) rows.push(["cave", e.terrain_cave_note]);
     if (e.terrain_ambiguous) {
-      var bare =
+      const bare =
         e.terrain_bare_m === null || e.terrain_bare_m === undefined
           ? "bare ground under it not known"
           : "bare ground " + e.terrain_bare_m + " m";
@@ -47,7 +47,7 @@ function elevationRows(e: Elevation): Row[] {
     // DEPTH are separate claims and the depth is the weaker one -- over the fill layer there
     // is no depth to state, and the server says so instead of sending a zero.
     if (e.terrain_water_m !== null && e.terrain_water_m !== undefined) {
-      var depth =
+      const depth =
         e.terrain_water_depth_m !== null && e.terrain_water_depth_m !== undefined
           ? e.terrain_water_depth_m + " m deep"
           : e.terrain_water_note || "depth not known here";
@@ -102,7 +102,7 @@ function onSquare(x: number, y: number): boolean {
 }
 
 function shown<T extends { spoiler: boolean }>(rows: T[]): T[] {
-  var all = settingOn("spoilers");
+  const all = settingOn("spoilers");
   return rows.filter(function (r) {
     return all || !r.spoiler;
   });
@@ -116,7 +116,7 @@ function findButton(kind: string, spot: string, text: string, title: string): st
 }
 
 function actions(x: number, y: number): string {
-  var spot = x + "," + y;
+  const spot = x + "," + y;
   return [
     findButton("point", spot, "select point", "make this point the selection"),
     findButton("nodes", spot, "nodes near here", "ring the resource nodes near this point"),
@@ -140,22 +140,22 @@ function pickupText(p: NearPickup): string {
 
 function pickupsWithin(d: InspectResponse): string | null {
   if (d.pickups_within === null) return null;
-  var n = d.pickups_within - (settingOn("spoilers") ? 0 : d.pickups_within_spoilers);
+  const n = d.pickups_within - (settingOn("spoilers") ? 0 : d.pickups_within_spoilers);
   return count(n) + " " + WORDS.remaining + " within " + PICKUPS_NEAR_M + " m";
 }
 
 function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string }): string {
-  var rows: Row[] = [];
+  const rows: Row[] = [];
   if (machine) {
     rows.push(["machine", machine.name]);
     rows.push(["trace", traceButtons(machine.leaf)]);
   }
-  var nearest = d.nearest;
-  var pickups = shown(d.pickups);
-  var fields = d.fields;
-  var targets: PinTarget[] = [{ kind: "point", ref: { x_m: d.at.x_m, y_m: d.at.y_m }, text: "point" }];
+  const nearest = d.nearest;
+  const pickups = shown(d.pickups);
+  const fields = d.fields;
+  const targets: PinTarget[] = [{ kind: "point", ref: { x_m: d.at.x_m, y_m: d.at.y_m }, text: "point" }];
   if (machine) targets.push({ kind: "machine", ref: { machine: machine.leaf }, text: "machine" });
-  var near = nearest[0];
+  const near = nearest[0];
   if (near) {
     targets.push({ kind: "node", ref: { node: near.name }, text: "node " + near.resource_name });
     targets.push({ kind: "field", ref: { node: near.name }, text: "field" });
@@ -171,7 +171,7 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
   rows.push(["at", html(code(d.at.x_m + "," + d.at.y_m, coords(d.at.x_m, d.at.y_m)).html)]);
   rows.push(["", html('<span class="popup-acts">' + actions(d.at.x_m, d.at.y_m) + "</span>")]);
   rows.push([WORDS.pin, pinButtons(targets)]);
-  var more: Row[] = elevationRows(d.elevation);
+  const more: Row[] = elevationRows(d.elevation);
   /* Each nearest node carries the same `node:` selector its own dot's popup prints, because
    * the answer's next step is an MCP tool call naming one of these nodes and a resource plus
    * a distance cannot say WHICH one -- a world has dozens of impure copper nodes. */
@@ -195,10 +195,10 @@ function inspectHtml(d: InspectResponse, machine?: { leaf: string; name: string 
 }
 
 function clearOfControls(): L.Point {
-  var gap = 8;
+  const gap = 8;
   if (!NARROW.matches) return L.point(gap, gap);
-  var frame = map.getContainer().getBoundingClientRect();
-  var below = gap;
+  const frame = map.getContainer().getBoundingClientRect();
+  let below = gap;
   map.getContainer().querySelectorAll(".leaflet-top.leaflet-right > *").forEach(function (control) {
     below = Math.max(below, control.getBoundingClientRect().bottom - frame.top + gap);
   });
@@ -210,27 +210,27 @@ function clearOfControls(): L.Point {
 export function inspect(e: L.LeafletMouseEvent): void {
   // One right-click can reach this twice -- Leaflet fires at the layer under the cursor and
   // the event propagates to the map -- so the DOM event carries a mark.
-  var dom = e.originalEvent as InspectedEvent | undefined;
+  const dom = e.originalEvent as InspectedEvent | undefined;
   if (dom) {
     if (dom._inspected) return;
     dom._inspected = true;
   }
-  var machine = dom ? dom._machine : undefined;
+  const machine = dom ? dom._machine : undefined;
   // Rounded to a decimetre because the popup prints the same numbers it asked with, and a
   // coordinate you cannot retype is not a copyable coordinate.
-  var at = gameXY(e.latlng);
-  var x = Math.round(at[0] * 10) / 10;
-  var y = Math.round(at[1] * 10) / 10;
+  const at = gameXY(e.latlng);
+  const x = Math.round(at[0] * 10) / 10;
+  const y = Math.round(at[1] * 10) / 10;
   // Opened before the fetch, so the click has a visible effect on a slow answer and the
   // popup lands exactly where the pointer was rather than where the map has drifted to.
-  var card = L.popup({ maxWidth: 340, autoPanPaddingTopLeft: clearOfControls() })
+  const card = L.popup({ maxWidth: 340, autoPanPaddingTopLeft: clearOfControls() })
     .setLatLng(e.latlng)
     .setContent("inspecting " + x + ", " + y + " m&hellip;")
     .openOn(map);
   get<InspectResponse>(("/api/inspect?x_m=" + x + "&y_m=" + y) as `/api/inspect?${string}`)
     .then(function (d) {
       if (!map.hasLayer(card)) return;
-      var body = document.createElement("div");
+      const body = document.createElement("div");
       body.innerHTML = inspectHtml(d, machine);
       body.querySelector("details")!.addEventListener("toggle", function () {
         card.update();

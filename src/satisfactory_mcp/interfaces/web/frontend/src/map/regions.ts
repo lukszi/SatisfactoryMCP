@@ -138,16 +138,16 @@ export function drawRegions(data: RegionsResponse): void {
   tips = [];
   // Adjacent slots at the top of the legend, because they are a pair: the biome fill is the
   // ground every other layer is drawn over, and its names are the same thing said in words.
-  var regions = clearedLayer("regions", { on: true, rank: [BAND.chrome, 0, "regions"] });
-  var names = clearedLayer("region names", { on: true, rank: [BAND.chrome, 10, "region names"] });
-  var cell = data.cell_m;
+  const regions = clearedLayer("regions", { on: true, rank: [BAND.chrome, 0, "regions"] });
+  const names = clearedLayer("region names", { on: true, rank: [BAND.chrome, 10, "region names"] });
+  const cell = data.cell_m;
   data.grid.forEach(function (row, j) {
-    for (var i = 0; i < row.length; i++) {
-      var letter = row.charAt(i);
+    for (let i = 0; i < row.length; i++) {
+      const letter = row.charAt(i);
       if (letter === ".") continue;
-      var colour = REGION_COLOUR[letter] || "#3f4640";
-      var x = data.x0_m + i * cell;
-      var y = data.y0_m + j * cell;
+      const colour = REGION_COLOUR[letter] || "#3f4640";
+      const x = data.x0_m + i * cell;
+      const y = data.y0_m + j * cell;
       // Cell (i, j) spans [x, x + cell] by [y, y + cell] in game metres; row 0 is the north edge.
       L.rectangle(
         boundsOfBbox([x, y, x + cell, y + cell]),
@@ -171,8 +171,8 @@ export function drawRegions(data: RegionsResponse): void {
     // A standalone tooltip, not a zero-opacity marker: a marker would drag Leaflet's
     // default icon (and its two image requests) into the page for a label that is meant
     // to be text and nothing else.
-    var here = data.regions[name]!;
-    var at = here.label_m || here.centroid_m;
+    const here = data.regions[name]!;
+    const at = here.label_m || here.centroid_m;
     tips.push(
       L.tooltip({ permanent: true, direction: "center", className: "region-label" })
         .setLatLng(latLngOf(at))

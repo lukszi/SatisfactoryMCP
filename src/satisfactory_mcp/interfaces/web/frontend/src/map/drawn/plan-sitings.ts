@@ -29,7 +29,7 @@ export var PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
  * the machine count. Said in words rather than passed through, because "layout" alone on a
  * card reads as a category and not as a caveat. */
 function planPopup(p: PlanSiting): Row[] {
-  var measured = p.source === "given";
+  const measured = p.source === "given";
   return [
     ["plan", p.name],
     ["footprint", p.width_m + " x " + p.depth_m + " m"],
@@ -57,7 +57,7 @@ export function drawPlans(data: PlansResponse): void {
    * On by default, and cheap to be: a world has a handful of sitings or none, so the row is
    * empty and silent until the evening somebody sites a plan -- which is the one evening this
    * layer is worth anything at all. */
-  var group = clearedLayer("plan sitings", { on: true, colour: PLAN_COLOUR, rank: [BAND.chrome, 50, "plan sitings"] });
+  const group = clearedLayer("plan sitings", { on: true, colour: PLAN_COLOUR, rank: [BAND.chrome, 50, "plan sitings"] });
   data.plans.forEach(function (p) {
     L.polygon(footprintCorners(p.x_m, p.y_m, p.width_m / 2, p.depth_m / 2, p.yaw_deg), {
       color: PLAN_COLOUR,
