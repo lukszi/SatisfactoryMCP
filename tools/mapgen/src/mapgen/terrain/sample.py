@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
-import numpy as np
+from collections.abc import Iterable, Sequence
+from typing import NamedTuple, TypeAlias
 
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
+
+from mapgen.cache import Plane
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.meshes import DIRECT_SAMPLES_MIN
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, F64Grid, I64Grid, U8Grid
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
-    "DIRECT_SAMPLES_PER_TEXEL",
     "STENCIL_WHOLE",
+    "AxisTaps",
     "ClassMix",
     "PchipTaps",
+    "Taps",
     "class_taps",
     "direct_mask",
     "frame_coordinates",
@@ -33,41 +41,51 @@ __all__ = [
     "taps_pchip",
 ]
 
+#: One axis's taps: ``(index, weight)``, each ``(taps, N)`` -- the source rows or columns
+#: each output pixel reads, and how much of each (float32).
+AxisTaps: TypeAlias = tuple[I64Grid, NDArray[np.floating]]
+#: The row taps, then the column taps.
+Taps: TypeAlias = tuple[AxisTaps, AxisTaps]
+
+
+class PchipTaps(NamedTuple):
+    """The four clamped indices around each position and its cell fraction.
+
+    A type of its own because PCHIP's weights depend on the data, so ``sample_surface`` has
+    to know it was handed positions rather than weights.
+    """
+
+    indices: I64Grid
+    fraction: F32Grid
+
+
+#: How far the cubic stencil's own weights may fall from one before this file stops
+#: believing it. They sum to one exactly wherever every texel under the stencil has a value,
+#: so anything below this is a stencil straddling the edge of the data, where a kernel with
+#: negative lobes has no business extrapolating.
+STENCIL_WHOLE = 1.0 - 1e-4
+
+
 # --------------------------------------------------------------------------------------
-# The direct regime: which output texels are entitled to the triangles, and how the two
-# regimes are joined.
-# --------------------------------------------------------------------------------------
-
-#: How many source vertices the ground under one OUTPUT texel has to have contributed before
-#: that texel's height is a measurement rather than an interpolation across a triangle wider
-#: than itself. The rule is the field generator's, imported rather than retyped; this file
-#: only evaluates it at a different spacing. ``density.u8.z`` counts per 1 m texel, so the
-#: test against a 0.229 m texel is ``density >= 1 / 0.229**2``, i.e. 19 of them.
-DIRECT_SAMPLES_PER_TEXEL = DIRECT_SAMPLES_MIN
-
-
-# --------------------------------------------------------------------------------------
-# The direct regime: which texels the triangles are allowed to answer, and the surface
-# underneath them where they are not.
+# The direct regime: which output texels the triangles are allowed to answer.
 # --------------------------------------------------------------------------------------
 
 
-def direct_mask(field, spacing_m: float) -> tuple[np.ndarray | None, dict]:
+def direct_mask(field: hf.Field, spacing_m: float) -> tuple[U8Grid | None, JsonObject]:
     """Where the geometry was sampled finer than the output texel: a 0/255 mask at 1 m.
 
     ``None`` when the field carries no ``density.u8.z``, which is not "no samples anywhere"
     and must never be read as one: a field written before the plane existed knows nothing
     about its own density, so the caller refuses rather than assumes.
 
-    The rule is the generator's: **one source vertex under the output texel**. The plane
-    counts per 1 m texel, so the test is scaled by the output texel's own area, and that is
-    why fewer texels qualify at 0.229 m than at 0.458 m.
+    The rule is the field's (``DIRECT_SAMPLES_MIN``): **one source vertex under the output
+    texel**. The plane counts per 1 m texel, so the test is scaled by the output texel's own
+    area, and that is why fewer texels qualify at 0.229 m than at 0.458 m.
 
     A **mask and not a weight**. What decides that the rocks are drawn is their own coverage
     of the pixel; what this decides is what to CALL the answer -- a measurement, or the plane
     of a triangle wider than a texel -- and a provenance label is a yes or a no per texel, so
-    it is read nearest and never blurred. On the texels where the worst rims are the density
-    is zero by construction, so a weight built from it could not reach them anyway.
+    it is read nearest and never blurred.
     """
     density = field.density_raster()
     if density is None:
@@ -79,17 +97,17 @@ def direct_mask(field, spacing_m: float) -> tuple[np.ndarray | None, dict]:
                 "sampler switches on."
             )
         }
-    need = DIRECT_SAMPLES_PER_TEXEL / (spacing_m * spacing_m)
-    qualifies = density >= min(need, 255.0)
+    need = DIRECT_SAMPLES_MIN / (spacing_m * spacing_m)
+    qualifies: BoolMask = density >= min(need, 255.0)
     share = float(qualifies.mean())
-    cliff = np.isin(field.provenance_plane, hf.PROV_CLIFF_VALUES)
+    cliff = np.isin(np.asarray(field.provenance_plane), hf.PROV_CLIFF_VALUES)
     return (qualifies.astype(np.uint8) * 255), {
         "plane": hf.DENSITY_NAME,
         "rule": (
-            f"at least {DIRECT_SAMPLES_PER_TEXEL:g} source vertex under an output texel of "
+            f"at least {DIRECT_SAMPLES_MIN:g} source vertex under an output texel of "
             f"{spacing_m:.4f} m, i.e. density >= {need:.2f} per 1 m texel"
         ),
-        "samples_min_per_output_texel": DIRECT_SAMPLES_PER_TEXEL,
+        "samples_min_per_output_texel": DIRECT_SAMPLES_MIN,
         "density_min_per_field_texel": round(float(need), 2),
         "qualifying_share_of_the_field": round(100 * share, 3),
         "qualifying_share_of_the_cliff_province": round(
@@ -109,7 +127,7 @@ def direct_mask(field, spacing_m: float) -> tuple[np.ndarray | None, dict]:
 # --------------------------------------------------------------------------------------
 
 
-def frame_coordinates(size: int) -> tuple[np.ndarray, np.ndarray]:
+def frame_coordinates(size: int) -> tuple[F64Grid, F64Grid]:
     """Pixel-centre world coordinates, centimetres, for a ``size`` square on the frame.
 
     Row 0 is the northern edge and column 0 the western one, which is the artwork sheet's
@@ -125,7 +143,7 @@ def frame_coordinates(size: int) -> tuple[np.ndarray, np.ndarray]:
     return x, y
 
 
-def grid_position(coordinate: np.ndarray, origin: float, spacing: float, limit: int):
+def grid_position(coordinate: F64Grid, origin: float, spacing: float, limit: int) -> F64Grid:
     """Where a run of world coordinates falls on a raster's index axis, clamped to it.
 
     Clamped rather than masked: the frame is half a metre wider than the field's last vertex
@@ -135,7 +153,7 @@ def grid_position(coordinate: np.ndarray, origin: float, spacing: float, limit: 
     return np.clip((coordinate - origin) / spacing, 0.0, limit - 1.0)
 
 
-def taps_linear(position: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarray]:
+def taps_linear(position: F64Grid, limit: int) -> AxisTaps:
     """The two flanking indices and their weights: ``(2, N)`` each. Plain bilinear.
 
     What the cubic kernel falls back to where its stencil runs off the data, and what every
@@ -147,7 +165,7 @@ def taps_linear(position: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarra
     return index, np.stack([1.0 - fraction, fraction])
 
 
-def taps_footprint(position: np.ndarray, width: float, limit: int):
+def taps_footprint(position: F64Grid, width: float, limit: int) -> AxisTaps:
     """A pixel ``width`` texels wide as taps: each texel it covers, weighted by the overlap.
 
     A texel is the cell of its vertex, half a texel either side. Where the pixel is no wider
@@ -163,7 +181,15 @@ def taps_footprint(position: np.ndarray, width: float, limit: int):
     return np.clip(index, 0, limit - 1), weight
 
 
-def taps_cubic(position: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarray]:
+def _four_taps(position: F64Grid, limit: int) -> tuple[I64Grid, F32Grid]:
+    """The four indices around each position, clamped to the grid, and its cell fraction."""
+    base = np.floor(position).astype(np.int64)
+    t = (position - base).astype(np.float32)
+    index = np.stack([np.clip(base + offset, 0, limit - 1) for offset in (-1, 0, 1, 2)])
+    return index, t
+
+
+def taps_cubic(position: F64Grid, limit: int) -> AxisTaps:
     """The four indices around a position and their Catmull-Rom weights: ``(4, N)`` each.
 
     Cubic convolution with a = -1/2, the interpolating member of that family: it passes
@@ -175,9 +201,7 @@ def taps_cubic(position: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarray
     Indices are clamped to the grid, so a stencil hanging off the edge repeats the edge
     vertex -- the same answer the field's own reader gives past its last row.
     """
-    base = np.floor(position).astype(np.int64)
-    t = (position - base).astype(np.float32)
-    index = np.stack([np.clip(base + offset, 0, limit - 1) for offset in (-1, 0, 1, 2)])
+    index, t = _four_taps(position, limit)
     weight = np.stack(
         [
             0.5 * t * (t * (2.0 - t) - 1.0),
@@ -189,35 +213,20 @@ def taps_cubic(position: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarray
     return index, weight
 
 
-class PchipTaps(tuple):
-    """``(index, t)``: the four clamped indices around each position and its cell fraction.
-
-    A type of its own because PCHIP's weights depend on the data, so ``sample_surface`` has
-    to know it was handed positions rather than weights.
-    """
-
-    __slots__ = ()
-
-    def __new__(cls, index, t):
-        return super().__new__(cls, (index, t))
-
-
-def taps_pchip(position: np.ndarray, limit: int) -> PchipTaps:
+def taps_pchip(position: F64Grid, limit: int) -> PchipTaps:
     """The same four indices as ``taps_cubic``, with the fraction instead of weights."""
-    base = np.floor(position).astype(np.int64)
-    t = (position - base).astype(np.float32)
-    index = np.stack([np.clip(base + offset, 0, limit - 1) for offset in (-1, 0, 1, 2)])
-    return PchipTaps(index, t)
+    return PchipTaps(*_four_taps(position, limit))
 
 
-def pchip_slope(left: np.ndarray, right: np.ndarray) -> np.ndarray:
+def pchip_slope(left: F32Grid, right: F32Grid) -> F32Grid:
     """Fritsch-Butland: the harmonic mean of two secants, zero unless they agree in sign."""
     agree = left * right > 0
     total = np.where(agree, left + right, np.float32(1.0))
     return np.where(agree, 2.0 * left * right / total, np.float32(0.0)).astype(np.float32)
 
 
-def pchip_1d(p0, p1, p2, p3, t):
+def pchip_1d(p0: F32Grid, p1: F32Grid, p2: F32Grid, p3: F32Grid,
+             t: F32Grid) -> NDArray[np.floating]:  # fmt: skip
     """Cubic Hermite between ``p1`` and ``p2``; never leaves ``[min, max]`` of the two."""
     middle = p2 - p1
     d1 = pchip_slope(p1 - p0, middle)
@@ -232,7 +241,12 @@ def pchip_1d(p0, p1, p2, p3, t):
     )
 
 
-def resample_pchip(raster: np.ndarray, rows: PchipTaps, cols: PchipTaps, nodata: int):
+def _pchip_taps(values: Sequence[F32Grid], t: F32Grid) -> NDArray[np.floating]:
+    return pchip_1d(values[0], values[1], values[2], values[3], t)
+
+
+def resample_pchip(raster: Plane, rows: PchipTaps, cols: PchipTaps,
+                   nodata: int) -> tuple[F32Grid, BoolMask]:  # fmt: skip
     """Separable PCHIP onto the output grid. Returns ``(values, whole)``.
 
     x first over the contiguous slab of source rows, then y, as ``resample`` does.
@@ -243,15 +257,16 @@ def resample_pchip(raster: np.ndarray, rows: PchipTaps, cols: PchipTaps, nodata:
     slab = raster[low : high + 1]
     known = slab != nodata
     values = np.where(known, slab, 0).astype(np.float32)
-    across = pchip_1d(*(values[:, col_index[tap]] for tap in range(4)), col_t[None, :])
+    across = _pchip_taps([values[:, col_index[tap]] for tap in range(4)], col_t[None, :])
     across_whole = np.logical_and.reduce([known[:, col_index[tap]] for tap in range(4)])
     picked = [row_index[tap] - low for tap in range(4)]
-    total = pchip_1d(*(across[index] for index in picked), row_t[:, None])
+    total = _pchip_taps([across[index] for index in picked], row_t[:, None])
     whole = np.logical_and.reduce([across_whole[index] for index in picked])
     return total.astype(np.float32), whole
 
 
-def resample(raster: np.ndarray, rows, cols, nodata: int | None):
+def resample(raster: Plane, rows: AxisTaps, cols: AxisTaps,
+             nodata: int | None) -> tuple[F32Grid, F32Grid]:  # fmt: skip
     """Separable interpolation of ``raster`` onto the output grid. Returns (sum, weight).
 
     Separable, and in that order: the output rows a band needs come from one CONTIGUOUS run
@@ -291,14 +306,8 @@ def resample(raster: np.ndarray, rows, cols, nodata: int | None):
     return total, total_weight
 
 
-#: How far the cubic stencil's own weights may fall from one before this file stops
-#: believing it. They sum to one exactly wherever every texel under the stencil has a value,
-#: so anything below this is a stencil straddling the edge of the data, where a kernel with
-#: negative lobes has no business extrapolating.
-STENCIL_WHOLE = 1.0 - 1e-4
-
-
-def sample_surface(raster: np.ndarray, smooth_taps, linear, nodata: int):
+def sample_surface(raster: Plane, smooth_taps: Taps | tuple[PchipTaps, PchipTaps], linear: Taps,
+                   nodata: int) -> tuple[F32Grid, BoolMask]:  # fmt: skip
     """A height raster on the output grid: the smooth kernel inside the data, bilinear at its edge.
 
     Returns ``(values, missing)``. ``smooth_taps`` is a ``(rows, cols)`` pair of
@@ -306,10 +315,11 @@ def sample_surface(raster: np.ndarray, smooth_taps, linear, nodata: int):
     used; where it is not the 2x2 answer is; and where even that has nothing under it the
     caller paints the page's sea.
     """
-    if isinstance(smooth_taps[0], PchipTaps):
-        smooth, whole = resample_pchip(raster, *smooth_taps, nodata)
+    rows, cols = smooth_taps
+    if isinstance(rows, PchipTaps) and isinstance(cols, PchipTaps):
+        smooth, whole = resample_pchip(raster, rows, cols, nodata)
     else:
-        smooth, smooth_weight = resample(raster, *smooth_taps, nodata)
+        smooth, smooth_weight = resample(raster, rows, cols, nodata)
         whole = smooth_weight >= STENCIL_WHOLE
     flat, flat_weight = resample(raster, *linear, nodata)
     missing = flat_weight <= 0.0
@@ -317,13 +327,13 @@ def sample_surface(raster: np.ndarray, smooth_taps, linear, nodata: int):
     return np.where(whole, smooth, near), missing
 
 
-def reads_nothing(raster: np.ndarray, taps) -> bool:
+def reads_nothing(raster: Plane, taps: Taps) -> bool:
     """True when every texel under these taps' rows is zero, so any sample of it is 0.0."""
     (row_index, _weight), _cols = taps
     return not raster[int(row_index.min()) : int(row_index.max()) + 1].any()
 
 
-def sample_plain(raster: np.ndarray, taps) -> np.ndarray:
+def sample_plain(raster: Plane, taps: Taps) -> F32Grid:
     """A raster with no holes in it, interpolated onto the output grid. Nothing clipped.
 
     The weights of either kernel sum to one and there is no no-data to renormalise around,
@@ -348,7 +358,7 @@ def sample_plain(raster: np.ndarray, taps) -> np.ndarray:
     return total
 
 
-def sample_coverage(plane: np.ndarray, taps) -> np.ndarray:
+def sample_coverage(plane: Plane, taps: Taps) -> F32Grid:
     """What fraction of the ground under each output pixel is in some category, in [0, 1].
 
     Bilinear and never cubic: a category is a yes or a no on a 1 m grid, and what is wanted
@@ -358,10 +368,14 @@ def sample_coverage(plane: np.ndarray, taps) -> np.ndarray:
     return np.clip(sample_plain(plane, taps), 0.0, 1.0)
 
 
-def class_taps(plane: np.ndarray, taps) -> list[tuple[np.ndarray, np.ndarray]]:
+#: A class plane's bilinear taps: ``(class, weight)`` for each of the four.
+ClassTaps: TypeAlias = list[tuple[NDArray[np.integer], F32Grid]]
+
+
+def class_taps(plane: NDArray[np.integer], taps: Taps) -> ClassTaps:
     """The four bilinear taps of a class plane: ``(class, weight)``, weight 0 on class 0."""
     (row_index, row_weight), (col_index, col_weight) = taps
-    out = []
+    out: ClassTaps = []
     for i in range(2):
         for j in range(2):
             cls = plane[np.ix_(row_index[i], col_index[j])]
@@ -377,8 +391,8 @@ class ClassMix:
     row ``fallback``. Only the mixed pixels are weighted, so a band costs one row array.
     """
 
-    def __init__(self, found, fallback: int):
-        first = np.full(found[0][0].shape, fallback, np.uint8)
+    def __init__(self, found: ClassTaps, fallback: int) -> None:
+        first: NDArray[np.integer] = np.full(found[0][0].shape, fallback, np.uint8)
         for cls, weight in reversed(found):
             first = np.where(weight > 0, cls, first)
         uniform = np.ones(first.shape, bool)
@@ -393,7 +407,7 @@ class ClassMix:
             int(c) for cls, _w in self.taps for c in np.unique(cls)
         }
 
-    def of(self, table: np.ndarray) -> np.ndarray:
+    def of(self, table: ArrayLike) -> F32Grid:
         out = np.asarray(table, np.float32)[self.first]
         if len(self.mixed[0]):
             acc = sum(w[:, None] * np.asarray(table, np.float32)[c] for c, w in self.taps)
@@ -401,7 +415,8 @@ class ClassMix:
         return out
 
 
-def sample_noise(fields, rows: np.ndarray, cols: np.ndarray, size: int) -> np.ndarray:
+def sample_noise(fields: Iterable[tuple[F32Grid, float]], rows: NDArray[np.integer],
+                 cols: NDArray[np.integer], size: int) -> F32Grid:  # fmt: skip
     """The octaves added up at these output pixels, as a multiplier around 1."""
     out = np.ones((len(rows), len(cols)), np.float32)
     for field, amount in fields:
@@ -417,7 +432,7 @@ _PRIMES = (0x9E3779B97F4A7C15, 0xC2B2AE3D27D4EB4F, 0x165667B19E3779F9)
 _FMIX = (np.uint64(0xFF51AFD7ED558CCD), np.uint64(0xC4CEB9FE1A85EC53))
 
 
-def _lattice(i, j, seed: int) -> np.ndarray:
+def _lattice(i: I64Grid, j: I64Grid, seed: int) -> F32Grid:
     """A value in [0, 1) per integer lattice point: a hash of the point and ``seed``."""
     mixed = (seed * _PRIMES[2]) & _MASK64
     h = i.astype(np.uint64) * np.uint64(_PRIMES[0]) + j.astype(np.uint64) * np.uint64(_PRIMES[1])
@@ -428,24 +443,25 @@ def _lattice(i, j, seed: int) -> np.ndarray:
     return (h >> np.uint64(40)).astype(np.float32) / np.float32(1 << 24)
 
 
-def patch_noise(x_m, y_m, octaves, seed: int) -> np.ndarray:
+def patch_noise(x_m: ArrayLike, y_m: ArrayLike, octaves: Sequence[tuple[float, float]],
+                seed: int) -> F32Grid:  # fmt: skip
     """Value noise in [0, 1] at points in metres from the frame's corner: per octave
     ``(wavelength m, amount)`` a hashed lattice blended by smoothstep, mixed by amount. The
     lattice is hashed once over the points' extent and its corners gathered from it."""
-    x_m, y_m = np.broadcast_arrays(np.asarray(x_m, np.float64), np.asarray(y_m, np.float64))
-    total = np.zeros(x_m.shape, np.float32)
-    if not x_m.size:
+    xs, ys = np.broadcast_arrays(np.asarray(x_m, np.float64), np.asarray(y_m, np.float64))
+    total = np.zeros(xs.shape, np.float32)
+    if not xs.size:
         return total
     for k, (wavelength, amount) in enumerate(octaves):
-        u, v = x_m / wavelength, y_m / wavelength
+        u, v = xs / wavelength, ys / wavelength
         i, j = np.floor(u), np.floor(v)
         su, sv = (t * t * (3.0 - 2.0 * t) for t in (u - i, v - j))
-        i, j = i.astype(np.int64), j.astype(np.int64)
-        i0, j0 = int(i.min()), int(j.min())
-        width = int(i.max()) - i0 + 2
-        cols, rows = np.arange(i0, i0 + width), np.arange(j0, int(j.max()) + 2)
+        ii, jj = i.astype(np.int64), j.astype(np.int64)
+        i0, j0 = int(ii.min()), int(jj.min())
+        width = int(ii.max()) - i0 + 2
+        cols, rows = np.arange(i0, i0 + width), np.arange(j0, int(jj.max()) + 2)
         table = _lattice(cols[None, :], rows[:, None], seed + k).ravel()
-        at = (j - j0) * width + (i - i0)
+        at = (jj - j0) * width + (ii - i0)
         corner = [table[at + offset] for offset in (0, 1, width, width + 1)]
         near = corner[0] + (corner[1] - corner[0]) * su
         far = corner[2] + (corner[3] - corner[2]) * su

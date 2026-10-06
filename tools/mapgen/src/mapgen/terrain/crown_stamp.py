@@ -8,9 +8,12 @@ returns.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy import ndimage
 
 from mapgen.gamedata.vegetation.crown_sprites import (
@@ -18,14 +21,17 @@ from mapgen.gamedata.vegetation.crown_sprites import (
     MATERIAL_NONE,
     SPRITE_M,
     SPRITES_NAME,
+    CrownSpecies,
     decode_records,
     decode_sprites,
 )
 from mapgen.terrain.render_meshes import is_render_only_foliage
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid
 
 __all__ = [
     "COVER_TOP_MIN",
     "DOME_SIGMA_M",
+    "CrownBand",
     "CrownSet",
     "load_crowns",
     "meshed_species",
@@ -39,6 +45,19 @@ DOME_SIGMA_M = 0.75
 COVER_TOP_MIN = 0.25
 #: Channels of a mip: cover, cover-weighted linear rgb (3), dome height (m), top (cm).
 _COVER, _RGB, _DOME, _TOP = 0, slice(1, 4), 4, 5
+#: A crown's colour where its material names none.
+_FALLBACK_RGB = (0.05, 0.08, 0.03)
+
+
+class CrownBand(TypedDict):
+    """The crowns stamped over a band: cover, linear colour, dome and top; the painter adds
+    the dome's sun."""
+
+    cover: F32Grid
+    rgb: F32Grid
+    dome_m: F32Grid
+    top_cm: F32Grid
+    ndl: NotRequired[F32Grid]
 
 
 class CrownSet:
@@ -49,23 +68,25 @@ class CrownSet:
     species' names, as the paint store gives them.
     """
 
-    def __init__(self, records, levels, origins, reach_cm, mid_cm, top_cm, names=()):
+    def __init__(self, records: NDArray[np.void], levels: list[list[F32Grid]],
+                 origins: list[tuple[float, float]], reach_cm: F32Grid, mid_cm: F32Grid,
+                 top_cm: F32Grid, names: Sequence[str] = ()) -> None:  # fmt: skip
         self.records = records[np.argsort(records["y"], kind="stable")]
         self.levels, self.origins, self.names = levels, origins, list(names)
-        k, rec = self.records["species"], self.records
+        species, rec = self.records["species"], self.records
         lean = np.hypot(rec["axis_x"], rec["axis_y"])
-        self.lift_cm = mid_cm[k] * rec["scale_z"]
-        self.height_cm = rec["z"] + top_cm[k] * rec["scale_z"] * rec["axis_z"]
-        self.reach_cm = reach_cm[k] * rec["scale"] + top_cm[k] * rec["scale_z"] * lean
+        self.lift_cm = mid_cm[species] * rec["scale_z"]
+        self.height_cm = rec["z"] + top_cm[species] * rec["scale_z"] * rec["axis_z"]
+        self.reach_cm = reach_cm[species] * rec["scale"] + top_cm[species] * rec["scale_z"] * lean
         self.max_reach_cm = float(self.reach_cm.max()) if len(rec) else 0.0
 
 
-def sprite_levels(sprite: dict, colours: list) -> list[np.ndarray]:
+def sprite_levels(sprite: dict, colours: Sequence[Sequence[float] | None]) -> list[F32Grid]:
     """One species' mips: level 0 at ``SPRITE_M``, each next one twice as coarse."""
     cover = sprite["cover"].astype(np.float32) / 255.0
     slot = sprite["slot"]
     rgb = np.zeros((*cover.shape, 3), np.float32)
-    fallback = np.array(next((c for c in colours if c is not None), (0.05, 0.08, 0.03)))
+    fallback = np.array(next((c for c in colours if c is not None), _FALLBACK_RGB))
     for k in np.unique(slot):
         if k == MATERIAL_NONE:
             continue
@@ -73,7 +94,7 @@ def sprite_levels(sprite: dict, colours: list) -> list[np.ndarray]:
         rgb[slot == k] = colour
     top = np.where(cover >= COVER_TOP_MIN, sprite["top_cm"].astype(np.float32), 0.0)
     dome = ndimage.gaussian_filter(cover * top / 100.0, DOME_SIGMA_M / SPRITE_M)
-    level = np.dstack([cover, rgb * cover[..., None], dome, top]).astype(np.float32)
+    level: F32Grid = np.dstack([cover, rgb * cover[..., None], dome, top]).astype(np.float32)
     out = [level]
     while max(level.shape[:2]) > 2:
         h, w = level.shape[0] + level.shape[0] % 2, level.shape[1] + level.shape[1] % 2
@@ -85,7 +106,7 @@ def sprite_levels(sprite: dict, colours: list) -> list[np.ndarray]:
     return [np.pad(level, ((1, 1), (1, 1), (0, 0))) for level in out]
 
 
-def meshed_species(species: list[dict]) -> np.ndarray:
+def meshed_species(species: list[CrownSpecies]) -> BoolMask:
     """Per species, whether the render-only mesh pass draws it: the coral trees."""
     return np.array([is_render_only_foliage(e.get("mesh", "")) for e in species], bool)
 
@@ -104,7 +125,11 @@ def load_crowns(paint_dir: Path, meta: dict) -> CrownSet | None:
     sprites = decode_sprites(
         (paint_dir / SPRITES_NAME).read_bytes(), [entry["sprite"] for entry in species]
     )
-    levels, origins, reach, mid, high = [], [], [], [], []
+    levels: list[list[F32Grid]] = []
+    origins: list[tuple[float, float]] = []
+    reach: list[float] = []
+    mid: list[float] = []
+    high: list[float] = []
     for entry, sprite in zip(species, sprites, strict=True):
         colours = [m["linear"] for m in entry["materials"]]
         levels.append(sprite_levels(sprite, colours))
@@ -118,12 +143,13 @@ def load_crowns(paint_dir: Path, meta: dict) -> CrownSet | None:
         far = np.hypot(x0 + (xs + 0.5) * step, y0 + (ys + 0.5) * step)
         reach.append(float(far.max()) + 2 * step if len(far) else 0.0)
     return CrownSet(
-        records, levels, origins, *(np.array(v, np.float32) for v in (reach, mid, high)),
-        [entry.get("name", "") for entry in species],
+        records, levels, origins, np.array(reach, np.float32), np.array(mid, np.float32),
+        np.array(high, np.float32), [entry.get("name", "") for entry in species],
     )  # fmt: skip
 
 
-def _bilinear(level: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+def _bilinear(level: F32Grid, u: NDArray[np.floating],
+              v: NDArray[np.floating]) -> NDArray[np.floating]:  # fmt: skip
     """A zero-bordered mip sampled at texel coordinates ``(u, v)`` inside its rim."""
     w = level.shape[1]
     flat = level.reshape(-1, level.shape[2])
@@ -136,7 +162,8 @@ def _bilinear(level: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
     return top * (1 - fy) + bottom * fy
 
 
-def stamp_crowns(crowns: CrownSet, x0_cm, y0_cm, step_cm, rows, cols) -> dict:
+def stamp_crowns(crowns: CrownSet, x0_cm: float, y0_cm: float, step_cm: float, rows: int,
+                 cols: int) -> CrownBand:  # fmt: skip
     """One band of crowns on pixel centres: cover, linear colour, dome height, top.
 
     ``cover`` and ``rgb`` are composited front over back, tallest last; ``dome_m`` is the
@@ -157,7 +184,7 @@ def stamp_crowns(crowns: CrownSet, x0_cm, y0_cm, step_cm, rows, cols) -> dict:
     near &= (xs + reach >= x0_cm) & (xs - reach <= x0_cm + cols * step_cm)
     picked = picked[near]
     for i in picked[np.argsort(crowns.height_cm[picked], kind="stable")]:
-        _stamp(crowns, i, x0_cm, y0_cm, step_cm, (cover, rgb, dome, top))
+        _stamp(crowns, int(i), x0_cm, y0_cm, step_cm, (cover, rgb, dome, top))
     return {
         "cover": cover,
         "rgb": rgb,
@@ -166,14 +193,15 @@ def stamp_crowns(crowns: CrownSet, x0_cm, y0_cm, step_cm, rows, cols) -> dict:
     }
 
 
-def _stamp(crowns: CrownSet, i: int, x0_cm, y0_cm, step_cm, planes) -> None:
+def _stamp(crowns: CrownSet, i: int, x0_cm: float, y0_cm: float, step_cm: float,
+           planes: tuple[F32Grid, F32Grid, F32Grid, F32Grid]) -> None:  # fmt: skip
     cover, rgb, dome, top = planes
     rows, cols = cover.shape
     tree = crowns.records[i]
     reach_cm, lift_cm = float(crowns.reach_cm[i]), float(crowns.lift_cm[i])
-    k = int(tree["species"])
+    species = int(tree["species"])
     scale = float(tree["scale"])
-    levels = crowns.levels[k]
+    levels = crowns.levels[species]
     cx = float(tree["x"]) + lift_cm * float(tree["axis_x"])
     cy = float(tree["y"]) + lift_cm * float(tree["axis_y"])
     c0 = max(int(np.floor((cx - reach_cm - x0_cm) / step_cm)), 0)
@@ -183,10 +211,10 @@ def _stamp(crowns: CrownSet, i: int, x0_cm, y0_cm, step_cm, planes) -> None:
     if c0 >= c1 or r0 >= r1:
         return
     texel_cm = SPRITE_M * 100.0 * scale
-    lv = int(np.clip(np.round(np.log2(max(step_cm / texel_cm, 1.0))), 0, len(levels) - 1))
-    level = levels[lv]
-    texel = np.float32(texel_cm * (1 << lv))
-    ox, oy = crowns.origins[k]
+    mip_level = int(np.clip(np.round(np.log2(max(step_cm / texel_cm, 1.0))), 0, len(levels) - 1))
+    level = levels[mip_level]
+    texel = np.float32(texel_cm * (1 << mip_level))
+    ox, oy = crowns.origins[species]
     px = (x0_cm - cx + (np.arange(c0, c1, dtype=np.float32) + 0.5) * step_cm)[None, :]
     py = (y0_cm - cy + (np.arange(r0, r1, dtype=np.float32) + 0.5) * step_cm)[:, None]
     yaw = np.radians(float(tree["yaw"]))
@@ -203,7 +231,7 @@ def _stamp(crowns: CrownSet, i: int, x0_cm, y0_cm, step_cm, planes) -> None:
     under = cover[window][inside]
     cover[window][inside] = a + under * (1.0 - a)
     rgb[window][inside] = got[:, _RGB] + rgb[window][inside] * (1.0 - a)[:, None]
-    sz = float(tree["scale_z"])
-    dome[window][inside] = np.maximum(dome[window][inside], got[:, _DOME] * sz)
-    rise = np.where(a >= COVER_TOP_MIN, got[:, _TOP] * sz * float(tree["axis_z"]), -np.inf)
+    scale_z = float(tree["scale_z"])
+    dome[window][inside] = np.maximum(dome[window][inside], got[:, _DOME] * scale_z)
+    rise = np.where(a >= COVER_TOP_MIN, got[:, _TOP] * scale_z * float(tree["axis_z"]), -np.inf)
     top[window][inside] = np.maximum(top[window][inside], float(tree["z"]) + rise)
