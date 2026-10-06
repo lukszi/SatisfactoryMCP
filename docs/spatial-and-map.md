@@ -1662,7 +1662,8 @@ of section 31, then sRGB.
 
 **Water** is Beer-Lambert, calibrated against Spire Coast screenshots:
 `bed * T + W (1 - T) + 0.02 sky`, `T = exp(-k d)` with `k` = (4.08, 3.53, 3.53) per metre and
-`W` #577f7e, then blended towards the open sea #354e68 by `1 - exp(-d / 12 m)`. The bed is the
+`W` #577f7e, then blended towards the open sea #3c597d by `1 - exp(-d / 12 m)` (#354e68 through
+style version 15; section 33, "Sea deep and swamp water"). The bed is the
 ground colour times exposure times 0.8 (wet). Coral and shells are part of the bed: they are
 composited into the ground colour first, and the depth `d` is measured to the drawn surface,
 which over a mesh is the mesh top, so a shallow reef stays visible. The fit is six shallow
@@ -2267,7 +2268,7 @@ references were used:
 | Crowns, blue palms | everywhere, by hue | #3d627d | [six iron nodes](https://satisfactory.wiki.gg/images/Rocky_desert_six_Iron_nodes.jpg), high-angle daylight: the blue leaf pixels (hue 190 to 290, chroma at least 0.04) of five crowns pooled, then the method above. The [Rocky Desert area](https://satisfactory.wiki.gg/images/Rocky_Desert_Area.png) crowns agree on hue (242) but are seen from below; the [river split](https://satisfactory.wiki.gg/images/Rocky_Desert_river_split.png) crowns are backlit |
 | CoralRock layer | Blue Crater, Crater Lakes | #6c7386 | [crater ground at noon](https://steamcommunity.com/sharedfiles/filedetails/?id=3372405479) |
 | Shell meshes (the pale plates) | Blue Crater | #747b85 | [Blue Crater aerial](https://steamcommunity.com/sharedfiles/filedetails/?id=3579556500), [Blue Crater](https://satisfactory.wiki.gg/images/Blue_Crater.png), the noon crater shot |
-| Water, opaque | Swamp | #7e7372 | [Swamp](https://satisfactory.wiki.gg/images/Swamp.png), [Swamp 2024](https://steamcommunity.com/sharedfiles/filedetails/?id=3202456199), [Swamp 1.0](https://steamcommunity.com/sharedfiles/filedetails/?id=3344959083) |
+| Water, opaque | Swamp | #302627 | screenshot: 1.0 views from above, see section 33, "Sea deep and swamp water". It was #7e7372 through style version 15, measured through the swamp's fog on [Swamp](https://satisfactory.wiki.gg/images/Swamp.png), [Swamp 2024](https://steamcommunity.com/sharedfiles/filedetails/?id=3202456199) and [Swamp 1.0](https://steamcommunity.com/sharedfiles/filedetails/?id=3344959083) |
 | WetSand (global) | everywhere | #b1a09e | [Western Beaches](https://satisfactory.wiki.gg/images/Western_Beaches.png), [crash-beach store shot](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/526870/ss_279a1e122f86b7c98931b42e38cac0fa91b996ce.1920x1080.jpg) |
 
 Two readings in these references:
@@ -2588,7 +2589,8 @@ spiral sandbars, where no crater grass grows. Its cost was not measured separate
 Recipe 6 drew every water texel with one set of Beer-Lambert optics, the ones calibrated on
 the Spire Coast sea. Inland that read wrong: rivers came out sea-blue, the swamp a clear blue
 sheet, and sulfur ponds like the sea. The game-painted style now gives each water body a
-class and each class its own optics. The ocean keeps its calibrated values unchanged.
+class and each class its own optics. The ocean kept its calibrated values; only its deep
+colour has moved since (see "Sea deep and swamp water" below).
 
 ### The class plane
 
@@ -2711,20 +2713,25 @@ With turbidity 0 and a white bed tint this is the ocean's formula. Turbidity is 
 floor: murky water hides its bed even at the edge. The bed tint stands for a stained bed,
 the sulfur pond's orange rim.
 
+Each source is tagged: **screenshot** (measured on in-game pictures), **game data** (read
+from the material), **fit** (fitted to screenshots through a model) or **none**.
+
 | Class | Body | Deep | k (r, g, b) /m | Turbidity | Source |
 |---|---|---|---|---|---|
-| river | #4f7d78 | #2e5054 | 2.4, 1.6, 1.6 | 0 | Hue from the wiki's Rocky Desert river; clear, so the bed shows |
-| lake | #56745b | #375a58 | 3.0, 2.2, 2.6 | 0.1 | Body: jade near the shore. Deep: teal from 1.0 top-down screenshots (see "Lake colours") |
-| lake_blue | #4a8494 | #22485a | 3.4, 1.0, 0.75 | 0 | `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
-| swamp | #7e6e6a | #726360 | 4.0, 4.5, 5.0 | 0.45 | Wiki Swamp: opaque mauve-brown mud |
-| cave | #2f4a47 | #1c2e2d | 3.0, 2.5, 2.5 | 0 | Dark; no reference |
-| sulfur | #67a395 | #3f8a7e | 3.0, 2.0, 2.0 | 0.3 | `SulfurPond_Inst`: deep (0.17, 1, 0.89) cyan, shallow (1, 0.26, 0) orange as the bed tint |
-| hot_spring | #68a098 | #46827d | 2.5, 1.6, 1.5 | 0.2 | Milky turquoise; no reference |
+| ocean (the `water` block) | #577f7e | #3c597d | 4.08, 3.53, 3.53 | 0 | fit: body and k on Spire Coast screenshots (section 27). Deep: screenshot, the 1.0 open sea from above (see "Sea deep and swamp water") |
+| river | #4f7d78 | #2e5054 | 2.4, 1.6, 1.6 | 0 | screenshot: hue from the wiki's Rocky Desert river; clear, so the bed shows |
+| lake | #56745b | #375a58 | 3.0, 2.2, 2.6 | 0.1 | screenshot: body jade near the shore; deep teal from 1.0 top-down screenshots (see "Lake colours") |
+| lake_blue | #4a8494 | #22485a | 3.4, 1.0, 0.75 | 0 | game data: `MI_Lake_Blue_01` absorption (0.52, 0.15, 0.11) |
+| swamp | #302627 | #302627 | 4.0, 4.5, 5.0 | 0.45 | screenshot: opaque near-black from above in 1.0 (see "Sea deep and swamp water") |
+| cave | #2f4a47 | #1c2e2d | 3.0, 2.5, 2.5 | 0 | none: dark |
+| sulfur | #67a395 | #3f8a7e | 3.0, 2.0, 2.0 | 0.3 | game data: `SulfurPond_Inst`, deep (0.17, 1, 0.89) cyan, shallow (1, 0.26, 0) orange as the bed tint |
+| hot_spring | #68a098 | #46827d | 2.5, 1.6, 1.5 | 0.2 | none: milky turquoise |
 
 Targets follow the Spire Coast calibration (section 27): the reference colour times 0.85
 linear for map exposure, OKLab L times 0.95 and chroma times 0.9. Against the references at
-assumed depths, Delta E (OKLab x100): swamp 3.7 at 1 m and 5.2 at 3 m, lake 1.9 at 2 m and
-4.5 at 4 m (with the old jade deep colour). Hue alone (the a, b distance) is under 1 for both.
+assumed depths, Delta E (OKLab x100): the old mauve swamp row 3.7 at 1 m and 5.2 at 3 m, lake
+1.9 at 2 m and 4.5 at 4 m (with the old jade deep colour). Hue alone (the a, b distance) was
+under 1 for both.
 The river references are a dusk shot at a grazing angle and a stream over white sand. They fix
 only the hue (a, b distance 1 to 3), not the lightness.
 
@@ -2770,11 +2777,107 @@ As lakes, these boxes also fall under step 2's hot-spring rule. The 230.3 m lake
 site at (1908, -2368) is a 114 m box holding three hot-spring terraces near (1918, -2428), so
 it draws as a hot spring (#5d968f at 2 to 4 m; 2.1 k texels on the field's own planes).
 
+### Sea deep and swamp water (2026-10-06)
+
+The open sea's deep colour and the swamp's water now come from 1.0 screenshots seen from
+above. Style `satellite-painted` is version 16.
+
+**One sky term.** Seen from above, deep water in the game is lit mostly by the sky it
+reflects: its materials absorb and scatter little. One sky term for every class, (0.026,
+0.047, 0.085) of the sun's light, put through the camera model with each material's own
+absorption over its bed, fits the 1.0 screenshots of the sea, lakes, rivers and swamp to a
+median Delta E of 5.2, most of it from depths that had to be guessed. Drawn alone it is
+#3c597d. A test that needs no depth, the distance to the nearest point of each class's
+colour-against-depth curve, gives the sea 2.8 against 3.9 for the old row. A reflection per
+material, by its Fresnel term, fits worse (13.2). The palette's own sky term, 0.02 of
+#96bee6, is about a fifteenth of the fitted one. Source: fit.
+
+**The sea.** Only the deep colour moves, from #354e68 to #3c597d; the body, the absorption and
+`deep_tau_m` stay. The full row the fit gives (k 1.69, 0.50, 0.36 per metre, 2.17 times the
+game's absorption, with body and deep both #3c597d) would also draw the 1.0 lagoons blue, at
+hue 228, where the screenshots read teal, so it is not taken. Source: screenshot, measured by
+the method of section 31:
+
+| Shot | What, light | Reading |
+| --- | --- | --- |
+| [3557686632](https://steamcommunity.com/sharedfiles/filedetails/?id=3557686632) | 1.0, open sea from a high rock, clear, about 50 degrees down | deep #2b557c (h 248) |
+| [3735753140](https://steamcommunity.com/sharedfiles/filedetails/?id=3735753140) | 1.1, island fuel plant, clear, about 45 degrees | deep #385a85 (h 254), lagoon #3b6887 |
+| [3755331272](https://steamcommunity.com/sharedfiles/filedetails/?id=3755331272) | 1.2.3, sand-bar islands, clear | channel #4b6f88, far deep #4a5d7e |
+| [3552323039](https://steamcommunity.com/sharedfiles/filedetails/?id=3552323039) | lagoon over sand and coral, high angle, clear | bed showing #6ca0a7, open #3d6f7a |
+| [3771500868](https://steamcommunity.com/sharedfiles/filedetails/?id=3771500868) | Spire Coast lagoon, high oblique, clear | #78969e (h 216) |
+
+**The swamp.** `MI_WaterSwamp_Muddy` absorbs about 20 times what the sea does, so swamp water
+is opaque within 0.1 m and near-black from above. The opaque target goes from #7e7372 to
+#302627. Source: screenshot. A 1.0 video from a tower, looking down
+([UD_1Rz7xryg](https://www.youtube.com/watch?v=UD_1Rz7xryg&t=170)), reads #332d31, and
+cleared pools in 1.2 ([3743733077](https://steamcommunity.com/sharedfiles/filedetails/?id=3743733077))
+read #2c1f1d; the two pool to #302627.
+
+The old mauve was the swamp's fog. `Atmosphere_Swamp` inscatters #9977c1 (hue 304) at noon,
+at a density of 0.1 against the global 0.02 (source: game data). The wiki and Early Access
+shots the old target came from (#9f8a88, #857475, #7b7472) are lifted and tinted by it.
+Further off in the same video, through more of the fog, the water reads #4f494e. The fogged
+#4d4a4e is the fallback if the near-black ever reads as a hole.
+
+The swamp class row takes the same colour as its body and its deep colour, so swamp-class
+water outside `Area_Swamp`'s blur, which section 31's opaque colour does not reach, draws
+near-black too: #322a2d, where the sky's 0.02 reflection lifts it a little. A body of
+#302627 less that reflection (#2a180e) would land on the target exactly, but over so dark a
+body a crown sunk 0.3 m in the swamp showed more than in the sea, which murky water must not
+do (`tests/test_map_crowns_over_water.py`). Absorption, `deep_tau_m`, turbidity and the rule
+for which water takes the opaque colour (section 37, "Swamp water") are unchanged.
+
+**Measured.** Drawn by the painted layer's own water code (`band_water`, `class_optics`,
+`underwater`, the tone, then `with_void`) at 1 m on the field's own planes, with the open sea
+laid by `open_sea` from the artwork and the class plane from `classify`. The bed is the bake,
+unlit and uncalibrated, so only the absolute colour of the shallows is approximate. Medians
+of fully wet pixels clear of the void, display sRGB, on the ocean and west coast window at
+(-2515, 645):
+
+| Depth, as the optics read it | Before | After | Delta E |
+| --- | --- | --- | --- |
+| 0.5 to 1 m | #5b7f80 | #5c7f81 | 0.2 |
+| 1 to 2 m | #577d80 | #577e82 | 0.4 |
+| 2 to 4 m | #54797d | #547b81 | 0.7 |
+| 4 to 8 m | #4f7279 | #507580 | 1.2 |
+| 8 to 15 m | #476774 | #4a6c7f | 2.1 |
+| 15 to 30 m | #3c586c | #41607e | 3.5 |
+| 40 m, the open sea (the optics read no deeper) | #375169 | #3d5b7d | 4.2 |
+
+The two-colour ocean at (3326, -216), the sea off the swamp at (2554, 608) and the Spire
+lagoon at (16, -2137) agree within two levels per channel. Under 1 m no channel moves by
+more than one level, and a lagoon 1 to 2 m deep moves by 0.4. Where the open sea fades into
+the void, the colour still runs evenly to the page's navy: the median of each tenth of the
+void's cover goes from #3f5c7d at the sea's edge to #233340 (before, #3b566a to #23323f).
+The step between
+neighbouring pixels in the fade is unchanged in the two-colour window: median 0.32, p99 25.8
+against 25.5, the p99 from the lit rim and the land.
+
+Swamp water in the swamp at (2343, 291) and at (2554, 608):
+
+| Depth | Before | After |
+| --- | --- | --- |
+| 0.1 to 0.3 m | #7d706e | #3e3434 |
+| 0.3 to 1 m | #7e7271 | #32292a |
+| 1 to 2 m | #7e7372 | #302627 |
+
+Against the dark colours of the map (Delta E, OKLab x100), the new swamp water (L 0.28, hue
+11) is 16.8 from a pit's black (L 0.11) and 13.7 from its grey lit edge, and 20 from the open
+sea at 40 m (L 0.46). It is 6.2 from the page's navy past the world's edge, and 4.1 from the
+void where the sea fades into it (#1c2b37): the same lightness, the opposite hue. It meets
+only the sea and the land: in these windows the only no-data beside swamp water lies under
+rock, near (3000, 1150). The fogged #4d4a4e would sit 0.8 from a pit's lit edge and 2.5
+from the void's lit edge.
+
 ### Known limits
 
-- Only the lake class has been checked against screenshots from above, and only its hue band
-  (about 70 % confidence); no in-game top-down check over a known depth has been made. The
-  sulfur pond, hot spring and cave optics come from material parameters, not from pictures.
+- The lake, the sea's deep colour and the swamp have been checked against screenshots from
+  above; no in-game top-down check over a known depth has been made. A look from about 50 m
+  over the open sea at (-3000, 645) and over the swamp at (2343, 291) would settle the two
+  rows above. The sulfur pond, hot spring and cave optics come from material parameters,
+  not from pictures.
+- The sky fit also gives rows for the river, the blue lake and the Blue Crater's translucent
+  water, which the map draws as a lake. They are not applied.
 - Classes change at box edges. Where the water channel is itself built from boxes, as in the
   Red Bamboo terrace lakes near (420, 560), a chain of pools reads as a mosaic of classes.
 - Two bodies more than 0.5 m apart in level are judged apart. Where the field levelled them
@@ -2782,7 +2885,8 @@ it draws as a hot spring (#5d968f at 2 to 4 m; 2.1 k texels on the field's own p
   0.64 k texels of river edge on build 502094.
 - Where the swamp's lagoons open onto the sea, swamp turns to ocean along the edge of the
   opening: a line of 48 m arcs across one sheet of water, with nothing in the game to place
-  it better.
+  it better. With the near-black swamp the step across it is Delta E 26.7, against 5.8 with
+  the old mauve: at the mouths near (2931, 316) and (2931, 964) among others.
 - A box less than half a decimetre under the sea cannot be told from it by level. Two ponds
   inside the Rocky Desert's -17.046 m box, near (-989, -1,434) and (-978, -1,262), and two
   puddles beside them (6,993 texels in all) read the sea's level and draw as sea; the sea's
@@ -3258,7 +3362,7 @@ pixel, these rules decide.
 | Meshes standing in the water, lit | The lighting pyramid's surface is the first layer's. When that is a ground-and-water style, the render-only meshes standing in the water are water in it; the painted layer, drawn unlit after it, keeps the default sun's light of their own top on them. |
 | Crowns and water | A crown standing out of the water is composited after the water, the foam and the shore line, whole; one under the surface goes into the bed after section 32's carpet and before the open-sea term and section 31's opaque water, so the class optics, the open sea and the swamp's murk all apply to it (section 36, "Crowns and the water"). |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 15 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
+| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 16 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water; then section 33's sea deep colour and near-black swamp water). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |

@@ -93,7 +93,7 @@ STYLES: dict[str, dict] = {
     "satellite-biome": {"label": "satellite", "name": "Satellite", "layer": "satellite",
                         "version": 8, "tone": "light"},
     "satellite-painted": {"label": "game-painted", "name": "Painted", "layer": "painted",
-                          "version": 15, "tone": "light"},
+                          "version": 16, "tone": "light"},
     "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 6,
                      "tone": "light"},
     "relief-night": {"label": "relief dark", "name": "Relief (dark)", "layer": "relief-dark",
