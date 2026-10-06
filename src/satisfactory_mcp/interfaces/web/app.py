@@ -27,6 +27,7 @@ from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...core.gpu import vulkan_available
 from ...core.schema import NewerSchema
+from ...domain.maps import registry
 from ...domain.planning import siting
 from ...domain.planning.stored import planlog
 from ...domain.session import journal
@@ -36,6 +37,7 @@ from .guard import guard
 from .mapjobs import MapJobRunner
 from .pinning import pinning
 from .routers import ALL_ROUTERS
+from .routers.assets.maps import newer_map_list
 from .serial import RequestRefused, newer_schema_response
 from .watch.watcher import SaveWatcher
 
@@ -57,8 +59,15 @@ _NOT_BUILT = (
 
 def _newer_schema(request: Request, exc: NewerSchema) -> JSONResponse:
     """A 503 naming what cannot be read, never the file's path: nothing is written."""
-    what = "the factory names" if exc.path.parent == config.labels_dir() else "the plans"
-    return newer_schema_response(exc, what)
+    if exc.path == registry.manifest_path():
+        return newer_map_list(exc)
+    if exc.path.parent == config.labels_dir():
+        return newer_schema_response(exc, "the factory names")
+    if exc.path.is_relative_to(config.plans_dir()):
+        return newer_schema_response(exc, "the plans")
+    return newer_schema_response(
+        exc, "a data file", verb="was", ending="Upgrade to read it; nothing changed"
+    )
 
 
 async def _request_refused(request: Request, exc: RequestRefused) -> JSONResponse:

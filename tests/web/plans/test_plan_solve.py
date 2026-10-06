@@ -292,7 +292,8 @@ def test_plans_from_a_newer_schema_are_a_503_that_names_no_path(fresh_state_clie
     ):
         assert reply.status_code == 503, reply.text
         body = reply.json()
-        assert body["newer_schema"] is True and "newer version" in body["error"]
+        assert body["newer_schema"] is True
+        assert body["error"].startswith("the plans were saved by a newer version")
         assert str(user_data) not in body["error"] and "migrated.json" not in body["error"]
 
 

@@ -4195,6 +4195,8 @@ export interface components {
             keep_cache?: boolean;
             /** Restyle */
             restyle?: boolean;
+            /** Light */
+            light?: boolean;
             /** Enhance */
             enhance?: boolean;
             /** Tiles 2X */
