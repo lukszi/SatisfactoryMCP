@@ -67,7 +67,7 @@ COMMANDS = {
 }
 
 #: The modules the generators need from the ``gen`` extra.
-GEN_MODULES = ("ooz", "texture2ddecoder", "PIL")
+GEN_MODULES = ("ooz", "texture2ddecoder", "PIL", "zstandard")
 
 #: Seconds per stage of one full 32768 px render of both layers, from its log (2026-10-05).
 #: ``fixed`` stages do not scale with the sheet; the rest scale with its area, and ``direct``

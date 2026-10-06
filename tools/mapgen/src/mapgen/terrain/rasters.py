@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 import numpy as np
@@ -16,8 +17,11 @@ from mapgen.cache import (
     MESH_CACHE_SIDECAR,
     MESH_CLASS_NAME,
     MESH_Z_NAME,
+    STORAGE_BANDS,
     cached_meshes,
+    clear_planes,
     mesh_stamp,
+    plane_writer,
 )
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.mesh import (
@@ -421,12 +425,13 @@ def rasterise_direct(
     subsamples: int,
     stamp: dict,
     progress: bool,
+    storage: str = STORAGE_BANDS,
 ) -> dict:
     """Rasterise every placed rock into the render's own grid, banded, onto disk.
 
     Banded because a 32768 square of float32 is 4.3 GB and the render already holds 3.2 GB
     of output; 256 rows is 34 MB. On disk because the answer is the same for both layers and
-    rasterising 216 M triangles is twenty minutes. The two maps are written beside a sidecar
+    rasterising 216 M triangles is twenty minutes. The planes are written beside a sidecar
     naming what they are of, and ``cached_direct`` refuses anything that does not match
     rather than drawing last week's rocks under this week's field.
 
@@ -434,49 +439,49 @@ def rasterise_direct(
     """
     directory.mkdir(parents=True, exist_ok=True)
     (directory / DIRECT_CACHE_SIDECAR).unlink(missing_ok=True)
-    z = np.memmap(directory / DIRECT_Z_NAME, np.float32, "w+", shape=(size, size))
-    coverage = np.memmap(directory / DIRECT_COVERAGE_NAME, np.uint8, "w+", shape=(size, size))
-    family = None
+    clear_planes(directory, (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME, DIRECT_FAMILY_NAME))
     step_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / size
     x0_cm = BOUNDS_M["x_min_m"] * 100
     covered = 0
     started = time.time()
-    for band, top in enumerate(range(0, size, DIRECT_BAND_ROWS)):
-        bottom = min(top + DIRECT_BAND_ROWS, size)
-        rows = bottom - top
-        sub = band_raster(
-            x0_cm,
-            BOUNDS_M["y_min_m"] * 100 + top * step_cm,
-            step_cm,
-            rows,
-            size,
-            subsamples,
-        )
-        if isinstance(sub, tuple):
-            if family is None:
-                family = np.memmap(
-                    directory / DIRECT_FAMILY_NAME, np.uint8, "w+", shape=(size, size)
-                )
-            family[top:bottom] = reduce_source(*sub, rows, size, subsamples)
-            sub = sub[0]
-        band_z, band_coverage = reduce_direct(sub, rows, size, subsamples)
-        z[top:bottom] = band_z
-        coverage[top:bottom] = band_coverage
-        covered += int(np.count_nonzero(band_coverage))
-        if progress and band % 8 == 0:
-            print(
-                f"  {directory.name}: {bottom / size:5.1%} of {size}x{size} at "
-                f"{step_cm / 100 / subsamples:.4f} m, {covered / 1e6:.1f} M texels, "
-                f"{time.time() - started:5.1f}s",
-                flush=True,
+    with ExitStack() as planes:
+
+        def writer(name):
+            return planes.enter_context(
+                plane_writer(directory, name, size, storage, DIRECT_BAND_ROWS)
             )
-    z.flush()
-    coverage.flush()
-    if family is not None:
-        family.flush()
-    del z, coverage, family
+
+        z, coverage, family = writer(DIRECT_Z_NAME), writer(DIRECT_COVERAGE_NAME), None
+        for band, top in enumerate(range(0, size, DIRECT_BAND_ROWS)):
+            bottom = min(top + DIRECT_BAND_ROWS, size)
+            rows = bottom - top
+            sub = band_raster(
+                x0_cm,
+                BOUNDS_M["y_min_m"] * 100 + top * step_cm,
+                step_cm,
+                rows,
+                size,
+                subsamples,
+            )
+            if isinstance(sub, tuple):
+                if family is None:
+                    family = writer(DIRECT_FAMILY_NAME)
+                family.write(top, reduce_source(*sub, rows, size, subsamples))
+                sub = sub[0]
+            band_z, band_coverage = reduce_direct(sub, rows, size, subsamples)
+            z.write(top, band_z)
+            coverage.write(top, band_coverage)
+            covered += int(np.count_nonzero(band_coverage))
+            if progress and band % 8 == 0:
+                print(
+                    f"  {directory.name}: {bottom / size:5.1%} of {size}x{size} at "
+                    f"{step_cm / 100 / subsamples:.4f} m, {covered / 1e6:.1f} M texels, "
+                    f"{time.time() - started:5.1f}s",
+                    flush=True,
+                )
     stats = {
         **stamp,
+        "storage": storage,
         "sub_texel_m": round(step_cm / 100 / subsamples, 5),
         "texels_with_geometry": covered,
         "share_of_the_sheet": round(100 * covered / (size * size), 3),
@@ -638,35 +643,37 @@ def rasterise_mesh_band(prepared: dict, x0_cm, y0_cm, scale_cm, rows, cols):
 
 
 def rasterise_meshes(
-    prepared, directory: Path, stamp: dict, bounds_m: dict, band_rows: int, progress: bool
-) -> dict:
+    prepared, directory: Path, stamp: dict, bounds_m: dict, band_rows: int, progress: bool,
+    storage: str = STORAGE_BANDS,
+) -> dict:  # fmt: skip
     """Rasterise the render-only meshes into the render's grid, banded, onto disk."""
     size = stamp["size"]
     directory.mkdir(parents=True, exist_ok=True)
     (directory / MESH_CACHE_SIDECAR).unlink(missing_ok=True)
-    z_map = np.memmap(directory / MESH_Z_NAME, np.float32, "w+", shape=(size, size))
-    class_map = np.memmap(directory / MESH_CLASS_NAME, np.uint8, "w+", shape=(size, size))
+    clear_planes(directory, (MESH_Z_NAME, MESH_CLASS_NAME))
     step_cm = (bounds_m["x_max_m"] - bounds_m["x_min_m"]) * 100 / size
     covered, started = 0, time.time()
-    for band, top in enumerate(range(0, size, band_rows)):
-        bottom = min(top + band_rows, size)
-        y0 = bounds_m["y_min_m"] * 100 + top * step_cm
-        z, cls = rasterise_mesh_band(
-            prepared, bounds_m["x_min_m"] * 100, y0, step_cm, bottom - top, size
-        )
-        z_map[top:bottom] = np.where(cls > 0, z, 0.0)
-        class_map[top:bottom] = cls
-        covered += int(np.count_nonzero(cls))
-        if progress and band % 16 == 0:
-            print(
-                f"  {directory.name}: {bottom / size:5.1%}, {covered / 1e6:.2f} M texels, "
-                f"{time.time() - started:5.1f}s",
-                flush=True,
+    with (
+        plane_writer(directory, MESH_Z_NAME, size, storage, band_rows) as z_map,
+        plane_writer(directory, MESH_CLASS_NAME, size, storage, band_rows) as class_map,
+    ):
+        for band, top in enumerate(range(0, size, band_rows)):
+            bottom = min(top + band_rows, size)
+            y0 = bounds_m["y_min_m"] * 100 + top * step_cm
+            z, cls = rasterise_mesh_band(
+                prepared, bounds_m["x_min_m"] * 100, y0, step_cm, bottom - top, size
             )
-    z_map.flush()
-    class_map.flush()
-    del z_map, class_map
-    stats = {**stamp, "texels": covered, "seconds": round(time.time() - started, 1)}
+            z_map.write(top, np.where(cls > 0, z, 0.0))
+            class_map.write(top, cls)
+            covered += int(np.count_nonzero(cls))
+            if progress and band % 16 == 0:
+                print(
+                    f"  {directory.name}: {bottom / size:5.1%}, {covered / 1e6:.2f} M texels, "
+                    f"{time.time() - started:5.1f}s",
+                    flush=True,
+                )
+    stats = {**stamp, "storage": storage, "texels": covered,
+             "seconds": round(time.time() - started, 1)}  # fmt: skip
     (directory / MESH_CACHE_SIDECAR).write_text(json.dumps(stats, indent=1), encoding="utf-8")
     return stats
 

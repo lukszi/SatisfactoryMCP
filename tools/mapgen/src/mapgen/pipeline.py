@@ -349,7 +349,7 @@ def main() -> int:
         print(refusal)
         return IN_USE
 
-    versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
+    versions = require_gen("ooz", "texture2ddecoder", "PIL.Image", "zstandard")
     pillow_version, pyooz_version = versions["pillow"], versions["pyooz"]
     import texture2ddecoder as decoder
 
