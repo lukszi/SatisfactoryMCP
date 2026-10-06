@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Self
+from typing import NamedTuple, Protocol, Self, TypeAlias, TypedDict
 
 import numpy as np
 
@@ -76,6 +76,78 @@ BANDS_SUFFIX = ".bands"
 #: triangle at the 0.48 m median touches one band or two, so a per-placement y-bbox test is
 #: all the selection needed. Also the colour bands' size and one row of 256 px tiles.
 DIRECT_BAND_ROWS = 256
+
+
+#: A raster plane as a cache hands it out: a raw memory map, or the band store's reader.
+Plane: TypeAlias = np.ndarray | BandArray
+
+
+class ReadPlane(Protocol):
+    """What a drawer reads from a plane: its shape, and rows and columns cut out of it."""
+
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+
+    def __getitem__(self, key: slice | tuple[slice, slice], /) -> np.ndarray: ...
+
+
+class DirectPlanes(NamedTuple):
+    """The direct raster as the band loop takes it, with the ground it composes over."""
+
+    z: Plane
+    coverage: Plane
+    ground: np.ndarray
+    subsamples: int
+
+
+class TopPlanes(NamedTuple):
+    """The arch-and-boulder overlay: its max-Z, its coverage, and the samples per texel."""
+
+    z: Plane
+    coverage: Plane
+    subsamples: int
+
+
+class MeshPlanes(NamedTuple):
+    """The render-only meshes: z in cm, the class code, and the rock family where written."""
+
+    z_cm: Plane
+    cls: Plane
+    family: Plane | None = None
+
+
+class TitanPlanes(NamedTuple):
+    """The Titan trees' mesh raster, ``factor`` render pixels to its texel, from an origin."""
+
+    z_cm: Plane
+    cls: Plane
+    factor: int
+    row0: int
+    col0: int
+
+
+class DirectStamp(TypedDict):
+    """``raster_cache_stamp``: what a direct or top cache must agree with to be read."""
+
+    size: int
+    subsamples: int
+    game_version_pinned: str | None
+    families: int
+
+
+class MeshStamp(TypedDict):
+    """``mesh_stamp``: the mesh and Titan caches' key."""
+
+    size: int
+    game_version_pinned: str | None
+    reader_version: int
+
+
+class RiverStamp(TypedDict):
+    """``river_stamp``: the river cache's key."""
+
+    game_version_pinned: str | None
+    reader_version: int
 
 
 def direct_cache_dir(out_dir: Path, name: str = RENDERS_DIR_NAME) -> Path:

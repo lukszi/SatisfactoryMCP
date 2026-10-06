@@ -8,6 +8,7 @@ species. docs/spatial-and-map.md section 36 describes both and how they are draw
 from __future__ import annotations
 
 import zlib
+from typing import Required, TypedDict
 
 import numpy as np
 
@@ -31,6 +32,8 @@ __all__ = [
     "SPRITES_NAME",
     "SPRITE_M",
     "TAU_MAX",
+    "CrownMaterial",
+    "CrownSpecies",
     "build_crowns",
     "crown_records",
     "decode_records",
@@ -46,6 +49,27 @@ __all__ = [
     "species_name",
     "stamp_tops",
 ]
+
+
+class CrownMaterial(TypedDict):
+    """One material slot of a tree species: its path, kind, mean linear colour and opacity."""
+
+    path: str
+    kind: str
+    linear: list[float] | None
+    opacity: float | None
+
+
+class CrownSpecies(TypedDict, total=False):
+    """One tree species in the paint store's ``crowns`` block."""
+
+    name: Required[str]
+    mesh: Required[str]
+    materials: Required[list[CrownMaterial]]
+    radius_m: Required[float]
+    top_m: Required[float]
+    instances: int
+
 
 CROWNS_NAME = "crowns.rec.z"
 SPRITES_NAME = "crowns.sprites.z"

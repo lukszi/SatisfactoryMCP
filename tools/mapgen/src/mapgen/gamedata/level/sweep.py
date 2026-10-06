@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import struct
 import time
+from typing import TypedDict
 
 import numpy as np
 
 from mapgen.gamedata.level.landscape import grass_data_heights
 from mapgen.gamedata.water.actors import is_water_class, water_actor_box
 from mapgen.gamedata.water.rivers import RIVER_CLASS, river_actor
+from satisfactory_mcp.core.arrays import F64Grid, I32Grid
 from satisfactory_mcp.core.gameassets.levels import level_paths, walk_levels
 from satisfactory_mcp.core.gameassets.packages import (
     class_name_of,
@@ -25,6 +27,7 @@ __all__ = [
     "LEVEL_DIR",
     "LEVEL_SUFFIX",
     "TOP_FOLIAGE_MESHES",
+    "Sweep",
     "first_override",
     "flagged_tags",
     "foliage_instances",
@@ -32,6 +35,31 @@ __all__ = [
     "is_top_foliage",
     "sweep_levels",
 ]
+
+
+class Sweep(TypedDict, total=False):
+    """``sweep_levels``' one walk of the world; ``terrain.rasters.sweep_world`` adds ``trees``."""
+
+    packages: int
+    unreadable: int
+    malformed_components: int
+    components: list[tuple[float, float, np.ndarray]]
+    proxies: list[tuple[float, float, float, float, float, float]]
+    placements: F64Grid
+    meshes: list[str]
+    owners: list[str]
+    placement_materials: I32Grid
+    materials: list[str]
+    water: list[tuple[str, tuple[float, ...]]]
+    water_actors: dict[str, int]
+    water_boxless: list[tuple[str, str, str]]
+    water_box_sources: dict[str, int]
+    rivers: list[dict[str, object]]
+    foliage: dict[str, np.ndarray]
+    extra_foliage: dict[str, np.ndarray]
+    actors: list[object]
+    seconds: float
+    trees: dict[str, np.ndarray]
 
 
 #: Which packages are swept. Everything terrain lives under one world.

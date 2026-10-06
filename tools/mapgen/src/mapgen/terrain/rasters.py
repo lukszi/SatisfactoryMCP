@@ -6,6 +6,7 @@ import json
 import time
 from contextlib import ExitStack
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
@@ -27,10 +28,12 @@ from mapgen.gamedata.placements import ARCH_MARK, EXCLUDED_OWNERS, OVERSIZE_CM, 
 from mapgen.gamedata.vegetation.trees import is_tree
 from mapgen.gamedata.water.falls import read_fall
 from mapgen.terrain.render_meshes import is_render_only_foliage
+from satisfactory_mcp.core.arrays import F32Grid
 
 __all__ = [
     "DIRECT_SUBSAMPLES",
     "TOP_FOLIAGE_BATCH",
+    "PreparedPlacement",
     "add_placements",
     "direct_placements",
     "pixel_coverage",
@@ -43,6 +46,21 @@ __all__ = [
     "top_items",
     "write_banded_raster",
 ]
+
+
+class PreparedPlacement(NamedTuple):
+    """One rock ready for the direct pass: its mesh, transform, facing and y extent in cm."""
+
+    mesh: str
+    mesh_id: int
+    matrix: F32Grid
+    scale: F32Grid
+    offset: F32Grid
+    facing: float
+    y_min_cm: float
+    y_max_cm: float
+    family: int | None = None
+
 
 #: How many sub-samples per output texel per axis the direct pass rasterises at. The pass
 #: costs 4x per doubling and the silhouette is already at 0.229 m, an eighth of the 1 m

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Required, TypedDict
 
 import numpy as np
 from scipy import ndimage
@@ -15,6 +16,7 @@ from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette.water.shore import blend_where, water_composite
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
+from satisfactory_mcp.core.jsontypes import JsonArray, JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -59,6 +61,13 @@ __all__ = [
     "VOID_RIM_RGB",
     "WATER_DEEP",
     "WATER_SHALLOW",
+    "CalibrationStyle",
+    "CrownStyle",
+    "PaintedPalette",
+    "PaintedWaterStyle",
+    "RockTopStyle",
+    "ShoreStyle",
+    "ToneStyle",
     "biome_colour_field",
     "biome_index",
     "biome_lookup",
@@ -75,6 +84,105 @@ __all__ = [
     "with_sea",
     "with_void",
 ]
+
+
+class CrownStyle(TypedDict):
+    """``crowns``: whether and how the painted style draws each tree's crown."""
+
+    draw: bool
+    canopy_kept: float
+    opacity: float
+    darkening: float
+    chroma: float
+    waterline_m: float
+    dome_gain: float
+    shade_clamp: list[float]
+    hidden_below_m: float
+
+
+class ShoreStyle(TypedDict, total=False):
+    """``shore``: the coast's clarity, edge and stroke, and its river, wet band and foam."""
+
+    clarity_m: float
+    edge_alpha: float
+    wet_darken: float
+    stroke: float
+    river: JsonObject
+    wet_band: JsonObject
+    foam: JsonObject
+
+
+class PaintedWaterStyle(TypedDict):
+    """The painted style's ``water``: the Beer-Lambert model and the ocean's own rows."""
+
+    model: str
+    k_per_m: list[float]
+    body: list[float]
+    surface_r: float
+    sky: list[float]
+    deep: list[float]
+    deep_tau_m: float
+    bed_wet: float
+    inland_floor: float
+    opaque_tau_m: float
+
+
+class RockTopStyle(TypedDict):
+    """``rock_top``: the up-facing ramp a family's top layer takes, and its patches."""
+
+    up: list[float]
+    patches: JsonObject
+
+
+class ToneStyle(TypedDict):
+    """``tone``: the painted style's exposure shoulder."""
+
+    gain: float
+    knee: float
+    white: float
+
+
+class CalibrationStyle(TypedDict, total=False):
+    """``calibration``: the display targets per layer, family, top, mesh, crown and area."""
+
+    about: str
+    pure_share: float
+    min_texels: int
+    area_blur_m: float
+    layers: JsonObject
+    derived: JsonObject
+    canopy: str
+    rock: str
+    rock_keeps_exposure: bool
+    families: JsonObject
+    tops: JsonObject
+    meshes: JsonObject
+    crowns: JsonObject
+    species: JsonObject
+    areas: JsonArray
+
+
+class PaintedPalette(TypedDict, total=False):
+    """The painted style's palette file: its scalars and the blocks its painters read."""
+
+    id: Required[str]
+    about: Required[str]
+    ambient: float
+    sky: list[float]
+    sun: list[float]
+    exposure: float
+    chroma_gain: float
+    ramp_lo_pct: float
+    ramp_hi_pct: float
+    ramp_equalised: float
+    crowns: CrownStyle
+    shore: ShoreStyle
+    water: PaintedWaterStyle
+    water_classes: JsonObject
+    rock_top: RockTopStyle
+    tone: ToneStyle
+    calibration: CalibrationStyle
+
 
 #: The palettes are files, one per style id, and a style's digest is the hash of its file's
 #: canonical JSON, so an edit without a version bump still reads as a different style.
