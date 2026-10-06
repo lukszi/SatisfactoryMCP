@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -181,3 +182,15 @@ def test_an_unlit_job_reaches_the_generator_unlit(stateless_client):
     assert job["options"]["light"] is False
     assert "--no-light" in job["argv"] and "--light" not in job["argv"]
     assert _until_final(stateless_client, job["id"])["job"]["status"] == "done"
+
+
+def test_a_newer_map_list_is_a_503_that_names_the_map_list(stateless_client):
+    registry.manifest_path().parent.mkdir(parents=True, exist_ok=True)
+    registry.manifest_path().write_text(json.dumps({"schema": 99}), encoding="utf-8")
+    tile = stateless_client.get("/api/maptiles/terrain/0/0/0")
+    assert tile.status_code == 503, tile.text
+    error = tile.json()["error"]
+    assert error.startswith("the map list was saved by a newer version"), error
+    assert "plans" not in error
+    listed = stateless_client.get("/api/maps")
+    assert listed.status_code == 503 and listed.json()["error"] == error

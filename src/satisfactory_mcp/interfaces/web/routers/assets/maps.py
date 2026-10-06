@@ -25,7 +25,7 @@ from .....domain.maps import jobs as job_store
 from .....domain.maps import presets, registry
 from ...serial import busy_response, error_response, newer_schema_response
 
-__all__ = ["router"]
+__all__ = ["newer_map_list", "router"]
 
 router = APIRouter(prefix="/api")
 
@@ -311,6 +311,13 @@ def _maps_json(request: Request) -> dict:
     }
 
 
+def newer_map_list(exc: NewerSchema) -> JSONResponse:
+    """The 503 for a map list a newer version wrote, here and for a tile the app refuses."""
+    return newer_schema_response(
+        exc, "the map list", verb="was", ending="Upgrade to read it; nothing changed"
+    )
+
+
 def _refused(exc: Exception) -> JSONResponse:
     if isinstance(exc, registry.MapsStale):
         body = {"error": str(exc), "stale": True, "version": exc.current}
@@ -320,9 +327,7 @@ def _refused(exc: Exception) -> JSONResponse:
     if isinstance(exc, registry.MapsRefused):
         return error_response(str(exc), 409)
     if isinstance(exc, NewerSchema):
-        return newer_schema_response(
-            exc, "the map list", verb="was", ending="Upgrade to read it; nothing changed"
-        )
+        return newer_map_list(exc)
     if isinstance(exc, LockTimeout):
         return busy_response("the map list", exc, verb="is")
     return error_response(str(exc), 400)
