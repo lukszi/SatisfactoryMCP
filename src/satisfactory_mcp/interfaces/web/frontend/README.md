@@ -125,6 +125,21 @@ about contents) and
 the decomposition) and `dash/factories/factory-detail.ts` (the floors aspect's way in) — so it
 must import none of those six, and does not.
 
+### Two ranks
+
+The page has two ranks, they decide different things, and neither drives the other. The FETCH
+rank is `Fetcher.rank` in `app/registry.ts`: one number per wave, deciding WHEN a request goes
+out and so which reply lands first. The ROW rank is the `[band, slot, name]` a layer declares
+when `clearedLayer()` in `map/layers.ts` creates it: it decides WHERE that layer's row sits in
+the control and nothing else. A feature declares both and they are free to disagree — the node
+dots are fetched first and listed late.
+
+The row rank is not draw order either. Everything clickable shares one canvas, and that canvas
+draws in the order paths were ADDED to it, a list Leaflet keeps and the rank appears nowhere in.
+The control's `sortFunction` reads the rank when it rebuilds its list and nothing else does,
+which is why `raiseNodeDots` in `map/drawn/markers.ts` exists and why no band order could
+replace it.
+
 Leaflet is the `leaflet` npm package pinned to **1.9.4** — the exact version that used to sit
 in `static/vendor/leaflet.js` — and it is compiled into the bundle together with its own
 stylesheet. Its three icon PNGs are inlined as data URIs, so the built page makes no network

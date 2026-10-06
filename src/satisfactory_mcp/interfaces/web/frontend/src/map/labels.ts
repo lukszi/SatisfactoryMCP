@@ -11,7 +11,7 @@ import { code, esc, popup } from "../kit/dom";
 import { cardWithFloors } from "./floors/floors";
 import { coords, joinWithConjunction } from "../kit/format";
 import { L } from "./leaflet";
-import { BAND, BUILT_AREA_LAYERS, layer, turnOnLayers } from "./layers";
+import { BAND, BUILT_AREA_LAYERS, clearedLayer, turnOnLayers } from "./layers";
 import { layerWord } from "./drawn/markers";
 import { boundsOfBbox, flyPadded, latLngOf, map } from "./map";
 import { regionLabels } from "./regions";
@@ -135,7 +135,7 @@ export function prioritiseLabel(name: string): void {
 export function drawFactories(data: FactoriesResponse): void {
   // Chrome rather than built: a label is the page's name for a place, not a thing standing
   // in it -- the same kind of row as the region names two slots up, and read the same way.
-  const named = layer("factory labels", true, undefined, [BAND.chrome, 30, "factory labels"]);
+  const named = clearedLayer("factory labels", { on: true, rank: [BAND.chrome, 30, "factory labels"] });
   data.labels.forEach(function (factoryRow) {
     factoryAnchor(
       factoryRow,
@@ -153,7 +153,11 @@ export function drawFactories(data: FactoriesResponse): void {
   });
   // Directly under the labels it is the machine-made version of, and last of the chrome:
   // a proposal names a place nobody has named yet, which is the weakest claim in the band.
-  const proposed = layer("proposals", false, undefined, [BAND.chrome, 40, "proposals"], WORDS.unnamedClusters);
+  const proposed = clearedLayer("proposals", {
+    on: false,
+    rank: [BAND.chrome, 40, "proposals"],
+    title: WORDS.unnamedClusters,
+  });
   data.proposals.forEach(function (proposal) {
     // No cohesion row: the clusterer does not compute the score yet (every proposal
     // reports 0.0), and a constant 0 reads as "this cluster scored zero".

@@ -13,7 +13,7 @@ import { code, popup } from "../../kit/dom";
 import { count } from "../../kit/format";
 import { CONTENTS_POPUP_PX, contentsRows } from "./inventory-grid";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
 import { latLngOf } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
@@ -122,7 +122,7 @@ export function drawCrates(data: CratesResponse): void {
    * once, in a hurry, and an answer behind a checkbox nobody has noticed is not an answer.
    *
    * Last of the built band, after the containers: a crate is the inventory nobody built. */
-  var group = layer("crates", true, CRATE_COLOUR, [BAND.built, 80, "crates"]);
+  var group = clearedLayer("crates", { on: true, colour: CRATE_COLOUR, rank: [BAND.built, 80, "crates"] });
 
   data.crates.forEach(function (c) {
     // A crate whose position would not read is still SENT -- the projection knows it exists.

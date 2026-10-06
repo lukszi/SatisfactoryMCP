@@ -15,7 +15,7 @@ import { refreshFloors } from "../floors/floors";
 import { count, pct } from "../../kit/format";
 import { CONTENTS_POPUP_PX, contentsRows } from "./inventory-grid";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, hashFor } from "../map";
 import { raiseNodeDots } from "./markers";
 import { showMachine } from "../map-highlight";
@@ -56,7 +56,7 @@ var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).
 export function drawStructures(data: StructuresResponse): void {
   // First of the built band, because the concrete is what everything else in it stands on
   // or runs over -- the legend reads a base bottom-up, exactly as the player laid it.
-  var group = layer("foundations", true, STRUCTURE_COLOUR, [BAND.built, 0, "foundations"]);
+  var group = clearedLayer("foundations", { on: true, colour: STRUCTURE_COLOUR, rank: [BAND.built, 0, "foundations"] });
   // No `|| 8`: `tile_m` is the server's FOUNDATION_M constant and is always sent, and a
   // fallback here would be the second copy of the number this field exists to prevent.
   var half = data.tile_m / 2;
@@ -134,11 +134,11 @@ export var STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" })
 
 export function drawMachines(data: MachinesResponse): void {
   MACHINE_KINDS.forEach(function (kind) {
-    var group = layer(kind, kind !== "machines", KIND_COLOUR[kind], [
-      BAND.built,
-      MACHINE_SLOT[kind],
-      kind,
-    ]);
+    var group = clearedLayer(kind, {
+      on: kind !== "machines",
+      colour: KIND_COLOUR[kind],
+      rank: [BAND.built, MACHINE_SLOT[kind], kind],
+    });
     data[kind].forEach(function (m) {
       // One guard, on x only. The row type says `y_m` can be null too, and the assertion below
       // is that claim not being acted on: if the projection ever sends half a position it
@@ -317,7 +317,7 @@ export function drawStorage(data: StorageResponse): void {
   // Off at the whole-world zoom, like the machines and the routes: 151 boxes across 7 km is a
   // scatter of specks. Last of the built band, because the row is off by default and the
   // bottom of the list is where a reader who wants it goes looking.
-  var group = layer("storage", false, STORAGE_COLOUR, [BAND.built, 70, "storage"]);
+  var group = clearedLayer("storage", { on: false, colour: STORAGE_COLOUR, rank: [BAND.built, 70, "storage"] });
   data.storage.forEach(function (s) {
     if (s.x_m === null || s.y_m === null) return;
     var colour = s.kind === "fluid" ? STORAGE_FLUID_COLOUR : STORAGE_COLOUR;

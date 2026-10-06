@@ -11,7 +11,7 @@
 
 import { code, popup } from "../../kit/dom";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, latLngOf, map, pixelsPerMetre } from "../map";
 import { raiseNodeDots } from "./markers";
 import { declareColours } from "../palette";
@@ -335,7 +335,7 @@ export function drawBelts(data: BeltsResponse): void {
   // Off by default, like `machines`: 3,085 routes across 7 km is a smear. See reveal() in
   // labels.ts. Immediately over the concrete they run on, and in the order a reader names the
   // networks: belts, then pipes, then power.
-  var group = layer("belts", false, BELT_COLOUR, [BAND.built, 10, "belts"]);
+  var group = clearedLayer("belts", { on: false, colour: BELT_COLOUR, rank: [BAND.built, 10, "belts"] });
   var ppm = pixelsPerMetre();
   var runs: L.Polyline[] = [];
   data.belts.forEach(function (b) {
@@ -670,7 +670,7 @@ function routeChevrons(points_m: Point3M[], reverse: boolean): PointM[][] {
 export function drawPipes(data: PipesResponse): void {
   // Off by default, like `belts` and `machines`; see reveal() in labels.ts. Directly under the
   // belts, which is the pair they are.
-  var group = layer("pipes", false, PIPE_COLOUR, [BAND.built, 20, "pipes"]);
+  var group = clearedLayer("pipes", { on: false, colour: PIPE_COLOUR, rank: [BAND.built, 20, "pipes"] });
   var ppm = pixelsPerMetre();
   var alpha = chevronOpacity(ppm);
   data.pipes.forEach(function (p) {

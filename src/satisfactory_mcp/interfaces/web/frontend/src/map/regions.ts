@@ -7,7 +7,7 @@
 
 import { esc } from "../kit/dom";
 import { L } from "./leaflet";
-import { BAND, layer } from "./layers";
+import { BAND, clearedLayer } from "./layers";
 import { boundsOfBbox, latLngOf, map } from "./map";
 import { declareColours } from "./palette";
 import { state } from "../app/state";
@@ -170,8 +170,8 @@ export function drawRegions(data: RegionsResponse): void {
   tips = [];
   // Adjacent slots at the top of the legend, because they are a pair: the biome fill is the
   // ground every other layer is drawn over, and its names are the same thing said in words.
-  var regions = layer("regions", true, undefined, [BAND.chrome, 0, "regions"]);
-  var names = layer("region names", true, undefined, [BAND.chrome, 10, "region names"]);
+  var regions = clearedLayer("regions", { on: true, rank: [BAND.chrome, 0, "regions"] });
+  var names = clearedLayer("region names", { on: true, rank: [BAND.chrome, 10, "region names"] });
   var cell = data.cell_m;
   data.grid.forEach(function (row, j) {
     for (var i = 0; i < row.length; i++) {

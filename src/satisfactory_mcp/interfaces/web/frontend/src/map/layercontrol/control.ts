@@ -24,11 +24,10 @@ export var control = L.control.layers(
     collapsed: false,
     sortLayers: true,
     /* The ROW RANK, and the only thing on the page that reads one: [band, slot, name], stamped
-     * onto every group by `layer()`. It is not draw order; layers.ts says why.
+     * onto every group by `clearedLayer()`. It is not draw order; layers.ts says why.
      *
-     * `[9, 0, ""]` is `BAND.unknown` WRITTEN OUT rather than imported, because layers.ts
-     * imports this file. It defends against a group that reached the control some other way,
-     * `layer()` supplying the same band itself. */
+     * `[9, 0, ""]` sorts a group that reached the control without a rank below every band;
+     * `clearedLayer()` requires one, so it is only a defence. */
     sortFunction: function (a: L.Layer, b: L.Layer) {
       var ra = a._rank || [9, 0, ""];
       var rb = b._rank || [9, 0, ""];
@@ -118,7 +117,7 @@ function sectionFor(name: string): Section | null {
 }
 
 /* A control row back to the layer it toggles. Leaflet stamps the layer's id onto the
- * checkbox it builds, and layer() files the name under that same stamp, so the mapping
+ * checkbox it builds, and clearedLayer() files the name under that same stamp, so the mapping
  * survives every re-render of the list without parsing the row's text back. */
 function rowName(row: HTMLElement): string {
   var input = row.querySelector<LayerInput>("input");

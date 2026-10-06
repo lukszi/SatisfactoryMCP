@@ -13,7 +13,7 @@
 
 import { code, esc, html, popup } from "../../kit/dom";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, hashFor } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
@@ -66,7 +66,7 @@ export function drawPlans(data: PlansResponse): void {
    * On by default, and cheap to be: a world has a handful of sitings or none, so the row is
    * empty and silent until the evening somebody sites a plan -- which is the one evening this
    * layer is worth anything at all. */
-  var group = layer("plan sitings", true, PLAN_COLOUR, [BAND.chrome, 50, "plan sitings"]);
+  var group = clearedLayer("plan sitings", { on: true, colour: PLAN_COLOUR, rank: [BAND.chrome, 50, "plan sitings"] });
   data.plans.forEach(function (p) {
     L.polygon(footprintCorners(p.x_m, p.y_m, p.width_m / 2, p.depth_m / 2, p.yaw_deg), {
       color: PLAN_COLOUR,

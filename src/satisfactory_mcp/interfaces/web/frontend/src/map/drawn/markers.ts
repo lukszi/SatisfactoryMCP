@@ -11,7 +11,7 @@ import { code, popup } from "../../kit/dom";
 import { regionLine, shortResource } from "../../kit/format";
 import { batch, control, registerSection } from "../layercontrol/control";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
 import { map, latLngOf } from "../map";
 import { declareColours } from "../palette";
 import { pinButtons } from "../../chat/pins";
@@ -140,7 +140,12 @@ function paintNodes(data: NodesResponse): void {
       // DATA -- one per resource this world has -- and there is no editorial order to give
       // fourteen of them that a reader could predict. Alphabetical is predictable.
       var name = "node: " + short;
-      var group = layer(name, true, colour, [BAND.node, 0, name], byResource[resource]![0]!.resource_name);
+      var group = clearedLayer(name, {
+        on: true,
+        colour: colour,
+        rank: [BAND.node, 0, name],
+        title: byResource[resource]![0]!.resource_name,
+      });
       byResource[resource]!.forEach(function (n) {
         // Null is "no save read", which is not a claim either way; only false is LOCKED.
         var locked = n.reachable === false;
@@ -232,7 +237,7 @@ registerFetch<NodesResponse>({
 /* The player's last known position: the map's only you-are-here, and the reference every
  * "is this near me" judgement needs. Ring-styled so it reads as a position, not a node.
  *
- * NO ROW WHEN THERE IS NO POSITION. `layer()` both creates the control row and clears the
+ * NO ROW WHEN THERE IS NO POSITION. `clearedLayer()` both creates the control row and clears the
  * group, so calling it before the guard would give a dedicated-server save a "player" checkbox
  * that ticks nothing -- and the control is the map's legend, where an entry is a claim that the
  * thing exists. The empty case therefore reaches the registry directly: it clears a group that
@@ -253,7 +258,7 @@ export function drawPlayer(p: SummaryResponse["player"]): void {
   // Chrome, not a placement: where you last stood is part of the frame the built world is
   // read against, which is why it sits with the biomes and the labels rather than with the
   // machines. Third of that band, under the two region rows it is a position within.
-  var group = layer("player", true, PLAYER_COLOUR, [BAND.chrome, 20, "player"]);
+  var group = clearedLayer("player", { on: true, colour: PLAYER_COLOUR, rank: [BAND.chrome, 20, "player"] });
   L.circleMarker(latLngOf(p as { x_m: number; y_m: number }), {
     radius: 7,
     color: PLAYER_COLOUR,
@@ -403,7 +408,12 @@ function paintPickups(data: CollectiblesResponse): void {
   });
   hiddenKinds.forEach(function (category) {
     var name = PICKUP_PREFIX + category;
-    layer(name, false, PICKUP_COLOUR[category] || PICKUP_FALLBACK, [BAND.pickup, 0, name], pickupName(category));
+    clearedLayer(name, {
+      on: false,
+      colour: PICKUP_COLOUR[category] || PICKUP_FALLBACK,
+      rank: [BAND.pickup, 0, name],
+      title: pickupName(category),
+    });
   });
   Object.keys(state.layers).forEach(function (name) {
     // A category this world has none of (all collected, or never present) must not keep
@@ -420,11 +430,16 @@ function paintPickups(data: CollectiblesResponse): void {
       // Slot 0 and alphabetical for the same reason the node rows are, one band lower: ten
       // categories of thing lying on the ground, in no order anyone could guess at.
       var name = PICKUP_PREFIX + category;
-      // `layer` honours the second argument only when it CREATES the group, which is exactly
+      // `clearedLayer` honours `on` only when it CREATES the group, which is exactly
       // right: the fragment decides what a fresh row opens as, and after that the checkbox
       // the reader clicked survives every refetch.
       var wanted = state.pickups.indexOf(category) >= 0;
-      var group = layer(name, wanted, colour, [BAND.pickup, 0, name], pickupName(category));
+      var group = clearedLayer(name, {
+        on: wanted,
+        colour: colour,
+        rank: [BAND.pickup, 0, name],
+        title: pickupName(category),
+      });
       byCategory[category]!.forEach(function (r) {
         var here = latLngOf(r);
         var mark: L.Path = r.collected

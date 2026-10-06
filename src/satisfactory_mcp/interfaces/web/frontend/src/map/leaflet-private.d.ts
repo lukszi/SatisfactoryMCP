@@ -53,14 +53,14 @@ export interface FloorMark {
 declare module "leaflet" {
   interface Layer {
     /** The ROW RANK: where this layer's row sits in the control, as [band, slot, name].
-     *  Declared at the `layer()` call that creates the group; see BAND in layers.ts. */
+     *  Declared at the `clearedLayer()` call that creates the group; see BAND in layers.ts. */
     _rank?: [number, number, string];
     /** What the floor filter joins this piece by. See FloorMark. */
     _floor?: FloorMark;
     /** Everything a LayerGroup held before the floor filter took some of it away.
      *
      * On the GROUP, not on a piece: the filter replaces a group's contents and leaving is
-     * putting them back. Cleared by `layer()` along with the contents themselves -- a
+     * putting them back. Cleared by `clearedLayer()` along with the contents themselves -- a
      * snapshot of data that has been refetched is a claim about a world that is gone. */
     _floorAll?: L.Layer[];
   }

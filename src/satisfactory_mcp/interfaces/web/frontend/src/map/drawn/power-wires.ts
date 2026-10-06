@@ -12,7 +12,7 @@
 
 import { popup } from "../../kit/dom";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
 import { latLngOf, pixelsPerMetre } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
@@ -194,7 +194,7 @@ export function drawPower(data: PowerResponse): void {
    * shape the wires already make, and they are the layer at factory zoom.
    *
    * Last of the three networks in the legend, under the belts and the pipes. */
-  var group = layer("power", true, WIRE_COLOUR, [BAND.built, 30, "power"]);
+  var group = clearedLayer("power", { on: true, colour: WIRE_COLOUR, rank: [BAND.built, 30, "power"] });
   // The same expression the zoom pass restyles these with, off the same two tables -- see
   // routeWeight in routes.ts, which is exported for exactly this line.
   var weight = routeWeight(ROUTE_WIDTH_M.power!, pixelsPerMetre(), ROUTE_FLOOR_PX.power);
