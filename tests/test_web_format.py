@@ -10,15 +10,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.paths import REPO_ROOT
+
 FORMAT_TS = (
-    Path(__file__).resolve().parent.parent
-    / "src"
-    / "satisfactory_mcp"
-    / "interfaces"
-    / "web"
-    / "frontend"
-    / "src"
-    / "format.ts"
+    REPO_ROOT / "src" / "satisfactory_mcp" / "interfaces" / "web" / "frontend" / "src" / "format.ts"
 )
 
 HOOK = """export async function resolve(s, c, n) {
@@ -115,7 +110,14 @@ def test_mw_keeps_small_negatives_unsigned_zero(tmp_path):
 
 
 def test_signed_shares_one_sign_rule_across_units(tmp_path):
-    cases = [(3, "count"), (-3, "count"), (0, "count"), (-12.34, "perMin"), (0.04, "bare"), (-0.04, "bare")]
+    cases = [
+        (3, "count"),
+        (-3, "count"),
+        (0, "count"),
+        (-12.34, "perMin"),
+        (0.04, "bare"),
+        (-0.04, "bare"),
+    ]
     got = _run(tmp_path, "signed", [list(c) for c in cases])
     assert got == ["+3", "-3", "0", "-12.3/min", "0", "0"]
 

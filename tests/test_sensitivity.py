@@ -11,13 +11,13 @@ and "you are not missing anything here" is the decision the hand-walk was produc
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.gamedata.unlocks import SOURCE_OF_TYPE
 from satisfactory_mcp.domain.planning.scenario import build_scenario
 from satisfactory_mcp.domain.planning.sensitivity import sweep_unlocks
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

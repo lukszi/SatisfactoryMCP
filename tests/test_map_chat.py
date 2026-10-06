@@ -5,8 +5,6 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from test_map_registry import local  # noqa: F401  (the fixture)
-
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.maps import registry
 from satisfactory_mcp.interfaces.mcp.tools import settings as settings_tool
@@ -25,7 +23,7 @@ def _fragment(out: str) -> dict[str, str]:
     return dict(part.split("=", 1) for part in frag.split("&"))
 
 
-def test_settings_lists_the_base_maps_with_the_default_and_what_is_stale(local):  # noqa: F811
+def test_settings_lists_the_base_maps_with_the_default_and_what_is_stale(local):
     out = settings_tool.settings()
     line = next(row for row in out.splitlines() if row.startswith("# base maps"))
     assert 'map "Game map ★" (default)' in line and "terrain-r4-502094 " in line
@@ -34,7 +32,7 @@ def test_settings_lists_the_base_maps_with_the_default_and_what_is_stale(local):
     assert not registry.manifest_path().exists(), "chat reads the registry and never writes it"
 
 
-def test_show_on_map_opens_the_local_link_on_a_named_base_map(local, monkeypatch):  # noqa: F811
+def test_show_on_map_opens_the_local_link_on_a_named_base_map(local, monkeypatch):
     monkeypatch.setattr(spatial, "_state", _no_save)
     # The node table is read from the real data dir; only the maps are the scratch tree's.
     monkeypatch.setattr(registry, "local_dir", lambda: local)

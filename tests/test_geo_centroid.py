@@ -16,6 +16,7 @@ import math
 import pytest
 
 from satisfactory_mcp.domain.spatial import geo
+from tests.support.paths import REPO_ROOT
 
 # ------------------------------------------------------------- centroid
 
@@ -139,9 +140,8 @@ def test_only_the_centimetre_module_still_calls_math_dist_directly():
     """graph/structure.py works in cm throughout against cm thresholds and reports nothing
     in metres, so there is no conversion there to get wrong. Everywhere else routes through
     geo, and this pins that a new hand-typed `/ 100.0` does not creep back in."""
-    import pathlib
 
-    root = pathlib.Path(__file__).resolve().parents[1] / "src" / "satisfactory_mcp"
+    root = REPO_ROOT / "src" / "satisfactory_mcp"
     offenders = []
     for path in root.rglob("*.py"):
         if path.name in ("geo.py", "structure.py"):

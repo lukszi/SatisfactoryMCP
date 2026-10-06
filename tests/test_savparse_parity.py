@@ -61,11 +61,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-from _pool import fanout_width, in_order
 
-REPO = Path(__file__).resolve().parents[1]
-FIXTURE = Path(__file__).parent / "fixtures" / "vendor_parity.json"
-SIDECAR = REPO / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract.py"
+from tests.support.fanout import fanout_width, in_order
+from tests.support.paths import FIXTURES, REPO_ROOT
+
+FIXTURE = FIXTURES / "vendor_parity.json"
+SIDECAR = REPO_ROOT / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract.py"
 
 #: Header keys that describe the FILE rather than the world, so they are excluded from the
 #: digest: a save copied to another path or re-read after a touch is the same world.
@@ -306,7 +307,7 @@ def _projection(path: Path) -> dict:
     """
     out = subprocess.run(
         [sys.executable, str(SIDECAR), str(path)],
-        cwd=str(REPO),
+        cwd=str(REPO_ROOT),
         capture_output=True,
         check=False,  # a refusal is data here: the caller asserts on the payload, not the code
     )

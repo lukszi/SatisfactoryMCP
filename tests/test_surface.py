@@ -10,9 +10,9 @@ import asyncio
 import json
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
+from tests.support.reference_world import REFERENCE_FIELD
 
 #: ``usefixtures("game")`` is the guard, not decoration. Every test here calls a tool, and a
 #: tool reaches the game data through ``app.game()`` -- an lru_cache'd function, not this

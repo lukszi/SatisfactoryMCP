@@ -6,22 +6,22 @@ docs/spatial-and-map.md section 37. Synthetic fixtures throughout: no install, n
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
-from mapgen.gamedata.waterbodies import CLASSES, OCEAN  # noqa: E402
-from mapgen.lighting.occluders import sheet_crowns  # noqa: E402
-from mapgen.palette.painted import (  # noqa: E402
+from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.waterbodies import CLASSES, OCEAN
+from mapgen.lighting.occluders import sheet_crowns
+from mapgen.palette.painted import (
     WATER_TABLE_COLUMNS,
     PaintedGround,
+    painted_colours,
     water_table,
 )
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from mapgen.terrain.sample import taps_linear  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.terrain.sample import taps_linear
+from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.map_scenes import class_optics, painted_ground_stub, water_scene
 
 RIVER = CLASSES.index("river")
 
@@ -56,20 +56,16 @@ def test_a_ribbon_over_dry_class_texels_draws_with_the_river_row():
 
 
 def test_class_turbidity_and_the_inland_floor_take_the_larger_not_both():
-    from mapgen.palette.painted import painted_colours
-    from tests.test_map_water_classes import _ground as painted_ground
-    from tests.test_map_water_classes import _optics, _scene
-
     n = 16
-    ground = painted_ground(n)
+    ground = painted_ground_stub(n)
     ground.water["inland_floor"] = np.float32(0.35)
     same = lambda plane: plane
-    lake = _optics(ground, "lake", n)
+    lake = class_optics(ground, "lake", n)
     murk = {**lake, "turbidity": np.full_like(lake["turbidity"], 0.35)}
 
-    floored = painted_colours(_scene(n, lake), ground, same, same)
-    np.testing.assert_allclose(floored, painted_colours(_scene(n, murk), ground, same, same))
-    swamp = _optics(ground, "swamp", n)
+    floored = painted_colours(water_scene(n, lake), ground, same, same)
+    np.testing.assert_allclose(floored, painted_colours(water_scene(n, murk), ground, same, same))
+    swamp = class_optics(ground, "swamp", n)
     assert float(swamp["turbidity"].min()) > 0.35, "the swamp's own murk is the larger"
 
 

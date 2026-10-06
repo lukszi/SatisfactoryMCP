@@ -1,79 +1,35 @@
 """Planner P2: versions, restore, duplicate, result deltas and list status, domain and routes.
 
-docs/plan_management.md is what these pin. Every write lands in temporary plans, activity and
-ui directories; the fixture world is read and never written.
+docs/plan_management.md is what these pin; the fixture world is read and never written.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import journal, manage
+from satisfactory_mcp.domain.planning import manage
 from satisfactory_mcp.domain.planning.planlog import Actor, NameTaken, PlanLog
+from tests.support.reference_world import FIVE_RIP_ARGS, FIXTURE_WORLD, RIP
+from tests.support.web import PAGE_ORIGIN, create_plan, push_ops, put_op
 
 PAGE = Actor("page", "", 1)
 CHAT = Actor("chat", "claude-code", 4242)
-ORIGIN = {"origin": "http://testserver"}
-WORLD = "X2faPVKjX06VaRzClNv5KQ"
-RIP = "Reinforced Iron Plate"
-RIP_ARGS = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
 
 
 @pytest.fixture
-def dirs(tmp_path, monkeypatch):
-    for name in ("plans_dir", "labels_dir", "activity_dir", "ui_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
-    monkeypatch.setattr(journal, "_writer", "")
-    return tmp_path
-
-
-@pytest.fixture
-def log(dirs):
+def log():
     return PlanLog("W")
 
 
-@pytest.fixture
-def client(dirs, projection, game):
-    pytest.importorskip("fastapi")
-    from fastapi.testclient import TestClient
-
-    from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.web.app import create_app
-
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
-        yield c
-
-
 def _rate(value):
-    return {"op": "put", "field": "export_minimums", "item": RIP, "value": value}
-
-
-def _create(client, name="rip 5", args=None):
-    reply = client.post("/api/plans", json={"name": name, "args": args or RIP_ARGS}, headers=ORIGIN)
-    assert reply.status_code == 201, reply.text
-    return reply.json()["key"]
-
-
-def _push(client, key, base_rev, *ops):
-    reply = client.post(
-        f"/api/plans/{key}/ops", json={"base_rev": base_rev, "ops": list(ops)}, headers=ORIGIN
-    )
-    assert reply.status_code == 200, reply.text
-    return reply.json()
+    return put_op("export_minimums", RIP, value)
 
 
 # ------------------------------------------------------------------ domain
 
 
 def test_a_duplicate_is_a_new_plan_at_v1_equal_to_the_version_copied(log):
-    key = log.create("north", RIP_ARGS, actor=CHAT, notes="n", factory="F").key
+    key = log.create("north", FIVE_RIP_ARGS, actor=CHAT, notes="n", factory="F").key
     log.push(key, 1, [_rate(15)], actor=PAGE)
     copy = manage.duplicate(log, key, actor=PAGE, rev=1)
     assert copy.key != key and copy.rev == 1
@@ -89,14 +45,14 @@ def test_a_duplicate_is_a_new_plan_at_v1_equal_to_the_version_copied(log):
 
 
 def test_a_duplicate_under_a_taken_name_is_refused(log):
-    key = log.create("north", RIP_ARGS, actor=CHAT).key
-    log.create("south", RIP_ARGS, actor=CHAT)
+    key = log.create("north", FIVE_RIP_ARGS, actor=CHAT).key
+    log.create("south", FIVE_RIP_ARGS, actor=CHAT)
     with pytest.raises(NameTaken):
         manage.duplicate(log, key, actor=PAGE, name="SOUTH")
 
 
 def test_versions_are_newest_first_and_say_what_undid_and_restored_what(log):
-    key = log.create("north", RIP_ARGS, actor=CHAT).key
+    key = log.create("north", FIVE_RIP_ARGS, actor=CHAT).key
     log.push(key, 1, [_rate(15)], actor=PAGE)
     log.undo(key, 2, 2, actor=PAGE)
     log.restore_to(key, 3, 2, actor=PAGE)
@@ -188,70 +144,80 @@ def test_row_changes_join_on_id_and_sort_added_changed_removed():
 # ------------------------------------------------------------------ routes
 
 
-def test_restore_is_a_new_version_equal_to_the_old_one(client):
-    key = _create(client)
-    _push(client, key, 1, _rate(15))
-    _push(client, key, 2, {"op": "set", "field": "sloops", "value": 2})
-    reply = client.post(f"/api/plans/{key}/restore", json={"base_rev": 3, "rev": 1}, headers=ORIGIN)
+def test_restore_is_a_new_version_equal_to_the_old_one(fresh_state_client):
+    key = create_plan(fresh_state_client)["key"]
+    push_ops(fresh_state_client, key, 1, _rate(15))
+    push_ops(fresh_state_client, key, 2, {"op": "set", "field": "sloops", "value": 2})
+    reply = fresh_state_client.post(
+        f"/api/plans/{key}/restore", json={"base_rev": 3, "rev": 1}, headers=PAGE_ORIGIN
+    )
     assert reply.status_code == 200, reply.text
     body = reply.json()
     assert body["rev"] == 4
     assert body["state"]["args"]["export_minimums"] == {RIP: 5.0}
     assert body["state"]["args"]["sloops"] == 0
-    assert PlanLog(WORLD).commits(key)[-1].note == "restore v1"
-    versions = client.get(f"/api/plans/{key}/versions").json()
+    assert PlanLog(FIXTURE_WORLD).commits(key)[-1].note == "restore v1"
+    versions = fresh_state_client.get(f"/api/plans/{key}/versions").json()
     assert versions["head"] == 4 and versions["versions"][0]["restores"] == 1
     assert [v["rev"] for v in versions["versions"]] == [4, 3, 2, 1]
 
 
-def test_restore_over_an_edit_made_since_the_base_is_outdated(client):
-    key = _create(client)
-    _push(client, key, 1, _rate(15))
-    PlanLog(WORLD).push(key, 2, [_rate(20)], actor=CHAT)
-    reply = client.post(f"/api/plans/{key}/restore", json={"base_rev": 2, "rev": 1}, headers=ORIGIN)
+def test_restore_over_an_edit_made_since_the_base_is_outdated(fresh_state_client):
+    key = create_plan(fresh_state_client)["key"]
+    push_ops(fresh_state_client, key, 1, _rate(15))
+    PlanLog(FIXTURE_WORLD).push(key, 2, [_rate(20)], actor=CHAT)
+    reply = fresh_state_client.post(
+        f"/api/plans/{key}/restore", json={"base_rev": 2, "rev": 1}, headers=PAGE_ORIGIN
+    )
     assert reply.status_code == 409
     assert reply.json()["outdated"] is True and reply.json()["head"] == 3
-    assert PlanLog(WORLD).head_rev(key) == 3
+    assert PlanLog(FIXTURE_WORLD).head_rev(key) == 3
 
 
-def test_duplicate_route_makes_a_stamped_copy_and_404s_a_missing_version(client):
-    key = _create(client)
-    reply = client.post(f"/api/plans/{key}/duplicate", json={}, headers=ORIGIN)
+def test_duplicate_route_makes_a_stamped_copy_and_404s_a_missing_version(fresh_state_client):
+    key = create_plan(fresh_state_client)["key"]
+    reply = fresh_state_client.post(f"/api/plans/{key}/duplicate", json={}, headers=PAGE_ORIGIN)
     assert reply.status_code == 201, reply.text
     body = reply.json()
     assert body["state"]["name"] == "rip 5 (copy)" and body["rev"] == 1
     assert body["state"]["plan_id"]
     assert (
-        client.post(f"/api/plans/{key}/duplicate", json={"rev": 9}, headers=ORIGIN).status_code
+        fresh_state_client.post(
+            f"/api/plans/{key}/duplicate", json={"rev": 9}, headers=PAGE_ORIGIN
+        ).status_code
         == 404
     )
-    taken = client.post(f"/api/plans/{key}/duplicate", json={"name": "rip 5"}, headers=ORIGIN)
+    taken = fresh_state_client.post(
+        f"/api/plans/{key}/duplicate", json={"name": "rip 5"}, headers=PAGE_ORIGIN
+    )
     assert taken.status_code == 409 and taken.json()["name_taken"] is True
-    foreign = client.post(
+    foreign = fresh_state_client.post(
         f"/api/plans/{key}/duplicate", json={}, headers={"origin": "http://evil.example"}
     )
     assert foreign.status_code == 403
 
 
-def test_the_delta_route_re_solves_both_versions(client):
-    key = _create(client)
-    _push(client, key, 1, _rate(15))
-    body = client.get(f"/api/plan/delta?key={key}&from_rev=1").json()
+def test_the_delta_route_re_solves_both_versions(fresh_state_client):
+    key = create_plan(fresh_state_client)["key"]
+    push_ops(fresh_state_client, key, 1, _rate(15))
+    body = fresh_state_client.get(f"/api/plan/delta?key={key}&from_rev=1").json()
     assert body["from_rev"] == 1 and body["to_rev"] == 2 and body["comparable"] is True
     assert body["machines"] > 0 and body["text"]
     names = [b["name"] for b in body["buildings"]]
     assert names, "tripling the rate must add machines somewhere"
-    assert client.get(f"/api/plan/delta?key={key}&from_rev=7").status_code == 404
-    assert client.get("/api/plan/delta?key=0000beef&from_rev=1").status_code == 404
+    assert fresh_state_client.get(f"/api/plan/delta?key={key}&from_rev=7").status_code == 404
+    assert fresh_state_client.get("/api/plan/delta?key=0000beef&from_rev=1").status_code == 404
 
 
-def test_a_solve_names_its_raw_inputs(client):
-    body = client.post("/api/plan/solve", json={"args": RIP_ARGS}, headers=ORIGIN).json()
+def test_a_solve_names_its_raw_inputs(fresh_state_client):
+    body = fresh_state_client.post(
+        "/api/plan/solve", json={"args": FIVE_RIP_ARGS}, headers=PAGE_ORIGIN
+    ).json()
     assert body["feasible"] and body["inputs"]
     assert all(r["per_min"] > 0 for r in body["inputs"])
 
 
-def test_the_plans_index_carries_a_status(client):
-    _create(client)
-    row = client.get("/api/plans").json()["index"][0]
+def test_the_plans_index_carries_a_status(fresh_state_client):
+    create_plan(fresh_state_client)
+    row = fresh_state_client.get("/api/plans").json()["index"][0]
     assert row["status"] == [] and row["recorded"] is True

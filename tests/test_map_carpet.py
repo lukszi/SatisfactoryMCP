@@ -8,23 +8,21 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.carpet import (  # noqa: E402
+from mapgen.gamedata.carpet import (
     COVER_NAME,
     TOP_NAME,
     carpet_planes,
     footprint,
     is_carpet,
 )
-from mapgen.palette.optics import carpet_bed, load_carpet  # noqa: E402
-from mapgen.palette.painted import srgb_to_linear  # noqa: E402
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from satisfactory_mcp.core.gameassets import versions  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.palette.optics import carpet_bed, load_carpet
+from mapgen.palette.painted import srgb_to_linear
+from mapgen.palette.styles import PAINTED_PALETTE
+from satisfactory_mcp.core.gameassets import versions
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 CARPET = {
     "colour": [108, 158, 190],

@@ -1,5 +1,5 @@
 """The hidden-advisory store (docs/advisors_contract.md §4): dismiss, snooze on play time,
-resurfacing, revs, the lock, and the files it refuses. Every write lands in a temporary dir."""
+resurfacing, revs, the lock, and the files it refuses."""
 
 from __future__ import annotations
 
@@ -17,11 +17,9 @@ WORLD = "W1"
 BY = {"kind": "page", "client": "", "pid": 1}
 
 
-@pytest.fixture(autouse=True)
-def advice_dir(tmp_path, monkeypatch):
-    root = tmp_path / "advice"
-    monkeypatch.setattr(config, "advice_dir", lambda: root)
-    return root
+@pytest.fixture
+def advice_dir():
+    return config.advice_dir()
 
 
 def _adv(members=("M_1", "M_2"), kind="starved", weight=None, subject="tor factory"):
@@ -139,7 +137,7 @@ def test_two_writers_both_land_under_the_lock():
 
 
 def test_a_newer_schema_is_refused_and_left_alone(advice_dir):
-    advice_dir.mkdir()
+    advice_dir.mkdir(parents=True)
     path = store.path_for(WORLD)
     path.write_text(json.dumps({"schema": 2, "version": 3, "hidden": {}}), encoding="utf-8")
     with pytest.raises(NewerSchema):
@@ -150,7 +148,7 @@ def test_a_newer_schema_is_refused_and_left_alone(advice_dir):
 
 
 def test_a_torn_file_reads_empty(advice_dir):
-    advice_dir.mkdir()
+    advice_dir.mkdir(parents=True)
     store.path_for(WORLD).write_text('{"schema": 1, "hidd', encoding="utf-8")
     assert store.read(WORLD) == {"schema": 1, "version": 0, "hidden": {}}
 

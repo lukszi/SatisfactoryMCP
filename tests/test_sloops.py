@@ -15,13 +15,13 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.optimize import build_processes, solve
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.planning.scenario import build_scenario
 from satisfactory_mcp.domain.planning.slice import slice_of
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

@@ -8,13 +8,10 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-import pytest
+import numpy as np
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM  # noqa: E402
-from mapgen.gamedata.waterbodies import (  # noqa: E402
+from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
+from mapgen.gamedata.waterbodies import (
     BODY_STEP_M,
     CLASSES,
     HOT_SPRING_BOX_MAX_M,
@@ -26,19 +23,18 @@ from mapgen.gamedata.waterbodies import (  # noqa: E402
     level_bodies,
     open_sea,
 )
-from mapgen.palette.painted import (  # noqa: E402
+from mapgen.palette.painted import (
     WATER_TABLE_COLUMNS,
     PaintedGround,
     load_water_bodies,
     painted_colours,
-    srgb_to_linear,
     water_table,
 )
-from mapgen.palette.shore import OCEAN_LEVEL_M  # noqa: E402
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from mapgen.terrain.sample import ClassMix, class_taps, taps_linear  # noqa: E402
+from mapgen.palette.shore import OCEAN_LEVEL_M
+from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.terrain.sample import ClassMix, class_taps, taps_linear
+from tests.support.map_scenes import CLASS_ID, class_optics, painted_ground_stub, water_scene
 
-ID = {name: i for i, name in enumerate(CLASSES)}
 NO_SPRINGS = np.zeros((0, 3))
 
 
@@ -104,10 +100,12 @@ def test_classify_claims_fills_and_falls_back():
     plane, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
     assert (plane[~wet] == 0).all()
     assert (plane[:, :10] == OCEAN).all(), "unclaimed water at the ocean level is ocean"
-    assert (plane[5:10, 20:50] == ID["river"]).all(), "the rest of a river body takes its class"
-    assert (plane[20:30, 20:30] == ID["swamp"]).all()
-    assert (plane[40:45, 20:25] == ID["lake"]).all(), "unclaimed inland water is a lake"
-    assert (plane[40:45, 40:45] == ID["swamp"]).all(), "unless its biome says swamp"
+    assert (plane[5:10, 20:50] == CLASS_ID["river"]).all(), (
+        "the rest of a river body takes its class"
+    )
+    assert (plane[20:30, 20:30] == CLASS_ID["swamp"]).all()
+    assert (plane[40:45, 20:25] == CLASS_ID["lake"]).all(), "unclaimed inland water is a lake"
+    assert (plane[40:45, 40:45] == CLASS_ID["swamp"]).all(), "unless its biome says swamp"
     assert counts["bodies_claimed"] == 2 and counts["filled_by_biome"] == 50
 
 
@@ -115,7 +113,7 @@ def test_a_box_claims_only_water_at_its_own_level():
     level, wet, bodies, biome = _world()
     bodies["actors"].append(["BP_Water_C", _box(0, 0, 60, 60, 200.0), ["SulfurPond_Inst"]])
     plane, _ = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
-    assert not (plane == ID["sulfur"]).any()
+    assert not (plane == CLASS_ID["sulfur"]).any()
 
 
 RIVER_BOX = ["BP_River_PROT_C", ["MI_SLW_River_Base_01"]]
@@ -162,8 +160,10 @@ def test_a_river_box_reaching_into_a_lake_leaves_the_lake_one_class():
     for lake in ([_actor(LAKE_BOX, 5, 15, 75, 75, 50.0)], []):
         bodies = {"actors": [*lake, river], "hot_springs": []}
         plane, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
-        assert (plane[20:70, 10:70] == ID["lake"]).all()
-        assert (plane[0:20, 35:40] == ID["river"]).all(), "the channel at its own level is river"
+        assert (plane[20:70, 10:70] == CLASS_ID["lake"]).all()
+        assert (plane[0:20, 35:40] == CLASS_ID["river"]).all(), (
+            "the channel at its own level is river"
+        )
         assert _edges_inside_bodies(plane, level) == 0
         assert counts["river_box_texels_given_back"] == 21 * 16, "lake rows 20-40, cols 30-45"
     labels = level_bodies(wet, level)
@@ -176,8 +176,8 @@ def test_a_small_pond_inside_a_big_box_keeps_its_class():
     pond = ["BP_Water_C", ["MI_Lake_Turquoise_01"]]
     bodies = {"actors": [_actor(pond, 10, 10, 15, 15, 20.0), _actor(LAKE_BOX, 0, 0, 40, 40, 20.0)]}
     plane, _ = classify(level, wet, bodies, (np.zeros((40, 40), np.uint8), GRASS), 0.0)
-    assert (plane[10:16, 10:16] == ID["turquoise"]).all()
-    assert (plane == ID["lake"]).sum() == 40 * 40 - 36
+    assert (plane[10:16, 10:16] == CLASS_ID["turquoise"]).all()
+    assert (plane == CLASS_ID["lake"]).sum() == 40 * 40 - 36
 
 
 def test_a_body_a_river_box_mostly_covers_is_a_river_whole():
@@ -195,10 +195,10 @@ def test_a_body_a_river_box_mostly_covers_is_a_river_whole():
         "hot_springs": [],
     }
     plane, counts = classify(level, wet, bodies, (np.zeros((60, 60), np.uint8), GRASS), 0.0)
-    assert (plane[20:26, 20:26] == ID["turquoise"]).all(), "a small pond keeps its own class"
+    assert (plane[20:26, 20:26] == CLASS_ID["turquoise"]).all(), "a small pond keeps its own class"
     rest = wet.copy()
     rest[20:26, 20:26] = False
-    assert (plane[rest] == ID["river"]).all()
+    assert (plane[rest] == CLASS_ID["river"]).all()
     assert counts["river_box_texels_given_back"] == 0
 
 
@@ -238,7 +238,7 @@ def test_a_box_at_the_ocean_level_never_claims_the_open_sea():
     biome = (np.zeros((n, n), np.uint8), ["Area_Swamp"])
     plane, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
     assert (plane[90:150, n // 2 : 200] == OCEAN).all(), "the box stops at the open sea"
-    assert (plane[100:140, 40:100] == ID["swamp"]).all(), "and keeps its lagoon"
+    assert (plane[100:140, 40:100] == CLASS_ID["swamp"]).all(), "and keeps its lagoon"
     assert counts["open_sea_texels"] == int(sea.sum())
 
 
@@ -252,7 +252,7 @@ def test_sea_level_water_the_map_edge_does_not_reach_keeps_its_box():
     bodies = {"actors": [["BP_Water_C", box, ["MI_WaterSwamp_Muddy"]]], "hot_springs": []}
     biome = (np.zeros((n, n), np.uint8), ["Area_Swamp"])
     plane, counts = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
-    assert (plane[wet] == ID["swamp"]).all() and counts["open_sea_texels"] == 0
+    assert (plane[wet] == CLASS_ID["swamp"]).all() and counts["open_sea_texels"] == 0
 
 
 def test_a_lake_box_under_the_sea_claims_no_water_at_the_sea_s_level():
@@ -277,7 +277,7 @@ def test_a_lake_box_under_the_sea_claims_no_water_at_the_sea_s_level():
     biome = (np.zeros((n, n), np.uint8), GRASS)
     plane, _ = classify(level, wet, bodies, biome, OCEAN_LEVEL_M)
     assert (plane[100:140, 40:100] == OCEAN).all()
-    assert (plane[20:40, 20:40] == ID["lake"]).all()
+    assert (plane[20:40, 20:40] == CLASS_ID["lake"]).all()
     assert _edges_inside_bodies(plane, level) == 0
 
 
@@ -292,16 +292,18 @@ def _taps(rows, cols, shape):
 
 def test_a_uniform_pixel_takes_its_row_exactly_and_dry_taps_do_not_dilute():
     plane = np.zeros((4, 4), np.uint8)
-    plane[:, 2:] = ID["swamp"]
-    plane[2:, :2] = ID["river"]
+    plane[:, 2:] = CLASS_ID["swamp"]
+    plane[2:, :2] = CLASS_ID["river"]
     table = np.arange(len(CLASSES) * 2, dtype=np.float32).reshape(-1, 2) + 0.1
     mix = ClassMix(class_taps(plane, _taps([0.0, 0.5, 2.5], [2.5, 1.5, 0.2], plane.shape)), OCEAN)
     rows = mix.of(table)
-    np.testing.assert_array_equal(rows[0, 0], table[ID["swamp"]])
-    np.testing.assert_array_equal(rows[0, 1], table[ID["swamp"]])
+    np.testing.assert_array_equal(rows[0, 0], table[CLASS_ID["swamp"]])
+    np.testing.assert_array_equal(rows[0, 1], table[CLASS_ID["swamp"]])
     np.testing.assert_array_equal(rows[0, 2], table[OCEAN])
-    np.testing.assert_allclose(rows[2, 1], (table[ID["swamp"]] + table[ID["river"]]) / 2)
-    assert mix.classes() >= {ID["swamp"], ID["river"]}
+    np.testing.assert_allclose(
+        rows[2, 1], (table[CLASS_ID["swamp"]] + table[CLASS_ID["river"]]) / 2
+    )
+    assert mix.classes() >= {CLASS_ID["swamp"], CLASS_ID["river"]}
 
 
 # ----------------------------------------------------------------------- optics
@@ -313,7 +315,7 @@ def test_every_inland_class_has_optics_and_a_missing_one_draws_as_the_ocean():
     table = water_table(PAINTED_PALETTE)
     assert table.shape == (len(CLASSES), sum(WATER_TABLE_COLUMNS))
     bare = {k: v for k, v in PAINTED_PALETTE.items() if k != "water_classes"}
-    np.testing.assert_array_equal(water_table(bare)[ID["swamp"]], table[OCEAN])
+    np.testing.assert_array_equal(water_table(bare)[CLASS_ID["swamp"]], table[OCEAN])
     swamp = classes["swamp"]
     assert swamp["turbidity"] > classes["river"]["turbidity"], "a swamp is murkier than a river"
 
@@ -324,79 +326,21 @@ def test_an_old_paint_store_has_no_water_bodies(tmp_path):
     assert load_water_bodies(tmp_path, {"files": {WATER_BODIES_NAME: {}}}) == {"actors": []}
 
 
-def _ground(n):
-    palette = PAINTED_PALETTE
-    water = palette["water"]
-    rock = [np.full((1, n), 0.2, np.float32) for _ in range(3)]
-    return SimpleNamespace(
-        palette=palette,
-        albedo=[np.full((1, n), v, np.float32) for v in (0.35, 0.3, 0.2)],
-        canopy=np.zeros((1, n), np.float32),
-        canopy_rgb=np.zeros(3, np.float32),
-        rock=rock,
-        rock_family=None,
-        crown=None,
-        titan=None,
-        carpet=None,
-        mesh_rgb={},
-        seabed_coral=np.zeros(3, np.float32),
-        water={
-            "k": np.asarray(water["k_per_m"], np.float32),
-            "body": srgb_to_linear(water["body"]),
-            "sky": srgb_to_linear(water["sky"]) * np.float32(water["surface_r"]),
-            "deep": srgb_to_linear(water["deep"]),
-            "deep_tau_m": np.float32(water["deep_tau_m"]),
-            "bed": np.float32(water["bed_wet"]),
-            "inland_floor": np.float32(water.get("inland_floor", 0.0)),
-        },
-        ramp=(0.0, 100.0, np.linspace(0.0, 100.0, 101, dtype=np.float32)),
-        opaque_water=[],
-    )
-
-
-def _scene(n, optics=None):
-    depth = np.linspace(0.0, 6.0, n, dtype=np.float32)[None, :]
-    zero = np.zeros((1, n), np.float32)
-    water = {
-        "depth_m": depth,
-        "cover": np.ones((1, n), np.float32),
-        "edge": zero,
-        "ocean": zero,
-        "above_m": zero + 10,
-        "below_m": zero + 10,
-    }
-    return {
-        "z_m": zero + 5,
-        "borrow": np.ones((1, n), np.float32),
-        "ndl": np.ones((1, n), np.float32),
-        "ndl_flat": np.float32(1.0),
-        "rock_weight": zero,
-        "mesh_weight": None,
-        "water": water,
-        "water_optics": optics,
-    }
-
-
-def _optics(ground, cls, n):
-    row = water_table(PAINTED_PALETTE)[ID[cls]]
-    k, body, deep, tau, turbidity, tint = np.split(
-        np.tile(row, (1, n, 1)), np.cumsum(WATER_TABLE_COLUMNS)[:-1], axis=-1
-    )
-    return {**ground.water, "k": k, "body": body, "deep": deep, "deep_tau_m": tau,
-            "turbidity": turbidity, "tint": tint}  # fmt: skip
-
-
 def test_the_ocean_row_draws_exactly_what_the_ocean_always_drew():
     n = 32
-    ground = _ground(n)
+    ground = painted_ground_stub(n)
 
     def sample(plane):
         return plane
 
-    plain = painted_colours(_scene(n), ground, sample, sample)
-    rowed = painted_colours(_scene(n, _optics(ground, "ocean", n)), ground, sample, sample)
+    plain = painted_colours(water_scene(n), ground, sample, sample)
+    rowed = painted_colours(
+        water_scene(n, class_optics(ground, "ocean", n)), ground, sample, sample
+    )
     np.testing.assert_array_equal(plain, rowed)
-    swamp = painted_colours(_scene(n, _optics(ground, "swamp", n)), ground, sample, sample)
+    swamp = painted_colours(
+        water_scene(n, class_optics(ground, "swamp", n)), ground, sample, sample
+    )
     assert (swamp[0, -1, 0] > swamp[0, -1, 2]) and (plain[0, -1, 2] > plain[0, -1, 0])
 
 

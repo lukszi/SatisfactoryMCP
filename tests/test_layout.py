@@ -10,11 +10,11 @@ from __future__ import annotations
 from itertools import pairwise
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp.core.gamedata.footprint import FOUNDATION_M, extract_footprint
 from satisfactory_mcp.domain.planning.layout import LOGISTICS_FLOOR_M, build_layout
 from satisfactory_mcp.domain.planning.optimize import MW, Scenario, solve
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

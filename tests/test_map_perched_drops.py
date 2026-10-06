@@ -7,13 +7,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
+import numpy as np
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.palette.perched import LIP_DROP_M, perched_levels  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.palette.perched import LIP_DROP_M, perched_levels
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 ROWS, COLS = 160, 200
 BOX_DM, SWAMP_DM = 948, -167

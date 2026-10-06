@@ -8,12 +8,10 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.palette.perched import (  # noqa: E402
+from mapgen.palette.perched import (
     HOLE_DEPTH_MAX_M,
     PERCHED_EXCESS_M,
     perched_levels,
@@ -22,10 +20,10 @@ from mapgen.palette.perched import (  # noqa: E402
     water_surfaces,
     wet_holes,
 )
-from mapgen.palette.rivers import water_sources  # noqa: E402
-from mapgen.palette.shore import OCEAN_LEVEL_M  # noqa: E402
-from mapgen.tiles.compose import render_layer  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.palette.rivers import water_sources
+from mapgen.palette.shore import OCEAN_LEVEL_M
+from mapgen.tiles.compose import render_layer
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 ROWS, COLS, MID, HALF_WIDTH = 160, 120, 60, 8
 BOX_TOP_DM = 120

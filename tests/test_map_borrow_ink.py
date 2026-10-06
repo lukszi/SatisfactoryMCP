@@ -5,12 +5,9 @@ tools/mapgen/README.md, "Light". A synthetic sheet.
 
 from __future__ import annotations
 
-import pytest
+import numpy as np
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.lighting.hillshade import artwork_detail  # noqa: E402
+from mapgen.lighting.hillshade import artwork_detail
 
 
 def test_the_borrow_drops_thin_ink_and_keeps_broad_shading():

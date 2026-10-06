@@ -10,32 +10,30 @@ from __future__ import annotations
 import copy
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata import rockfamily  # noqa: E402
-from mapgen.gamedata.crowns import CROWN_RECORD, SPRITE_M  # noqa: E402
-from mapgen.gamedata.waterbodies import CLASSES, OCEAN  # noqa: E402
-from mapgen.palette.calibration import (  # noqa: E402
+from mapgen.gamedata import rockfamily
+from mapgen.gamedata.crowns import CROWN_RECORD, SPRITE_M
+from mapgen.gamedata.waterbodies import CLASSES, OCEAN
+from mapgen.palette.calibration import (
     display_to_crown,
     display_to_ground,
     display_to_linear,
     scoped_planes,
     weighted_median,
 )
-from mapgen.palette.colour import linear_to_srgb, oklab  # noqa: E402
-from mapgen.palette.optics import class_optics, opaque_share, underwater, water_table  # noqa: E402
-from mapgen.palette.painted import PaintedGround, hidden_ground, painted_colours  # noqa: E402
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from mapgen.palette.surfaces import (  # noqa: E402
+from mapgen.palette.colour import linear_to_srgb, oklab
+from mapgen.palette.optics import class_optics, opaque_share, underwater, water_table
+from mapgen.palette.painted import PaintedGround, hidden_ground, painted_colours
+from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.surfaces import (
     family_tables,
     mesh_surface,
     rock_surface,
     sunk_specks,
 )
-from mapgen.palette.trees import (  # noqa: E402
+from mapgen.palette.trees import (
     CANOPY_GREY,
     IDENTITY_OP,
     TARGET_GREY,
@@ -44,8 +42,8 @@ from mapgen.palette.trees import (  # noqa: E402
     hue_gate,
     over_crowns,
 )
-from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL  # noqa: E402
-from mapgen.terrain.sample import taps_linear  # noqa: E402
+from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL
+from mapgen.terrain.sample import taps_linear
 
 SWAMP = CLASSES.index("swamp")
 STYLE = PAINTED_PALETTE["crowns"]

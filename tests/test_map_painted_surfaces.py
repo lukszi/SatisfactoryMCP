@@ -10,12 +10,10 @@ import copy
 import json
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.cache import (  # noqa: E402
+from mapgen.cache import (
     DIRECT_CACHE_SIDECAR,
     DIRECT_COVERAGE_NAME,
     DIRECT_FAMILY_NAME,
@@ -23,8 +21,8 @@ from mapgen.cache import (  # noqa: E402
     cached_family,
     direct_cache_stamp,
 )
-from mapgen.gamedata import rockfamily  # noqa: E402
-from mapgen.gamedata.bake import (  # noqa: E402
+from mapgen.gamedata import rockfamily
+from mapgen.gamedata.bake import (
     BAKE_NAME,
     STAMP_INNER_M,
     STAMP_OUTER_M,
@@ -35,12 +33,12 @@ from mapgen.gamedata.bake import (  # noqa: E402
     oil_nodes,
     stamp_windows,
 )
-from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM  # noqa: E402
-from mapgen.gamedata.paint import (  # noqa: E402
+from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.paint import (
     component_origin,
 )
-from mapgen.gamedata.sweep import first_override  # noqa: E402
-from mapgen.palette.painted import (  # noqa: E402
+from mapgen.gamedata.sweep import first_override
+from mapgen.palette.painted import (
     PaintedGround,
     bake_table,
     canopy_over_rock,
@@ -51,8 +49,8 @@ from mapgen.palette.painted import (  # noqa: E402
     srgb_to_linear,
     titan_over,
 )
-from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style  # noqa: E402
-from mapgen.terrain.rasters import (  # noqa: E402
+from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style
+from mapgen.terrain.rasters import (
     TITAN_LEAVES,
     TITAN_TRUNK,
     direct_placements,
@@ -61,10 +59,10 @@ from mapgen.terrain.rasters import (  # noqa: E402
     reduce_source,
     titan_class,
 )
-from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS  # noqa: E402
-from satisfactory_mcp.domain.maps.axes import INPUT_NAMES  # noqa: E402
-from satisfactory_mcp.domain.maps.presets import normalise  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
+from satisfactory_mcp.domain.maps.axes import INPUT_NAMES
+from satisfactory_mcp.domain.maps.presets import normalise
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 # ----------------------------------------------------------------------- the bake
 

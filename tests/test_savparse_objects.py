@@ -34,7 +34,6 @@ regression in it would otherwise only show up on a machine that has a 2.9 MB sav
 from __future__ import annotations
 
 import struct
-from pathlib import Path
 
 import pytest
 
@@ -45,8 +44,8 @@ from pioneersav import (
     ParseError,
     read_body,
 )
+from tests.support.paths import FIXTURES
 
-FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE = FIXTURES / "save_body.bin"
 FIXTURE_V52 = FIXTURES / "save_body_v52.bin"
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import manage, summary, swaps
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanArgs, PlanLog
 
@@ -20,8 +19,7 @@ ADHERED = "Recipe_Alternate_AdheredIronPlate_C"
 
 
 @pytest.fixture
-def plans(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path)
+def plans():
     return PlanLog(WORLD)
 
 

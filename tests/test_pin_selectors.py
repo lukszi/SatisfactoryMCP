@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.domain.factories import select as gsel
 from satisfactory_mcp.domain.planning import pins
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
@@ -12,20 +11,14 @@ from satisfactory_mcp.domain.planning.recall import plan_ref, recall_plan
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.origin import resolve_origin
 from satisfactory_mcp.domain.spatial.select import select_nodes
+from tests.support.reference_world import FIVE_RIP_ARGS, FIXTURE_WORLD, RIP
 
-WORLD = "X2faPVKjX06VaRzClNv5KQ"
 CHAT = Actor("chat", "claude-code", 4242)
-RIP = "Reinforced Iron Plate"
-HMF = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
 OIL = "BP_ResourceNode26_99"
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch, labelled):
-    for name in ("plans_dir", "pins_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
+def world(labelled):
     return labelled
 
 
@@ -33,16 +26,18 @@ def _nodes():
     return nodes_mod.load_nodes().nodes
 
 
-def _machine(st) -> str:
+def _first_machine_id(st) -> str:
     return st.projection["machines"][0]["instance"].rsplit(".", 1)[-1]
 
 
 def test_every_located_kind_is_a_place(world):
     point, _ = pins.create(world, "point", {"x_m": 100.0, "y_m": -200.0}, label="spot")
     node, _ = pins.create(world, "node", {"node": OIL})
-    machine, _ = pins.create(world, "machine", {"machine": _machine(world)})
+    machine, _ = pins.create(world, "machine", {"machine": _first_machine_id(world)})
     factory, _ = pins.create(world, "factory", {"factory": world.labels.labels[0].name})
-    made = PlanLog(WORLD).create("sited", HMF, actor=CHAT, siting={"origin_m": [5.0, 6.0, 0.0]})
+    made = PlanLog(FIXTURE_WORLD).create(
+        "sited", FIVE_RIP_ARGS, actor=CHAT, siting={"origin_m": [5.0, 6.0, 0.0]}
+    )
     plan, _ = pins.create(world, "plan", {"plan": made.key})
     centre, echo = resolve_origin(world, "pin:1")
     assert centre == (10000.0, -20000.0) and echo == "pin:1 = 100,-200 (“spot” point)"
@@ -61,9 +56,9 @@ def test_a_point_is_spelt_like_its_selector(world):
 
 
 def test_a_place_refuses_what_has_no_place(world):
-    made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
+    made = PlanLog(FIXTURE_WORLD).create("rip", FIVE_RIP_ARGS, actor=CHAT)
     plan, _ = pins.create(world, "plan", {"plan": made.key})
-    PlanLog(WORLD).push(
+    PlanLog(FIXTURE_WORLD).push(
         made.key,
         1,
         [{"op": "add", "field": "required", "member": "Recipe_IronPlate_C"}],
@@ -81,9 +76,9 @@ def test_a_place_refuses_what_has_no_place(world):
 
 
 def test_near_a_pin_works_in_both_selector_languages(world):
-    machine, _ = pins.create(world, "machine", {"machine": _machine(world)})
+    machine, _ = pins.create(world, "machine", {"machine": _first_machine_id(world)})
     around = gsel.select_machines([f"near:{machine['id']}@50"], world)
-    assert _machine(world) in around
+    assert _first_machine_id(world) in around
     node, _ = pins.create(world, "node", {"node": OIL})
     sel = select_nodes([f"near:{node['id']}@10"], _nodes(), st=world)
     assert [n["instance"].rsplit(".", 1)[-1] for n in sel.nodes] == [OIL]
@@ -105,7 +100,7 @@ def test_node_sources_take_node_and_field_pins(world):
 
 def test_node_sources_refuse_other_kinds_in_words(world):
     point, _ = pins.create(world, "point", {"x_m": 1.0, "y_m": 2.0})
-    machine, _ = pins.create(world, "machine", {"machine": _machine(world)})
+    machine, _ = pins.create(world, "machine", {"machine": _first_machine_id(world)})
     sel = select_nodes([point["id"], machine["id"]], _nodes(), st=world)
     assert sel.nodes == []
     assert sel.errors == [
@@ -115,7 +110,7 @@ def test_node_sources_refuse_other_kinds_in_words(world):
 
 
 def test_machine_selects_take_machine_and_factory_pins_and_negate_them(world):
-    inst = _machine(world)
+    inst = _first_machine_id(world)
     machine, _ = pins.create(world, "machine", {"machine": inst})
     label = world.labels.labels[0]
     factory, _ = pins.create(world, "factory", {"factory": label.name})
@@ -134,7 +129,7 @@ def test_machine_selects_take_machine_and_factory_pins_and_negate_them(world):
 
 
 def test_plan_takes_a_plan_pin_and_refuses_others(world):
-    made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
+    made = PlanLog(FIXTURE_WORLD).create("rip", FIVE_RIP_ARGS, actor=CHAT)
     plan, _ = pins.create(world, "plan", {"plan": made.key})
     point, _ = pins.create(world, "point", {"x_m": 1.0, "y_m": 2.0})
     assert plan_ref(world, plan["id"]) == (made.key, f"{plan['id']} = rip (plan “rip”)")
@@ -147,22 +142,22 @@ def test_plan_takes_a_plan_pin_and_refuses_others(world):
 
 
 def test_deleted_and_gone_pins_refuse_everywhere(world):
-    made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
+    made = PlanLog(FIXTURE_WORLD).create("rip", FIVE_RIP_ARGS, actor=CHAT)
     plan, _ = pins.create(world, "plan", {"plan": made.key})
     node, _ = pins.create(world, "node", {"node": OIL})
-    pins.drop(WORLD, node["n"], 1)
+    pins.drop(FIXTURE_WORLD, node["n"], 1)
     sel = select_nodes([node["id"]], _nodes(), st=world)
     assert sel.errors == [f"{node['id']} was deleted"] and sel.nodes == []
     with pytest.raises(ValueError, match=f"{node['id']} was deleted"):
         resolve_origin(world, node["id"])
-    PlanLog(WORLD).push(made.key, 1, [{"op": "forget"}], actor=CHAT)
+    PlanLog(FIXTURE_WORLD).push(made.key, 1, [{"op": "forget"}], actor=CHAT)
     with pytest.raises(KeyError, match=f"{plan['id']} is gone: plan forgotten"):
         recall_plan(world, plan["id"], {})
 
 
 def test_canonical_rewrites_what_a_stored_plan_would_hold(world):
-    made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
-    PlanLog(WORLD).push(
+    made = PlanLog(FIXTURE_WORLD).create("rip", FIVE_RIP_ARGS, actor=CHAT)
+    PlanLog(FIXTURE_WORLD).push(
         made.key,
         1,
         [{"op": "add", "field": "required", "member": "Recipe_IronPlate_C"}],
@@ -203,14 +198,12 @@ def test_canonical_rewrites_what_a_stored_plan_would_hold(world):
     assert all(not s.startswith("pin:") for s in args["sources"])
 
 
-def test_plan_management_tools_take_a_plan_pin(world, tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import journal
+def test_plan_management_tools_take_a_plan_pin(world, monkeypatch):
     from satisfactory_mcp.interfaces.mcp.tools import planning
 
-    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
     monkeypatch.setattr(planning, "_state", lambda *a, **k: world)
     monkeypatch.setattr(planning, "_sav", lambda st: "sav:test")
-    made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
+    made = PlanLog(FIXTURE_WORLD).create("rip", FIVE_RIP_ARGS, actor=CHAT)
     plan, _ = pins.create(world, "plan", {"plan": made.key})
     point, _ = pins.create(world, "point", {"x_m": 1.0, "y_m": 2.0})
     assert "no saved plan" not in planning.list_plans(name=plan["id"])
@@ -231,11 +224,10 @@ def test_a_site_at_a_pin_stores_the_place_not_the_pin(world):
     assert site.to_dict()["origin_label"] == "-7.9,-5.5 (point)"
 
 
-def test_show_on_map_pins_what_it_shows_once(world, tmp_path, monkeypatch):
+def test_show_on_map_pins_what_it_shows_once(world, monkeypatch):
     from satisfactory_mcp.domain.planning import journal
     from satisfactory_mcp.interfaces.mcp.tools import spatial
 
-    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
     monkeypatch.setattr(journal, "_writer", "")
     monkeypatch.setattr(journal, "_seq", {})
     journal.set_writer("chat")
@@ -251,6 +243,6 @@ def test_show_on_map_pins_what_it_shows_once(world, tmp_path, monkeypatch):
     assert "pin:" not in spatial.show_on_map("1,2")
     [row] = [p for p in pins.live(world) if p["n"] == 1]
     assert (row["x_m"], row["y_m"]) == (120.0, -340.0)
-    added = [e for e in journal.read(WORLD) if e["kind"] == "pin.add"]
+    added = [e for e in journal.read(FIXTURE_WORLD) if e["kind"] == "pin.add"]
     assert [e["args"]["n"] for e in added] == [1, 2, 3]
     assert all(e["actor"]["kind"] == "chat" for e in added)

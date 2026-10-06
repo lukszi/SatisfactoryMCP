@@ -1,8 +1,4 @@
-"""``/api/factories/health`` and ``/api/power/circuits``: the side panel's two payloads.
-
-``importorskip`` at module scope: ``fastapi`` lives in the optional ``web`` extra. Both
-loaders are injected by the ``client`` fixture, so nothing here reads a ``.sav``.
-"""
+"""``/api/factories/health`` and ``/api/power/circuits``: the side panel's two payloads."""
 
 from __future__ import annotations
 
@@ -11,6 +7,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp.domain.factories.health import ACTIONABLE, OK, STATES, assess
+from tests.support.web import client_over, failing_state_loader
 
 
 def test_every_named_factory_gets_a_health_row(labelled_client, labelled):
@@ -107,10 +104,7 @@ def test_the_dark_machines_are_the_ones_assess_finds(client, state):
 
 
 def test_an_unreadable_save_is_an_error_not_an_empty_panel(client, monkeypatch):
-    def boom(save=None, world=None):
-        raise RuntimeError("sidecar produced no output")
-
-    monkeypatch.setattr(client.app.state, "load_state", boom)
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
     for path in ("/api/factories/health", "/api/power/circuits"):
         r = client.get(path)
         assert r.status_code == 404
@@ -155,10 +149,7 @@ def test_worst_actionable_holds_only_machines_needing_action(labelled_client):
 
 def _one_circuit(game, generators, machines=(), query=""):
     """A hand-built world: every record wired to one pole."""
-    from fastapi.testclient import TestClient
-
     from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.web.app import create_app
 
     records = [*generators, *machines]
     actors = ["Build_PowerPoleMk1_C_1"] + [r["instance"] for r in records]
@@ -167,9 +158,8 @@ def _one_circuit(game, generators, machines=(), query=""):
         "machines": list(machines),
         "graph": {"actors": actors, "power": [[0, i] for i in range(1, len(actors))]},
     }
-    st = WorldState(projection=projection, game=game)
-    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
-    return TestClient(app).get("/api/power/circuits" + query).json()
+    with client_over(WorldState(projection=projection, game=game), game) as client:
+        return client.get("/api/power/circuits" + query).json()
 
 
 def test_a_standing_biomass_burner_is_rated_from_game_data(game):
@@ -263,14 +253,10 @@ def test_biomass_include_counts_every_burner_and_reports_nothing_left_out(game):
 
 
 def test_an_unknown_biomass_value_is_refused(game):
-    from fastapi.testclient import TestClient
-
     from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.web.app import create_app
 
-    st = WorldState(projection={}, game=game)
-    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
-    assert TestClient(app).get("/api/power/circuits?biomass=maybe").status_code == 422
+    with client_over(WorldState(projection={}, game=game), game) as client:
+        assert client.get("/api/power/circuits?biomass=maybe").status_code == 422
 
 
 @pytest.mark.parametrize("counted", [False, True])
@@ -341,10 +327,7 @@ def test_the_off_grid_counts_are_the_unwired_lists(client):
 
 
 def test_a_paused_machine_on_no_wire_is_listed_and_counted_but_draws_nothing(game):
-    from fastapi.testclient import TestClient
-
     from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.web.app import create_app
 
     def smelter(n, **extra):
         return {"instance": f"Build_SmelterMk1_C_{n}", "cls": "Build_SmelterMk1_C", **extra}
@@ -353,9 +336,8 @@ def test_a_paused_machine_on_no_wire_is_listed_and_counted_but_draws_nothing(gam
         "machines": [smelter(1), smelter(2, paused=True)],
         "graph": {"actors": [], "power": []},
     }
-    st = WorldState(projection=projection, game=game)
-    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
-    body = TestClient(app).get("/api/power/circuits").json()
+    with client_over(WorldState(projection=projection, game=game), game) as client:
+        body = client.get("/api/power/circuits").json()
     rated = game.buildings["Build_SmelterMk1_C"].power_at(1.0)
     assert body["off_grid"]["consumers"] == len(body["unwired"]) == 2
     assert body["off_grid"]["paused"] == 1

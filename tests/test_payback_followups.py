@@ -1,4 +1,7 @@
-"""The payback follow-ups F1a-F6a: docs/planner-payback-horizon_contract.md §10."""
+"""How payback prices a plan: tiers, the horizon, shards and per-row overclocking.
+
+docs/planner-payback-horizon_contract.md §10 is the specification.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +9,6 @@ import json
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import payback, prices
 from satisfactory_mcp.domain.planning.optimize import (
     PAYBACK_STOPS,
@@ -28,17 +30,18 @@ from satisfactory_mcp.domain.planning.planlog import (
 from satisfactory_mcp.domain.planning.prices import tiers_path as real_tiers_path
 from satisfactory_mcp.domain.planning.scenario import build_scenario, shard_stock
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.reference_world import FIXTURE_WORLD
+from tests.support.web import PAGE_ORIGIN, create_plan, push_ops, put_op, set_op
 
 CONSTRUCTOR = "Build_ConstructorMk1_C"
 REFINERY = "Build_OilRefinery_C"
 
 
-# ------------------------------------------------------------------ F2a: shared tier memory
+# ------------------------------------------------------------------ the tiers a world remembers
 
 
 @pytest.fixture
-def tier_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+def tier_file(monkeypatch):
     monkeypatch.setattr(prices, "tiers_path", real_tiers_path)
     return real_tiers_path("W")
 
@@ -80,7 +83,7 @@ def test_a_tier_file_from_a_newer_version_is_not_overwritten(game, tier_file):
     assert tier_file.read_text(encoding="utf-8") == newer
 
 
-# ------------------------------------------------------------------ F1a: power goals priced by the horizon
+# ------------------------------------------------------------------ power goals priced by the horizon
 
 SPIRE = {
     "objective": "max_mw",
@@ -137,7 +140,7 @@ def test_short_horizons_keep_the_power_goal_and_the_recipes(game, state, hours):
     assert round(short.machines_total) == 289
 
 
-# ------------------------------------------------------------------ F3b: craftable shards count
+# ------------------------------------------------------------------ craftable shards count
 
 
 def test_craftable_shards_count_toward_overclock_last(game, state):
@@ -166,15 +169,13 @@ def test_the_shard_line_shows_hand_plus_craftable():
     )
 
 
-# ------------------------------------------------------------------ F3 extra: per-row choice
+# ------------------------------------------------------------------ a per-row overclock choice
 
 PAGE = Actor("page", "", 1)
 CHAT = Actor("chat", "claude-code", 2)
 FUEL_ROW = "Recipe_ResidualFuel_C"
 PLASTIC_ROW = "Recipe_Plastic_C"
 PLASTIC20 = {"objective": "min_power", "exports": ["Plastic"], "export_minimums": {"Plastic": 200}}
-WORLD = "X2faPVKjX06VaRzClNv5KQ"
-ORIGIN = {"origin": "http://testserver"}
 
 
 @pytest.fixture(scope="module")
@@ -241,8 +242,7 @@ def test_the_plain_build_never_overclocks_a_row(game, priced):
 
 
 @pytest.fixture
-def plans(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+def plans():
     return PlanLog("W")
 
 
@@ -251,19 +251,15 @@ def plan(plans):
     return plans.create("oil", {"objective": "min_power"}, actor=CHAT).key
 
 
-def _put(row, choice):
-    return {"op": "put", "field": "row_overclock", "item": row, "value": choice}
-
-
-def _set(field, value):
-    return {"op": "set", "field": field, "value": value}
+def _row_choice(row, choice):
+    return put_op("row_overclock", row, choice)
 
 
 def test_a_row_choice_is_a_plan_op_with_undo(plans, plan):
-    pushed = plans.push(plan, 1, [_put(FUEL_ROW, "last")], actor=PAGE)
+    pushed = plans.push(plan, 1, [_row_choice(FUEL_ROW, "last")], actor=PAGE)
     assert pushed.state.kwargs()["row_overclock"] == {FUEL_ROW: "last"}
-    plans.push(plan, 2, [_put(FUEL_ROW, "spread")], actor=PAGE)
-    assert inverse(plans.commits(plan)[2].ops) == [_put(FUEL_ROW, "last")]
+    plans.push(plan, 2, [_row_choice(FUEL_ROW, "spread")], actor=PAGE)
+    assert inverse(plans.commits(plan)[2].ops) == [_row_choice(FUEL_ROW, "last")]
     drop = {"op": "del", "field": "row_overclock", "item": FUEL_ROW}
     gone = plans.push(plan, 3, [drop], actor=PAGE)
     assert "row_overclock" not in gone.state.kwargs()
@@ -273,27 +269,27 @@ def test_a_row_choice_is_a_plan_op_with_undo(plans, plan):
 @pytest.mark.parametrize("value", ["on", 1, True, None])
 def test_only_last_or_spread_is_stored(plans, plan, value):
     with pytest.raises(InvalidOp, match="row_overclock"):
-        plans.push(plan, 1, [_put(FUEL_ROW, value)], actor=PAGE)
+        plans.push(plan, 1, [_row_choice(FUEL_ROW, value)], actor=PAGE)
 
 
 def test_row_choices_merge_per_row(plans, plan):
-    plans.push(plan, 1, [_put(FUEL_ROW, "last")], actor=CHAT)
+    plans.push(plan, 1, [_row_choice(FUEL_ROW, "last")], actor=CHAT)
     with pytest.raises(Outdated) as caught:
-        plans.push(plan, 1, [_put(FUEL_ROW, "spread")], actor=PAGE)
+        plans.push(plan, 1, [_row_choice(FUEL_ROW, "spread")], actor=PAGE)
     assert caught.value.conflicts[0].key == f"row_overclock[{FUEL_ROW}]"
     assert caught.value.conflicts[0].text().startswith("overclock on ")
-    assert plans.push(plan, 1, [_put(FUEL_ROW, "last")], actor=PAGE).noop
-    merged = plans.push(plan, 1, [_put(PLASTIC_ROW, "spread")], actor=PAGE)
+    assert plans.push(plan, 1, [_row_choice(FUEL_ROW, "last")], actor=PAGE).noop
+    merged = plans.push(plan, 1, [_row_choice(PLASTIC_ROW, "spread")], actor=PAGE)
     assert merged.state.args.row_overclock == {FUEL_ROW: "last", PLASTIC_ROW: "spread"}
-    both = plans.push(plan, 3, [_set("overclock_last", True)], actor=CHAT)
+    both = plans.push(plan, 3, [set_op("overclock_last", True)], actor=CHAT)
     assert both.state.args.row_overclock[FUEL_ROW] == "last"
 
 
 def test_a_row_choice_in_words():
     use_recipe_names(lambda: {FUEL_ROW: "Residual Fuel"})
     try:
-        assert describe_op(_put(FUEL_ROW, "last")) == "Residual Fuel: overclock last"
-        spread = describe_op(_put(FUEL_ROW, "spread"))
+        assert describe_op(_row_choice(FUEL_ROW, "last")) == "Residual Fuel: overclock last"
+        spread = describe_op(_row_choice(FUEL_ROW, "spread"))
         assert spread == "Residual Fuel: one more underclocked machine"
         dropped = {"op": "del", "field": "row_overclock", "item": FUEL_ROW, "was": "last"}
         assert describe_op(dropped) == "Residual Fuel: follows the plan's overclock setting"
@@ -302,13 +298,8 @@ def test_a_row_choice_in_words():
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch, projection, game):
+def fresh_state_factory(monkeypatch, projection, game):
     from satisfactory_mcp.interfaces.mcp.tools import planning
-
-    for name in ("plans_dir", "activity_dir", "pins_dir", "labels_dir", "ui_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
 
     def fresh(*_a, **_k):
         return WorldState(projection=projection, game=game)
@@ -317,7 +308,7 @@ def world(tmp_path, monkeypatch, projection, game):
     return fresh
 
 
-def test_chat_sets_a_row_choice_and_keeps_the_others(world):
+def test_chat_sets_a_row_choice_and_keeps_the_others(fresh_state_factory):
     from satisfactory_mcp import server as srv
 
     made = srv.plan_factory(
@@ -325,7 +316,7 @@ def test_chat_sets_a_row_choice_and_keeps_the_others(world):
     )
     assert 'saved as "oil" v1' in made, made
     assert "overclock last set on its row: Residual Fuel" in made, made
-    log = PlanLog(WORLD)
+    log = PlanLog(FIXTURE_WORLD)
     key = log.find("oil").key
     assert log.state(key).args.row_overclock == {FUEL_ROW: "last"}
     more = srv.plan_factory(
@@ -344,60 +335,33 @@ def test_chat_sets_a_row_choice_and_keeps_the_others(world):
     assert "overridden this call: row_overclock" in laid, laid
 
 
-def test_the_page_pushes_a_row_choice(world, projection, game):
-    from fastapi.testclient import TestClient
-
-    from satisfactory_mcp.interfaces.web.app import create_app
-
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as client:
-        created = client.post("/api/plans", json={"name": "oil", "args": PLASTIC20}, headers=ORIGIN)
-        key = created.json()["key"]
-        before = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
-        row = next(r for r in before["rows"] if r["recipe_id"] == FUEL_ROW)
-        assert row["overclock_option"]["applied"] is False and row["last_clock"] is None
-        pushed = client.post(
-            f"/api/plans/{key}/ops",
-            json={"base_rev": 1, "ops": [_put(FUEL_ROW, "last")]},
-            headers=ORIGIN,
-        )
-        assert pushed.status_code == 200, pushed.text
-        assert pushed.json()["state"]["args"]["row_overclock"] == {FUEL_ROW: "last"}
-        assert pushed.json()["state"]["names"][FUEL_ROW] == "Residual Fuel"
-        after = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
-        row = next(r for r in after["rows"] if r["recipe_id"] == FUEL_ROW)
-        assert row["overclock_option"]["applied"] and row["overclock_option"]["pinned"] == "last"
-        assert row["last_clock"] > 1 and after["plan_id"] != before["plan_id"]
+def test_the_page_pushes_a_row_choice(fresh_state_client):
+    client = fresh_state_client
+    key = create_plan(client, "oil", PLASTIC20)["key"]
+    before = client.post("/api/plan/solve", json={"key": key}, headers=PAGE_ORIGIN).json()
+    row = next(r for r in before["rows"] if r["recipe_id"] == FUEL_ROW)
+    assert row["overclock_option"]["applied"] is False and row["last_clock"] is None
+    pushed = push_ops(client, key, 1, _row_choice(FUEL_ROW, "last"))
+    assert pushed.json()["state"]["args"]["row_overclock"] == {FUEL_ROW: "last"}
+    assert pushed.json()["state"]["names"][FUEL_ROW] == "Residual Fuel"
+    after = client.post("/api/plan/solve", json={"key": key}, headers=PAGE_ORIGIN).json()
+    row = next(r for r in after["rows"] if r["recipe_id"] == FUEL_ROW)
+    assert row["overclock_option"]["applied"] and row["overclock_option"]["pinned"] == "last"
+    assert row["last_clock"] > 1 and after["plan_id"] != before["plan_id"]
 
 
-# ------------------------------------------------------------------ F5a, F6a
+# ------------------------------------------------------------------ a release, and the horizon cap
 
 
-def test_a_release_that_switches_recipes_shows_in_the_two_solves(world, projection, game):
-    """The page names the switch from the build list before and after the release (F5a)."""
-    from fastapi.testclient import TestClient
-
-    from satisfactory_mcp.interfaces.web.app import create_app
-
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
+def test_a_release_that_switches_recipes_shows_in_the_two_solves(fresh_state_client):
+    """The page names the switch from the build list before and after the release."""
+    client = fresh_state_client
     spire = {**SPIRE, "banned": SPIRE["exclude_recipes"]}
     del spire["exclude_recipes"]
-    with TestClient(app) as client:
-        created = client.post("/api/plans", json={"name": "spire", "args": spire}, headers=ORIGIN)
-        key = created.json()["key"]
-        before = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
-        client.post(
-            f"/api/plans/{key}/ops",
-            json={"base_rev": 1, "ops": [_set("payback_hours", 5)]},
-            headers=ORIGIN,
-        )
-        after = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
+    key = create_plan(client, "spire", spire)["key"]
+    before = client.post("/api/plan/solve", json={"key": key}, headers=PAGE_ORIGIN).json()
+    push_ops(client, key, 1, set_op("payback_hours", 5))
+    after = client.post("/api/plan/solve", json={"key": key}, headers=PAGE_ORIGIN).json()
     was = {r["recipe"] for r in before["rows"]}
     now = {r["recipe"] for r in after["rows"]}
     assert now - was == {"Alternate: Diluted Packaged Fuel", "Packaged Water", "Unpackage Fuel"}
@@ -406,6 +370,6 @@ def test_a_release_that_switches_recipes_shows_in_the_two_solves(world, projecti
 
 def test_the_horizon_stays_capped_at_100_hours(plans, plan):
     assert PAYBACK_STOPS[-1] == PAYBACK_MAX_H == 100.0
-    assert plans.push(plan, 1, [_set("payback_hours", 100)], actor=PAGE).rev == 2
+    assert plans.push(plan, 1, [set_op("payback_hours", 100)], actor=PAGE).rev == 2
     with pytest.raises(InvalidOp, match="0 to 100 hours"):
-        plans.push(plan, 2, [_set("payback_hours", 100.5)], actor=PAGE)
+        plans.push(plan, 2, [set_op("payback_hours", 100.5)], actor=PAGE)

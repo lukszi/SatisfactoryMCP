@@ -12,7 +12,7 @@ import pytest
 
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.spatial import heightfield as hf
-from tests.test_heightfield import build_layered_field
+from tests.support.heightfields import build_layered_field
 
 
 @pytest.fixture

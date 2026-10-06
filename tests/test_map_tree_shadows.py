@@ -8,15 +8,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata import trees as tr  # noqa: E402
-from mapgen.lighting import horizon as hz  # noqa: E402
-from mapgen.lighting import occluders as oc  # noqa: E402
-from mapgen.terrain import rasters  # noqa: E402
+from mapgen.gamedata import trees as tr
+from mapgen.lighting import horizon as hz
+from mapgen.lighting import occluders as oc
+from mapgen.terrain import rasters
 
 STEP = 0.5
 OAK = "/Game/FactoryGame/World/Environment/Foliage/Trees/Oak/SM_Oak_01"

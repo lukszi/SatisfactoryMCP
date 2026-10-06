@@ -17,14 +17,13 @@ from __future__ import annotations
 import math
 
 import pytest
-from conftest import _explode
+
+from tests.support.web import client_over, failing_state_loader
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
 
 
 def test_belts_are_the_network_as_it_was_actually_routed(client, state):
@@ -83,13 +82,7 @@ def test_a_world_with_no_belts_answers_with_an_empty_network(game):
     """Asserted through the three shapes the projection has carried, exactly as the floor
     plan next door is: a young save has laid no belt, and that is not an error."""
     for projection in ({}, {"belts": {}}, {"belts": {"classes": [], "segments": []}}):
-        app = create_app(
-            state_loader=lambda save=None, world=None, p=projection: WorldState(
-                projection=p, game=game
-            ),
-            game_loader=lambda: game,
-        )
-        with TestClient(app) as c:
+        with client_over(WorldState(projection=projection, game=game), game) as c:
             assert c.get("/api/belts").json() == {
                 "belts": [],
                 "count": 0,
@@ -115,11 +108,9 @@ def test_a_malformed_belt_segment_costs_one_piece_not_the_network(game):
             ],
         }
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         body = c.get("/api/belts").json()
     assert body["count"] == 3
     assert body["belts"][0] == {
@@ -185,20 +176,13 @@ def test_the_splitters_and_mergers_ride_with_the_belts_and_with_nothing_else(cli
 def test_a_world_that_split_no_belt_answers_with_no_attachments(game):
     """A young save has laid no belt and split nothing, and neither is an error."""
     for projection in ({}, {"attachments": []}, {"attachments": ["not a record"]}):
-        app = create_app(
-            state_loader=lambda save=None, world=None, p=projection: WorldState(
-                projection=p, game=game
-            ),
-            game_loader=lambda: game,
-        )
-        with TestClient(app) as c:
+        with client_over(WorldState(projection=projection, game=game), game) as c:
             body = c.get("/api/belts").json()
         assert (body["attachments"], body["attachment_count"]) == ([], 0)
 
 
 def test_a_save_that_cannot_be_read_has_no_belt_network_either(game):
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         r = c.get("/api/belts")
     assert r.status_code == 404
     assert "sidecar produced no output" in r.json()["error"]
@@ -313,13 +297,7 @@ def test_a_world_with_no_pipes_answers_with_empty_plumbing(game):
         {"pipes": {}},
         {"pipes": {"classes": [], "networks": [], "segments": []}},
     ):
-        app = create_app(
-            state_loader=lambda save=None, world=None, p=projection: WorldState(
-                projection=p, game=game
-            ),
-            game_loader=lambda: game,
-        )
-        with TestClient(app) as c:
+        with client_over(WorldState(projection=projection, game=game), game) as c:
             assert c.get("/api/pipes").json() == {
                 "pipes": [],
                 "count": 0,
@@ -347,11 +325,9 @@ def test_a_malformed_pipe_segment_costs_one_piece_not_the_plumbing(game):
             ],
         }
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         body = c.get("/api/pipes").json()
     assert body["count"] == 5
     # And the join survives the tearing, which is the whole reason `row` is a field rather
@@ -389,8 +365,7 @@ def test_a_malformed_pipe_segment_costs_one_piece_not_the_plumbing(game):
 
 
 def test_a_save_that_cannot_be_read_has_no_plumbing_either(game):
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         r = c.get("/api/pipes")
     assert r.status_code == 404
     assert "sidecar produced no output" in r.json()["error"]
@@ -474,11 +449,9 @@ def test_a_world_whose_routes_predate_the_curve_column_still_draws_them(game):
             "segments": [[0, 0, [[0, 0, 0], [400, 0, 0]], -1]],
         },
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         assert c.get("/api/belts").json()["belts"][0]["curve_m"] is None
         assert c.get("/api/pipes").json()["pipes"][0]["curve_m"] is None
 
@@ -512,11 +485,9 @@ def test_a_malformed_curve_costs_the_curve_and_not_the_route(game):
             ],
         }
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         rows = c.get("/api/belts").json()["belts"]
     assert len(rows) == 4, "every piece kept its geometry"
     assert rows[0]["curve_m"] == [[[1.0, 2.0, 0.0], [3.0, 4.0, 0.0]], None, None, None]

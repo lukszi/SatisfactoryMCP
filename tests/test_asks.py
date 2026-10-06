@@ -1,7 +1,4 @@
-"""The asks store (docs/planner-p4_contract.md §4): numbers, revs, limits, seen and answered.
-
-Every write lands in temporary asks and plans directories.
-"""
+"""The asks store (docs/planner-p4_contract.md §4): numbers, revs, limits, seen and answered."""
 
 from __future__ import annotations
 
@@ -10,7 +7,6 @@ import threading
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.core.schema import NewerSchema
 from satisfactory_mcp.domain.planning import asks
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
@@ -19,22 +15,13 @@ WORLD = "W1"
 ABOUT = {"kind": "process", "label": "Blender · Diluted Fuel", "ref": "job:recipe|B|R"}
 
 
-@pytest.fixture
-def dirs(tmp_path, monkeypatch):
-    for name in ("asks_dir", "plans_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
-    return tmp_path
-
-
-def test_a_missing_file_reads_empty_and_is_not_created(dirs):
+def test_a_missing_file_reads_empty_and_is_not_created():
     assert asks.read(WORLD) == {"schema": 1, "version": 0, "next": 1, "asks": []}
     assert asks.live(WORLD) == []
     assert not asks.path_for(WORLD).exists()
 
 
-def test_create_numbers_from_one_and_the_row_carries_its_copy(dirs):
+def test_create_numbers_from_one_and_the_row_carries_its_copy():
     row = asks.create(WORLD, "  why a Blender?  ", ABOUT)
     assert row["n"] == 1 and row["id"] == "ask:1" and row["rev"] == 1
     assert row["text"] == "why a Blender?" and row["copy"] == "ask:1 why a Blender?"
@@ -44,7 +31,7 @@ def test_create_numbers_from_one_and_the_row_carries_its_copy(dirs):
     assert asks.read(WORLD)["version"] == 1
 
 
-def test_numbers_are_never_reused_after_a_delete(dirs):
+def test_numbers_are_never_reused_after_a_delete():
     first = asks.create(WORLD, "one", ABOUT)
     asks.create(WORLD, "two", ABOUT)
     dropped = asks.drop(WORLD, 2, 1)
@@ -54,7 +41,7 @@ def test_numbers_are_never_reused_after_a_delete(dirs):
     assert asks.read(WORLD)["version"] == 4
 
 
-def test_a_drop_on_an_old_rev_is_stale_and_writes_nothing(dirs):
+def test_a_drop_on_an_old_rev_is_stale_and_writes_nothing():
     asks.create(WORLD, "one", ABOUT)
     asks.mark_seen(WORLD, [1], "Claude Code")
     version = asks.read(WORLD)["version"]
@@ -65,7 +52,7 @@ def test_a_drop_on_an_old_rev_is_stale_and_writes_nothing(dirs):
     assert asks.read(WORLD)["version"] == version
 
 
-def test_unknown_and_deleted_asks_say_which(dirs):
+def test_unknown_and_deleted_asks_say_which():
     with pytest.raises(asks.AskMissing, match=r"ask:4 does not exist \(no asks yet\)"):
         asks.drop(WORLD, 4, 1)
     asks.create(WORLD, "one", ABOUT)
@@ -80,7 +67,7 @@ def test_unknown_and_deleted_asks_say_which(dirs):
     "text, message",
     [("", "needs a question"), ("   ", "needs a question"), ("x" * 201, "at most 200")],
 )
-def test_text_limits(dirs, text, message):
+def test_text_limits(text, message):
     with pytest.raises(asks.AskError, match=message):
         asks.create(WORLD, text, ABOUT)
     assert asks.create(WORLD, "x" * 200, ABOUT)["text"] == "x" * 200
@@ -97,12 +84,12 @@ def test_text_limits(dirs, text, message):
         ("plan", "about must be an object"),
     ],
 )
-def test_a_bad_about_is_refused(dirs, about, message):
+def test_a_bad_about_is_refused(about, message):
     with pytest.raises(asks.AskError, match=message):
         asks.create(WORLD, "q", about)
 
 
-def test_about_plan_must_be_a_live_plan_and_resolves_its_name(dirs):
+def test_about_plan_must_be_a_live_plan_and_resolves_its_name():
     with pytest.raises(asks.AboutMissing, match="no plan “0000beef”"):
         asks.create(WORLD, "q", {**ABOUT, "plan": "0000beef"})
     made = PlanLog(WORLD).create("north hmf", {}, actor=Actor("page"))
@@ -115,7 +102,7 @@ def test_about_plan_must_be_a_live_plan_and_resolves_its_name(dirs):
         asks.create(WORLD, "q", {**ABOUT, "plan": made.key})
 
 
-def test_at_most_200_live_asks(dirs, monkeypatch):
+def test_at_most_200_live_asks(monkeypatch):
     monkeypatch.setattr(asks, "MAX_LIVE", 3)
     for i in range(3):
         asks.create(WORLD, f"q{i}", ABOUT)
@@ -125,8 +112,9 @@ def test_at_most_200_live_asks(dirs, monkeypatch):
     assert asks.create(WORLD, "now fits", ABOUT)["n"] == 4
 
 
-def test_a_newer_schema_is_refused_and_a_torn_file_reads_empty(dirs):
+def test_a_newer_schema_is_refused_and_a_torn_file_reads_empty():
     path = asks.path_for(WORLD)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"schema": 2, "asks": []}), encoding="utf-8")
     with pytest.raises(NewerSchema):
         asks.read(WORLD)
@@ -136,7 +124,7 @@ def test_a_newer_schema_is_refused_and_a_torn_file_reads_empty(dirs):
     assert asks.read(WORLD)["asks"] == []
 
 
-def test_mark_seen_is_idempotent_and_skips_answered_and_deleted(dirs):
+def test_mark_seen_is_idempotent_and_skips_answered_and_deleted():
     for text in ("a", "b", "c"):
         asks.create(WORLD, text, ABOUT)
     asks.drop(WORLD, 3, 1)
@@ -150,7 +138,7 @@ def test_mark_seen_is_idempotent_and_skips_answered_and_deleted(dirs):
     assert asks.mark_seen(WORLD, [], "x") == []
 
 
-def test_mark_answered_refuses_unknown_and_deleted_and_writes_nothing(dirs):
+def test_mark_answered_refuses_unknown_and_deleted_and_writes_nothing():
     asks.create(WORLD, "a", ABOUT)
     asks.create(WORLD, "b", ABOUT)
     asks.drop(WORLD, 2, 1)
@@ -166,7 +154,7 @@ def test_mark_answered_refuses_unknown_and_deleted_and_writes_nothing(dirs):
     assert row["state"] == "answered" and row["answered_by"] == "Claude Code"
 
 
-def test_an_answer_line_is_kept_and_can_be_replaced(dirs):
+def test_an_answer_line_is_kept_and_can_be_replaced():
     asks.create(WORLD, "why a Blender?", ABOUT)
     assert asks.mark_answered(WORLD, [1], "Claude Code", {1: "it makes the fuel"}) == [1]
     row = asks.live(WORLD)[0]
@@ -179,7 +167,7 @@ def test_an_answer_line_is_kept_and_can_be_replaced(dirs):
     assert row["answer"] == "diluted fuel" and row["answered"] == answered and row["rev"] == 3
 
 
-def test_an_ask_without_an_answer_line_reads_blank(dirs):
+def test_an_ask_without_an_answer_line_reads_blank():
     asks.create(WORLD, "a", ABOUT)
     asks.mark_answered(WORLD, [1], "Claude Code")
     assert asks.live(WORLD)[0]["answer"] == ""
@@ -199,7 +187,7 @@ def test_parse_reads_ask_ids_case_insensitively():
     assert asks.parse("pin:7") is None and asks.parse("ask:x") is None and asks.parse(7) is None
 
 
-def test_two_writers_under_the_lock_lose_nothing(dirs):
+def test_two_writers_under_the_lock_lose_nothing():
     errors = []
 
     def writer(tag):

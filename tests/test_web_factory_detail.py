@@ -6,28 +6,29 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from test_query import INSIDE, OUTSIDER, ROD_A, SMELTER, _projection
-
 from satisfactory_mcp.domain.world import sites as world_sites
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.projections import (
+    INSIDE,
+    OUTSIDER,
+    ROD_A,
+    SMELTER,
+    smelter_feeding_two_rods,
+)
+from tests.support.web import client_over
 
 
 @pytest.fixture
 def plant(game) -> WorldState:
-    st = WorldState(projection=_projection(), game=game)
+    st = WorldState(projection=smelter_feeding_two_rods(), game=game)
     st.labels.put("rod line", list(INSIDE))
     return st
 
 
 @pytest.fixture
 def api(plant, game):
-    from fastapi.testclient import TestClient
-
-    from satisfactory_mcp.interfaces.web.app import create_app
-
-    app = create_app(state_loader=lambda save=None, world=None: plant, game_loader=lambda: game)
-    with TestClient(app) as c:
-        yield c
+    with client_over(plant, game) as client:
+        yield client
 
 
 def test_aspects_carry_the_balance_with_its_three_verdicts(api):

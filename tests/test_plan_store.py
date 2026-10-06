@@ -20,10 +20,7 @@ CHAT = Actor("chat")
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
+def store():
     return PlanLog("TESTWORLD")
 
 
@@ -98,16 +95,15 @@ def test_plans_do_not_live_in_the_cache():
     assert config.plans_dir() != config.labels_dir()
 
 
-def test_a_file_written_before_siting_and_provenance_still_loads(tmp_path, monkeypatch):
+def test_a_file_written_before_siting_and_provenance_still_loads():
     """Both keys arrived as defaulted fields on purpose, and the discipline only holds if
     a file that predates them still opens. A plan is not regenerable: this is the one
     failure that loses something the player typed."""
     import json
 
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp import config
 
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
-    (tmp_path / "OLDWORLD.json").write_text(
+    (config.plans_dir() / "OLDWORLD.json").write_text(
         json.dumps(
             {
                 "schema": 1,
@@ -137,15 +133,12 @@ def test_a_file_written_before_siting_and_provenance_still_loads(tmp_path, monke
 
 
 @pytest.fixture
-def live_plans(tmp_path, monkeypatch):
-    """One stored plan in a scratch plans dir, reached through the real state loader.
+def live_plans():
+    """One stored plan in the private plans dir, reached through the real state loader.
 
     Written through the store rather than through plan_factory: a rename must not need a
     solve, so the test that proves it must not pay for one either.
     """
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     st = srv._state()
     PlanLog(st.world_id).create(
         "north oil",

@@ -12,11 +12,11 @@ from __future__ import annotations
 import math
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.factories.labels import LabelStore
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

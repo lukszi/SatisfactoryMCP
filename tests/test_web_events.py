@@ -1,13 +1,6 @@
 """``/api/events``: the SSE stream, driven through the handler rather than the client.
 
-``importorskip`` at module scope, not a marker: ``fastapi`` lives in the optional
-``web`` extra, so an install without it must skip this file rather than fail collection.
-
-No ``client`` fixture here, and that is the point: this endpoint reads no world at all, so
-what each test needs is an app whose watcher is pointed at empty temporary directories --
-the reader's real save root and real label directory would make these tests about timing
-rather than about shape, and a machine that happens to have named one factory would put an
-``event: notes`` where the keepalive test expects silence.
+Each app's watcher reads an empty save root, so only what a test writes produces an event.
 ``test_watch.py`` covers the machinery underneath; this file covers what reaches the wire.
 """
 
@@ -64,22 +57,16 @@ def _first_sse_chunk(app, since: float = 0.0) -> bytes:
     return asyncio.run(pull())
 
 
-def _empty_roots(monkeypatch, tmp_path) -> None:
-    """Point every watched and tailed tree at empty temporary directories.
-
-    All of them, not just the save root: the labels, plans and activity directories live in
-    the reader's own app-data folder, and any file in one would make the watcher publish
-    before the test had written anything.
-    """
-    for name in ("saves_root", "labels_dir", "plans_dir", "activity_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
+def _empty_save_root(monkeypatch, tmp_path) -> None:
+    """Point the watched save root at an empty folder; the stores are private already."""
+    root = tmp_path / "saves_root"
+    root.mkdir()
+    monkeypatch.setattr(config, "saves_root", lambda: root)
 
 
 def test_events_keep_the_stream_alive_with_a_ping_comment(game, tmp_path, monkeypatch):
     """Empty watched directories produce no events, so the keepalive is what arrives."""
-    _empty_roots(monkeypatch, tmp_path)
+    _empty_save_root(monkeypatch, tmp_path)
     monkeypatch.setattr(web_events, "PING_SECONDS", 0.05)
     app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
     assert _first_sse_chunk(app) == b": ping\n\n"
@@ -87,7 +74,7 @@ def test_events_keep_the_stream_alive_with_a_ping_comment(game, tmp_path, monkey
 
 def test_a_written_save_becomes_a_save_event(game, tmp_path, monkeypatch):
     """The watcher's whole job: a new mtime under the save root reaches the browser."""
-    _empty_roots(monkeypatch, tmp_path)
+    _empty_save_root(monkeypatch, tmp_path)
     saves = config.saves_root()
     (saves / "nested").mkdir()
     (saves / "nested" / "Han Solo_autosave_0.sav").write_bytes(b"not really a save")
@@ -127,7 +114,7 @@ def test_a_named_factory_becomes_a_notes_event(game, tmp_path, monkeypatch):
     all while the watcher globbed ``*.sav``. It arrives under its own event name, because
     what a browser refetches for a label is not what it refetches for an autosave.
     """
-    _empty_roots(monkeypatch, tmp_path)
+    _empty_save_root(monkeypatch, tmp_path)
     (config.labels_dir() / "coal power.json").write_text("{}", encoding="utf-8")
     app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
 
@@ -148,7 +135,7 @@ def test_a_named_factory_becomes_a_notes_event(game, tmp_path, monkeypatch):
 
 
 def test_a_stream_whose_queue_overflowed_drains_and_then_ends(game, tmp_path, monkeypatch):
-    _empty_roots(monkeypatch, tmp_path)
+    _empty_save_root(monkeypatch, tmp_path)
     monkeypatch.setattr(web_events, "PING_SECONDS", 5.0)
     app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
     watcher = app.state.watcher
@@ -173,7 +160,7 @@ def test_a_stream_whose_queue_overflowed_drains_and_then_ends(game, tmp_path, mo
 def test_a_plan_commit_becomes_a_plans_event_carrying_its_summary(game, tmp_path, monkeypatch):
     """The chat-to-page direction: a commit any process appends reaches the browser with the
     words the page shows, so the page need not fetch just to say what happened."""
-    _empty_roots(monkeypatch, tmp_path)
+    _empty_save_root(monkeypatch, tmp_path)
     app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
     log = PlanLog("W")
     key = log.create("north hmf", {}, actor=Actor("page")).key
@@ -214,7 +201,7 @@ def test_a_new_chat_journal_read_from_its_start_replays_only_after_since(
     The journal file is new to the tail, so the tail reads it from its start and holds its
     newest entry for the replay, however old that entry is.
     """
-    _empty_roots(monkeypatch, tmp_path)
+    _empty_save_root(monkeypatch, tmp_path)
     monkeypatch.setattr(web_events, "PING_SECONDS", 0.05)
     app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
     asyncio.run(app.state.watcher.tail_once())
@@ -233,7 +220,7 @@ def test_a_new_chat_journal_read_from_its_start_replays_only_after_since(
 def test_the_live_stream_withholds_entries_stamped_before_since(game, tmp_path, monkeypatch):
     """The tail publishes up to a tick after the write, so an entry written just before the
     page opened can arrive after it subscribed; it is history all the same."""
-    _empty_roots(monkeypatch, tmp_path)
+    _empty_save_root(monkeypatch, tmp_path)
     monkeypatch.setattr(web_events, "PING_SECONDS", 5.0)
     app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: game)
     watcher = app.state.watcher

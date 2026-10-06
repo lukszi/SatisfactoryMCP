@@ -12,15 +12,14 @@ which owns the synthetic field.
 from __future__ import annotations
 
 import pytest
-from conftest import _explode
+
+from tests.support.web import client_over, failing_state_loader
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
 from satisfactory_mcp.domain.world import conduits as conduits_mod
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers import inspect as web_inspect
 
 #: The same three coordinates ``test_elevation`` probes, and for the same reasons: a
@@ -113,11 +112,9 @@ def test_inspect_quotes_a_fill_depth_once_both_populations_are_real(game):
             "instances": [[0, centre["x"], centre["y"], ground_cm + 2500.0]],
         }
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         e = c.get(
             "/api/inspect", params={"x_m": centre["x"] / 100.0, "y_m": centre["y"] / 100.0}
         ).json()["elevation"]
@@ -149,8 +146,7 @@ def test_inspect_still_answers_when_the_save_cannot_be_read(game):
     to say so: without it every node would read as free because nothing was there to say
     otherwise, which is the exact failure mode this project keeps refusing.
     """
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         r = c.get("/api/inspect", params={"x_m": IN_THE_FIELD[0], "y_m": IN_THE_FIELD[1]})
     assert r.status_code == 200
     body = r.json()
@@ -221,8 +217,7 @@ def test_inspect_radius_widens_the_elevation_reach_but_not_the_conduit_reach(cli
 
 
 def test_inspect_without_a_save_keeps_nodes_and_nulls_conduits(game):
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         body = c.get("/api/inspect", params={"x_m": IN_THE_FIELD[0], "y_m": IN_THE_FIELD[1]}).json()
     assert body["nearest"] and body["fields"]
     assert body["conduits"] is None and body["pickups"] == [] and body["stale"] == []

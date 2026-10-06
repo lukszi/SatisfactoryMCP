@@ -9,22 +9,19 @@ from __future__ import annotations
 import inspect
 import json
 import math
-from pathlib import Path
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
+from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.lighting import horizon as hz
+from mapgen.lighting import model
+from mapgen.lighting.occluders import sheet_crowns
+from mapgen.palette.lightparams import shader_light
+from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.paths import REPO_ROOT
 
-from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
-from mapgen.lighting import horizon as hz  # noqa: E402
-from mapgen.lighting import model  # noqa: E402
-from mapgen.lighting.occluders import sheet_crowns  # noqa: E402
-from mapgen.palette.lightparams import shader_light  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
-
-REPO = Path(__file__).resolve().parents[1]
-LITLAYER_TS = REPO / "src/satisfactory_mcp/interfaces/web/frontend/src/litlayer.ts"
+LITLAYER_TS = REPO_ROOT / "src/satisfactory_mcp/interfaces/web/frontend/src/litlayer.ts"
 
 
 def _flat_nrm(shape, nx=0.0):

@@ -1,8 +1,4 @@
-"""``/api/progress/milestones``: the dashboard's Progress section.
-
-``importorskip`` at module scope: ``fastapi`` lives in the optional ``web`` extra. Both
-loaders are injected by the ``client`` fixture, so nothing here reads a ``.sav``.
-"""
+"""``/api/progress/*``: the dashboard's Progress section."""
 
 from __future__ import annotations
 
@@ -11,6 +7,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp.domain.progression.ladder import SchematicLadder
+from tests.support.web import client_over, failing_state_loader
 
 
 def _ladder(state):
@@ -53,10 +50,7 @@ def test_ready_means_nothing_is_short_and_short_means_a_positive_gap(client):
 
 
 def test_an_unreadable_save_is_an_error_not_an_empty_ladder(client, monkeypatch):
-    def boom(save=None, world=None):
-        raise RuntimeError("sidecar produced no output")
-
-    monkeypatch.setattr(client.app.state, "load_state", boom)
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
     r = client.get("/api/progress/milestones")
     assert r.status_code == 404
     assert "could not read save" in r.json()["error"]
@@ -132,10 +126,7 @@ def test_every_pending_drive_is_listed_with_both_options(client, state):
 
 @pytest.mark.parametrize("route", PROGRESS_ROUTES)
 def test_every_progress_route_refuses_an_unreadable_save(client, monkeypatch, route):
-    def boom(save=None, world=None):
-        raise RuntimeError("sidecar produced no output")
-
-    monkeypatch.setattr(client.app.state, "load_state", boom)
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
     r = client.get(f"/api/progress/{route}")
     assert r.status_code == 404
     assert "could not read save" in r.json()["error"]
@@ -144,23 +135,11 @@ def test_every_progress_route_refuses_an_unreadable_save(client, monkeypatch, ro
 def test_capabilities_say_when_their_tree_is_still_shut(client, state, projection, game):
     """With spoilers off the page names no capability whose MAM tree is unopened; the
     route has to say which ones those are, for the MAM page and the sloops page alike."""
-    import copy
-
-    from fastapi.testclient import TestClient
-
-    from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.web.app import create_app
-
     body = client.get("/api/progress/mam").json()
     assert all(not c["tree_shut"] for c in body["capabilities"])
     assert client.get("/api/progress/sloops").json()["amplifier_tree_shut"] is False
 
-    shut = copy.deepcopy(projection)
-    trees = shut["research"]["unlocked_trees"]
-    shut["research"]["unlocked_trees"] = [t for t in trees if t != "BPD_ResearchTree_AlienTech_C"]
-    closed = WorldState(projection=shut, game=game)
-    app = create_app(state_loader=lambda save=None, world=None: closed, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with _closed_trees(projection, game) as c:
         caps = c.get("/api/progress/mam").json()["capabilities"]
         sloops = c.get("/api/progress/sloops").json()
     assert caps and all(cap["tree_shut"] for cap in caps)
@@ -168,19 +147,15 @@ def test_capabilities_say_when_their_tree_is_still_shut(client, state, projectio
 
 
 def _closed_trees(projection, game):
+    """A client over the fixture world with the alien-tech research tree still shut."""
     import copy
 
-    from fastapi.testclient import TestClient
-
     from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.web.app import create_app
 
     shut = copy.deepcopy(projection)
     trees = shut["research"]["unlocked_trees"]
     shut["research"]["unlocked_trees"] = [t for t in trees if t != "BPD_ResearchTree_AlienTech_C"]
-    closed = WorldState(projection=shut, game=game)
-    app = create_app(state_loader=lambda save=None, world=None: closed, game_loader=lambda: game)
-    return TestClient(app)
+    return client_over(WorldState(projection=shut, game=game), game)
 
 
 def _phase(state, monkeypatch, phase):

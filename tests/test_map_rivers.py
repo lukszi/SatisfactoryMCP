@@ -7,27 +7,25 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.cache import cached_rivers, river_stamp, write_rivers  # noqa: E402
-from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM  # noqa: E402
-from mapgen.gamedata.rivers import (  # noqa: E402
+from mapgen.cache import cached_rivers, river_stamp, write_rivers
+from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.rivers import (
     RIVER_CLASS,
     box_tops,
     hermite,
     ribbon_planes,
     sample_rivers,
 )
-from mapgen.palette.rivers import RiverWater, river_terms  # noqa: E402
-from mapgen.palette.shore import blend_water, optical_depth, water_composite  # noqa: E402
-from mapgen.palette.styles import SHORE_OPTICS, WATER_DEEP, WATER_SHALLOW  # noqa: E402
-from mapgen.palette.water import WATER_DEPTH_FULL_M  # noqa: E402
-from mapgen.tiles.recipes import RECIPE  # noqa: E402
-from satisfactory_mcp.core.gameassets import versions  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.palette.rivers import RiverWater, river_terms
+from mapgen.palette.shore import blend_water, optical_depth, water_composite
+from mapgen.palette.styles import SHORE_OPTICS, WATER_DEEP, WATER_SHALLOW
+from mapgen.palette.water import WATER_DEPTH_FULL_M
+from mapgen.tiles.recipes import RECIPE
+from satisfactory_mcp.core.gameassets import versions
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 X0, Y0 = ORIGIN_X_CM / 100, ORIGIN_Y_CM / 100
 SHAPE = (120, 160)

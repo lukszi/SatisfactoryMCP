@@ -7,17 +7,15 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata import crowns as data  # noqa: E402
-from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM  # noqa: E402
-from mapgen.gamedata.paint import RADIUS_BINS_M, canopy_cover  # noqa: E402
-from mapgen.palette.painted import over_crowns  # noqa: E402
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from mapgen.terrain.crowns import crown_band, load_crowns, sprite_levels  # noqa: E402
+from mapgen.gamedata import crowns as data
+from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.paint import RADIUS_BINS_M, canopy_cover
+from mapgen.palette.painted import over_crowns
+from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.terrain.crowns import crown_band, load_crowns, sprite_levels
 
 LEAF = (0.1, 0.3, 0.05)
 

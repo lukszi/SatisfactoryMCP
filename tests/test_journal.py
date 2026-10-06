@@ -7,6 +7,7 @@ import os
 
 import pytest
 
+from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import journal
 from satisfactory_mcp.domain.planning.planlog import Actor
 
@@ -14,11 +15,8 @@ CHAT = Actor("chat", "claude-code", 8248)
 
 
 @pytest.fixture
-def jdir(tmp_path, monkeypatch):
-    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path)
-    monkeypatch.setattr(journal, "_writer", "")
-    monkeypatch.setattr(journal, "_seq", {})
-    return tmp_path
+def jdir():
+    return config.activity_dir()
 
 
 def test_nothing_is_written_until_the_process_names_itself(jdir):

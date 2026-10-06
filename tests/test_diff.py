@@ -15,7 +15,6 @@ import asyncio
 from copy import deepcopy
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.diff import (
@@ -28,6 +27,7 @@ from satisfactory_mcp.domain.planning.optimize import solve
 from satisfactory_mcp.domain.planning.scenario import build_scenario
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.presenters.text import primitives as render
+from tests.support.reference_world import REFERENCE_FIELD
 
 #: See test_surface.py for why ``game`` is requested module-wide: the three tests here that
 #: call a tool rather than the domain reach the game through the lru_cache'd ``app.game()``,

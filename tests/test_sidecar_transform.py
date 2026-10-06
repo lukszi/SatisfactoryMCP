@@ -23,7 +23,6 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from itertools import pairwise
-from pathlib import Path
 
 import pytest
 
@@ -43,8 +42,7 @@ from satisfactory_mcp.core.saveio.extract import (
     _storage,
     yaw_of,
 )
-
-FIXTURES = Path(__file__).parent / "fixtures"
+from tests.support.paths import FIXTURES
 
 #: The 8 m grid every foundation sits on. Two pieces exactly this far apart are neighbours in
 #: one row of one platform, which is what makes their bearing a measurement of that platform's

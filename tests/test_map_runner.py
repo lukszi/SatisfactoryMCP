@@ -22,58 +22,8 @@ from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.interfaces.web import childproc
 from satisfactory_mcp.interfaces.web.mapjobs import MapJobRunner
 from satisfactory_mcp.interfaces.web.watch import KIND_MAPS, SaveWatcher
-
-FAKE = r"""
-import argparse, json, os, sys, time
-from pathlib import Path
-p = argparse.ArgumentParser()
-p.add_argument("command", nargs="?")
-p.add_argument("--game"); p.add_argument("--field"); p.add_argument("--out-dir")
-p.add_argument("--renders-name"); p.add_argument("--size", type=int)
-p.add_argument("--layer", action="append"); p.add_argument("--kernel-only", action="store_true")
-p.add_argument("--no-top", action="store_true"); p.add_argument("--cache-dir")
-p.add_argument("--keep-direct", action="store_true")
-p.add_argument("--light", action=argparse.BooleanOptionalAction, default=True)
-a = p.parse_args()
-pause = float(os.environ.get("FAKE_PAUSE", "0.05"))
-print("field: 7500x7500 at 1 m, build buildVersion 502094 (x), the installed build", flush=True)
-for i in range(0, 101, 25):
-    print(f"  direct.cache: {i:4.1f}% of {a.size}x{a.size} at 0.2289 m, 1 M texels, 1s", flush=True)
-    time.sleep(pause)
-for layer in a.layer or ["terrain", "satellite"]:
-    print(f"drawing {layer} at {a.size}x{a.size}", flush=True)
-    for i in (13.3, 50.8, 88.3):
-        print(f"  {layer}: {i:4.1f}% of {a.size}x{a.size} in 1.0s", flush=True)
-        time.sleep(pause)
-    if os.environ.get("FAKE_FAIL"):
-        print("something broke in the cutter", flush=True)
-        sys.exit(3)
-    out = Path(a.out_dir) / a.renders_name / layer
-    (out / "tiles" / "0").mkdir(parents=True, exist_ok=True)
-    (out / "tiles" / "0" / "0_0.png").write_bytes(b"png")
-    meta = {"_meta": {"generator": "tools/gen_map_renders.py", "layer": layer,
-            "tiles": {"bytes": 3, "max_z": 2},
-            "provenance": {"schema": 1, "game": {"cl": 502094},
-                "inputs": {"heightfield": {"cl": 502094, "generator_version": 5, "planes": [],
-                                           "digest": "sha256:hf"}},
-                "renderer": {"family": "render", "recipe": 5, "version": 1, "label": "PCHIP",
-                             "size_px": a.size},
-                "style": {"id": "terrain-hypsometric", "version": 1, "label": layer}}}}
-    (out / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
-    for z in range(3):
-        print(f"  pyramid z{z}: 256x256, 1 tiles, 0.10 MB", flush=True)
-    print(f"wrote {out}  1 tiles over z0..z2 (0.0 MB)", flush=True)
-print("done in 1s", flush=True)
-"""
-
-
-def install_fake(tools: Path) -> None:
-    """The fake as the shim path and as the ``mapgen`` package the runner starts."""
-    (tools / "gen_map_renders.py").write_text(FAKE, encoding="utf-8")
-    package = tools / "mapgen" / "src" / "mapgen"
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("", encoding="utf-8")
-    (package / "__main__.py").write_text(FAKE, encoding="utf-8")
+from tests.support.map_jobs import install_fake
+from tests.support.paths import FIXTURES
 
 
 @pytest.fixture
@@ -256,7 +206,7 @@ def test_every_preset_writes_only_under_data_local(env):
 
 
 def test_progress_reads_a_recorded_full_render_log():
-    lines = (Path(__file__).parent / "fixtures" / "map_render_full.log").read_text(encoding="utf-8")
+    lines = (FIXTURES / "map_render_full.log").read_text(encoding="utf-8")
     options = presets.normalise("render", {"size": 32768, "light": False})
     progress = store.Progress(presets.stage_plan("render", options), 32768)
     seen = []

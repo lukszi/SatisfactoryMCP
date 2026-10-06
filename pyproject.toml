@@ -62,46 +62,16 @@ exclude = ["src/satisfactory_mcp/interfaces/web/frontend"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tools/mapgen/tests"]
-# mapgen is a workspace member; this finds it before `uv sync --all-packages` has run.
-pythonpath = ["tools/mapgen/src"]
+# The repository root makes `tests.support` and `tools` importable; mapgen is a workspace
+# member found here before `uv sync --all-packages` has run.
+pythonpath = [".", "tools/mapgen/src"]
 markers = [
     "integration: requires the real game install / save files",
-    # Hoisted to the front of the run by ``pytest_collection_modifyitems`` in
-    # tests/conftest.py, which is where the reasoning is. Three tests carry it: the ones
-    # that walk the reader's entire save directory rather than a committed fixture.
     "whole_folder: walks every .sav on the machine; the longest tests in the suite",
 ]
-# The DEFAULT run is the one a fresh clone can pass, because the documented command is
-# `uv run pytest -q` and a clone with no game and no saves has to be able to run it. 803 of
-# the 1,419 tests need the install or a .sav; measured on a clone with neither, they were 20
-# failures, 61 errors and a wall of skips, which is a suite that says nothing. Deselecting
-# them by marker leaves 616 tests that run off committed fixtures alone, in 9 s.
-#
-# `-m integration` is the other half and the owner's full run: it needs Docs.json and the
-# save directory, and both commands are in README.md and docs/mcp-surface.md. Deliberately
-# NOT `-m "integration or not integration"` cleverness -- two commands, each of which says
-# what it needs, beats one that quietly does less than it looks like it does.
-#
-# `-n 8` is `pytest-xdist`, and it is a MEASURED number rather than `auto`. `auto` is this
-# machine's 32 logical processors, and 32 workers is the worst setting tried on either half
-# of the suite: the fast set went 5.8 s at 8 workers to 7.7 s at 16 and 14.3 s at 32, and the
-# integration set 30 s to 38 s. The cost that grows with the worker count is fixed rather
-# than shared -- every worker is a fresh interpreter that imports all 74 test modules and
-# collects the suite alone, which is 1.2 s of collection before it runs a single test -- so
-# past a point each new worker adds more startup than it removes from the queue. Eight is
-# where both halves are at or near their best, and it leaves room for the three whole-folder
-# tests, which fan out into subprocesses of their own (tests/_pool.py).
-#
-# Measured, and NOT adopted, so the next person does not re-run them: `-p no:cacheprovider`
-# (6.03 s against 6.04 s -- no effect, so no flag), `--dist worksteal` (29.6 s) and
-# `--dist loadfile` (28.3 s) against the default `--dist load` (30.0 s), all three inside
-# this machine's run-to-run noise. What DID move the wall clock was the collection ORDER,
-# and that is a conftest hook rather than a flag; see `WHOLE_FOLDER` in tests/conftest.py.
-#
-# To re-measure after a hardware change: `uv run pytest -q -n <k>` and
-# `uv run pytest -q -m integration -n <k>` for k in 4, 6, 8, 12, 16, auto. Take three samples
-# of each -- the spread here is a good 5 s, and one sample per setting picks noise.
-addopts = ["-m", "not integration", "-n", "8"]
+# Why the default run deselects integration, and why eight workers: docs/DEVELOPING.md,
+# "Test suite".
+addopts = ["-m", "not integration", "-n", "8", "--import-mode=importlib"]
 
 [tool.ruff]
 line-length = 100

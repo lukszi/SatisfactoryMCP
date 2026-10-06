@@ -33,10 +33,7 @@ def _persist(store: LabelStore) -> None:
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.factories import labels as labels_mod
-
-    monkeypatch.setattr(labels_mod.config, "labels_dir", lambda: tmp_path)
+def store():
     return LabelStore(world_id="TESTWORLD")
 
 
@@ -154,13 +151,8 @@ def test_an_edited_label_round_trips_through_the_file(store):
 
 
 @pytest.fixture
-def live(tmp_path, monkeypatch):
-    """One label over real machines, in a scratch labels dir, through the state loader."""
-    from satisfactory_mcp.domain.factories import labels as labels_mod
-    from satisfactory_mcp.domain.planning import store as plans_mod
-
-    monkeypatch.setattr(labels_mod.config, "labels_dir", lambda: tmp_path / "labels")
-    monkeypatch.setattr(plans_mod.config, "plans_dir", lambda: tmp_path / "plans")
+def labelled_live_machines():
+    """One label over real machines, in the private labels dir, through the state loader."""
     st = srv._state()
     picked = sorted(st.graph.machines())[:5]
     st.labels.put("north steel", picked[:3], notes="the first three")
@@ -173,8 +165,8 @@ def _reload(st) -> LabelStore:
 
 
 @pytest.mark.integration
-def test_rename_factory_keeps_the_membership(live):
-    st, picked = live
+def test_rename_factory_keeps_the_membership(labelled_live_machines):
+    st, picked = labelled_live_machines
     out = srv.rename_factory(name="north steel", to="coast steel")
     assert "renamed factory 'north steel' to 'coast steel'" in out
     again = _reload(st)
@@ -185,8 +177,8 @@ def test_rename_factory_keeps_the_membership(live):
 
 
 @pytest.mark.integration
-def test_rename_factory_refuses_a_name_this_world_already_uses(live):
-    st, picked = live
+def test_rename_factory_refuses_a_name_this_world_already_uses(labelled_live_machines):
+    st, picked = labelled_live_machines
     st.labels.put("coast steel", picked[3:])
     _persist(st.labels)
     assert "already has a factory named 'coast steel'" in srv.rename_factory(
@@ -196,17 +188,17 @@ def test_rename_factory_refuses_a_name_this_world_already_uses(live):
 
 
 @pytest.mark.integration
-def test_rename_factory_lists_what_exists_when_the_name_is_unknown(live):
+def test_rename_factory_lists_what_exists_when_the_name_is_unknown(labelled_live_machines):
     out = srv.rename_factory(name="nope", to="whatever")
     assert out.startswith("! no label named 'nope'")
     assert "north steel" in out
 
 
 @pytest.mark.integration
-def test_a_stored_plan_scoped_to_the_factory_follows_the_rename(live):
+def test_a_stored_plan_scoped_to_the_factory_follows_the_rename(labelled_live_machines):
     """``Plan.factory`` is resolved by name every time a diff or a layout scopes itself to
     one, so a rename that left it behind would point both at nothing."""
-    st, _picked = live
+    st, _picked = labelled_live_machines
     from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 
     log = PlanLog(st.plans.world_id)
@@ -218,24 +210,24 @@ def test_a_stored_plan_scoped_to_the_factory_follows_the_rename(live):
 
 
 @pytest.mark.integration
-def test_amend_factory_adds_one_machine_without_re_anchoring_the_others(live):
-    st, picked = live
+def test_amend_factory_adds_one_machine_without_re_anchoring_the_others(labelled_live_machines):
+    st, picked = labelled_live_machines
     out = srv.amend_factory(name="north steel", add=[f"machine:{picked[3]}"])
     assert "3 -> 4 anchor(s), +1 -0" in out
     assert _reload(st).find("north steel").anchors == sorted(picked[:4])
 
 
 @pytest.mark.integration
-def test_amend_factory_drops_one_machine_and_keeps_the_rest(live):
-    st, picked = live
+def test_amend_factory_drops_one_machine_and_keeps_the_rest(labelled_live_machines):
+    st, picked = labelled_live_machines
     out = srv.amend_factory(name="north steel", drop=[f"machine:{picked[0]}"])
     assert "3 -> 2 anchor(s), +0 -1" in out
     assert _reload(st).find("north steel").anchors == sorted(picked[1:3])
 
 
 @pytest.mark.integration
-def test_amend_factory_refuses_to_drop_the_last_machine(live):
-    st, picked = live
+def test_amend_factory_refuses_to_drop_the_last_machine(labelled_live_machines):
+    st, picked = labelled_live_machines
     st.labels.put("lone", [picked[4]])
     _persist(st.labels)
     out = srv.amend_factory(name="lone", drop=[f"machine:{picked[4]}"])
@@ -245,10 +237,10 @@ def test_amend_factory_refuses_to_drop_the_last_machine(live):
 
 
 @pytest.mark.integration
-def test_amend_factory_says_when_the_machines_added_are_already_named(live):
+def test_amend_factory_says_when_the_machines_added_are_already_named(labelled_live_machines):
     """The verdict comes from ``covers``, the one predicate for "already named"; the
     per-label counts beside it are attribution, not a second filter."""
-    st, picked = live
+    st, picked = labelled_live_machines
     st.labels.put("neighbour", picked[3:])
     _persist(st.labels)
     out = srv.amend_factory(name="north steel", add=[f"machine:{picked[3]},{picked[4]}"])
@@ -258,10 +250,12 @@ def test_amend_factory_says_when_the_machines_added_are_already_named(live):
 
 
 @pytest.mark.integration
-def test_a_dead_anchor_survives_an_amend_and_goes_only_when_pruning_is_asked_for(live):
+def test_a_dead_anchor_survives_an_amend_and_goes_only_when_pruning_is_asked_for(
+    labelled_live_machines,
+):
     """Reading an older save must not silently shrink a label, so nothing drops an anchor
     the save is merely missing until it is asked to."""
-    st, picked = live
+    st, picked = labelled_live_machines
     st.labels.put("north steel", [*picked[:3], "Build_SmelterMk1_C_999999"])
     _persist(st.labels)
 
@@ -274,8 +268,8 @@ def test_a_dead_anchor_survives_an_amend_and_goes_only_when_pruning_is_asked_for
 
 
 @pytest.mark.integration
-def test_amend_factory_writes_nothing_on_a_dry_run(live):
-    st, picked = live
+def test_amend_factory_writes_nothing_on_a_dry_run(labelled_live_machines):
+    st, picked = labelled_live_machines
     out = srv.amend_factory(name="north steel", add=[f"machine:{picked[3]}"], dry_run=True)
     assert "would amend" in out
     assert "dry run: nothing written" in out
@@ -283,5 +277,5 @@ def test_amend_factory_writes_nothing_on_a_dry_run(live):
 
 
 @pytest.mark.integration
-def test_amend_factory_asks_for_something_to_do(live):
+def test_amend_factory_asks_for_something_to_do(labelled_live_machines):
     assert srv.amend_factory(name="north steel").startswith("! nothing to amend")

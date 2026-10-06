@@ -7,22 +7,19 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
+import numpy as np
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.palette.calibration import rehome_offshore  # noqa: E402
-from mapgen.palette.painted import (  # noqa: E402
+from mapgen.palette.calibration import rehome_offshore
+from mapgen.palette.painted import (
     ROCK_GRID_M,
     PaintedGround,
     display_to_ground,
     land_cells,
     oklab,
 )
-from mapgen.palette.shore import OCEAN_LEVEL_M  # noqa: E402
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.palette.shore import OCEAN_LEVEL_M
+from mapgen.palette.styles import PAINTED_PALETTE
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 SEA, DESERT, SPIRE = 0, 1, 2
 NAMES = ["Area_NoMansLand", "Area_RockyDesert", "Area_SpireCoast"]

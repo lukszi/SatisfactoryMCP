@@ -12,11 +12,11 @@ cannot tell you what a plant costs, and a total cannot tell you what to go and m
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.materials import FOUNDATION_ID, build_materials, cost_of
 from satisfactory_mcp.domain.planning.prepare import prepare
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

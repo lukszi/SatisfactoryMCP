@@ -44,7 +44,6 @@ which reader broke.
 from __future__ import annotations
 
 import struct
-from pathlib import Path
 
 import pytest
 
@@ -55,8 +54,8 @@ from pioneersav.properties import (
     ObjectReference,
     read_object,
 )
+from tests.support.paths import FIXTURES
 
-FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE = FIXTURES / "save_properties.bin"
 BODY_FIXTURE = FIXTURES / "save_body.bin"
 

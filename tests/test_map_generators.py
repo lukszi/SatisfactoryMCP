@@ -11,8 +11,7 @@ keeping the two apart is what keeps either file readable.
 
 ``importorskip`` at module scope, not a marker: half of these tests drive the endpoint
 through the ``client`` fixture, so the optional ``web`` extra is needed to collect the file.
-The tree builders come from ``test_web_tiles`` -- ONE definition, and it is the one built
-through the server's own directory names.
+The tree builders are ``tests.support.tiles``, built through the server's own directory names.
 """
 
 from __future__ import annotations
@@ -20,11 +19,10 @@ from __future__ import annotations
 import json
 import types
 
+import numpy
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-
-from test_web_tiles import _PNG, _fake_pyramid
 
 from mapgen.cache import (
     DIRECT_CACHE_SIDECAR,
@@ -133,6 +131,7 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.domain.spatial import heightfield as hf
 from satisfactory_mcp.interfaces.web.routers import tiles as web_tiles
+from tests.support.tiles import PNG_BYTES, fake_pyramid
 
 
 def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, monkeypatch):
@@ -229,9 +228,6 @@ def test_the_sun_is_in_the_north_west_and_the_shore_is_not_a_staircase():
     it is deep, ground where there is none, and strictly between the two in the band -- or
     it is decoration rather than the antialiasing it is there to be.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     rows, cols = numpy.mgrid[0:9, 0:9].astype(numpy.float32)
     flat = hillshade(numpy.zeros((9, 9), numpy.float32), 1.0)
     # Ground falling away to the north-west: high in the south-east, so the face looks at
@@ -297,9 +293,6 @@ def test_water_whose_depth_was_never_measured_is_still_drawn_as_water():
     band around the ocean's own -16.99 m -- but what has to hold in code is only that the
     unknown depth is never run through the ramp.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     # A sea surface at -17 over "ground" the fill layer rounded to -15: above the water.
     ground = numpy.full((7, 40), -15.0, numpy.float32)
     surface = numpy.full((7, 40), -17.0, numpy.float32)
@@ -347,7 +340,6 @@ class _Field:
     spacing_cm = 100.0
 
     def __init__(self, height_dm, prov, density=None):
-        numpy = pytest.importorskip("numpy")
         self._height_dm = numpy.asarray(height_dm, numpy.int16)
         self._prov = numpy.asarray(prov, numpy.uint8)
         self._density = None if density is None else numpy.asarray(density, numpy.uint8)
@@ -370,9 +362,6 @@ def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent(
     density. ``None`` there is not "no samples anywhere": read that way, every cliff on the
     map would silently drop to the kernel under a sidecar claiming the two-regime recipe.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     density = numpy.zeros((41, 41), numpy.uint8)
     density[14:27, 14:27] = 10  # ten vertices in each of a 13 m square's metres
     prov = numpy.full((41, 41), hf.PROV_CLIFF_DIRECT, numpy.uint8)
@@ -405,9 +394,6 @@ def test_the_rocks_are_composited_onto_the_lattice_and_can_only_raise_it():
     meets the ground. And where the lattice has nothing and the rock has something, the rock
     is the whole answer and the pixel stops being no-data.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     size = 24
     ground = numpy.full((size, size), 100.0, numpy.float32)
     # A rock 100 m tall over the left half, and over the right half geometry that lies
@@ -459,9 +445,6 @@ def test_the_kernel_interpolates_the_lattice_and_not_the_fold_it_produced():
     What the kernel has to be given is the surface UNDERNEATH: the landscape and fill
     lattices, which are continuous geometry the game evaluates itself.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     height = numpy.full((6, 6), 100, numpy.int16)
     height[:, 2:4] = 400  # a rock, two texels wide, 30 m up
     prov = numpy.full((6, 6), hf.PROV_LANDSCAPE, numpy.uint8)
@@ -490,9 +473,6 @@ def test_a_rock_pixel_is_its_own_triangle_and_never_leaks_across_the_silhouette(
     silhouette is the smear this render exists to avoid. Sub-samples are the only
     antialiasing, as a share of hits.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     size = 5
     z_cm = numpy.zeros((size, size), numpy.float32)
     coverage = numpy.zeros((size, size), numpy.uint8)
@@ -517,9 +497,6 @@ def test_pchip_is_exact_at_the_vertices_and_never_overshoots_a_step():
 
     Catmull-Rom over the same step rings, which is what makes the second claim a test.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     size = 12
     lattice = numpy.zeros((size, size), numpy.float32)
     lattice[:, 6:] = 400.0  # a 40 m cliff, in decimetres
@@ -551,7 +528,6 @@ def test_pchip_is_exact_at_the_vertices_and_never_overshoots_a_step():
 
 def _fill_fixture():
     """A 121 m square: landscape west, raster fill east, a rock, a hole, and open sea."""
-    numpy = pytest.importorskip("numpy")
     size = 121
     y, x = numpy.mgrid[0:size, 0:size].astype(numpy.float64)
 
@@ -600,9 +576,6 @@ def test_the_fill_is_rebuilt_from_the_raster_and_meets_the_landscape_without_a_s
     The rebuilt fill beats the stored nearest texel, the seam column jumps by about what the
     truth does, and the hole is filled close to the hidden surface.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     kwargs, land, prov = _fill_fixture()
     heights, ground, source, meta = fill_field(**kwargs)
     fill = prov == hf.PROV_FILL
@@ -628,9 +601,6 @@ def test_the_fill_is_rebuilt_from_the_raster_and_meets_the_landscape_without_a_s
 
 def test_rock_is_copied_unchanged_and_never_smoothed_into_the_ground():
     """Rock heights pass through the fill untouched, and none of them reach the ground."""
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     kwargs, land, prov = _fill_fixture()
     heights, ground, source, _meta = fill_field(**kwargs)
     rock = prov == hf.PROV_CLIFF_DIRECT
@@ -650,9 +620,6 @@ def test_the_open_sea_past_the_data_stays_the_page_s_colour():
     The texels stay no-data in both lattices, the sampler calls them missing, and the
     painter draws the page's sea there, not water over an invented bed.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     kwargs, _land, prov = _fill_fixture()
     heights, ground, source, meta = fill_field(**kwargs)
     sea = numpy.zeros(prov.shape, bool)
@@ -691,9 +658,6 @@ def test_the_seam_trace_measures_the_join_and_says_what_it_cannot_measure():
     ceiling and reads 1.0. And the description: a fade over forty texels spends a small
     fraction of it, which is the number the run prints and the sidecar records.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     rows, cols = 8, 400
     spacing = 0.2289
     x = numpy.arange(cols) * spacing
@@ -743,8 +707,6 @@ def test_the_regime_table_counts_by_province_and_reports_the_unbucketed_weight()
     the unbucketed answer, because a bucket boundary at 0.98 hides a coverage doing real
     work at 0.7.
     """
-    numpy = pytest.importorskip("numpy")
-
     prov = numpy.array([[hf.PROV_CLIFF_DIRECT] * 2 + [hf.PROV_LANDSCAPE] * 2] * 2, numpy.uint8)
     w = numpy.array([[1.0, 0.5, 0.0, 0.0], [1.0, 0.5, 0.0, 0.0]], numpy.float32)
     # The first cliff column is a measurement, the second is a facet the rasteriser
@@ -771,8 +733,6 @@ def test_a_direct_cache_from_another_render_is_rebuilt_rather_than_drawn_from(tm
     else is last week's rocks, and the answer to that is to rasterise again rather than to
     draw them.
     """
-    numpy = pytest.importorskip("numpy")
-
     stamp = direct_cache_stamp(8, 1, "build 495413")
     tmp_path.mkdir(parents=True, exist_ok=True)
     numpy.zeros((8, 8), numpy.float32).tofile(tmp_path / DIRECT_Z_NAME)
@@ -800,8 +760,6 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     own: a half-texel offset here would be invisible in every statistic and would draw every
     rim in the wrong place.
     """
-    numpy = pytest.importorskip("numpy")
-
     # One unit square of two triangles, lying flat at z = 500 cm, one metre on a side.
     verts = numpy.array([[0, 0, 500], [100, 0, 500], [100, 100, 500], [0, 100, 500]], numpy.float32)
     tris = numpy.array([[0, 1, 2], [0, 2, 3]], numpy.int64)
@@ -860,7 +818,6 @@ class _TerrainField(_Field):
 
     def __init__(self, height_dm, prov, raw):
         super().__init__(height_dm, prov)
-        numpy = pytest.importorskip("numpy")
         self._raw = numpy.asarray(raw, numpy.uint16)
         self._terrain_grid = {"zero": 32768.0, "units_per_m": 128.0, "offset_m": 1.0}
         self._terrain_grid.update(row_off=1, col_off=1)
@@ -876,9 +833,6 @@ def test_the_kernel_reads_the_landscape_at_its_own_vertical_step_under_the_rocks
     the raw uint16 landscape at 7.8 mm. Under the cliff province the real terrain replaces
     the hole the rocks left; fill and landscape holes keep what they had.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     height = numpy.full((4, 4), 103, numpy.int16)
     prov = numpy.full((4, 4), hf.PROV_LANDSCAPE, numpy.uint8)
     prov[1, 2] = hf.PROV_CLIFF_DIRECT
@@ -910,9 +864,6 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
     instance lands on the pixel centres its footprint covers, and an arch keeps triangles a
     facing cull would drop, because its deck is often an open shell.
     """
-    numpy = pytest.importorskip("numpy")
-    pytest.importorskip("scipy")
-
     z_m = numpy.full((9, 9), 10.0, numpy.float32)
     top_z = numpy.zeros((9, 9), numpy.float32)
     coverage = numpy.zeros((9, 9), numpy.uint8)
@@ -1023,7 +974,7 @@ class _FakeTile:
         self.box = box
 
     def save(self, path, **_kwargs):
-        path.write_bytes(_PNG)
+        path.write_bytes(PNG_BYTES)
 
 
 def test_the_pyramid_is_renamed_into_place_so_a_reader_never_meets_half_of_one(tmp_path):
@@ -1055,7 +1006,7 @@ def test_the_pyramid_is_renamed_into_place_so_a_reader_never_meets_half_of_one(t
     assert not (tmp_path / TILES_RETIRED).exists(), "nor is the tree it replaced"
     assert sorted(p.name for p in tiles.iterdir()) == ["0", "1", "2"]
     assert len(list(tiles.rglob("*.png"))) == stats["count"]
-    assert (tiles / tile_relpath(2, 3, 3)).read_bytes() == _PNG
+    assert (tiles / tile_relpath(2, 3, 3)).read_bytes() == PNG_BYTES
 
 
 def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
@@ -1125,7 +1076,7 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     assert (read_back["tile_px"], read_back["max_z"]) == (PYRAMID_TILE_PX, 5)
     # And the build tag moves when the pyramid does, because that tag is what a browser
     # holding an immutable tile keys on.
-    _fake_pyramid(local, max_z=0)
+    fake_pyramid(local, max_z=0)
     assert client.head("/api/maptiles/0/0/0").headers["x-map-build"] == read_back["build"]
     sidecar["_meta"]["tiles"]["count"] = 1364
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(json.dumps(sidecar), encoding="utf-8")
@@ -1177,7 +1128,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
     local = tmp_path / web_tiles.LOCAL_DIR_NAME
     local.mkdir()
-    _fake_pyramid(local, max_z=0)  # something for the probe to answer about
+    fake_pyramid(local, max_z=0)  # something for the probe to answer about
 
     with_dense = artwork_output.build_sidecar(
         **common,
@@ -1219,7 +1170,7 @@ def test_the_artwork_tool_offers_the_opt_out_it_documents(tmp_path):
     import subprocess
     import sys
 
-    from conftest import REPO_ROOT
+    from tests.support.paths import REPO_ROOT
 
     out = subprocess.run(
         [sys.executable, str(REPO_ROOT / "tools" / "gen_map_image.py"), "--help"],
@@ -1294,7 +1245,7 @@ def test_the_enhanced_pyramid_is_two_levels_deeper_and_the_server_follows_it_the
     for z, x, y in ((0, 0, 0), (7, 127, 127)):
         path = local / web_tiles.MAP_TILES_DIR_NAME / str(z)
         path.mkdir(parents=True)
-        (path / f"{x}_{y}.png").write_bytes(_PNG)
+        (path / f"{x}_{y}.png").write_bytes(PNG_BYTES)
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(
         json.dumps({"_meta": {"tiles": {"tile_px": 256, "max_z": 7, "enhanced": True}}}),
         encoding="utf-8",
@@ -1317,8 +1268,6 @@ def test_the_faint_mask_covers_weak_strokes_and_leaves_everything_else_to_the_ai
     that the model renders it well, something on a stroke shallow enough that the model
     drops it. No GPU and no upscaler is involved -- this is the mask, not the pipeline.
     """
-    numpy = pytest.importorskip("numpy")
-
     flat = numpy.full((48, 48), 200.0, numpy.float32)
     assert faint_mask(flat).max() == 0.0, "there is nothing to protect on flat fill"
 
@@ -1355,7 +1304,6 @@ def test_the_presharpen_raises_the_weak_band_and_nothing_else():
     out and must NOT be amplified on the way in, because handing the model more contrast on
     a mid stroke is handing it something to expand.
     """
-    numpy = pytest.importorskip("numpy")
 
     def square(depth):
         """A flat 200 fill with one column drawn ``depth`` luma below it, as RGB."""
@@ -1411,8 +1359,6 @@ def test_the_colour_fix_hands_the_flat_fills_back_to_the_source():
     the two things that has to do are: put a flat fill back exactly where the source had
     it, and leave the detail the model was entitled to invent alone.
     """
-    numpy = pytest.importorskip("numpy")
-
     source = numpy.full((128, 128, 3), 180.0, numpy.float32)
     source[:, 60:68] = 120.0  # a stroke, at the source's own depth
 

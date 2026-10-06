@@ -1,30 +1,18 @@
 """``/api/machines`` and ``/api/structures``: everything the player physically placed.
 
-``importorskip`` at module scope, not a marker: ``fastapi`` lives in the optional
-``web`` extra, so an install without it must skip this file rather than fail collection.
-
-Every test here injects both loaders -- through the ``client`` fixture in ``conftest.py``,
-or by building its own app around a hand-written projection -- so nothing in this file
-spawns the sidecar, reads a ``.sav`` or needs the save directory to exist.
-
-The two endpoints are tested together because they answer one question in two resolutions:
-an actor with a recipe and a clock, and an interned foundation with neither. What both owe
-the map is a position, a size and a facing, and the yaw test at the bottom asserts that
-across the pair rather than twice.
+The two endpoints answer one question in two resolutions -- an actor with a recipe and a
+clock, and an interned foundation with neither -- so the yaw test asserts across the pair.
 """
 
 from __future__ import annotations
 
 import pytest
-from conftest import _explode
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
-
 from satisfactory_mcp.core.gamedata.footprint import FOUNDATION_M
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
+from tests.support.web import client_over, failing_state_loader
 
 
 def test_machines_split_by_kind_and_name_their_buildings(client, state):
@@ -65,8 +53,8 @@ def test_a_machine_names_the_factory_whose_label_holds_it(game, projection):
     store = LabelStore(world_id="TESTWORLD")
     store.put("steel factory", [leaf])
     st.__dict__["labels"] = store
-    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
-    rows = TestClient(app).get("/api/machines").json()["machines"]
+    with client_over(st, game) as client:
+        rows = client.get("/api/machines").json()["machines"]
     owned = {r["instance_leaf"]: r["factory"] for r in rows}
     assert owned[leaf] == "steel factory"
     assert sum(1 for name in owned.values() if name) == 1, "only anchored machines name one"
@@ -242,13 +230,7 @@ def test_a_world_with_nothing_built_answers_with_an_empty_floor_plan(game):
     that the player has not poured concrete yet.
     """
     for projection in ({}, {"structures": {}}, {"structures": {"classes": [], "instances": []}}):
-        app = create_app(
-            state_loader=lambda save=None, world=None, p=projection: WorldState(
-                projection=p, game=game
-            ),
-            game_loader=lambda: game,
-        )
-        with TestClient(app) as c:
+        with client_over(WorldState(projection=projection, game=game), game) as c:
             body = c.get("/api/structures").json()
         assert body == {"structures": [], "count": 0, "tile_m": FOUNDATION_M}
 
@@ -268,11 +250,9 @@ def test_a_malformed_structure_row_costs_one_piece_not_the_endpoint(game):
             ],
         }
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         body = c.get("/api/structures").json()
     assert body["count"] == 3
     assert body["structures"][0] == {
@@ -299,8 +279,7 @@ def test_a_malformed_structure_row_costs_one_piece_not_the_endpoint(game):
 
 
 def test_a_save_that_cannot_be_read_has_no_floor_plan_either(game):
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         r = c.get("/api/structures")
     assert r.status_code == 404
     assert "sidecar produced no output" in r.json()["error"]
@@ -341,10 +320,8 @@ def test_a_projection_from_before_schema_12_says_unknown_rather_than_zero(game):
         "structures": {"classes": ["Build_Foundation_8x1_01_C"], "instances": [[0, 1, 2, 3]]},
         "machines": [{"cls": "Build_ConstructorMk1_C", "instance": "x.y", "pos": [1, 2, 3]}],
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         assert c.get("/api/structures").json()["structures"][0]["yaw"] is None
         assert c.get("/api/machines").json()["machines"][0]["yaw"] is None

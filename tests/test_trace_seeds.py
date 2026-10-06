@@ -13,55 +13,12 @@ import pytest
 
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import factories as ftools
-
-SMELTER = "Build_SmelterMk1_C_1"
-CONSTRUCTOR = "Build_ConstructorMk1_C_1"
-
-
-def _projection(belts: int = 1) -> dict:
-    """A smelter belted into a constructor, with the connector roles that orient it.
-
-    More than one belt puts a belt-to-belt segment in the chain, and a segment between two
-    belts states no direction at either end -- which is the case the walk has to take both
-    ways and the answer has to own up to.
-    """
-    run = [f"Build_ConveyorBeltMk1_C_{i}" for i in range(1, belts + 1)]
-    actors = [SMELTER, *run, CONSTRUCTOR]
-    roles = ["Output1", "Input0", "ConveyorAny0", "ConveyorAny1"]
-    material = [[0, 1, 0, 2]]
-    for i in range(1, belts):
-        material.append([i, i + 1, 3, 2])
-    material.append([belts, belts + 1, 3, 1])
-    return {
-        "header": {"save_identifier": "TEST-trace-seeds", "session_name": "t"},
-        "machines": [
-            {
-                "instance": f"L:P.{SMELTER}",
-                "cls": "Build_SmelterMk1_C",
-                "recipe": "Recipe_IngotIron_C",
-                "pos": [0, 0, 0],
-            },
-            {
-                "instance": f"L:P.{CONSTRUCTOR}",
-                "cls": "Build_ConstructorMk1_C",
-                "recipe": "Recipe_IronRod_C",
-                "pos": [800, 0, 0],
-            },
-        ],
-        "extractors": [],
-        "generators": [],
-        "graph": {
-            "actors": actors,
-            "roles": roles,
-            "material": material,
-            "power": [],
-        },
-    }
+from tests.support.projections import CONSTRUCTOR, SMELTER, smelter_belted_to_constructor
 
 
 @pytest.fixture
 def traced(game, monkeypatch) -> WorldState:
-    st = WorldState(projection=_projection(), game=game)
+    st = WorldState(projection=smelter_belted_to_constructor(), game=game)
     monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
     monkeypatch.setattr(ftools, "game", lambda: game)
     return st
@@ -110,7 +67,7 @@ def test_a_walk_that_may_over_report_says_how_much(traced, game, monkeypatch):
     """``Trace.ambiguous`` was carried and never printed, so a walk over undirected
     segments read exactly like one where every edge stated its direction."""
     assert "Every edge here states its direction" in ftools.trace_upstream(CONSTRUCTOR)
-    st = WorldState(projection=_projection(belts=3), game=game)
+    st = WorldState(projection=smelter_belted_to_constructor(belts=3), game=game)
     monkeypatch.setattr(ftools, "_state", lambda save=None, world=None, as_of=None: st)
     assert "2 edge(s) have neither" in ftools.trace_upstream(CONSTRUCTOR)
 

@@ -289,12 +289,8 @@ def test_stopping_a_watcher_that_never_started_is_a_no_op(tmp_path):
 
 
 @pytest.fixture
-def logs(tmp_path, monkeypatch):
-    for name in ("plans_dir", "activity_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
-    monkeypatch.setattr(journal, "_writer", "")
+def logs(tmp_path):
+    """A save root with no saves in it, beside the private plan and activity logs."""
     return tmp_path
 
 
@@ -389,13 +385,10 @@ def test_the_tail_publishes_to_subscribers_and_runs_only_when_asked(logs):
     assert event.kind == KIND_PLANS
 
 
-def test_plan_logs_and_snapshots_no_longer_fire_notes(tmp_path, monkeypatch):
-    labels, plans = tmp_path / "labels", tmp_path / "plans"
-    labels.mkdir()
+def test_plan_logs_and_snapshots_no_longer_fire_notes(tmp_path):
+    plans = config.plans_dir()
     (plans / "W" / "a1b2c3d4" / "snap").mkdir(parents=True)
     (plans / "W" / "a1b2c3d4" / "snap" / "1.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(config, "labels_dir", lambda: labels)
-    monkeypatch.setattr(config, "plans_dir", lambda: plans)
     watcher = SaveWatcher(root=tmp_path / "saves")
     assert asyncio.run(watcher.poll_once()) == []
     (plans / "W.json").write_text("{}", encoding="utf-8")

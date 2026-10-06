@@ -1,8 +1,7 @@
 """The plan tools over the op log: versions in reads, base_rev on writes, plan_log (contract §10).
 
 The unit half runs against a stand-in world, so it needs neither a save nor the game install.
-The integration half drives plan_factory against the real save with the plans and the journal
-in a scratch directory.
+The integration half drives plan_factory against the reference world.
 """
 
 from __future__ import annotations
@@ -19,6 +18,7 @@ from satisfactory_mcp.domain.planning import journal
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.interfaces.mcp import app
 from satisfactory_mcp.interfaces.mcp.tools import planning
+from tests.support.reference_world import FIVE_RIP_ARGS, FIXTURE_WORLD, RIP
 
 PAGE = Actor("page", "", 4242)
 WORLD = "TESTWORLD"
@@ -37,11 +37,7 @@ class _World:
 
 
 @pytest.fixture
-def log(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
-    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
+def log(monkeypatch):
     monkeypatch.setattr(planning, "_state", lambda *a, **k: _World())
     monkeypatch.setattr(planning, "_sav", lambda st: "sav:test")
     plans = PlanLog(WORLD)
@@ -281,22 +277,11 @@ def test_the_write_tools_take_base_rev_and_the_server_says_to_pass_it():
 
 # ------------------------------------------------------------------ pins in the plan tools
 
-RIP = "Reinforced Iron Plate"
-FIXTURE_WORLD = "X2faPVKjX06VaRzClNv5KQ"
-
 
 @pytest.fixture
-def pinned(tmp_path, monkeypatch, projection, game):
-    from satisfactory_mcp import config
+def pinned(monkeypatch, projection, game):
     from satisfactory_mcp.domain.world.state import WorldState
     from satisfactory_mcp.interfaces.mcp.tools import gamedata
-
-    for name in ("plans_dir", "activity_dir", "pins_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
-    monkeypatch.setattr(journal, "_writer", "")
-    monkeypatch.setattr(journal, "_seq", {})
 
     def fresh(*_a, **_k):
         return WorldState(projection=projection, game=game)
@@ -319,8 +304,7 @@ def test_save_as_stores_what_source_and_required_pins_stand_for(pinned):
     from satisfactory_mcp.domain.planning import pins, summary
 
     field = _iron_field(pinned)
-    wanted = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
-    made = srv.plan_factory(sources=[field["id"]], save_as="probe", limit=2, **wanted)
+    made = srv.plan_factory(sources=[field["id"]], save_as="probe", limit=2, **FIVE_RIP_ARGS)
     assert 'saved as "probe" v1' in made, made
     assert f"{field['id']} = node:" in made
     head = PlanLog(FIXTURE_WORLD).find("probe")
@@ -335,7 +319,7 @@ def test_save_as_stores_what_source_and_required_pins_stand_for(pinned):
     assert PlanLog(FIXTURE_WORLD).state(head.key).args.required == [recipe]
     refused = srv.plan_factory(plan="pin:99", limit=2)
     assert refused.startswith("! pin:99 does not exist")
-    wrong = srv.plan_factory(sources=[process["id"]], limit=2, **wanted)
+    wrong = srv.plan_factory(sources=[process["id"]], limit=2, **FIVE_RIP_ARGS)
     assert (
         wrong
         == f"! {process['id']} is a process: it cannot stand for resource nodes; nothing solved"
@@ -362,12 +346,10 @@ def test_alternates_for_a_plan_add_deltas_and_journal_a_view(pinned):
 
 # ------------------------------------------------------------------ track from chat (P4)
 
-RIP5 = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
-
 
 def _rip(monkeypatch, headroom=None):
     monkeypatch.setattr(planning, "_stages_seen", {})
-    srv.plan_factory(save_as="rip", limit=2, **RIP5)
+    srv.plan_factory(save_as="rip", limit=2, **FIVE_RIP_ARGS)
     log = PlanLog(FIXTURE_WORLD)
     key = log.find("rip").key
     if headroom is not None:
@@ -381,7 +363,7 @@ def test_diff_and_commission_journal_a_track_view(pinned, monkeypatch):
     srv.diff_vs_save(plan="rip", limit=2)
     srv.diff_vs_save(plan="rip", stage=1, limit=2)
     srv.commission_plan(plan="rip", limit=2)
-    srv.diff_vs_save(limit=2, **RIP5)
+    srv.diff_vs_save(limit=2, **FIVE_RIP_ARGS)
     entries = journal.read(FIXTURE_WORLD)
     assert [(e["tool"], e["plan"]) for e in entries] == [
         ("diff_vs_save", key),
@@ -434,22 +416,11 @@ def test_a_chat_save_never_touches_the_stored_headroom(pinned, monkeypatch):
 # ------------------------------------------------------------------ integration
 
 
-@pytest.fixture
-def scratch(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
-    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
-    monkeypatch.setattr(journal, "_writer", "")
-    monkeypatch.setattr(journal, "_seq", {})
-    return tmp_path
-
-
 PROBE = {"sources": ["near:1475,-2098@300"], "exports": ["MW"], "limit": 2}
 
 
 @pytest.mark.integration
-def test_save_as_creates_then_needs_base_rev_then_merges(scratch, game):
+def test_save_as_creates_then_needs_base_rev_then_merges(game):
     made = srv.plan_factory(save_as="probe", **PROBE)
     assert 'saved as "probe" v1' in made
 
@@ -468,7 +439,7 @@ def test_save_as_creates_then_needs_base_rev_then_merges(scratch, game):
 
 
 @pytest.mark.integration
-def test_recall_and_save_over_one_plan_merges_page_edits_made_since(scratch, game):
+def test_recall_and_save_over_one_plan_merges_page_edits_made_since(game):
     srv.plan_factory(save_as="probe", **PROBE)
     world = srv._state().world_id
     key = PlanLog(world).find("probe").key
@@ -483,13 +454,13 @@ def test_recall_and_save_over_one_plan_merges_page_edits_made_since(scratch, gam
 
 
 @pytest.mark.integration
-def test_a_new_name_ignores_base_rev_and_says_so(scratch, game):
+def test_a_new_name_ignores_base_rev_and_says_so(game):
     out = srv.plan_factory(save_as="fresh", base_rev=7, **PROBE)
     assert "base_rev=7 was ignored: this is a new plan" in out
 
 
 @pytest.mark.integration
-def test_a_same_key_edit_from_chat_is_outdated(scratch, game):
+def test_a_same_key_edit_from_chat_is_outdated(game):
     srv.plan_factory(save_as="probe", **PROBE)
     world = srv._state().world_id
     key = PlanLog(world).find("probe").key
@@ -501,11 +472,13 @@ def test_a_same_key_edit_from_chat_is_outdated(scratch, game):
 
 
 @pytest.mark.integration
-def test_a_recalled_outdated_save_never_tells_chat_to_pass_save_as(scratch, game):
+def test_a_recalled_outdated_save_never_tells_chat_to_pass_save_as(game):
     srv.plan_factory(save_as="probe", **PROBE)
     world = srv._state().world_id
     key = PlanLog(world).find("probe").key
-    PlanLog(world).push(key, 1, [{"op": "set", "field": "water_extractors", "value": 5}], actor=PAGE)
+    PlanLog(world).push(
+        key, 1, [{"op": "set", "field": "water_extractors", "value": 5}], actor=PAGE
+    )
     out = srv.plan_factory(plan="probe", save_as="probe", base_rev=1, water_extractors=3, limit=2)
     assert "! outdated:" in out
     assert "pass save_as to keep it" not in out
@@ -513,7 +486,7 @@ def test_a_recalled_outdated_save_never_tells_chat_to_pass_save_as(scratch, game
 
 
 @pytest.mark.integration
-def test_a_bare_solve_is_journalled_with_its_request(scratch, game):
+def test_a_bare_solve_is_journalled_with_its_request(game):
     journal.set_writer("chat")
     srv.plan_factory(objective="min_power", **PROBE)
     (entry,) = journal.read(srv._state().world_id)
@@ -527,7 +500,7 @@ def test_a_bare_solve_is_journalled_with_its_request(scratch, game):
 
 
 @pytest.mark.integration
-def test_a_recalled_solve_journals_the_plans_pinned_logistics_and_its_rev(scratch, game):
+def test_a_recalled_solve_journals_the_plans_pinned_logistics_and_its_rev(game):
     srv.plan_factory(save_as="probe", logistics_items=["Water"], **PROBE)
     journal.set_writer("chat")
     srv.plan_factory(plan="probe", sloops=1, limit=2)
@@ -537,7 +510,7 @@ def test_a_recalled_solve_journals_the_plans_pinned_logistics_and_its_rev(scratc
 
 
 @pytest.mark.integration
-def test_a_recalled_plan_prints_its_version_and_journals_a_view(scratch, game):
+def test_a_recalled_plan_prints_its_version_and_journals_a_view(game):
     srv.plan_factory(save_as="probe", **PROBE)
     journal.set_writer("chat")
     out = srv.commission_plan(plan="probe", limit=2)
@@ -547,7 +520,7 @@ def test_a_recalled_plan_prints_its_version_and_journals_a_view(scratch, game):
 
 
 @pytest.mark.integration
-def test_required_names_are_resolved_or_refused_by_name(scratch, game):
+def test_required_names_are_resolved_or_refused_by_name(game):
     assert "no recipe is called 'Nonsuch'" in srv.plan_factory(required=["Nonsuch"], **PROBE)
     rid = next(r.cls for r in game.recipes.values() if r.name == "Iron Plate")
     ids, refused = planning._resolve_required(["iron plate", rid])
@@ -555,7 +528,7 @@ def test_required_names_are_resolved_or_refused_by_name(scratch, game):
 
 
 @pytest.mark.integration
-def test_site_plan_needs_base_rev(scratch, game):
+def test_site_plan_needs_base_rev(game):
     srv.plan_factory(save_as="probe", **PROBE)
     out = srv.site_plan(plan="probe", at="0,0")
     assert out.endswith("base_rev=1; not sited")

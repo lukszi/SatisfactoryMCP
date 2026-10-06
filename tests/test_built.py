@@ -11,37 +11,36 @@ from collections import Counter
 from types import SimpleNamespace as NS
 
 import pytest
-from conftest import FIXTURE_WORLD, FIXTURES
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import built
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.paths import FIXTURES
+from tests.support.reference_world import FIXTURE_WORLD
 
 #: The two factories that stand on one spot and run the same recipes.
 SAME_SPOT = ("tier 1&2", "temporary iron line")
 
 
-def _labels_world(game, projection, tmp_path, monkeypatch, drop: tuple[str, ...] = ()):
+def _labels_world(game, projection, drop: tuple[str, ...] = ()):
     raw = json.loads((FIXTURES / "labels_reference.json").read_text(encoding="utf-8"))
     raw["labels"] = [x for x in raw["labels"] if x["name"] not in drop]
-    labels = tmp_path / "labels"
-    labels.mkdir(exist_ok=True)
-    (labels / f"{FIXTURE_WORLD}.json").write_text(json.dumps(raw), encoding="utf-8")
-    monkeypatch.setattr(config, "labels_dir", lambda: labels)
+    path = config.labels_dir() / f"{FIXTURE_WORLD}.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
     return WorldState(projection=projection, game=game)
 
 
 @pytest.fixture
-def named(game, projection, tmp_path, monkeypatch):
-    return _labels_world(game, projection, tmp_path, monkeypatch)
+def named(game, projection):
+    return _labels_world(game, projection)
 
 
 @pytest.fixture
-def same_spot(game, projection, tmp_path, monkeypatch):
+def same_spot(game, projection):
     """Two factories on one spot with the same recipes, only the big one named: the plan's
     own factory is unnamed, so the other-factory rule is tested without reading its answer
     out of the label it is judged against."""
-    return _labels_world(game, projection, tmp_path, monkeypatch, drop=(SAME_SPOT[1],))
+    return _labels_world(game, projection, drop=(SAME_SPOT[1],))
 
 
 def _truth(st, name):

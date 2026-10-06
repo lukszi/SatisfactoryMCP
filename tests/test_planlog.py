@@ -47,8 +47,7 @@ BOLTED = "Recipe_Alternate_BoltedFrame_C"
 
 
 @pytest.fixture
-def plans(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+def plans():
     return PlanLog("W")
 
 
@@ -711,9 +710,8 @@ def test_actor_words():
 # ---------------------------------------------------------------- migration
 
 
-def _legacy(tmp_path: Path, world: str = "W") -> Path:
-    path = tmp_path / "plans" / f"{world}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _legacy(world: str = "W") -> Path:
+    path = config.plans_dir() / f"{world}.json"
     path.write_text(
         json.dumps(
             {
@@ -754,9 +752,8 @@ def _legacy(tmp_path: Path, world: str = "W") -> Path:
     return path
 
 
-def test_legacy_plans_migrate_once_without_losing_any(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
-    legacy = _legacy(tmp_path)
+def test_legacy_plans_migrate_once_without_losing_any():
+    legacy = _legacy()
     before = legacy.read_bytes()
 
     plans = PlanLog("W")
@@ -792,9 +789,8 @@ def test_legacy_plans_migrate_once_without_losing_any(tmp_path, monkeypatch):
     assert len(PlanLog("W").keys()) == 2
 
 
-def test_a_migration_interrupted_before_its_marker_does_not_duplicate(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
-    _legacy(tmp_path)
+def test_a_migration_interrupted_before_its_marker_does_not_duplicate():
+    _legacy()
     plans = PlanLog("W")
     (plans.root / "migrated.json").unlink()
     again = PlanLog("W")
@@ -806,10 +802,9 @@ def test_no_legacy_file_means_nothing_to_migrate(plans):
     assert plans.migrate() == {} and not (plans.root / "migrated.json").exists()
 
 
-def test_the_migration_backs_up_the_legacy_file_and_stamps_its_version(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+def test_the_migration_backs_up_the_legacy_file_and_stamps_its_version(monkeypatch):
     monkeypatch.setattr(planlog.schema, "writer_version", lambda: "9.8.7")
-    legacy = _legacy(tmp_path)
+    legacy = _legacy()
     before = legacy.read_bytes()
     plans = PlanLog("W")
     backup = plans.root / "backup-v9.8.7" / "W.json"
@@ -818,9 +813,8 @@ def test_the_migration_backs_up_the_legacy_file_and_stamps_its_version(tmp_path,
     assert marker["version"] == "9.8.7"
 
 
-def test_a_legacy_file_from_a_newer_schema_is_refused_and_nothing_is_written(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
-    legacy = _legacy(tmp_path)
+def test_a_legacy_file_from_a_newer_schema_is_refused_and_nothing_is_written():
+    legacy = _legacy()
     raw = json.loads(legacy.read_text(encoding="utf-8"))
     legacy.write_text(json.dumps({**raw, "schema": planlog.SCHEMA + 1}), encoding="utf-8")
     with pytest.raises(planlog.schema.NewerSchema, match="newer version"):
@@ -830,9 +824,8 @@ def test_a_legacy_file_from_a_newer_schema_is_refused_and_nothing_is_written(tmp
     assert not list(root.glob("*/ops.jsonl")) and not list(root.glob("backup-*"))
 
 
-def test_a_log_migrated_by_a_newer_schema_is_refused(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
-    _legacy(tmp_path)
+def test_a_log_migrated_by_a_newer_schema_is_refused():
+    _legacy()
     marker = PlanLog("W").root / "migrated.json"
     raw = json.loads(marker.read_text(encoding="utf-8"))
     marker.write_text(json.dumps({**raw, "schema": planlog.SCHEMA + 1}), encoding="utf-8")
@@ -840,11 +833,10 @@ def test_a_log_migrated_by_a_newer_schema_is_refused(tmp_path, monkeypatch):
         PlanLog("W")
 
 
-def test_every_spelling_of_power_is_stored_as_mw(tmp_path, monkeypatch):
+def test_every_spelling_of_power_is_stored_as_mw():
     """The migration once stored the solver's ``__MW__``, and the page's "+MW" then added
     a second power export beside it."""
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
-    legacy = _legacy(tmp_path)
+    legacy = _legacy()
     raw = json.loads(legacy.read_text(encoding="utf-8"))
     raw["plans"][0]["args"]["exports"] = ["__MW__", "Plastic"]
     raw["plans"][0]["args"]["export_minimums"] = {"power": 50, "Plastic": 920}
@@ -897,12 +889,11 @@ for i in range(n):
 """
 
 
-def test_two_processes_writing_at_once_lose_nothing(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+def test_two_processes_writing_at_once_lose_nothing(user_data):
     key = PlanLog("W").create("shared", {}, actor=PAGE).key
     env = {
         **os.environ,
-        "SATISFACTORY_USER_DATA": str(tmp_path),
+        "SATISFACTORY_USER_DATA": str(user_data),
         "PYTHONPATH": str(Path(planlog.__file__).resolve().parents[3]),
     }
     procs = [

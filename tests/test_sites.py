@@ -17,12 +17,12 @@ fail loudly when it is incomplete -- which is the exact error the hand reconcili
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.planning.sites import partition
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

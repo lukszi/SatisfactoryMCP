@@ -9,14 +9,12 @@ import json
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import focus
 
 
 @pytest.fixture
-def ui(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "ui_dir", lambda: tmp_path / "ui")
-    return tmp_path / "ui"
+def ui(user_data):
+    return user_data / "ui"
 
 
 def test_a_written_focus_reads_back_with_every_field_and_a_heartbeat(ui):
@@ -64,7 +62,7 @@ def test_a_malformed_focus_is_refused_and_nothing_is_written(ui, bad):
 
 def test_an_absent_or_unreadable_file_reads_as_none(ui):
     assert focus.read("W") is None
-    ui.mkdir()
+    ui.mkdir(exist_ok=True)
     (ui / "W.json").write_text("{torn", encoding="utf-8")
     assert focus.read("W") is None
     (ui / "W.json").write_text(json.dumps([1, 2]), encoding="utf-8")

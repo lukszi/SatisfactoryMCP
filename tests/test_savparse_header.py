@@ -12,13 +12,12 @@ working once the vendored library is gone and on a machine with no Satisfactory 
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from pioneersav import PACKAGE_FILE_TAG, Reader, body_hash, check_body_hash, read_info_bytes
+from tests.support.paths import FIXTURES
 
-FIXTURE = Path(__file__).parent / "fixtures" / "save_header.bin"
+FIXTURE = FIXTURES / "save_header.bin"
 
 
 @pytest.fixture(scope="module")

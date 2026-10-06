@@ -7,28 +7,25 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
+import numpy as np
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
-from mapgen.gamedata.water import VOID_ARTWORK_LUMA_MAX, artwork_planes  # noqa: E402
-from mapgen.palette.relief import water_tint_plane  # noqa: E402
-from mapgen.palette.rivers import water_sources  # noqa: E402
-from mapgen.palette.shore import OCEAN_LEVEL_M, composite_meshes  # noqa: E402
-from mapgen.palette.styles import RELIEF_PALETTES, SEA_RGB, with_void  # noqa: E402
-from mapgen.palette.water import (  # noqa: E402
+from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.water import VOID_ARTWORK_LUMA_MAX, artwork_planes
+from mapgen.palette.relief import water_tint_plane
+from mapgen.palette.rivers import water_sources
+from mapgen.palette.shore import OCEAN_LEVEL_M, composite_meshes
+from mapgen.palette.styles import RELIEF_PALETTES, SEA_RGB, with_void
+from mapgen.palette.water import (
     OPEN_SEA_BLEND_M,
     OPEN_SEA_DEPTH_M,
     OPEN_SEA_SETTLE_M,
     OPEN_SEA_TONE_DEPTH_M,
     open_sea,
 )
-from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pits, relax  # noqa: E402
-from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL  # noqa: E402
-from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, composite_top, render_layer  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pits, relax
+from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK, MESH_SHELL
+from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, composite_top, render_layer
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 OCEAN_DM = round(OCEAN_LEVEL_M * hf.DM_PER_M)
 

@@ -15,16 +15,14 @@ the page opens with.
 from __future__ import annotations
 
 import pytest
-from conftest import _explode
+
+from tests.support.web import client_over, failing_state_loader
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
 from satisfactory_mcp.core.saveio.projection import World
-from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers import world as web_world
-
 
 #: A save header exactly as the sidecar's ``header_info`` builds one -- all thirteen keys,
 #: in its emission order -- so the test below can show which eight the response model
@@ -93,8 +91,21 @@ def test_worlds_lists_the_save_picker_rows(client, monkeypatch):
     ]
     assert body["unsupported"] == [{"filename": "old.sav", "reason": "saveHeaderType 8 is pre-1.0"}]
     row = body["worlds"][0]
-    assert list(row) == ["world_id", "session_name", "saves", "mtime", "newest_filename", "play_duration_s"]
-    assert list(row["saves"][0]) == ["path", "filename", "session_name", "play_duration_s", "mtime_ns"]
+    assert list(row) == [
+        "world_id",
+        "session_name",
+        "saves",
+        "mtime",
+        "newest_filename",
+        "play_duration_s",
+    ]
+    assert list(row["saves"][0]) == [
+        "path",
+        "filename",
+        "session_name",
+        "play_duration_s",
+        "mtime_ns",
+    ]
 
 
 def test_summary_carries_the_same_save_token_the_tools_print(client, state):
@@ -129,8 +140,7 @@ def test_a_save_that_cannot_be_read_is_a_404_with_a_reason(game):
     than in a file per router -- and it is pinned on ``/api/summary`` because that is the
     first request the page makes, and the one whose failure the header has to explain.
     """
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         r = c.get("/api/summary")
     assert r.status_code == 404
     assert "sidecar produced no output" in r.json()["error"]

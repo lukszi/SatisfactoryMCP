@@ -9,10 +9,7 @@ fastapi = pytest.importorskip("fastapi")
 from satisfactory_mcp.core.gamedata import search
 from satisfactory_mcp.core.gamedata.unlocks import granted_by
 from satisfactory_mcp.domain.planning.scenario import find_recipe
-
-
-def _boom(save=None, world=None):
-    raise RuntimeError("sidecar produced no output")
+from tests.support.web import failing_state_loader
 
 
 def test_items_follow_the_search_items_order(client, game):
@@ -55,7 +52,7 @@ def test_an_unknown_item_or_kind_is_an_error(client):
 
 
 def test_recipes_still_answer_without_a_save_and_say_why(client, monkeypatch):
-    monkeypatch.setattr(client.app.state, "load_state", _boom)
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
     body = client.get("/api/gamedata/recipes", params={"q": "plate"}).json()
     assert "no save could be read" in body["save_note"]
     assert all(row["unlocked"] is None for row in body["recipes"])
@@ -123,7 +120,7 @@ def test_unlocked_counts_agree_with_the_state(client, state):
 
 
 def test_unlocked_needs_a_save(client, monkeypatch):
-    monkeypatch.setattr(client.app.state, "load_state", _boom)
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
     r = client.get("/api/gamedata/unlocked")
     assert r.status_code == 404
     assert "could not read save" in r.json()["error"]
@@ -164,7 +161,7 @@ def test_a_locked_recipe_is_a_spoiler_and_spoilers_0_drops_it_from_rows_and_cens
 
 
 def test_without_a_save_nothing_is_a_spoiler(client, monkeypatch):
-    monkeypatch.setattr(client.app.state, "load_state", _boom)
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
     body = client.get("/api/gamedata/recipes", params={"q": "plate", "spoilers": 0}).json()
     assert body["recipes"] and not any(r["spoiler"] for r in body["recipes"])
 

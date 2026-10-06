@@ -1,15 +1,12 @@
 """The cave flag: a small fixture mask beside the layered test field, and the generator's half.
 
-The field is ``test_heightfield``'s 7x6 m ramp (z = col metres, a 50 m rock at row 2, col 3).
-The mask beside it has 2 m cells: cave decoration under cell (0, 0), and one sound-volume box
-under the ramp's east half whose plan touches cells (1..2, 2..3).
+The field is ``build_layered_field``'s 7x6 m ramp; ``tests.support.caves`` describes the mask.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -19,49 +16,9 @@ from mapgen.gamedata.frame import GRID_PX, ORIGIN_X_CM, ORIGIN_Y_CM
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
-from tests.test_heightfield import build_field, build_layered_field
-
-CELL_CM = 200.0
-#: x0, y0, z0, x1, y1, z1 in cm: 2..9 m under a ramp standing 4..6 m high.
-HULL = (450.0, 250.0, -900.0, 650.0, 450.0, -200.0)
-
-
-def box_planes(box: tuple[float, ...]) -> np.ndarray:
-    x0, y0, z0, x1, y1, z1 = box
-    return np.array(
-        [
-            [-1, 0, 0, x0],
-            [1, 0, 0, -x1],
-            [0, -1, 0, y0],
-            [0, 1, 0, -y1],
-            [0, 0, -1, z0],
-            [0, 0, 1, -z1],
-        ],
-        np.float64,
-    )
-
-
-def write_caves(directory: Path, mask: np.ndarray, hulls: list[tuple[float, ...]]) -> Path:
-    directory.mkdir(parents=True, exist_ok=True)
-    planes = [box_planes(h) for h in hulls]
-    np.savez_compressed(
-        directory / caves.DATA_NAME,
-        mask=mask.astype(np.uint8),
-        planes=np.concatenate(planes) if planes else np.zeros((0, 4)),
-        starts=np.arange(len(hulls) + 1, dtype=np.int64) * 6,
-        boxes=np.array(hulls, np.float64).reshape(-1, 6),
-    )
-    h, w = mask.shape
-    meta = {"grid": {"width": w, "height": h, "cell_cm": CELL_CM, "x0_cm": 0.0, "y0_cm": 0.0}}
-    (directory / caves.META_NAME).write_text(json.dumps(meta), encoding="utf-8")
-    return directory
-
-
-def fixture_mask() -> np.ndarray:
-    mask = np.zeros((3, 4), np.uint8)
-    mask[0, 0] = caves.BIT_MARKERS
-    mask[1:3, 2:4] |= caves.BIT_HULL
-    return mask
+from tests.support.caves import HULL, fixture_mask, write_caves
+from tests.support.heightfields import build_field, build_layered_field
+from tests.support.web import client_over
 
 
 @pytest.fixture
@@ -167,10 +124,7 @@ def test_a_site_over_a_cave_keeps_the_surface_and_says_so(field):
 
 def test_the_inspector_sends_the_cave_line(tmp_path, monkeypatch):
     pytest.importorskip("fastapi")
-    from fastapi.testclient import TestClient
-
     from satisfactory_mcp.interfaces.web import terrain as web_terrain
-    from satisfactory_mcp.interfaces.web.app import create_app
 
     directory = build_field(tmp_path)
     mask = np.zeros((4, 5), np.uint8)
@@ -181,8 +135,7 @@ def test_the_inspector_sends_the_cave_line(tmp_path, monkeypatch):
     (tmp_path / caves.DIR_NAME / caves.META_NAME).write_text(json.dumps(meta))
     field = hf.load_field(directory)
     monkeypatch.setattr(web_terrain, "field", lambda: field)
-    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: None)
-    with TestClient(app) as client:
+    with client_over(None, None) as client:
         under = client.get("/api/inspect", params={"x_m": -3.0, "y_m": -2.0}).json()
         clear = client.get("/api/inspect", params={"x_m": 2.0, "y_m": -2.0}).json()
     assert under["elevation"]["terrain_cave"] == caves.BELOW
@@ -197,7 +150,6 @@ def test_the_inspector_sends_the_cave_line(tmp_path, monkeypatch):
 
 def test_the_generator_builds_a_mask_the_reader_answers_from(tmp_path):
     """Decoration under the ground and a sound-volume box, through ``build_caves`` and back."""
-    pytest.importorskip("scipy")
     corners = np.array(
         [[x, y, z] for x in (0.0, 4000.0) for y in (0.0, 4000.0) for z in (-6000.0, -1000.0)]
     )

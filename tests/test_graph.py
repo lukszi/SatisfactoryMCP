@@ -306,12 +306,7 @@ def test_put_re_anchors_an_existing_label_rather_than_duplicating_it():
     assert len(store.find("steel").anchors) == len(STEEL) + len(STEEL_CONCRETE)
 
 
-def test_labels_round_trip_through_disk(tmp_path, monkeypatch):
-    from satisfactory_mcp import config
-    from satisfactory_mcp.domain.factories import labels as labels_mod
-
-    monkeypatch.setattr(labels_mod.config, "labels_dir", lambda: tmp_path)
-    assert config is not None
+def test_labels_round_trip_through_disk():
     store = LabelStore(world_id="TEST_WORLD/1", session_name="Test")
     label = store.put("steel factory", STEEL, notes="ingots")
     label.centroid = (-100_000.0, -120_000.0)

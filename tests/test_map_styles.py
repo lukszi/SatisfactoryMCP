@@ -12,6 +12,7 @@ from satisfactory_mcp.core import gpu
 from satisfactory_mcp.core.gameassets.versions import STYLES
 from satisfactory_mcp.domain.maps import axes as ax
 from satisfactory_mcp.domain.maps import presets, registry
+from tests.support.map_jobs import keep_cache
 
 
 @pytest.fixture
@@ -20,13 +21,6 @@ def maps_home(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "game_root", lambda: tmp_path / "game")
     (tmp_path / "data" / "local").mkdir(parents=True)
     return tmp_path
-
-
-def _keep_cache(size: int, parts=presets.CACHE_PARTS) -> None:
-    for part in parts:
-        folder = presets.cache_dir(size) / part
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "meta.json").write_text("{}", encoding="utf-8")
 
 
 def test_every_style_declares_a_tone_and_the_axes_read_it():
@@ -55,9 +49,9 @@ def test_a_restyle_is_refused_until_a_full_render_kept_the_cache(maps_home):
         presets.plan("render", options, "j1", 1, set())
     with pytest.raises(presets.PresetError, match="raster cache"):
         presets.estimate("render", options)
-    _keep_cache(1024, presets.CACHE_PARTS[:2])
+    keep_cache(1024, presets.CACHE_PARTS[:2])
     assert not presets.cache_ready(1024) and presets.cached_sizes() == []
-    _keep_cache(1024)
+    keep_cache(1024)
     assert presets.cached_sizes() == [1024]
     argv = presets.plan("render", options, "j1", 1, set())["argv"]
     assert "--restyle" in argv and "--keep-direct" in argv
@@ -67,7 +61,7 @@ def test_a_restyle_is_refused_until_a_full_render_kept_the_cache(maps_home):
 
 
 def test_a_restyle_costs_only_the_draw_and_the_cut(maps_home):
-    _keep_cache(32768)
+    keep_cache(32768)
     full = presets.stage_plan("render", presets.normalise("render", {"layers": ["relief"]}))
     unlit = {"layers": ["relief"], "restyle": True, "light": False}
     fast = presets.stage_plan("render", presets.normalise("render", unlit))

@@ -25,11 +25,10 @@ Fixture only -- no game install, no save.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-FIXTURES = Path(__file__).parent / "fixtures"
+from tests.support.paths import FIXTURES
 
 #: The three record kinds that carry a placed building's own transform, and which every
 #: "N machines" count in the tree means when it says machines.

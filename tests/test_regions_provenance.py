@@ -33,8 +33,9 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
-DATA = REPO / "data"
+from tests.support.paths import REPO_ROOT
+
+DATA = REPO_ROOT / "data"
 TABLE = json.loads((DATA / "region_names.json").read_text(encoding="utf-8"))
 META = TABLE["_meta"]
 GRID_META = TABLE["grid_meta"]

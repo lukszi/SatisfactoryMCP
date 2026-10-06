@@ -7,12 +7,9 @@ from __future__ import annotations
 
 import json
 
-import pytest
+import numpy as np
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.cache import (  # noqa: E402
+from mapgen.cache import (
     DIRECT_CACHE_DIR_NAME,
     MESH_CACHE_DIR_NAME,
     MESH_CACHE_SIDECAR,
@@ -24,17 +21,17 @@ from mapgen.cache import (  # noqa: E402
     mesh_stamp,
     restyle_gaps,
 )
-from mapgen.lighting.model import _tone, _untone, apply_terms  # noqa: E402
-from mapgen.palette.lightparams import shader_light  # noqa: E402
-from mapgen.palette.painted import tone  # noqa: E402
-from mapgen.palette.relief import FLAT_LIT, _shade  # noqa: E402
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS  # noqa: E402
-from tests.test_map_relief import _ground  # noqa: E402
+from mapgen.lighting.model import _tone, _untone, apply_terms
+from mapgen.palette.lightparams import shader_light
+from mapgen.palette.painted import tone
+from mapgen.palette.relief import FLAT_LIT, _shade
+from mapgen.palette.styles import PAINTED_PALETTE
+from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
+from tests.support.map_scenes import relief_ground
 
 
 def test_relief_drawn_unlit_carries_no_sun_term():
-    ground = _ground("relief")
+    ground = relief_ground("relief")
     rows = np.arange(16, dtype=np.float32)[:, None] * np.ones((1, 16), np.float32)
     slope = 50.0 + 0.6 * (8.0 - rows)
     lab = np.full((16, 16, 3), 0.6, np.float32)

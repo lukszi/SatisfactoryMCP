@@ -8,12 +8,9 @@ from __future__ import annotations
 import json
 import math
 import re
-from pathlib import Path
 
 import numpy as np
 import pytest
-
-pytest.importorskip("scipy")
 
 from mapgen.lighting import horizon as hz
 from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, flat_shade, hillshade
@@ -27,9 +24,9 @@ from mapgen.lighting.model import (
 from mapgen.lighting.sun import DEFAULT_SUN, MAP_NW_SUN, NOON_HOUR, game_sun
 from mapgen.palette.lightparams import shader_light
 from satisfactory_mcp.core.gameassets.versions import LIGHTS
+from tests.support.paths import REPO_ROOT
 
-REPO = Path(__file__).resolve().parents[1]
-SUN_TS = REPO / "src/satisfactory_mcp/interfaces/web/frontend/src/sun.ts"
+SUN_TS = REPO_ROOT / "src/satisfactory_mcp/interfaces/web/frontend/src/sun.ts"
 
 
 def test_game_noon_is_the_default_sun_and_the_page_agrees():

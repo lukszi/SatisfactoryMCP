@@ -14,9 +14,9 @@ every pump's `mExtractableResource`, which the sidecar had been storing in `node
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

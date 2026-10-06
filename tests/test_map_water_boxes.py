@@ -8,17 +8,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM  # noqa: E402
-from mapgen.gamedata.rivers import RIVER_CLASS, ribbon_planes, sample_rivers  # noqa: E402
-from mapgen.gamedata.water import lower_bodies  # noqa: E402
-from mapgen.palette.rivers import RIVER_MAX_DEPTH_M, RiverWater, river_terms  # noqa: E402
-from mapgen.palette.shore import OCEAN_LEVEL_M, blend_water  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
+from mapgen.gamedata.rivers import RIVER_CLASS, ribbon_planes, sample_rivers
+from mapgen.gamedata.water import lower_bodies
+from mapgen.palette.rivers import RIVER_MAX_DEPTH_M, RiverWater, river_terms
+from mapgen.palette.shore import OCEAN_LEVEL_M, blend_water
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 X0, Y0 = ORIGIN_X_CM / 100, ORIGIN_Y_CM / 100
 

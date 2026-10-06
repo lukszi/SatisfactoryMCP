@@ -1,21 +1,14 @@
-"""``/api/world/*``: the World finder routes over the fixture world.
-
-``importorskip`` at module scope: ``fastapi`` lives in the optional ``web`` extra. Both
-loaders are injected by the ``client`` fixture, so nothing here reads a ``.sav``.
-"""
+"""``/api/world/*``: the World finder routes over the fixture world."""
 
 from __future__ import annotations
 
 import pytest
-from conftest import _explode
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
-
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.pinning import STALE
+from tests.support.web import client_over, failing_state_loader
 
 STALE_TOKEN = "sav:000000000000"
 ROUTES = [
@@ -25,10 +18,6 @@ ROUTES = [
     ("/api/world/conduits", {}),
     ("/api/world/regions", {}),
 ]
-
-
-def _broken(game):
-    return TestClient(create_app(state_loader=_explode, game_loader=lambda: game))
 
 
 # ---------------------------------------------------------------------- here
@@ -53,8 +42,7 @@ def test_here_names_the_players_place_and_the_nodes_around_it(client, state):
 
 def test_here_without_a_pawn_answers_with_no_position(game):
     st = WorldState(projection={"players": [], "header": {}}, game=game)
-    app = create_app(state_loader=lambda save=None, world=None: st, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(st, game) as c:
         body = c.get("/api/world/here").json()
     assert body["player"] is None and body["nodes"] == [] and body["region"] is None
 
@@ -62,7 +50,7 @@ def test_here_without_a_pawn_answers_with_no_position(game):
 def test_here_radius_is_bounded_and_needs_a_save(client, game):
     assert client.get("/api/world/here", params={"radius_m": 0}).status_code == 422
     assert client.get("/api/world/here", params={"radius_m": 5001}).status_code == 422
-    with _broken(game) as c:
+    with client_over(failing_state_loader, game) as c:
         reply = c.get("/api/world/here")
     assert reply.status_code == 404 and "could not read save" in reply.json()["error"]
 
@@ -153,7 +141,7 @@ def test_node_notes_are_page_words_not_engine_names(client):
 
 
 def test_nodes_survive_a_save_that_cannot_be_read(game):
-    with _broken(game) as c:
+    with client_over(failing_state_loader, game) as c:
         reply = c.get("/api/world/nodes", params={"resource": "Iron Ore"})
     assert reply.status_code == 200
     body = reply.json()
@@ -226,7 +214,7 @@ def test_sites_refusals(client, game):
         "/api/world/sites", params={"resource": "Iron Ore", "source": "region:Nowhere"}
     )
     assert reply.status_code == 400
-    with _broken(game) as c:
+    with client_over(failing_state_loader, game) as c:
         assert c.get("/api/world/sites", params={"resource": "Iron Ore"}).status_code == 404
 
 
@@ -282,7 +270,7 @@ def test_conduits_refusals(client, params, code):
 
 
 def test_conduits_need_a_save(game):
-    with _broken(game) as c:
+    with client_over(failing_state_loader, game) as c:
         assert c.get("/api/world/conduits").status_code == 404
 
 

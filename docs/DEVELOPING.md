@@ -42,6 +42,80 @@ tools/mapgen/    the map generators, a uv workspace member (python -m mapgen)
 the save format across six `saveVersion`s, and the server talks to it through one subprocess
 boundary, so a torn autosave or a format change cannot take the server down.
 
+### Test suite
+
+**Two runs.** The default run deselects `integration`; `-m integration` needs `Docs.json` and
+the save folder. Two commands that each say what they need beat one that quietly does less than
+it looks like it does.
+
+**Layout.** `tests/` mirrors the code it tests: `core/`, `domain/<package>/`, `presenters/`,
+`mcp/`, `web/` (one file per router), `pioneersav/`, `data/` (the committed world tables held
+against the game), `tools/` (the generator scripts and the map job runner), `mapgen/` (the map
+generator's own tests, until they join `tools/mapgen/tests/`), `frontend/` and `architecture/`.
+Shared helpers and fixtures live in `tests/support/` and are imported as
+`tests.support.<module>`; a test module never imports another test module or `conftest`, which
+`tests/architecture/test_test_imports.py` enforces. Pytest runs with `--import-mode=importlib`
+and the repository root on `pythonpath`, so two folders may hold files of the same name.
+
+**Private user data.** An autouse fixture points `SATISFACTORY_USER_DATA` at the test's own
+`tmp_path` and clears the cached `config` paths, so plans, labels, the activity journal, pins,
+asks, advice, the page focus and the shared settings are never the reader's; the `user_data`
+fixture is that root. `data_dir` and `cache_dir` are not redirected: a test that needs a
+`data/local` tree builds one.
+
+**Web tests.** A module that drives the app calls `pytest.importorskip("fastapi")` at module
+scope, because the web stack is an optional extra. It gets the app through `client` (the shared
+fixture world), `labelled_client`, `fresh_state_client` (a new world per request),
+`stateless_client`, or `tests.support.web.client_over` for a hand-built world; none reads a
+`.sav`.
+
+**The reference world.** `tests/fixtures/save_projection.json` is the sidecar projection of one
+real save, named in `tests/support/reference_world.py` and committed because the `.sav` is not.
+Re-cut it from the repository root with
+
+```bash
+uv run python -m satisfactory_mcp.core.saveio.extract \
+    "<saves>/Han Solo_280726-230847.sav" > tests/fixtures/save_projection.json
+```
+
+`-m` because that is how the server spawns the extractor; the sidecar's stdout is the fixture.
+Re-cut from a newer save of the same world (`save_identifier` `X2faPVKjX06VaRzClNv5KQ`), never
+from another one: the `projection` fixture asserts the world, and several modules in `src`
+justify a decision with a number measured on this fixture. After a re-cut, expect
+`tests/data/test_reference_counts.py` to fail, and update both its assertion and the comment in
+`src` it names.
+
+**The reference field.** Planner tests plan over `REFERENCE_FIELD`, a bounding box, rather than
+`region:Spire Coast`. Region names are advisory: when the region layer was re-derived from the
+game's own map areas, Spire Coast went from 51 nodes to 18 and every planner number moved
+although the planner had not changed. The box is the bounding box of the 51 nodes the old
+selector returned, widened by 1 cm on each edge so that sub-centimetre node positions cannot
+fall out of it. It also holds 17 nodes (8 limestone, 5 iron, 2 copper, 2 raw quartz) that are
+irrelevant to plans maximising power from crude and coal, which is why the hand-verified
+numbers held unchanged. The stored `spire-coast-full` plan keeps its region selector on
+purpose.
+
+**`live` and `state`.** `state` is the committed projection, frozen; `live` is the newest save
+on the machine, for tests that measure the tool's real answer. `live` skips on `SaveError`, so
+a machine with the game and no save reports skips rather than errors.
+
+**Speed.** `-n 8` is measured. On a 16-core, 32-thread machine the default set took 5.8 s at 8
+workers, 7.7 s at 16 and 14.3 s at 32, and the integration set 30 s at 8 against 38 s at 32,
+because every worker imports and collects the suite alone. `--dist worksteal` (29.6 s),
+`--dist loadfile` (28.3 s) and `-p no:cacheprovider` were within noise of the default and were
+not adopted. After a hardware change, re-measure `uv run pytest -q -n <k>` and the same with
+`-m integration` for k in 4, 6, 8, 12, 16 and auto, three samples each.
+
+**The whole-folder tests.** Three integration tests parse every save on the machine (vendor
+parity, trailer arc lengths, lightweight records) and carry the `whole_folder` marker.
+`conftest.py` deals them to the workers first, because xdist deals tests in collection order
+and the longest ones would otherwise start last; that saves about a second per integration run.
+Each fans its saves out through `tests/support/fanout.py` at half the logical CPUs: widths 4,
+8, 16, 24 and 32 measured 43.9, 32.5, 22.6, 25.0 and 24.0 s for the integration set, the second
+thread of a core contending rather than helping. Hoisting them while each fanned out eight wide
+was slower, from oversubscription. `in_order` returns results in submission order, so per-save
+messages and early stops match a serial loop; `SATISFACTORY_TEST_FANOUT` overrides the width.
+
 ## Solver threads
 
 Every `scipy.optimize.milp` and `linprog` call goes through `core/solverlane.run`, which runs it on

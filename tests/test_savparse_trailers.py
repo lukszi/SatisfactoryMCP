@@ -34,7 +34,6 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import pytest
-from _pool import fanout_width, in_order
 
 from pioneersav import ParsedObject, ParseError, Reader, read_full_save, read_trailer
 from pioneersav.trailers import (
@@ -44,8 +43,10 @@ from pioneersav.trailers import (
     POWER_LINE,
     TRAILER_READERS,
 )
+from tests.support.fanout import fanout_width, in_order
+from tests.support.paths import FIXTURES
 
-FIXTURE = Path(__file__).parent / "fixtures" / "save_trailers.bin"
+FIXTURE = FIXTURES / "save_trailers.bin"
 
 
 @pytest.fixture(scope="module")

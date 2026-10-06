@@ -55,7 +55,6 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import pytest
-from _pool import fanout_width, in_order
 
 from pioneersav import (
     ObjectReference,
@@ -71,8 +70,8 @@ from pioneersav.properties import read_object
 from pioneersav.versions import FIRST_MODERN_BODY
 from satisfactory_mcp.core.saveio.extract import Drops, _lightweight, _placed, _structures
 from satisfactory_mcp.domain.factories.structure import build_structures
-
-FIXTURES = Path(__file__).parent / "fixtures"
+from tests.support.fanout import fanout_width, in_order
+from tests.support.paths import FIXTURES
 
 #: The foundation class in both committed fixtures. ``graph/structure.py`` only treats a record
 #: as a floor tile if its class name says foundation, so the slab tests below need this one.

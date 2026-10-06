@@ -1,78 +1,17 @@
 """The map registry: adopting the folders already on disk where they lie, and every edit to it.
 
-``config.data_dir`` points at ``tmp_path``, and the tree is built to the shape of a real
-``data/local``: the artwork at the root, ``renders`` as a link to the newest render set, and
-older sets beside it. Nothing here reads the developer's own maps.
+The ``local`` fixture (``tests.support.map_jobs``) builds a real ``data/local``'s shape under
+``tmp_path``. Nothing here reads the developer's own maps.
 """
 
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.domain.maps import registry
-
-PIN = "buildVersion 502094 (engine branch ++FactoryGame+rel-main), the installed build"
-
-
-def pyramid(directory: Path, sidecar_name: str | None, sidecar: dict | None = None) -> None:
-    (directory / "tiles" / "0").mkdir(parents=True, exist_ok=True)
-    (directory / "tiles" / "0" / "0_0.png").write_bytes(b"\x89PNG")
-    if sidecar_name is not None:
-        (directory / sidecar_name).write_text(json.dumps(sidecar or {}), encoding="utf-8")
-
-
-def render_meta(layer: str, recipe: int, hf: int, nbytes: int = 1000) -> dict:
-    return {
-        "_meta": {
-            "generator": "tools/gen_map_renders.py",
-            "layer": layer,
-            "recipe": recipe,
-            "sources": {"heightfield": {"generator_version": hf, "game_version_pinned": PIN}},
-            "tiles": {"bytes": nbytes, "max_z": 7},
-        }
-    }
-
-
-def link(target: Path, at: Path) -> None:
-    """A directory junction on Windows, a symlink elsewhere: the shape ``renders`` has."""
-    if os.name == "nt":
-        import _winapi
-
-        _winapi.CreateJunction(str(target), str(at))
-    else:
-        at.symlink_to(target, target_is_directory=True)
-
-
-@pytest.fixture
-def local(tmp_path, monkeypatch) -> Path:
-    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
-    monkeypatch.setattr(registry, "game_cl", lambda: 502094)
-    root = tmp_path / "local"
-    root.mkdir()
-    pyramid(
-        root,
-        "map.json",
-        {"_meta": {"generator": "tools/gen_map_image.py",
-                   "sources": {"map_slices": {"game_version_raw": {"Changelist": 502094}}},
-                   "tiles": {"enhanced": True, "enhancement": {"recipe": 2}, "bytes": 50}}},
-    )  # fmt: skip
-    for layer in ("terrain", "satellite"):
-        pyramid(root / "renders-v1" / layer, "meta.json", render_meta(layer, 3, 3))
-        pyramid(root / "renders-v2" / layer, "meta.json", render_meta(layer, 4, 5))
-        pyramid(root / "renders-v3" / layer, "meta.json", render_meta(layer, 5, 5))
-    link(root / "renders-v3", root / "renders")
-    (root / "heightmap").mkdir()
-    (root / "heightmap" / "meta.json").write_text(
-        json.dumps({"generator_version": 5, "sources": {"game": {"game_version_pinned": PIN}}}),
-        encoding="utf-8",
-    )
-    pyramid(root / "renders-v2.incoming" / "terrain", "meta.json", render_meta("terrain", 4, 5))
-    return root
+from tests.support.map_jobs import render_meta, write_pyramid
 
 
 def test_the_folders_on_disk_are_adopted_in_place_with_the_old_ids_kept(local):
@@ -163,7 +102,7 @@ def test_delete_refuses_the_default_and_a_busy_type_and_moves_the_rest_to_the_tr
 
 def test_adopt_finds_a_pyramid_that_appeared_after_the_manifest(local):
     registry.ensure()
-    pyramid(local / "renders-v4" / "terrain", "meta.json", render_meta("terrain", 2, 5))
+    write_pyramid(local / "renders-v4" / "terrain", "meta.json", render_meta("terrain", 2, 5))
     assert registry.unregistered() == ["renders-v4/terrain"]
     assert registry.adopt_existing() == ["terrain-r2-502094"]
     assert registry.unregistered() == []
@@ -177,7 +116,7 @@ def test_a_job_registers_building_types_that_are_not_served_until_finished(local
     registry.register({"terrain-r5-502094-2": entry})
     assert registry.directory("terrain-r5-502094-2") is None
     assert registry.finish("terrain-r5-502094-2", "j1") is False
-    pyramid(local / "maps" / "j1" / "terrain", "meta.json", render_meta("terrain", 5, 5, 7))
+    write_pyramid(local / "maps" / "j1" / "terrain", "meta.json", render_meta("terrain", 5, 5, 7))
     assert registry.finish("terrain-r5-502094-2", "j1") is True
     assert registry.directory("terrain-r5-502094-2") == local / "maps" / "j1" / "terrain"
     assert registry.read()["types"]["terrain-r5-502094-2"]["bytes"] == 7

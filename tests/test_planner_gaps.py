@@ -8,10 +8,10 @@ and a build instruction for a machine at 2% clock.
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp.domain.planning.optimize import build_processes, solve
 from satisfactory_mcp.domain.planning.scenario import build_scenario
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

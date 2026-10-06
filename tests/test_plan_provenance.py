@@ -252,10 +252,7 @@ def test_a_state_that_cannot_resolve_selectors_claims_nothing(table):
 # ----------------------------------------------------------------- persistence
 
 
-def test_the_record_round_trips_through_disk(tmp_path, monkeypatch, table):
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
+def test_the_record_round_trips_through_disk(table):
     world = _World()
     PlanLog("TESTWORLD").create(
         "p",
@@ -271,12 +268,11 @@ def test_the_record_round_trips_through_disk(tmp_path, monkeypatch, table):
     assert prov.compare(world.game, world, again) == []
 
 
-def test_a_plan_file_written_before_this_existed_still_loads(tmp_path, monkeypatch):
-    """The exact file shape on the owner's machine: no `provenance` key anywhere."""
-    from satisfactory_mcp.domain.planning import store as store_mod
+def test_a_plan_file_written_before_this_existed_still_loads():
+    """The exact file shape plans were saved in before provenance: no `provenance` key."""
+    from satisfactory_mcp import config
 
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
-    (tmp_path / "OLD.json").write_text(
+    (config.plans_dir() / "OLD.json").write_text(
         json.dumps(
             {
                 "schema": 1,
@@ -302,12 +298,9 @@ def test_a_plan_file_written_before_this_existed_still_loads(tmp_path, monkeypat
     assert prov.compare(object(), _World(), plan) == [], "no record means no verdict"
 
 
-def test_saving_over_a_plan_rewrites_its_record_with_the_arguments(tmp_path, monkeypatch, table):
+def test_saving_over_a_plan_rewrites_its_record_with_the_arguments(table):
     """A record describing the PREVIOUS sources would be checked against the new ones and
     report drift that is really an edit."""
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     log = PlanLog("TESTWORLD")
     world = _World()
     key = log.create(
@@ -347,11 +340,9 @@ def test_the_saved_reference_plan_degrades_rather_than_crashing(planned):
 
 
 @pytest.mark.integration
-def test_a_plan_saved_now_records_its_field_and_recalls_silently(tmp_path, monkeypatch, live):
+def test_a_plan_saved_now_records_its_field_and_recalls_silently(live):
     from satisfactory_mcp import server as srv
-    from satisfactory_mcp.domain.planning import store as store_mod
 
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     out = srv.plan_factory(
         sources=["near:1475,-2098@300"], exports=["MW"], save_as="probe", limit=2
     )

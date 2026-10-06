@@ -32,8 +32,8 @@ import pytest
 
 from pioneersav import ParseError, read_lightweight
 from pioneersav.lightweight import RECORD_BYTES, VERSION
+from tests.support.paths import FIXTURES
 
-FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE = FIXTURES / "save_lightweight.bin"
 FIXTURE_V2 = FIXTURES / "save_lightweight_v2.bin"
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 
 import pytest
-from test_map_registry import local  # noqa: F401  (the fixture)
 
 from satisfactory_mcp.domain.maps import registry, titles
 
@@ -113,7 +112,7 @@ def test_a_time_the_sidecar_does_not_give_adds_nothing():
     assert titles.date_word(OCT6_LATER, with_time=True) == "6 Oct 14:05"
 
 
-def test_the_view_and_chat_give_every_type_the_same_title(local):  # noqa: F811
+def test_the_view_and_chat_give_every_type_the_same_title(local):
     from satisfactory_mcp.interfaces.mcp.tools import settings as settings_tool
 
     rows = {row["id"]: row for row in registry.view()["types"]}

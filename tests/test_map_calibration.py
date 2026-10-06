@@ -7,16 +7,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.paint import LAYERS  # noqa: E402
-from mapgen.gamedata.rockfamily import FAMILIES  # noqa: E402
-from mapgen.gamedata.waterbodies import CLASSES  # noqa: E402
-from mapgen.palette.calibration import scoped_planes  # noqa: E402
-from mapgen.palette.painted import (  # noqa: E402
+from mapgen.gamedata.paint import LAYERS
+from mapgen.gamedata.rockfamily import FAMILIES
+from mapgen.gamedata.waterbodies import CLASSES
+from mapgen.palette.calibration import scoped_planes
+from mapgen.palette.painted import (
     ROCK_GRID_M,
     GroundBake,
     PaintedGround,
@@ -35,8 +33,8 @@ from mapgen.palette.painted import (  # noqa: E402
     tone,
     transfer_op,
 )
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from satisfactory_mcp.core.gameassets import versions  # noqa: E402
+from mapgen.palette.styles import PAINTED_PALETTE
+from satisfactory_mcp.core.gameassets import versions
 
 LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
 SWAMP = CLASSES.index("swamp")

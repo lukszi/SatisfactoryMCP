@@ -10,12 +10,12 @@ cross-reference of a node scan against a recipe to find.
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp.domain.planning import supply
 from satisfactory_mcp.domain.planning.optimize import solve
 from satisfactory_mcp.domain.planning.scenario import build_scenario
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

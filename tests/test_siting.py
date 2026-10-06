@@ -28,10 +28,7 @@ ACTOR = Actor("chat")
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
+def store():
     return PlanLog("TESTWORLD")
 
 
@@ -112,7 +109,7 @@ def test_a_siting_round_trips_through_disk(store):
     assert sit.source == "given"
 
 
-def test_a_plan_file_from_before_the_feature_still_loads(store, tmp_path):
+def test_a_plan_file_from_before_the_feature_still_loads(store):
     """The actual old bytes: a plan dict with no ``siting`` key at all. It must load,
     and read as "not sited" rather than as anything else."""
     path = PlanStore.path_for("TESTWORLD")

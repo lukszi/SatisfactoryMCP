@@ -1,7 +1,4 @@
-"""The pins store (docs/planner-p3_contract.md §4): numbers, revs, dedupe, fields and gone rules.
-
-Every write lands in temporary pins, plans and labels directories; the fixture world is read.
-"""
+"""The pins store (docs/planner-p3_contract.md §4): numbers, revs, dedupe, fields and gone rules."""
 
 from __future__ import annotations
 
@@ -16,24 +13,18 @@ from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.reference_world import FIVE_RIP_ARGS, FIXTURE_WORLD
 
-WORLD = "X2faPVKjX06VaRzClNv5KQ"
 CHAT = Actor("chat", "claude-code", 4242)
-RIP = "Reinforced Iron Plate"
-HMF = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
 OIL = "BP_ResourceNode26_99"
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch, labelled):
-    for name in ("plans_dir", "pins_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
+def world(labelled):
     return labelled
 
 
-def _machine(st: WorldState) -> str:
+def _first_machine_id(st: WorldState) -> str:
     return st.projection["machines"][0]["instance"].rsplit(".", 1)[-1]
 
 
@@ -51,10 +42,10 @@ def test_numbers_start_at_one_and_are_never_reused(world):
     assert (first["n"], first["id"], existing) == (1, "pin:1", False)
     second, _ = pins.create(world, "point", {"x_m": 11.0, "y_m": 20.0})
     assert second["n"] == 2
-    pins.drop(WORLD, 2, 1)
+    pins.drop(FIXTURE_WORLD, 2, 1)
     third, _ = pins.create(world, "point", {"x_m": 12.0, "y_m": 20.0})
     assert third["n"] == 3
-    data = pins.read(WORLD)
+    data = pins.read(FIXTURE_WORLD)
     assert data["next"] == 4 and data["version"] == 4
     assert [p["n"] for p in pins.live(world)] == [1, 3]
 
@@ -63,8 +54,8 @@ def test_a_live_duplicate_returns_the_existing_pin(world):
     pin, _ = pins.create(world, "point", {"x_m": 10.04, "y_m": 20.0})
     again, existing = pins.create(world, "point", {"x_m": 10.0, "y_m": 20.01}, label="x")
     assert existing and again["n"] == pin["n"] and again["label"] == ""
-    assert pins.read(WORLD)["version"] == 1
-    pins.drop(WORLD, pin["n"], 1)
+    assert pins.read(FIXTURE_WORLD)["version"] == 1
+    pins.drop(FIXTURE_WORLD, pin["n"], 1)
     fresh, existing = pins.create(world, "point", {"x_m": 10.0, "y_m": 20.0})
     assert not existing and fresh["n"] == 2
 
@@ -72,16 +63,16 @@ def test_a_live_duplicate_returns_the_existing_pin(world):
 def test_rename_and_drop_count_revs_and_refuse_a_stale_rev(world):
     pin, _ = pins.create(world, "point", {"x_m": 1.0, "y_m": 2.0}, label="  spot  ")
     assert pin["label"] == "spot" and pin["rev"] == 1
-    renamed = pins.rename(WORLD, 1, 1, "the spot")
+    renamed = pins.rename(FIXTURE_WORLD, 1, 1, "the spot")
     assert renamed["rev"] == 2 and renamed["label"] == "the spot"
     with pytest.raises(pins.PinStale) as stale:
-        pins.rename(WORLD, 1, 1, "late")
+        pins.rename(FIXTURE_WORLD, 1, 1, "late")
     assert str(stale.value) == "pin:1 changed since you read it"
     assert stale.value.pin["label"] == "the spot"
-    assert pins.read(WORLD)["version"] == 2
-    pins.drop(WORLD, 1, 2)
+    assert pins.read(FIXTURE_WORLD)["version"] == 2
+    pins.drop(FIXTURE_WORLD, 1, 2)
     with pytest.raises(pins.PinMissing) as gone:
-        pins.rename(WORLD, 1, 3, "x")
+        pins.rename(FIXTURE_WORLD, 1, 3, "x")
     assert gone.value.deleted and str(gone.value) == "pin:1 was deleted"
     with pytest.raises(pins.PinMissing, match=r"pin:9 does not exist \(pins run to pin:1\)"):
         pins.get(world, 9)
@@ -108,16 +99,17 @@ def test_the_live_cap_refuses_the_next_pin(world, monkeypatch):
 
 
 def test_a_newer_schema_is_refused_and_a_torn_file_reads_empty(world):
-    path = pins.path_for(WORLD)
+    path = pins.path_for(FIXTURE_WORLD)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"schema": 2, "pins": []}), encoding="utf-8")
     with pytest.raises(NewerSchema):
-        pins.read(WORLD)
+        pins.read(FIXTURE_WORLD)
     with pytest.raises(NewerSchema):
         pins.create(world, "point", {"x_m": 1.0, "y_m": 2.0})
     path.write_text('{"schema": 1, "pins": [', encoding="utf-8")
-    assert pins.read(WORLD)["pins"] == []
+    assert pins.read(FIXTURE_WORLD)["pins"] == []
     path.unlink()
-    assert pins.read(WORLD) == {"schema": 1, "version": 0, "next": 1, "pins": []}
+    assert pins.read(FIXTURE_WORLD) == {"schema": 1, "version": 0, "next": 1, "pins": []}
 
 
 def test_a_field_is_the_200m_cluster_of_the_node_frozen_at_pin_time(world):
@@ -150,10 +142,8 @@ def test_a_node_pin_names_its_resource_and_purity(world):
         pins.create(world, "node", {"node": "BP_NoSuchNode"})
 
 
-def test_machine_and_factory_pins_resolve_and_go_gone(
-    world, projection, game, monkeypatch, tmp_path
-):
-    inst = _machine(world)
+def test_machine_and_factory_pins_resolve_and_go_gone(world, projection, game):
+    inst = _first_machine_id(world)
     machine, _ = pins.create(
         world, "machine", {"machine": "Persistent_Level:PersistentLevel." + inst}
     )
@@ -170,8 +160,7 @@ def test_machine_and_factory_pins_resolve_and_go_gone(
 
     stripped = dict(projection)
     stripped["machines"] = [m for m in projection["machines"] if not m["instance"].endswith(inst)]
-    (tmp_path / "nolabels").mkdir()
-    monkeypatch.setattr(config, "labels_dir", lambda: tmp_path / "nolabels")
+    (config.labels_dir() / f"{FIXTURE_WORLD}.json").unlink()
     moved = WorldState(projection=stripped, game=game)
     rows = {p["kind"]: p for p in pins.live(moved)}
     assert rows["machine"]["gone"] and rows["machine"]["gone_why"] == "machine not in this save"
@@ -181,12 +170,12 @@ def test_machine_and_factory_pins_resolve_and_go_gone(
 
 
 def test_plan_and_process_pins_go_gone_when_the_plan_is_forgotten(world):
-    made = PlanLog(WORLD).create("rip", HMF, actor=CHAT)
+    made = PlanLog(FIXTURE_WORLD).create("rip", FIVE_RIP_ARGS, actor=CHAT)
     plan, _ = pins.create(world, "plan", {"plan": "RIP"})
     assert plan["ref"] == {"plan": made.key} and plan["selector"] == "rip"
     assert plan["x_m"] is None and plan["text"] == "plan “rip”"
     required = "Recipe_IronPlate_C"
-    PlanLog(WORLD).push(
+    PlanLog(FIXTURE_WORLD).push(
         made.key, 1, [{"op": "add", "field": "required", "member": required}], actor=CHAT
     )
     process, _ = pins.create(world, "process", {"plan": made.key, "recipe": required})
@@ -196,13 +185,15 @@ def test_plan_and_process_pins_go_gone_when_the_plan_is_forgotten(world):
         pins.create(world, "process", {"plan": made.key, "recipe": "Recipe_Alternate_Turbofuel_C"})
     with pytest.raises(pins.ObjectMissing, match="no plan"):
         pins.create(world, "plan", {"plan": "nothing"})
-    PlanLog(WORLD).push(made.key, 2, [{"op": "forget"}], actor=CHAT)
+    PlanLog(FIXTURE_WORLD).push(made.key, 2, [{"op": "forget"}], actor=CHAT)
     rows = pins.live(world)
     assert all(p["gone"] and p["gone_why"] == "plan forgotten" for p in rows)
 
 
 def test_a_sited_plan_pin_sits_at_its_site(world):
-    made = PlanLog(WORLD).create("rip", HMF, actor=CHAT, siting={"origin_m": [120.0, -340.0, 0.0]})
+    made = PlanLog(FIXTURE_WORLD).create(
+        "rip", FIVE_RIP_ARGS, actor=CHAT, siting={"origin_m": [120.0, -340.0, 0.0]}
+    )
     plan, _ = pins.create(world, "plan", {"plan": made.key})
     assert (plan["x_m"], plan["y_m"]) == (120.0, -340.0)
 

@@ -7,7 +7,6 @@ import itertools
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.domain.advice import rules
 from satisfactory_mcp.domain.factories import health
 from satisfactory_mcp.domain.planning import manage
@@ -16,8 +15,7 @@ from satisfactory_mcp.domain.spatial import place
 
 
 @pytest.fixture
-def world(labelled, tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+def world(labelled, monkeypatch):
     monkeypatch.setattr(rules, "_PLANS", {})
     return labelled
 

@@ -20,7 +20,6 @@ below that touches power is really a test that silence is never read as "unpower
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.commission import commission, track
@@ -28,6 +27,7 @@ from satisfactory_mcp.domain.planning.diff import DiffReport, DiffRow, build_dif
 from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 
@@ -563,13 +563,10 @@ def test_an_unknown_plan_name_is_a_message_not_an_exception(game):
     assert out.startswith("! no saved plan named 'no-such-plan'")
 
 
-def test_recalling_a_stored_plan_answers_which_stage_you_are_in(game, tmp_path, monkeypatch):
+def test_recalling_a_stored_plan_answers_which_stage_you_are_in(game):
     """The headline case: `diff_vs_save(plan=...)` with no stage argument at all. A
     stored plan is what makes a stage number worth writing down, so recalling one turns
     the grouping on without being asked, and the caveat about loose numbering drops."""
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     saved = srv.plan_factory(save_as="stage-test", **SPIRE)
     assert 'saved as "stage-test" v1' in saved
 

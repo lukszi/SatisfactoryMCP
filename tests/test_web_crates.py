@@ -1,12 +1,4 @@
-"""``/api/crates``: the death and dismantle crates on the ground, and what is in each one.
-
-``importorskip`` at module scope, not a marker: ``fastapi`` lives in the optional
-``web`` extra, so an install without it must skip this file rather than fail collection.
-
-Every test here injects both loaders -- through the ``client`` fixture in ``conftest.py``,
-or by building its own app around a hand-written projection -- so nothing in this file
-spawns the sidecar, reads a ``.sav`` or needs the save directory to exist.
-"""
+"""``/api/crates``: the death and dismantle crates on the ground, and what is in each one."""
 
 from __future__ import annotations
 
@@ -14,17 +6,8 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
-
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
-
-
-def _app(projection: dict, game):
-    return create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
+from tests.support.web import client_over
 
 
 def test_crates_are_every_crate_on_the_ground_with_what_is_in_it(client, state):
@@ -85,7 +68,7 @@ def test_a_full_death_crate_is_sent_whole_and_says_nothing_was_left_out(game):
     real count rather than a removed field.
     """
     items = [[f"Desc_Thing{i:02d}_C", 100 - i] for i in range(38)]
-    body = _crates_body(_app({"crates": [_crate(items=items, slots=55)]}, game))
+    body = _crates_body({"crates": [_crate(items=items, slots=55)]}, game)
     row = body["crates"][0]
     assert len(row["items"]) == 38, "the whole crate, not the biggest twelve"
     assert row["item_kinds"] == 38
@@ -111,7 +94,7 @@ def test_a_crate_has_no_footprint_and_does_not_pretend_to(client):
 def test_a_world_where_nobody_has_died_answers_with_an_empty_payload(game):
     """A save with no crates in it is not an error -- the storage rule, and the belts' rule."""
     for projection in ({}, {"crates": []}, {"crates": None}):
-        with TestClient(_app(projection, game)) as c:
+        with client_over(WorldState(projection=projection, game=game), game) as c:
             assert c.get("/api/crates").json() == {
                 "crates": [],
                 "count": 0,
@@ -135,7 +118,7 @@ def test_a_malformed_crate_row_costs_that_row_and_not_the_others(game):
             {**_crate(), "kind": "CT_SomethingNew"},
         ]
     }
-    body = _crates_body(_app(projection, game))
+    body = _crates_body(projection, game)
     assert body["count"] == 3
     first = body["crates"][0]
     assert first["items"] == [{"cls": "Desc_IronPlate_C", "name": "Iron Plate", "count": 15}]
@@ -164,8 +147,7 @@ def test_crates_takes_the_save_and_world_parameters_and_404s_on_an_unreadable_on
             raise RuntimeError("no world matching 'nope'")
         return WorldState(projection={"crates": []}, game=game)
 
-    app = create_app(state_loader=loader, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(loader, game) as c:
         assert c.get("/api/crates?world=Han%20Solo&save=x.sav").status_code == 200
         bad = c.get("/api/crates?world=nope")
     assert asked[0] == ("x.sav", "Han Solo"), "the query never reached the loader"
@@ -185,6 +167,6 @@ def _crate(items=None, slots=1, kind="death") -> dict:
     }
 
 
-def _crates_body(app) -> dict:
-    with TestClient(app) as c:
+def _crates_body(projection: dict, game) -> dict:
+    with client_over(WorldState(projection=projection, game=game), game) as c:
         return c.get("/api/crates").json()

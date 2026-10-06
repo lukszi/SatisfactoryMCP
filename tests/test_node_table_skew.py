@@ -24,15 +24,15 @@ passing on the wrong data is obvious.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
+from tests.support.paths import REPO_ROOT
 
 pytestmark = pytest.mark.integration
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "satisfactory_mcp"
+SRC = REPO_ROOT / "src" / "satisfactory_mcp"
 
 
 # --------------------------------------------------------------- synthetic metadata
@@ -307,11 +307,9 @@ def test_src_does_not_restate_the_current_figures():
     ``data/`` and nowhere under ``src/``. This is the constraint the gate was written
     under, and it is cheap enough to enforce rather than remember.
     """
-    recorded = json.loads(
-        (Path(__file__).resolve().parents[1] / "data" / "resource_nodes.json").read_text(
-            encoding="utf-8"
-        )
-    )["_meta"]["cross_validation"]["positions"]["against_the_installed_build"]
+    recorded = json.loads((REPO_ROOT / "data" / "resource_nodes.json").read_text(encoding="utf-8"))[
+        "_meta"
+    ]["cross_validation"]["positions"]["against_the_installed_build"]
 
     # A refreshed artifact records no drifted row, no rename and no orphan name, so most
     # of these sets are empty and the scan is a no-op that RE-ARMS the day real drift is

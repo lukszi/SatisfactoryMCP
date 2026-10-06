@@ -9,22 +9,20 @@ import json
 import shutil
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
-from mapgen.gamedata.paint import (  # noqa: E402
+from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.gamedata.paint import (
     component_origin,
     layer_albedo,
     place,
     weightmap_channels,
 )
-from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE  # noqa: E402
-from mapgen.palette import styles  # noqa: E402
-from mapgen.palette.painted import layer_table, mix_layers, oklab, seam_blend  # noqa: E402
-from mapgen.palette.shore import (  # noqa: E402
+from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
+from mapgen.palette import styles
+from mapgen.palette.painted import layer_table, mix_layers, oklab, seam_blend
+from mapgen.palette.shore import (
     OCEAN_LEVEL_M,
     OCEAN_REACH_M,
     add_foam,
@@ -35,7 +33,7 @@ from mapgen.palette.shore import (  # noqa: E402
     water_composite,
     wet_band,
 )
-from mapgen.palette.styles import (  # noqa: E402
+from mapgen.palette.styles import (
     LAYER_STYLES,
     PAINTED_DIGEST,
     PAINTED_PALETTE,
@@ -46,9 +44,9 @@ from mapgen.palette.styles import (  # noqa: E402
     WATER_SHALLOW,
     load_palette,
 )
-from mapgen.palette.water import WATER_DEPTH_FULL_M, water_over  # noqa: E402
-from mapgen.pipeline import LAYERS  # noqa: E402
-from mapgen.terrain.rasters import (  # noqa: E402
+from mapgen.palette.water import WATER_DEPTH_FULL_M, water_over
+from mapgen.pipeline import LAYERS
+from mapgen.terrain.rasters import (
     MESH_CORAL,
     MESH_ROCK,
     MESH_SHELL,
@@ -56,11 +54,11 @@ from mapgen.terrain.rasters import (  # noqa: E402
     is_render_only_static,
     mesh_class,
 )
-from mapgen.terrain.sample import sample_plain, taps_footprint, taps_linear  # noqa: E402
-from mapgen.tiles.compose import composite_top  # noqa: E402
-from mapgen.tiles.recipes import RECIPE  # noqa: E402
-from satisfactory_mcp.core.gameassets import provenance, versions  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from mapgen.terrain.sample import sample_plain, taps_footprint, taps_linear
+from mapgen.tiles.compose import composite_top
+from mapgen.tiles.recipes import RECIPE
+from satisfactory_mcp.core.gameassets import provenance, versions
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 LEVEL = OCEAN_LEVEL_M
 

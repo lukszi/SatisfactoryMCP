@@ -21,11 +21,11 @@ reference one is the committed fixture.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from satisfactory_mcp.core.saveio import rows
+from tests.support.paths import FIXTURES
 
-FIXTURE = Path(__file__).parent / "fixtures" / "save_projection.json"
+FIXTURE = FIXTURES / "save_projection.json"
 
 
 def _structures(instances, classes=("Build_Foundation_8x1_01_C", "Build_Wall_8x4_01_C")):

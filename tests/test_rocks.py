@@ -20,8 +20,8 @@ from mapgen.gamedata.rocks import _element_points, build_rock_pack
 from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.spatial import caves, rocks
 from satisfactory_mcp.domain.spatial import heightfield as hf
-from tests.test_caves import HULL, fixture_mask, write_caves
-from tests.test_heightfield import build_layered_field
+from tests.support.caves import HULL, fixture_mask, write_caves
+from tests.support.heightfields import build_layered_field
 
 ROCK = "/Game/FactoryGame/World/Environment/Rock/Slab"
 ARCH = "/Game/FactoryGame/World/Environment/Rock/ArcStone"
@@ -176,7 +176,6 @@ def test_a_mesh_with_only_simple_collision_falls_back_to_its_hull(field):
 
 
 def test_the_simple_elements_become_closed_outward_hulls():
-    pytest.importorskip("scipy")
     from scipy.spatial import ConvexHull
 
     def f32(v: float) -> bytes:

@@ -11,9 +11,9 @@ this that is not obvious and the one part a rewrite would drop.
 from __future__ import annotations
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp.domain.planning.carrier import Carrier, carrier_for
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 

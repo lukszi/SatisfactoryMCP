@@ -9,7 +9,6 @@ import json
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.domain import settings
 from satisfactory_mcp.domain.planning import payback, prices
 from satisfactory_mcp.domain.planning.optimize import PAYBACK_STOPS, Scenario, best_clock, solve
@@ -25,16 +24,14 @@ from satisfactory_mcp.domain.planning.planlog import (
 )
 from satisfactory_mcp.domain.planning.recall import PLAN_DEFAULTS, overrides_of
 from satisfactory_mcp.domain.planning.scenario import build_scenario
+from tests.support.reference_world import FIVE_RIP_ARGS, FIXTURE_WORLD
+from tests.support.web import PAGE_ORIGIN, create_plan, push_ops, set_op
 
 PAGE = Actor("page", "", 1)
 CHAT = Actor("chat", "claude-code", 2)
 PLASTIC = "Desc_Plastic_C"
 FUEL = "Desc_LiquidFuel_C"
 REFINERY = "Build_OilRefinery_C"
-
-
-def _set(field, value):
-    return {"op": "set", "field": field, "value": value}
 
 
 @pytest.fixture(scope="module")
@@ -321,8 +318,7 @@ def test_the_bill_counts_shards_on_the_last_machine_only(game, priced):
 
 
 @pytest.fixture
-def plans(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+def plans():
     return PlanLog("W")
 
 
@@ -338,10 +334,10 @@ def test_a_new_plan_inherits_and_inheriting_is_not_a_kwarg(plans, plan):
 
 
 def test_the_horizon_is_a_solve_argument(plans, plan):
-    pushed = plans.push(plan, 1, [_set("payback_hours", 10)], actor=PAGE)
+    pushed = plans.push(plan, 1, [set_op("payback_hours", 10)], actor=PAGE)
     assert pushed.state.kwargs()["payback_hours"] == 10.0
-    assert pushed.applied[0] == {**_set("payback_hours", 10.0), "was": None}
-    back = plans.push(plan, 2, [_set("payback_hours", "default")], actor=PAGE)
+    assert pushed.applied[0] == {**set_op("payback_hours", 10.0), "was": None}
+    back = plans.push(plan, 2, [set_op("payback_hours", "default")], actor=PAGE)
     assert back.state.args.payback_hours is None
 
 
@@ -359,32 +355,32 @@ def test_the_horizon_is_a_solve_argument(plans, plan):
 )
 def test_only_valid_values_are_stored(plans, plan, field, value):
     with pytest.raises(InvalidOp, match=field):
-        plans.push(plan, 1, [_set(field, value)], actor=PAGE)
+        plans.push(plan, 1, [set_op(field, value)], actor=PAGE)
     assert plans.head_rev(plan) == 1
 
 
 def test_the_horizon_conflicts_only_with_itself(plans, plan):
-    plans.push(plan, 1, [_set("payback_hours", 20)], actor=CHAT)
+    plans.push(plan, 1, [set_op("payback_hours", 20)], actor=CHAT)
     with pytest.raises(Outdated) as caught:
-        plans.push(plan, 1, [_set("payback_hours", 5)], actor=PAGE)
+        plans.push(plan, 1, [set_op("payback_hours", 5)], actor=PAGE)
     assert caught.value.conflicts[0].key == "payback_hours"
-    assert plans.push(plan, 1, [_set("payback_hours", 20)], actor=PAGE).noop
-    merged = plans.push(plan, 1, [_set("overclock_last", True)], actor=PAGE)
+    assert plans.push(plan, 1, [set_op("payback_hours", 20)], actor=PAGE).noop
+    merged = plans.push(plan, 1, [set_op("overclock_last", True)], actor=PAGE)
     assert merged.state.args.payback_hours == 20 and merged.state.args.overclock_last is True
 
 
 def test_the_horizon_undoes_to_its_previous_value(plans, plan):
-    plans.push(plan, 1, [_set("payback_hours", 5)], actor=PAGE)
-    plans.push(plan, 2, [_set("payback_hours", 50)], actor=PAGE)
-    assert inverse(plans.commits(plan)[2].ops) == [_set("payback_hours", 5.0)]
+    plans.push(plan, 1, [set_op("payback_hours", 5)], actor=PAGE)
+    plans.push(plan, 2, [set_op("payback_hours", 50)], actor=PAGE)
+    assert inverse(plans.commits(plan)[2].ops) == [set_op("payback_hours", 5.0)]
     assert plans.undo(plan, 3, 3, actor=PAGE).state.args.payback_hours == 5.0
 
 
 def test_the_settings_in_words():
-    assert describe_op({**_set("payback_hours", 10.0), "was": None}) == "payback 10 h"
-    assert describe_op({**_set("payback_hours", None), "was": 5.0}) == "payback: shared default"
-    assert describe_op(_set("overclock_last", True)) == "overclock last machine: on"
-    assert describe_op(_set("power_price", None)) == "power price: grid mix"
+    assert describe_op({**set_op("payback_hours", 10.0), "was": None}) == "payback 10 h"
+    assert describe_op({**set_op("payback_hours", None), "was": 5.0}) == "payback: shared default"
+    assert describe_op(set_op("overclock_last", True)) == "overclock last machine: on"
+    assert describe_op(set_op("power_price", None)) == "power price: grid mix"
 
 
 def test_recalling_with_zero_or_default_overrides():
@@ -462,25 +458,13 @@ def test_zero_hours_keeps_every_plan_id(game, state):
 
 # ------------------------------------------------------------------ chat and page
 
-RIP = "Reinforced Iron Plate"
-RIP5 = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
 PLASTIC20 = {"objective": "min_power", "exports": ["Plastic"], "export_minimums": {"Plastic": 200}}
-WORLD = "X2faPVKjX06VaRzClNv5KQ"
-ORIGIN = {"origin": "http://testserver"}
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch, projection, game):
-    from satisfactory_mcp.domain.planning import journal
+def world(monkeypatch, projection, game):
     from satisfactory_mcp.domain.world.state import WorldState
     from satisfactory_mcp.interfaces.mcp.tools import planning
-
-    for name in ("plans_dir", "activity_dir", "pins_dir", "labels_dir", "ui_dir"):
-        root = tmp_path / name
-        root.mkdir()
-        monkeypatch.setattr(config, name, lambda root=root: root)
-    monkeypatch.setattr(journal, "_writer", "")
-    monkeypatch.setattr(journal, "_seq", {})
 
     def fresh(*_a, **_k):
         return WorldState(projection=projection, game=game)
@@ -495,7 +479,7 @@ def test_chat_sets_reads_and_resets_the_horizon(world):
     made = srv.plan_factory(save_as="oil", payback_hours=10, limit=2, **PLASTIC20)
     assert 'saved as "oil" v1' in made and "payback 10 h at grid mix 251 pts/MWh" in made, made
     assert "the last pays back within 10 h" in made and "20 h would change" in made
-    log = PlanLog(WORLD)
+    log = PlanLog(FIXTURE_WORLD)
     key = log.find("oil").key
     assert log.state(key).args.payback_hours == 10.0
     assert "payback 10 h" in srv.plan_factory(plan="oil", limit=2)
@@ -504,7 +488,7 @@ def test_chat_sets_reads_and_resets_the_horizon(world):
     )
     assert "is now v2" in reset, reset
     assert log.state(key).args.payback_hours is None
-    assert srv.plan_factory(payback_hours=500, limit=2, **RIP5).startswith(
+    assert srv.plan_factory(payback_hours=500, limit=2, **FIVE_RIP_ARGS).startswith(
         "! payback_hours must be 0 to 100 hours"
     )
 
@@ -521,54 +505,37 @@ def test_chat_overclock_and_price_override(world):
     assert "payback 10 h" in laid
 
 
-@pytest.fixture
-def client(world, projection, game):
-    from fastapi.testclient import TestClient
-
-    from satisfactory_mcp.domain.world.state import WorldState
-    from satisfactory_mcp.interfaces.web.app import create_app
-
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
-        yield c
+def _solve(client, body: dict):
+    return client.post("/api/plan/solve", json=body, headers=PAGE_ORIGIN)
 
 
-def test_the_page_reads_the_stops_and_pushes_the_horizon(client):
-    created = client.post("/api/plans", json={"name": "oil", "args": PLASTIC20}, headers=ORIGIN)
-    assert created.status_code == 201, created.text
-    key = created.json()["key"]
-    assert created.json()["state"]["args"]["payback_hours"] is None
-    plain = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
+def test_the_page_reads_the_stops_and_pushes_the_horizon(fresh_state_client):
+    created = create_plan(fresh_state_client, "oil", PLASTIC20)
+    key = created["key"]
+    assert created["state"]["args"]["payback_hours"] is None
+    plain = _solve(fresh_state_client, {"key": key}).json()
     power = plain["power"]
     assert power["hours"] == 0 and power["inherited"] and power["price_source"] == "grid mix"
     assert [s["hours"] for s in power["stops"]] == list(PAYBACK_STOPS)
     assert power["stops"][0]["machines"] == plain["machines"]
     assert power["overclock"]["shards_free"] == 19
-    pushed = client.post(
-        f"/api/plans/{key}/ops",
-        json={"base_rev": 1, "ops": [_set("payback_hours", 10)]},
-        headers=ORIGIN,
-    )
-    assert pushed.status_code == 200, pushed.text
+    pushed = push_ops(fresh_state_client, key, 1, set_op("payback_hours", 10))
     assert pushed.json()["state"]["args"]["payback_hours"] == 10
-    spread = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
+    spread = _solve(fresh_state_client, {"key": key}).json()
     ten = next(s for s in power["stops"] if s["hours"] == 10)
     assert spread["power"]["hours"] == 10 and not spread["power"]["inherited"]
     assert ten["extra_machines"] > 0 and ten["saved_mw"] > 0
     assert spread["machines"] > plain["machines"] and spread["mw_draw"] < plain["mw_draw"]
     assert spread["plan_id"] != plain["plan_id"]
-    bad = client.post("/api/plan/solve", json={"args": {"payback_hours": 900}}, headers=ORIGIN)
-    assert bad.status_code == 400
+    assert _solve(fresh_state_client, {"args": {"payback_hours": 900}}).status_code == 400
 
 
-def test_the_shared_default_reaches_the_page(client):
-    created = client.post("/api/plans", json={"name": "oil", "args": PLASTIC20}, headers=ORIGIN)
-    key = created.json()["key"]
-    moved = client.patch("/api/settings", json={"values": {"payback_hours": 20}}, headers=ORIGIN)
+def test_the_shared_default_reaches_the_page(fresh_state_client):
+    key = create_plan(fresh_state_client, "oil", PLASTIC20)["key"]
+    moved = fresh_state_client.patch(
+        "/api/settings", json={"values": {"payback_hours": 20}}, headers=PAGE_ORIGIN
+    )
     assert moved.status_code == 200, moved.text
-    solved = client.post("/api/plan/solve", json={"key": key}, headers=ORIGIN).json()
+    solved = _solve(fresh_state_client, {"key": key}).json()
     assert solved["power"]["hours"] == 20 and solved["power"]["inherited"]
     assert solved["power"]["default_hours"] == 20

@@ -14,10 +14,9 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
+from tests.support.web import client_over
 
 
 def test_storage_is_every_container_and_buffer_with_what_is_in_it(client, state):
@@ -116,13 +115,7 @@ def test_a_storage_row_carries_the_footprint_it_is_drawn_at_or_says_it_cannot(cl
 def test_a_world_with_nothing_in_store_answers_with_an_empty_payload(game):
     """A young save has built no container, and that is not an error -- the belts' rule."""
     for projection in ({}, {"storage": []}, {"storage": None}):
-        app = create_app(
-            state_loader=lambda save=None, world=None, p=projection: WorldState(
-                projection=p, game=game
-            ),
-            game_loader=lambda: game,
-        )
-        with TestClient(app) as c:
+        with client_over(WorldState(projection=projection, game=game), game) as c:
             assert c.get("/api/storage").json() == {
                 "storage": [],
                 "count": 0,
@@ -155,11 +148,9 @@ def test_a_malformed_storage_row_costs_that_row_and_not_the_warehouse(game):
             },
         ]
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         body = c.get("/api/storage").json()
     assert body["count"] == 3
     first = body["storage"][0]
@@ -191,8 +182,7 @@ def test_storage_takes_the_save_and_world_parameters_and_404s_on_an_unreadable_o
             raise RuntimeError("no world matching 'nope'")
         return WorldState(projection={"storage": []}, game=game)
 
-    app = create_app(state_loader=loader, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(loader, game) as c:
         assert c.get("/api/storage?world=Han%20Solo&save=x.sav").status_code == 200
         bad = c.get("/api/storage?world=nope")
     assert asked[0] == ("x.sav", "Han Solo"), "the query never reached the loader"

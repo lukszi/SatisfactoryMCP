@@ -10,19 +10,16 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
 from satisfactory_mcp.domain.world.inventory import CRATE_KIND_TEXT
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
+from tests.support.web import client_over
 
 
 def _body(projection: dict, game) -> dict:
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         r = c.get("/api/stock")
     assert r.status_code == 200, r.text
     return r.json()
@@ -102,13 +99,20 @@ def test_a_crate_says_what_kind_it_is_in_words(game):
     assert place["crate_kind"] == "death"
     assert place["crate_kind_text"] == CRATE_KIND_TEXT["death"]
     assert (place["x_m"], place["y_m"], place["z_m"]) == (1.0, 2.0, 3.0)
-    assert place["items"] == [{"item": "Desc_Wire_C", "name": game.item_name("Desc_Wire_C"), "amount": 3.0}]
+    assert place["items"] == [
+        {"item": "Desc_Wire_C", "name": game.item_name("Desc_Wire_C"), "amount": 3.0}
+    ]
 
 
 def test_distance_is_measured_from_the_player_across_the_ground(game, monkeypatch):
     projection = {
         "crates": [
-            {"cls": "BP_Crate_C", "instance": "x.a", "pos": [300_00, 400_00, 9_000_00], "kind": "none"},
+            {
+                "cls": "BP_Crate_C",
+                "instance": "x.a",
+                "pos": [300_00, 400_00, 9_000_00],
+                "kind": "none",
+            },
             {"cls": "BP_Crate_C", "instance": "x.b", "kind": "none"},
         ]
     }
@@ -143,8 +147,7 @@ def test_stock_takes_the_save_and_world_parameters_and_404s_on_an_unreadable_one
             raise RuntimeError("no world matching 'nope'")
         return WorldState(projection={}, game=game)
 
-    app = create_app(state_loader=loader, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(loader, game) as c:
         assert c.get("/api/stock?world=Some%20World&save=x.sav").status_code == 200
         bad = c.get("/api/stock?world=nope")
     assert asked[0] == ("x.sav", "Some World")

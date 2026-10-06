@@ -16,10 +16,9 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
 from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
+from tests.support.web import client_over
 
 
 def test_power_is_the_poles_and_the_span_of_every_wire(client, state):
@@ -72,9 +71,7 @@ def test_a_wire_joins_each_end_to_the_pole_it_terminates_at(client):
     """
     body = client.get("/api/power").json()
     poles = body["poles"]
-    ends = [
-        (w[key + "_m"], w[key + "_pole"]) for w in body["wires"] for key in ("a", "b")
-    ]
+    ends = [(w[key + "_m"], w[key + "_pole"]) for w in body["wires"] for key in ("a", "b")]
     joined = [(at, ix) for at, ix in ends if ix is not None]
     # The same 1,991 the connection census counts: two numbers derived from one edge list
     # through two code paths, so a join counted off the wrong end moves exactly one of them.
@@ -101,13 +98,7 @@ def test_a_pole_nothing_is_wired_to_reports_zero_rather_than_nothing(client):
 def test_a_world_with_no_power_at_all_answers_with_an_empty_network(game):
     """A save from before schema 17, and a world nobody has wired, read the same way."""
     for projection in ({}, {"power": None}, {"power": {"poles": {}, "wires": []}}):
-        app = create_app(
-            state_loader=lambda save=None, world=None, p=projection: WorldState(
-                projection=p, game=game
-            ),
-            game_loader=lambda: game,
-        )
-        with TestClient(app) as c:
+        with client_over(WorldState(projection=projection, game=game), game) as c:
             assert c.get("/api/power").json() == {
                 "poles": [],
                 "pole_count": 0,
@@ -138,11 +129,9 @@ def test_a_wire_with_no_geometry_costs_that_span_and_not_the_join(game):
             "wires": [None, [100, 200, 1000, 400, 200, 1000]],
         },
     }
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(
+        lambda save=None, world=None: WorldState(projection=projection, game=game), game
+    ) as c:
         body = c.get("/api/power").json()
     assert (body["wire_count"], body["edge_count"]) == (1, 2)
     (wire,) = body["wires"]
@@ -165,8 +154,7 @@ def test_power_takes_the_save_and_world_parameters_and_404s_on_an_unreadable_one
             raise RuntimeError("no world matching 'nope'")
         return WorldState(projection={}, game=game)
 
-    app = create_app(state_loader=loader, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(loader, game) as c:
         assert c.get("/api/power?world=Han%20Solo&save=x.sav").status_code == 200
         bad = c.get("/api/power?world=nope")
     assert asked[0] == ("x.sav", "Han Solo"), "the query never reached the loader"

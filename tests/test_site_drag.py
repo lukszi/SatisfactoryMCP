@@ -1,7 +1,5 @@
 """Planner P5, site drag (docs/planner-p5_contract.md): the ``site`` op's checks and words,
 snapping, fit to built, the ground height hook, and the preview the page and chat share.
-
-The fixture world is read and never written; plans land in a temporary plan log.
 """
 
 from __future__ import annotations
@@ -10,19 +8,16 @@ import json
 import time
 
 import pytest
-from conftest import FIXTURE_WORLD, FIXTURES
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import planlog, site_preview, siting
 from satisfactory_mcp.domain.planning.planlog import Actor, InvalidOp, PlanLog, describe_op
 from satisfactory_mcp.domain.planning.trunks import Trunk, TrunkMember
 from satisfactory_mcp.domain.spatial import geo
-from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.reference_world import FIVE_RIP_ARGS
 
 PAGE = Actor("page", "", 1)
 CHAT = Actor("chat", "claude-code", 2)
-RIP = "Reinforced Iron Plate"
-ARGS = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
 #: Where the fixture world's RIP machines stand (the "copper setup" centroid) and open sea.
 BUILT_SPOT = (-238.0, -1466.0)
 SEA = (3000.0, 3000.0)
@@ -35,8 +30,7 @@ def _value(x=100.0, y=-200.0, **over) -> dict:
 
 
 @pytest.fixture
-def plans(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
+def plans():
     return PlanLog("TESTWORLD")
 
 
@@ -224,22 +218,13 @@ def test_trunk_legs_to_the_site_move_while_the_chain_does_not():
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch, projection, game):
-    root = tmp_path / "plans"
-    root.mkdir()
-    labels = tmp_path / "labels"
-    labels.mkdir()
-    (labels / f"{FIXTURE_WORLD}.json").write_bytes(
-        (FIXTURES / "labels_reference.json").read_bytes()
-    )
-    monkeypatch.setattr(config, "plans_dir", lambda: root)
-    monkeypatch.setattr(config, "labels_dir", lambda: labels)
-    return WorldState(projection=projection, game=game)
+def world(labelled):
+    return labelled
 
 
 def _plan(st, at=None, args=None, factory=""):
     log = PlanLog(st.world_id)
-    made = log.create("rip", args or ARGS, actor=PAGE, factory=factory)
+    made = log.create("rip", args or FIVE_RIP_ARGS, actor=PAGE, factory=factory)
     if at is not None:
         log.push(
             made.key, 1, [{"op": "site", "value": _value(*at, footprint_m=[200, 200])}], actor=PAGE
@@ -255,9 +240,9 @@ def _files(root):
     return {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
 
 
-def test_the_preview_moves_the_built_line_and_writes_nothing(world, tmp_path):
+def test_the_preview_moves_the_built_line_and_writes_nothing(world):
     state = _plan(world, at=BUILT_SPOT)
-    before = _files(tmp_path / "plans")
+    before = _files(config.plans_dir())
     sess = site_preview.open_session(world.game, world, state)
     assert sess.now["built"] and sess.now["mode"] == "auto"
     home = site_preview.preview(world.game, world, sess, _pad(*BUILT_SPOT))
@@ -272,7 +257,7 @@ def test_the_preview_moves_the_built_line_and_writes_nothing(world, tmp_path):
         "text": f"{sess.now['built']} of {sess.now['total']} built here → 0 at the new spot",
     }
     assert home["on_pad"] > 0 and away["on_pad"] == 0
-    assert _files(tmp_path / "plans") == before
+    assert _files(config.plans_dir()) == before
 
 
 def test_a_picked_factory_does_not_follow_the_pad(world):
@@ -323,7 +308,7 @@ def test_fit_to_built_offers_a_pad_that_covers_the_candidate(world):
 
 
 def test_a_first_placement_names_its_new_basis_and_starts_at_its_near_centre(world):
-    args = dict(ARGS, sources=["near:-238,-1466@400"])
+    args = dict(FIVE_RIP_ARGS, sources=["near:-238,-1466@400"])
     state = _plan(world, args=args)
     sess = site_preview.open_session(world.game, world, state)
     start = site_preview.start_siting(world.game, world, sess)
@@ -335,7 +320,7 @@ def test_a_first_placement_names_its_new_basis_and_starts_at_its_near_centre(wor
 
 def test_another_plans_pad_is_flagged_as_an_overlap(world):
     log = PlanLog(world.world_id)
-    other = log.create("other", ARGS, actor=PAGE)
+    other = log.create("other", FIVE_RIP_ARGS, actor=PAGE)
     log.push(
         other.key, 1, [{"op": "site", "value": _value(*SEA, footprint_m=[100, 100])}], actor=PAGE
     )

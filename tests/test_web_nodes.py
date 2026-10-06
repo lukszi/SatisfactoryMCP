@@ -11,14 +11,13 @@ or by building its own app -- so nothing in this file spawns the sidecar or read
 from __future__ import annotations
 
 import pytest
-from conftest import _explode
+
+from tests.support.web import client_over, failing_state_loader
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
 from satisfactory_mcp.domain.spatial import nodes as spatial_nodes
-from satisfactory_mcp.interfaces.web.app import create_app
 
 
 def test_nodes_carry_the_occupancy_join_and_a_reusable_selector(client, state):
@@ -40,8 +39,7 @@ def test_nodes_survive_a_save_that_cannot_be_read(game):
     """The node table is static and needs no ``.sav`` -- the rule /api/inspect already
     follows. A failed save costs the occupancy join, never the geography, and the loss
     is said out loud: ``save_error`` set, ``occupied`` null rather than a measured 0."""
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         r = c.get("/api/nodes")
     assert r.status_code == 200
     body = r.json()
@@ -113,8 +111,7 @@ def test_a_save_that_cannot_be_read_leaves_reachability_unknown_rather_than_true
     halves of a row part company here. ``reachable`` defaults to true one layer down -- which
     is right for a capacity sum over no world and wrong for a dot somebody plans around.
     """
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         rows = c.get("/api/nodes").json()["nodes"]
     assert rows
     assert all(row["reachable"] is None for row in rows)
@@ -155,7 +152,6 @@ def test_a_node_is_a_spoiler_exactly_when_it_is_locked(client):
 
 
 def test_without_a_save_no_node_is_a_spoiler(game):
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         rows = c.get("/api/nodes").json()["nodes"]
     assert not any(r["spoiler"] for r in rows)

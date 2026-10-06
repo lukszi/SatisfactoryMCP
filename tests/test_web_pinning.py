@@ -7,6 +7,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp.interfaces.web.pinning import STALE
+from tests.support.web import client_over, failing_state_loader
 
 STALE_TOKEN = "sav:000000000000"
 
@@ -54,15 +55,7 @@ def test_writes_are_left_to_their_own_check(client):
 
 
 def test_a_world_that_cannot_be_read_is_left_to_the_route(game):
-    from fastapi.testclient import TestClient
-
-    from satisfactory_mcp.interfaces.web.app import create_app
-
-    def explode(save=None, world=None):
-        raise RuntimeError("sidecar produced no output")
-
-    app = create_app(state_loader=explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         reply = c.get("/api/power/circuits", params={"as_of": STALE_TOKEN})
     assert reply.status_code == 404
     assert "stale" not in reply.json()

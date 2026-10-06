@@ -7,29 +7,27 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata import waterfalls  # noqa: E402
-from mapgen.gamedata.waterfalls import (  # noqa: E402
+from mapgen.gamedata import waterfalls
+from mapgen.gamedata.waterfalls import (
     FALLS_CACHE_DIR_NAME,
     FALLS_CACHE_NAME,
     fall_from_modules,
     falls_input,
 )
-from mapgen.palette import falls as fallpaint  # noqa: E402
-from mapgen.palette.falls import FALL_STYLES, draw_falls, prepare_falls  # noqa: E402
-from mapgen.terrain.rasters import (  # noqa: E402
+from mapgen.palette import falls as fallpaint
+from mapgen.palette.falls import FALL_STYLES, draw_falls, prepare_falls
+from mapgen.terrain.rasters import (
     MESH_ROCK,
     MESH_TERRACE,
     is_render_only_foliage,
     is_render_only_static,
     mesh_class,
 )
-from satisfactory_mcp.core.gameassets import versions  # noqa: E402
-from satisfactory_mcp.domain.spatial import heightfield as hf  # noqa: E402
+from satisfactory_mcp.core.gameassets import versions
+from satisfactory_mcp.domain.spatial import heightfield as hf
 
 
 def _matrices(positions, scale=(1.0, 1.0, 1.0)):

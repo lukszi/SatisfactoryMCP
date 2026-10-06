@@ -214,14 +214,14 @@ def test_pruning_survives_a_file_another_pruner_already_deleted(tmp_path, monkey
     ("store_dir", "make"),
     [("labels_dir", lambda: LabelStore(world_id="W", session_name="s"))],
 )
-def test_the_two_stores_survive_a_crash_mid_save(tmp_path, monkeypatch, store_dir, make):
+def test_the_two_stores_survive_a_crash_mid_save(monkeypatch, store_dir, make):
     """Through the real ``editing()``, not through the helper it calls.
 
     Both stores are tested the same way and in one test, because the property is the same
     property and stating it twice by hand invites the second copy to be forgotten when a
     third store is added.
     """
-    monkeypatch.setattr(config, store_dir, lambda: tmp_path)
+    directory = getattr(config, store_dir)()
     store = make()
     with type(store).editing(store.world_id, store.session_name):
         pass
@@ -233,13 +233,12 @@ def test_the_two_stores_survive_a_crash_mid_save(tmp_path, monkeypatch, store_di
     with pytest.raises(OSError), type(store).editing(store.world_id, "changed") as again:
         again.session_name = "changed"
     assert path.read_bytes() == first, "a crashed save must not cost what was already stored"
-    assert [p.name for p in tmp_path.iterdir()] == [path.name, path.name + ".lock"]
+    assert [p.name for p in directory.iterdir()] == [path.name, path.name + ".lock"]
 
 
-def test_the_plan_log_survives_a_crash_mid_snapshot(tmp_path, monkeypatch):
+def test_the_plan_log_survives_a_crash_mid_snapshot(monkeypatch):
     """The log line is the record and a snapshot only a shortcut, so a snapshot that dies
     in the rename costs neither the commit nor the snapshot already on disk."""
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path)
     log = PlanLog("W")
     key = log.create("p", {}, actor=Actor("page")).key
     first = (log.root / key / "snap" / "1.json").read_bytes()

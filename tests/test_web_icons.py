@@ -1,8 +1,5 @@
 """``/api/icons/{desc}``: one item's picture, and the four ways it can be absent.
 
-``importorskip`` at module scope, not a marker: ``fastapi`` lives in the optional ``web``
-extra, so an install without it must skip this file rather than fail collection.
-
 Every test here points the router's directory at a ``tmp_path`` holding a handful of
 one-pixel PNGs, so nothing reads the reader's own ``data/local/`` and nothing needs the game
 installed. The router reads that directory at call time precisely so this is possible.
@@ -16,9 +13,6 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
-
-from satisfactory_mcp.interfaces.web.app import create_app
 from satisfactory_mcp.interfaces.web.routers import icons as web_icons
 
 #: The smallest thing Pillow and every browser agree is a PNG: 1x1, fully transparent.
@@ -63,16 +57,8 @@ def empty_icons_dir(tmp_path, monkeypatch):
     return tmp_path / "local" / "icons"
 
 
-@pytest.fixture
-def app_client(state, game):
-    with TestClient(
-        create_app(state_loader=lambda save=None, world=None: state, game_loader=lambda: game)
-    ) as c:
-        yield c
-
-
 def test_an_icon_is_served_as_a_png_with_the_build_tag_the_client_busts_the_cache_with(
-    app_client, icons_dir
+    client, icons_dir
 ):
     """The bytes, the type, and the tag -- which is the header a client actually needs.
 
@@ -80,7 +66,7 @@ def test_an_icon_is_served_as_a_png_with_the_build_tag_the_client_busts_the_cach
     directory is regenerated and at no other time. That is what makes ``?v=`` meaningful,
     and therefore what makes ``immutable`` safe below.
     """
-    r = app_client.get("/api/icons/Desc_IronPlate_C")
+    r = client.get("/api/icons/Desc_IronPlate_C")
     assert r.status_code == 200
     assert r.content == _PNG
     assert r.headers["content-type"] == "image/png"
@@ -88,7 +74,7 @@ def test_an_icon_is_served_as_a_png_with_the_build_tag_the_client_busts_the_cach
     assert r.headers["etag"] == f'"{r.headers["x-icons-build"]}"'
 
 
-def test_a_versioned_url_is_immutable_and_a_bare_one_revalidates(app_client, icons_dir):
+def test_a_versioned_url_is_immutable_and_a_bare_one_revalidates(client, icons_dir):
     """The tile route's rule, and it is the untagged half that matters.
 
     ``immutable`` is EARNED by the ``?v=`` tag and only by it: a tagged URL changes whenever
@@ -96,25 +82,21 @@ def test_a_versioned_url_is_immutable_and_a_bare_one_revalidates(app_client, ico
     hard is how a regenerated directory stays invisible behind a year-old probe -- so those
     revalidate, and the ETag makes that a 304 rather than the bytes again.
     """
-    tag = app_client.get("/api/icons/Desc_IronPlate_C").headers["x-icons-build"]
+    tag = client.get("/api/icons/Desc_IronPlate_C").headers["x-icons-build"]
 
-    fresh = app_client.get(f"/api/icons/Desc_IronPlate_C?v={tag}")
+    fresh = client.get(f"/api/icons/Desc_IronPlate_C?v={tag}")
     assert fresh.headers["cache-control"] == "public, max-age=31536000, immutable"
 
-    bare = app_client.get("/api/icons/Desc_IronPlate_C")
+    bare = client.get("/api/icons/Desc_IronPlate_C")
     assert bare.headers["cache-control"] == "no-cache"
 
-    revalidated = app_client.get(
-        "/api/icons/Desc_IronPlate_C", headers={"if-none-match": f'"{tag}"'}
-    )
+    revalidated = client.get("/api/icons/Desc_IronPlate_C", headers={"if-none-match": f'"{tag}"'})
     assert revalidated.status_code == 304
     assert revalidated.content == b""
     assert revalidated.headers["etag"] == f'"{tag}"'
 
 
-def test_the_build_tag_moves_when_the_directory_is_regenerated_and_not_otherwise(
-    app_client, icons_dir
-):
+def test_the_build_tag_moves_when_the_directory_is_regenerated_and_not_otherwise(client, icons_dir):
     """A cache tag that did not move on a recut would pin every client to stale artwork.
 
     Both directions: the tag is stable across requests against one directory, and rewriting
@@ -122,19 +104,19 @@ def test_the_build_tag_moves_when_the_directory_is_regenerated_and_not_otherwise
     against the manifest rather than against a file's mtime, because the manifest is what
     the generator writes and mtimes are what a copy destroys.
     """
-    first = app_client.get("/api/icons/Desc_IronPlate_C").headers["x-icons-build"]
-    assert app_client.get("/api/icons/Desc_IronPlate_C").headers["x-icons-build"] == first
+    first = client.get("/api/icons/Desc_IronPlate_C").headers["x-icons-build"]
+    assert client.get("/api/icons/Desc_IronPlate_C").headers["x-icons-build"] == first
 
     manifest = icons_dir / web_icons.ICONS_MANIFEST_NAME
     body = json.loads(manifest.read_text(encoding="utf-8"))
     body["_meta"]["source"]["game_version_pinned"] = "buildVersion 500000"
     manifest.write_text(json.dumps(body), encoding="utf-8")
 
-    assert app_client.get("/api/icons/Desc_IronPlate_C").headers["x-icons-build"] != first
+    assert client.get("/api/icons/Desc_IronPlate_C").headers["x-icons-build"] != first
 
 
 def test_a_probe_for_an_absent_icon_is_204_and_the_get_says_which_tool_writes_them(
-    app_client, empty_icons_dir
+    client, empty_icons_dir
 ):
     """The map image's rule: an absent optional file is expected, so HEAD must not go red.
 
@@ -142,22 +124,22 @@ def test_a_probe_for_an_absent_icon_is_204_and_the_get_says_which_tool_writes_th
     page. The GET keeps its 404 and names the generator, because anything actually fetching
     bytes deserves the reason -- and the reason is a command, not an apology.
     """
-    assert app_client.head("/api/icons/Desc_IronPlate_C").status_code == 204
+    assert client.head("/api/icons/Desc_IronPlate_C").status_code == 204
 
-    missing = app_client.get("/api/icons/Desc_IronPlate_C")
+    missing = client.get("/api/icons/Desc_IronPlate_C")
     assert missing.status_code == 404
     assert "gen_item_icons.py" in missing.json()["error"]
     assert "never committed" in missing.json()["error"]
 
 
-def test_a_generated_directory_without_this_class_gives_a_different_answer(app_client, icons_dir):
+def test_a_generated_directory_without_this_class_gives_a_different_answer(client, icons_dir):
     """Two absences, two sentences, because they are two different facts.
 
     "Nobody has run the generator" is fixed by running it. "This class has no picture in the
     container" is not fixed by anything -- 6 of the game's 750 item classes are in that
     state -- so telling a reader to run the tool again would send them round a loop.
     """
-    missing = app_client.get("/api/icons/Desc_PillarTop_C")
+    missing = client.get("/api/icons/Desc_PillarTop_C")
     assert missing.status_code == 404
     error = missing.json()["error"]
     assert "gen_item_icons.py" not in error, "running it again would not help"
@@ -176,7 +158,7 @@ def test_a_generated_directory_without_this_class_gives_a_different_answer(app_c
         "a" * 129,
     ],
 )
-def test_a_segment_that_is_not_a_class_name_never_becomes_a_path(app_client, icons_dir, segment):
+def test_a_segment_that_is_not_a_class_name_never_becomes_a_path(client, icons_dir, segment):
     """Validated, not repaired -- so there is no join for a traversal to escape through.
 
     A descriptor class is ``[A-Za-z0-9_]`` and nothing else, so every one of these is refused
@@ -187,7 +169,7 @@ def test_a_segment_that_is_not_a_class_name_never_becomes_a_path(app_client, ico
     of that exact name IS on disk, and it still 404s, because the route names classes rather
     than files and a reader who guesses the extension must not be quietly right.
     """
-    r = app_client.get(f"/api/icons/{segment}")
+    r = client.get(f"/api/icons/{segment}")
     assert r.status_code == 404
     assert r.content != _PNG, "a refused segment must never reach a file"
 

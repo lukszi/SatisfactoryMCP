@@ -42,13 +42,13 @@ from __future__ import annotations
 from copy import deepcopy
 
 import pytest
-from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.gamedata.constants import CAPABILITY_SCHEMATICS
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning as planning_tools
 from satisfactory_mcp.interfaces.mcp.tools import progression as progression_tools
+from tests.support.reference_world import REFERENCE_FIELD
 
 pytestmark = pytest.mark.integration
 
@@ -321,7 +321,9 @@ def constructed(game, projection, monkeypatch):
         copy = deepcopy(projection)
         copy.setdefault("research", {}).update(research)
         st = WorldState(projection=copy, game=game)
-        monkeypatch.setattr(progression_tools, "_state", lambda save=None, world=None, as_of=None, _st=st: _st)
+        monkeypatch.setattr(
+            progression_tools, "_state", lambda save=None, world=None, as_of=None, _st=st: _st
+        )
         return st
 
     return build

@@ -40,7 +40,6 @@ from __future__ import annotations
 import itertools
 import struct
 import zlib
-from pathlib import Path
 
 import pytest
 
@@ -63,8 +62,7 @@ from pioneersav import (
 from pioneersav.chunks import OLD_PREAMBLE_BYTES, PREAMBLE_BYTES
 from pioneersav.header import PACKAGE_FILE_TAG
 from pioneersav.save import UNDECODED_TRAILER_CLASSES
-
-FIXTURES = Path(__file__).parent / "fixtures"
+from tests.support.paths import FIXTURES
 
 #: The measured tag offset for each old layout, over all 35 files: 12 saves land on 146, 9 on
 #: 159 and 14 on 186. Unlike saveHeaderType 14 -- whose ``save_name`` is variable-length and

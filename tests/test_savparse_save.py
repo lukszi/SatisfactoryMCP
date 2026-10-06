@@ -25,17 +25,15 @@ from __future__ import annotations
 import importlib.util
 import struct
 import zlib
-from pathlib import Path
 
 import pytest
 
 from pioneersav import CHUNK_TAG, ParseError, read_full_save_bytes, read_info_bytes
+from tests.support.paths import FIXTURES, REPO_ROOT
 
-FIXTURES = Path(__file__).parent / "fixtures"
 HEADER_FIXTURE = FIXTURES / "save_header.bin"
 BODY_FIXTURE = FIXTURES / "save_body.bin"
-REPO = Path(__file__).resolve().parents[1]
-SIDECAR = REPO / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract.py"
+SIDECAR = REPO_ROOT / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract.py"
 
 #: The chunk size the game writes on every save seen. Reproduced rather than shortened so
 #: the assembled file is a real chunk stream and not a special case of one.
@@ -363,4 +361,4 @@ def test_the_deleted_library_is_really_gone():
     It lived at ``sidecar/vendor/sat_sav_parse``, and the whole ``sidecar/`` directory went
     when the parser became ``src/pioneersav``, so the directory's absence is what says it.
     """
-    assert not (REPO / "sidecar").exists()
+    assert not (REPO_ROOT / "sidecar").exists()

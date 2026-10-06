@@ -13,15 +13,14 @@ from __future__ import annotations
 import types
 
 import pytest
-from conftest import _explode
+
+from tests.support.web import client_over, failing_state_loader
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web import terrain as web_terrain
-from satisfactory_mcp.interfaces.web.app import create_app
 
 # --------------------------------------------------------------------- floors
 
@@ -272,13 +271,7 @@ def test_a_save_too_old_for_floors_says_so_with_a_200(game):
     ``/api/structures`` next door is asserted.
     """
     for projection in ({}, {"structures": {}}, {"structures": {"classes": [], "instances": []}}):
-        app = create_app(
-            state_loader=lambda save=None, world=None, p=projection: WorldState(
-                projection=p, game=game
-            ),
-            game_loader=lambda: game,
-        )
-        with TestClient(app) as c:
+        with client_over(WorldState(projection=projection, game=game), game) as c:
             r = c.get("/api/floors")
         assert r.status_code == 200
         body = r.json()
@@ -289,8 +282,7 @@ def test_a_save_too_old_for_floors_says_so_with_a_200(game):
 
 
 def test_a_save_that_cannot_be_read_has_no_floors_either(game):
-    app = create_app(state_loader=_explode, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(failing_state_loader, game) as c:
         r = c.get("/api/floors")
     assert r.status_code == 404
     assert "sidecar produced no output" in r.json()["error"]

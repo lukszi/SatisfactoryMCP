@@ -13,9 +13,8 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
 
-from satisfactory_mcp.interfaces.web.app import create_app
+from tests.support.web import client_over
 
 # ---------------------------------------------------------------- collectibles
 
@@ -74,11 +73,7 @@ def test_an_unknown_view_is_refused_with_the_tools_own_wording(client):
 def test_remaining_is_refused_when_the_map_table_is_absent(state, game, monkeypatch):
     """No table, no answer -- the same refusal the MCP tool gives, not a shorter list."""
     monkeypatch.setattr(type(state), "collectibles", property(lambda self: None))
-    app = create_app(
-        state_loader=lambda save=None, world=None: state,
-        game_loader=lambda: game,
-    )
-    with TestClient(app) as c:
+    with client_over(state, game) as c:
         r = c.get("/api/collectibles", params={"mode": "remaining"})
     assert r.status_code == 400
     assert "needs the map's own placement table" in r.json()["error"]
@@ -122,8 +117,7 @@ def test_the_table_age_follows_the_save_build(state, game):
         projection={**state.projection, "header": {**state.header, "build_version": 502094}},
         game=game,
     )
-    app = create_app(state_loader=lambda save=None, world=None: newer, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(newer, game) as c:
         body_now = c.get("/api/collectibles", params={"mode": "census"}).json()
     stale = body_now["stale"]
     assert stale["table"] == "collectibles" and stale["behind"] is True
@@ -138,8 +132,7 @@ def test_another_worlds_seen_states_are_dropped(state, game):
     )
     assert other.removed.observed is False
     assert all(p["observed"] is None for p in other.placements(remaining_only=True))
-    app = create_app(state_loader=lambda save=None, world=None: other, game_loader=lambda: game)
-    with TestClient(app) as c:
+    with client_over(other, game) as c:
         body = c.get("/api/collectibles", params={"mode": "remaining"}).json()
     assert body["stale"]["observed_matches"] is False
     assert all(c["standing"] is None and c["never_streamed"] is None for c in body["census"])

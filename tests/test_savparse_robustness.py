@@ -33,13 +33,12 @@ from __future__ import annotations
 import json
 import struct
 import zlib
-from pathlib import Path
 
 import pytest
 
 from pioneersav import CHUNK_TAG, ObjectSlice, ParseError, read_info_bytes, read_object
+from tests.support.paths import FIXTURES
 
-FIXTURES = Path(__file__).parent / "fixtures"
 HEADER_FIXTURE = FIXTURES / "save_header.bin"
 
 

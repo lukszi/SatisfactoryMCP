@@ -7,7 +7,6 @@ regenerated dataset that reintroduces one fails loudly.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -15,6 +14,7 @@ from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.regions import load_regions
 from satisfactory_mcp.domain.spatial.select import select_nodes
+from tests.support.paths import REPO_ROOT
 
 pytestmark = pytest.mark.integration
 
@@ -167,9 +167,7 @@ def test_purity_and_resource_agree_with_the_installed_game(table):
     says so in ``_meta.geyser_note``.
     """
     world = json.loads(
-        (Path(__file__).resolve().parents[1] / "data" / "world_resource_nodes.json").read_text(
-            encoding="utf-8"
-        )
+        (REPO_ROOT / "data" / "world_resource_nodes.json").read_text(encoding="utf-8")
     )
     rows = {r["id"]: r for r in world["nodes"] if r["class"] != "BP_FrackingCore_C"}
     assert {n["instance"].rsplit(".", 1)[-1] for n in table.nodes} == set(rows)

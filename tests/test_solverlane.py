@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import ast
 import threading
-from pathlib import Path
 
 import numpy as np
 import pytest
 from scipy.optimize import LinearConstraint, milp
 
 from satisfactory_mcp.core import solverlane
+from tests.support.paths import REPO_ROOT
 
-SRC = Path(__file__).resolve().parent.parent / "src"
+SRC = REPO_ROOT / "src"
 SOLVERS = {"milp", "linprog"}
 
 

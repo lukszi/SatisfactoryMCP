@@ -39,14 +39,14 @@ It holds, in order:
 from __future__ import annotations
 
 import struct
-from pathlib import Path
 
 import pytest
 
 from pioneersav import Level, ParseError, Reader, SaveBody, read_body
 from pioneersav.objects import _read_destroyed_block, _read_destroyed_refs
+from tests.support.paths import FIXTURES
 
-FIXTURE = Path(__file__).parent / "fixtures" / "save_body_destroyed.bin"
+FIXTURE = FIXTURES / "save_body_destroyed.bin"
 
 #: The three sub-levels, in fixture order. 25-character partition-cell ids.
 LEVEL_ONE = "AHMDFO6QF4K7AA0N6ETSVWH0T"

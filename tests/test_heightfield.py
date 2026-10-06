@@ -35,6 +35,7 @@ from mapgen.gamedata.sweep import (
 )
 from satisfactory_mcp.domain.spatial import elevation
 from satisfactory_mcp.domain.spatial import heightfield as hf
+from tests.support.web import client_over
 
 # --------------------------------------------------------------------------------------
 # A field small enough to build in a test, in exactly the format the generator writes.
@@ -724,10 +725,8 @@ def test_the_inspect_endpoint_says_which_source_answered(tmp_path, monkeypatch):
     identically on a machine that has a real field and on one that has never had one.
     """
     pytest.importorskip("fastapi")
-    from fastapi.testclient import TestClient
 
     from satisfactory_mcp.interfaces.web import terrain as web_terrain
-    from satisfactory_mcp.interfaces.web.app import create_app
 
     field = hf.load_field(build_field(tmp_path))
     monkeypatch.setattr(web_terrain, "field", lambda: field)
@@ -735,8 +734,7 @@ def test_the_inspect_endpoint_says_which_source_answered(tmp_path, monkeypatch):
     # inside it in metres -- which is the unit the endpoint takes and the popup prints.
     x_m, y_m = FAKE_X0 / 100.0, FAKE_Y0 / 100.0
 
-    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: None)
-    with TestClient(app) as client:
+    with client_over(None, None) as client:
         body = client.get("/api/inspect", params={"x_m": x_m, "y_m": y_m}).json()
 
     e = body["elevation"]
@@ -761,15 +759,12 @@ def test_the_endpoint_sends_a_water_level_without_a_depth_where_it_has_no_depth(
     as a measurement of nothing, which is the failure ``fill_note`` already argued about.
     """
     pytest.importorskip("fastapi")
-    from fastapi.testclient import TestClient
 
     from satisfactory_mcp.interfaces.web import terrain as web_terrain
-    from satisfactory_mcp.interfaces.web.app import create_app
 
     field = hf.load_field(build_field(tmp_path))
     monkeypatch.setattr(web_terrain, "field", lambda: field)
-    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: None)
-    with TestClient(app) as client:
+    with client_over(None, None) as client:
         asked = {}
         for label, row in (("lake", 4), ("sea", 5)):
             params = {"x_m": FAKE_X0 / 100.0, "y_m": (FAKE_Y0 + row * FAKE_SPACING) / 100.0}
@@ -792,14 +787,11 @@ def test_the_endpoint_says_WHY_there_is_no_terrain_rather_than_leaving_a_null(mo
     there". So they are different sentences.
     """
     pytest.importorskip("fastapi")
-    from fastapi.testclient import TestClient
 
     from satisfactory_mcp.interfaces.web import terrain as web_terrain
-    from satisfactory_mcp.interfaces.web.app import create_app
 
     monkeypatch.setattr(web_terrain, "field", lambda: None)
-    app = create_app(state_loader=lambda save=None, world=None: None, game_loader=lambda: None)
-    with TestClient(app) as client:
+    with client_over(None, None) as client:
         body = client.get("/api/inspect", params={"x_m": 0.0, "y_m": 0.0}).json()
 
     e = body["elevation"]

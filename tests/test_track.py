@@ -1,7 +1,4 @@
-"""``track_view`` (docs/planner-p4_contract.md §3 and §5.2) over the fixture world.
-
-Plans land in a temporary plan log; the fixture world is read and never written.
-"""
+"""``track_view`` (docs/planner-p4_contract.md §3 and §5.2) over the fixture world."""
 
 from __future__ import annotations
 
@@ -9,30 +6,25 @@ import json
 
 import pytest
 
-from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import track as track_mod
 from satisfactory_mcp.domain.planning.commission import partition_id
 from satisfactory_mcp.domain.planning.commission_service import build_commission_report
 from satisfactory_mcp.domain.planning.diff_service import build_diff_report
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.reference_world import FIVE_RIP_ARGS, RIP
 
-RIP = "Reinforced Iron Plate"
-ARGS = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
 PAGE = Actor("page")
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch, projection, game):
-    root = tmp_path / "plans"
-    root.mkdir()
-    monkeypatch.setattr(config, "plans_dir", lambda: root)
+def world(projection, game):
     return WorldState(projection=projection, game=game)
 
 
 def _plan(st, args=None, **scalars):
     log = PlanLog(st.world_id)
-    made = log.create("rip 5", args or ARGS, actor=PAGE)
+    made = log.create("rip 5", args or FIVE_RIP_ARGS, actor=PAGE)
     ops = [{"op": "set", "field": k, "value": v} for k, v in scalars.items()]
     if ops:
         return log.push(made.key, 1, ops, actor=PAGE).state
@@ -110,7 +102,7 @@ def test_stages_name_their_rows_and_the_partition_is_stable(world):
 def test_the_partition_moves_with_the_machine_count_and_the_headroom(world):
     base = track_mod.track_view(world.game, world, _plan(world, headroom_mw=2000))
     log = PlanLog(world.world_id)
-    bigger = log.create("rip 15", {**ARGS, "export_minimums": {RIP: 15}}, actor=PAGE)
+    bigger = log.create("rip 15", {**FIVE_RIP_ARGS, "export_minimums": {RIP: 15}}, actor=PAGE)
     bigger = log.push(
         bigger.key, 1, [{"op": "set", "field": "headroom_mw", "value": 2000}], actor=PAGE
     ).state
@@ -159,7 +151,10 @@ def test_a_factory_with_no_machines_falls_back_to_detection(world):
     assert out["scope"] == "nowhere at all" and out["scope_error"] == ""
     built = out["built_at"]
     assert built["mode"] == "auto" and built["confidence"] == "no site"
-    assert built["fallback"] == "“nowhere at all” has no machines left: showing what stands at the site"
+    assert (
+        built["fallback"]
+        == "“nowhere at all” has no machines left: showing what stands at the site"
+    )
     assert out["rows"] and built["built"] is None and built["figure"] == "–"
 
 
@@ -173,7 +168,7 @@ def test_an_unplaced_plan_shows_no_progress_but_keeps_its_jobs(world):
 
 
 def test_an_infeasible_plan_is_a_shape_not_an_error(world):
-    state = _plan(world, {**ARGS, "export_minimums": {RIP: 1e7}})
+    state = _plan(world, {**FIVE_RIP_ARGS, "export_minimums": {RIP: 1e7}})
     out = track_mod.track_view(world.game, world, state)
     assert out["feasible"] is False and out["headline"].startswith("INFEASIBLE") and out["cause"]
     assert out["rows"] == [] and out["stages"] == [] and out["partition_id"] == ""
@@ -210,7 +205,19 @@ def test_the_page_reads_no_ids_codes_or_property_names(world):
     out = track_mod.track_view(world.game, world, _plan(world, headroom_mw=100000))
     assert out["stages"]
     for text in _page_strings(out):
-        for banned in ("sav:", "OQ", "mHas", " -- ", "plan_id", "BUILD", "saveVersion", "%-", "km out", "..", "wave"):
+        for banned in (
+            "sav:",
+            "OQ",
+            "mHas",
+            " -- ",
+            "plan_id",
+            "BUILD",
+            "saveVersion",
+            "%-",
+            "km out",
+            "..",
+            "wave",
+        ):
             assert banned not in text, (banned, text)
 
 

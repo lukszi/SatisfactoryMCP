@@ -36,20 +36,12 @@ class _World:
 
 
 @pytest.fixture
-def ctx(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
-
-    monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
-    monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
-    monkeypatch.setattr(journal.config, "pins_dir", lambda: tmp_path / "pins")
-    monkeypatch.setattr(journal.config, "asks_dir", lambda: tmp_path / "asks")
-    monkeypatch.setattr(journal, "_writer", "")
-    monkeypatch.setattr(journal, "_seq", {})
+def ctx(user_data, monkeypatch):
     monkeypatch.setattr(planning, "_state", lambda *a, **k: _World())
     monkeypatch.setattr(planning, "_sav", lambda st: "sav:3f2a91c0aa11")
     monkeypatch.setattr(planning, "_cursor", {})
     monkeypatch.setattr(planning, "_page_focus", lambda world_id: (None, False))
-    return tmp_path
+    return user_data
 
 
 def _focus(monkeypatch, age_s: float, is_open: bool, **extra) -> None:
@@ -223,10 +215,8 @@ def test_a_busy_world_stays_inside_the_budget(ctx):
 
 
 def test_the_real_focus_file_is_read_when_the_web_module_exists(ctx, monkeypatch):
-    focus = pytest.importorskip("satisfactory_mcp.domain.planning.focus")
     monkeypatch.undo()
-    monkeypatch.setattr(focus.config, "ui_dir", lambda: ctx / "ui")
-    (ctx / "ui").mkdir()
+    (ctx / "ui").mkdir(parents=True, exist_ok=True)
     (ctx / "ui" / f"{WORLD}.json").write_text(
         json.dumps(
             {
@@ -249,7 +239,7 @@ def test_the_real_focus_file_is_read_when_the_web_module_exists(ctx, monkeypatch
 
 
 def _pins(ctx, rows: list[dict]) -> None:
-    (ctx / "pins").mkdir(exist_ok=True)
+    (ctx / "pins").mkdir(parents=True, exist_ok=True)
     stored = [
         {"rev": 1, "created": 0.0, "deleted": False, "label": "", "x_m": None, "y_m": None, **row}
         for row in rows
@@ -487,7 +477,6 @@ def advised(ctx, monkeypatch):
     from satisfactory_mcp.domain import advice
     from satisfactory_mcp.domain.advice import rules
 
-    monkeypatch.setattr(journal.config, "advice_dir", lambda: ctx / "advice")
     rows = [_advisory("starved", f"f{n}") for n in range(9)]
 
     def current(st, **kw):

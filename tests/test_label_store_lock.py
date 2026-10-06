@@ -23,33 +23,22 @@ def _writer(root: str, who: str, start) -> None:
             store.put(f"{who} {i}", [f"Build_{who}_C_{i}"])
 
 
-def test_two_processes_naming_at_once_keep_every_label(tmp_path):
+def test_two_processes_naming_at_once_keep_every_label(user_data):
     ctx = mp.get_context("spawn")
     start = ctx.Barrier(2)
-    procs = [ctx.Process(target=_writer, args=(str(tmp_path), who, start)) for who in "AB"]
+    procs = [ctx.Process(target=_writer, args=(str(user_data), who, start)) for who in "AB"]
     for p in procs:
         p.start()
     for p in procs:
         p.join(60)
         assert p.exitcode == 0
-    os.environ["SATISFACTORY_USER_DATA"] = str(tmp_path)
-    try:
-        from satisfactory_mcp import config
-
-        config.labels_dir.cache_clear()
-        store = LabelStore.load("W")
-    finally:
-        del os.environ["SATISFACTORY_USER_DATA"]
-        config.labels_dir.cache_clear()
+    store = LabelStore.load("W")
     names = sorted(x.name for x in store.labels)
     assert names == sorted(f"{w} {i}" for w in "AB" for i in range(ROUNDS))
     assert store.version == 2 * ROUNDS
 
 
-def test_a_stale_version_is_refused_and_nothing_is_written(tmp_path, monkeypatch):
-    from satisfactory_mcp import config
-
-    monkeypatch.setattr(config, "labels_dir", lambda: tmp_path)
+def test_a_stale_version_is_refused_and_nothing_is_written():
     with LabelStore.editing("W") as store:
         store.put("one", ["m1"])
     with (

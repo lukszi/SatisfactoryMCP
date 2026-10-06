@@ -1,17 +1,7 @@
 """``/api/mapimage`` and ``/api/maptiles``: the base map, which is never shipped.
 
-``importorskip`` at module scope, not a marker: ``fastapi`` lives in the optional
-``web`` extra, so an install without it must skip this file rather than fail collection.
-
-Every test here injects both loaders -- through the ``client`` fixture in ``conftest.py`` --
-so nothing in this file spawns the sidecar or reads a ``.sav``. What every one of them DOES
-need is a ``data/local/`` tree, so ``config.data_dir`` is redirected at ``tmp_path`` and the
-picture is written by the test: this repository ships no render of this world, and a suite
-that read one off the developer's disk would pass on that disk alone.
-
-The agreement between these endpoints and the two generators that write what they serve is
-in ``test_map_generators.py``, which imports the tree builders below -- they are defined here
-because it is the SERVER's names they are built through.
+Each test writes its own ``data/local/`` tree under ``tmp_path``, because no render of this
+world is committed. The generators' side of the contract is in ``test_map_generators.py``.
 """
 
 from __future__ import annotations
@@ -27,6 +17,7 @@ fastapi = pytest.importorskip("fastapi")
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.maps import registry
 from satisfactory_mcp.interfaces.web.routers import tiles as web_tiles
+from tests.support.tiles import PNG_BYTES, fake_pyramid
 
 #: The three ids the page used before the registry, which it still answers unregistered.
 LEGACY_LAYERS = tuple(registry.LEGACY)
@@ -76,37 +67,12 @@ def test_a_local_sidecar_can_repin_the_map_images_corners(client, tmp_path, monk
     assert client.head("/api/mapimage").headers["x-map-bounds-m"] == "-3247.0,-3750.0,4253.0,3750.0"
 
 
-#: A 1x1 PNG. Small enough to write a whole fake pyramid out of, which is the point: these
-#: tests need a tiles/ tree with the right SHAPE, not any picture.
-_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQ=="
-)
-
-
-def _fake_pyramid(local: Path, max_z: int = 2, payload: bytes = _PNG) -> int:
-    """A tiles/ tree of tiny PNGs at the layout the generator writes. Returns the count.
-
-    ``payload`` is how the layer tests tell one tree from another: three pyramids of the
-    same bytes could not show that a request reached the tree it named.
-    """
-    count = 0
-    for z in range(max_z + 1):
-        (local / web_tiles.MAP_TILES_DIR_NAME / str(z)).mkdir(parents=True)
-        for x in range(1 << z):
-            for y in range(1 << z):
-                (local / web_tiles.MAP_TILES_DIR_NAME / str(z) / f"{x}_{y}.png").write_bytes(
-                    payload
-                )
-                count += 1
-    return count
-
-
 def _fake_layer(
     local: Path,
     layer: str,
     max_z: int = 2,
     sidecar: dict | None = None,
-    payload: bytes = _PNG,
+    payload: bytes = PNG_BYTES,
 ) -> int:
     """The same tree one level down, where ``tools/gen_map_renders.py`` writes a layer.
 
@@ -121,7 +87,7 @@ def _fake_layer(
         (directory / web_tiles.MAP_RENDER_SIDECAR_NAME).write_text(
             json.dumps(sidecar), encoding="utf-8"
         )
-    return _fake_pyramid(directory, max_z, payload)
+    return fake_pyramid(directory, max_z, payload)
 
 
 def test_the_tile_pyramid_is_a_loader_too_and_names_the_tool_that_writes_it(
@@ -143,12 +109,12 @@ def test_the_tile_pyramid_is_a_loader_too_and_names_the_tool_that_writes_it(
     assert client.head("/api/maptiles/0/0/0").status_code == 204
 
     (tmp_path / "local").mkdir()
-    _fake_pyramid(tmp_path / "local")
+    fake_pyramid(tmp_path / "local")
 
     r = client.get("/api/maptiles/2/3/1")
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
-    assert r.content == _PNG
+    assert r.content == PNG_BYTES
     # The probe answers every question the tile layer is built from at once.
     head = client.head("/api/maptiles/0/0/0")
     assert head.status_code == 200
@@ -175,7 +141,7 @@ def test_a_tile_outside_the_pyramid_is_a_404_and_cannot_name_a_file(client, tmp_
     """
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
     (tmp_path / "local").mkdir()
-    _fake_pyramid(tmp_path / "local")
+    fake_pyramid(tmp_path / "local")
 
     # z0 is one tile, so (1, 0) is off its grid; z6 is past the top of this pyramid.
     for path in ("/api/maptiles/0/1/0", "/api/maptiles/0/0/1", "/api/maptiles/2/4/0"):
@@ -204,8 +170,8 @@ def test_a_tile_outside_the_pyramid_is_a_404_and_cannot_name_a_file(client, tmp_
 #: Three pyramids of identical bytes could not show that a request reached the tree it
 #: named, so each fixture layer gets a PNG of its own. All three are valid 1x1 PNGs -- the
 #: point is which one comes back, not what is in it.
-_PNG_TERRAIN = _PNG[:-4] + b"TERR"
-_PNG_SATELLITE = _PNG[:-4] + b"SATL"
+_PNG_TERRAIN = PNG_BYTES[:-4] + b"TERR"
+_PNG_SATELLITE = PNG_BYTES[:-4] + b"SATL"
 
 
 def test_a_named_layer_is_served_from_its_own_tree_and_the_bare_route_is_still_map(
@@ -223,12 +189,12 @@ def test_a_named_layer_is_served_from_its_own_tree_and_the_bare_route_is_still_m
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
     local = tmp_path / web_tiles.LOCAL_DIR_NAME
     local.mkdir()
-    _fake_pyramid(local)
+    fake_pyramid(local)
     _fake_layer(local, "terrain", payload=_PNG_TERRAIN)
     _fake_layer(local, "satellite", payload=_PNG_SATELLITE)
 
     for layer, payload in (
-        ("map", _PNG),
+        ("map", PNG_BYTES),
         ("terrain", _PNG_TERRAIN),
         ("satellite", _PNG_SATELLITE),
     ):
@@ -242,7 +208,7 @@ def test_a_named_layer_is_served_from_its_own_tree_and_the_bare_route_is_still_m
     bare = client.get("/api/maptiles/2/3/1")
     named = client.get("/api/maptiles/map/2/3/1")
     assert bare.status_code == named.status_code == 200
-    assert bare.content == named.content == _PNG
+    assert bare.content == named.content == PNG_BYTES
     for header in (
         "x-map-bounds-m",
         "x-map-layer",
@@ -328,7 +294,7 @@ def test_every_layer_answers_with_its_own_depth_build_and_corners(client, tmp_pa
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
     local = tmp_path / web_tiles.LOCAL_DIR_NAME
     local.mkdir()
-    _fake_pyramid(local, max_z=1)
+    fake_pyramid(local, max_z=1)
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(
         json.dumps({"_meta": {"tiles": {"tile_px": 256, "max_z": 1, "count": 5}}}), encoding="utf-8"
     )
@@ -385,7 +351,7 @@ def test_every_layer_answers_with_its_own_depth_build_and_corners(client, tmp_pa
 #: A tile out of the @2x tree, distinguishable from the 1x one by its bytes rather than by
 #: its size -- what is under test is which DIRECTORY a request reached, and a fixture whose
 #: two trees held the same bytes could not tell.
-_PNG_DENSE = _PNG[:-4] + b"AT2X"
+_PNG_DENSE = PNG_BYTES[:-4] + b"AT2X"
 
 
 def test_a_hi_dpi_client_asks_for_the_same_tile_and_gets_twice_the_pixels(
@@ -414,7 +380,7 @@ def test_a_hi_dpi_client_asks_for_the_same_tile_and_gets_twice_the_pixels(
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
     local = tmp_path / web_tiles.LOCAL_DIR_NAME
     local.mkdir()
-    _fake_pyramid(local, max_z=2)  # an artwork pyramid with no @2x tree beside it
+    fake_pyramid(local, max_z=2)  # an artwork pyramid with no @2x tree beside it
     directory = local / web_tiles.MAP_RENDERS_DIR_NAME / "terrain"
     _fake_layer(
         local,
@@ -458,5 +424,5 @@ def test_a_hi_dpi_client_asks_for_the_same_tile_and_gets_twice_the_pixels(
     # with the 1x tile -- which every client can draw at any density.
     assert client.get("/api/maptiles/terrain/1/1/1?px=1024").content == _PNG_TERRAIN
     assert client.get("/api/maptiles/terrain/1/1/1?px=nonsense").content == _PNG_TERRAIN
-    assert client.get("/api/maptiles/map/1/1/1?px=512").content == _PNG
+    assert client.get("/api/maptiles/map/1/1/1?px=512").content == PNG_BYTES
     assert "x-map-tile-2x-px" not in client.head("/api/maptiles/map/0/0/0").headers

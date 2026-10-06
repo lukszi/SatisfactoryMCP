@@ -8,14 +8,8 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
-
-from satisfactory_mcp import config
 from satisfactory_mcp.core.gamedata import search
-from satisfactory_mcp.domain.world.state import WorldState
-from satisfactory_mcp.interfaces.web.app import create_app
-
-ORIGIN = {"origin": "http://testserver"}
+from tests.support.web import PAGE_ORIGIN, failing_state_loader
 
 
 def test_an_empty_query_finds_nothing(client):
@@ -53,39 +47,29 @@ def test_only_unlocked_drops_locked_recipes_before_the_cut_and_the_count(client,
     assert full["recipes_total"] == len(hits)
 
 
-def test_named_factories_are_found(tmp_path, monkeypatch, projection, game):
-    monkeypatch.setattr(config, "labels_dir", lambda: tmp_path / "labels")
-    monkeypatch.setattr(config, "plans_dir", lambda: tmp_path / "plans")
-    app = create_app(
-        state_loader=lambda save=None, world=None: WorldState(projection=projection, game=game),
-        game_loader=lambda: game,
+def test_named_factories_are_found(fresh_state_client):
+    body = fresh_state_client.get(
+        "/api/factories/candidates", params={"fed_only": False, "min_machines": 1}
+    ).json()
+    row = body["candidates"][0]
+    named = fresh_state_client.post(
+        "/api/labels",
+        json={
+            "name": "Zebra Works",
+            "proposal": row["index"],
+            "as_of": body["token"],
+            "version": body["version"],
+        },
+        headers=PAGE_ORIGIN,
     )
-    with TestClient(app) as c:
-        body = c.get(
-            "/api/factories/candidates", params={"fed_only": False, "min_machines": 1}
-        ).json()
-        row = body["candidates"][0]
-        named = c.post(
-            "/api/labels",
-            json={
-                "name": "Zebra Works",
-                "proposal": row["index"],
-                "as_of": body["token"],
-                "version": body["version"],
-            },
-            headers=ORIGIN,
-        )
-        assert named.status_code == 200, named.text
-        found = c.get("/api/search", params={"q": "zebra"}).json()
+    assert named.status_code == 200, named.text
+    found = fresh_state_client.get("/api/search", params={"q": "zebra"}).json()
     assert found["factories"] == [{"name": "Zebra Works", "machines": row["machines"]}]
     assert found["factories_total"] == 1
 
 
 def test_no_save_still_finds_items_and_recipes(client, monkeypatch):
-    def boom(save=None, world=None):
-        raise RuntimeError("sidecar produced no output")
-
-    monkeypatch.setattr(client.app.state, "load_state", boom)
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
     body = client.get("/api/search", params={"q": "plate"}).json()
     assert body["items"] and body["recipes"] and body["factories"] == []
     assert "no save could be read" in body["save_note"]
