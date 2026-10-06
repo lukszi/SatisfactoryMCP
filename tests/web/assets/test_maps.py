@@ -118,9 +118,9 @@ def test_an_estimate_says_whether_the_disk_has_room(stateless_client):
     assert stateless_client.get("/api/maps/estimate?preset=render&size=999").status_code == 400
 
 
-def test_a_job_queued_from_the_page_runs_and_its_type_appears(
-    stateless_client, local, tmp_path, monkeypatch
-):
+@pytest.fixture
+def fake_generator(tmp_path, monkeypatch):
+    """The fake generator installed, and every check before a job passed."""
     tools = tmp_path / "tools"
     tools.mkdir()
     install_fake(tools)
@@ -133,6 +133,20 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(
                  "ok": True, "reason": None},
     )  # fmt: skip
     registry.ensure()
+
+
+def _until_final(client, ident: str) -> dict:
+    deadline = time.monotonic() + 20
+    while True:
+        detail = client.get(f"/api/maps/jobs/{ident}").json()
+        if detail["job"]["status"] not in ("queued", "running"):
+            return detail
+        assert time.monotonic() < deadline
+        time.sleep(0.1)
+
+
+@pytest.mark.usefixtures("fake_generator")
+def test_a_job_queued_from_the_page_runs_and_its_type_appears(stateless_client):
     reply = stateless_client.post(
         "/api/maps/jobs",
         json={"preset": "render", "options": {"layers": ["terrain"], "size": 1024}},
@@ -141,13 +155,7 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(
     assert reply.status_code == 202, reply.text
     job = reply.json()["job"]
     assert job["produces"] == ["terrain-r7-502094"]
-    deadline = time.monotonic() + 20
-    while True:
-        detail = stateless_client.get(f"/api/maps/jobs/{job['id']}").json()
-        if detail["job"]["status"] not in ("queued", "running"):
-            break
-        assert time.monotonic() < deadline
-        time.sleep(0.1)
+    detail = _until_final(stateless_client, job["id"])
     assert detail["job"]["status"] == "done", detail
     assert any("done in" in line for line in detail["log_tail"])
     body = stateless_client.get("/api/maps").json()
@@ -157,3 +165,19 @@ def test_a_job_queued_from_the_page_runs_and_its_type_appears(
     bad = stateless_client.post("/api/maps/jobs", json={"preset": "render", "options": {"size": 3}},
                       headers=PAGE_ORIGIN)  # fmt: skip
     assert bad.status_code in (400, 422)
+
+
+@pytest.mark.usefixtures("fake_generator")
+def test_an_unlit_job_reaches_the_generator_unlit(stateless_client):
+    """The page's "live sun" box: ``light`` survives the request model as far as the argv."""
+    reply = stateless_client.post(
+        "/api/maps/jobs",
+        json={"preset": "render",
+              "options": {"layers": ["terrain"], "size": 1024, "light": False}},
+        headers=PAGE_ORIGIN,
+    )  # fmt: skip
+    assert reply.status_code == 202, reply.text
+    job = reply.json()["job"]
+    assert job["options"]["light"] is False
+    assert "--no-light" in job["argv"] and "--light" not in job["argv"]
+    assert _until_final(stateless_client, job["id"])["job"]["status"] == "done"

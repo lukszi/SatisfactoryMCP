@@ -188,6 +188,7 @@ class MapJobOptions(TypedDict):
     top: NotRequired[bool]
     keep_cache: NotRequired[bool]
     restyle: NotRequired[bool]
+    light: NotRequired[bool]
     enhance: NotRequired[bool]
     tiles_2x: NotRequired[bool]
     titan_trees: NotRequired[bool]
