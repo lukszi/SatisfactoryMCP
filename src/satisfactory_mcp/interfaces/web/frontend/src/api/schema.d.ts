@@ -14,9 +14,9 @@
  * `/api/worlds` was the last: DEFERRED for as long as it forwarded the loader's own save
  * headers, because the useful model deleted eight keys from every row -- a change to what
  * the endpoint SENDS -- and converted the day that body change was approved and made. The
- * comment above `worlds()` in routers/world.py names the deleted keys. `/api/mapimage`,
- * `/api/maptiles/…`, `/api/icons/…` and `/api/events` send pictures and a stream and have
- * no JSON body to describe at all.
+ * `SaveRow` docstring in routers/world/worlds.py names the deleted keys.
+ * `/api/mapimage`, `/api/maptiles/…`, `/api/icons/…` and `/api/events` send pictures and
+ * a stream and have no JSON body to describe at all.
  *
  * `api-types.ts` IS GONE, and that is what the paragraph above is worth saying. It held the
  * frontend's own observations of the endpoints that published no schema, read off real
@@ -884,7 +884,7 @@ export interface paths {
          * @description Add the machines inside ``area`` or ``extra_areas`` (metres, map frame) to a label, or
          *     drop them from it.
          *
-         *     The same ``plan_amend`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
+         *     The same ``preview_amendment`` and ``amend`` as ``amend_factory``. A dry run changes nothing.
          */
         post: operations["amend_label_api_labels_amend_post"];
         delete?: never;
