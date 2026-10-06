@@ -9,8 +9,19 @@ business.
 from __future__ import annotations
 
 from .classfacts import MOUNT_ROOTS, AssetIndex, ClassFacts
-from .properties import property_tags, read_float, read_int32, read_triple, read_vector_array
+from .properties import (
+    PropertyTag,
+    RelativeTransform,
+    Vec3,
+    property_tags,
+    read_float,
+    read_int32,
+    read_triple,
+    read_vector_array,
+)
 from .transforms import (
+    Quat,
+    Transform,
     compose,
     local_transform,
     quat_mul,
@@ -20,17 +31,30 @@ from .transforms import (
     world_transform,
 )
 from .view import LEVEL_CLASS, PackageView, class_name_of
-from .zen import BULK_ENTRY_BYTES, Package, ScriptObjects, apply_fname_number, bulk_data_entries
+from .zen import (
+    BULK_ENTRY_BYTES,
+    BulkEntry,
+    Package,
+    ScriptObjects,
+    apply_fname_number,
+    bulk_data_entries,
+)
 
 __all__ = [
     "BULK_ENTRY_BYTES",
     "LEVEL_CLASS",
     "MOUNT_ROOTS",
     "AssetIndex",
+    "BulkEntry",
     "ClassFacts",
     "Package",
     "PackageView",
+    "PropertyTag",
+    "Quat",
+    "RelativeTransform",
     "ScriptObjects",
+    "Transform",
+    "Vec3",
     "apply_fname_number",
     "bulk_data_entries",
     "class_name_of",

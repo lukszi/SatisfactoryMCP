@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import struct
+from typing import TypeAlias
 
 __all__ = [
+    "PropertyTag",
+    "RelativeTransform",
+    "Vec3",
     "property_tags",
     "read_float",
     "read_int32",
@@ -12,6 +16,15 @@ __all__ = [
     "read_vector_array",
     "relative_transform",
 ]
+
+#: An ``FVector`` or ``FRotator``: three components, whichever width they were cooked at.
+Vec3: TypeAlias = tuple[float, float, float]
+
+#: A component's serialised ``(location, rotation, scale)``, ``None`` where it holds the default.
+RelativeTransform: TypeAlias = tuple[Vec3 | None, Vec3 | None, Vec3 | None]
+
+#: One tag of a property stream: ``(name, type, payload, value byte)``.
+PropertyTag: TypeAlias = tuple[str | None, str | None, bytes, int]
 
 #: The component properties a relative transform is serialised in, in transform order.
 _RELATIVE_KEYS = ("RelativeLocation", "RelativeRotation", "RelativeScale3D")
@@ -29,9 +42,7 @@ def _skip_property_type(body: bytes, names: list[str], pos: int) -> tuple[int, s
     return pos, kind
 
 
-def property_tags(
-    body: bytes, names: list[str], pos: int = 1
-) -> tuple[list[tuple[str | None, str | None, bytes, int]], int]:
+def property_tags(body: bytes, names: list[str], pos: int = 1) -> tuple[list[PropertyTag], int]:
     """Walk a tagged-property stream, yielding ``(name, type, payload, value byte)``.
 
     The value byte follows ``Size`` in the tag and is dead weight for every type except
@@ -41,7 +52,7 @@ def property_tags(
     malformed run stops the walk rather than raising -- a truncated tail costs one actor's
     transform, a raise costs the whole package.
     """
-    out: list[tuple[str | None, str | None, bytes, int]] = []
+    out: list[PropertyTag] = []
     limit = len(body)
     while pos + 8 <= limit:
         name_index, name_number = struct.unpack_from("<II", body, pos)
@@ -67,7 +78,7 @@ def property_tags(
     return out, pos
 
 
-def read_triple(payload: bytes) -> tuple[float, float, float] | None:
+def read_triple(payload: bytes) -> Vec3 | None:
     """An ``FVector``/``FRotator`` payload: three doubles, or three floats in an old cook."""
     if len(payload) == 24:
         return struct.unpack("<3d", payload)
@@ -90,7 +101,7 @@ def read_int32(payload: bytes) -> int | None:
     return struct.unpack("<i", payload)[0] if len(payload) == 4 else None
 
 
-def read_vector_array(payload: bytes | None) -> list[tuple[float, float, float]]:
+def read_vector_array(payload: bytes | None) -> list[Vec3]:
     """A ``TArray<FVector>``: uint32 count, then that many triples of double or float."""
     if not payload or len(payload) < 4:
         return []
@@ -101,10 +112,13 @@ def read_vector_array(payload: bytes | None) -> list[tuple[float, float, float]]
     return []
 
 
-def relative_transform(props: dict[str, bytes], defaults: tuple = (None, None, None)) -> tuple:
+def relative_transform(
+    props: dict[str, bytes], defaults: RelativeTransform = (None, None, None)
+) -> RelativeTransform:
     """A component's ``(location, rotation, scale)`` triples, each from its own property where
     serialised and from ``defaults`` where not: an instance writes only what differs."""
-    return tuple(
+    location, rotation, scale = (
         read_triple(props[key]) if key in props else default
         for key, default in zip(_RELATIVE_KEYS, defaults, strict=True)
     )
+    return location, rotation, scale

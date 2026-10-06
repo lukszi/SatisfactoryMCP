@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .imaging import BlockDecoder, ImageFactory, ImageT
 from .iostore import IoStore, oodle_decompress
 from .textures import bc1_mip_sizes, decode_bc1_rgba
 
@@ -52,7 +53,7 @@ def open_container(game: Path) -> IoStore:
     return IoStore(paks_dir(game), CONTAINER, oodle_decompress)
 
 
-def read_slice(store, name: str) -> bytes:
+def read_slice(store: IoStore, name: str) -> bytes:
     """Mip 0's BC1 blocks for one slice, with the length check that guards the layout."""
     path = f"{SLICE_DIR}{name}.ubulk"
     if path not in store.by_path:
@@ -73,7 +74,9 @@ def read_slice(store, name: str) -> bytes:
     return raw[:MIP0_BYTES]
 
 
-def read_artwork_sheet(store, decoder, image_mod):
+def read_artwork_sheet(
+    store: IoStore, decoder: BlockDecoder, image_mod: ImageFactory[ImageT]
+) -> ImageT:
     """The game's own 8192 px map sheet, stitched out of its four BC1 slices.
 
     Read from the container rather than from ``data/local/map.png``: the PNG is the same
