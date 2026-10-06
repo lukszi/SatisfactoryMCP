@@ -390,7 +390,8 @@ def stamp_tops(
 
 
 def leaf_mask(alphas: Sequence[F32Grid], shape: tuple[int, int]) -> F32Grid:
-    """The first alpha that is a mask (neither all opaque nor all clear), at the albedo's size."""
+    """The first alpha that is a mask, at the albedo's size: neither all opaque nor all clear,
+    with some texel over ``LEAF_ALPHA_MIN``. All ones when none is."""
     for alpha in alphas:
         if not MASK_CLEAR_MEAN < alpha.mean() <= OPAQUE_MEAN:
             continue
@@ -398,7 +399,9 @@ def leaf_mask(alphas: Sequence[F32Grid], shape: tuple[int, int]) -> F32Grid:
             rows = np.arange(shape[0]) * alpha.shape[0] // shape[0]
             cols = np.arange(shape[1]) * alpha.shape[1] // shape[1]
             alpha = alpha[np.ix_(rows, cols)]
-        return (alpha > LEAF_ALPHA_MIN).astype(np.float32)
+        leaf = alpha > LEAF_ALPHA_MIN
+        if leaf.any():
+            return leaf.astype(np.float32)
     return np.ones(shape, np.float32)
 
 
@@ -482,7 +485,10 @@ def optical_depths(slots: Sequence[MaterialColour]) -> F32Grid:
     slot, ``-ln(1 - opacity)`` capped at ``TAU_MAX``, a missing opacity counted opaque."""
     cap = 1.0 - np.exp(-TAU_MAX)
     depths = [
-        0.0 if s["kind"] == "skip" else -np.log(1.0 - min(s["opacity"] or 1.0, cap)) for s in slots
+        0.0
+        if s["kind"] == "skip"
+        else -np.log(1.0 - min(1.0 if s["opacity"] is None else s["opacity"], cap))
+        for s in slots
     ]
     return np.array(depths + [0.0] * (MATERIAL_NONE + 1 - len(slots)), np.float32)
 
