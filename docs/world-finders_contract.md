@@ -379,7 +379,7 @@ every tag `chip`. Numbers through `kit/format.ts`, words through `kit/words.ts`,
 | `app/selection.ts` | kinds `node`, `field`, `conduit`, `pickup` added; each carries `x_m`/`y_m` and `ref` | — |
 | `app/status.ts` | kind words for the new kinds; `fly()` sends the new kinds to `finder.showRef` | existing |
 | `dash/shell.ts` | `["world", "World"]` after Inventory in `TABS`; route to `renderWorld` | — |
-| `app/nav.ts` | `subjectQuery(subject) -> {head, params}` and `withQuery(head, params)`; `dash/recipes/recipes.ts` `parseBrowse`/`browseDash` switch to them | — |
+| `app/nav.ts` | `subjectQuery(subject) -> {head, params}` and `withQuery(head, params)`; `dash/recipes/browse.ts` `parseBrowse`/`browseDash` switch to them | — |
 | `map/drawn/markers.ts` | node layer draws `spoiler` rows faded; pickup layer hides `spoiler` rows while the switch is off, redraw on `onSetting`; `PICKUP_NAME` is deleted and `pickupName` reads the census `label` from the collectibles reply (category words as the fallback before it lands); export `pickupName`, `lootLine`, `PICKUP_COLOUR`, `RESOURCE_COLOUR` | `settings.setting` |
 | `map/panel.ts` | `showSelector` hands `node:`, `chain:`, `pipe:` to `finder.showRef` (one line) | — |
 | `dash/planner/planner.ts` | `focusBody().selection` = the shared selection outside the planner workbench; `onSelect(scheduleFocus)` | — |
@@ -581,7 +581,7 @@ read-only for both.
 **FRONTEND**
 
 - `frontend/src/dash/world/world.ts`, `dash/world/world-here.ts`, `dash/world/world-kit.ts`, `dash/world/world-nodes.ts`, `dash/world/world-conduits.ts`, `dash/world/world-pickups.ts`, `map/tools/finder.ts` (new)
-- `frontend/src/map/inspector.ts`, `app/selection.ts`, `app/status.ts`, `dash/shell.ts`, `app/nav.ts`, `dash/recipes/recipes.ts` (query helper only), `map/drawn/markers.ts`, `map/panel.ts` (`showSelector` only), `dash/planner/planner.ts` (`focusBody`, `onSelect` only), `app/settings.ts` (hint only), `kit/words.ts`, `kit/dom.ts` (constants only), `main.ts` (FEATURES line and one listener), `api/shapes.ts`, `style.css`
+- `frontend/src/map/inspector.ts`, `app/selection.ts`, `app/status.ts`, `dash/shell.ts`, `app/nav.ts`, `dash/recipes/browse.ts` (query helper only), `map/drawn/markers.ts`, `map/panel.ts` (`showSelector` only), `dash/planner/planner.ts` (`focusBody`, `onSelect` only), `app/settings.ts` (hint only), `kit/words.ts`, `kit/dom.ts` (constants only), `main.ts` (FEATURES line and one listener), `api/shapes.ts`, `style.css`
 
 ---
 

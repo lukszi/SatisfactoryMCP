@@ -72,7 +72,7 @@ rather than the one a game session is running against.
 | `src/map/drawn/` | the drawn layers: nodes and pickups, belts and pipes, placements, crates, power wires, plan sitings |
 | `src/map/floors/` | floor mode: one storey at a time, by filtering what is already drawn |
 | `src/map/tools/` | the map's tools: finder, lasso, trace |
-| `src/dash/` | the dashboard shell and its tabs: overview, inventory, power, the production graph, machine states and health |
+| `src/dash/` | the dashboard shell, the actions its tabs ask of it (`actions.ts`, so no tab imports the shell), and the tabs: overview, inventory, power, settings, the production graph, machine states and health |
 | `src/dash/factories/` | the Factories tab, the factory detail page and renaming |
 | `src/dash/world/` | the World section and its finders |
 | `src/dash/planner/` | the Planner tab: plan list, workbench, result, track, history, site and the pad drag |
