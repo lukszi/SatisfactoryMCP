@@ -57,7 +57,7 @@ there already and whitelisted by name below. And nothing under ``src`` may see I
 out of the layer table for free.
 
 The seventh is the web adapter's own routers, and it exists because ``interfaces/web/api.py``
-was 2,174 lines of every endpoint the surface has and is now thirteen modules under
+was 2,174 lines of every endpoint the surface has and is now one module per concern under
 ``routers/``. Nothing about that arrangement holds itself up: a router importing another
 router puts the file boundary back where the coupling is not, a module left out of
 ``ALL_ROUTERS`` is a 404 that nothing reports, a file called ``api.py`` re-created for the
@@ -85,7 +85,7 @@ The ninth is the API's own description of itself, and it is the last one the web
 installs. Every GET handler under ``routers/`` must pass a ``response_model``, or return a
 ``Response`` subclass and say so in its annotation, or be named in ``RESPONSE_MODEL_EXEMPT``
 with the reason. Without it, ``/openapi.json`` types an endpoint's ``200`` as ``unknown``,
-the generated ``api-schema.d.ts`` does too, and the page has no choice but to declare the
+the generated ``api/schema.d.ts`` does too, and the page has no choice but to declare the
 payload itself -- from observed bytes, which is a claim about one save rather than about the
 API. That file existed; it reached 438 lines and got three nullability notes wrong before it
 was deleted. The failure this catches is silent in the usual way: the new endpoint compiles,
@@ -449,7 +449,7 @@ RESPONSE_CLASSES = frozenset(
 #: for it meant deleting eight keys from every save row it forwarded -- a body change, not
 #: a typing one. That body change has been made, on purpose and in its own commit, so the
 #: entry is gone and every JSON endpoint on the surface now says what it sends. The comment
-#: above ``worlds()`` in ``routers/world.py`` records which keys died and why it was safe.
+#: on ``SaveRow`` in ``routers/world/worlds.py`` records which keys died and why it was safe.
 #:
 #: ``events`` is deliberately NOT here: it is annotated ``-> StreamingResponse`` and the
 #: clause above carries it, which is the arrangement worth having -- an exemption should be
@@ -477,7 +477,7 @@ TOOLS_ALLOWED_PREFIXES: tuple[str, ...] = ("tools", "mapgen", "satisfactory_mcp.
 #:   ``[project] dependencies``, so every install of this package already has them and a
 #:   generator naming one adds nothing to what a clone must have. (They are NOT in the ``gen``
 #:   extra, which is why they do not come in through ``_GEN_EXTRA_ROOTS``.)
-#: * ``pioneersav`` is the parser, and ``gen_world_collectibles.py`` reads a ``.sav`` with it
+#: * ``pioneersav`` is the parser, and ``tools/collectibles/saves.py`` reads a ``.sav`` with it
 #:   directly. The subprocess boundary the application keeps in front of it is not being
 #:   broken here: that boundary exists for crash isolation, for handing a 2.9 MB parse's
 #:   memory back to the OS, and for a projection small enough to commit -- three properties of
@@ -603,7 +603,8 @@ def _tools_edges() -> set[tuple[str, str]]:
     """
     edges: set[tuple[str, str]] = set()
     for path in _sources(TOOLS):
-        importer = "tools" if path.name == "__init__.py" else f"tools.{path.stem}"
+        parts = path.relative_to(TOOLS).with_suffix("").parts
+        importer = ".".join(("tools", *(parts[:-1] if parts[-1] == "__init__" else parts)))
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -1334,7 +1335,7 @@ def test_a_router_sees_the_domain_and_its_own_two_helpers_and_nothing_else():
     boundary between them that only makes the coupling harder to see -- and the shared thing
     belongs in ``serial`` where every router can have it. **``app``**: a router importing the
     application it is mounted into is a cycle, and the loose end is the mount ORDER, which is
-    what keeps ``/openapi.json`` and the committed ``api-schema.d.ts`` byte-stable.
+    what keeps ``/openapi.json`` and the committed ``api/schema.d.ts`` byte-stable.
     **``presenters``**: this layer serialises to JSON, and a formatted string arriving in a
     payload is a decision made in the wrong place -- the same rule
     ``test_domain_and_core_never_import_a_presenter`` states one layer down.
@@ -1400,7 +1401,7 @@ def test_every_router_is_mounted_exactly_once_and_app_mounts_only_the_tuple():
     The second half is the mount itself. ``app.py`` must reach its routers by looping over
     ``ALL_ROUTERS`` and by no other means: one ``include_router`` outside that loop is how
     the path order stops being the tuple's order, and path order is what the committed
-    ``api-schema.d.ts`` is generated from -- so the diff it produces would be in a file
+    ``api/schema.d.ts`` is generated from -- so the diff it produces would be in a file
     nobody edited, describing a change nobody made.
 
     Exactly once, not at least once: a router included twice registers every one of its
@@ -1452,7 +1453,7 @@ def test_the_one_file_api_stays_deleted():
 
     The inverted ratchet, exactly as ``test_the_old_paths_stay_deleted`` runs it one layer
     up. This file was 2,174 lines holding eighteen endpoints, six serialisers and every
-    constant the surface has; it is now thirteen router modules plus ``serial.py``. Nothing
+    constant the surface has; it is now router subpackages plus the ``serial`` package. Nothing
     about that arrangement is enforced by anything else if a file called ``api.py`` may
     exist again -- the natural next edit is always "this bit does not fit anywhere, put it
     back in api.py", and the second endpoint to land there re-creates the original.
@@ -1463,7 +1464,7 @@ def test_the_one_file_api_stays_deleted():
     for candidate in (WEB / "api.py", WEB / "api"):
         assert not candidate.exists(), (
             "interfaces/web/api.py is back -- it was split into routers/ (one module per "
-            "concern, mounted through ALL_ROUTERS) and serial.py (the shared vocabulary), "
+            "concern, mounted through ALL_ROUTERS) and serial/ (the shared vocabulary), "
             "and a handler that fits neither belongs in a router of its own"
         )
     assert not (REPO / "tests" / "web" / "test_api.py").exists(), (
@@ -1482,7 +1483,8 @@ def test_no_router_grows_back_into_a_one_file_api():
     a code review somebody has to remember to ask for.
     """
     over = [
-        f"  routers/{path.name}: {len(path.read_text(encoding='utf-8').splitlines())} lines"
+        f"  routers/{path.relative_to(WEB_ROUTERS).as_posix()}: "
+        f"{len(path.read_text(encoding='utf-8').splitlines())} lines"
         for path in _sources(WEB_ROUTERS)
         if len(path.read_text(encoding="utf-8").splitlines()) > ROUTER_MAX_LINES
     ]
@@ -1560,7 +1562,8 @@ def _get_routes() -> list[tuple[str, str, int, ast.Call, ast.expr | None]]:
                         continue
                 elif verb not in WRITE_VERBS | {"get"}:
                     continue
-                found.append((path.stem, node.name, node.lineno, deco, node.returns))
+                module = path.relative_to(WEB_ROUTERS).with_suffix("").as_posix()
+                found.append((module, node.name, node.lineno, deco, node.returns))
     return found
 
 
@@ -1568,7 +1571,7 @@ def test_every_get_says_what_it_sends():
     """The last ratchet of the refactor, and the one the whole T series exists to install.
 
     A handler with no ``response_model`` publishes no response schema, so ``/openapi.json``
-    types its ``200`` as ``unknown``, so ``api-schema.d.ts`` does, so the page has to declare
+    types its ``200`` as ``unknown``, so ``api/schema.d.ts`` does, so the page has to declare
     the payload itself -- from OBSERVED bytes, which is a claim about the save it was read
     from rather than about the API. That file existed, it was called ``api-types.ts``, it
     reached 438 lines, and three of its nullability notes were wrong in the two directions a
@@ -1595,7 +1598,7 @@ def test_every_get_says_what_it_sends():
         "these GET handlers publish no response schema, so the page cannot be typed from the "
         "server and will type itself from observed payloads instead -- which is the file this "
         "ratchet exists to keep deleted. Declare a TypedDict in EMISSION order and pass it as "
-        "response_model (routers/floors.py writes the two rules out), or, if the handler "
+        "response_model (routers/layers/floors.py writes the two rules out), or, if the handler "
         "returns a Response subclass, say so in its return annotation:\n" + "\n".join(missing)
     )
 

@@ -3,9 +3,9 @@
 A RATCHET, not an aspiration. The caps below are the sweep's measured result plus a small
 working margin, so the suite fails the moment a file grows a new essay -- which is the
 property that matters. They are not the numbers docs/comments.md argues for; the sweep
-converged on the density of the reviewed example (routers/crates.py, 0.92) rather than on
-0.25, and lowering a cap is a deliberate second pass over the files it would fail, never a
-constant edited on its own.
+converged on the density of the reviewed example (routers/layers/crates.py, 0.92) rather
+than on 0.25, and lowering a cap is a deliberate second pass over the files it would fail,
+never a constant edited on its own.
 """
 
 from __future__ import annotations
@@ -22,13 +22,13 @@ BUDGETS = [
     (ROOT / "tools", 1.00),
     (ROOT / "src" / "satisfactory_mcp" / "domain", 1.35),
     (ROOT / "src" / "satisfactory_mcp" / "core", 1.00),
-    (ROOT / "src" / "pioneersav", 1.40),
-    (ROOT / "tests", 1.20),
+    (ROOT / "src" / "pioneersav", 1.00),
+    (ROOT / "tests", 1.15),
 ]
 FRONTEND = ROOT / "src" / "satisfactory_mcp" / "interfaces" / "web" / "frontend"
 TS_BUDGET = 1.65
 #: Written by openapi-typescript from the server's schema, not by hand.
-TS_GENERATED = {"api-schema.d.ts", "schema.d.ts"}
+TS_GENERATED = {"schema.d.ts"}
 MIN_CODE_LINES = 40  # tiny files are all header; the budget is about essays, not stubs
 
 
