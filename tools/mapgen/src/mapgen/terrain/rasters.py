@@ -24,7 +24,13 @@ from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.level.sweep import sweep_levels
 from mapgen.gamedata.maxz_raster import MaxZRaster
 from mapgen.gamedata.meshes import MeshBounds, read_hull, read_mesh_geometry, winding_sign
-from mapgen.gamedata.placements import ARCH_MARK, EXCLUDED_OWNERS, OVERSIZE_CM, rotation_matrix
+from mapgen.gamedata.placements import (
+    ARCH_MARK,
+    EXCLUDED_MESHES,
+    EXCLUDED_OWNERS,
+    OVERSIZE_CM,
+    rotation_matrix,
+)
 from mapgen.gamedata.vegetation.trees import is_tree
 from mapgen.gamedata.water.falls import read_fall
 from mapgen.terrain.render_meshes import is_render_only_foliage
@@ -138,9 +144,9 @@ def sweep_world(store, scripts, index, classes, progress: bool = True) -> dict:
 def direct_placements(sweep: dict, geometry: dict, families=None) -> tuple[list, dict]:
     """Every placement the field's own cliff layer rasterises, with its world Y span.
 
-    The four culls are the generator's, in the generator's order: an excluded owner, a mesh
-    with no cooked geometry, an arch, an oversized shell. Any of them applied differently
-    here would draw a render of a different world from the field it is blended with.
+    The five culls are the field's (``rasterise_cliffs``), in its order: an excluded owner,
+    an excluded mesh, a mesh with no cooked geometry, an arch, an oversized shell. Any of
+    them applied differently here would draw a different world from the field it blends with.
 
     ``families``, one code per placement row, is carried as each entry's raster source id.
 
@@ -153,12 +159,15 @@ def direct_placements(sweep: dict, geometry: dict, families=None) -> tuple[list,
     windings = {mesh: winding_sign(v, t) for mesh, (v, t) in geometry.items()}
     corners = np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], np.float32)
     prepared: list[tuple] = []
-    dropped = {"owner": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
+    dropped = {"owner": 0, "excluded_mesh": 0, "no_geometry": 0, "arch": 0, "oversize": 0}
     for i, row in enumerate(sweep["placements"]):
         mesh_id, owner_id = int(row[0]), int(row[1])
         mesh = meshes[mesh_id]
         if owners[owner_id] in EXCLUDED_OWNERS:
             dropped["owner"] += 1
+            continue
+        if mesh.rsplit("/", 1)[-1] in EXCLUDED_MESHES:
+            dropped["excluded_mesh"] += 1
             continue
         if mesh not in geometry:
             dropped["no_geometry"] += 1

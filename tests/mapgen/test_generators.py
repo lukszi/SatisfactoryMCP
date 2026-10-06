@@ -56,7 +56,8 @@ from mapgen.enhance.upscaler import (
     ENHANCE_URL,
 )
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_2X_PX, RENDER_PX
-from mapgen.gamedata.placements import EXCLUDED_OWNERS
+from mapgen.gamedata.placements import EXCLUDED_MESHES, EXCLUDED_OWNERS
+from mapgen.gamedata.rocks.cliffs import rasterise_cliffs
 from mapgen.lighting.hillshade import (
     SHADE_FLOOR,
     SHADE_RANGE,
@@ -793,7 +794,7 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     }
     prepared, dropped = direct_placements(sweep, geometry)
     assert len(prepared) == 1
-    assert dropped == {"owner": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
+    assert dropped == {"owner": 1, "excluded_mesh": 0, "no_geometry": 1, "arch": 1, "oversize": 1}
 
     # And it rasterises onto the frame's own grid at the frame's own spacing. A 1 m slab
     # placed 10 m east of the frame's western edge covers exactly the z7 texels whose own
@@ -811,6 +812,36 @@ def test_the_direct_pass_applies_the_field_s_own_culls_and_lands_where_it_says(t
     assert coverage[:, first:last].all(), "every texel centred inside the slab is covered"
     assert not coverage[:, :first].any() and not coverage[:, last:].any(), "and none outside"
     assert z_cm[coverage > 0] == pytest.approx(500.0)
+
+
+def test_the_direct_pass_drops_what_the_field_drops_and_counts_it_the_same():
+    """``direct_placements`` against the field's ``rasterise_cliffs``: the same rows culled,
+    under the same counters, a rock excluded by name included."""
+    verts = numpy.array([[0, 0, 500], [100, 0, 500], [100, 100, 500], [0, 100, 500]], numpy.float32)
+    tris = numpy.array([[0, 1, 2], [0, 2, 3]], numpy.int64)
+    rock = "/World/Environment/Rock/"
+    excluded = rock + next(iter(EXCLUDED_MESHES))
+    geometry = {
+        rock + "Slab": (verts, tris),
+        rock + "Arc_Slab": (verts, tris),
+        excluded: (verts, tris),
+    }
+    x0, y0 = BOUNDS_M["x_min_m"] * 100, BOUNDS_M["y_min_m"] * 100
+    place = lambda mesh, owner, x, s=1.0: (mesh, owner, x0 + x, y0 + 1000, 0, 0, 0, 0, s, s, s)
+    sweep = {
+        "meshes": [rock + "Slab", rock + "Arc_Slab", rock + "Missing", excluded],
+        "owners": ["RockActor_C", next(iter(EXCLUDED_OWNERS))],
+        "placements": numpy.array(
+            [place(0, 0, 1000), place(0, 1, 2000), place(1, 0, 3000), place(2, 0, 4000),
+             place(3, 0, 5000), place(0, 0, 6000, 1e4)], numpy.float64),
+    }  # fmt: skip
+    prepared, dropped = direct_placements(sweep, geometry)
+    frame = {"width": 128, "height": 32, "x0_cm": x0, "y0_cm": y0, "scale_cm": 100.0}
+    bounds = (verts.min(0) - 1, verts.max(0) + 1)
+    field = rasterise_cliffs(sweep, {m: (*g, *bounds) for m, g in geometry.items()}, frame, False)
+    want = {"owner": 1, "excluded_mesh": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
+    assert dropped == field["dropped"] == want
+    assert [entry[0] for entry in prepared] == [rock + "Slab"] and field["placements_used"] == 1
 
 
 class _TerrainField(_Field):
