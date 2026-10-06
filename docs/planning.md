@@ -753,7 +753,10 @@ edge with the crude already arrived. `plan_layout show="trunks"` fills the gap:
 running past it, so nodes are ordered along a nearest-neighbour chain from the node
 furthest from the destination inward, and the chain is cut wherever the next node would
 overflow. Capacitated clustering would give tighter blobs and a worse answer: two nodes
-40 m apart on opposite sides of a run are not on the same pipe.
+40 m apart on opposite sides of a run are not on the same pipe. The chain is greedy on purpose:
+an optimal order is a travelling-salesman problem, and the gap between greedy and optimal is
+dwarfed by terrain this model cannot see — a cliff in the way costs more than a suboptimal join
+order ever does.
 
 **This is where the head span becomes actionable.** `search_resource_nodes` reports the
 Spire crude field spanning 40 m (§ 8.5b). Attached to a trunk, the answer is sharper --
@@ -966,6 +969,9 @@ Rubber                   24400    5996   18404  Fuel-Powered Generator
 Motor                    10705    5254    5451  Fuel-Powered Generator, Blender, Refinery
 Heavy Modular Frame        920     244     676  Blender
 ```
+
+Every number is data: a building's cost is `Building.build_cost`, the ingredients of the
+`kind == "building"` recipe that constructs it, so a game update moves it without a code change.
 
 **This does not replace `diff._cost`, and the difference is the point.** That charges the
 **delta** -- what is left to place -- filtered to what you are short of and ranked by how
@@ -1300,10 +1306,26 @@ however good its arithmetic.
 
 **The search metric is a proxy, and it is checked.** It minimises pipe-storeys weighted by
 LINE COUNT — pumps serve one pipe each, so 10,300 m³/min of water is eighteen risers, not
-"10,300 units of badness". But pumps round *up* per line, so a 21% better proxy bought only
-4% of pumps here. A proxy that can be wrong in the small can be wrong in the large, so both
-stacks are built and their real pump counts compared, and the head order is discarded if it
-does not win. Two floor builds, against 40,320 if the search itself counted pumps.
+"10,300 units of badness". Rate and lines are near-proportional, so the weighting rarely changes
+the winner; it changes what the quoted number means. But pumps round *up* per line, so a 21% better
+proxy bought only 4% of pumps here. A proxy that can be wrong in the small can be wrong in the large, so
+both stacks are built and their real pump counts compared, and the head order is discarded if it does not
+win. Two floor builds, against 40,320 if the search itself counted pumps.
+
+The search is exact up to `MAX_ORDERED_STAGES` = 8 stages: 8! is 40,320 permutations and instant, 12! is
+half a billion. Measured plans run to four or five stages, so the cap has never bitten; past it a plan
+keeps chain order with a note rather than hanging.
+
+**A site partition stacks per site.** Declared sites are separate buildings, and one merged stack
+got this badly wrong: `order_floors_by="head"` over a three-site plan fused rig, hall and resin plant into
+one 80 m tower and priced 46 pumps of fluid lift where the per-site stacks need 6. So each site gets its
+own stack and floor order, claimed by the same `claim_processes` pass the interface table uses, and
+anything unclaimed or contested lands in a trailing `(unassigned)` stack rather than vanishing — a
+dropped block would silently shrink the materials bill. The merged view shifts each site's stages, floor
+indexes and buses by an offset so they stay disjoint, which keeps `fluid_head` exact on the
+concatenation: a stage maps to one floor and the floors between two same-site stages are same-site, so
+the whole-plan riser count is the sum of the per-site counts, never a lift between buildings that share
+no pipe.
 
 **And the risers are now in the bill.** Pumps were absent from `show="materials"`
 entirely, so a fluid-heavy plan understated its own build by 46 buildings. Metres come from

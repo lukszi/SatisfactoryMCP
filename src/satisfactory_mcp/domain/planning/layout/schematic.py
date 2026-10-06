@@ -1,29 +1,8 @@
 """Turn a solved plan into a buildable schematic: blocks, buses and floors.
 
-This is a SCHEMATIC, not a blueprint. It answers "what modules do I build, what feeds
-what, how much space, and what goes on which floor". It deliberately does not produce
-world coordinates: there is no terrain heightmap in any data available here, so belt
-pathfinding and foundation alignment would be invention rather than derivation.
-
-Three ideas do the work:
-
-**Blocks come from throughput, not taste.** 46 Refineries consuming 1380 m3/min of
-crude cannot sit on one manifold when a Mk2 pipe carries 600 -- that is 3 lines, so it
-is 3 blocks of ~16. Line count *is* block count, which makes the split derived rather
-than arbitrary.
-
-**Connections are buses, not pairings.** The LP gives net balances, not who feeds whom.
-Recovering specific producer-consumer pairs is a min-cost flow problem with no unique
-answer absent geometry, so each item gets one bus that producers feed and consumers
-draw from. That is also what a manifold physically is.
-
-**Floors come from chain depth.** Stage = longest path through the item graph, so
-extractors land on the bottom floor and generators on top, with a logistics deck
-between each pair. Depth is computed on the graph's CONDENSATION, because the recipe
-graph genuinely contains cycles -- Recycled Plastic and Recycled Rubber consume each
-other's output. Collapsing each strongly connected component makes the graph acyclic
-and puts cycle members on one floor, which is also right physically: they have to be
-built together.
+A schematic, never a blueprint: there is no terrain here, so no coordinates. Blocks come from
+line counts, connections are one bus per item, and floors follow chain depth on the item
+graph's condensation, or minimise fluid lift on request (docs/planning.md §8.5, §8.5m).
 """
 
 from __future__ import annotations
@@ -105,13 +84,7 @@ def _blocks_from(game: GameData, sol: Solution, belt_ipm: float, pipe_m3min: flo
                     width_m=fp.width_m if fp else 0.0,
                     depth_m=fp.depth_m if fp else 0.0,
                     height_m=fp.height_m if fp else 0.0,
-                    # ONE sizing primitive, shared with everything else that asks how
-                    # much floor N machines need. This used to be `fp.foundations * n`,
-                    # which the footprint's own docstring warns is an upper bound: it
-                    # ignores shared edges, so two 20 m machines side by side were
-                    # charged 6 tiles where they span 40 m and need 5. Across a plan that
-                    # was about a third too much concrete, and the water-siting note had
-                    # independently grown its own copy of the same wrong arithmetic.
+                    # The one sizing primitive, never n x foundations (docs/planning.md §8.5g).
                     packed=fp.pack(n) if fp else None,
                 )
             )
@@ -174,17 +147,8 @@ def _buses(
 
 
 def _decks_for(blocks: list[Block], cap: int) -> list[list[Block]]:
-    """Split one chain stage across as many decks as a foundation cap allows.
-
-    The uncapped layout answers "how big a site does this need" by giving each stage a
-    deck of whatever size it wants -- 504x504 m on a measured oil plan. The question a
-    player with a finished platform actually has is the reverse: *I have 30x30
-    foundations, how many decks?* Same computation, run backwards.
-
-    Blocks keep their order, so a deck still reads in build order, and a block larger
-    than the cap gets a deck to itself rather than being silently dropped -- the caller
-    is told instead.
-    """
+    """Split one chain stage across as many decks as a foundation cap allows, in block
+    order; a block larger than the cap gets a deck of its own (docs/planning.md §8.5b)."""
     if cap <= 0:
         return [blocks]
     decks: list[list[Block]] = []
@@ -217,10 +181,8 @@ def _floors(
         for deck in _decks_for(on_stage, max_floor_foundations):
             index = _emit_deck(floors, index, stage, deck)
         if position < len(stages) - 1:
-            # By POSITION in the stack, not by stage number. The two are the same under
-            # chain order and diverge the moment floors are reordered for head -- a bus
-            # between stages 1 and 3 crosses this deck only if the deck sits between
-            # where those stages actually ended up.
+            # By POSITION in the stack, not stage number: they differ once floors are
+            # reordered for head.
             crossing = [
                 bus
                 for bus in buses
@@ -274,27 +236,23 @@ def build_layout(
     buses = _buses(game, blocks, sol, belt_ipm, pipe_m3min)
 
     warnings: list[str] = []
-    order = None
     if (order_floors_by or "chain").strip().casefold() == "head":
         order, head_notes = order_stages_by_head(blocks, buses)
         warnings.extend(head_notes)
-        # The search minimises PIPE-STOREYS, which is a proxy: the real cost is pumps, and
-        # pumps round up per line, so a 21% better proxy was worth only 4% of pumps on the
-        # measured plan. A proxy that can be wrong in the small can be wrong in the large,
-        # so both candidate stacks are built and counted, and the loser is discarded. Two
-        # floor builds, against 40,320 if the search itself counted pumps.
+        # The search minimises a proxy, so both stacks are built and their real pump
+        # counts decide (docs/planning.md §8.5m).
         chain_floors = _floors(blocks, buses, max_floor_foundations, None)
         head_floors = _floors(blocks, buses, max_floor_foundations, order)
-        best_head = min(
+        floors, order = min(
             (chain_floors, None), (head_floors, order), key=lambda pair: _pump_total(pair[0], buses)
         )
-        if best_head[1] is None:
+        if order is None:
             warnings.append(
                 "chain order needs no more pumps than the head-ordered stack here, so the "
                 "floors are left in build order -- reordering has to earn it"
             )
-        order = best_head[1]
-    floors = _floors(blocks, buses, max_floor_foundations, order)
+    else:
+        floors = _floors(blocks, buses, max_floor_foundations, None)
 
     missing = sorted({b.building for b in blocks if b.foundations == 0})
     if missing:
