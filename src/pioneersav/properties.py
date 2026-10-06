@@ -50,7 +50,7 @@ from .errors import ParseError, expect
 from .objects import ObjectSlice
 from .reader import Reader
 from .references import ObjectReference, read_reference, read_references, read_soft_reference
-from .versions import FIRST_MODERN_BODY
+from .versions import FIRST_MODERN_BODY, FIRST_UE5_OBJECT_VERSION
 
 __all__ = [
     "PLAIN_TRAILER",
@@ -68,7 +68,7 @@ __all__ = [
 TAG_ARRAY_INDEX = 0x01
 #: A 16-byte property guid follows. Never seen set on any save here; read anyway.
 TAG_PROPERTY_GUID = 0x02
-#: Reserved-looking bit, never seen set. Refused rather than ignored, see _read_tag_60.
+#: Reserved-looking bit, never seen set. Refused rather than ignored, see _read_tag_ue5.
 TAG_EXTENSIONS = 0x04
 #: The payload is the type's own binary form, not a nested property list. It says *that* a
 #: struct serialises itself and not how, so ``_NATIVE_STRUCTS`` is the only authority on how.
@@ -102,7 +102,7 @@ class TypeName:
     """A property's type as a tree: ``ArrayProperty(StructProperty(InventoryStack(...)))``.
 
     Version 60 writes this tree literally. Version 36/52 writes the same information as fixed
-    tag-data fields, and ``_read_tag_old`` reassembles it into this shape so that every value
+    tag-data fields, and ``_read_tag_ue4`` reassembles it into this shape so that every value
     reader below is version-agnostic.
     """
 
@@ -425,7 +425,7 @@ class _Tag:
     bool_value: int = 0
 
 
-def _read_tag_60(r: Reader) -> _Tag:
+def _read_tag_ue5(r: Reader) -> _Tag:
     """Version 60's tag. The terminator is a bare name with no type after it, so the name must
     be checked before the type tree is read -- reading the tree first turns the bytes after
     ``"None"`` into a string length and a parameter count.
@@ -453,7 +453,7 @@ def _read_tag_60(r: Reader) -> _Tag:
     return tag
 
 
-def _read_tag_old(r: Reader) -> _Tag:
+def _read_tag_ue4(r: Reader) -> _Tag:
     """UE4's tag. Same information, different places -- see the module docstring.
 
     The one field that has no version-60 counterpart is the type-specific tag data, and
@@ -518,7 +518,7 @@ class _Decoder:
     ``FBox``, which follow the writer rather than the object -- see ``_vector``.
     """
 
-    __slots__ = ("depth", "old", "r", "ue4_save", "version", "warnings")
+    __slots__ = ("depth", "r", "ue4_save", "ue4_tags", "version", "warnings")
 
     def __init__(
         self,
@@ -531,7 +531,7 @@ class _Decoder:
         self.r = r
         self.version = version
         self.warnings = warnings
-        self.old = version < 60
+        self.ue4_tags = version < FIRST_UE5_OBJECT_VERSION
         self.ue4_save = save_version < FIRST_MODERN_BODY
         self.depth = 0
 
@@ -572,7 +572,7 @@ class _Decoder:
                 r.pos,
                 f"a property list ran to {limit} without its {_TERMINATOR!r} terminator",
             )
-            tag = _read_tag_old(r) if self.old else _read_tag_60(r)
+            tag = _read_tag_ue4(r) if self.ue4_tags else _read_tag_ue5(r)
             if tag.name == _TERMINATOR:
                 return values, types
             expect(
@@ -606,7 +606,7 @@ class _Decoder:
             # Version 60 keeps the value in the flags byte and writes no payload at all;
             # version 36/52 keeps it in the tag data. Either way the raw byte is what
             # comes out -- 16, 1 or 0 -- because `truthy()` is what reads it.
-            return tag.bool_value if self.old else (tag.flags & TAG_BOOL_TRUE)
+            return tag.bool_value if self.ue4_tags else (tag.flags & TAG_BOOL_TRUE)
         if name in ("ObjectProperty", "InterfaceProperty"):
             return read_reference(r)
         if name == "SoftObjectProperty":
@@ -829,8 +829,8 @@ class _Decoder:
         r = self.r
         struct_type = tag.type.inner.inner
         native = bool(tag.flags & TAG_NATIVE_SERIALIZE)
-        if self.old:
-            inner = _read_tag_old(r)
+        if self.ue4_tags:
+            inner = _read_tag_ue4(r)
             expect(
                 inner.type.name == "StructProperty",
                 r.pos,
@@ -853,7 +853,7 @@ class _Decoder:
         It is refused rather than skipped, so that the day it is not, this says so.
         """
         inner = tag.type.inner
-        if self.old and _is_unnamed_struct(inner):
+        if self.ue4_tags and _is_unnamed_struct(inner):
             # The bare reading is offered separately from the array one because a set does not
             # frame its elements the way an array does: `array` routes a struct element type to
             # `struct_array`, which on version 36/52 expects a full property tag inside the
@@ -924,7 +924,7 @@ class _Decoder:
             "key type and a value type",
         )
         key_type, value_type = tag.type.params
-        if self.old and (_is_unnamed_struct(key_type) or _is_unnamed_struct(value_type)):
+        if self.ue4_tags and (_is_unnamed_struct(key_type) or _is_unnamed_struct(value_type)):
             # Only the KEY is substituted; see _UNNAMED_KEY_CANDIDATES.
             return self.attempt(
                 f"version-{self.version} map {tag.name!r} of unnamed structs",
@@ -1045,7 +1045,7 @@ def read_object(
     if actor:
         out.parent_reference = read_reference(r)
         out.child_references = read_references(r, end)
-    if slot.version >= 60:
+    if slot.version >= FIRST_UE5_OBJECT_VERSION:
         # The object-reference migration flag: one byte, 0 on every object seen, and the
         # reason a version-60 payload is a byte longer than a version-52 one holding the
         # same properties.

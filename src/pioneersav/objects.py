@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 
 from .errors import ParseError, expect
 from .reader import Reader
-from .versions import FIRST_LEVEL_LIST, FIRST_MODERN_BODY
+from .versions import FIRST_LEVEL_LIST, FIRST_MODERN_BODY, FIRST_UE5_OBJECT_VERSION
 
 __all__ = [
     "ARCHIVE_HEADER_FIXED_LEN",
@@ -573,7 +573,7 @@ def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
         )
         objects.append(slot)
         r.pos = slot.end
-        if slot.version >= 60:
+        if slot.version >= FIRST_UE5_OBJECT_VERSION:
             trailing = r.i32()
             expect(
                 trailing == 0,

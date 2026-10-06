@@ -82,7 +82,9 @@ def _chain(r: Reader, end: int) -> list:
         ]
         segments.append([owner, belt, points, r.f32(), r.f32(), r.f32(), r.i32(), r.i32(), r.i32()])
     chain = [r.f32(), r.i32(), r.i32(), r.i32()]
-    items = [[read_reference(r), r.i32(), r.f32()] for _ in range(_count(r, end, 12, "chain items"))]
+    items = [
+        [read_reference(r), r.i32(), r.f32()] for _ in range(_count(r, end, 12, "chain items"))
+    ]
     return [first_belt, last_belt, segments, chain, items]
 
 
