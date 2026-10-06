@@ -13,7 +13,7 @@ from satisfactory_mcp.domain.planning.solver.model import PAYBACK_STOPS, Scenari
 from satisfactory_mcp.domain.planning.solver.optimize import solve
 from satisfactory_mcp.domain.planning.solver.overclock import (
     POWER_GOAL_BUILD_COST_FROM_H,
-    machine_mw,
+    machine_price_mw,
 )
 from satisfactory_mcp.domain.planning.solver.prices import tiers_path as real_tiers_path
 from satisfactory_mcp.domain.planning.solver.scenario import build_scenario, shard_stock
@@ -94,14 +94,14 @@ SPIRE = {
 
 def test_a_machine_costs_its_points_over_the_horizon_in_mw(game):
     sc = Scenario(game=game, recipes=[], build_points={REFINERY: 9000.0}, power_price=250.0)
-    assert machine_mw(sc, REFINERY) == 5.0
+    assert machine_price_mw(sc, REFINERY) == 5.0
     sc.payback_hours = 2.0
-    assert machine_mw(sc, REFINERY) == 5.0
+    assert machine_price_mw(sc, REFINERY) == 5.0
     sc.payback_hours = 10.0
-    assert machine_mw(sc, REFINERY) == pytest.approx(9000 / 2500)
-    assert machine_mw(sc, "Build_Unknown_C") == 5.0
+    assert machine_price_mw(sc, REFINERY) == pytest.approx(9000 / 2500)
+    assert machine_price_mw(sc, "Build_Unknown_C") == 5.0
     sc.power_price = 0.0
-    assert machine_mw(sc, REFINERY) == 5.0
+    assert machine_price_mw(sc, REFINERY) == 5.0
 
 
 def test_zero_hours_keeps_the_flat_machine_price(game, state):

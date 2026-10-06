@@ -280,10 +280,12 @@ def test_overclock_last_carries_the_fraction_on_one_machine(game, priced):
 @pytest.mark.parametrize("units", [1.2, 1.5, 1.999, 4.51])
 def test_the_last_machine_never_needs_more_than_two_shards(game, units):
     from satisfactory_mcp.domain.planning.solver.model import Process
-    from satisfactory_mcp.domain.planning.solver.overclock import _Row
+    from satisfactory_mcp.domain.planning.solver.overclock import _SpreadableRow
 
     proc = Process("r:x", "recipe", "x", {}, -30.0, -30.0, 1.321929, REFINERY, "x")
-    machines, top, shards = _Row(proc, units, game.buildings[REFINERY]).last(0.5)
+    machines, top, shards = _SpreadableRow(
+        proc, units, game.buildings[REFINERY]
+    ).overclock_last_option(0.5)
     assert machines == int(units) and top < 2.0 and shards <= 2
     assert top == pytest.approx(1 + units - int(units))
 

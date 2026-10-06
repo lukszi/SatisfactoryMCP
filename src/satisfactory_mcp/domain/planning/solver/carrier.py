@@ -1,6 +1,6 @@
 """Which carrier moves an item, and how many parallel lines it takes.
 
-The one home for that arithmetic, shared by ``layout`` and ``optimize._logistics``, plus
+The one home for that arithmetic, shared by ``layout`` and ``build_table.logistics``, plus
 ``resolve_tiers`` for where the capacities come from.
 """
 

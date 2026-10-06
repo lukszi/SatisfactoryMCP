@@ -28,7 +28,17 @@ Extra rows: somersloop budget, belt/pipe throughput caps, machine cap.
 
 **Two-phase lexicographic solve is mandatory.** With only `n_p ≥ x_p`, any larger `n_p` is optimal — an
 unguarded run returned machine counts of 1e12. Phase 1 optimises the goal; phase 2 pins that value and
-minimises machine count.
+minimises machine count. `solver/lp.py` builds the matrix and runs both phases; `solver/build_table.py`
+reads the result out as whole machines; `solver/optimize.py` is the pipeline between them.
+
+**Clocks are discrete modes, never a continuous variable.** Power goes as `clock**1.32`, which is
+non-convex as a constraint, and for a fixed throughput power strictly falls as machine count rises, so a
+min-power objective over a continuous clock would drive machines to infinity.
+
+**Grid import is one more column on the power row**, capped by `grid_import_mw`. Without it the power row
+forces generation == consumption, so every plan would have to be self-powered — which silently reports 0
+output for any factory with no on-site generator able to burn its own byproducts. It is forced to 0 when
+MW is an export, since a power plant that imports power to export it is unbounded.
 
 ### 8.2 The byproduct rule — the crux
 
@@ -37,6 +47,9 @@ minimises machine count.
 3. `sinks` restricted to `is_solid AND mResourceSinkPoints > 0 AND mCanBeDiscarded`; each AWESOME Sink
    draws 30 MW.
 4. Export **targets** are first-class: `max MW subject to plastic ≥ X, rubber ≥ Y` — still linear.
+
+MW-only is the default export set for a power plant, and it is why a crude-oil plant can come back
+infeasible: every crude→fuel route emits Polymer Resin, and resin only terminates in Plastic or Rubber.
 
 Why it matters, measured on crude→plastic from 300 m³/min:
 
@@ -63,7 +76,7 @@ Three things had to be fixed for an INFEASIBLE response to say anything at all:
 1. **Every early `Solution("infeasible", …)` filed its reason under the wrong field.** The tenth
    positional field is `machine_penalty_mw`, not `warnings`, so `"phase 1 infeasible: …"` went into a
    float and the caller got an INFEASIBLE with no reason attached. This is most of what "bare INFEASIBLE"
-   actually was. Now passed by keyword.
+   actually was. Every such return is now `Solution.infeasible(reason)`, which files it as the warning.
 2. **An export or target nothing in scope can make is named without any probe.** An export with no
    producing column cannot be exported at any rate, and the distinction is the one a player acts on:
    *no unlocked recipe makes it* versus *its recipe needs a machine you have not unlocked*.
@@ -203,7 +216,9 @@ mode's clock preserved the rate and silently inflated the count — `water_extra
 came back as **64 machines at 149.7 %**, because 54 machines' worth of units read at a lower
 clock needs more machines. It looked correct at 27 only because that solution happened to
 use a single mode. The fold now keeps `sum(v)` as the count and lets the clock absorb the
-rate: `built = ceil(sum(v))`, `clock = units / built`.
+rate: `built = ceil(sum(v))`, `clock = units / built`. `ceil(sum(v))` can never exceed the cap,
+because the cap bounds `sum(v)` itself, and the clock never exceeds the highest mode, because
+the units are at most the count times that mode.
 
 **Binding also had to move to the group.** It was tested per process against that
 process's `max_count`, but grouped modes share one cap, so a solve spreading extractors
@@ -215,7 +230,9 @@ column at 0.0001 machine-equivalents making 0.0017/min — one item every ten ho
 one clock mode, so there is nothing to fold it into. The row is omitted from the build
 table (a whole machine at 0.0087 % clock reads as an instruction) but the machine is
 **still counted**: dropping both silently turned a measured "9 buildings" into 8 in
-`compare_recipe_options`. Omitting a row is presentation; changing a total is not.
+`compare_recipe_options`. Omitting a row is presentation; changing a total is not. The threshold,
+`NEGLIGIBLE_IPM`, is a rate rather than a machine count, because the same fraction of a machine is
+very different throughput on a miner and on a refinery.
 
 This is the one place the reporter's original instinct — filter below an epsilon — was
 right, and it was right for the *opposite* reason to the extractor case. The two look
@@ -528,7 +545,13 @@ lets the solver *spread* a fixed throughput over more machines purely to save po
 `machine_cost_mw` (default **5 MW**, set just above that measured figure) whenever the objective is
 `max_mw` or `min_power`. Above a 0 h payback horizon each building's own price, its build points
 over the horizon (`K / (H r)`), replaces it ([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md) §2). For `max_item` / `min_raw` no penalty is applied because underclocking gives no
-throughput benefit at all and is never selected.
+throughput benefit at all and is never selected. A `machine_cost_mw` of 0 reproduces the unpriced,
+ill-posed max-power solve.
+
+**`objective_value` is the pure goal; the machine price is reported apart**, as
+`machine_penalty_mw`. Reading the priced phase-1 value as the objective understated `max_mw` by about
+5,000 MW and made a per-unit cost derived from it wrong — two separate tools tripped on exactly this
+(§9.2 records the advisor's 4,966 MW).
 
 The warning fires **only** for genuine spreading, never for a derived ratio clock. An earlier version
 warned on any clock below 100%, which meant a routine 99.4% ratio looked like a tradeoff the caller
@@ -1461,6 +1484,10 @@ for, and §8.2 makes `exports` the most load-bearing argument in the model.
 `min_raw` LPs are **degenerate** — equally optimal vertices give materially different raw vectors (water
 −57.78 vs −46.67 on the same objective). Either apply a documented lexicographic tie-break or label
 reported raw vectors as one of several optima. Never present a degenerate component as *the* number.
+
+A bare `min_raw` also sums every resource with weight one, so it trades crude against water — and water
+is effectively unlimited on this map, so that trade is always the wrong way round: Recycled Plastic came
+back at **0.94 m³ crude per Plastic with zero water**, when 0.33 crude plus some water was available.
 
 `Scenario.raw_weights` is the mechanism: a per-resource weight in the `min_raw` objective, defaulting to
 1.0 and applied to both the raw columns and the extractor columns. A weight of 0 only makes sense as the
