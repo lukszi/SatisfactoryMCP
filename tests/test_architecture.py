@@ -1647,6 +1647,42 @@ def test_nothing_in_the_package_imports_a_generator():
     )
 
 
+#: The caps on a generator module and on one function in it, for ``tools/`` outside
+#: ``tools/mapgen`` (which holds the same two numbers in its own suite). Every generator fits.
+GENERATOR_MAX_LINES = 800
+GENERATOR_FUNCTION_MAX_LINES = 150
+
+
+def _generator_sources() -> list[Path]:
+    return [p for p in _sources(TOOLS) if "mapgen" not in p.relative_to(TOOLS).parts]
+
+
+def test_generator_modules_stay_under_the_line_cap():
+    """A generator past the cap is two concerns in one file: split it into a package."""
+    over = [
+        f"  {path.relative_to(REPO).as_posix()}: {lines} lines"
+        for path in _generator_sources()
+        if (lines := len(path.read_text(encoding="utf-8").splitlines())) > GENERATOR_MAX_LINES
+    ]
+    assert not over, f"over the {GENERATOR_MAX_LINES}-line cap:\n" + "\n".join(over)
+
+
+def test_no_generator_function_grows_past_its_cap():
+    """``main`` is where a generator grows; a long one wants its stages named as functions."""
+    over = []
+    for path in _generator_sources():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                lines = node.end_lineno - node.lineno + 1
+                if lines > GENERATOR_FUNCTION_MAX_LINES:
+                    over.append(f"  {path.relative_to(REPO).as_posix()}::{node.name}: {lines}")
+    assert not over, (
+        f"over the {GENERATOR_FUNCTION_MAX_LINES}-line function cap -- split it rather than "
+        "raise the cap:\n" + "\n".join(over)
+    )
+
+
 def test_the_page_frame_matches_geo():
     """``map.ts`` keeps the map square as a literal (TypeScript cannot read Python); it must
     equal ``geo.MAP_SQUARE_M``, the one frame every Python module reads."""
