@@ -292,10 +292,11 @@ always goes stale. `git log --follow` reaches through every move.
 **Generation time is not runtime.** `core/gameassets/` and `tools/` exist to cut the artifacts under
 `data/` out of the installed game; nothing the server answers a request with goes through them. They sit
 in `core` because four generators share them, and `tools/` is a package so the suite imports a generator
-by name rather than loading a file by path. Their decoders — `pyooz`, `texture2ddecoder`, `pillow` — are
-the optional `gen` extra, **optional at import time**: the server, the parser, the domain and the whole
-test suite run on a machine with none of the three installed, and `tests/test_architecture.py` reads the
-AST to keep it that way. The full record is §19, in [docs/parked.md](docs/parked.md).
+by name rather than loading a file by path. Their decoders — `pyooz`, `texture2ddecoder`, `pillow` — and
+the render caches' codec, `zstandard`, are the optional `gen` extra, **optional at import time**: the
+server, the parser, the domain and the whole test suite run on a machine with none of them installed, and
+`tests/test_architecture.py` reads the AST to keep it that way. The full record is §19, in
+[docs/parked.md](docs/parked.md).
 
 **The web adapter.** `interfaces/web/` is a *sibling* of `interfaces/mcp/`, not a layer above it: both are
 thin adapters over the same domain, and neither imports the other — the web app duplicates the two-line

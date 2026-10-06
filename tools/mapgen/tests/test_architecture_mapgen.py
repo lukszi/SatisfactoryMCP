@@ -20,12 +20,14 @@ AXES_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "axes.py"
 PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py"
 
 #: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module.
-#: gamedata <- terrain <- lighting <- palette <- tiles <- pipeline <- cli, with ``common``
-#: and ``cache`` as leaves under all of them. ``cli`` reaches its commands through
-#: ``importlib`` by name, so it statically imports nothing here.
+#: gamedata <- terrain <- lighting <- palette <- tiles <- pipeline <- cli, with ``common``,
+#: ``bandstore`` and ``cache`` as leaves under all of them. ``cli`` reaches its commands
+#: through ``importlib`` by name, so it statically imports nothing here.
 ALLOWED: dict[str, frozenset[str]] = {
     "common": frozenset(),
-    "cache": frozenset({"common"}),
+    "bandstore": frozenset(),
+    "cache": frozenset({"common", "bandstore"}),
+    "compress_cache": frozenset({"common", "bandstore", "cache"}),
     "gamedata": frozenset({"common", "gamedata"}),
     "terrain": frozenset({"common", "cache", "gamedata", "terrain"}),
     "lighting": frozenset({"common", "gamedata", "terrain", "lighting"}),

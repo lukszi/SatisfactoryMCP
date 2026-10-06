@@ -1,9 +1,10 @@
 """What every generator here needs before it can read the installed game's container.
 
-``ooz`` (from ``pyooz``), ``texture2ddecoder`` and Pillow are the ``gen`` extra, pinned
-exactly because they decide the bytes a generator writes, and imported at module scope
-nowhere in this repository -- ``tests/test_architecture.py`` holds that line, so
-``require_gen`` proves them present at run time instead::
+``ooz`` (from ``pyooz``), ``texture2ddecoder``, Pillow and ``zstandard`` (the render caches'
+codec) are the ``gen`` extra, pinned exactly because they decide the bytes a generator
+writes, and imported at module scope nowhere in this repository --
+``tests/test_architecture.py`` holds that line, so ``require_gen`` proves them present at run
+time instead::
 
     uv run --extra gen python tools/gen_world_collectibles.py
 """
@@ -31,6 +32,7 @@ GEN_MODULES = {
     "ooz": "pyooz",
     "texture2ddecoder": "texture2ddecoder",
     "PIL.Image": "pillow",
+    "zstandard": "zstandard",
 }
 
 

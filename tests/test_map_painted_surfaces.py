@@ -376,6 +376,7 @@ def test_switching_the_titan_trees_off_is_a_style_of_its_own():
 
 
 def test_a_mesh_raster_is_reused_when_its_stamp_matches(tmp_path, capsys):
+    pytest.importorskip("zstandard")
     calls = []
 
     def build():

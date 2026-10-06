@@ -4,13 +4,14 @@ version = "0.1.0"
 description = "Offline map generators for satisfactory-mcp: heightfield, renders, artwork, paint"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
 requires-python = ">=3.11"
-# The root project's `gen` extra, pinned the same way and for the same reason: these three
+# The root project's `gen` extra, pinned the same way and for the same reason: these four
 # decide the bytes a generator writes. numpy and scipy come with satisfactory-mcp.
 dependencies = [
     "satisfactory-mcp",
     "pyooz==0.0.8",
     "texture2ddecoder==1.0.6",
     "pillow==12.3.0",
+    "zstandard==0.25.0",
 ]
 
 [project.scripts]

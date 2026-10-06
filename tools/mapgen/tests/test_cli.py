@@ -18,6 +18,7 @@ def test_commands_are_the_documented_set():
         "artwork",
         "paint",
         "check-fill",
+        "compress-cache",
     }
 
 

@@ -154,12 +154,13 @@ _SDK_ROOTS = frozenset({"mcp", "pydantic", "fastapi", "uvicorn", "starlette"})
 #: The ``gen`` extra: what the ``tools/gen_*.py`` generators need to read the installed
 #: game's own container, pinned exactly in ``pyproject.toml`` because these decide the BYTES
 #: an artifact is cut with. ``ooz`` (from pyooz) decompresses a container block,
-#: ``texture2ddecoder`` unpacks a BC1 block and Pillow writes the PNG.
+#: ``texture2ddecoder`` unpacks a BC1 block, Pillow writes the PNG and ``zstandard``
+#: compresses the render's raster caches (``mapgen.bandstore``).
 #:
 #: The property below is that ``optional`` means optional AT IMPORT TIME -- the same posture
 #: ``_SDK_ROOTS`` has, and checked the same way, because a machine with none of these
 #: installed still has to import the whole package, run this suite and serve the map.
-_GEN_EXTRA_ROOTS = frozenset({"ooz", "pyooz", "texture2ddecoder", "PIL"})
+_GEN_EXTRA_ROOTS = frozenset({"ooz", "pyooz", "texture2ddecoder", "PIL", "zstandard"})
 
 #: The one package allowed to name them at all, and only inside a function body.
 GAMEASSETS = "satisfactory_mcp.core.gameassets"

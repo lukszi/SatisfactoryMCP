@@ -1,21 +1,25 @@
 """The on-disk caches (direct, top, meshes, rivers): their names, stamps and readers.
 
 The names and stamp bytes are what existing caches were written under, so they still hit.
+A raster cache's planes are a zstd band store, or the raw memory maps every cache was before
+it; the sidecar's ``storage`` says which (docs/spatial-and-map.md section 39).
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Self
 
 import numpy as np
 
+from mapgen.bandstore import BandArray, BandWriter
 from mapgen.common import RENDERS_DIR_NAME
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 
 #: Where the direct raster is kept between the two layers. Rasterising 216 M triangles is
 #: twenty minutes and the answer does not depend on which layer is being coloured, so it is
-#: done once, memory-mapped, and deleted at the end of the run unless ``--keep-direct``.
+#: done once, kept on disk, and deleted at the end of the run unless ``--keep-direct``.
 DIRECT_CACHE_DIR_NAME = "direct.cache"
 
 
@@ -34,6 +38,34 @@ DIRECT_CACHE_SIDECAR = "meta.json"
 
 #: The arch-and-boulder raster, cached the same way and under the same file names.
 TOP_CACHE_DIR_NAME = "top.cache"
+
+
+MESH_CACHE_DIR_NAME = "meshes.cache"
+
+
+MESH_Z_NAME = "meshes.z.f32"
+
+
+MESH_CLASS_NAME = "meshes.class.u8"
+
+
+MESH_CACHE_SIDECAR = "meta.json"
+
+
+#: Every plane a raster cache holds, by its raw file name, and its element type.
+PLANE_DTYPES = {
+    DIRECT_Z_NAME: np.dtype(np.float32),
+    DIRECT_COVERAGE_NAME: np.dtype(np.uint8),
+    DIRECT_FAMILY_NAME: np.dtype(np.uint8),
+    MESH_Z_NAME: np.dtype(np.float32),
+    MESH_CLASS_NAME: np.dtype(np.uint8),
+}
+
+#: A sidecar's ``storage``. One without the field is ``raw``, as every cache before it was.
+STORAGE_RAW = "raw"
+STORAGE_BANDS = "zstd-bands-v1"
+STORAGES = (STORAGE_RAW, STORAGE_BANDS)
+BANDS_SUFFIX = ".bands"
 
 
 def direct_cache_dir(out_dir: Path, name: str = RENDERS_DIR_NAME) -> Path:
@@ -64,45 +96,92 @@ def direct_cache_stamp(
     }
 
 
-def cached_direct(directory: Path, stamp: dict) -> tuple[np.ndarray, np.ndarray] | None:
-    """The cached raster as two read-only memory maps, or ``None`` if it is not this one."""
+def plane_file(directory: Path, name: str, storage: str) -> Path:
+    return directory / (name + BANDS_SUFFIX if storage == STORAGE_BANDS else name)
+
+
+def clear_planes(directory: Path, names) -> None:
+    """Remove these planes in either storage, so a cache never holds both."""
+    for name in names:
+        for storage in STORAGES:
+            plane_file(directory, name, storage).unlink(missing_ok=True)
+
+
+class RawWriter:
+    """``BandWriter``'s interface over a ``w+`` memory map: the raw storage."""
+
+    def __init__(self, path: Path, shape: tuple[int, int], dtype):
+        self._map = np.memmap(path, dtype, "w+", shape=shape)
+
+    def write(self, top: int, band) -> None:
+        self._map[top : top + len(band)] = band
+
+    def close(self) -> None:
+        if self._map is not None:
+            self._map.flush()
+            self._map = None
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self.close()
+
+
+def plane_writer(directory: Path, name: str, size: int, storage: str, band_rows: int):
+    """A writer for one ``size`` square plane, used as a context manager that commits it."""
+    path = plane_file(directory, name, storage)
+    if storage == STORAGE_BANDS:
+        return BandWriter(path, (size, size), PLANE_DTYPES[name], band_rows)
+    return RawWriter(path, (size, size), PLANE_DTYPES[name])
+
+
+def open_plane(directory: Path, name: str, size: int, storage: str, on_corrupt=None):
+    """One plane, read-only: a ``BandArray`` in the band store, else the raw memory map."""
+    if storage == STORAGE_BANDS:
+        return BandArray(plane_file(directory, name, storage), (size, size), PLANE_DTYPES[name],
+                         on_corrupt=on_corrupt)  # fmt: skip
+    return np.memmap(directory / name, PLANE_DTYPES[name], "r", shape=(size, size))
+
+
+def read_sidecar(path: Path, stamp: dict) -> dict | None:
+    """The sidecar at ``path`` if it carries ``stamp`` and a storage this reader knows."""
     try:
-        recorded = json.loads((directory / DIRECT_CACHE_SIDECAR).read_text(encoding="utf-8"))
+        recorded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         return None
     if not isinstance(recorded, dict) or {k: recorded.get(k) for k in stamp} != stamp:
         return None
-    size = stamp["size"]
+    return recorded if recorded.get("storage", STORAGE_RAW) in STORAGES else None
+
+
+def _planes(directory: Path, sidecar: str, stamp: dict, names: tuple[str, ...]):
+    """The named planes if the sidecar carries ``stamp``; a corrupt band unstamps the cache."""
+    recorded = read_sidecar(directory / sidecar, stamp)
+    if recorded is None:
+        return None
+
+    def unstamp() -> None:
+        (directory / sidecar).unlink(missing_ok=True)
+
+    storage = recorded.get("storage", STORAGE_RAW)
     try:
-        return (
-            np.memmap(directory / DIRECT_Z_NAME, np.float32, "r", shape=(size, size)),
-            np.memmap(directory / DIRECT_COVERAGE_NAME, np.uint8, "r", shape=(size, size)),
-        )
-    except (OSError, ValueError):
+        return tuple(open_plane(directory, n, stamp["size"], storage, unstamp) for n in names)
+    except (OSError, ValueError, ImportError):
         return None
 
 
-def cached_family(directory: Path, stamp: dict) -> np.ndarray | None:
+def cached_direct(directory: Path, stamp: dict) -> tuple | None:
+    """The cached raster's two planes, read-only, or ``None`` if it is not this one."""
+    return _planes(directory, DIRECT_CACHE_SIDECAR, stamp, (DIRECT_Z_NAME, DIRECT_COVERAGE_NAME))
+
+
+def cached_family(directory: Path, stamp: dict):
     """The direct cache's family plane, when it is this cache and was written."""
     if "families" not in stamp or cached_direct(directory, stamp) is None:
         return None
-    size = stamp["size"]
-    try:
-        return np.memmap(directory / DIRECT_FAMILY_NAME, np.uint8, "r", shape=(size, size))
-    except (OSError, ValueError):
-        return None
-
-
-MESH_CACHE_DIR_NAME = "meshes.cache"
-
-
-MESH_Z_NAME = "meshes.z.f32"
-
-
-MESH_CLASS_NAME = "meshes.class.u8"
-
-
-MESH_CACHE_SIDECAR = "meta.json"
+    found = _planes(directory, DIRECT_CACHE_SIDECAR, stamp, (DIRECT_FAMILY_NAME,))
+    return None if found is None else found[0]
 
 
 #: The Titan trees, a mesh raster at ``TITAN_FACTOR`` times the render's pixel.
@@ -113,14 +192,11 @@ TITAN_FACTOR = 2
 #: the build and the reader version, so a run whose raster caches hit skips the sweep.
 RIVER_CACHE_DIR_NAME = "rivers.cache"
 
+#: Every raster cache, the planes ``python -m mapgen compress-cache`` converts.
+RASTER_DIRS = (DIRECT_CACHE_DIR_NAME, TOP_CACHE_DIR_NAME, MESH_CACHE_DIR_NAME, TITAN_CACHE_DIR_NAME)
+
 #: Every raster cache a run deletes at its end unless ``--keep-direct``.
-RASTER_CACHE_DIRS = (
-    DIRECT_CACHE_DIR_NAME,
-    TOP_CACHE_DIR_NAME,
-    MESH_CACHE_DIR_NAME,
-    TITAN_CACHE_DIR_NAME,
-    RIVER_CACHE_DIR_NAME,
-)
+RASTER_CACHE_DIRS = (*RASTER_DIRS, RIVER_CACHE_DIR_NAME)
 
 
 def mesh_stamp(size: int, build: str | None, reader_version: int) -> dict:
@@ -128,21 +204,8 @@ def mesh_stamp(size: int, build: str | None, reader_version: int) -> dict:
 
 
 def cached_meshes(directory: Path, stamp: dict):
-    """``(z cm, class)`` memory maps if the cache is this one, else ``None``."""
-    try:
-        recorded = json.loads((directory / MESH_CACHE_SIDECAR).read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return None
-    if not isinstance(recorded, dict) or {k: recorded.get(k) for k in stamp} != stamp:
-        return None
-    size = stamp["size"]
-    try:
-        return (
-            np.memmap(directory / MESH_Z_NAME, np.float32, "r", shape=(size, size)),
-            np.memmap(directory / MESH_CLASS_NAME, np.uint8, "r", shape=(size, size)),
-        )
-    except (OSError, ValueError):
-        return None
+    """``(z cm, class)`` planes, read-only, if the cache is this one, else ``None``."""
+    return _planes(directory, MESH_CACHE_SIDECAR, stamp, (MESH_Z_NAME, MESH_CLASS_NAME))
 
 
 RIVER_CACHE_NAME = "rivers.json"
