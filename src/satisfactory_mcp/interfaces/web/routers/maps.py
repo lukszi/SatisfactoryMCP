@@ -25,7 +25,7 @@ from ....core.schema import NewerSchema
 from ....domain.maps import axes as ax
 from ....domain.maps import jobs as job_store
 from ....domain.maps import presets, registry
-from ..serial import error_response
+from ..serial import busy_response, error_response, newer_schema_response
 
 __all__ = ["router"]
 
@@ -321,13 +321,11 @@ def _refused(exc: Exception) -> JSONResponse:
     if isinstance(exc, registry.MapsRefused):
         return error_response(str(exc), 409)
     if isinstance(exc, NewerSchema):
-        text = (
-            f"the map list was saved by a newer version of satisfactory-mcp (schema "
-            f"{exc.found}; this one reads up to {exc.known}). Upgrade to read it; nothing changed"
+        return newer_schema_response(
+            exc, "the map list", verb="was", ending="Upgrade to read it; nothing changed"
         )
-        return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
     if isinstance(exc, LockTimeout):
-        return error_response(f"the map list is busy, nothing written: {exc}", 503)
+        return busy_response("the map list", exc, verb="is")
     return error_response(str(exc), 400)
 
 

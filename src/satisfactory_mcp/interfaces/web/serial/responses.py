@@ -5,9 +5,17 @@ from __future__ import annotations
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from ....core.schema import NewerSchema
 from ....domain.world.state import WorldState
 
-__all__ = ["RequestRefused", "error_response", "require_world", "world_state"]
+__all__ = [
+    "RequestRefused",
+    "busy_response",
+    "error_response",
+    "newer_schema_response",
+    "require_world",
+    "world_state",
+]
 
 
 class RequestRefused(Exception):
@@ -34,3 +42,23 @@ def require_world(request: Request, save: str | None, world: str | None) -> Worl
         return world_state(request, save, world)
     except Exception as exc:
         raise RequestRefused(f"could not read save: {exc}", 404) from exc
+
+
+def newer_schema_response(
+    exc: NewerSchema,
+    what: str,
+    *,
+    verb: str = "were",
+    ending: str = "Upgrade to read them; nothing was changed",
+) -> JSONResponse:
+    """The 503 for a store a newer version wrote: names the store, never its path."""
+    text = (
+        f"{what} {verb} saved by a newer version of satisfactory-mcp (schema {exc.found}; this "
+        f"one reads up to {exc.known}). {ending}"
+    )
+    return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
+
+
+def busy_response(what: str, exc: Exception, *, verb: str = "are") -> JSONResponse:
+    """The 503 for a store whose file lock timed out; nothing was written."""
+    return error_response(f"{what} {verb} busy, nothing written: {exc}", 503)

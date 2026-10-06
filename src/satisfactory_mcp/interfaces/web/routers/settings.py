@@ -19,7 +19,7 @@ from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
 from ....domain import settings as store
 from ....domain.planning.planlog import Actor
-from ..serial import ActorBody, error_response, settings_json
+from ..serial import ActorBody, busy_response, error_response, newer_schema_response, settings_json
 
 __all__ = ["router"]
 
@@ -76,12 +76,7 @@ class SettingsStaleResponse(TypedDict):
     settings: SettingsResponse
 
 
-def _newer(exc: NewerSchema) -> JSONResponse:
-    text = (
-        f"the settings were saved by a newer version of satisfactory-mcp (schema {exc.found}; "
-        f"this one reads up to {exc.known}). Upgrade to read them; nothing was changed"
-    )
-    return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
+STORE_NAME = "the settings"
 
 
 @router.get("/settings", response_model=SettingsResponse)
@@ -90,7 +85,7 @@ def shared_settings() -> Any:
     try:
         return settings_json(store.read())
     except NewerSchema as exc:
-        return _newer(exc)
+        return newer_schema_response(exc, STORE_NAME)
 
 
 @router.patch(
@@ -108,9 +103,9 @@ def change_settings(body: Annotated[SettingsPatchBody, Body()]) -> Any:
             only_unset=bool(body.get("only_unset")),
         )
     except NewerSchema as exc:
-        return _newer(exc)
+        return newer_schema_response(exc, STORE_NAME)
     except LockTimeout as exc:
-        return error_response(f"settings are busy, nothing written: {exc}", 503)
+        return busy_response("settings", exc)
     except store.SettingsStale as exc:
         current = {k: v for k, v in exc.current.items() if k != "asked"}
         payload = {"error": str(exc), "stale": True, "settings": settings_json(current)}

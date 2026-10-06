@@ -3,7 +3,14 @@
 The three conventions it serves are rules 8 to 10 of docs/web-wire.md.
 """
 
-from .responses import RequestRefused, error_response, require_world, world_state
+from .responses import (
+    RequestRefused,
+    busy_response,
+    error_response,
+    newer_schema_response,
+    require_world,
+    world_state,
+)
 from .shapes import (
     ActorBody,
     Biomass,
@@ -37,12 +44,14 @@ __all__ = [
     "RequestRefused",
     "TableAge",
     "actor_json",
+    "busy_response",
     "cm_to_m",
     "collectible_json",
     "error_response",
     "flow_json",
     "found_field_json",
     "machine_spots",
+    "newer_schema_response",
     "region_json",
     "require_world",
     "resource_name",

@@ -23,7 +23,7 @@ from ....domain.advice import store as hidden_store
 from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
 from ....domain.world import pin
-from ..serial import error_response, require_world
+from ..serial import busy_response, error_response, newer_schema_response, require_world
 
 __all__ = ["router"]
 
@@ -147,19 +147,14 @@ def _one(cur: advice.Current, key: str) -> AdviceRow | None:
     return next((r for r in active + hidden if r["key"] == key), None)
 
 
-def _newer(exc: NewerSchema) -> JSONResponse:
-    text = (
-        f"the hidden advisories were saved by a newer version of satisfactory-mcp (schema "
-        f"{exc.found}; this one reads up to {exc.known}). Upgrade to read them; nothing was changed"
-    )
-    return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
+STORE_NAME = "the hidden advisories"
 
 
 def _refused(st, exc: Exception) -> JSONResponse:
     if isinstance(exc, NewerSchema):
-        return _newer(exc)
+        return newer_schema_response(exc, STORE_NAME)
     if isinstance(exc, LockTimeout):
-        return error_response(f"advisories are busy, nothing written: {exc}", 503)
+        return busy_response("advisories", exc)
     if isinstance(exc, hidden_store.AdviceStale):
         row = _one(advice.current(st), exc.key)
         return JSONResponse({"error": str(exc), "stale": True, "row": row}, status_code=409)
@@ -198,7 +193,7 @@ def advice_list(
     try:
         cur = advice.current(st, biomass=wants, spoilers=bool(spoilers))
     except NewerSchema as exc:
-        return _newer(exc)
+        return newer_schema_response(exc, STORE_NAME)
     active, hidden = _rows(cur)
     return {
         "save_token": pin.remember(st.header),

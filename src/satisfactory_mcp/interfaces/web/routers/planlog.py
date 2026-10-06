@@ -40,7 +40,15 @@ from ....domain.planning.planlog import (
     UnknownPlan,
 )
 from ....domain.world import pin
-from ..serial import ActorBody, PlanOpBody, actor_json, error_response, require_world, world_state
+from ..serial import (
+    ActorBody,
+    PlanOpBody,
+    actor_json,
+    busy_response,
+    error_response,
+    require_world,
+    world_state,
+)
 
 __all__ = ["router"]
 
@@ -306,7 +314,7 @@ def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
     if isinstance(exc, UnknownPlan):
         return _no_plan(exc.what)
     if isinstance(exc, LockTimeout):
-        return error_response(f"plans are busy, nothing written: {exc}", 503)
+        return busy_response("plans", exc)
     return error_response(str(exc), 400)
 
 

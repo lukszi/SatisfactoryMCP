@@ -34,7 +34,7 @@ from .guard import guard
 from .mapjobs import MapJobRunner
 from .pinning import pinning
 from .routers import ALL_ROUTERS
-from .serial import RequestRefused
+from .serial import RequestRefused, newer_schema_response
 from .watch import SaveWatcher
 
 __all__ = ["STATIC_DIR", "app", "create_app"]
@@ -56,11 +56,7 @@ _NOT_BUILT = (
 def _newer(request: Request, exc: NewerSchema) -> JSONResponse:
     """A 503 naming what cannot be read, never the file's path: nothing is written."""
     what = "the factory names" if exc.path.parent == config.labels_dir() else "the plans"
-    text = (
-        f"{what} were saved by a newer version of satisfactory-mcp (schema {exc.found}; this "
-        f"one reads up to {exc.known}). Upgrade to read them; nothing was changed"
-    )
-    return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
+    return newer_schema_response(exc, what)
 
 
 async def _request_refused(request: Request, exc: RequestRefused) -> JSONResponse:

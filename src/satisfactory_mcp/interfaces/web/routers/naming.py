@@ -39,6 +39,7 @@ from ....domain.world import pin
 from ..serial import (
     Flow,
     MachineSpot,
+    busy_response,
     cm_to_m,
     error_response,
     flow_json,
@@ -180,7 +181,7 @@ def _refused(exc: Exception) -> Any:
         return error_response(str(exc), 404)
     if isinstance(exc, LabelError):
         return _conflict(exc)
-    return error_response(f"factory labels are busy, nothing written: {exc}", 503)
+    return busy_response("factory labels", exc)
 
 
 @router.get("/factories/candidates", response_model=CandidatesResponse)

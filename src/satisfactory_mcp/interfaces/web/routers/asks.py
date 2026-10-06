@@ -22,7 +22,7 @@ from ....core.schema import NewerSchema
 from ....domain.planning import asks as ask_store
 from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
-from ..serial import error_response, require_world
+from ..serial import busy_response, error_response, newer_schema_response, require_world
 
 __all__ = ["router"]
 
@@ -91,19 +91,14 @@ def _page() -> Actor:
     return Actor("page", "", os.getpid())
 
 
-def _newer(exc: NewerSchema) -> JSONResponse:
-    text = (
-        f"the asks were saved by a newer version of satisfactory-mcp (schema {exc.found}; this "
-        f"one reads up to {exc.known}). Upgrade to read them; nothing was changed"
-    )
-    return JSONResponse({"error": text, "newer_schema": True}, status_code=503)
+STORE_NAME = "the asks"
 
 
 def _refused(world_id: str, exc: Exception) -> JSONResponse:
     if isinstance(exc, NewerSchema):
-        return _newer(exc)
+        return newer_schema_response(exc, STORE_NAME)
     if isinstance(exc, LockTimeout):
-        return error_response(f"asks are busy, nothing written: {exc}", 503)
+        return busy_response("asks", exc)
     if isinstance(exc, ask_store.AskStale):
         names = {r["about"]["plan"]: r["plan_name"] for r in ask_store.live(world_id)}
         body = {"error": str(exc), "stale": True, "ask": ask_store.row(exc.ask, names)}
@@ -137,7 +132,7 @@ def asks(request: Request, save: str | None = None, world: str | None = None) ->
         version = ask_store.read(st.world_id)["version"]
         rows = ask_store.live(st.world_id)
     except NewerSchema as exc:
-        return _newer(exc)
+        return newer_schema_response(exc, STORE_NAME)
     return {"version": version, "asks": rows}
 
 
