@@ -119,16 +119,17 @@ ignore = [
 # a test module that asks `pytest.importorskip` whether the optional web stack is here at
 # all before importing from it. Anywhere else, E402 is a stray import and now says so.
 #
-# The web tests are a file per router now, and every one of them opens with that same
-# `importorskip` -- so the pattern is `tests/web/*.py` rather than a list that has to
-# grow with each split. It stays narrow: only the web suite may import after code.
+# The web tests are a file per router, in folders that mirror the router packages, and every
+# one of them opens with that same `importorskip` -- so the pattern is `tests/web/**/*.py`
+# rather than a list that has to grow with each split. It stays narrow: only the web suite
+# may import after code.
 #
 # `tests/mapgen/test_generators.py` is named rather than globbed in: it is the tools-side half
 # of the same split -- it holds the two map generators against the endpoint that serves what
 # they write, so it drives the app and opens with the identical `importorskip` -- and it is
 # one file, not a family, so a name says more here than a wildcard would.
 "tools/*.py" = ["E402"]
-"tests/web/*.py" = ["E402"]
+"tests/web/**/*.py" = ["E402"]
 "tests/mapgen/test_generators.py" = ["E402"]
 
 [tool.ruff.lint.isort]

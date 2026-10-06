@@ -54,7 +54,8 @@ the save folder. Two commands that each say what they need beat one that quietly
 it looks like it does.
 
 **Layout.** `tests/` mirrors the code it tests: `core/`, `domain/<package>/`, `presenters/`,
-`mcp/`, `web/` (one file per router), `pioneersav/`, `data/` (the committed world tables held
+`mcp/`, `web/` (one file per router, in folders named after the router packages),
+`pioneersav/`, `data/` (the committed world tables held
 against the game), `tools/` (the generator scripts and the map job runner), `mapgen/` (the map
 generator's own tests, until they join `tools/mapgen/tests/`), `frontend/` and `architecture/`.
 Shared helpers and fixtures live in `tests/support/` and are imported as

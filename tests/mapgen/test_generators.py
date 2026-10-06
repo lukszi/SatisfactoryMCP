@@ -5,7 +5,7 @@ joins the two -- no shared module, no schema -- so the join is a set of file nam
 and one piece of arithmetic, and it is asserted here against the tools' OWN output rather
 than against a hand-typed sample that could drift away from what they really write.
 
-Split out of ``tests/web/test_tiles.py`` rather than living beside the routes: this is the tools
+Split out of ``tests/web/assets/test_tiles.py`` rather than living beside the routes: this is the tools
 side of the contract, it needs numpy and scipy where the route tests need neither, and
 keeping the two apart is what keeps either file readable.
 
