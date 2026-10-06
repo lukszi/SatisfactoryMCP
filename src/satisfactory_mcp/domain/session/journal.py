@@ -29,6 +29,9 @@ KINDS = (
     "label.rename",
     "advice.hide",
     "advice.restore",
+    "pin.add",
+    "pin.edit",
+    "pin.drop",
 )
 MAX_LINE = 1000
 MAX_TEXT = 200

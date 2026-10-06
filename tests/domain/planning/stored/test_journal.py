@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 
@@ -10,6 +11,7 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning.stored.planlog import Actor
 from satisfactory_mcp.domain.session import journal
+from tests.support.paths import REPO_ROOT
 
 CHAT = Actor("chat", "claude-code", 8248)
 
@@ -125,3 +127,35 @@ def test_a_world_id_is_sanitised_like_the_plan_store(jdir):
     journal.set_writer("chat")
     journal.append("a/b:c", "plan.solve", actor=CHAT)
     assert (jdir / "abc").is_dir()
+
+
+def _is_journal_write(func: ast.expr) -> bool:
+    """``journal.append(...)``, or a router's ``_journal(...)`` helper that wraps it."""
+    if isinstance(func, ast.Name):
+        return func.id == "_journal"
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "append"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "journal"
+    )
+
+
+def _written_kinds() -> set[str]:
+    """Every literal kind, the second positional argument, of every journal write in src."""
+    kinds = set()
+    for path in (REPO_ROOT / "src" / "satisfactory_mcp").rglob("*.py"):
+        if "frontend" in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and _is_journal_write(node.func) and len(node.args) > 1:
+                kind = node.args[1]
+                if isinstance(kind, ast.Constant):
+                    kinds.add(kind.value)
+    return kinds
+
+
+def test_every_kind_written_is_in_the_vocabulary():
+    written = _written_kinds()
+    assert {"plan.solve", "pin.add", "ask.add"} <= written
+    assert written <= set(journal.KINDS), written - set(journal.KINDS)
