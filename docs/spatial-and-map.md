@@ -2680,7 +2680,9 @@ the nearest centreline piece, measured exactly rather than to the nearest sample
 - **Open ends are square.** At an end no other section continues, the plane is cut across the
   tangent instead of rounding off.
 - **Where two planes overlap, the higher shows**, as seen from above. Past both edges, the
-  nearer one in half widths wins.
+  nearer one in half widths wins. A plane standing more than 8 m over the ground
+  (`RIVER_MAX_DEPTH_M`), or over none, gives way to one that does not: the short river over a
+  fall's lip spreads its plane out over the basin 50 m below, and hid the river in it.
 - The whole map takes about 1 s.
 
 ### Reconciling with the field's water
@@ -2699,6 +2701,8 @@ changed.
 - **The ribbon speaks** inside its reach, except where the plane stands more than 8 m over
   the ground (`RIVER_MAX_DEPTH_M`) or over no ground. Those are wide sections hanging over a
   waterfall pit or a lake below. Drawn there, they paint fans of water in the air.
+- Then a lower body takes back the box tops over its own bed, and water standing more than
+  8 m over the river is taken out: section 38, "Boxes over lower water".
 
 ### Drawing
 
@@ -2714,7 +2718,9 @@ Per band, through `RiverWater.over`.
   meeting, and any sampler draws a line along it.
 - **Where a river meets other water, the higher surface shows**; a tie of 5 cm goes to the
   river. At a mouth the river plane dips under the lake or the sea, and the hand-over happens
-  where the two levels agree, so the colour is continuous.
+  where the two levels agree, so the colour is continuous. Past the other water's last wet
+  texel, away from the sea, the blur of its edge is no water to give way to (section 38,
+  "Boxes over lower water").
 - **Optics.** River pixels get the shore optics: the opacity fade and wet darkening in
   terrain and satellite, and the wet band on the banks in every style. Painted water is
   Beer-Lambert, so the bed shows in the shallows.
@@ -2735,8 +2741,10 @@ Per band, through `RiverWater.over`.
 
 - Nothing has been compared against an in-game top-down view of a river. The minimum
   optical depth and the colour are a taste call.
-- Where the 8 m rule cuts a river plane, the field's river-box water stays at the box level,
-  as in recipe 6. One waterfall pool near (-1170, -240) keeps a dark rectangle.
+- Where the 8 m rule cuts a river plane and no other plane speaks, the field's river-box
+  water stays at the box level, as in recipe 6, for section 38 to re-level. The waterfall
+  pool near (-1170, -240) no longer keeps its dark rectangle (section 38, "Boxes over lower
+  water").
 - Steps of more than 0.5 m per metre break the ribbon for a few metres. Those are
   waterfalls, which are a separate item.
 - A section bent more tightly than its half width draws the fan its mesh would.
@@ -3078,13 +3086,82 @@ The largest are the arch lake at (1979, -1889) with 5,062 texels, (3596, -2139),
 (2245, 741), (3149, -606) and the arch lake's east arm at (2026, -1904). In a render, on
 the water the river reconcile leaves: 38,048 texels in 306 bodies.
 
+### Boxes over lower water (2026-10-06)
+
+At (-1077, -294), below the fall out of the crater lake at (-1033, -366), every style drew
+the basin as an axis-aligned rectangle about 60 by 130 m: a thin sand rim along straight,
+stair-stepped edges, a dark strip down its west side, and the river around it. v4 drew the
+same rectangle in navy.
+
+- **The cause.** The basin floor stands at 100 m and the river below the fall runs over it at
+  101 to 105 m. The field levels a texel at the highest box top over it (section 19), and
+  three boxes reach over the basin from above: the lake's two `FGWaterVolume`s (153.7 and
+  153.9 m) and the short river over the lip (154.4 m). Outside them the lower river's own
+  box gives 111.4 m. The river reconcile (section 34) dropped the water outside, where the
+  ribbon speaks, but re-levelled the water inside to the lake's 153.9 m, because no river
+  plane ran above that. This section then re-levelled that piece below a drop to about
+  101 m, a membrane that kept 142.9 m in the hand-over column along its west edge: the
+  rectangle, its dark strip, and the field's own water edge inside the river.
+- **The rim.** Past a field water's last wet texel its edge is still blurred, and there the
+  missing measured share reads as 40 m deep, so the river gave way to the blur and drew
+  ground: a sand line along every edge of field water inside a ribbon.
+- **The class.** A higher body's box over lower water, wherever its top is taken as that
+  water's level: the field's rule, the reconcile's re-levelling to the highest other box,
+  and this section's membrane over a box piece, which spans from the lower water up to the
+  higher banks and drew navy blocks in lakes, as at (-274, -785) and (451, -547).
+
+Four changes, all in the renderer. The field is not changed.
+
+- **A lower body takes its water back** (`gamedata.water.lower_bodies`, in the river
+  reconcile after the river boxes' water). Each surface box with a level of its own, lowest
+  first, floods from the wet texels at its top every measured texel joined to them, under
+  the box, whose ground stands below the top and whose level stands more than 2 m above it
+  (`LOWER_BODY_STEP_M`). A river's AABB has no level of its own, and boxes at the ocean's
+  level are left to section 26. 41,100 texels.
+- **Water over the river** (`palette.rivers._over_the_river`). In a river's valley, where the
+  ribbon speaks and the ground stands at most 8 m over its plane (`RIVER_MAX_DEPTH_M`), water
+  more than 8 m above the plane is a higher body's box over the river. It takes the plane's
+  level and goes where the ribbon draws it or the ground stands above the plane, so the
+  ribbon's own gaps (its steps, the reach past its edge) stay water. 41,400 texels. A lake
+  whose bed stands more than 8 m over a plane running under it, as the crater lake does
+  over the river's fan, keeps its level.
+- **A hanging plane gives way** (section 34): the lip's river plane, 50 m over the basin, no
+  longer hides the river in it.
+- **The blur is no water** (section 34, "Drawing"): past the other water's last wet texel,
+  away from the sea's reach, the river draws.
+
+Measured in process on the whole field (water stages only, 3.4 GB at peak, the same 4 s for
+the reconcile), with straight runs of at least 16 m along one grid line of the drawn water,
+field and ribbons together, counted where they lie on a surface box's edge, away from the
+sea:
+
+| | before | after |
+| --- | --- | --- |
+| Inland runs on box edges, drawn water (the rim counted before) | 89 runs, 2,378 texels | 33 runs, 855 texels |
+| Every straight run of 16 m and more, drawn water | 955 runs, 38,909 texels | 689 runs, 32,299 texels |
+| Inland runs on box edges, the field's planes alone | 101 runs, 2,837 texels | 44 runs, 1,216 texels |
+| Texels this section re-levels | 115,440 in 233 bodies | 42,550 in 455 bodies |
+
+83,423 texels of the water planes every style draws change, in 42 places merged at 100 m. The swamp,
+Blue Crater, the lake navy blocks, the sulfur pools and the ocean coast draw byte-identical;
+the crater lakes, the desert river at (341, -1542) and Spire Coast change only where a box
+strip or a rim was. Of the ten worst boxes, these went to no run: the basin at (-1144, -287),
+the river under the 235.5 m box at (-764, 668), the lake under the 131.3 m volume at
+(451, -547), the navy block at (-274, -785) and the lake at (-45, -470).
+
 ### Known limits
 
 - Where a river spline speaks, its ribbon (section 34) has already taken the box's water
   back before this runs, so the spline's own surface replaces the membrane there. The
   membrane is left for boxes without a spline.
 - A box piece over another body passes the ring test only when enough of its ring is below
-  it.
+  it. Where the lower body's own water reaches the piece over its bed, it is the lower
+  body's before this runs ("Boxes over lower water").
+- Left after "Boxes over lower water": a 93 m straight line at x -1369 near (-1265, -323), a
+  0.5 m step between the lower river's box and its ribbon; the river strips at (-1126, 218)
+  under a 201.6 m volume standing 2.8 m over the ribbon, inside the 8 m rule; faint lines in
+  the arch lakes near (1764, -2122); and the wide fall's channel at (1850, 313), whose lower
+  water is the swamp at the ocean's level.
 - The arch lake near (1980, -1890) ends in a straight line at y -1733, the edge of its
   `FGWaterVolume`. South of it the only box is the ocean spline's at -17 m, so the field's
   water rule (section 19) drops the artwork's water there as ground standing out of the
