@@ -10,15 +10,13 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
-from mapgen.lighting import stage  # noqa: E402
-from mapgen.lighting.stage import Surface, bake_light, occluder_planes  # noqa: E402
-from mapgen.tiles.lit import (  # noqa: E402
+from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.lighting import stage
+from mapgen.lighting.stage import Surface, bake_light, occluder_planes
+from mapgen.tiles.lit import (
     LIGHT_CACHE_DIR_NAME,
     add_light_flags,
     claim_scratch,

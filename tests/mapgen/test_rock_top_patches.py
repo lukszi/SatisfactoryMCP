@@ -8,16 +8,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
+import numpy as np
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.gamedata.rockfamily import FAMILIES  # noqa: E402
-from mapgen.palette.calibration import display_to_ground  # noqa: E402
-from mapgen.palette.colour import oklab  # noqa: E402
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from mapgen.palette.surfaces import (  # noqa: E402
+from mapgen.gamedata.rockfamily import FAMILIES
+from mapgen.palette.calibration import display_to_ground
+from mapgen.palette.colour import oklab
+from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.surfaces import (
     family_tables,
     patch_noise,
     rock_surface,

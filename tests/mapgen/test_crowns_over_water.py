@@ -7,13 +7,10 @@ docs/spatial-and-map.md sections 36 and 37. Synthetic fixtures: no install, no f
 
 from __future__ import annotations
 
-import pytest
+import numpy as np
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.palette.painted import painted_colours  # noqa: E402
-from tests.test_map_water_classes import _ground, _optics, _scene  # noqa: E402
+from mapgen.palette.painted import painted_colours
+from tests.support.map_scenes import class_optics, painted_ground_stub, water_scene
 
 N = 4
 LEAF = (0.06, 0.12, 0.035)
@@ -37,7 +34,7 @@ def _crowns(top_m, cover=1.0):
 
 
 def _draw(ground, depth_m, crowns=None, optics=None, cover=1.0):
-    scene = _scene(N, optics)
+    scene = water_scene(N, optics)
     scene["z_m"] = np.full((1, N), BED_M, np.float32)
     scene["water"]["depth_m"] = np.full((1, N), depth_m, np.float32)
     scene["water"]["cover"] = np.full((1, N), cover, np.float32)
@@ -52,7 +49,7 @@ def _gap(a, b):
 
 def test_a_palm_on_awash_sand_is_drawn_whole_as_on_dry_sand():
     """The sand under the palms stands 8 to 27 cm under the drawn sea; the palms do not."""
-    ground = _ground(N)
+    ground = painted_ground_stub(N)
     awash = _draw(ground, 0.27, _crowns(BED_M + 9.0))
     dry = _draw(ground, 0.0, _crowns(BED_M + 9.0), cover=0.0)
     np.testing.assert_array_equal(awash, dry)
@@ -60,7 +57,7 @@ def test_a_palm_on_awash_sand_is_drawn_whole_as_on_dry_sand():
 
 
 def test_a_crown_under_the_surface_is_seen_through_the_water_above_its_top():
-    ground = _ground(N)
+    ground = painted_ground_stub(N)
     surface = BED_M + 4.0
     bare = _draw(ground, 4.0)
     whole = _draw(ground, 4.0, _crowns(surface + 5.0))
@@ -71,17 +68,17 @@ def test_a_crown_under_the_surface_is_seen_through_the_water_above_its_top():
 
 
 def test_murky_water_hides_a_sunk_crown_the_sea_still_shows():
-    ground = _ground(N)
+    ground = painted_ground_stub(N)
     top = BED_M + 2.0 - 0.3
     seen = {}
     for cls in ("ocean", "swamp"):
-        optics = _optics(ground, cls, N)
+        optics = class_optics(ground, cls, N)
         seen[cls] = _gap(_draw(ground, 2.0, _crowns(top), optics), _draw(ground, 2.0, None, optics))
     assert (seen["swamp"] < seen["ocean"]).all()
 
 
 def test_pixels_without_a_crown_keep_their_bed_carpet_and_water():
-    ground = _ground(N)
+    ground = painted_ground_stub(N)
     carpet = ground.palette["carpet"]
     assert carpet["strength"] > 0
     ground.carpet = (np.full((1, N), 255, np.uint8), np.full((1, N), BED_M + 0.5, np.float16))

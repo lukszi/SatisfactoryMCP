@@ -9,30 +9,28 @@ from __future__ import annotations
 import copy
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("scipy")
-
-from mapgen.cache import cached_mesh_family, cached_meshes, mesh_stamp  # noqa: E402
-from mapgen.gamedata import rockfamily  # noqa: E402
-from mapgen.gamedata.crowns import CROWN_RECORD  # noqa: E402
-from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
-from mapgen.palette.calibration import (  # noqa: E402
+from mapgen.cache import cached_mesh_family, cached_meshes, mesh_stamp
+from mapgen.gamedata import rockfamily
+from mapgen.gamedata.crowns import CROWN_RECORD
+from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.palette.calibration import (
     derived_hex,
     display_to_crown,
     display_to_ground,
     display_to_linear,
     with_derived,
 )
-from mapgen.palette.colour import oklab  # noqa: E402
-from mapgen.palette.painted import ROCK_GRID_M, PaintedGround  # noqa: E402
-from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
-from mapgen.palette.surfaces import mesh_surface  # noqa: E402
-from mapgen.palette.trees import crown_lab, crown_layer, over_crowns, species_targets  # noqa: E402
-from mapgen.terrain import rasters  # noqa: E402
-from mapgen.terrain.crowns import CrownSet  # noqa: E402
-from mapgen.terrain.rasters import (  # noqa: E402
+from mapgen.palette.colour import oklab
+from mapgen.palette.painted import ROCK_GRID_M, PaintedGround
+from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.surfaces import mesh_surface
+from mapgen.palette.trees import crown_lab, crown_layer, over_crowns, species_targets
+from mapgen.terrain import rasters
+from mapgen.terrain.crowns import CrownSet
+from mapgen.terrain.rasters import (
     MESH_CLASS_MASK,
     MESH_CORAL,
     MESH_FAMILY_SHIFT,
@@ -41,7 +39,7 @@ from mapgen.terrain.rasters import (  # noqa: E402
     mesh_pass,
     rasterise_mesh_band,
 )
-from mapgen.tiles.compose import _band_family  # noqa: E402
+from mapgen.tiles.compose import _band_family
 
 CAL = PAINTED_PALETTE["calibration"]
 STYLE = PAINTED_PALETTE["crowns"]

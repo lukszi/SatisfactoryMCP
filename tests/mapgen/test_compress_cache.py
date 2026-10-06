@@ -12,14 +12,12 @@ import shutil
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("zstandard")
-
-from mapgen import cli, compress_cache  # noqa: E402
-from mapgen.bandstore import BandArray  # noqa: E402
-from mapgen.cache import (  # noqa: E402
+from mapgen import cli, compress_cache
+from mapgen.bandstore import BandArray
+from mapgen.cache import (
     BANDS_SUFFIX,
     DIRECT_CACHE_DIR_NAME,
     DIRECT_CACHE_SIDECAR,
@@ -33,7 +31,9 @@ from mapgen.cache import (  # noqa: E402
     cached_direct,
     direct_cache_stamp,
 )
-from mapgen.compress_cache import Refused, compress  # noqa: E402
+from mapgen.compress_cache import Refused, compress
+
+pytest.importorskip("zstandard")
 
 SIZE = 600
 STAMP = direct_cache_stamp(SIZE, 1, "b1")

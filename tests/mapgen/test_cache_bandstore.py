@@ -10,14 +10,12 @@ import json
 import os
 import sys
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("zstandard")
-
-from mapgen import cli  # noqa: E402
-from mapgen.bandstore import BandArray, BandStoreError, BandWriter  # noqa: E402
-from mapgen.cache import (  # noqa: E402
+from mapgen import cli
+from mapgen.bandstore import BandArray, BandStoreError, BandWriter
+from mapgen.cache import (
     BANDS_SUFFIX,
     DIRECT_CACHE_DIR_NAME,
     DIRECT_CACHE_SIDECAR,
@@ -37,15 +35,17 @@ from mapgen.cache import (  # noqa: E402
     mesh_stamp,
     missing_caches,
 )
-from mapgen.compress_cache import Refused, compress  # noqa: E402
-from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
-from mapgen.terrain import rasters  # noqa: E402
-from mapgen.terrain.rasters import (  # noqa: E402
+from mapgen.compress_cache import Refused, compress
+from mapgen.gamedata.frame import BOUNDS_M
+from mapgen.terrain import rasters
+from mapgen.terrain.rasters import (
     rasterise_direct,
     rasterise_meshes,
     reduce_direct,
     reduce_source,
 )
+
+pytest.importorskip("zstandard")
 
 #: Three bands of 256 rows, the last one short.
 SIZE = 600
