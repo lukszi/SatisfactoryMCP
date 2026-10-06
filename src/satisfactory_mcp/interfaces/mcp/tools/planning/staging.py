@@ -129,8 +129,8 @@ def diff_vs_save(
     blocked or idle. A stage is never called unpowered, only built with nothing proven
     running.
 
-    Saves are read-only here, and machines standing among the plan but not in it are listed
-    for you to judge.
+    Saves are read-only: this never proposes writing one, and there is no dismantle action.
+    Machines standing among the plan but not in it are listed for you to judge.
     """
     g = app.game()
     st = app.load_world(save, world, as_of)
@@ -218,10 +218,12 @@ def commission_plan(
     """In what order to switch a built plant on, without blowing the fuse.
 
     A STARTUP order, not a build order: a machine draws only when it runs, so the whole
-    plant is built first, drawing nothing, and then energised block by block.
+    plant is built first, drawing nothing, and then energised block by block. Nothing here
+    says what to build first.
 
     At every step, energised consumer draw must stay under the headroom plus generation from
-    generators already burning fuel; exceeding it blows the fuse and stops the whole grid.
+    generators already burning fuel; exceeding it blows the fuse and stops the whole grid,
+    the feeding plant included, until it is reset by hand.
     Generators energise for free, so a wave costs its consumers and its generators' output
     pays for the next wave.
 

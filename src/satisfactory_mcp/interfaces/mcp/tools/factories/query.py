@@ -274,10 +274,10 @@ def factory_query(
     in the answer at once.
 
     - **summary** size, position, top recipes, net power
-    - **balance** per-item produced vs consumed vs net -- the sign is the point
+    - **balance** per-item produced vs consumed vs net
     - **outputs** net surplus: it leaves the factory, or it backs up
     - **inputs** net deficit: it has to be fed in from outside
-    - **internal** made and eaten inside the set -- the mark of a self-contained line
+    - **internal** made and eaten inside the set
     - **machines** every machine with its building, recipe and clock
     - **recipes** / **buildings** counts
     - **power** draw vs generation, nameplate AND measured

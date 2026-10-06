@@ -465,8 +465,10 @@ def factory_health(
 
     For a STARVED machine it names what feeds the missing input ONE hop back: the run that
     arrives, what stands at its far end, and that feeder's state; `trace_upstream` walks
-    further. A missing FLUID is diagnosed on the plumbing ladder -- (1) connection, (2) head
-    lift, (3) flow rate -- and the cause names the first rung that fires.
+    further. No conduit arriving and one whose far end joins nothing are never merged. A
+    missing FLUID is diagnosed on the plumbing ladder -- (1) connection, (2) head lift, (3)
+    flow rate -- and the cause names the first rung that fires, so a line that cannot climb
+    to the machine is never answered with its supply rates.
 
     factory='all' sweeps every named factory and adds the world-wide plumbing faults: fluid
     buffers too low to output at their intake rate, unwired pipeline pumps, and lines that

@@ -222,12 +222,10 @@ def rank_unlocks(
     """What every locked alternate recipe would be worth to THIS plan.
 
     One counterfactual per candidate: solve the plan, solve it again with the recipe
-    added, report the difference. It answers "which unlock should I chase" with a number
-    in the plan's own units instead of a tier list, because a recipe's worth depends
-    entirely on what you already have.
+    added, report the difference -- "which unlock should I chase" in the plan's own units.
 
-    A zero is an answer. Most candidates change nothing, and "you are not missing anything
-    here" is a decision -- it is otherwise reached by walking the recipe tree by hand.
+    A zero is an answer: most candidates change nothing, and "you are not missing anything
+    here" is a decision too.
 
     Deltas are an UPPER bound: a candidate needing a machine you have not built is judged
     as if you had it, and the machine is named. Alternates currently offered by a pending

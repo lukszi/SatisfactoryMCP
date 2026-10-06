@@ -124,7 +124,7 @@ def test_tool_descriptions_stay_short():
 
 #: Every tool description together, in characters: what each session carries before its first
 #: call. A ratchet set when the backstory moved to docs/mcp-surface.md; lower it, never raise it.
-TOOL_DESCRIPTION_BUDGET = 29_954
+TOOL_DESCRIPTION_BUDGET = 29_925
 
 
 def test_tool_descriptions_fit_their_budget():

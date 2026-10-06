@@ -378,8 +378,7 @@ def plan_factory(
 ) -> str:
     """Optimise a factory with an LP over this world's unlocked recipes.
 
-    ``sources`` lists the resource-node selectors that may feed the plan -- named regions,
-    radii, grid cells, compass directions, or node ids::
+    ``sources`` selects the resource nodes that may feed the plan::
 
         ["north"]                        everything in the northern half
         ["region:Northern Forest"]       one named region
@@ -394,15 +393,16 @@ def plan_factory(
     machines at 99.6%), the power-optimal way to run that throughput.
 
     ``extractor_clocks`` overclocks the SOURCE NODES only, e.g. [1.0, 1.5, 2.0, 2.5].
-    ``clocks`` lets the solver spread throughput over more, slower machines to save power,
-    each machine priced at ``machine_cost_mw``. Neither counts the Power Shards an
-    overclock needs.
+    ``clocks=[0.5, 1.0]`` lets the solver spread throughput over more, slower machines to
+    save power, each priced at ``machine_cost_mw`` (default 5 MW). Overclock modes are not
+    offered by default; nothing here counts the Power Shards they need.
 
     objective: max_mw | max_item | min_raw | min_machines | min_power. Every item balances
     as an EQUALITY, so a byproduct with no consumer makes the plan infeasible rather than
     silently vanishing.
 
-    ``exports`` is the whitelist of what may leave; the default is power only::
+    ``exports`` is the whitelist of what may leave; the default is power only, which is
+    often infeasible for crude oil::
 
         exports=["MW"]                        power out, plant must be self-powered
         exports=["Plastic", "Rubber"]         items out, NO power export
@@ -432,7 +432,7 @@ def plan_factory(
 
     ``save_as`` stores the request. Over an existing plan it needs ``base_rev``, the version
     you read (list_plans name=): edits to other settings merge, and the same setting changed
-    by someone else is refused as outdated.
+    by someone else is refused as outdated and nothing is saved.
 
     ``site_at`` says where the plan will STAND: the terrain at that pad is read and the
     water note says how much is under water, at what level and how far below dry ground,

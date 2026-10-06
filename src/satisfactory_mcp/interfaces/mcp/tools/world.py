@@ -185,9 +185,8 @@ def power_report(
     """Generation capacity vs machine draw, nameplate AND measured.
 
     Nameplate is what everything built would draw running at once. Measured weights each
-    machine by the 300 s productivity monitor the save already carries, which on a factory
-    with idle blocks is a very different number -- and it is the one that says what is free
-    right now. Both are shown because they answer different questions.
+    machine by the 300 s productivity monitor the save carries, and says what is free right
+    now.
 
     Generation is capacity on both figures, with one exception the answer names: a generator
     whose fuel or supplemental water has run dry AND whose own monitor read zero is listed as
