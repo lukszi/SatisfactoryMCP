@@ -1,15 +1,14 @@
 """The comment budget of docs/comments.md, measured per file: prose lines over code lines.
 
-A RATCHET, not an aspiration. The caps below are the sweep's measured result plus a small
-working margin, so the suite fails the moment a file grows a new essay -- which is the
-property that matters. They are not the numbers docs/comments.md argues for; the sweep
-converged on the density of the reviewed example (routers/layers/crates.py, 0.92) rather
-than on 0.25, and lowering a cap is a deliberate second pass over the files it would fail,
-never a constant edited on its own.
+A RATCHET, not an aspiration. Each cap is the highest ratio measured in its tree plus a small
+working margin, so the suite fails the moment a file grows a new essay. They are not the
+numbers docs/comments.md argues for, and lowering a cap is a deliberate second pass over the
+files it would fail, never a constant edited on its own.
 """
 
 from __future__ import annotations
 
+import ast
 import io
 import tokenize
 from collections.abc import Iterable, Iterator
@@ -17,44 +16,45 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BUDGETS = [
-    (ROOT / "src" / "satisfactory_mcp" / "interfaces", 1.45),
-    (ROOT / "src" / "satisfactory_mcp" / "presenters", 0.60),
-    (ROOT / "tools", 1.00),
-    (ROOT / "src" / "satisfactory_mcp" / "domain", 1.35),
-    (ROOT / "src" / "satisfactory_mcp" / "core", 1.00),
-    (ROOT / "src" / "pioneersav", 1.00),
-    (ROOT / "tests", 1.15),
+    (ROOT / "src" / "satisfactory_mcp" / "interfaces", 0.80),
+    (ROOT / "src" / "satisfactory_mcp" / "presenters", 0.40),
+    (ROOT / "tools", 0.65),
+    (ROOT / "src" / "satisfactory_mcp" / "domain", 0.70),
+    (ROOT / "src" / "satisfactory_mcp" / "core", 0.95),
+    (ROOT / "src" / "pioneersav", 0.95),
+    (ROOT / "tests", 1.00),
 ]
 FRONTEND = ROOT / "src" / "satisfactory_mcp" / "interfaces" / "web" / "frontend"
-TS_BUDGET = 1.65
+TS_BUDGET = 1.30
 #: Written by openapi-typescript from the server's schema, not by hand.
 TS_GENERATED = {"schema.d.ts"}
 MIN_CODE_LINES = 40  # tiny files are all header; the budget is about essays, not stubs
 
 
 def prose_and_code(path: Path) -> tuple[int, int] | None:
-    """Python: ``#`` comment lines and docstring lines, against every other non-blank line."""
+    """Python: ``#`` comment lines and bare string statements (docstrings), against the rest.
+
+    A string counts as prose only when it is a statement of its own, so ``__all__`` entries
+    and the lines of a multi-line message stay code.
+    """
     source = path.read_text(encoding="utf-8")
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+        tree = ast.parse(source)
     except (tokenize.TokenError, SyntaxError):
         return None
     comment_lines: set[int] = set()
-    doc_lines: set[int] = set()
-    previous_type = None
     for token in tokens:
         if token.type == tokenize.COMMENT:
             comment_lines.update(range(token.start[0], token.end[0] + 1))
-        elif token.type == tokenize.STRING and previous_type in (
-            None,
-            tokenize.NEWLINE,
-            tokenize.NL,
-            tokenize.INDENT,
-            tokenize.DEDENT,
+    doc_lines: set[int] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
         ):
-            doc_lines.update(range(token.start[0], token.end[0] + 1))
-        if token.type != tokenize.COMMENT:
-            previous_type = token.type
+            doc_lines.update(range(node.lineno, node.end_lineno + 1))
     prose = code = 0
     for line_number, line in enumerate(source.splitlines(), 1):
         stripped = line.strip()

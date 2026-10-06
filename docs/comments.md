@@ -28,9 +28,11 @@ primary documentation; a comment exists only for what none of those can carry.
 9. **Budget, enforced as a ratchet.** `tests/test_comment_budget.py` fails when any file's
    prose:code ratio exceeds its layer's cap. The layers are the `src` packages, `tools/` and
    `tests/`, plus the frontend's hand-written TypeScript (`//` lines and every line of a
-   `/* */` block count as prose; the generated schema types do not count). The caps are the
-   2026-08 sweep's measured result plus a working margin — they stop regrowth rather than
-   assert an ideal. The density to aim at when writing is
+   `/* */` block count as prose; the generated schema types do not count). In Python, prose
+   is `#` lines and strings that are statements of their own (docstrings); an `__all__`
+   entry or a multi-line message is code. The caps are each tree's measured maximum plus a
+   small working margin, re-measured in 2026-10 — they stop regrowth rather than assert an
+   ideal. The density to aim at when writing is
    `interfaces/web/routers/layers/crates.py`, the reviewed example. Lowering a cap means
    sweeping the files it would fail, in that same commit.
 
