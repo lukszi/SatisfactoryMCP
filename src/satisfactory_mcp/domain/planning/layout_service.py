@@ -17,12 +17,12 @@ from dataclasses import replace as replace_solution
 from ...core.gamedata.model import GameData
 from ..factories.resolve import resolve_factory
 from ..world.state import WorldState
-from .carrier import TierChoice
 from .layout import Layout, build_layout, fluid_head
 from .materials import build_materials
-from .optimize import Solution
-from .prepare import PreparedPlan, prepare
 from .sites import claim_processes, partition
+from .solver.carrier import TierChoice
+from .solver.optimize import Solution
+from .solver.prepare import PreparedPlan, prepare
 from .trunks import plan_trunks
 
 __all__ = ["LayoutReport", "build_layout_report"]

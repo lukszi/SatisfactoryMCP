@@ -15,7 +15,7 @@ from ....core.gamedata import search
 from ....core.gamedata.model import GameData, Recipe
 from ....core.gamedata.unlocks import granted_by
 from ....core.text import ago
-from ....domain.planning.scenario import find_recipe, resolve_item
+from ....domain.planning.solver.scenario import find_recipe, resolve_item
 from ..serial import _fail, _state
 
 __all__ = ["router"]

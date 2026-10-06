@@ -19,17 +19,17 @@ import json
 import pytest
 
 from satisfactory_mcp.domain.planning import siting as siting_mod
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
-from satisfactory_mcp.domain.planning.recall import PLAN_DEFAULTS, recall_plan
 from satisfactory_mcp.domain.planning.siting import Siting
-from satisfactory_mcp.domain.planning.store import Plan, PlanStore
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.recall import PLAN_DEFAULTS, recall_plan
+from satisfactory_mcp.domain.planning.stored.store import Plan, PlanStore
 
 ACTOR = Actor("chat")
 
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     return PlanLog("TESTWORLD")

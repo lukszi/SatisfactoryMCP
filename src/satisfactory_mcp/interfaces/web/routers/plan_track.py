@@ -17,7 +17,7 @@ from typing import Any, Literal, TypedDict
 from fastapi import APIRouter, Request
 
 from ....domain.planning import track
-from ....domain.planning.planlog import InvalidOp, PlanLog, UnknownPlan
+from ....domain.planning.stored.planlog import InvalidOp, PlanLog, UnknownPlan
 from ....domain.world import pin
 from ..serial import Biomass, _fail, _state
 
@@ -282,9 +282,7 @@ def plan_track(
     except InvalidOp as exc:
         return _fail(str(exc), 404)
     try:
-        out = track.track_view(
-            st.game, st, state, biomass=biomass == "include", default=headroom
-        )
+        out = track.track_view(st.game, st, state, biomass=biomass == "include", default=headroom)
     except ValueError as exc:
         return _fail(str(exc), 400)
     out["built_at"]["token"] = pin.check(st.header, None)

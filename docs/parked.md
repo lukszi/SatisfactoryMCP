@@ -38,8 +38,8 @@ All steps below are **done**; kept as a record of dependency order.
 3. **`render.py` + game-data tools** — compact TSV, schema-capped limits, honest truncation.
 4. **Save-state tools** — unlocks, power, progression, sites.
 5. **`spatial/`** — exact geometry, generated node table, region-name layer, selector language.
-6. **`planning/optimize.py`** — equality balance, both guards, two-phase solve, grid-import model.
-7. **`planning/advisor.py`** — hard-drive counterfactuals incl. an own-output objective.
+6. **`planning/solver/optimize.py`** — equality balance, both guards, two-phase solve, grid-import model.
+7. **`planning/analysis/advisor.py`** — hard-drive counterfactuals incl. an own-output objective.
 
 Everything in the spec is now built, including §10.3's resources and prompts and
 `rank_build_sites`.

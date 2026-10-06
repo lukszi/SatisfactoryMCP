@@ -11,9 +11,16 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain import settings
-from satisfactory_mcp.domain.planning import payback, prices
-from satisfactory_mcp.domain.planning.optimize import PAYBACK_STOPS, Scenario, best_clock, solve
-from satisfactory_mcp.domain.planning.planlog import (
+from satisfactory_mcp.domain.planning.readout import payback
+from satisfactory_mcp.domain.planning.solver import prices
+from satisfactory_mcp.domain.planning.solver.optimize import (
+    PAYBACK_STOPS,
+    Scenario,
+    best_clock,
+    solve,
+)
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
+from satisfactory_mcp.domain.planning.stored.planlog import (
     Actor,
     InvalidOp,
     Outdated,
@@ -23,8 +30,7 @@ from satisfactory_mcp.domain.planning.planlog import (
     inverse,
     legacy_hours,
 )
-from satisfactory_mcp.domain.planning.recall import PLAN_DEFAULTS, overrides_of
-from satisfactory_mcp.domain.planning.scenario import build_scenario
+from satisfactory_mcp.domain.planning.stored.recall import PLAN_DEFAULTS, overrides_of
 
 PAGE = Actor("page", "", 1)
 CHAT = Actor("chat", "claude-code", 2)
@@ -276,7 +282,7 @@ def test_overclock_last_carries_the_fraction_on_one_machine(game, priced):
 
 @pytest.mark.parametrize("units", [1.2, 1.5, 1.999, 4.51])
 def test_the_last_machine_never_needs_more_than_two_shards(game, units):
-    from satisfactory_mcp.domain.planning.optimize import Process, _Row
+    from satisfactory_mcp.domain.planning.solver.optimize import Process, _Row
 
     proc = Process("r:x", "recipe", "x", {}, -30.0, -30.0, 1.321929, REFINERY, "x")
     machines, top, shards = _Row(proc, units, game.buildings[REFINERY]).last(0.5)
@@ -305,7 +311,7 @@ def test_overclock_last_off_still_says_what_it_would_save(game, priced):
 def test_the_bill_counts_shards_on_the_last_machine_only(game, priced):
     from types import SimpleNamespace
 
-    from satisfactory_mcp.domain.planning.slice import slice_of
+    from satisfactory_mcp.domain.planning.readout.slice import slice_of
 
     sol = _plastic(game, 0.0, priced.price, priced.points, overclock_last=True)
     bill = slice_of(
@@ -425,7 +431,7 @@ def test_old_priority_ops_replay_and_undo_as_horizons(plans, plan):
 
 
 def test_an_old_snapshot_with_a_step_reads_as_its_horizon():
-    from satisfactory_mcp.domain.planning.planlog import PlanState
+    from satisfactory_mcp.domain.planning.stored.planlog import PlanState
 
     state = PlanState.from_dict({"name": "x", "args": {"power_priority": 3}}, key="k", rev=7)
     assert state.args.payback_hours == 11.0

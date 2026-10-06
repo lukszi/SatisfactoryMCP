@@ -13,7 +13,7 @@ import pytest
 
 from satisfactory_mcp.domain.factories.labels import LabelStore
 from satisfactory_mcp.domain.factories.select import SelectorError, select_machines
-from satisfactory_mcp.domain.planning.store import Plan, PlanStore
+from satisfactory_mcp.domain.planning.stored.store import Plan, PlanStore
 from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.origin import resolve_origin

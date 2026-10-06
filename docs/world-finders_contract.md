@@ -156,7 +156,7 @@ categories, every count in the reply counts only what is returned, and `hidden_s
 how many categories were dropped. Node routes take no `spoilers`: a locked node is always sent,
 flagged, and the page fades it (§8.1).
 
-`resource` takes an item name or class id, resolved by `domain/planning/scenario.resolve_item`
+`resource` takes an item name or class id, resolved by `domain/planning/solver/scenario.resolve_item`
 (the tools' `_item_id`). `near`, `to` and `at` take the place vocabulary of `resolve_origin`
 (`x,y` metres, `me`, a factory label, `node:`, `slab:`, `chain:`, `pipe:`, `plan:`).
 

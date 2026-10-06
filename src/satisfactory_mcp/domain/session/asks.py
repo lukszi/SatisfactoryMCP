@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ... import config
 from ...core import atomic, filelock, schema
-from ..planning.planlog import PlanLog, PlanLogError
+from ..planning.stored.planlog import PlanLog, PlanLogError
 
 __all__ = [
     "ABOUT_KINDS",

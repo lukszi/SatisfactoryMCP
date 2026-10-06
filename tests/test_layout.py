@@ -14,7 +14,7 @@ from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp.core.gamedata.footprint import FOUNDATION_M, extract_footprint
 from satisfactory_mcp.domain.planning.layout import LOGISTICS_FLOOR_M, build_layout
-from satisfactory_mcp.domain.planning.optimize import MW, Scenario, solve
+from satisfactory_mcp.domain.planning.solver.optimize import MW, Scenario, solve
 
 pytestmark = pytest.mark.integration
 
@@ -270,8 +270,8 @@ def test_fluid_head_names_what_the_floor_order_costs(game, state):
     On a measured oil plan it made every fluid climb -- water four floors at 11,500
     m3/min. The model has no terrain, so the cost is reported rather than optimised."""
     from satisfactory_mcp.domain.planning.layout import build_layout, fluid_head
-    from satisfactory_mcp.domain.planning.optimize import solve
-    from satisfactory_mcp.domain.planning.scenario import build_scenario
+    from satisfactory_mcp.domain.planning.solver.optimize import solve
+    from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
     req = build_scenario(
         game,
@@ -298,7 +298,7 @@ def test_the_three_planning_tools_share_one_pipeline(game, state):
 
     from satisfactory_mcp.domain.planning import diff_service as diff_mod
     from satisfactory_mcp.domain.planning import layout_service as layout_mod
-    from satisfactory_mcp.domain.planning import report as report_mod
+    from satisfactory_mcp.domain.planning.readout import report as report_mod
     from satisfactory_mcp.interfaces.mcp.tools import planning
 
     # All three reach the pipeline through a domain service -- prepare plus the world
@@ -327,7 +327,7 @@ def test_prepare_renders_nothing(game, state):
     as a headline plus notes and the TOOL decides how to show it."""
     import inspect
 
-    from satisfactory_mcp.domain.planning import prepare as prepare_mod
+    from satisfactory_mcp.domain.planning.solver import prepare as prepare_mod
 
     src = inspect.getsource(prepare_mod)
     assert "render." not in src
@@ -353,7 +353,7 @@ def test_every_planning_tool_reports_a_bad_request_the_same_way(game, state, kwa
 def test_prepare_is_usable_without_the_mcp_layer(game, state):
     """The point of the extraction: a script or a batch planner can solve without going
     through a tool, and gets the same guards."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     good = prepare(
         game, state, {"objective": "max_mw", "sources": list(REFERENCE_FIELD), "exports": ["MW"]}
@@ -372,7 +372,7 @@ def test_prepare_is_usable_without_the_mcp_layer(game, state):
 
 @pytest.fixture(scope="module")
 def oil_solution(game, state):
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     return prepare(
         game,
@@ -450,7 +450,7 @@ def test_a_block_is_packed_not_multiplied(game, state):
     edges, so `n x found` is an upper bound. plan_layout used to charge exactly that, and
     the water-siting note had independently grown its own copy of the same arithmetic --
     two places to be wrong instead of one."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     prepared = prepare(
         game,
@@ -478,7 +478,7 @@ def test_a_block_is_packed_not_multiplied(game, state):
 def test_packing_shrank_the_site_rather_than_the_machine_count(game, state):
     """The correction must move floor area only. A foundation change that also moved
     machines would mean it had eaten part of the plan."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     prepared = prepare(
         game,

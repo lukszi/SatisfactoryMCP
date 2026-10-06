@@ -10,15 +10,16 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 
-from ...core.gamedata.model import GameData
-from ..spatial import nodes as nodes_mod
-from ..world import pin
-from ..world.state import WorldState
-from . import payback, provenance
-from .layout import chain_depth
-from .optimize import MW
+from ....core.gamedata.model import GameData
+from ...spatial import nodes as nodes_mod
+from ...world import pin
+from ...world.state import WorldState
+from ..layout import chain_depth
+from ..solver.optimize import MW
+from ..solver.scenario import build_scenario, shard_stock
+from ..stored import provenance
+from . import payback
 from .report import build_plan_report
-from .scenario import build_scenario, shard_stock
 
 __all__ = ["names_for", "production_graph", "solve_summary", "stamp_for"]
 

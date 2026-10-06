@@ -331,7 +331,7 @@ silently re-solved at defaults and schematised a different plan than the one it 
 to draw — **15,043 MW against 83,737**. Nothing in its output said arguments had been
 dropped, because from its own point of view none had.
 
-`planning/prepare.py` is that sequence, once. It returns a `PreparedPlan` carrying either a
+`planning/solver/prepare.py` is that sequence, once. It returns a `PreparedPlan` carrying either a
 solution or a `PlanFailure` of headline plus notes.
 
 **It renders nothing**, and a test asserts so. Wording stays with the tool because the three

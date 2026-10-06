@@ -14,10 +14,10 @@ from dataclasses import dataclass, replace
 from ...core.singleflight import Singleflight
 from ...core.text import plural
 from ..factories import health
-from ..planning import manage
 from ..planning.diff_service import match_scope
-from ..planning.planlog import PlanLog, PlanLogError
-from ..planning.prepare import prepare
+from ..planning.solver.prepare import prepare
+from ..planning.stored import manage
+from ..planning.stored.planlog import PlanLog, PlanLogError
 from ..spatial import nodes as nodes_mod
 from ..spatial import place, regions
 from ..world.headlift import head_lift

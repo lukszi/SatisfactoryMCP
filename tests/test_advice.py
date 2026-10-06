@@ -10,8 +10,8 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.advice import rules
 from satisfactory_mcp.domain.factories import health
-from satisfactory_mcp.domain.planning import manage
-from satisfactory_mcp.domain.planning.manage import PlanStatus
+from satisfactory_mcp.domain.planning.stored import manage
+from satisfactory_mcp.domain.planning.stored.manage import PlanStatus
 from satisfactory_mcp.domain.spatial import place
 
 

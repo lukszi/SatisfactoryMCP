@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ...core.gamedata.model import GameData
-from ..world.state import WorldState
+from ....core.gamedata.model import GameData
+from ...world.state import WorldState
+from ..solver.scenario import build_scenario
 from . import provenance as prov
 from .planlog import Actor, Commit, InvalidOp, NameTaken, PlanLog, Pushed, Stamp
-from .scenario import build_scenario
 
 __all__ = [
     "COPY_TRIES",

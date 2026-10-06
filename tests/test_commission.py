@@ -25,7 +25,7 @@ from conftest import REFERENCE_FIELD
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.commission import commission, track
 from satisfactory_mcp.domain.planning.diff import DiffReport, DiffRow, build_diff, group_key
-from satisfactory_mcp.domain.planning.prepare import prepare
+from satisfactory_mcp.domain.planning.solver.prepare import prepare
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning
 
@@ -567,7 +567,7 @@ def test_recalling_a_stored_plan_answers_which_stage_you_are_in(game, tmp_path, 
     """The headline case: `diff_vs_save(plan=...)` with no stage argument at all. A
     stored plan is what makes a stage number worth writing down, so recalling one turns
     the grouping on without being asked, and the caveat about loose numbering drops."""
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     saved = srv.plan_factory(save_as="stage-test", **SPIRE)

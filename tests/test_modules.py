@@ -15,8 +15,8 @@ import pytest
 from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.prepare import prepare
-from satisfactory_mcp.domain.planning.scenario import build_scenario
+from satisfactory_mcp.domain.planning.solver.prepare import prepare
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
 pytestmark = pytest.mark.integration
 

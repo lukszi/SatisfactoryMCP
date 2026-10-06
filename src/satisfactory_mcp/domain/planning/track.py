@@ -16,7 +16,6 @@ from ..spatial import nodes as nodes_mod
 from ..spatial.regions import load_regions
 from ..world.state import WorldState
 from . import built as built_mod
-from . import summary
 from .commission import (
     ENERGISED_CAVEAT,
     MONITORED_STATES,
@@ -28,7 +27,8 @@ from .commission import (
 )
 from .diff import _save_id
 from .diff_service import DEFAULT_HEADROOM, STORED_SOURCE, build_diff_report, default_headroom
-from .planlog import PlanState
+from .readout import summary
+from .stored.planlog import PlanState
 
 __all__ = [
     "CAP",
@@ -108,7 +108,9 @@ def site_line(site) -> str:
     if not site.has_footprint:
         return where + ", no footprint recorded"
     size = f"{_metres(site.width_m)} × {_metres(site.depth_m)} m"
-    source = {"layout": "from the plan layout", "given": "as given", "default": "by default"}.get(site.source, "")
+    source = {"layout": "from the plan layout", "given": "as given", "default": "by default"}.get(
+        site.source, ""
+    )
     return where + f", footprint {size}" + (f" {source}" if source else "")
 
 
@@ -532,7 +534,8 @@ def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
                 "x_m": _m(pos[0]) if pos else None,
                 "y_m": _m(pos[1]) if pos else None,
                 "mw": round(mw, 1),
-                "region": (regions.label_for(pos[0], pos[1]).name if regions and pos else None) or "",
+                "region": (regions.label_for(pos[0], pos[1]).name if regions and pos else None)
+                or "",
             }
         )
     if not found:

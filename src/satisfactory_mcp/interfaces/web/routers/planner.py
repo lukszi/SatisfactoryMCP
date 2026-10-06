@@ -20,9 +20,11 @@ from typing import Annotated, Any, NotRequired, TypedDict
 
 from fastapi import APIRouter, Body, Request
 
-from ....domain.planning import manage, summary, swaps
-from ....domain.planning.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
-from ....domain.planning.scenario import resolve_item
+from ....domain.planning.analysis import swaps
+from ....domain.planning.readout import summary
+from ....domain.planning.solver.scenario import resolve_item
+from ....domain.planning.stored import manage
+from ....domain.planning.stored.planlog import InvalidOp, PlanArgs, PlanLog, UnknownPlan
 from ....domain.session import focus, journal
 from ..serial import ActorBody, PlanOpBody, _actor_json, _fail, _state
 

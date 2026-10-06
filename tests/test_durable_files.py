@@ -33,7 +33,7 @@ from satisfactory_mcp.core import atomic
 from satisfactory_mcp.core.saveio import projection as projection_mod
 from satisfactory_mcp.domain.collectibles import table as collectibles_table
 from satisfactory_mcp.domain.factories.labels import LabelStore
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial import regions as regions_mod
 

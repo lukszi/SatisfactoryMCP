@@ -16,7 +16,7 @@ old framing ("irreversible") argued for exactly the opposite behaviour.
 
 from __future__ import annotations
 
-from ....domain.planning import advisor
+from ....domain.planning.analysis import advisor
 from ....presenters.text import primitives as render
 from ..app import AsOf, Limit, _state, mcp
 

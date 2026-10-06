@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ... import config
 from ...core import atomic, filelock, schema
-from ..planning.planlog import PlanLog, PlanLogError
+from ..planning.stored.planlog import PlanLog, PlanLogError
 from ..spatial import geo
 from ..spatial import nodes as nodes_mod
 
@@ -261,7 +261,7 @@ def _field(world: _World, node: dict) -> tuple[list[str], tuple[float, float]]:
 def _in_plan(st, state, rid: str) -> bool:
     if rid in state.args.required:
         return True
-    from ..planning import summary
+    from ..planning.readout import summary
 
     try:
         solved = summary.solve_summary(st.game, st, state.kwargs())

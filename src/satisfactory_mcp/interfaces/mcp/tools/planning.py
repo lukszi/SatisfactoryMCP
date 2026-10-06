@@ -23,16 +23,22 @@ from ....core.schema import NewerSchema
 from ....domain import advice
 from ....domain.advice import store as advice_store
 from ....domain.factories.select import SelectorError
-from ....domain.planning import bom as bom_mod
-from ....domain.planning import compare, manage, payback, summary
-from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
-from ....domain.planning.carrier import resolve_tiers
+from ....domain.planning.analysis import bom as bom_mod
+from ....domain.planning.analysis import recipe_routes
+from ....domain.planning.analysis.sensitivity import sweep_unlocks
 from ....domain.planning.commission import partition_id
 from ....domain.planning.commission_service import build_commission_report
 from ....domain.planning.diff_service import build_diff_report, plan_progress
 from ....domain.planning.layout_service import LayoutReport, build_layout_report
-from ....domain.planning.planlog import (
+from ....domain.planning.readout import payback, summary
+from ....domain.planning.readout.report import build_plan_report
+from ....domain.planning.solver.carrier import resolve_tiers
+from ....domain.planning.solver.prepare import prepare
+from ....domain.planning.solver.scenario import build_scenario
+from ....domain.planning.stored import manage
+from ....domain.planning.stored import provenance as prov
+from ....domain.planning.stored.planlog import (
     Actor,
     AlreadyUndone,
     BaseRevRequired,
@@ -48,19 +54,15 @@ from ....domain.planning.planlog import (
     describe_op,
     factory_words,
 )
-from ....domain.planning.prepare import prepare
-from ....domain.planning.recall import (
+from ....domain.planning.stored.recall import (
     PLAN_DEFAULTS,
     UNSAVED_OVERRIDE,
     overrides_of,
     plan_ref,
     with_overrides,
 )
-from ....domain.planning.recall import recall_plan as _plan_kwargs
-from ....domain.planning.report import build_plan_report
-from ....domain.planning.scenario import build_scenario
-from ....domain.planning.sensitivity import sweep_unlocks
-from ....domain.planning.store import PLAN_ARGS
+from ....domain.planning.stored.recall import recall_plan as _plan_kwargs
+from ....domain.planning.stored.store import PLAN_ARGS
 from ....domain.session import asks, journal, pins
 from ....domain.world import pin
 from ....presenters.text import advice as advice_text
@@ -1806,7 +1808,7 @@ def compare_recipe_options(
     iid = _item_id(item)
     if iid is None:
         return f"no item matching {item!r}"
-    result = compare.compare_routes(
+    result = recipe_routes.compare_routes(
         g,
         st,
         iid,

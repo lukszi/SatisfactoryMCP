@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from ...core.gamedata.model import GameData, pretty_class
 from ...domain.factories import identity as fidentity
-from ...domain.planning.planlog import Actor
+from ...domain.planning.stored.planlog import Actor
 from ...domain.spatial import regions as spatial_regions
 from ...domain.world.state import WorldState
 

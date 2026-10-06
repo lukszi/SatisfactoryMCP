@@ -8,11 +8,11 @@ hundreds of MW, and none of that is visible in the numbers themselves.
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ...domain.planning import payback
-from ...domain.planning.optimize import MW
-from ...domain.planning.report import PlanFactoryReport
-from ...domain.planning.slice import grid_import_mw, linear_gap_note
-from ...domain.planning.summary import power_view
+from ...domain.planning.readout import payback
+from ...domain.planning.readout.report import PlanFactoryReport
+from ...domain.planning.readout.slice import grid_import_mw, linear_gap_note
+from ...domain.planning.readout.summary import power_view
+from ...domain.planning.solver.optimize import MW
 from ...domain.world.state import WorldState
 from . import primitives as render
 

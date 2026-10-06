@@ -39,13 +39,13 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 from scipy.optimize import linprog
 
-from ...core import solverlane
-from ...core.gamedata.constants import AWESOME_SINK_MW
-from ...core.gamedata.model import GameData
-from ...core.gamedata.unlocks import granted_by_label
-from ..world.state import WorldState
-from .optimize import MW, Process, Scenario, Solution, build_processes, solve
-from .scenario import build_scenario, resolve_item
+from ....core import solverlane
+from ....core.gamedata.constants import AWESOME_SINK_MW
+from ....core.gamedata.model import GameData
+from ....core.gamedata.unlocks import granted_by_label
+from ...world.state import WorldState
+from ..solver.optimize import MW, Process, Scenario, Solution, build_processes, solve
+from ..solver.scenario import build_scenario, resolve_item
 
 __all__ = ["Blocker", "Fix", "Loop", "Outlet", "Report", "analyse"]
 

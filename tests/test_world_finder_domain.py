@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp.domain.collectibles import service
-from satisfactory_mcp.domain.planning.scenario import resolve_item
+from satisfactory_mcp.domain.planning.solver.scenario import resolve_item
 from satisfactory_mcp.domain.spatial import finder, geo, maplink, place, regions
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.world import conduits

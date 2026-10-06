@@ -14,8 +14,8 @@ import json
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from ... import config
-from ...core import schema
+from .... import config
+from ....core import schema
 
 __all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore"]
 

@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
 from ....domain import settings as store
-from ....domain.planning.planlog import Actor
+from ....domain.planning.stored.planlog import Actor
 from ..serial import ActorBody, _fail, _settings_json
 
 __all__ = ["router"]

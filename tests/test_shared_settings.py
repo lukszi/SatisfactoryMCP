@@ -9,7 +9,7 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.core.schema import NewerSchema
 from satisfactory_mcp.domain import settings
-from satisfactory_mcp.domain.planning.planlog import Actor
+from satisfactory_mcp.domain.planning.stored.planlog import Actor
 
 PAGE = Actor("page", "", 1)
 CHAT = Actor("chat", "claude-code", 2)

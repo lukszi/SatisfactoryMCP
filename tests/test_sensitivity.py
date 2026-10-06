@@ -15,8 +15,8 @@ from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.gamedata.unlocks import SOURCE_OF_TYPE
-from satisfactory_mcp.domain.planning.scenario import build_scenario
-from satisfactory_mcp.domain.planning.sensitivity import sweep_unlocks
+from satisfactory_mcp.domain.planning.analysis.sensitivity import sweep_unlocks
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 from satisfactory_mcp.domain.world.state import WorldState
 
 pytestmark = pytest.mark.integration
@@ -68,7 +68,7 @@ def test_most_candidates_change_nothing_and_that_is_reported(sweep):
 def test_the_baseline_matches_the_plan_it_is_measured_against(sweep, game, live):
     """A delta against a different baseline is not a delta. This is the mistake advisor.py
     documents: feeding raw_caps instead of real extractors inflated a baseline by 86%."""
-    from satisfactory_mcp.domain.planning.prepare import prepare
+    from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
     plan = prepare(game, live, dict(SPIRE))
     assert sweep.baseline == pytest.approx(plan.solution.objective_value)
@@ -78,7 +78,7 @@ def test_gain_is_positive_for_better_whichever_way_the_objective_points(game, li
     """`objective_value` is sign-normalised for max/min, so a min_* objective needs
     flipping -- otherwise a recipe that halves raw usage reports a large NEGATIVE gain and
     sorts last, which is exactly backwards."""
-    from satisfactory_mcp.domain.planning.sensitivity import _better
+    from satisfactory_mcp.domain.planning.analysis.sensitivity import _better
 
     assert _better("max_mw", 100.0) == 100.0
     assert _better("min_raw", 100.0) == -100.0
@@ -197,7 +197,7 @@ def test_an_unsolved_candidate_is_not_filed_with_the_worthless_ones():
     """Both report gain 0, and only one of them means "worth nothing here". `after`
     falls back to the baseline when the counterfactual does not solve, because there is
     no other number to fall back to -- so the flag, not the gain, has to separate them."""
-    from satisfactory_mcp.domain.planning.sensitivity import UnlockDelta, UnlockSweep
+    from satisfactory_mcp.domain.planning.analysis.sensitivity import UnlockDelta, UnlockSweep
 
     def delta(name: str, ok: bool) -> UnlockDelta:
         return UnlockDelta(
@@ -220,7 +220,7 @@ def test_an_unsolved_candidate_is_not_filed_with_the_worthless_ones():
 def test_an_infeasible_candidate_is_marked_rather_than_left_at_zero(game, monkeypatch):
     """It printed nothing at all: gain 0 drops it out of the movers, so a candidate that
     could not be measured was indistinguishable from one measured and found irrelevant."""
-    from satisfactory_mcp.domain.planning import sensitivity
+    from satisfactory_mcp.domain.planning.analysis import sensitivity
     from satisfactory_mcp.interfaces.mcp.tools import planning as tool
 
     real = sensitivity.sweep_unlocks

@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ...core.gamedata.constants import WATER_EXTRACTOR_WARN_AT
-from ...core.gamedata.model import GameData
-from ..world.state import WorldState
-from .optimize import MW, build_processes
-from .prepare import PreparedPlan, prepare
-from .scenario import resolve_item
+from ....core.gamedata.constants import WATER_EXTRACTOR_WARN_AT
+from ....core.gamedata.model import GameData
+from ...world.state import WorldState
+from ..solver.optimize import MW, build_processes
+from ..solver.prepare import PreparedPlan, prepare
+from ..solver.scenario import resolve_item
 from .slice import PlanSlice, slice_of
 
 __all__ = ["PlanFactoryReport", "build_plan_report"]

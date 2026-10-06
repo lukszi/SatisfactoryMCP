@@ -20,8 +20,8 @@ import pytest
 from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.prepare import prepare
 from satisfactory_mcp.domain.planning.sites import partition
+from satisfactory_mcp.domain.planning.solver.prepare import prepare
 from satisfactory_mcp.domain.world.state import WorldState
 
 pytestmark = pytest.mark.integration

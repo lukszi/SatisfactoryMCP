@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from ...core.schema import NewerSchema
 from ...core.singleflight import Singleflight
 from .. import settings
-from ..planning.planlog import PlanLog, PlanLogError
+from ..planning.stored.planlog import PlanLog, PlanLogError
 from . import rules, store
 from .rules import KINDS, PER_KIND, SEVERITIES, TONE, VISIBLE, WORDS, Advisory, Spot
 

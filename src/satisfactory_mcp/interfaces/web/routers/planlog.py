@@ -1,6 +1,6 @@
 """``/api/plans`` writes and ``/api/plans/{key}``: read a plan at a version, push edits to it.
 
-Every write goes through ``domain/planning/planlog.py``, as the MCP tools do, past the write
+Every write goes through ``domain/planning/stored/planlog.py``, as the MCP tools do, past the write
 guard (``guard.py``), and carries the ``base_rev`` it was read at. A conflict is a 409 whose
 body says what changed since, so the page can put a chip on the control that collided.
 docs/planner_slice_contract.md §11 is the specification; ``pin:`` members are rewritten to
@@ -23,8 +23,10 @@ from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....core.gamedata.model import GameData
-from ....domain.planning import manage, summary, swaps
-from ....domain.planning.planlog import (
+from ....domain.planning.analysis import swaps
+from ....domain.planning.readout import summary
+from ....domain.planning.stored import manage
+from ....domain.planning.stored.planlog import (
     Actor,
     AlreadyUndone,
     Commit,

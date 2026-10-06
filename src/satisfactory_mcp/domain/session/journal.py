@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from ... import config
-from ..planning.planlog import Actor
+from ..planning.stored.planlog import Actor
 
 __all__ = ["KINDS", "append", "files", "read", "set_writer", "tail", "writer_name"]
 

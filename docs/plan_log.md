@@ -1,6 +1,6 @@
 # The plan log
 
-How `domain/planning/planlog.py` stores plans. The specification is
+How `domain/planning/stored/planlog.py` stores plans. The specification is
 [planner_slice_contract.md](planner_slice_contract.md) §2–§5 and §7; this note records where
 the code had to choose something the contract leaves open, and why.
 

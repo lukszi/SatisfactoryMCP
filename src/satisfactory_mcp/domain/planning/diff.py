@@ -42,8 +42,8 @@ from ..spatial import geo
 from ..spatial import nodes as nodes_mod
 from ..world.state import WorldState
 from .layout import chain_depth
-from .optimize import MW, Solution
-from .scenario import PlanRequest
+from .solver.optimize import MW, Solution
+from .solver.scenario import PlanRequest
 
 __all__ = [
     "NEIGHBOUR_RADIUS_M",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from satisfactory_mcp.domain.planning.optimize import (
+from satisfactory_mcp.domain.planning.solver.optimize import (
     MW,
     Process,
     Scenario,
@@ -52,7 +52,7 @@ def test_duplicate_process_id_is_fatal(game, monkeypatch):
     """A duplicate pid merges two columns and yields a plausible, mass-balanced,
     WRONG answer -- exactly the bug that made one miner produce both coal and
     sulfur. It must raise, not warn."""
-    import satisfactory_mcp.domain.planning.optimize as opt
+    import satisfactory_mcp.domain.planning.solver.optimize as opt
 
     dupe = Process(pid="same", kind="recipe", label="a", rates={}, mw=0.0)
     monkeypatch.setattr(opt, "recipe_processes", lambda sc: [dupe, dupe])

@@ -12,9 +12,9 @@ from pydantic import Field
 
 from ....core.gamedata import search
 from ....core.gamedata.unlocks import granted_by_label
-from ....domain.planning import swaps
-from ....domain.planning.planlog import PlanLog
-from ....domain.planning.recall import plan_ref
+from ....domain.planning.analysis import swaps
+from ....domain.planning.stored.planlog import PlanLog
+from ....domain.planning.stored.recall import plan_ref
 from ....domain.session import journal
 from ....domain.world import pin as save_pin
 from ....presenters.text import primitives as render
@@ -64,7 +64,7 @@ def recipe_detail(recipe_id: str) -> str:
     that buys nothing -- `match_recipes` already does exactly this resolution for
     `exclude_recipes`.
     """
-    from ....domain.planning.scenario import find_recipe
+    from ....domain.planning.solver.scenario import find_recipe
 
     g = game()
     r, hits = find_recipe(g, recipe_id)

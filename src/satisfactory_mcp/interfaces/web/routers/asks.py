@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
-from ....domain.planning.planlog import Actor
+from ....domain.planning.stored.planlog import Actor
 from ....domain.session import asks as ask_store
 from ....domain.session import journal
 from ..serial import _fail, _state

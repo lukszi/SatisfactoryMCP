@@ -11,8 +11,8 @@ copies, and the copy that was forgotten would be the tool that answered silently
 
 from __future__ import annotations
 
+from .. import siting as siting_mod
 from . import provenance as prov
-from . import siting as siting_mod
 
 #: The declared default of every stored planning argument. Needed because MCP fills
 #: defaults in before the tool sees them, so "objective" always arrives as "max_mw" and
@@ -88,7 +88,7 @@ def plan_ref(st, plan: str | None) -> tuple[str | None, str]:
 
     Raises ``KeyError`` with the refusal, as an unknown plan name does.
     """
-    from ..session import pins
+    from ...session import pins
 
     n = pins.parse(plan)
     if n is None:

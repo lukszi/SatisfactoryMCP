@@ -16,7 +16,7 @@ from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.domain.planning.layout import build_layout, fluid_head, order_stages_by_head
-from satisfactory_mcp.domain.planning.prepare import prepare
+from satisfactory_mcp.domain.planning.solver.prepare import prepare
 
 pytestmark = pytest.mark.integration
 

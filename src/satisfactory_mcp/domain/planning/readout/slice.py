@@ -30,8 +30,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from ...core.gamedata.constants import AWESOME_SINK_MW, shards_for_clock
-from ...core.gamedata.model import GameData
+from ....core.gamedata.constants import AWESOME_SINK_MW, shards_for_clock
+from ....core.gamedata.model import GameData
 
 __all__ = ["PlanSlice", "ShardRow", "SloopRow", "grid_import_mw", "linear_gap_note", "slice_of"]
 

@@ -216,7 +216,7 @@ class WorldState:
     @cached_property
     def plans(self):
         """Live plans saved for this world, read-only; ``planlog.PlanLog`` writes them."""
-        from ..planning.planlog import PlanLog
+        from ..planning.stored.planlog import PlanLog
 
         return PlanLog(self.world_id, self.header.get("session_name") or "").view()
 

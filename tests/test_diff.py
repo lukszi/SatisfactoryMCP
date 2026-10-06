@@ -24,8 +24,8 @@ from satisfactory_mcp.domain.planning.diff import (
     _reclock_note,
     build_diff,
 )
-from satisfactory_mcp.domain.planning.optimize import solve
-from satisfactory_mcp.domain.planning.scenario import build_scenario
+from satisfactory_mcp.domain.planning.solver.optimize import solve
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.presenters.text import primitives as render
 

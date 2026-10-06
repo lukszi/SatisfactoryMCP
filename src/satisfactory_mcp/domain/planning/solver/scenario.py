@@ -15,17 +15,17 @@ from dataclasses import dataclass, field
 from dataclasses import replace as replace_scenario
 from typing import TYPE_CHECKING
 
-from ...core.gamedata.constants import WATER_EXTRACTOR_CAP_ASSUMED
-from ...core.gamedata.model import GameData, Recipe
-from ..spatial import nodes as nodes_mod
-from ..spatial.select import Selection, select_nodes
+from ....core.gamedata.constants import WATER_EXTRACTOR_CAP_ASSUMED
+from ....core.gamedata.model import GameData, Recipe
+from ...spatial import nodes as nodes_mod
+from ...spatial.select import Selection, select_nodes
+from .. import siting as siting_mod
+from ..stored.planlog import is_power
 from . import prices as prices_mod
-from . import siting as siting_mod
 from .optimize import MW, Scenario
-from .planlog import is_power
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
-    from ..world.state import WorldState
+    from ...world.state import WorldState
 
 __all__ = [
     "EXPORT_HELP",
@@ -115,7 +115,7 @@ def select_for(game: GameData, state: WorldState, sources: list[str] | None) -> 
     direction selector into a cone from the player, so "north" would stop meaning the
     northern half of the map and start meaning "north of where I am standing".
 
-    ``planning.provenance`` re-resolves through here too: a staleness check taking any
+    ``stored.provenance`` re-resolves through here too: a staleness check taking any
     other route would measure a field the plan does not plan over.
     """
     table = nodes_mod.load_nodes()
@@ -168,7 +168,7 @@ def _inherits(value) -> bool:
 
 
 def _shared() -> dict:
-    from .. import settings
+    from ... import settings
 
     try:
         return settings.read()["values"]

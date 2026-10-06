@@ -30,9 +30,9 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import LinearConstraint, milp
 
-from ...core import solverlane
-from ...core.gamedata.constants import AWESOME_SINK_MW, shards_for_clock
-from ...core.gamedata.model import GameData
+from ....core import solverlane
+from ....core.gamedata.constants import AWESOME_SINK_MW, shards_for_clock
+from ....core.gamedata.model import GameData
 from .carrier import carrier_for
 
 __all__ = [

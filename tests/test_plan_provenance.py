@@ -19,10 +19,10 @@ import json
 
 import pytest
 
-from satisfactory_mcp.domain.planning import provenance as prov
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
-from satisfactory_mcp.domain.planning.recall import PLAN_DEFAULTS, recall_plan
-from satisfactory_mcp.domain.planning.store import Plan, PlanStore
+from satisfactory_mcp.domain.planning.stored import provenance as prov
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.recall import PLAN_DEFAULTS, recall_plan
+from satisfactory_mcp.domain.planning.stored.store import Plan, PlanStore
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 
 
@@ -253,7 +253,7 @@ def test_a_state_that_cannot_resolve_selectors_claims_nothing(table):
 
 
 def test_the_record_round_trips_through_disk(tmp_path, monkeypatch, table):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     world = _World()
@@ -273,7 +273,7 @@ def test_the_record_round_trips_through_disk(tmp_path, monkeypatch, table):
 
 def test_a_plan_file_written_before_this_existed_still_loads(tmp_path, monkeypatch):
     """The exact file shape on the owner's machine: no `provenance` key anywhere."""
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     (tmp_path / "OLD.json").write_text(
@@ -305,7 +305,7 @@ def test_a_plan_file_written_before_this_existed_still_loads(tmp_path, monkeypat
 def test_saving_over_a_plan_rewrites_its_record_with_the_arguments(tmp_path, monkeypatch, table):
     """A record describing the PREVIOUS sources would be checked against the new ones and
     report drift that is really an edit."""
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     log = PlanLog("TESTWORLD")
@@ -349,7 +349,7 @@ def test_the_saved_reference_plan_degrades_rather_than_crashing(planned):
 @pytest.mark.integration
 def test_a_plan_saved_now_records_its_field_and_recalls_silently(tmp_path, monkeypatch, live):
     from satisfactory_mcp import server as srv
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path)
     out = srv.plan_factory(

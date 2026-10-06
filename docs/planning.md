@@ -56,7 +56,7 @@ and it can say "impossible", which a naive model never does.
 nothing about the resource end, and that asymmetry was expensive: a rocket-fuel plan returned a bare
 INFEASIBLE, `explain_byproducts` correctly reported no byproduct was stuck, and the real cause —
 **Nitrogen Gas exists only as resource-well satellites, and this world has no Pressurizer** — had to be
-recovered by hand by cross-referencing a node scan against a recipe. `planning/supply.py` closes it.
+recovered by hand by cross-referencing a node scan against a recipe. `planning/analysis/supply.py` closes it.
 
 Three things had to be fixed for an INFEASIBLE response to say anything at all:
 
@@ -274,7 +274,7 @@ naive figure now appears only as the thing being corrected.
 ### 8.2e Plan slices, and the shard bill
 
 Every plan-level question that is not "solve it" is the same operation: take some of the
-processes and total their power, flows, shards and sloop slots. `planning/slice.py` is that
+processes and total their power, flows, shards and sloop slots. `planning/readout/slice.py` is that
 operation; the shard bill is one call to it and commissioning will be it in a loop.
 
 **Two power figures, and the difference is not rounding.** `mw_linear` is what the LP
@@ -1018,7 +1018,7 @@ exactly two lines; binary rounding makes it three) and nobody arrives at it inde
 so one copy came from the other. They had already drifted on `capacity <= 0`: layout
 returned 1 line, optimize returned `None`. Unreachable — capacity comes from a tier lookup
 with a non-zero fallback — but a divergence inside duplicated code is a bug waiting for the
-day it becomes reachable. Now `planning/carrier.py`, resolved toward 1, because the count
+day it becomes reachable. Now `planning/solver/carrier.py`, resolved toward 1, because the count
 feeds block splitting and `None` would need a guard at every use.
 
 **Centroid and spread — fixed, six sites.** `graph/identity.py` and `graph/query.py`

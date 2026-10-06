@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import planlog
-from satisfactory_mcp.domain.planning.planlog import (
+from satisfactory_mcp.domain.planning.stored import planlog
+from satisfactory_mcp.domain.planning.stored.planlog import (
     Actor,
     AlreadyUndone,
     BaseRevRequired,
@@ -888,7 +888,7 @@ def test_free_name_is_the_one_check_for_a_plan_name(plans, plan):
 
 _WRITER = """
 import sys
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 key, tag, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
 log = PlanLog("W")
 for i in range(n):
@@ -903,7 +903,7 @@ def test_two_processes_writing_at_once_lose_nothing(tmp_path, monkeypatch):
     env = {
         **os.environ,
         "SATISFACTORY_USER_DATA": str(tmp_path),
-        "PYTHONPATH": str(Path(planlog.__file__).resolve().parents[3]),
+        "PYTHONPATH": str(Path(planlog.__file__).resolve().parents[4]),
     }
     procs = [
         subprocess.Popen([sys.executable, "-c", _WRITER, key, tag, "25"], env=env)

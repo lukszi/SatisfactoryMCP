@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ...core.gamedata.model import GameData
-from ..world.state import WorldState
-from . import supply
+from ....core.gamedata.model import GameData
+from ...world.state import WorldState
+from ..analysis import supply
 from .optimize import Solution, free_lunch_audit, solve
 from .scenario import PlanRequest, build_scenario
 
@@ -71,7 +71,7 @@ def prepare(
     ``diagnose`` runs the supply probe on failure, costing one extra solve and only on the
     infeasible path.
     """
-    from ..spatial.select import SELECTOR_HELP
+    from ...spatial.select import SELECTOR_HELP
     from .scenario import EXPORT_HELP
 
     request = build_scenario(

@@ -18,10 +18,10 @@ import pytest
 from conftest import REFERENCE_FIELD
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.optimize import build_processes, solve
-from satisfactory_mcp.domain.planning.prepare import prepare
-from satisfactory_mcp.domain.planning.scenario import build_scenario
-from satisfactory_mcp.domain.planning.slice import slice_of
+from satisfactory_mcp.domain.planning.readout.slice import slice_of
+from satisfactory_mcp.domain.planning.solver.optimize import build_processes, solve
+from satisfactory_mcp.domain.planning.solver.prepare import prepare
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
 pytestmark = pytest.mark.integration
 
@@ -272,7 +272,7 @@ def test_the_budget_changes_the_plan_id(game, state):
 def test_plan_layout_takes_the_same_budget(game):
     """plan_layout dropping a solve-shaping argument is exactly how it once schematised
     a different plant than the one it was asked to draw."""
-    from satisfactory_mcp.domain.planning.store import PLAN_ARGS
+    from satisfactory_mcp.domain.planning.stored.store import PLAN_ARGS
 
     assert "sloops" in PLAN_ARGS
     out = srv.plan_layout(sloops=16, limit=3, **SPIRE)

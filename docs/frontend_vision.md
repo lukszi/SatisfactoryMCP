@@ -281,7 +281,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
   Where logic sits in a tool body, move it to the domain first. MCP §10.1e names the cases
   (`search_resource_nodes`, `factory_query` table-building); both tools and routes then share it.
 - Typed `response_model` per route; regenerate `api-schema.d.ts` (docs/web-wire.md).
-- Solves go through `planning/prepare.py`, the one sequence all planning tools share.
+- Solves go through `planning/solver/prepare.py`, the one sequence all planning tools share.
 - Save reads through the injected loader and the single-flight cache, as today.
 - Every route accepts `as_of=`. Refuse on mismatch with the same four messages as MCP.
 
@@ -296,7 +296,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/stock` | GET | `domain/world/inventory.py` | four piles and every place; **built** (§10) |
 | `/api/progress/{milestones,mam,phase}` | GET | `domain/progression/ladder.py`, `phases.py` | **built**; one ladder, three views |
 | `/api/progress/harddrives` | GET | `domain/progression/harddrives.py` | **built**, under `/api/progress/` |
-| `/api/harddrives/{id}/advice` | POST | `domain/planning/advisor.py` | slow |
+| `/api/harddrives/{id}/advice` | POST | `domain/planning/analysis/advisor.py` | slow |
 | `/api/progress/shards`, `/api/progress/sloops` | GET | `domain/progression/shards.py` | **built**, under `/api/progress/` |
 | `/api/gamedata/{items,recipes,recipe,alternates,unlocked}`, `/api/search` | GET | `core/gamedata` | **built** (§12); no save needed except HAVE/LOCKED; `buildings` still open |
 | `/api/nodes/fields`, `/api/sites/rank` | GET | `domain/spatial/select.py`, `ranking.py` | |
@@ -304,7 +304,7 @@ Factories > Proposals → pick one → outline on map → **Name** dialog previe
 | `/api/select/nodes`, `/api/select/machines` | GET | the two selector modules | live preview counts |
 | `/api/plan/solve`, `/bom`, `/compare`, `/byproducts` | POST | `prepare.py`, `bom.py`, `compare.py`, `byproducts.py` | body = plan kwargs |
 | `/api/plan/layout`, `/diff`, `/commission`, `/unlocks` | POST | `layout_service`, `diff_service`, `commission_service`, `sensitivity` | `/unlocks` slow |
-| `/api/plans` (CRUD) + `/api/plans/{n}/site` | POST/PATCH/DELETE | `domain/planning/store.py`, `siting.py` | W; watcher already publishes store events |
+| `/api/plans` (CRUD) + `/api/plans/{n}/site` | POST/PATCH/DELETE | `domain/planning/stored/store.py`, `siting.py` | W; watcher already publishes store events |
 | `/api/labels` (CRUD) | POST/PATCH/DELETE | `domain/factories/labels.py` | W; POST, PATCH and DELETE **built** (§9) |
 
 Before any W route: the Host/Origin allowlist (roadmap §4.5). Local writes from a hostile
@@ -1068,7 +1068,7 @@ Phase 5 of §6. It is a read-only surface over the game data, marked against the
 ### 12.1 What was built
 
 - **Routes.** Each calls the function its MCP tool calls. `find_items` and `makers_of` in
-  `core/gamedata/search.py` and `find_recipe` in `domain/planning/scenario.py` moved out of
+  `core/gamedata/search.py` and `find_recipe` in `domain/planning/solver/scenario.py` moved out of
   the tool bodies so both surfaces share them.
 
   | Route | Tool | Needs a save |

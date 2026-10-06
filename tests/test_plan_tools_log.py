@@ -15,7 +15,7 @@ import pytest
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.filelock import LockTimeout
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.interfaces.mcp import app
 from satisfactory_mcp.interfaces.mcp.tools import planning
@@ -38,7 +38,7 @@ class _World:
 
 @pytest.fixture
 def log(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
@@ -316,7 +316,7 @@ def _iron_field(st):
 
 
 def test_save_as_stores_what_source_and_required_pins_stand_for(pinned):
-    from satisfactory_mcp.domain.planning import summary
+    from satisfactory_mcp.domain.planning.readout import summary
     from satisfactory_mcp.domain.session import pins
 
     field = _iron_field(pinned)
@@ -437,7 +437,7 @@ def test_a_chat_save_never_touches_the_stored_headroom(pinned, monkeypatch):
 
 @pytest.fixture
 def scratch(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")

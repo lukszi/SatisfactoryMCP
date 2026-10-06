@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from ...core import atomic, filelock, schema
+from ....core import atomic, filelock, schema
 from .store import PLAN_ARGS, Plan, PlanStore
 
 __all__ = [
@@ -588,7 +588,7 @@ def describe_op(op: dict) -> str:
 
 def _site_words(op: dict) -> str:
     """``set at 1,476, -2,098 (Rocky Desert)``, ``moved 1,503 m west, turned 30°``, ``cleared``."""
-    from . import siting
+    from .. import siting
 
     value, was = op.get("value"), op.get("was")
     if not value:
@@ -603,7 +603,7 @@ def _site_words(op: dict) -> str:
 
 def _region(x_m: float, y_m: float) -> str:
     try:
-        from ..spatial.regions import load_regions
+        from ...spatial.regions import load_regions
 
         name = load_regions().label_for(x_m * 100.0, y_m * 100.0).name
     except Exception:
@@ -736,7 +736,7 @@ def _check_op(op: dict) -> dict:
             raise _fail(f"{kind} does not apply to {name!r}")
         return {"op": kind, "field": name, "member": _member(name, op.get("member"))}
     if kind == "site":
-        from . import siting
+        from .. import siting
 
         value = op.get("value")
         if value is None:

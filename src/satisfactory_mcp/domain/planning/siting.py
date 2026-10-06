@@ -41,7 +41,7 @@ from ..spatial.origin import PLAYER_WORDS, resolve_origin
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ..world.state import WorldState
-    from .store import Plan
+    from .stored.store import Plan
 
 __all__ = [
     "FOOTPRINT_MAX_M",
@@ -746,7 +746,7 @@ def build_siting(
     else:
         sol = solution
         if sol is None:
-            from .prepare import prepare
+            from .solver.prepare import prepare
 
             prepared = prepare(game, st, dict(plan_kwargs or {}), diagnose=False)
             if prepared.failure is not None:
@@ -759,8 +759,8 @@ def build_siting(
             raise ValueError(
                 "cannot derive a footprint from an empty plan -- pass footprint='WxD' in metres"
             )
-        from .carrier import resolve_tiers
         from .layout import build_layout
+        from .solver.carrier import resolve_tiers
 
         tiers = resolve_tiers(game, st, "", "")
         kwargs = plan_kwargs or {}

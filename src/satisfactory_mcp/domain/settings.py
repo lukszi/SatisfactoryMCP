@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from .. import config
 from ..core import atomic, filelock, schema
-from .planning.planlog import Actor
+from .planning.stored.planlog import Actor
 
 __all__ = [
     "SCHEMA",

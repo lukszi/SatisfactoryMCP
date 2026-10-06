@@ -6,13 +6,14 @@ both call ``swap_deltas``; the deltas are facts and the options are never ordere
 
 from __future__ import annotations
 
-from ...core.gamedata import search
-from ...core.gamedata.model import GameData, Recipe
-from ...core.gamedata.unlocks import granted_by
-from ..world.state import WorldState
-from . import manage, summary
-from .planlog import PlanArgs, PlanState
-from .scenario import match_recipes
+from ....core.gamedata import search
+from ....core.gamedata.model import GameData, Recipe
+from ....core.gamedata.unlocks import granted_by
+from ...world.state import WorldState
+from ..readout import summary
+from ..solver.scenario import match_recipes
+from ..stored import manage
+from ..stored.planlog import PlanArgs, PlanState
 
 __all__ = ["STATUS_ORDER", "makers", "replaced_required", "swap_deltas"]
 

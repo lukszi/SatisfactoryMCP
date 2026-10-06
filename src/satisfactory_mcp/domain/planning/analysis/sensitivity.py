@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ...core.gamedata.model import Recipe
-from ..world.state import WorldState
+from ....core.gamedata.model import Recipe
+from ...world.state import WorldState
+from ..solver.optimize import Solution
 from .advisor import _needed_buildings, _solve_with
-from .optimize import Solution
 
 __all__ = ["UnlockDelta", "sweep_unlocks"]
 

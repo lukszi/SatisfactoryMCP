@@ -90,7 +90,7 @@ average too.
 
 ## 3. Prices
 
-All derived per save in `planning/prices.py` and cached per projection
+All derived per save in `planning/solver/prices.py` and cached per projection
 (`prices.prices_for`). Nothing here is stored in the plan log; only the last scarcity tiers
 are stored, beside it (§3.1).
 

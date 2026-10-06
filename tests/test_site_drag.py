@@ -13,8 +13,9 @@ import pytest
 from conftest import FIXTURE_WORLD, FIXTURES
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import planlog, site_preview, siting
-from satisfactory_mcp.domain.planning.planlog import Actor, InvalidOp, PlanLog, describe_op
+from satisfactory_mcp.domain.planning import site_preview, siting
+from satisfactory_mcp.domain.planning.stored import planlog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, InvalidOp, PlanLog, describe_op
 from satisfactory_mcp.domain.planning.trunks import Trunk, TrunkMember
 from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.world.state import WorldState

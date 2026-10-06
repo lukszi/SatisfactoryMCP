@@ -17,7 +17,7 @@ from fastapi import APIRouter, Query, Request
 
 from ....core.text import ago
 from ....domain.collectibles import service as collectibles_service
-from ....domain.planning.scenario import resolve_item
+from ....domain.planning.solver.scenario import resolve_item
 from ....domain.spatial import finder, geo, place, ranking
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions

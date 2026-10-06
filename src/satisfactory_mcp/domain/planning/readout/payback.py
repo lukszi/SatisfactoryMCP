@@ -6,8 +6,8 @@ per stop by ``optimize._payback_curve``; this turns those readouts into what a p
 
 from __future__ import annotations
 
-from ...core.gamedata.model import GameData
-from .optimize import PAYBACK_STOPS
+from ....core.gamedata.model import GameData
+from ..solver.optimize import PAYBACK_STOPS
 
 __all__ = ["MAX_HOURS", "STOPS", "hours_text", "no_overclock", "trade_text", "view"]
 

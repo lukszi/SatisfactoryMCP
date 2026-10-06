@@ -346,7 +346,7 @@ mtime is newer than `migrated.json.at`.
 
 ## 7. Python store API
 
-Module `satisfactory_mcp/domain/planning/planlog.py` (store stage). All of it is importable
+Module `satisfactory_mcp/domain/planning/stored/planlog.py` (store stage). All of it is importable
 without game data.
 
 ```python
@@ -695,7 +695,7 @@ class ActivityResponse(TypedDict): now: float; entries: list[ActivityRow]
 ```
 
 - `SolveResponse` is built by a new domain function
-  `domain/planning/summary.py: solve_summary(g, st, kwargs: dict, required: list[str]) -> dict`
+  `domain/planning/readout/summary.py: solve_summary(g, st, kwargs: dict, required: list[str]) -> dict`
   (web-owned), from `build_plan_report`.
 - `blockers` names required/banned entries from the §6 refusals.
 - `cause` is one player sentence saying why an infeasible request has no answer (a source
@@ -869,9 +869,9 @@ lead before touching it. This contract is read-only for all four.
 
 | Group | Owns (create or edit) |
 |---|---|
-| **store** (next stage, before the three) | `src/satisfactory_mcp/domain/planning/planlog.py` (new); `domain/planning/store.py`; `domain/planning/recall.py`; `domain/planning/scenario.py` (G4 `required`); `domain/planning/prepare.py` and `domain/planning/report.py` only as far as G4's infeasibility note needs; `domain/factories/edits.py`; `domain/world/state.py` (`plans` property); `src/satisfactory_mcp/config.py` (`activity_dir`, `ui_dir`); `tests/test_planlog*.py` (new); `tests/test_plan_store.py`; `tests/test_required_recipes.py` (new); `tests/test_label_edits.py` (repoint only) |
+| **store** (next stage, before the three) | `src/satisfactory_mcp/domain/planning/stored/planlog.py` (new); `domain/planning/stored/store.py`; `domain/planning/stored/recall.py`; `domain/planning/solver/scenario.py` (G4 `required`); `domain/planning/solver/prepare.py` and `domain/planning/readout/report.py` only as far as G4's infeasibility note needs; `domain/factories/edits.py`; `domain/world/state.py` (`plans` property); `src/satisfactory_mcp/config.py` (`activity_dir`, `ui_dir`); `tests/test_planlog*.py` (new); `tests/test_plan_store.py`; `tests/test_required_recipes.py` (new); `tests/test_label_edits.py` (repoint only) |
 | **tools** | `src/satisfactory_mcp/interfaces/mcp/tools/planning.py`; `interfaces/mcp/tools/factories.py` (pass `actor` to `edits.rename` only); `interfaces/mcp/tools/spatial.py` only if a `plan:` recall there needs the view; `interfaces/mcp/app.py` (`instructions`, actor helper); `src/satisfactory_mcp/server.py` (`journal.set_writer("chat")`); `src/satisfactory_mcp/domain/session/journal.py` (new); `presenters/text/**` only where a planning presenter must print the version; `tests/test_plan_tools_log.py` (new); `tests/test_journal.py` (new); `tests/test_ui_context.py` (new); `tests/test_surface.py`; `tests/test_plan_provenance.py`, `tests/test_planner_gaps.py`, `tests/test_siting.py` (only where they call the plan tools' write paths); `docs/mcp-surface.md` |
-| **web** | `src/satisfactory_mcp/interfaces/web/routers/planner.py` (new), `routers/planlog.py` (new, if split); `routers/plans.py`; `routers/naming.py` (pass `actor` to `edits.rename` only); `routers/events.py`; `routers/__init__.py` (append only); `interfaces/web/watch.py`; `interfaces/web/app.py` (lifespan: `journal.set_writer("web")`, tailer start); `interfaces/web/serial.py` (only if a shape is shared by two routers); `src/satisfactory_mcp/domain/planning/summary.py` (new); `src/satisfactory_mcp/domain/session/focus.py` (new); `frontend/src/api-schema.d.ts` (regenerated, never hand-edited); `tests/test_web_planner.py` (new), `tests/test_web_plans.py`, `tests/test_web_events.py`, `tests/test_watch.py`, `tests/test_web_naming.py`, `tests/test_focus.py` (new); `docs/web-wire.md` |
+| **web** | `src/satisfactory_mcp/interfaces/web/routers/planner.py` (new), `routers/planlog.py` (new, if split); `routers/plans.py`; `routers/naming.py` (pass `actor` to `edits.rename` only); `routers/events.py`; `routers/__init__.py` (append only); `interfaces/web/watch.py`; `interfaces/web/app.py` (lifespan: `journal.set_writer("web")`, tailer start); `interfaces/web/serial.py` (only if a shape is shared by two routers); `src/satisfactory_mcp/domain/planning/readout/summary.py` (new); `src/satisfactory_mcp/domain/session/focus.py` (new); `frontend/src/api-schema.d.ts` (regenerated, never hand-edited); `tests/test_web_planner.py` (new), `tests/test_web_plans.py`, `tests/test_web_events.py`, `tests/test_watch.py`, `tests/test_web_naming.py`, `tests/test_focus.py` (new); `docs/web-wire.md` |
 | **page** | `src/satisfactory_mcp/interfaces/web/frontend/src/planner*.ts` (new); `frontend/src/dashboard.ts` (Planner tab wiring only); `frontend/src/settings.ts` (`follow` entry); `frontend/src/sse.ts` (`plans`/`activity` listeners); `frontend/src/api.ts` (PUT, 409-returning push); `frontend/src/api-shapes.ts` (aliases for §11.2 names); `frontend/src/main.ts` (FEATURES line, only if a planner module registers a fetch); `frontend/src/style.css`; `frontend/src/toast.ts` (only if a toast needs an action button); `frontend/index.html` (only if the tab needs markup) |
 
 **Hand-over rule.** The store stage leaves the suite green. Any existing test it breaks by

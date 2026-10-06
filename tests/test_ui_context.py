@@ -13,7 +13,7 @@ import time
 import pytest
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.session import asks, journal
 from satisfactory_mcp.interfaces.mcp.tools import planning
 
@@ -37,7 +37,7 @@ class _World:
 
 @pytest.fixture
 def ctx(tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import store as store_mod
+    from satisfactory_mcp.domain.planning.stored import store as store_mod
 
     monkeypatch.setattr(store_mod.config, "plans_dir", lambda: tmp_path / "plans")
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")

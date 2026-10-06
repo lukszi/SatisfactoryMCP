@@ -12,9 +12,9 @@ import copy
 import pytest
 
 from satisfactory_mcp.core.gamedata.model import Recipe
-from satisfactory_mcp.domain.planning import advisor
-from satisfactory_mcp.domain.planning.optimize import MW, Scenario, Solution, solve
-from satisfactory_mcp.domain.planning.scenario import build_scenario, resolve_item
+from satisfactory_mcp.domain.planning.analysis import advisor
+from satisfactory_mcp.domain.planning.solver.optimize import MW, Scenario, Solution, solve
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario, resolve_item
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.select import select_nodes
 from satisfactory_mcp.domain.world.state import WorldState

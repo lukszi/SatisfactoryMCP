@@ -13,12 +13,12 @@ import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ...core.gamedata.model import GameData
-from ..spatial.select import split_spec
-from .scenario import select_for
+from ....core.gamedata.model import GameData
+from ...spatial.select import split_spec
+from ..solver.scenario import select_for
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
-    from ..world.state import WorldState
+    from ...world.state import WorldState
     from .store import Plan
 
 __all__ = [

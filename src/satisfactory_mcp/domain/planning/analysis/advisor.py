@@ -16,7 +16,7 @@ Methodology rules, each learned from a wrong answer during design:
 * Deltas ramp, they do not step. Near a binding constraint a coarse sweep reports a
   flat delta and then a cliff, both wrong.
 * **The baseline must be the same quantity plan_factory reports.** Every scenario
-  here is built by ``planning.scenario.build_scenario``, the one construction path,
+  here is built by ``solver.scenario.build_scenario``, the one construction path,
   so raw material arrives through real extractor processes on real nodes -- power
   charged, count capped by node availability. Feeding the same basket in as free
   ``raw_caps`` instead inflated the northern baseline from 92,269 MW to 171,882 MW.
@@ -29,11 +29,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from ...core.gamedata.model import GameData, Recipe
-from ..spatial.select import SELECTOR_HELP
-from ..world.state import WorldState
-from .optimize import MW, Scenario, Solution, solve
-from .scenario import PlanRequest, build_scenario
+from ....core.gamedata.model import GameData, Recipe
+from ...spatial.select import SELECTOR_HELP
+from ...world.state import WorldState
+from ..solver.optimize import MW, Scenario, Solution, solve
+from ..solver.scenario import PlanRequest, build_scenario
 
 __all__ = [
     "CandidateVerdict",

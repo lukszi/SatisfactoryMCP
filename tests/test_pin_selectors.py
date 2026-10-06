@@ -6,8 +6,8 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.factories import select as gsel
-from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
-from satisfactory_mcp.domain.planning.recall import plan_ref, recall_plan
+from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.planning.stored.recall import plan_ref, recall_plan
 from satisfactory_mcp.domain.session import pins
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.origin import resolve_origin

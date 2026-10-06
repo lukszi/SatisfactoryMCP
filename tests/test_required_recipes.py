@@ -9,8 +9,8 @@ from collections import defaultdict
 
 import pytest
 
-from satisfactory_mcp.domain.planning.prepare import prepare
-from satisfactory_mcp.domain.planning.scenario import build_scenario
+from satisfactory_mcp.domain.planning.solver.prepare import prepare
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 
 pytestmark = pytest.mark.integration
 

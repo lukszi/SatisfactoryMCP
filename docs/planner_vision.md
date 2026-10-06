@@ -44,20 +44,20 @@ Section numbers like §8.4 refer to [planning.md](planning.md).
 
 | Step | Domain code | Tool | What it really does | Limits that matter to a UI |
 |---|---|---|---|---|
-| Goal | `planning/scenario.py` `build_scenario` | `plan_factory` | Objectives: `max_mw`, `max_item`, `min_raw`, `min_machines`, `min_power`. "X per minute of Y" = `exports=[Y]` + `export_minimums={Y: X}` (the `design_factory` prompt uses `min_machines`) | There is no single "target rate" argument. `exports` **replaces** `[MW]`, and exporting MW forbids drawing from the grid (§8.9) |
+| Goal | `planning/solver/scenario.py` `build_scenario` | `plan_factory` | Objectives: `max_mw`, `max_item`, `min_raw`, `min_machines`, `min_power`. "X per minute of Y" = `exports=[Y]` + `export_minimums={Y: X}` (the `design_factory` prompt uses `min_machines`) | There is no single "target rate" argument. `exports` **replaces** `[MW]`, and exporting MW forbids drawing from the grid (§8.9) |
 | Scope | `spatial/select.py`, `spatial/nodes.py` | same | Selectors pick nodes. `annotate` marks tapped/reachable. Water is a cap (`WATER_EXTRACTOR_CAP_ASSUMED` or `water_extractors`) | The LP picks extractor **counts per (building, resource, purity)**, not nodes. Only `trunks` names nodes |
 | Recipes | `scenario.match_recipes`, `_ban_processes` | same | Every unlocked part recipe is allowed. Patterns ban or keep. A pattern that matches nothing is refused | No "use recipe R for item I". Only global bans and keeps |
-| Solve | `planning/optimize.py` `solve` | same | Two-phase LP. Every item balances to exactly zero. The duplicate-pid guard and the free-lunch audit run on every solve (§8.3) | Clocks are **derived**. `clocks` and `extractor_clocks` offer modes; there is no per-row clock |
+| Solve | `planning/solver/optimize.py` `solve` | same | Two-phase LP. Every item balances to exactly zero. The duplicate-pid guard and the free-lunch audit run on every solve (§8.3) | Clocks are **derived**. `clocks` and `extractor_clocks` offer modes; there is no per-row clock |
 | Machines | `optimize.emit` | same | `ceil(x)` machines at `x/ceil(x)`. Extractor modes are folded. Negligible rows are omitted but still counted | – |
-| Bill | `planning/slice.py`, `report.py` | same | Exact MW, shard bill, sloop use, flows with line counts, buildings never built, overclocked rows, zero exports | The plan draws from the grid freely unless MW is exported (`grid_import_mw = 1e6`) |
-| Byproducts | `planning/byproducts.py` `analyse` | `explain_byproducts` | 2 + up to 8 solves. Names stuck items, whether they can be sunk, and legal consumers | Takes **8 of the 18 plan arguments** (gap G6) |
-| Routes | `planning/compare.py`, `bom.py` | `compare_recipe_options`, `bom` | Whole map, per item, in isolation | Do not see the plan's sources or exclusions |
+| Bill | `planning/readout/slice.py`, `report.py` | same | Exact MW, shard bill, sloop use, flows with line counts, buildings never built, overclocked rows, zero exports | The plan draws from the grid freely unless MW is exported (`grid_import_mw = 1e6`) |
+| Byproducts | `planning/analysis/byproducts.py` `analyse` | `explain_byproducts` | 2 + up to 8 solves. Names stuck items, whether they can be sunk, and legal consumers | Takes **8 of the 18 plan arguments** (gap G6) |
+| Routes | `planning/analysis/recipe_routes.py`, `bom.py` | `compare_recipe_options`, `bom` | Whole map, per item, in isolation | Do not see the plan's sources or exclusions |
 | Layout | `layout.py`, `layout_service.py`, `trunks.py`, `materials.py`, `sites.py`, `fit.py` | `plan_layout` | Blocks by line count, one bus per item, floors by SCC-condensed depth, deck cap, head ordering, trunks, materials, site partition, fit to a platform | A **schematic**: no world coordinates, no belt routing (§8.5) |
 | Site | `planning/siting.py` | `site_plan`, `plan_factory site_at=` | A *record* of origin, yaw and footprint. `survey` counts what stands on the pad. Terrain is read at the pad | Never fed to the LP. Not part of `plan_id` |
 | Where to mine | `spatial/ranking.py` | `rank_build_sites` | Fields for **one resource**, with a weighted score and every raw term | Siting by the whole bill is not built (roadmap §2.1) |
 | Startup | `planning/commission.py` | `commission_plan` | Waves under nameplate headroom; generators refund power | A startup order, not a build order (§8.5d) |
 | Track | `diff.py`, `diff_service.py`, `commission.track` | `diff_vs_save` | Matches machines by identity. Actions UNPAUSE → SETRECIPE → BUILD. Water is a range. Stages appear for a stored plan | "Running" can be proven. "Unpowered" never is |
-| Unlock value | `planning/sensitivity.py` | `rank_unlocks` | One counterfactual solve per locked alternate | – |
+| Unlock value | `planning/analysis/sensitivity.py` | `rank_unlocks` | One counterfactual solve per locked alternate | – |
 | Context | `progression/shards.py` etc. | `power_shards`, `somersloops` | Held, committed and free | – |
 | Built factories | `factories/query.py`, `cohere.py`, `trace.py`, `floors.py` | `factory_query`, `propose_factories`, `select_machines`, `trace_upstream`, `factory_floors` | Built flows (inputs in deficit), clusters, traces, decks | Inputs to planning, not planning itself |
 

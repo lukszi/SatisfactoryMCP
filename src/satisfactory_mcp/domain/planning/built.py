@@ -21,8 +21,8 @@ from ..spatial.origin import parse_near, resolve_origin
 from ..world.state import WorldState
 from . import siting as siting_mod
 from .diff import DiffReport, _group_processes, machine_rate
-from .planlog import PlanState
-from .prepare import PreparedPlan
+from .solver.prepare import PreparedPlan
+from .stored.planlog import PlanState
 
 __all__ = [
     "AUTO",

@@ -9,8 +9,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from ...core.gamedata.model import GameData
-from ..world.state import WorldState
+from ....core.gamedata.model import GameData
+from ...world.state import WorldState
 
 __all__ = ["Carrier", "TierChoice", "carrier_for", "resolve_tiers"]
 
