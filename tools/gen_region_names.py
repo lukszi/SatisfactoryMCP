@@ -10,6 +10,7 @@ a confidence grid of its own shape: 256 m for ``/api/regions`` and 64 m for
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import UTC, datetime
@@ -319,7 +320,7 @@ def encode_grid_rows(
     ]
 
 
-def main() -> int:
+def _parse_args() -> argparse.Namespace:
     parser = base_parser(__doc__.splitlines()[0])
     parser.add_argument(
         "-o", "--out", type=Path, default=DEST, help=f"destination (default {DEST})"
@@ -329,7 +330,25 @@ def main() -> int:
         action="store_true",
         help="rewrite a table this run cannot show was cut from the installed build",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def _grid_meta(fine_nx: int, fine_ny: int) -> dict:
+    return {
+        "x0": GRID_X0,
+        "y0": GRID_Y0,
+        "cell": GRID_CELL,
+        "nx": GRID_NX,
+        "ny": GRID_NY,
+        "void": VOID,
+        "fine_cell": FINE_CELL,
+        "fine_nx": fine_nx,
+        "fine_ny": fine_ny,
+    }
+
+
+def main() -> int:
+    args = _parse_args()
 
     versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
     import texture2ddecoder as decoder
@@ -419,17 +438,7 @@ def main() -> int:
             fine_shape=(fine_nx, fine_ny),
             versions=versions,
         ),
-        "grid_meta": {
-            "x0": GRID_X0,
-            "y0": GRID_Y0,
-            "cell": GRID_CELL,
-            "nx": GRID_NX,
-            "ny": GRID_NY,
-            "void": VOID,
-            "fine_cell": FINE_CELL,
-            "fine_nx": fine_nx,
-            "fine_ny": fine_ny,
-        },
+        "grid_meta": _grid_meta(fine_nx, fine_ny),
         "legend": {letter: name for name, letter in sorted(letters.items(), key=lambda kv: kv[1])},
         # Four grids in two pairs: each confidence is indexed exactly like the grid it is
         # named after, and the two pairs are different shapes.

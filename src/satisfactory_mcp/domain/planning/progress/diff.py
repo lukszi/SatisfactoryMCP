@@ -441,24 +441,9 @@ def _row_for(
     need = job.machines
     plan_clock = _plan_clock(job)
     need_rate = need * plan_clock
-    records = _machines_doing(job, index)
     notes = _Notes()
-    build_max: int | None = None
-    have_min: int | None = None
-    targets: list[tuple[str, float]] = []
-    near: list[dict] = []
-
-    if job.kind == "extractor" and not _node_backed(job, index):
-        # Nothing to join against, so fall back to counting the class. That cannot say
-        # which pump serves which plant, so the answer has to be an interval.
-        records, near, build_max, have_min = _class_count_range(
-            job, index, matched_points, need_rate, plan_clock
-        )
-        notes.chat.append("no node link (OQ5), low bound counts every one built")
-        if len(near) != len(records):
-            notes.page.append("not tied to a node, so built is a range")
-    elif job.kind == "extractor":
-        targets = _free_node_targets(job, index, anchor, need - len(records))
+    built = _count_built(job, index, anchor, matched_points, need_rate, plan_clock, notes)
+    records, have_min = built.records, built.have_min
 
     have_rate = sum(machine_rate(r) for r in records)
     have = whole_machines(have_rate, plan_clock)
@@ -469,28 +454,10 @@ def _row_for(
     reassigned_machines = _claim_idle(job, index, matched_points, claimed_idle, build)
     reassigned = len(reassigned_machines)
     build -= reassigned
-    if build_max is not None:
-        build_max = max(build, build_max)
+    build_max = None if built.build_max is None else max(build, built.build_max)
 
     verb, count = _choose_verb(unpause, reassigned, build)
-
-    if verb != "BUILD" and build > 0:
-        notes.chat.append(
-            f"then BUILD {build}..{build_max}" if build_max else f"then BUILD {build}"
-        )
-    if reassigned:
-        away = [
-            d
-            for d in (_nearest_m(_xy(r), [anchor] if anchor else []) for r in reassigned_machines)
-            if d
-        ]
-        mean = sum(away) / len(away) if away else None
-        idle = f"{reassigned} idle {plural(job.building, reassigned)}"
-        where = f" {mean / 1000:.1f}km out" if mean is not None else ""
-        notes.chat.append(f"{idle}{where}, no output today")
-        notes.page.append(
-            f"{idle}{f' {mean:,.0f} m out' if mean is not None else ''}, no output today"
-        )
+    _note_actions(notes, job, anchor, verb, build, build_max, reassigned_machines)
 
     if len(paused) > len(unpause) and (have_min is None or have_min >= need):
         spare = len(paused) - len(unpause)
@@ -499,25 +466,11 @@ def _row_for(
     if have_min is None:
         reclock = _reclock_note([*records, *reassigned_machines], build, job)
     else:
-        reclock = _reclock_note(records[: len(near)], build_max or 0, job)
+        reclock = _reclock_note(records[: len(built.near)], build_max or 0, job)
     if reclock:
         # Not a change the plan asks for, so it never becomes the verb.
         notes.both(reclock)
-
-    if len(job.labels) > 1:
-        notes.both(" + ".join(f"{n} on {lbl.rsplit(' on ', 1)[-1]}" for lbl, n in job.labels))
-    elif job.kind == "recipe" and have and verb == "BUILD":
-        # Pre-empts "but I already own 36 Refineries": 31 of them are making copper,
-        # plastic and alumina, and counting them would tell the player to break those.
-        busy = sum(
-            len(v)
-            for (cls, rid), v in index.by_recipe.items()
-            if cls == job.building_id and rid != job.recipe
-        )
-        if busy:
-            notes.both(f"{busy} {plural(job.building, busy)} busy on other recipes")
-    if job.building_id and state.built(job.building_id) == 0:
-        notes.chat.append("NEW BUILDING TYPE")
+    _note_context(notes, state, job, index, have, verb)
 
     added = build + len(unpause) + reassigned
     per_machine = job.mw / job.machines if job.machines else 0.0
@@ -546,7 +499,7 @@ def _row_for(
             if d is not None
         ),
         reuse=reassigned,
-        targets=targets,
+        targets=built.targets,
         note="; ".join(notes.chat),
         page_note="; ".join(notes.page),
         delta_mw=added * per_machine,
@@ -555,6 +508,95 @@ def _row_for(
         plan_clock=plan_clock,
         have_clocks=[machine_rate(r) for r in records],
     )
+
+
+@dataclass
+class _Built:
+    """The machines that count toward one job, and the interval when identity is missing."""
+
+    records: list[dict]
+    near: list[dict] = field(default_factory=list)
+    build_max: int | None = None
+    have_min: int | None = None
+    targets: list[tuple[str, float]] = field(default_factory=list)
+
+
+def _count_built(
+    job: BuildJob,
+    index: _SaveIndex,
+    anchor: tuple[float, float] | None,
+    matched_points: list[tuple[float, float]],
+    need_rate: float,
+    plan_clock: float,
+    notes: _Notes,
+) -> _Built:
+    """What already does this job, by identity; a range for extractors with no node link."""
+    records = _machines_doing(job, index)
+    if job.kind == "extractor" and not _node_backed(job, index):
+        # Nothing to join against, so fall back to counting the class. That cannot say
+        # which pump serves which plant, so the answer has to be an interval.
+        records, near, build_max, have_min = _class_count_range(
+            job, index, matched_points, need_rate, plan_clock
+        )
+        notes.chat.append("no node link (OQ5), low bound counts every one built")
+        if len(near) != len(records):
+            notes.page.append("not tied to a node, so built is a range")
+        return _Built(records, near, build_max, have_min)
+    if job.kind == "extractor":
+        return _Built(
+            records, targets=_free_node_targets(job, index, anchor, job.machines - len(records))
+        )
+    return _Built(records)
+
+
+def _note_actions(
+    notes: _Notes,
+    job: BuildJob,
+    anchor: tuple[float, float] | None,
+    verb: str,
+    build: int,
+    build_max: int | None,
+    reassigned_machines: list[dict],
+) -> None:
+    """The builds that follow a cheaper verb, and the idle machines it reassigns."""
+    reassigned = len(reassigned_machines)
+    if verb != "BUILD" and build > 0:
+        notes.chat.append(
+            f"then BUILD {build}..{build_max}" if build_max else f"then BUILD {build}"
+        )
+    if reassigned:
+        away = [
+            d
+            for d in (_nearest_m(_xy(r), [anchor] if anchor else []) for r in reassigned_machines)
+            if d
+        ]
+        mean = sum(away) / len(away) if away else None
+        idle = f"{reassigned} idle {plural(job.building, reassigned)}"
+        where = f" {mean / 1000:.1f}km out" if mean is not None else ""
+        notes.chat.append(f"{idle}{where}, no output today")
+        notes.page.append(
+            f"{idle}{f' {mean:,.0f} m out' if mean is not None else ''}, no output today"
+        )
+
+
+def _note_context(
+    notes: _Notes, state: WorldState, job: BuildJob, index: _SaveIndex, have: int, verb: str
+) -> None:
+    """Which labels share the job, machines busy on other recipes, a first-ever building."""
+    if len(job.labels) > 1:
+        notes.both(" + ".join(f"{n} on {lbl.rsplit(' on ', 1)[-1]}" for lbl, n in job.labels))
+    elif job.kind == "recipe" and have and verb == "BUILD":
+        # Pre-empts "but I already own 36 Refineries": 31 of them are making copper,
+        # plastic and alumina, and counting them would tell the player to break those.
+        busy = sum(
+            len(v)
+            for (cls, rid), v in index.by_recipe.items()
+            if cls == job.building_id and rid != job.recipe
+        )
+        if busy:
+            notes.both(f"{busy} {plural(job.building, busy)} busy on other recipes")
+    if job.building_id and state.built(job.building_id) == 0:
+        notes.chat.append("NEW BUILDING TYPE")
 
 
 # ------------------------------------------------------------ cost, neighbours

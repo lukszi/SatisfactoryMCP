@@ -399,6 +399,16 @@ def hazard_context(position: Position, hazards: HazardWorld) -> dict:
 def hazard_context_meta(hazards: HazardWorld, rows: list[dict]) -> dict:
     """``_meta.hazard_context``: what each hazard key means, its sources, and its reach."""
     return {
+        **_hazard_key_meanings(),
+        "sources": _hazard_sources(hazards),
+        "reporting_radius_cm": HAZARD_RADIUS_CM,
+        "rows_touched": _rows_touched(rows),
+    }
+
+
+def _hazard_key_meanings() -> dict[str, str]:
+    """What each key of a row's ``hazard`` object means, and whether it is fact or geometry."""
+    return {
         "what": (
             "derived context, kept in each row's own 'hazard' object so it can never be "
             "mistaken for a placement. Nothing here is a fact about the collectible: it "
@@ -459,78 +469,80 @@ def hazard_context_meta(hazards: HazardWorld, rows: list[dict]) -> dict:
             "carries no mRadioactiveDecay of its own, so this is an empirical correlate "
             "-- the designers put nuclear hogs on uranium -- and not a modelled fact."
         ),
-        "sources": {
-            "hostile_placements": hazards.hostile_placements,
-            "passive_placements_excluded": hazards.passive_placements,
-            "creature_classes_whose_passivity_is_unknown": hazards.unknown_passivity,
-            "hostile_species": by_count(hazards.species),
-            "hostile_species_note": (
-                "placements, not creatures, and two kinds of key: a Desc_* is the "
-                "creature descriptor a BP_CreatureSpawner_C names, while a Char_* is a "
-                "creature the map places directly with no spawner around it. Both are "
-                "hostiles_nearby sources; only the first has an mSpawnData to say how "
-                "many creatures one placement holds."
-            ),
-            "creature_spawners_declaring_their_own_radius": hazards.spawn_radius_declared,
-            "creature_spawners_with_no_radius": hazards.spawn_radius_missing,
-            "creature_spawner_radius_cm": hazards.spawner_radius_cm,
-            "creature_spawner_radius_note": (
-                "the two counts above are BP_CreatureSpawner_C only -- the directly "
-                "placed Char_* hatchers are in class_declared_radius_cm below and are "
-                "not spawners. mSpawnRadius varies per placement, so the spread is here "
-                "rather than one number: 'N spawners declare a radius' says nothing "
-                "about how far those radii reach, and it is the radius that decides "
-                "spawns_here."
-            ),
-            "spore_flowers": hazards.spore_flowers,
-            "class_declared_radius_cm": hazards.class_declared_radius_cm,
-            "class_declared_radius_note": (
-                "per class, every distinct radius its placements declare and how many "
-                "placements there are. Per class because a single number was wrong in "
-                "both directions: the hatchers are TWO classes with different placement "
-                "counts, and one figure taken from whichever placement happened to be "
-                "read first spoke for both of them -- and it spoke wrongly, because "
-                "Char_BigCrabHatcher_C's class declares NO mDetectionRadius at all, so "
-                "its 151 placements can never contribute to spawns_here however close a "
-                "collectible sits. A radius_cm of [null] means exactly that: the class is "
-                "a hostiles_nearby source and not a containment test. distinct_radii > 1 "
-                "would mean the class does not have one radius; spawns_here would still "
-                "be right, since it tests every source against its own, while any single "
-                "number quoted for the class would be wrong."
-            ),
-            "gas_field_actors": hazards.gas_fields,
-            "gas_field_own_span_cm": hazards.gas_field_span_cm,
-            "gas_field_own_span_note": (
-                "how far the furthest pillar a BP_VolumeGas_01_C names in its own "
-                "mProximityPillarWorldLocations sits from the volume, over the volumes "
-                f"that populate it. The {HAZARD_RADIUS_CM:.0f} cm reporting horizon is "
-                "sized against this median rather than fitted to anything."
-            ),
-            "widest_declared_radius_cm": hazards.widest_declared_radius_cm,
-            "damage_over_time_volume_classes": by_count(hazards.damage_volume_classes),
-            "damage_over_time_volume_note": (
-                "FGDamageOverTimeVolume is a native map actor carrying an mDotClass, so "
-                "it is the obvious candidate for the gas channel. It is not one: these "
-                "are what its placements actually deal damage with, resolved per run, "
-                "and they are the box that kills a player who leaves the map."
-            ),
-            "widest_declared_radius_note": (
-                "the widest radius any source declares, and what the lookup grid is "
-                "sized to. It exceeds the reporting radius, so spawns_here can and does "
-                "fire further out than hostiles_nearby."
-            ),
-            "radioactive_sources_in_the_ground": hazards.uranium_sources,
-            "resource_classes_checked_for_radioactivity": hazards.resource_classes_checked,
-            "radioactive_resource_classes": hazards.radioactive_classes,
-            "deposits_with_no_resource_class": hazards.deposits_without_a_resource,
-            "deposits_note": (
-                "a deposit that does not serialise mOverrideResourceClass holds its "
-                "class default, which is null, so its resource is unknown rather than "
-                "assumed. Those deposits contribute no radiation."
-            ),
-        },
-        "reporting_radius_cm": HAZARD_RADIUS_CM,
-        "rows_touched": _rows_touched(rows),
+    }
+
+
+def _hazard_sources(hazards: HazardWorld) -> dict:
+    """The counts and declared radii behind the keys, each with what it can and cannot say."""
+    return {
+        "hostile_placements": hazards.hostile_placements,
+        "passive_placements_excluded": hazards.passive_placements,
+        "creature_classes_whose_passivity_is_unknown": hazards.unknown_passivity,
+        "hostile_species": by_count(hazards.species),
+        "hostile_species_note": (
+            "placements, not creatures, and two kinds of key: a Desc_* is the "
+            "creature descriptor a BP_CreatureSpawner_C names, while a Char_* is a "
+            "creature the map places directly with no spawner around it. Both are "
+            "hostiles_nearby sources; only the first has an mSpawnData to say how "
+            "many creatures one placement holds."
+        ),
+        "creature_spawners_declaring_their_own_radius": hazards.spawn_radius_declared,
+        "creature_spawners_with_no_radius": hazards.spawn_radius_missing,
+        "creature_spawner_radius_cm": hazards.spawner_radius_cm,
+        "creature_spawner_radius_note": (
+            "the two counts above are BP_CreatureSpawner_C only -- the directly "
+            "placed Char_* hatchers are in class_declared_radius_cm below and are "
+            "not spawners. mSpawnRadius varies per placement, so the spread is here "
+            "rather than one number: 'N spawners declare a radius' says nothing "
+            "about how far those radii reach, and it is the radius that decides "
+            "spawns_here."
+        ),
+        "spore_flowers": hazards.spore_flowers,
+        "class_declared_radius_cm": hazards.class_declared_radius_cm,
+        "class_declared_radius_note": (
+            "per class, every distinct radius its placements declare and how many "
+            "placements there are. Per class because a single number was wrong in "
+            "both directions: the hatchers are TWO classes with different placement "
+            "counts, and one figure taken from whichever placement happened to be "
+            "read first spoke for both of them -- and it spoke wrongly, because "
+            "Char_BigCrabHatcher_C's class declares NO mDetectionRadius at all, so "
+            "its 151 placements can never contribute to spawns_here however close a "
+            "collectible sits. A radius_cm of [null] means exactly that: the class is "
+            "a hostiles_nearby source and not a containment test. distinct_radii > 1 "
+            "would mean the class does not have one radius; spawns_here would still "
+            "be right, since it tests every source against its own, while any single "
+            "number quoted for the class would be wrong."
+        ),
+        "gas_field_actors": hazards.gas_fields,
+        "gas_field_own_span_cm": hazards.gas_field_span_cm,
+        "gas_field_own_span_note": (
+            "how far the furthest pillar a BP_VolumeGas_01_C names in its own "
+            "mProximityPillarWorldLocations sits from the volume, over the volumes "
+            f"that populate it. The {HAZARD_RADIUS_CM:.0f} cm reporting horizon is "
+            "sized against this median rather than fitted to anything."
+        ),
+        "widest_declared_radius_cm": hazards.widest_declared_radius_cm,
+        "damage_over_time_volume_classes": by_count(hazards.damage_volume_classes),
+        "damage_over_time_volume_note": (
+            "FGDamageOverTimeVolume is a native map actor carrying an mDotClass, so "
+            "it is the obvious candidate for the gas channel. It is not one: these "
+            "are what its placements actually deal damage with, resolved per run, "
+            "and they are the box that kills a player who leaves the map."
+        ),
+        "widest_declared_radius_note": (
+            "the widest radius any source declares, and what the lookup grid is "
+            "sized to. It exceeds the reporting radius, so spawns_here can and does "
+            "fire further out than hostiles_nearby."
+        ),
+        "radioactive_sources_in_the_ground": hazards.uranium_sources,
+        "resource_classes_checked_for_radioactivity": hazards.resource_classes_checked,
+        "radioactive_resource_classes": hazards.radioactive_classes,
+        "deposits_with_no_resource_class": hazards.deposits_without_a_resource,
+        "deposits_note": (
+            "a deposit that does not serialise mOverrideResourceClass holds its "
+            "class default, which is null, so its resource is unknown rather than "
+            "assumed. Those deposits contribute no radiation."
+        ),
     }
 
 

@@ -73,6 +73,13 @@ def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
 
     World-wide here and nowhere else, because a buffer and a pump belong to no machine set.
     """
+    buffer_chunks, buffer_notes = _buffer_section(st, window)
+    head_chunks, head_notes = _head_lift_sections(st, window)
+    return buffer_chunks + head_chunks, buffer_notes + head_notes + _pump_notes(st)
+
+
+def _buffer_section(st, window: render.Page) -> tuple[list[str], list[str]]:
+    """Fluid buffers holding too little to output at the rate they take in."""
     chunks: list[str] = []
     notes: list[str] = []
     throttled = throttled_buffers(st.projection, st.game)
@@ -98,6 +105,13 @@ def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
             "a buffer's head lift is the height of the fluid standing in it, so one "
             "holding less than 1.5 m of fluid outputs slower than it takes in, silently"
         )
+    return chunks, notes
+
+
+def _head_lift_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
+    """Crests above the head lift behind them, lines riding a buffer's head, unfed ports."""
+    chunks: list[str] = []
+    notes: list[str] = []
     head = headlift.head_lift(st.projection, st.game, st.graph)
     if head.faults:
         chunks.append(
@@ -165,6 +179,12 @@ def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
             "source at all -- rung (1) of the plumbing manual's order, a line to finish "
             "rather than a shortage, and not a head-lift fault: " + _named(named)
         )
+    return chunks, notes
+
+
+def _pump_notes(st) -> list[str]:
+    """Pipeline pumps on no wire, and those coupled to no pipe that went unchecked."""
+    notes: list[str] = []
     dark, unseen = unwired_pumps(st.projection, st.graph)
     if dark:
         notes.append(
@@ -177,7 +197,7 @@ def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
             f"{unseen} pipeline pump(s) are coupled to no pipe at all and were not "
             "checked for a wire"
         )
-    return chunks, notes
+    return notes
 
 
 def _sweep_report(st, window: render.Page) -> str:

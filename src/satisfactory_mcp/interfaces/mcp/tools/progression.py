@@ -18,6 +18,12 @@ from ..params import AsOf, Limit
 #: one. Adding a fourth here without teaching ``_select`` about it silently shows everything.
 LADDER_VIEWS = ("all", "todo", "affordable")
 
+SPENDABLE_NOTE = (
+    "cost is checked against spendable stock only: carried, storage containers "
+    "and the Dimensional Depot. Machine buffers do not count, and neither do the "
+    "crates on the ground -- a crate deletes itself once emptied"
+)
+
 
 def _select(
     rungs: list[Rung],
@@ -203,69 +209,9 @@ def power_shards(
     st = app.load_world(save, world, as_of)
     budget = st.shard_budget()
     per_shard = max(budget["shard_items"].values()) if budget["shard_items"] else 0.0
-    ceiling = max_clock(per_shard)
-
-    notes = []
-    if not budget["measured"]:
-        notes.append(
-            "[UNVERIFIED] this projection predates schema 9 and carries no "
-            "InventoryPotential data, so committed=0 means unknown, not zero"
-        )
-    notes.append(
-        f"a shard adds {render.num(per_shard)} max clock (mExtraPotential, from "
-        f"Docs.json) and a building takes {budget['slots_per_building']} of them, so "
-        f"max clock is {render.num(ceiling)}. The slot count is the only hardcoded "
-        "number here -- mPotentialShardSlots is 0 on every building in the dump. [WIKI]"
-    )
-    if budget["slugs"]:
-        held = ", ".join(
-            f"{render.num(s['held'])} {s['name']} x{s['each']:g}" for s in budget["slugs"]
-        )
-        notes.append(
-            f"craftable = uncrafted slugs carried, in storage containers or in the "
-            f"Dimensional Depot: {held}. The 1/2/5 ratios come from the Power Shard (1)/(2)/(5) "
-            "recipes, not from game knowledge. Craftable is POTENTIAL, not free -- "
-            "crafting is a manual step"
-        )
-
-    if budget["by_place"]:
-        where = "; ".join(
-            f"{place}: " + ", ".join(f"{render.num(v)} {k}" for k, v in sorted(held.items()))
-            for place, held in budget["by_place"].items()
-        )
-        notes.append(f"where they are -- {where}")
-
-    idle = sum(h["idle"] for h in budget["holders"])
-    if idle:
-        notes.append(
-            f"{idle} shard(s) sit in slots the current clock does not need. A shard "
-            "raises the MAXIMUM clock; the slider is set separately, so committed is "
-            "read from InventoryPotential and never derived from clock"
-        )
-
+    notes = _shard_notes(budget, per_shard)
     if plan_machines:
-        need_each = shards_for_clock(plan_clock, per_shard)
-        need = need_each * plan_machines
-        short = need - budget["free"]
-        line = (
-            f"plan: {plan_machines} machine(s) at clock {render.num(plan_clock)} needs "
-            f"{need_each} shard(s) each = {need}; free {render.num(budget['free'])}"
-        )
-        if short <= 0:
-            notes.append(line + " -> affordable now")
-        elif short <= budget["craftable"]:
-            # Craftable, not free: the slugs cover it but somebody has to press craft.
-            notes.append(
-                line + f" -> SHORT by {render.num(short)}, but "
-                f"{render.num(budget['craftable'])} more are craftable from slugs you "
-                "already hold, so it is affordable after crafting"
-            )
-        else:
-            notes.append(
-                line + f" -> SHORT by {render.num(short)}; even crafting every slug "
-                f"({render.num(budget['craftable'])}) leaves you "
-                f"{render.num(need - budget['potential'])} short"
-            )
+        notes.append(_shard_plan_note(budget, per_shard, plan_machines, plan_clock))
 
     window = render.page(limit, offset)
     rows = [
@@ -295,6 +241,74 @@ def power_shards(
     )
 
 
+def _shard_notes(budget: dict, per_shard: float) -> list[str]:
+    """What the shard budget rests on: the measurement, the slot count, slugs, idle slots."""
+    notes = []
+    if not budget["measured"]:
+        notes.append(
+            "[UNVERIFIED] this projection predates schema 9 and carries no "
+            "InventoryPotential data, so committed=0 means unknown, not zero"
+        )
+    notes.append(
+        f"a shard adds {render.num(per_shard)} max clock (mExtraPotential, from "
+        f"Docs.json) and a building takes {budget['slots_per_building']} of them, so "
+        f"max clock is {render.num(max_clock(per_shard))}. The slot count is the only hardcoded "
+        "number here -- mPotentialShardSlots is 0 on every building in the dump. [WIKI]"
+    )
+    if budget["slugs"]:
+        held = ", ".join(
+            f"{render.num(s['held'])} {s['name']} x{s['each']:g}" for s in budget["slugs"]
+        )
+        notes.append(
+            f"craftable = uncrafted slugs carried, in storage containers or in the "
+            f"Dimensional Depot: {held}. The 1/2/5 ratios come from the Power Shard (1)/(2)/(5) "
+            "recipes, not from game knowledge. Craftable is POTENTIAL, not free -- "
+            "crafting is a manual step"
+        )
+
+    if budget["by_place"]:
+        where = "; ".join(
+            f"{place}: " + ", ".join(f"{render.num(v)} {k}" for k, v in sorted(held.items()))
+            for place, held in budget["by_place"].items()
+        )
+        notes.append(f"where they are -- {where}")
+
+    idle = sum(h["idle"] for h in budget["holders"])
+    if idle:
+        notes.append(
+            f"{idle} shard(s) sit in slots the current clock does not need. A shard "
+            "raises the MAXIMUM clock; the slider is set separately, so committed is "
+            "read from InventoryPotential and never derived from clock"
+        )
+
+    return notes
+
+
+def _shard_plan_note(budget: dict, per_shard: float, machines: int, clock: float) -> str:
+    """Whether ``machines`` at ``clock`` fit the free shards, the craftable ones, or neither."""
+    need_each = shards_for_clock(clock, per_shard)
+    need = need_each * machines
+    short = need - budget["free"]
+    line = (
+        f"plan: {machines} machine(s) at clock {render.num(clock)} needs "
+        f"{need_each} shard(s) each = {need}; free {render.num(budget['free'])}"
+    )
+    if short <= 0:
+        return line + " -> affordable now"
+    if short <= budget["craftable"]:
+        # Craftable, not free: the slugs cover it but somebody has to press craft.
+        return (
+            line + f" -> SHORT by {render.num(short)}, but "
+            f"{render.num(budget['craftable'])} more are craftable from slugs you "
+            "already hold, so it is affordable after crafting"
+        )
+    return (
+        line + f" -> SHORT by {render.num(short)}; even crafting every slug "
+        f"({render.num(budget['craftable'])}) leaves you "
+        f"{render.num(need - budget['potential'])} short"
+    )
+
+
 @app.tool()
 def mam_research(
     show: Annotated[
@@ -320,55 +334,64 @@ def mam_research(
         return gone
     st = app.load_world(save, world, as_of)
 
-    g = st.game
     window = render.page(limit, offset, default=25)
     wanted = (show or "todo").strip().casefold()
     if wanted not in LADDER_VIEWS:
         return f"! unknown show {show!r}. Choose from: all, todo, affordable"
 
-    gates = {v: k for k, v in CAPABILITY_SCHEMATICS.items()}
-    ladder = SchematicLadder(game=g, unlocks=st.unlocks, inventory=st.inventory).rungs("EST_MAM")
+    ladder = SchematicLadder(game=st.game, unlocks=st.unlocks, inventory=st.inventory)
+    rungs = ladder.rungs("EST_MAM")
     ongoing = st.research.ongoing
-    shut = {r.schematic.cls: st.research.tree_locked(r.schematic.cls) for r in ladder}
-    outstanding = [r for r in ladder if not r.done]
-    n_todo = len(outstanding)
+    shut = {r.schematic.cls: st.research.tree_locked(r.schematic.cls) for r in rungs}
+    outstanding = [r for r in rungs if not r.done]
     n_running = sum(1 for r in outstanding if r.schematic.cls in ongoing)
     n_shut = sum(1 for r in outstanding if shut[r.schematic.cls])
-
-    rows = []
     # Neither an in-flight node nor one in a shut tree can be started now, whatever the
     # bill says, so affordable does not offer them.
-    for rung in _select(
-        ladder,
+    picked = _select(
+        rungs,
         wanted,
         query,
         startable=lambda r: r.schematic.cls not in ongoing and not shut[r.schematic.cls],
-    ):
-        cls = rung.schematic.cls
-        state = st.research.status(rung)
-        if state == "RUNNING":
-            state = f"RUNNING {ongoing[cls]:.0f}s"
-        rows.append(
-            (
-                state,
-                rung.schematic.name[:30],
-                "LOCKS " + gates[cls] if cls in gates else "",
-                _bill(g, rung)[:52],
-                _shortfall(g, rung)[:34],
-                ", ".join(rung.blocked_by)[:24],
-            )
-        )
+    )
+    rows = [_research_row(st, rung) for rung in picked]
 
+    return render.envelope(
+        f"# {st.age_note}\n# {len(outstanding)} MAM research node(s) outstanding"
+        + (f", {n_running} under way" if n_running else "")
+        + (f", {n_shut} in an unopened tree" if n_shut else "")
+        + f", showing {wanted}",
+        render.paged_table(
+            ("status", "research", "capability", "cost", "short by", "blocked by"), rows, window
+        ),
+        _research_notes(st, n_running, n_shut),
+    )
+
+
+def _research_row(st, rung: Rung) -> tuple:
+    cls = rung.schematic.cls
+    state = st.research.status(rung)
+    if state == "RUNNING":
+        state = f"RUNNING {st.research.ongoing[cls]:.0f}s"
+    gates = {v: k for k, v in CAPABILITY_SCHEMATICS.items()}
+    return (
+        state,
+        rung.schematic.name[:30],
+        "LOCKS " + gates[cls] if cls in gates else "",
+        _bill(st.game, rung)[:52],
+        _shortfall(st.game, rung)[:34],
+        ", ".join(rung.blocked_by)[:24],
+    )
+
+
+def _research_notes(st, n_running: int, n_shut: int) -> list[str]:
+    """The reading notes, then one line per capability the MAM has not yet granted."""
     notes = [
         (
             "MAM research is where CAPABILITIES live, not just recipes -- 'LOCKS x' marks "
             "one that gates a feature of this MCP rather than adding a recipe"
         ),
-        (
-            "cost is checked against spendable stock only: carried, storage containers "
-            "and the Dimensional Depot. Machine buffers do not count, and neither do the "
-            "crates on the ground -- a crate deletes itself once emptied"
-        ),
+        SPENDABLE_NOTE,
     ]
     if n_running:
         notes.append(
@@ -402,21 +425,7 @@ def mam_research(
             f"{name} is NOT researched: needs {gate['schematic_name']} in the MAM "
             f"({bill}) -- {verdict}.{blocked}"
         )
-
-    return render.envelope(
-        f"# {st.age_note}\n# {n_todo} MAM research node(s) outstanding"
-        + (f", {n_running} under way" if n_running else "")
-        + (f", {n_shut} in an unopened tree" if n_shut else "")
-        + f", showing {wanted}",
-        render.table(
-            ("status", "research", "capability", "cost", "short by", "blocked by"),
-            window.of(rows),
-            total=len(rows),
-            offset=window.start,
-            limit=window.size,
-        ),
-        notes,
-    )
+    return notes
 
 
 @app.tool()
@@ -491,11 +500,7 @@ def milestones(
 
     prog = st.progression()
     notes = [
-        (
-            "cost is checked against spendable stock only: carried, storage containers "
-            "and the Dimensional Depot. Machine buffers do not count, and neither do the "
-            "crates on the ground -- a crate deletes itself once emptied"
-        ),
+        SPENDABLE_NOTE,
         (
             "READY is about the bill, not about access: a HUB tier is opened by delivering "
             "to the Space Elevator, and no milestone schematic in Docs.json carries that "

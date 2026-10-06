@@ -238,6 +238,29 @@ def storage(
 
     # The census counts every container and the filters decide only which are SHOWN.
     containers = [h for h in st.inventory.holdings() if h.source == "storage"]
+    hits = _shown_containers(containers, want_kind, wanted, empty, origin, radius_m)
+    scope = f" within {radius_m:g}m of {at}" if origin is not None else ""
+    if wanted is not None:
+        scope += f", holding {g.item_name(wanted)}"
+
+    regions = regions_mod.load_regions()
+    window = render.page(limit, offset, default=15)
+    rows = [_container_row(g, regions, h) for h in window.of(hits)]
+    return render.envelope(
+        _storage_summary(st, containers, len(hits), scope),
+        render.table(
+            ("container", "region", "x,y(m)", "fill", "used", "holds"),
+            rows,
+            total=len(hits),
+            offset=window.start,
+            limit=limit,
+        ),
+        _storage_notes(containers, hits, empty),
+    )
+
+
+def _shown_containers(containers, want_kind, wanted, empty: bool, origin, radius_m: float):
+    """The containers the filters keep: kind, item (fullest first), non-empty, in reach."""
     hits = [h for h in containers if want_kind is None or h.kind == want_kind]
     if wanted is not None:
         hits = sorted((h for h in hits if h.amount_of(wanted)), key=lambda h: -h.amount_of(wanted))
@@ -252,39 +275,37 @@ def storage(
             if h.pos is not None
             and (h.pos[0] - origin[0]) ** 2 + (h.pos[1] - origin[1]) ** 2 <= reach
         ]
+    return hits
 
+
+def _storage_summary(st, containers, shown: int, scope: str) -> str:
     solids = [h for h in containers if h.kind == "solid"]
     fluids = [h for h in containers if h.kind == "fluid"]
-    scope = f" within {radius_m:g}m of {at}" if origin is not None else ""
-    if wanted is not None:
-        scope += f", holding {g.item_name(wanted)}"
-    summary = (
+    return (
         f"# {st.age_note}\n"
         f"# {len(containers)} container(s): {len(solids)} solid "
         f"({sum(1 for h in solids if h.total)} with something in), "
         f"{len(fluids)} fluid buffer(s); "
         f"{render.num(sum(h.total for h in solids))} item(s), "
         f"{render.num(sum(h.total for h in fluids))} m3\n"
-        f"# {len(hits)} shown{scope}"
+        f"# {shown} shown{scope}"
     )
 
-    regions = regions_mod.load_regions()
-    window = render.page(limit, offset, default=15)
-    rows = []
-    for h in window.of(hits):
-        region, where = _place(regions, h)
-        fill, used = _fullness(h)
-        rows.append(
-            (
-                g.building_name(h.cls) or h.cls,
-                region,
-                where,
-                fill,
-                used,
-                _contents(g, h),
-            )
-        )
 
+def _container_row(g, regions, holding) -> tuple:
+    region, where = _place(regions, holding)
+    fill, used = _fullness(holding)
+    return (
+        g.building_name(holding.cls) or holding.cls,
+        region,
+        where,
+        fill,
+        used,
+        _contents(g, holding),
+    )
+
+
+def _storage_notes(containers, hits, empty: bool) -> list[str]:
     notes = [
         (
             "fill is used slots over slots for a container (each item at its own stack size) "
@@ -305,17 +326,7 @@ def storage(
             "widen radius_m or drop a filter rather than reading it as an empty world"
         )
     notes.append("stock() is the same material summed per item rather than per box")
-    return render.envelope(
-        summary,
-        render.table(
-            ("container", "region", "x,y(m)", "fill", "used", "holds"),
-            rows,
-            total=len(hits),
-            offset=window.start,
-            limit=limit,
-        ),
-        notes,
-    )
+    return notes
 
 
 @app.tool()
