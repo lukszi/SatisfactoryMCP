@@ -8,6 +8,7 @@
 import { get, send } from "../../api/client";
 import { button, checkbox, chip, choice, empty, error, fieldError, idChip, loading, note, slider } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
+import { bytes, duration, isoDate } from "../../kit/format";
 import { adoptMaps, fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "../../app/map-types";
 import { askMode } from "../../map/tiles";
 import { fail, friendly } from "../../kit/toast";
@@ -61,30 +62,6 @@ var SIZE_WORDS: Record<number, string> = {
   16384: "16384",
   32768: "full 32768",
 };
-
-export function bytes(n: number | null | undefined): string {
-  var value = n || 0;
-  if (value >= 1e9) return (value / 1e9).toFixed(1) + " GB";
-  if (value >= 1e6) return Math.round(value / 1e6) + " MB";
-  if (value >= 1e3) return Math.round(value / 1e3) + " kB";
-  return value + " B";
-}
-
-function duration(seconds: number | null | undefined): string {
-  var s = Math.max(0, Math.round(seconds || 0));
-  if (s < 90) return s + " s";
-  if (s < 5400) return Math.round(s / 60) + " min";
-  return (s / 3600).toFixed(1) + " h";
-}
-
-function when(ts: number | null | undefined): string {
-  if (!ts) return "–";
-  var d = new Date(ts * 1000);
-  var pad = function (n: number) {
-    return (n < 10 ? "0" : "") + n;
-  };
-  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
-}
 
 function clockTime(ts: number | null | undefined): string {
   if (!ts) return "";
@@ -746,7 +723,7 @@ function renderTypes(parent: HTMLElement, body: MapsResponse): void {
     item.appendChild(thumb(row));
     item.appendChild(nameCell(row, body));
     var meta = make("div", "maps-meta");
-    meta.appendChild(make("span", "", "built " + when(row.created)));
+    meta.appendChild(make("span", "", "built " + isoDate(row.created)));
     meta.appendChild(make("span", "", bytes(row.bytes)));
     item.appendChild(meta);
     item.appendChild(freshnessCell(row));

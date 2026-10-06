@@ -4,7 +4,8 @@
 import { button, empty, note, table, tabs2 } from "../../kit/dashkit";
 import { mapButton, render, toMap } from "../shell";
 import { make } from "../../kit/dom";
-import { carriesText, CONDUIT_RADIUS_M, runLabel, runSelection, showRows, worldUrl } from "../../map/tools/finder";
+import { CONDUIT_RADIUS_M, showRows } from "../../map/tools/finder";
+import { carriesText, runLabel, runSelection, worldUrl } from "./world-finds";
 import { coords, count, metres, num, rounded } from "../../kit/format";
 import { hashFor } from "../../map/map";
 import { go } from "../../app/nav";

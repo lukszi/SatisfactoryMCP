@@ -605,7 +605,7 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
   The reply also carries the save `token`, the label-store `version`, and how many clusters
   the filters hid and why.
 - **Map.** A row's **map** button switches to the map, flies to the cluster's box and draws the
-  panel's dashed outline around it (`showBox` in `map/panel.ts`).
+  panel's dashed outline around it (`showBox` in `map/map-highlight.ts`).
 - **Name, edit, skip.** The name is an editable field, prefilled with the suggestion. A guessed
   name has a dashed border. **name** (or Enter) writes it, and Esc restores the suggestion.
   **skip** hides the row for this page session only; nothing is stored.
@@ -1303,7 +1303,7 @@ What holds at every width from 390 px up, and how the page keeps a keyboard user
 - **One focus ring**: 2 px accent, set once for links, buttons, fields, `summary` and
   anything with a `tabindex`. Components only change its offset.
 - **Focus survives a re-render.** The dashboard, the side panel and the planner rebuild
-  their DOM on every data change; `keepFocus` in kit/dom.ts finds the focused control again by
+  their DOM on every data change; `keepFocus` in kit/focus.ts finds the focused control again by
   its `data-candidate`, `data-ctl`, `aria-label` or text, and falls back to the view's `h1`
   when the control is gone (a navigation). Every view has one `h1`, visually hidden on the
   list pages. A cancelled rename returns focus to its button; a jump from the dashboard to

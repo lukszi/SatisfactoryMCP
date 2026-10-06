@@ -4,16 +4,8 @@
 import { button, chip, empty, note, statusChip, table } from "../../kit/dashkit";
 import { mapButton, render, toMap } from "../shell";
 import { make } from "../../kit/dom";
-import {
-  fieldLabel,
-  fieldSelection,
-  nodeLabel,
-  nodeRate,
-  nodeSelection,
-  resourceOptions,
-  showRows,
-  worldUrl,
-} from "../../map/tools/finder";
+import { showRows } from "../../map/tools/finder";
+import { fieldLabel, fieldSelection, nodeLabel, nodeRate, nodeSelection, resourceOptions, worldUrl } from "./world-finds";
 import { count, metres, num, perMin } from "../../kit/format";
 import { isSelected, select } from "../../app/selection";
 import { state } from "../../app/state";

@@ -4,7 +4,8 @@
 import { button, empty, heading, note, table, tabs2 } from "../../kit/dashkit";
 import { mapButton, render, toMap } from "../shell";
 import { make } from "../../kit/dom";
-import { pickupPlace, pickupSelection, showRows, worldUrl } from "../../map/tools/finder";
+import { showRows } from "../../map/tools/finder";
+import { pickupPlace, pickupSelection, worldUrl } from "./world-finds";
 import { count } from "../../kit/format";
 import { hashFor } from "../../map/map";
 import { lootLine, pickupName } from "../../map/drawn/markers";

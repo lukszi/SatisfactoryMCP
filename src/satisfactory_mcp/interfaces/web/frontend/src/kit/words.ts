@@ -1,7 +1,7 @@
 /* The page's canonical terms, one spelling per concept.
  * The reasoning behind each choice is in docs/frontend_vision.md. */
 
-import { count } from "./dom";
+import { count } from "./format";
 
 export var W = {
   needAction: "need action",

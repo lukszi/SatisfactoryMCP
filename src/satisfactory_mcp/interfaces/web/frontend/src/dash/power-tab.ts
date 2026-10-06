@@ -5,7 +5,8 @@ import { empty, error, heading, link, loading, note, table, tile } from "../kit/
 import { make } from "../kit/dom";
 import { count, mw } from "../kit/format";
 import { loadOne } from "../app/load";
-import { showCircuit, vitals } from "../map/panel";
+import { showCircuit } from "../map/panel";
+import { vitals } from "../app/vitals";
 import { go, mapButton, pointButton } from "./shell";
 import {
   bar,

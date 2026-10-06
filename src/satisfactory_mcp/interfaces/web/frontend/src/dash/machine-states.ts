@@ -8,7 +8,7 @@ export interface StateSets {
   actionable: string[];
 }
 
-var BLOCKED = "blocked";
+export var BLOCKED = "blocked";
 
 var OK_DEFAULT = ["saturated", "unmonitored"];
 

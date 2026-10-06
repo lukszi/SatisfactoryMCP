@@ -2,14 +2,15 @@
  * power problems and power per circuit, addressed as `dash=overview`. */
 
 import { adviceCard } from "../chat/advice";
-import { empty, error, heading, issueCount, issueGroups, issueTable, link, loading, note, table, tile } from "../kit/dashkit";
+import { empty, error, heading, link, loading, note, table, tile } from "../kit/dashkit";
 import { make } from "../kit/dom";
-import { count, pct, spoken } from "../kit/format";
+import { count, pct } from "../kit/format";
 import { loadOne } from "../app/load";
 import { hashFor } from "../map/map";
-import { vitals } from "../map/panel";
+import { vitals } from "../app/vitals";
 import { milestoneTile } from "./progress/progress";
-import { actionTone, isFine, needsAction, stateSets, statesOf, tone } from "./machine-states";
+import { actionTone, statesOf } from "./machine-states";
+import { issueCount, issueGroups, issueTable, mixBar, mixLegend, mixOf } from "./machine-health";
 import { factoryMapButton, go, pointButton } from "./shell";
 import {
   circuitTable,
@@ -27,81 +28,6 @@ import { counted, W } from "../kit/words";
 import type { FactoryHealthRow } from "../api/shapes";
 
 var ROWS_SHOWN = 12;
-
-interface Mix {
-  bad: number;
-  blocked: number;
-  mid: number;
-  ok: number;
-}
-
-export function actionable(): string[] {
-  return stateSets().actionable;
-}
-
-function middling(): string[] {
-  var h = vitals().health;
-  return (h ? h.states : []).filter(function (s) {
-    return !needsAction(s) && !isFine(s);
-  });
-}
-
-export function mixOf(rows: FactoryHealthRow[]): Mix {
-  var mix = { bad: 0, blocked: 0, mid: 0, ok: 0 };
-  rows.forEach(function (row) {
-    row.states.forEach(function (s) {
-      mix[tone(s.state)] += s.count;
-    });
-  });
-  return mix;
-}
-
-function mixWords(): [keyof Mix, string][] {
-  return [
-    [
-      "bad",
-      spoken(
-        actionable().filter(function (s) {
-          return s !== W.blocked;
-        }),
-        "or"
-      ),
-    ],
-    ["blocked", W.blocked],
-    ["mid", spoken(middling(), "or")],
-    ["ok", "running or unmonitored"],
-  ];
-}
-
-export function mixBar(mix: Mix): HTMLElement {
-  var total = mix.bad + mix.blocked + mix.mid + mix.ok;
-  var bar = make("div", "dash-mix");
-  bar.setAttribute("role", "img");
-  var words: string[] = [];
-  mixWords().forEach(function (p) {
-    var n = mix[p[0]];
-    words.push(count(n) + " " + p[1]);
-    if (!n || !total) return;
-    var seg = make("span", "dash-mix-" + p[0]);
-    seg.style.width = (n / total) * 100 + "%";
-    bar.appendChild(seg);
-  });
-  bar.title = words.join(", ");
-  bar.setAttribute("aria-label", bar.title);
-  return bar;
-}
-
-function mixLegend(mix: Mix): HTMLElement {
-  var legend = make("div", "dash-mix-legend");
-  legend.setAttribute("aria-hidden", "true");
-  mixWords().forEach(function (p) {
-    var item = make("span", "dash-key");
-    item.appendChild(make("i", "dash-swatch dash-mix-" + p[0]));
-    item.appendChild(document.createTextNode(count(mix[p[0]]) + " " + p[1]));
-    legend.appendChild(item);
-  });
-  return legend;
-}
 
 function retryHealth(): void {
   loadOne("/api/factories/health");

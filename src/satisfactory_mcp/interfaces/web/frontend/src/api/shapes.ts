@@ -7,7 +7,7 @@
  * The indirection is what buys the page its own names. `components["schemas"]["…"]` at
  * fifteen call sites would put the generator's addressing scheme into every drawing module,
  * so a converted endpoint would be a rename across all of them; here it is one line in one
- * file. floors.ts predates this and reaches into the schema itself.
+ * file.
  */
 
 import type { components } from "./schema";
@@ -316,7 +316,9 @@ export type SiteRow = Schema["SiteRow"];
 export type SitesResponse = Body<"SitesResponse">;
 export type FloorPlatform = Schema["FloorPlatform"];
 export type FloorBand = Schema["FloorBand"];
-export type FactoryFloorsResponse = Body<"FloorsResponse">;
+export type FloorDeck = Schema["FloorDeck"];
+export type FloorRun = Schema["FloorRun"];
+export type FloorsResponse = Body<"FloorsResponse">;
 
 /* ---------------------------------------------------------------- /api/settings */
 

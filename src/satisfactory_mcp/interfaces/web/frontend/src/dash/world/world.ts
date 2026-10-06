@@ -4,13 +4,14 @@
 import { get, latest } from "../../api/client";
 import { choice, empty, error, heading, link, loading, note, showAll, table, tabs2 } from "../../kit/dashkit";
 import { mapButton, render } from "../shell";
-import { code, make, rebuilding } from "../../kit/dom";
-import { resourceOptions, worldUrl } from "../../map/tools/finder";
+import { code, make } from "../../kit/dom";
+import { isRebuilding } from "../../kit/focus";
+import { resourceOptions, worldUrl } from "./world-finds";
 import { coords, count, metres, num, regionLine, rounded } from "../../kit/format";
 import { loadOne } from "../../app/load";
 import { hashFor, writeHash } from "../../map/map";
 import { dashParts, go, subjectQuery, withQuery } from "../../app/nav";
-import { showPoint } from "../../map/panel";
+import { showPoint } from "../../map/map-highlight";
 import { registerFetch } from "../../app/registry";
 import { actorWord } from "../planner/planner-core";
 import { choice as followMode, onSetting } from "../../app/settings";
@@ -223,7 +224,7 @@ export function textField(
   input.value = draft && draft.base === value ? draft.text : value;
   input.setAttribute("data-candidate", candidate);
   function commit(text: string): void {
-    if (rebuilding()) return;
+    if (isRebuilding()) return;
     delete drafts[candidate];
     change(text);
   }
@@ -273,7 +274,7 @@ export function rangeField(
     out.textContent = show(Number(input.value));
   };
   input.onchange = function () {
-    if (!rebuilding()) change(Number(input.value));
+    if (!isRebuilding()) change(Number(input.value));
   };
   box.appendChild(input);
   box.appendChild(out);

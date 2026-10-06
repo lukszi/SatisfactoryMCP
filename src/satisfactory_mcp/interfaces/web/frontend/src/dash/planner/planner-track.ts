@@ -9,7 +9,7 @@ import { make } from "../../kit/dom";
 import { count, mw, num, range, signed } from "../../kit/format";
 import { nodeLayers } from "../../map/drawn/markers";
 import { onMap } from "../../app/nav";
-import { showBox, showMachine } from "../../map/panel";
+import { showBox, showMachine } from "../../map/map-highlight";
 import { builtColumn, builtLine } from "./planner-built";
 import { bench, changed, gesture, loadFeeders, loadTrack, pickStage, stageHeadroom } from "./planner-core";
 import { recipesButton } from "./planner-result";

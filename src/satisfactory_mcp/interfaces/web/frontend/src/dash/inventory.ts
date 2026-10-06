@@ -8,7 +8,7 @@ import { amount, count, num, pct, regionLine } from "../kit/format";
 import { loadOne } from "../app/load";
 import { writeHash } from "../map/map";
 import { dashParts, go } from "../app/nav";
-import { showPoint } from "../map/panel";
+import { showPoint } from "../map/map-highlight";
 import { registerFetch } from "../app/registry";
 import { state } from "../app/state";
 import { counted } from "../kit/words";

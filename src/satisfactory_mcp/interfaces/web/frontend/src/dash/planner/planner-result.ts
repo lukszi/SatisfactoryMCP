@@ -6,7 +6,7 @@ import { make } from "../../kit/dom";
 import { count, flow, mw, pct } from "../../kit/format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, setPicked } from "../graph";
 import { dashParts, go } from "../../app/nav";
-import { vitals } from "../../map/panel";
+import { vitals } from "../../app/vitals";
 import { renderAlternates } from "./planner-alternates";
 import { askButton, askMarks } from "../../chat/asks";
 import { bench, changed, gesture, pendingFocus, pickTab, showAlternates, undoRev } from "./planner-core";

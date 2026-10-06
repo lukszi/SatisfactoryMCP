@@ -2,6 +2,7 @@
 
 import { get, latest, missing, push, send } from "../../api/client";
 import { go } from "../../app/nav";
+import { nowSeconds } from "../../kit/format";
 import { biomassQuery } from "../power-ledger";
 import { choice, spoilerQuery } from "../../app/settings";
 import { state } from "../../app/state";
@@ -240,18 +241,6 @@ export function status(): string {
 
 export function sav(): string {
   return bench.result ? bench.result.token : "";
-}
-
-export function now(): number {
-  return Date.now() / 1000;
-}
-
-export function age(ts: number): string {
-  var s = Math.max(0, Math.round(now() - ts));
-  if (s < 60) return s + "s";
-  if (s < 3600) return Math.round(s / 60) + "m";
-  if (s < 86400) return Math.round(s / 3600) + "h";
-  return Math.round(s / 86400) + "d";
 }
 
 export function reset(key: string): void {
@@ -719,7 +708,7 @@ function landed(reply: PushedResponse, record: "done" | "none"): number {
   if (!reply.noop) {
     bench.own[reply.rev] = true;
     if (record === "done") bench.done.push(reply.rev);
-    bench.last = { who: W.actorYou, ts: now() };
+    bench.last = { who: W.actorYou, ts: nowSeconds() };
   }
   reply.others.forEach(strip);
   adopt(reply.state);

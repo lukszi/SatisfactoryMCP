@@ -5,11 +5,12 @@
 import { mapButton, render, toMap } from "../shell";
 import { button, empty, note, pressed, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { resourceOptions, showRows, siteSelection, worldUrl } from "../../map/tools/finder";
+import { showRows } from "../../map/tools/finder";
+import { resourceOptions, siteSelection, worldUrl } from "./world-finds";
 import { coords, count, measured, metres, num, perMin, rounded, signed } from "../../kit/format";
 import { map } from "../../map/map";
 import { dashParts, go, onMap, subjectQuery } from "../../app/nav";
-import { onVitals, vitals } from "../../map/panel";
+import { onVitals, vitals } from "../../app/vitals";
 import { livePins, onPins, pinName } from "../../chat/pins";
 import { isSelected, select, selected } from "../../app/selection";
 import { state } from "../../app/state";

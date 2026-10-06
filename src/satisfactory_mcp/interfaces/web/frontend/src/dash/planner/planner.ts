@@ -4,10 +4,11 @@
 import { get, onToken, send } from "../../api/client";
 import { askOpen, closeBar, onAsks, renderAskBar, settleAskFocus } from "../../chat/asks";
 import { loading } from "../../kit/dashkit";
-import { keepFocus, make } from "../../kit/dom";
+import { make } from "../../kit/dom";
+import { keepFocus } from "../../kit/focus";
 import { onReload } from "../../app/load";
 import { dashParts, go } from "../../app/nav";
-import { onVitals } from "../../map/panel";
+import { onVitals } from "../../app/vitals";
 import { renderBench } from "./planner-bench";
 import {
   actorWord,

@@ -3,12 +3,14 @@
 
 import { get, latest } from "../../api/client";
 import { button, chip, pressed, table } from "../../kit/dashkit";
-import { code, count, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
-import { perMin } from "../../kit/format";
+import { code, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
+import { count, perMin } from "../../kit/format";
 import { L } from "../leaflet";
 import { flyPadded, map } from "../map";
 import { cardHead, cardHeading, cardLine, cardSubject, claim, mapCard } from "../mapcard";
-import { HIGHLIGHT, makeRoom, onVitals } from "../panel";
+import { makeRoom } from "../panel";
+import { HIGHLIGHT } from "../map-highlight";
+import { onVitals } from "../../app/vitals";
 import { BLOCKED_COLOUR, STOPPED_COLOUR } from "../drawn/placements";
 import { state } from "../../app/state";
 import { tone } from "../../dash/machine-states";

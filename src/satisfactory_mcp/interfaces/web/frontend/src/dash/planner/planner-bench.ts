@@ -3,10 +3,9 @@
 import { askButton } from "../../chat/asks";
 import { button, chip, choice, copyButton, empty, error, link, loading, pressed } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { perMin } from "../../kit/format";
+import { ageShort, perMin } from "../../kit/format";
 import { go } from "../../app/nav";
 import {
-  age,
   applyArgs,
   bench,
   changed,
@@ -635,7 +634,7 @@ function header(parent: HTMLElement): void {
   titleLine(head);
   var st = status();
   head.appendChild(make("span", "plan-status" + (st === "conflict" ? " bad" : ""), "v" + plan.rev + " · " + st));
-  if (bench.last) head.appendChild(make("span", "plan-status", "last change: " + bench.last.who + ", " + age(bench.last.ts) + " ago"));
+  if (bench.last) head.appendChild(make("span", "plan-status", "last change: " + bench.last.who + ", " + ageShort(bench.last.ts) + " ago"));
   head.appendChild(make("span", "plan-held"));
   parent.appendChild(head);
   problems(parent, ["rename"]);

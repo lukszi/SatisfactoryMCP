@@ -3,14 +3,15 @@
 
 import { adviceCard } from "../../chat/advice";
 import { get, latest, send } from "../../api/client";
-import { button, empty, error, fieldError, heading, issueCount, issueGroups, issueTable, link, loading, note, table, tile } from "../../kit/dashkit";
+import { button, empty, error, fieldError, heading, link, loading, note, table, tile } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, flow, mw, pct, spoken } from "../../kit/format";
 import { drawGraph, graphCard as graphFrame, GRAPH_HINT, stateLine } from "../graph";
 import { loadOne } from "../../app/load";
 import { ringCandidate, startLasso } from "../../map/tools/lasso";
 import { hashFor } from "../../map/map";
-import { showBox, vitals } from "../../map/panel";
+import { showBox } from "../../map/map-highlight";
+import { vitals } from "../../app/vitals";
 import { blankOrLong, NAME_MAX, newest, onRenamed, refreshLabels, refusal, renamedTo, wrote } from "./rename";
 import { amount, choice, onSetting, setting } from "../../app/settings";
 import { state } from "../../app/state";
@@ -19,7 +20,7 @@ import { fail, friendly, note as said } from "../../kit/toast";
 import { startTrace } from "../../map/tools/trace";
 import { counted, W } from "../../kit/words";
 import { factoryMapButton, go, mapButton, pointButton, renameButton, render, sort, toMap } from "../shell";
-import { actionable, mixBar, mixOf } from "../overview";
+import { actionable, issueCount, issueGroups, issueTable, mixBar, mixOf } from "../machine-health";
 import { aspectTabs, factoryAddress, factoryDash, factoryPinButton, renderAspect } from "./factory-detail";
 
 import type { Column } from "../../kit/dashkit";

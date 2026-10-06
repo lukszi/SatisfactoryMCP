@@ -9,7 +9,9 @@
  * size rather than a footprint.
  */
 
-import { CONTENTS_POPUP_PX, code, contentsRows, count, popup } from "../../kit/dom";
+import { code, popup } from "../../kit/dom";
+import { count } from "../../kit/format";
+import { CONTENTS_POPUP_PX, contentsRows } from "./inventory-grid";
 import { L } from "../leaflet";
 import { BAND, layer } from "../layers";
 import { declareColours } from "../palette";
@@ -146,7 +148,7 @@ export function drawCrates(data: CratesResponse): void {
       title: crateLabel(c.kind),
       alt: crateLabel(c.kind),
     })
-      // The wider card the storage popup takes; see CONTENTS_POPUP_PX in dom.ts.
+      // The wider card the storage popup takes; see CONTENTS_POPUP_PX in inventory-grid.ts.
       .bindPopup(popup(cratePopup(c)), { maxWidth: CONTENTS_POPUP_PX })
       .addTo(group);
   });

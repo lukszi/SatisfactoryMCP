@@ -9,17 +9,19 @@
  * the point of drawing it.
  */
 
-import { CONTENTS_POPUP_PX, code, contentsRows, count, esc, html, popup, traceButtons } from "../../kit/dom";
+import { code, esc, html, popup, traceButtons } from "../../kit/dom";
 import type { Row } from "../../kit/dom";
 import { refreshFloors } from "../floors/floors";
-import { pct } from "../../kit/format";
+import { count, pct } from "../../kit/format";
+import { CONTENTS_POPUP_PX, contentsRows } from "./inventory-grid";
 import { L } from "../leaflet";
 import { BAND, layer } from "../layers";
 import { footprintCorners, hashFor } from "../map";
 import { raiseNodeDots } from "./markers";
-import { showMachine } from "../panel";
+import { showMachine } from "../map-highlight";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
+import { BLOCKED } from "../../dash/machine-states";
 import { W } from "../../kit/words";
 
 import type { InspectedEvent } from "../leaflet-private";
@@ -127,7 +129,6 @@ const MACHINE_SLOT: Record<(typeof MACHINE_KINDS)[number], number> = {
 /* Thick outline = the server's `actionable`: red when stopped, signal yellow when blocked.
  * Grammar and the yellow's measured distances: docs/save-projection.md §6.2d. The CSS twin of
  * the yellow is `--blocked` in style.css. */
-export var BLOCKED = "blocked";
 export var BLOCKED_COLOUR = declareColours("placements", { blocked: "#ffd000" }).blocked;
 export var STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" }).stopped;
 
@@ -331,7 +332,7 @@ export function drawStorage(data: StorageResponse): void {
       fillOpacity: s.kind === "fluid" ? (s.fill ? 0.7 : 0.15) : s.total ? 0.7 : 0.15,
     })
       // Wider than the page's other cards, because this one lists item names against counts
-      // and a name is not broken across lines. See CONTENTS_POPUP_PX in dom.ts.
+      // and a name is not broken across lines. See CONTENTS_POPUP_PX in inventory-grid.ts.
       .bindPopup(popup(storagePopup(s)), { maxWidth: CONTENTS_POPUP_PX });
     // WHERE it stands, and no instance id: `/api/floors` does not decompose storage, so no
     // band lists this box and a mark carrying an id would be a join that always misses.

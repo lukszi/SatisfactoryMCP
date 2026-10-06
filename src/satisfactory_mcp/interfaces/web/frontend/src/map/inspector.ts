@@ -9,7 +9,7 @@
 
 import { get } from "../api/client";
 import { code, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "../kit/dom";
-import { pickupPlace } from "./tools/finder";
+import { pickupPlace } from "../dash/world/world-finds";
 import { coords, count, metres, num, perMin, regionLine } from "../kit/format";
 import { L } from "./leaflet";
 import { hashFor, map, MAP_SQUARE_M, NARROW } from "./map";

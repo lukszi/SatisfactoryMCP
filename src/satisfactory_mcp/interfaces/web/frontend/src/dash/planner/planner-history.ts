@@ -4,9 +4,10 @@
 import { get } from "../../api/client";
 import { button, empty, error, link, loading, table, tabs2 } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
+import { ageShort } from "../../kit/format";
 import { go, withQuery } from "../../app/nav";
 import { argsWords } from "./planner-bench";
-import { actorWord, age, bench, changed, commitWords, duplicatePlan, inbox, restoreRev, undoIn } from "./planner-core";
+import { actorWord, bench, changed, commitWords, duplicatePlan, inbox, restoreRev, undoIn } from "./planner-core";
 import { renderVersionResult } from "./planner-result";
 import { state } from "../../app/state";
 import { fail, friendly, note } from "../../kit/toast";
@@ -117,7 +118,7 @@ export function renderVersions(parent: HTMLElement): void {
         label: "when",
         className: "dash-sub",
         render: function (r) {
-          return age(r.ts) + " ago";
+          return ageShort(r.ts) + " ago";
         },
       },
       {
@@ -325,7 +326,7 @@ export function renderActivity(parent: HTMLElement): void {
           label: "when",
           className: "dash-sub",
           render: function (r) {
-            return age(r.ts) + " ago";
+            return ageShort(r.ts) + " ago";
           },
         },
         {

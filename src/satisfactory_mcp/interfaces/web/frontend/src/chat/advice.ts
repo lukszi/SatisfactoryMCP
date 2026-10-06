@@ -6,7 +6,7 @@ import { askButton, askOpener, onAsks, renderAskBar, settleAskFocus } from "./as
 import { button, chip, empty, error, link, loading } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { onMap } from "../app/nav";
-import { showBox, showMachine } from "../map/panel";
+import { showBox, showMachine } from "../map/map-highlight";
 import { registerFetch } from "../app/registry";
 import { onSetting, spoilerQuery } from "../app/settings";
 import { state } from "../app/state";

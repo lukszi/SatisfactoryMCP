@@ -153,8 +153,7 @@ One file carries the API, and it is generated. There used to be two.
 - **`src/api/shapes.ts` re-exports those components** under the names the page already used,
   one line apiece and no fields of its own. The indirection is so that a change to an endpoint
   moves one line in one file rather than every module that draws its payload, and so the page's
-  names stay the page's while their definitions come from the server. `floors.ts` predates it
-  and reaches into the schema itself.
+  names stay the page's while their definitions come from the server.
 - **`src/api-types.ts` is gone.** It held the frontend's claim about the API — response shapes
   read off real payloads — and it died when the last endpoint started describing itself. What
   was in it that was never a payload lives with the code that uses it: the drawing tuples in

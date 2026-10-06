@@ -3,7 +3,8 @@
 
 import { get } from "../../api/client";
 import { button, error, loading } from "../../kit/dashkit";
-import { count, make } from "../../kit/dom";
+import { make } from "../../kit/dom";
+import { count } from "../../kit/format";
 import { L } from "../../map/leaflet";
 import { map } from "../../map/map";
 import { bench, changed, gesture, stageHeadroom } from "./planner-core";

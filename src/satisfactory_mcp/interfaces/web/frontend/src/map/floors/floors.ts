@@ -37,17 +37,11 @@ import { sinkRoutes } from "../drawn/routes";
 import { state } from "../../app/state";
 import { friendly, note } from "../../kit/toast";
 
-import type { components } from "../../api/schema";
+import type { FloorBand, FloorDeck, FloorPlatform, FloorRun, FloorsResponse } from "../../api/shapes";
 import type { Point3M } from "../geometry";
 import type { Row } from "../../kit/dom";
 import type { FloorMark } from "../leaflet-private";
 import type { FloorChoice } from "../layercontrol/control";
-
-type FloorsResponse = components["schemas"]["FloorsResponse"];
-type FloorPlatform = components["schemas"]["FloorPlatform"];
-type FloorBand = components["schemas"]["FloorBand"];
-type FloorDeck = components["schemas"]["FloorDeck"];
-type FloorRun = components["schemas"]["FloorRun"];
 
 /** The pseudo-floor's key, in the picker and in the fragment alike. */
 export var GROUND = "ground";
@@ -691,7 +685,7 @@ export function refilterFloors(): void {
 export function refreshFloors(): void {
   if (!view) return;
   var was = view;
-  get<FloorsResponse & { error?: string }>(url(was.query))
+  get<FloorsResponse>(url(was.query))
     .then(function (body) {
       if (view !== was) return; // left, or moved on, while this was in the air
       view.body = body;
@@ -903,7 +897,7 @@ function url(query: string): `/api/floors?${string}` {
  * toast that disappears over a map that did not change. */
 export function enterFloors(query: string, title: string, band?: string): void {
   var ticket = latest("floors");
-  get<FloorsResponse & { error?: string }>(url(query))
+  get<FloorsResponse>(url(query))
     .then(function (body) {
       if (ticket.fresh()) open(query, body, title, band);
     })

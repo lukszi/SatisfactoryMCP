@@ -4,11 +4,11 @@ import { get } from "../../api/client";
 import { renderAsks } from "../../chat/asks-card";
 import { empty, error, link, loading, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { perMin } from "../../kit/format";
+import { ageShort, perMin } from "../../kit/format";
 import { go } from "../../app/nav";
 import { renderCard } from "./planner-bench";
 import { progressText, toggleProgress } from "./planner-built";
-import { actorWord, age, changed, commitWords, createPlan, itemList, knownItem, loadItems, trackDash } from "./planner-core";
+import { actorWord, changed, commitWords, createPlan, itemList, knownItem, loadItems, trackDash } from "./planner-core";
 import { renderActivity } from "./planner-history";
 import { renderPins } from "../../chat/pins-card";
 import { state } from "../../app/state";
@@ -106,7 +106,7 @@ function target(row: PlanIndexRow): string {
 }
 
 function lastChange(row: PlanIndexRow): string {
-  return commitWords(row.last.text) + " · " + actorWord(row.last.actor) + ", " + age(row.last.ts) + " ago";
+  return commitWords(row.last.text) + " · " + actorWord(row.last.actor) + ", " + ageShort(row.last.ts) + " ago";
 }
 
 function statusWords(row: PlanIndexRow): string {

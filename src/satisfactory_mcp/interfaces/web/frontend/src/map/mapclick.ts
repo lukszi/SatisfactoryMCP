@@ -4,7 +4,7 @@
 import { coords } from "../kit/format";
 import { L } from "./leaflet";
 import { map } from "./map";
-import { showPoint } from "./panel";
+import { showPoint } from "./map-highlight";
 import { select } from "../app/selection";
 
 interface Marked extends Event {

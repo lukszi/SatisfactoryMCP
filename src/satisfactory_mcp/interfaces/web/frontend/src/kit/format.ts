@@ -5,11 +5,14 @@
  * same fact at two different clicks.
  */
 
-import { count } from "./dom";
-
 import type { Region } from "../api/shapes";
 
-export { count };
+/** Thousands separators, because these are counts of things and they get large: a full
+ *  Industrial Storage Container holds 24,000 Wire, and a badge whose digits have to be counted
+ *  is not a reading. Shared, so a tile's badge and the total under the grid cannot disagree. */
+export function count(n: number): string {
+  return n.toLocaleString("en-GB");
+}
 
 /* A resource class as the short name the whole page uses: Desc_OreIron_C -> OreIron. */
 export function shortResource(resource: string | null | undefined): string {
@@ -105,6 +108,42 @@ export function pct(value: number | null | undefined, dp?: number): string {
 
 export function clock(ts: number): string {
   return new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+export function nowSeconds(): number {
+  return Date.now() / 1000;
+}
+
+export function ageShort(ts: number): string {
+  var s = Math.max(0, Math.round(nowSeconds() - ts));
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.round(s / 60) + "m";
+  if (s < 86400) return Math.round(s / 3600) + "h";
+  return Math.round(s / 86400) + "d";
+}
+
+export function bytes(n: number | null | undefined): string {
+  var value = n || 0;
+  if (value >= 1e9) return (value / 1e9).toFixed(1) + " GB";
+  if (value >= 1e6) return Math.round(value / 1e6) + " MB";
+  if (value >= 1e3) return Math.round(value / 1e3) + " kB";
+  return value + " B";
+}
+
+export function duration(seconds: number | null | undefined): string {
+  var s = Math.max(0, Math.round(seconds || 0));
+  if (s < 90) return s + " s";
+  if (s < 5400) return Math.round(s / 60) + " min";
+  return (s / 3600).toFixed(1) + " h";
+}
+
+export function isoDate(ts: number | null | undefined): string {
+  if (!ts) return "–";
+  var d = new Date(ts * 1000);
+  var pad = function (n: number) {
+    return (n < 10 ? "0" : "") + n;
+  };
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 }
 
 export function spoken(names: string[], last: string): string {

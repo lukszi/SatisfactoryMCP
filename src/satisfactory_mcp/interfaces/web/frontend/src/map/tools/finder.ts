@@ -3,22 +3,39 @@
 
 import { get, latest } from "../../api/client";
 import { button, choice, link, pressed, statusChip, table, tabs2 } from "../../kit/dashkit";
-import { FIND_AT_ATTR, FIND_ATTR, keepFocus } from "../../kit/dom";
-import { coords, count, metres, num, perMin, rounded } from "../../kit/format";
+import { FIND_AT_ATTR, FIND_ATTR } from "../../kit/dom";
+import { keepFocus } from "../../kit/focus";
+import { coords, count, metres, num, perMin } from "../../kit/format";
 import { reveal } from "../labels";
 import { L } from "../leaflet";
 import { FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, xy } from "../map";
 import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
 import { knownNodes, pickupName } from "../drawn/markers";
 import { withQuery } from "../../app/nav";
-import { HIGHLIGHT, makeRoom, onVitals, showPoint } from "../panel";
+import {
+  carriesText,
+  fieldLabel,
+  fieldSelection,
+  nodeLabel,
+  nodeRate,
+  nodeSelection,
+  pickupSelection,
+  resourceOptions,
+  runLabel,
+  runSelection,
+  siteSelection,
+  worldUrl,
+} from "../../dash/world/world-finds";
+import { makeRoom } from "../panel";
+import { HIGHLIGHT, showPoint } from "../map-highlight";
+import { onVitals } from "../../app/vitals";
 import { select } from "../../app/selection";
 import { onSetting, setting, spoilerFlag } from "../../app/settings";
 import { state } from "../../app/state";
 import { friendly } from "../../kit/toast";
 import { W } from "../../kit/words";
 
-import type { ApiPath, ApiUrl } from "../../api/client";
+import type { ApiUrl } from "../../api/client";
 import type { Column } from "../../kit/dashkit";
 import type {
   CollectibleRow,
@@ -84,75 +101,6 @@ var view = {
 
 function card(): HTMLElement {
   return mapCard("finder", "finder", closeFinder);
-}
-
-export function worldUrl(path: ApiPath, params: Record<string, string>): ApiUrl {
-  var query = withQuery("", params).slice(1);
-  return query ? `${path}?${query}` : path;
-}
-
-export function resourceOptions(any: string, current: string): [string, string][] {
-  var names: Record<string, string> = {};
-  knownNodes().forEach(function (n) {
-    if (n.kind !== "geyser") names[n.resource] = n.resource_name;
-  });
-  var options = Object.keys(names)
-    .map(function (id): [string, string] {
-      return [id, names[id]!];
-    })
-    .sort(function (a, b) {
-      return a[1].localeCompare(b[1]);
-    });
-  if (current && !names[current]) options.unshift([current, current]);
-  return [["", any] as [string, string]].concat(options);
-}
-
-export function nodeLabel(n: { resource_name: string; purity: string }): string {
-  return n.resource_name + ", " + n.purity;
-}
-
-export function fieldLabel(f: FoundField): string {
-  return f.resources.join(" + ") + " " + W.field + " · " + (f.region || f.grid);
-}
-
-export function nodeRate(n: FoundNode): string {
-  return n.kind === "geyser" ? "–" : perMin(n.rate, false);
-}
-
-export function carriesText(r: RunRow): string {
-  var parts: string[] = [];
-  if (r.carries) parts.push(r.carries);
-  else if (r.kind === "pipe") parts.push("nothing known");
-  if (r.rate !== null) parts.push((r.kind === "pipe" ? num(r.rate, 0) + " m³/min" : perMin(r.rate)) + " max");
-  return parts.length ? parts.join(" · ") : "–";
-}
-
-export function runLabel(r: RunRow): string {
-  return r.label && r.label !== r.id ? r.id + " · " + r.label : r.id;
-}
-
-export function nodeSelection(n: FoundNode): Selection {
-  return { kind: "node", key: n.id, label: nodeLabel(n), x_m: n.x_m, y_m: n.y_m, ref: "node:" + n.name };
-}
-
-export function fieldSelection(f: FoundField): Selection {
-  return { kind: "field", key: f.key, label: fieldLabel(f), x_m: f.x_m, y_m: f.y_m, ref: f.selector };
-}
-
-export function siteSelection(s: RankedSite): Selection {
-  return { kind: "field", key: s.selector, label: "site " + s.rank + (s.region ? ", " + s.region : ""), x_m: s.x_m, y_m: s.y_m, ref: s.selector };
-}
-
-export function runSelection(r: RunRow): Selection {
-  return { kind: "conduit", key: r.id, label: runLabel(r), x_m: r.a.x_m, y_m: r.a.y_m, ref: r.id };
-}
-
-export function pickupPlace(p: { x_m: number; y_m: number }): string {
-  return rounded(p.x_m) + "," + rounded(p.y_m);
-}
-
-export function pickupSelection(p: CollectibleRow): Selection {
-  return { kind: "pickup", key: p.name, label: pickupName(p.category), x_m: p.x_m, y_m: p.y_m, ref: pickupPlace(p) };
 }
 
 function ring(at: { x_m: number; y_m: number }, seed: boolean): void {

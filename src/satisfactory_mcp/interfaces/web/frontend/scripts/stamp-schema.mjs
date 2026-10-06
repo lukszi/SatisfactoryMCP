@@ -47,7 +47,7 @@ const HEADER = `/**
  * re-exports them under the names the page already used. One indirection, so that a
  * converted endpoint changes one line in one file rather than every module that draws its
  * payload -- and so that the page's names stay the page's while their DEFINITIONS come
- * from the server. \`floors.ts\` predates it and reaches in here itself.
+ * from the server.
  *
  * Committed on purpose (see above), which is also why regenerating it after a server
  * change is part of the same commit: a checked-in record that lags the server is worse

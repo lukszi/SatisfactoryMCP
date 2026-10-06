@@ -2,8 +2,8 @@
  * each build-list row's own overclock choice. See docs/planner-payback-horizon_contract.md §7. */
 
 import { button, checkbox, choice, slider } from "../../kit/dashkit";
-import { count, make } from "../../kit/dom";
-import { mw, num, pct } from "../../kit/format";
+import { make } from "../../kit/dom";
+import { count, mw, num, pct } from "../../kit/format";
 import { bench, gesture } from "./planner-core";
 
 import type { SolveResponse, SolveRow } from "../../api/shapes";

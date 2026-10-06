@@ -7,7 +7,7 @@ import { code, make } from "../../kit/dom";
 import { count, mw, num, pct, perMin, signed } from "../../kit/format";
 import { enterFloors } from "../../map/floors/floors";
 import { hashFor } from "../../map/map";
-import { showBox } from "../../map/panel";
+import { showBox } from "../../map/map-highlight";
 import { pinThis } from "../../chat/pins";
 import { state } from "../../app/state";
 import { counted, W } from "../../kit/words";
@@ -21,9 +21,9 @@ import type {
   AspectMachine,
   AspectNode,
   FactoryAspectsResponse,
-  FactoryFloorsResponse,
   FloorBand,
   FloorPlatform,
+  FloorsResponse,
   SiteRow,
   SitesResponse,
 } from "../../api/shapes";
@@ -106,7 +106,7 @@ function slot<T>(): Slot<T> {
 
 var aspects = slot<FactoryAspectsResponse>();
 var sites = slot<SitesResponse>();
-var floors = slot<FactoryFloorsResponse>();
+var floors = slot<FloorsResponse>();
 
 function want<T>(s: Slot<T>, name: string, ticketName: string, path: () => Promise<T>, soft?: (failure: unknown) => T | null): void {
   if (s.key === name && s.epoch === state.epoch && (s.busy || s.data || s.failure)) return;
@@ -175,12 +175,12 @@ function loadFloors(name: string): void {
     name,
     "factory-floors",
     function () {
-      return get<FactoryFloorsResponse>(("/api/floors?factory=" + encodeURIComponent("label:" + name)) as `/api/floors?${string}`);
+      return get<FloorsResponse>(("/api/floors?factory=" + encodeURIComponent("label:" + name)) as `/api/floors?${string}`);
     },
     function (failure) {
       var status = (failure as { status?: number }).status;
       if (status !== 404) return null;
-      return { platforms: [], note: String((failure as Error).message || "") } as unknown as FactoryFloorsResponse;
+      return { platforms: [], note: String((failure as Error).message || "") } as unknown as FloorsResponse;
     }
   );
 }
@@ -575,7 +575,7 @@ function bandsTable(platform: FloorPlatform, name: string): HTMLElement {
   );
 }
 
-function renderFloors(body: HTMLElement, data: FactoryFloorsResponse, name: string): void {
+function renderFloors(body: HTMLElement, data: FloorsResponse, name: string): void {
   var platforms = data.platforms.filter(function (p) {
     return p.bands.length > 0;
   });

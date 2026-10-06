@@ -1,16 +1,16 @@
 /* The side panel: factory health and the power circuits, over the map. See
  * docs/spatial-and-map.md §21. */
 
-import { button, chip, empty, error, issueCount, issueGroups, link, loading } from "../kit/dashkit";
-import { el, esc, keepFocus, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "../kit/dom";
+import { button, chip, empty, error, link, loading } from "../kit/dashkit";
+import { issueCount, issueGroups } from "../dash/machine-health";
+import { el, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "../kit/dom";
+import { keepFocus } from "../kit/focus";
 import { showRef } from "./tools/finder";
 import { count, mw, pct } from "../kit/format";
 import { chooseLabel, FACTORY_PICKED, flyToFactory, paddedBounds, reveal } from "./labels";
 import { onLayersToggle, setLayersOpen } from "./layercontrol/control";
-import { L } from "./leaflet";
 import { loadOne } from "../app/load";
-import { flyPadded, flyToPoint, map, NARROW } from "./map";
-import { declareColours } from "./palette";
+import { flyPadded, NARROW } from "./map";
 import {
   bar,
   biomassLine,
@@ -27,22 +27,20 @@ import {
   whereOf,
 } from "../dash/power-ledger";
 import { registerFetch } from "../app/registry";
-import { machineSelection, onSelect, select, selected } from "../app/selection";
+import { onSelect, select, selected } from "../app/selection";
+import { clearMark, outline, ringAt, ringedKey, selectAndRing } from "./map-highlight";
 import { editName, renamingIn } from "../dash/factories/rename";
 import { state } from "../app/state";
+import { notifyVitals, vitals } from "../app/vitals";
 import { actionTone, learnStates, statesOf, tone } from "../dash/machine-states";
 import { counted, W } from "../kit/words";
 
-import type { IssueGroup } from "../kit/dashkit";
+import type { IssueGroup } from "../dash/machine-health";
 import type { CircuitRow, CircuitsResponse, FactoryHealthResponse, FactoryHealthRow, MachineRef, StarvedGenerator } from "../api/shapes";
 import type { Rated, Reading } from "../dash/power-ledger";
 import type { Selection } from "../app/selection";
 
 type Tab = "factories" | "power";
-
-export var HIGHLIGHT = declareColours("panel", { highlight: "#ff4fd8" }).highlight;
-
-var MACHINE_ZOOM = 2;
 
 var CIRCUIT_ZOOM = 1;
 
@@ -60,38 +58,15 @@ var view = {
   factory: "",
   circuit: -1,
   pending: "",
-  health: null as FactoryHealthResponse | null,
-  healthError: "",
-  circuits: null as CircuitsResponse | null,
-  circuitsError: "",
 };
 
-var mark = L.layerGroup();
-
-var listeners: Array<() => void> = [];
+var readings = vitals();
 
 var missed = false;
 
-export interface Vitals {
-  health: FactoryHealthResponse | null;
-  healthError: string;
-  circuits: CircuitsResponse | null;
-  circuitsError: string;
-}
-
-export function vitals(): Vitals {
-  return view;
-}
-
-export function onVitals(listener: () => void): void {
-  listeners.push(listener);
-}
-
 function changed(): void {
   render();
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  notifyVitals();
 }
 
 function remember(): void {
@@ -130,53 +105,12 @@ function setOpen(open: boolean): void {
   render();
 }
 
-function outline(bounds: L.LatLngBounds): void {
-  clearMark();
-  L.rectangle(bounds, {
-    color: HIGHLIGHT,
-    weight: 2,
-    dashArray: "6 4",
-    fill: false,
-    interactive: false,
-  }).addTo(mark);
-  if (!map.hasLayer(mark)) mark.addTo(map);
-}
-
-var ringed = "";
-
-function clearMark(): void {
-  mark.clearLayers();
-  ringed = "";
-}
-
-function ringAt(x_m: number, y_m: number, label: string, key: string): void {
-  clearMark();
-  ringed = key;
-  var ring = L.circleMarker([-y_m, x_m], {
-    radius: 14,
-    color: HIGHLIGHT,
-    weight: 3,
-    fill: false,
-    interactive: false,
-  });
-  if (label) ring.bindTooltip(esc(label), { permanent: true, direction: "right", offset: [14, 0], className: "pin-label" });
-  ring.addTo(mark);
-  if (!map.hasLayer(mark)) mark.addTo(map);
-}
-
-function pin(x_m: number, y_m: number, label?: string, stay?: boolean, as?: Selection): void {
-  var s = as || { kind: "point", key: x_m + "," + y_m, label: label || "a point", x_m: x_m, y_m: y_m };
-  select(s);
-  ringAt(x_m, y_m, as ? s.label : label || "", s.kind + ":" + s.key);
-  if (!stay) flyToPoint([-y_m, x_m], Math.max(map.getZoom(), MACHINE_ZOOM));
-}
-
 interface Placed {
   x_m: number;
   y_m: number;
 }
 
-function located(row: { x_m: number | null; y_m: number | null }): row is Placed {
+export function located(row: { x_m: number | null; y_m: number | null }): row is Placed {
   return row.x_m !== null && row.y_m !== null;
 }
 
@@ -215,9 +149,9 @@ function follow(): void {
   var s = selected();
   if (!s) clearMark();
   var factory = s && s.kind === "factory" && factoryNamed(s.key) ? s.key : "";
-  var circuitRow = s && s.kind === "circuit" && view.circuits ? view.circuits.circuits[+s.key] : undefined;
+  var circuitRow = s && s.kind === "circuit" && readings.circuits ? readings.circuits.circuits[+s.key] : undefined;
   var circuit = circuitRow ? circuitRow.index : -1;
-  if (s && spot(s) && ringed !== s.kind + ":" + s.key && s.x_m !== undefined && s.y_m !== undefined) {
+  if (s && spot(s) && ringedKey !== s.kind + ":" + s.key && s.x_m !== undefined && s.y_m !== undefined) {
     ringAt(s.x_m, s.y_m, s.label, s.kind + ":" + s.key);
   }
   if (s && !factory && !circuitRow && !spot(s)) return;
@@ -238,7 +172,7 @@ function pinButton(row: { x_m: number | null; y_m: number | null }, label: strin
     "map",
     function () {
       reveal(["machines"]);
-      pin(at.x_m, at.y_m, label);
+      selectAndRing(at.x_m, at.y_m, label);
     },
     { map: true, title: "fly the map to it", label: "show " + label + " on the map" }
   );
@@ -319,7 +253,7 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
       button(
         "rename",
         function () {
-          var health = view.health;
+          var health = readings.health;
           if (!health) return;
           editName(nameEl, row.name, health.labels_version, function (reply) {
             if (reply) view.factory = reply.name;
@@ -371,12 +305,12 @@ function unavailable(body: HTMLElement, thing: string, failed: string, path: "/a
 }
 
 function renderFactories(body: HTMLElement): void {
-  if (unavailable(body, "factory health", view.healthError, HEALTH_PATH)) return;
-  if (!view.health) {
+  if (unavailable(body, "factory health", readings.healthError, HEALTH_PATH)) return;
+  if (!readings.health) {
     loading(body, "factory health");
     return;
   }
-  var rows = view.health.factories;
+  var rows = readings.health.factories;
   if (!rows.length) {
     empty(body, "no " + W.factories + " named yet", link("factories", "find and name them on the Factories tab"));
     return;
@@ -503,8 +437,8 @@ function circuitRow(row: CircuitRow): HTMLElement {
 }
 
 function renderPower(body: HTMLElement): void {
-  if (unavailable(body, "power circuits", view.circuitsError, CIRCUITS_PATH)) return;
-  var data = view.circuits;
+  if (unavailable(body, "power circuits", readings.circuitsError, CIRCUITS_PATH)) return;
+  var data = readings.circuits;
   if (!data) {
     loading(body, "power circuits");
     return;
@@ -565,8 +499,8 @@ export function render(): void {
 }
 
 function factoryNamed(name: string): FactoryHealthRow | undefined {
-  return view.health
-    ? view.health.factories.filter(function (r) {
+  return readings.health
+    ? readings.health.factories.filter(function (r) {
         return r.name === name;
       })[0]
     : undefined;
@@ -591,28 +525,12 @@ export function showSelector(selector: string): void {
 }
 
 export function showCircuit(index: number): void {
-  var row = view.circuits ? view.circuits.circuits[index] : undefined;
+  var row = readings.circuits ? readings.circuits.circuits[index] : undefined;
   if (!row) return;
   view.tab = "power";
   view.circuit = -1;
   setOpen(true);
   selectCircuit(row);
-}
-
-export function showPoint(x_m: number, y_m: number, options?: { label?: string; layers?: string[]; stay?: boolean }): void {
-  if (options && options.layers) reveal(options.layers);
-  pin(x_m, y_m, options && options.label, options && options.stay);
-}
-
-export function showMachine(instance: string, name: string, x_m: number, y_m: number, options?: { layers?: string[]; stay?: boolean }): void {
-  if (options && options.layers) reveal(options.layers);
-  pin(x_m, y_m, name, options && options.stay, machineSelection(instance, name, x_m, y_m));
-}
-
-export function showBox(bbox_m: [number, number, number, number], options?: { layers?: string[] }): void {
-  if (options && options.layers) reveal(options.layers);
-  var bounds = flyToFactory(bbox_m);
-  if (bounds) outline(bounds);
 }
 
 function scrollToFactory(): void {
@@ -672,8 +590,8 @@ registerFetch<FactoryHealthResponse>({
   refilters: false,
   draw: function (data) {
     learnStates(data);
-    view.health = data;
-    view.healthError = "";
+    readings.health = data;
+    readings.healthError = "";
     if (view.factory && !factoryNamed(view.factory)) {
       view.factory = "";
       clearMark();
@@ -686,8 +604,8 @@ registerFetch<FactoryHealthResponse>({
     if (view.pending) showFactory(view.pending);
   },
   failed: function () {
-    view.health = null;
-    view.healthError = "factory health could not be read for this save";
+    readings.health = null;
+    readings.healthError = "factory health could not be read for this save";
     changed();
   },
 });
@@ -705,15 +623,15 @@ registerFetch<CircuitsResponse>({
   clears: [],
   refilters: false,
   draw: function (data) {
-    view.circuits = data;
-    view.circuitsError = "";
+    readings.circuits = data;
+    readings.circuitsError = "";
     if (view.circuit >= data.circuits.length) view.circuit = -1;
     follow();
     changed();
   },
   failed: function () {
-    view.circuits = null;
-    view.circuitsError = "power circuits could not be read for this save";
+    readings.circuits = null;
+    readings.circuitsError = "power circuits could not be read for this save";
     changed();
   },
 });

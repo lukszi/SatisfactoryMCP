@@ -3,10 +3,13 @@
 
 import { onAdvice } from "../chat/advice";
 import { button, choice as choiceBox, empty, fieldError, link, note, tabs2 } from "../kit/dashkit";
-import { el, keepFocus, make } from "../kit/dom";
+import { el, make } from "../kit/dom";
+import { keepFocus } from "../kit/focus";
 import { renderInventory } from "./inventory";
 import { hashFor, writeHash } from "../map/map";
-import { onVitals, showFactory, showMachine, showPoint, vitals } from "../map/panel";
+import { located, showFactory } from "../map/panel";
+import { showMachine, showPoint } from "../map/map-highlight";
+import { onVitals, vitals } from "../app/vitals";
 import { renderPlanner, viewFocus } from "./planner/planner";
 import { bench, onBench } from "./planner/planner-core";
 import { planTitle } from "./planner/planner-list";
@@ -95,15 +98,6 @@ export function mapButton(title: string, action: () => void, label?: string): HT
     },
     { title: title, map: true, label: label }
   );
-}
-
-interface Placed {
-  x_m: number;
-  y_m: number;
-}
-
-function located(row: { x_m: number | null; y_m: number | null }): row is Placed {
-  return row.x_m !== null && row.y_m !== null;
 }
 
 export function pointButton(
