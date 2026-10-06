@@ -334,9 +334,9 @@ shade for any sun.
   inland is not counted: the southern lowlands lie under the sea's level. A rock standing in
   the void keeps the void off only above the sea's level; deeper, it is the void's, or the
   sea run on under the void would draw it as water. It is taken out of the height too, before
-  anything is drawn, or the lighting stage would shade the void over it as land. A floor the fill emptied beside the void
-  past the edge is part of that void. Drawn as a pit, the north-east corner's floor was a black
-  rectangle on the page's navy.
+  anything is drawn, or the lighting stage would shade the void over it as land. A floor the
+  fill emptied beside the void past the edge is part of that void. Drawn as a pit, the
+  north-east corner's floor was a black rectangle on the page's navy.
 - **Perched water**: a sloped river's box top is its upstream end, and one body's box can
   cover a lower body. `palette/perched.py` re-levels such water from its own shoreline
   before it is drawn. A box can also reach past its own fall's lip: **`LIP_DROP_M`** cuts a
