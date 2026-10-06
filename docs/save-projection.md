@@ -637,7 +637,7 @@ froze *after* a delivery and fall back to `stale`, an item at zero in it and a l
 it still bills for; neither can happen to a full cost. A partial payment below the remainder cannot be
 detected, so the subtraction can only **understate** what is owed and `derived 0` means "nothing left
 that this can see". Untestable on any save of this world — `mTargetGamePhasePaidOffCosts` is empty in
-all 29 — so it is pinned on constructed projections in `tests/test_phase_and_shards.py`.
+all 29 — so it is pinned on constructed projections in `tests/domain/progression/test_phases.py`.
 
 ### 6.5 Power Shards — committed is read, never derived
 
@@ -894,7 +894,7 @@ Two details the reference save forced:
   an average line neither occupies.
 - **The save's endpoint order is not the edge's.** Over the 1,297 wires, the order the two
   `PowerConnection` components were serialised in agrees with the order the two `Locations` are
-  stored in **687 times and disagrees 608** — a coin flip. `extract._power` therefore assigns each
+  stored in **687 times and disagrees 608** — a coin flip. `extract.power.power_network` therefore assigns each
   end to the nearer of the two actors in plan, and the evidence that the assignment is right is
   that only under it do the per-class offsets above collapse to a constant.
 
@@ -999,7 +999,7 @@ for the first time. On the reference save the move is 48 items over 6 classes �
 crates' contents exactly, verified item for item against the `crates` rows.
 
 Because `inventories` is a banked schema-11 key, 19 owes the parity filter a reconstruction:
-`_unfix_19` in `tests/test_savparse_parity.py` folds `crate` back into `machine` (a pure
+`_unfix_19` in `tests/pioneersav/test_vendor_parity.py` folds `crate` back into `machine` (a pure
 integer addition — cheaper than `_unfix_16`'s re-routing, and with no cancellation blindness,
 since nothing is subtracted) so the banked digests still compare on all 31 saves. A pickle
 written under 18 disagrees about `machine` and lacks `crate`, so the cache key had to move
@@ -1020,7 +1020,7 @@ the actor the physical graph knows it by. A contracted pipe run names itself wit
 
 **Belts did not, and the geometric substitute was measured before being refused.**
 `belts["segments"]` used to be `[chainIndex, classIndex, points, spans]` with no actor:
-`extract._belts` read each piece's instance name only to recover its class and then threw it
+`extract.routes.belts` read each piece's instance name only to recover its class and then threw it
 away. The two groupings are nearly the same size — 1,909 chains against 1,916 contracted belt
 runs — but nothing paired them, so the only available join was geometric:
 
@@ -1361,7 +1361,7 @@ corrupting the inflated body takes a deliberate re-compression rather than a tea
 flips, 599 were refused and the survivor landed in a deflate block's unused padding bits and
 inflated to byte-identical output.
 
-Four defects, now fixed with tests in `tests/test_savparse_robustness.py`:
+Four defects, now fixed with tests in `tests/pioneersav/test_robustness.py`:
 
 * **Nested `StructProperty` tags raised `RecursionError`, not `ParseError`.** 29 KB of crafted
   payload was enough; through the sidecar it came out as `{"error": "RecursionError"}` with a
@@ -1479,7 +1479,7 @@ decision that matters is the deletion, and the flip belongs to it.
 flip, over the whole folder rather than a sample, because the same measurement is the acceptance
 test — and bank the vendored parser's projection for every save first, since after the deletion
 that comparison can never be run again; strip the last references outside `sidecar/vendor/`
-(`extract_save.py`'s switch, `tests/test_savparse_save.py`'s default pin, and prose in
+(`extract_save.py`'s switch, `tests/pioneersav/test_save.py`'s default pin, and prose in
 `README.md`, this file and `docs/savparse-notes.md`); and settle `sav_data/`'s licence
 separately, since it is build-time input to `tools/gen_*.py` and not on this path — noting that
 its four collectible location tables would now buy a real feature, which makes that the harder

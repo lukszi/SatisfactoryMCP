@@ -185,7 +185,7 @@ def _tree_fingerprint(root: Path) -> tuple:
     ``DirEntry.stat`` rather than ``os.stat``: the values come from the directory
     enumeration the walk is already doing, which is what makes this 0.5 ms for 72 files
     against 4 ms of individual stats and 87 ms of sidecar. Measured prompt on NTFS even
-    against a handle the writer still holds open -- ``tests/test_scan_fingerprint.py``
+    against a handle the writer still holds open -- ``tests/core/saveio/test_scan_fingerprint.py``
     pins that, because a fingerprint that lags is a save the player just wrote and this
     server cannot see.
 

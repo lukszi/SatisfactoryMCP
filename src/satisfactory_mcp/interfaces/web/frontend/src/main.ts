@@ -49,7 +49,7 @@ import { loadWorlds } from "./app/world-picker";
  * DELETING A LINE HERE DELETES ITS LAYER, silently: each module registers what it wants
  * fetched as it is evaluated, load.ts imports none of them, and Rollup drops what nothing
  * imports -- no compile error, no runtime one. `test_architecture.py` checks this list
- * against the set of modules that call `registerFetch`, in both directions. Three of these are
+ * against the set of modules that call `registerFetch`, in both directions. Four of these are
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
 import "./chat/advice";

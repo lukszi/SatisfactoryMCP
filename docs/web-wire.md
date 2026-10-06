@@ -307,9 +307,9 @@ the query, calls it once and rounds.
 ## Inspect
 
 `/api/inspect` (`routers/world/inspect.py`) answers what is at a map coordinate. Every answer comes
-out of `place.describe`, the function `describe_location` calls; the route converts metres to
-centimetres and rounds. `radius_m` is the elevation reach (default 200 m, the tool's own);
-conduits count within 250 m, fields and pickups look 500 m out, and five nearest nodes are
+out of `surroundings.describe_point`, the function `describe_location` calls; the route converts
+metres to centimetres and rounds. `radius_m` is the elevation reach (default 200 m, the tool's
+own); conduits count within 250 m, fields and pickups look 500 m out, and five nearest nodes are
 sent.
 
 - **A failed save is not a failed answer.** The node table is static and covers the map, so a

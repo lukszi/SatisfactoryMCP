@@ -170,7 +170,7 @@ Two third-party sources preceded it, and both retirements are on the record rath
   disagreement accounted for as the game moving the map after 2024: 25 nodes moved 9.5–80.4 cm
   vertically, one pure Limestone node renamed and moved 150 cm, both confirmed independently against
   saveVersion 52 vs 60 save actors. The full record is `_meta.retired_mit_table` in
-  `data/world_resource_nodes.json`, pinned by `tests/test_nodes_provenance.py`.
+  `data/world_resource_nodes.json`, pinned by `tests/data/test_nodes_provenance.py`.
 
 > **The bug the two-source era found, and the mistake that hid it.** SCIM was missing
 > `BP_ResourceNode11`, a pure Limestone node worth 480/min. The save proves it exists — 459
@@ -236,25 +236,25 @@ SatisfactoryMcp/
                        # identity  inventory  census  carriers  water  sites  flow
       progression/     # unlocks  phases  research  harddrives  shards
       power/           # report.py: PowerLedger
-      factories/       # model  build  structure  identity  cohere  labels
-                       # select  query  health  trace  resolve  floors
-      spatial/         # geo  nodes  regions  select  maplink  origin
-                       # ranking  elevation  heightfield
+      factories/       # model  build  structure  candidates  cohere  labels
+                       # select  query  health  trace  floors
+      spatial/         # geo  regions  places  surroundings  maplink  ranking
+                       # elevation  heightfield; nodes/ (table, search, selectors)
       collectibles/    # table  removed  service
-      planning/        # optimize  scenario  prepare  slice  diff  layout
-                       # supply  bom  fit  store  byproducts  compare  carrier
-                       # advisor  commission  materials  sensitivity  sites  trunks
-                       # recall  report
-                       # + one *_service module per tool-sized use case
+      planning/        # solver/  readout/  analysis/  layout/  siting/
+                       # progress/  stored/ -- one subpackage per stage of a plan
+      session/         # pins  asks  focus  journal: what chat and page share
     presenters/
       text/            # ALL response formatting: primitives.py (TSV, envelopes,
                        # truncation) + one module per concept
     interfaces/
       mcp/
         app.py         # the mcp object + what more than one tool group needs
-        tools/         # one module per concern; importing it registers everything
-          gamedata.py  world.py  progression.py  factories.py
-          spatial.py   planning.py  harddrives.py  resources.py  prompts.py
+        resources.py  prompts.py
+        tools/         # one module or package per concern; importing it registers
+                       # everything: gamedata  world  progression  collectibles
+                       # harddrives  inventory  settings, and the factories/,
+                       # spatial/ and planning/ packages
       web/             # optional [web] extra: app.py (create_app)  serial/  terrain.py
                        # routers/ (one module per concern, ALL_ROUTERS is the mount order)
                        # __main__.py (the console script)  watch.py (save-file SSE)
@@ -266,7 +266,7 @@ SatisfactoryMcp/
                        # library — it imports nothing from satisfactory_mcp, and only
                        # core/saveio/extract/parser.py imports it, inside the child
   tools/               # a package, not a directory of loose scripts: gen_*.py, plus
-                       # _common.py (DEFAULT_GAME, the shared --game parser, require_gen)
+                       # collectibles/ (the steps gen_world_collectibles.py runs)
   tests/
     fixtures/          # tiny Docs slice + ~9 kB save projection (committed)
 ```
@@ -358,7 +358,7 @@ Subprocess overhead measured at **~60 ms**, and only on cache miss.
 > bytes the client sent to the server. The symptom was maximally unhelpful: every save-reading tool hung
 > until its 180 s timeout, with no error, no log and no partial output, and **only** when launched as a
 > real MCP server. Calling the same functions directly always worked, because then stdin is a terminal.
-> Fixed with `stdin=subprocess.DEVNULL`; `tests/test_sidecar_spawn.py` pins it, along with the
+> Fixed with `stdin=subprocess.DEVNULL`; `tests/core/saveio/test_sidecar_spawn.py` pins it, along with the
 > neighbouring trap that `sys.executable` must be an interpreter and never the console script, which
 > would spawn a second MCP server that waits on stdin and emits nothing.
 

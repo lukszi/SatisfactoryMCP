@@ -77,7 +77,7 @@ POSITION_DECIMALS = 4
 
 #: The retirement record for ``data/world_resource_nodes.mit.json``, deleted in the same
 #: commit that first generated this file. Transcribed, not recomputed -- the file it was
-#: measured against is gone -- so no run gates on it. ``tests/test_nodes_provenance.py``
+#: measured against is gone -- so no run gates on it. ``tests/data/test_nodes_provenance.py``
 #: pins these figures.
 RETIRED_MIT_TABLE = {
     "what": (

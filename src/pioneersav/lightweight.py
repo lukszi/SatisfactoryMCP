@@ -82,7 +82,7 @@ def _read_type_data(r: Reader, count: int, end: int) -> list:
             f"blocks, and no instance carries more than {MAX_DATA_BLOCKS} -- the walk is "
             "out of step"
         )
-    # nested list on purpose: extract._placed scans only top-level fields
+    # nested list on purpose: extract.structures.placed scans only top-level fields
     blocks = []
     for _ in range(count):
         type_ref = read_reference(r)

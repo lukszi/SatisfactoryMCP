@@ -189,7 +189,8 @@ One file carries the API, and it is generated. There used to be two.
   one.** It forwarded the loader's own save headers, so the useful response model deleted the
   eight keys per row nobody read; the server now declares `WorldsResponse` like everything
   else, `app/state.ts` and `app/world-picker.ts` import the rows from `api/shapes.ts`, and the page has no
-  hand-written payload claims left. `worlds()` in `routers/world.py` names the deleted keys.
+  hand-written payload claims left. `SaveRow` in `routers/world/worlds.py` names the deleted
+  keys.
 
 What is still `any`, in full:
 
@@ -200,7 +201,7 @@ What is still `any`, in full:
   as loosely as Leaflet itself defines them; nothing here widens them further.
 - `/api/summary`'s `header` is an open map — `{[key: string]: unknown}` by the server's own
   declaration, because it forwards the sidecar's save header rather than restating its thirteen
-  keys (see `SummaryResponse` in `routers/world.py`); the page reads the one key it uses,
+  keys (see `SummaryResponse` in `routers/world/worlds.py`); the page reads the one key it uses,
   `session_name`, out of that map. The rest of the endpoint is generated in full. The sentence
   that used to stand here — "typed for the four branches this page reads and no further" — was
   written when every endpoint answered `-> dict` and typing more meant inventing a contract;

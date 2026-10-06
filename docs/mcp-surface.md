@@ -528,7 +528,7 @@ state the caller has never seen. Pinning a filename is no protection; pinning a 
 Tokens are recorded in `save-pins.json` under the cache directory (the newest 200), which is
 what lets the second refusal differ from the third. The ledger is best-effort like every other
 cache here — losing it costs a refusal's sharpness, never an answer. `domain/world/pin.py` is
-the implementation; `tests/test_save_pin.py` reproduces the hazard end to end.
+the implementation; `tests/domain/world/test_save_pin.py` reproduces the hazard end to end.
 
 ### 10.1j One word per question — the parameter vocabulary
 
@@ -537,7 +537,7 @@ An alias only helps the first. So a question asked by more than one tool has exa
 parameter name, and a retired spelling **errors with the caller's own value rewritten** —
 `! of='power' is retired -- write show='power' instead` — rather than silently working or
 failing schema validation with nothing to act on. `interfaces/mcp/app.py:retired` builds
-those messages; `tests/test_conventions.py` pins one per retirement.
+those messages; `tests/mcp/test_conventions.py` pins one per retirement.
 
 | the question | the parameter | retired |
 |---|---|---|
@@ -751,7 +751,7 @@ the inspector and the siting z. No tool or argument changed. Two things read dif
 ### 10.1o What the tool descriptions leave to this page
 
 A tool description is resident in every session, so it carries the usage contract and nothing
-else; `TOOL_DESCRIPTION_BUDGET` in `tests/test_surface.py` caps the total. The measurements and
+else; `TOOL_DESCRIPTION_BUDGET` in `tests/mcp/test_surface.py` caps the total. The measurements and
 the history behind the contracts live here:
 
 - **`plan_factory`.** `machine_cost_mw` defaults to 5 MW, just above the 2.58 MW per machine
@@ -904,9 +904,9 @@ why there is no resident daemon.
   146 s of a 198 s run — 74% of the wall clock in 3 tests out of 805 — and are 22 s now:
   `test_savparse_parity` 88.1 → 12.3 s, `test_savparse_trailers` 36.5 → 7.3 s,
   `test_sidecar_placed` 21.3 → 2.5 s. Every number in this bullet is reproducible with
-  `--durations=25`, and the settings that produced them carry their own measurement tables:
-  the worker count in `[tool.pytest.ini_options]`, the fan-out width in `tests/_pool.py`, and
-  the collection order in `tests/conftest.py`.
+  `--durations=25`, and the settings that produced them (the worker count, the fan-out width
+  in `tests/support/fanout.py` and the collection order in `tests/conftest.py`) carry their
+  measurement tables in docs/DEVELOPING.md, "Test suite".
 - **Parallel changed what "shared state" costs, and two things had to be fixed for it.** The
   projection disk cache is written through `core/atomic.py` rather than `Path.write_bytes` —
   eight workers resolve the same newest save and miss the same key at the same moment, so

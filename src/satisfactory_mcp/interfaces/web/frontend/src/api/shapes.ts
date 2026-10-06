@@ -49,7 +49,7 @@ export type WorldsResponse = Body<"WorldsResponse">;
 
 /* --------------------------------------------------------------- /api/summary */
 
-/** Its `header` is an open map; see `SummaryResponse` in routers/world.py. `player` is
+/** Its `header` is an open map; see `SummaryResponse` in routers/world/worlds.py. `player` is
  *  always sent and its three fields are what go null; markers.ts branches on that, and
  *  reads the branch off this type as `SummaryResponse["player"]`. */
 export type SummaryResponse = Body<"SummaryResponse">;
@@ -82,7 +82,7 @@ export type StoredItem = Schema["StoredItem"];
 
 /** A container or a fluid buffer, discriminated by `kind`. The other kind's fields are
  *  ABSENT rather than null, so a reader branches on `kind` and gets the half it is looking
- *  at with every field required -- see the module docstring in routers/storage.py. */
+ *  at with every field required -- see docs/web-wire.md "Storage". */
 export type StorageRow = Schema["StorageSolid"] | Schema["StorageFluid"];
 export type StorageResponse = Body<"StorageResponse">;
 
@@ -296,7 +296,7 @@ export type NearPickup = Schema["NearPickup"];
 /* ------------------------------------------------------------------ both, and shared */
 
 /** A region lookup, hung on a node row and answered for an inspected point. Declared once
- *  on the server too -- in `serial.py`, for the same reason it is one name here. */
+ *  on the server too -- in `serial/shapes.py`, for the same reason it is one name here. */
 export type Region = Schema["Region"];
 
 /* ------------------------------------------------------------------ /api/trace */

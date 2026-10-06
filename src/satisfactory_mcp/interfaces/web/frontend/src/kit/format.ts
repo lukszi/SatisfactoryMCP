@@ -1,7 +1,7 @@
 /* Numbers, places, times and names as the page prints them.
  *
  * Pure and shared, so two views showing one fact cannot word it two ways. Imports nothing at
- * runtime, which lets tests/test_web_format.py run it under node.
+ * runtime, which lets tests/frontend/test_format_ts.py run it under node.
  */
 
 import type { Region } from "../api/shapes";
