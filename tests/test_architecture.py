@@ -589,9 +589,9 @@ def _tools_edges() -> set[tuple[str, str]]:
 
     A walker of its own rather than ``_edges(TOOLS)``, because ``_module_name`` derives a
     dotted name by relative path from ``SRC`` and these files live outside it. ``tools`` is a
-    real package -- it has an ``__init__.py`` and ``conftest.py`` puts the repository root on
-    ``sys.path`` so the suite can ``from tools import gen_map_image`` -- so the names built
-    here are the names Python uses.
+    real package -- it has an ``__init__.py`` and pytest's ``pythonpath`` puts the repository
+    root on ``sys.path`` so the suite can ``from tools import gen_map_image`` -- so the names
+    built here are the names Python uses.
     """
     edges: set[tuple[str, str]] = set()
     for path in _sources(TOOLS):
@@ -1458,9 +1458,9 @@ def test_the_one_file_api_stays_deleted():
             "concern, mounted through ALL_ROUTERS) and serial.py (the shared vocabulary), "
             "and a handler that fits neither belongs in a router of its own"
         )
-    assert not (REPO / "tests" / "test_web_api.py").exists(), (
-        "tests/test_web_api.py is back -- the endpoint tests live in test_web_<router>.py, "
-        "one file per router, plus test_web_static.py for the mount at /"
+    assert not (REPO / "tests" / "web" / "test_api.py").exists(), (
+        "tests/web/test_api.py is back -- the endpoint tests live in tests/web/, "
+        "one file per router, plus test_static.py for the mount at /"
     )
 
 

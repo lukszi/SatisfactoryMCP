@@ -12,10 +12,8 @@ from __future__ import annotations
 
 import io
 import tokenize
-import warnings
+from collections.abc import Iterable, Iterator
 from pathlib import Path
-
-ENFORCE = True
 
 ROOT = Path(__file__).resolve().parent.parent
 BUDGETS = [
@@ -25,61 +23,101 @@ BUDGETS = [
     (ROOT / "src" / "satisfactory_mcp" / "domain", 1.35),
     (ROOT / "src" / "satisfactory_mcp" / "core", 1.00),
     (ROOT / "src" / "pioneersav", 1.40),
+    (ROOT / "tests", 1.20),
 ]
+FRONTEND = ROOT / "src" / "satisfactory_mcp" / "interfaces" / "web" / "frontend"
+TS_BUDGET = 1.65
+#: Written by openapi-typescript from the server's schema, not by hand.
+TS_GENERATED = {"api-schema.d.ts", "schema.d.ts"}
 MIN_CODE_LINES = 40  # tiny files are all header; the budget is about essays, not stubs
 
 
 def prose_and_code(path: Path) -> tuple[int, int] | None:
-    src = path.read_text(encoding="utf-8")
+    """Python: ``#`` comment lines and docstring lines, against every other non-blank line."""
+    source = path.read_text(encoding="utf-8")
     try:
-        toks = list(tokenize.generate_tokens(io.StringIO(src).readline))
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
     except (tokenize.TokenError, SyntaxError):
         return None
     comment_lines: set[int] = set()
     doc_lines: set[int] = set()
-    prev = None
-    for t in toks:
-        if t.type == tokenize.COMMENT:
-            comment_lines.update(range(t.start[0], t.end[0] + 1))
-        elif t.type == tokenize.STRING and prev in (
+    previous_type = None
+    for token in tokens:
+        if token.type == tokenize.COMMENT:
+            comment_lines.update(range(token.start[0], token.end[0] + 1))
+        elif token.type == tokenize.STRING and previous_type in (
             None,
             tokenize.NEWLINE,
             tokenize.NL,
             tokenize.INDENT,
             tokenize.DEDENT,
         ):
-            doc_lines.update(range(t.start[0], t.end[0] + 1))
-        if t.type not in (tokenize.COMMENT,):
-            prev = t.type
+            doc_lines.update(range(token.start[0], token.end[0] + 1))
+        if token.type != tokenize.COMMENT:
+            previous_type = token.type
     prose = code = 0
-    for i, line in enumerate(src.splitlines(), 1):
-        s = line.strip()
-        if not s:
+    for line_number, line in enumerate(source.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped:
             continue
-        if (i in comment_lines and s.startswith("#")) or i in doc_lines:
+        if (line_number in comment_lines and stripped.startswith("#")) or line_number in doc_lines:
             prose += 1
         else:
             code += 1
     return prose, code
 
 
+def ts_prose_and_code(path: Path) -> tuple[int, int]:
+    """TypeScript: lines starting ``//`` and every line of a ``/* */`` or ``/** */`` block."""
+    prose = code = 0
+    in_block = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if in_block:
+            prose += 1
+            in_block = "*/" not in stripped
+        elif stripped.startswith("//"):
+            prose += 1
+        elif stripped.startswith("/*"):
+            prose += 1
+            in_block = "*/" not in stripped[2:]
+        else:
+            code += 1
+    return prose, code
+
+
+def _typescript_sources() -> list[Path]:
+    sources = [
+        *(FRONTEND / "src").rglob("*.ts"),
+        *FRONTEND.glob("*.d.ts"),
+        FRONTEND / "vite.config.ts",
+    ]
+    return [path for path in sources if path.name not in TS_GENERATED and path.is_file()]
+
+
+def _over_budget(
+    counted: Iterable[tuple[Path, tuple[int, int] | None]], budget: float
+) -> Iterator[str]:
+    """``ratio>cap path`` for every counted file of at least MIN_CODE_LINES over ``budget``."""
+    for path, counts in counted:
+        if counts is None:
+            continue
+        prose, code = counts
+        if code >= MIN_CODE_LINES and prose / code > budget:
+            yield f"{prose / code:.2f}>{budget} {path.relative_to(ROOT)}"
+
+
 def test_the_prose_stays_inside_its_budget() -> None:
-    over: list[str] = []
-    for root, budget in BUDGETS:
-        for path in root.rglob("*.py"):
-            counted = prose_and_code(path)
-            if counted is None:
-                continue
-            prose, code = counted
-            if code < MIN_CODE_LINES:
-                continue
-            ratio = prose / code
-            if ratio > budget:
-                over.append(f"{ratio:.2f}>{budget} {path.relative_to(ROOT)}")
-    if not over:
-        return
+    over = [
+        entry
+        for root, budget in BUDGETS
+        for entry in _over_budget(((p, prose_and_code(p)) for p in root.rglob("*.py")), budget)
+    ]
+    over += _over_budget(((p, ts_prose_and_code(p)) for p in _typescript_sources()), TS_BUDGET)
     over.sort(reverse=True)
-    message = (
+    assert not over, (
         f"comment budget: {len(over)} file(s) over (docs/comments.md). "
         "The remedy is to split the file so each explanation sits beside the code it guards, "
         "or to move a fact to its one home and delete the copy (rule 1) -- not to delete the "
@@ -88,6 +126,3 @@ def test_the_prose_stays_inside_its_budget() -> None:
         + "; ".join(over[:10])
         + ("" if len(over) <= 10 else f"; +{len(over) - 10} more")
     )
-    if ENFORCE:
-        raise AssertionError(message)
-    warnings.warn(message, stacklevel=1)
