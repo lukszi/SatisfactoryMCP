@@ -12,9 +12,8 @@ browser to read an event is the only one that sees it. The queues are bounded an
 rather than block: a browser that has stopped reading has gone away, and these are edge
 triggers.
 
-The plan logs and the activity journal are TAILED rather than stat-compared: every new commit
-or entry becomes an event carrying its data (docs/planner_slice_contract.md §11.3; the event
-shapes are in docs/web-wire.md).
+The plan logs, the activity journal and the settings file are tailed by ``watch_tail.LogTail``
+on a faster tick of their own.
 """
 
 from __future__ import annotations
@@ -23,29 +22,14 @@ import asyncio
 import logging
 import threading
 from collections.abc import Iterable
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from ... import config
 from ...core.saveio.projection import load_projection
-from ...domain import settings
-from ...domain.planning import journal
-from ...domain.planning.planlog import Commit, PlanLog, PlanLogError
-from .serial import actor_json, settings_json
+from .watch_events import KIND_NOTES, KIND_SAVE, WatchEvent
+from .watch_tail import LogTail
 
-__all__ = [
-    "KINDS",
-    "KIND_ACTIVITY",
-    "KIND_MAPS",
-    "KIND_NOTES",
-    "KIND_PLANS",
-    "KIND_SAVE",
-    "KIND_SETTINGS",
-    "POLL_SECONDS",
-    "TAIL_SECONDS",
-    "SaveWatcher",
-    "WatchEvent",
-]
+__all__ = ["POLL_SECONDS", "QUEUE_MAX", "TAIL_SECONDS", "SaveWatcher"]
 
 log = logging.getLogger(__name__)
 
@@ -60,102 +44,6 @@ TAIL_SECONDS = 0.5
 #: burst of commits has to fit.
 QUEUE_MAX = 32
 
-#: The game wrote a save.
-KIND_SAVE = "save"
-
-#: This project wrote a factory label, or the legacy top-level plan file.
-KIND_NOTES = "notes"
-
-#: New commits in one plan's log: one event per plan per tail tick.
-KIND_PLANS = "plans"
-
-#: One new activity-journal entry.
-KIND_ACTIVITY = "activity"
-
-#: The shared settings file changed.
-KIND_SETTINGS = "settings"
-
-#: A map generation job moved, or the map registry did. State rather than a journal: the
-#: newest one is all a page needs, and it is replayed to every new subscriber.
-KIND_MAPS = "maps"
-
-#: Every kind, in the order a newly connected browser is told about them.
-KINDS = (KIND_SAVE, KIND_NOTES, KIND_PLANS, KIND_ACTIVITY, KIND_SETTINGS, KIND_MAPS)
-
-
-@dataclass(frozen=True)
-class WatchEvent:
-    """The newest file in one watched tree, at the moment its mtime changed.
-
-    ``kind`` is the SSE event NAME and is deliberately not in ``as_dict``: the wire carries
-    it as ``event:``, and a copy in the data would be two places to read one fact.
-    """
-
-    kind: str
-    filename: str
-    mtime: float
-    data: dict | None = field(default=None, compare=False)
-
-    def as_dict(self) -> dict:
-        if self.data is not None:
-            return dict(self.data)
-        return {"filename": self.filename, "mtime": self.mtime}
-
-
-def _complete(path: Path) -> int:
-    try:
-        return path.read_bytes().rfind(b"\n") + 1
-    except OSError:
-        return 0
-
-
-def _plan_event(world: str, key: str, rows: list[dict]) -> WatchEvent | None:
-    try:
-        commits = [Commit.from_dict(r) for r in rows]
-    except (ValueError, KeyError, TypeError):
-        return None
-    if not commits:
-        return None
-    newest = commits[-1]
-    try:
-        state = PlanLog(world).state(key, newest.rev)
-        name, forgotten = state.name, state.forgotten
-    except (PlanLogError, OSError, ValueError):
-        name, forgotten = "", False
-    actors: list[dict] = []
-    for commit in commits:
-        body = actor_json(commit.actor)
-        if body not in actors:
-            actors.append(body)
-    data = {
-        "world": world,
-        "key": key,
-        "name": name,
-        "rev": newest.rev,
-        "from_rev": commits[0].rev - 1,
-        "actors": actors,
-        "text": newest.text(),
-        "ts": newest.ts,
-        "forgotten": forgotten,
-    }
-    return WatchEvent(KIND_PLANS, f"{key}/ops.jsonl", newest.ts, data)
-
-
-def _activity_event(world: str, row: dict) -> WatchEvent:
-    ts = float(row.get("ts") or 0.0)
-    data = {
-        "world": world,
-        "id": str(row.get("id") or ""),
-        "ts": ts,
-        "actor": actor_json(row.get("actor")),
-        "kind": str(row.get("kind") or ""),
-        "plan": row.get("plan"),
-        "rev": row.get("rev"),
-        "text": str(row.get("text") or ""),
-        "args": row.get("args"),
-    }
-    return WatchEvent(KIND_ACTIVITY, data["id"], ts, data)
-
 
 def _warm_newest() -> None:
     """Resolve and parse the newest save, discarding everything including the failures.
@@ -169,6 +57,25 @@ def _warm_newest() -> None:
         load_projection()
     except Exception:
         log.debug("pre-warming the newest save failed", exc_info=True)
+
+
+def _newest_file_event(kind: str, roots: Iterable[tuple[Path, str]]) -> WatchEvent | None:
+    """The newest file matching any ``(root, pattern)``, as an event of ``kind``."""
+    newest: tuple[float, str] | None = None
+    for root, pattern in roots:
+        try:
+            for path in root.glob(pattern):
+                try:
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    continue
+                if newest is None or mtime > newest[0]:
+                    newest = (mtime, path.name)
+        except OSError:
+            continue
+    if newest is None:
+        return None
+    return WatchEvent(kind=kind, filename=newest[1], mtime=newest[0])
 
 
 class SaveWatcher:
@@ -197,11 +104,10 @@ class SaveWatcher:
         #: reader's own plan and activity directories.
         self.tail = tail
         self.tail_interval = tail_interval
-        self._offsets: dict[Path, int] | None = None
-        self._settings_stamp: tuple[int, int] | None | bool = False
+        self.log_tail = LogTail()
         self._warming: threading.Thread | None = None
         self._subscribers: set[asyncio.Queue] = set()
-        self._cut: set[asyncio.Queue] = set()
+        self._dropped: set[asyncio.Queue] = set()
         self._task: asyncio.Task | None = None
         self._tail_task: asyncio.Task | None = None
         #: The newest event of each kind, replayed to every new subscriber.
@@ -219,11 +125,11 @@ class SaveWatcher:
 
     def unsubscribe(self, q: asyncio.Queue) -> None:
         self._subscribers.discard(q)
-        self._cut.discard(q)
+        self._dropped.discard(q)
 
-    def cut(self, q: asyncio.Queue) -> bool:
+    def was_dropped(self, q: asyncio.Queue) -> bool:
         """Whether ``q`` overflowed and was dropped: its stream ends so the browser resyncs."""
-        return q in self._cut
+        return q in self._dropped
 
     def publish(self, event: WatchEvent) -> None:
         """Hold ``event`` as its kind's newest and fan it out, for a publisher outside the poll."""
@@ -236,7 +142,7 @@ class SaveWatcher:
                 q.put_nowait(event)
             except asyncio.QueueFull:
                 self._subscribers.discard(q)
-                self._cut.add(q)
+                self._dropped.add(q)
 
     # ---- the poll -------------------------------------------------------
 
@@ -249,23 +155,6 @@ class SaveWatcher:
             return tuple((root, "**/*.json") for root in self._notes)
         return ((config.labels_dir(), "**/*.json"), (config.plans_dir(), "*.json"))
 
-    def _newest(self, kind: str, roots: Iterable[tuple[Path, str]]) -> WatchEvent | None:
-        newest: tuple[float, str] | None = None
-        for root, pattern in roots:
-            try:
-                for path in root.glob(pattern):
-                    try:
-                        mtime = path.stat().st_mtime
-                    except OSError:
-                        continue
-                    if newest is None or mtime > newest[0]:
-                        newest = (mtime, path.name)
-            except OSError:
-                continue
-        if newest is None:
-            return None
-        return WatchEvent(kind=kind, filename=newest[1], mtime=newest[0])
-
     def scan(self) -> list[WatchEvent]:
         """The newest file in each watched tree, for the trees that have one.
 
@@ -276,8 +165,8 @@ class SaveWatcher:
         noticed only when it was the newest file in its tree.
         """
         found = [
-            self._newest(KIND_SAVE, ((self.root(), "**/*.sav"),)),
-            self._newest(KIND_NOTES, self.notes_roots()),
+            _newest_file_event(KIND_SAVE, ((self.root(), "**/*.sav"),)),
+            _newest_file_event(KIND_NOTES, self.notes_roots()),
         ]
         return [event for event in found if event is not None]
 
@@ -316,76 +205,8 @@ class SaveWatcher:
 
     # ---- the tail -------------------------------------------------------
 
-    def _tailed(self) -> list[tuple[str, str, Path]]:
-        """``(kind, world, path)`` for every plan log and journal file on disk now."""
-        found = []
-        for kind, root, pattern in (
-            (KIND_PLANS, config.plans_dir(), "*/ops.jsonl"),
-            (KIND_ACTIVITY, config.activity_dir(), "*.jsonl"),
-        ):
-            try:
-                worlds = sorted(d for d in root.iterdir() if d.is_dir())
-            except OSError:
-                continue
-            for world in worlds:
-                found += [(kind, world.name, path) for path in sorted(world.glob(pattern))]
-        return found
-
-    def tail_scan(self) -> list[WatchEvent]:
-        """New commits and entries since the last call; the first call only takes offsets.
-
-        Blocking, so it runs through ``asyncio.to_thread``. A file first seen after that
-        baseline is read from its start, which is how a new plan's ``create`` is announced.
-        """
-        files = self._tailed()
-        if self._offsets is None:
-            self._offsets = {path: _complete(path) for _kind, _world, path in files}
-            return []
-        events: list[WatchEvent] = []
-        for kind, world, path in files:
-            offset = self._offsets.get(path, 0)
-            try:
-                size = path.stat().st_size
-            except OSError:
-                continue
-            if size < offset:
-                self._offsets[path] = _complete(path)
-                continue
-            if size == offset:
-                continue
-            rows, self._offsets[path] = journal.tail(path, offset)
-            if not rows:
-                continue
-            if kind == KIND_PLANS:
-                event = _plan_event(world, path.parent.name, rows)
-                events += [] if event is None else [event]
-            else:
-                events += [_activity_event(world, row) for row in rows]
-        return events
-
-    def settings_scan(self) -> list[WatchEvent]:
-        """The settings file as one event when its stamp moved; the first call only records it."""
-        try:
-            stat = config.settings_path().stat()
-            stamp: tuple[int, int] | None = (stat.st_mtime_ns, stat.st_size)
-        except OSError:
-            stamp = None
-        first = self._settings_stamp is False
-        if stamp == self._settings_stamp:
-            return []
-        self._settings_stamp = stamp
-        if first or stamp is None:
-            return []
-        try:
-            view = settings.read()
-        except Exception:
-            return []
-        data = settings_json(view)
-        return [WatchEvent(KIND_SETTINGS, "settings.json", float(view["updated"] or 0.0), data)]
-
     async def tail_once(self) -> list[WatchEvent]:
-        news = await asyncio.to_thread(self.tail_scan)
-        news += await asyncio.to_thread(self.settings_scan)
+        news = await asyncio.to_thread(self.log_tail.scan)
         for event in news:
             self.latest[event.kind] = event
             self._publish(event)

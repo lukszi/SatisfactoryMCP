@@ -382,15 +382,14 @@ ROUTER_ALLOWED_PREFIXES: tuple[str, ...] = (
 #: The one measured exception, and it is one module reaching one module.
 #:
 #: ``routers/events.py`` streams what ``watch.SaveWatcher`` publishes. It reads the watcher
-#: off ``request.app.state`` and needs no import at all today; the entry is here so that a
-#: type annotation on it stays legal without widening the rule for everybody. Named as a
-#: pair rather than as a prefix: any OTHER router importing ``watch`` is the failure this
-#: is shaped to still catch.
+#: off ``request.app.state`` and imports only the event names and record, which live in
+#: ``watch_events``. Named as a pair rather than as a prefix: any OTHER router importing the
+#: watcher's modules is the failure this is shaped to still catch.
 ROUTER_EXTRA_EDGES: frozenset[tuple[str, str]] = frozenset(
     {
         (
             "satisfactory_mcp.interfaces.web.routers.events",
-            "satisfactory_mcp.interfaces.web.watch",
+            "satisfactory_mcp.interfaces.web.watch_events",
         )
     }
 )

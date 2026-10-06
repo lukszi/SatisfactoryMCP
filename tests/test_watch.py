@@ -33,13 +33,12 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.planning import journal
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
-from satisfactory_mcp.interfaces.web.watch import (
+from satisfactory_mcp.interfaces.web.watch import QUEUE_MAX, SaveWatcher
+from satisfactory_mcp.interfaces.web.watch_events import (
     KIND_ACTIVITY,
     KIND_NOTES,
     KIND_PLANS,
     KIND_SAVE,
-    QUEUE_MAX,
-    SaveWatcher,
     WatchEvent,
 )
 
@@ -165,13 +164,13 @@ def test_an_overflowed_subscriber_is_cut_so_its_stream_ends_and_the_page_resyncs
         q = watcher.subscribe()
         for n in range(QUEUE_MAX):
             watcher._publish(_event(n))
-        before = watcher.cut(q)
+        before = watcher.was_dropped(q)
         watcher._publish(_event(QUEUE_MAX))
         _drain(q)
         watcher._publish(_event(QUEUE_MAX + 1))
-        after = watcher.cut(q), q.qsize()
+        after = watcher.was_dropped(q), q.qsize()
         watcher.unsubscribe(q)
-        return before, after, watcher.cut(q)
+        return before, after, watcher.was_dropped(q)
 
     before, after, forgotten = asyncio.run(go())
     assert before is False
@@ -376,7 +375,7 @@ def test_the_tail_publishes_to_subscribers_and_runs_only_when_asked(logs):
         q = tailing.subscribe()
         await tailing.start()
         try:
-            await _until(lambda: tailing._offsets is not None)
+            await _until(lambda: tailing.log_tail._offsets is not None)
             PlanLog("W").create("fresh", {}, actor=PAGE)
             await _until(lambda: q.qsize() > 0)
             return quiet._tail_task, q.get_nowait()

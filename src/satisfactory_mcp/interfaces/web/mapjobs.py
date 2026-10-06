@@ -18,7 +18,7 @@ from ... import config
 from ...domain.maps import jobs as store
 from ...domain.maps import presets, registry
 from .childproc import Child, kill_tree, launch
-from .watch import KIND_MAPS, WatchEvent
+from .watch_events import KIND_MAPS, WatchEvent
 
 __all__ = ["QUEUE_MAX", "MapJobRunner"]
 

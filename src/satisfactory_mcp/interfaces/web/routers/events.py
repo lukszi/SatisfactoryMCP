@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 
 from ....core.saveio import projection as proj
 from ....domain.world import pin
-from ..watch import KIND_ACTIVITY, KIND_PLANS, KIND_SAVE, KINDS, WatchEvent
+from ..watch_events import KIND_ACTIVITY, KIND_PLANS, KIND_SAVE, KINDS, WatchEvent
 
 __all__ = ["PING_SECONDS", "router"]
 
@@ -102,7 +102,7 @@ async def events(request: Request, since: float = 0.0) -> StreamingResponse:
                 if held is not None and not _history(held, since):
                     yield _sse(kind, await _payload(held))
             while True:
-                if watcher.cut(queue) and queue.empty():
+                if watcher.was_dropped(queue) and queue.empty():
                     return
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=PING_SECONDS)

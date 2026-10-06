@@ -14,7 +14,8 @@ from satisfactory_mcp import config
 from satisfactory_mcp.domain import settings
 from satisfactory_mcp.domain.planning.planlog import Actor
 from satisfactory_mcp.interfaces.web.app import create_app
-from satisfactory_mcp.interfaces.web.watch import KIND_SETTINGS, KINDS, SaveWatcher
+from satisfactory_mcp.interfaces.web.watch import SaveWatcher
+from satisfactory_mcp.interfaces.web.watch_events import KIND_SETTINGS, KINDS
 
 ORIGIN = {"origin": "http://testserver"}
 EVIL = {"origin": "http://evil.example"}
@@ -105,19 +106,19 @@ def test_a_newer_settings_file_is_a_503_naming_the_settings(client):
 
 def test_the_watcher_announces_a_settings_write_with_its_state():
     watcher = SaveWatcher()
-    assert watcher.settings_scan() == []
+    assert watcher.log_tail.settings_scan() == []
     settings.write({"stage_headroom": "nameplate"}, Actor("chat", "claude-code", 3))
-    [event] = watcher.settings_scan()
+    [event] = watcher.log_tail.settings_scan()
     assert event.kind == KIND_SETTINGS and KINDS[-2] == KIND_SETTINGS
     data = event.as_dict()
     assert data["version"] == 1 and data["values"]["stage_headroom"] == "nameplate"
     assert data["by"]["kind"] == "chat"
-    assert watcher.settings_scan() == []
+    assert watcher.log_tail.settings_scan() == []
 
 
 def test_the_watchers_first_look_announces_nothing_old():
     settings.write({"biomass": True}, Actor("page", "", 1))
     watcher = SaveWatcher()
-    assert watcher.settings_scan() == []
+    assert watcher.log_tail.settings_scan() == []
     settings.write({"biomass": False}, Actor("page", "", 1))
-    assert [e.as_dict()["values"]["biomass"] for e in watcher.settings_scan()] == [False]
+    assert [e.as_dict()["values"]["biomass"] for e in watcher.log_tail.settings_scan()] == [False]
