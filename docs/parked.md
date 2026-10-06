@@ -279,6 +279,20 @@ the oldest lightweight-capable save (Oct 2025): 99.82%. What the measurement cor
 * **Pre-U8 saves emit zero `structures`**: the feature says "this save is too old", never
   "this world has no floors".
 
+The constants `domain/factories/floors.py` ships, and the measurement behind each:
+
+| constant | value | why |
+|---|---|---|
+| `CLUSTER_TOL_CM` | 50 | anything from 10 to 50 gives the identical decomposition; only past 100 does the band count collapse |
+| `BAND_EPS_CM` | 25 | the bands are exact: 5 and 50 report the same pieces as banded |
+| `MIN_BAND_PIECES` | 3 | below three every stray piece becomes its own storey; above, real half-steps disappear |
+| `DECK_SLACK_CM` | 25 | float slop only, since a building's pivot is its base: at 0 dozens fall out to the orphan group, and 5 to 450 all agree |
+| `RUN_SLACK_CM` | 50 | a run endpoint sits a metre up; widen towards 450 and a deck several storeys above starts winning, which flatters every same-deck statistic. 50 absorbs a kerb and nothing more |
+| `BELT_HEIGHT_CM` | 100 | the median attachment sits at +100.2 cm; the legal endpoint heights are 100/300/500 |
+| `RISER_CM` | 600 | below it a lift is a belt-height jog, as 24% of lift chains are |
+| `TERRAIN_TOL_M` | 2 | 89% of orphans are inside it, 4% of band-assigned things are |
+| `MINOR_SHARE` | 0.25 | a mezzanine, a walkway ledge, a machine plinth: reported, never merged and never dropped |
+
 Stage 1 was already shipped by the map work (yaw + belts + pipes + attachments, schemas
 12-14); the stage-0 slice image was drawn from the projection alone. Stage 2 shipped as
 `domain/factories/floors.py` and `/api/floors`, stage 3 as the section below. **§16b is no

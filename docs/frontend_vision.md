@@ -666,7 +666,7 @@ blocked), and a name is about what the factory is built to make.
 
 **Classes come from topology, not from rates** (decided 2026-09-27: "If it outputs them into a
 box somewhere, that is a product. If it just outputs them into a sink, it's not an output.").
-`flowgraph.ends` walks each producing machine's outputs downstream over `st.physical`, the
+`flowgraph.output_destinations` walks each producing machine's outputs downstream over `st.physical`, the
 contracted belt and pipe runs. It passes through splitters, mergers, junctions, pumps and
 valves; lifts are part of a run. It sorts where the walk ends:
 
@@ -758,7 +758,7 @@ keeping names already edited.
 
 ### 9.5 Fed or not, and the size floor
 
-`fed.feeding` answers "is this a real factory or a box somebody fills by hand". It walks
+`fed.feed_verdict` answers "is this a real factory or a box somebody fills by hand". It walks
 upstream with `trace.trace`, the walk `trace_upstream` makes (belts and pipes walked through,
 directions read from connector roles). The verdict is one of three:
 

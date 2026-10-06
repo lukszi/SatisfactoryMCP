@@ -30,7 +30,7 @@ def _graph(*pairs: tuple[str, str | None]) -> PhysicalGraph:
 
 def _ends(graph: PhysicalGraph) -> set:
     machines = {MAKER, USER, OUTSIDE}
-    return fg.ends(graph, MAKER, BELT, {MAKER, USER}, machines.__contains__)
+    return fg.output_destinations(graph, MAKER, BELT, {MAKER, USER}, machines.__contains__)
 
 
 def test_a_splitter_to_a_box_and_a_machine_reaches_both():

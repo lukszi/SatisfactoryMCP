@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ...core.saveio import ports
-from ...core.saveio.records import actor_class
+from ...core.saveio.records import actor_class, iter_machine_records
 from .model import Edge, FactoryGraph, kind_of
 
 __all__ = ["build_graph"]
@@ -15,14 +15,10 @@ def build_graph(projection: dict) -> FactoryGraph:
     roles: list[str] = payload.get("roles", [])
 
     cls = {a: actor_class(a) for a in actors}
-    # The interned actor list is derived from EDGES, so a machine wired to nothing --
-    # 6 of 570 on the reference save, mostly half-built assemblers -- would be absent
-    # from the graph entirely and so could never be reported as unlabelled. An
-    # isolated machine is exactly the thing a coverage report exists to surface.
-    for key in ("machines", "extractors", "generators"):
-        for record in projection.get(key, ()):
-            name = record["instance"].rsplit(".", 1)[-1]
-            cls.setdefault(name, actor_class(name))
+    # The interned actor list is derived from EDGES, so a machine wired to nothing would be
+    # absent from the graph and could never be reported; seed every machine record (§6.1).
+    for _group, leaf, _record in iter_machine_records(projection):
+        cls.setdefault(leaf, actor_class(leaf))
     graph = FactoryGraph(cls=cls)
 
     def role(index: int) -> str:

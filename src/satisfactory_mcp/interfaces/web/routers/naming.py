@@ -207,7 +207,7 @@ def factory_candidates(
         if pr.size < min_machines:
             hidden["small"] += 1
             continue
-        verdict = fed.feeding(st, st.game, pr.machines)
+        verdict = fed.feed_verdict(st, st.game, pr.machines)
         if fed_only and verdict == fed.NOT_FED:
             hidden["not_fed"] += 1
             continue

@@ -130,10 +130,10 @@ def _hemisphere(x: float, y: float, direction: str) -> bool:
     return _angle_gap(b, target) <= 90.0
 
 
-def distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
-    """Planar XY distance in metres. Z is excluded: it matters for pipe head, not for
-    proximity, where a 40 m climb is noise against a 400 m walk."""
-    return math.dist(a, b) / CM_PER_M
+def distance_m(a: Sequence[float], b: Sequence[float]) -> float:
+    """Planar XY distance in metres between two cm points; any Z is ignored. It matters for
+    pipe head, not for proximity, where a 40 m climb is noise against a 400 m walk."""
+    return math.dist(a[:2], b[:2]) / CM_PER_M
 
 
 def distance_3d_m(a: Sequence[float], b: Sequence[float]) -> float:
