@@ -27,10 +27,10 @@ __all__ = [
     "COVER_TOP_MIN",
     "DOME_SIGMA_M",
     "CrownSet",
-    "stamp_crowns",
     "load_crowns",
     "meshed_species",
     "sprite_levels",
+    "stamp_crowns",
 ]
 
 #: Smoothing of a crown's top before it is lit: leaf cards are not a surface.
