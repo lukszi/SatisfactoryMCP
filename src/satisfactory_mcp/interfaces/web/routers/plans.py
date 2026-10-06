@@ -35,7 +35,7 @@ class PlanSiting(TypedDict):
 
     NOT centimetres, and this is the one payload on this surface where that is not a bug.
     ``Siting`` records metres because a player typed them, so ``serial._m`` has nothing to
-    do here -- see ``domain/planning/siting.py``.
+    do here -- see ``domain/planning/siting/``.
 
     ``z_m`` is null wherever the origin was named by something with no height (a factory
     centroid, a bare ``x,y``); the pad is still a rectangle on the ground. ``source`` is

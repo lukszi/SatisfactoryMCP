@@ -17,7 +17,8 @@ from typing import Any, Literal, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....domain.planning import site_preview, siting
+from ....domain.planning import siting
+from ....domain.planning.siting import preview as site_preview
 from ....domain.planning.stored.planlog import InvalidOp, PlanLog, UnknownPlan
 from ....domain.world import pin
 from .. import terrain

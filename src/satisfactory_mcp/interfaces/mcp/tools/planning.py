@@ -667,7 +667,7 @@ def _snapped(sit: siting_mod.Siting) -> siting_mod.Siting:
 
 def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx) -> str:
     """``site_plan(preview=True)``: the page's preview in words, and a ghost pad there."""
-    from ....domain.planning import site_preview
+    from ....domain.planning.siting import preview as site_preview
     from ....domain.spatial import heightfield
 
     state = _log(st).state(stored.key)

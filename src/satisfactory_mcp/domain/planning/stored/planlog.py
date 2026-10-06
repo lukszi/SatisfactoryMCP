@@ -588,17 +588,17 @@ def describe_op(op: dict) -> str:
 
 def _site_words(op: dict) -> str:
     """``set at 1,476, -2,098 (Rocky Desert)``, ``moved 1,503 m west, turned 30°``, ``cleared``."""
-    from .. import siting
+    from ..siting import record as siting_record
 
     value, was = op.get("value"), op.get("was")
     if not value:
         return "cleared"
-    sit = siting.parse(siting._Raw(value))
+    sit = siting_record.parse(siting_record._Raw(value))
     if not was:
         if sit is None:
             return "set"
         return f"set at {sit.x_m:,.0f}, {sit.y_m:,.0f}" + _region(sit.x_m, sit.y_m)
-    return siting.move_words(was, value) or "moved"
+    return siting_record.move_words(was, value) or "moved"
 
 
 def _region(x_m: float, y_m: float) -> str:

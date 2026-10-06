@@ -13,8 +13,10 @@ import pytest
 from conftest import FIXTURE_WORLD, FIXTURES
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import site_preview, siting
+from satisfactory_mcp.domain.planning import siting
 from satisfactory_mcp.domain.planning.layout.trunks import Trunk, TrunkMember
+from satisfactory_mcp.domain.planning.siting import preview as site_preview
+from satisfactory_mcp.domain.planning.siting.record import _Raw
 from satisfactory_mcp.domain.planning.stored import planlog
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, InvalidOp, PlanLog, describe_op
 from satisfactory_mcp.domain.spatial import geo
@@ -190,7 +192,7 @@ def test_fit_to_bbox_covers_the_machines_with_a_margin():
     assert got["origin_m"] == [140.25, -20.0, None]
     assert got["footprint_m"] == [97.0, 76.0] and got["yaw_deg"] == 0.0
     assert got["footprint_source"] == "given" and got["origin_label"] == "built “oil setup”"
-    sit = siting.parse(siting._Raw(got))
+    sit = siting.parse(_Raw(got))
     assert sit.contains_cm(100.0 * 100, -50.0 * 100) and sit.contains_cm(180.5 * 100, 10.0 * 100)
 
 
@@ -319,7 +321,7 @@ def test_fit_to_built_offers_a_pad_that_covers_the_candidate(world):
     assert out["fits"], "a 40 m pad does not cover the factory it stands in"
     fit = out["fits"][0]
     assert siting.check(fit["value"]) == fit["value"]
-    covered = site_preview.preview(world.game, world, sess, siting.parse(siting._Raw(fit["value"])))
+    covered = site_preview.preview(world.game, world, sess, siting.parse(_Raw(fit["value"])))
     assert fit["name"] not in [f["name"] for f in covered["fits"]]
 
 
