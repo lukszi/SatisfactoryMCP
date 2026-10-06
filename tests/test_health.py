@@ -33,7 +33,12 @@ from satisfactory_mcp.domain.factories.health import (
 from satisfactory_mcp.domain.factories.model import Edge, FactoryGraph
 from satisfactory_mcp.domain.world import headlift as H
 from satisfactory_mcp.domain.world.headlift import Crest, HeadLift, head_lift
-from satisfactory_mcp.domain.world.logistics import BY_ROLE, UNKNOWN, Link, build_physical_graph
+from satisfactory_mcp.domain.world.logistics import (
+    BASIS_UNKNOWN,
+    BY_ROLE,
+    Link,
+    build_physical_graph,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -689,7 +694,7 @@ def test_an_undirected_run_is_not_reported_as_feeding(game):
     report = _assess(
         game,
         machines=[_starved(name)],
-        physical=_Runs([_link(name, "Build_PipelineJunction_C_9", basis=UNKNOWN)]),
+        physical=_Runs([_link(name, "Build_PipelineJunction_C_9", basis=BASIS_UNKNOWN)]),
     )
     (feed,) = report.machines[0].feeds
     assert feed.verdict == JOINED

@@ -1296,7 +1296,9 @@ a belt, and a belt has no direction as an object — only the machine end does.
 
 **Logistics is traversed, not reported.** A trace from the generators touches 331 nodes at
 depth 72, almost all conveyor. The walk passes through and lists only machines, the same
-thing `graph.query` does to find a factory boundary.
+thing `graph.query` does to find a factory boundary. It keeps which conduit RUNS it crossed
+(`Trace.crossed`, contracted by `world.logistics`), so the route can be named without the
+table growing 300 rows.
 
 **Only proven-running generators are charged.** `power_at_risk` counts a generator that
 produced inside the last complete 300 s window; one that did not may be idle for a dozen

@@ -9,7 +9,15 @@ layer classifies here rather than keeping its own list.
 
 from __future__ import annotations
 
-__all__ = ["CONVEYOR", "HYPERTUBE", "PIPE", "edge_medium", "is_hypertube_edge", "medium"]
+__all__ = [
+    "CONVEYOR",
+    "HYPERTUBE",
+    "PIPE",
+    "edge_medium",
+    "is_hypertube_edge",
+    "medium",
+    "port_direction",
+]
 
 #: What one edge carries. ``None`` is a role this vocabulary does not know, which stays in
 #: whatever layer it was found in: an unrecognised role is a gap in this table, not a
@@ -77,6 +85,16 @@ def edge_medium(role_a: str, role_b: str) -> str | None:
         return b
     if b is None or a == b:
         return a
+    return None
+
+
+def port_direction(role: str) -> str | None:
+    """``"out"`` or ``"in"`` where the connector names its direction, else ``None``."""
+    lowered = role.lower()
+    if "output" in lowered:
+        return "out"
+    if "input" in lowered:
+        return "in"
     return None
 
 

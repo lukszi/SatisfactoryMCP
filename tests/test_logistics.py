@@ -13,13 +13,13 @@ import pytest
 
 from satisfactory_mcp.core.saveio import ports
 from satisfactory_mcp.core.saveio import rows as saverows
+from satisfactory_mcp.core.saveio.records import actor_class
 from satisfactory_mcp.domain.factories.build import build_graph
 from satisfactory_mcp.domain.world.conduits import build_runs
 from satisfactory_mcp.domain.world.logistics import (
+    BASIS_UNKNOWN,
     BY_NATURE,
     BY_ROLE,
-    UNKNOWN,
-    _class_of,
     build_physical_graph,
 )
 
@@ -78,7 +78,7 @@ def test_direction_is_declined_only_between_fittings(projection, game) -> None:
     one, because the machine end of it names itself an input or an output."""
     graph = build_physical_graph(projection, game)
     assert graph.undirected == 128
-    undirected = [link for link in graph.links if link.basis == UNKNOWN and link.target]
+    undirected = [link for link in graph.links if link.basis == BASIS_UNKNOWN and link.target]
     assert {link.medium for link in undirected} == {ports.PIPE}
     conveyors = [link for link in graph.links if link.medium == ports.CONVEYOR]
     assert all(link.basis in (BY_ROLE, BY_NATURE) for link in conveyors)
@@ -89,7 +89,7 @@ def test_an_undirected_link_is_walked_from_either_end(projection, game) -> None:
     ends, so reading ``source`` after ``feeds`` can hand the caller its own node back."""
     graph = build_physical_graph(projection, game)
     undirected = next(
-        link for link in graph.links if link.basis == UNKNOWN and link.source and link.target
+        link for link in graph.links if link.basis == BASIS_UNKNOWN and link.source and link.target
     )
     assert link_in(graph.inbound.get(undirected.source), undirected)
     assert link_in(graph.inbound.get(undirected.target), undirected)
@@ -176,7 +176,7 @@ def test_the_only_unnamed_runs_are_the_belts_the_save_draws_no_line_for(projecti
     # Every one of them touches a gift tree, directly or through the mergers they feed.
     trees = {"Build_TreeGiftProducer_C", "Build_ConveyorAttachmentMerger_C"}
     for link in unnamed:
-        ends = {_class_of(e) for e in (link.source, link.target) if e}
+        ends = {actor_class(e) for e in (link.source, link.target) if e}
         assert ends <= trees, ends
 
     chains = {seg.actor_index for seg in saverows.iter_belt_segments(projection)}

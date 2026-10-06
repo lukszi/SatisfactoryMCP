@@ -411,6 +411,11 @@ settle it. **Every rule below was wrong before it was measured:**
   set but points at an `FGWaterVolume` that is not a purity-table key; that one works fine.
 - **Generators keep a `FuelInventory`, not an `InputInventory`.** Without capturing it a
   starved coal plant shows no evidence either way.
+- **A starved input names what feeds it.** One `Feed` row per arriving run of the input's
+  medium: `nothing` (no run arrives) and `unfed` (a pipe arrives, and no source anywhere
+  reaches its network) are findings; `open` (the save joins the far end to no actor, a
+  feeder unknown rather than absent), `joined` (the run's direction was declined) and `fed`
+  are not.
 
 `STACK_SIZE` joins §5.6's register: Docs.json gives only the enum symbol (`SS_BIG`), so
 the numbers are game knowledge. Verified against observed buffers — Wire 500 = `SS_HUGE`,

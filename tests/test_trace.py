@@ -11,7 +11,8 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.factories.trace import orient, power_at_risk, trace
+from satisfactory_mcp.core.saveio.ports import port_direction
+from satisfactory_mcp.domain.factories.trace import power_at_risk, trace
 
 pytestmark = pytest.mark.integration
 
@@ -32,13 +33,13 @@ def gens(live):
 
 
 def test_a_connector_name_states_direction_where_it_can():
-    assert orient("Output1") == "out"
-    assert orient("PipeOutputFactory") == "out"
-    assert orient("Input0") == "in"
-    assert orient("PipeInputFactory") == "in"
+    assert port_direction("Output1") == "out"
+    assert port_direction("PipeOutputFactory") == "out"
+    assert port_direction("Input0") == "in"
+    assert port_direction("PipeInputFactory") == "in"
     # The bare pipe connector does not, which is the case the machine's own role settles.
-    assert orient("FGPipeConnectionFactory") is None
-    assert orient("ConveyorAny0") is None
+    assert port_direction("FGPipeConnectionFactory") is None
+    assert port_direction("ConveyorAny0") is None
 
 
 def test_every_ambiguous_machine_connector_sits_on_an_extractor_or_generator(live, game):
