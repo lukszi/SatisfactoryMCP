@@ -80,6 +80,7 @@ export interface PageState {
 }
 
 var FRAGMENT_KEYS = ["world", "save", "floor", "mode", "pickups", "dash", "show", "z", "c"];
+var OPEN_GRACE_MS = 2000;
 
 /* The selection lives in the URL fragment so a reload, a bookmark or a pasted link lands on the
  * same world, save, layers and viewport. Read before `state` is built, because the boot values
@@ -170,6 +171,11 @@ export function parseList(raw: string | undefined): string[] {
       return !!piece;
     })
     .sort();
+}
+
+/** Whether a server timestamp, in seconds, is from after this page opened, within the grace. */
+export function isSincePageOpened(ts: number): boolean {
+  return ts * 1000 >= state.openedAtMs - OPEN_GRACE_MS;
 }
 
 export function currentWorld(): WorldRow | null {
