@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 from mapgen.gamedata.frame import GRID_PX, Z6_TEXEL_M, Z7_TEXEL_M
 from mapgen.gamedata.level.fill_raster import (
     FILL_FLOOR_CM,
@@ -19,71 +21,82 @@ from mapgen.gamedata.meshes import CLIFF_SOURCES, DIRECT_SAMPLES_MIN
 from mapgen.gamedata.placements import ARCH_MARK, OVERSIZE_CM
 from mapgen.gamedata.water.actors import WATER_SURFACE_CLASSES
 from mapgen.gamedata.water.channel import WATER_ARTWORK_BLUE_OVER_RED
-from mapgen.terrain.heightfield.field import FILL_HORIZONTAL_M, FILL_VERTICAL_M
-from mapgen.terrain.heightfield.validate import ACCURACY_MIN_SAMPLES
+from mapgen.terrain.heightfield.field import FILL_HORIZONTAL_M, FILL_VERTICAL_M, FieldLayers
+from mapgen.terrain.heightfield.validate import (
+    ACCURACY_MIN_SAMPLES,
+    ErrorStats,
+    FieldValidation,
+    TerrainCheck,
+    WaterChecks,
+)
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
+__all__ = [
+    "FileEntry",
+    "accuracy_block",
+    "add_planes",
+    "cliff_source",
+    "container_block",
+    "density_block",
+    "describe_files",
+    "fill_source",
+    "landscape_source",
+    "water_source",
+]
 
-def describe_files(payload: dict[str, bytes], frame: dict) -> dict:
-    """The sidecar's ``files`` block: what each plane holds, its size and its hash."""
-    files = {
-        hf.HEIGHT_NAME: {
-            "content": f"{GRID_PX}x{GRID_PX} int16 decimetres, row-delta then zlib",
-            "bytes": len(payload[hf.HEIGHT_NAME]),
-        },
-        hf.PROV_NAME: {
-            "content": (
-                "which layer answered each texel: 0 no-data, 1 landscape, 3 fill, "
-                "4 cliff geometry interpolated across a triangle wider than the texel, "
-                "5 cliff geometry with at least one source vertex in the texel. A reader "
-                "that knows only 4 sees 5 as 'not landscape, not fill, not no-data', which "
-                "is what 4 meant before the split. zlib, no delta"
-            ),
-            "bytes": len(payload[hf.PROV_NAME]),
-        },
-        hf.DENSITY_NAME: {
-            "content": (
-                "source vertices per texel over the cliff layer, clamped at 255, zero "
-                "elsewhere. The interface between the geometry and anything that draws it. "
-                "zlib, no delta"
-            ),
-            "bytes": len(payload[hf.DENSITY_NAME]),
-        },
-        hf.WATER_NAME: {
-            "content": "water surface Z, same grid, same no-data. Information only",
-            "bytes": len(payload[hf.WATER_NAME]),
-        },
-        hf.WATER_QUALITY_NAME: {
-            "content": (
-                f"{hf.WATER_DRY} dry, {hf.WATER_MEASURED} water with a depth measured "
-                f"against 1 m terrain, {hf.WATER_LEVEL_ONLY} water whose level is known and "
-                "whose depth is not. zlib, no delta"
-            ),
-            "bytes": len(payload[hf.WATER_QUALITY_NAME]),
-        },
-        hf.TERRAIN_NAME: {
-            "content": (
-                f"{frame['width']}x{frame['height']} uint16 raw landscape units on terrain_grid, "
-                "0 = hole or outside the landscape, row-delta over the int16 bits then zlib"
-            ),
-            "bytes": len(payload[hf.TERRAIN_NAME]),
-        },
-        hf.TOP_NAME: {
-            "content": (
-                f"{GRID_PX}x{GRID_PX} int16 decimetres: height.i16.z max-folded with arch and "
-                "foliage-boulder collision trimeshes, row-delta then zlib"
-            ),
-            "bytes": len(payload[hf.TOP_NAME]),
-        },
+
+class FileEntry(TypedDict):
+    """One plane in the sidecar's ``files`` block."""
+
+    content: str
+    bytes: int
+    sha256: str
+
+
+def _file_contents(frame: dict) -> dict[str, str]:
+    """What each plane holds, in the order the sidecar lists them."""
+    return {
+        hf.HEIGHT_NAME: f"{GRID_PX}x{GRID_PX} int16 decimetres, row-delta then zlib",
+        hf.PROV_NAME: (
+            "which layer answered each texel: 0 no-data, 1 landscape, 3 fill, "
+            "4 cliff geometry interpolated across a triangle wider than the texel, "
+            "5 cliff geometry with at least one source vertex in the texel. A reader "
+            "that knows only 4 sees 5 as 'not landscape, not fill, not no-data', which "
+            "is what 4 meant before the split. zlib, no delta"
+        ),
+        hf.DENSITY_NAME: (
+            "source vertices per texel over the cliff layer, clamped at 255, zero "
+            "elsewhere. The interface between the geometry and anything that draws it. "
+            "zlib, no delta"
+        ),
+        hf.WATER_NAME: "water surface Z, same grid, same no-data. Information only",
+        hf.WATER_QUALITY_NAME: (
+            f"{hf.WATER_DRY} dry, {hf.WATER_MEASURED} water with a depth measured "
+            f"against 1 m terrain, {hf.WATER_LEVEL_ONLY} water whose level is known and "
+            "whose depth is not. zlib, no delta"
+        ),
+        hf.TERRAIN_NAME: (
+            f"{frame['width']}x{frame['height']} uint16 raw landscape units on terrain_grid, "
+            "0 = hole or outside the landscape, row-delta over the int16 bits then zlib"
+        ),
+        hf.TOP_NAME: (
+            f"{GRID_PX}x{GRID_PX} int16 decimetres: height.i16.z max-folded with arch and "
+            "foliage-boulder collision trimeshes, row-delta then zlib"
+        ),
     }
-    hashes = {name: sha256_hex(payload[name]) for name in files}
-    for name, entry in files.items():
-        entry["sha256"] = hashes[name]
-    return files
 
 
-def add_planes(meta: dict, frame: dict, terrain_check: dict, top: dict, top_raised: int) -> None:
+def describe_files(payload: dict[str, bytes], frame: dict) -> dict[str, FileEntry]:
+    """The sidecar's ``files`` block: what each plane holds, its size and its hash."""
+    return {
+        name: {"content": content, "bytes": len(payload[name]), "sha256": sha256_hex(payload[name])}
+        for name, content in _file_contents(frame).items()
+    }
+
+
+def add_planes(meta: dict[str, object], frame: dict, terrain_check: TerrainCheck, top: dict,
+               top_raised: int) -> None:  # fmt: skip
     """The ``planes``, ``terrain_grid`` and ``top`` blocks, appended after ``build_meta``'s."""
     meta["planes"] = {
         "ground": hf.HEIGHT_NAME,
@@ -104,20 +117,17 @@ def add_planes(meta: dict, frame: dict, terrain_check: dict, top: dict, top_rais
         "seam_rule": "stitched in sweep order; a later component overwrites the shared edge",
         "validation": terrain_check,
     }
-    meta["top"] = {
-        key: top[key]
-        for key in (
-            "arch_placements",
-            "foliage_instances",
-            "foliage_by_mesh",
-            "meshes_without_trimesh",
-            "triangles",
-        )
-    }
-    meta["top"]["raised_texels"] = top_raised
+    kept = (
+        "arch_placements",
+        "foliage_instances",
+        "foliage_by_mesh",
+        "meshes_without_trimesh",
+        "triangles",
+    )
+    meta["top"] = {**{key: top[key] for key in kept}, "raised_texels": top_raised}
 
 
-def landscape_source(frame: dict, field: dict) -> dict:
+def landscape_source(frame: dict, field: FieldLayers) -> dict[str, object]:
     """The sidecar's ``sources.landscape`` block: the cooked heightfield, dropped unresampled."""
     dx, dy = field["drop"]
     return {
@@ -148,7 +158,7 @@ def landscape_source(frame: dict, field: dict) -> dict:
     }
 
 
-def cliff_source(meshes: dict, cliffs: dict) -> dict:
+def cliff_source(meshes: dict, cliffs: dict) -> dict[str, object]:
     """The sidecar's ``sources.cliffs`` block: the rock geometry and what was culled."""
     return {
         "class": "StaticMesh render data / BodySetup / FTriangleMeshImplicitObject",
@@ -219,7 +229,7 @@ def cliff_source(meshes: dict, cliffs: dict) -> dict:
     }
 
 
-def fill_source() -> dict:
+def fill_source() -> dict[str, object]:
     """The sidecar's ``sources.fill`` block: the interface raster outside the frame."""
     return {
         "asset": "/Game/FactoryGame/Interface/UI/Assets/MapTest/HeightData_Test",
@@ -237,7 +247,7 @@ def fill_source() -> dict:
     }
 
 
-def density_block(field: dict) -> dict:
+def density_block(field: FieldLayers) -> dict[str, object]:
     """The sidecar's ``density`` block: the plane a finer render reads."""
     return {
         "file": hf.DENSITY_NAME,
@@ -265,7 +275,7 @@ def density_block(field: dict) -> dict:
     }
 
 
-def container_block(field: dict) -> dict:
+def container_block(field: FieldLayers) -> dict[str, object]:
     """The sidecar's ``container`` block: what int16 decimetres cost."""
     return {
         "quantisation_max_m": round(field["quantisation_max_m"], 4),
@@ -277,42 +287,73 @@ def container_block(field: dict) -> dict:
     }
 
 
-def accuracy_block(validation: dict) -> dict:
+#: Each provenance value's horizontal resolution and vertical step, in metres.
+_LAYER_STEPS = {
+    hf.PROV_LANDSCAPE: (1.0, LANDSCAPE_SCALE_CM / LANDSCAPE_PER_UNIT / 100.0),
+    hf.PROV_CLIFF: (1.0, 0.0),
+    hf.PROV_CLIFF_DIRECT: (1.0, 0.0),
+    hf.PROV_FILL: (FILL_HORIZONTAL_M, FILL_VERTICAL_M),
+}
+
+_LAYER_NOTES = {
+    hf.PROV_LANDSCAPE: (
+        "the cooked UE Landscape heightfield: a true 1 m grid, 7.8 mm vertical "
+        "quantisation, no resampling anywhere between the component and this texel"
+    ),
+    hf.PROV_CLIFF: (
+        "rasterised triangles from a placed rock or cliff, at a texel NO SOURCE VERTEX "
+        "landed in: the height is this file's own plane interpolation across a triangle "
+        "wider than the texel. Exactly as accurate as value 5 at 1 m, and not a "
+        "measurement below it -- which is the only thing the two values distinguish"
+    ),
+    hf.PROV_CLIFF_DIRECT: (
+        "rasterised triangles from a placed rock or cliff, at a texel at least one "
+        "source vertex landed in. density.u8.z says how many. This is where a render "
+        "finer than 1 m is reading geometry rather than a kernel"
+    ),
+    hf.PROV_FILL: (
+        "the 2048 px HeightData_Test interface raster, outside the landscape frame. "
+        "3.66 m horizontally and 3.897 m per quantisation step: this is the old "
+        "baseline unchanged, and it is the coarsest thing in the field"
+    ),
+}
+
+
+def _layer_accuracy(measured: ErrorStats, pooled: ErrorStats,
+                    vertical: float, cliff: bool) -> tuple[float | None, str]:  # fmt: skip
+    """A layer's accuracy and where it came from: measured on its own nodes, on the cliff
+    province whole, or its own vertical step."""
+    if measured["n"] >= ACCURACY_MIN_SAMPLES:
+        return measured.get("medabs_m"), (
+            f"measured: median absolute error over {measured['n']} static resource "
+            "nodes that fell on this layer"
+        )
+    # A cliff split too thin to believe falls back to the province WHOLE rather than to
+    # a derived step: a rasterised triangle has no vertical quantisation, so the derived
+    # floor of 0.1 m would be a better number than the layer has ever measured.
+    if cliff and pooled["n"] >= ACCURACY_MIN_SAMPLES:
+        return pooled.get("medabs_m"), (
+            f"measured over the cliff province WHOLE ({pooled['n']} nodes), because "
+            f"only {measured['n']} fell on this half of it and that is fewer "
+            f"than {ACCURACY_MIN_SAMPLES}. The two halves differ in what a finer render "
+            "may claim, not in how accurate they are at 1 m"
+        )
+    return round(max(vertical, 0.1), 3), (
+        f"derived: this layer's own vertical step, because only "
+        f"{measured['n']} nodes fell on it and that is fewer than "
+        f"{ACCURACY_MIN_SAMPLES}"
+    )
+
+
+def accuracy_block(validation: FieldValidation) -> dict[str, object]:
     """What each provenance value means, and how well it was measured to do.
 
     ``accuracy_m`` is the measured median absolute error where enough nodes fell on that
     layer to mean anything and the layer's own vertical step where they did not, and
     ``accuracy_from`` says which of the two it is.
     """
-    derived = {
-        hf.PROV_LANDSCAPE: (1.0, LANDSCAPE_SCALE_CM / LANDSCAPE_PER_UNIT / 100.0),
-        hf.PROV_CLIFF: (1.0, 0.0),
-        hf.PROV_CLIFF_DIRECT: (1.0, 0.0),
-        hf.PROV_FILL: (FILL_HORIZONTAL_M, FILL_VERTICAL_M),
-    }
-    notes = {
-        hf.PROV_LANDSCAPE: (
-            "the cooked UE Landscape heightfield: a true 1 m grid, 7.8 mm vertical "
-            "quantisation, no resampling anywhere between the component and this texel"
-        ),
-        hf.PROV_CLIFF: (
-            "rasterised triangles from a placed rock or cliff, at a texel NO SOURCE VERTEX "
-            "landed in: the height is this file's own plane interpolation across a triangle "
-            "wider than the texel. Exactly as accurate as value 5 at 1 m, and not a "
-            "measurement below it -- which is the only thing the two values distinguish"
-        ),
-        hf.PROV_CLIFF_DIRECT: (
-            "rasterised triangles from a placed rock or cliff, at a texel at least one "
-            "source vertex landed in. density.u8.z says how many. This is where a render "
-            "finer than 1 m is reading geometry rather than a kernel"
-        ),
-        hf.PROV_FILL: (
-            "the 2048 px HeightData_Test interface raster, outside the landscape frame. "
-            "3.66 m horizontally and 3.897 m per quantisation step: this is the old "
-            "baseline unchanged, and it is the coarsest thing in the field"
-        ),
-    }
-    out: dict[str, dict] = {
+    nothing: ErrorStats = {"n": 0, "coverage": 0.0}
+    out: dict[str, object] = {
         str(hf.PROV_NODATA): {
             "name": hf.PROV_NAMES[hf.PROV_NODATA],
             "accuracy_m": None,
@@ -322,55 +363,26 @@ def accuracy_block(validation: dict) -> dict:
             ),
         }
     }
-    for value, (horizontal, vertical) in derived.items():
+    pooled = validation["per_layer"].get("cliff, both", nothing)
+    for value, (horizontal, vertical) in _LAYER_STEPS.items():
         name = hf.PROV_NAMES[value]
-        measured = validation["per_layer"].get(name, {})
-        enough = measured.get("n", 0) >= ACCURACY_MIN_SAMPLES
-        # A cliff split too thin to believe falls back to the province WHOLE rather than to
-        # a derived step: a rasterised triangle has no vertical quantisation, so the derived
-        # floor of 0.1 m would be a better number than the layer has ever measured.
-        fallback = validation["per_layer"].get("cliff, both", {})
-        pooled = value in hf.PROV_CLIFF_VALUES and fallback.get("n", 0) >= ACCURACY_MIN_SAMPLES
-        if enough:
-            accuracy, source = (
-                measured["medabs_m"],
-                (
-                    f"measured: median absolute error over {measured['n']} static resource "
-                    "nodes that fell on this layer"
-                ),
-            )
-        elif pooled:
-            accuracy, source = (
-                fallback["medabs_m"],
-                (
-                    f"measured over the cliff province WHOLE ({fallback['n']} nodes), because "
-                    f"only {measured.get('n', 0)} fell on this half of it and that is fewer "
-                    f"than {ACCURACY_MIN_SAMPLES}. The two halves differ in what a finer render "
-                    "may claim, not in how accurate they are at 1 m"
-                ),
-            )
-        else:
-            accuracy, source = (
-                round(max(vertical, 0.1), 3),
-                (
-                    f"derived: this layer's own vertical step, because only "
-                    f"{measured.get('n', 0)} nodes fell on it and that is fewer than "
-                    f"{ACCURACY_MIN_SAMPLES}"
-                ),
-            )
+        found = validation["per_layer"].get(name)
+        measured = nothing if found is None else found
+        cliff = value in hf.PROV_CLIFF_VALUES
+        accuracy, source = _layer_accuracy(measured, pooled, vertical, cliff)
         out[str(value)] = {
             "name": name,
             "horizontal_m": round(horizontal, 4),
             "vertical_step_m": round(vertical, 4),
             "accuracy_m": accuracy,
             "accuracy_from": source,
-            "measured": measured,
-            "note": notes[value],
+            "measured": {} if found is None else found,
+            "note": _LAYER_NOTES[value],
         }
     return out
 
 
-def water_source(sweep: dict, water: dict, water_checks: dict) -> dict:
+def water_source(sweep: dict, water: dict, water_checks: WaterChecks) -> dict[str, object]:
     """The sidecar's ``sources.water`` block: how the channel was made and how it measured."""
     return {
         "recipe": (
