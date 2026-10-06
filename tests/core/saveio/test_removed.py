@@ -1,6 +1,6 @@
 """The projection's ``removed`` key: 889 collected actors from either parser, byte for byte.
 
-``extract._removed`` is the one projection field that has to read two completely
+``extract.structures.removed`` is the one projection field that has to read two completely
 different parser outputs and produce the SAME bytes. ``pioneersav`` merges the format's three
 destroyed-actor lists into ``destroyed_actors``; the vendored parser exposes them separately,
 as each level's ``collectables1``/``collectables2`` plus two save-level lists. Both are
@@ -15,7 +15,7 @@ because the interesting failures are all in the reconciliation rather than in ei
   in ``>`` and every one of the 889 comes out unique. That produced 889 distinct classes where
   there are 270, and it is pinned below with a stand-in that has the same ``__str__``.
 * **the class.** These lists carry no class path at all, only an instance name, and the game
-  builds those three different ways. ``_removed_class`` recovers a class by stripping from the
+  builds those three different ways. ``removed_class`` recovers a class by stripping from the
   right, and is approximate on purpose -- see its docstring, and the last test here.
 
 No fixture and no save: every input below is a name shape taken from the reference save's
@@ -28,7 +28,7 @@ import json
 
 import pytest
 
-from satisfactory_mcp.core.saveio.extract import _removed, _removed_class
+from satisfactory_mcp.core.saveio.extract.structures import removed, removed_class
 
 #: Four real instance names from the reference save, one per shape the game writes.
 #: ``BP_Crystal2_228`` is the shape that makes the recovery approximate: an instance number
@@ -49,14 +49,14 @@ class FakeRef:
     """A stand-in for the vendored parser's ObjectReference, ``__str__`` included.
 
     The ``__str__`` is the point. It is reproduced here so that a future ``str(ref)`` creeping
-    back into ``_removed`` fails a test instead of quietly making every leaf unique.
+    back into ``removed`` fails a test instead of quietly making every leaf unique.
     """
 
     def __init__(self, level: str, path: str) -> None:
         self.levelName = level
         self.pathName = path
 
-    def __str__(self) -> str:  # pragma: no cover - only reached if _removed regresses
+    def __str__(self) -> str:  # pragma: no cover - only reached if removed regresses
         return f"<ObjectReference: levelName={self.levelName}, pathName={self.pathName}>"
 
 
@@ -71,7 +71,7 @@ class VendoredParser:
     """What the vendored parser hands over: three lists, none of them merged.
 
     Deliberately has NO ``destroyed_actors`` attribute, because that absence is exactly how
-    ``_removed`` decides which shape it is looking at.
+    ``removed`` decides which shape it is looking at.
     """
 
     class _Level:
@@ -99,7 +99,7 @@ def test_the_actor_path_is_reduced_to_its_leaf():
     the last dot, which is also what makes the two parsers comparable -- one of them spells
     the prefix slightly differently on some levels.
     """
-    out = _removed(OwnParser(_refs((CELL_A, "BP_Shroom_12"))))
+    out = removed(OwnParser(_refs((CELL_A, "BP_Shroom_12"))))
     assert out["instances"] == [[0, "BP_Shroom_12"]]
     assert out["cells"] == [CELL_A]
 
@@ -107,7 +107,7 @@ def test_the_actor_path_is_reduced_to_its_leaf():
 def test_a_reference_with_no_path_is_dropped_rather_than_counted():
     """An empty pathName has no leaf, so there is no actor to report and nothing to classify.
     Counting it would put a phantom entry under the class ``""``."""
-    out = _removed(
+    out = removed(
         OwnParser(
             [
                 (CELL_A, ""),
@@ -126,7 +126,7 @@ def test_cells_are_interned_because_284_of_them_carry_889_actors():
     The index is positional into ``cells``, assigned in the order cells are first seen -- which
     after the sort is alphabetical, so the table is stable between runs and between parsers.
     """
-    out = _removed(
+    out = removed(
         OwnParser(
             _refs(
                 (CELL_A, "BP_Shroom_1"),
@@ -156,9 +156,9 @@ def test_the_sort_is_what_makes_the_two_engines_emit_identical_bytes():
         (CELL_A, "BP_Shroom_2"),
         (CELL_A, "BP_Shroom_1"),
     )
-    first = _removed(OwnParser(pairs))
+    first = removed(OwnParser(pairs))
     for order in (list(reversed(pairs)), sorted(pairs, key=lambda p: p[1])):
-        assert _removed(OwnParser(order)) == first
+        assert removed(OwnParser(order)) == first
     assert [leaf for _ix, leaf in first["instances"]] == [
         "BP_Shroom_1",
         "BP_Shroom_2",
@@ -191,10 +191,10 @@ def test_both_parser_shapes_produce_the_same_json():
     def dumps(payload) -> str:
         return json.dumps(payload, separators=(",", ":"))
 
-    assert dumps(_removed(VendoredParser(levels=[]))) == dumps(
+    assert dumps(removed(VendoredParser(levels=[]))) == dumps(
         {"cells": [], "instances": [], "counts": {}}
     )
-    assert dumps(_removed(vendored)) == dumps(_removed(OwnParser(merged)))
+    assert dumps(removed(vendored)) == dumps(removed(OwnParser(merged)))
 
 
 def test_the_vendored_lists_are_deduplicated_before_they_are_counted():
@@ -205,7 +205,7 @@ def test_the_vendored_lists_are_deduplicated_before_they_are_counted():
     the parity diff to notice.
     """
     twice = _refs((CELL_A, "BP_Shroom_1"))
-    out = _removed(VendoredParser(levels=[(twice, twice)], drop_pods=twice, extra=twice))
+    out = removed(VendoredParser(levels=[(twice, twice)], drop_pods=twice, extra=twice))
     assert out["instances"] == [[0, "BP_Shroom_1"]]
     assert out["counts"] == {"BP_Shroom": 1}
 
@@ -218,7 +218,7 @@ def test_the_leaf_never_comes_from_str_on_a_reference():
     and the census silently useless. ``FakeRef.__str__`` reproduces that rendering, so a leaf
     containing ``<`` or ``>`` here means the regression is back.
     """
-    out = _removed(VendoredParser(levels=[(_refs((CELL_A, "BP_Shroom_1")), [])]))
+    out = removed(VendoredParser(levels=[(_refs((CELL_A, "BP_Shroom_1")), [])]))
     leaves = [leaf for _ix, leaf in out["instances"]]
     assert leaves == ["BP_Shroom_1"]
     assert not any(c in leaf for leaf in leaves for c in "<>=")
@@ -234,7 +234,7 @@ def test_the_class_is_recovered_from_each_real_name_shape(name, expected):
     three: the trailing index first, then a ``_UAID_<hex>`` world id if present, then a
     trailing ``_C``. Any other order fails one of them -- taking ``_C`` off first leaves the
     UAID's index behind on a shrine, and taking the UAID off first finds nothing on a slug."""
-    assert _removed_class(name) == expected
+    assert removed_class(name) == expected
 
 
 def test_the_recovery_is_approximate_and_says_so_by_example():
@@ -245,18 +245,18 @@ def test_the_recovery_is_approximate_and_says_so_by_example():
     nobody has. That is why callers match a prefix: ``BP_Crystal_mk21_23`` still shows its
     ``mk2``, so slug tiers survive the gluing even though the exact class does not.
     """
-    assert _removed_class("BP_Crystal2_228") == "BP_Crystal2"
-    assert _removed_class("BP_Crystal_mk21_23") == "BP_Crystal_mk21"
-    assert _removed_class("BP_Crystal_mk21_23").startswith("BP_Crystal_mk2")
+    assert removed_class("BP_Crystal2_228") == "BP_Crystal2"
+    assert removed_class("BP_Crystal_mk21_23") == "BP_Crystal_mk21"
+    assert removed_class("BP_Crystal_mk21_23").startswith("BP_Crystal_mk2")
     # And a name that is nothing but the stripped parts falls back to itself rather than "".
-    assert _removed_class("_C") == "_C"
-    assert _removed_class("42") == "42"
+    assert removed_class("_C") == "_C"
+    assert removed_class("42") == "42"
 
 
 def test_counts_are_sorted_so_the_census_is_stable():
     """Insertion order here is the sorted actor order, which is not alphabetical by class.
     Sorting the counts is what keeps the projection's bytes fixed for a fixed save."""
-    out = _removed(
+    out = removed(
         OwnParser(
             _refs(
                 (CELL_A, "BP_WAT1_C_7"),

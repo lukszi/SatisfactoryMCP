@@ -31,9 +31,9 @@ def _parents(game: GameData) -> dict[str, tuple[str, ...]]:
     cached = _PARENTS.get(game.docs_sha256)
     if cached is None:
         collected: dict[str, list[str]] = {}
-        for s in game.schematics.values():
-            for child in s.unlocks_schematics:
-                collected.setdefault(child, []).append(s.cls)
+        for schematic in game.schematics.values():
+            for child in schematic.unlocks_schematics:
+                collected.setdefault(child, []).append(schematic.cls)
         cached = _PARENTS[game.docs_sha256] = {k: tuple(v) for k, v in collected.items()}
     return cached
 
@@ -47,26 +47,26 @@ def _sources(game: GameData, schematic_id: str, recipe_name: str = "") -> list[s
     "Alternate: Quartz Purification". One level of parent is enough and is all that is
     followed: no unlabelled schematic in the dump has an unlabelled parent.
     """
-    s = game.schematics.get(schematic_id)
-    if s is None:
+    schematic = game.schematics.get(schematic_id)
+    if schematic is None:
         return []
-    kind = SOURCE_OF_TYPE.get(s.type)
+    kind = SOURCE_OF_TYPE.get(schematic.type)
     if kind:
         # Most alternates are granted by a schematic of the same name, and the row this
         # goes in already says that name.
-        return [kind if s.name == recipe_name else f"{kind}: {s.name}"]
-    up = [
+        return [kind if schematic.name == recipe_name else f"{kind}: {schematic.name}"]
+    parent_labels = [
         label
         for parent in _parents(game).get(schematic_id, ())
         if (label := _labelled(game, parent))
     ]
-    return up or [s.name]
+    return parent_labels or [schematic.name]
 
 
 def _labelled(game: GameData, schematic_id: str) -> str | None:
-    s = game.schematics.get(schematic_id)
-    kind = SOURCE_OF_TYPE.get(s.type) if s else None
-    return f"{kind}: {s.name}" if kind and s else None
+    schematic = game.schematics.get(schematic_id)
+    kind = SOURCE_OF_TYPE.get(schematic.type) if schematic else None
+    return f"{kind}: {schematic.name}" if kind and schematic else None
 
 
 def granted_by(game: GameData, recipe: Recipe) -> list[str]:
@@ -76,8 +76,10 @@ def granted_by(game: GameData, recipe: Recipe) -> list[str]:
     so callers print the count rather than the first entry alone.
     """
     out: list[str] = []
-    for sid in recipe.unlocked_by:
-        out.extend(x for x in _sources(game, sid, recipe.name) if x not in out)
+    for schematic_id in recipe.unlocked_by:
+        out.extend(
+            source for source in _sources(game, schematic_id, recipe.name) if source not in out
+        )
     return out
 
 

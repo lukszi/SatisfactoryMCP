@@ -11,13 +11,10 @@ import math
 from collections import defaultdict
 from itertools import pairwise
 
-from satisfactory_mcp.core.saveio.extract import (
-    _ATTACHMENT_HINTS,
-    Drops,
-    _belts,
-    _conveyor_class,
-)
-from tests.support.saves import PLACED, Chain, UnreadableChain, trailer_chains
+from satisfactory_mcp.core.saveio.extract import routes
+from satisfactory_mcp.core.saveio.extract.census import Drops
+from satisfactory_mcp.core.saveio.extract.registers import ATTACHMENT_HINTS
+from tests.support.saves import PLACED, Chain, UnreadableChain, actor_table, trailer_chains
 
 # ------------------------------------------------------------------------------- belts
 
@@ -152,24 +149,43 @@ def test_lifts_are_carried_as_belts_are(projection):
 
 
 def test_belts_out_of_real_trailing_bytes(projection):
-    """``_belts`` against the committed chain records, not against a mock of them.
+    """``routes.belts`` against the committed chain records, not against a mock of them.
+
+
 
     ``fixtures/save_trailers.bin`` holds two real ``FGConveyorChainActor`` trailers, which is
+
     what makes this a test of the decoder-to-projection seam rather than of a hand-built list.
+
     """
+
     chains = trailer_chains()
+
     assert chains, "no chain records in the trailer fixture"
-    out = _belts([([1000.0, 2000.0, 3000.0], Chain(info)) for info in chains], {}, Drops())
+
+    out = routes.belts(
+        [([1000.0, 2000.0, 3000.0], Chain(info)) for info in chains], actor_table(), Drops()
+    )
+
     assert out["classes"] and out["segments"]
+
     assert {r[0] for r in out["segments"]} == set(range(len(chains)))
+
     for row in out["segments"]:
         assert out["classes"][row[1]].startswith("Build_Conveyor")
+
         assert len(row[2]) >= 2
+
         assert row[3] == -1, "an empty actor index names nothing, rather than naming actor 0"
 
     # The same records with the actor at the origin: every point moves by exactly the offset,
+
     # which is the whole of what the frame correction does.
-    at_origin = _belts([([0.0, 0.0, 0.0], Chain(info)) for info in chains], {}, Drops())
+
+    at_origin = routes.belts(
+        [([0.0, 0.0, 0.0], Chain(info)) for info in chains], actor_table(), Drops()
+    )
+
     for moved, base in zip(out["segments"], at_origin["segments"]):
         assert [[p[0] - 1000, p[1] - 2000, p[2] - 3000] for p in moved[2]] == base[2]
 
@@ -177,51 +193,79 @@ def test_belts_out_of_real_trailing_bytes(projection):
 def test_a_chain_that_will_not_decode_costs_that_chain_and_not_the_save():
     """Belts are new, so a save that projected yesterday must still project today.
 
+
+
     A trailer decodes lazily, so a malformed one raises here rather than at the save boundary.
+
     Letting it out would turn one unreadable belt into a world the server cannot open at all.
+
     """
+
     chains = trailer_chains()
+
     drops = Drops()
-    out = _belts(
+
+    out = routes.belts(
         [
             ([0.0, 0.0, 0.0], UnreadableChain(None)),
             *(([0.0, 0.0, 0.0], Chain(info)) for info in chains),
         ],
-        {},
+        actor_table(),
         drops,
     )
+
     assert {r[0] for r in out["segments"]} == set(range(len(chains))), "indices stay dense"
+
     # And it SAYS it cost that chain. A projection quietly one belt short is the failure
+
     # this channel exists for: the payload alone cannot be told from a world with one belt
+
     # fewer in it.
+
     assert sum(drops.values()) == 1
+
     assert "trailing bytes" in next(iter(drops))
 
 
 def test_a_chain_of_nothing_recognisable_is_dropped_rather_than_raising():
-    """Same reasoning as ``_placed``: this runs on whatever the decoder produced.
+    """Same reasoning as ``structures.placed``: this runs on whatever the decoder produced.
+
+
 
     Each of these is also one count in ``warnings`` -- dropping is right, dropping in
+
     silence is what made a torn save look like a smaller world.
+
     """
+
     empty = {"classes": [], "segments": []}
+
     drops = Drops()
-    assert _belts([], {}, drops) == empty
+
+    assert routes.belts([], actor_table(), drops) == empty
+
     assert sum(drops.values()) == 0, "nothing in, nothing dropped"
-    assert _belts([(None, Chain(None))], {}, drops) == empty
-    assert _belts([([0.0, 0.0, 0.0], Chain([1, 2]))], {}, drops) == empty
-    assert _belts([(["x", 0.0, 0.0], Chain([1, 2, []]))], {}, drops) == empty
+
+    assert routes.belts([(None, Chain(None))], actor_table(), drops) == empty
+
+    assert routes.belts([([0.0, 0.0, 0.0], Chain([1, 2]))], actor_table(), drops) == empty
+
+    assert routes.belts([(["x", 0.0, 0.0], Chain([1, 2, []]))], actor_table(), drops) == empty
+
     assert sum(drops.values()) == 3, "three unreadable chains, three counted"
 
 
 def test_a_belts_class_comes_off_the_instance_name_with_its_C_intact():
     """The class names have to match the ones ``structures`` and ``building_counts`` use."""
+
     assert (
-        _conveyor_class("Persistent_Level:PersistentLevel.Build_ConveyorBeltMk3_C_1264")
+        routes.conveyor_class("Persistent_Level:PersistentLevel.Build_ConveyorBeltMk3_C_1264")
         == "Build_ConveyorBeltMk3_C"
     )
-    assert _conveyor_class("Build_ConveyorLiftMk4_C_2147") == "Build_ConveyorLiftMk4_C"
-    assert _conveyor_class("") == ""
+
+    assert routes.conveyor_class("Build_ConveyorLiftMk4_C_2147") == "Build_ConveyorLiftMk4_C"
+
+    assert routes.conveyor_class("") == ""
 
 
 # ------------------------------------------------------------------- belt attachments
@@ -230,20 +274,36 @@ def test_a_belts_class_comes_off_the_instance_name_with_its_C_intact():
 def test_the_splitters_and_mergers_are_kept_and_the_ceiling_mounts_are_not(projection):
     """The class filter, held against the census rather than against itself.
 
+
+
     A splitter is an ordinary ``Build_`` actor and the projection used to build its record and
+
     drop it on the floor, so a belt-only map had a hole at every junction. It is kept now -- and
+
     the interesting half is what is NOT: ``Build_ConveyorCeilingAttachment_C`` shares the word
+
     and is a pole a belt hangs from, not a piece the items pass through. A filter that matched
+
     ``ConveyorAttachment`` would swallow all 95 of them, and they would draw the same square
+
     while meaning something else.
+
     """
+
     counts = projection["building_counts"]
+
     rows = projection["attachments"]
-    kept = {c for c in counts if any(h in c for h in _ATTACHMENT_HINTS)}
+
+    kept = {c for c in counts if any(h in c for h in ATTACHMENT_HINTS)}
+
     assert kept == {r["cls"] for r in rows}
+
     assert sum(counts[c] for c in kept) == len(rows), "every one in the census is a row"
+
     assert len(rows) > 800, "the reference world splits and merges a great deal"
+
     assert "Build_ConveyorCeilingAttachment_C" not in {r["cls"] for r in rows}
+
     assert counts["Build_ConveyorCeilingAttachment_C"] == 95, "and they ARE in the world"
 
 

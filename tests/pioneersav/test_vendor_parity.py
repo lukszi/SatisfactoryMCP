@@ -24,7 +24,7 @@ from tests.support.fanout import fanout_width, in_order
 from tests.support.paths import FIXTURES, REPO_ROOT
 
 FIXTURE = FIXTURES / "vendor_parity.json"
-SIDECAR = REPO_ROOT / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract.py"
+SIDECAR_MODULE = "satisfactory_mcp.core.saveio.extract"
 
 #: Header keys that describe the FILE rather than the world, so they are excluded from the
 #: digest: a save copied to another path or re-read after a touch is the same world.
@@ -169,11 +169,16 @@ def _projection(path: Path) -> dict:
     """One save through the sidecar, as a subprocess, exactly as the server invokes it.
 
     ``sys.executable`` rather than ``uv run``: the same interpreter, without a ``uv`` process
-    and an environment re-sync per save.
+    and an environment re-sync per save. ``-m`` with this checkout's ``src`` first on
+    ``PYTHONPATH``, as ``_child_env`` does.
     """
+    inherited = os.environ.get("PYTHONPATH")
+    source = str(REPO_ROOT / "src")
+    env = {**os.environ, "PYTHONPATH": f"{source}{os.pathsep}{inherited}" if inherited else source}
     out = subprocess.run(
-        [sys.executable, str(SIDECAR), str(path)],
+        [sys.executable, "-m", SIDECAR_MODULE, str(path)],
         cwd=str(REPO_ROOT),
+        env=env,
         capture_output=True,
         check=False,  # a refusal is data here: the caller asserts on the payload, not the code
     )

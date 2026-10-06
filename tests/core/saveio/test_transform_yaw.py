@@ -10,9 +10,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 
-from satisfactory_mcp.core.saveio.extract import (
-    yaw_of,
-)
+from satisfactory_mcp.core.saveio.extract.readers import yaw_of
 from tests.support.saves import PLACED
 
 #: The 8 m grid every foundation sits on. Two pieces exactly this far apart are neighbours in

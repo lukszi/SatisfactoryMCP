@@ -11,7 +11,8 @@ from __future__ import annotations
 import pytest
 
 from satisfactory_mcp.core.gamedata.model import GameData
-from satisfactory_mcp.core.saveio.extract import DISMISSED_FACTORY_CLASSES, _unfiled_notes
+from satisfactory_mcp.core.saveio.extract.census import unfiled_notes
+from satisfactory_mcp.core.saveio.extract.registers import DISMISSED_FACTORY_CLASSES
 from satisfactory_mcp.interfaces.mcp.app import integrity_notes
 
 
@@ -67,18 +68,18 @@ def test_a_world_of_walls_and_foundations_is_silent():
     """The census's whole risk: without the evidence test this reports 4,300 berry bushes."""
     unfiled = {f"w{i}": "Build_Wall_8x4_01_C" for i in range(4300)}
     unfiled.update({f"b{i}": "BP_BerryBush_C" for i in range(4300)})
-    assert _unfiled_notes(unfiled, set()) == []
+    assert unfiled_notes(unfiled, set()) == []
 
 
 def test_a_building_that_runs_something_and_is_filed_nowhere_is_named():
-    (note,) = _unfiled_notes({"x.Build_NewThing_C_1": "Build_NewThing_C"}, {"x.Build_NewThing_C_1"})
+    (note,) = unfiled_notes({"x.Build_NewThing_C_1": "Build_NewThing_C"}, {"x.Build_NewThing_C_1"})
     assert "1x Build_NewThing_C" in note
     assert "missing from machines, extractors and generators" in note
     assert "DISMISSED_FACTORY_CLASSES" in note
 
 
 def test_the_same_class_twice_is_one_line_with_a_count():
-    (note,) = _unfiled_notes({"a": "Build_NewThing_C", "b": "Build_NewThing_C"}, {"a", "b"})
+    (note,) = unfiled_notes({"a": "Build_NewThing_C", "b": "Build_NewThing_C"}, {"a", "b"})
     assert "2x Build_NewThing_C" in note
     assert note.startswith("1 building class(es)")
 
@@ -87,18 +88,18 @@ def test_the_same_class_twice_is_one_line_with_a_count():
 def test_every_dismissed_class_stays_quiet(cls):
     """Each is a real building carrying the mark, kept out by hand. Editing the list is how
     a future one is dismissed, and is why the list is the census's only maintenance."""
-    assert _unfiled_notes({"a": cls}, {"a"}) == []
+    assert unfiled_notes({"a": cls}, {"a"}) == []
 
 
 def test_a_dismissed_class_does_not_silence_its_neighbours():
-    (note,) = _unfiled_notes({"a": "Build_TradingPost_C", "b": "Build_NewThing_C"}, {"a", "b"})
+    (note,) = unfiled_notes({"a": "Build_TradingPost_C", "b": "Build_NewThing_C"}, {"a", "b"})
     assert "Build_TradingPost_C" not in note
     assert "Build_NewThing_C" in note
 
 
 def test_a_building_with_no_evidence_on_it_is_not_a_finding():
     """Filed nowhere is ordinary -- it is every wall in the world. The mark is the claim."""
-    assert _unfiled_notes({"a": "Build_NewThing_C"}, set()) == []
+    assert unfiled_notes({"a": "Build_NewThing_C"}, set()) == []
 
 
 # ------------------------------------------------------------------- and quiet on this world

@@ -5,13 +5,10 @@ from __future__ import annotations
 import math
 
 from pioneersav import ObjectReference
-from satisfactory_mcp.core.saveio.extract import (
-    TANGENT_EPS_CM,
-    Drops,
-    _belts,
-    _bulge,
-)
-from tests.support.saves import Chain
+from satisfactory_mcp.core.saveio.extract import routes
+from satisfactory_mcp.core.saveio.extract.census import Drops
+from satisfactory_mcp.core.saveio.extract.routes import TANGENT_EPS_CM
+from tests.support.saves import Chain, actor_table
 
 
 def _hermite(p0, m0, p1, m1, t):
@@ -29,19 +26,32 @@ def _hermite(p0, m0, p1, m1, t):
 def _departure(p0, m0, p1, m1, n=128):
     """How far the span's curve actually gets from the straight line between its ends.
 
-    Sampled, deliberately: this is the quantity ``_bulge`` claims to bound, and bounding it
+
+
+    Sampled, deliberately: this is the quantity ``routes.bulge`` claims to bound, and bounding it
+
     with the same arithmetic that computes it would test nothing at all.
+
     """
+
     v = [p1[k] - p0[k] for k in range(3)]
+
     span2 = sum(x * x for x in v)
+
     worst = 0.0
+
     for step in range(1, n):
         q = _hermite(p0, m0, p1, m1, step / n)
+
         if span2 < 1e-12:
             worst = max(worst, math.dist(q, p0))
+
             continue
+
         u = min(1.0, max(0.0, sum((q[k] - p0[k]) * v[k] for k in range(3)) / span2))
+
         worst = max(worst, math.dist(q, [p0[k] + u * v[k] for k in range(3)]))
+
     return worst
 
 
@@ -122,108 +132,183 @@ def test_a_flat_span_inside_a_bending_route_stores_zero_rather_than_its_tangents
 
 
 def test_the_bulge_bound_never_understates_how_far_a_curve_leaves_its_chord(projection):
-    """The one property ``_bulge`` must have, checked against a 128-point tessellation.
+    """The one property ``routes.bulge`` must have, checked against a 128-point tessellation.
+
+
 
     It is a bound and not a measurement on purpose: overstating costs bytes, understating
+
     silently flattens a bend the save does record. So the test is one-sided -- the bound has
+
     to be at least the sampled truth on every span the fixture carries -- plus a looseness
+
     ceiling, because a bound that simply returned infinity would pass the first half and would
+
     carry every span in the world.
+
     """
+
     ratios = []
+
     worst = 0.0
+
     for _key, points, spans in _routes(projection):
         for i, entry in enumerate(spans):
             if entry == 0:
                 continue
+
             leave, arrive = entry[:3], entry[3:]
+
             truth = _departure(points[i], leave, points[i + 1], arrive)
-            bound = _bulge(points[i], leave, points[i + 1], arrive)
+
+            bound = routes.bulge(points[i], leave, points[i + 1], arrive)
+
             assert bound >= truth - 1e-6, (bound, truth, points[i], points[i + 1])
+
             worst = max(worst, truth)
+
             if truth > 0.01:
                 ratios.append(bound / truth)
+
     assert ratios
+
     assert max(ratios) < 4.0, f"the bound is {max(ratios):.1f}x the truth and carries dead weight"
+
     # And the kept spans are worth keeping: the biggest departs its chord by ten metres, which
+
     # is the belt bend that used to be drawn as a straight line ten metres away from itself.
+
     assert worst > 1000.0, worst
 
 
 def test_a_zero_length_span_is_bounded_by_its_tangents_alone():
     """Coincident control points: there is no chord, so all of both tangents is sideways.
 
+
+
     116 of the reference save's spans are exactly this -- the zero-length joint where a
+
     conveyor lift meets the belt it feeds -- and dividing by the chord there is the division
+
     by zero a bound written only for the general case walks into.
+
     """
-    assert _bulge([0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]) == 0.0
-    quiet = _bulge([5, 5, 5], [0, 1, 0], [5, 5, 5], [0, 1, 0])
+
+    assert routes.bulge([0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]) == 0.0
+
+    quiet = routes.bulge([5, 5, 5], [0, 1, 0], [5, 5, 5], [0, 1, 0])
+
     assert 0 < quiet < TANGENT_EPS_CM, quiet
-    assert _bulge([5, 5, 5], [0, 500, 0], [5, 5, 5], [0, 500, 0]) > TANGENT_EPS_CM
+
+    assert routes.bulge([5, 5, 5], [0, 500, 0], [5, 5, 5], [0, 500, 0]) > TANGENT_EPS_CM
 
 
 def test_a_straight_span_carries_nothing_however_long_its_tangents_are():
     """Tangents ALONG the chord do not bend the curve, and the bound has to know that.
 
+
+
     This is the case that decides whether the feature is affordable at all, because it is the
+
     game's commonest: the save stores half the chord as both tangents on every straight run,
+
     which a test comparing tangent length against chord length would call curved and carry. It
+
     puts the curve on the line at a non-uniform speed, and a drawn line has no speed.
+
     """
+
     for scale in (0.25, 0.5, 1.0):
         m = [0, int(800 * scale), 0]
-        assert _bulge([0, 0, 0], m, [0, 800, 0], m) < TANGENT_EPS_CM, scale
+
+        assert routes.bulge([0, 0, 0], m, [0, 800, 0], m) < TANGENT_EPS_CM, scale
+
     # Sideways by a hair is still nothing; sideways by two metres is not.
-    assert _bulge([0, 0, 0], [1, 400, 0], [0, 800, 0], [1, 400, 0]) < TANGENT_EPS_CM
-    assert _bulge([0, 0, 0], [200, 400, 0], [0, 800, 0], [-200, 400, 0]) > TANGENT_EPS_CM
+
+    assert routes.bulge([0, 0, 0], [1, 400, 0], [0, 800, 0], [1, 400, 0]) < TANGENT_EPS_CM
+
+    assert routes.bulge([0, 0, 0], [200, 400, 0], [0, 800, 0], [-200, 400, 0]) > TANGENT_EPS_CM
+
     # And a tangent long enough to overshoot the far end IS a departure, even though it is
+
     # exactly parallel to the chord: the curve runs past p1 and comes back.
-    assert _bulge([0, 0, 0], [0, 4000, 0], [0, 800, 0], [0, 400, 0]) > TANGENT_EPS_CM
+
+    assert routes.bulge([0, 0, 0], [0, 4000, 0], [0, 800, 0], [0, 400, 0]) > TANGENT_EPS_CM
 
 
 def test_tangents_are_rounded_with_the_points_but_never_translated_with_them():
     """A point is a place and a tangent is a displacement, so only one of the two moves.
 
+
+
     Getting this wrong is invisible in a unit test at the origin and catastrophic on the real
+
     world: the chain origins are kilometres out, so a translated tangent would be kilometres
+
     long and the curve between two adjacent control points would leave the map entirely.
+
     Checked by moving the chain, which is the falsifier the points' own frame test uses.
+
     """
+
     bend = [
         [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 300.0, 0.0]],
         [[0.0, 400.0, 0.0], [0.0, 300.0, 0.0], [300.0, 0.0, 0.0]],
         [[400.0, 800.0, 0.0], [300.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
     ]
+
     belt = ObjectReference("Persistent_Level", "x.Build_ConveyorBeltMk3_C_7")
+
     info = [belt, belt, [[belt, belt, bend, 0.0, 0.0, 900.0, -1, -1, 0]], [900.0, 9, -1, -1], []]
 
-    here = _belts([([0.0, 0.0, 0.0], Chain(info))], {}, Drops())["segments"]
-    there = _belts([([120_000.0, -80_000.0, 500.0], Chain(info))], {}, Drops())["segments"]
+    here = routes.belts([([0.0, 0.0, 0.0], Chain(info))], actor_table(), Drops())["segments"]
+
+    there = routes.belts([([120_000.0, -80_000.0, 500.0], Chain(info))], actor_table(), Drops())[
+        "segments"
+    ]
+
     assert len(here) == len(there) == 1
+
     assert len(here[0]) == 5, "this run bends, so it carries tangents past the actor column"
+
     assert [[p[0] + 120_000, p[1] - 80_000, p[2] + 500] for p in here[0][2]] == there[0][2]
+
     assert here[0][4] == there[0][4], "a tangent moved with the chain"
+
     # And the pairing, span by span: the first takes point 0's LEAVE and point 1's ARRIVE,
+
     # which are both three quarters of the chord between them and so bend nothing; the second
+
     # takes point 1's leave and point 2's arrive, which turn the corner and are carried.
+
     assert here[0][4] == [0, [300, 0, 0, 300, 0, 0]]
 
 
 def test_a_point_that_will_not_decode_takes_its_own_tangents_with_it():
     """The two lists are indexed against each other, so they must not be able to slip.
 
+
+
     A point appended without its tangents -- or the reverse -- would not raise: it would shift
+
     every span after the fault by one and bend the route around the wrong control point, which
+
     looks like a curve and is a different curve. So a malformed point costs the whole triple.
+
     """
+
     good = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 300.0, 0.0]]
+
     far = [[0.0, 400.0, 0.0], [0.0, 300.0, 0.0], [300.0, 0.0, 0.0]]
+
     end = [[400.0, 800.0, 0.0], [300.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
+
     broken = [[0.0, 200.0, 0.0], "not a vector", [0.0, 300.0, 0.0]]
+
     belt = ObjectReference("Persistent_Level", "x.Build_ConveyorBeltMk3_C_7")
 
     def run(points, drops=None):
+
         info = [
             belt,
             belt,
@@ -231,12 +316,17 @@ def test_a_point_that_will_not_decode_takes_its_own_tangents_with_it():
             [900.0, 9, -1, -1],
             [],
         ]
-        return _belts(
-            [([0.0, 0.0, 0.0], Chain(info))], {}, drops if drops is not None else Drops()
+
+        return routes.belts(
+            [([0.0, 0.0, 0.0], Chain(info))], actor_table(), drops if drops is not None else Drops()
         )["segments"]
 
     drops = Drops()
+
     assert run([good, broken, far, end], drops) == run([good, far, end])
+
     # Identical output, and the difference between the two runs is now stated rather than
+
     # inferable only by having the other one to compare against.
+
     assert sum(drops.values()) == 1, "the broken triple, counted"

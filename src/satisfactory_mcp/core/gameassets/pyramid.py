@@ -1,24 +1,10 @@
 """The tile pyramid: one sheet at one resolution per zoom, and renamed into place whole.
 
-Every base layer this project draws is cut into ``{z}/{x}_{y}.png``, one level per zoom, so
-the page fetches the pixels it can show rather than a 16384 px sheet. Level ``z`` holds
-``2**z`` tiles a side and is **one Lanczos downscale of the whole sheet**, never of the level
-above it, so no level accumulates the softening of six successive halvings; the levels below
-the top add a third again to the top's own bytes. A pyramid is only ever renamed into place,
-so a reader meets a whole tree or no tree. Pillow and the sheet are parameters, as everywhere
-in this package, so the suite drives the cutting with a stand-in.
-
-``tiles@2x/`` is the identical GRID at twice the pixels -- same squares of the world, 512 px
-a tile -- which is what a hi-DPI display wants from the same ``{z}/{x}/{y}`` request. A 512 px
-tile eats a level of depth, so an @2x tree is always exactly one level shallower than the 1x
-tree cut from the same sheet.
-
-Above one worker, the per-tile PNG encode is spread over processes and **the resampling stays
-serial in the parent**: the level's pixels are published once into a ``shared_memory`` block
-and each task crops one row of tiles out of it. Because no worker resamples, none can disagree
-about a filter tap at a strip boundary, which is what makes the parallel path byte-identical
-rather than merely equivalent -- ``tools/gen_map_renders.py --check-parallel`` compares the
-SHA-256 of every tile from both.
+Every base layer is cut into ``{z}/{x}_{y}.png``, and level ``z`` (``2**z`` tiles a side) is
+**one Lanczos downscale of the whole sheet**, never of the level above, so no level
+accumulates the softening of successive halvings. ``tiles@2x/`` is the same grid at 512 px a
+tile for hi-DPI displays, and therefore one level shallower. A pyramid is only ever renamed
+into place, so a reader meets a whole tree or no tree.
 """
 
 from __future__ import annotations
@@ -124,8 +110,7 @@ def _encode_tile_row(job: tuple[str, str, int, int, int, int, str, int]) -> int:
 
     Top level and argument-shaped rather than a closure because Windows spawns its workers:
     everything a task needs must pickle, and the pixels travel as a ``shared_memory`` NAME.
-    Pillow is imported inside the function, the rule everywhere in this package, so a machine
-    without the ``gen`` extra still imports the module.
+    A module cannot pickle either, so this body imports Pillow itself (DESIGN.md).
     """
     from multiprocessing.shared_memory import SharedMemory
 
@@ -150,10 +135,11 @@ def _encode_tile_row(job: tuple[str, str, int, int, int, int, str, int]) -> int:
 def cut_square_parallel(piece, dest: Path, z: int, tile_px: int, pool) -> int:
     """``cut_square`` at ``(0, 0)`` with the deflating spread over a process pool.
 
-    Nothing here resamples, filters or moves a coordinate: the level arrives already resized
-    and a worker only decides where one rectangle of it starts. ``cut_square``'s offset
-    arguments are absent because the only caller that cuts at an offset is the enhancement
-    stage, which is GPU-bound rather than deflate-bound.
+    The resampling stays serial in the parent: the level's pixels are published once into a
+    ``shared_memory`` block and each task crops one row of tiles out of it. No worker can
+    disagree about a filter tap at a strip boundary, so the parallel path is byte-identical
+    -- ``tools/gen_map_renders.py --check-parallel`` compares every tile's SHA-256. There is
+    no offset because the only caller cutting at one, the enhancement stage, is GPU-bound.
     """
     from multiprocessing.shared_memory import SharedMemory
 

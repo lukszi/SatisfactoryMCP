@@ -161,11 +161,11 @@ def test_identity_checks_name_both_disagreements() -> None:
 # ------------------------------------------------------------------ the page table
 
 
-def state(offset: int, size: int) -> tuple[int, ...]:
-    return (offset, size, size, 0, 0, 0, 0)
+def state(offset: int, size: int) -> sm.PageState:
+    return sm.PageState(offset, size, size, 0, 0, 0, 0)
 
 
-def resource(root_pages: int, root_bytes: int, states: list[tuple[int, ...]]):
+def resource(root_pages: int, root_bytes: int, states: list[sm.PageState]):
     return sm.NaniteResource(
         present=True, root_bytes=root_bytes, root_pages=root_pages, page_states=states
     )

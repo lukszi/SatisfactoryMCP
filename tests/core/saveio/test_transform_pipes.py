@@ -8,32 +8,42 @@ from __future__ import annotations
 
 import math
 
-from satisfactory_mcp.core.saveio.extract import (
-    PIPE_CLASSES,
-    Drops,
-    _pipes,
-)
+from satisfactory_mcp.core.saveio.extract import routes
+from satisfactory_mcp.core.saveio.extract.census import Drops
+from satisfactory_mcp.core.saveio.extract.registers import PIPE_CLASSES
+from tests.support.saves import actor_table
 
 
 def _spline(*points) -> list:
     """An ``mSplineData`` the way the parser hands it over: a list of struct entries, each
+
     ``[values, propertyTypes]``, with a ``Location`` among the values.
 
-    The tangents are in here because the real property has them and ``_pipes`` has to ignore
+
+
+    The tangents are in here because the real property has them and ``routes.pipes`` has to ignore
+
     them: a reader that took field 0 positionally rather than by name would pass every test
+
     written against a Location-only stand-in and draw the world's curvature as its geometry.
+
     """
+
     out = []
+
     for p in points:
         values = [
             ["Location", list(p)],
             ["ArriveTangent", [0.0, 50.0, 0.0]],
             ["LeaveTangent", [0.0, 50.0, 0.0]],
         ]
+
         types = [
             [n, "StructProperty", 1, "Vector", 1, "/Script/CoreUObject", 0, 8] for n, _ in values
         ]
+
         out.append([values, types])
+
     return out
 
 
@@ -155,14 +165,23 @@ def test_no_pipe_is_vertical_so_none_needs_a_glyph(projection):
 def test_pipes_are_translated_by_their_actor_and_not_rotated_by_it():
     """The frame correction itself, isolated: move the actor and every point moves with it.
 
+
+
     All 18,069 pipeline actors across the 66 saves on this disk carry an identity rotation, so
+
     the correction is a translation and nothing else. This pins that: the same spline read at
+
     two actor positions differs by exactly the offset, on every axis, with no rounding drift --
+
     which is what makes the whole-centimetre rounding commutative with the translation.
+
     """
+
     spline = _spline((0.0, 0.0, 0.0), (0.0, 100.0, 0.0), (0.0, 100.0, 250.0))
+
     nets = [(3, "Desc_Water_C", ["Persistent_Level:PersistentLevel.Build_Pipeline_C_1"])]
-    base = _pipes(
+
+    base = routes.pipes(
         [
             (
                 "Build_Pipeline_C",
@@ -172,10 +191,11 @@ def test_pipes_are_translated_by_their_actor_and_not_rotated_by_it():
             )
         ],
         nets,
-        {"Build_Pipeline_C_1": 0},
+        actor_table({"Build_Pipeline_C_1": 0}),
         Drops(),
     )
-    moved = _pipes(
+
+    moved = routes.pipes(
         [
             (
                 "Build_Pipeline_C",
@@ -185,22 +205,29 @@ def test_pipes_are_translated_by_their_actor_and_not_rotated_by_it():
             )
         ],
         nets,
-        {"Build_Pipeline_C_1": 0},
+        actor_table({"Build_Pipeline_C_1": 0}),
         Drops(),
     )
+
     assert base["segments"][0][2] == [[0, 0, 0], [0, 100, 0], [0, 100, 250]]
+
     assert [[p[0] - 1000, p[1] + 2000, p[2] - 3000] for p in moved["segments"][0][2]] == base[
         "segments"
     ][0][2]
+
     # And the network the member list claims it for, resolved by instance name.
+
     assert base["networks"] == [{"id": 3, "fluid": "Desc_Water_C"}]
+
     assert base["segments"][0][0] == 0
 
 
 def test_a_pipe_no_network_claims_is_still_drawn():
     """``-1``, not dropped: an unclaimed pipe is a pipe on real ground whose contents are
+
     unknown, and a half-built or drained network is exactly how one arises."""
-    out = _pipes(
+
+    out = routes.pipes(
         [
             (
                 "Build_PipelineMK2_C",
@@ -210,39 +237,69 @@ def test_a_pipe_no_network_claims_is_still_drawn():
             )
         ],
         [(3, "Desc_Water_C", ["x.Build_Pipeline_C_1"])],
-        {"Build_PipelineMK2_C_9": 4},
+        actor_table({"Build_PipelineMK2_C_9": 4}),
         Drops(),
     )
+
     assert out["segments"] == [[-1, 0, [[0, 0, 0], [0, 800, 0]], 4]]
+
     assert out["networks"] == [{"id": 3, "fluid": "Desc_Water_C"}]
 
 
 def test_a_pipe_of_nothing_recognisable_is_dropped_rather_than_raising():
-    """Same reasoning as ``_belts``: this runs on whatever the property decoder produced.
+    """Same reasoning as ``routes.belts``: this runs on whatever the property decoder produced.
+
+
 
     And the same second claim: each drop is one count in ``warnings``, so a save whose
+
     splines have stopped decoding says so rather than publishing a world with no pipes.
+
     """
+
     empty = {"classes": [], "networks": [], "segments": []}
+
     drops = Drops()
-    assert _pipes([], [], {}, drops) == empty
+
+    assert routes.pipes([], [], actor_table(), drops) == empty
+
     assert sum(drops.values()) == 0, "nothing in, nothing dropped"
-    assert _pipes([("Build_Pipeline_C", "i", (0, 0, 0), None)], [], {}, drops) == empty
+
     assert (
-        _pipes([("Build_Pipeline_C", "i", None, _spline((0, 0, 0), (1, 1, 1)))], [], {}, drops)
+        routes.pipes([("Build_Pipeline_C", "i", (0, 0, 0), None)], [], actor_table(), drops)
         == empty
     )
-    assert _pipes([("Build_Pipeline_C", "i", ("x", 0, 0), _spline((0, 0, 0)))], [], {}, drops) == (
-        empty
-    )
-    # One point is not a route, the same bar the belts set.
+
     assert (
-        _pipes([("Build_Pipeline_C", "i", (0, 0, 0), _spline((0, 0, 0)))], [], {}, drops) == empty
+        routes.pipes(
+            [("Build_Pipeline_C", "i", None, _spline((0, 0, 0), (1, 1, 1)))],
+            [],
+            actor_table(),
+            drops,
+        )
+        == empty
     )
+
+    assert routes.pipes(
+        [("Build_Pipeline_C", "i", ("x", 0, 0), _spline((0, 0, 0)))], [], actor_table(), drops
+    ) == (empty)
+
+    # One point is not a route, the same bar the belts set.
+
+    assert (
+        routes.pipes(
+            [("Build_Pipeline_C", "i", (0, 0, 0), _spline((0, 0, 0)))], [], actor_table(), drops
+        )
+        == empty
+    )
+
     assert sum(drops.values()) == 4, "four unreadable pipes, four counted"
+
     # A struct with no Location among its fields costs that point, not the pipe.
+
     point_drops = Drops()
-    assert _pipes(
+
+    assert routes.pipes(
         [
             (
                 "Build_Pipeline_C",
@@ -252,11 +309,14 @@ def test_a_pipe_of_nothing_recognisable_is_dropped_rather_than_raising():
             )
         ],
         [],
-        {},
+        actor_table(),
         point_drops,
     )["segments"] == [[-1, 0, [[0, 0, 0], [0, 400, 0]], -1]]
+
     assert sum(point_drops.values()) == 1, "the point, and only the point"
+
     # A network whose id is not an integer keeps its fluid and loses its id.
-    assert _pipes([], [(None, "Desc_Water_C", [])], {}, Drops())["networks"] == [
+
+    assert routes.pipes([], [(None, "Desc_Water_C", [])], actor_table(), Drops())["networks"] == [
         {"id": None, "fluid": "Desc_Water_C"}
     ]

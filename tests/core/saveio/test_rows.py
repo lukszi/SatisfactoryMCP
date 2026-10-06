@@ -334,10 +334,11 @@ def test_a_projection_with_no_power_at_all_yields_nothing():
 def test_the_wires_are_positionally_aligned_with_the_power_edges(projection):
     """The one promise this key is built around, held against a real save.
 
-    ``extract._power`` writes both lists in a single pass so that ``wires[i]`` is the span of
-    ``graph["power"][i]``. Nothing in the row shape enforces that -- a wire row carries no
-    actor index of its own, deliberately, because ``graph["power"]`` is the connectivity and a
-    second copy could disagree -- so the alignment is a claim, and this is where it is checked.
+    ``extract.power.power_network`` writes both lists in a single pass so that ``wires[i]`` is
+    the span of ``graph["power"][i]``. Nothing in the row shape enforces that -- a wire row
+    carries no actor index of its own, deliberately, because ``graph["power"]`` is the
+    connectivity and a second copy could disagree -- so the alignment is a claim, and this is
+    where it is checked.
     """
     assert rows.wire_count(projection) == len(projection["graph"]["power"])
 

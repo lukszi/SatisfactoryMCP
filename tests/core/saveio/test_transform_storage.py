@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from satisfactory_mcp.core.saveio.extract import (
-    FLUID_BUFFER_CLASSES,
-    STORAGE_CLASSES,
-    _storage,
-)
+from satisfactory_mcp.core.saveio.extract import inventories
+from satisfactory_mcp.core.saveio.extract.registers import FLUID_BUFFER_CLASSES, STORAGE_CLASSES
 
 
 def test_storage_is_every_container_and_buffer_and_nothing_else(projection):
@@ -131,15 +128,22 @@ def test_storage_is_ordered_so_two_saves_of_one_world_can_be_diffed(projection):
 def test_a_storage_actor_with_no_inventory_component_is_still_a_container():
     """An empty box is a box. The join is a lookup, and a miss has to mean "nothing in it".
 
+
+
     A container the player has never touched may have no ``StorageInventory`` written at all --
+
     UE omits a SaveGame property still at its default -- and dropping the row would take the
+
     box off the map for the crime of being empty.
+
     """
-    rows = _storage(
+
+    rows = inventories.storage(
         [("Build_StorageContainerMk1_C", "x.Build_StorageContainerMk1_C_1", [1, 2, 3], 90.0, None)],
         {},
         [],
     )
+
     assert rows == [
         {
             "cls": "Build_StorageContainerMk1_C",
@@ -153,13 +157,22 @@ def test_a_storage_actor_with_no_inventory_component_is_still_a_container():
 
 
 def test_a_buffer_no_network_claims_keeps_its_level_and_loses_its_fluid():
-    """Drawn with contents unknown beats not drawn -- the refusal ``_pipes`` already makes."""
-    rows = _storage(
+    """Drawn with contents unknown beats not drawn -- the refusal ``routes.pipes`` already makes."""
+
+    rows = inventories.storage(
         [("Build_PipeStorageTank_C", "x.Build_PipeStorageTank_C_1", [0, 0, 0], 0.0, 12.5)], {}, []
     )
+
     assert rows[0]["fluid"] is None
+
     assert rows[0]["stored_m3"] == 12.5
+
     # And a level that will not read as a number is null rather than zero: an unreadable
+
     # buffer is not an empty one.
-    unreadable = _storage([("Build_IndustrialTank_C", "i", [0, 0, 0], 0.0, "brimming")], {}, [])
+
+    unreadable = inventories.storage(
+        [("Build_IndustrialTank_C", "i", [0, 0, 0], 0.0, "brimming")], {}, []
+    )
+
     assert unreadable[0]["stored_m3"] is None

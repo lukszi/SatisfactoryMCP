@@ -39,17 +39,18 @@ Scope: UE 5.4 <= version < 5.7 (Satisfactory build 495413 is 5.6.1). Outside it,
 cluster bit layout and the vertex-reference encoding both move, and this reader would
 produce plausible arrays rather than an error -- which is why the three checks above are
 not optional decoration.
-
-``numpy`` is imported at module scope because it is a dependency of this project outright,
-not the ``gen`` extra. See ``staticmesh``'s docstring for that distinction.
 """
 
 from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from .staticmesh import NaniteResource
 
 NANITE_FIXUP_MAGIC = 0x464E
 MAX_CLUSTERS_PER_PAGE_BITS = 8  # 5.4+: max(17-9, 15-9) = 8
@@ -194,7 +195,7 @@ def parse_page_headers(data: bytes, page_index: int) -> tuple[Page, PageReader]:
 
     disk_header_at = at
     (
-        pdh_clusters,
+        disk_header_clusters,
         _num_raw_float4s,
         num_vertex_refs,
         decode_info_offset,
@@ -202,16 +203,17 @@ def parse_page_headers(data: bytes, page_index: int) -> tuple[Page, PageReader]:
         vertex_ref_bitmask_offset,
     ) = struct.unpack_from("<6I", data, at)
     at += 24
-    if pdh_clusters != num_clusters:
+    if disk_header_clusters != num_clusters:
         raise DecodeError(
-            f"page {page_index}: fixup says {num_clusters} clusters, disk header {pdh_clusters}"
+            f"page {page_index}: fixup says {num_clusters} clusters, "
+            f"disk header {disk_header_clusters}"
         )
 
     headers = []
     for _ in range(num_clusters):
-        v = struct.unpack_from("<9I", data, at)
+        fields = struct.unpack_from("<9I", data, at)
         at += 36
-        headers.append(ClusterDiskHeader(*v))
+        headers.append(ClusterDiskHeader(*fields))
 
     gpu_header_at = at
     gpu_packed = struct.unpack_from("<I", data, at)[0]
@@ -235,43 +237,43 @@ def parse_page_headers(data: bytes, page_index: int) -> tuple[Page, PageReader]:
     return page, PageReader(data)
 
 
-def parse_clusters(page: Page, r: PageReader) -> None:
+def parse_clusters(page: Page, reader: PageReader) -> None:
     """The packed cluster structs, stored SOA: eight float4 rows, cluster-major within
     each row. Only the fields a position/topology decode needs are unpacked."""
-    n = page.num_clusters
+    cluster_count = page.num_clusters
     origin = page.gpu_header_at + GPU_PAGE_HEADER_SIZE
 
-    def row(rowidx: int, i: int) -> int:
-        return origin + 16 * n * rowidx + 16 * i
+    def row_address(row: int, cluster_index: int) -> int:
+        return origin + 16 * cluster_count * row + 16 * cluster_index
 
-    for i in range(n):
-        a0 = row(0, i)
-        num_verts_pos_offset = r.u32(a0)
+    for cluster_index in range(cluster_count):
+        counts_row = row_address(0, cluster_index)
+        num_verts_pos_offset = reader.u32(counts_row)
         num_verts = get_bits(num_verts_pos_offset, 14, 0)  # 5.6 widened this from 9 bits
-        num_tris_index_offset = r.u32(a0 + 4)
+        num_tris_index_offset = reader.u32(counts_row + 4)
         num_tris = get_bits(num_tris_index_offset, 8, 0)
 
-        a1 = row(1, i)
-        pos_start = struct.unpack_from("<3i", r.buf, a1)
-        packed = r.u32(a1 + 12)
+        position_row = row_address(1, cluster_index)
+        pos_start = struct.unpack_from("<3i", reader.buf, position_row)
+        packed = reader.u32(position_row + 12)
         bits_per_index = get_bits(packed, 3, 0) + 1
         pos_precision = get_bits(packed, 6, 3) + MIN_POSITION_PRECISION
         pos_bits = (get_bits(packed, 5, 9), get_bits(packed, 5, 14), get_bits(packed, 5, 19))
 
-        a3 = row(3, i)
-        box_center = struct.unpack_from("<3f", r.buf, a3)
-        lod_error, edge_length = struct.unpack_from("<2e", r.buf, a3 + 12)
+        bounds_row = row_address(3, cluster_index)
+        box_center = struct.unpack_from("<3f", reader.buf, bounds_row)
+        lod_error, edge_length = struct.unpack_from("<2e", reader.buf, bounds_row + 12)
 
-        a4 = row(4, i)
-        box_extent = struct.unpack_from("<3f", r.buf, a4)
-        flags = get_bits(r.u32(a4 + 12), 4, 0)
+        extent_row = row_address(4, cluster_index)
+        box_extent = struct.unpack_from("<3f", reader.buf, extent_row)
+        flags = get_bits(reader.u32(extent_row + 12), 4, 0)
 
-        a5 = row(5, i)
-        material_encoding = r.u32(a5 + 12)
+        material_row = row_address(5, cluster_index)
+        material_encoding = reader.u32(material_row + 12)
 
         page.clusters.append(
             Cluster(
-                index=i,
+                index=cluster_index,
                 num_verts=num_verts,
                 num_tris=num_tris,
                 pos_start=pos_start,
@@ -293,7 +295,11 @@ def parse_clusters(page: Page, r: PageReader) -> None:
 
 
 def triangle_indices(
-    r: PageReader, page: Page, h: ClusterDiskHeader, cluster_index: int, tri_index: int
+    reader: PageReader,
+    page: Page,
+    disk_header: ClusterDiskHeader,
+    cluster_index: int,
+    tri_index: int,
 ) -> tuple[int, int, int]:
     """One triangle out of the strip bitmask. Three parallel bitmasks per dword of
     triangles say, per triangle, whether it starts a strip, turns left, and reuses a
@@ -302,7 +308,7 @@ def triangle_indices(
     bit_index = tri_index & 31
 
     at = page.disk_header_at + page.strip_bitmask_offset + (cluster_index * 4 + dword_index) * 12
-    s_mask, l_mask, w_mask = struct.unpack_from("<3I", r.buf, at)
+    s_mask, l_mask, w_mask = struct.unpack_from("<3I", reader.buf, at)
     sl_mask = s_mask & l_mask
     head_ref_vertex_mask = (sl_mask | ~s_mask) & w_mask & 0xFFFFFFFF
 
@@ -312,8 +318,8 @@ def triangle_indices(
         prev_ref_before = prev_new_before = 0
     else:
         off = dword_index * 10 - 10
-        prev_ref_before = get_bits(h.num_prev_ref_before_dwords, 10, off)
-        prev_new_before = get_bits(h.num_prev_new_before_dwords, 10, off)
+        prev_ref_before = get_bits(disk_header.num_prev_ref_before_dwords, 10, off)
+        prev_new_before = get_bits(disk_header.num_prev_new_before_dwords, 10, off)
 
     cur_prev_ref = (popcount(sl_mask & prev_bits_mask) << 1) + popcount(w_mask & prev_bits_mask)
     cur_prev_new = (popcount(s_mask & prev_bits_mask) << 1) + bit_index - cur_prev_ref
@@ -326,8 +332,8 @@ def triangle_indices(
     is_ref = get_bits_signed(w_mask, 1, bit_index)
 
     base_vertex = num_prev_new - 1
-    read_base = page.disk_header_at + h.index_data
-    index_data = r.unaligned_dword(read_base, (num_prev_ref + ~is_start) * 5)
+    read_base = page.disk_header_at + disk_header.index_data
+    index_data = reader.unaligned_dword(read_base, (num_prev_ref + ~is_start) * 5)
 
     if is_start:
         minus_num_refs = (is_left << 1) + is_ref
@@ -382,7 +388,7 @@ def triangle_indices(
     is_before_found_ref = get_bits(head_ref_vertex_mask, 1, found_bit_index - 1)
 
     read_offset = is_left if is_found_case_s else 1
-    found_index_data = r.unaligned_dword(read_base, (found_num_prev_ref - read_offset) * 5)
+    found_index_data = reader.unaligned_dword(read_base, (found_num_prev_ref - read_offset) * 5)
     found_index = (found_num_prev_new - 1) - get_bits(found_index_data, 5, 0)
 
     if is_found_case_s:
@@ -398,27 +404,31 @@ def triangle_indices(
     return x & 0xFFFFFFFF, y & 0xFFFFFFFF, z & 0xFFFFFFFF
 
 
-def decode_indices(r: PageReader, page: Page, c: Cluster, h: ClusterDiskHeader) -> None:
-    tris = np.empty((c.num_tris, 3), dtype=np.int64)
-    for t in range(c.num_tris):
-        x, y, z = triangle_indices(r, page, h, c.index, t)
+def decode_indices(
+    reader: PageReader, page: Page, cluster: Cluster, disk_header: ClusterDiskHeader
+) -> None:
+    tris = np.empty((cluster.num_tris, 3), dtype=np.int64)
+    for t in range(cluster.num_tris):
+        x, y, z = triangle_indices(reader, page, disk_header, cluster.index, t)
         # rotate to a canonical winding start, as the runtime does
         if y < min(x, z):
             x, y, z = y, z, x
         elif z < min(x, y):
             x, y, z = z, x, y
         tris[t] = (x, y, z)
-    c.tris = tris
+    cluster.tris = tris
 
 
 # ---------------------------------------------------------------- vertex maps
 
 
-def vertex_ref_maps(r: PageReader, page: Page, c: Cluster, h: ClusterDiskHeader):
+def vertex_ref_maps(
+    reader: PageReader, page: Page, cluster: Cluster, disk_header: ClusterDiskHeader
+) -> tuple[np.ndarray, np.ndarray]:
     """Split the cluster's vertex slots into 'stored here' and 'a reference to another
     cluster', from a 256-bit per-cluster bitmask."""
-    base = page.disk_header_at + page.vertex_ref_bitmask_offset + c.index * 32
-    dwords = [r.u32(base + d * 4) for d in range(8)]
+    base = page.disk_header_at + page.vertex_ref_bitmask_offset + cluster.index * 32
+    dwords = [reader.u32(base + d * 4) for d in range(8)]
 
     prev_counts = [0] * 8
     running = 0
@@ -426,11 +436,11 @@ def vertex_ref_maps(r: PageReader, page: Page, c: Cluster, h: ClusterDiskHeader)
         prev_counts[d] = running
         running += popcount(dwords[d])
 
-    ref_to_vertex = np.empty(h.num_vertex_refs, dtype=np.int64)
-    num_non_ref = c.num_verts - h.num_vertex_refs
+    ref_to_vertex = np.empty(disk_header.num_vertex_refs, dtype=np.int64)
+    num_non_ref = cluster.num_verts - disk_header.num_vertex_refs
     non_ref_to_vertex = np.empty(num_non_ref, dtype=np.int64)
 
-    for v in range(c.num_verts):
+    for v in range(cluster.num_verts):
         d, b = v >> 5, v & 31
         mask = dwords[d]
         num_prev_ref = popcount(get_bits(mask, b, 0)) + prev_counts[d]
@@ -441,30 +451,32 @@ def vertex_ref_maps(r: PageReader, page: Page, c: Cluster, h: ClusterDiskHeader)
     return ref_to_vertex, non_ref_to_vertex
 
 
-def decode_positions(r: PageReader, page: Page, c: Cluster, h: ClusterDiskHeader) -> np.ndarray:
+def decode_positions(
+    reader: PageReader, page: Page, cluster: Cluster, disk_header: ClusterDiskHeader
+) -> np.ndarray:
     """The non-referenced vertices' quantised positions.
 
     Stored as a delta stream in low/mid/high byte planes: plane k holds byte k of every
     value, so a 3-byte value costs three separate contiguous runs. Values are zigzag
     deltas from the previous vertex, seeded at the midpoint of each axis' range.
     """
-    num_non_ref = c.num_verts - h.num_vertex_refs
+    num_non_ref = cluster.num_verts - disk_header.num_vertex_refs
     if num_non_ref == 0:
         return np.zeros((0, 3), dtype=np.int64)
 
-    bx, by, bz = c.pos_bits
+    bx, by, bz = cluster.pos_bits
     bytes_per_value = (max(bx, by, bz) + 7) // 8
     count = 3 * num_non_ref
 
     planes = []
     for plane_offset, needed in (
-        (h.low_bytes, 1),
-        (h.mid_bytes, 2),
-        (h.high_bytes, 3),
+        (disk_header.low_bytes, 1),
+        (disk_header.mid_bytes, 2),
+        (disk_header.high_bytes, 3),
     ):
         if bytes_per_value >= needed:
             at = page.disk_header_at + plane_offset
-            planes.append(np.frombuffer(r.buf, dtype=np.uint8, count=count, offset=at))
+            planes.append(np.frombuffer(reader.buf, dtype=np.uint8, count=count, offset=at))
         else:
             planes.append(None)
 
@@ -481,34 +493,34 @@ def decode_positions(r: PageReader, page: Page, c: Cluster, h: ClusterDiskHeader
     values = np.cumsum(delta, axis=0) + seed
 
     mask = np.array([(1 << bx) - 1, (1 << by) - 1, (1 << bz) - 1], dtype=np.int64)
-    return (values & mask) + np.asarray(c.pos_start, dtype=np.int64)
+    return (values & mask) + np.asarray(cluster.pos_start, dtype=np.int64)
 
 
 # ---------------------------------------------------------------- driver
 
 
-def decode_page(data: bytes, page_index: int) -> tuple[Page, PageReader, list]:
-    page, r = parse_page_headers(data, page_index)
-    parse_clusters(page, r)
+def decode_page(data: bytes, page_index: int) -> tuple[Page, PageReader, list[np.ndarray]]:
+    page, reader = parse_page_headers(data, page_index)
+    parse_clusters(page, reader)
 
-    ref_maps = []
-    for c in page.clusters:
-        h = page.headers[c.index]
-        decode_indices(r, page, c, h)
-        ref_to_vertex, non_ref_to_vertex = vertex_ref_maps(r, page, c, h)
-        raw = np.zeros((c.num_verts, 3), dtype=np.int64)
-        non_ref_pos = decode_positions(r, page, c, h)
+    ref_maps: list[np.ndarray] = []
+    for cluster in page.clusters:
+        disk_header = page.headers[cluster.index]
+        decode_indices(reader, page, cluster, disk_header)
+        ref_to_vertex, non_ref_to_vertex = vertex_ref_maps(reader, page, cluster, disk_header)
+        raw = np.zeros((cluster.num_verts, 3), dtype=np.int64)
+        non_ref_pos = decode_positions(reader, page, cluster, disk_header)
         if len(non_ref_to_vertex):
             raw[non_ref_to_vertex] = non_ref_pos
-        c.raw_pos = raw
+        cluster.raw_pos = raw
         ref_maps.append(ref_to_vertex)
-    return page, r, ref_maps
+    return page, reader, ref_maps
 
 
 def resolve_vertex_references(
     pages: list[Page],
     readers: list[PageReader],
-    ref_maps: list[list],
+    ref_maps: list[list[np.ndarray]],
     page_index: int,
     page_dependencies: list[int],
     deps_start: int,
@@ -516,23 +528,25 @@ def resolve_vertex_references(
     """Fill the vertex slots that point at a vertex in another cluster, possibly in an
     earlier page. Only the quantised position is carried across; the destination
     cluster's own scale is applied when it is dequantised."""
-    page, r = pages[page_index], readers[page_index]
-    for c in page.clusters:
-        h = page.headers[c.index]
-        if h.num_vertex_refs == 0:
+    page, reader = pages[page_index], readers[page_index]
+    for cluster in page.clusters:
+        disk_header = page.headers[cluster.index]
+        if disk_header.num_vertex_refs == 0:
             continue
-        ref_to_vertex = ref_maps[page_index][c.index]
+        ref_to_vertex = ref_maps[page_index][cluster.index]
         prev = 0
-        for i in range(h.num_vertex_refs):
-            vertex_index = int(ref_to_vertex[i])
-            page_cluster_index = r.u8(page.disk_header_at + h.vertex_ref_data + i)
-            page_cluster_data = r.u32(
-                page.disk_header_at + h.page_cluster_map + page_cluster_index * 4
+        for ref in range(disk_header.num_vertex_refs):
+            vertex_index = int(ref_to_vertex[ref])
+            page_cluster_index = reader.u8(page.disk_header_at + disk_header.vertex_ref_data + ref)
+            page_cluster_data = reader.u32(
+                page.disk_header_at + disk_header.page_cluster_map + page_cluster_index * 4
             )
             parent_page_index = page_cluster_data >> MAX_CLUSTERS_PER_PAGE_BITS
             src_local_cluster = get_bits(page_cluster_data, MAX_CLUSTERS_PER_PAGE_BITS, 0)
 
-            coded = r.u8(page.disk_header_at + h.vertex_ref_data + i + page.num_vertex_refs)
+            coded = reader.u8(
+                page.disk_header_at + disk_header.vertex_ref_data + ref + page.num_vertex_refs
+            )
             prev = ((coded >> 1) ^ -(coded & 1)) + prev  # zigzag delta, 5.4+
             src_vertex = prev & 0xFF
 
@@ -541,20 +555,20 @@ def resolve_vertex_references(
                 src_cluster = pages[parent].clusters[src_local_cluster]
             else:
                 src_cluster = page.clusters[src_local_cluster]
-            c.raw_pos[vertex_index] = src_cluster.raw_pos[src_vertex]
+            cluster.raw_pos[vertex_index] = src_cluster.raw_pos[src_vertex]
 
 
-def decode_resource(resource) -> dict:
+def decode_resource(resource: NaniteResource) -> dict:
     """Decode every page of one mesh. Returns per-cluster geometry plus the leaf level
     assembled into a single (positions, triangles) pair in mesh local space."""
     pages: list[Page] = []
     readers: list[PageReader] = []
-    ref_maps: list[list] = []
+    ref_maps: list[list[np.ndarray]] = []
 
     for span in resource.pages:
-        page, r, refs = decode_page(span.data, span.index)
+        page, reader, refs = decode_page(span.data, span.index)
         pages.append(page)
-        readers.append(r)
+        readers.append(reader)
         ref_maps.append(refs)
 
     for span in resource.pages:
@@ -568,14 +582,14 @@ def decode_resource(resource) -> dict:
     leaf_clusters = 0
     base = 0
     for page in pages:
-        for c in page.clusters:
+        for cluster in page.clusters:
             total_clusters += 1
-            if not c.is_leaf:
+            if not cluster.is_leaf:
                 continue
             leaf_clusters += 1
-            leaf_pos.append(c.raw_pos.astype(np.float64) * c.pos_scale)
-            leaf_tris.append(c.tris + base)
-            base += c.num_verts
+            leaf_pos.append(cluster.raw_pos.astype(np.float64) * cluster.pos_scale)
+            leaf_tris.append(cluster.tris + base)
+            base += cluster.num_verts
 
     positions = (
         np.concatenate(leaf_pos).astype(np.float32) if leaf_pos else np.zeros((0, 3), np.float32)
@@ -644,7 +658,7 @@ def boundary_edges(triangles: np.ndarray) -> int:
     return int((counts == 1).sum())
 
 
-def identity_checks(resource, decoded: dict) -> list[str]:
+def identity_checks(resource: NaniteResource, decoded: dict) -> list[str]:
     """What the mesh says about itself against what came out. Empty means agreement.
 
     Not a summary of the decode: two independent statements in the file -- the resource

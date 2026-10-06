@@ -82,7 +82,7 @@ def parse(blocks, name):
 
 
 def props(parsed) -> dict:
-    """The same flattening ``extract.props`` does, so the tests read the same shape."""
+    """The flattening ``extract.readers.properties_of`` does, so the tests read the same shape."""
     return {p[0]: p[1] for p in parsed.properties}
 
 
@@ -221,7 +221,7 @@ def test_int64_and_arrays_of_scalars(blocks):
 
 
 def test_object_references_expose_the_name_the_projection_reads(blocks):
-    """``extract.ref_path`` reads ``.pathName`` and nothing else.
+    """``extract.readers.ref_path`` reads ``.pathName`` and nothing else.
 
     It also documents that ``repr()`` on a reference finds nothing, so ``__str__`` returning
     the path is part of the contract rather than a convenience.
@@ -322,13 +322,13 @@ def test_set_of_native_structs_reports_its_element_type(blocks):
 
 
 def test_a_struct_can_be_a_nested_property_list(blocks):
-    """``[values, types]``, which is the shape ``extract.struct_fields`` unwraps.
+    """``[values, types]``, which is the shape ``extract.readers.struct_fields`` unwraps.
 
     ``FactoryCustomizationData`` is a struct with one property in it, and it arrives as a
     property list rather than raw numbers -- the flags byte on it is 0 where ``Box`` reads
     8. Getting that branch backwards makes every painted building's swatch unreadable.
     """
-    from satisfactory_mcp.core.saveio.extract import struct_fields
+    from satisfactory_mcp.core.saveio.extract.readers import struct_fields
 
     p = props(parse(blocks, "Build_ConveyorPole_C_2147055418"))
     assert p["mHeight"] == 300.0
@@ -344,7 +344,7 @@ def test_transform_is_a_property_list_of_native_structs(blocks):
     ``Rotation``, when present, is a native ``Quat`` of four doubles. Both framings in one
     property is what makes it worth pinning.
     """
-    from satisfactory_mcp.core.saveio.extract import struct_fields
+    from satisfactory_mcp.core.saveio.extract.readers import struct_fields
 
     p = props(parse(blocks, "Build_ConveyorLiftMk2_C_2146699202"))
     assert struct_fields(p["mTopTransform"])["Translation"] == [0.0, 0.0, 2400.0]
@@ -357,7 +357,7 @@ def test_feet_offsets_are_a_struct_array_the_projection_reads(blocks):
     next to a ``FloatProperty`` inside a struct. The leg indices 1 and 2 and the -0.0005
     offsets are a workbench standing on flat ground.
     """
-    from satisfactory_mcp.core.saveio.extract import struct_fields
+    from satisfactory_mcp.core.saveio.extract.readers import struct_fields
 
     p = props(parse(blocks, "Build_WorkBench_C_2146928207.FGFactoryLegs"))
     legs = [struct_fields(e) for e in p["mCachedFeetOffset"]]
@@ -369,18 +369,18 @@ def test_feet_offsets_are_a_struct_array_the_projection_reads(blocks):
 
 
 def test_an_inventory_stack_reads_as_the_projection_expects(blocks):
-    """The one property with real consumers: ``_accumulate_inventory``.
+    """The one property with real consumers: ``accumulate_inventory``.
 
     It does ``ref_class(fields["Item"][0])``, and ``ref_class`` resolves a bare path string
     but takes the ``repr`` of a reference object and finds nothing. So element 0 of ``Item``
     must be a **string**. 100 iron ingots in a constructor's input is the whole chain --
     array, struct element, native ``InventoryItem``, path -- working end to end.
     """
-    from satisfactory_mcp.core.saveio.extract import _accumulate_inventory
+    from satisfactory_mcp.core.saveio.extract.inventories import accumulate_inventory
 
     p = props(parse(blocks, "Build_ConstructorMk1_C_2147441119.InputInventory"))
     totals: dict = {}
-    _accumulate_inventory(p["mInventoryStacks"], totals)
+    accumulate_inventory(p["mInventoryStacks"], totals)
     assert totals == {"Desc_IronIngot_C": 100}
     assert p["mArbitrarySlotSizes"] == [0]
 
@@ -393,7 +393,7 @@ def test_an_item_can_carry_its_own_state(blocks):
     one. It is the branch behind the int32 that is 0 on 15,000 ordinary stacks and 1 here;
     reading it as always-absent leaves the state's bytes in place and breaks the array.
     """
-    from satisfactory_mcp.core.saveio.extract import struct_fields
+    from satisfactory_mcp.core.saveio.extract.readers import struct_fields
 
     p = props(parse(blocks, "Char_Player_C_2147219546.HeadSlot"))
     stack = struct_fields(p["mInventoryStacks"][0])
@@ -421,7 +421,7 @@ def test_version_36_items_carry_one_int32_more_than_version_52(blocks, name, exp
     if the versions were folded together, one of the two would over- or under-read by
     exactly four bytes.
     """
-    from satisfactory_mcp.core.saveio.extract import struct_fields
+    from satisfactory_mcp.core.saveio.extract.readers import struct_fields
 
     p = props(parse(blocks, name))
     fields = struct_fields(p["mPickupItems"])
@@ -690,7 +690,7 @@ def test_an_empty_container_is_empty_and_not_absent():
     that ARE written are easy to assume away -- and they are common: 918 empty struct arrays
     (a blueprint's ``lastEditedBy``), 2,531 empty maps (``BuiltPerPlayer`` on an unshared
     game) and 862 empty sets across the 31 saves. The shape is what matters here rather than
-    the count: a consumer iterating a ``None`` raises, and ``_accumulate_inventory`` and
+    the count: a consumer iterating a ``None`` raises, and ``accumulate_inventory`` and
     ``struct_fields`` both iterate whatever they are handed.
     """
     body, slot = _component(
@@ -725,7 +725,7 @@ def test_an_empty_container_is_empty_and_not_absent():
 def test_the_bool_bit_and_the_native_bit_are_the_documented_ones():
     """The two flag bits every value in this module leans on, pinned as numbers.
 
-    16 is what ``extract.truthy`` documents receiving for a true BoolProperty, and 8
+    16 is what ``extract.readers.truthy`` documents receiving for a true BoolProperty, and 8
     is what separates a struct that serialises itself from one written as a property list.
     Changing either constant would silently invert building states across the projection.
     """

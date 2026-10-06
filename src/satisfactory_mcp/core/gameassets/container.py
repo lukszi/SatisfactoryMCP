@@ -1,8 +1,4 @@
-"""The game's container and the map sheet inside it: what every map generator opens first.
-
-The extras stay out of module scope (``tests/test_architecture.py``): ``ooz`` is imported
-by ``oodle_decompress`` when a block is read, Pillow and the BC1 decoder are passed in.
-"""
+"""The game's container and the map sheet inside it: what every map generator opens first."""
 
 from __future__ import annotations
 

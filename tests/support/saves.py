@@ -9,6 +9,7 @@ import pytest
 from pioneersav import ParseError, Reader, read_trailer
 from pioneersav.trailers import CONVEYOR_CHAIN
 from satisfactory_mcp import config
+from satisfactory_mcp.core.saveio.extract.interning import Interner
 from tests.support.paths import FIXTURES
 
 #: Records that carry a placed building's own transform.
@@ -24,16 +25,21 @@ def saves_root_or_skip() -> Path:
 
 
 class Chain:
-    """A stand-in conveyor chain: ``_belts`` reads nothing off an actor but this attribute.
+    """A stand-in conveyor chain: ``routes.belts`` reads nothing off an actor but this attribute.
+
+
 
     The camel case is the parser's spelling: ``ParsedObject`` exposes ``actorSpecificInfo``.
+
     """
 
     def __init__(self, info) -> None:
+
         self._info = info
 
     @property
     def actorSpecificInfo(self):
+
         return self._info
 
 
@@ -62,3 +68,13 @@ def trailer_chains() -> list:
         if cls == CONVEYOR_CHAIN:
             chains.append(read_trailer(CONVEYOR_CHAIN, blob, 0, len(blob)))
     return chains
+
+
+def actor_table(index: dict[str, int] | None = None) -> Interner:
+    """A frozen actor table holding each name at the given index, filler elsewhere."""
+    table = Interner()
+    by_position = {position: name for name, position in (index or {}).items()}
+    for position in range(max(by_position, default=-1) + 1):
+        table.intern(by_position.get(position, f"Build_Unrelated_C_{position}"))
+    table.freeze()
+    return table

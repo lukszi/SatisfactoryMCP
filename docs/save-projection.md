@@ -1079,6 +1079,139 @@ the actor at column 3 to match the pipe layout MOVES schema 15's tangents from c
 column 4, so every reader of a raw belt row had to move with it. Inside a dropped key that is
 free; on a banked row it would have owed a reconstruction.
 
+### 6.16 Row layouts
+
+The big tables are interned and positional, because a record per piece would be megabytes:
+each carries a `classes` list and rows that hold an index into it. `core/saveio/rows.py` is the
+one reader that decodes them; `core/saveio/extract/` is the one writer. Trailing columns are
+additive, so a short row means "this projection predates the column", never a tear.
+
+**`structures`** — `{classes, instances}`, row `[classIndex, x, y, z, yaw]`. Read out of
+`FGLightweightBuildableSubsystem`'s `actorSpecificInfo`, which is `[version, [classPath,
+[instance, ...]], ...]` with each instance `[rotationQuaternion, position, ...]`. Positions are
+**truncated** to whole centimetres — sub-centimetre precision cannot change whether two 8 m
+foundations touch, and the truncation is in the banked parity digests, so it cannot move now.
+A record naming neither a swatch nor a recipe is a stale slot and is skipped (`placed`): across
+31 saves not one record names exactly one, so the test is clean rather than a heuristic. Slab
+geometry is not computed here: it lives behind a subprocess and a cache, and freezing a link
+distance in the extractor would mean a re-parse to tune a threshold.
+
+**Yaw**, on structures, poles and every placed record (schema 12), measured against
+tile-spaced foundation pairs rather than assumed:
+
+- the axis is world Z only — every lightweight buildable has `x == y == 0`, and the `Build_`
+  actors that do not are wall-mounted parts, whose pitch this ignores and whose yaw this is;
+- positive yaw turns +X towards +Y in the projection's own `pos` coordinates, so it compares
+  directly with `atan2(dy, dx)` between two positions;
+- the range is `(-180, 180]`: a float32 half turn lands on `-179.999…`, so `-180.0` is folded
+  to `180.0` or one facing would have two spellings;
+- a rotation that will not read is `null`, never `0.0` (schema 16), and the extractor counts
+  the nulls into `warnings`. On the reference world 4,631 of 8,347 pieces sit off the 90° grid.
+
+**`belts`** — `{classes, segments}`, row `[chainIndex, classIndex, points, actorIndex]`, plus
+`spans` where the run bends. The geometry is in `FGConveyorChainActor`'s trailing bytes, which
+`pioneersav.trailers` decodes as location, arrive tangent and leave tangent per point.
+
+- `chainIndex` is dense and ordered, and groups pieces the way the game does: one chain is one
+  continuous flow of items. Concatenate a chain's rows for its polyline, or draw each row.
+- `classIndex` carries the mark and whether the piece is a belt or a LIFT, the connector
+  between two Z bands.
+- `points` are the spline's control points, **rounded** to whole centimetres — unbiased, and
+  commutative with the whole-centimetre translation below.
+- `actorIndex` points into `graph["actors"]` (schema 20, §6.15), `-1` for none.
+- **The spline is in the chain actor's frame, translated and not rotated.** The actor position
+  is added back; every chain on this disk carries an identity rotation, so a chain that ever
+  carried one would need its points rotated first.
+- **Segments are stored output-first**: offsets grow towards the output and `segments[-1]`
+  holds offset 0, so rows are emitted reversed, in TRAVEL ORDER. In file order consecutive
+  segments of one chain do not meet and every chain draws as a zigzag.
+- A chain whose trailing bytes will not decode costs that chain, is counted into `warnings`,
+  and the first five name their exception on stderr, because the exception type is what says
+  whether the format moved.
+
+**`pipes`** — `{classes, networks, segments}`, row `[networkIndex, classIndex, points,
+actorIndex]` plus `spans`: the belt layout column for column, so no reader has to remember
+which table puts the actor where. The spline is the `mSplineData` property — `Location` per
+control point, `ArriveTangent`/`LeaveTangent` for the curve.
+
+- `networkIndex` points into `networks`, `[{id, fluid}, ...]`, the game's own `FGPipeNetwork`
+  grouping; `-1` for a pipe no network claims.
+- `classIndex` is Mk1 or Mk2, each with a `NoIndicator` variant.
+- The frame is the pipe actor's, translated and not rotated: all 18,069 pipeline actors across
+  the 66 saves on this disk carry an identity quaternion.
+- Flow direction is **not** on a pipe. Its connectors are `PipelineConnection0` and `1`, not
+  input and output; `mFluidBox` is one float; the spline runs the way the player dragged it.
+  `PipelineConnection0` is `points[0]` and `1` is `points[-1]`, measured against the
+  couplings in `graph["material"]`; direction is inferred in `domain/world/flow.py`.
+
+**The `spans` column** (schema 15) — one entry per SPAN, not per point: the leave tangent of
+the point behind and the arrive tangent of the point ahead, six integers, or `0` for a flat
+span. A route with no bend gets no column at all, so a straight run's row is byte-identical to
+schema 14's. Tangents are rounded but never translated: they are displacements. A point that
+will not decode costs its whole triple, so the point and tangent lists can never slip apart.
+
+"Flat" is `bulge < 1 cm`: the control points' own resolution, so a curve that cannot leave its
+chord by a whole centimetre describes something finer than the geometry. It is what keeps
+schema 15 a 15% payload growth rather than a 54% one. `bulge` is an **upper bound** on how far
+the cubic Hermite span `Q(t) = h00 p0 + h10 m0 + h01 p1 + h11 m1` leaves its chord segment
+`v = p1 − p0`, and may only overstate: overstating costs bytes, understating flattens a bend.
+
+- Sideways is `h10 m0⊥ + h11 m1⊥`; both basis functions peak at 4/27 (at t = 1/3 and 2/3), so
+  it never exceeds `(4/27)(|m0⊥| + |m1⊥|)`.
+- Along is the cubic `u(t) = (s0+s1−2)t³ + (3−2s0−s1)t² + s0·t`, `s` being a tangent's
+  chord-relative length, solved exactly: any excursion outside `[0, 1]` is a real overshoot
+  past an endpoint. Exactly, because the crude bound reads 7% of the chord for the game's
+  commonest tangent (half the chord) where the true overshoot is zero.
+- Coincident control points — the zero-length joint where a lift meets its belt — have no
+  chord, so all of both tangents counts as sideways.
+
+Checked against a 512-point tessellation of every span in the reference save: never smaller
+than the sampled truth, and never more than 3.08× it.
+
+**`power`** — poles `[classIndex, x, y, z, yaw, actorIndex]` in whole centimetres, `-1` for a
+pole no wire names; wires as §6.12 describes.
+
+**`storage`** — one dict per container and fluid buffer rather than an interned table: there
+are few enough that the whole key costs tens of kilobytes. A container is `{cls, instance, pos,
+yaw, items, slots}`, joined to its `StorageInventory` component by owner instance name: `items`
+is `[[item, count], ...]` biggest first, ties by class, and `slots` comes off the component,
+because the docs dump spells capacity as two numbers to multiply. A buffer is `{cls, instance,
+pos, yaw, fluid, stored_m3}`: cubic metres, not the litres an inventory fluid stack is stored
+in, checked against the capacities the dump states; the fluid comes off the `FGPipeNetwork`
+claiming the buffer, `null` when none does. Sorted by class then instance, so two saves of one
+world diff cleanly.
+
+**`removed`** — `{cells, instances, counts}`, row `[cellIndex, leaf]`. The actor path is
+reduced to its leaf, because the full path repeats `Persistent_Level:PersistentLevel.` and says
+nothing; rows are sorted, because their order is an artefact of which list was read first.
+`counts` groups by the class recovered from the name alone, stripped from the right — the
+trailing index, then a `_UAID_<hex>`, then `_C` — since the game spells names three ways
+(`BP_Crystal_mk3_C_2146`, `BP_Crystal2_228`, `BP_MercerShrine_C_UAID_…_1397405905`). It is
+approximate: `BP_Crystal2_228` cannot be told from a class named `BP_Crystal2`, so slug
+callers match a prefix. When the parser does not merge the three lists into
+`destroyed_actors`, the extractor reads each level's `collectables1`/`collectables2` and the
+two save-level lists itself; the two readings were verified equal set for set (§6.11).
+
+### Schema history
+
+`SCHEMA_VERSION` lives in `core/saveio/projection.py`, which keys the pickle cache on it; the
+extractor stamps the same constant. A CORRECTING bump matters more than an additive one: an old
+pickle then disagrees with the code rather than merely being thinner.
+
+| schema | change |
+|---|---|
+| 12 | adds placement yaw and belt splines |
+| 13 | adds pipe splines and the belt `attachments`, the splitters and mergers a run passes through |
+| 14 | adds a pipe segment's actor index, joining the drawn pipe to `graph["material"]` |
+| 15 | adds spline tangents to both route keys, and `storage`: containers, buffers, contents |
+| 16 | CORRECTS container contents bucketed as machine buffers, and yaw `0` for an unreadable rotation |
+| 17 | adds `power`: the poles and every wire's drawn span (§6.12) |
+| 18 | adds `crates`, the death and dismantle crates on the ground (§6.13) |
+| 19 | CORRECTS a crate's contents out of `inventories["machine"]` into `inventories["crate"]` (§6.14) |
+| 20 | adds a belt segment's actor index at column 3, moving the tangents to column 4 (§6.15) |
+| 21 | CORRECTS what the parser saw: large saves read to the end, every lightweight piece arrives, `_RepSizeNoCull` chains decode |
+| 22 | CORRECTS a false "possibly incomplete" note on saves whose older levels carry the previous build's changelist |
+
 ---
 
 ## 13a. Replacing the vendored parser
