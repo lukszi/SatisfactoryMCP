@@ -32,6 +32,7 @@ __all__ = [
     "kv",
     "num",
     "page",
+    "paged_table",
     "plural",
     "rate",
     "table",
@@ -179,6 +180,19 @@ def page(limit: int | None, offset: int, default: int = 10) -> Page:
     size = clamp(limit, default=default)
     start = max(0, offset)
     return Page(start, start + size, size)
+
+
+def paged_table(
+    headers: Sequence[str], rows: Sequence, window: Page, total: int | None = None
+) -> str:
+    """``table`` over the rows ``window`` selects, counting ``total`` (default: all rows)."""
+    return table(
+        headers,
+        window.of(rows),
+        total=len(rows) if total is None else total,
+        offset=window.start,
+        limit=window.size,
+    )
 
 
 def capped(items: Sequence[str], shown: int, *, sep: str = ", ", more: str = " (+{n} more)") -> str:

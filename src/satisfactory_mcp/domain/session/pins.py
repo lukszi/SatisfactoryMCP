@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from ... import config
-from ...core import atomic, filelock, schema
+from ...core import filelock, schema
 from ...core.saveio.records import instance_leaf
 from ..planning.stored.planlog import PlanLog, PlanLogError
 from ..spatial import geo
@@ -123,15 +123,8 @@ def read(world_id: str) -> dict:
 
 
 def _locked_update(world_id: str, change):
-    path = path_for(world_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with filelock.held(path):
-        data = read(world_id)
-        result, dirty = change(data)
-        if dirty:
-            data["version"] += 1
-            atomic.write_text(path, json.dumps(data, ensure_ascii=False))
-    return result
+    """Run ``change(data) -> (result, dirty)`` under the file lock; write when dirty."""
+    return filelock.update_versioned_json(path_for(world_id), lambda: read(world_id), change)
 
 
 def _live_pin(data: dict, n: int) -> dict:

@@ -30,6 +30,7 @@ class _World:
 
     def __init__(self) -> None:
         self.header: dict = {"session_name": "Spire"}
+        self.session_name = "Spire"
 
     @property
     def plans(self):

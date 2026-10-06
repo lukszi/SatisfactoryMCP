@@ -50,16 +50,6 @@ def _brief(view, pairs, side: str) -> str:
     return ", ".join(out) or "-"
 
 
-def _paged_table(headers, rows, window: render.Page, total: int | None = None) -> str:
-    return render.table(
-        headers,
-        window.of(rows),
-        total=len(rows) if total is None else total,
-        offset=window.start,
-        limit=window.size,
-    )
-
-
 def _summary_section(view, g, window: render.Page) -> str:
     head = render.kv(
         [
@@ -90,7 +80,7 @@ def _balance_section(view, g, window: render.Page) -> str:
         )
         for r in view.balance()
     ]
-    return "## balance (items/min at saved clocks)\n" + _paged_table(
+    return "## balance (items/min at saved clocks)\n" + render.paged_table(
         ("item", "made", "used", "net", "net (measured)", ""), rows, window
     )
 
@@ -141,18 +131,20 @@ def _machines_section(view, g, window: render.Page) -> str:
         )
         for m in sorted(view.machines, key=lambda x: (x.building, x.recipe))
     ]
-    return "## machines\n" + _paged_table(
+    return "## machines\n" + render.paged_table(
         ("instance", "building", "recipe", "clock", "x,y,z(m)", ""), rows, window
     )
 
 
 def _recipes_section(view, g, window: render.Page) -> str:
-    return "## recipes\n" + _paged_table(("recipe", "machines"), view.recipes.most_common(), window)
+    return "## recipes\n" + render.paged_table(
+        ("recipe", "machines"), view.recipes.most_common(), window
+    )
 
 
 def _buildings_section(view, g, window: render.Page) -> str:
     rows = [(g.building_name(cls) or cls, count) for cls, count in view.buildings.most_common()]
-    return "## buildings\n" + _paged_table(("building", "count"), rows, window)
+    return "## buildings\n" + render.paged_table(("building", "count"), rows, window)
 
 
 def _power_section(view, g, window: render.Page) -> str:
@@ -193,7 +185,7 @@ def _links_section(view, g, window: render.Page) -> str:
         "## material links across the boundary\n"
         "# machines reached on the far side, not an edge count -- asymmetric by\n"
         "# nature, since the first machine of a small set blocks the rest\n"
-        + _paged_table(
+        + render.paged_table(
             ("other side", "machines reached"),
             view.links.most_common(),
             window,

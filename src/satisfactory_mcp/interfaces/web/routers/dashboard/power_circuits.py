@@ -14,6 +14,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
+from .....core.saveio.records import instance_leaf
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
 from .....domain.power.report import PowerLedger, starved_cause
@@ -24,7 +25,6 @@ from ...serial import (
     Region,
     bbox_m,
     cm_to_m,
-    instance_leaf,
     point_m,
     region_json,
     regions_or_none,

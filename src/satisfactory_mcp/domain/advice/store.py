@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from ... import config
-from ...core import atomic, filelock, schema
+from ...core import filelock, schema
 from .advisory import SEVERITIES, Advisory
 
 __all__ = [
@@ -80,16 +80,9 @@ def read(world_id: str) -> dict:
     return out
 
 
-def _write(world_id: str, change):
-    path = path_for(world_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with filelock.held(path):
-        data = read(world_id)
-        result, dirty = change(data)
-        if dirty:
-            data["version"] += 1
-            atomic.write_text(path, json.dumps(data, ensure_ascii=False))
-    return result
+def _locked_update(world_id: str, change):
+    """Run ``change(data) -> (result, dirty)`` under the file lock; write when dirty."""
+    return filelock.update_versioned_json(path_for(world_id), lambda: read(world_id), change)
 
 
 def _check_rev(key: str, entry: dict | None, rev: int | None) -> None:
@@ -149,7 +142,7 @@ def hide(
         _prune(data, set(firing) | {adv.key}, now)
         return dict(fresh), True
 
-    return _write(world_id, change)
+    return _locked_update(world_id, change)
 
 
 def restore(world_id: str, key: str, rev: int | None = None) -> dict:
@@ -165,7 +158,7 @@ def restore(world_id: str, key: str, rev: int | None = None) -> dict:
         del data["hidden"][key]
         return dict(entry), True
 
-    return _write(world_id, change)
+    return _locked_update(world_id, change)
 
 
 def got_worse(adv: Advisory, entry: dict) -> bool:

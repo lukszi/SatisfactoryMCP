@@ -38,7 +38,7 @@ def _age(seconds: float) -> str:
 
 
 def _world_plan_log(st) -> PlanLog:
-    return PlanLog(st.world_id, st.header.get("session_name") or "")
+    return PlanLog(st.world_id, st.session_name)
 
 
 def _with_recipe_names(ops: list[dict], names: dict[str, str]) -> list[dict]:

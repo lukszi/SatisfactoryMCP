@@ -44,7 +44,6 @@ from ...serial import (
     point_m,
     regions_or_none,
     require_world,
-    session_name,
 )
 
 __all__ = ["router"]
@@ -289,7 +288,7 @@ def name_candidate(
     try:
         label, _held, written = edits.name_factory(
             st.world_id,
-            session_name(st),
+            st.session_name,
             name,
             cand,
             notes=notes,
@@ -322,7 +321,7 @@ def rename_label(
     page = page_actor()
     try:
         done = edits.rename(
-            st.world_id, session_name(st), name, to, actor=page, exact=True, expect=version
+            st.world_id, st.session_name, name, to, actor=page, exact=True, expect=version
         )
     except (StaleStore, LabelError, LockTimeout) as exc:
         return _refused(exc)
@@ -357,7 +356,7 @@ def forget_label(
     st = require_world(request, save, world)
     try:
         label, written = edits.forget(
-            st.world_id, session_name(st), name, exact=True, expect=version
+            st.world_id, st.session_name, name, exact=True, expect=version
         )
     except (StaleStore, LabelError, LockTimeout) as exc:
         return _refused(exc)
@@ -458,7 +457,7 @@ def amend_label(
     try:
         _label, written = edits.amend(
             st.world_id,
-            session_name(st),
+            st.session_name,
             label.name,
             wanted,
             going,

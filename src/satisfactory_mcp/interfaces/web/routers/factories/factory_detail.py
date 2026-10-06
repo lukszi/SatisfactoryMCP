@@ -13,6 +13,7 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
+from .....core.saveio.records import instance_leaf
 from .....domain.factories import candidates
 from .....domain.factories.query import build_view
 from .....domain.spatial import nodes as nodes_mod
@@ -20,7 +21,6 @@ from ...serial import (
     bbox_m,
     cm_to_m,
     error_response,
-    instance_leaf,
     point_m,
     require_world,
     standing_anchors,

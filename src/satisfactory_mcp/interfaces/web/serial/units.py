@@ -7,7 +7,7 @@ from typing import Any
 
 from ....domain.spatial import geo
 
-__all__ = ["bbox_m", "cm_to_m", "instance_leaf", "point_m", "xyz_m", "yaw_deg"]
+__all__ = ["bbox_m", "cm_to_m", "point_m", "xyz_m", "yaw_deg"]
 
 
 def cm_to_m(value: float | None) -> float | None:
@@ -32,11 +32,6 @@ def bbox_m(placed: dict, machines: Iterable[str]) -> list[float | None] | None:
     """The box around the placed ones of ``machines``, in metres; ``None`` when none is placed."""
     box = geo.bbox([placed[m][:2] for m in machines if m in placed])
     return None if box is None else [cm_to_m(v) for v in box]
-
-
-def instance_leaf(value: Any) -> str:
-    """The last dotted part of an instance path, the id every payload joins machines on."""
-    return str(value).rsplit(".", 1)[-1]
 
 
 def yaw_deg(value: Any) -> float | None:

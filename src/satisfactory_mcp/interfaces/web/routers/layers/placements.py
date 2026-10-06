@@ -13,12 +13,12 @@ from fastapi import APIRouter, Request
 from .....core.gamedata.footprint import FOUNDATION_M
 from .....core.gamedata.model import pretty_class
 from .....core.saveio import rows as saverows
+from .....core.saveio.records import instance_leaf
 from .....domain.factories import health
 from .....domain.world.state import WorldState
 from ...serial import (
     building_footprint,
     cm_to_m,
-    instance_leaf,
     placement_fields,
     require_world,
     yaw_deg,

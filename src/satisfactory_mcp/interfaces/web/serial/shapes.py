@@ -6,13 +6,14 @@ from collections.abc import Iterable
 from typing import Any, Literal, TypedDict
 
 from ....core.gamedata.model import GameData, pretty_class
+from ....core.saveio.records import instance_leaf
 from ....domain.collectibles import service as collectibles_service
 from ....domain.factories import candidates
 from ....domain.planning.stored.planlog import Actor
 from ....domain.spatial import nodes as spatial_nodes
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world.state import WorldState
-from .units import cm_to_m, instance_leaf, xyz_m, yaw_deg
+from .units import cm_to_m, xyz_m, yaw_deg
 
 __all__ = [
     "ActorBody",

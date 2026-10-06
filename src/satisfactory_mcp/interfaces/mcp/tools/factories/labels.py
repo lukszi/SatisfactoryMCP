@@ -44,10 +44,6 @@ def _overlaps(store, machines, name: str) -> list[str]:
     ]
 
 
-def _session(st) -> str:
-    return st.header.get("session_name") or ""
-
-
 @app.tool()
 def name_factory(
     name: str,
@@ -97,7 +93,7 @@ def name_factory(
 
     try:
         edits.name_factory(
-            st.world_id, _session(st), name, candidate, notes=notes, when=edit_stamp(st.header)
+            st.world_id, st.session_name, name, candidate, notes=notes, when=edit_stamp(st.header)
         )
     except LABEL_REFUSALS as exc:
         return _label_refused(exc)
@@ -126,7 +122,7 @@ def rename_factory(
         return f"factory {label.name!r} already has that name"
     who = app.actor(ctx)
     try:
-        done = edits.rename(st.world_id, _session(st), label.name, to, actor=who, exact=True)
+        done = edits.rename(st.world_id, st.session_name, label.name, to, actor=who, exact=True)
     except LABEL_REFUSALS as exc:
         return _label_refused(exc)
     journal.append(
@@ -227,7 +223,7 @@ def amend_factory(
     try:
         label, _written = edits.amend(
             st.world_id,
-            _session(st),
+            st.session_name,
             label.name,
             wanted,
             going,
@@ -291,7 +287,7 @@ def forget_factory(
     st = app.load_world(save, world, as_of)
     label = _find_label(st.labels, name)
     try:
-        edits.forget(st.world_id, _session(st), label.name, exact=True)
+        edits.forget(st.world_id, st.session_name, label.name, exact=True)
     except LABEL_REFUSALS as exc:
         return _label_refused(exc)
     return f"forgot {label.name!r} ({len(label.anchors)} machine(s) released)"

@@ -13,9 +13,10 @@ from typing import Any, TypedDict
 
 from fastapi import APIRouter, Request
 
+from .....core.saveio.records import instance_leaf
 from .....domain.world.inventory import CRATE_KIND_TEXT
 from .....domain.world.state import WorldState
-from ...serial import contents_json, instance_leaf, require_world, xyz_m, yaw_deg
+from ...serial import contents_json, require_world, xyz_m, yaw_deg
 
 __all__ = ["router"]
 

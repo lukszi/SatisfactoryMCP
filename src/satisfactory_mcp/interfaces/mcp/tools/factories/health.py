@@ -68,16 +68,6 @@ def _feed_row(machine, feed) -> tuple:
     return (machine.instance, feed.item, arrives, far, feed.far_state)
 
 
-def _paged_table(headers, rows, window: render.Page, total: int | None = None) -> str:
-    return render.table(
-        headers,
-        window.of(rows),
-        total=len(rows) if total is None else total,
-        offset=window.start,
-        limit=window.size,
-    )
-
-
 def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
     """The world-wide plumbing faults: starved buffers, head-lift crests, dark pumps.
 
@@ -89,7 +79,7 @@ def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
     if throttled:
         chunks.append(
             "## fluid buffers below the level they need\n"
-            + _paged_table(
+            + render.paged_table(
                 ("buffer", "fluid", "holding m3", "needs m3"),
                 [
                     (
@@ -112,7 +102,7 @@ def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
     if head.faults:
         chunks.append(
             "## fluid lines that climb higher than their supply can push\n"
-            + _paged_table(
+            + render.paged_table(
                 ("fluid", "crest m", "head m", "short by", "machines cut off", "state"),
                 [
                     (
@@ -136,7 +126,7 @@ def _plumbing_sections(st, window: render.Page) -> tuple[list[str], list[str]]:
     if head.buffer_lines:
         chunks.append(
             "## lines running on a part-full buffer's own head\n"
-            + _paged_table(
+            + render.paged_table(
                 ("fluid", "rises to m", "buffer delivers at m", "over by", "machines past it"),
                 [
                     (
@@ -236,7 +226,7 @@ def _sweep_report(st, window: render.Page) -> str:
             "source. factory_health on the one factory names them and says which"
         )
     chunks = [
-        _paged_table(
+        render.paged_table(
             (
                 "factory",
                 "n",
@@ -390,12 +380,14 @@ def _factory_report(st, name: str, machines: list[str], window: render.Page) -> 
     if report.blocked_on:
         chunks.append(
             "## output backing up\n"
-            + _paged_table(("item", "machines blocked"), report.blocked_on.most_common(), window)
+            + render.paged_table(
+                ("item", "machines blocked"), report.blocked_on.most_common(), window
+            )
         )
     if report.starved_of:
         chunks.append(
             "## inputs not arriving\n"
-            + _paged_table(
+            + render.paged_table(
                 ("ingredient", "machines starved"), report.starved_of.most_common(), window
             )
         )
@@ -417,7 +409,7 @@ def _factory_report(st, name: str, machines: list[str], window: render.Page) -> 
     if crests:
         chunks.append(
             "## where the fluid stops climbing\n"
-            + _paged_table(
+            + render.paged_table(
                 ("fluid", "crest m", "head m", "short by", "machines here"),
                 [
                     (

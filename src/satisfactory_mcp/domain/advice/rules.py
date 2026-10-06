@@ -578,7 +578,7 @@ _PLANS_MAX = 256
 def plan_heads(st) -> list:
     """The world's live plan heads; none when the plan log cannot be read."""
     try:
-        return PlanLog(st.world_id, st.header.get("session_name") or "").heads()
+        return PlanLog(st.world_id, st.session_name).heads()
     except (PlanLogError, OSError):
         return []
 

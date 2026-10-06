@@ -11,9 +11,10 @@ from typing import Any, TypedDict
 from fastapi import APIRouter, Request
 
 from .....core.saveio import rows as saverows
+from .....core.saveio.records import instance_leaf
 from .....domain.spatial import geo
 from .....domain.world.state import WorldState
-from ...serial import cm_to_m, instance_leaf, require_world, yaw_deg
+from ...serial import cm_to_m, require_world, yaw_deg
 
 __all__ = ["router"]
 

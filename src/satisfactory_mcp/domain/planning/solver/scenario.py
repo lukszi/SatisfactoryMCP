@@ -25,7 +25,7 @@ from ... import settings
 from ...spatial import nodes as nodes_mod
 from ...spatial.nodes.selectors import Selection, select_nodes
 from .. import siting as siting_mod
-from ..stored.planlog import is_power
+from ..stored.plan_args import inherits_default, is_power
 from . import prices as prices_mod
 from .model import MW, Scenario
 from .processes import build_processes
@@ -119,10 +119,6 @@ class PlanRequest:
     payback: dict = field(default_factory=dict)
 
 
-def _inherits(value) -> bool:
-    return value is None or value == "default"
-
-
 def _shared_settings() -> dict:
     try:
         return settings.read()["values"]
@@ -152,24 +148,24 @@ def shard_stock(state) -> dict:
 def _payback_fields(state, hours, overclock, price, rows: dict) -> tuple[dict, dict]:
     """Scenario fields for the horizon, and how each was resolved (contract §6)."""
     shared = _shared_settings()
-    resolved_hours = float(shared["payback_hours"] if _inherits(hours) else hours)
-    overclock_last_on = bool(shared["overclock_last"] if _inherits(overclock) else overclock)
+    resolved_hours = float(shared["payback_hours"] if inherits_default(hours) else hours)
+    overclock_last_on = bool(shared["overclock_last"] if inherits_default(overclock) else overclock)
     prices = prices_mod.prices_for(state, bool(shared["biomass"]))
     stock = shard_stock(state) if overclock_last_on or "last" in rows.values() else None
     fields = {
         "payback_hours": resolved_hours,
-        "power_price": prices.power_price if _inherits(price) else float(price),
+        "power_price": prices.power_price if inherits_default(price) else float(price),
         "build_points": prices.build_points,
         "overclock_last": overclock_last_on,
         "overclock_shards": stock["free"] + stock["craftable"] if stock else None,
         "row_overclock": rows,
     }
     info = {
-        "inherited": _inherits(hours),
+        "inherited": inherits_default(hours),
         "default_hours": float(shared["payback_hours"]),
-        "price_source": "grid mix" if _inherits(price) else "plan",
+        "price_source": "grid mix" if inherits_default(price) else "plan",
         "mix": prices.grid_mix,
-        "overclock_inherited": _inherits(overclock),
+        "overclock_inherited": inherits_default(overclock),
     }
     return fields, info
 

@@ -18,7 +18,6 @@ from .responses import (
     plan_not_found,
     require_plan,
     require_world,
-    session_name,
     sidecar_meta_block,
     world_state,
 )
@@ -53,7 +52,7 @@ from .shapes import (
     stale_tables,
     standing_anchors,
 )
-from .units import bbox_m, cm_to_m, instance_leaf, point_m, xyz_m, yaw_deg
+from .units import bbox_m, cm_to_m, point_m, xyz_m, yaw_deg
 
 __all__ = [
     "IMMUTABLE",
@@ -84,7 +83,6 @@ __all__ = [
     "flow_group_json",
     "flow_json",
     "found_field_json",
-    "instance_leaf",
     "item_amounts",
     "machine_name",
     "machine_spots",
@@ -100,7 +98,6 @@ __all__ = [
     "require_plan",
     "require_world",
     "resource_name",
-    "session_name",
     "settings_json",
     "sidecar_meta_block",
     "stale_tables",

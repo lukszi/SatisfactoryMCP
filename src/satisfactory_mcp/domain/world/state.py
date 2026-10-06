@@ -147,6 +147,11 @@ class WorldState:
         return self.identity.world_id
 
     @property
+    def session_name(self) -> str:
+        """The save's session name; ``""`` when the header carries none."""
+        return self.header.get("session_name") or ""
+
+    @property
     def token(self) -> str:
         return self.identity.token
 
@@ -213,14 +218,14 @@ class WorldState:
         """Live plans saved for this world, read-only; ``planlog.PlanLog`` writes them."""
         from ..planning.stored.planlog import PlanLog
 
-        return PlanLog(self.world_id, self.header.get("session_name") or "").view()
+        return PlanLog(self.world_id, self.session_name).view()
 
     @cached_property
     def labels(self):
         """Persisted factory names for this world."""
         from ..factories.labels import LabelStore
 
-        return LabelStore.load(self.world_id, self.header.get("session_name") or "")
+        return LabelStore.load(self.world_id, self.session_name)
 
     # ---- unlocks -------------------------------------------------------
 

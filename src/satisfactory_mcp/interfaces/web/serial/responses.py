@@ -30,7 +30,6 @@ __all__ = [
     "plan_not_found",
     "require_plan",
     "require_world",
-    "session_name",
     "sidecar_meta_block",
     "world_state",
 ]
@@ -90,12 +89,8 @@ def check_plan_key(key: str) -> None:
         raise plan_not_found(key)
 
 
-def session_name(st: WorldState) -> str:
-    return st.header.get("session_name") or ""
-
-
 def plan_log(st: WorldState) -> PlanLog:
-    return PlanLog(st.world_id, session_name(st))
+    return PlanLog(st.world_id, st.session_name)
 
 
 def require_plan(log: PlanLog, key: str, rev: int | None = None) -> PlanState:

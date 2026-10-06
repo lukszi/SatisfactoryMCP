@@ -55,7 +55,7 @@ def _short_token(token: str) -> str:
 
 def _head_line(st, page: dict | None, is_open: bool) -> str:
     """Whether the page is open, which world, and whether it reads the save chat reads."""
-    shown_world = st.header.get("session_name") or st.world_id
+    shown_world = st.session_name or st.world_id
     if page is None:
         return f'# page never opened for this world · world "{shown_world}"'
     beat = _age(time.time() - float(page.get("heartbeat") or 0))

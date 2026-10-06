@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from .....core.text import hours
 from ..plan_args import ROW_CHOICES
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
@@ -48,13 +49,9 @@ def factory_words(value) -> str:
     )
 
 
-def _hours_text(value: float) -> str:
-    return f"{value:,.1f}".rstrip("0").rstrip(".") + " h"
-
-
 def _power_words(name: str, value) -> str:
     if name == "payback_hours":
-        return "payback: shared default" if value is None else "payback " + _hours_text(value)
+        return "payback: shared default" if value is None else "payback " + hours(value)
     if name == "overclock_last":
         word = "shared default" if value is None else _fmt(value)
         return "overclock last machine: " + word

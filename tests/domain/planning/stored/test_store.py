@@ -41,6 +41,7 @@ def _held(*plans: Plan) -> _FakeState:
 
 class _World:
     world_id = "TESTWORLD"
+    session_name = ""
 
     def __init__(self) -> None:
         self.header: dict = {}

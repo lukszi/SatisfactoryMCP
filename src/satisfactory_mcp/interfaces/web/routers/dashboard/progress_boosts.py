@@ -12,8 +12,9 @@ from typing import Any, TypedDict
 from fastapi import APIRouter, Request
 
 from .....core.gamedata.constants import CAPABILITY_SCHEMATICS, max_clock
+from .....core.saveio.records import instance_leaf
 from .....domain.world.state import WorldState
-from ...serial import ItemAmount, instance_leaf, item_amounts, require_world, xyz_m
+from ...serial import ItemAmount, item_amounts, require_world, xyz_m
 
 __all__ = ["router"]
 
