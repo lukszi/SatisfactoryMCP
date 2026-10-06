@@ -12,7 +12,7 @@ from satisfactory_mcp.domain.spatial import heightfield as hf
 __all__ = [
     "FIELD_PIN_PATH",
     "RENDER_SIDECAR_NAME",
-    "build_sidecar",
+    "build_render_sidecar",
     "pinned_field_build",
 ]
 
@@ -27,7 +27,7 @@ def pinned_field_build(sidecar: dict) -> str | None:
     return read_str_path(sidecar.get("_meta"), FIELD_PIN_PATH)
 
 
-def build_sidecar(
+def build_render_sidecar(
     *,
     layer: str,
     field_meta: dict,

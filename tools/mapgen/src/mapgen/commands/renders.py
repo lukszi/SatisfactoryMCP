@@ -131,7 +131,7 @@ from mapgen.tiles.pyramid import (
 )
 from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
 from mapgen.tiles.rendertext import COMPOSITION_TEXT, LEVEL_ONLY_TEXT, Z7_TEXT, sampling_text
-from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, build_sidecar, pinned_field_build
+from mapgen.tiles.sidecar import RENDER_SIDECAR_NAME, build_render_sidecar, pinned_field_build
 from satisfactory_mcp.core.gameassets.container import (
     SHEET_PX,
     SLICES,
@@ -924,7 +924,7 @@ def main() -> int:
             }
             style_id = LAYER_STYLES[layer]
             recipe_row = RENDER_RECIPES[recipe]
-            sidecar = build_sidecar(
+            sidecar = build_render_sidecar(
                 layer=layer,
                 recipe=recipe,
                 field_meta=field_meta,

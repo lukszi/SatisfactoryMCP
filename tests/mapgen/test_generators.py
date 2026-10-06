@@ -170,7 +170,7 @@ def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, mon
     assert pyramid_top_z(RENDER_PX, PYRAMID_TILE_2X_PX) == 6
 
     pin = "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build"
-    sidecar = render_sidecar.build_sidecar(
+    sidecar = render_sidecar.build_render_sidecar(
         layer="terrain",
         field_meta={
             "generator": "tools/gen_world_heightmap.py",
@@ -1021,7 +1021,7 @@ def test_the_generated_sidecar_is_read_by_the_server_provenance_and_all(
     has to walk past rather than trip over.
     """
     pin = "buildVersion 495413 (engine branch ++FactoryGame+rel-main-1.2.0), the installed build"
-    sidecar = artwork_output.build_sidecar(
+    sidecar = artwork_output.build_artwork_sidecar(
         build_pin=pin,
         build_raw={"Changelist": 495413, "BranchName": "++FactoryGame+rel-main-1.2.0"},
         image={"file": IMAGE_NAME, "width_px": SHEET_PX},
@@ -1130,7 +1130,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
     local.mkdir()
     fake_pyramid(local, max_z=0)  # something for the probe to answer about
 
-    with_dense = artwork_output.build_sidecar(
+    with_dense = artwork_output.build_artwork_sidecar(
         **common,
         tiles_2x={
             "tile_px": PYRAMID_TILE_2X_PX,
@@ -1148,7 +1148,7 @@ def test_the_artwork_tool_writes_the_dense_tree_the_endpoint_serves(client, tmp_
 
     # ...and the same run with the tree skipped writes no key, which is what makes the
     # endpoint fall back rather than advertise a depth for a directory that is not there.
-    without = artwork_output.build_sidecar(**common, tiles_2x=None)
+    without = artwork_output.build_artwork_sidecar(**common, tiles_2x=None)
     assert "tiles_2x" not in without["_meta"]
     (local / web_tiles.MAP_BOUNDS_NAME).write_text(json.dumps(without), encoding="utf-8")
     bare = web_tiles._map_pyramid()
@@ -1427,11 +1427,11 @@ def test_an_enhanced_pyramid_is_not_quietly_replaced_by_a_plain_one(tmp_path):
         "colour_fix": {"sigma_px": COLOUR_FIX_SIGMA},
         "timings_s": {"upscale": 66.7, "colour_fix": 320.4, "total": 400.0},
     }
-    sharp = artwork_output.build_sidecar(
+    sharp = artwork_output.build_artwork_sidecar(
         tiles={"tile_px": 256, "max_z": 7, "enhanced": True, "enhancement": enhancement},
         **common,
     )
-    plain = artwork_output.build_sidecar(
+    plain = artwork_output.build_artwork_sidecar(
         tiles={"tile_px": 256, "max_z": 5, "enhanced": False}, **common
     )
 
@@ -1468,7 +1468,9 @@ def test_an_enhanced_pyramid_is_not_quietly_replaced_by_a_plain_one(tmp_path):
 
     # The recipe survives the same round trip, and a sidecar from before recipes existed
     # reads as the one pipeline the bare boolean can have meant.
-    older = json.loads(json.dumps(artwork_output.build_sidecar(tiles={"enhanced": True}, **common)))
+    older = json.loads(
+        json.dumps(artwork_output.build_artwork_sidecar(tiles={"enhanced": True}, **common))
+    )
     assert pinned_recipe(read_back) == ENHANCE_RECIPE
     assert pinned_recipe(older) == UNNUMBERED_RECIPE == 1
     assert pinned_recipe(plain) == 0

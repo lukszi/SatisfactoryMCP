@@ -36,7 +36,7 @@ from mapgen.tiles.artwork_output import (
     IMAGE_NAME,
     SIDECAR_NAME,
     artwork_provenance,
-    build_sidecar,
+    build_artwork_sidecar,
     enhancement_downgrades,
     image_block,
     install_artwork_trees,
@@ -274,7 +274,7 @@ def main() -> int:
         print(exc)
         return 1
 
-    sidecar = build_sidecar(
+    sidecar = build_artwork_sidecar(
         build_pin=build_pin,
         build_raw=build_raw,
         image=image_block(args.size, written, sheet.mode, alpha_note),

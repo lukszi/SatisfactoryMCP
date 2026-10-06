@@ -36,7 +36,7 @@ __all__ = [
     "RECIPE_PATH",
     "SIDECAR_NAME",
     "artwork_provenance",
-    "build_sidecar",
+    "build_artwork_sidecar",
     "enhancement_downgrades",
     "image_block",
     "install_artwork_trees",
@@ -166,7 +166,7 @@ def integrity_block() -> dict:
     }
 
 
-def build_sidecar(
+def build_artwork_sidecar(
     *,
     build_pin: str,
     build_raw: dict,
