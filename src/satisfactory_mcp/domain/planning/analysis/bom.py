@@ -15,7 +15,7 @@ from ....core.gamedata.search import resolve_item
 from ....core.text import num
 from ...world.state import WorldState
 from ..solver.graph import item_cycles
-from ..solver.model import Solution
+from ..solver.model import ProcessRow, Solution
 from ..solver.optimize import solve
 from ..solver.scenario import chain_scenario
 
@@ -49,18 +49,18 @@ class BOM:
     item_name: str
     qty: float
     status: str
-    rows: list[BomRow] = field(default_factory=list)
-    raw: dict[str, float] = field(default_factory=dict)
+    rows: list[BomRow] = field(default_factory=list[BomRow])
+    raw: dict[str, float] = field(default_factory=dict[str, float])
     machines: int = 0
     mw: float = 0.0
     #: Items that must leave the plant besides the target, and items sunk: obligations,
     #: since an unconsumed byproduct stalls the line.
-    byproducts: dict[str, float] = field(default_factory=dict)
-    sunk: dict[str, float] = field(default_factory=dict)
+    byproducts: dict[str, float] = field(default_factory=dict[str, float])
+    sunk: dict[str, float] = field(default_factory=dict[str, float])
     #: Item names caught in a production cycle among the chosen recipes.
-    loops: list[tuple[str, ...]] = field(default_factory=list)
-    alternates: list[str] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
+    loops: list[tuple[str, ...]] = field(default_factory=list[tuple[str, ...]])
+    alternates: list[str] = field(default_factory=list[str])
+    notes: list[str] = field(default_factory=list[str])
     solves: int = 0
 
     @property
@@ -68,12 +68,12 @@ class BOM:
         return self.status == "optimal"
 
 
-def _loops(game: GameData, processes: list[dict]) -> list[tuple[str, ...]]:
+def _loops(game: GameData, processes: list[ProcessRow]) -> list[tuple[str, ...]]:
     """Item names on each cycle among the chosen recipes, so a looped line is explained."""
     return [tuple(game.item_name(item) for item in cycle) for cycle in item_cycles(processes)]
 
 
-def live_processes(sol: Solution) -> list[dict]:
+def live_processes(sol: Solution) -> list[ProcessRow]:
     """The solve's processes with LP noise dropped. See ``_NOISE_FRACTION``."""
     peak = max((row["machine_equivalents"] for row in sol.processes), default=0.0)
     floor = peak * _NOISE_FRACTION
@@ -81,12 +81,12 @@ def live_processes(sol: Solution) -> list[dict]:
 
 
 def _rows(
-    game: GameData, processes: list[dict], raw_used: dict[str, float], target: str
+    game: GameData, processes: list[ProcessRow], raw_used: dict[str, float], target: str
 ) -> list[BomRow]:
     made: dict[str, float] = {}
     used: dict[str, float] = {}
-    owners: dict[str, list[dict]] = {}
-    sources: dict[str, list[dict]] = {}
+    owners: dict[str, list[ProcessRow]] = {}
+    sources: dict[str, list[ProcessRow]] = {}
     for row in processes:
         rates = row.get("rates") or {}
         positive = {i: v for i, v in rates.items() if v > _EPS}
@@ -128,7 +128,7 @@ def _rows(
                 is_target=item == target,
                 machines=sum(int(r["machines"]) for r in mine),
                 recipes=tuple(dict.fromkeys(r["label"] for r in rows)),
-                recipe_ids=tuple(dict.fromkeys(r["recipe"] for r in rows if r.get("recipe"))),
+                recipe_ids=tuple(dict.fromkeys(rid for r in rows if (rid := r["recipe"]))),
                 building=", ".join(dict.fromkeys(r["building"] for r in mine)),
             )
         )
@@ -224,11 +224,10 @@ def build_bom(
     bom.byproducts = {k: v for k, v in sol.exports.items() if k != target and v > 1e-4}
     bom.sunk = {k: v for k, v in sol.sunk.items() if v > 1e-4}
     bom.loops = _loops(game, live)
-    bom.alternates = sorted(
-        {
-            game.recipes[row["recipe"]].name
-            for row in live
-            if row.get("recipe") in game.recipes and game.recipes[row["recipe"]].is_alternate
-        }
-    )
+    bom.alternates = _alternate_names(game, live)
     return bom
+
+
+def _alternate_names(game: GameData, rows: list[ProcessRow]) -> list[str]:
+    recipes = (game.recipes.get(row["recipe"] or "") for row in rows)
+    return sorted({r.name for r in recipes if r is not None and r.is_alternate})

@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
 from ...spatial import geo
-from ..solver.model import Scenario
+from ..solver.model import ProcessRow, Scenario
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ..solver.prepare import PreparedPlan
 
 __all__ = ["Trunk", "TrunkPlan", "plan_trunks"]
 
@@ -46,7 +50,7 @@ class Trunk:
     name: str
     carrier: str
     capacity: float
-    members: list[TrunkMember] = field(default_factory=list)
+    members: list[TrunkMember] = field(default_factory=list[TrunkMember])
 
     @property
     def rate(self) -> float:
@@ -105,13 +109,13 @@ class Trunk:
 
 @dataclass
 class TrunkPlan:
-    trunks: list[Trunk] = field(default_factory=list)
+    trunks: list[Trunk] = field(default_factory=list[Trunk])
     #: Extractors on no node -- Water Extractors -- named rather than silently dropped.
-    placeless: list[tuple[str, float, int]] = field(default_factory=list)
+    placeless: list[tuple[str, float, int]] = field(default_factory=list[tuple[str, float, int]])
     #: (x, y) the trunks converge on, and where it came from.
     destination: tuple[float, float] | None = None
     destination_label: str = ""
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list[str])
 
 
 def _chain(members: list[TrunkMember], start: TrunkMember) -> list[TrunkMember]:
@@ -143,7 +147,9 @@ def _split(chain: list[TrunkMember], capacity: float) -> list[list[TrunkMember]]
     return runs
 
 
-def _take_cost(node_row: dict, building_id: str, centre: tuple[float, float]) -> tuple[int, float]:
+def _take_cost(
+    node_row: dict, building_id: str | None, centre: tuple[float, float] | None
+) -> tuple[int, float]:
     """What taking a node costs: already ours, then untapped, then held by another
     extractor; ties go to the node nearest the pool's centre (docs/planning.md §8.5d)."""
     if not node_row["tapped"]:
@@ -152,10 +158,11 @@ def _take_cost(node_row: dict, building_id: str, centre: tuple[float, float]) ->
         rank = 0
     else:
         rank = 2
-    return rank, geo.distance_m((node_row["x"], node_row["y"]), centre)
+    near = geo.distance_m((node_row["x"], node_row["y"]), centre) if centre is not None else 0.0
+    return rank, near
 
 
-def _choose_nodes(proc: dict, pool: list[dict], notes: list[str]) -> list[dict]:
+def _choose_nodes(proc: ProcessRow, pool: list[dict], notes: list[str]) -> list[dict]:
     """The nodes of ``pool`` one extractor row taps, cheapest to take first.
 
     The solve only says how many of a purity; which ones is chosen here, and a note says
@@ -193,6 +200,8 @@ def _trunks_for(
     capacity = scenario.pipe_m3min if fluid else scenario.belt_ipm
     # Without a named destination the plant stands in the middle of its field.
     target = destination or geo.centroid([(m.x, m.y) for m in members])
+    if target is None:
+        return []
     # Start at the far end so the chain runs the way the fluid moves and lift_m is measured.
     start = max(members, key=lambda m: geo.distance_m((m.x, m.y), target))
     return [
@@ -208,14 +217,14 @@ def _trunks_for(
 
 
 def plan_trunks(
-    prepared,
+    prepared: PreparedPlan,
     game: GameData,
     destination: tuple[float, float] | None = None,
     destination_label: str = "",
 ) -> TrunkPlan:
     """Assign the plan's extracted nodes to capacity-bounded trunk lines."""
     out = TrunkPlan(destination=destination, destination_label=destination_label)
-    if prepared.solution is None or prepared.request is None:
+    if prepared.solution is None:
         return out
     rows = [r for r in prepared.request.node_rows if r.get("kind") == "node"]
 

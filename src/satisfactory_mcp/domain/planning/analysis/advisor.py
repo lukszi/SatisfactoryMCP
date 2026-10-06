@@ -9,17 +9,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from typing_extensions import TypedDict
+
 from ....core.gamedata.model import GameData, Recipe
 from ...spatial.nodes.selectors import SELECTOR_HELP
 from ...world.state import WorldState
 from ..solver.model import MW, Solution
 from ..solver.optimize import solve
-from ..solver.scenario import PlanRequest, build_scenario, with_recipes
+from ..solver.scenario import PlanKwargs, PlanRequest, build_scenario, with_recipes
 
 __all__ = [
     "CandidateVerdict",
+    "DriveAdvice",
     "Evaluation",
     "Objective",
+    "OptionAdvice",
     "advise_hard_drive",
     "evaluate_candidates",
     "standard_objectives",
@@ -38,7 +42,7 @@ class Objective:
     description: str
     unit: str
     #: Arguments for ``build_scenario``, never a hand-built Scenario (docs/planning.md §9.2).
-    build_kwargs: dict = field(default_factory=dict)
+    build_kwargs: PlanKwargs = field(default_factory=lambda: PlanKwargs())
     higher_is_better: bool = True
     #: The Solution field that answers: ``objective_value``, or ``net_mw`` for a power goal,
     #: whose objective carries the machine price (docs/planning.md §9.2).
@@ -56,14 +60,41 @@ class CandidateVerdict:
     name: str
     new_recipes: list[str]
     new_buildings: list[str]
-    deltas: dict[str, float | None] = field(default_factory=dict)
-    notes: list[str] = field(default_factory=list)
-    dependency_missing: list[str] = field(default_factory=list)
+    deltas: dict[str, float | None] = field(default_factory=dict[str, float | None])
+    notes: list[str] = field(default_factory=list[str])
+    dependency_missing: list[str] = field(default_factory=list[str])
     own_output_item: str | None = None
 
     @property
     def any_gain(self) -> bool:
         return any(v is not None and v > 1e-6 for v in self.deltas.values())
+
+
+class OptionAdvice(TypedDict):
+    """One option on a drive: what it unlocks and its delta per objective."""
+
+    name: str
+    schematic: str
+    new_recipes: list[str]
+    new_buildings: list[str]
+    deltas: dict[str, float | None]
+    own_output_item: str | None
+    notes: list[str]
+    blocked_by: list[str]
+
+
+class DriveAdvice(TypedDict):
+    """One pending drive's options against the baseline they were measured on."""
+
+    hard_drive_id: int | None
+    rerolls_left: int
+    baseline: dict[str, float | None]
+    basket: str
+    baseline_note: str
+    notes: list[str]
+    selector_errors: list[str]
+    options: list[OptionAdvice]
+    suggestion: str
 
 
 @dataclass
@@ -76,8 +107,8 @@ class Evaluation:
     verdicts: list[CandidateVerdict]
     baseline: dict[str, float | None]
     basket: str
-    selector_errors: list[str] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
+    selector_errors: list[str] = field(default_factory=list[str])
+    notes: list[str] = field(default_factory=list[str])
 
 
 def standard_objectives() -> list[Objective]:
@@ -88,14 +119,14 @@ def standard_objectives() -> list[Objective]:
             description="max net MW from the given resource basket",
             unit="MW",
             metric="net_mw",
-            build_kwargs=dict(objective="max_mw", exports=[MW], allow_sinks=True),
+            build_kwargs=PlanKwargs(objective="max_mw", exports=[MW], allow_sinks=True),
         ),
         Objective(
             key="mw_with_products",
             description="max net MW while exporting Plastic and Rubber",
             unit="MW",
             metric="net_mw",
-            build_kwargs=dict(
+            build_kwargs=PlanKwargs(
                 objective="max_mw",
                 exports=[MW, "Desc_Plastic_C", "Desc_Rubber_C"],
                 allow_sinks=True,
@@ -106,7 +137,7 @@ def standard_objectives() -> list[Objective]:
             description=f"fewest machines for {_TARGET_RATE:g} Plastic/min",
             unit="machines",
             higher_is_better=False,
-            build_kwargs=dict(
+            build_kwargs=PlanKwargs(
                 objective="min_machines",
                 exports=["Desc_Plastic_C"],
                 export_minimums={"Desc_Plastic_C": _TARGET_RATE},
@@ -119,7 +150,8 @@ def standard_objectives() -> list[Objective]:
 def _baseline_request(state: WorldState, sources: list[str] | None, obj: Objective) -> PlanRequest:
     """Baseline scenario for one objective, via the single construction path, which also
     derives its grid import allowance from the export set."""
-    return build_scenario(state.game, state, sources=sources, **obj.build_kwargs)
+    kwargs: PlanKwargs = {**obj.build_kwargs, "sources": sources}
+    return build_scenario(state.game, state, **kwargs)
 
 
 def _own_output_objective(
@@ -140,7 +172,7 @@ def _own_output_objective(
             description=f"fewest machines for {rate:g}/min {game.item_name(item)}",
             unit="machines",
             higher_is_better=False,
-            build_kwargs=dict(
+            build_kwargs=PlanKwargs(
                 objective="min_machines",
                 exports=[item],
                 export_minimums={item: rate},
@@ -275,7 +307,7 @@ def advise_hard_drive(
     state: WorldState,
     sources: list[str] | None = None,
     hard_drive_id: int | None = None,
-) -> list[dict]:
+) -> list[DriveAdvice]:
     """Compare the options on one pending drive, or summarise every drive."""
     offers = state.hard_drive_offers
     if hard_drive_id is not None:
@@ -283,7 +315,7 @@ def advise_hard_drive(
         if not offers:
             raise ValueError(f"no unclaimed hard drive with id {hard_drive_id}")
 
-    out: list[dict] = []
+    out: list[DriveAdvice] = []
     for offer in offers:
         ids = [opt["schematic"] for opt in offer.options]
         ev = evaluate_candidates(state, ids, sources)

@@ -6,15 +6,20 @@ both call ``swap_deltas``; the deltas are facts and the options are never ordere
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 from ....core.gamedata import search
 from ....core.gamedata.model import GameData, Recipe
 from ....core.gamedata.search import match_recipes
 from ....core.gamedata.unlocks import granted_by
+from ....core.jsontypes import JsonObject
 from ...world.state import WorldState
 from ..readout import summary
 from ..stored import manage
 from ..stored.plan_args import PlanArgs
 from ..stored.planlog import PlanState
+from ..stored.views import PlanOpBody
+from .views import PlanAlternatesResponse, SwapOption
 
 __all__ = ["STATUS_ORDER", "primary_makers", "replaced_required", "swap_deltas"]
 
@@ -53,11 +58,13 @@ def _main_product(g: GameData, rid: str) -> str | None:
     return recipe.main_product if recipe is not None else None
 
 
-def _op(kind: str, field: str, member: str) -> dict:
+def _op(kind: str, field: str, member: str) -> PlanOpBody:
     return {"op": kind, "field": field, "member": member}
 
 
-def _swap_ops(g: GameData, args: PlanArgs, recipe: Recipe, item: str) -> tuple[list, list, list]:
+def _swap_ops(
+    g: GameData, args: PlanArgs, recipe: Recipe, item: str
+) -> tuple[list[PlanOpBody], list[PlanOpBody], list[PlanOpBody]]:
     """The require, ban and free ops for ``recipe`` against the plan's arguments."""
     required = [m for m in args.required if _names_recipe(m, recipe)]
     literal_bans = [m for m in args.banned if _names_recipe(m, recipe)]
@@ -71,7 +78,9 @@ def _swap_ops(g: GameData, args: PlanArgs, recipe: Recipe, item: str) -> tuple[l
     return require, ban, free
 
 
-def replaced_required(g: GameData, head: PlanState, item: str, ops: list[dict]) -> list[dict]:
+def replaced_required(
+    g: GameData, head: PlanState, item: str, ops: Sequence[Mapping[str, object]]
+) -> list[JsonObject]:
     """The ``remove required`` ops that make a require of ``item`` in ``ops`` replace every
     other required recipe for it in ``head`` (contract C3), whatever the page last saw."""
     added = {
@@ -84,22 +93,24 @@ def replaced_required(g: GameData, head: PlanState, item: str, ops: list[dict]) 
     if not added:
         return []
     return [
-        _op("remove", "required", m)
+        {"op": "remove", "field": "required", "member": m}
         for m in head.args.required
         if m not in added and _main_product(g, m) == item
     ]
 
 
-def _applied(args: PlanArgs, ops: list[dict]) -> dict:
+def _applied(args: PlanArgs, ops: list[PlanOpBody]) -> dict:
+    """``args`` with each set op applied, as solve arguments."""
     raw = args.to_dict()
     for op in ops:
-        members = list(raw[op["field"]])
-        if op["op"] == "add":
-            if op["member"] not in members:
-                members.append(op["member"])
+        field, member = op.get("field"), op.get("member")
+        members = list(raw[field])
+        if op.get("op") == "add":
+            if member not in members:
+                members.append(member)
         else:
-            members = [m for m in members if m != op["member"]]
-        raw[op["field"]] = members
+            members = [m for m in members if m != member]
+        raw[field] = members
     return PlanArgs.from_dict(raw).kwargs()
 
 
@@ -115,7 +126,7 @@ def _status(unlocked: bool, required: bool, in_use: bool, banned: bool) -> str:
     return "available"
 
 
-def _counts(options: list[dict], hidden: int) -> str:
+def _counts(options: list[SwapOption], hidden: int) -> str:
     tally: dict[str, int] = {}
     for option in options:
         tally[option["status"]] = tally.get(option["status"], 0) + 1
@@ -127,14 +138,15 @@ def _counts(options: list[dict], hidden: int) -> str:
 
 def swap_deltas(
     g: GameData, st: WorldState, stored: PlanState, item_id: str, spoilers: bool = True
-) -> dict:
+) -> PlanAlternatesResponse:
     """Every recipe making ``item_id`` with what requiring it would change in ``stored``."""
     head = summary.solve_summary(g, st, stored.kwargs())
-    in_use = {r.get("recipe_id") for r in head.get("rows") or ()}
+    in_use = {r["recipe_id"] for r in head["rows"]}
     have = st.available_recipe_ids
     args = stored.args
     pool = [r.cls for r in st.unlocked_recipes("part")]
-    options, hidden = [], 0
+    options: list[SwapOption] = []
+    hidden = 0
     for recipe in primary_makers(g, item_id):
         unlocked = recipe.cls in have
         if not unlocked and not spoilers:
