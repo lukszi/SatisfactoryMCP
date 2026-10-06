@@ -75,7 +75,7 @@ declare module "leaflet" {
     _fixed?: boolean;
     /** How this path was drawn before it was ghosted, so unghosting is exact rather than a
      *  second guess at the drawing module's own options. Its presence IS "this path is
-     *  ghosted right now". See ghost() in floors.ts. */
+     *  ghosted right now". See ghost() in floors/glyphs.ts. */
     _floorStyle?: L.PathOptions;
     /** ...and the CONTENT of the card it carried, so an unghosted machine stops saying what a
      *  ghost says. The content and not the popup: `bindPopup` REUSES an existing popup when

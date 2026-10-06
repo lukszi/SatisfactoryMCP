@@ -131,7 +131,7 @@ export function layer(name: string, on?: boolean, colour?: string, rank?: Rank, 
   var group = state.layers[name]!;
   // The floor filter's undo goes with the contents it is an undo OF: a refetch is exactly the
   // moment `_floorAll` stops being about anything, and keeping it would let a later exit
-  // restore a world that has been replaced. floors.ts takes a fresh one on its next pass.
+  // restore a world that has been replaced. floors/filter.ts takes a fresh one on its next pass.
   delete group._floorAll;
   return group.clearLayers();
 }

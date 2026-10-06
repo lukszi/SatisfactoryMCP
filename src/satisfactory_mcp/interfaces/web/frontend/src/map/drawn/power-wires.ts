@@ -312,7 +312,7 @@ export function drawPower(data: PowerResponse): void {
  *
  * `refilters: true` even though `/api/floors` says nothing about a wire, because floors.ts
  * places this layer geometrically instead: unfiltered, a redraw during floor mode draws every
- * wire of every storey over one deck's plan. See the power branch in applyFilter. */
+ * wire of every storey over one deck's plan. See classifyPowerPiece in floors/filter.ts. */
 registerFetch<PowerResponse>({
   wave: "static",
   rank: 50,
