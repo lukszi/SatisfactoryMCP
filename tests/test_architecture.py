@@ -597,9 +597,9 @@ def _tools_edges() -> set[tuple[str, str]]:
 
     A walker of its own rather than ``_edges(TOOLS)``, because ``_module_name`` derives a
     dotted name by relative path from ``SRC`` and these files live outside it. ``tools`` is a
-    real package -- it has an ``__init__.py`` and ``conftest.py`` puts the repository root on
-    ``sys.path`` so the suite can ``from tools import gen_map_image`` -- so the names built
-    here are the names Python uses.
+    real package -- it has an ``__init__.py`` and pytest's ``pythonpath`` puts the repository
+    root on ``sys.path`` so the suite can ``from tools import gen_map_image`` -- so the names
+    built here are the names Python uses.
     """
     edges: set[tuple[str, str]] = set()
     for path in _sources(TOOLS):

@@ -1,24 +1,8 @@
 """Every number a comment in ``src`` quotes off the committed projection, asserted here.
 
-**The whole job of this file is to make the next fixture regeneration fail loudly**, and
-it is the only file in the suite whose failure is not a bug report. A dozen modules
-justify a design decision by citing a count measured on ``fixtures/save_projection.json``
--- "11,664 material edges against 1,297 power edges, so the two graphs answer different
-questions", "6 of 570 machines are wired to nothing, which is why the actor list cannot
-come from the edges alone". Those sentences are the reasoning, not decoration: a reader
-deciding whether to keep the power graph separate is deciding on the strength of the
-ratio, and a reader who re-cuts the fixture from a newer save silently turns every one of
-them into a number that used to be true.
-
-That is not hypothetical. This file exists because a review found seven such counts stale
-at once -- material edges quoted at 11,554 where the fixture holds 11,664, the machine
-census at 566 where it is 570, the object count at 44,307 where it is 44,634 -- all of
-them fossils of an older save, all of them still reading as measurements.
-
-So: when this fails, nothing is broken. Re-measure, and update the comment the failing
-assertion names as well as the number here. Both, or the next reviewer finds the same
-thing again. The assertion messages carry the file and line to go and edit.
-
+Several modules justify a decision with a count measured on ``fixtures/save_projection.json``;
+a re-cut fixture turns each into a number that used to be true. A failure here is therefore
+not a bug: re-measure, then update both the number here and the comment the assertion names.
 Fixture only -- no game install, no save.
 """
 
@@ -229,16 +213,10 @@ def test_the_crate_census_extract_and_the_endpoint_cite(proj):
 def test_a_crate_is_not_counted_as_a_container_or_as_a_building(proj):
     """Two keys schema 18 did not touch, and the bucket schema 19 finally moved.
 
-    A crate is not in ``storage`` (schema 15 joins a written-down list of container classes
-    and ``BP_Crate_C`` is not one) and not in ``building_counts`` (it is not a ``Build_``
-    actor and the extractor ``continue``s past it before the tally). Its contents sat in
-    ``inventories["machine"]`` through schema 18 -- this test used to pin them there,
-    precisely so that moving them would be a visible decision -- and schema 19 made the
-    decision: a dead pioneer's pockets are recoverable stock, not a machine buffer, so they
-    sum into ``inventories["crate"]``, and the parity bank compares the old shape through
-    ``_unfix_19``. Pinned as an EXACT match: the bucket is the crates' own contents summed,
-    nothing more, so a splitter or a drop pod leaking into it fails here rather than
-    inflating a number quietly.
+    A crate is in neither ``storage`` (not a listed container class) nor ``building_counts``
+    (not a ``Build_`` actor). Schema 19 moved its contents from ``inventories["machine"]``
+    into ``inventories["crate"]``: recoverable stock, not a machine buffer. Pinned as an EXACT
+    match, so anything else leaking into the bucket fails here rather than inflating a number.
     """
     assert not any("Crate" in row["cls"] for row in proj["storage"])
     assert not any("Crate" in cls for cls in proj["building_counts"])

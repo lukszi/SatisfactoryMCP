@@ -116,6 +116,38 @@ thread of a core contending rather than helping. Hoisting them while each fanned
 was slower, from oversubscription. `in_order` returns results in submission order, so per-save
 messages and early stops match a serial loop; `SATISFACTORY_TEST_FANOUT` overrides the width.
 
+**The vendor parity bank.** While `pioneersav` was being written, its acceptance test was a diff
+against the vendored GPL-3.0 parser, leaf for leaf. Deleting that library destroyed the diff, so
+it was banked first: `tests/fixtures/vendor_parity.json` holds, per save and per projection key,
+a digest of what the vendored parser produced in its last minutes, when the two agreed on all 20
+keys of all 31 saves it could read. `tests/pioneersav/test_vendor_parity.py` replays that
+comparison. It catches this parser drifting from the agreement every claim in
+[savparse-notes.md](savparse-notes.md) rests on; it cannot catch a fault both parsers shared,
+which is why the notes also record predicates measured against the bytes.
+
+The bank is never re-recorded: re-banking against this parser would replace an independent
+measurement with its own output. Instead every later schema is filtered back to the schema-11
+shape through the explicit list `POST_11_ADDITIONS`, one entry per change and annotated with its
+schema; a structural guess ("drop what the bank has never seen") would also absorb a field
+emitted by mistake. A change confined inside a key that is dropped whole needs no entry: schema
+14's pipe actor column, schema 15's spline tangents and schema 20's belt actor column (which
+also moved the tangents from column 3 to 4) all live inside `belts` or `pipes`. Schema 17's
+`power` is new and listed, but who is wired to whom has been `graph["power"]` since schema 11,
+so a sidecar that reordered or dropped a power edge still fails the comparison. The list is
+pinned in both directions against the committed fixture, so a new top-level key with no entry,
+or an entry for a key that is gone, fails on a clone with no game.
+
+Two entries are corrections of a banked key rather than additions, and both are undone instead
+of retiring `inventories` from the comparison. Schema 16 moved the Personal Storage Boxes, the
+HUB container and the Blueprint Designer's contents (10,667 units over 31 item classes on the
+reference save) from `machine` to `storage`; `_unfix_16` subtracts them from `storage` and adds
+them back to `machine` from this parser's own `storage` rows, exactly and in integers. The cost
+is stated: a misread of one of those containers moves both values together and cancels, a
+blindness confined to eight containers of one key. Schema 19 moved crate contents out of
+`machine` into a `crate` bucket of their own (schema 18 had added `crates` and deliberately left
+them); `_unfix_19` folds them back, and because nothing is subtracted a miscounted crate still
+moves the digest.
+
 ## Solver threads
 
 Every `scipy.optimize.milp` and `linprog` call goes through `core/solverlane.run`, which runs it on

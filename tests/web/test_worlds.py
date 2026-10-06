@@ -1,12 +1,4 @@
-"""``/api/worlds`` and ``/api/summary``: the save picker, and the header it opens onto.
-
-``importorskip`` at module scope, not a marker: ``fastapi`` lives in the optional
-``web`` extra, so an install without it must skip this file rather than fail collection.
-
-Both loaders are injected by the ``client`` fixture in ``conftest.py``, so nothing here
-spawns the sidecar or reads a ``.sav``. ``/api/worlds`` is the one route that scans the
-save directory on its own, and its one test stubs the scanner.
-"""
+"""``/api/worlds`` and ``/api/summary``: the save picker, and the header it opens onto."""
 
 from __future__ import annotations
 
@@ -18,9 +10,8 @@ fastapi = pytest.importorskip("fastapi")
 from satisfactory_mcp.core.saveio.projection import World
 from satisfactory_mcp.interfaces.web.routers import world as web_world
 
-#: A save header exactly as the sidecar's ``header_info`` builds one -- all thirteen keys,
-#: in its emission order -- so the test below can show which eight the response model
-#: deletes rather than assert around them.
+#: A save header as the sidecar's ``header_info`` builds one, all thirteen keys in emission
+#: order, so the test below shows which eight the response model deletes.
 _HEADER = {
     "path": "C:/saves/a.sav",
     "filename": "a.sav",
@@ -39,16 +30,9 @@ _HEADER = {
 
 
 def test_worlds_lists_the_save_picker_rows(client, monkeypatch):
-    """The picker's only source. ``list_worlds`` is stubbed so no save tree is scanned.
-
-    Pinned with ``==`` on whole dicts, because the response model on this endpoint is a
-    FILTER and the filtering is the contract: a thirteen-key header goes in and the five
-    keys the picker reads come out, with ``save_identifier``, ``save_header_version``,
-    ``save_version``, ``build_version``, ``save_datetime_ticks``, ``is_modded``,
-    ``is_creative`` and ``size`` deleted from the wire -- and an unsupported file's five
-    scanner keys come back as the two the page's diagnosis prints. Key order is asserted
-    too: declaration order is wire order, and it is the header's own order closed up.
-    """
+    """The picker's rows, ``list_worlds`` stubbed. Whole dicts with ``==``: the response model
+    is a filter, and what it drops (eight header keys, three of an unsupported file's five) and
+    the declaration order it keeps are the contract."""
     world = World(
         world_id="X2faPVKjX06VaRzClNv5KQ",
         session_name="Han Solo",
@@ -103,9 +87,7 @@ def test_worlds_lists_the_save_picker_rows(client, monkeypatch):
 
 
 def test_summary_carries_the_same_save_token_the_tools_print(client, state):
-    """The page and an assistant have to be able to name one world state to each other,
-    and a filename cannot do it -- the game rewrites ``autosave_0`` every rotation. See
-    docs/mcp-surface.md 10.1i."""
+    """One token names a world state for the page and the tools (docs/mcp-surface.md 10.1i)."""
     body = client.get("/api/summary").json()
     assert body["save_token"] == state.token
     assert body["save_token"] in body["age_note"]

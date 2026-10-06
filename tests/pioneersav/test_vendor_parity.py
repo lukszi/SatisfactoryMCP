@@ -1,52 +1,10 @@
-"""The agreement with the deleted parser, kept falsifiable after it was deleted.
+"""The agreement with the deleted parser, replayed from a bank of its digests.
 
-For the length of this reimplementation the acceptance test was a diff: run the same save through
-the vendored GPL-3.0 parser and through ours, and compare the projection JSON leaf for leaf. That
-diff was the whole argument, and **deleting the library destroyed the ability to re-run it.**
-
-So it was banked first. ``fixtures/vendor_parity.json`` holds, per save and per projection key, a
-digest of the value the *vendored* parser produced, recorded in the last minutes before its
-deletion, when the two agreed on **all 20 keys on all 31 saves it could read**. This file replays
-that comparison against the surviving parser.
-
-**What this can and cannot catch.** It catches our parser drifting away from what the two agreed
-on -- which is the regression that matters, because every claim in ``docs/savparse-notes.md``
-rests on that agreement. It cannot catch a fault they *shared*: if both parsers misread the same
-field the same way, the digests agree and always will. That limit is inherent in an oracle, was
-inherent while the oracle was still here, and is the reason the notes also record predicates
-measured against the bytes rather than against the other parser.
-
-These tests need real saves and skip without them. That is deliberate: the rest of the suite runs
-on committed fixtures with no game install, and this one is the exception, because a digest of a
-projection is only meaningful against the save it came from.
-
-**Why the bank is not re-banked, ever.** The projection has since grown a placement yaw and a
-``belts`` key (schema 12), a ``pipes`` key (schema 13), a ``storage`` key (schema 15), a
-``power`` key (schema 17) and a ``crates`` key (schema 18). None
-of those fields existed while
-the oracle did, so it never had an opinion about them, and re-recording the bank against this
-parser would replace an independent measurement with this parser's own output -- the one thing
-that would make every test here vacuous. So the comparison runs on a projection FILTERED BACK
-to the schema-11 shape, by the explicit list in ``POST_11_ADDITIONS`` below. Additive fields are
-legitimately outside the deleted oracle's scope; a *changed* schema-11 field is exactly what
-this still catches.
-
-Every later schema adds its own entry to that list rather than re-banking, which is why the
-list is keyed by what was added and annotated with which schema added it.
-
-**And the list is pinned in both directions**, because a hand-maintained list of exceptions
-fails by omission rather than by error. Until ``test_a_new_top_level_key_cannot_escape_the
-_comparison`` a schema-18 key added to the projection and forgotten here would simply not be
-compared -- silently, on every save, for ever, with no test failing to say so. That test
-reads the committed fixture and demands that what it holds beyond the bank is EXACTLY
-``POST_11_ADDITIONS["keys"]``: a new key with no entry fails, and a stale entry for a key
-that no longer exists fails too.
-
-**Schema 16 is the first entry that is not an addition**, and it needed a decision rather than
-a line: it CORRECTED ``inventories``, which is one of the banked keys. The choice made, and
-the choice rejected, are argued in ``_unfix_16``. **Schema 19 is the second**, and it corrects
-the same key: a crate's contents moved out of ``inventories["machine"]`` into their own
-``crate`` bucket, and ``_unfix_19`` folds them back for the comparison.
+``fixtures/vendor_parity.json`` holds what the vendored parser produced for 20 keys of 31 saves
+when the two parsers agreed. These tests replay it against the surviving parser, through a
+projection filtered back to the schema-11 shape. docs/DEVELOPING.md ("The vendor parity bank")
+says why the bank is never re-recorded, what each ``POST_11_ADDITIONS`` entry is, and what an
+oracle cannot catch. The replay needs real saves and skips without them.
 """
 
 from __future__ import annotations
@@ -76,71 +34,23 @@ VOLATILE = {"path", "filename", "mtime_ns", "size"}
 #: header still digests to the banked one; after that it is a later world under an old name.
 AUTOSAVE = re.compile(r"_autosave_\d+\.sav$")
 
-#: Everything every schema after 11 added, named one by one rather than detected. Guessing
-#: structurally -- "drop keys the bank has never seen", "drop record fields the bank cannot know
-#: about" -- would also silently absorb a field this parser started emitting BY MISTAKE, which is
-#: the class of regression the bank exists to catch. Written out, adding to this list is a
-#: decision somebody has to make and a reviewer can see.
+#: Everything every schema after 11 added or corrected, named one by one rather than detected,
+#: so that a field emitted by mistake is not absorbed with the legitimate additions.
 POST_11_ADDITIONS = {
-    #: Whole new top-level keys: per-belt spline polylines (12), per-pipe ones (13), the
-    #: splitters and mergers those belt runs pass through (13), and the containers and fluid
-    #: buffers with their contents (15).
-    #:
-    #: Schema 14 added a FOURTH COLUMN to a pipe segment -- the index of its own actor in
-    #: ``graph["actors"]``, which joins a drawn pipe to the connection graph -- and needs no
-    #: entry of its own for one reason worth writing down rather than leaving to be rederived:
-    #: the change is confined inside ``pipes``, and ``pipes`` is already dropped whole. Had it
-    #: widened a schema-11 row instead, it would have owed ``row_width`` an entry, exactly as
-    #: ``structures`` does below.
-    #:
-    #: **Schema 15's spline tangents are the same case, and it is worth saying so out loud
-    #: because they land in two keys rather than one.** A belt segment gained a fourth column
-    #: and a pipe segment a fifth -- the curve through the points either side of each span --
-    #: and both are inside ``belts`` and ``pipes``, which are dropped whole here. So the
-    #: tangents need no entry, and the reason is not "they are new" (everything in this list is
-    #: new) but "the key that carries them was already outside the oracle's scope". The
-    #: ``storage`` key beside them is a genuinely new top-level name and IS listed.
-    #:
-    #: **Schema 17's ``power`` is a new top-level name and is listed, and the interesting part
-    #: is what is NOT listed beside it.** That key carries the poles and the drawn span of
-    #: every wire -- but not who is wired to whom, which has been ``graph["power"]`` since
-    #: schema 11 and is one of the twenty keys the deleted oracle was banked on. So ``graph``
-    #: stays inside the comparison, unfiltered, and a schema-17 sidecar that changed the ORDER
-    #: of the power edges (which is what ``wires`` is positionally joined to) or dropped one
-    #: would move that digest on all 31 saves and fail here. That is the intended reading: the
-    #: geometry is new and outside the oracle's scope, the connectivity is not new and is
-    #: still being checked against it.
-    #:
-    #: **Schema 18's ``crates`` is a new top-level name and is listed, and what it did NOT
-    #: touch was the point at the time.** A crate's contents had been inside
-    #: ``inventories["machine"]`` since schema 11 -- the bucket rule filed a component
-    #: called ``Inventory`` on a non-storage, non-player owner with the smelter buffers --
-    #: and schema 18 deliberately left them there, so 18 cost one line where 16 cost a
-    #: function. Schema 19 then made the move 18 declined: see ``crate_bucket_fix`` below
-    #: and ``_unfix_19``, which is the function 19 owed all along.
-    #:
-    #: **Schema 20 gave a belt segment the actor column 14 gave a pipe, and it is 14's case
-    #: for 14's reason** -- confined inside ``belts``, which is dropped whole, so no entry.
-    #: It gets a paragraph anyway because 20 does not only APPEND: the actor goes at column 3
-    #: to match the pipe layout exactly, which MOVES schema 15's tangents from column 3 to
-    #: column 4 within the row. Still nothing to undo here, because the whole key leaves the
-    #: comparison -- but had that row been a banked one, moving a column would have owed a
-    #: reconstruction rather than a width, which is a heavier debt than anything in this list.
+    #: New top-level keys: belt and pipe polylines (12, 13), the splitters and mergers on belt
+    #: runs (13), storage (15), power geometry (17) and crates (18). Columns added inside belts
+    #: or pipes (14, 15, 20) need no entry because those keys are dropped whole; who is wired
+    #: to whom stays compared as ``graph["power"]``.
     "keys": ("belts", "pipes", "attachments", "storage", "power", "crates"),
-    #: The version label is itself one of the 20 banked keys, and it is the one key that is
-    #: SUPPOSED to differ. A projection filtered back to the schema-11 shape claims the
-    #: schema-11 number; leaving the current number here would report drift on every save on
-    #: the grounds that the schema changed, which is the thing being announced rather than a
-    #: fault.
+    #: The banked version label: a projection filtered back to schema 11 claims schema 11.
     "schema_version": 11,
     #: Schema 12. A new field on every record of these keys: top-down placement yaw in degrees.
     "record_fields": {"machines": "yaw", "extractors": "yaw", "generators": "yaw"},
     #: Schema 12. ``structures.instances`` rows were ``[classIndex, x, y, z]`` and gained a
     #: fifth column, the same yaw. A row is positional, so the addition is a length, not a name.
     "row_width": {"structures": 4},
-    #: Schema 16, and the first entry here that is not an ADDITION. See ``_unfix_16`` below for
-    #: what it undoes and why it is undone this way; these are the three container classes the
-    #: schema-11 bucket rule could not see, which is the whole of the difference.
+    #: Schema 16, a correction rather than an addition: the three container classes the
+    #: schema-11 bucket rule could not see. ``_unfix_16`` undoes it.
     "storage_bucket_fix": (
         "Build_StoragePlayer_C",
         "Build_StorageIntegrated_C",
@@ -155,36 +65,9 @@ POST_11_ADDITIONS = {
 def _unfix_16(projection: dict, inventories: dict) -> dict:
     """``inventories`` with schema 16's storage-bucket fix put back, for comparison only.
 
-    **The one place this file compares a CHANGED schema-11 key rather than dropping a new
-    one, so the choice is argued rather than made.** Schema 16 corrected
-    ``inventories["storage"]``: the bucket rule matched three substrings where it meant
-    membership of STORAGE_CLASSES, so the Personal Storage Boxes, the HUB's own container and
-    the Blueprint Designer's were bucketed as machine buffers -- 10,667 units over 31 item
-    classes on the reference save, moved out of ``machine`` and into ``storage``. ``header``
-    aside, ``inventories`` is one of the twenty keys the vendored parser and this one were
-    shown to agree on, and that bank is never re-recorded. So the fix moves a banked value on
-    every save, and something has to give.
-
-    The alternative was a per-field exception: declare ``inventories`` outside the oracle's
-    scope from schema 16 on, and stop comparing it. That is one line and it is what the phrase
-    "documented exception" would have bought -- at the price of retiring the key whole. The
-    two parsers agreed about the PLAYER bucket, about the machine bucket's other 6,500 stacks
-    and about all 52 item classes; none of that is affected by this fix, and none of it would
-    be checked again.
-
-    So the split is reconstructed instead. Only three classes moved, ``storage`` carries those
-    same containers' contents per instance, and it is dropped whole here anyway -- so
-    subtracting them from ``storage`` and adding them back to ``machine`` lands exactly on the
-    numbers the old rule produced, in integers, with nothing rounded. What the bank goes on
-    checking is everything else in the key.
-
-    **What this does cost, stated rather than left to be found.** The reconstruction is
-    computed from this parser's own ``storage`` rows, so if this parser started misreading one
-    of those eight containers, ``storage`` and ``inventories`` would move together and cancel:
-    that one drift is now invisible here. It is real, it is confined to eight containers of
-    one key, and it is smaller than the exception's cost, which is the whole key on every
-    save for ever. It is also not a new KIND of blindness -- an oracle can never catch a
-    fault the two sides share, which the module docstring says at the top.
+    The moved containers' contents come off ``storage`` (dropped whole anyway) and back onto
+    ``machine``, landing exactly on the old rule's integers, so the rest of this banked key is
+    still compared. What that costs is in docs/DEVELOPING.md.
     """
     moved: dict[str, float] = {}
     for row in projection.get("storage") or ():
@@ -207,21 +90,9 @@ def _unfix_16(projection: dict, inventories: dict) -> dict:
 def _unfix_19(inventories: dict) -> dict:
     """``inventories`` with schema 19's crate-bucket fix put back, for comparison only.
 
-    The second correction of a banked key, and a cheaper reconstruction than ``_unfix_16``'s
-    because the fix was cheaper: 16 changed which bucket a rule ROUTED eight containers to,
-    so the undo has to recompute the routing from the ``storage`` rows; 19 moved the crates'
-    stacks out of ``machine`` into a NEW bucket of their own, so the undo is a fold -- add
-    ``crate`` back into ``machine``, item for item in integers, and drop the key the oracle
-    never had. The old rule never wrote a ``machine`` entry it had counted nothing into, and
-    a crate stack is by construction non-zero, so the fold cannot leave a spurious ``0``.
-
-    What this deliberately does NOT do is cancel a drift. The folded total is exactly what
-    the schema-11 rule produced only while this parser reads each crate's component the way
-    it always has -- a crate the parser started miscounting moves the folded ``machine``
-    digest on every save that holds one, which keeps the banked key falsifiable for the
-    stacks that moved as well as the ones that stayed. (The blindness ``_unfix_16`` states
-    -- a misread that moves two reconstructed values together and cancels -- has no analogue
-    here, because nothing is subtracted.)
+    A fold: ``crate`` is added back into ``machine`` item for item and the bucket the oracle
+    never had is dropped. Nothing is subtracted, so a miscounted crate still moves the digest;
+    a crate stack is never zero, so the fold leaves no spurious ``0``.
     """
     out = {bucket: dict(stacks) for bucket, stacks in inventories.items() if bucket != "crate"}
     crate = inventories.get(POST_11_ADDITIONS["crate_bucket_fix"])
@@ -297,13 +168,8 @@ def saves_root() -> Path:
 def _projection(path: Path) -> dict:
     """One save through the sidecar, as a subprocess, exactly as the server invokes it.
 
-    ``sys.executable``, not ``uv run python``. The interpreter is identical -- pytest is
-    already running inside the environment ``uv run`` would have selected -- so this drops a
-    ``uv`` process per save for nothing given up, which over 31 saves was measurable. It also
-    removes two ways for this test to mean something other than what it says: ``uv run``
-    re-resolves the environment unless ``UV_NO_SYNC`` is set, so a bare ``pytest`` invocation
-    used to fire 31 syncs, and it needs ``uv`` on ``PATH``, which the thing under test does
-    not.
+    ``sys.executable`` rather than ``uv run``: the same interpreter, without a ``uv`` process
+    and an environment re-sync per save.
     """
     out = subprocess.run(
         [sys.executable, str(SIDECAR), str(path)],
@@ -479,22 +345,9 @@ def test_the_schema_11_filter_removes_the_new_fields_and_only_those():
 def test_a_new_top_level_key_cannot_escape_the_comparison(banked, projection):
     """``POST_11_ADDITIONS["keys"]`` is exactly what the projection has that the bank has not.
 
-    **The list of exceptions is hand-maintained, and a hand-maintained list fails by
-    omission.** Everything above pins what the filter DOES; nothing pinned what it was given
-    to do. So a schema-19 key added to ``extract`` and not added here would be compared
-    against a bank that has never heard of it -- ``proj[key]`` would raise on the first save
-    and the fix would look like adding a line to this list, which is exactly the reflex that
-    would have retired the key from the comparison for ever, silently, with no reviewer
-    seeing a decision being made.
-
-    Held against the committed fixture rather than against a live parse, so it runs on a
-    clone with no game install and no ``.sav`` -- which is the whole point: this has to fail
-    for the person who added the key, on their machine, in the same run that added it.
-
-    Both directions, and the second is not decoration. A key DROPPED from the projection
-    while its entry stays here would leave the filter removing something that is not there,
-    and the integration test below would report it as a missing key rather than as a stale
-    exception -- 31 saves late, and only on a machine that has them.
+    A hand-maintained list fails by omission. Held against the committed fixture, so a new key
+    with no entry fails on the machine of whoever added it; and both ways, so a stale entry
+    fails here rather than as a missing key in the whole-folder replay.
     """
     banked_keys = {key for entry in banked["saves"].values() for key in entry}
     # The bank names the object count twice -- ``n_objects`` for the digest and
@@ -515,24 +368,10 @@ def test_a_new_top_level_key_cannot_escape_the_comparison(banked, projection):
 @pytest.mark.integration
 @pytest.mark.whole_folder
 def test_this_parser_still_produces_what_the_two_agreed_on(banked, saves_root):
-    """The replayed acceptance test, and the reason the bank exists.
+    """The replayed acceptance test: every banked key of every save still digests the same.
 
-    Every key of every save that both parsers once read must still digest to the value the
-    vendored one produced. A difference here is this parser having drifted from the only
-    independent check it ever had.
-
-    Compared through ``as_schema_11``: what the oracle never saw cannot be part of an
-    agreement with it.
-
-    **The 31 sidecar runs go out in parallel and the comparison stays serial**, which is the
-    split that matters. Each save is its own subprocess and always was, so nothing here
-    shares state and the pool is a thread pool: the threads only wait on children, and
-    Windows process-spawn cost is a thing to avoid paying twice. What is deliberately NOT
-    parallel is the loop below -- it runs over ``in_order``, in the bank's own order, so
-    ``drift`` accumulates the same pairs in the same sequence and the ``assert`` that names
-    the first eight names the same eight it named when this took 88 s. A pool that reported
-    the first failure it happened to see would have turned "``Han solo`` drifted on
-    ``inventories``" into whichever save lost the race.
+    The sidecar runs go out on a thread pool (each is its own subprocess); the comparison runs
+    in the bank's order through ``in_order``, so the drift report names what a serial loop would.
     """
     by_name = {p.name: p for p in saves_root.rglob("*.sav")}
     present = [

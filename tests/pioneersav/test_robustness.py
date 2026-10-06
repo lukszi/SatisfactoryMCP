@@ -1,12 +1,10 @@
 """What the parser must do to a file the game is halfway through rewriting.
 
-Autosaves land every few minutes and rewrite the save in place, so this project reads torn
-files as a matter of routine rather than as an accident. The contract each test here pins is
-the same one: **a ParseError carrying a byte offset, never a partial answer and never an
-exception the sidecar can only report as a class name.** ``extract.main`` catches
-exactly ``ParseError`` at the save boundary; anything else falls through to its bare
-``except Exception``, which prints a traceback to stderr and emits ``{"error":
-"RecursionError"}`` -- true, useless, and with no offset to look at.
+Autosaves rewrite the save in place every few minutes, so torn files are routine. Each test
+here pins one contract: **a ParseError carrying a byte offset, never a partial answer and
+never an exception the sidecar can only report as a class name.** ``extract.main`` catches
+exactly ``ParseError``; anything else reaches its bare ``except Exception`` and comes out as
+``{"error": "RecursionError"}``, with no offset to look at.
 
 Each case below was found by attacking a real save and each one produced a wrong outcome
 before the check it tests existed. What was tried and did *not* find anything is worth
@@ -17,11 +15,9 @@ recording too, because it is why these four are the only ones here:
 * **a torn autosave** -- the realistic shape of the failure, a prefix of the new chunk
   stream followed by a suffix of the old one, spliced at 14 chunk boundaries: refused by the
   body's self-declared size every time;
-* **bit flips** -- 600 single-bit flips anywhere in the chunk stream: 599 refused and the
-  one survivor landed in unused padding bits of a deflate block and inflated to
-  byte-identical output. That is worth knowing generally: everything the property serialiser
-  reads sits behind a per-chunk adler32, so corrupting the *inflated* body undetectably takes
-  a deliberate re-compression, not a tear;
+* **bit flips** -- 600 single-bit flips in the chunk stream: 599 refused, and the survivor sat
+  in unused deflate padding and inflated byte-identically. Everything the property serialiser
+  reads sits behind a per-chunk adler32, so only a deliberate re-compression gets past it;
 * **lying length fields** -- every int32 and int64 the body walk reads, in both committed
   body fixtures, set to 0, 1, -1 and both int32 extremes: 1,488 refused, and of the 688 that
   parsed, nine changed the answer and all nine were a string length reading as a shorter or
