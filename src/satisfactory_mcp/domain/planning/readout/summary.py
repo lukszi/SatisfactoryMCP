@@ -21,7 +21,7 @@ from ..stored import provenance
 from . import payback
 from .report import build_plan_report
 
-__all__ = ["names_for", "production_graph", "solve_summary", "stamp_for"]
+__all__ = ["failure_cause", "names_for", "production_graph", "solve_summary", "stamp_for"]
 
 _EPS = 1e-6
 
@@ -242,7 +242,15 @@ def _clip(text: str) -> str:
     return text
 
 
-def _cause(headline: str, notes: list[str], errors: list[str], required: list[str]) -> str:
+def failure_cause(prepared) -> str:
+    """Why a prepared plan failed to solve, in player words."""
+    req, failure = prepared.request, prepared.failure
+    headline, notes = failure.headline, failure.notes
+    request_errors = (
+        [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
+    )
+    errors = request_errors or list(notes)
+    required = list(req.required) if req is not None else []
     if headline == "no sources selected":
         return "the sources match no resource nodes: " + "; ".join(_clip(e) for e in errors[:3])
     if headline == "unusable exports":
@@ -370,12 +378,7 @@ def solve_summary(
         return {
             "feasible": False,
             "headline": failure.headline,
-            "cause": _cause(
-                failure.headline,
-                failure.notes,
-                errors or list(failure.notes),
-                list(req.required) if req is not None else [],
-            ),
+            "cause": failure_cause(prepared),
             "notes": list(failure.notes),
             "warnings": [],
             "blockers": _blockers(errors, prepared.failure.notes),

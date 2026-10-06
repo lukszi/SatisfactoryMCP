@@ -16,7 +16,7 @@ from ...power.report import biomass_note
 from ...spatial import nodes as nodes_mod
 from ...spatial.regions import load_regions
 from ...world.state import WorldState
-from ..readout import summary
+from ..readout.summary import failure_cause
 from ..stored.planlog import PlanState
 from . import built as built_mod
 from .diff import _save_id
@@ -301,13 +301,6 @@ def _startup(run, pw: dict, state: PlanState, default: str) -> dict:
     }
 
 
-def _cause(prepared) -> str:
-    req, failure = prepared.request, prepared.failure
-    errors = [] if req is None else [*req.selection.errors, *req.site_errors, *req.recipe_errors]
-    required = list(req.required) if req is not None else []
-    return summary._cause(failure.headline, failure.notes, errors or list(failure.notes), required)
-
-
 def built_view(found: built_mod.BuiltAt | None, st: WorldState, state: PlanState) -> dict:
     """``TrackResponse.built_at``: where the plan's built machines were found, and progress."""
     if found is None:
@@ -421,7 +414,9 @@ def track_view(
     if prepared.request is not None:
         out["plan_id"] = prepared.request.plan_id
     if prepared.failure is not None:
-        out.update(feasible=False, headline=prepared.failure.headline, cause=_cause(prepared))
+        out.update(
+            feasible=False, headline=prepared.failure.headline, cause=failure_cause(prepared)
+        )
         return out
     out["headline"] = f"{objective} over {prepared.request.selection.description}"
     if report.empty or report.rep is None:
