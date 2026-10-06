@@ -2627,6 +2627,8 @@ render (about 5 s):
 6. The rest of an inland body (8-connected) takes the body's majority class when that class
    covers at least a quarter of it.
 7. What is left is swamp in `Area_Swamp` and lake everywhere else.
+8. Where swamp meets the ocean inside one body, the plane blends the two
+   (`feather_mouths`; see "Swamp mouths" below).
 
 Build 502094: ocean 16.23 M texels, lake 1.20 M, swamp 0.35 M, river 0.38 M, turquoise 53 k,
 hot spring 15 k, sulfur 9.7 k, cave 5.3 k, blue lake 5.2 k; 312 bodies claimed by
@@ -2879,7 +2881,7 @@ The Blue Crater's lake is not `MI_Lake_Blue_01`. It is a `BP_TranslucentWater_C`
 assigns no material of its own: the blueprint draws `TranslucentWater_Inst`. The map classed
 all 26 of these actors by the biome fallback, as lakes, and drew the Blue Crater #4b6a5d at
 its depth. They now have a class of their own, `translucent`, by actor class (step 1). Style
-`satellite-painted` is version 17.
+`satellite-painted` is version 17, with "Swamp mouths" below.
 
 On the field's own planes 14 of the 26 hold water, 288,398 texels, all of which the biome
 fallback had drawn as lake (it fills 1,234 texels now, against 289,632). The Blue Crater is
@@ -2939,6 +2941,45 @@ the older translucent material with the same colour parameters (`WaterColor A` a
 `DeepWater`, `ShallowWater`). None of them is a `BP_TranslucentWater_C`, and a known material
 decides before the actor class does, so they keep the sulfur row.
 
+### Swamp mouths (2026-10-06)
+
+The class plane names one class per texel, and the renderer samples it bilinearly. Where swamp
+met the ocean, the class rows and the swamp's share of section 31's opaque colour both
+switched within one texel. The meeting lines lie on the open sea's 48 m arcs (step 3) and on
+the swamp boxes' straight edges. The step across them was Delta E 5.8 with the old mauve swamp
+and 26.7 with the near-black one.
+
+`feather_mouths` now blends the two. It finds the texels where swamp and ocean are
+8-neighbours at levels within 0.5 m (`BODY_STEP_M`). Within 30 m of that line
+(`MOUTH_FEATHER_M`) each swamp and ocean texel of the same body takes a swamp share: a
+smoothstep from 1 to 0, a half at the line. The distance is counted in steps through water of
+the texel's own class, the 8- and 4-neighbourhood in turn, so the blend never reaches water
+behind a spit; the octagon it draws reaches up to 33 m. Water at another level, such as a pool
+above a fall, is another body and keeps its edge.
+
+Plane values from `MOUTH_BLEND` (10) on are the blend, in 64 steps (`MOUTH_STEPS`).
+`class_shares` gives each plane value its share of each class. `water_table` mixes the swamp
+and ocean rows by that share, and the swamp's opaque share is the same share, so the class
+optics and the opaque colour fade together. The sidecar's `mouth_blend_texels` counts the blend.
+
+**Measured** on the field's own planes and drawn as above. 78,231 texels blend, all on the
+swamp's sea coast, in 0.5 s on the full grid. The step between neighbouring texels across the
+line, counting only neighbours whose depths agree within 0.25 m:
+
+| Where | Before, max / p99 | After, max / p99 |
+| --- | --- | --- |
+| (2931, 964), 1 m texels, within 2 m of the line | 28.3 / 27.0 | 3.3 / 1.8 |
+| (2931, 316), the same | 27.9 / 27.3 | 4.1 / 1.8 |
+| (2931, 964), 0.25 m pixels, within 2 m of the line | 8.0 / 7.4 | 1.0 / 0.4 |
+| (2931, 316), the same | 7.9 / 7.5 | 1.1 / 0.4 |
+| (2931, 964), 1 m texels, within 40 m of the line | 28.3 / 17.8 | 7.5 / 2.3 |
+| (2931, 316), the same | 27.9 / 11.3 | 7.3 / 2.3 |
+
+The largest steps left are the water's own: a texel 30.6 m deep beside one 1.1 m deep, and the
+swamp's waterline. No texel farther than 33 m from a line changed class, and no drawn colour
+farther than 60 m from one changed at all, at both mouths and over the whole coast at
+(2554, 608). The swamp window at (2343, 291) holds no meeting line and is unchanged.
+
 ### Known limits
 
 - The lake, the sea's deep colour and the swamp have been checked against screenshots from
@@ -2958,8 +2999,11 @@ decides before the actor class does, so they keep the sulfur row.
   0.64 k texels of river edge on build 502094.
 - Where the swamp's lagoons open onto the sea, swamp turns to ocean along the edge of the
   opening: a line of 48 m arcs across one sheet of water, with nothing in the game to place
-  it better. With the near-black swamp the step across it is Delta E 26.7, against 5.8 with
-  the old mauve: at the mouths near (2931, 316) and (2931, 964) among others.
+  it better. The blend of "Swamp mouths" takes the step off it (the p99 step per metre at the
+  line goes from 27 to 1.8), but the dark water still follows the arcs, as a soft band 60 m
+  wide.
+- The blend joins only swamp and ocean. Any other two classes meeting inside one body still
+  change within a texel.
 - A box less than half a decimetre under the sea cannot be told from it by level. Two ponds
   inside the Rocky Desert's -17.046 m box, near (-989, -1,434) and (-978, -1,262), and two
   puddles beside them (6,993 texels in all) read the sea's level and draw as sea; the sea's
@@ -3435,7 +3479,7 @@ pixel, these rules decide.
 | Meshes standing in the water, lit | The lighting pyramid's surface is the first layer's. When that is a ground-and-water style, the render-only meshes standing in the water are water in it; the painted layer, drawn unlit after it, keeps the default sun's light of their own top on them. |
 | Crowns and water | A crown standing out of the water is composited after the water, the foam and the shore line, whole; one under the surface goes into the bed after section 32's carpet and before the open-sea term and section 31's opaque water, so the class optics, the open sea and the swamp's murk all apply to it (section 36, "Crowns and the water"). |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 17 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water; then section 33's sea deep colour and near-black swamp water; then section 33's translucent water). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
+| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 17 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water; then section 33's sea deep colour and near-black swamp water; then section 33's translucent water and swamp mouths). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |

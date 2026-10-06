@@ -23,7 +23,7 @@ from scipy import ndimage
 from mapgen.gamedata.bake import BAKE_NAME, STAMP_RING_MIN, bake_have, stamp_windows
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.paint import CANOPY_NAME, CROWN_NAME, META_NAME, PIGMENT_NAME
-from mapgen.gamedata.waterbodies import CLASSES, WATER_BODIES_NAME, classify
+from mapgen.gamedata.waterbodies import CLASSES, WATER_BODIES_NAME, classify, feather_mouths
 from mapgen.palette.calibration import (
     area_ids,
     display_to_crown,
@@ -462,9 +462,11 @@ class PaintedGround:
             biome, names = self._biome
             index = biome_grid(biome, *grades.shape)
             wet = grades != hf.WATER_DRY
+            level = level.astype(np.float32)
             self.water_class, counts = classify(
-                level.astype(np.float32), wet, self._bodies, (index, names), OCEAN_LEVEL_M
+                level, wet, self._bodies, (index, names), OCEAN_LEVEL_M
             )
+            counts["mouth_blend_texels"] = feather_mouths(self.water_class, level)
             found = {"source": f"paint/{WATER_BODIES_NAME}", **counts}
         self.source["water_classes"] = found
         return found

@@ -15,7 +15,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.carpet import COVER_NAME, TOP_NAME
-from mapgen.gamedata.waterbodies import CLASSES, OCEAN, WATER_BODIES_NAME
+from mapgen.gamedata.waterbodies import CLASSES, OCEAN, WATER_BODIES_NAME, class_shares
 from mapgen.palette.colour import srgb_to_linear
 from mapgen.palette.shore import optical_depth
 from mapgen.terrain.sample import ClassMix, class_taps
@@ -57,7 +57,8 @@ def load_water_bodies(paint_dir: Path, meta: dict) -> dict | None:
 
 
 def water_table(palette: dict) -> np.ndarray:
-    """``CLASSES`` rows of linear optics; a class the palette leaves out draws as the ocean."""
+    """A row of linear optics per class plane value; a class the palette leaves out draws as
+    the ocean, a mouth blend mixes its classes' rows by ``class_shares``."""
     water = palette["water"]
     ocean = {
         "k_per_m": water["k_per_m"],
@@ -80,7 +81,7 @@ def water_table(palette: dict) -> np.ndarray:
                 *entry["bed_tint"],
             ]
         )
-    return np.asarray(rows, np.float32)
+    return class_shares() @ np.asarray(rows, np.float32)
 
 
 def class_optics(plane, rows, base: dict, taps, river=None, shares=()) -> dict | None:
@@ -101,8 +102,7 @@ def class_optics(plane, rows, base: dict, taps, river=None, shares=()) -> dict |
     optics = {**base, "k": k, "body": body, "deep": deep, "deep_tau_m": tau,
               "turbidity": turbidity, "tint": tint}  # fmt: skip
     if shares:
-        onehot = np.eye(len(CLASSES), dtype=np.float32)[:, list(shares)]
-        got = mix.of(onehot)
+        got = mix.of(class_shares()[:, list(shares)])
         if ribbon:
             got *= (1.0 - river)[..., None]
         optics["share"] = {cid: got[..., i] for i, cid in enumerate(shares)}
