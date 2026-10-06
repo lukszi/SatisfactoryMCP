@@ -2128,6 +2128,23 @@ blurred over `area_blur_m` (25 m) on the 4 m rock grid. An entry can carry:
 
 No two entries scope the same material to the same area; a test checks this.
 
+**Offshore pieces.** The game's area map gives stretches of open sea, with their islands, to
+areas they do not touch: the Rocky Desert's id covers the sea north of the Spire Coast
+(around (743, -2527)) and the islands off the west coast (-2655, 1506). Its rock and sand
+targets followed, so the Spire Coast's outer islands drew red-brown rock (#b18574 against
+#51524d) and tan sand, with a seam through one rock mass at the area edge. Before any target
+is scoped, the area map on the 4 m rock grid is rehomed (`palette/calibration.py`
+`rehome_offshore`, from `PaintedGround._coarse_areas`). An area's pieces are its 8-connected
+components; the one holding the most land is its own. Any other piece with land under half
+its cells takes the named area it shares the longest border with, else No Man's Land. Sea is
+water within `OCEAN_LEVEL_BAND_M` (0.5 m) of the ocean level, any grade, and the void off the
+landscape; a lake or swamp is land, so the second crater and swamp keep their targets. This
+holds for every area entry. On build 502094 it moves 3.74 km² (sidecar
+`paint.offshore_cells_rehomed`, in 4 m cells): Rocky Desert to Spire Coast 2.47 km², Rocky
+Desert to none 1.09, Red Jungle to none 0.13, Grass Fields to none 0.05. At 2048 px the
+Spire Coast crop's red rocks go from #af8774 to #575951 (ΔE 22.7 to 2.4 against #51524d);
+dunes and the desert lake do not change.
+
 **Rock.** In each entry with a `rock` target, and with the default `rock` target everywhere
 else, the rock's chroma and hue are set to the target. The lightness moves by the step from
 the median to the target, so it keeps its variation. Every rock is now on a display target,
@@ -2292,6 +2309,8 @@ the layers is mostly the biome tint, which is added after the transfer.
   is inferred from the flowers. Grass elsewhere keeps the Eastern Dune Forest target.
 - The Spire Coast rock target is near-neutral (C 0.008) because the hue in its references
   is the shot's teal haze. The moss on the spires is not modelled.
+- The rocks on the North Beach lagoon islands sit inside the main piece of
+  `Area_DesertCanyons`, so the offshore rehoming leaves them, and they keep the desert rock.
 - The Red Bamboo Fields and Red Jungle lakes keep the sea fit: their reference water
   reflects a purple sky, which is not the swamp's look.
 - Every target comes from tonemapped perspective screenshots; only the Grass Fields grass
@@ -2791,11 +2810,11 @@ pixel, these rules decide.
 | Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 4, satellite 4, relief 2, relief dark 2 (the open sea, void and pits below), game-painted 6 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, and the open sea below). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
-| Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. |
+| Versions | Paint generator version 3. Styles: terrain 5, satellite 5, relief 3, relief dark 3 (the open sea, void and pits below, and section 38's water below a drop), game-painted 7 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop and section 31's offshore pieces). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `river_splines`, `waterfalls`, `rock_families` and `titan_trees` 1. |
+| Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
-| Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes). |
+| Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes); its second pass, the bed smooth in slope and the pits apart from the void, terrain 5, satellite 5, relief 3, relief dark 3 and game-painted 7. |
 
 ### Known limits
 
@@ -2806,7 +2825,7 @@ pixel, these rules decide.
 
 ## 38. Perched water: a box top that is not the surface (2026-10-05)
 
-The field levels each wet texel at the highest water-box top over it (section 19). Two
+The field levels each wet texel at the highest water-box top over it (section 19). Three
 kinds of box break that rule:
 
 - **A sloped river.** `BP_River_PROT_C` and some `FGWaterVolume` boxes span a whole reach,
@@ -2815,6 +2834,9 @@ kinds of box break that rule:
   +22.0 m, so the whole channel was levelled at +22 m, 39 m above the bed at the mouth.
 - **A box over another body.** Where one body's axis-aligned box covers part of a lower
   body, the higher top wins. At (831, -353) a 131 m box sits over a lake at 58 m.
+- **A box over its own fall.** At (1784, 559) the 94.8 m lake's `FGWaterVolume` reaches to
+  x 1863, over the basin 113 m below, which the swamp's boxes cover at -16.7 m. The ground
+  falls 100 m between two neighbouring texels at the lip.
 
 The renderer then drew tens of metres of water. In the painted style that is opaque
 Beer-Lambert water blended almost fully to the open-sea colour, in a flat shape with the
@@ -2844,6 +2866,29 @@ draws one surface. Part of recipe 7.
 Depth is then measured as for any other water, so the colour is a river's and the edge is
 the usual depth feather, which follows the ground rather than the mask blocks.
 
+### Water below a drop (2026-10-06)
+
+The test reads a body as one, so at the wide fall the big lake's high banks outvoted the
+basin's ring, and the basin drew at the lake's level, 113 m deep. Where such a body was
+perched, one membrane spanned the drop and ended in a straight hand-over line.
+
+- **The cut.** `_below_drops` cuts each body where the ground falls more than 8 m
+  (`LIP_DROP_M`) between eight-way neighbours. A part with no ground within 8 m of the level
+  is water below a drop.
+- **The test.** That water is judged first, and is perched when its own ring or the whole
+  body's spills.
+- **The surface.** Its membrane spans only shoreline more than 2 m below the level and within
+  8 m of its own ground: beside the water it joins, or failing that its own low banks (the
+  plateau at (-1101, -296)). The drop and the cliffs hold nothing up. The basin under the
+  wide fall sits at -17.4 to -16.7 m, the swamp's level.
+- **The rest of the body.** Once re-levelled, that water leaves the body and bounds the rest
+  at its new level. A body with no re-levelled water below a drop is judged byte for byte as
+  before.
+
+8 m was measured, not derived: at 10 m the plateau stays joined through one 10.0 m step, and
+at 5 m 494 texels draw deeper than at 8 m and 1,454 shallower. The falls records (section 35)
+are not read.
+
 ### Measured (build 502094)
 
 591 bodies stand more than 2 m above a bank; 380 pass the ring test. 168,925 texels
@@ -2852,6 +2897,14 @@ the 90th percentile from 75.8 m to 8.2 m. Merged at 100 m, 38 places lose more t
 drawn depth. The largest are at (-822, 201), (-612, 772), (624, -505), (-375, -895),
 (-1227, -278) and (-146, 961). Lakes whose banks stand above their level, the ocean, and
 level-only water are byte-identical.
+
+Water below a drop, measured on a render's planes after the river reconcile: 467 bodies stand
+more than 2 m above a bank, up from 390, and 57 are cut at a drop. 233 bodies are perched,
+up from 186, 47 of them below a drop with 32,791 texels; 115,440 texels are re-levelled, up
+from 94,144. Of the 34,149 texels that move, the median drawn depth goes from 53.9 m to
+1.4 m and the 90th percentile from 112.9 m to 3.4 m. 239 texels end more than 2 m deeper
+and over 5 m deep, most of them box pieces that now take the level of the lake they sit in.
+Bodies with no cut, sloped rivers and the ocean are byte-identical.
 
 ### Holes in a lake
 
@@ -2884,7 +2937,7 @@ Measured on the field's own planes: 54,733 texels in 394 bodies, about 4.5 s and
 at peak (the re-levelling peaks at 1.1 GB). Median depth 2.0 m, 99th percentile 9.2 m.
 The largest are the arch lake at (1979, -1889) with 5,062 texels, (3596, -2139),
 (2245, 741), (3149, -606) and the arch lake's east arm at (2026, -1904). In a render, on
-the water the river reconcile leaves: 37,947 texels in 304 bodies.
+the water the river reconcile leaves: 38,048 texels in 306 bodies.
 
 ### Known limits
 
@@ -2897,8 +2950,13 @@ the water the river reconcile leaves: 37,947 texels in 304 bodies.
   `FGWaterVolume`. South of it the only box is the ocean spline's at -17 m, so the field's
   water rule (section 19) drops the artwork's water there as ground standing out of the
   sea. That is the field's level rule, not a hole, and this section leaves it.
-- The wide fall at (1790, 520): the 95 m lake's box reaches past the lip, to x 1863, over
-  the swamp 112 m below, at the lake's level. The re-levelling leaves that strip at the
-  lake's level, so it still draws as the lake, 112 m deep.
+- A faint straight line remains beside the wide fall, 48 m from the swamp's edge, in
+  terrain, satellite, relief and relief dark; painted shows no step. The shore rule's ocean
+  reach is found on the field's own planes, before the re-levelling. Finding it on the
+  re-levelled planes would also change the drawing around the older perched bodies.
+- About 50 texels at the fall's foot keep 94.8 m: corner-joined pieces with no shoreline of
+  their own, smaller than a pixel at 2048.
+- A sloped reach below a drop that joins lower water takes that water's level along its
+  whole length, so its upper end would draw dry. No such case shows on this build.
 - This section leaves level-only water alone. At the ocean's level it draws on section 26's
   open-sea bed; away from it, it keeps the deep tint.
