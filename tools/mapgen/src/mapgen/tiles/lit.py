@@ -33,8 +33,9 @@ from mapgen.lighting.stage import (
 from mapgen.lighting.sun import DEFAULT_SUN
 from mapgen.palette.lightparams import shader_light
 from mapgen.palette.styles import LAYER_STYLES
-from mapgen.tiles.pyramid import install_layer, layer_dir
-from satisfactory_mcp.core.gameassets.pyramid import install_pyramid
+from mapgen.tiles.cutter import Cutter
+from mapgen.tiles.pyramid import install_layer, layer_dir, queue_layer
+from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, install_pyramid
 
 __all__ = [
     "LIGHT_CACHE_DIR_NAME",
@@ -143,7 +144,8 @@ def crown_occluder(painted, cache_root: Path, size: int):
 class UnlitRun:
     """One ``--unlit`` run: the surface the first layer captures, the bake, the installs.
 
-    ``light_workers`` None leaves the bake to count them from the cores and free memory.
+    ``light_workers`` bake the light, None counting them from the cores and free memory;
+    ``install``'s own ``workers`` encode the tiles.
     """
 
     def __init__(self, cache_root: Path, size: int, occluder=None, slabs=None,
@@ -164,7 +166,10 @@ class UnlitRun:
 
     def install(self, sheet, image_mod, out_dir: Path, layer: str, workers: int, recipe: int,
                 name: str) -> tuple[dict, dict, float]:  # fmt: skip
-        """``install_layer``'s contract, plus ``unlit/``; the first call bakes the light."""
+        """``install_layer``'s contract, plus ``unlit/``; the first call bakes the light.
+
+        Above one worker the unlit tree encodes while the sheet is relit, from its own copy.
+        """
         if self.meta is None:
             print("baking the lighting pyramid", flush=True)
             self.meta = bake_light(
@@ -177,16 +182,35 @@ class UnlitRun:
                 f"({done['bytes'] / 1e6:.1f} MB) in {render['seconds']}s "
                 f"on {render['workers']} workers"
             )
+        if workers <= 1:
+            return self._install_serially(sheet, image_mod, out_dir, layer, recipe, name)
+        directory = layer_dir(out_dir, layer, name)
+        directory.mkdir(parents=True, exist_ok=True)
+        started = time.time()
+        with Cutter(image_mod, workers) as cutter:
+            with cutter.publish(sheet) as unlit:
+                text = f"tools/gen_map_renders.py, {layer} unlit, Lanczos"
+                first = cutter.tree(unlit, directory, UNLIT_DIR_NAME, PYRAMID_TILE_PX, text)
+            relight_in_place(sheet, self.surface, shader_light(layer))
+            with cutter.publish(sheet) as lit:
+                text = f"tools/gen_map_renders.py, {layer} recipe {recipe}, Lanczos"
+                trees = queue_layer(cutter, lit, directory, text)
+            self.unlit[layer] = cutter.install(first)
+            stats, dense = (cutter.install(tree) for tree in trees)
+        return stats, dense, time.time() - started
+
+    def _install_serially(self, sheet, image_mod, out_dir: Path, layer: str, recipe: int,
+                          name: str) -> tuple[dict, dict, float]:  # fmt: skip
         directory = layer_dir(out_dir, layer, name)
         directory.mkdir(parents=True, exist_ok=True)
         started = time.time()
         source = f"tools/gen_map_renders.py, {layer} unlit, Lanczos"
         self.unlit[layer] = install_pyramid(
-            image_mod.fromarray(sheet), image_mod, directory, source=source, workers=workers,
+            image_mod.fromarray(sheet), image_mod, directory, source=source,
             dir_name=UNLIT_DIR_NAME,
         )  # fmt: skip
         relight_in_place(sheet, self.surface, shader_light(layer))
-        stats, dense, _cut = install_layer(sheet, image_mod, out_dir, layer, workers, recipe, name)
+        stats, dense, _cut = install_layer(sheet, image_mod, out_dir, layer, 1, recipe, name)
         return stats, dense, time.time() - started
 
     def decorate(self, sidecar: dict, layer: str) -> None:
@@ -218,11 +242,9 @@ class UnlitRun:
 def light_run(root: Path | None, size: int, painted,
               workers: int | None = None) -> Iterator[UnlitRun | None]:  # fmt: skip
     """The run's light stage in ``root``, crowns first, closed however the run ends; or None."""
-    run = (
-        None
-        if root is None
-        else UnlitRun(root, size, crown_occluder(painted, root, size), light_workers=workers)
-    )
+    run = None
+    if root is not None:
+        run = UnlitRun(root, size, crown_occluder(painted, root, size), light_workers=workers)
     try:
         yield run
     finally:

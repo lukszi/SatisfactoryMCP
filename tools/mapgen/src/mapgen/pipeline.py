@@ -124,8 +124,8 @@ from mapgen.tiles.extras import KEPT_CACHE_DIRS, load_extras
 from mapgen.tiles.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.tiles.lit import add_light_flags, claim_scratch, light_run
 from mapgen.tiles.pyramid import (
-    CHECK_PARALLEL_Z,
     DEFAULT_WORKERS,
+    add_cut_flags,
     check_parallel,
     install_layer,
     layer_dir,
@@ -316,15 +316,15 @@ def main() -> int:
         type=int,
         default=DEFAULT_WORKERS,
         help=(
-            f"processes deflating tiles (default {DEFAULT_WORKERS}; 1 cuts serially). The "
-            "resampling is single-threaded either way, so the tiles are the same bytes"
+            f"processes baking the light (default {DEFAULT_WORKERS}); --cut-workers sets "
+            "the processes encoding tiles"
         ),
     )
     parser.add_argument(
         "--check-parallel",
         action="store_true",
         help=(
-            f"cut z{CHECK_PARALLEL_Z} both serially and in parallel and compare every "
+            "cut the artwork's pyramid both serially and in parallel and compare every "
             "tile's SHA-256, then carry on"
         ),
     )
@@ -334,12 +334,13 @@ def main() -> int:
         help="replace layers this run cannot show were drawn from the field now on disk",
     )
     add_light_flags(parser)
+    add_cut_flags(parser)
     parser.add_argument("--quiet", action="store_true", help="no per-band progress lines")
     add_in_use_flag(parser)
     args = parser.parse_args()
 
     layers = tuple(dict.fromkeys(args.layer)) if args.layer else LAYERS
-    workers = max(1, args.workers)
+    workers, cut_workers = max(1, args.workers), max(1, args.cut_workers)
     renders = args.out_dir / args.renders_name
     if refusal := in_use_refusal(LOCAL_DIR, renders, args.overwrite_in_use):
         print(refusal)
@@ -502,12 +503,12 @@ def main() -> int:
     parallel_check = None
     if args.check_parallel:
         parallel_check = check_parallel(
-            np.asarray(artwork, np.uint8), image_mod, out_dir / "parallel.check", workers
+            np.asarray(artwork, np.uint8), image_mod, out_dir / "parallel.check", cut_workers
         )
         print(
-            f"  parallel cutter: z{parallel_check['level']}, {parallel_check['tiles']} tiles, "
-            f"{parallel_check['seconds_serial']}s serial vs "
-            f"{parallel_check['seconds_parallel']}s on {workers} workers "
+            f"  parallel cutter: z0..z{parallel_check['levels'][-1]}, {parallel_check['tiles']} "
+            f"tiles, {parallel_check['seconds_serial']}s serial vs "
+            f"{parallel_check['seconds_parallel']}s on {cut_workers} workers "
             f"({parallel_check['speedup']}x) -- byte-identical: "
             f"{parallel_check['byte_identical']}"
         )
@@ -816,7 +817,7 @@ def main() -> int:
 
     # ---- draw and cut ----------------------------------------------------------------
     borrow_source = borrow_metadata(detail_meta, province_meta)
-    with light_run(scratch, args.size, painted, args.light_workers) as light:
+    with light_run(scratch, args.size, painted, args.light_workers or workers) as light:
         total_started = time.time()
         seam = SeamTrace() if direct is not None else None
         regimes = RegimeCoverage() if direct is not None else None
@@ -869,7 +870,7 @@ def main() -> int:
                 print(f"  regimes: {measured['regimes']['sheet_pct']}")
             try:
                 stats, dense, cut = (light.install if light else install_layer)(
-                    sheet, image_mod, out_dir, layer, workers, recipe, args.renders_name
+                    sheet, image_mod, out_dir, layer, cut_workers, recipe, args.renders_name
                 )
             except PyramidError as exc:
                 print(exc)
@@ -935,7 +936,7 @@ def main() -> int:
                 },
                 "seconds_to_draw": round(drew, 1),
                 "seconds_to_cut": round(cut, 1),
-                "cut_workers": workers,
+                "cut_workers": cut_workers,
                 **({"parallel_cutter_check": parallel_check} if parallel_check else {}),
                 "imaging": {"name": "pillow", "version": pillow_version},
             }

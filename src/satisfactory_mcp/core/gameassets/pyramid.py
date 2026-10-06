@@ -5,13 +5,16 @@ Every base layer is cut into ``{z}/{x}_{y}.png``, and level ``z`` (``2**z`` tile
 accumulates the softening of successive halvings. ``tiles@2x/`` is the same grid at 512 px a
 tile for hi-DPI displays, and therefore one level shallower. A pyramid is only ever renamed
 into place, so a reader meets a whole tree or no tree.
+
+This cutter is serial and the reference. The renders cut through ``mapgen.tiles.cutter``,
+which stages and commits through ``stage_tree`` and ``commit_tree`` here and writes the same
+bytes (docs/spatial-and-map.md section 17, "Cutting in parallel").
 """
 
 from __future__ import annotations
 
 import shutil
 import time
-from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from .provenance import RETIRED_SUFFIX, STAGING_SUFFIX
@@ -30,10 +33,6 @@ PYRAMID_TILE_2X_PX = PYRAMID_TILE_PX * 2
 #: The staging and retirement names, off the suffixes ``provenance`` already spells.
 TILES_STAGING = TILES_DIR_NAME + STAGING_SUFFIX
 TILES_RETIRED = TILES_DIR_NAME + RETIRED_SUFFIX
-
-#: A level with fewer tiles than this is cut serially however many workers were asked for:
-#: publishing a shared block and waking a pool to write four PNGs costs more than writing them.
-PARALLEL_MIN_TILES = 16
 
 #: A directory just written can be held for a moment by a scanner or the indexer: how often a
 #: fresh rename is retried, and the pause between tries.
@@ -105,22 +104,23 @@ def cut_square(piece, dest: Path, z: int, ox: int, oy: int, tile_px: int) -> int
     return written
 
 
-def _encode_tile_row(job: tuple[str, str, int, int, int, int, str, int]) -> int:
-    """One row of tiles, cropped out of a shared block and deflated. Runs in a child.
+def encode_tile_row(job: tuple[str, int, int, int, str, int]) -> int:
+    """One row of RGB tiles out of a level in a ``shared_memory`` block, deflated to PNG.
 
-    Top level and argument-shaped rather than a closure because Windows spawns its workers:
-    everything a task needs must pickle, and the pixels travel as a ``shared_memory`` NAME.
+    The parallel cutter's encoder, run in a spawned process: argument-shaped so it pickles,
+    and free of numpy, whose thread pool would commit most of a gigabyte in every encoder.
     A module cannot pickle either, so this body imports Pillow itself (DESIGN.md).
     """
     from multiprocessing.shared_memory import SharedMemory
 
     from PIL import Image
 
-    name, mode, width, stride, z, row, dest, tile_px = job
+    name, width, z, row, dest, tile_px = job
     block = SharedMemory(name=name)
     try:
-        start, length = row * tile_px * stride, tile_px * stride
-        strip = Image.frombytes(mode, (width, tile_px), bytes(block.buf[start : start + length]))
+        start, length = row * tile_px * width * 3, tile_px * width * 3
+        with block.buf[start : start + length] as raw:
+            strip = Image.frombuffer("RGB", (width, tile_px), raw, "raw", "RGB", 0, 1)
         written = 0
         for x in range(width // tile_px):
             path = Path(dest) / tile_relpath(z, x, row)
@@ -132,32 +132,11 @@ def _encode_tile_row(job: tuple[str, str, int, int, int, int, str, int]) -> int:
         block.close()
 
 
-def cut_square_parallel(piece, dest: Path, z: int, tile_px: int, pool) -> int:
-    """``cut_square`` at ``(0, 0)`` with the deflating spread over a process pool.
-
-    The resampling stays serial in the parent: the level's pixels are published once into a
-    ``shared_memory`` block and each task crops one row of tiles out of it. No worker can
-    disagree about a filter tap at a strip boundary, so the parallel path is byte-identical
-    -- ``tools/gen_map_renders.py --check-parallel`` compares every tile's SHA-256. There is
-    no offset because the only caller cutting at one, the enhancement stage, is GPU-bound.
-    """
-    from multiprocessing.shared_memory import SharedMemory
-
-    (dest / str(z)).mkdir(parents=True, exist_ok=True)
-    raw = piece.tobytes()
-    stride = len(raw) // piece.width
-    block = SharedMemory(create=True, size=len(raw))
-    try:
-        block.buf[: len(raw)] = raw
-        del raw
-        jobs = [
-            (block.name, piece.mode, piece.width, stride, z, row, str(dest), tile_px)
-            for row in range(piece.width // tile_px)
-        ]
-        return sum(pool.map(_encode_tile_row, jobs, chunksize=1))
-    finally:
-        block.close()
-        block.unlink()
+def level_record(z: int, written: int, source: str, tile_px: int = PYRAMID_TILE_PX) -> dict:
+    """One level's entry in the record, printed as it is made."""
+    side, tiles = tile_px << z, (1 << z) ** 2
+    print(f"  pyramid z{z}: {side}x{side}, {tiles} tiles, {written / 1e6:.2f} MB")
+    return {"z": z, "sheet_px": side, "tiles": tiles, "bytes": written, "from": source}
 
 
 def cut_pyramid(
@@ -166,45 +145,28 @@ def cut_pyramid(
     dest: Path,
     tile_px: int = PYRAMID_TILE_PX,
     source: str = DEFAULT_LEVEL_SOURCE,
-    workers: int = 1,
     dir_name: str = TILES_DIR_NAME,
 ) -> dict:
     """Cut ``sheet`` into ``dest/{z}/{x}_{y}.png`` for every level, and say what it wrote.
 
     ``--enhance`` adds levels ABOVE this top out of upscaled pixels and does not touch these:
     a level with real pixels behind it has no business being drawn from invented ones.
-    ``workers`` above one spreads the per-tile PNG encode over that many processes; one is the
-    default because the suite drives this with a stand-in sheet that is not an image.
     """
     top = pyramid_top_z(sheet.width, tile_px)
     levels = []
-    pool = ProcessPoolExecutor(max_workers=workers) if workers > 1 else None
-    try:
-        for z in range(top + 1):
-            side = tile_px << z
-            level = sheet if side == sheet.width else sheet.resize((side, side), image_mod.LANCZOS)
-            tiles = (1 << z) ** 2
-            if pool is not None and tiles >= PARALLEL_MIN_TILES:
-                written = cut_square_parallel(level, dest, z, tile_px, pool)
-            else:
-                written = cut_square(level, dest, z, 0, 0, tile_px)
-            levels.append(
-                {
-                    "z": z,
-                    "sheet_px": side,
-                    "tiles": tiles,
-                    "bytes": written,
-                    "from": source,
-                }
-            )
-            print(f"  pyramid z{z}: {side}x{side}, {tiles} tiles, {written / 1e6:.2f} MB")
-    finally:
-        if pool is not None:
-            pool.shutdown()
+    for z in range(top + 1):
+        side = tile_px << z
+        level = sheet if side == sheet.width else sheet.resize((side, side), image_mod.LANCZOS)
+        levels.append(level_record(z, cut_square(level, dest, z, 0, 0, tile_px), source, tile_px))
+    return pyramid_record(levels, tile_px, 1, dir_name)
+
+
+def pyramid_record(levels: list[dict], tile_px: int, workers: int, dir_name: str) -> dict:
+    """What a cut wrote, ``levels`` in z order: the block a sidecar carries."""
     return {
         "layout": f"{dir_name}/{{z}}/{{x}}_{{y}}.png",
         "tile_px": tile_px,
-        "max_z": top,
+        "max_z": levels[-1]["z"],
         "enhanced": False,
         "count": sum(level["tiles"] for level in levels),
         "bytes": sum(level["bytes"] for level in levels),
@@ -247,36 +209,47 @@ def install_pyramid(
     tile_px: int = PYRAMID_TILE_PX,
     enhance=None,
     source: str = DEFAULT_LEVEL_SOURCE,
-    workers: int = 1,
     dir_name: str = TILES_DIR_NAME,
 ) -> dict:
     """Cut the pyramid into staging, then rename it over any older one.
 
-    A previous tree is moved aside first (Windows will not rename onto a non-empty directory)
-    and deleted afterwards, and leftovers from a run that died mid-swap are cleared rather than
-    merged into. ``enhance`` runs INSIDE the staging window: the GPU stage is the part most
-    likely to fail, and a failure there must leave the installed pyramid untouched.
-    ``dir_name`` picks which tree of this layer is being installed -- ``tiles/`` or the @2x
-    grid -- and carries its own staging names, so cutting one cannot disturb the other.
+    ``enhance`` runs INSIDE the staging window: the GPU stage is the part most likely to fail,
+    and a failure there must leave the installed pyramid untouched. ``dir_name`` picks which
+    tree of this layer is being installed -- ``tiles/`` or the @2x grid -- and carries its own
+    staging names, so cutting one cannot disturb the other.
     """
+    staging = stage_tree(out_dir, dir_name)
+    stats = cut_pyramid(sheet, image_mod, staging, tile_px, source, dir_name)
+    if enhance is not None:
+        stats = merge_enhanced(stats, enhance(staging))
+    return commit_tree(stats, out_dir, dir_name)
+
+
+def stage_tree(out_dir: Path, dir_name: str) -> Path:
+    """An empty staging directory for ``dir_name``, leftovers of a run that died cleared first."""
     staging = out_dir / (dir_name + STAGING_SUFFIX)
-    retired = out_dir / (dir_name + RETIRED_SUFFIX)
-    final = out_dir / dir_name
-    for stale in (staging, retired):
+    for stale in (staging, out_dir / (dir_name + RETIRED_SUFFIX)):
         if stale.exists():
             shutil.rmtree(stale)
     staging.mkdir(parents=True)
-    stats = cut_pyramid(sheet, image_mod, staging, tile_px, source, workers, dir_name)
-    if enhance is not None:
-        stats = merge_enhanced(stats, enhance(staging))
+    return staging
 
+
+def commit_tree(stats: dict, out_dir: Path, dir_name: str) -> dict:
+    """Check the staged tree against its own count, then swap it in; ``stats`` says how.
+
+    A previous tree is moved aside first (Windows will not rename onto a non-empty directory)
+    and deleted afterwards.
+    """
+    staging = out_dir / (dir_name + STAGING_SUFFIX)
     on_disk = sum(1 for _ in staging.rglob("*.png"))
     if on_disk != stats["count"]:
         raise PyramidError(
             f"the pyramid was cut with {stats['count']} tiles but {on_disk} PNGs are in "
             f"{staging} -- refusing to install a tree that does not match its own count"
         )
-    stats["installed_by"] = swap_into_place(staging, final, retired)
+    retired = out_dir / (dir_name + RETIRED_SUFFIX)
+    stats["installed_by"] = swap_into_place(staging, out_dir / dir_name, retired)
     return stats
 
 

@@ -304,7 +304,7 @@ are injected rather than found. `IoStore` takes its block decompressor as a call
 (`iostore.oodle_decompress` is a convenience a caller may pass), `textures.decode_bc1_rgba` takes the BC1
 decoder and Pillow, and `pyramid.install_pyramid` takes the image module, so the suite drives all three
 with stand-ins. The one body that imports Pillow itself is
-`pyramid._encode_tile_row`, because a spawned worker cannot be handed a module through a pickle;
+`pyramid.encode_tile_row`, because a spawned worker cannot be handed a module through a pickle;
 `zstandard` is imported inside the `mapgen.bandstore` readers and writers that use it. The server, the
 parser, the domain and the whole test suite run on a machine with none of them installed, and
 `tests/architecture/test_optional_extras.py` reads the AST to keep it that way. The full record is §19, in

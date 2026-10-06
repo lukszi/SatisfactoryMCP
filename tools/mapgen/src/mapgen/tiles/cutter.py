@@ -1,0 +1,332 @@
+"""The parallel tile cutter: every tree of a layer through one encode pool that never waits.
+
+Levels are resampled in strips on threads, encoded by processes straight out of shared
+memory, and a level two trees share is resampled once. The bytes are the serial
+``install_pyramid``'s. docs/spatial-and-map.md section 17, "Cutting in parallel".
+"""
+
+from __future__ import annotations
+
+import ctypes
+import gc
+import multiprocessing
+import os
+import threading
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    CancelledError,
+    Future,
+    ProcessPoolExecutor,
+    ThreadPoolExecutor,
+    wait,
+)
+from multiprocessing.shared_memory import SharedMemory
+from pathlib import Path
+from typing import Self
+
+import numpy as np
+
+from satisfactory_mcp.core.gameassets.pyramid import (
+    PyramidError,
+    commit_tree,
+    encode_tile_row,
+    level_record,
+    pyramid_record,
+    pyramid_top_z,
+    stage_tree,
+)
+
+__all__ = [
+    "CUT_WORKERS",
+    "Block",
+    "Cutter",
+    "Source",
+    "Tree",
+    "available_ram",
+    "resample_strip",
+    "strip_spans",
+]
+
+#: Encoders when ``--cut-workers`` is not given.
+CUT_WORKER_CAP = 24
+CUT_WORKERS = min(os.cpu_count() or 1, CUT_WORKER_CAP)
+#: Threads resampling in the parent; Pillow releases the GIL inside a resize.
+LANCZOS_THREADS = min(os.cpu_count() or 1, 8)
+#: Source pixels per resampling strip, at Pillow's four bytes a pixel.
+STRIP_BYTES = 1 << 27
+#: What one encoder holds, and what stays free while a new block waits for memory.
+WORKER_BYTES = 200 << 20
+RAM_RESERVE = 4 << 30
+
+
+def available_ram() -> int | None:
+    """Memory free for the taking, in bytes: physical, and on Windows commit too; or None."""
+    if os.name == "nt":
+
+        class Status(ctypes.Structure):
+            _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [
+                (name, ctypes.c_ulonglong)
+                for name in ("total", "avail", "page", "page_avail", "virt", "virt_avail", "ext")
+            ]
+
+        status = Status(length=ctypes.sizeof(Status))
+        ok = ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+        return min(status.avail, status.page_avail) if ok else None
+    try:
+        with open("/proc/meminfo", encoding="ascii") as info:
+            for line in info:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return None
+
+
+def strip_spans(source_px: int, side: int, width: int) -> list[tuple[int, int]]:
+    """The output rows ``[r0, r1)`` each resampling strip of a ``side`` level fills."""
+    if source_px % side:
+        raise PyramidError(f"a {side} px level does not divide a {source_px} px sheet")
+    rows = max(1, STRIP_BYTES // (4 * width * (source_px // side)))
+    return [(r0, min(r0 + rows, side)) for r0 in range(0, side, rows)]
+
+
+def resample_strip(image_mod, src: np.ndarray, out: np.ndarray, r0: int, r1: int) -> None:
+    """Rows ``[r0, r1)`` of ``src`` Lanczos'd to ``out``'s size, written into ``out``.
+
+    The pixels a resize of the whole sheet gives: Pillow's taps for a row depend only on its
+    position, and the halo covers the 3 * scale source rows Lanczos reaches either side.
+    """
+    height, width = src.shape[:2]
+    scale = height // out.shape[0]
+    halo = 3 * scale + 4
+    y0, y1 = r0 * scale, r1 * scale
+    top, bottom = max(y0 - halo, 0), min(y1 + halo, height)
+    part = image_mod.fromarray(src[top:bottom]).resize(
+        (out.shape[1], r1 - r0), image_mod.LANCZOS, box=(0, y0 - top, width, y1 - top)
+    )
+    out[r0:r1] = np.asarray(part)
+
+
+def _failure(future: Future) -> BaseException | None:
+    return CancelledError() if future.cancelled() else future.exception()
+
+
+class Block:
+    """One level's pixels in shared memory, freed when the last hold on it is released."""
+
+    def __init__(self, shape: tuple[int, int, int]) -> None:
+        self.shape = shape
+        self.shm = SharedMemory(create=True, size=int(np.prod(shape)))
+        self.array: np.ndarray | None = np.ndarray(shape, np.uint8, buffer=self.shm.buf)
+        self.ready: Future = Future()
+        self.freed = False
+        self._holds = 1
+        self._lock = threading.Lock()
+
+    def hold(self) -> None:
+        with self._lock:
+            if self._holds <= 0:
+                raise RuntimeError("a freed block was held again")
+            self._holds += 1
+
+    def release(self, _done: Future | None = None) -> None:
+        with self._lock:
+            self._holds -= 1
+            if self._holds:
+                return
+        self.free()
+
+    def free(self) -> None:
+        """Close and unlink now: the last release, or a cutter closing whatever is left."""
+        with self._lock:
+            if self.freed:
+                return
+            self.array = None
+            try:
+                self.shm.close()
+            except BufferError:
+                return
+            self.freed = True
+        self.shm.unlink()
+
+
+class Source:
+    """A published sheet and the levels resampled from it, each computed once.
+
+    It holds every block it made until ``close``; work in flight holds its own.
+    """
+
+    def __init__(self, cutter: Cutter, top: Block) -> None:
+        self.cutter, self.top = cutter, top
+        self.levels: dict[int, Block] = {top.shape[0]: top}
+        self.children: list[Source] = []
+
+    @property
+    def px(self) -> int:
+        return self.top.shape[0]
+
+    def level(self, side: int) -> Block:
+        if side not in self.levels:
+            self.levels[side] = self.cutter.resample(self.top, side)
+        return self.levels[side]
+
+    def derive(self, side: int) -> Source:
+        """What a downscale to ``side`` is cut from: this source at its own size, else that level."""
+        if side == self.px:
+            return self
+        top = self.level(side)
+        top.hold()
+        child = Source(self.cutter, top)
+        self.children.append(child)
+        return child
+
+    def close(self) -> None:
+        for child in self.children:
+            child.close()
+        for block in self.levels.values():
+            block.release()
+        self.children, self.levels = [], {}
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self.close()
+
+
+class Tree:
+    """One tile tree being cut into its staging directory: per level, its queued row jobs."""
+
+    def __init__(self, out_dir: Path, dir_name: str, tile_px: int, text: str) -> None:
+        self.out_dir, self.dir_name, self.tile_px, self.text = out_dir, dir_name, tile_px, text
+        self.staging = stage_tree(out_dir, dir_name)
+        self.levels: dict[int, Future] = {}
+
+
+class Cutter:
+    """One encode pool and one resampling pool for every tree of a layer."""
+
+    def __init__(self, image_mod, workers: int, threads: int = LANCZOS_THREADS) -> None:
+        free = available_ram()
+        if free is not None:
+            workers = max(1, min(workers, (free - RAM_RESERVE) // WORKER_BYTES))
+        self.image_mod, self.workers = image_mod, workers
+        # Spawned, not forked: the encoders start while the resampling threads run.
+        spawn = multiprocessing.get_context("spawn")
+        self.encoders = ProcessPoolExecutor(max_workers=workers, mp_context=spawn)
+        self.threads = ThreadPoolExecutor(max_workers=threads, thread_name_prefix="lanczos")
+        self.blocks: list[Block] = []
+        self.inflight: set[Future] = set()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self.threads.shutdown(wait=True, cancel_futures=True)
+        self.encoders.shutdown(wait=True, cancel_futures=True)
+        gc.collect()
+        for block in self.blocks:
+            block.free()
+
+    def _track(self, future: Future) -> Future:
+        self.inflight.add(future)
+        future.add_done_callback(self.inflight.discard)
+        return future
+
+    def _block(self, shape: tuple[int, int, int]) -> Block:
+        """A new block, once there is room: while RAM is short, in-flight work is waited on."""
+        need = int(np.prod(shape)) + RAM_RESERVE
+        while (free := available_ram()) is not None and free < need:
+            busy = [future for future in list(self.inflight) if not future.done()]
+            if not busy:
+                break
+            wait(busy, timeout=1.0, return_when=FIRST_COMPLETED)
+        block = Block(shape)
+        self.blocks.append(block)
+        return block
+
+    def publish(self, sheet: np.ndarray) -> Source:
+        """A copy of ``sheet`` the encoders read; ``sheet`` is the caller's again on return."""
+        block = self._block(sheet.shape)
+        np.copyto(block.array, sheet)
+        block.ready.set_result(block)
+        return Source(self, block)
+
+    def resample(self, source: Block, side: int) -> Block:
+        """``source`` Lanczos'd to ``side``, in strips on the threads once ``source`` is ready."""
+        out = self._block((side, side, 3))
+        source.hold()
+        source.ready.add_done_callback(lambda ready: self._strips(ready, source, out))
+        return out
+
+    def _strips(self, ready: Future, source: Block, out: Block) -> None:
+        if (failed := _failure(ready)) is not None:
+            out.ready.set_exception(failed)
+            source.release()
+            return
+        spans = strip_spans(source.shape[0], out.shape[0], source.shape[1])
+        left, failures = [len(spans)], []
+        lock = threading.Lock()
+
+        def strip(r0: int, r1: int) -> None:
+            resample_strip(self.image_mod, source.array, out.array, r0, r1)
+
+        def done(future: Future) -> None:
+            # Settled only once every strip has stopped writing: a failure settled early
+            # would let the level be freed under the strips still running.
+            with lock:
+                left[0] -= 1
+                last = not left[0]
+                if (failed := _failure(future)) is not None:
+                    failures.append(failed)
+            if last:
+                source.release()
+                if failures:
+                    out.ready.set_exception(failures[0])
+                else:
+                    out.ready.set_result(out)
+
+        for r0, r1 in spans:
+            self._track(self.threads.submit(strip, r0, r1)).add_done_callback(done)
+
+    def tree(self, source: Source, out_dir: Path, dir_name: str, tile_px: int, text: str) -> Tree:
+        """Stage ``dir_name`` and queue every level of it, the top first."""
+        tree = Tree(out_dir, dir_name, tile_px, text)
+        for z in range(pyramid_top_z(source.px, tile_px), -1, -1):
+            (tree.staging / str(z)).mkdir()
+            tree.levels[z] = self._encode(tree, z, source.level(tile_px << z))
+        return tree
+
+    def _encode(self, tree: Tree, z: int, block: Block) -> Future:
+        """The level's row jobs, queued on the encoders once its pixels are ready."""
+        jobs: Future = Future()
+        block.hold()
+
+        def submit(ready: Future) -> None:
+            try:
+                if (failed := _failure(ready)) is not None:
+                    raise failed
+                queued = []
+                for row in range(block.shape[0] // tree.tile_px):
+                    block.hold()
+                    job = (block.shm.name, block.shape[1], z, row, str(tree.staging), tree.tile_px)
+                    future = self._track(self.encoders.submit(encode_tile_row, job))
+                    future.add_done_callback(block.release)
+                    queued.append(future)
+                jobs.set_result(queued)
+            except BaseException as exc:
+                jobs.set_exception(exc)
+            finally:
+                block.release()
+
+        block.ready.add_done_callback(submit)
+        return jobs
+
+    def install(self, tree: Tree) -> dict:
+        """Wait for every tile of ``tree``, then check it and rename it into place."""
+        levels = []
+        for z in sorted(tree.levels):
+            written = sum(future.result() for future in tree.levels[z].result())
+            levels.append(level_record(z, written, tree.text, tree.tile_px))
+        stats = pyramid_record(levels, tree.tile_px, self.workers, tree.dir_name)
+        return commit_tree(stats, tree.out_dir, tree.dir_name)

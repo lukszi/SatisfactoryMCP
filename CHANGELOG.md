@@ -76,6 +76,11 @@ Planned as 0.2.0.
   18 minutes instead of 48) and 3.5 times on 16, with the same bytes. Each of its processes
   peaks at 1.1 GB instead of 3.9 GB, so it now takes up to 16 by default, as many as the free
   memory holds; `--light-workers` sets the number, and `--workers` no longer does.
+- Map generator: a layer's three tile trees (`unlit/`, `tiles/`, `tiles@2x/`) are cut through
+  one pool of encoders, with the levels resampled on threads while it encodes. A lit layer
+  at full size cuts in about a third of the time; the tiles are the same bytes. The new
+  `--cut-workers` sets the encoders (default one per core, at most 24, fewer when memory is
+  short); `--workers` now sets only the light bake's processes.
 
 ### Deprecated
 

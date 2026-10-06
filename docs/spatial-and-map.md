@@ -484,17 +484,69 @@ bargain the CRS already makes.
 
 ### Cutting in parallel, and the proof that it is the same bytes
 
-Cutting 5,461 tiles at `optimize=True` is minutes of one core doing nothing but deflate. The
-**resampling stays serial** — level z is one Lanczos downscale of the whole sheet, in the
-parent, exactly as before — and only the per-tile encode is spread over processes, with the
-level published once into a `shared_memory` block every worker maps and one task per row of
-tiles. Because no worker resamples anything, no worker can disagree about a filter tap at a
-strip boundary, which is why this is byte-identical rather than merely equivalent.
+A lit layer writes three trees: `unlit/`, `tiles/` and `tiles@2x/`, 45,055 tiles at 32768,
+all at `optimize=True`. Until 2026-10-06 each tree was cut on its own. Every level's Lanczos
+ran serially in the parent while the encode processes waited, 37 to 61 s a tree at full
+size, and each tree copied the sheet three times on its way to them (a Pillow image, its
+bytes, a shared block), about 14 GB. `mapgen/tiles/cutter.py` now cuts a layer's trees
+through one pool:
 
-`--check-parallel` proves it rather than asserting it: one level cut both ways, SHA-256 of
-every tile compared name for name. On the reference machine, z5 of the artwork sheet, 1,024
-tiles: **5.43 s serial against 1.34 s on 16 workers, 4.05×, byte_identical true**, recorded
-in the sidecar.
+- **One encode pool per layer.** `--cut-workers` processes (default one per logical core, at
+  most 24) encode one row of tiles per job, for all three trees. A level's rows are queued as
+  soon as its pixels are ready, so the pool encodes the unlit z7 while the levels are
+  resampled and the sheet is relit. `--workers` sizes the light bake only.
+- **One copy of the sheet per tree.** The sheet is copied into a `shared_memory` block and
+  z7 is encoded from that block; no Pillow image of the whole sheet is made. The unlit tree
+  encodes from its own block, so the relight can change the sheet underneath it.
+- **Encoders without numpy.** The encoder (`core/gameassets/pyramid.encode_tile_row`) reads
+  the block through Pillow. numpy's BLAS thread pool commits about 0.75 GB in every process
+  that imports it, 18 GB for 24 encoders, and on a busy machine that exhausted the commit
+  limit with physical memory to spare.
+- **Levels in strips, on threads.** Each level is still one Lanczos downscale of the whole
+  sheet. Eight threads compute it in strips of about 128 MiB of source: each strip resizes a
+  row range with a `box`, out of source rows cut with a halo of 3 × scale + 4. Pillow
+  derives each output row's taps from its position alone and reaches 2.5 × scale + 0.5
+  source rows either side, so every strip is the same bytes as those rows of a whole-sheet
+  resize. Measured at scales 2 to 128; a halo of 2 × scale fails at every scale. The threads
+  run in the parent, because Pillow releases the GIL inside a resize.
+- **A level two trees share is resampled once.** `tiles@2x/` is cut from the sheet
+  downscaled to 16384, the same resize as `tiles/` z6, so its top level is that block. On a
+  sheet of 16384 or less every @2x level is a 1x level.
+- **Memory.** Before a new block the cutter checks free memory, physical and on Windows
+  commit; with less than the block plus 4 GB it waits for work in flight. The encoder count
+  is capped the same way at 200 MB an encoder. A block is freed when the last job and strip
+  reading it finish. A failed strip settles its level only after every strip of it has
+  stopped, so no strip writes into a freed block.
+- **Serial.** `--cut-workers 1` cuts one tree at a time with `install_pyramid`, the
+  reference the parallel path is compared with.
+
+The 15 to 26% of z7 tiles that are one void colour are encoded like any other. A one-colour
+tile takes 0.5 to 0.7 ms against about 34 ms for a land tile, so writing cached bytes would
+save under 1%.
+
+`--check-parallel` proves it rather than asserting it: the artwork's whole pyramid cut both
+ways, SHA-256 of every tile compared name for name, recorded in the sidecar. On an 8192 piece
+of renders-v7, 1,365 tiles: 38.0 s serial against 2.3 s on 24 encoders, byte_identical true.
+
+A 2048 render of all five layers, lit, `--workers 2`, ran before and after the change, one
+after the other: all 1,125 tiles and light tiles match by SHA-256 (425 unlit, 425 lit, 105
+@2x, 170 light). The sidecars differ in their timings and in the encoder count (2, now the
+default 24) only. The cut took 0.9 to 1.6 s a layer, against 3.2 to 3.5 s.
+
+Measured on the reference machine (2026-10-06, other renders running), the trees of one lit
+layer, the bake skipped and the relight an in-place invert:
+
+| | before | after (24 encoders) |
+| --- | --- | --- |
+| 8192 piece of renders-v7 `painted` z7, 3,071 tiles | 29.8 s on 8 workers, 23.6 s on 24 | 8.9 s |
+| the same piece tiled to 32768, 45,055 tiles | 343 s on 8 workers | 125 s |
+| peak working set at 32768 | 13.1 GB | 12.9 GB |
+
+Every tile hashes the same before and after. The peak is no lower: each tree now holds about
+6 GB where it held 14, and the difference is spent running the three trees at once. When
+memory is short the cutter runs them closer to one after the other. renders-v7 cut its five
+layers in 1,826 s on 8 workers; at the 2.75 times measured here that is about 660 s, more
+than 19 minutes saved. The relight, serial before, now overlaps the unlit tree.
 
 ### And a swap Windows can refuse
 
@@ -1957,9 +2009,10 @@ memory maps in the light's scratch, 5.4 GB at 32768). After that layer is drawn,
 halo, and a process pool computes per block: the ground's horizons and the crowns' at half
 resolution, sky view, normals, the native tiles, and the light at the default sun for the
 baked copy, once with the crowns and once without. A block whose core is all water skips the
-horizon march. Each layer then installs `unlit/`, is lit in place by the default sun with its
-own term (`tiles/lit.py`: the crowns' only for a style that draws them), and installs
-`tiles/` and `tiles@2x/` as before.
+horizon march. Each layer then queues `unlit/` from a copy of the sheet, is lit in place by
+the default sun with its own term while that tree encodes (`tiles/lit.py`: the crowns' only
+for a style that draws them), and queues `tiles/` and `tiles@2x/`. All three go through one
+encode pool and are renamed into place in that order (section 17, "Cutting in parallel").
 
 **Horizon cost.** The march takes bilinear samples up to 16 px and the nearest pixel beyond,
 with in-place arithmetic: 0.14 µs per half-resolution pixel and direction, 6.3 times faster
