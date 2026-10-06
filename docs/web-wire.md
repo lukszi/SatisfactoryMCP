@@ -183,4 +183,6 @@ another is a 409 `MapsStaleResponse {error, stale: true, version}` and nothing i
 registry writes answer with the whole `MapsResponse`, so the page redraws from the reply. A job
 is queued with 202; a full queue is 409 and a short disk 507. Routes take no `?save=`/`?world=`.
 `/api/maptiles/{layer}/…` takes a registry id as `layer`; `map`, `terrain` and `satellite` are
-served even before the manifest exists.
+served even before the manifest exists. A type's `title` is the one name the page and chat show
+it by ("Painted · 6 Oct ★"), composed by the server; `name` stays the technical name from its
+axes, and the page never derives a title from it (maps_contract.md §3.5).

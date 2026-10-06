@@ -28,8 +28,9 @@ def _fragment(out: str) -> dict[str, str]:
 def test_settings_lists_the_base_maps_with_the_default_and_what_is_stale(local):  # noqa: F811
     out = settings_tool.settings()
     line = next(row for row in out.splitlines() if row.startswith("# base maps"))
-    assert "map (default)" in line and "terrain-r4-502094" in line
-    assert "terrain-r3-502094 -- stale: newer heightfield (v3 → v5)" in line
+    assert 'map "Game map ★" (default)' in line and "terrain-r4-502094 " in line
+    assert '" -- stale: newer heightfield (v3 → v5)' in line
+    assert "terrain-r3-502094 " in line
     assert not registry.manifest_path().exists(), "chat reads the registry and never writes it"
 
 

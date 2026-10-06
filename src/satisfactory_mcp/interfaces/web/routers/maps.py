@@ -62,11 +62,12 @@ class MapFreshness(TypedDict):
 
 
 class MapTypeBody(TypedDict):
-    """One map type. ``name`` is derived from its axes; ``label`` is the player's, or null."""
+    """One map type: ``title`` is what every list shows, ``name`` the axes' technical name."""
 
     id: str
     label: str | None
     name: str
+    title: str
     style: str
     renderer: str
     data: str
@@ -243,6 +244,7 @@ def _type_json(row: dict, default: str | None) -> dict:
         "id": row["id"],
         "label": entry.get("label"),
         "name": row["name"],
+        "title": row["title"],
         "style": ax.style_label(axes),
         "renderer": ax.renderer_label(axes),
         "data": ax.data_label(axes),

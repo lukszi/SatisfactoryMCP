@@ -85,15 +85,21 @@ ARTWORK_RECIPES: dict[int, dict] = {
 #: Palettes. A render's style ``id`` is its palette file's name under
 #: ``tools/mapgen/src/mapgen/palette/palettes/``,
 #: and the version is bumped when a palette changes on purpose; the file's hash is the digest.
-#: ``tone`` is the base's lightness, which the page's overlay colours follow.
+#: ``tone`` is the base's lightness, which the page's overlay colours follow. ``name`` is what
+#: the switcher and chat call a map of the style (docs/maps_contract.md §3.5).
 STYLES: dict[str, dict] = {
-    "terrain-hypsometric": {"label": "terrain", "layer": "terrain", "version": 7, "tone": "light"},
-    "satellite-biome": {"label": "satellite", "layer": "satellite", "version": 7, "tone": "light"},
-    "satellite-painted": {"label": "game-painted", "layer": "painted", "version": 10,
-                          "tone": "light"},
-    "relief-muted": {"label": "relief", "layer": "relief", "version": 5, "tone": "light"},
-    "relief-night": {"label": "relief dark", "layer": "relief-dark", "version": 5, "tone": "dark"},
-    "artwork": {"label": "artwork", "layer": "map", "version": 1, "tone": "light"},
+    "terrain-hypsometric": {"label": "terrain", "name": "Terrain", "layer": "terrain",
+                            "version": 7, "tone": "light"},
+    "satellite-biome": {"label": "satellite", "name": "Satellite", "layer": "satellite",
+                        "version": 7, "tone": "light"},
+    "satellite-painted": {"label": "game-painted", "name": "Painted", "layer": "painted",
+                          "version": 10, "tone": "light"},
+    "relief-muted": {"label": "relief", "name": "Relief", "layer": "relief", "version": 5,
+                     "tone": "light"},
+    "relief-night": {"label": "relief dark", "name": "Relief (dark)", "layer": "relief-dark",
+                     "version": 5, "tone": "dark"},
+    "artwork": {"label": "artwork", "name": "Game map", "layer": "map", "version": 1,
+                "tone": "light"},
 }  # fmt: skip
 
 #: The tone of no imagery at all: the page's own dark sea.

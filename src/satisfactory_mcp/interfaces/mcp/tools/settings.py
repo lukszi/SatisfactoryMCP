@@ -32,7 +32,7 @@ def _choices(spec: store.Spec) -> str:
 
 
 def _maps_line() -> str:
-    """One line naming the base map types the page can show, the shared default marked."""
+    """One line naming the base map types the page can show, by id and the page's title."""
     try:
         view = maps.view()
     except Exception as exc:
@@ -41,7 +41,8 @@ def _maps_line() -> str:
     for row in view["types"]:
         if row["status"] != "ready":
             continue
-        word = row["id"] + (" (default)" if row["id"] == view["default"] else "")
+        word = f'{row["id"]} "{row["title"]}"'
+        word += " (default)" if row["id"] == view["default"] else ""
         if row["freshness"]["stale"]:
             word += " -- stale: " + "; ".join(s["text"] for s in row["freshness"]["stale"])
         shown.append(word)
