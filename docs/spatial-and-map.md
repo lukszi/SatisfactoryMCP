@@ -7,23 +7,11 @@ their styles, water, light and caches. Those live in [docs/map/](map/) under the
 were given, and the [index below](#sections-17-to-40-the-map) says which file holds each.
 Section numbers are continuous with the rest of the spec; [DESIGN.md](../DESIGN.md) indexes it.
 
-The dated sections below name the generator files as they were when each section was written.
-Since 2026-10-05 the map generators are one package, `tools/mapgen/`, run as
-`python -m mapgen <command>`, and the old entry scripts are thin shims that keep their paths.
-Its [README](../tools/mapgen/README.md) has the full package map. The names used below now
-live here:
-
-| Named below | Now |
-| --- | --- |
-| `tools/gen_world_heightmap.py` (`--caves`, `--rocks`) | `mapgen heightmap` (`caves`, `rocks`): `heightmap.py`, `gamedata/sweep.py`, `gamedata/mesh.py`, `gamedata/water.py`, `gamedata/caves.py`, `gamedata/rocks.py`, `terrain/field.py`, `terrain/validate.py`, `terrain/sidecar.py` |
-| `tools/gen_map_renders.py` | `mapgen renders`: `pipeline.py`, with `terrain/`, `palette/`, `lighting/` and `tiles/` |
-| `tools/gen_map_image.py` | `mapgen artwork`: `artwork.py`, `gamedata/artwork_sheet.py`, `enhance/`, `tiles/artwork_output.py`; the frame in `gamedata/frame.py` |
-| `tools/gen_paint_layers.py` | `mapgen paint`: `gamedata/paint.py` |
-| `tools/check_map_fill.py` | `mapgen check-fill`: `check_fill.py` |
-| `tools/map_fill.py` | `terrain/fill.py` |
-| `tools/map_shore.py` | `palette/shore.py` for the optics, `terrain/rasters.py` for the render-only meshes, `cache.py` for their cache |
-| `tools/map_painted.py` | `palette/painted.py` |
-| `tools/palettes/*.json` | `palette/palettes/*.json`, byte for byte, so no digest moved |
+The dated sections name the generator files as they were when each section was written. Since
+2026-10-05 the map generators are one package, `tools/mapgen/`, run as
+`python -m mapgen <command>`; the old entry scripts are thin shims that keep their paths. Its
+[README](../tools/mapgen/README.md) names the command behind each old script and has the package
+map.
 
 ## Sections 17 to 40: the map
 
@@ -348,11 +336,14 @@ pixel, these rules decide.
 | Meshes standing in the water, lit | The lighting pyramid's surface is the first layer's. When that is a ground-and-water style, the render-only meshes standing in the water are water in it; the painted layer, drawn unlit after it, keeps the default sun's light of their own top on them. |
 | Crowns and water | A crown standing out of the water is composited after the water, the foam and the shore line, whole; one under the surface goes into the bed after section 32's carpet and before the open-sea term and section 31's opaque water, so the class optics, the open sea and the swamp's murk all apply to it (section 36, "Crowns and the water"). |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 19 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water; then section 33's sea deep colour and near-black swamp water; then section 33's translucent water and swamp mouths; then section 31's land rules: the Spire Coast rock dropped, render-only rocks in their own family, wet sand by rule with a mild warm shore band, and the red Kapok by species; then section 31's moss in patches, with the forest top on its own target). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 3 (the render-only rocks' family plane), `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |
-| Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. Styles carrying it: terrain 4, satellite 4, relief 2, relief dark 2 (the relief two also for section 28's palette changes); its second pass, the bed smooth in slope and the pits apart from the void, terrain 5, satellite 5, relief 3, relief dark 3 and game-painted 7; the sunken rock under the void, terrain 6, satellite 6, relief 4, relief dark 4 and game-painted 8; the sunken strips between the open sea and the void, terrain 7, satellite 7, relief 5, relief dark 5 and game-painted 9. |
+| Open sea, void and pits | Section 26's open sea is laid into the lattice and the water planes after the rivers and section 38 have drawn theirs, and before any style draws. Every style, the water classes and the relief tint read that one bed, and the renderer's wet and measured planes come from those planes' grades, so water a later stage re-wets is drawn. |
+
+The style, reader and recipe versions current today are in
+`src/satisfactory_mcp/core/gameassets/versions.py`, and the ones a render was drawn with are
+in its sidecar.
 
 ### Known limits
 

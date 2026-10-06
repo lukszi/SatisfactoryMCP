@@ -295,21 +295,6 @@ atomically over its predecessor, and a reader who catches the middle sees every 
 with some still the old cut rather than a level missing. Which of the two happened is
 recorded in the sidecar as `tiles.installed_by`.
 
-### Measured on the reference machine
-
-| | terrain | satellite |
-|---|---|---|
-| draw 16384² | 65 s | 74 s |
-| cut both trees, 16 workers | 46 s | 42 s |
-| `tiles/` z0..z6 | 5,461 tiles, 237.5 MB | 5,461 tiles, 229.2 MB |
-| `tiles@2x/` z0..z5 | 1,365 tiles, 237.2 MB | 1,365 tiles, 228.6 MB |
-
-227 s for both layers end to end, against 91 s for both at 8192² with no @2x tree and a
-serial cutter. Banded at 256 rows with an **8**-row halo — up from 4, because the cubic
-stencil reaches two texels either side instead of one and the water blur's three sigma is
-five pixels at this resolution rather than two — so no pixel is computed from a one-sided
-gradient or a truncated kernel.
-
 ### Why a new tool rather than a stage on the heightmap generator
 
 `gen_world_heightmap.py`'s job is to get a field *out of the game* — sweep cooked packages,
@@ -323,10 +308,6 @@ pyramid cutter, its staging rename and its refusals from `core.gameassets.pyrami
 grew one optional `source=` so a level record can say what actually drew it. The frame
 itself — the corners, the sheet size, the artwork the biome pin is scored against — still
 comes from `gen_map_image.py`, because that is the tool that *measured* it.
-
-Measured when this first shipped at 8192²: 12 s to draw terrain and 15 s satellite, 32 s each
-to cut, 91 s for both layers end to end, 60.1 and 60.2 MB of PNG per pyramid over 1,365
-tiles. The 16384² numbers that replaced them are in the table above.
 
 ### The artwork command, piece by piece (2026-10-05)
 
@@ -486,25 +467,11 @@ second to fail.
 
 ### What the fill province gets instead
 
-Neither regime helps the third province. `fill` is the interface raster — 3.66 m cells
-quantised to 3.9 m in Z — so it draws the ocean shelf and the map's edge as terraces: flat
-plateaus with blocky outlines that no kernel can un-terrace, because those steps are real in
-the data and are not in the world. They are low-passed at the raster's own cell size,
-normalised over the province so no landscape measurement is dragged into a 3.9 m answer,
-faded by its own weight so the province boundary is not itself drawn, and **clamped to one
-quantisation step** — an artifact is at most one step tall, so a larger correction is not
-de-terracing, it is a blur erasing the 300 m scarp at the map's edge by half of itself. It
-fires on 13.96% of the field and clamps on 2.3% of the province.
-
-The design called for marching squares over each terrace and a spline along the polyline.
-Smoothing every level's indicator with one kernel and summing them is, by the linearity of a
-convolution, **the same array** as smoothing the level field itself — so the two are one
-operation, and the one that is here is the one that does not need polylines extracted from
-56 million texels.
-
-**Superseded by section 26.** The 3.9 m step assumes an 8-bit raster. The raster is float16,
-with steps of 0.24–0.49 m, so this removed a quantisation that does not exist; the blocks
-on screen were nearest-neighbour 3.66 m cells. Recipe 5 re-reads the raster instead.
+Recipes 3 and 4 de-terraced the fill province: a low pass at the interface raster's 3.66 m
+cell size, clamped to one 3.9 m step. That step assumes an 8-bit raster. The raster is
+float16, with steps of 0.24–0.49 m, so there was nothing to de-terrace; the blocks on screen
+were nearest-neighbour 3.66 m cells. Recipe 5 re-reads the raster instead (section 26), and
+`check-fill` keeps the de-terracing only as the baseline its seam check is scored against.
 
 ### z7: what it is, and what it is not
 
@@ -578,21 +545,6 @@ before and after, and measured where a number exists. Build 502094.
 - The artwork borrow still multiplies the drawn map's arch strokes into the shading, so a
   faint ghost stripe can sit beside an arch where the drawing and the mesh disagree.
 
-### Cost
-
-A full run of both layers took 30.5 min wall time on 2026-10-05: the rock pass about
-14 min, the arch-and-boulder pass 2 min, then about 6 min to draw and 2 min to cut each
-layer. It wrote 1,656 MB of tiles (terrain 843 MB, satellite 812 MB), against 1,943 MB for
-recipe 3: smoother ground compresses better.
-
-### Output and switching
-
-`--renders-name renders-v2` writes to `data/local/renders-v2/<layer>/` and leaves
-`data/local/renders/` alone. The server reads only `data/local/renders/`, so switching is a
-rename while the server is stopped: move `renders` to `renders-v1`, then `renders-v2` to
-`renders`. The tile URLs carry a build tag derived from the sidecar, so browsers fetch the new
-tiles without a cache flush.
-
 ## 26. Rebuilt base data and a PCHIP sampler: recipe 5 (2026-10-05)
 
 Recipe 4 drew its gentle ground from `terrain.u16.z`. Recipe 5 rebuilds the rest of the
@@ -660,6 +612,10 @@ a coast, a boulder-and-arch site, the dry frame edge and the crater hole.
 
 The fill keeps a median bias of +0.08 m against the landscape. The bias was picked on the west
 half and is scored on the east.
+
+The seam trace's share of a hard switch is 1.22, against 1.18 for recipe 4. It is above 1
+on both because the smoothed lift is not a convex blend. The seam's own p99 curvature fell
+from 3,638 to 3,554, and the pure-kernel p99 fell from 2.11 to 1.24.
 
 ### Known limits
 
@@ -831,20 +787,6 @@ the void. Ground beside a pit and wider bands stay the land the artwork draws; a
 rule cut a 15 m spit on the north edge (x 1,460, y -3,700) into pieces. On the whole field
 1,316 texels join, all within 8 m of the void, and 23 of the line's 689 texels stay land. The
 sidecar records `strip_m` and `strip_texels_joined` under `water.level_only`.
-
-### Cost and output
-
-A full run of both layers took about 37 min wall time on 2026-10-05. The lattice rebuild took
-13 s, the geometry sweep and decode 35 s, the rock pass 13 min and the arch-and-boulder pass 2 min. Drawing and cutting took
-11 min for terrain and 10 min for satellite. Tile output was 1,640 MB: terrain 835 MB and
-satellite 805 MB, against 1,656 MB for recipe 4.
-
-The seam trace's share of a hard switch is 1.22, against 1.18 for recipe 4. It is above 1
-on both because the smoothed lift is not a convex blend. The seam's own p99 curvature fell
-from 3,638 to 3,554, and the pure-kernel p99 fell from 2.11 to 1.24.
-
-`--renders-name renders-v3` writes to `data/local/renders-v3/<layer>/`. Switching works as in
-section 25.
 
 ### Drawing less (2026-10-06)
 
