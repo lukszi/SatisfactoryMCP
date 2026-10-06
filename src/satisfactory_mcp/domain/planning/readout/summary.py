@@ -392,6 +392,7 @@ def _failure_summary(prepared, errors: list[str], empty: dict) -> dict:
 def solve_summary(
     g: GameData, st: WorldState, kwargs: dict, required: list[str] | None = None
 ) -> dict:
+    """``SolveResponse`` for ``kwargs``: the solved plan as plain data, or why there is none."""
     kwargs = dict(kwargs)
     if required and not kwargs.get("required"):
         kwargs["required"] = list(required)

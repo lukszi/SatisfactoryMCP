@@ -401,20 +401,20 @@ def compare_routes(
     return comparison
 
 
-def _route_warnings(game: GameData, cmp: RouteComparison) -> list[str]:
+def _route_warnings(game: GameData, comparison: RouteComparison) -> list[str]:
     """Warnings first, because that is where the decision is."""
     out: list[str] = []
-    build = {b: r.name for r in cmp.feasible for b in r.build_first}
+    build = {b: r.name for r in comparison.feasible for b in r.build_first}
     for building, route in sorted(build.items()):
         out.append(f"{short_recipe_name(route)} needs a {building}: unlocked, 0 built")
 
-    fluid = {b.name for r in cmp.feasible for b in r.byproducts if b.is_fluid}
+    fluid = {b.name for r in comparison.feasible for b in r.byproducts if b.is_fluid}
     if fluid:
         out.append(
             f"fluid byproduct leaving the plant: {', '.join(sorted(fluid))} -- "
             "a fluid cannot be sunk, so it needs a real consumer or the line stalls"
         )
-    sunk = {b.name for r in cmp.feasible for b in r.byproducts if b.outlet == "sink"}
+    sunk = {b.name for r in comparison.feasible for b in r.byproducts if b.outlet == "sink"}
     if sunk:
         out.append(
             f"belted to an AWESOME Sink for want of a consumer: {', '.join(sorted(sunk))} -- "
@@ -424,27 +424,27 @@ def _route_warnings(game: GameData, cmp: RouteComparison) -> list[str]:
     others = sorted(
         {
             game.item_name(i)
-            for r in cmp.feasible
+            for r in comparison.feasible
             for i in r.raw_per_unit
-            if i not in (cmp.primary, WATER)
+            if i not in (comparison.primary, WATER)
         }
     )
     if others:
         more = f" and {len(others) - 4} more" if len(others) > 4 else ""
         out.append(
-            f"ranked on {cmp.primary_name} alone; these routes also consume "
+            f"ranked on {comparison.primary_name} alone; these routes also consume "
             + ", ".join(others[:4])
             + more
         )
 
     # Buildable, with no denominator here: never explained as a chain that cannot close.
-    off_scale = [short_recipe_name(r.name) for r in cmp.routes if r.status == "unbounded"]
+    off_scale = [short_recipe_name(r.name) for r in comparison.routes if r.status == "unbounded"]
     if off_scale:
         out.append(
-            f"{', '.join(off_scale)} consumes no {cmp.primary_name}, so it cannot be "
+            f"{', '.join(off_scale)} consumes no {comparison.primary_name}, so it cannot be "
             f"ranked here -- it is buildable; re-run with per_resource=<its own input>"
         )
-    if any(r.status == "infeasible" for r in cmp.routes):
+    if any(r.status == "infeasible" for r in comparison.routes):
         out.append(
             "pinning one producer also removes its rivals as suppliers, so an "
             "infeasible route means that chain alone cannot close -- every item "
