@@ -29,7 +29,7 @@ import { counted, NODE_KIND, WORDS } from "../../kit/words";
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { FoundField, FoundNode, NodeFindResponse, TableAge } from "../../api/shapes";
-import type { Shown } from "../../map/tools/finder";
+import type { FinderResults } from "../../map/tools/finder";
 
 var nodesBox = loaded<NodeFindResponse>();
 
@@ -74,7 +74,7 @@ function byDistance<R extends { distance_m: number | null }>(rows: R[], near: bo
   });
 }
 
-function openRows(set: Shown, title: string, seed?: number): void {
+function openRows(set: FinderResults, title: string, seed?: number): void {
   var dash = state.dash;
   leaveDashThen(function () {
     showRows(set, title, dash, seed);
@@ -285,7 +285,7 @@ function headline(card: HTMLElement, d: NodeFindResponse, view: string): void {
   if (rows) {
     line.appendChild(
       button("show all on map", function () {
-        var set: Shown = view === "fields" ? { kind: "fields", rows: byDistance(d.fields, !!d.where) } : { kind: "nodes", rows: byDistance(d.nodes, !!d.where) };
+        var set: FinderResults = view === "fields" ? { kind: "fields", rows: byDistance(d.fields, !!d.where) } : { kind: "nodes", rows: byDistance(d.nodes, !!d.where) };
         openRows(set, (view === "fields" ? WORDS.field + "s" : WORDS.node + "s") + (d.where ? " near " + d.where : " · " + d.description));
       }, { map: true, title: "ring every row on the map and list them beside it" })
     );
