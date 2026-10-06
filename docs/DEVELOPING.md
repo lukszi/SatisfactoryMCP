@@ -194,7 +194,7 @@ function body. That proof is only as good as the AST, so the package may not use
 a hard dependency.
 
 **Line caps** (`test_module_caps.py`). No module of the application or the parser passes 850
-lines; routers stop at 650, MCP tool modules at 700, generators outside `tools/mapgen` at 800
+lines; routers and MCP tool modules stop at 650, generators outside `tools/mapgen` at 800
 lines and 150 per function. `api.py` was 2,174 lines and `planning.py` 2,615 before they were
 split, and neither got there in one commit, so a cap is what makes "one module per concern" a
 measurement. The largest module, `core/gameassets/staticmesh.py`, sets the general cap: it

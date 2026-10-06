@@ -286,7 +286,7 @@ staging, siting, analysis, the page's context), `factories/` (discovery, query, 
 labels, trace, floors) and `spatial/` (places, nodes, conduits, map links). Resources and
 prompts sit beside `app.py` and `params.py` in `interfaces/mcp/`. Module sizes are not
 tabled here because they move: `TOOL_MODULE_MAX_LINES` in `tests/architecture/test_module_caps.py`
-caps every module under `interfaces/mcp/` at 700 lines.
+caps every module under `interfaces/mcp/` at 650 lines.
 
 These rules hold it together, each with a test:
 

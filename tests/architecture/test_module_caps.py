@@ -24,7 +24,7 @@ MODULE_MAX_LINES = 850
 #: A router module under ``interfaces/web/routers``.
 ROUTER_MAX_LINES = 650
 #: A module of the MCP adapter under ``interfaces/mcp``.
-TOOL_MODULE_MAX_LINES = 700
+TOOL_MODULE_MAX_LINES = 650
 #: A generator under ``tools/`` outside ``tools/mapgen`` (which holds the same two numbers in
 #: its own suite), and one function in it.
 GENERATOR_MAX_LINES = 800
