@@ -5,9 +5,9 @@ Head lift is an ABSOLUTE HEIGHT rather than a budget: a source at ``z`` pushes f
 pump is ``max(incoming, its own centre + its lift)`` and never a sum. A buffer is the one
 element that BLOCKS an altitude: below ``BUFFER_TRANSMITS_ABOVE_FILL`` the line above it gets
 the buffer's own head, which is its fill-proportional surface or its connectors, whichever is
-the higher. The finding is the CREST that stops a line,
-named once with every consumer behind it, because that is where a pump would go. The rules,
-the exclusions and what a reading does not mean are in `docs/fluids_model.md`.
+the higher. The finding is the CREST that stops a line, named once with every consumer
+behind it, because that is where a pump would go. The rules, the exclusions and what a
+reading does not mean are in `docs/fluids_model.md`.
 """
 
 from __future__ import annotations

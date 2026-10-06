@@ -12,6 +12,7 @@ from math import ceil
 
 from ...core.gamedata.constants import STACK_SIZE
 from ...core.gamedata.model import GameData
+from ...core.saveio.records import instance_leaf
 
 __all__ = ["BUCKETS", "CRATE_KIND_TEXT", "SPENDABLE", "Holding", "Inventory"]
 
@@ -182,7 +183,7 @@ class Inventory:
         common = {
             "source": source,
             "cls": cls,
-            "instance": str(row.get("instance", "")).rsplit(".", 1)[-1],
+            "instance": instance_leaf(row.get("instance", "")),
             "pos": (float(pos[0]), float(pos[1]), float(pos[2])) if pos and len(pos) >= 3 else None,
             "slots": row.get("slots"),
         }
