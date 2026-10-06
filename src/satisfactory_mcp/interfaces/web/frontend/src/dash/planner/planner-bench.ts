@@ -30,7 +30,7 @@ function markInvalid(ctl: string, text: string, raw?: string): void {
 }
 
 function benchInput(ctl: string, value: string, type: string, commit: (raw: string) => void, placeholder?: string): HTMLInputElement {
-  var box = make("input", type === "number" ? "dash-number" : "dash-name plan-text");
+  const box = make("input", type === "number" ? "dash-number" : "dash-name plan-text");
   box.type = type;
   box.value = value;
   box.defaultValue = value;
@@ -55,9 +55,9 @@ function benchInput(ctl: string, value: string, type: string, commit: (raw: stri
 
 /** A labelled row of controls, with the conflict chips of the fields it edits above them. */
 function controlRow(parent: HTMLElement, fields: string[], label: string): HTMLElement {
-  var row = make("div", "plan-row");
+  const row = make("div", "plan-row");
   row.appendChild(make("span", "plan-label", label));
-  var body = make("div", "plan-controls");
+  const body = make("div", "plan-controls");
   row.appendChild(body);
   bench.conflictChips.forEach(function (conflict) {
     if (fields.indexOf(conflict.field) < 0) return;
@@ -70,14 +70,14 @@ function controlRow(parent: HTMLElement, fields: string[], label: string): HTMLE
 function showFieldErrors(parent: HTMLElement, ctls: string[]): void {
   ctls.forEach(function (ctl) {
     if (!fieldErrors[ctl]) return;
-    var line = make("p", "plan-invalid", fieldErrors[ctl]);
+    const line = make("p", "plan-invalid", fieldErrors[ctl]);
     line.setAttribute("role", "alert");
     parent.appendChild(line);
   });
 }
 
 function conflictLine(parent: HTMLElement, id: number, who: string, text: string): void {
-  var line = make("div", "plan-line");
+  const line = make("div", "plan-line");
   line.appendChild(chip("conflict", "bad"));
   line.appendChild(make("span", "", text));
   line.appendChild(
@@ -102,7 +102,7 @@ function conflictLine(parent: HTMLElement, id: number, who: string, text: string
 }
 
 function removeButton(title: string, ariaLabel: string, ops: Op[], ctl?: string): HTMLButtonElement {
-  var x = make("button", "plan-chip-x", "×");
+  const x = make("button", "plan-chip-x", "×");
   x.type = "button";
   if (ctl) x.setAttribute("data-ctl", ctl);
   x.title = title;
@@ -114,7 +114,7 @@ function removeButton(title: string, ariaLabel: string, ops: Op[], ctl?: string)
 }
 
 function removableChip(parent: HTMLElement, text: string, ops: Op[], ctl?: string): void {
-  var tag = make("span", "plan-chip", text);
+  const tag = make("span", "plan-chip", text);
   tag.appendChild(removeButton("remove", "remove " + text, ops, ctl));
   parent.appendChild(tag);
 }
@@ -126,13 +126,13 @@ function memberChips(parent: HTMLElement, field: string, members: unknown[], wor
 }
 
 function addInput(parent: HTMLElement, ctl: string, placeholder: string, ops: (text: string) => Op[] | null, items?: boolean): void {
-  var box = benchInput(
+  const box = benchInput(
     ctl,
     rejectedRaw[ctl] || "",
     "text",
     function (raw) {
       if (!raw) return;
-      var made = ops(raw);
+      const made = ops(raw);
       if (made) applyOps(made);
     },
     placeholder
@@ -147,25 +147,25 @@ function addInput(parent: HTMLElement, ctl: string, placeholder: string, ops: (t
 /** A typed number: null for blank, NaN for text that is not one. */
 function parseOptionalNumber(raw: string): number | null {
   if (raw === "") return null;
-  var n = Number(raw);
+  const n = Number(raw);
   return isFinite(n) ? n : NaN;
 }
 
 /** The item `raw` names, "MW" for power, or null after marking `ctl` invalid. */
 function resolveItem(ctl: string, raw: string): string | null {
   if (POWER_ITEM_PATTERN.test(raw)) return "MW";
-  var hit = knownItem(raw);
+  const hit = knownItem(raw);
   if (!hit) markInvalid(ctl, "no item is called “" + raw + "”; pick one from the list", raw);
   return hit;
 }
 
 function goalRow(parent: HTMLElement): void {
-  var args = bench.plan!.args;
-  var body = controlRow(parent, ["objective", "target_item"], "goal");
-  var goals = Object.keys(OBJECTIVES).map(function (key): [string, string] {
+  const args = bench.plan!.args;
+  const body = controlRow(parent, ["objective", "target_item"], "goal");
+  const goals = Object.keys(OBJECTIVES).map(function (key): [string, string] {
     return [key, OBJECTIVES[key]!];
   });
-  var pick = selectBox(
+  const pick = selectBox(
     goals,
     args.objective,
     function (value) {
@@ -176,12 +176,12 @@ function goalRow(parent: HTMLElement): void {
   pick.setAttribute("data-ctl", "objective");
   body.appendChild(pick);
   if (args.objective === "max_item") {
-    var target = benchInput(
+    const target = benchInput(
       "target-item",
       args.target_item || "",
       "text",
       function (raw) {
-        var hit = raw ? resolveItem("target-item", raw) : "";
+        const hit = raw ? resolveItem("target-item", raw) : "";
         if (hit !== null) applyOps([{ op: "set", field: "target_item", value: hit || null }]);
       },
       "item to maximise"
@@ -194,16 +194,16 @@ function goalRow(parent: HTMLElement): void {
 }
 
 function exportRow(parent: HTMLElement, id: string, rate: number | null): void {
-  var line = make("div", "plan-export");
-  var label = displayName(id);
+  const line = make("div", "plan-export");
+  const label = displayName(id);
   line.appendChild(make("span", "plan-export-name", label));
-  var ctl = "rate:" + id;
-  var box = benchInput(
+  const ctl = "rate:" + id;
+  const box = benchInput(
     ctl,
     rate === null ? "" : String(rate),
     "number",
     function (raw) {
-      var n = parseOptionalNumber(raw);
+      const n = parseOptionalNumber(raw);
       if (n === null) {
         if (rate !== null) applyOps([{ op: "del", field: "export_minimums", item: id }]);
       } else if (!(n > 0)) {
@@ -217,7 +217,7 @@ function exportRow(parent: HTMLElement, id: string, rate: number | null): void {
   box.setAttribute("aria-label", "minimum " + label + " per minute");
   line.appendChild(box);
   line.appendChild(make("span", "dash-muted", "/min"));
-  var ops: Op[] = [];
+  const ops: Op[] = [];
   if (bench.plan!.args.exports.indexOf(id) >= 0) ops.push({ op: "remove", field: "exports", member: id });
   if (rate !== null) ops.push({ op: "del", field: "export_minimums", item: id });
   line.appendChild(removeButton("stop exporting " + label, "remove export " + label, ops));
@@ -226,10 +226,10 @@ function exportRow(parent: HTMLElement, id: string, rate: number | null): void {
 }
 
 function exportsRow(parent: HTMLElement): void {
-  var args = bench.plan!.args;
-  var body = controlRow(parent, ["exports", "export_minimums"], "exports");
+  const args = bench.plan!.args;
+  const body = controlRow(parent, ["exports", "export_minimums"], "exports");
   body.classList.add("plan-stack");
-  var ids = args.exports.slice();
+  const ids = args.exports.slice();
   Object.keys(args.export_minimums).forEach(function (id) {
     if (ids.indexOf(id) < 0) ids.push(id);
   });
@@ -237,11 +237,11 @@ function exportsRow(parent: HTMLElement): void {
     if (id === "MW" && !(id in args.export_minimums)) return;
     exportRow(body, id, id in args.export_minimums ? args.export_minimums[id]! : null);
   });
-  var tail = make("div", "plan-controls");
+  const tail = make("div", "plan-controls");
   if (!args.exports.length) tail.appendChild(make("span", "dash-muted", "power only (the default)"));
   else {
-    var power = args.exports.indexOf("MW") >= 0;
-    var toggle = toggleButton(
+    const power = args.exports.indexOf("MW") >= 0;
+    const toggle = toggleButton(
       "export MW",
       power,
       function () {
@@ -256,7 +256,7 @@ function exportsRow(parent: HTMLElement): void {
     "exports-add",
     "+ export an item",
     function (text) {
-      var hit = resolveItem("exports-add", text);
+      const hit = resolveItem("exports-add", text);
       return hit ? [{ op: "add", field: "exports", member: hit }] : null;
     },
     true
@@ -266,13 +266,13 @@ function exportsRow(parent: HTMLElement): void {
 }
 
 function sourcesRow(parent: HTMLElement): void {
-  var args = bench.plan!.args;
-  var body = controlRow(parent, ["sources"], "from");
+  const args = bench.plan!.args;
+  const body = controlRow(parent, ["sources"], "from");
   if (!args.sources.length) body.appendChild(make("span", "dash-muted", "the whole map"));
-  var groups: Record<string, string[]> = {};
-  var order: string[] = [];
+  const groups: Record<string, string[]> = {};
+  const order: string[] = [];
   args.sources.forEach(function (member) {
-    var resource = member.indexOf("node:") === 0 && displayName(member) !== member ? displayName(member) : "";
+    const resource = member.indexOf("node:") === 0 && displayName(member) !== member ? displayName(member) : "";
     if (!resource) {
       removableChip(body, member, [{ op: "remove", field: "sources", member: member }]);
       return;
@@ -281,7 +281,7 @@ function sourcesRow(parent: HTMLElement): void {
     (groups[resource] = groups[resource] || []).push(member);
   });
   order.forEach(function (resource) {
-    var members = groups[resource]!;
+    const members = groups[resource]!;
     removableChip(
       body,
       counted(members.length, resource + " node"),
@@ -296,9 +296,9 @@ function sourcesRow(parent: HTMLElement): void {
 }
 
 function recipesRow(parent: HTMLElement): void {
-  var args = bench.plan!.args;
-  var body = controlRow(parent, ["required", "banned"], "recipes");
-  var recipeWords = function (member: unknown): string {
+  const args = bench.plan!.args;
+  const body = controlRow(parent, ["required", "banned"], "recipes");
+  const recipeWords = function (member: unknown): string {
     return displayName(String(member));
   };
   body.appendChild(make("span", "plan-sub", "required"));
@@ -311,15 +311,15 @@ function recipesRow(parent: HTMLElement): void {
 }
 
 function clockToggles(body: HTMLElement): void {
-  var chosen = bench.plan!.args.extractor_clocks;
-  var offered = chosen.length ? chosen : [1];
+  const chosen = bench.plan!.args.extractor_clocks;
+  const offered = chosen.length ? chosen : [1];
   CLOCKS.forEach(function (clock) {
-    var picked = offered.indexOf(clock) >= 0;
-    var only = picked && offered.length === 1;
-    var ops: Op[] = [];
+    const picked = offered.indexOf(clock) >= 0;
+    const only = picked && offered.length === 1;
+    const ops: Op[] = [];
     if (!chosen.length && !picked) ops.push({ op: "add", field: "extractor_clocks", member: 1 });
     ops.push({ op: picked ? "remove" : "add", field: "extractor_clocks", member: clock });
-    var toggle = toggleButton(
+    const toggle = toggleButton(
       clock * 100 + "%",
       picked,
       function () {
@@ -335,15 +335,15 @@ function clockToggles(body: HTMLElement): void {
 }
 
 function supplyRow(parent: HTMLElement): void {
-  var args = bench.plan!.args;
-  var body = controlRow(parent, ["water_extractors", "sloops", "extractor_clocks"], "supply");
+  const args = bench.plan!.args;
+  const body = controlRow(parent, ["water_extractors", "sloops", "extractor_clocks"], "supply");
   body.appendChild(make("span", "plan-sub", "water extractors"));
-  var water = benchInput(
+  const water = benchInput(
     "water",
     args.water_extractors === null ? "" : String(args.water_extractors),
     "number",
     function (raw) {
-      var n = parseOptionalNumber(raw);
+      const n = parseOptionalNumber(raw);
       if (n !== null && !(Number.isInteger(n) && n >= 0)) {
         markInvalid("water", "water extractors is a whole number, or blank for auto");
         return;
@@ -355,8 +355,8 @@ function supplyRow(parent: HTMLElement): void {
   water.setAttribute("aria-label", "water extractors");
   body.appendChild(water);
   body.appendChild(make("span", "plan-sub", "somersloops"));
-  var sloops = benchInput("sloops", String(args.sloops), "number", function (raw) {
-    var n = parseOptionalNumber(raw);
+  const sloops = benchInput("sloops", String(args.sloops), "number", function (raw) {
+    let n = parseOptionalNumber(raw);
     if (n === null) n = 0;
     if (!(Number.isInteger(n) && n >= 0)) {
       markInvalid("sloops", "somersloops is a whole number");
@@ -372,9 +372,9 @@ function supplyRow(parent: HTMLElement): void {
 }
 
 function notesRow(parent: HTMLElement): void {
-  var body = controlRow(parent, ["notes"], "notes");
-  var box = make("textarea", "dash-name plan-notes");
-  var value = bench.plan!.notes;
+  const body = controlRow(parent, ["notes"], "notes");
+  const box = make("textarea", "dash-name plan-notes");
+  const value = bench.plan!.notes;
   box.value = value;
   box.defaultValue = value;
   box.rows = 3;
@@ -402,7 +402,7 @@ export function renderBench(root: HTMLElement, select: (selection: FocusSelectio
     return;
   }
   if (bench.error) {
-    var key = bench.key;
+    const key = bench.key;
     error(root, "this plan", bench.error, function () {
       openPlan(key);
     });
@@ -429,7 +429,7 @@ export function renderBench(root: HTMLElement, select: (selection: FocusSelectio
     renderResult(root, select, close);
     return;
   }
-  var controls = make("fieldset", "dash-card plan-bench");
+  const controls = make("fieldset", "dash-card plan-bench");
   controls.disabled = bench.gone;
   goalRow(controls);
   exportsRow(controls);

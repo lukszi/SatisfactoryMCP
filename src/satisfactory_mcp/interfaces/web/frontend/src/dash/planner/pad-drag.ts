@@ -83,22 +83,22 @@ export function yawStep(): number {
 
 /** The next lattice angle from `yaw` in direction `dir` (±1), so an off-lattice pad lands on it. */
 function turned(yaw: number, dir: number): number {
-  var step = yawStep();
-  var k = yaw / step;
+  const step = yawStep();
+  const k = yaw / step;
   return normaliseYaw((dir > 0 ? Math.floor(k + 1e-6) + 1 : Math.ceil(k - 1e-6) - 1) * step);
 }
 
 /** The `site_snap` rule; `siting.snap` on the server is the same. */
 export function snap(p: Pad, free: boolean): Pad {
   if (free) return withPlace(p, Math.round(p.x_m * 100) / 100, Math.round(p.y_m * 100) / 100, normaliseYaw(Math.round(p.yaw_deg * 10) / 10));
-  var step = yawStep();
-  var yaw = normaliseYaw(Math.round(p.yaw_deg / step) * step);
-  var x: number;
-  var y: number;
+  const step = yawStep();
+  const yaw = normaliseYaw(Math.round(p.yaw_deg / step) * step);
+  let x: number;
+  let y: number;
   if (snapMode() === "grid8") {
-    var quarter = yaw % 180 === 90;
-    var across = quarter ? p.depth_m : p.width_m;
-    var along = quarter ? p.width_m : p.depth_m;
+    const quarter = yaw % 180 === 90;
+    const across = quarter ? p.depth_m : p.width_m;
+    const along = quarter ? p.width_m : p.depth_m;
     x = Math.round((p.x_m - across / 2) / GRID_M) * GRID_M + across / 2;
     y = Math.round((p.y_m - along / 2) / GRID_M) * GRID_M + along / 2;
   } else {
@@ -115,15 +115,15 @@ export function padCorners(p: Pad): L.LatLngTuple[] {
 /** Whether any corner leaves the in-game map square: such a drop is refused. */
 export function outsideMap(p: Pad): boolean {
   return padCorners(p).some(function (corner) {
-    var x = corner[1];
-    var y = -corner[0];
+    const x = corner[1];
+    const y = -corner[0];
     return x < MAP_SQUARE_M.x_min || x > MAP_SQUARE_M.x_max || y < MAP_SQUARE_M.y_min || y > MAP_SQUARE_M.y_max;
   });
 }
 
 function turnAt(p: Pad): L.LatLngTuple {
-  var angle = (p.yaw_deg * Math.PI) / 180;
-  var reach = (TURN_REACH * p.depth_m) / 2;
+  const angle = (p.yaw_deg * Math.PI) / 180;
+  const reach = (TURN_REACH * p.depth_m) / 2;
   return latLngOf({ x_m: p.x_m - Math.sin(angle) * reach, y_m: p.y_m + Math.cos(angle) * reach });
 }
 
@@ -133,7 +133,7 @@ function gameXY(at: L.LatLng): Spot {
 
 function drawLines(p: Pad): void {
   lines.forEach(function (line, i) {
-    var spot = spots[i]!;
+    const spot = spots[i]!;
     line.setLatLngs([latLngOf(p), latLngOf(spot)]);
     line.setTooltipContent(Math.round(Math.hypot(spot.x_m - p.x_m, spot.y_m - p.y_m)).toLocaleString("en-GB") + " m, distance, not a route");
   });
@@ -153,7 +153,7 @@ function step(p: Pad): void {
 }
 
 function end(how: GestureKind): void {
-  var p = pad;
+  const p = pad;
   gesture = "";
   if (!p || !hooks) return;
   draw(p, true);
@@ -178,10 +178,10 @@ function icon(kind: string, label: string): L.DivIcon {
 
 function onHandleKeydown(event: KeyboardEvent): void {
   if (!pad || !hooks) return;
-  var dx = 0;
-  var dy = 0;
-  var turn = 0;
-  var by = event.shiftKey ? FINE_M : NUDGE_M;
+  let dx = 0;
+  let dy = 0;
+  let turn = 0;
+  const by = event.shiftKey ? FINE_M : NUDGE_M;
   if (event.key === "ArrowLeft") dx = -by;
   else if (event.key === "ArrowRight") dx = by;
   else if (event.key === "ArrowUp") dy = -by;
@@ -207,8 +207,8 @@ function onHandleKeydown(event: KeyboardEvent): void {
     gesture = "keys";
     padBeforeGesture = pad;
   }
-  var yaw = !turn ? pad.yaw_deg : event.shiftKey ? pad.yaw_deg + turn * YAW_STEP : turned(pad.yaw_deg, turn);
-  var next = snap(withPlace(pad, pad.x_m + dx, pad.y_m + dy, yaw), event.shiftKey);
+  const yaw = !turn ? pad.yaw_deg : event.shiftKey ? pad.yaw_deg + turn * YAW_STEP : turned(pad.yaw_deg, turn);
+  const next = snap(withPlace(pad, pad.x_m + dx, pad.y_m + dy, yaw), event.shiftKey);
   draw(next, true);
   hooks.step(next);
   clearTimeout(burstTimer);
@@ -232,7 +232,7 @@ function handles(p: Pad, name: string): void {
   });
   mover.on("drag", function (e) {
     if (aborted || !pad) return;
-    var at = gameXY((e as L.LeafletMouseEvent).latlng);
+    const at = gameXY((e as L.LeafletMouseEvent).latlng);
     step(snap(withPlace(pad, at.x_m, at.y_m, pad.yaw_deg), shiftHeld(e)));
     if (turner) turner.setLatLng(turnAt(pad!));
   });
@@ -244,8 +244,8 @@ function handles(p: Pad, name: string): void {
   });
   turner.on("drag", function (e) {
     if (aborted || !pad) return;
-    var at = gameXY((e as L.LeafletMouseEvent).latlng);
-    var yaw = (Math.atan2(-(at.x_m - pad.x_m), at.y_m - pad.y_m) * 180) / Math.PI;
+    const at = gameXY((e as L.LeafletMouseEvent).latlng);
+    const yaw = (Math.atan2(-(at.x_m - pad.x_m), at.y_m - pad.y_m) * 180) / Math.PI;
     step(snap(withPlace(pad, pad.x_m, pad.y_m, yaw), shiftHeld(e)));
   });
   turner.on("dragend", function () {
@@ -253,7 +253,7 @@ function handles(p: Pad, name: string): void {
   });
   mover.addTo(layer);
   turner.addTo(layer);
-  var handle = mover.getElement();
+  const handle = mover.getElement();
   if (handle) {
     handle.setAttribute("aria-label", "pad of “" + name + "”, move with arrow keys, turn with [ and ]");
     handle.setAttribute("data-ctl", "site-move");
@@ -311,14 +311,14 @@ export function stopPadEdit(): void {
 /* ---------------------------------------------------------------- crosshair */
 
 function visibleCentre(): L.Point {
-  var box = map.getContainer().getBoundingClientRect();
-  var left = box.left;
-  var right = box.right;
-  var top = box.top;
-  var bottom = box.bottom;
-  var dash = document.getElementById("dash");
+  const box = map.getContainer().getBoundingClientRect();
+  const left = box.left;
+  let right = box.right;
+  const top = box.top;
+  let bottom = box.bottom;
+  const dash = document.getElementById("dash");
   if (dash && !dash.hidden) {
-    var panel = dash.getBoundingClientRect();
+    const panel = dash.getBoundingClientRect();
     if (panel.left > box.left + 4 && panel.left < box.right) right = panel.left;
     else if (panel.top > box.top + 4 && panel.top < box.bottom) bottom = panel.top;
   }
@@ -327,13 +327,13 @@ function visibleCentre(): L.Point {
 
 function follow(): void {
   if (gesture !== "cross" || !pad) return;
-  var at = gameXY(map.containerPointToLatLng(visibleCentre()));
+  const at = gameXY(map.containerPointToLatLng(visibleCentre()));
   step(snap(withPlace(pad, at.x_m, at.y_m, pad.yaw_deg), false));
 }
 
 function placeCross(): void {
   if (!cross) return;
-  var centre = visibleCentre();
+  const centre = visibleCentre();
   cross.style.left = centre.x + "px";
   cross.style.top = centre.y + "px";
 }
@@ -350,8 +350,8 @@ export function startCrosshair(): void {
   map.getContainer().appendChild(cross);
   placeCross();
   map.panTo(latLngOf(pad), { animate: false });
-  var centre = visibleCentre();
-  var here = map.latLngToContainerPoint(latLngOf(pad));
+  const centre = visibleCentre();
+  const here = map.latLngToContainerPoint(latLngOf(pad));
   map.panBy(here.subtract(centre), { animate: false });
   map.on("move", follow);
   window.addEventListener("resize", placeCross);

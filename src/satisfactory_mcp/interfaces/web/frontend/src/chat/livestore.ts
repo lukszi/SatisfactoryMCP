@@ -27,13 +27,13 @@ export interface LiveStore<T extends ApiError, R extends Numbered> {
 /** `conflictRowField` names the row a 409 answers with; `acceptOverride` takes each fetched
  *  list instead of `accept`, for a store that draws before it accepts. */
 export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath, rows: (data: T) => R[], conflictRowField: string, acceptOverride?: (data: T) => void): LiveStore<T, R> {
-  var data: T | null = null;
-  var error = "";
-  var world = "";
-  var listeners = createListeners();
-  var inflight = false;
-  var refetchQueued = false;
-  var deletesInFlight: Record<number, boolean> = {};
+  let data: T | null = null;
+  let error = "";
+  let world = "";
+  const listeners = createListeners();
+  let inflight = false;
+  let refetchQueued = false;
+  const deletesInFlight: Record<number, boolean> = {};
 
   function notify(): void {
     listeners.emit();
@@ -52,16 +52,16 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
       return;
     }
     inflight = true;
-    var epoch = state.epoch;
-    var asked = state.world;
-    var done = function () {
+    const epoch = state.epoch;
+    const asked = state.world;
+    const done = function () {
       inflight = false;
       if (refetchQueued) {
         refetchQueued = false;
         refetch();
       }
     };
-    var current = function () {
+    const current = function () {
       return epoch === state.epoch && asked === state.world && !refetchQueued;
     };
     get<T>(path)
@@ -79,8 +79,8 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
 
   function replace(row: R): void {
     if (!data || world !== state.world) return;
-    var list = rows(data);
-    for (var i = 0; i < list.length; i++) if (list[i]!.n === row.n) list[i] = row;
+    const list = rows(data);
+    for (let i = 0; i < list.length; i++) if (list[i]!.n === row.n) list[i] = row;
     notify();
   }
 
@@ -97,9 +97,9 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
     },
     replace: replace,
     recoverFromConflict: function (reason) {
-      var err = reason as StatusError;
-      var body = err && (err.body as Record<string, unknown> | undefined);
-      var row = err && err.status === 409 && body ? (body[conflictRowField] as R | undefined) : undefined;
+      const err = reason as StatusError;
+      const body = err && (err.body as Record<string, unknown> | undefined);
+      const row = err && err.status === 409 && body ? (body[conflictRowField] as R | undefined) : undefined;
       if (row) {
         replace(row);
         return row;
@@ -110,7 +110,7 @@ export function liveStore<T extends ApiError, R extends Numbered>(path: ApiPath,
     deleteOnce: function (n, run) {
       if (deletesInFlight[n]) return;
       deletesInFlight[n] = true;
-      var done = function () {
+      const done = function () {
         delete deletesInFlight[n];
         notify();
       };

@@ -58,7 +58,7 @@ function notifyAdviceListeners(): void {
 
 function remembered(): Record<string, boolean> | null {
   try {
-    var raw = localStorage.getItem(SEEN_KEY);
+    const raw = localStorage.getItem(SEEN_KEY);
     return raw ? (JSON.parse(raw) as Record<string, boolean>) : null;
   } catch (ignored) {
     return null;
@@ -66,7 +66,7 @@ function remembered(): Record<string, boolean> | null {
 }
 
 function remember(ids: string[]): void {
-  var all: Record<string, boolean> = {};
+  const all: Record<string, boolean> = {};
   ids.forEach(function (id) {
     all[id] = true;
   });
@@ -80,7 +80,7 @@ function remember(ids: string[]): void {
 /** The active advisories not shown before: against the previous reply in this world, else
  *  against the ids this browser stored on its last visit. */
 function newSinceLastVisit(previous: AdviceResponse | null, body: AdviceResponse, seen: Record<string, boolean> | null): string[] {
-  var fresh = body.active.filter(function (advisory) {
+  const fresh = body.active.filter(function (advisory) {
     if (previous) {
       return !previous.active.concat(previous.hidden).some(function (known) {
         return known.id === advisory.id;
@@ -94,11 +94,11 @@ function newSinceLastVisit(previous: AdviceResponse | null, body: AdviceResponse
 }
 
 function adoptAdvice(body: AdviceResponse): void {
-  var ids = body.active.concat(body.hidden).map(function (advisory) {
+  const ids = body.active.concat(body.hidden).map(function (advisory) {
     return advisory.id;
   });
-  var seen = remembered();
-  var sameWorld = !!view.data && view.world === state.world;
+  const seen = remembered();
+  const sameWorld = !!view.data && view.world === state.world;
   if (!sameWorld) view.newIds = {};
   newSinceLastVisit(sameWorld ? view.data : null, body, seen).forEach(function (id) {
     view.newIds[id] = true;
@@ -111,7 +111,7 @@ function adoptAdvice(body: AdviceResponse): void {
 }
 
 export function refetchAdvice(): void {
-  var ticket = latest("advice");
+  const ticket = latest("advice");
   get<AdviceResponse>(`${PATH}?${spoilerQuery()}`)
     .then(function (body) {
       if (ticket.fresh()) adoptAdvice(body);
@@ -142,7 +142,7 @@ onSetting(refetchAdvice);
 
 var askBarWasOurs = false;
 onAsks(function () {
-  var ours = askBarOwnerId().indexOf(ASK_PREFIX) === 0;
+  const ours = askBarOwnerId().indexOf(ASK_PREFIX) === 0;
   if (ours || askBarWasOurs) notifyAdviceListeners();
   askBarWasOurs = ours;
 });
@@ -150,9 +150,9 @@ onAsks(function () {
 /* -------------------------------------------------------------------- writes */
 
 function reportWriteFailure(reason: unknown, what: string): void {
-  var err = reason as StatusError;
+  const err = reason as StatusError;
   if (err && err.status === 409) {
-    var body = err.body as AdviceStaleResponse | undefined;
+    const body = err.body as AdviceStaleResponse | undefined;
     fail((body && body.error) || "that advisory changed since you read it");
   } else fail(what + ": " + friendlyError(reason));
   refetchAdvice();
@@ -167,7 +167,7 @@ function snoozeOrDismiss(advisory: AdviceRow, hours: number | null): void {
   if (view.writingKeys[advisory.key]) return;
   view.writingKeys[advisory.key] = true;
   view.openMenuKey = "";
-  var body = hours === null ? { key: advisory.key, mode: "dismiss", rev: advisory.rev } : { key: advisory.key, mode: "snooze", hours: hours, rev: advisory.rev };
+  const body = hours === null ? { key: advisory.key, mode: "dismiss", rev: advisory.rev } : { key: advisory.key, mode: "snooze", hours: hours, rev: advisory.rev };
   notifyAdviceListeners();
   send<AdviceRow & ApiError>("POST", HIDE, body, undefined, spoilerQuery())
     .then(function () {
@@ -204,40 +204,40 @@ function restore(advisory: AdviceRow): void {
 /* ---------------------------------------------------------------- the menu */
 
 function closeMenu(focusBack: boolean): void {
-  var key = view.openMenuKey;
+  const key = view.openMenuKey;
   if (!key) return;
   view.openMenuKey = "";
   notifyAdviceListeners();
   if (!focusBack) return;
-  var opener = document.querySelector<HTMLElement>('[data-ctl="adv-more:' + CSS.escape(key) + '"]');
+  const opener = document.querySelector<HTMLElement>('[data-ctl="adv-more:' + CSS.escape(key) + '"]');
   if (opener) opener.focus({ preventScroll: true });
 }
 
 document.addEventListener("click", function (event) {
   if (!view.openMenuKey) return;
-  var target = event.target as HTMLElement | null;
+  const target = event.target as HTMLElement | null;
   if (target && target.closest && target.closest(".advice-menu, .advice-split")) return;
   closeMenu(false);
 });
 
 function handleMenuKey(menu: HTMLElement, event: KeyboardEvent): void {
-  var items = Array.prototype.slice.call(menu.querySelectorAll("[role=menuitem]")) as HTMLElement[];
-  var at = items.indexOf(document.activeElement as HTMLElement);
+  const items = Array.prototype.slice.call(menu.querySelectorAll("[role=menuitem]")) as HTMLElement[];
+  const at = items.indexOf(document.activeElement as HTMLElement);
   if (event.key === "Escape") {
     event.preventDefault();
     event.stopPropagation();
     closeMenu(true);
   } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
-    var step = event.key === "ArrowDown" ? 1 : -1;
-    var next = items[(at + step + items.length) % items.length];
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    const next = items[(at + step + items.length) % items.length];
     if (next) next.focus();
   } else if (event.key === "Tab") closeMenu(false);
 }
 
 function snoozeSplit(advisory: AdviceRow): HTMLElement {
-  var box = make("span", "advice-split");
-  var writing = !!view.writingKeys[advisory.key];
+  const box = make("span", "advice-split");
+  const writing = !!view.writingKeys[advisory.key];
   box.appendChild(
     button(
       "snooze 1 h",
@@ -247,8 +247,8 @@ function snoozeSplit(advisory: AdviceRow): HTMLElement {
       { title: "hide it for 1 h of play time; it comes back sooner if it gets worse", label: "snooze " + ADVICE_WORD[advisory.kind] + " for 1 h of play", disabled: writing }
     )
   );
-  var open = view.openMenuKey === advisory.key;
-  var more = button(
+  const open = view.openMenuKey === advisory.key;
+  const more = button(
     "▾",
     function () {
       view.openMenuKey = open ? "" : advisory.key;
@@ -263,11 +263,11 @@ function snoozeSplit(advisory: AdviceRow): HTMLElement {
   more.setAttribute("data-ctl", "adv-more:" + advisory.key);
   box.appendChild(more);
   if (!open) return box;
-  var menu = make("div", "advice-menu");
+  const menu = make("div", "advice-menu");
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-label", "hide for");
   SNOOZES.forEach(function (snooze) {
-    var item = make("button", "advice-menu-item", snooze[1]);
+    const item = make("button", "advice-menu-item", snooze[1]);
     item.type = "button";
     item.setAttribute("role", "menuitem");
     item.onclick = function (event) {
@@ -286,10 +286,10 @@ function snoozeSplit(advisory: AdviceRow): HTMLElement {
 /* ----------------------------------------------------------------- the rows */
 
 function mapAction(advisory: AdviceRow): HTMLElement | null {
-  var spots = advisory.machines;
+  const spots = advisory.machines;
   if (!spots.length) return null;
-  var layers = advisory.reveal;
-  var one = spots.length === 1 ? spots[0]! : null;
+  const layers = advisory.reveal;
+  const one = spots.length === 1 ? spots[0]! : null;
   return button(
     "map",
     function () {
@@ -298,9 +298,9 @@ function mapAction(advisory: AdviceRow): HTMLElement | null {
           showMachine(one.instance, one.name, one.x_m, one.y_m, { layers: layers });
           return;
         }
-        var bbox = advisory.bbox_m;
+        const bbox = advisory.bbox_m;
         if (!bbox) return;
-        var pad = 30;
+        const pad = 30;
         showBox([bbox[0]! - pad, bbox[1]! - pad, bbox[2]! + pad, bbox[3]! + pad], { layers: layers });
       });
     },
@@ -309,12 +309,12 @@ function mapAction(advisory: AdviceRow): HTMLElement | null {
 }
 
 function actions(advisory: AdviceRow): HTMLElement {
-  var box = make("span", "dash-acts advice-acts");
-  var map = mapAction(advisory);
+  const box = make("span", "dash-acts advice-acts");
+  const map = mapAction(advisory);
   if (map) box.appendChild(map);
-  var seed = advisory.seed;
+  const seed = advisory.seed;
   if (seed && TRACED.indexOf(advisory.kind) >= 0) {
-    var from = seed;
+    const from = seed;
     box.appendChild(
       button(
         "trace",
@@ -347,19 +347,19 @@ function actions(advisory: AdviceRow): HTMLElement {
 }
 
 function hiddenWords(advisory: AdviceRow): string {
-  var who = advisory.by === "chat" ? " by chat" : "";
-  var data = view.data;
+  const who = advisory.by === "chat" ? " by chat" : "";
+  const data = view.data;
   if (advisory.state === "snoozed" && advisory.until_play_s !== null && data) {
-    var left = Math.max(0, advisory.until_play_s - data.play_s) / 3600;
+    const left = Math.max(0, advisory.until_play_s - data.play_s) / 3600;
     return "snoozed" + who + ", " + playTimeText(left) + " of play left";
   }
   return "hidden" + who + " until it gets worse";
 }
 
 function rowView(advisory: AdviceRow): HTMLElement {
-  var li = make("li", "advice-row" + (advisory.state === "active" ? "" : " advice-hidden"));
-  var open = !!view.expandedKeys[advisory.key];
-  var main = make("button", "advice-main");
+  const li = make("li", "advice-row" + (advisory.state === "active" ? "" : " advice-hidden"));
+  const open = !!view.expandedKeys[advisory.key];
+  const main = make("button", "advice-main");
   main.type = "button";
   main.setAttribute("aria-expanded", String(open));
   main.setAttribute("data-ctl", "adv:" + advisory.key);
@@ -375,8 +375,8 @@ function rowView(advisory: AdviceRow): HTMLElement {
   li.appendChild(main);
   li.appendChild(actions(advisory));
   if (open) {
-    var lines = make("ul", "advice-lines");
-    var facts = advisory.lines.slice();
+    const lines = make("ul", "advice-lines");
+    const facts = advisory.lines.slice();
     if (advisory.back) facts.unshift("back: worse than when it was hidden");
     if (advisory.state !== "active") facts.unshift(hiddenWords(advisory));
     if (!facts.length) facts.push("no more to it than the line above");
@@ -391,9 +391,9 @@ function rowView(advisory: AdviceRow): HTMLElement {
 /** At most VISIBLE rows and PER_KIND of each kind, unless every row was asked for. */
 function shownRows(rows: AdviceRow[]): { shown: AdviceRow[]; rest: AdviceRow[] } {
   if (view.showAllActive) return { shown: rows, rest: [] };
-  var perKind: Record<string, number> = {};
-  var shown: AdviceRow[] = [];
-  var rest: AdviceRow[] = [];
+  const perKind: Record<string, number> = {};
+  const shown: AdviceRow[] = [];
+  const rest: AdviceRow[] = [];
   rows.forEach(function (advisory) {
     perKind[advisory.kind] = (perKind[advisory.kind] || 0) + 1;
     if (perKind[advisory.kind]! <= PER_KIND && shown.length < VISIBLE) shown.push(advisory);
@@ -403,8 +403,8 @@ function shownRows(rows: AdviceRow[]): { shown: AdviceRow[]; rest: AdviceRow[] }
 }
 
 function moreWords(rest: AdviceRow[]): string {
-  var kinds: string[] = [];
-  var perKind: Record<string, number> = {};
+  const kinds: string[] = [];
+  const perKind: Record<string, number> = {};
   rest.forEach(function (advisory) {
     if (!perKind[advisory.kind]) kinds.push(advisory.kind);
     perKind[advisory.kind] = (perKind[advisory.kind] || 0) + 1;
@@ -417,7 +417,7 @@ function moreWords(rest: AdviceRow[]): string {
 }
 
 function textLink(text: string, action: () => void, expanded: boolean): HTMLButtonElement {
-  var toggle = make("button", "advice-link", text);
+  const toggle = make("button", "advice-link", text);
   toggle.type = "button";
   toggle.setAttribute("aria-expanded", String(expanded));
   toggle.onclick = function (event) {
@@ -436,13 +436,13 @@ function renderActiveAdvice(card: HTMLElement, active: AdviceRow[], filter?: Adv
     empty(card, filter ? "nothing worth a look in this factory" : "nothing worth a look in this save");
     return;
   }
-  var cut = shownRows(active);
-  var list = make("ul", "advice-list");
+  const cut = shownRows(active);
+  const list = make("ul", "advice-list");
   cut.shown.forEach(function (advisory) {
     list.appendChild(rowView(advisory));
   });
   card.appendChild(list);
-  var line = make("p", "advice-foot");
+  const line = make("p", "advice-foot");
   if (cut.rest.length) {
     line.appendChild(
       textLink("+" + cut.rest.length + " more (" + moreWords(cut.rest) + ")", function () {
@@ -463,7 +463,7 @@ function renderActiveAdvice(card: HTMLElement, active: AdviceRow[], filter?: Adv
 
 function renderHiddenAdvice(card: HTMLElement, hidden: AdviceRow[]): void {
   if (!hidden.length) return;
-  var foot = make("p", "advice-foot");
+  const foot = make("p", "advice-foot");
   foot.appendChild(
     textLink(hidden.length + " hidden · " + (view.showHidden ? "close" : "show"), function () {
       view.showHidden = !view.showHidden;
@@ -472,7 +472,7 @@ function renderHiddenAdvice(card: HTMLElement, hidden: AdviceRow[]): void {
   );
   card.appendChild(foot);
   if (!view.showHidden) return;
-  var list = make("ul", "advice-list");
+  const list = make("ul", "advice-list");
   hidden.forEach(function (advisory) {
     list.appendChild(rowView(advisory));
   });
@@ -481,30 +481,30 @@ function renderHiddenAdvice(card: HTMLElement, hidden: AdviceRow[]): void {
 
 function restoreAdviceFocus(card: HTMLElement): void {
   if (!view.openMenuKey || !view.focusMenuOnRender) return;
-  var first = card.querySelector<HTMLElement>(".advice-menu [role=menuitem]");
+  const first = card.querySelector<HTMLElement>(".advice-menu [role=menuitem]");
   if (!first) return;
   view.focusMenuOnRender = false;
   first.focus({ preventScroll: true });
 }
 
 export function adviceCard(parent: HTMLElement, filter?: AdviceFilter): void {
-  var card = make("section", "dash-card advice-card");
-  var bar = make("div", "dash-title");
+  const card = make("section", "dash-card advice-card");
+  const bar = make("div", "dash-title");
   bar.appendChild(make("h2", "dash-h", WORDS.worthALook));
   card.appendChild(bar);
   parent.appendChild(card);
   if (askBarOwnerId().indexOf(ASK_PREFIX) === 0) renderAskBar(card);
-  var data = view.world === state.world ? view.data : null;
+  const data = view.world === state.world ? view.data : null;
   if (!data) {
     if (view.loadError) error(card, "the advisories", view.loadError, refetchAdvice);
     else loading(card, "advisories");
     return;
   }
-  var inScope = function (advisory: AdviceRow): boolean {
+  const inScope = function (advisory: AdviceRow): boolean {
     return !filter || (advisory.subject_kind === "factory" && advisory.subject === filter.factory);
   };
-  var active = data.active.filter(inScope);
-  var hidden = data.hidden.filter(inScope);
+  const active = data.active.filter(inScope);
+  const hidden = data.hidden.filter(inScope);
   bar.appendChild(make("span", "dash-muted advice-count", active.length + " · " + hidden.length + " hidden"));
   renderActiveAdvice(card, active, filter);
   renderHiddenAdvice(card, hidden);

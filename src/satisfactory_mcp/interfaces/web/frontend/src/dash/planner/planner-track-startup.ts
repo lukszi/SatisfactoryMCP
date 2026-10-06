@@ -21,14 +21,14 @@ var FEEDERS_TITLE = "what the " + WORDS.stages + " stand on";
 
 /** The last four digits of an instance name, enough to tell two same-named extractors apart. */
 function instanceSuffix(instance: string): string {
-  var digits = /(\d+)$/.exec(instance);
+  const digits = /(\d+)$/.exec(instance);
   return digits ? digits[1]!.slice(-4) : instance.slice(-4);
 }
 
 function feederActions(feeder: Feeder): HTMLElement {
-  var acts = make("span", "dash-acts");
-  var x = feeder.x_m;
-  var y = feeder.y_m;
+  const acts = make("span", "dash-acts");
+  const x = feeder.x_m;
+  const y = feeder.y_m;
   if (x !== null && y !== null) {
     acts.appendChild(
       button(
@@ -62,29 +62,29 @@ function feederActions(feeder: Feeder): HTMLElement {
 }
 
 function feedersSection(card: HTMLElement): void {
-  var feeders = bench.track.feeders;
+  const feeders = bench.track.feeders;
   if (!feeders) {
     card.appendChild(button(FEEDERS_TITLE, loadFeeders, { title: "list the extractors that feed running generators today (takes about a second)" }));
     return;
   }
-  var sub = make("div", "track-feeders");
+  const sub = make("div", "track-feeders");
   sub.appendChild(make("h3", "dash-h", FEEDERS_TITLE));
   if (feeders.busy) loading(sub, FEEDERS_TITLE);
   else if (feeders.error) error(sub, FEEDERS_TITLE, feeders.error, loadFeeders);
   else if (feeders.data && !feeders.data.feeders.length) empty(sub, "no extractor feeds a running generator");
   else if (feeders.data) {
-    var twins: Record<string, number> = {};
+    const twins: Record<string, number> = {};
     feeders.data.feeders.forEach(function (feeder) {
-      var place = feeder.name + "|" + feeder.region;
+      const place = feeder.name + "|" + feeder.region;
       twins[place] = (twins[place] || 0) + 1;
     });
-    var columns: Column<Feeder>[] = [
+    const columns: Column<Feeder>[] = [
       {
         key: "name",
         label: "extractor",
         render: function (r) {
-          var cell = make("span", "", r.name);
-          var place = [r.region || "", (twins[r.name + "|" + r.region] || 0) > 1 ? "#" + instanceSuffix(r.instance) : ""].filter(Boolean).join(" · ");
+          const cell = make("span", "", r.name);
+          const place = [r.region || "", (twins[r.name + "|" + r.region] || 0) > 1 ? "#" + instanceSuffix(r.instance) : ""].filter(Boolean).join(" · ");
           if (place) cell.appendChild(make("span", "dash-sub", " " + place));
           return cell;
         },
@@ -106,9 +106,9 @@ function feedersSection(card: HTMLElement): void {
 }
 
 export function startupCard(parent: HTMLElement, d: TrackResponse): void {
-  var startup = d.startup;
-  var card = make("section", "dash-card");
-  var heading = make("h2", "dash-h", "startup order");
+  const startup = d.startup;
+  const card = make("section", "dash-card");
+  const heading = make("h2", "dash-h", "startup order");
   heading.tabIndex = -1;
   heading.setAttribute("data-ctl", STARTUP_CTL);
   card.appendChild(heading);

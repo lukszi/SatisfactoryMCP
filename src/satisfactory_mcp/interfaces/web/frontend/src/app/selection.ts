@@ -20,9 +20,9 @@ var STORE_KEY = "selection";
 
 function parse(text: string | null): Selection | null {
   try {
-    var s = JSON.parse(text || "null");
+    const s = JSON.parse(text || "null");
     if (!s || KINDS.indexOf(s.kind) < 0 || typeof s.key !== "string" || typeof s.label !== "string") return null;
-    var out: Selection = { kind: s.kind, key: s.key, label: s.label };
+    const out: Selection = { kind: s.kind, key: s.key, label: s.label };
     if (typeof s.x_m === "number" && typeof s.y_m === "number") {
       out.x_m = s.x_m;
       out.y_m = s.y_m;
@@ -79,7 +79,7 @@ export function machineLeaf(instance: string): string {
 }
 
 export function machineSelection(instance: string, name: string, x_m: number, y_m: number): Selection {
-  var leaf = machineLeaf(instance);
+  const leaf = machineLeaf(instance);
   return { kind: "machine", key: leaf, label: name, x_m: x_m, y_m: y_m, ref: "machine:" + leaf };
 }
 
@@ -103,6 +103,6 @@ export function onSelect(listener: () => void): void {
 
 window.addEventListener("storage", function (event) {
   if (event.key !== STORE_KEY && event.key !== null) return;
-  var next = event.key === null ? null : parse(event.newValue);
+  const next = event.key === null ? null : parse(event.newValue);
   if (!same(current, next)) settle(next);
 });

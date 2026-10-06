@@ -31,8 +31,8 @@ export function saveToken(): string {
 /* ------------------------------------------------------------------- solves */
 
 function solveAt(key: string, rev: number): Promise<SolveResponse> {
-  var id = key + ":" + rev;
-  var cached = solved[id];
+  const id = key + ":" + rev;
+  const cached = solved[id];
   if (cached) return Promise.resolve(cached);
   return send<SolveResponse>("POST", "/api/plan/solve", { key: key, rev: rev }).then(function (data) {
     solved[id] = data;
@@ -54,11 +54,11 @@ function lookBack(key: string, rev: number, seq: number, floor: number): void {
 }
 
 export function solveHead(): void {
-  var plan = bench.plan;
+  const plan = bench.plan;
   if (!plan) return;
-  var key = bench.key;
-  var rev = plan.rev;
-  var seq = ++solveSeq;
+  const key = bench.key;
+  const rev = plan.rev;
+  const seq = ++solveSeq;
   bench.solvingRev = rev;
   solveAt(key, rev)
     .then(function (data) {
@@ -91,13 +91,13 @@ export function delta(key: string, from: number, to: number): Promise<DeltaRespo
 }
 
 export function deltaForView(): void {
-  var plan = bench.plan;
-  var rev = bench.viewedRev;
+  const plan = bench.plan;
+  const rev = bench.viewedRev;
   if (!plan || !rev || rev === plan.rev) {
     bench.viewedDelta = null;
     return;
   }
-  var key = bench.key;
+  const key = bench.key;
   delta(key, rev, plan.rev)
     .then(function (d) {
       if (bench.key !== key || bench.viewedRev !== rev) return;
@@ -117,7 +117,7 @@ export function openRevision(rev: number): void {
   bench.viewedDelta = null;
   changed();
   if (!rev) return;
-  var key = bench.key;
+  const key = bench.key;
   get<PlanStateBody>(`/api/plans/{key}?rev=${rev}`, key)
     .then(function (plan) {
       if (bench.key !== key || bench.viewedRev !== rev) return;
@@ -139,7 +139,7 @@ export function openRevision(rev: number): void {
 }
 
 export function loadVersions(): void {
-  var key = bench.key;
+  const key = bench.key;
   if (!key) return;
   get<VersionsResponse>("/api/plans/{key}/versions", key)
     .then(function (body) {
@@ -203,11 +203,11 @@ function renumberCause(was: Partition, now: Partition): string {
 
 function renumber(data: TrackResponse): void {
   if (!data.feasible || data.scope_error) return;
-  var now = partition(data);
-  var was = bench.partitionByPlan[data.key];
+  const now = partition(data);
+  const was = bench.partitionByPlan[data.key];
   bench.partitionByPlan[data.key] = now;
   if (!was || was.partition_id === now.partition_id) return;
-  var cause = renumberCause(was, now);
+  const cause = renumberCause(was, now);
   if (was.current === now.current && was.count === now.count) {
     bench.track.notice = (cause || "the plan") + " moved machines between stages; " + stillWords(now);
     return;
@@ -220,11 +220,11 @@ export function stageHeadroom(): string {
 }
 
 export function loadTrack(): void {
-  var plan = bench.plan;
+  const plan = bench.plan;
   if (!plan || bench.tab !== "track" || bench.viewedRev) return;
-  var key = bench.key;
-  var view = bench.track;
-  var ticket = latest("planner-track");
+  const key = bench.key;
+  const view = bench.track;
+  const ticket = latest("planner-track");
   view.seq++;
   view.asked = plan.rev;
   changed();
@@ -236,7 +236,7 @@ export function loadTrack(): void {
       view.error = "";
       view.asked = 0;
       if (view.stage > data.stages.length) view.stage = 0;
-      var here = trackDash(key, view.stage);
+      const here = trackDash(key, view.stage);
       if (state.dash.indexOf(trackDash(key, 0)) === 0 && state.dash !== here) go(here, true);
       changed();
     })
@@ -253,10 +253,10 @@ export function dropFeeders(): void {
 }
 
 export function loadFeeders(): void {
-  var view = bench.track;
-  var key = bench.key;
-  var feeders: FeedersView = { data: null, error: "", busy: true };
-  var ticket = latest("planner-feeders");
+  const view = bench.track;
+  const key = bench.key;
+  const feeders: FeedersView = { data: null, error: "", busy: true };
+  const ticket = latest("planner-feeders");
   view.feeders = feeders;
   changed();
   get<FeedersResponse>(`${FEEDERS}?${biomassQuery()}` as ApiUrl)
@@ -275,8 +275,8 @@ export function loadFeeders(): void {
 }
 
 export function pickStage(n: number): void {
-  var view = bench.track;
-  var total = view.data ? view.data.count : 0;
+  const view = bench.track;
+  const total = view.data ? view.data.count : 0;
   view.stage = view.stage === n ? 0 : n;
   bench.selection = view.stage ? { kind: "stage", label: WORDS.stage(view.stage, total), ref: String(view.stage) } : null;
   go(trackDash(bench.key, view.stage), true);
@@ -284,7 +284,7 @@ export function pickStage(n: number): void {
 }
 
 export function pickTab(tab: ResultTab): void {
-  var was = bench.tab;
+  const was = bench.tab;
   bench.tab = tab;
   if (tab === "track") {
     go(trackDash(bench.key, bench.track.stage), true);
@@ -297,7 +297,7 @@ export function pickTab(tab: ResultTab): void {
 /* --------------------------------------------------------------- alternates */
 
 export function showAlternates(item: string, opener?: string): void {
-  var open = bench.alternates;
+  const open = bench.alternates;
   if (open && open.item === item) {
     if (opener) {
       open.opener = opener;
@@ -311,24 +311,24 @@ export function showAlternates(item: string, opener?: string): void {
 
 /** Closes the drawer and hands back the control that opened it. */
 export function hideAlternates(): string {
-  var opener = bench.alternates ? bench.alternates.opener : "";
+  const opener = bench.alternates ? bench.alternates.opener : "";
   bench.alternates = null;
   bench.alternatesCloseGoesBack = false;
   return opener;
 }
 
 export function loadAlternates(): void {
-  var drawer = bench.alternates;
-  var plan = bench.plan;
+  const drawer = bench.alternates;
+  const plan = bench.plan;
   if (!drawer || !plan) return;
-  var key = bench.key;
-  var rev = plan.rev;
-  var ticket = latest("planner-alternates");
+  const key = bench.key;
+  const rev = plan.rev;
+  const ticket = latest("planner-alternates");
   drawer.asked = rev;
   changed();
   send<PlanAlternatesResponse>("POST", ALTERNATES, { key: key, rev: rev, item: drawer.item }, undefined, spoilerQuery())
     .then(function (data) {
-      var now = bench.alternates;
+      const now = bench.alternates;
       if (!now || !ticket.fresh() || bench.key !== key) return;
       now.data = data;
       now.error = "";
@@ -336,7 +336,7 @@ export function loadAlternates(): void {
       changed();
     })
     .catch(function (reason) {
-      var now = bench.alternates;
+      const now = bench.alternates;
       if (!now || !ticket.fresh() || bench.key !== key) return;
       now.error = friendlyError(reason);
       now.asked = 0;

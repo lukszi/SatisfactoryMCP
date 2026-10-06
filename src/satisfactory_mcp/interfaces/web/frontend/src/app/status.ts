@@ -51,10 +51,10 @@ function fly(s: Selection): void {
 }
 
 function selectionPart(s: Selection): HTMLElement {
-  var part = make("span", "status-sel");
+  const part = make("span", "status-sel");
   part.appendChild(make("span", "status-k", "selected " + KIND_WORD[s.kind]));
-  var dash = s.kind === "factory" ? "factories/" + s.key : s.kind === "circuit" ? "power/" + (+s.key + 1) : "";
-  var name = dash && dash !== state.dash ? link(dash, s.label, "status-name") : make("span", "status-name", s.label);
+  const dash = s.kind === "factory" ? "factories/" + s.key : s.kind === "circuit" ? "power/" + (+s.key + 1) : "";
+  const name = dash && dash !== state.dash ? link(dash, s.label, "status-name") : make("span", "status-name", s.label);
   name.title = s.label;
   part.appendChild(name);
   part.appendChild(button("map", function () { fly(s); }, { map: true, title: "fly the map to it", label: "show " + s.label + " on the map" }));
@@ -70,36 +70,36 @@ function item(parent: HTMLElement, dash: string, text: string, tone?: string): v
 }
 
 function vitalsPart(parent: HTMLElement): void {
-  var v = vitals();
+  const v = vitals();
   if (v.health) {
-    var rows = v.health.factories;
-    var todo = 0;
+    const rows = v.health.factories;
+    let todo = 0;
     rows.forEach(function (r) {
       todo += r.actionable;
     });
     item(parent, "factories", count(todo) + " " + WORDS.needAction, todo ? actionTone(statesOf(rows)) : "");
   }
   if (v.circuits) {
-    var faults = faultCount(faultsOf(v.circuits));
+    const faults = faultCount(faultsOf(v.circuits));
     item(parent, "power", count(faults) + " " + WORDS.powerProblems, faults ? "bad" : "");
-    var now = readNow(ratedWorld(v.circuits));
+    const now = readNow(ratedWorld(v.circuits));
     item(parent, "power", WORDS.headroomNow + " " + now.value, now.bad ? "bad" : "");
   }
-  var ready = readyMilestones();
+  const ready = readyMilestones();
   if (ready !== null) item(parent, "progress", counted(ready, "milestone", "milestones") + " affordable");
 }
 
 export function renderStatus(): void {
-  var strip = el("status");
+  const strip = el("status");
   keepFocus(strip, function () {
     strip.textContent = "";
     if (state.saveMovedOn) {
-      var changed = make("span", "status-stale");
+      const changed = make("span", "status-stale");
       changed.appendChild(make("span", "bad", "save changed"));
       changed.appendChild(button("refresh", function () { reload("reading the new save…"); }, { title: "read the save on disk now" }));
       strip.appendChild(changed);
     }
-    var s = selected();
+    const s = selected();
     if (s) strip.appendChild(selectionPart(s));
     if (state.noSaves) {
       strip.appendChild(make("span", "status-item", WORDS.noSaves));

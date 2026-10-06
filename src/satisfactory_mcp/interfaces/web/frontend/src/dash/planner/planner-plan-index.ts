@@ -18,8 +18,8 @@ export var planIndex = {
 var seq = 0;
 
 export function loadList(): void {
-  var mine = ++seq;
-  var world = state.world;
+  const mine = ++seq;
+  const world = state.world;
   get<PlansResponse>("/api/plans")
     .then(function (data) {
       if (mine !== seq) return;
@@ -40,7 +40,7 @@ function loadBuilt(mine: number): void {
   get<PlansBuiltResponse>("/api/plan/built")
     .then(function (data) {
       if (mine !== seq) return;
-      var rows: Record<string, PlanBuiltRow> = {};
+      const rows: Record<string, PlanBuiltRow> = {};
       data.rows.forEach(function (row) {
         rows[row.key] = row;
       });
@@ -54,7 +54,7 @@ function loadBuilt(mine: number): void {
 
 /** The plan's name, or "" while the index has not listed it. */
 export function planTitle(key: string): string {
-  var row = planIndex.data
+  const row = planIndex.data
     ? planIndex.data.index.filter(function (r) {
         return r.key === key;
       })[0]

@@ -217,7 +217,7 @@ function valid(s: Setting, value: unknown): boolean {
 
 function recall(): void {
   try {
-    var saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
     SETTINGS.forEach(function (s) {
       if (valid(s, saved[s.key])) values[s.key] = saved[s.key];
     });
@@ -242,7 +242,7 @@ function find(key: string): Setting | undefined {
 
 function read(key: string): boolean | string | number | undefined {
   if (key in values) return values[key];
-  var found = find(key);
+  const found = find(key);
   return found ? found.fallback : undefined;
 }
 
@@ -259,17 +259,17 @@ export function spoilerQuery(): string {
 }
 
 export function settingChoice(key: string): string {
-  var value = read(key);
+  const value = read(key);
   return typeof value === "string" ? value : "";
 }
 
 export function settingNumber(key: string): number {
-  var value = read(key);
+  const value = read(key);
   return typeof value === "number" ? value : 0;
 }
 
 export function setSetting(key: string, value: boolean | string | number): void {
-  var found = find(key);
+  const found = find(key);
   if (!found || !valid(found, value)) return;
   values[key] = value;
   remember();
@@ -278,7 +278,7 @@ export function setSetting(key: string, value: boolean | string | number): void 
 }
 
 export function resetSettings(): void {
-  var cleared: Changes = {};
+  const cleared: Changes = {};
   SETTINGS.forEach(function (s) {
     if (s.shared) cleared[s.shared] = null;
   });
@@ -310,7 +310,7 @@ export function writeSharedWith(writer: (changes: Changes) => void): void {
 
 /* The shared settings this browser set itself, by server name. */
 export function sharedLocal(): Changes {
-  var out: Changes = {};
+  const out: Changes = {};
   SETTINGS.forEach(function (s) {
     if (s.shared && s.key in values) out[s.shared] = values[s.key]!;
   });
@@ -319,10 +319,10 @@ export function sharedLocal(): Changes {
 
 /* The server's values replace this browser's; listeners hear it only when one moved. */
 export function adoptShared(server: Record<string, unknown>): void {
-  var moved = false;
+  let moved = false;
   SETTINGS.forEach(function (s) {
     if (!s.shared || !valid(s, server[s.shared])) return;
-    var value = server[s.shared] as boolean | string | number;
+    const value = server[s.shared] as boolean | string | number;
     if (read(s.key) !== value) moved = true;
     values[s.key] = value;
   });

@@ -23,22 +23,22 @@ function stateChip(ask: AskRow): HTMLElement {
 }
 
 function questionCell(ask: AskRow): HTMLElement {
-  var cell = make("span", "", ask.text);
+  const cell = make("span", "", ask.text);
   if (!ask.answer) return cell;
-  var said = make("span", "ask-answer", "answer: " + ask.answer);
+  const said = make("span", "ask-answer", "answer: " + ask.answer);
   said.title = ask.answer;
   cell.appendChild(said);
   return cell;
 }
 
 function aboutCell(ask: AskRow, planKey: string): HTMLElement {
-  var plan = ask.about.plan;
+  const plan = ask.about.plan;
   if (ask.about.kind === "plan" && plan && ask.plan_name && plan !== planKey) {
-    var named = make("span", "ask-about", "plan ");
+    const named = make("span", "ask-about", "plan ");
     named.appendChild(link("planner/" + plan, "“" + ask.plan_name + "”"));
     return named;
   }
-  var cell = make("span", "ask-about", askLabel(ask.about));
+  const cell = make("span", "ask-about", askLabel(ask.about));
   if (!plan || plan === planKey || ask.about.kind === "plan") return cell;
   cell.appendChild(document.createTextNode(" in "));
   if (ask.plan_name) cell.appendChild(link("planner/" + plan, "“" + ask.plan_name + "”"));
@@ -47,7 +47,7 @@ function aboutCell(ask: AskRow, planKey: string): HTMLElement {
 }
 
 function actions(ask: AskRow): HTMLElement {
-  var box = make("span", "dash-acts");
+  const box = make("span", "dash-acts");
   box.appendChild(copyButton(ask.copy, "copy", { title: "copy " + ask.id + " and its question for chat", label: "copy " + ask.id }));
   box.appendChild(
     button(
@@ -66,15 +66,15 @@ function actions(ask: AskRow): HTMLElement {
 
 export function renderAsks(parent: HTMLElement, redraw: () => void, planKey?: string): void {
   loadAsks();
-  var got = askStore();
-  var rows = planKey ? asksFor(planKey) : liveAsks();
-  var card = make("section", "dash-card");
+  const got = askStore();
+  const rows = planKey ? asksFor(planKey) : liveAsks();
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", got.data && rows.length ? "asks · " + counted(rows.length, "ask") : "asks"));
   if (got.error && !got.data) error(card, "the asks", got.error, refetchAsks);
   else if (!got.data) loading(card, "asks");
   else if (!rows.length) empty(card, planKey ? "no asks about this plan yet" : "no asks yet: ask chat from any row of a plan");
   else {
-    var columns: Column<AskRow>[] = [
+    const columns: Column<AskRow>[] = [
       {
         key: "ask",
         label: "ask",

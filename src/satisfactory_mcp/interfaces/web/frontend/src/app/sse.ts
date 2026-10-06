@@ -34,13 +34,13 @@ var REFETCH_BY_KIND: [string, () => void][] = [
  * on it would double-load what boot has just loaded. Shared by both listeners, because the
  * replay is a property of the stream rather than of what any one event means. */
 function isNews(event: MessageEvent): boolean {
-  var payload = null;
+  let payload = null;
   try {
     payload = JSON.parse(event.data);
   } catch (ignored) {
     /* a malformed event is treated as news, the safe direction */
   }
-  var at = payload && (payload.mtime || payload.ts);
+  const at = payload && (payload.mtime || payload.ts);
   return !at || isSincePageOpened(at);
 }
 
@@ -57,10 +57,10 @@ function parsed<T>(event: MessageEvent): T | null {
 var dispatched: Record<string, boolean> = {};
 
 function dispatchActivity(entries: ActivityEvent[]): void {
-  var fresh = entries.filter(function (entry) {
+  const fresh = entries.filter(function (entry) {
     return !dispatched[entry.id];
   });
-  var lastFind = -1;
+  let lastFind = -1;
   fresh.forEach(function (entry, i) {
     if (entry.kind === "world.find" && entry.actor.kind !== "page") lastFind = i;
   });
@@ -76,17 +76,17 @@ function dispatchActivity(entries: ActivityEvent[]): void {
 }
 
 function showLive(kind: string, text: string, title: string): void {
-  var live = el("live");
+  const live = el("live");
   live.className = "live" + (kind ? " " + kind : "");
   live.title = title;
-  var words = live.querySelector(".live-text");
+  const words = live.querySelector(".live-text");
   if (!words) return;
   if (words.textContent !== text) words.textContent = text;
   words.classList.toggle("dk-hidden", kind === "on");
 }
 
 function blinkLiveDot(): void {
-  var live = el("live");
+  const live = el("live");
   live.classList.add("hit");
   setTimeout(function () {
     live.classList.remove("hit");
@@ -122,9 +122,9 @@ function resyncAfterGap(): void {
  * of what that kind of write can change. The grey dot means connecting, retrying or dead, so
  * its text says which, and losing an ESTABLISHED connection also says so in a toast. */
 export function connectLiveEvents() {
-  var source: EventSource | null = null;
-  var wasOpen = false;
-  var missed = false;
+  let source: EventSource | null = null;
+  let wasOpen = false;
+  let missed = false;
   window.addEventListener("pagehide", function () {
     if (!source) return;
     source.close();
@@ -152,7 +152,7 @@ export function connectLiveEvents() {
       showLive("on", "live", "live: watching for save writes");
     };
     es.onerror = function () {
-      var dropped = wasOpen;
+      const dropped = wasOpen;
       missed = missed || dropped;
       wasOpen = false;
       if (missed) showLive("lost", "offline", "live connection lost; retrying (is the server still running?)");
@@ -184,7 +184,7 @@ export function connectLiveEvents() {
       onNotesEvent();
     });
     es.addEventListener("plans", function (event) {
-      var data = parsed<PlansEvent>(event);
+      const data = parsed<PlansEvent>(event);
       if (!data || !isNews(event)) return;
       blinkLiveDot();
       loadOne("/api/plans");
@@ -193,17 +193,17 @@ export function connectLiveEvents() {
       onPlansEvent(data);
     });
     es.addEventListener("activity", function (event) {
-      var data = parsed<ActivityEvent>(event);
+      const data = parsed<ActivityEvent>(event);
       if (!data || !isNews(event)) return;
       dispatchActivity([data]);
     });
     es.addEventListener("settings", function (event) {
-      var data = parsed<SettingsResponse>(event);
+      const data = parsed<SettingsResponse>(event);
       if (data) onSettingsEvent(data);
     });
     /* State rather than news: the replay of the newest one is how a reload sees a running job. */
     es.addEventListener("maps", function (event) {
-      var data = parsed<MapsEvent>(event);
+      const data = parsed<MapsEvent>(event);
       if (data) onMapsEvent(data);
     });
   }

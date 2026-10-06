@@ -36,7 +36,7 @@ function patchSharedSettings(values: Record<string, unknown>, retried: boolean):
   send<SettingsResponse>("PATCH", SETTINGS_PATH, { values: values, version: version })
     .then(adoptServerSettings)
     .catch(function (reason: StatusError) {
-      var stale = reason.status === 409 ? (reason.body as SettingsStaleResponse | undefined) : undefined;
+      const stale = reason.status === 409 ? (reason.body as SettingsStaleResponse | undefined) : undefined;
       if (stale && stale.settings && !retried) {
         version = stale.settings.version;
         patchSharedSettings(values, true);
@@ -59,10 +59,10 @@ export function syncSharedSettings(): Promise<void> {
   writeSharedWith(function (changes) {
     patchSharedSettings(changes, false);
   });
-  var local = claimFirstPush() ? sharedLocal() : {};
+  const local = claimFirstPush() ? sharedLocal() : {};
   return get<SettingsResponse>(SETTINGS_PATH)
     .then(function (body) {
-      var adopt: Record<string, unknown> = {};
+      const adopt: Record<string, unknown> = {};
       Object.keys(local).forEach(function (key) {
         if (body.stored.indexOf(key) < 0) adopt[key] = local[key];
       });

@@ -81,7 +81,7 @@ export function registerFetch<T extends ApiError>(fetcher: Fetcher<T>): void {
     /* Two entries for one path are two requests for one answer -- the trap being one entry
      * per consumer, where /api/summary feeds both the header and the player dot. Said out
      * loud in dev because the only symptom is a duplicate line in the network panel. */
-    var clash = entries.filter(function (other) {
+    const clash = entries.filter(function (other) {
       return other.path === fetcher.path;
     });
     if (clash.length) {

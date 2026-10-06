@@ -62,7 +62,7 @@ function powerDefaults(): string {
 function syncTab(wanted: PlannerAddress): void {
   if (wanted.alternatesItem) return;
   if (wanted.track) {
-    var entering = bench.tab !== "track";
+    const entering = bench.tab !== "track";
     bench.tab = "track";
     bench.track.stage = wanted.stage;
     if (entering) loadTrack();
@@ -75,13 +75,13 @@ function trackShowing(): boolean {
 }
 
 function goToAlternates(plan: string, at: string): void {
-  var switching = openPlanKey() === plan && dashParts().rest[1] === "alt";
+  const switching = openPlanKey() === plan && dashParts().rest[1] === "alt";
   if (!switching) bench.alternatesCloseGoesBack = false;
   go(at, switching);
 }
 
 function closeAlternates(): void {
-  var back = bench.alternatesCloseGoesBack && dashParts().rest[1] === "alt";
+  const back = bench.alternatesCloseGoesBack && dashParts().rest[1] === "alt";
   refocusCtl = hideAlternates();
   if (back) history.back();
   else go(bench.tab === "track" ? trackDash(bench.key, bench.track.stage) : "planner/" + bench.key, true);
@@ -94,7 +94,7 @@ function isFormField(el: Element | null): boolean {
 
 /** An edit is open: a field elsewhere has focus, or a planner field holds an unsaved value. */
 function typing(): boolean {
-  var active = document.activeElement as HTMLInputElement | null;
+  const active = document.activeElement as HTMLInputElement | null;
   if (!active || !FORM_FIELD.test(active.tagName)) return false;
   if (!root.contains(active)) return true;
   return active.tagName !== "SELECT" && active.value !== active.defaultValue;
@@ -105,7 +105,7 @@ function inField(): boolean {
 }
 
 function showHeldHint(): void {
-  var line = root.querySelector(".plan-held");
+  const line = root.querySelector(".plan-held");
   if (line) line.textContent = heldActions.length || drawPending ? "an update is waiting: finish the edit to see it" : "";
 }
 
@@ -118,7 +118,7 @@ function whenIdle(action: () => void): void {
 
 function runHeldActions(): void {
   if (typing()) return;
-  var actions = heldActions;
+  const actions = heldActions;
   heldActions = [];
   actions.forEach(function (action) {
     action();
@@ -151,17 +151,17 @@ function focusCtl(ctl: string): HTMLElement | null {
 }
 
 function restoreFocus(): void {
-  var drawer = bench.alternates;
-  var shut = drawer && drawer.enter && parsePlannerAddress(dashParts().subject).alternatesItem === drawer.item ? root.querySelector<HTMLElement>('[data-ctl="alt-close"]') : null;
+  const drawer = bench.alternates;
+  const shut = drawer && drawer.enter && parsePlannerAddress(dashParts().subject).alternatesItem === drawer.item ? root.querySelector<HTMLElement>('[data-ctl="alt-close"]') : null;
   if (drawer && shut) {
     drawer.enter = false;
     shut.focus();
   }
-  var target = pendingFocus.ctl ? focusCtl(pendingFocus.ctl) : null;
+  const target = pendingFocus.ctl ? focusCtl(pendingFocus.ctl) : null;
   if (target || Date.now() > pendingFocus.until) pendingFocus.ctl = "";
   if (target) target.focus({ preventScroll: true });
   if (refocusCtl) {
-    var back = focusCtl(refocusCtl);
+    const back = focusCtl(refocusCtl);
     if (back) {
       refocusCtl = "";
       back.focus({ preventScroll: true });
@@ -170,7 +170,7 @@ function restoreFocus(): void {
 }
 
 function reportFocusIfChanged(): void {
-  var signature = JSON.stringify([bench.tab, bench.alternates ? bench.alternates.item : "", bench.selection, bench.plan ? bench.plan.rev : null]);
+  const signature = JSON.stringify([bench.tab, bench.alternates ? bench.alternates.item : "", bench.selection, bench.plan ? bench.plan.rev : null]);
   if (signature === lastFocusSignature) return;
   lastFocusSignature = signature;
   scheduleFocus();
@@ -198,8 +198,8 @@ function draw(): void {
 }
 
 export function renderPlanner(body: HTMLElement, at: string): void {
-  var wanted = parsePlannerAddress(at);
-  var key = wanted.key;
+  const wanted = parsePlannerAddress(at);
+  const key = wanted.key;
   if (!state.world) {
     body.textContent = "";
     loading(body, "the world");
@@ -253,14 +253,14 @@ function openFromChat(entry: ActivityEvent): void {
 }
 
 function withPlanName(key: string, given: string | null | undefined, then: (name: string) => void): void {
-  var known = given || (bench.key === key && bench.plan ? bench.plan.name : "") || planTitle(key);
+  const known = given || (bench.key === key && bench.plan ? bench.plan.name : "") || planTitle(key);
   if (known) {
     then(known);
     return;
   }
   get<PlansResponse>("/api/plans").then(
     function (data) {
-      var row = data.index.filter(function (r) {
+      const row = data.index.filter(function (r) {
         return r.key === key;
       })[0];
       then(row ? row.name : "a plan");
@@ -272,11 +272,11 @@ function withPlanName(key: string, given: string | null | undefined, then: (name
 }
 
 function followTrackView(plan: string, followed: Followed): void {
-  var args = followed.args;
-  var stage = typeof args.stage === "number" && args.stage >= 1 ? Math.floor(args.stage) : 0;
-  var there = trackDash(plan, stage);
-  var startup = args.section === "startup";
-  var open = function () {
+  const args = followed.args;
+  const stage = typeof args.stage === "number" && args.stage >= 1 ? Math.floor(args.stage) : 0;
+  const there = trackDash(plan, stage);
+  const startup = args.section === "startup";
+  const open = function () {
     focusStartupPending = startup;
     stageToReveal = startup ? 0 : stage;
     if (state.dash === there) changed();
@@ -289,7 +289,7 @@ function followTrackView(plan: string, followed: Followed): void {
     return;
   }
   whenIdle(function () {
-    var moving = state.dash !== there;
+    const moving = state.dash !== there;
     open();
     if (!moving) return;
     withPlanName(plan, followed.entry.name, function (called) {
@@ -299,8 +299,8 @@ function followTrackView(plan: string, followed: Followed): void {
 }
 
 function followSiteView(plan: string, followed: Followed): void {
-  var spot = "planner/" + plan + "/site";
-  var look = function () {
+  const spot = "planner/" + plan + "/site";
+  const look = function () {
     showGhost(plan, followed.args, followed.who);
     if (state.dash !== spot) go(spot);
   };
@@ -312,7 +312,7 @@ function followSiteView(plan: string, followed: Followed): void {
 }
 
 function followAlternatesView(plan: string, item: string, followed: Followed): void {
-  var at = altDash(plan, item);
+  const at = altDash(plan, item);
   if (followed.toastsOnly) {
     offer(followed.who + " " + followed.entry.text, "open", function () {
       goToAlternates(plan, at);
@@ -325,7 +325,7 @@ function followAlternatesView(plan: string, item: string, followed: Followed): v
 }
 
 function followSolve(followed: Followed): void {
-  var entry = followed.entry;
+  const entry = followed.entry;
   if (followed.toastsOnly) {
     offer(followed.who + " " + objectiveText(entry.text), "open", function () {
       openFromChat(entry);
@@ -338,7 +338,7 @@ function followSolve(followed: Followed): void {
 }
 
 function followPlanView(plan: string, followed: Followed): void {
-  var entry = followed.entry;
+  const entry = followed.entry;
   if (followed.toastsOnly) {
     offer(followed.who + ": " + entry.text, "open", function () {
       go("planner/" + plan);
@@ -357,17 +357,17 @@ export function onActivityEvent(entry: ActivityEvent): void {
   if (openPlanKey() === "") loadActivity();
   lastActivityTs = Math.max(lastActivityTs, entry.ts);
   if (!isSincePageOpened(entry.ts)) return;
-  var mode = settingChoice("follow");
+  const mode = settingChoice("follow");
   if (mode === "off") return;
-  var followed: Followed = { entry: entry, who: actorWord(entry.actor), args: entry.args || {}, toastsOnly: mode === "toasts" };
+  const followed: Followed = { entry: entry, who: actorWord(entry.actor), args: entry.args || {}, toastsOnly: mode === "toasts" };
   if (entry.kind === "plan.solve") {
     followSolve(followed);
     return;
   }
-  var plan = entry.plan;
+  const plan = entry.plan;
   if (entry.kind !== "plan.view" || !plan) return;
-  var view = followed.args.view;
-  var item = followed.args.item;
+  const view = followed.args.view;
+  const item = followed.args.item;
   if (view === "track") followTrackView(plan, followed);
   else if (view === "site") followSiteView(plan, followed);
   else if (view === "alternates" && typeof item === "string") followAlternatesView(plan, item, followed);
@@ -381,7 +381,7 @@ export function resyncPlanner(replay: (entries: ActivityEvent[]) => void): void 
   }
   resyncHead();
   if (trackShowing()) loadTrack();
-  var since = Math.max(lastActivityTs, state.openedAtMs / 1000);
+  const since = Math.max(lastActivityTs, state.openedAtMs / 1000);
   get<ActivityResponse>(`/api/activity?since=${since}`)
     .then(function (body) {
       replay(
@@ -452,13 +452,13 @@ function wire(): void {
     dropFeeders();
     if (trackShowing()) loadTrack();
   });
-  var powerWas = powerDefaults();
+  let powerWas = powerDefaults();
   onSetting(function () {
     if (powerDefaults() === powerWas) return;
     powerWas = powerDefaults();
     if (bench.plan) forgetSolves();
   });
-  var headroomWas = stageHeadroom();
+  let headroomWas = stageHeadroom();
   onSetting(function () {
     if (stageHeadroom() === headroomWas) return;
     headroomWas = stageHeadroom();

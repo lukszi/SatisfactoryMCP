@@ -29,14 +29,14 @@ var newPlan = {
 var order: SortState = { key: "plan", desc: false };
 
 function builtCell(row: PlanIndexRow): HTMLElement | string {
-  var built = planIndex.built[row.key];
+  const built = planIndex.built[row.key];
   if (!built || built.rev !== row.rev) return "…";
   if (built.figure === "?") {
-    var ask = link(trackDash(row.key, 0), "?");
+    const ask = link(trackDash(row.key, 0), "?");
     ask.title = built.text || "open Track to say which factory this plan is";
     return ask;
   }
-  var cell = make("button", "built-figure", progressText(built));
+  const cell = make("button", "built-figure", progressText(built));
   cell.type = "button";
   cell.title = built.text + (built.built === null ? "" : " · click to switch machines and percent");
   cell.disabled = built.built === null;
@@ -49,7 +49,7 @@ function builtCell(row: PlanIndexRow): HTMLElement | string {
 
 /** What the plan exports, with the rates it asks for. */
 function exportsText(row: PlanIndexRow): string {
-  var parts = Object.keys(row.rates).map(function (item) {
+  const parts = Object.keys(row.rates).map(function (item) {
     return item + " " + perMin(row.rates[item]!);
   });
   row.exports.forEach(function (item) {
@@ -69,7 +69,7 @@ function statusWords(row: PlanIndexRow): string {
 }
 
 function plansTable(parent: HTMLElement, rows: PlanIndexRow[]): void {
-  var columns: Column<PlanIndexRow>[] = [
+  const columns: Column<PlanIndexRow>[] = [
     {
       key: "plan",
       label: "plan",
@@ -102,7 +102,7 @@ function plansTable(parent: HTMLElement, rows: PlanIndexRow[]): void {
       className: "dash-nowrap",
       title: "what stands at the plan's site; ? means Track asks which factory it is, – that the plan has no site",
       sort: function (r) {
-        var built = planIndex.built[r.key];
+        const built = planIndex.built[r.key];
         return built && built.total ? (built.built || 0) / built.total : -1;
       },
       render: builtCell,
@@ -151,17 +151,17 @@ function plansTable(parent: HTMLElement, rows: PlanIndexRow[]): void {
 }
 
 function newPlanForm(parent: HTMLElement): void {
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "new plan: an item at a rate"));
-  var row = make("form", "plan-controls");
-  var item = make("input", "dash-name plan-text");
+  const row = make("form", "plan-controls");
+  const item = make("input", "dash-name plan-text");
   item.placeholder = "item, e.g. Heavy Modular Frame";
   item.setAttribute("data-ctl", "new-item");
   item.setAttribute("aria-label", "item");
   item.setAttribute("list", "plan-items");
   item.value = item.defaultValue = newPlan.draft.item;
   if (newPlan.problem) item.setAttribute("aria-invalid", "true");
-  var rate = make("input", "dash-number");
+  const rate = make("input", "dash-number");
   rate.type = "number";
   rate.step = "any";
   rate.min = "0";
@@ -169,7 +169,7 @@ function newPlanForm(parent: HTMLElement): void {
   rate.setAttribute("data-ctl", "new-rate");
   rate.setAttribute("aria-label", "rate per minute");
   rate.value = rate.defaultValue = newPlan.draft.rate;
-  var submit = make("button", "btn", newPlan.creating ? "creating…" : "create");
+  const submit = make("button", "btn", newPlan.creating ? "creating…" : "create");
   submit.type = "submit";
   submit.disabled = newPlan.creating;
   row.onsubmit = function (event) {
@@ -177,8 +177,8 @@ function newPlanForm(parent: HTMLElement): void {
     newPlan.draft = { item: item.value, rate: rate.value };
     item.defaultValue = item.value;
     rate.defaultValue = rate.value;
-    var perMinute = Number(rate.value);
-    var name = knownItem(item.value);
+    const perMinute = Number(rate.value);
+    const name = knownItem(item.value);
     if (!item.value.trim()) newPlan.problem = "name the item to make";
     else if (!name) newPlan.problem = "no item is called “" + item.value.trim() + "”; pick one from the list";
     else if (!(perMinute > 0)) newPlan.problem = "the rate is a positive number per minute";
@@ -189,7 +189,7 @@ function newPlanForm(parent: HTMLElement): void {
     }
     newPlan.creating = true;
     changed();
-    var minimums: Record<string, number> = {};
+    const minimums: Record<string, number> = {};
     minimums[name] = perMinute;
     createPlan(name + " " + perMin(perMinute), { objective: "min_machines", exports: [name], export_minimums: minimums }, "")
       .then(function (key) {
@@ -210,7 +210,7 @@ function newPlanForm(parent: HTMLElement): void {
   row.appendChild(submit);
   card.appendChild(row);
   if (newPlan.problem) {
-    var bad = make("p", "plan-invalid", newPlan.problem);
+    const bad = make("p", "plan-invalid", newPlan.problem);
     bad.setAttribute("role", "alert");
     card.appendChild(bad);
   }
@@ -227,7 +227,7 @@ export function renderList(root: HTMLElement): void {
   root.appendChild(make("h1", "dk-hidden", "Planner"));
   root.appendChild(itemList());
   renderChatSolveCard(root);
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "plans"));
   if (planIndex.error) error(card, "the plans", planIndex.error, loadList);
   else if (!planIndex.data) loading(card, "plans");

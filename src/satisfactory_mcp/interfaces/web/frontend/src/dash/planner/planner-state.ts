@@ -203,10 +203,10 @@ export function loadItems(): void {
 }
 
 export function itemList(): HTMLDataListElement {
-  var list = document.createElement("datalist");
+  const list = document.createElement("datalist");
   list.id = "plan-items";
   itemNames.forEach(function (name) {
-    var option = document.createElement("option");
+    const option = document.createElement("option");
     option.value = name;
     list.appendChild(option);
   });
@@ -215,8 +215,8 @@ export function itemList(): HTMLDataListElement {
 
 export function knownItem(text: string): string | null {
   if (!itemNames.length) return text;
-  var want = text.trim().toLowerCase();
-  var hit = itemNames.filter(function (name) {
+  const want = text.trim().toLowerCase();
+  const hit = itemNames.filter(function (name) {
     return name.toLowerCase() === want;
   })[0];
   return hit || null;

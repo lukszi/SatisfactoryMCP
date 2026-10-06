@@ -51,8 +51,8 @@ export function loadRegions() {
  * `after` runs inside the same guarded block as the draw rather than in a `.then` of its own,
  * which would be a microtask later and would need a guard of its own. */
 function runFetch(fetcher: Registered): void {
-  var epoch = state.epoch;
-  var live = function () {
+  const epoch = state.epoch;
+  const live = function () {
     return epoch === state.epoch;
   };
   get<ApiError>(fetcher.query ? (`${fetcher.path}?${fetcher.query()}` as ApiUrl) : fetcher.path)
@@ -85,7 +85,7 @@ export function loadLive(): void {
  *  it, for the caller that wants a single layer outside both waves. Nothing happens if no
  *  feature claimed this path -- which is what main.ts's FEATURES block prevents. */
 export function loadOne(path: ApiUrl): void {
-  var fetcher = fetcherFor(path);
+  const fetcher = fetcherFor(path);
   if (fetcher) runFetch(fetcher);
 }
 
@@ -93,7 +93,7 @@ export function loadOne(path: ApiUrl): void {
  * world's layers stay visible until the new responses land, and an unmarked blend of two
  * worlds reads as data. Cleared when this epoch's settling fetch lands, either way. */
 function markSwitching(on: boolean): void {
-  var container = el("map");
+  const container = el("map");
   if (on) L.DomUtil.addClass(container, "busy");
   else L.DomUtil.removeClass(container, "busy");
 }
@@ -113,7 +113,7 @@ export function reload(note?: string): void {
   if (inFloorMode()) leaveFloors();
   // The header's tooltip is a claim about the previous world too, and it outlives the switch
   // by the whole length of a 3 s parse if it is not replaced here alongside the text.
-  var loading = note || "loading…";
+  const loading = note || "loading…";
   el("summary").textContent = loading;
   el("summary").title = loading;
   markSwitching(true);

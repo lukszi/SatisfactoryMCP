@@ -58,14 +58,14 @@ export function adoptMapRegistry(body: MapsResponse): void {
 }
 
 export function onMapsEvent(event: MapsEvent): void {
-  var body = mapRegistry.body;
+  const body = mapRegistry.body;
   if (!body || event.registry_version !== body.version) {
     fetchMapRegistry();
     return;
   }
-  var job = event.job;
+  const job = event.job;
   if (job) {
-    var at = body.jobs.findIndex(function (row) {
+    const at = body.jobs.findIndex(function (row) {
       return row.id === job!.id;
     });
     if (at >= 0) body.jobs[at] = job;
@@ -78,8 +78,8 @@ export function onMapsEvent(event: MapsEvent): void {
  *  which the name already ends in when another type has the same axes. Its title is
  *  `row.title`, composed by the server so the page and chat agree. */
 export function mapTypeAxes(row: MapTypeBody): string {
-  var size = row.size_px ? " · " + row.size_px + " px" : "";
-  var named = size && row.name.slice(-size.length) === size;
+  const size = row.size_px ? " · " + row.size_px + " px" : "";
+  const named = size && row.name.slice(-size.length) === size;
   return row.name + (named ? "" : size);
 }
 

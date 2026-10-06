@@ -62,7 +62,7 @@ export function openPlan(key: string): void {
 function loadOwnUndoStack(key: string): Promise<void> {
   return get<PlanOpsResponse>("/api/plans/{key}/ops?since=0", key).then(function (ops) {
     if (bench.key !== key) return;
-    var undone: Record<number, boolean> = {};
+    const undone: Record<number, boolean> = {};
     ops.commits.forEach(function (commit) {
       if (commit.undoes) undone[commit.undoes] = true;
     });
@@ -73,7 +73,7 @@ function loadOwnUndoStack(key: string): Promise<void> {
       .map(function (commit) {
         return commit.rev;
       });
-    var last = ops.commits[ops.commits.length - 1];
+    const last = ops.commits[ops.commits.length - 1];
     if (last) bench.lastChange = { who: actorWord(last.actor), ts: last.ts };
     changed();
   });
@@ -81,7 +81,7 @@ function loadOwnUndoStack(key: string): Promise<void> {
 
 function adopt(plan: PlanStateBody): void {
   if (bench.plan && plan.rev < bench.plan.rev) return;
-  var moved = !bench.plan || bench.plan.rev !== plan.rev;
+  const moved = !bench.plan || bench.plan.rev !== plan.rev;
   bench.plan = plan;
   bench.gone = plan.forgotten;
   changed();
@@ -96,8 +96,8 @@ function adopt(plan: PlanStateBody): void {
 }
 
 function chatTouched(d: DeltaResponse): Record<string, true> {
-  var out: Record<string, true> = {};
-  var fromChat = bench.othersCommits.some(function (row) {
+  const out: Record<string, true> = {};
+  const fromChat = bench.othersCommits.some(function (row) {
     return row.who === WORDS.actorChat;
   });
   if (!fromChat) return out;
@@ -109,7 +109,7 @@ function chatTouched(d: DeltaResponse): Record<string, true> {
 
 function noteOthersCommit(commit: CommitBody): void {
   if (bench.ownRevs[commit.rev] || !commit.text) return;
-  var seen = bench.othersCommits.some(function (row) {
+  const seen = bench.othersCommits.some(function (row) {
     return row.rev === commit.rev;
   });
   if (seen) return;
@@ -130,19 +130,19 @@ export function dismissStrip(rev: number | null): void {
 }
 
 function deltaForStrip(): void {
-  var plan = bench.plan;
+  const plan = bench.plan;
   if (!plan || !bench.othersCommits.length) return;
-  var from =
+  const from =
     Math.min.apply(
       null,
       bench.othersCommits.map(function (row) {
         return row.rev;
       })
     ) - 1;
-  var to = plan.rev;
-  var have = bench.othersDelta;
+  const to = plan.rev;
+  const have = bench.othersDelta;
   if (from < 1 || (have && have.from_rev === from && have.to_rev === to)) return;
-  var key = bench.key;
+  const key = bench.key;
   delta(key, from, to)
     .then(function (d) {
       if (bench.key !== key || !bench.plan || bench.plan.rev !== to || !bench.othersCommits.length) return;
@@ -163,7 +163,7 @@ export function resyncHead(): void {
 }
 
 function pullHead(): void {
-  var key = bench.key;
+  const key = bench.key;
   queue(function () {
     if (bench.key !== key || !bench.plan) return;
     return get<PlanOpsResponse>(`/api/plans/{key}/ops?since=${bench.plan.rev}`, key)
@@ -208,7 +208,7 @@ function raiseConflicts(body: Refusal, retry: () => void): void {
     return;
   }
   (body.since || []).forEach(noteOthersCommit);
-  var refusal = ++refusalSerial;
+  const refusal = ++refusalSerial;
   (body.conflicts || []).forEach(function (conflict) {
     bench.conflictChips.push({
       id: ++chipSerial,
@@ -223,11 +223,11 @@ function raiseConflicts(body: Refusal, retry: () => void): void {
 }
 
 export function dropChip(id: number, retry: boolean): void {
-  var chip = bench.conflictChips.filter(function (c) {
+  const chip = bench.conflictChips.filter(function (c) {
     return c.id === id;
   })[0];
   if (!chip) return;
-  var refusal = chip.gesture;
+  const refusal = chip.gesture;
   bench.conflictChips = bench.conflictChips.filter(function (c) {
     return c.gesture !== refusal;
   });
@@ -237,15 +237,15 @@ export function dropChip(id: number, retry: boolean): void {
 
 // Our own unacknowledged revisions cannot conflict with us, so base past them.
 function baseFor(seenRev: number): number {
-  var head = bench.plan ? bench.plan.rev : seenRev;
-  for (var rev = seenRev + 1; rev <= head; rev++) {
+  const head = bench.plan ? bench.plan.rev : seenRev;
+  for (let rev = seenRev + 1; rev <= head; rev++) {
     if (!bench.ownRevs[rev]) return seenRev;
   }
   return head;
 }
 
 function onlyOwn(body: Refusal, base: number): boolean {
-  var conflicts = body.conflicts || [];
+  const conflicts = body.conflicts || [];
   return (
     !!body.outdated &&
     !!body.state &&
@@ -264,17 +264,17 @@ function write(
   conflict: (body: Refusal) => void,
   fixedBase?: number
 ): void {
-  var plan = bench.plan;
+  const plan = bench.plan;
   if (!plan) return;
-  var key = bench.key;
-  var name = plan.name;
-  var madeAgainst = fixedBase === undefined ? plan.rev : fixedBase;
-  var lost = function (why: string) {
+  const key = bench.key;
+  const name = plan.name;
+  const madeAgainst = fixedBase === undefined ? plan.rev : fixedBase;
+  const lost = function (why: string) {
     fail("your change to “" + name + "” was not saved: " + why);
   };
-  var attempt = function (base: number): Promise<void> {
-    var here = bench.key === key;
-    var body: Record<string, unknown> = { base_rev: base, sav: here ? saveToken() : "" };
+  const attempt = function (base: number): Promise<void> {
+    const here = bench.key === key;
+    const body: Record<string, unknown> = { base_rev: base, sav: here ? saveToken() : "" };
     Object.keys(extra).forEach(function (field) {
       body[field] = extra[field];
     });
@@ -298,11 +298,11 @@ function write(
   inflight++;
   changed();
   queue(function () {
-    var done = function () {
+    const done = function () {
       inflight--;
       changed();
     };
-    var start = bench.key === key && fixedBase === undefined ? baseFor(madeAgainst) : madeAgainst;
+    const start = bench.key === key && fixedBase === undefined ? baseFor(madeAgainst) : madeAgainst;
     return attempt(start)
       .catch(function (error) {
         if (bench.key === key) onWriteRefused(error);
@@ -316,7 +316,7 @@ function write(
 export function applyOps(ops: Op[], requireItem?: string): void {
   if (!ops.length || !bench.plan) return;
   bench.redoStack = [];
-  var again = function () {
+  const again = function () {
     applyOps(ops, requireItem);
   };
   write(
@@ -334,7 +334,7 @@ export function applyOps(ops: Op[], requireItem?: string): void {
 export function applyArgs(args: Record<string, unknown>, fromEntry: string, base?: number): void {
   if (!bench.plan) return;
   bench.redoStack = [];
-  var again = function () {
+  const again = function () {
     applyArgs(args, fromEntry);
   };
   write(
@@ -357,7 +357,7 @@ function inArgList(field: "required" | "banned", member: string): boolean {
 
 /** Banning a required recipe also drops it from the required list, in the same version. */
 export function banOps(member: string): Op[] {
-  var ops: Op[] = [{ op: "add", field: "banned", member: member }];
+  const ops: Op[] = [{ op: "add", field: "banned", member: member }];
   if (inArgList("required", member)) ops.push({ op: "remove", field: "required", member: member });
   return ops;
 }
@@ -389,7 +389,7 @@ function undo(rev: number, ok: (by: number) => void, already: () => void, drop: 
     "/api/plans/{key}/undo",
     { rev: rev },
     function (reply) {
-      var by = adoptPushReply(reply, false);
+      const by = adoptPushReply(reply, false);
       if (by) ok(by);
       else drop();
     },
@@ -401,7 +401,7 @@ function undo(rev: number, ok: (by: number) => void, already: () => void, drop: 
       drop();
       if (body.outdated && body.state) {
         (body.since || []).forEach(noteOthersCommit);
-        var why = conflictTexts(body);
+        const why = conflictTexts(body);
         fail("v" + rev + " cannot be undone: it was changed again since" + (why ? " (" + why + ")" : ""));
         adopt(body.state);
         return;
@@ -412,17 +412,17 @@ function undo(rev: number, ok: (by: number) => void, already: () => void, drop: 
 }
 
 function removeLast<T>(list: T[], item: T): void {
-  var at = list.lastIndexOf(item);
+  const at = list.lastIndexOf(item);
   if (at >= 0) list.splice(at, 1);
 }
 
 export function undoLast(): void {
-  var target = bench.undoStack[bench.undoStack.length - 1];
+  const target = bench.undoStack[bench.undoStack.length - 1];
   if (target === undefined) {
     notify("nothing of yours to undo on this plan");
     return;
   }
-  var take = function () {
+  const take = function () {
     removeLast(bench.undoStack, target!);
   };
   undo(
@@ -440,12 +440,12 @@ export function undoLast(): void {
 }
 
 export function redoLast(): void {
-  var entry = bench.redoStack[bench.redoStack.length - 1];
+  const entry = bench.redoStack[bench.redoStack.length - 1];
   if (!entry) {
     notify("nothing to redo");
     return;
   }
-  var take = function () {
+  const take = function () {
     removeLast(bench.redoStack, entry!);
   };
   undo(
@@ -511,7 +511,7 @@ export function restoreRev(rev: number, done?: () => void): void {
 /* ------------------------------------------------- writes to other plans */
 
 export function duplicatePlan(rev?: number): Promise<string> {
-  var body: Record<string, unknown> = {};
+  const body: Record<string, unknown> = {};
   if (rev) body.rev = rev;
   return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans/{key}/duplicate", body, bench.key).then(function (answer) {
     if (answer.conflict) throw new Error(answer.body.error || "the copy could not be named");
@@ -525,7 +525,7 @@ export function undoRevisionOf(key: string, rev: number): Promise<string> {
     return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans/{key}/undo", { base_rev: head.rev, rev: rev }, key).then(function (answer) {
       if (!answer.conflict) return answer.body.noop ? "nothing to undo in v" + rev : "undid v" + rev + " of “" + head.name + "”";
       if (answer.body.already_undone) return "v" + rev + " is already undone";
-      var why = conflictTexts(answer.body);
+      const why = conflictTexts(answer.body);
       throw new Error("v" + rev + " cannot be undone: it was changed again since" + (why ? " (" + why + ")" : ""));
     });
   });
@@ -533,8 +533,8 @@ export function undoRevisionOf(key: string, rev: number): Promise<string> {
 
 /** A new plan named `base`, or `base (2)` and on while that name is taken. */
 export function createPlan(base: string, args: Record<string, unknown>, fromEntry: string, attempt?: number): Promise<string> {
-  var tries = attempt || 1;
-  var name = tries === 1 ? base : base + " (" + tries + ")";
+  const tries = attempt || 1;
+  const name = tries === 1 ? base : base + " (" + tries + ")";
   return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans", { name: name, args: args, from_entry: fromEntry }).then(function (answer) {
     if (!answer.conflict) return answer.body.key;
     if (answer.body.name_taken && tries < NAME_RETRIES) return createPlan(base, args, fromEntry, tries + 1);

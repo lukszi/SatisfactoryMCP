@@ -31,13 +31,13 @@ export function stageCtl(n: number): string {
 
 /** The stage row the jobs card's × asked to focus after the redraw, once. */
 export function takeRefocusCtl(): string {
-  var ctl = refocusCtl;
+  const ctl = refocusCtl;
   refocusCtl = "";
   return ctl;
 }
 
 export function askAbout(kind: string, label: string, ref: string): AskAbout {
-  var plan = bench.plan!;
+  const plan = bench.plan!;
   return { kind: kind, label: label, ref: ref, plan: bench.key, rev: plan.rev };
 }
 
@@ -51,14 +51,14 @@ export function appendAskMarks(cell: HTMLElement, kind: string, ref: string): vo
 export function stateChips(parent: HTMLElement, states: TrackState[]): void {
   states.forEach(function (machineState) {
     if (!machineState.count) return;
-    var stateTone = tone(machineState.state);
+    const stateTone = tone(machineState.state);
     if (stateTone === "ok") return;
     parent.appendChild(chip(count(machineState.count) + " " + machineState.state, stateTone));
   });
 }
 
 function copyIds(row: TrackRow): HTMLButtonElement | null {
-  var ids = row.selectors
+  const ids = row.selectors
     ? row.selectors.split(",").filter(function (selector) {
         return selector.trim() !== "";
       })
@@ -81,8 +81,8 @@ function copyIds(row: TrackRow): HTMLButtonElement | null {
 }
 
 function jobActionText(row: TrackRow): string {
-  var build = TRACK_VERB.build + " " + countRange(row.build, row.build_max);
-  var then = row.build > 0 || (row.build_max || 0) > 0 ? ", then " + build : "";
+  const build = TRACK_VERB.build + " " + countRange(row.build, row.build_max);
+  const then = row.build > 0 || (row.build_max || 0) > 0 ? ", then " + build : "";
   if (row.verb === "unpause") return TRACK_VERB.unpause + " " + count(row.count) + then;
   if (row.verb === "setrecipe") return TRACK_VERB.setrecipe + " " + count(row.count) + then;
   if (row.verb === "build") return build;
@@ -95,7 +95,7 @@ function stagesWord(stages: number[]): string {
 }
 
 function nextLine(d: TrackResponse): string {
-  var parts: string[] = [];
+  const parts: string[] = [];
   if (d.unpause) parts.push(TRACK_VERB.unpause + " " + count(d.unpause));
   if (d.setrecipe) parts.push(TRACK_VERB.setrecipe + " " + count(d.setrecipe));
   if (d.to_build || d.to_build_max) parts.push(TRACK_VERB.build + " " + countRange(d.to_build, d.to_build_max));
@@ -103,13 +103,13 @@ function nextLine(d: TrackResponse): string {
 }
 
 function jobActions(row: TrackRow): HTMLElement {
-  var acts = make("span", "dash-acts");
-  var nodeNames = row.targets.map(function (target) {
+  const acts = make("span", "dash-acts");
+  const nodeNames = row.targets.map(function (target) {
     return target.node;
   });
-  var there = boxMapButton(row.bbox_m, row.process, nodeNames);
+  const there = boxMapButton(row.bbox_m, row.process, nodeNames);
   if (there) acts.appendChild(there);
-  var ids = copyIds(row);
+  const ids = copyIds(row);
   if (ids) acts.appendChild(ids);
   if (!bench.gone) {
     if (row.kind === "recipe" && row.item && row.recipe_id) acts.appendChild(recipesButton(row.item, row.process, "track"));
@@ -119,16 +119,16 @@ function jobActions(row: TrackRow): HTMLElement {
 }
 
 function processCell(row: TrackRow): HTMLElement {
-  var cell = make("span", "plan-recipe", row.process);
+  const cell = make("span", "plan-recipe", row.process);
   if (row.new_building) cell.appendChild(chip("new building", "muted", "this building is not unlocked or not yet on the ground anywhere"));
   appendAskMarks(cell, "process", row.id);
   return cell;
 }
 
 function stageFilter(parent: HTMLElement, n: number, total: number): void {
-  var line = make("div", "plan-line");
-  var filter = make("span", "plan-chip", "only " + WORDS.stage(n, total));
-  var x = make("button", "plan-chip-x", "×");
+  const line = make("div", "plan-line");
+  const filter = make("span", "plan-chip", "only " + WORDS.stage(n, total));
+  const x = make("button", "plan-chip-x", "×");
   x.type = "button";
   x.title = "show the jobs of every stage";
   x.setAttribute("aria-label", "show the jobs of every stage");
@@ -143,7 +143,7 @@ function stageFilter(parent: HTMLElement, n: number, total: number): void {
 
 function caveats(card: HTMLElement, d: TrackResponse): void {
   if (!d.caveats.length) return;
-  var more = make("details", "track-caveats");
+  const more = make("details", "track-caveats");
   more.appendChild(make("summary", "dash-sub", "about built and running"));
   d.caveats.forEach(function (caveat) {
     more.appendChild(make("p", "dash-note", caveat));
@@ -153,8 +153,8 @@ function caveats(card: HTMLElement, d: TrackResponse): void {
 
 /** The jobs table's columns, in the order the width allows; `where` only when a job is staged. */
 function jobColumns(d: TrackResponse, rows: TrackRow[]): Column<TrackRow>[] {
-  var lead: Column<TrackRow> = { key: "process", label: "process", render: processCell };
-  var built: Column<TrackRow> = {
+  const lead: Column<TrackRow> = { key: "process", label: "process", render: processCell };
+  const built: Column<TrackRow> = {
     key: "built",
     label: builtColumn(d.built_at),
     align: "right",
@@ -164,15 +164,15 @@ function jobColumns(d: TrackResponse, rows: TrackRow[]): Column<TrackRow>[] {
       return r.have_min === null ? count(r.have) : countRange(r.have_min, r.have);
     },
   };
-  var action: Column<TrackRow> = { key: "action", label: "action", className: "dash-nowrap", render: jobActionText };
-  var building: Column<TrackRow> = {
+  const action: Column<TrackRow> = { key: "action", label: "action", className: "dash-nowrap", render: jobActionText };
+  const building: Column<TrackRow> = {
     key: "building",
     label: "building",
     render: function (r) {
       return r.building;
     },
   };
-  var need: Column<TrackRow> = {
+  const need: Column<TrackRow> = {
     key: "need",
     label: "need",
     align: "right",
@@ -180,7 +180,7 @@ function jobColumns(d: TrackResponse, rows: TrackRow[]): Column<TrackRow>[] {
       return count(r.need);
     },
   };
-  var running: Column<TrackRow> = {
+  const running: Column<TrackRow> = {
     key: "running",
     label: "running",
     align: "right",
@@ -189,7 +189,7 @@ function jobColumns(d: TrackResponse, rows: TrackRow[]): Column<TrackRow>[] {
       return r.running === null ? "–" : count(r.running);
     },
   };
-  var where: Column<TrackRow> = {
+  const where: Column<TrackRow> = {
     key: "where",
     label: "where",
     className: "dash-nowrap",
@@ -198,7 +198,7 @@ function jobColumns(d: TrackResponse, rows: TrackRow[]): Column<TrackRow>[] {
       return stagesWord(r.stages);
     },
   };
-  var noteCol: Column<TrackRow> = {
+  const noteCol: Column<TrackRow> = {
     key: "note",
     label: "note",
     className: "dash-sub track-note",
@@ -206,11 +206,11 @@ function jobColumns(d: TrackResponse, rows: TrackRow[]): Column<TrackRow>[] {
       return r.note || "";
     },
   };
-  var acts: Column<TrackRow> = { key: "acts", label: "", render: jobActions };
-  var columns = TRACK_TABLE_NARROW.matches
+  const acts: Column<TrackRow> = { key: "acts", label: "", render: jobActions };
+  const columns = TRACK_TABLE_NARROW.matches
     ? [lead, built, action, building, need, running, where, noteCol, acts]
     : [lead, building, need, built, running, action, where, noteCol, acts];
-  var staged = rows.some(function (r) {
+  const staged = rows.some(function (r) {
     return r.stages.length > 0;
   });
   if (staged) return columns;
@@ -220,15 +220,15 @@ function jobColumns(d: TrackResponse, rows: TrackRow[]): Column<TrackRow>[] {
 }
 
 export function jobsCard(parent: HTMLElement, d: TrackResponse, select: (selection: FocusSelection) => void): void {
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "jobs · " + counted(d.rows.length, "job")));
-  var next = make("p", "plan-facts");
+  const next = make("p", "plan-facts");
   next.appendChild(make("b", "", "next: "));
   next.appendChild(document.createTextNode(nextLine(d)));
   card.appendChild(next);
-  var stage = bench.track.stage;
+  const stage = bench.track.stage;
   if (stage) stageFilter(card, stage, d.count);
-  var rows = stage
+  const rows = stage
     ? d.rows.filter(function (r) {
         return r.stages.indexOf(stage) >= 0;
       })
@@ -269,14 +269,14 @@ export function jobsCard(parent: HTMLElement, d: TrackResponse, select: (selecti
 
 export function shortItemsCard(parent: HTMLElement, cost: TrackCost[]): void {
   if (!cost.length) return;
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "short · " + counted(cost.length, "item")));
-  var columns: Column<TrackCost>[] = [
+  const columns: Column<TrackCost>[] = [
     {
       key: "item",
       label: "item",
       render: function (c) {
-        var cell = make("span", "", c.name);
+        const cell = make("span", "", c.name);
         appendAskMarks(cell, "item", c.item);
         return cell;
       },
@@ -321,12 +321,12 @@ export function shortItemsCard(parent: HTMLElement, cost: TrackCost[]): void {
 }
 
 export function onSiteCard(parent: HTMLElement, d: TrackResponse): void {
-  var site = d.site;
+  const site = d.site;
   if (!site) return;
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "on site"));
   if (site.text) card.appendChild(make("p", "dash-note", site.text));
-  var columns: Column<TrackSiteRow>[] = [
+  const columns: Column<TrackSiteRow>[] = [
     {
       key: "name",
       label: "building",

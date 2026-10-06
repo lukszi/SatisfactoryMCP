@@ -20,15 +20,15 @@ import type { Column } from "../../kit/dashkit";
 import type { FocusSelection, TrackResponse, TrackStage } from "../../api/shapes";
 
 function trackHeadline(parent: HTMLElement, d: TrackResponse, asked: number): void {
-  var card = make("section", "dash-card");
-  var title = make("div", "dash-title");
+  const card = make("section", "dash-card");
+  const title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", WORDS.track + " · v" + d.rev));
   if (asked) title.appendChild(make("span", "plan-status", "tracking v" + asked + "…"));
   card.appendChild(title);
-  var text = d.scope_error ? "" : d.stage_text || (d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom");
+  const text = d.scope_error ? "" : d.stage_text || (d.count ? "" : "no startup order fits " + mw(d.startup.headroom_mw) + " of headroom");
   if (text) card.appendChild(make("p", "plan-headline", text));
   builtLine(card, d.built_at);
-  var facts = [d.written_ago ? "save written " + d.written_ago : "as of the save shown in the header"];
+  const facts = [d.written_ago ? "save written " + d.written_ago : "as of the save shown in the header"];
   if (d.scope_note) facts.push(d.scope_note);
   if (d.drift_note) facts.push(d.drift_note);
   card.appendChild(make("p", "dash-note", facts.join(" · "))).title = d.age_note;
@@ -39,9 +39,9 @@ function trackHeadline(parent: HTMLElement, d: TrackResponse, asked: number): vo
 }
 
 function renumberNotice(parent: HTMLElement): void {
-  var view = bench.track;
+  const view = bench.track;
   if (!view.notice) return;
-  var line = make("div", "plan-warning track-notice");
+  const line = make("div", "plan-warning track-notice");
   line.setAttribute("role", "status");
   line.appendChild(make("span", "", view.notice));
   line.appendChild(
@@ -58,31 +58,31 @@ function renumberNotice(parent: HTMLElement): void {
 }
 
 function stateCell(stage: TrackStage): HTMLElement {
-  var cell = make("span", "track-state", stage.state);
-  var actionNeeded = actionTone(stage.states);
+  const cell = make("span", "track-state", stage.state);
+  const actionNeeded = actionTone(stage.states);
   if (actionNeeded) cell.appendChild(chip(WORDS.needAction, actionNeeded));
   stateChips(cell, stage.states);
   return cell;
 }
 
 function stageActions(stage: TrackStage, total: number): HTMLElement {
-  var acts = make("span", "dash-acts");
-  var label = WORDS.stage(stage.index, total);
-  var there = boxMapButton(stage.bbox_m, label, []);
+  const acts = make("span", "dash-acts");
+  const label = WORDS.stage(stage.index, total);
+  const there = boxMapButton(stage.bbox_m, label, []);
   if (there) acts.appendChild(there);
   if (!bench.gone) acts.appendChild(askButton(askAbout("stage", label, String(stage.index)), "stage:" + stage.index));
   return acts;
 }
 
 function stageLead(stage: TrackStage): HTMLElement {
-  var cell = make("span", "", WORDS.stageUnit + " " + stage.index);
+  const cell = make("span", "", WORDS.stageUnit + " " + stage.index);
   appendAskMarks(cell, "stage", String(stage.index));
   return cell;
 }
 
 function stageColumns(d: TrackResponse): Column<TrackStage>[] {
-  var lead: Column<TrackStage> = { key: "stage", label: "stage", render: stageLead };
-  var built: Column<TrackStage> = {
+  const lead: Column<TrackStage> = { key: "stage", label: "stage", render: stageLead };
+  const built: Column<TrackStage> = {
     key: "built",
     label: builtColumn(d.built_at),
     align: "right",
@@ -92,8 +92,8 @@ function stageColumns(d: TrackResponse): Column<TrackStage>[] {
       return countRange(s.built, s.built_max);
     },
   };
-  var stateColumn: Column<TrackStage> = { key: "state", label: "state", render: stateCell };
-  var rest: Column<TrackStage>[] = [
+  const stateColumn: Column<TrackStage> = { key: "state", label: "state", render: stateCell };
+  const rest: Column<TrackStage>[] = [
     {
       key: "on",
       label: "on",
@@ -130,7 +130,7 @@ function stageColumns(d: TrackResponse): Column<TrackStage>[] {
       },
     },
   ];
-  var acts: Column<TrackStage> = {
+  const acts: Column<TrackStage> = {
     key: "acts",
     label: "",
     render: function (s) {
@@ -141,7 +141,7 @@ function stageColumns(d: TrackResponse): Column<TrackStage>[] {
 }
 
 function stagesCard(parent: HTMLElement, d: TrackResponse): void {
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", d.count ? WORDS.stages + " · " + counted(d.count, WORDS.stageUnit) : WORDS.stages));
   renumberNotice(card);
   if (!d.stages.length) {
@@ -149,8 +149,8 @@ function stagesCard(parent: HTMLElement, d: TrackResponse): void {
     parent.appendChild(card);
     return;
   }
-  var picked = bench.track.stage;
-  var frame = table(stageColumns(d), d.stages, {
+  const picked = bench.track.stage;
+  const frame = table(stageColumns(d), d.stages, {
     onRow: function (s) {
       pickStage(s.index);
     },
@@ -160,7 +160,7 @@ function stagesCard(parent: HTMLElement, d: TrackResponse): void {
     caption: "startup stages",
   });
   frame.querySelectorAll("tbody tr").forEach(function (tr, i) {
-    var stage = d.stages[i];
+    const stage = d.stages[i];
     if (!stage) return;
     tr.setAttribute("data-ctl", stageCtl(stage.index));
     tr.setAttribute("aria-selected", String(stage.index === picked));
@@ -171,7 +171,7 @@ function stagesCard(parent: HTMLElement, d: TrackResponse): void {
 }
 
 export function focusStartup(root: HTMLElement): boolean {
-  var heading = root.querySelector<HTMLElement>('[data-ctl="' + STARTUP_CTL + '"]');
+  const heading = root.querySelector<HTMLElement>('[data-ctl="' + STARTUP_CTL + '"]');
   if (!heading) return false;
   heading.focus();
   heading.scrollIntoView({ block: "start" });
@@ -179,21 +179,21 @@ export function focusStartup(root: HTMLElement): boolean {
 }
 
 export function settleTrackFocus(root: HTMLElement): void {
-  var ctl = takeRefocusCtl();
+  const ctl = takeRefocusCtl();
   if (!ctl) return;
-  var row = root.querySelector<HTMLElement>('[data-ctl="' + ctl + '"]');
+  const row = root.querySelector<HTMLElement>('[data-ctl="' + ctl + '"]');
   if (row) row.focus();
 }
 
 export function revealStage(root: HTMLElement, n: number): void {
-  var row = root.querySelector<HTMLElement>('[data-ctl="' + stageCtl(n) + '"]');
+  const row = root.querySelector<HTMLElement>('[data-ctl="' + stageCtl(n) + '"]');
   if (row) row.scrollIntoView({ block: "center" });
 }
 
 export function renderTrack(parent: HTMLElement, select: (selection: FocusSelection) => void): void {
-  var view = bench.track;
-  var d = view.data;
-  var frame = make("div", "plan-track" + (view.asked && d ? " plan-stale" : ""));
+  const view = bench.track;
+  const d = view.data;
+  const frame = make("div", "plan-track" + (view.asked && d ? " plan-stale" : ""));
   parent.appendChild(frame);
   if (view.error) error(frame, "the track", view.error, loadTrack);
   if (!d) {

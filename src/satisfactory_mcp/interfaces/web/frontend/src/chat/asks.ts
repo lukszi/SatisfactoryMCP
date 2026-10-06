@@ -32,7 +32,7 @@ export var loadAsks = store.load;
 var notifyAskListeners = store.notify;
 
 export function liveAsks(): AskRow[] {
-  var data = askStore().data;
+  const data = askStore().data;
   return data ? data.asks : [];
 }
 
@@ -58,11 +58,11 @@ export function askLabel(about: AskAbout): string {
 }
 
 export function askButton(about: AskAbout, ctl: string, text?: string): HTMLButtonElement {
-  var subject: AskAbout = { kind: about.kind, label: truncateChars(about.label, LABEL_MAX), ref: truncateChars(about.ref, REF_MAX) };
+  const subject: AskAbout = { kind: about.kind, label: truncateChars(about.label, LABEL_MAX), ref: truncateChars(about.ref, REF_MAX) };
   if (about.plan) subject.plan = about.plan;
   if (about.rev) subject.rev = about.rev;
-  var id = "ask:" + ctl;
-  var askBtn = button(
+  const id = "ask:" + ctl;
+  const askBtn = button(
     text || "ask",
     function () {
       openBar(subject, id);
@@ -104,9 +104,9 @@ export function closeBar(): void {
 }
 
 function queueAsk(box: HTMLInputElement): void {
-  var about = bar.about;
+  const about = bar.about;
   if (!about || bar.busy) return;
-  var text = box.value.trim();
+  const text = box.value.trim();
   bar.text = box.value;
   if (!text) bar.validationError = "write a question for chat first";
   else if (text.length > ASK_MAX) bar.validationError = "a question is at most " + ASK_MAX + " characters; this one is " + text.length;
@@ -138,16 +138,16 @@ function queueAsk(box: HTMLInputElement): void {
 }
 
 export function renderAskBar(parent: HTMLElement): void {
-  var about = bar.about;
+  const about = bar.about;
   if (!about) return;
-  var box = make("section", "ask-bar");
+  const box = make("section", "ask-bar");
   box.setAttribute("role", "region");
   box.setAttribute("aria-label", WORDS.askChat);
-  var what = make("span", "ask-what", WORDS.askChat + " about ");
+  const what = make("span", "ask-what", WORDS.askChat + " about ");
   what.appendChild(make("b", "", askLabel(about)));
   box.appendChild(what);
-  var line = make("div", "ask-line");
-  var input = make("input", "dash-name ask-text");
+  const line = make("div", "ask-line");
+  const input = make("input", "dash-name ask-text");
   input.type = "text";
   input.value = bar.text;
   input.defaultValue = "";
@@ -196,7 +196,7 @@ export function renderAskBar(parent: HTMLElement): void {
 /** After a redraw: focus the bar's input once it opens, or its opener once it shuts. */
 export function settleAskFocus(root: HTMLElement): void {
   if (bar.about && bar.focusInputOnRender) {
-    var input = root.querySelector<HTMLInputElement>('[data-ctl="' + TEXT_CTL + '"]');
+    const input = root.querySelector<HTMLInputElement>('[data-ctl="' + TEXT_CTL + '"]');
     if (input) {
       bar.focusInputOnRender = false;
       input.focus();
@@ -204,7 +204,7 @@ export function settleAskFocus(root: HTMLElement): void {
     return;
   }
   if (!bar.returnFocusTo) return;
-  var opener = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(bar.returnFocusTo) + '"]');
+  const opener = root.querySelector<HTMLElement>('[data-ctl="' + CSS.escape(bar.returnFocusTo) + '"]');
   bar.returnFocusTo = "";
   if (!opener) return;
   opener.focus({ preventScroll: true });
@@ -219,9 +219,9 @@ export function dropAsk(ask: AskRow): void {
         refetchAsks();
       })
       .catch(function (reason) {
-        var current = store.recoverFromConflict(reason);
+        const current = store.recoverFromConflict(reason);
         if (current) {
-          var body = (reason as StatusError).body as AskStaleResponse;
+          const body = (reason as StatusError).body as AskStaleResponse;
           fail(body.error || ask.id + " changed since you read it");
         } else fail("could not delete " + ask.id + ": " + friendlyError(reason));
       });

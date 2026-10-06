@@ -16,7 +16,7 @@ var showAllPins = false;
 
 function labelCell(pin: PinRow, redraw: () => void): HTMLElement | string {
   if (editing.pinNumber !== pin.n) return pin.label || "–";
-  var focusNow = editing.fresh;
+  const focusNow = editing.fresh;
   editing.fresh = false;
   return inlineTextEdit({
     value: pin.label,
@@ -61,9 +61,9 @@ function locationCell(pin: PinRow): HTMLElement | string {
 }
 
 function actionsCell(pin: PinRow, redraw: () => void): HTMLElement {
-  var box = make("span", "dash-acts");
-  var slot = make("span", "pin-place");
-  var where = locationCell(pin);
+  const box = make("span", "dash-acts");
+  const slot = make("span", "pin-place");
+  const where = locationCell(pin);
   if (where) slot.appendChild(typeof where === "string" ? make("span", "", where) : where);
   box.appendChild(slot);
   box.appendChild(
@@ -90,22 +90,22 @@ function actionsCell(pin: PinRow, redraw: () => void): HTMLElement {
       { title: "delete " + pin.id + "; its number is not reused", label: "delete " + pin.id }
     )
   );
-  var about: AskAbout = { kind: "pin", label: pin.id + " " + (pin.label || pin.text.replace(/ in “[^”]*”$/, "")), ref: pin.id };
+  const about: AskAbout = { kind: "pin", label: pin.id + " " + (pin.label || pin.text.replace(/ in “[^”]*”$/, "")), ref: pin.id };
   if (pin.ref.plan && !pin.gone) about.plan = pin.ref.plan;
   box.appendChild(askButton(about, "pin:" + pin.n));
   return box;
 }
 
 export function renderPins(parent: HTMLElement, redraw: () => void): void {
-  var card = make("section", "dash-card");
-  var got = pinStore();
-  var rows = got.data ? got.data.pins : [];
+  const card = make("section", "dash-card");
+  const got = pinStore();
+  const rows = got.data ? got.data.pins : [];
   card.appendChild(make("h2", "dash-h", got.data && rows.length ? "pins · " + counted(rows.length, "pin") : "pins"));
   if (got.error && !got.data) error(card, "the pins", got.error, refetchPins);
   else if (!got.data) loading(card, "pins");
   else if (!rows.length) empty(card, "no pins yet: pin a plan, a process, or a place on the map");
   else {
-    var columns: Column<PinRow>[] = [
+    const columns: Column<PinRow>[] = [
       {
         key: "pin",
         label: "pin",
@@ -141,7 +141,7 @@ export function renderPins(parent: HTMLElement, redraw: () => void): void {
         label: "state",
         render: function (pin) {
           if (!pin.gone) return "live";
-          var cell = make("span", "");
+          const cell = make("span", "");
           cell.appendChild(chip("gone", "muted", pin.gone_why));
           cell.appendChild(make("span", "dash-sub", pin.gone_why));
           return cell;
@@ -155,7 +155,7 @@ export function renderPins(parent: HTMLElement, redraw: () => void): void {
         },
       },
     ];
-    var grid = table(columns, rows, { sort: order, onSort: redraw, caption: "pins" });
+    const grid = table(columns, rows, { sort: order, onSort: redraw, caption: "pins" });
     card.appendChild(grid);
     capRows(card, grid, rows.length, 50, "show all " + counted(rows.length, "pin"), showAllPins, function () {
       showAllPins = true;

@@ -20,7 +20,7 @@ var HEADROOM_WHAT: Record<string, string> = {
 var headroomProblem = { key: "", text: "", raw: "" };
 
 function setHeadroom(value: number | null): void {
-  var plan = bench.plan;
+  const plan = bench.plan;
   if (!plan || (plan.headroom_mw === undefined ? null : plan.headroom_mw) === value) return;
   applyOps([{ op: "set", field: "headroom_mw", value: value }]);
 }
@@ -32,21 +32,21 @@ function clearHeadroomProblem(field: HTMLInputElement): void {
 
 /** The typed headroom; it shows the stored value only when no button stands for it. */
 function givenField(parent: HTMLElement, stored: number | null, pressable: number[]): void {
-  var field = make("input", "dash-number");
+  const field = make("input", "dash-number");
   field.type = "number";
   field.step = "any";
   field.min = "0";
-  var shown = stored !== null && pressable.indexOf(stored) < 0 ? String(stored) : "";
-  var key = bench.key;
-  var refused = headroomProblem.key === key && headroomProblem.text;
+  const shown = stored !== null && pressable.indexOf(stored) < 0 ? String(stored) : "";
+  const key = bench.key;
+  const refused = headroomProblem.key === key && headroomProblem.text;
   field.value = refused ? headroomProblem.raw : shown;
   field.defaultValue = shown;
   field.setAttribute("data-ctl", "track-headroom");
   field.setAttribute("aria-label", "given startup headroom in MW");
-  var commit = function () {
-    var raw = field.value.trim();
+  const commit = function () {
+    const raw = field.value.trim();
     if (raw === field.defaultValue && !headroomProblem.text) return;
-    var n = Number(raw);
+    const n = Number(raw);
     if (raw === "" || !isFinite(n) || !(n > 0) || n > HEADROOM_MAX) {
       headroomProblem = { key: key, text: "a headroom is more than 0 and at most " + count(HEADROOM_MAX) + " MW", raw: field.value };
       fieldError(field, headroomProblem.text);
@@ -78,9 +78,9 @@ function floorTen(value: number): number {
 }
 
 function headroomButton(parent: HTMLElement, which: string, value: number, stored: number | null): void {
-  var fallback = which === stageHeadroom();
-  var kept = floorTen(value);
-  var title = fallback
+  const fallback = which === stageHeadroom();
+  const kept = floorTen(value);
+  const title = fallback
     ? "use the save's " + which + " headroom, " + HEADROOM_WHAT[which] + ": the stage headroom setting"
     : kept > 0
       ? "store the " + which + " headroom, " + mw(kept)
@@ -98,14 +98,14 @@ function headroomButton(parent: HTMLElement, which: string, value: number, store
 }
 
 export function headroomControls(parent: HTMLElement, d: TrackResponse): void {
-  var plan = bench.plan!;
-  var stored = plan.headroom_mw === undefined ? d.headroom_mw : plan.headroom_mw;
-  var card = make("section", "dash-card plan-bench track-controls");
-  var row = make("div", "plan-row");
+  const plan = bench.plan!;
+  const stored = plan.headroom_mw === undefined ? d.headroom_mw : plan.headroom_mw;
+  const card = make("section", "dash-card plan-bench track-controls");
+  const row = make("div", "plan-row");
   row.appendChild(make("span", "plan-label", WORDS.startupHeadroom));
-  var body = make("div", "plan-controls");
-  var measured = d.power.measured_headroom_mw;
-  var nameplate = d.power.headroom_mw;
+  const body = make("div", "plan-controls");
+  const measured = d.power.measured_headroom_mw;
+  const nameplate = d.power.headroom_mw;
   headroomButton(body, "measured", measured, stored);
   headroomButton(body, "nameplate", nameplate, stored);
   givenField(body, stored, [floorTen(measured), floorTen(nameplate)]);

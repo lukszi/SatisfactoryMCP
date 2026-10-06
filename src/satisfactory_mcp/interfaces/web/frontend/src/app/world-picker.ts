@@ -18,10 +18,10 @@ import { fail, friendlyError, notify } from "../kit/toast";
 import type { WorldRow, WorldsResponse } from "../api/shapes";
 
 function worldOption(w: WorldRow, dupes: Record<string, number>): HTMLOptionElement {
-  var option = document.createElement("option");
+  const option = document.createElement("option");
   option.value = w.world_id;
-  var hours = Math.round((w.play_duration_s || 0) / 3600);
-  var label = w.session_name + " (" + w.saves.length + " saves, " + hours + " h)";
+  const hours = Math.round((w.play_duration_s || 0) / 3600);
+  let label = w.session_name + " (" + w.saves.length + " saves, " + hours + " h)";
   // Two worlds can share a session name -- one id-keyed, one a legacy grouping of saves
   // too old to carry a world id. A save count alone cannot tell them apart.
   if ((dupes[w.session_name] ?? 0) > 1 && w.world_id.indexOf("session:") === 0) {
@@ -33,8 +33,8 @@ function worldOption(w: WorldRow, dupes: Record<string, number>): HTMLOptionElem
 }
 
 function fillWorldPicker(preserve: boolean): void {
-  var picker = el<HTMLSelectElement>("world");
-  var dupes: Record<string, number> = {};
+  const picker = el<HTMLSelectElement>("world");
+  const dupes: Record<string, number> = {};
   state.worlds.forEach(function (w) {
     dupes[w.session_name] = (dupes[w.session_name] || 0) + 1;
   });
@@ -47,19 +47,19 @@ function fillWorldPicker(preserve: boolean): void {
 }
 
 function fillSavePicker(): void {
-  var picker = el<HTMLSelectElement>("save");
-  var w = currentWorld();
+  const picker = el<HTMLSelectElement>("save");
+  const w = currentWorld();
   picker.innerHTML = "";
-  var newest = document.createElement("option");
+  const newest = document.createElement("option");
   newest.value = "";
   newest.textContent = "newest save";
   newest.title = "follow the newest save, refetching as the game writes new ones";
   picker.appendChild(newest);
-  var saves = ((w && w.saves) || []).slice().sort(function (a, b) {
+  const saves = ((w && w.saves) || []).slice().sort(function (a, b) {
     return (b.mtime_ns || 0) - (a.mtime_ns || 0);
   });
   saves.forEach(function (s) {
-    var option = document.createElement("option");
+    const option = document.createElement("option");
     option.value = s.path || s.filename;
     option.textContent = s.filename;
     picker.appendChild(option);
@@ -69,7 +69,7 @@ function fillSavePicker(): void {
     if (picker.value !== state.save) {
       // The pinned save is no longer in the listing (deleted, or the world changed
       // under it). Keep the pin visible rather than silently unpinning.
-      var pinned = document.createElement("option");
+      const pinned = document.createElement("option");
       pinned.value = state.save;
       pinned.textContent = "(pinned save no longer listed)";
       picker.appendChild(pinned);
@@ -81,7 +81,7 @@ function fillSavePicker(): void {
   picker.disabled = !saves.length;
   picker.onchange = function () {
     state.save = picker.value;
-    var chosen = picker.selectedOptions[0];
+    const chosen = picker.selectedOptions[0];
     reload(state.save ? "opening " + (chosen ? chosen.textContent : "save") + "…" : "back to the newest save…");
   };
 }
@@ -99,8 +99,8 @@ export function syncPickers(): void {
 
 function noteSubstitutedLink(missing: { worldMissing: boolean; saveMissing: boolean }): void {
   if (!missing.worldMissing && !missing.saveMissing) return;
-  var shown = currentWorld();
-  var name = shown ? "“" + shown.session_name + "”" : "another world";
+  const shown = currentWorld();
+  const name = shown ? "“" + shown.session_name + "”" : "another world";
   if (missing.worldMissing) notify("the linked world is not in the save folder; showing " + name + (BOOT.save ? " and its newest save" : ""));
   else notify("the linked save “" + BOOT.save + "” is not in this world; showing the newest save");
 }
@@ -114,13 +114,13 @@ function fetchWorldList(): Promise<WorldsResponse> {
 }
 
 function wireWorldPicker(): void {
-  var picker = el<HTMLSelectElement>("world");
+  const picker = el<HTMLSelectElement>("world");
   fillWorldPicker(false);
   picker.onchange = function () {
     state.world = picker.value;
     state.save = "";
     fillSavePicker();
-    var chosen = picker.selectedOptions[0];
+    const chosen = picker.selectedOptions[0];
     reload("switching to " + (chosen ? chosen.textContent : "world") + "…");
   };
 }
@@ -129,12 +129,12 @@ function wireWorldPicker(): void {
  * server may still know exactly why each file was rejected, and that diagnosis belongs on
  * screen, permanently -- not in a toast that self-erases. */
 function showNoSaves(unsupported: WorldsResponse["unsupported"]): void {
-  var reasons = unsupported
+  const reasons = unsupported
     .map(function (u) {
       return u.filename + ": " + u.reason;
     })
     .join(" · ");
-  var text = "no readable saves found" + (reasons ? ": " + reasons : "") + " (set SATISFACTORY_SAVES if they live elsewhere)";
+  const text = "no readable saves found" + (reasons ? ": " + reasons : "") + " (set SATISFACTORY_SAVES if they live elsewhere)";
   el("summary").textContent = WORDS.noSaves;
   el("summary").title = text;
   state.noSaves = true;
@@ -153,7 +153,7 @@ function showNoSaves(unsupported: WorldsResponse["unsupported"]): void {
 /* The world and save the link named, or the first world and its newest save when the link
  * names what this folder does not hold. */
 function resolveBootSelection(): void {
-  var known = !!BOOT.world && state.worlds.some(function (w) { return w.world_id === BOOT.world; });
+  const known = !!BOOT.world && state.worlds.some(function (w) { return w.world_id === BOOT.world; });
   state.world = known ? BOOT.world! : state.worlds[0]!.world_id;
   el<HTMLSelectElement>("world").value = state.world;
   // The fragment names a save by FILENAME; the pin is a path. Same conversion the

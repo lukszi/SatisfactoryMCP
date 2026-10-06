@@ -47,7 +47,7 @@ export var pinStore = store.read;
 export var refetchPins = store.refetch;
 
 export function livePins(): PinRow[] {
-  var data = pinStore().data;
+  const data = pinStore().data;
   return data ? data.pins : [];
 }
 
@@ -59,7 +59,7 @@ export function findPin(kind: string, match: (ref: PinRef) => boolean): PinRow |
 
 /** The plan's process pins, by recipe id. */
 export function processPinsByRecipe(planKey: string): Record<string, PinRow> {
-  var out: Record<string, PinRow> = {};
+  const out: Record<string, PinRow> = {};
   livePins().forEach(function (pin) {
     if (pin.kind === "process" && pin.ref.plan === planKey && pin.ref.recipe) out[pin.ref.recipe] = pin;
   });
@@ -82,23 +82,23 @@ function pinRows(pin: PinRow): Row[] {
 
 /* Tags at one spot stack upwards rather than covering each other. */
 function drawPins(data: PinsResponse): void {
-  var group = layer("pins", true, undefined, [BAND.chrome, 60, "pins"]);
+  const group = layer("pins", true, undefined, [BAND.chrome, 60, "pins"]);
   markers = {};
-  var stacked: Record<string, number> = {};
+  const stacked: Record<string, number> = {};
   data.pins.forEach(function (pin) {
     if (pin.x_m === null || pin.y_m === null) return;
-    var name = pinName(pin) + (pin.gone ? " (gone)" : "");
-    var spot = Math.round(pin.x_m) + "," + Math.round(pin.y_m);
-    var below = stacked[spot] || 0;
+    const name = pinName(pin) + (pin.gone ? " (gone)" : "");
+    const spot = Math.round(pin.x_m) + "," + Math.round(pin.y_m);
+    const below = stacked[spot] || 0;
     stacked[spot] = below + 1;
-    var tag = L.marker(latLngOf({ x_m: pin.x_m, y_m: pin.y_m }), {
+    const tag = L.marker(latLngOf({ x_m: pin.x_m, y_m: pin.y_m }), {
       icon: L.divIcon({ className: "pin-tag" + (pin.gone ? " gone" : ""), html: esc(pin.n), iconSize: [28, 18], iconAnchor: [-4, 22 + below * 20] }),
       title: name,
       alt: name,
       keyboard: true,
     });
     tag.on("add", function () {
-      var node = tag.getElement();
+      const node = tag.getElement();
       if (node) node.setAttribute("aria-label", name);
     });
     tag.bindPopup(popup(pinRows(pin)));
@@ -122,7 +122,7 @@ registerFetch<PinsResponse>({
 export function createPin(kind: string, ref: PinRef): void {
   send<PinCreated>("POST", PINS_PATH, { kind: kind, ref: ref })
     .then(function (pin) {
-      var said = (pin.existing ? "already " : "pinned as ") + pin.id;
+      const said = (pin.existing ? "already " : "pinned as ") + pin.id;
       copyText(pin.id).then(
         function () {
           notify(said + " · copied");
@@ -139,8 +139,8 @@ export function createPin(kind: string, ref: PinRef): void {
 }
 
 function onPinConflict(reason: unknown): void {
-  var current = store.recoverFromConflict(reason);
-  var body = current ? ((reason as StatusError).body as PinStaleResponse) : null;
+  const current = store.recoverFromConflict(reason);
+  const body = current ? ((reason as StatusError).body as PinStaleResponse) : null;
   fail(body ? body.error + "; this is the current one" : friendlyError(reason));
 }
 
@@ -169,12 +169,12 @@ export function dropPin(pin: PinRow): void {
 
 export function showPin(pin: PinRow): void {
   if (pin.x_m === null || pin.y_m === null) return;
-  var at = latLngOf({ x_m: pin.x_m, y_m: pin.y_m });
+  const at = latLngOf({ x_m: pin.x_m, y_m: pin.y_m });
   goToMapThen(function () {
-    var group = state.layers["pins"];
+    const group = state.layers["pins"];
     if (group && !map.hasLayer(group)) group.addTo(map);
     map.once("moveend", function () {
-      var tag = markers[pin.n];
+      const tag = markers[pin.n];
       if (tag && map.hasLayer(tag)) tag.openPopup();
     });
     flyToPoint(at, Math.max(map.getZoom(), PIN_ZOOM));
@@ -186,7 +186,7 @@ export function pinButtons(targets: PinTarget[]): Markup {
   return html(
     targets
       .map(function (target) {
-        var attrs: Record<string, string> = {};
+        const attrs: Record<string, string> = {};
         attrs[KIND_ATTR] = target.kind;
         attrs[REF_ATTR] = JSON.stringify(target.ref);
         return dataButton(attrs, target.text, "pin this " + (PIN_KIND[target.kind] || target.kind) + " and copy its pin:N for chat");
@@ -197,7 +197,7 @@ export function pinButtons(targets: PinTarget[]): Markup {
 
 export function onPlanChange(entry: { world: string; key: string }): void {
   if (entry.world !== state.world) return;
-  var touched = livePins().some(function (pin) {
+  const touched = livePins().some(function (pin) {
     return pin.ref.plan === entry.key;
   });
   if (touched) refetchPins();

@@ -7,7 +7,7 @@ export interface Listeners<A extends unknown[]> {
 }
 
 export function createListeners<A extends unknown[] = []>(): Listeners<A> {
-  var listeners: Array<(...args: A) => void> = [];
+  const listeners: Array<(...args: A) => void> = [];
   return {
     on: function (listener) {
       listeners.push(listener);

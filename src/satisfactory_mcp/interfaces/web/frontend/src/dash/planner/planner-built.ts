@@ -37,8 +37,8 @@ interface Figures {
 export function progressText(f: Figures): string {
   if (f.built === null) return f.figure || "–";
   if (settingChoice("progress") === "percent" && f.percent !== null) {
-    var lo = Math.round(f.percent);
-    var hi = f.percent_max === null ? lo : Math.round(f.percent_max);
+    const lo = Math.round(f.percent);
+    const hi = f.percent_max === null ? lo : Math.round(f.percent_max);
     return (hi !== lo ? lo + "–" + hi : String(lo)) + "%";
   }
   return f.figure + " machines";
@@ -50,7 +50,7 @@ export function toggleProgress(): void {
 }
 
 function setBuiltScope(value: string): void {
-  var plan = bench.plan;
+  const plan = bench.plan;
   if (!plan || bench.gone || plan.factory === value) return;
   picking.open = false;
   applyOps([{ op: "set", field: "factory", value: value }]);
@@ -63,8 +63,8 @@ function startNaming(c: TrackBuiltCandidate): void {
 }
 
 function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
-  var name = field.value.trim();
-  var problem = blankOrLong(name);
+  const name = field.value.trim();
+  const problem = blankOrLong(name);
   if (problem) {
     naming.problem = problem;
     naming.name = field.value;
@@ -88,7 +88,7 @@ function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
       setBuiltScope(reply.name);
     })
     .catch(function (failure) {
-      var why = refusal(failure);
+      const why = refusal(failure);
       naming.busy = false;
       if (why === "name_taken") naming.problem = "“" + name + "” is already a factory name";
       else if (why === "bad") naming.problem = friendlyError(failure);
@@ -101,8 +101,8 @@ function saveName(b: TrackBuiltAt, field: HTMLInputElement): void {
 }
 
 function nameBar(parent: HTMLElement, b: TrackBuiltAt): void {
-  var bar = make("div", "plan-line built-name");
-  var field = make("input", "dash-name plan-text");
+  const bar = make("div", "plan-line built-name");
+  const field = make("input", "dash-name plan-text");
   field.value = naming.name;
   field.setAttribute("data-ctl", "built-name");
   field.setAttribute("aria-label", "name for this " + WORDS.unnamedCluster);
@@ -134,8 +134,8 @@ function nameBar(parent: HTMLElement, b: TrackBuiltAt): void {
 }
 
 function factoryNames(current: string): string[] {
-  var health = vitals().health;
-  var names = health
+  const health = vitals().health;
+  const names = health
     ? health.factories.map(function (f) {
         return f.name;
       })
@@ -147,11 +147,11 @@ function factoryNames(current: string): string[] {
 }
 
 function scopePicker(parent: HTMLElement, b: TrackBuiltAt): void {
-  var plan = bench.plan!;
-  var clusters = b.candidates.filter(function (c) {
+  const plan = bench.plan!;
+  const clusters = b.candidates.filter(function (c) {
     return c.kind === "cluster" && c.proposal !== null;
   });
-  var options: [string, string][] = [["", WORDS.foundAutomatically]];
+  const options: [string, string][] = [["", WORDS.foundAutomatically]];
   clusters.forEach(function (c) {
     options.push([CLUSTER_PREFIX + c.proposal, c.name + " (" + WORDS.unnamedCluster + ": names it)"]);
   });
@@ -159,13 +159,13 @@ function scopePicker(parent: HTMLElement, b: TrackBuiltAt): void {
     options.push([name, name]);
   });
   options.push([SCOPE_WORLD, WORDS.wholeWorld], [SCOPE_NONE, WORDS.nothingBuiltYet]);
-  var pick = selectBox(
+  const pick = selectBox(
     options,
     plan.factory,
     function (value) {
       if (value.indexOf(CLUSTER_PREFIX) === 0) {
-        var n = Number(value.slice(CLUSTER_PREFIX.length));
-        var c = clusters.filter(function (x) {
+        const n = Number(value.slice(CLUSTER_PREFIX.length));
+        const c = clusters.filter(function (x) {
           return x.proposal === n;
         })[0];
         if (c) startNaming(c);
@@ -176,7 +176,7 @@ function scopePicker(parent: HTMLElement, b: TrackBuiltAt): void {
     { label: WORDS.countAsBuilt, disabled: bench.gone }
   );
   pick.setAttribute("data-ctl", "track-scope");
-  var row = make("div", "plan-line");
+  const row = make("div", "plan-line");
   row.appendChild(make("span", "plan-sub", WORDS.countAsBuilt));
   row.appendChild(pick);
   parent.appendChild(row);
@@ -185,7 +185,7 @@ function scopePicker(parent: HTMLElement, b: TrackBuiltAt): void {
 /** A [map] button that outlines a bounding box with the machines and these nodes' layers shown. */
 export function boxMapButton(bbox: number[] | null | undefined, what: string, nodeNames: string[]): HTMLButtonElement | null {
   if (!bbox || bbox.length !== 4) return null;
-  var target = bbox as BboxM;
+  const target = bbox as BboxM;
   return button(
     "map",
     function () {
@@ -208,10 +208,10 @@ function placeButton(): HTMLButtonElement {
 }
 
 function builtLineActions(b: TrackBuiltAt): HTMLElement[] {
-  var out: HTMLElement[] = [];
+  const out: HTMLElement[] = [];
   if (bench.gone) return out;
-  var top = b.candidates[0];
-  var change = button(picking.open ? "close" : "change", function () {
+  const top = b.candidates[0];
+  const change = button(picking.open ? "close" : "change", function () {
     picking = { key: bench.key, open: !picking.open };
     changed();
   }, { title: "pick what counts as built for this plan" });
@@ -242,7 +242,7 @@ function builtLineActions(b: TrackBuiltAt): HTMLElement[] {
   } else if (b.confidence === "no site") {
     out.push(placeButton());
   }
-  var there = b.mode === "world" || b.confidence === "no site" ? null : boxMapButton(top ? top.bbox_m : null, "what counts as built", []);
+  const there = b.mode === "world" || b.confidence === "no site" ? null : boxMapButton(top ? top.bbox_m : null, "what counts as built", []);
   if (there) out.push(there);
   out.push(change);
   return out;
@@ -250,9 +250,9 @@ function builtLineActions(b: TrackBuiltAt): HTMLElement[] {
 
 function hintLine(parent: HTMLElement, b: TrackBuiltAt): void {
   if (!b.hint) return;
-  var line = make("div", "plan-line built-hint");
+  const line = make("div", "plan-line built-hint");
   line.appendChild(make("span", "dash-note", b.hint));
-  var top = b.candidates[0];
+  const top = b.candidates[0];
   if (!bench.gone && b.mode === "none") {
     line.appendChild(button("count them", function () {
       setBuiltScope("");
@@ -270,9 +270,9 @@ function hintLine(parent: HTMLElement, b: TrackBuiltAt): void {
 export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   if (picking.key !== bench.key) picking = { key: bench.key, open: false };
   if (naming.key && naming.key !== bench.key) naming.key = "";
-  var line = make("div", "plan-line built-line");
+  const line = make("div", "plan-line built-line");
   line.setAttribute("data-ctl", "built-line");
-  var figure = make("button", "built-figure", progressText(b));
+  const figure = make("button", "built-figure", progressText(b));
   figure.type = "button";
   figure.title = b.built === null ? "not placed, so no progress" : settingChoice("progress") === "percent" ? "show machines instead" : "show percent of the planned rate instead";
   figure.disabled = b.built === null;
@@ -288,7 +288,7 @@ export function builtLine(parent: HTMLElement, b: TrackBuiltAt): void {
   parent.appendChild(line);
   if (b.fallback) parent.appendChild(make("p", "dash-note", b.fallback));
   hintLine(parent, b);
-  var more = b.missing.length ? ["missing: " + b.missing.join(", ")] : [];
+  let more = b.missing.length ? ["missing: " + b.missing.join(", ")] : [];
   if (b.also_here.length) more.push("also here: " + b.also_here.join(", "));
   more = more.concat(b.foreign);
   if (b.node_owner && b.confidence !== "nothing") more.push(b.node_owner);

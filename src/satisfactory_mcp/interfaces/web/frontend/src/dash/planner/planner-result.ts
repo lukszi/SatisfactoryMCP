@@ -57,9 +57,9 @@ function clockText(row: { machines: number; clock: number; last_clock?: number |
 }
 
 function clockCell(row: SolveRow, live: boolean): string | HTMLElement {
-  var pick = live && !bench.gone ? rowOverclock(row) : null;
+  const pick = live && !bench.gone ? rowOverclock(row) : null;
   if (!pick) return clockText(row);
-  var cell = make("span", "plan-clock");
+  const cell = make("span", "plan-clock");
   cell.appendChild(make("span", "", clockText(row)));
   cell.appendChild(pick);
   return cell;
@@ -82,8 +82,8 @@ function withoutPower(rows: SolveRate[]): SolveRate[] {
 }
 
 function resultFactsText(data: SolveResponse): string {
-  var net = data.mw_net;
-  var parts = [
+  const net = data.mw_net;
+  const parts = [
     count(data.machines) + " machines in " + count(data.processes) + " processes",
     "draw " + (data.mw_draw === null ? "–" : mw(data.mw_draw)),
     "generation " + (data.mw_generated === null ? "–" : mw(data.mw_generated)),
@@ -96,18 +96,18 @@ function resultFactsText(data: SolveResponse): string {
 }
 
 function powerBudgetTable(parent: HTMLElement, data: SolveResponse): void {
-  var ledger: Ledger | null = vitals().circuits ? vitals().circuits!.world : null;
+  const ledger: Ledger | null = vitals().circuits ? vitals().circuits!.world : null;
   if (!ledger) {
     if (vitals().circuitsError) error(parent, "the grid figures", vitals().circuitsError);
     else loading(parent, "grid figures");
     return;
   }
-  var net = data.mw_net;
-  var rows: BudgetRow[] = [
+  const net = data.mw_net;
+  const rows: BudgetRow[] = [
     { label: LEDGER.headroomNow, now: ledger.measured_headroom_mw, after: net === null ? null : ledger.measured_headroom_mw + net },
     { label: LEDGER.headroomFull, now: ledger.headroom_mw, after: net === null ? null : ledger.headroom_mw + net },
   ];
-  var columns: Column<BudgetRow>[] = [
+  const columns: Column<BudgetRow>[] = [
     {
       key: "grid",
       label: "grid",
@@ -138,15 +138,15 @@ function powerBudgetTable(parent: HTMLElement, data: SolveResponse): void {
       },
     },
   ];
-  var box = make("div", "plan-budget");
+  const box = make("div", "plan-budget");
   box.appendChild(table(columns, rows, { caption: "power budget" }));
   parent.appendChild(box);
 }
 
 function undoButton(parent: HTMLElement): void {
-  var plan = bench.plan;
+  const plan = bench.plan;
   if (!plan || plan.rev <= 1 || bench.gone) return;
-  var head = plan.rev;
+  const head = plan.rev;
   parent.appendChild(
     button(
       "undo v" + head,
@@ -159,13 +159,13 @@ function undoButton(parent: HTMLElement): void {
 }
 
 function resultSummaryCard(parent: HTMLElement, data: SolveResponse, rev: number, live: boolean): void {
-  var card = make("section", "dash-card");
-  var title = make("div", "dash-title");
+  const card = make("section", "dash-card");
+  const title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "result · v" + rev));
-  var waiting = live && bench.solvingRev && bench.solvingRev !== rev;
+  const waiting = live && bench.solvingRev && bench.solvingRev !== rev;
   if (waiting) title.appendChild(make("span", "plan-status", "solving v" + bench.solvingRev + "…"));
   card.appendChild(title);
-  var body = make("div", waiting ? "plan-stale" : "");
+  const body = make("div", waiting ? "plan-stale" : "");
   card.appendChild(body);
   if (!data.feasible) {
     body.appendChild(make("p", "plan-headline bad", "not solvable: " + data.cause));
@@ -181,7 +181,7 @@ function resultSummaryCard(parent: HTMLElement, data: SolveResponse, rev: number
 }
 
 function mainItem(data: SolveResponse, row: SolveRow): string | null {
-  var node = data.graph.nodes.filter(function (n) {
+  const node = data.graph.nodes.filter(function (n) {
     return n.row === row.id;
   })[0];
   return node ? node.item : null;
@@ -200,7 +200,7 @@ function banButton(row: SolveRow): HTMLButtonElement {
   return button(
     "ban",
     function () {
-      var member = row.recipe_id || row.recipe;
+      const member = row.recipe_id || row.recipe;
       pendingFocus.ctl = "banned:" + member;
       pendingFocus.until = Date.now() + 5000;
       applyOps(banOps(member));
@@ -210,7 +210,7 @@ function banButton(row: SolveRow): HTMLButtonElement {
 }
 
 function pinProcessButton(row: SolveRow): HTMLButtonElement | null {
-  var id = row.recipe_id;
+  const id = row.recipe_id;
   if (!id) return null;
   return button(
     WORDS.pin,
@@ -226,27 +226,27 @@ function copyIdButton(text: string, what: string): HTMLButtonElement {
 }
 
 function rowActions(data: SolveResponse, row: SolveRow): HTMLElement {
-  var box = make("span", "dash-acts");
-  var item = mainItem(data, row);
+  const box = make("span", "dash-acts");
+  const item = mainItem(data, row);
   if (item && row.recipe_id) box.appendChild(recipesButton(item, row.item || row.recipe, "row"));
   box.appendChild(banButton(row));
-  var pin = pinProcessButton(row);
+  const pin = pinProcessButton(row);
   if (pin) box.appendChild(pin);
   box.appendChild(processAsk(row, "row"));
   return box;
 }
 
 function processAsk(row: SolveRow, where: string): HTMLButtonElement {
-  var ref = row.recipe_id || row.recipe;
+  const ref = row.recipe_id || row.recipe;
   return askButton({ kind: "process", label: row.building + " · " + row.recipe, ref: ref, plan: bench.key, rev: bench.plan ? bench.plan.rev : null }, where + ":" + row.id);
 }
 
 function recipeCell(row: SolveRow, live: boolean): HTMLElement {
-  var cell = make("span", "plan-recipe", row.recipe);
+  const cell = make("span", "plan-recipe", row.recipe);
   if (row.required) cell.appendChild(chip("required", "muted"));
   if (!live) return cell;
   if (bench.chatChangedRows[row.id]) cell.appendChild(chip(WORDS.actorChat, "muted", "chat changed this process since you opened the plan"));
-  var pinned = row.recipe_id ? processPinsByRecipe(bench.key)[row.recipe_id] : undefined;
+  const pinned = row.recipe_id ? processPinsByRecipe(bench.key)[row.recipe_id] : undefined;
   if (pinned) cell.appendChild(idChip(pinned.id, pinned.text));
   openAsksAbout(bench.key, "process", row.recipe_id || row.recipe).forEach(function (a) {
     cell.appendChild(idChip(a.id, a.text));
@@ -255,9 +255,9 @@ function recipeCell(row: SolveRow, live: boolean): HTMLElement {
 }
 
 function buildList(parent: HTMLElement, data: SolveResponse, select: (s: FocusSelection) => void, live: boolean): void {
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "build list · " + count(data.rows.length) + " processes"));
-  var columns: Column<SolveRow>[] = [
+  const columns: Column<SolveRow>[] = [
     {
       key: "building",
       label: "building",
@@ -355,7 +355,7 @@ function buildList(parent: HTMLElement, data: SolveResponse, select: (s: FocusSe
 
 /** The chat-changed rows still inside their flash window, counted from when each was first seen. */
 function updateFlashingRows(): string[] {
-  var now = Date.now();
+  const now = Date.now();
   Object.keys(flashed).forEach(function (id) {
     if (!bench.chatChangedRows[id]) delete flashed[id];
   });
@@ -368,17 +368,17 @@ function updateFlashingRows(): string[] {
 }
 
 function planNodes(data: SolveResponse): PlanNode[] {
-  var byId: Record<string, SolveRow> = {};
+  const byId: Record<string, SolveRow> = {};
   data.rows.forEach(function (r) {
     byId[r.id] = r;
   });
-  var pins = processPinsByRecipe(bench.key);
+  const pins = processPinsByRecipe(bench.key);
   return data.graph.nodes.map(function (n: PlanGraphNode): PlanNode {
-    var row = n.row ? byId[n.row] : undefined;
-    var badges: string[] = [];
+    const row = n.row ? byId[n.row] : undefined;
+    const badges: string[] = [];
     if (row && bench.chatChangedRows[row.id]) badges.push(WORDS.actorChat);
     if (row && row.recipe_id && pins[row.recipe_id]) badges.push(pins[row.recipe_id]!.id);
-    var tip = row
+    const tip = row
       ? row.building + " · " + row.recipe + "\nin: " + ratesText(withoutPower(row.inputs)) + "\nout: " + ratesText(withoutPower(row.outputs))
       : n.label + (n.detail ? " · " + n.detail : "");
     return {
@@ -400,7 +400,7 @@ function planNodes(data: SolveResponse): PlanNode[] {
 }
 
 function pickNode(data: SolveResponse, node: PlanNode, select: (s: FocusSelection) => void): void {
-  var row = data.rows.filter(function (r) {
+  const row = data.rows.filter(function (r) {
     return r.id === node.row;
   })[0];
   if (row) {
@@ -412,9 +412,9 @@ function pickNode(data: SolveResponse, node: PlanNode, select: (s: FocusSelectio
 }
 
 function cachedGraphFrame(data: SolveResponse, select: (s: FocusSelection) => void): HTMLElement {
-  var nodes = planNodes(data);
-  var flash = updateFlashingRows();
-  var key =
+  const nodes = planNodes(data);
+  const flash = updateFlashingRows();
+  const key =
     nodes
       .map(function (n) {
         return n.id + "=" + (n.badges || []).join("+");
@@ -423,7 +423,7 @@ function cachedGraphFrame(data: SolveResponse, select: (s: FocusSelection) => vo
     "#" +
     flash.join("|");
   if (graphCache.data !== data || graphCache.key !== key || !graphCache.frame) {
-    var frame = drawGraph(
+    const frame = drawGraph(
       { nodes: nodes, edges: data.graph.edges.map(function (e) {
         return { source: e.source, target: e.target, item: e.item, per_min: e.per_min, text: e.text || undefined };
       }) },
@@ -451,7 +451,7 @@ function cachedGraphFrame(data: SolveResponse, select: (s: FocusSelection) => vo
       graphCache.y = frame.scrollTop;
     });
     frame.addEventListener("focusin", function (event) {
-      var node = (event.target as Element).closest(".graph-node");
+      const node = (event.target as Element).closest(".graph-node");
       graphCache.focus = node ? node.getAttribute("data-node") || "" : "";
     });
     frame.addEventListener("focusout", function () {
@@ -468,23 +468,23 @@ function cachedGraphFrame(data: SolveResponse, select: (s: FocusSelection) => vo
 }
 
 function nodeCard(parent: HTMLElement, data: SolveResponse): void {
-  var picked = bench.picked;
-  var node = picked
+  const picked = bench.picked;
+  const node = picked
     ? data.graph.nodes.filter(function (n) {
         return n.id === picked;
       })[0]
     : undefined;
   if (!node) return;
-  var card = make("section", "dash-card plan-node");
+  const card = make("section", "dash-card plan-node");
   card.setAttribute("aria-label", "picked: " + node.label);
-  var row = data.rows.filter(function (r) {
+  const row = data.rows.filter(function (r) {
     return r.id === node!.row;
   })[0];
-  var title = make("div", "dash-title");
+  const title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", row ? row.recipe : node.label));
-  var acts = make("div", "dash-acts");
+  const acts = make("div", "dash-acts");
   if (row) {
-    var power = row.mw ? " · " + mw(row.mw, { signed: true }) : "";
+    const power = row.mw ? " · " + mw(row.mw, { signed: true }) : "";
     card.appendChild(title);
     card.appendChild(make("p", "plan-facts", row.building + " ×" + count(row.machines) + " · " + clockText(row) + power));
     card.appendChild(make("p", "dash-sub", "in: " + ratesText(withoutPower(row.inputs))));
@@ -492,7 +492,7 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
     if (!bench.gone) {
       if (node.item && row.recipe_id) acts.appendChild(recipesButton(node.item, row.item || row.recipe, "node"));
       acts.appendChild(banButton(row));
-      var pin = pinProcessButton(row);
+      const pin = pinProcessButton(row);
       if (pin) acts.appendChild(pin);
     }
     if (row.recipe_id) acts.appendChild(copyIdButton(row.recipe_id, row.recipe));
@@ -502,7 +502,7 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
     card.appendChild(make("p", "plan-facts", node.detail));
     if (node.item && !bench.gone) acts.appendChild(recipesButton(node.item, node.label, "node"));
     if (!bench.gone) {
-      var about = { kind: "item", label: node.label, ref: node.item || node.id, plan: bench.key, rev: bench.plan ? bench.plan.rev : null };
+      const about = { kind: "item", label: node.label, ref: node.item || node.id, plan: bench.key, rev: bench.plan ? bench.plan.rev : null };
       acts.appendChild(askButton(about, "node:" + node.id));
     }
   }
@@ -511,13 +511,13 @@ function nodeCard(parent: HTMLElement, data: SolveResponse): void {
 }
 
 function graphTab(parent: HTMLElement, data: SolveResponse, select: (s: FocusSelection) => void): HTMLElement | null {
-  var card = graphFrame("production graph", true);
+  const card = graphFrame("production graph", true);
   parent.appendChild(card);
   if (!data.graph.nodes.length) {
     card.appendChild(make("p", "dash-note", "nothing to draw"));
     return null;
   }
-  var frame = cachedGraphFrame(data, select);
+  const frame = cachedGraphFrame(data, select);
   card.appendChild(frame);
   card.appendChild(make("p", "dash-note", "click a process for its recipes · rates split over each item's producers by share · " + GRAPH_HINT));
   nodeCard(parent, data);
@@ -551,10 +551,10 @@ function resultTabs(parent: HTMLElement): void {
 
 /** An unsolvable head: the drawer if open, then the last solvable version greyed out. */
 function renderInfeasibleFallback(parent: HTMLElement, select: (s: FocusSelection) => void, close: () => void): void {
-  var last = bench.lastFeasible;
+  const last = bench.lastFeasible;
   if (bench.alternates) renderAlternates(parent, close);
   if (!last) return;
-  var grey = make("div", "plan-stale");
+  const grey = make("div", "plan-stale");
   if (bench.tab === "track") grey.appendChild(make("p", "dash-note", "track needs a solvable version"));
   grey.appendChild(make("p", "dash-note", "last solvable version, v" + last.rev + ":"));
   resultSummaryCard(grey, last.data, last.rev, false);
@@ -566,8 +566,8 @@ function renderInfeasibleFallback(parent: HTMLElement, select: (s: FocusSelectio
 function restoreGraphView(frame: HTMLElement): void {
   frame.scrollLeft = graphCache.x;
   frame.scrollTop = graphCache.y;
-  var lost = !document.activeElement || document.activeElement === document.body;
-  var again = graphCache.focus && lost ? frame.querySelector<SVGGElement>('[data-node="' + CSS.escape(graphCache.focus) + '"]') : null;
+  const lost = !document.activeElement || document.activeElement === document.body;
+  const again = graphCache.focus && lost ? frame.querySelector<SVGGElement>('[data-node="' + CSS.escape(graphCache.focus) + '"]') : null;
   if (again) again.focus({ preventScroll: true });
 }
 
@@ -578,7 +578,7 @@ export function renderResult(parent: HTMLElement, select: (s: FocusSelection) =>
     return;
   }
   if (bench.solveError) error(parent, "the result", bench.solveError);
-  var data = bench.result;
+  const data = bench.result;
   if (!data) {
     if (!bench.solveError) loading(parent, "the result");
     return;
@@ -589,14 +589,14 @@ export function renderResult(parent: HTMLElement, select: (s: FocusSelection) =>
     return;
   }
   resultTabs(parent);
-  var beside = !!bench.alternates && bench.tab === "graph" && WIDE.matches;
-  var split = make("div", "plan-result" + (beside ? " beside" : ""));
-  var dim = bench.tab !== "track" && bench.solvingRev && bench.solvingRev !== bench.resultRev;
-  var main = make("div", "plan-main" + (dim ? " plan-stale" : ""));
+  const beside = !!bench.alternates && bench.tab === "graph" && WIDE.matches;
+  const split = make("div", "plan-result" + (beside ? " beside" : ""));
+  const dim = bench.tab !== "track" && bench.solvingRev && bench.solvingRev !== bench.resultRev;
+  const main = make("div", "plan-main" + (dim ? " plan-stale" : ""));
   if (bench.alternates && !beside) renderAlternates(split, close);
   split.appendChild(main);
   if (bench.alternates && beside) renderAlternates(split, close);
-  var frame = bench.tab === "graph" ? graphTab(main, data, select) : null;
+  const frame = bench.tab === "graph" ? graphTab(main, data, select) : null;
   if (bench.tab === "track") renderTrack(main, select);
   else if (bench.tab !== "graph") buildList(main, data, select, true);
   parent.appendChild(split);

@@ -92,9 +92,9 @@ onSetting(function () {
 });
 
 function padOf(raw: unknown): Pad | null {
-  var siting = raw as { origin_m?: (number | null)[]; yaw_deg?: number; footprint_m?: number[] } | null;
+  const siting = raw as { origin_m?: (number | null)[]; yaw_deg?: number; footprint_m?: number[] } | null;
   if (!siting || !siting.origin_m || siting.origin_m[0] === null || siting.origin_m[1] === null) return null;
-  var footprint = siting.footprint_m || [0, 0];
+  const footprint = siting.footprint_m || [0, 0];
   return {
     x_m: Number(siting.origin_m[0]),
     y_m: Number(siting.origin_m[1]),
@@ -113,13 +113,13 @@ function wholeNumber(n: number): string {
 }
 
 function previewUrl(p: Pad | null, extra: string): ApiUrl {
-  var query = "key=" + encodeURIComponent(site.key) + "&rev=" + site.rev + "&" + biomassQuery() + "&headroom=" + stageHeadroom();
+  let query = "key=" + encodeURIComponent(site.key) + "&rev=" + site.rev + "&" + biomassQuery() + "&headroom=" + stageHeadroom();
   if (p) query += "&x_m=" + p.x_m + "&y_m=" + p.y_m + "&yaw_deg=" + p.yaw_deg + "&w_m=" + p.width_m + "&d_m=" + p.depth_m;
   return (PREVIEW + "?" + query + extra) as ApiUrl;
 }
 
 function fetchPreview(p: Pad | null, extra: string): Promise<SitePreviewResponse> {
-  var sent = performance.now();
+  const sent = performance.now();
   return get<SitePreviewResponse>(previewUrl(p, extra)).then(function (data) {
     rtt = performance.now() - sent;
     return data;
@@ -131,14 +131,14 @@ function fetchPreview(p: Pad | null, extra: string): Promise<SitePreviewResponse
 function pumpPreviews(): void {
   clearTimeout(pumpTimer);
   if (inflight || !pending) return;
-  var gap = Math.min(GAP_MAX_MS, Math.max(GAP_MIN_MS, GAP_PER_RTT * rtt));
-  var wait = sentAt + gap - performance.now();
+  const gap = Math.min(GAP_MAX_MS, Math.max(GAP_MIN_MS, GAP_PER_RTT * rtt));
+  const wait = sentAt + gap - performance.now();
   if (wait > 0) {
     pumpTimer = window.setTimeout(pumpPreviews, wait);
     return;
   }
-  var p = pending;
-  var key = site.key;
+  const p = pending;
+  const key = site.key;
   pending = null;
   inflight = true;
   sentAt = performance.now();
@@ -187,7 +187,7 @@ function revertPad(): void {
   site.confirm = null;
   site.label = "map";
   site.sized = false;
-  var back = site.stored || site.start || site.pad;
+  const back = site.stored || site.start || site.pad;
   if (back) movePad(back, true);
   paint();
 }
@@ -213,7 +213,7 @@ function commitPad(p: Pad, how: string): void {
     revertPad();
     return;
   }
-  var key = site.key;
+  const key = site.key;
   fetchPreview(p, "&full=1")
     .then(function (data) {
       if (key !== site.key || !samePad(site.pad, p)) return;
@@ -253,11 +253,11 @@ function framePad(p: Pad): void {
     });
     return;
   }
-  var bounds = L.latLngBounds(padCorners(p)).pad(1.2);
+  const bounds = L.latLngBounds(padCorners(p)).pad(1.2);
   if (site.ghost && site.ghost.key === site.key) bounds.extend(L.latLngBounds(padCorners(site.ghost.pad)));
-  var dash = document.getElementById("dash")!.getBoundingClientRect();
-  var box = map.getContainer().getBoundingClientRect();
-  var side = dash.left > box.left + 4;
+  const dash = document.getElementById("dash")!.getBoundingClientRect();
+  const box = map.getContainer().getBoundingClientRect();
+  const side = dash.left > box.left + 4;
   map.fitBounds(bounds, {
     paddingTopLeft: [16, 16],
     paddingBottomRight: side ? [box.right - dash.left + 16, 16] : [16, box.bottom - dash.top + 16],
@@ -267,8 +267,8 @@ function framePad(p: Pad): void {
 }
 
 function beginSiting(): void {
-  var key = site.key;
-  var plan = bench.plan!;
+  const key = site.key;
+  const plan = bench.plan!;
   site.stored = padOf(plan.siting);
   site.source = plan.siting ? footprintSource(plan.siting) : "";
   site.error = "";
@@ -278,7 +278,7 @@ function beginSiting(): void {
       site.lastPreview = data;
       if (!site.stored) site.source = data.source;
       site.start = { x_m: data.x_m, y_m: data.y_m, yaw_deg: data.yaw_deg, width_m: data.w_m, depth_m: data.d_m };
-      var p = site.stored || site.start;
+      const p = site.stored || site.start;
       site.pad = p;
       startPadEdit(p, plan.name, dragHooks, COARSE.matches);
       showNodeLines(data.nodes || []);
@@ -298,7 +298,7 @@ function beginSiting(): void {
 
 /* A new head moves the pad to what was stored, unless a gesture or a confirm holds it. */
 function syncWithPlan(): void {
-  var plan = bench.plan;
+  const plan = bench.plan;
   if (!plan) return;
   if (site.key !== bench.key) {
     site.key = bench.key;
@@ -313,10 +313,10 @@ function syncWithPlan(): void {
   if (site.rev !== plan.rev && !padGestureActive() && !site.confirm) {
     site.rev = plan.rev;
     if (site.ghost && site.ghost.key === site.key && plan.siting && samePad(padOf(plan.siting), site.ghost.pad)) dropGhost();
-    var stored = padOf(plan.siting);
+    const stored = padOf(plan.siting);
     site.stored = stored;
     if (stored) site.source = footprintSource(plan.siting);
-    var back = stored || site.start;
+    const back = stored || site.start;
     if (back) movePad(back, true);
   }
 }
@@ -329,14 +329,14 @@ function feedbackLine(parent: HTMLElement, text: string, tone?: string): void {
 
 function nodeDistanceLine(p: Pad, nodes: SitePreviewResponse["nodes"]): string {
   if (!nodes || !nodes.length) return "";
-  var byDistance = nodes.map(function (node) {
+  const byDistance = nodes.map(function (node) {
     return { node: node, distanceM: Math.hypot(node.x_m - p.x_m, node.y_m - p.y_m) };
   });
   byDistance.sort(function (a, b) {
     return a.distanceM - b.distanceM;
   });
-  var nearest = byDistance[0]!;
-  var farthest = byDistance[byDistance.length - 1]!;
+  const nearest = byDistance[0]!;
+  const farthest = byDistance[byDistance.length - 1]!;
   return "nearest " + nearest.node.resource + " node " + wholeNumber(nearest.distanceM) + " m · farthest " + wholeNumber(farthest.distanceM) + " m";
 }
 
@@ -352,9 +352,9 @@ function terrainLines(t: NonNullable<SitePreviewResponse["terrain"]>): void {
 
 function trunksLine(trunks: SitePreviewResponse["trunks"]): void {
   if (!trunks.length) return;
-  var run = 0;
-  var leg = 0;
-  var pumps = 0;
+  let run = 0;
+  let leg = 0;
+  let pumps = 0;
   trunks.forEach(function (trunk) {
     run += trunk.run_m;
     leg += trunk.to_site_m;
@@ -364,15 +364,15 @@ function trunksLine(trunks: SitePreviewResponse["trunks"]): void {
 }
 
 function paintLines(): void {
-  var data = site.lastPreview;
-  var p = site.pad;
+  const data = site.lastPreview;
+  const p = site.pad;
   feedback.textContent = "";
   if (!data || !p) {
     loading(feedback, "the spot");
     return;
   }
   if (data.nodes) firstNodes = data.nodes;
-  var stale = data.x_m !== p.x_m || data.y_m !== p.y_m || data.yaw_deg !== p.yaw_deg || data.w_m !== p.width_m || data.d_m !== p.depth_m;
+  const stale = data.x_m !== p.x_m || data.y_m !== p.y_m || data.yaw_deg !== p.yaw_deg || data.w_m !== p.width_m || data.d_m !== p.depth_m;
   feedback.classList.toggle("plan-stale", stale);
   if (outsideMap(p)) {
     feedbackLine(feedback, "outside the map: a drop here is refused", "site-refused");
@@ -381,7 +381,7 @@ function paintLines(): void {
   feedbackLine(feedback, data.region || "off any named region");
   if (!data.in_content) feedbackLine(feedback, "off the playable ground", "dash-muted");
   feedbackLine(feedback, data.z_m !== null ? "ground height " + wholeNumber(data.z_m) + " m" : data.z_note, data.z_m === null ? "dash-muted" : "");
-  var terrain = data.terrain;
+  const terrain = data.terrain;
   if (!terrain) feedbackLine(feedback, data.terrain_note, "dash-muted");
   else if (terrain.z_min_m === null) feedbackLine(feedback, "no terrain data under the pad", "dash-muted");
   else terrainLines(terrain);
@@ -393,7 +393,7 @@ function paintLines(): void {
   feedbackLine(feedback, counted(data.on_pad, "machine") + " " + (data.on_pad === 1 ? "stands" : "stand") + " on the pad (plan: " + count(data.planned) + ")");
   feedbackLine(feedback, nodeDistanceLine(p, firstNodes));
   trunksLine(data.trunks);
-  var built = data.built;
+  const built = data.built;
   feedbackLine(feedback, "here: " + built.where + " · " + built.figure, "site-built");
   if (data.sited) feedbackLine(feedback, "now: " + data.now.where + " · " + data.now.figure, "dash-muted");
   feedbackLine(feedback, data.basis, "dash-muted");
@@ -402,15 +402,15 @@ function paintLines(): void {
 }
 
 function numberField(label: string, ctl: string, val: number, apply: (n: number) => void): HTMLElement {
-  var wrap = make("label", "site-field");
+  const wrap = make("label", "site-field");
   wrap.appendChild(make("span", "site-field-k", label));
-  var input = make("input", "dash-number");
+  const input = make("input", "dash-number");
   input.type = "number";
   input.step = "any";
   input.value = String(Math.round(val * 100) / 100);
   input.setAttribute("data-ctl", ctl);
   input.onchange = function () {
-    var n = Number(input.value);
+    const n = Number(input.value);
     if (input.value.trim() === "" || !isFinite(n)) {
       input.value = String(val);
       return;
@@ -428,15 +428,15 @@ var fields = make("div", "site-fields");
 
 function applyTypedEdit(change: (p: Pad) => Pad): void {
   if (!site.pad || padGestureActive()) return;
-  var next = change({ ...site.pad });
+  const next = change({ ...site.pad });
   movePad(next, true);
   commitPad(next, "typed");
 }
 
 function paintFields(): void {
-  var p = site.pad;
+  const p = site.pad;
   if (!p) return;
-  var active = document.activeElement;
+  const active = document.activeElement;
   if (active && fields.contains(active)) return;
   fields.textContent = "";
   fields.appendChild(numberField("x, m", "site-x", p.x_m, function (n) { applyTypedEdit(function (q) { q.x_m = n; return q; }); }));
@@ -447,25 +447,25 @@ function paintFields(): void {
 }
 
 function actions(parent: HTMLElement): void {
-  var row = make("div", "site-actions");
+  const row = make("div", "site-actions");
   if (crosshairActive()) {
-    var deg = yawStep() + "°";
+    const deg = yawStep() + "°";
     row.appendChild(button("⟲ " + deg, function () { crossTurn(-1); }, { label: "turn the pad " + deg + " anticlockwise" }));
     row.appendChild(button("⟳ " + deg, function () { crossTurn(1); }, { label: "turn the pad " + deg + " clockwise" }));
-    var drop = button(WORDS.dropHere, function () { crossDrop(); paint(); });
+    const drop = button(WORDS.dropHere, function () { crossDrop(); paint(); });
     drop.classList.add("site-drop");
     drop.setAttribute("data-ctl", "site-drop");
     row.appendChild(drop);
     row.appendChild(button("cancel", function () { crossCancel(); paint(); }));
   } else {
-    var move = button(COARSE.matches ? "move" : WORDS.moveByPanning, function () { startCrosshair(); paint(); }, { title: "pan the map under a fixed pad, then drop it" });
+    const move = button(COARSE.matches ? "move" : WORDS.moveByPanning, function () { startCrosshair(); paint(); }, { title: "pan the map under a fixed pad, then drop it" });
     move.setAttribute("data-ctl", "site-cross");
     move.disabled = bench.gone || !site.pad;
     row.appendChild(move);
-    var fits = site.lastPreview && site.lastPreview.fits ? site.lastPreview.fits : [];
+    const fits = site.lastPreview && site.lastPreview.fits ? site.lastPreview.fits : [];
     fits.forEach(function (fit) {
       row.appendChild(button(WORDS.fitPad(fit.name), function () {
-        var p = padOf(fit.value)!;
+        const p = padOf(fit.value)!;
         site.label = fit.value.origin_label;
         site.sized = true;
         movePad(p, false);
@@ -477,13 +477,13 @@ function actions(parent: HTMLElement): void {
 }
 
 function confirmLine(parent: HTMLElement): void {
-  var asked = site.confirm;
+  const asked = site.confirm;
   if (asked === null) return;
-  var held = asked;
-  var row = make("div", "site-confirm");
+  const held = asked;
+  const row = make("div", "site-confirm");
   row.setAttribute("role", "alert");
   row.appendChild(make("span", "", asked.text));
-  var anyway = button("move anyway", function () { saveSite(held.pad); });
+  const anyway = button("move anyway", function () { saveSite(held.pad); });
   anyway.setAttribute("data-ctl", "site-anyway");
   row.appendChild(anyway);
   row.appendChild(button("cancel", function () { revertPad(); }));
@@ -491,15 +491,15 @@ function confirmLine(parent: HTMLElement): void {
 }
 
 function ghostLine(parent: HTMLElement): void {
-  var seen = site.ghost;
+  const seen = site.ghost;
   if (seen === null || seen.key !== site.key) return;
-  var ghost = seen;
-  var row = make("div", "site-ghost-line");
+  const ghost = seen;
+  const row = make("div", "site-ghost-line");
   row.appendChild(make("span", "", ghost.who + " is looking at " + wholeNumber(ghost.pad.x_m) + ", " + wholeNumber(ghost.pad.y_m)));
-  var use = button("use it", function () {
+  const use = button("use it", function () {
     site.label = "chat preview";
     site.sized = !site.stored || ghost.pad.width_m !== site.stored.width_m || ghost.pad.depth_m !== site.stored.depth_m;
-    var p = ghost.pad;
+    const p = ghost.pad;
     movePad(p, false);
     dropGhost();
     commitPad(p, "chat");
@@ -513,13 +513,13 @@ function ghostLine(parent: HTMLElement): void {
 var headline = make("span", "dash-sub");
 
 function paintHead(): void {
-  var p = site.pad;
+  const p = site.pad;
   headline.textContent = p ? wholeNumber(p.x_m) + ", " + wholeNumber(p.y_m) + " · " + wholeNumber(p.yaw_deg) + "° · " + wholeNumber(p.width_m) + " × " + wholeNumber(p.depth_m) + " m" + (site.stored ? "" : " · not placed yet") : "";
 }
 
 function paint(): void {
   card.textContent = "";
-  var head = make("div", "dash-title");
+  const head = make("div", "dash-title");
   head.appendChild(make("h2", "dash-h", WORDS.site));
   paintHead();
   head.appendChild(headline);
@@ -533,8 +533,8 @@ function paint(): void {
   actions(card);
   card.appendChild(feedback);
   paintLines();
-  var deg = yawStep() + "°";
-  var hint = COARSE.matches ? "move, pan the map under the pad, then " + WORDS.dropHere : "drag the square to move, the circle to turn; Shift moves freely; arrows nudge 8 m, Shift+arrows 1 m, [ and ] turn " + deg + ", Shift+[ and ] 15° freely; Esc puts it back";
+  const deg = yawStep() + "°";
+  const hint = COARSE.matches ? "move, pan the map under the pad, then " + WORDS.dropHere : "drag the square to move, the circle to turn; Shift moves freely; arrows nudge 8 m, Shift+arrows 1 m, [ and ] turn " + deg + ", Shift+[ and ] 15° freely; Esc puts it back";
   card.appendChild(make("p", "dash-note", hint + " · snap: " + (settingChoice("siteSnap") === "grid8" ? "8 m world grid and " + deg : "1 m and " + deg) + " (Settings)"));
 }
 
@@ -545,7 +545,7 @@ function siteTabShowing(): boolean {
 }
 
 function syncSplit(): void {
-  var on = siteTabShowing();
+  const on = siteTabShowing();
   if (document.body.classList.contains("site-on") === on) return;
   document.body.classList.toggle("site-on", on);
   if (!on) {
@@ -574,10 +574,10 @@ function dropGhost(): void {
 
 /** A chat `site_plan(preview=True)`: a ghost pad with [use it] on that plan's site tab. */
 export function showGhost(key: string, args: Record<string, unknown>, who: string): void {
-  var arg = function (name: string): number {
+  const arg = function (name: string): number {
     return Number(args[name]);
   };
-  var p: Pad = { x_m: arg("x_m"), y_m: arg("y_m"), yaw_deg: arg("yaw_deg") || 0, width_m: arg("w_m"), depth_m: arg("d_m") };
+  const p: Pad = { x_m: arg("x_m"), y_m: arg("y_m"), yaw_deg: arg("yaw_deg") || 0, width_m: arg("w_m"), depth_m: arg("d_m") };
   if (![p.x_m, p.y_m, p.width_m, p.depth_m].every(isFinite)) return;
   site.ghost = { key: key, pad: p, who: who };
   if (site.key === key) {

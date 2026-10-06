@@ -20,14 +20,14 @@ export function cancelRename(): void {
 }
 
 function titleLine(head: HTMLElement): void {
-  var plan = bench.plan!;
+  const plan = bench.plan!;
   if (!renaming.on) {
     head.appendChild(make("h1", "", plan.name));
     return;
   }
-  var focusNow = renaming.fresh;
+  const focusNow = renaming.fresh;
   renaming.fresh = false;
-  var box = inlineTextEdit({
+  const box = inlineTextEdit({
     value: plan.name,
     ctl: "rename",
     label: "plan name",
@@ -53,8 +53,8 @@ function titleLine(head: HTMLElement): void {
 }
 
 function planActions(parent: HTMLElement): void {
-  var plan = bench.plan!;
-  var acts = make("div", "dash-acts plan-acts");
+  const plan = bench.plan!;
+  const acts = make("div", "dash-acts plan-acts");
   acts.appendChild(button("undo", undoLast, { title: "undo your last change on this plan (Ctrl+Z)", disabled: bench.gone || !bench.undoStack.length }));
   acts.appendChild(button("redo", redoLast, { title: "undo that undo (Ctrl+Shift+Z)", disabled: bench.gone || !bench.redoStack.length }));
   acts.appendChild(
@@ -71,8 +71,8 @@ function planActions(parent: HTMLElement): void {
   if (!bench.gone) acts.appendChild(button("forget", forgetPlan, { title: "hide this plan from the list; its history is kept and restore brings it back" }));
   acts.appendChild(toggleButton("versions", bench.versionsOpen, toggleVersions, { title: "every version of this plan: view one, or restore it as a new version" }));
   acts.appendChild(duplicateButton());
-  var key = bench.key;
-  var pinned = findPin("plan", function (ref) {
+  const key = bench.key;
+  const pinned = findPin("plan", function (ref) {
     return ref.plan === key;
   });
   acts.appendChild(
@@ -84,17 +84,17 @@ function planActions(parent: HTMLElement): void {
       { title: "pin this plan and copy its pin:N for chat", label: pinned ? undefined : "pin this plan" }
     )
   );
-  var call = "plan_factory(plan=" + JSON.stringify(plan.name) + ")  # base_rev=" + plan.rev;
+  const call = "plan_factory(plan=" + JSON.stringify(plan.name) + ")  # base_rev=" + plan.rev;
   acts.appendChild(copyButton(call, "copy as tool call", { title: call }));
   if (!bench.gone) acts.appendChild(askButton({ kind: "plan", label: plan.name, ref: key, plan: key, rev: plan.rev }, "plan", WORDS.askChat));
   parent.appendChild(acts);
 }
 
 export function renderBenchHeader(parent: HTMLElement): void {
-  var plan = bench.plan!;
-  var head = make("div", "dash-title");
+  const plan = bench.plan!;
+  const head = make("div", "dash-title");
   titleLine(head);
-  var status = syncStatus();
+  const status = syncStatus();
   head.appendChild(make("span", "plan-status" + (status === "conflict" ? " bad" : ""), "v" + plan.rev + " · " + status));
   if (bench.lastChange) head.appendChild(make("span", "plan-status", "last change: " + bench.lastChange.who + ", " + ageShort(bench.lastChange.ts) + " ago"));
   head.appendChild(make("span", "plan-held"));
@@ -103,7 +103,7 @@ export function renderBenchHeader(parent: HTMLElement): void {
 }
 
 export function forgottenBanner(parent: HTMLElement): void {
-  var line = make("div", "plan-warning plan-gone");
+  const line = make("div", "plan-warning plan-gone");
   line.appendChild(make("span", "", "this plan was forgotten: restore it to edit it"));
   line.appendChild(button("restore", restorePlan, { title: "bring the plan back as a new version" }));
   parent.appendChild(line);
@@ -112,8 +112,8 @@ export function forgottenBanner(parent: HTMLElement): void {
 /** The versions others made since this page opened the plan, each with its own undo. */
 export function stripRows(parent: HTMLElement): void {
   if (!bench.othersCommits.length) return;
-  var box = make("section", "dash-card");
-  var title = make("div", "dash-title");
+  const box = make("section", "dash-card");
+  const title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "changed since you opened it"));
   title.appendChild(
     button(
@@ -126,7 +126,7 @@ export function stripRows(parent: HTMLElement): void {
   );
   box.appendChild(title);
   bench.othersCommits.forEach(function (row) {
-    var line = make("div", "plan-line");
+    const line = make("div", "plan-line");
     line.appendChild(chip(row.who, "muted"));
     line.appendChild(make("span", "dash-what" + (row.undone ? " dash-muted" : ""), "v" + row.rev + " " + row.text + (row.undone ? " (undone)" : "")));
     if (!row.undone && !bench.gone) {
@@ -142,7 +142,7 @@ export function stripRows(parent: HTMLElement): void {
     }
     box.appendChild(line);
   });
-  var d = bench.othersDelta;
+  const d = bench.othersDelta;
   if (d) box.appendChild(make("p", "dash-note", "result since v" + d.from_rev + ": " + d.text));
   parent.appendChild(box);
 }

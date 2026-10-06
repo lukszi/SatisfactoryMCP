@@ -18,19 +18,19 @@ var focusTimer = 0;
 var viewSent: string | null = null;
 
 function mapSelectionForFocus(): FocusSelection | null {
-  var picked = selected();
+  const picked = selected();
   return picked ? { kind: picked.kind, label: picked.label, ref: selectionRef(picked) } : null;
 }
 
 function altSelection(): FocusSelection | null {
-  var drawer = bench.alternates;
+  const drawer = bench.alternates;
   if (!drawer) return null;
   return { kind: "item", label: drawer.data ? drawer.data.name : drawer.item, ref: drawer.item };
 }
 
 function focusTab(planKey: string | null): string {
   if (planKey === null) {
-    var cut = state.dash.indexOf("/");
+    const cut = state.dash.indexOf("/");
     return cut < 0 ? state.dash : state.dash.slice(0, cut);
   }
   if (!planKey) return "list";
@@ -38,8 +38,8 @@ function focusTab(planKey: string | null): string {
 }
 
 function focusBody(): Record<string, unknown> {
-  var planKey = openPlanKey();
-  var planner = planKey !== null;
+  const planKey = openPlanKey();
+  const planner = planKey !== null;
   return {
     view: state.dash === "" ? "map" : planner ? "planner" : "dashboard",
     dash: state.dash,

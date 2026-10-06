@@ -53,7 +53,7 @@ export function duplicateButton(rev?: number): HTMLButtonElement {
 }
 
 function versionStateText(row: VersionRow, head: number): string {
-  var parts: string[] = [];
+  const parts: string[] = [];
   if (row.rev === head) parts.push("head");
   if (row.undone_by) parts.push("undone in v" + row.undone_by);
   if (row.restores) parts.push("restores v" + row.restores);
@@ -62,8 +62,8 @@ function versionStateText(row: VersionRow, head: number): string {
 }
 
 function versionActs(row: VersionRow, head: number): HTMLElement {
-  var box = make("span", "dash-acts");
-  var key = bench.key;
+  const box = make("span", "dash-acts");
+  const key = bench.key;
   box.appendChild(
     button(
       "view",
@@ -89,14 +89,14 @@ function versionActs(row: VersionRow, head: number): HTMLElement {
 
 export function renderVersions(parent: HTMLElement): void {
   if (!bench.versionsOpen) return;
-  var card = make("section", "dash-card");
+  const card = make("section", "dash-card");
   card.appendChild(make("h2", "dash-h", "versions"));
-  var data = bench.versions;
+  const data = bench.versions;
   if (bench.versionsError) error(card, "the versions", bench.versionsError);
   else if (!data || data.key !== bench.key) loading(card, "versions");
   else {
-    var head = data.head;
-    var columns: Column<VersionRow>[] = [
+    const head = data.head;
+    const columns: Column<VersionRow>[] = [
       { key: "acts", label: "", render: function (r) { return versionActs(r, head); } },
       {
         key: "rev",
@@ -151,14 +151,14 @@ export function renderVersions(parent: HTMLElement): void {
 }
 
 export function renderRevisionView(parent: HTMLElement, select: (s: FocusSelection) => void): void {
-  var rev = bench.viewedRev;
-  var plan = bench.plan!;
-  var card = make("section", "dash-card plan-strip");
-  var title = make("div", "dash-title");
+  const rev = bench.viewedRev;
+  const plan = bench.plan!;
+  const card = make("section", "dash-card plan-strip");
+  const title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "v" + rev + " · read-only"));
   title.appendChild(make("span", "plan-status", "the plan is at v" + plan.rev));
   card.appendChild(title);
-  var acts = make("div", "dash-acts");
+  const acts = make("div", "dash-acts");
   acts.appendChild(
     button("back to v" + plan.rev, function () {
       go(planDash(bench.key));
@@ -179,7 +179,7 @@ export function renderRevisionView(parent: HTMLElement, select: (s: FocusSelecti
   }
   acts.appendChild(duplicateButton(rev));
   card.appendChild(acts);
-  var shown = bench.viewedPlan;
+  const shown = bench.viewedPlan;
   if (bench.viewedError) error(card, "v" + rev, bench.viewedError);
   else if (!shown) loading(card, "v" + rev);
   else {
@@ -194,8 +194,8 @@ export function renderRevisionView(parent: HTMLElement, select: (s: FocusSelecti
 }
 
 export function loadActivity(): void {
-  var mine = ++activitySeq;
-  var world = state.world;
+  const mine = ++activitySeq;
+  const world = state.world;
   get<ActivityResponse>(`/api/activity?limit=${ACTIVITY_LIMIT}`)
     .then(function (data) {
       if (mine !== activitySeq) return;
@@ -225,9 +225,9 @@ function sameRun(a: ActivityRow, b: ActivityRow): boolean {
 }
 
 function collapseRuns(rows: ActivityRow[]): ActivityRow[] {
-  var out: ActivityRow[] = [];
+  const out: ActivityRow[] = [];
   rows.forEach(function (row) {
-    var last = out[out.length - 1];
+    const last = out[out.length - 1];
     if (last && sameRun(last, row)) out[out.length - 1] = { ...last, count: last.count + row.count };
     else out.push(row);
   });
@@ -240,8 +240,8 @@ interface FindArgs {
 }
 
 function findDash(row: ActivityRow): string {
-  var args = (row.args || {}) as FindArgs;
-  var view = typeof args.view === "string" ? args.view : "";
+  const args = (row.args || {}) as FindArgs;
+  const view = typeof args.view === "string" ? args.view : "";
   return withQuery(view ? "world/" + view : "world", args.params || {});
 }
 
@@ -252,10 +252,10 @@ function activityText(row: ActivityRow): string {
 }
 
 function activityActs(row: ActivityRow): HTMLElement {
-  var box = make("span", "dash-acts");
+  const box = make("span", "dash-acts");
   if (row.source === "plan" && row.plan && row.rev && row.rev > 1) {
-    var key = row.plan;
-    var rev = row.rev;
+    const key = row.plan;
+    const rev = row.rev;
     box.appendChild(
       button(
         "undo",
@@ -273,8 +273,8 @@ function activityActs(row: ActivityRow): HTMLElement {
       )
     );
   } else if (row.kind === "world.find") {
-    var params = ((row.args || {}) as FindArgs).params || {};
-    var open = link(findDash(row), "open");
+    const params = ((row.args || {}) as FindArgs).params || {};
+    const open = link(findDash(row), "open");
     open.title = Object.keys(params).map(function (k) { return k + "=" + params[k]; }).join(" · ") || "open this World view";
     box.appendChild(open);
   } else if (row.kind === "plan.solve" && row.args) {
@@ -294,9 +294,9 @@ function activityActs(row: ActivityRow): HTMLElement {
 }
 
 export function renderActivity(parent: HTMLElement): void {
-  var data = activity.world === state.world ? activity.data : null;
-  var card = make("section", "dash-card");
-  var title = make("div", "dash-title");
+  const data = activity.world === state.world ? activity.data : null;
+  const card = make("section", "dash-card");
+  const title = make("div", "dash-title");
   title.appendChild(make("h2", "dash-h", "activity"));
   title.appendChild(
     subTabs(
@@ -317,10 +317,10 @@ export function renderActivity(parent: HTMLElement): void {
   if (activity.error && activity.world === state.world) error(card, "the activity", activity.error, loadActivity);
   else if (!data) loading(card, "activity");
   else {
-    var rows = collapseRuns(data.entries.filter(matchesActivityFilter).reverse());
+    const rows = collapseRuns(data.entries.filter(matchesActivityFilter).reverse());
     if (!rows.length) empty(card, "nothing yet", "plan edits from the page and from chat, and chat's solves and finds, show here");
     else {
-      var columns: Column<ActivityRow>[] = [
+      const columns: Column<ActivityRow>[] = [
         {
           key: "when",
           label: "when",
@@ -333,7 +333,7 @@ export function renderActivity(parent: HTMLElement): void {
           key: "who",
           label: "by",
           render: function (r) {
-            var who = make("span", "", actorWord(r.actor));
+            const who = make("span", "", actorWord(r.actor));
             if (r.actor.display) who.title = r.actor.display;
             return who;
           },
