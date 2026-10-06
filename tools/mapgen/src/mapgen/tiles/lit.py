@@ -7,6 +7,7 @@ relights live. docs/spatial-and-map.md section 29.
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import time
 from pathlib import Path
@@ -26,6 +27,7 @@ __all__ = [
     "LIGHT_CACHE_DIR_NAME",
     "UNLIT_DIR_NAME",
     "UnlitRun",
+    "add_light_flags",
     "crown_layers",
     "crown_occluder",
     "relight_in_place",
@@ -34,6 +36,20 @@ __all__ = [
 UNLIT_DIR_NAME = "unlit"
 LIGHT_CACHE_DIR_NAME = "light.cache"
 RELIGHT_ROWS = 512
+
+
+def add_light_flags(parser: argparse.ArgumentParser) -> None:
+    """``--light`` (the default) or ``--no-light``; ``--unlit``, the old opt-in, is ``--light``."""
+    parser.add_argument(
+        "--light",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "on by default: draw colour unlit beside a default-sun copy, and bake the lighting "
+            "pyramid. --no-light draws the hillshade into the colour and bakes no light"
+        ),
+    )
+    parser.add_argument("--unlit", dest="light", action="store_true", help=argparse.SUPPRESS)
 
 
 def relight_in_place(sheet: np.ndarray, surface: Surface, params: dict) -> None:

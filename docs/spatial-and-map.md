@@ -1786,9 +1786,17 @@ about 37 min for a full two-layer render. The full-size figure is an estimate, n
 
 ## 29. Live sun light (2026-10-05)
 
-A render drawn with `--unlit` (the Maps tab's "live sun" box) stores its colour without light
-and adds a lighting pyramid, and the page relights it in the browser for any sun. One light,
-the sun; the page picks where it stands.
+A render drawn with the light stores its colour without light and adds a lighting pyramid,
+and the page relights it in the browser for any sun. One light, the sun; the page picks where
+it stands.
+
+Since 2026-10-06 every render bakes the light unless told not to: `--light` is the default
+of `python -m mapgen renders` and `--no-light` turns it off; in the Maps tab the "live sun"
+box starts ticked and the `render` preset's `light` option defaults to true. `--unlit`, the
+old opt-in, still means `--light`. While the light was opt-in, a plain command-line run drew
+a map the page could not relight. Every render mode takes it: each layer, each size,
+`--kernel-only`, and `--restyle`, which bakes the light again because the raster cache does
+not keep it.
 
 ### The model
 

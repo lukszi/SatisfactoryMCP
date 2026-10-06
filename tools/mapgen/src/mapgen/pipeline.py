@@ -122,7 +122,7 @@ from mapgen.tiles.borrowmeta import borrow_metadata
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, render_layer
 from mapgen.tiles.extras import KEPT_CACHE_DIRS, load_extras
 from mapgen.tiles.inuse import IN_USE, add_in_use_flag, in_use_refusal
-from mapgen.tiles.lit import UnlitRun, crown_occluder
+from mapgen.tiles.lit import UnlitRun, add_light_flags, crown_occluder
 from mapgen.tiles.pyramid import (
     CHECK_PARALLEL_Z,
     DEFAULT_WORKERS,
@@ -333,11 +333,7 @@ def main() -> int:
         action="store_true",
         help="replace layers this run cannot show were drawn from the field now on disk",
     )
-    parser.add_argument(
-        "--unlit",
-        action="store_true",
-        help="draw colour unlit beside a default-sun copy, and bake the lighting pyramid",
-    )
+    add_light_flags(parser)
     parser.add_argument("--quiet", action="store_true", help="no per-band progress lines")
     add_in_use_flag(parser)
     args = parser.parse_args()
@@ -820,7 +816,7 @@ def main() -> int:
     # ---- draw and cut ----------------------------------------------------------------
     borrow_source = borrow_metadata(detail_meta, province_meta)
     light = (UnlitRun(cache_root, args.size, crown_occluder(painted, cache_root, args.size))
-             if args.unlit else None)  # fmt: skip
+             if args.light else None)  # fmt: skip
     total_started = time.time()
     seam = SeamTrace() if direct is not None else None
     regimes = RegimeCoverage() if direct is not None else None

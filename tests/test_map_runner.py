@@ -33,6 +33,7 @@ p.add_argument("--renders-name"); p.add_argument("--size", type=int)
 p.add_argument("--layer", action="append"); p.add_argument("--kernel-only", action="store_true")
 p.add_argument("--no-top", action="store_true"); p.add_argument("--cache-dir")
 p.add_argument("--keep-direct", action="store_true")
+p.add_argument("--light", action=argparse.BooleanOptionalAction, default=True)
 a = p.parse_args()
 pause = float(os.environ.get("FAKE_PAUSE", "0.05"))
 print("field: 7500x7500 at 1 m, build buildVersion 502094 (x), the installed build", flush=True)
@@ -256,7 +257,7 @@ def test_every_preset_writes_only_under_data_local(env):
 
 def test_progress_reads_a_recorded_full_render_log():
     lines = (Path(__file__).parent / "fixtures" / "map_render_full.log").read_text(encoding="utf-8")
-    options = presets.normalise("render", {"size": 32768})
+    options = presets.normalise("render", {"size": 32768, "light": False})
     progress = store.Progress(presets.stage_plan("render", options), 32768)
     seen = []
     for line in lines.splitlines():

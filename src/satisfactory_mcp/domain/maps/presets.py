@@ -74,7 +74,7 @@ GEN_MODULES = ("ooz", "texture2ddecoder", "PIL")
 #: never drops under its floor because the triangles are the same at any size.
 RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
 RENDER_LAYER_S = {"draw": 355.0, "cut": 122.0}
-#: ``--unlit``: the lighting bake once (projected, docs/spatial-and-map.md section 29), and per
+#: ``--light``: the lighting bake once (projected, docs/spatial-and-map.md section 29), and per
 #: layer the unlit tree cut beside the baked one.
 LIGHT_STAGE_S = 600.0
 LIGHT_KEEP_BYTES = 1_000_000_000
@@ -149,7 +149,7 @@ def normalise(preset: str, options: dict | None) -> dict:
             "top": _bool(options, "top", True),
             "keep_cache": _bool(options, "keep_cache", False),
             "restyle": restyle,
-            "light": _bool(options, "light", False),
+            "light": _bool(options, "light", True),
             "titan_trees": _bool(options, "titan_trees", True),
         }
     if preset == "artwork":
@@ -359,8 +359,7 @@ def plan(preset: str, options: dict, job_id: str, cl: int | None, taken: set[str
             argv.append("--kernel-only")
         if not options["top"]:
             argv.append("--no-top")
-        if options["light"]:
-            argv.append("--unlit")
+        argv.append("--light" if options["light"] else "--no-light")
         if not options["titan_trees"]:
             argv.append("--no-titan-trees")
         if options["keep_cache"] or options["restyle"] or cache_dir(options["size"]).is_dir():
