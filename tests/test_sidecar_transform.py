@@ -29,20 +29,17 @@ import pytest
 
 from pioneersav import ObjectReference, ParseError, Reader, read_trailer
 from pioneersav.trailers import CONVEYOR_CHAIN
-from satisfactory_mcp.core.saveio.extract import (
-    _ATTACHMENT_HINTS,
+from satisfactory_mcp.core.saveio.extract import inventories, routes
+from satisfactory_mcp.core.saveio.extract.census import Drops
+from satisfactory_mcp.core.saveio.extract.interning import Interner
+from satisfactory_mcp.core.saveio.extract.readers import yaw_of
+from satisfactory_mcp.core.saveio.extract.registers import (
+    ATTACHMENT_HINTS,
     FLUID_BUFFER_CLASSES,
     PIPE_CLASSES,
     STORAGE_CLASSES,
-    TANGENT_EPS_CM,
-    Drops,
-    _belts,
-    _bulge,
-    _conveyor_class,
-    _pipes,
-    _storage,
-    yaw_of,
 )
+from satisfactory_mcp.core.saveio.extract.routes import TANGENT_EPS_CM
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -55,8 +52,18 @@ TILE_CM = 800.0
 PLACED = ("machines", "extractors", "generators")
 
 
+def _actors(index: dict[str, int] | None = None) -> Interner:
+    """A frozen actor table holding each name at the given index, filler elsewhere."""
+    table = Interner()
+    by_position = {position: name for name, position in (index or {}).items()}
+    for position in range(max(by_position, default=-1) + 1):
+        table.intern(by_position.get(position, f"Build_Unrelated_C_{position}"))
+    table.freeze()
+    return table
+
+
 class Chain:
-    """A stand-in conveyor chain: ``_belts`` reads nothing off an actor but this attribute.
+    """A stand-in conveyor chain: ``routes.belts`` reads nothing off an actor but this attribute.
 
     The camel case is the parser's spelling, not a slip -- ``ParsedObject`` exposes
     ``actorSpecificInfo``, and a stand-in has to answer to the same name.
@@ -345,14 +352,16 @@ def test_lifts_are_carried_as_belts_are(projection):
 
 
 def test_belts_out_of_real_trailing_bytes(projection):
-    """``_belts`` against the committed chain records, not against a mock of them.
+    """``routes.belts`` against the committed chain records, not against a mock of them.
 
     ``fixtures/save_trailers.bin`` holds two real ``FGConveyorChainActor`` trailers, which is
     what makes this a test of the decoder-to-projection seam rather than of a hand-built list.
     """
     chains = _trailer_chains()
     assert chains, "no chain records in the trailer fixture"
-    out = _belts([([1000.0, 2000.0, 3000.0], Chain(info)) for info in chains], {}, Drops())
+    out = routes.belts(
+        [([1000.0, 2000.0, 3000.0], Chain(info)) for info in chains], _actors(), Drops()
+    )
     assert out["classes"] and out["segments"]
     assert {r[0] for r in out["segments"]} == set(range(len(chains)))
     for row in out["segments"]:
@@ -362,7 +371,9 @@ def test_belts_out_of_real_trailing_bytes(projection):
 
     # The same records with the actor at the origin: every point moves by exactly the offset,
     # which is the whole of what the frame correction does.
-    at_origin = _belts([([0.0, 0.0, 0.0], Chain(info)) for info in chains], {}, Drops())
+    at_origin = routes.belts(
+        [([0.0, 0.0, 0.0], Chain(info)) for info in chains], _actors(), Drops()
+    )
     for moved, base in zip(out["segments"], at_origin["segments"]):
         assert [[p[0] - 1000, p[1] - 2000, p[2] - 3000] for p in moved[2]] == base[2]
 
@@ -375,12 +386,12 @@ def test_a_chain_that_will_not_decode_costs_that_chain_and_not_the_save():
     """
     chains = _trailer_chains()
     drops = Drops()
-    out = _belts(
+    out = routes.belts(
         [
             ([0.0, 0.0, 0.0], Unreadable(None)),
             *(([0.0, 0.0, 0.0], Chain(info)) for info in chains),
         ],
-        {},
+        _actors(),
         drops,
     )
     assert {r[0] for r in out["segments"]} == set(range(len(chains))), "indices stay dense"
@@ -392,29 +403,29 @@ def test_a_chain_that_will_not_decode_costs_that_chain_and_not_the_save():
 
 
 def test_a_chain_of_nothing_recognisable_is_dropped_rather_than_raising():
-    """Same reasoning as ``_placed``: this runs on whatever the decoder produced.
+    """Same reasoning as ``structures.placed``: this runs on whatever the decoder produced.
 
     Each of these is also one count in ``warnings`` -- dropping is right, dropping in
     silence is what made a torn save look like a smaller world.
     """
     empty = {"classes": [], "segments": []}
     drops = Drops()
-    assert _belts([], {}, drops) == empty
+    assert routes.belts([], _actors(), drops) == empty
     assert sum(drops.values()) == 0, "nothing in, nothing dropped"
-    assert _belts([(None, Chain(None))], {}, drops) == empty
-    assert _belts([([0.0, 0.0, 0.0], Chain([1, 2]))], {}, drops) == empty
-    assert _belts([(["x", 0.0, 0.0], Chain([1, 2, []]))], {}, drops) == empty
+    assert routes.belts([(None, Chain(None))], _actors(), drops) == empty
+    assert routes.belts([([0.0, 0.0, 0.0], Chain([1, 2]))], _actors(), drops) == empty
+    assert routes.belts([(["x", 0.0, 0.0], Chain([1, 2, []]))], _actors(), drops) == empty
     assert sum(drops.values()) == 3, "three unreadable chains, three counted"
 
 
 def test_a_belts_class_comes_off_the_instance_name_with_its_C_intact():
     """The class names have to match the ones ``structures`` and ``building_counts`` use."""
     assert (
-        _conveyor_class("Persistent_Level:PersistentLevel.Build_ConveyorBeltMk3_C_1264")
+        routes.conveyor_class("Persistent_Level:PersistentLevel.Build_ConveyorBeltMk3_C_1264")
         == "Build_ConveyorBeltMk3_C"
     )
-    assert _conveyor_class("Build_ConveyorLiftMk4_C_2147") == "Build_ConveyorLiftMk4_C"
-    assert _conveyor_class("") == ""
+    assert routes.conveyor_class("Build_ConveyorLiftMk4_C_2147") == "Build_ConveyorLiftMk4_C"
+    assert routes.conveyor_class("") == ""
 
 
 # ------------------------------------------------------------------- belt attachments
@@ -432,7 +443,7 @@ def test_the_splitters_and_mergers_are_kept_and_the_ceiling_mounts_are_not(proje
     """
     counts = projection["building_counts"]
     rows = projection["attachments"]
-    kept = {c for c in counts if any(h in c for h in _ATTACHMENT_HINTS)}
+    kept = {c for c in counts if any(h in c for h in ATTACHMENT_HINTS)}
     assert kept == {r["cls"] for r in rows}
     assert sum(counts[c] for c in kept) == len(rows), "every one in the census is a row"
     assert len(rows) > 800, "the reference world splits and merges a great deal"
@@ -484,7 +495,7 @@ def _spline(*points) -> list:
     """An ``mSplineData`` the way the parser hands it over: a list of struct entries, each
     ``[values, propertyTypes]``, with a ``Location`` among the values.
 
-    The tangents are in here because the real property has them and ``_pipes`` has to ignore
+    The tangents are in here because the real property has them and ``routes.pipes`` has to ignore
     them: a reader that took field 0 positionally rather than by name would pass every test
     written against a Location-only stand-in and draw the world's curvature as its geometry.
     """
@@ -627,7 +638,7 @@ def test_pipes_are_translated_by_their_actor_and_not_rotated_by_it():
     """
     spline = _spline((0.0, 0.0, 0.0), (0.0, 100.0, 0.0), (0.0, 100.0, 250.0))
     nets = [(3, "Desc_Water_C", ["Persistent_Level:PersistentLevel.Build_Pipeline_C_1"])]
-    base = _pipes(
+    base = routes.pipes(
         [
             (
                 "Build_Pipeline_C",
@@ -637,10 +648,10 @@ def test_pipes_are_translated_by_their_actor_and_not_rotated_by_it():
             )
         ],
         nets,
-        {"Build_Pipeline_C_1": 0},
+        _actors({"Build_Pipeline_C_1": 0}),
         Drops(),
     )
-    moved = _pipes(
+    moved = routes.pipes(
         [
             (
                 "Build_Pipeline_C",
@@ -650,7 +661,7 @@ def test_pipes_are_translated_by_their_actor_and_not_rotated_by_it():
             )
         ],
         nets,
-        {"Build_Pipeline_C_1": 0},
+        _actors({"Build_Pipeline_C_1": 0}),
         Drops(),
     )
     assert base["segments"][0][2] == [[0, 0, 0], [0, 100, 0], [0, 100, 250]]
@@ -665,7 +676,7 @@ def test_pipes_are_translated_by_their_actor_and_not_rotated_by_it():
 def test_a_pipe_no_network_claims_is_still_drawn():
     """``-1``, not dropped: an unclaimed pipe is a pipe on real ground whose contents are
     unknown, and a half-built or drained network is exactly how one arises."""
-    out = _pipes(
+    out = routes.pipes(
         [
             (
                 "Build_PipelineMK2_C",
@@ -675,7 +686,7 @@ def test_a_pipe_no_network_claims_is_still_drawn():
             )
         ],
         [(3, "Desc_Water_C", ["x.Build_Pipeline_C_1"])],
-        {"Build_PipelineMK2_C_9": 4},
+        _actors({"Build_PipelineMK2_C_9": 4}),
         Drops(),
     )
     assert out["segments"] == [[-1, 0, [[0, 0, 0], [0, 800, 0]], 4]]
@@ -683,31 +694,36 @@ def test_a_pipe_no_network_claims_is_still_drawn():
 
 
 def test_a_pipe_of_nothing_recognisable_is_dropped_rather_than_raising():
-    """Same reasoning as ``_belts``: this runs on whatever the property decoder produced.
+    """Same reasoning as ``routes.belts``: this runs on whatever the property decoder produced.
 
     And the same second claim: each drop is one count in ``warnings``, so a save whose
     splines have stopped decoding says so rather than publishing a world with no pipes.
     """
     empty = {"classes": [], "networks": [], "segments": []}
     drops = Drops()
-    assert _pipes([], [], {}, drops) == empty
+    assert routes.pipes([], [], _actors(), drops) == empty
     assert sum(drops.values()) == 0, "nothing in, nothing dropped"
-    assert _pipes([("Build_Pipeline_C", "i", (0, 0, 0), None)], [], {}, drops) == empty
+    assert routes.pipes([("Build_Pipeline_C", "i", (0, 0, 0), None)], [], _actors(), drops) == empty
     assert (
-        _pipes([("Build_Pipeline_C", "i", None, _spline((0, 0, 0), (1, 1, 1)))], [], {}, drops)
+        routes.pipes(
+            [("Build_Pipeline_C", "i", None, _spline((0, 0, 0), (1, 1, 1)))], [], _actors(), drops
+        )
         == empty
     )
-    assert _pipes([("Build_Pipeline_C", "i", ("x", 0, 0), _spline((0, 0, 0)))], [], {}, drops) == (
-        empty
-    )
+    assert routes.pipes(
+        [("Build_Pipeline_C", "i", ("x", 0, 0), _spline((0, 0, 0)))], [], _actors(), drops
+    ) == (empty)
     # One point is not a route, the same bar the belts set.
     assert (
-        _pipes([("Build_Pipeline_C", "i", (0, 0, 0), _spline((0, 0, 0)))], [], {}, drops) == empty
+        routes.pipes(
+            [("Build_Pipeline_C", "i", (0, 0, 0), _spline((0, 0, 0)))], [], _actors(), drops
+        )
+        == empty
     )
     assert sum(drops.values()) == 4, "four unreadable pipes, four counted"
     # A struct with no Location among its fields costs that point, not the pipe.
     point_drops = Drops()
-    assert _pipes(
+    assert routes.pipes(
         [
             (
                 "Build_Pipeline_C",
@@ -717,12 +733,12 @@ def test_a_pipe_of_nothing_recognisable_is_dropped_rather_than_raising():
             )
         ],
         [],
-        {},
+        _actors(),
         point_drops,
     )["segments"] == [[-1, 0, [[0, 0, 0], [0, 400, 0]], -1]]
     assert sum(point_drops.values()) == 1, "the point, and only the point"
     # A network whose id is not an integer keeps its fluid and loses its id.
-    assert _pipes([], [(None, "Desc_Water_C", [])], {}, Drops())["networks"] == [
+    assert routes.pipes([], [(None, "Desc_Water_C", [])], _actors(), Drops())["networks"] == [
         {"id": None, "fluid": "Desc_Water_C"}
     ]
 
@@ -745,7 +761,7 @@ def _hermite(p0, m0, p1, m1, t):
 def _departure(p0, m0, p1, m1, n=128):
     """How far the span's curve actually gets from the straight line between its ends.
 
-    Sampled, deliberately: this is the quantity ``_bulge`` claims to bound, and bounding it
+    Sampled, deliberately: this is the quantity ``routes.bulge`` claims to bound, and bounding it
     with the same arithmetic that computes it would test nothing at all.
     """
     v = [p1[k] - p0[k] for k in range(3)]
@@ -838,7 +854,7 @@ def test_a_flat_span_inside_a_bending_route_stores_zero_rather_than_its_tangents
 
 
 def test_the_bulge_bound_never_understates_how_far_a_curve_leaves_its_chord(projection):
-    """The one property ``_bulge`` must have, checked against a 128-point tessellation.
+    """The one property ``routes.bulge`` must have, checked against a 128-point tessellation.
 
     It is a bound and not a measurement on purpose: overstating costs bytes, understating
     silently flattens a bend the save does record. So the test is one-sided -- the bound has
@@ -854,7 +870,7 @@ def test_the_bulge_bound_never_understates_how_far_a_curve_leaves_its_chord(proj
                 continue
             leave, arrive = entry[:3], entry[3:]
             truth = _departure(points[i], leave, points[i + 1], arrive)
-            bound = _bulge(points[i], leave, points[i + 1], arrive)
+            bound = routes.bulge(points[i], leave, points[i + 1], arrive)
             assert bound >= truth - 1e-6, (bound, truth, points[i], points[i + 1])
             worst = max(worst, truth)
             if truth > 0.01:
@@ -873,10 +889,10 @@ def test_a_zero_length_span_is_bounded_by_its_tangents_alone():
     conveyor lift meets the belt it feeds -- and dividing by the chord there is the division
     by zero a bound written only for the general case walks into.
     """
-    assert _bulge([0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]) == 0.0
-    quiet = _bulge([5, 5, 5], [0, 1, 0], [5, 5, 5], [0, 1, 0])
+    assert routes.bulge([0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]) == 0.0
+    quiet = routes.bulge([5, 5, 5], [0, 1, 0], [5, 5, 5], [0, 1, 0])
     assert 0 < quiet < TANGENT_EPS_CM, quiet
-    assert _bulge([5, 5, 5], [0, 500, 0], [5, 5, 5], [0, 500, 0]) > TANGENT_EPS_CM
+    assert routes.bulge([5, 5, 5], [0, 500, 0], [5, 5, 5], [0, 500, 0]) > TANGENT_EPS_CM
 
 
 def test_a_straight_span_carries_nothing_however_long_its_tangents_are():
@@ -889,13 +905,13 @@ def test_a_straight_span_carries_nothing_however_long_its_tangents_are():
     """
     for scale in (0.25, 0.5, 1.0):
         m = [0, int(800 * scale), 0]
-        assert _bulge([0, 0, 0], m, [0, 800, 0], m) < TANGENT_EPS_CM, scale
+        assert routes.bulge([0, 0, 0], m, [0, 800, 0], m) < TANGENT_EPS_CM, scale
     # Sideways by a hair is still nothing; sideways by two metres is not.
-    assert _bulge([0, 0, 0], [1, 400, 0], [0, 800, 0], [1, 400, 0]) < TANGENT_EPS_CM
-    assert _bulge([0, 0, 0], [200, 400, 0], [0, 800, 0], [-200, 400, 0]) > TANGENT_EPS_CM
+    assert routes.bulge([0, 0, 0], [1, 400, 0], [0, 800, 0], [1, 400, 0]) < TANGENT_EPS_CM
+    assert routes.bulge([0, 0, 0], [200, 400, 0], [0, 800, 0], [-200, 400, 0]) > TANGENT_EPS_CM
     # And a tangent long enough to overshoot the far end IS a departure, even though it is
     # exactly parallel to the chord: the curve runs past p1 and comes back.
-    assert _bulge([0, 0, 0], [0, 4000, 0], [0, 800, 0], [0, 400, 0]) > TANGENT_EPS_CM
+    assert routes.bulge([0, 0, 0], [0, 4000, 0], [0, 800, 0], [0, 400, 0]) > TANGENT_EPS_CM
 
 
 def test_tangents_are_rounded_with_the_points_but_never_translated_with_them():
@@ -914,8 +930,10 @@ def test_tangents_are_rounded_with_the_points_but_never_translated_with_them():
     belt = ObjectReference("Persistent_Level", "x.Build_ConveyorBeltMk3_C_7")
     info = [belt, belt, [[belt, belt, bend, 0.0, 0.0, 900.0, -1, -1, 0]], [900.0, 9, -1, -1], []]
 
-    here = _belts([([0.0, 0.0, 0.0], Chain(info))], {}, Drops())["segments"]
-    there = _belts([([120_000.0, -80_000.0, 500.0], Chain(info))], {}, Drops())["segments"]
+    here = routes.belts([([0.0, 0.0, 0.0], Chain(info))], _actors(), Drops())["segments"]
+    there = routes.belts([([120_000.0, -80_000.0, 500.0], Chain(info))], _actors(), Drops())[
+        "segments"
+    ]
     assert len(here) == len(there) == 1
     assert len(here[0]) == 5, "this run bends, so it carries tangents past the actor column"
     assert [[p[0] + 120_000, p[1] - 80_000, p[2] + 500] for p in here[0][2]] == there[0][2]
@@ -947,8 +965,8 @@ def test_a_point_that_will_not_decode_takes_its_own_tangents_with_it():
             [900.0, 9, -1, -1],
             [],
         ]
-        return _belts(
-            [([0.0, 0.0, 0.0], Chain(info))], {}, drops if drops is not None else Drops()
+        return routes.belts(
+            [([0.0, 0.0, 0.0], Chain(info))], _actors(), drops if drops is not None else Drops()
         )["segments"]
 
     drops = Drops()
@@ -1087,7 +1105,7 @@ def test_a_storage_actor_with_no_inventory_component_is_still_a_container():
     UE omits a SaveGame property still at its default -- and dropping the row would take the
     box off the map for the crime of being empty.
     """
-    rows = _storage(
+    rows = inventories.storage(
         [("Build_StorageContainerMk1_C", "x.Build_StorageContainerMk1_C_1", [1, 2, 3], 90.0, None)],
         {},
         [],
@@ -1105,13 +1123,15 @@ def test_a_storage_actor_with_no_inventory_component_is_still_a_container():
 
 
 def test_a_buffer_no_network_claims_keeps_its_level_and_loses_its_fluid():
-    """Drawn with contents unknown beats not drawn -- the refusal ``_pipes`` already makes."""
-    rows = _storage(
+    """Drawn with contents unknown beats not drawn -- the refusal ``routes.pipes`` already makes."""
+    rows = inventories.storage(
         [("Build_PipeStorageTank_C", "x.Build_PipeStorageTank_C_1", [0, 0, 0], 0.0, 12.5)], {}, []
     )
     assert rows[0]["fluid"] is None
     assert rows[0]["stored_m3"] == 12.5
     # And a level that will not read as a number is null rather than zero: an unreadable
     # buffer is not an empty one.
-    unreadable = _storage([("Build_IndustrialTank_C", "i", [0, 0, 0], 0.0, "brimming")], {}, [])
+    unreadable = inventories.storage(
+        [("Build_IndustrialTank_C", "i", [0, 0, 0], 0.0, "brimming")], {}, []
+    )
     assert unreadable[0]["stored_m3"] is None

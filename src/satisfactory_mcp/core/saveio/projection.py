@@ -22,42 +22,8 @@ from .. import atomic
 from ..singleflight import Singleflight
 from ..text import ago, format_local_time
 
-#: Bumped whenever the projection's shape changes, and part of the disk cache key below, so
-#: every pickle written by an older schema misses rather than being served without its new
-#: fields. A CORRECTING bump matters more than an additive one: an old pickle then disagrees
-#: with this code rather than merely being thinner than it.
-#: 12 added placement yaw and belt splines.
-#: 13 added fluid pipe splines and the belt attachments -- the splitters and mergers a run
-#: passes through.
-#: 14 added a pipe segment's own actor index, which joins the drawn pipe to the connection
-#: graph in ``graph["material"]`` and is what lets flow direction be inferred.
-#: 15 added the spline tangents to both route keys, so a curved belt or a pipe elbow draws as
-#: the curve it was built as, and a ``storage`` key -- the containers and fluid buffers, with
-#: what is in each one.
-#: 16 CORRECTS: ``inventories`` had bucketed eight containers' contents as unspendable machine
-#: buffers, and a placement whose rotation would not read had claimed to be axis-aligned
-#: instead of saying nothing.
-#: 17 added ``power`` -- the poles, and the endpoints of every wire between them. Geometry
-#: only: the connectivity has been in ``graph["power"]`` since schema 11, so ``wires[i]`` is
-#: the span of ``graph["power"][i]`` rather than a second copy of who is wired to whom.
-#: 18 added ``crates`` -- the death and dismantle crates lying on the ground, and what is in
-#: each one. Its own key rather than more ``storage`` rows, because a container is
-#: infrastructure the player built and a crate is a situation the player got into.
-#: 19 CORRECTS the key 16 did: a crate's contents had counted into ``inventories["machine"]``,
-#: filed with the smelter buffers as material that cannot be spent, and they are recoverable
-#: stock, so they move to their own ``inventories["crate"]`` bucket.
-#: 20 added a fourth column to a belt segment, the index of its own actor in
-#: ``graph["actors"]`` -- the join schema 14 gave a pipe, now given to the conveyor beside it,
-#: which is what lets a contracted run be NAMED rather than only described by its far end.
-#: 21 CORRECTS what the parser could see at all. Three savparse fixes land here: large built
-#: saves parse to the end rather than dying on an `Item` struct; every foundation, wall and
-#: beam arrives, because the lightweight record's trailing int32 is a COUNT of type-specific
-#: data blocks and not the constant 0 it was read as, which had left the walk 116 bytes short
-#: on the first beam; and a conveyor chain stamped `_RepSizeNoCull`, a class the anniversary
-#: build added, is decoded instead of dropped. Every pickle written before this describes less
-#: world than the save holds -- fewer structures, and a missing belt run -- so they must miss.
-#: 22 CORRECTS a false problem: a save whose older levels still carry the previous build's
-#: changelist had reported every read as possibly incomplete. Nothing in the world changes.
+#: The projection's shape, stamped by the extractor and part of the disk cache key, so a pickle
+#: from an older schema misses. Each bump is in ``docs/save-projection.md``, "Schema history".
 SCHEMA_VERSION = 22
 
 #: The in-process projection memo, and the single-flight around its misses. An autosave is a

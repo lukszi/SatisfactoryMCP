@@ -1,4 +1,4 @@
-"""``extract._placed``: the lightweight records that are floor, and the ones that are not.
+"""``extract.structures.placed``: lightweight records that are floor, and the ones that are not.
 
 The subsystem blob holds one record per foundation, wall, ramp and catwalk in the world -- and
 **173 of the 224,530 records across the 31 modern saves on this disk name no asset at all.**
@@ -69,7 +69,8 @@ from pioneersav.lightweight import LIGHTWEIGHT_SUBSYSTEM
 from pioneersav.objects import ActorHeader
 from pioneersav.properties import read_object
 from pioneersav.versions import FIRST_MODERN_BODY
-from satisfactory_mcp.core.saveio.extract import Drops, _lightweight, _placed, _structures
+from satisfactory_mcp.core.saveio.extract.census import Drops
+from satisfactory_mcp.core.saveio.extract.structures import lightweight, placed, structures
 from satisfactory_mcp.domain.factories.structure import build_structures
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -80,7 +81,7 @@ FOUNDATION = "Build_Foundation_8x1_01_C"
 
 
 class Subsystem:
-    """The one thing ``_lightweight`` and ``_structures`` read off an object.
+    """The one thing ``lightweight`` and ``structures`` read off an object.
 
     Both take the parsed object and go straight to ``actorSpecificInfo``; nothing else about
     ``FGLightweightBuildableSubsystem`` matters to them, and a stand-in keeps these tests on
@@ -135,9 +136,9 @@ def _moved(record: list, dx: float) -> list:
 def _salted(blob, *extra: list) -> list:
     """The blob with extra instance records appended to the foundation class.
 
-    The records go into the *blob*, not into the projection's output, so ``_structures`` is the
+    The records go into the *blob*, not into the projection's output, so ``structures`` is the
     thing deciding what to emit. Appending them to the output instead would make the slab tests
-    below pass whatever ``_placed`` does -- they would be testing ``build_structures``, which
+    below pass whatever ``placed`` does -- they would be testing ``build_structures``, which
     ``test_graph.py`` already covers.
     """
     return [
@@ -152,11 +153,11 @@ def _salted(blob, *extra: list) -> list:
 def _before_the_fix(blob, *extra: list) -> dict:
     """What the projection emitted when every record was a piece: the counterfactual.
 
-    Rows are appended to ``_structures``'s output rather than filtered out of it, so this is the
-    pre-``_placed`` census over exactly the same positions -- which is what makes the slab
+    Rows are appended to ``structures``'s output rather than filtered out of it, so this is the
+    pre-``placed`` census over exactly the same positions -- which is what makes the slab
     numbers in the two tests below a comparison rather than an assertion about one number.
     """
-    payload = _structures(Subsystem(blob), Drops())
+    payload = structures(Subsystem(blob), Drops())
     ci = payload["classes"].index(FOUNDATION)
     rows = [[ci, int(r[1][0]), int(r[1][1]), int(r[1][2])] for r in extra]
     return {"classes": payload["classes"], "instances": payload["instances"] + rows}
@@ -178,7 +179,7 @@ def test_every_committed_record_is_a_placed_piece(blob, blob_v2):
     for name, b in (("v4", blob), ("v2", blob_v2)):
         records = [inst for items in _records(b).values() for inst in items]
         assert records, f"{name}: no records in the fixture"
-        assert all(_placed(inst) for inst in records), f"{name}: a committed record reads stale"
+        assert all(placed(inst) for inst in records), f"{name}: a committed record reads stale"
 
 
 def test_the_projection_emits_every_placed_record(blob, blob_v2):
@@ -196,8 +197,8 @@ def test_the_projection_emits_every_placed_record(blob, blob_v2):
         (blob_v2, {"Build_Wall_8x4_01_C": 3, FOUNDATION: 3}),
     )
     for b, expected in censuses:
-        assert _lightweight(Subsystem(b)) == expected
-        assert len(_structures(Subsystem(b), Drops())["instances"]) == sum(expected.values())
+        assert lightweight(Subsystem(b)) == expected
+        assert len(structures(Subsystem(b), Drops())["instances"]) == sum(expected.values())
 
 
 # ------------------------------------------------------------------ the guard itself
@@ -206,8 +207,8 @@ def test_the_projection_emits_every_placed_record(blob, blob_v2):
 def test_a_record_naming_no_asset_at_all_is_not_placed(blob_v2):
     """The 173, reproduced from a real record: empty the references and nothing else."""
     real = _records(blob_v2)[FOUNDATION][0]
-    assert _placed(real)
-    assert not _placed(_stale(real))
+    assert placed(real)
+    assert not placed(_stale(real))
 
 
 def test_the_transform_cannot_tell_a_stale_record_from_a_real_one(blob_v2):
@@ -238,21 +239,21 @@ def test_the_guard_reads_the_fields_and_not_their_positions(blob_v2):
     stale = _stale(real)
     for shift in range(1, len(real)):
         rotated = real[shift:] + real[:shift]
-        assert _placed(rotated), f"a real record read as stale after rotating by {shift}"
-        assert not _placed(stale[shift:] + stale[:shift]), f"stale read as placed at {shift}"
+        assert placed(rotated), f"a real record read as stale after rotating by {shift}"
+        assert not placed(stale[shift:] + stale[:shift]), f"stale read as placed at {shift}"
 
 
 def test_a_record_of_nothing_but_numbers_is_not_placed():
     """Numbers are never assets, and the degenerate inputs must not raise.
 
-    ``_placed`` is called on whatever the trailing-byte decoder produced, one class deep in the
+    ``placed`` is called on whatever the trailing-byte decoder produced, one class deep in the
     projection, so it has to answer for a shape nobody planned: it is the last thing between a
     malformed blob and a slab census. ``None`` is the case that matters -- a class whose instance
     list is not a list at all -- because an exception here is a save the sidecar cannot read.
     """
-    assert not _placed([[0.0, 0.0, 0.0, 1.0], [100.0, 200.0, 300.0], [1.0, 1.0, 1.0], 0, -1])
-    assert not _placed([])
-    assert not _placed(None)
+    assert not placed([[0.0, 0.0, 0.0, 1.0], [100.0, 200.0, 300.0], [1.0, 1.0, 1.0], 0, -1])
+    assert not placed([])
+    assert not placed(None)
 
 
 def test_a_record_naming_one_asset_of_the_two_counts_as_placed(blob_v2):
@@ -269,7 +270,7 @@ def test_a_record_naming_one_asset_of_the_two_counts_as_placed(blob_v2):
     swatch_only[3] = real[3]
     recipe_only = _stale(real)
     recipe_only[10] = real[10]
-    assert _placed(swatch_only) and _placed(recipe_only)
+    assert placed(swatch_only) and placed(recipe_only)
 
 
 # -------------------------------------------------- what a stale record does downstream
@@ -278,8 +279,8 @@ def test_a_record_naming_one_asset_of_the_two_counts_as_placed(blob_v2):
 def test_a_stale_record_is_dropped_from_both_projection_fields(blob_v2):
     """The fix, at the two functions that ship it: the class census and the transforms.
 
-    Both are exercised because they filter separately -- ``_lightweight`` counts and
-    ``_structures`` emits positions -- and an earlier shape of this fix guarded only one of
+    Both are exercised because they filter separately -- ``lightweight`` counts and
+    ``structures`` emits positions -- and an earlier shape of this fix guarded only one of
     them, which reads as a projection whose two lightweight fields disagree about how much
     floor there is.
     """
@@ -293,9 +294,9 @@ def test_a_stale_record_is_dropped_from_both_projection_fields(blob_v2):
             ),
         ]
     )
-    assert _lightweight(salted) == _lightweight(Subsystem(blob_v2))
+    assert lightweight(salted) == lightweight(Subsystem(blob_v2))
     drops = Drops()
-    assert _structures(salted, drops) == _structures(Subsystem(blob_v2), Drops())
+    assert structures(salted, drops) == structures(Subsystem(blob_v2), Drops())
     # And a stale slot is NOT a warning. The drop channel says "this save carries records
     # this parser could not read"; a stale slot is one the game itself wrote as nothing, so
     # counting it would put a permanent complaint on 7 of the 31 saves that are all fine.
@@ -311,7 +312,7 @@ def test_a_stale_record_that_stands_apart_invents_a_whole_slab(blob_v2):
     ``plan_layout`` offers to build on.
     """
     phantom = _moved(_stale(_records(blob_v2)[FOUNDATION][0]), 4_000.0)
-    guarded = _slabs(_structures(Subsystem(_salted(blob_v2, phantom)), Drops()))
+    guarded = _slabs(structures(Subsystem(_salted(blob_v2, phantom)), Drops()))
     assert [s.tiles for s in guarded] == [3], "the phantom must not be floor"
 
     was = _slabs(_before_the_fix(blob_v2, phantom))
@@ -326,9 +327,9 @@ def test_a_stale_record_beside_a_slab_invents_floor_inside_it(blob_v2):
     "will this fit" gets a yes it should not.
     """
     phantom = _moved(_stale(_records(blob_v2)[FOUNDATION][0]), 800.0)  # one tile along
-    assert [
-        s.tiles for s in _slabs(_structures(Subsystem(_salted(blob_v2, phantom)), Drops()))
-    ] == [3]
+    assert [s.tiles for s in _slabs(structures(Subsystem(_salted(blob_v2, phantom)), Drops()))] == [
+        3
+    ]
     assert [s.tiles for s in _slabs(_before_the_fix(blob_v2, phantom))] == [4]
 
 
@@ -396,7 +397,7 @@ def _split_one(path: str) -> tuple[dict[str, int] | None, list[str], str | None]
         for inst in items:
             named = sum(1 for i in (3, 10) if str(inst[i]))
             counts[("neither", "one", "both")[named]] += 1
-            if _placed(inst) != (named == 2):
+            if placed(inst) != (named == 2):
                 disagreements.append(f"{name}: {inst[1]}")
     return counts, disagreements, None
 
@@ -406,7 +407,7 @@ def _split_one(path: str) -> tuple[dict[str, int] | None, list[str], str | None]
 def test_no_save_on_disk_holds_a_record_with_one_asset_of_the_two():
     """The premise the guard rests on, re-measurable as the player keeps playing.
 
-    ``_placed`` is only a clean split because "names a swatch" and "names a recipe" agree on
+    ``placed`` is only a clean split because "names a swatch" and "names a recipe" agree on
     every record in existence here. This walks every save the machine has and asserts that,
     rather than asserting the totals -- 224,357 / 173 / 0 over 31 saves on 2026-07-30 -- which
     change every time the game autosaves and would make a passing test a stale one.
@@ -448,11 +449,11 @@ def test_no_save_on_disk_holds_a_record_with_one_asset_of_the_two():
 
     assert counts["one"] == 0, (
         f"{counts['one']} records over {saves} saves carry a swatch or a recipe but not both; "
-        "_placed is a clean split no longer, and its docstring says it is one"
+        "placed is a clean split no longer, and its docstring says it is one"
     )
     assert counts["neither"], (
         f"none of the {saves} saves holds a stale record, so this run proved nothing about the "
         "guard -- the 173 measured on 2026-07-30 sat on 7 of 31 saves"
     )
-    assert disagreements[:5] == [], f"_placed disagrees with the split: {disagreements[:5]}"
+    assert disagreements[:5] == [], f"placed disagrees with the split: {disagreements[:5]}"
     assert len(refused) <= 1, f"more than the known non-save was refused: {refused}"

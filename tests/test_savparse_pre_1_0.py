@@ -746,7 +746,7 @@ def test_a_whole_pre_1_0_save_reads_into_the_shape_the_projection_consumes(versi
 
     This is the seam test. Each layer is version-gated on one number read once, in
     ``read_full_save_bytes``, and a layer that stopped honouring it would fail here rather than
-    on a machine that happens to have a 2021 save. ``extract.iter_objects`` zips
+    on a machine that happens to have a 2021 save. ``extract.readers.iter_objects`` zips
     ``level.actorAndComponentObjectHeaders`` with ``level.objects`` and reads ``obj.properties``
     as ``[name, value]`` pairs, so all three names are asserted.
     """

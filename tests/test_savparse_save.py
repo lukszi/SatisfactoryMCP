@@ -22,7 +22,6 @@ class nobody has taught this parser cannot pass for a class that had nothing in 
 
 from __future__ import annotations
 
-import importlib.util
 import struct
 import zlib
 from pathlib import Path
@@ -30,12 +29,15 @@ from pathlib import Path
 import pytest
 
 from pioneersav import CHUNK_TAG, ParseError, read_full_save_bytes, read_info_bytes
+from satisfactory_mcp.core.saveio.extract import parser as extract_parser
+from satisfactory_mcp.core.saveio.extract.census import Drops
+from satisfactory_mcp.core.saveio.extract.structures import lightweight, structures
 
 FIXTURES = Path(__file__).parent / "fixtures"
 HEADER_FIXTURE = FIXTURES / "save_header.bin"
 BODY_FIXTURE = FIXTURES / "save_body.bin"
 REPO = Path(__file__).resolve().parents[1]
-SIDECAR = REPO / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract.py"
+EXTRACT_PACKAGE = REPO / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract"
 
 #: The chunk size the game writes on every save seen. Reproduced rather than shortened so
 #: the assembled file is a real chunk stream and not a special case of one.
@@ -94,25 +96,13 @@ def save(sav):
     return read_full_save_bytes(sav)
 
 
-def _load_sidecar(name: str):
-    """Import ``extract`` under a private module name.
-
-    ``importlib.reload`` would mutate the copy in ``sys.modules`` and leak the engine
-    choice into every later test, and the engine is resolved at import time on purpose.
-    """
-    spec = importlib.util.spec_from_file_location(name, SIDECAR)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 # --------------------------------------------------------------- the composition
 
 
 def test_a_whole_save_parses_into_the_shape_the_projection_reads(save):
     """The adapter surface, asserted as a shape rather than trusted.
 
-    ``extract.iter_objects`` zips ``level.actorAndComponentObjectHeaders`` with
+    ``extract.readers.iter_objects`` zips ``level.actorAndComponentObjectHeaders`` with
     ``level.objects`` and reads ``obj.properties`` as ``[name, value]`` pairs. Every one of
     those three names is an alias over a differently-spelled field, so a rename anywhere
     below would leave the sidecar walking zero objects and reporting an empty factory with
@@ -231,7 +221,7 @@ def test_an_undecoded_class_reads_as_None_and_not_as_empty(save):
     """A class whose trailing bytes nothing decodes must be distinguishable from one that
     was decoded and held nothing.
 
-    ``_lightweight`` and ``_structures`` both read ``getattr(obj, "actorSpecificInfo",
+    ``lightweight`` and ``structures`` both read ``getattr(obj, "actorSpecificInfo",
     None)``, and both map ``None`` to ``{}`` and ``{"classes": [], "instances": []}``. That
     is the same output an empty list would give -- which is exactly why the *attribute*
     must not be an empty list: the day someone adds a partial decode for conveyor chains,
@@ -242,13 +232,12 @@ def test_an_undecoded_class_reads_as_None_and_not_as_empty(save):
     No object in this fixture is the lightweight subsystem, so every one of them is the
     not-decoded case. The decoded case is ``test_savparse_lightweight.py``.
     """
-    sidecar = _load_sidecar("_extract_save_no_asi")
     for level in save.levels:
         for obj in level.objects:
             assert obj.actor_specific_info is None
             assert obj.actorSpecificInfo is None
-            assert sidecar._lightweight(obj) == {}
-            assert sidecar._structures(obj, sidecar.Drops()) == {"classes": [], "instances": []}
+            assert lightweight(obj) == {}
+            assert structures(obj, Drops()) == {"classes": [], "instances": []}
 
 
 # --------------------------------------------------------------- one failure type
@@ -342,18 +331,20 @@ def test_the_sidecar_has_exactly_one_parser_and_it_is_ours():
     touches -- a leftover ``import sav_parse`` in a rarely-taken branch would not fail until a
     user hit it.
     """
-    sidecar = _load_sidecar("_extract_save_single")
-    assert sidecar.read_full_save.__module__.startswith("pioneersav")
-    assert ParseError in sidecar.PARSE_ERROR
-    assert not hasattr(sidecar, "ENGINE"), "the engine switch should be gone, not defaulted"
-    # Imports and path manipulation, not mentions: the module comment names the deleted library
-    # on purpose, to say why the switch is gone. Prose about it is documentation; an import of
-    # it is a live dependency, and only the second is a defect.
-    lines = SIDECAR.read_text(encoding="utf-8").splitlines()
-    code = [ln.split("#", 1)[0] for ln in lines]
-    assert not [ln for ln in code if ln.strip().startswith(("import sav_parse", "from sav_parse"))]
-    assert not [ln for ln in code if "vendor" in ln and "sys.path" in ln]
-    assert not [ln for ln in code if "SATISFACTORY_SAVPARSE" in ln]
+    assert extract_parser.read_full_save.__module__.startswith("pioneersav")
+    assert ParseError in extract_parser.PARSE_ERROR
+    assert not hasattr(extract_parser, "ENGINE"), "the engine switch should be gone"
+    # Imports and path manipulation, not mentions: prose about the deleted library is
+    # documentation; an import of it is a live dependency, and only the second is a defect.
+    sources = sorted(EXTRACT_PACKAGE.glob("*.py"))
+    assert sources, "the extractor package moved; point EXTRACT_PACKAGE at it"
+    for source in sources:
+        code = [ln.split("#", 1)[0] for ln in source.read_text(encoding="utf-8").splitlines()]
+        assert not [
+            ln for ln in code if ln.strip().startswith(("import sav_parse", "from sav_parse"))
+        ], source.name
+        assert not [ln for ln in code if "vendor" in ln and "sys.path" in ln], source.name
+        assert not [ln for ln in code if "SATISFACTORY_SAVPARSE" in ln], source.name
 
 
 def test_the_deleted_library_is_really_gone():

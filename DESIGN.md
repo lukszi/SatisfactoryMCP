@@ -23,7 +23,7 @@ resolves through this table wherever it is written, in a document or in a docstr
 | sections | file | what it holds |
 |---|---|---|
 | §1–§5, §13, appendices | **this file** | scope, decisions, data sources, architecture, the normalization contract, the licence, and the reference world every number was measured against |
-| §6, §6.9–§6.11, §13a, §13b | [docs/save-projection.md](docs/save-projection.md) | what the sidecar emits and how each fact in it was verified; the parser that replaced the vendored one, and the parity that can never be re-run |
+| §6–§6.16, §13a, §13b | [docs/save-projection.md](docs/save-projection.md) | what the sidecar emits and how each fact in it was verified, the row layouts and the schema history; the parser that replaced the vendored one, and the parity that can never be re-run |
 | §7, §17, §18, §19 | [docs/spatial-and-map.md](docs/spatial-and-map.md) | coordinate frame, regions, node lookup and the selector language; the map's three base layers, the mode model and the heightfield's water channel |
 | §8, §9 | [docs/planning.md](docs/planning.md) | the LP/MILP formulation, layout, commissioning, diffing against the save, and the hard-drive advisor |
 | §10, §11, §12 | [docs/mcp-surface.md](docs/mcp-surface.md) | the tools with their transcripts, the context budget, caching, and the testing contract |
@@ -226,7 +226,9 @@ SatisfactoryMcp/
                        # normalize.py (-> items / recipes / buildings / schematics)
                        # model.py  search.py  footprint.py  constants.py
       saveio/          # projection.py: spawns the extractor, validates, caches
-                       # extract.py: runs IN the child, builds the schema-16 projection
+                       # extract/: runs IN the child and builds the projection --
+                       # walk.py (the object pass), parser.py (the only pioneersav
+                       # import), cli.py, and one module per table family
       text.py          # num + plural ONLY — the two helpers domain may reach
     domain/            # returns dataclasses and dicts, NEVER formatted text
       world/           # state.py: WorldState, a thin aggregate over the facets
@@ -261,7 +263,7 @@ SatisfactoryMcp/
                        # assets, no dependency's compiled code in the tree
   src/pioneersav/      # our parser: reads all 66 saves, six saveVersions. A standalone
                        # library — it imports nothing from satisfactory_mcp, and only
-                       # core/saveio/extract.py imports it, inside the child process
+                       # core/saveio/extract/parser.py imports it, inside the child
   tools/               # a package, not a directory of loose scripts: gen_*.py, plus
                        # _common.py (DEFAULT_GAME, the shared --game parser, require_gen)
   tests/
@@ -335,8 +337,8 @@ Reasons (licensing is *not* one of them — it never was, and the parser is ours
 
 The parser itself is `src/pioneersav`, a standalone package beside the application rather than inside
 it: it implements a file format and knows nothing about factories, plans or MCP. `tests/test_architecture.py`
-pins both halves — `pioneersav` imports nothing from `satisfactory_mcp`, and `core/saveio/extract.py` is
-the only module in the application allowed to import `pioneersav`, because everything else reaches it
+pins both halves — `pioneersav` imports nothing from `satisfactory_mcp`, and `core/saveio/extract/parser.py`
+is the only module in the application allowed to import `pioneersav`, because everything else reaches it
 through the subprocess.
 
 Subprocess overhead measured at **~60 ms**, and only on cache miss.

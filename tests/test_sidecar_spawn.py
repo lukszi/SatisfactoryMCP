@@ -219,23 +219,12 @@ def test_a_schema_bump_makes_every_cached_projection_miss(monkeypatch):
         assert proj._cache_key({**header, field: other}) != now, field
 
 
-def test_the_schema_number_is_declared_three_times_and_they_all_agree(projection):
-    """One number, three copies, and nothing until now held them together.
+def test_the_extractor_stamps_the_one_schema_number_the_fixture_carries(projection):
+    """One number, declared once, and the committed fixture has to carry it.
 
-    ``extract`` STAMPS the schema into every projection it writes. ``projection`` -- which
-    never imports the extractor, deliberately, because the extractor runs in a child process
-    -- declares its own copy and puts it in the disk cache key. The committed fixture carries
-    a third, and it is what the whole suite tests the server against.
-
-    The desync is silent in both directions and neither is a crash. Bump the extractor alone
-    and every pickle written by the previous schema keeps its key, so ``load_projection``
-    serves a stale, well-formed world from disk for ever -- the failure the cache-key test
-    above exists to prevent, arriving by the one route that test cannot see. Bump
-    ``projection`` alone and the cache misses correctly but the sidecar's own payload disagrees
-    with what was asked for, which lands as a "sidecar schema N != expected M" warning nobody
-    reads. And leave the fixture behind either one and the suite goes on asserting the shape of
-    a projection the server no longer produces.
-
-    Verified by mutation: setting either declaration one apart fails here.
+    ``projection`` declares the schema and keys the disk cache on it; the extractor imports
+    that same constant and STAMPS it into every projection it writes, so the two cannot drift.
+    The committed fixture is the copy that can: leave it behind a bump and the suite goes on
+    asserting the shape of a projection the server no longer produces.
     """
     assert extract.SCHEMA_VERSION == proj.SCHEMA_VERSION == projection["schema_version"]

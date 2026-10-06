@@ -206,7 +206,7 @@ def projection() -> dict:
         uv run python -m satisfactory_mcp.core.saveio.extract \\
             "<saves>/Han Solo_280726-230847.sav" > tests/fixtures/save_projection.json
 
-    ``-m``, not a path to ``extract.py``: that is how ``projection._run_sidecar`` invokes it
+    ``-m``, not a file path: that is how ``projection._run_sidecar`` invokes it
     in production, so the fixture is cut by exactly the code path the server uses. There is no
     flag and no post-processing -- the sidecar's stdout IS the fixture.
 

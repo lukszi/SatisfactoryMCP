@@ -65,7 +65,7 @@ from _pool import fanout_width, in_order
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = Path(__file__).parent / "fixtures" / "vendor_parity.json"
-SIDECAR = REPO / "src" / "satisfactory_mcp" / "core" / "saveio" / "extract.py"
+SIDECAR_MODULE = "satisfactory_mcp.core.saveio.extract"
 
 #: Header keys that describe the FILE rather than the world, so they are excluded from the
 #: digest: a save copied to another path or re-read after a touch is the same world.
@@ -302,11 +302,15 @@ def _projection(path: Path) -> dict:
     removes two ways for this test to mean something other than what it says: ``uv run``
     re-resolves the environment unless ``UV_NO_SYNC`` is set, so a bare ``pytest`` invocation
     used to fire 31 syncs, and it needs ``uv`` on ``PATH``, which the thing under test does
-    not.
+    not. ``-m`` with this checkout's ``src`` first on ``PYTHONPATH``, as ``_child_env`` does.
     """
+    inherited = os.environ.get("PYTHONPATH")
+    source = str(REPO / "src")
+    env = {**os.environ, "PYTHONPATH": f"{source}{os.pathsep}{inherited}" if inherited else source}
     out = subprocess.run(
-        [sys.executable, str(SIDECAR), str(path)],
+        [sys.executable, "-m", SIDECAR_MODULE, str(path)],
         cwd=str(REPO),
+        env=env,
         capture_output=True,
         check=False,  # a refusal is data here: the caller asserts on the payload, not the code
     )

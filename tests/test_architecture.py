@@ -123,7 +123,7 @@ TOOLS = REPO / "tools"
 #: The parser package, and the one module in the application allowed to import it.
 PARSER = "pioneersav"
 PARSER_PKG = SRC / PARSER
-PARSER_IMPORTER = "satisfactory_mcp.core.saveio.extract"
+PARSER_IMPORTER = "satisfactory_mcp.core.saveio.extract.parser"
 
 #: Longest-prefix-first layer map, applied to importer *and* target alike.
 #:

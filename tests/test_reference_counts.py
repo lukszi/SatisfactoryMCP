@@ -64,25 +64,25 @@ def test_the_power_geometry_extract_and_the_map_cite(proj):
 
     ``power["wires"]`` carries no connectivity of its own on purpose -- ``graph["power"]``
     is that, and has been since schema 11 -- so the two lists are joined by POSITION and
-    nothing enforces it but the single pass in ``extract._power`` that writes both. A
-    regeneration that dropped one wire from either list and not the other would leave every
-    span after it drawn between the wrong two actors, and would break no other test.
+    nothing enforces it but the single pass in ``extract.power.power_network`` that writes
+    both. A regeneration that dropped one wire from either list and not the other would leave
+    every span after it drawn between the wrong two actors, and would break no other test.
     """
     power = proj["power"]
     assert len(power["wires"]) == len(proj["graph"]["power"]) == 1_297, (
-        "core/saveio/extract.py's `_power` states this equality as the key's one promise"
+        "core/saveio/extract/power.py states this equality as the key's one promise"
     )
     assert sum(1 for w in power["wires"] if w is None) == 0, (
         "every wire on this world publishes its span; a null here means mWireInstances "
         "stopped reading and core/saveio/rows.py:iter_wires quotes the zero"
     )
     poles = power["poles"]["instances"]
-    assert len(poles) == 701, "core/saveio/extract.py's POWER_POLE_CLASSES quotes this"
+    assert len(poles) == 701, "docs/save-projection.md §6.12 quotes this"
     assert sum(1 for r in poles if r[5] < 0) == 2, (
-        "core/saveio/extract.py's `_power` quotes the two unstrung tower platforms"
+        "core/saveio/rows.py's PowerPole names the unstrung tower platforms"
     )
     assert sum(1 for r in poles if r[4] is None) == 0, (
-        "every pole's rotation reads, which is what makes the warning in `extract` silent"
+        "every pole's rotation reads, which is what keeps `extract.census.null_yaw_note` silent"
     )
 
 
@@ -169,11 +169,11 @@ def test_the_lightweight_piece_count_four_modules_cite(proj):
     """
     rows = proj["structures"]["instances"]
     assert len(rows) == 8_347, (
-        "core/saveio/extract.py:287,814,1071, core/saveio/rows.py:4, "
+        "core/saveio/rows.py:4, "
         "domain/spatial/elevation.py:27,193 and "
         "interfaces/web/routers/placements.py:134 quote this"
     )
-    assert sum(1 for r in rows if r[4] % 90) == 4_631, "core/saveio/extract.py:1071 quotes this"
+    assert sum(1 for r in rows if r[4] % 90) == 4_631, "docs/save-projection.md §6.16 quotes this"
 
 
 def test_the_productivity_window_is_not_the_constant_it_looks_like(proj):
@@ -198,7 +198,7 @@ def test_the_productivity_window_is_not_the_constant_it_looks_like(proj):
 
 
 def test_the_crate_census_extract_and_the_endpoint_cite(proj):
-    """``core/saveio/extract._crates`` and ``routers/crates.py``, schema 18.
+    """``core/saveio/extract/inventories.crates`` and ``routers/crates.py``, schema 18.
 
     Two crates, and the pair is the whole argument for the ``kind`` field existing: one
     says what it is and one cannot. The dismantle crate was made under a build that has
@@ -211,7 +211,7 @@ def test_the_crate_census_extract_and_the_endpoint_cite(proj):
     would leave both of these rows holding nothing while still reporting two crates.
     """
     crates = proj["crates"]
-    assert len(crates) == 2, "core/saveio/extract.py:_crates and routers/crates.py quote this"
+    assert len(crates) == 2, "docs/save-projection.md §6.13 and routers/crates.py quote this"
     assert [c["kind"] for c in crates] == ["dismantle", "none"], "sorted by kind, then instance"
     assert all(c["cls"] == "BP_Crate_C" for c in crates), "CRATE_CLASSES is a list of one"
     assert all(c["yaw"] is not None and c["pos"] for c in crates)
@@ -259,7 +259,7 @@ def test_the_reference_projection_reports_no_losses(proj):
 
     A projection that dropped records is a projection whose numbers are about what read,
     not about what is built -- so a fixture with warnings in it invalidates this whole
-    file rather than just one line of it. See ``core/saveio/extract._drop_notes``.
+    file rather than just one line of it. See ``core/saveio/extract/census.drop_notes``.
     """
     assert proj["warnings"] == []
     assert proj["schema_version"] == 22
