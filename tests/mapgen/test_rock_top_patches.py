@@ -9,11 +9,18 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from mapgen.colour import oklab
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.palette.painted.calibration import display_to_ground
-from mapgen.palette.painted.surfaces import family_tables, rock_surface, top_cover, top_targets
+from mapgen.palette.painted.surfaces import (
+    family_tables,
+    family_targets,
+    rock_surface,
+    top_cover,
+    top_targets,
+)
 from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.terrain.sample import patch_noise
 
@@ -139,6 +146,15 @@ def test_the_forest_top_takes_its_display_target_and_the_rest_keep_their_texture
     keep = [k for k in range(len(FAMILIES)) if k != FOREST]
     np.testing.assert_array_equal(top[keep], raw[keep])
     np.testing.assert_array_equal(top_targets(raw, {}, PAINTED_PALETTE), raw)
+
+
+def test_a_target_naming_no_rock_family_is_refused_by_name():
+    raw = np.zeros((len(FAMILIES), 3), np.float32)
+    with pytest.raises(ValueError, match=r"calibration\.tops names 'mossy', which is not"):
+        top_targets(raw, {"mossy": "#505936"}, PAINTED_PALETTE)
+    lab, codes = np.zeros((4, 4, 3), np.float32), np.zeros((4, 4), np.uint8)
+    with pytest.raises(ValueError, match=r"calibration\.families names 'mossy', which is not"):
+        family_targets(lab, codes, {"mossy": "#505936"}, PAINTED_PALETTE, 1)
 
 
 def test_the_family_tables_take_the_tops_from_the_palette():
