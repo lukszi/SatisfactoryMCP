@@ -12,6 +12,29 @@ FIXTURE_WORLD = "X2faPVKjX06VaRzClNv5KQ"
 REFERENCE_FIELD = ("bbox:-649.64,-3140.10,2465.03,-1080.29",)
 REFERENCE_SOURCES = list(REFERENCE_FIELD)
 
+#: The second sanctioned field: the 18 nodes ``region:Spire Coast`` resolved to on 2026-10-06,
+#: frozen as ids so the payback pins move with the node table and never with the region layer.
+SPIRE_COAST_NODES = (
+    "node:BP_ResourceNode140",
+    "node:BP_ResourceNode14_609",
+    "node:BP_ResourceNode16",
+    "node:BP_ResourceNode187_0",
+    "node:BP_ResourceNode23_96",
+    "node:BP_ResourceNode24_97",
+    "node:BP_ResourceNode25_98",
+    "node:BP_ResourceNode28_101",
+    "node:BP_ResourceNode462_UAID_40B076DF2F7902E201_1630060169",
+    "node:BP_ResourceNode462_UAID_40B076DF2F790CE201_2008279933",
+    "node:BP_ResourceNode464",
+    "node:BP_ResourceNode484_UAID_40B076DF2F79E0DF01_2091429101",
+    "node:BP_ResourceNode621",
+    "node:BP_ResourceNode622",
+    "node:BP_ResourceNode71_UAID_40B076DF2F7912DC01_2042985647",
+    "node:BP_ResourceNodeGeyser_C_UAID_40B076DF2F79C7DB01_1750096454",
+    "node:BP_ResourceNode_C_UAID_40B076DF2F794DE201_1841969367",
+    "node:BP_ResourceNode_C_UAID_40B076DF2F794FE201_2126930721",
+)
+
 #: Maximum power out of the reference field, with every extractor clock on offer.
 REFERENCE_MAX_MW_ARGS = {
     "objective": "max_mw",
