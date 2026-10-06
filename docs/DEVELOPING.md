@@ -79,18 +79,32 @@ The old entry scripts (`tools/gen_world_heightmap.py`, `gen_map_renders.py`,
 shims to these commands, and every render sidecar records them as its generator. The web
 map's job runner starts `python -m mapgen <command>` itself.
 
-The other generators are plain scripts in `tools/`:
+The other generators are scripts in `tools/`, sharing `mapgen.common` for the `--game` flag
+and the `gen` extra check:
 
 | Generator | Produces | Runtime |
 | --- | --- | --- |
 | `tools/gen_item_icons.py` | one PNG per item → `data/local/icons/` | ~14 s |
 | `tools/gen_world_resource_nodes.py` | the node table → `data/world_resource_nodes.json` | ~4 s |
+| `tools/gen_resource_nodes.py` | the served node table → `data/resource_nodes.json` | <1 s |
+| `tools/gen_region_names.py` | the region-name grids → `data/region_names.json` | ~3 s |
+| `tools/gen_world_collectibles.py` | the collectible table → `data/world_collectibles.json` | ~40 s for 99 saves |
 
 Run them as `uv run --extra gen python tools/<name>.py`. Imagery and the heightfield land in
 `data/local/`, which is gitignored and stays that way; the committed tables in `data/` only
-change when the game's map does. `tools/gen_world_collectibles.py`, `gen_region_names.py` and
-`gen_resource_nodes.py` rebuild the remaining committed tables the same way.
-`gen_region_names.py` reads the map frame and the biome calibration from `mapgen`.
+change when the game's map does. `gen_resource_nodes.py` projects the world node table and
+needs no game install. `gen_region_names.py` reads the map frame and the biome calibration
+from `mapgen`. `gen_world_collectibles.py` is an entry point for the `tools/collectibles/`
+package, which [world-collectibles.md](world-collectibles.md) explains.
+
+`gen_item_icons.py` finds each item's `mSmallIcon` texture in `FactoryGame-Windows.utoc`
+case-insensitively, because five items spell a directory differently from the container
+(`Mam`, `Medkit`, `Cyberwagon`, and `Golfcart` twice). Two pixel formats occur, `PF_DXT5`
+(BC3) on 634 of the 747 icons and `PF_B8G8R8A8` on 113, with no BC7; both decoders hand back
+BGRA, which read as RGBA turns a copper ingot cyan instead of raising. On build 495413, 747 of
+the 750 classes carrying `mForm` name an icon and all 747 decode; the other three name no
+texture, so the page's text tile is their correct rendering. The default `--px 256` writes
+41.1 MB of PNG; `--help` lists the smaller sides.
 
 ## Data provenance
 
