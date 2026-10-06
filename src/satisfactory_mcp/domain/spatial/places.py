@@ -165,8 +165,8 @@ def _machine_origin(st, text: str) -> tuple[tuple[float, float], str]:
         raise ValueError(f"{text!r} names a machine, which needs a readable save")
     want = instance_leaf(text.partition(":")[2].strip())
     for _group, leaf, record in iter_machine_records(st.projection):
-        if record.get("pos") and leaf == want:
-            return (record["pos"][0], record["pos"][1]), f"machine:{want}"
+        if (pos := record.get("pos")) and leaf == want:
+            return (pos[0], pos[1]), f"machine:{want}"
     raise ValueError(f"no machine called {want!r} in this save")
 
 
@@ -264,9 +264,9 @@ def _pin_origin(st, text: str) -> tuple[tuple[float, float], str]:
 def label_centre(st, label) -> tuple[float, float] | None:
     """The centroid of a label's standing machines in centimetres, or None when none stand."""
     pos = {
-        leaf: record["pos"]
+        leaf: here
         for _group, leaf, record in iter_machine_records(st.projection)
-        if record.get("pos")
+        if (here := record.get("pos"))
     }
-    points = [pos[m][:2] for m in label.anchors if m in pos]
+    points = [(pos[m][0], pos[m][1]) for m in label.anchors if m in pos]
     return geo.centroid(points) if points else None

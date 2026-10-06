@@ -4,14 +4,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from typing_extensions import TypedDict
+
 from ...core.gamedata.constants import BUILDING_CLASS_ALIASES
 from ...core.gamedata.model import Building, GameData
 from ...core.saveio.records import instance_leaf
+from ...core.saveio.schema import (
+    BuildableRecord,
+    ExtractorRecord,
+    GeneratorRecord,
+    MachineRecord,
+    Projection,
+)
 from .views import GeneratorTotal, PowerReport, StarvedEntry
 
 __all__ = [
     "BIOMASS_BURNERS",
     "NO_FUEL",
+    "MachineGroups",
     "PowerLedger",
     "biomass_note",
     "dry_input_classes",
@@ -36,7 +46,7 @@ BIOMASS_BURNERS = frozenset(
 )
 
 
-def wired_actors(projection: dict) -> frozenset[str] | None:
+def wired_actors(projection: Projection) -> frozenset[str] | None:
     """Every actor at either end of a power edge, or ``None`` when the projection carries no
     power layer at all -- an older projection, where no record may be called unwired."""
     payload = projection.get("graph") or {}
@@ -68,7 +78,7 @@ def biomass_note(report: PowerReport) -> str:
     )
 
 
-def measured_share(record: dict) -> float | None:
+def measured_share(record: BuildableRecord) -> float | None:
     """How much of a machine's rated draw the save says it is really taking, 0..1.
 
     ``None`` where the machine keeps no productivity monitor. A caller weighting a machine's
@@ -83,7 +93,7 @@ def measured_share(record: dict) -> float | None:
     return (uptime.get("produce_s") or 0.0) / window
 
 
-def dry_inputs(game: GameData, record: dict) -> tuple[str, ...]:
+def dry_inputs(game: GameData, record: BuildableRecord) -> tuple[str, ...]:
     """Which of a generator's inputs its fuel inventory has run out of, by item name.
 
     Empty when it holds everything it burns, and empty when the record carries no fuel
@@ -97,7 +107,7 @@ def dry_inputs(game: GameData, record: dict) -> tuple[str, ...]:
     )
 
 
-def dry_input_classes(game: GameData, record: dict) -> tuple[str, ...]:
+def dry_input_classes(game: GameData, record: BuildableRecord) -> tuple[str, ...]:
     """`dry_inputs` by item class, for callers that have to join on one. Carries the bare
     ``NO_FUEL`` marker through, which is a state and not a class."""
     fuel = (record.get("buffers") or {}).get("fuel")
@@ -105,11 +115,11 @@ def dry_input_classes(game: GameData, record: dict) -> tuple[str, ...]:
         return ()
     held = fuel.get("items") or {}
     building = game.buildings.get(record.get("cls", ""))
-    burning = record.get("fuel")
+    burning: str | None = record.get("fuel")
     spec = None
     if building is not None and burning:
         spec = next((f for f in building.fuels if f.fuel_class == burning), None)
-    if spec is None:
+    if spec is None or building is None:
         return () if any(v > 0 for v in held.values()) else (NO_FUEL,)
     wanted = [spec.fuel_class]
     if building.requires_supplemental and spec.supplemental_class:
@@ -117,7 +127,7 @@ def dry_input_classes(game: GameData, record: dict) -> tuple[str, ...]:
     return tuple(cls for cls in wanted if not held.get(cls))
 
 
-def _generator_mw(building: Building | None, record: dict) -> float:
+def _generator_mw(building: Building | None, record: BuildableRecord) -> float:
     if building is None:
         return 0.0
     clock = record.get("clock") or 1.0
@@ -130,10 +140,10 @@ def _generator_mw(building: Building | None, record: dict) -> float:
 class _GenerationTally:
     """Generation capacity, the plants that are not capacity, and what was left out."""
 
-    by_generator: dict[str, GeneratorTotal] = field(default_factory=dict)
+    by_generator: dict[str, GeneratorTotal] = field(default_factory=dict[str, GeneratorTotal])
     total_mw: float = 0.0
-    unmodellable: list[str] = field(default_factory=list)
-    starved: list[StarvedEntry] = field(default_factory=list)
+    unmodellable: list[str] = field(default_factory=list[str])
+    starved: list[StarvedEntry] = field(default_factory=list[StarvedEntry])
     starved_mw: float = 0.0
     unwired: int = 0
     unwired_mw: float = 0.0
@@ -154,7 +164,7 @@ class _DrawTally:
     unwired_mw: float = 0.0
     unwired_paused: int = 0
 
-    def charge(self, rated: float | None, record: dict, wired: bool) -> None:
+    def charge(self, rated: float | None, record: BuildableRecord, wired: bool) -> None:
         """Add one machine to both totals, weighting the measured one by uptime."""
         if not wired:
             self.unwired += 1
@@ -178,6 +188,14 @@ class _DrawTally:
             self.measured_mw += rated * share
 
 
+class MachineGroups(TypedDict):
+    """The record lists a ledger reads: a whole projection, or one circuit's share of it."""
+
+    machines: list[MachineRecord]
+    extractors: list[ExtractorRecord]
+    generators: list[GeneratorRecord]
+
+
 @dataclass
 class PowerLedger:
     """Generation and draw over one save.
@@ -186,12 +204,12 @@ class PowerLedger:
     the total to report it.
     """
 
-    projection: dict
+    projection: MachineGroups
     game: GameData
     paused_count: int = 0
     wired: frozenset[str] | None = None
 
-    def _is_wired(self, record: dict) -> bool:
+    def _is_wired(self, record: BuildableRecord) -> bool:
         return self.wired is None or instance_leaf(record["instance"]) in self.wired
 
     def _generation(self, biomass: bool) -> _GenerationTally:

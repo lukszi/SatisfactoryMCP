@@ -142,6 +142,18 @@ strict = [
     "src/satisfactory_mcp/core/solverlane.py",
     "src/satisfactory_mcp/core/text.py",
     "src/satisfactory_mcp/core/unionfind.py",
+    "src/satisfactory_mcp/domain/factories/__init__.py",
+    "src/satisfactory_mcp/domain/factories/build.py",
+    "src/satisfactory_mcp/domain/factories/candidates.py",
+    "src/satisfactory_mcp/domain/factories/cohere.py",
+    "src/satisfactory_mcp/domain/factories/fed.py",
+    "src/satisfactory_mcp/domain/factories/flowgraph.py",
+    "src/satisfactory_mcp/domain/factories/health.py",
+    "src/satisfactory_mcp/domain/factories/labels.py",
+    "src/satisfactory_mcp/domain/factories/model.py",
+    "src/satisfactory_mcp/domain/factories/naming.py",
+    "src/satisfactory_mcp/domain/factories/sweep.py",
+    "src/satisfactory_mcp/domain/factories/trace.py",
     "src/satisfactory_mcp/domain/factories/views.py",
     "src/satisfactory_mcp/domain/maps/views.py",
     "src/satisfactory_mcp/domain/planning/analysis/views.py",
@@ -150,10 +162,18 @@ strict = [
     "src/satisfactory_mcp/domain/planning/siting/views.py",
     "src/satisfactory_mcp/domain/planning/solver/views.py",
     "src/satisfactory_mcp/domain/planning/stored/views.py",
-    "src/satisfactory_mcp/domain/power/views.py",
-    "src/satisfactory_mcp/domain/progression/views.py",
+    "src/satisfactory_mcp/domain/power",
+    "src/satisfactory_mcp/domain/progression",
     "src/satisfactory_mcp/domain/session/views.py",
     "src/satisfactory_mcp/domain/spatial/nodes/views.py",
+    "src/satisfactory_mcp/domain/world/__init__.py",
+    "src/satisfactory_mcp/domain/world/carriers.py",
+    "src/satisfactory_mcp/domain/world/census.py",
+    "src/satisfactory_mcp/domain/world/identity.py",
+    "src/satisfactory_mcp/domain/world/pin.py",
+    "src/satisfactory_mcp/domain/world/plumbing.py",
+    "src/satisfactory_mcp/domain/world/timeline.py",
+    "src/satisfactory_mcp/domain/world/water.py",
 ]
 reportUnnecessaryTypeIgnoreComment = "error"
 
@@ -224,7 +244,6 @@ ignore = [
 "src/satisfactory_mcp/domain/spatial/caves.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/heightfield/field.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/rocks.py" = ["TID251"]
-"src/satisfactory_mcp/domain/world/state.py" = ["TID251"]
 "src/satisfactory_mcp/interfaces/web/routers/assets/icons.py" = ["TID251"]
 "src/satisfactory_mcp/interfaces/web/routers/assets/maps.py" = ["TID251"]
 "src/satisfactory_mcp/interfaces/web/routers/assets/tiles.py" = ["TID251"]

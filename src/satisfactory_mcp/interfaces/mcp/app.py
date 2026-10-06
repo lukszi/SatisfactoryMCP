@@ -22,6 +22,7 @@ from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...core.gamedata.search import resolve_item
 from ...core.jsontypes import JsonObject
+from ...core.saveio.schema import Projection
 from ...core.schema import NewerSchema
 from ...domain import settings
 from ...domain.factories.select import SelectorError
@@ -242,15 +243,15 @@ def stale_artifact_notes() -> tuple[str, ...]:
 INTEGRITY_NOTES_SHOWN = 4
 
 
-def integrity_notes(projection: dict, data: GameData) -> list[str]:
+def integrity_notes(projection: Projection | None, data: GameData) -> list[str]:
     """What the two normalisation guards found, as notes, or nothing at all.
 
     Both channels collect drift instead of raising, which is only a good trade while somebody
-    is told: unread, a game update reads as a quietly smaller world.
+    is told: unread, a game update reads as a quietly smaller world. ``None`` is no save.
     """
     notes = []
     for channel, found in (
-        ("this save", list(projection.get("warnings") or [])),
+        ("this save", list(projection.get("warnings") or []) if projection else []),
         ("the game's own data", list(data.warnings)),
     ):
         if not found:

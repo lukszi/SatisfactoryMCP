@@ -9,13 +9,16 @@ the most common thing that happens to one. docs/save-projection.md §6.3 has the
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Iterator
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ... import config
 from ...core import atomic, filelock, schema
+from ...core.saveio.schema import SaveHeader
+from .candidates import Candidate
+from .views import LabelDoc, LabelReview
 
 __all__ = [
     "MATCH_THRESHOLD",
@@ -79,12 +82,12 @@ class StaleStore(RuntimeError):
 class Label:
     id: str
     name: str
-    anchors: list[str] = field(default_factory=list)
+    anchors: list[str] = field(default_factory=list[str])
     notes: str = ""
     centroid: tuple[float, float] = (0.0, 0.0)
     #: Building-class counts when last anchored. A fallback hint only, used to
     #: SUGGEST a re-match after a full rebuild, never to match automatically.
-    signature: dict[str, int] = field(default_factory=dict)
+    signature: dict[str, int] = field(default_factory=dict[str, int])
     created: str = ""
     last_matched: str = ""
 
@@ -93,7 +96,7 @@ class Label:
             return 0.0
         return len(set(self.anchors) & machines) / len(self.anchors)
 
-    def to_json(self) -> dict:
+    def to_json(self) -> LabelDoc:
         return {
             "id": self.id,
             "name": self.name,
@@ -106,7 +109,7 @@ class Label:
         }
 
     @staticmethod
-    def from_json(raw: dict) -> Label:
+    def from_json(raw: LabelDoc) -> Label:
         centroid = raw.get("centroid") or [0.0, 0.0]
         return Label(
             id=raw["id"],
@@ -120,7 +123,7 @@ class Label:
         )
 
 
-def edit_stamp(header: dict) -> str:
+def edit_stamp(header: SaveHeader) -> str:
     """The save a label edit is dated by."""
     return str(header.get("save_datetime") or header.get("filename") or "")
 
@@ -142,7 +145,7 @@ class LabelStore:
 
     world_id: str
     session_name: str = ""
-    labels: list[Label] = field(default_factory=list)
+    labels: list[Label] = field(default_factory=list[Label])
     #: Bumped by every write, so a writer can tell the file moved since it read it.
     version: int = 0
 
@@ -168,7 +171,7 @@ class LabelStore:
     @contextmanager
     def editing(
         cls, world_id: str, session_name: str = "", expect: int | None = None
-    ) -> Iterator[LabelStore]:
+    ) -> Generator[LabelStore, None, None]:
         """The one safe read-modify-write: locked, re-read inside the lock, written on exit.
 
         ``expect`` refuses with ``StaleStore`` when the file is no longer that version.
@@ -263,7 +266,7 @@ class LabelStore:
         return wanted
 
     def name(
-        self, name: str, candidate, notes: str = "", when: str = "", create: bool = False
+        self, name: str, candidate: Candidate, notes: str = "", when: str = "", create: bool = False
     ) -> Label:
         """What naming a factory writes: ``put`` plus the candidate's centroid and signature.
 
@@ -318,7 +321,7 @@ class LabelStore:
     def assigned(self) -> set[str]:
         return {m for label in self.labels for m in label.anchors}
 
-    def covers(self, machines, share: float = NAMED_SHARE) -> bool:
+    def covers(self, machines: Iterable[str], share: float = NAMED_SHARE) -> bool:
         """Whether the player has already named this machine set.
 
         The one home for that question. The map, ``propose_factories`` and ``factory_map``
@@ -342,13 +345,13 @@ class LabelStore:
                 return label
         return None
 
-    def review(self, present: set[str]) -> list[dict]:
+    def review(self, present: set[str]) -> list[LabelReview]:
         """What changed since each label was anchored.
 
         Reports rather than acts: a label whose machines are half gone might be a
         rebuild in progress or a dismantled factory, and only the player knows which.
         """
-        out = []
+        out: list[LabelReview] = []
         for label in self.labels:
             anchors = set(label.anchors)
             alive = anchors & present

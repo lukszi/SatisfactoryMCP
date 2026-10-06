@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from ...core.gamedata.model import GameData, Recipe, Schematic
+from ...core.saveio.schema import Projection
 
 __all__ = ["UnlockSet"]
 
@@ -14,7 +15,7 @@ __all__ = ["UnlockSet"]
 class UnlockSet:
     """The unlock gate, read from the save and joined to the shipped recipe dump."""
 
-    projection: dict
+    projection: Projection
     game: GameData
 
     @cached_property
@@ -110,7 +111,7 @@ class UnlockSet:
             child = self.game.schematics.get(chained)
             if child is not None:
                 recipe_ids.extend(child.unlocks_recipes)
-        out = []
+        out: list[Recipe] = []
         for recipe_id in dict.fromkeys(recipe_ids):
             recipe = self.game.recipes.get(recipe_id)
             if recipe is not None and recipe_id not in self.available_recipe_ids:

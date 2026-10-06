@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
 from typing_extensions import TypedDict
 
 from ....core.gamedata.model import GameData, pretty_class
 from ....core.saveio.records import instance_leaf
+from ....core.saveio.schema import ContainerRecord, CrateRecord
 from ....domain.collectibles import service as collectibles_service
 from ....domain.factories import candidates
 from ....domain.planning.stored.planlog import Actor
@@ -400,9 +401,10 @@ def building_footprint(game: GameData, cls: str) -> Any:
     return getattr(building, "footprint", None) if building else None
 
 
-def placement_fields(game: GameData, row: dict) -> dict:
+def placement_fields(game: GameData, row: Mapping[str, object]) -> dict:
     """What an actor placement row leads with: id, class, name, position, facing and size."""
-    cls = row.get("cls") or ""
+    named = row.get("cls")
+    cls = named if isinstance(named, str) else ""
     footprint = building_footprint(game, cls)
     return {
         "instance_leaf": instance_leaf(row.get("instance", "")),
@@ -423,7 +425,7 @@ class StoredItem(TypedDict):
     count: int
 
 
-def contents_json(game: GameData, row: dict) -> dict:
+def contents_json(game: GameData, row: ContainerRecord | CrateRecord) -> dict:
     """What a container or crate holds, every stack named, with the totals a header shows."""
     raw = [e for e in row.get("items") or () if isinstance(e, (list, tuple)) and len(e) >= 2]
     items = [{"cls": str(e[0]), "name": game.item_name(str(e[0])), "count": e[1]} for e in raw]

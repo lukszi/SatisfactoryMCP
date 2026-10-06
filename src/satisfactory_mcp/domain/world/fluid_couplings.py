@@ -8,18 +8,23 @@ into one volume of fluid.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable
-from typing import NamedTuple
+from collections.abc import Callable, Hashable
+from typing import NamedTuple, TypeAlias
 
 from ...core.saveio.ports import PIPE, medium
+from ...core.saveio.schema import Projection
 from ...core.unionfind import UnionFind
 
 __all__ = [
     "FluidCouplings",
+    "FluidNode",
     "coupling_actor_class",
     "fluid_couplings",
     "producer_consumer_classes",
 ]
+
+#: A place fluid can stand: the ``joins`` root of an ``(actor index, role index)`` port.
+FluidNode: TypeAlias = Hashable
 
 
 class FluidCouplings(NamedTuple):
@@ -37,7 +42,7 @@ def coupling_actor_class(actor: str) -> str:
     return head + "_C" if sep else actor
 
 
-def fluid_couplings(projection: dict, is_body: Callable[[str], bool]) -> FluidCouplings:
+def fluid_couplings(projection: Projection, is_body: Callable[[str], bool]) -> FluidCouplings:
     """Every fluid coupling joined, with the ports of each actor ``is_body`` names merged."""
     graph = projection.get("graph") or {}
     actors = list(graph.get("actors") or ())
@@ -62,7 +67,7 @@ def fluid_couplings(projection: dict, is_body: Callable[[str], bool]) -> FluidCo
     return FluidCouplings(joins, ports_of, actors, roles)
 
 
-def producer_consumer_classes(projection: dict) -> tuple[set, set]:
+def producer_consumer_classes(projection: Projection) -> tuple[set[str], set[str]]:
     """Extractor and generator classes: what only ever produces, what only ever consumes.
 
     They settle a building whose one port carries the generic ``FGPipeConnectionFactory``.

@@ -10,13 +10,16 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict, deque
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from ...core.gamedata.model import GameData
+from ...core.saveio.schema import Projection
 from ...core.unionfind import UnionFind
 from ..spatial import geo
 from .candidates import positions, recipes_by_machine
-from .model import FactoryGraph
+from .model import Edge, FactoryGraph
 from .structure import Structures
 
 __all__ = [
@@ -60,6 +63,13 @@ NEAREST_MARGIN = 2.0
 #: No proposal may span more than this: THE load-bearing constant.
 MAX_SPAN_M = 250.0
 
+#: A machine pair's signals by name, and their distance in metres.
+Features: TypeAlias = Callable[[str, str], tuple[dict[str, float], float]]
+#: The material layer's neighbour index, as ``FactoryGraph.adjacency`` builds it.
+Adjacency: TypeAlias = dict[str, list[Edge]]
+#: A pair of pool indices, the lower first.
+Pair: TypeAlias = tuple[int, int]
+
 
 @dataclass
 class Proposal:
@@ -68,11 +78,11 @@ class Proposal:
     machines: list[str]
     #: Weakest internal link, which every pair clears under complete linkage; 0.0 for one.
     cohesion: float = 0.0
-    evidence: Counter = field(default_factory=Counter)
+    evidence: Counter[str] = field(default_factory=Counter[str])
     seeded_by: str = ""
     #: Sizes of the pieces this was assembled from, largest first; several mean absorbed
     #: dependents ("47 = 32 + 6 + 6 + 2 + 1").
-    parts: list[int] = field(default_factory=list)
+    parts: list[int] = field(default_factory=list[int])
 
     @property
     def size(self) -> int:
@@ -82,9 +92,9 @@ class Proposal:
 def _feature_fn(
     graph: FactoryGraph,
     game: GameData,
-    projection: dict,
+    projection: Projection,
     structures: Structures,
-):
+) -> Features:
     """Build the per-pair feature extractor once, with every lookup pre-indexed."""
     pos = positions(projection)
     products: dict[str, frozenset[str]] = {}
@@ -119,11 +129,12 @@ def _feature_fn(
     return features
 
 
-def _material_reach(graph: FactoryGraph, adjacency: dict, seed: list[str]) -> set[str]:
+def _material_reach(graph: FactoryGraph, adjacency: Adjacency, seed: list[str]) -> set[str]:
     """Every machine reachable from ``seed`` over belts and pipes, walking through logistics."""
-    seen, frontier, out = set(seed), list(seed), set()
+    seen, frontier = set(seed), list(seed)
+    out: set[str] = set()
     while frontier:
-        next_frontier = []
+        next_frontier: list[str] = []
         for node in frontier:
             for edge in adjacency.get(node, ()):
                 other = edge.other(node)
@@ -138,7 +149,7 @@ def _material_reach(graph: FactoryGraph, adjacency: dict, seed: list[str]) -> se
 
 
 def _first_arrival(
-    graph: FactoryGraph, adjacency: dict, seed: list[str], owner: dict[str, int], self_id: int
+    graph: FactoryGraph, adjacency: Adjacency, seed: list[str], owner: dict[str, int], self_id: int
 ) -> dict[int, int]:
     """Hop depth at which each other cluster is first reached."""
     held = set(seed)
@@ -161,7 +172,7 @@ def _first_arrival(
 
 def _dependent_target(
     graph: FactoryGraph,
-    adjacency: dict,
+    adjacency: Adjacency,
     groups: list[list[str]],
     owner: dict[str, int],
     k: int,
@@ -228,18 +239,20 @@ def attach_dependents(
         joins = UnionFind()
         for child, host in wanted.items():
             joins.union(child, host)
-        merged: dict = defaultdict(list)
+        merged: dict[Hashable, list[str]] = defaultdict(list)
         for k, members in enumerate(groups):
             merged[joins.find(k)] += members
         groups = list(merged.values())
     return groups
 
 
-def _pair_scores(pool: list[str], features, weights: dict, max_span_m: float, prior: float):
+def _pair_scores(
+    pool: list[str], features: Features, weights: dict[str, float], max_span_m: float, prior: float
+) -> tuple[dict[Pair, float], dict[Pair, tuple[str, ...]]]:
     """Every pair's score, ``-inf`` past the span cap so no linkage can cross it, and the
     signals that fired for it."""
-    pair: dict[tuple[int, int], float] = {}
-    fired: dict[tuple[int, int], tuple[str, ...]] = {}
+    pair: dict[Pair, float] = {}
+    fired: dict[Pair, tuple[str, ...]] = {}
     for i, a in enumerate(pool):
         for j in range(i + 1, len(pool)):
             feats, distance_m = features(a, pool[j])
@@ -270,13 +283,15 @@ def _slab_seeds(
     return clusters, seeded
 
 
-def _complete_linkage(clusters: list[list[int]], seeded: list[str], score):
+def _complete_linkage(
+    clusters: list[list[int]], seeded: list[str], score: Callable[[int, int], float]
+) -> tuple[list[int], dict[int, float]]:
     """Merge while some pair of clusters has EVERY cross pair above zero, best first.
 
     Returns the surviving cluster indices and each cluster's weakest internal score. Single
     linkage on the same score chains a whole base together through one adjacent pair.
     """
-    link: dict[tuple[int, int], float] = {}
+    link: dict[Pair, float] = {}
     for i in range(len(clusters)):
         for j in range(i + 1, len(clusters)):
             link[(i, j)] = min(score(a, b) for a in clusters[i] for b in clusters[j])
@@ -289,7 +304,8 @@ def _complete_linkage(clusters: list[list[int]], seeded: list[str], score):
         for i, c in enumerate(clusters)
     }
     while True:
-        best, target = 0.0, None
+        best = 0.0
+        target: Pair | None = None
         for (i, j), value in link.items():
             if i in alive and j in alive and value > best:
                 best, target = value, (i, j)
@@ -311,10 +327,10 @@ def _complete_linkage(clusters: list[list[int]], seeded: list[str], score):
 def _assemble_proposals(
     final: list[list[str]],
     linked: list[list[str]],
-    seeds: dict,
-    weakest: dict,
+    seeds: dict[frozenset[str], str],
+    weakest: dict[frozenset[str], float],
     index: dict[str, int],
-    fired: dict,
+    fired: dict[Pair, tuple[str, ...]],
 ) -> list[Proposal]:
     """One ``Proposal`` per final group, carrying the evidence of the pieces it absorbed."""
     pieces = {frozenset(c): len(c) for c in linked}
@@ -322,7 +338,7 @@ def _assemble_proposals(
     for members in final:
         held = frozenset(members)
         parts = sorted((n for c, n in pieces.items() if c <= held), reverse=True) or [len(members)]
-        evidence: Counter = Counter()
+        evidence: Counter[str] = Counter()
         ids = [index[m] for m in members]
         for x, a in enumerate(ids):
             for b in ids[x + 1 :]:
@@ -345,7 +361,7 @@ def _assemble_proposals(
 def propose(
     graph: FactoryGraph,
     game: GameData,
-    projection: dict,
+    projection: Projection,
     structures: Structures,
     machines: list[str] | None = None,
     weights: dict[str, float] | None = None,

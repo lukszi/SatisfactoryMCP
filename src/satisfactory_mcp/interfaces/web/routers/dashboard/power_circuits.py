@@ -18,7 +18,7 @@ from typing_extensions import TypedDict
 from .....core.saveio.records import instance_leaf
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
-from .....domain.power.report import PowerLedger, starved_cause
+from .....domain.power.report import MachineGroups, PowerLedger, starved_cause
 from .....domain.power.views import GeneratorTotal, PowerReport
 from .....domain.spatial import geo
 from .....domain.world.state import WorldState
@@ -36,8 +36,6 @@ from ...serial import (
 __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
-
-RECORD_LISTS = ("generators", "machines", "extractors")
 
 
 class Ledger(TypedDict):
@@ -181,15 +179,16 @@ def _circuit_rows(
 ) -> list[tuple[dict, set[str]]]:
     """Every circuit with a record on it, biggest ledger first, each with its member leaves."""
     graph = st.graph
-    records = {
-        key: {instance_leaf(r["instance"]): r for r in st.projection.get(key) or ()}
-        for key in RECORD_LISTS
-    }
+    machines = {instance_leaf(r["instance"]): r for r in st.projection.get("machines") or ()}
+    extractors = {instance_leaf(r["instance"]): r for r in st.projection.get("extractors") or ()}
+    generators = {instance_leaf(r["instance"]): r for r in st.projection.get("generators") or ()}
     pairs = []
     for component in graph.components("power"):
         members = set(component)
-        sub = {
-            key: [r for leaf, r in records[key].items() if leaf in members] for key in RECORD_LISTS
+        sub: MachineGroups = {
+            "machines": [r for leaf, r in machines.items() if leaf in members],
+            "extractors": [r for leaf, r in extractors.items() if leaf in members],
+            "generators": [r for leaf, r in generators.items() if leaf in members],
         }
         if not any(sub.values()):
             continue

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from ...core.gamedata.model import GameData, pretty_class
 from ...core.saveio.records import instance_leaf, iter_machine_records
+from ...core.saveio.schema import Projection
 from ..spatial import geo
 from .model import FactoryGraph
 
@@ -40,9 +41,9 @@ class Candidate:
 
     machines: list[str]
     source: str  # power | material | product
-    products: Counter = field(default_factory=Counter)
-    recipes: Counter = field(default_factory=Counter)
-    buildings: Counter = field(default_factory=Counter)
+    products: Counter[str] = field(default_factory=Counter[str])
+    recipes: Counter[str] = field(default_factory=Counter[str])
+    buildings: Counter[str] = field(default_factory=Counter[str])
     centroid: tuple[float, float] = (0.0, 0.0)
     spread_m: float = 0.0
     label: str | None = None
@@ -70,7 +71,7 @@ class Candidate:
         return "unnamed"
 
 
-def positions(projection: dict) -> dict[str, tuple[float, float, float]]:
+def positions(projection: Projection) -> dict[str, tuple[float, float, float]]:
     """Every placed machine, extractor and generator, by instance leaf, in centimetres.
 
     A record with no ``pos`` is absent rather than zeroed, so a lookup of it fails loudly
@@ -80,21 +81,21 @@ def positions(projection: dict) -> dict[str, tuple[float, float, float]]:
     for _group, leaf, record in iter_machine_records(projection):
         pos = record.get("pos")
         if pos:
-            out[leaf] = tuple(pos)
+            out[leaf] = (pos[0], pos[1], pos[2])
     return out
 
 
-def recipes_by_machine(projection: dict) -> dict[str, str]:
+def recipes_by_machine(projection: Projection) -> dict[str, str]:
     """Every manufacturer with a recipe set, by instance leaf, to its recipe id."""
     return {
-        instance_leaf(r["instance"]): r["recipe"]
+        instance_leaf(r["instance"]): recipe
         for r in projection.get("machines", ())
-        if r.get("recipe")
+        if (recipe := r.get("recipe"))
     }
 
 
 def machines_making(
-    game: GameData, projection: dict, products: list[str], within: list[str] | None = None
+    game: GameData, projection: Projection, products: list[str], within: list[str] | None = None
 ) -> list[str]:
     """Machines whose recipe makes any of ``products`` (item names, any case)."""
     wanted = {p.casefold() for p in products}
@@ -115,15 +116,15 @@ def describe(
     machines: list[str],
     graph: FactoryGraph,
     game: GameData,
-    projection: dict,
+    projection: Projection,
     source: str,
 ) -> Candidate:
     """Attach products, buildings and geometry to a set of machines."""
     pos = positions(projection)
     recipe_of = recipes_by_machine(projection)
-    products: Counter = Counter()
-    recipes: Counter = Counter()
-    buildings: Counter = Counter()
+    products: Counter[str] = Counter()
+    recipes: Counter[str] = Counter()
+    buildings: Counter[str] = Counter()
 
     for m in machines:
         buildings[graph.cls.get(m, "?")] += 1
@@ -134,7 +135,7 @@ def describe(
         for flow in recipe.products[:1]:
             products[game.item_name(flow.item)] += 1
 
-    pts = [pos[m][:2] for m in machines if m in pos]
+    pts = [(pos[m][0], pos[m][1]) for m in machines if m in pos]
     cx, cy = geo.centroid(pts) or (0.0, 0.0)
     spread = geo.diameter_m(pts)
 
@@ -162,7 +163,7 @@ def bases(graph: FactoryGraph) -> list[list[str]]:
 def lines_within(graph: FactoryGraph, machines: list[str]) -> list[list[str]]:
     """Material components restricted to one base."""
     inside = set(machines)
-    out = []
+    out: list[list[str]] = []
     for comp in graph.machine_components("material"):
         members = [m for m in comp if m in inside]
         if members:
@@ -171,7 +172,9 @@ def lines_within(graph: FactoryGraph, machines: list[str]) -> list[list[str]]:
     return out
 
 
-def _cluster(machines: list[str], pos: dict, link_m: float) -> list[list[str]]:
+def _cluster(
+    machines: list[str], pos: dict[str, tuple[float, float, float]], link_m: float
+) -> list[list[str]]:
     """Single-linkage on XY. Cheap, and the sets here are small."""
     remaining = [m for m in machines if m in pos]
     out: list[list[str]] = []
@@ -193,7 +196,7 @@ def _cluster(machines: list[str], pos: dict, link_m: float) -> list[list[str]]:
 def product_clusters(
     graph: FactoryGraph,
     game: GameData,
-    projection: dict,
+    projection: Projection,
     products: list[str],
     link_m: float = CLUSTER_LINK_M,
     within: list[str] | None = None,
@@ -211,7 +214,7 @@ def product_clusters(
 
 
 def bases_and_lines(
-    graph: FactoryGraph, game: GameData, projection: dict
+    graph: FactoryGraph, game: GameData, projection: Projection
 ) -> tuple[list[Candidate], list[Candidate]]:
     """Every base, and the lines inside each. Returns (bases, lines)."""
     base_cands: list[Candidate] = []
@@ -231,6 +234,8 @@ def unassigned(graph: FactoryGraph, assigned: set[str]) -> list[str]:
     return sorted(m for m in graph.machines() if m not in assigned)
 
 
-def cluster_machines(machines: list[str], projection: dict, link_m: float = CLUSTER_LINK_M):
+def cluster_machines(
+    machines: list[str], projection: Projection, link_m: float = CLUSTER_LINK_M
+) -> list[list[str]]:
     """Public spatial grouping, for carving an arbitrary machine set."""
     return _cluster(machines, positions(projection), link_m)
