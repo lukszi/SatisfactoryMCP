@@ -188,7 +188,7 @@ class PackageView:
                 ref = self.export_ref(raw)
                 out[name] = self.import_path(raw) or (f"export:{ref}" if ref is not None else None)
             elif kind in ("EnumProperty", "NameProperty"):
-                out[name] = self._fname(raw)
+                out[name] = self.read_fname(raw)
             elif kind == "IntProperty":
                 out[name] = read_int32(raw)
             elif kind in ("FloatProperty", "DoubleProperty"):
@@ -199,7 +199,7 @@ class PackageView:
                 out[name] = {"_type": kind, "_raw": raw[:32].hex()}
         return out
 
-    def _fname(self, payload: bytes) -> str | None:
+    def read_fname(self, payload: bytes) -> str | None:
         if len(payload) < 8:
             return None
         index, number = struct.unpack_from("<II", payload, 0)

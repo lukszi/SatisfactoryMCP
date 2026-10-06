@@ -301,7 +301,7 @@ def _read_node_row(
     props = view.props(slot)
 
     raw = props.get("mPurity")
-    purity_name = view._fname(raw) if raw is not None else None
+    purity_name = view.read_fname(raw) if raw is not None else None
     if purity_name not in PURITY:
         problems.append(f"{name}: unknown mPurity value {purity_name!r}")
         return None

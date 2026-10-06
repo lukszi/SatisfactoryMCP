@@ -72,7 +72,9 @@ def material_params(view) -> tuple[dict[str, tuple], dict[str, str]]:
             for tag, kind, raw, _v in tags:
                 if tag == "ParameterInfo" and kind == "StructProperty":
                     inner, _end = property_tags(raw, view.pkg.names, 0)
-                    name = next((view._fname(r) for k, ik, r, _iv in inner if k == "Name"), name)
+                    name = next(
+                        (view.read_fname(r) for k, ik, r, _iv in inner if k == "Name"), name
+                    )
                 elif tag == "ParameterValue" and len(raw) == 16 and key.startswith("Vector"):
                     value = tuple(float(v) for v in struct.unpack("<4f", raw)[:3])
                 elif tag == "ParameterValue" and key.startswith("Texture"):

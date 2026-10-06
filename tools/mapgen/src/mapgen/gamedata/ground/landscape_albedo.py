@@ -102,7 +102,7 @@ def material_vectors(view) -> dict[str, tuple[float, float, float]]:
                 inner, _end = property_tags(raw, view.pkg.names, 0)
                 for key, inner_kind, inner_raw, _iv in inner:
                     if key == "Name" and inner_kind == "NameProperty":
-                        name = view._fname(inner_raw)
+                        name = view.read_fname(inner_raw)
             elif tag == "ParameterValue" and len(raw) == 16:
                 value = struct.unpack("<4f", raw)[:3]
         if name and value:
