@@ -123,7 +123,7 @@ def projection() -> dict:
         f"save_projection.json was cut from world {found!r}, not {FIXTURE_WORLD!r} -- this "
         f"suite measures one factory, and the reference save is {FIXTURE_SAVE}. Re-cut it "
         "from that world, or change both constants in tests/support/reference_world.py and "
-        "re-measure every count test_reference_counts.py pins."
+        "re-measure every count tests/data/test_reference_counts.py pins."
     )
     return body
 

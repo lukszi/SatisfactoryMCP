@@ -1446,9 +1446,9 @@ def test_the_one_file_api_stays_deleted():
             "concern, mounted through ALL_ROUTERS) and serial.py (the shared vocabulary), "
             "and a handler that fits neither belongs in a router of its own"
         )
-    assert not (REPO / "tests" / "test_web_api.py").exists(), (
-        "tests/test_web_api.py is back -- the endpoint tests live in test_web_<router>.py, "
-        "one file per router, plus test_web_static.py for the mount at /"
+    assert not (REPO / "tests" / "web" / "test_api.py").exists(), (
+        "tests/web/test_api.py is back -- the endpoint tests live in tests/web/, "
+        "one file per router, plus test_static.py for the mount at /"
     )
 
 
