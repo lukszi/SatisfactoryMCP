@@ -32,6 +32,32 @@ __all__ = [
 ]
 
 
+def _layout() -> JsonObject:
+    """The sidecar blocks that say how ``caves.npz`` is laid out: its grid, bits and hulls."""
+    return {
+        "grid": {
+            "width": CAVE_MASK_PX,
+            "height": CAVE_MASK_PX,
+            "cell_cm": CAVE_CELL_CM,
+            "x0_cm": ORIGIN_X_CM,
+            "y0_cm": ORIGIN_Y_CM,
+            "georeference": "cell (row, col) covers x0 + col*cell .. x0 + (col+1)*cell; floored",
+        },
+        "mask_bits": {
+            str(caves.BIT_MARKERS): (
+                f"cave decoration under {CAVE_MARKER_DIRS} more than "
+                f"{caves.INSIDE_DEPTH_M:g} m below the ground, buffered by "
+                f"{CAVE_BUFFER_CELLS} cells"
+            ),
+            str(caves.BIT_HULL): "every cell the plan of a cave sound volume's convex hull touches",
+        },
+        "hulls": (
+            "planes (n, 4) as nx, ny, nz, d in cm, outward: inside where n.p + d <= 0; "
+            "starts (hulls + 1) slices planes per hull; boxes (hulls, 6) min and max xyz"
+        ),
+    }
+
+
 def write_caves(args: argparse.Namespace, build_pin: str, build_raw: JsonObject) -> int:
     """``--caves``: sweep the world for the two cave signals and write ``--caves-dir``."""
     out_dir: Path = args.caves_dir
@@ -58,7 +84,7 @@ def write_caves(args: argparse.Namespace, build_pin: str, build_raw: JsonObject)
         print(f"  {name:>22}: {value}")
     buffer = io.BytesIO()
     np.savez_compressed(buffer, **arrays)
-    meta = {
+    meta: JsonObject = {
         "description": (
             "Where caves are under this world's single-valued terrain field: a safety flag, "
             "not a floor. Cut from the reader's own install by "
@@ -69,26 +95,7 @@ def write_caves(args: argparse.Namespace, build_pin: str, build_raw: JsonObject)
         "transcribed": datetime.now(UTC).strftime("%Y-%m-%d"),
         "sources": {"game": {"game_version_pinned": build_pin, "build_raw": build_raw}},
         "field": {"directory": field.directory.name, "build": field.build},
-        "grid": {
-            "width": CAVE_MASK_PX,
-            "height": CAVE_MASK_PX,
-            "cell_cm": CAVE_CELL_CM,
-            "x0_cm": ORIGIN_X_CM,
-            "y0_cm": ORIGIN_Y_CM,
-            "georeference": "cell (row, col) covers x0 + col*cell .. x0 + (col+1)*cell; floored",
-        },
-        "mask_bits": {
-            str(caves.BIT_MARKERS): (
-                f"cave decoration under {CAVE_MARKER_DIRS} more than "
-                f"{caves.INSIDE_DEPTH_M:g} m below the ground, buffered by "
-                f"{CAVE_BUFFER_CELLS} cells"
-            ),
-            str(caves.BIT_HULL): "every cell the plan of a cave sound volume's convex hull touches",
-        },
-        "hulls": (
-            "planes (n, 4) as nx, ny, nz, d in cm, outward: inside where n.p + d <= 0; "
-            "starts (hulls + 1) slices planes per hull; boxes (hulls, 6) min and max xyz"
-        ),
+        **_layout(),
         "counts": counts,
         "seconds": seconds,
         "digest": sha256_hex(buffer.getvalue()),
