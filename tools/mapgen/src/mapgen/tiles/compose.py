@@ -28,6 +28,7 @@ from mapgen.palette.shore import (
     OCEAN_LEVEL_M,
     blend_water,
     composite_meshes,
+    painted_ndl,
     shore_terms,
 )
 from mapgen.palette.styles import (
@@ -420,7 +421,7 @@ def render_layer(
             flat = np.float32(np.sin(np.deg2rad(SUN_ALTITUDE_DEG)))
             scene["crowns"] = crowns_in_band(painted, x_cm, y_cm[lo:hi], spacing_m, unlit)
             scene.update(
-                ndl=np.full(z_m.shape, flat) if unlit else sun_dot(z_m, spacing_m),
+                ndl=painted_ndl(z_m, spacing_m, unlit, surface, (mesh_weight, mesh_class, level_m)),
                 ndl_flat=flat,
                 rock_weight=rock_weight,
                 mesh_weight=mesh_weight,

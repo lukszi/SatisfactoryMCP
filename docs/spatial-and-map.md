@@ -1594,7 +1594,8 @@ under `/Foliage/Coral/` and `/UnderWater/` plus `CliffPillar_03` from the same p
 and the foliage instances of the same directories and of `/Rubble/` and `SeaRock` (minus the
 top-layer boulders) through a new `extra_foliage` harvest of `sweep_levels`. Each mesh is read
 at its finest source, falling back to its collision hull. On this build: 57,294 coral, 4,223
-shell and 38,009 rock instances.
+shell and 38,009 rock instances. The coral trees are tree foliage too, and only this pass
+draws them (section 36, "Coral trees are no crowns").
 
 They are rasterised into `meshes.cache/` beside `direct.cache/` and `top.cache/` (same size and
 build stamp, plus the reader version), with a class plane: coral, shell or rock. They are
@@ -2425,9 +2426,11 @@ brackets:
 | Coral-tree cap | Spire Coast (-339, -2275) | 5.6 (3.4) | 3.2 (6.5) | 3.2 (6.5) |
 
 The distance to the reference is the deliberate discount for the game's tonemap and grade,
-which the targets remove. The coral caps sit 3.2 below target because they are domes lit by
-their slope; their chroma and hue are within 0.5. Wet sand and grass had no dry, pure patches
-in these crops. On the Spire Coast the wet sand is under water, as the references show.
+which the targets remove. The coral caps sat 3.2 below target, lit by their slope; their
+chroma and hue are within 0.5. They are not domes: a coral tree is a stack of shallow bowls,
+and from game-painted 6 to 14 its crown covered the mesh (section 36, "Coral trees are no
+crowns"). Wet sand and grass had no dry, pure patches in these crops. On the Spire Coast the
+wet sand is under water, as the references show.
 
 The area targets were measured on the paint table (no bake), flat-lit: each material's pure
 texels pushed through the flat-ground pipeline, the median in OKLab against the target.
@@ -3163,6 +3166,78 @@ dry forest has no changed pixel. Over the sea the crowns come out darker and mor
 its trees, lighter (L +0.040). In the swamp 2,692 crown pixels are under the surface and draw
 as its water.
 
+### Coral trees are no crowns (2026-10-06)
+
+From game-painted 6, the first style with crowns (renders-v5 and v6), the small coral trees
+read as smooth domes lit from the north-west. Recipe 6 (renders-v4) drew them as what they
+are: tiered plates, each a shallow bowl, with a dark line at every step.
+
+**Drawn twice.** `SM_CoralTreeSmall_01` (473), `SM_CoralTreeSmall_02` (570) and
+`CraterTree_02` (341) are foliage under `/Foliage/Coral/`. The paint store takes them as trees
+(`TREE_MARKS` "/Coral/CoralTree" and "CraterTree"), and the render-only mesh pass takes the
+same instances (`RENDER_ONLY_DIRS`, section 27). So each was drawn as its mesh, lit by its
+own max-Z top, and then covered by an opaque crown: the platform material has no mask.
+
+**The geometry.** The species' sprite is the LOD 0 top seen from above. `_01` is a plate
+whose rim stands at 13.4 to 13.6 m and whose middle at 12.2 to 12.6 m, a 1.2 m dish over a
+4 m radius, with the stem's knob above it. `_02` has a top plate with its rim at 16.4 m and
+its middle at 15.6 m over lower plates at 11 to 12 m. Each plate is concave.
+
+**Why a dome.** A crown is lit by `sun_dot` of its dome: the cover times the top, blurred by
+0.75 m (`DOME_SIGMA_M`), times `dome_gain` 0.35. The blur pulls the sprite's edge down to
+zero, from 13 m to 9 m over its last metre, and that edge outweighs the 0.8 to 1.2 m dish
+shrunk by 0.35. Every coral tree came out lit as a hump.
+
+**The rule.** A species the render-only mesh pass draws is no crown: `load_crowns` drops its
+records (`terrain/crowns.py` `meshed_species`, `is_render_only_foliage` on the species'
+mesh). The paint store is unchanged and keeps generator version 3. Its crown-top plane still
+holds the coral, so in a render with the light a coral tree still casts a tree shadow. The
+coral trees then draw as recipe 6 drew them, in the calibrated colours: the coral mesh colour
+#99868e lit by the mesh's own top, the seabed coral under water, and section 31's rule for a
+coral speck standing in the sea, which the crown over it had hidden.
+
+**In a render with the light.** The lighting pyramid's surface is the first layer's (section
+29), and in a full run that is terrain. Its seabed rule (section 27) leaves a render-only mesh
+standing in the water to the seabed, so the pyramid holds those pixels as water, with land
+weight 0, and leaves them unlit. Most coral stands in the sea, so in a lit run it drew flat.
+The painted layer, drawn unlit in a run whose surface another layer captured, now keeps the
+default sun's Lambert term of its own top on the meshes only it draws (`palette/shore.py`
+`painted_ndl`, with `lighting/model.py` `surface_direct`, the shader's direct term without
+shadows). The pyramid has those pixels as water, so the page leaves them as baked. Coral on
+dry land is in the surface and is lit live. When the painted layer captures the surface
+itself, in a run without terrain and satellite, nothing is baked. The pyramid is unchanged,
+so the light model stays at version 2.
+
+**Measured** on the render archive's windows with the harness of "Crowns and the water", now
+also given the window's render-only meshes from its base sweep. Coral-tree pixels are those
+the coral crown covered (cover over 0.9, gone after) on a whole coral mesh pixel. Each cell
+is the Pearson r of their luma against the north-west sun term of the true surface, then
+against the crown dome's. The archive crops are the stored pyramid levels; v4's colours
+differ, which r ignores.
+
+| Window | Zoom | Pixels | v4 | v6 | Now |
+| --- | --- | --- | --- | --- | --- |
+| Spire islets (269, -1943) | z2 | 6,934 | 0.99, 0.35 | 0.39, 0.89 | 0.99, 0.36 |
+| Spiral (-339, -2275) | z1 | 3,412 | 0.69, 0.27 | 0.54, 0.87 | 0.99, 0.48 |
+| Specks lagoon (16, -2137) | z1 | 3,683 | 0.70, 0.24 | 0.50, 0.78 | 0.97, 0.44 |
+| Carpet (-440, -2380) | z0 | 1,348 | 0.39, 0.05 | 0.68, 0.78 | 0.99, 0.57 |
+
+In a full run's light, at the default sun, the coral standing in the sea followed its own
+surface at r -0.08 to 0.16 before and at 0.70 to 0.95 now (375 to 6,228 pixels a window).
+The caps' median is 1.3 to 1.8 Delta E from the #99868e target, against 6.8 to 7.1 as
+crowns. With the coral crowns kept, the change matches master to the bit drawn without the
+light and drawn with the painted layer capturing; drawn unlit after another layer it changes
+mesh pixels only. Leaving the coral crowns out changes pixels under them only, and at most
+13 a window at their faint edges. The carpet and every other crown are unchanged.
+
+**Known limits.**
+
+- In a lit run the coral standing in the sea keeps the noon light whatever sun the page
+  picks, and takes no cast shadow.
+- A run that draws the painted layer and a relief style without terrain or satellite lets
+  the painted layer capture the surface, so the relief styles light their water over the
+  coral standing in the sea as land. This predates the rule.
+
 ## 37. Where sections 28 to 36 meet (2026-10-05)
 
 Sections 28 to 32 and 33 to 36 were built side by side. Where two of them touch the same
@@ -3179,9 +3254,11 @@ pixel, these rules decide.
 | Rock family and rock target | Section 31's rock targets are set first; section 30's family tint goes on relative to the families' median, so a common tint leaves rock on target. A family with a target of its own (desert rock, section 31's "Rock by mesh family") takes it over the area's rock. Render-only rocks take the area's rock. |
 | Coral, carpet and water | Section 32's carpet and section 31's seabed coral are both bed colours under the water. A coral speck standing in water is drawn as that water with the coral as its bed. |
 | Crowns and Titan trees | Crowns are composited first, the Titan raster last: the Titan trees stand taller. |
+| Coral trees | One producer: the render-only mesh pass of section 27. Section 36's crowns leave out every species that pass draws; the crown-top plane still holds them, so they still cast tree shadows (section 36, "Coral trees are no crowns"). |
+| Meshes standing in the water, lit | The lighting pyramid's surface is the first layer's. When that is a ground-and-water style, the render-only meshes standing in the water are water in it; the painted layer, drawn unlit after it, keeps the default sun's light of their own top on them. |
 | Crowns and water | A crown standing out of the water is composited after the water, the foam and the shore line, whole; one under the surface goes into the bed after section 32's carpet and before the open-sea term and section 31's opaque water, so the class optics, the open sea and the swamp's murk all apply to it (section 36, "Crowns and the water"). |
 | Tree shadows | The lighting stage's occluder (section 29) is the crown-top plane on the sheet's grid, with each pixel's covered share. It casts into crown horizons of their own under `OCCLUDER_FADE_M`, received on the crown top, and only the painted layer, which draws the crowns, reads them; terrain, satellite and relief are shaded by the ground alone. Only a run that draws the painted layer has it. |
-| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 14 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
+| Versions | Paint generator version 3. Styles: terrain 8, satellite 8, relief 6, relief dark 6 (the open sea, void and pits below, section 38's water below a drop, then section 38's boxes over lower water), game-painted 15 (the per-area targets of section 31 on top of sections 32 to 36, then the crowns on the canopy targets, the gated swamp water, the rock tint, coral and shell colours, the carpet patches and the hidden ground of sections 30 to 32, the open sea below, section 38's water below a drop, section 31's offshore pieces, section 33's river boxes, section 31's blue palm target and section 30's ground over each pixel's footprint; then section 30's crude oil stamps and section 33's lake boxes under the sea, then section 38's boxes over lower water; then section 31's desert rock family and daylight dune target; then section 36's crowns over the water; then section 33's lake colours, the teal deep lake and the turquoise lakes drawn as lakes; then section 36's coral trees left to their meshes, with the default sun on the meshes standing in the water). Light model 2 (section 29). Recipe 7, which also carries section 38. Readers: `render_meshes` 2, `rock_families` 2 (the desert rock family), `river_splines`, `waterfalls` and `titan_trees` 1. |
 | Perched water | Section 38 re-levels the water the river reconcile left, so a ribbon stands in for its box wherever the spline speaks and the membrane only where none does. Every style, the water classes and the relief tint read that result, not the field's box levels. Water below a drop inside a box is re-levelled before the rest of its body, so the class plane sees the basin under the wide fall at the swamp's level and the swamp box claims it. |
 | Holes and the open sea | Section 38's holes are filled after the re-levelling and never where the river reconcile dropped water; `WaterSurfaces.grades` carries them, and the open sea (row below) hands those grades to every style. Section 33's open sea is found on that same drawn water, so a box at the sea's level stops at the sea's reach. |
 | Caches | The river cache is a raster cache; the falls cache sits beside it. `tiles/extras.py` loads meshes, falls, Titan trees and rivers for a run. |

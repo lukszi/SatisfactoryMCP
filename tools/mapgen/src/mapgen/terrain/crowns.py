@@ -1,8 +1,9 @@
 """Tree crowns drawn into the render's own grid, a band at a time, from the paint store.
 
 Each tree stamps its species' sprite, turned and scaled, at the mip whose texel is closest
-to the output pixel. Taller crowns are laid over lower ones. docs/spatial-and-map.md
-section 36 describes the planes a band returns.
+to the output pixel. Taller crowns are laid over lower ones. A species the render-only mesh
+pass draws is no crown. docs/spatial-and-map.md section 36 describes the planes a band
+returns.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from mapgen.gamedata.crowns import (
     decode_records,
     decode_sprites,
 )
+from mapgen.terrain.rasters import is_render_only_foliage
 
 __all__ = [
     "COVER_TOP_MIN",
@@ -27,6 +29,7 @@ __all__ = [
     "CrownSet",
     "crown_band",
     "load_crowns",
+    "meshed_species",
     "sprite_levels",
 ]
 
@@ -81,13 +84,22 @@ def sprite_levels(sprite: dict, colours: list) -> list[np.ndarray]:
     return [np.pad(level, ((1, 1), (1, 1), (0, 0))) for level in out]
 
 
+def meshed_species(species: list[dict]) -> np.ndarray:
+    """Per species, whether the render-only mesh pass draws it: the coral trees."""
+    return np.array([is_render_only_foliage(e.get("mesh", "")) for e in species], bool)
+
+
 def load_crowns(paint_dir: Path, meta: dict) -> CrownSet | None:
-    """The crowns of a paint store, or ``None`` for a store written before they existed."""
+    """The crowns of a paint store, or ``None`` for a store written before they existed.
+
+    The trees of a ``meshed_species`` are left out: their mesh is drawn, lit by its own top.
+    """
     block = meta.get("crowns")
     if not block or CROWNS_NAME not in meta.get("files", {}):
         return None
     records = decode_records((paint_dir / CROWNS_NAME).read_bytes())
     species = block["species"]
+    records = records[~meshed_species(species)[records["species"]]]
     sprites = decode_sprites(
         (paint_dir / SPRITES_NAME).read_bytes(), [entry["sprite"] for entry in species]
     )

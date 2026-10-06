@@ -24,11 +24,14 @@ from mapgen.cache import (  # noqa: E402
     mesh_stamp,
     restyle_gaps,
 )
+from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot  # noqa: E402
 from mapgen.lighting.model import _tone, _untone, apply_terms  # noqa: E402
 from mapgen.palette.lightparams import shader_light  # noqa: E402
 from mapgen.palette.painted import tone  # noqa: E402
 from mapgen.palette.relief import FLAT_LIT, _shade  # noqa: E402
+from mapgen.palette.shore import OCEAN_LEVEL_M, painted_ndl  # noqa: E402
 from mapgen.palette.styles import PAINTED_PALETTE  # noqa: E402
+from mapgen.terrain.rasters import MESH_CORAL, MESH_ROCK  # noqa: E402
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS  # noqa: E402
 from tests.test_map_relief import _ground  # noqa: E402
 
@@ -65,6 +68,33 @@ def test_a_bright_painted_pixel_survives_a_flat_relight():
     flat = np.float32(1.0)
     out = apply_terms(colour, ones, ones * flat, ones, shader_light("painted"))
     assert np.abs(out.astype(int) - colour.astype(int)).max() <= 2
+
+
+def _bowl(n=81, sp=0.25, radius_px=30):
+    """A coral plate 7.5 m across standing in the sea: its rim 2.25 m above its middle."""
+    yy, xx = np.mgrid[0:n, 0:n].astype(np.float32)
+    r_m = np.hypot(yy - n // 2, xx - n // 2) * sp
+    inside = r_m < radius_px * sp
+    z = np.where(inside, 10.0 + 0.04 * r_m * r_m, -20.0).astype(np.float32)
+    kept = np.where(inside, MESH_CORAL, 0).astype(np.uint8)
+    return z, sp, inside.astype(np.float32), kept
+
+
+def test_painted_keeps_the_default_sun_on_a_mesh_only_it_draws_when_another_layer_lit_the_map():
+    z, sp, weight, kept = _bowl()
+    sea = np.full(z.shape, OCEAN_LEVEL_M, np.float32)
+    flat = np.float32(np.sin(np.radians(SUN_ALTITUDE_DEG)))
+    np.testing.assert_array_equal(painted_ndl(z, sp, False, None, (weight, kept, sea)),
+                                  sun_dot(z, sp))  # fmt: skip
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, object(), (weight, kept, sea)), flat)
+    dry = np.full(z.shape, np.nan, np.float32)
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, None, (weight, kept, dry)), flat)
+    rock = np.where(kept > 0, MESH_ROCK, 0).astype(np.uint8)
+    np.testing.assert_array_equal(painted_ndl(z, sp, True, None, (weight, rock, sea)), flat)
+    got = painted_ndl(z, sp, True, None, (weight, kept, sea))
+    assert got[2, 2] == pytest.approx(flat), "the sea around it is the pyramid's"
+    north_east, south_west = got[28, 52], got[52, 28]
+    assert north_east > flat > south_west, "the noon sun in the south-west lights the far wall"
 
 
 def _write_meshes(folder, stamp):

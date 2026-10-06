@@ -37,6 +37,7 @@ __all__ = [
     "light_axis",
     "model_block",
     "relight",
+    "surface_direct",
 ]
 
 LIGHT_ID = "sun"
@@ -170,6 +171,15 @@ def direct_term(nrm_u8, hz_deg, sun, shadows: bool = True, crowns: bool = False)
         shade = np.clip((hz - el) / SHADOW_SOFT_DEG + 0.5, 0, 1)
     inv = 1.0 / max(np.sin(np.radians(el)), np.sin(np.radians(NORMALISE_MIN_EL_DEG)))
     return (ndl * (1 - shade * (1 - SHADOW_FILL)) * inv).astype(np.float32)
+
+
+def surface_direct(z_m, spacing_m: float, sun=DEFAULT_SUN) -> np.ndarray:
+    """``direct_term`` of a height raster without shadows: Lambert toward ``sun``, flat is 1."""
+    d_south, d_east = np.gradient(np.asarray(z_m, np.float32), spacing_m)
+    lx, ly, lz = sun_vector(*sun)
+    ndl = (lz - d_east * lx - d_south * ly) / np.sqrt(d_east * d_east + d_south * d_south + 1.0)
+    inv = 1.0 / max(np.sin(np.radians(sun[1])), np.sin(np.radians(NORMALISE_MIN_EL_DEG)))
+    return (np.maximum(ndl, 0.0) * inv).astype(np.float32)
 
 
 def apply_terms(rgb_u8, svf, direct, land, params: dict) -> np.ndarray:

@@ -20,9 +20,11 @@ from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, flat_shade, hill
 from mapgen.lighting.model import (
     SHADOW_FLOOR,
     apply_terms,
+    direct_term,
     light_axis,
     model_block,
     relight,
+    surface_direct,
 )
 from mapgen.lighting.sun import DEFAULT_SUN, MAP_NW_SUN, NOON_HOUR, game_sun
 from mapgen.palette.lightparams import shader_light
@@ -118,6 +120,15 @@ def test_terrain_relit_at_the_old_sun_without_shadow_or_sky_is_the_baked_hillsha
     clear = shade / flat_shade(z.shape) > 0.75  # away from the shadow floor's knee
     diff = np.abs(out.astype(int) - baked.astype(int))[clear]
     assert clear.mean() > 0.5 and diff.max() <= 2
+
+
+def test_a_height_raster_s_direct_term_is_the_shader_s_without_shadows():
+    z, sp = _hills()
+    for sun in (DEFAULT_SUN, MAP_NW_SUN, (100.0, 20.0)):
+        got = surface_direct(np.pad(z, 1, mode="edge"), sp, sun)[1:-1, 1:-1]
+        want = direct_term(_nrm(z, sp), None, sun, shadows=False)
+        np.testing.assert_allclose(got, want, atol=0.02)
+    np.testing.assert_allclose(surface_direct(np.zeros((4, 4)), 1.0), 1.0, rtol=1e-6)
 
 
 def test_the_shadow_floor_keeps_the_darkest_light_at_036_to_040():
