@@ -22,6 +22,8 @@ from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import sheet_crowns
 from mapgen.lighting.stage import (
     LIGHT_DIR_NAME,
+    LIGHT_WORKER_BYTES,
+    LIGHT_WORKER_CAP,
     Surface,
     bake_light,
     default_terms,
@@ -63,6 +65,15 @@ def add_light_flags(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument("--unlit", dest="light", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--light-workers",
+        type=int,
+        default=None,
+        help=(
+            f"processes baking the light (default: one a core, at most {LIGHT_WORKER_CAP}, and "
+            f"no more than the free memory holds at {LIGHT_WORKER_BYTES / 1e9:.1f} GB each)"
+        ),
+    )
     parser.add_argument(
         "--scratch-dir",
         type=Path,
@@ -130,11 +141,16 @@ def crown_occluder(painted, cache_root: Path, size: int):
 
 
 class UnlitRun:
-    """One ``--unlit`` run: the surface the first layer captures, the bake, the installs."""
+    """One ``--unlit`` run: the surface the first layer captures, the bake, the installs.
 
-    def __init__(self, cache_root: Path, size: int, occluder=None, slabs=None) -> None:
+    ``light_workers`` None leaves the bake to count them from the cores and free memory.
+    """
+
+    def __init__(self, cache_root: Path, size: int, occluder=None, slabs=None,
+                 light_workers: int | None = None) -> None:  # fmt: skip
         self.surface = Surface(cache_root / LIGHT_CACHE_DIR_NAME, size)
         self.occluder, self.slabs = occluder, slabs
+        self.light_workers = light_workers
         self.captured = False
         self.meta: dict | None = None
         self.unlit: dict[str, dict] = {}
@@ -151,12 +167,15 @@ class UnlitRun:
         """``install_layer``'s contract, plus ``unlit/``; the first call bakes the light."""
         if self.meta is None:
             print("baking the lighting pyramid", flush=True)
-            self.meta = bake_light(self.surface, out_dir / name, workers, self.occluder,
-                                   self.slabs, occluder_layers=crown_layers())  # fmt: skip
-            done = self.meta["tiles"]
+            self.meta = bake_light(
+                self.surface, out_dir / name, self.light_workers, self.occluder, self.slabs,
+                occluder_layers=crown_layers(),
+            )  # fmt: skip
+            done, render = self.meta["tiles"], self.meta["render"]
             print(
                 f"  light: {done['count']} tiles over z0..z{done['max_z']} "
-                f"({done['bytes'] / 1e6:.1f} MB) in {self.meta['render']['seconds']}s"
+                f"({done['bytes'] / 1e6:.1f} MB) in {render['seconds']}s "
+                f"on {render['workers']} workers"
             )
         directory = layer_dir(out_dir, layer, name)
         directory.mkdir(parents=True, exist_ok=True)
@@ -196,9 +215,14 @@ class UnlitRun:
 
 
 @contextmanager
-def light_run(root: Path | None, size: int, painted) -> Iterator[UnlitRun | None]:
+def light_run(root: Path | None, size: int, painted,
+              workers: int | None = None) -> Iterator[UnlitRun | None]:  # fmt: skip
     """The run's light stage in ``root``, crowns first, closed however the run ends; or None."""
-    run = None if root is None else UnlitRun(root, size, crown_occluder(painted, root, size))
+    run = (
+        None
+        if root is None
+        else UnlitRun(root, size, crown_occluder(painted, root, size), light_workers=workers)
+    )
     try:
         yield run
     finally:

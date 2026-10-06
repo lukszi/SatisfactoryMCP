@@ -18,6 +18,7 @@ __all__ = [
     "SKY_RADIUS_M",
     "SKY_STEPS",
     "STEP_GROWTH",
+    "STRIP_ROWS",
     "crown_horizon",
     "crown_horizons",
     "crown_surface",
@@ -51,6 +52,9 @@ SKY_STEPS = 14
 
 #: Steps shorter than this many pixels sample bilinearly, longer ones the nearest pixel.
 BILINEAR_PX = 16
+
+#: Rows the march and the sky view finish before the next: a strip's arrays stay in cache.
+STRIP_ROWS = 64
 
 
 def fade_weight(d_m: float, fade: tuple[float, float] = FADE_M) -> float:
@@ -94,19 +98,24 @@ def sky_view(z: np.ndarray, halo: int, spacing_m: float, radius_m: float = SKY_R
     """``1 - mean(sin(horizon))`` within ``radius_m``, for the core of ``z`` inside ``halo``."""
     z = np.asarray(z, np.float32)
     r0, r1, c0, c1 = halo, z.shape[0] - halo, halo, z.shape[1] - halo
-    zc = z[r0:r1, c0:c1]
-    acc = np.zeros(zc.shape, np.float32)
+    out = np.ones((r1 - r0, c1 - c0), np.float32)
     reach = radius_m / spacing_m
     if reach < 1.0:
-        return np.ones(zc.shape, np.float32)
-    for k in range(SKY_DIRS):
-        theta = 2 * np.pi * k / SKY_DIRS
-        best = np.zeros(zc.shape, np.float32)
-        for t in np.geomspace(1.0, reach, SKY_STEPS):
-            zz = _bilinear(z, r0, r1, c0, c1, np.sin(theta) * t, np.cos(theta) * t)
-            np.maximum(best, (zz - zc) * np.float32(1.0 / (t * spacing_m)), out=best)
-        acc += best / np.sqrt(1.0 + best * best)
-    return (1.0 - acc / SKY_DIRS).astype(np.float32)
+        return out
+    steps = np.geomspace(1.0, reach, SKY_STEPS)
+    for a in range(r0, r1, STRIP_ROWS):
+        b = min(a + STRIP_ROWS, r1)
+        zc = z[a:b, c0:c1]
+        acc = np.zeros(zc.shape, np.float32)
+        for k in range(SKY_DIRS):
+            theta = 2 * np.pi * k / SKY_DIRS
+            best = np.zeros(zc.shape, np.float32)
+            for t in steps:
+                zz = _bilinear(z, a, b, c0, c1, np.sin(theta) * t, np.cos(theta) * t)
+                np.maximum(best, (zz - zc) * np.float32(1.0 / (t * spacing_m)), out=best)
+            acc += best / np.sqrt(1.0 + best * best)
+        out[a - r0 : b - r0] = 1.0 - acc / SKY_DIRS
+    return out
 
 
 def crown_surface(z, top, cover=None) -> np.ndarray:
@@ -163,21 +172,26 @@ def _march(solid, zc, halo, az_deg, spacing_m, fade, best, slabs=None) -> None:
     r0, r1, c0, c1 = halo, solid.shape[0] - halo, halo, solid.shape[1] - halo
     az = np.deg2rad(az_deg)
     dr, dc = -np.cos(az), np.sin(az)
-    rise = np.empty(zc.shape, np.float32)
+    steps = []
     for t in _steps(fade[1] / spacing_m, FINE_M / spacing_m):
         d = t * spacing_m
         w = fade_weight(d, fade)
         if w <= 0:
             break
-        scale = np.float32(w / d)
         sample = _bilinear if t < BILINEAR_PX else _nearest
-        np.subtract(sample(solid, r0, r1, c0, c1, dr * t, dc * t), zc, out=rise)
-        rise *= scale
-        np.maximum(best, rise, out=best)
-        if slabs is not None:
-            lo = sample(slabs[1], r0, r1, c0, c1, dr * t, dc * t)
-            hi = sample(slabs[2], r0, r1, c0, c1, dr * t, dc * t)
-            _raise_by_slab(best, (lo - zc) * scale, (hi - zc) * scale)
+        steps.append((sample, dr * t, dc * t, np.float32(w / d)))
+    for a in range(r0, r1, STRIP_ROWS):
+        b = min(a + STRIP_ROWS, r1)
+        near, top = zc[a - r0 : b - r0], best[a - r0 : b - r0]
+        rise = np.empty(near.shape, np.float32)
+        for sample, oy, ox, scale in steps:
+            np.subtract(sample(solid, a, b, c0, c1, oy, ox), near, out=rise)
+            rise *= scale
+            np.maximum(top, rise, out=top)
+            if slabs is not None:
+                lo = sample(slabs[1], a, b, c0, c1, oy, ox)
+                hi = sample(slabs[2], a, b, c0, c1, oy, ox)
+                _raise_by_slab(top, (lo - near) * scale, (hi - near) * scale)
 
 
 def _raise_by_slab(best, lo, hi):

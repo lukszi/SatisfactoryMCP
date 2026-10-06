@@ -61,6 +61,10 @@ Planned as 0.2.0.
   the painted layer, because the tree crowns are written once, where the bake reads them.
   `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
   after the run that wrote it.
+- Map generator: the light bake is about 2.7 times faster at full size on 8 workers (about
+  18 minutes instead of 48) and 3.5 times on 16, with the same bytes. Each of its processes
+  peaks at 1.1 GB instead of 3.9 GB, so it now takes up to 16 by default, as many as the free
+  memory holds; `--light-workers` sets the number, and `--workers` no longer does.
 
 ### Deprecated
 

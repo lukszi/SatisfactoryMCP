@@ -1897,6 +1897,56 @@ pixel of the rotated square is computed. One full-size block of the steepest 2 k
 blocks project to 2.2 CPU-hours, about 8 minutes on 16 workers, before water blocks are
 skipped. The research estimate for the ray march was 72 minutes.
 
+**Strips, memory and workers (2026-10-06).** The v7 render's light took 2,903 s: 2,604 s for
+the 64 full-size blocks in waves of 8 workers, at 3 to 3.5 GB each, and 298 s for the coarser
+levels, which the parent computed one strip at a time while the pool waited. Four changes,
+none of which moves a byte:
+
+- **Strips.** The march and the sky view finish 64 rows (`horizon.STRIP_ROWS`) through every
+  step before the next 64, so a step's arrays stay in cache. Before, each step was a pass
+  over the whole block, about 700 a direction. The arithmetic per pixel and its order are
+  unchanged.
+- **A direction at a time.** A block encodes each horizon cell as it is marched
+  (`stage._bake_horizons`): the atlas byte, the coarser levels' 2 × 2 mean, and the four
+  float cells the default sun reads (`model.sun_cells`). The 64 cells are no longer stacked
+  as 1 GB of floats with copies of it. The mean of one direction sums its four pixels as the
+  stacked mean did, `(a + b) + (c + d)`, which a test holds.
+- **Workers of its own.** `--light-workers` sets the bake's pool. By default it is one a
+  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 2.5 GB
+  each (`LIGHT_WORKER_BYTES`, a worker's measured commit peak), counted when the bake
+  starts. On Windows the free memory is the lesser of the free RAM and the commit still
+  available: a process that cannot commit fails with RAM to spare, which other processes'
+  idle pools can bring about. `--workers` no longer sets it.
+- **A fed pool for the coarser levels.** The parent submits a strip's tiles, 4 to a task
+  (`LEVEL_TASK_TILES`), and computes the next strips while they encode, up to `LEVEL_AHEAD`
+  (4) strips ahead. Before, it waited for each strip, whose 1 to 8 tasks left most of the
+  pool idle. The horizon bytes come from a 256-entry table of
+  `encode_horizon(decode_linear(q))`, exact because both are elementwise.
+
+Measured on synthetic terrain with crowns at the full-size spacing, 4096 px blocks, on the
+16-core reference machine while other jobs ran:
+
+| | Before | After |
+| --- | --- | --- |
+| One block alone | 111 to 131 s | 73 s |
+| of which horizons, ground and crowns | 63 s | 32 s |
+| of which sky view | 7.5 s | 2.9 s |
+| of which WebP encoding | 36 s | 37 s |
+| Peak working set / commit of a worker | 3.9 / 5.3 GB | 1.1 / 2.5 GB |
+| A wave of 8 blocks / of 16 | 325 s (v7) / not run: 62 GB | 117 s / 184 s |
+| Coarser levels from 8192 px, 8 / 16 workers | 126 / 121 s | 51 / 35 s |
+
+So the 64 blocks of a full-size bake take about 940 s on 8 workers and 740 s on 16, and the
+coarser levels, scaled from v7's 298 s by the ratio above, about 120 s and 90 s: the light at
+32768 is about 1,060 s on 8 workers and 830 s on 16, against 2,903 s. These assume every
+block marches, as v7's timing says it did. WebP encoding is now half a block's time.
+
+A 2048 render of all five layers, `--workers 2`, with `--light-workers 2` after, ran before
+and after: all 1,125 tiles match by SHA-256, the light pyramid's 170 among them, and the
+sidecars differ in their timings only. Its light took 26.1 s before and 18.7 s after. A full-size block baked before and after writes the
+same 256 tiles' 512 files, default-sun terms and coarser-level sources by SHA-256, and the
+coarser levels from 8192 px the same 2,730 files.
+
 **Step growth** (`STEP_GROWTH`, 1%). Past `FINE_M` (44 m) the march steps grow with the
 distance. A plateau is sampled at the first step past its edge, so the horizon jumps from
 step to step and a soft edge shows the jumps as bands, as wide as the gap. At 3% they read
