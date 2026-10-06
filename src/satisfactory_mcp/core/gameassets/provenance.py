@@ -1,15 +1,10 @@
 """Which build an artifact was cut from, and writing it so it can never say the wrong one.
 
-Every table and raster under ``data/`` derives from one installed build, and a pinned artifact
-announces drift rather than answering silently wrong. That needs three things: read the build
-the machine has installed, read the build an artifact on disk claims, and install a new one all
-at once -- a directory holding this build's rasters beside last build's sidecar does not fail,
-it answers.
-
-The game states its build twice and both are kept. :func:`installed_build` reads the JSON the
-build system wrote beside the executable and is the pin every staleness guard compares;
-:func:`installed_build_from_exe` reads the engine's own literal out of the binary, which is
-what a reader can check against their own install without trusting this file's formatting.
+Every table and raster under ``data/`` derives from one installed build, so this reads the
+build installed, reads the build an artifact claims, and installs a new artifact all at once:
+this build's rasters beside last build's sidecar would not fail, they would answer wrong.
+:func:`installed_build` reads the build system's JSON and is the pin every staleness guard
+compares; :func:`installed_build_from_exe` reads the engine's own literal out of the binary.
 """
 
 from __future__ import annotations

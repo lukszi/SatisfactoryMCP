@@ -38,8 +38,8 @@ All steps below are **done**; kept as a record of dependency order.
 3. **`render.py` + game-data tools** — compact TSV, schema-capped limits, honest truncation.
 4. **Save-state tools** — unlocks, power, progression, sites.
 5. **`spatial/`** — exact geometry, generated node table, region-name layer, selector language.
-6. **`planning/optimize.py`** — equality balance, both guards, two-phase solve, grid-import model.
-7. **`planning/advisor.py`** — hard-drive counterfactuals incl. an own-output objective.
+6. **`planning/solver/optimize.py`** — equality balance, both guards, two-phase solve, grid-import model.
+7. **`planning/analysis/advisor.py`** — hard-drive counterfactuals incl. an own-output objective.
 
 Everything in the spec is now built, including §10.3's resources and prompts and
 `rank_build_sites`.
@@ -74,7 +74,7 @@ caches keyed on `build_version`.
 **Two silent failure modes, which is why the gate machinery stays.** A join by instance name simply
 *misses* after a rename — and a per-kind count check cannot see it, because 459 == 459 across a
 rename. And a position can be a metre out while the answer stays confident. The **node-table skew
-gate** — `domain/spatial/nodes.py`, pinned by `tests/test_node_table_skew.py` — reads whatever
+gate** — `domain/spatial/nodes/`, pinned by `tests/data/test_node_table_skew.py` — reads whatever
 drift the artifact records; today's table matches the installed build so it records none and the
 gate is silent, and the synthetic tests keep the firing half honest for the next update.
 
@@ -279,6 +279,20 @@ the oldest lightweight-capable save (Oct 2025): 99.82%. What the measurement cor
 * **Pre-U8 saves emit zero `structures`**: the feature says "this save is too old", never
   "this world has no floors".
 
+The constants `domain/factories/floors.py` ships, and the measurement behind each:
+
+| constant | value | why |
+|---|---|---|
+| `CLUSTER_TOL_CM` | 50 | anything from 10 to 50 gives the identical decomposition; only past 100 does the band count collapse |
+| `BAND_EPS_CM` | 25 | the bands are exact: 5 and 50 report the same pieces as banded |
+| `MIN_BAND_PIECES` | 3 | below three every stray piece becomes its own storey; above, real half-steps disappear |
+| `DECK_SLACK_CM` | 25 | float slop only, since a building's pivot is its base: at 0 dozens fall out to the orphan group, and 5 to 450 all agree |
+| `RUN_SLACK_CM` | 50 | a run endpoint sits a metre up; widen towards 450 and a deck several storeys above starts winning, which flatters every same-deck statistic. 50 absorbs a kerb and nothing more |
+| `BELT_HEIGHT_CM` | 100 | the median attachment sits at +100.2 cm; the legal endpoint heights are 100/300/500 |
+| `RISER_CM` | 600 | below it a lift is a belt-height jog, as 24% of lift chains are |
+| `TERRAIN_TOL_M` | 2 | 89% of orphans are inside it, 4% of band-assigned things are |
+| `MINOR_SHARE` | 0.25 | a mezzanine, a walkway ledge, a machine plinth: reported, never merged and never dropped |
+
 Stage 1 was already shipped by the map work (yaw + belts + pipes + attachments, schemas
 12-14); the stage-0 slice image was drawn from the projection alone. Stage 2 shipped as
 `domain/factories/floors.py` and `/api/floors`, stage 3 as the section below. **§16b is no
@@ -388,7 +402,7 @@ its own, because the world map drew angled platforms as staircases and drew no b
   already only the bends — 2,237 of 3,085 pieces are 2-point straight lines — so
   Douglas-Peucker at 1 cm drops 8% of points to save 1.2% of the projection, and at a lossy
   100 cm still saves only 3.2%. There is nothing there to win.
-* **The parity ripple resolved as planned.** `tests/test_savparse_parity.py` filters the
+* **The parity ripple resolved as planned.** `tests/pioneersav/test_vendor_parity.py` filters the
   projection back to the schema-11 shape through an explicit list of what 12 added, and
   `vendor_parity.json` is untouched.
 
@@ -660,7 +674,7 @@ the artifacts under `data/` do, and these are what cuts them.
 | `pyramid.py` | 253 | `tiles/{z}/{x}_{y}.png`, cut and renamed into place | map image, renders |
 
 `gen_world_collectibles.py` lost 904 lines and is 2,880; the three importers lost their loaders.
-`tools/` gained a package marker and `tools/_common.py` — `DEFAULT_GAME`, the shared `--game`
+`tools/` gained a package marker and `tools/_common.py` (now `tools/mapgen/src/mapgen/common.py`) — `DEFAULT_GAME`, the shared `--game`
 parser, and `require_gen`. The test suite reaches the generators the same way anything else does,
 `from tools import gen_map_image`, and no test loads a `tools/*.py` by path any more.
 
@@ -673,7 +687,8 @@ one, which is what lets the suite drive them with stand-ins and lets the whole p
 on a machine that has none of the decoders installed. `iostore.oodle_decompress` is the real one,
 ready to be handed in, and its `import ooz` is inside the function body.
 
-Three rules are enforced by reading the source in `tests/test_architecture.py`, not by intention:
+Three rules are enforced by reading the source in `tests/architecture/test_optional_extras.py`, not
+by intention:
 
 * `test_the_gen_extra_is_optional_at_import_time` — outside `core.gameassets`, no module under
   `satisfactory_mcp` or `pioneersav` has an edge to `ooz`, `pyooz`, `texture2ddecoder` or `PIL` at
@@ -1049,7 +1064,7 @@ A full projection per save would be far too expensive to do eagerly, so the shap
 INDEX: one small row per save (playtime, mtime, machine count, power drawn and installed, phase,
 a few inventory totals, per-factory machine counts), computed once and cached beside the
 projection cache, with deep pairwise diffs only on demand between two chosen saves — sharing
-`domain/planning/diff.py`'s machinery rather than growing a second one. Measured on the reference
+`domain/planning/progress/diff.py`'s machinery rather than growing a second one. Measured on the reference
 install: **112 s to index 50 saves cold** — one parse each, and only ever once — for **101 kB**
 of index. Every later question is answered from the rows.
 

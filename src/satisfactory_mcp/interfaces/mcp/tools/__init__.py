@@ -1,35 +1,30 @@
-"""Importing this package registers every tool, resource and prompt.
+"""Importing this package registers every tool: each module's decorators run on import.
 
-The imports look unused and are not: each module's decorators run on import, which
-is what attaches it to the shared ``mcp``. Hence the explicit ``__all__`` and the
-noqa -- a linter pruning these would silently empty the server.
+The imports look unused and are not -- dropping one would leave the server starting cleanly
+without that module's tools, which is why ``__all__`` names them all.
 """
 
 from . import (
+    collectibles,
     factories,
-    floors,
     gamedata,
     harddrives,
     inventory,
     planning,
     progression,
-    prompts,
-    resources,
     settings,
     spatial,
     world,
 )
 
 __all__ = [
+    "collectibles",
     "factories",
-    "floors",
     "gamedata",
     "harddrives",
     "inventory",
     "planning",
     "progression",
-    "prompts",
-    "resources",
     "settings",
     "spatial",
     "world",

@@ -1,0 +1,126 @@
+/* Planner P5, the site tab: the map beside the card (docs/planner-p5_contract.md §3). */
+body.dash-on.site-on #map {
+  visibility: visible;
+}
+
+body.site-on #dash {
+  left: auto;
+  width: min(440px, 46vw);
+  border-left: 1px solid var(--line);
+}
+
+@media (max-width: 699px) {
+  body.site-on #dash {
+    top: auto;
+    left: 0;
+    width: auto;
+    height: 48vh;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+.site-handle {
+  box-sizing: border-box;
+  border: 2px solid var(--bg);
+  background: var(--site-pad);
+}
+
+.site-move {
+  cursor: move;
+}
+
+.site-turn {
+  border-radius: 50%;
+  cursor: grab;
+}
+
+.site-handle:focus-visible {
+  outline: 2px solid var(--accent-hi);
+  outline-offset: 2px;
+}
+
+.site-cross {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  pointer-events: none;
+  z-index: 650;
+  background:
+    linear-gradient(var(--ink-hi), var(--ink-hi)) center / 2px 100% no-repeat,
+    linear-gradient(var(--ink-hi), var(--ink-hi)) center / 100% 2px no-repeat;
+  filter: drop-shadow(0 0 1px var(--bg));
+}
+
+.site-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+
+.site-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.site-field .dash-number {
+  width: 64px;
+}
+
+.site-field-k {
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+
+.site-actions,
+.site-confirm,
+.site-ghost-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+
+.site-confirm {
+  padding: var(--sp-2);
+  border: 1px solid var(--blocked);
+  border-radius: var(--r);
+}
+
+.site-ghost-line {
+  color: var(--muted);
+}
+
+.site-lines {
+  margin: var(--sp-2) 0;
+}
+
+.site-line {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+
+.site-refused {
+  color: var(--blocked);
+}
+
+.site-warn {
+  color: var(--blocked);
+}
+
+.site-built {
+  color: var(--ink-hi);
+}
+
+@media (pointer: coarse) {
+  .site-actions .btn,
+  .site-confirm .btn,
+  .site-ghost-line .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

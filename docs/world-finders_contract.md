@@ -1,5 +1,8 @@
 # World finders: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 Roadmap phase 6 of [frontend_vision.md](frontend_vision.md) §6: the seven spatial tools
 (`search_resource_nodes`, `rank_build_sites`, `search_conduits`, `whereami`,
 `describe_location`, `list_regions`, `show_on_map`) and `collected_from_world`, on the page,
@@ -22,7 +25,7 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 | In | Out (and where it goes) |
 |---|---|
 | Dashboard section **World** (`dash=world/...`): here, nodes, fields, rank, conduits, pickups, regions | Transport networks (deferred) |
-| Map finder card (`mapcard.ts`, id `finder`) and a finder pane drawn on the map | "Plan a factory here" from the inspector (planner phase; §17 Q6) |
+| Map finder card (`map/mapcard.ts`, id `finder`) and a finder pane drawn on the map | "Plan a factory here" from the inspector (planner phase; §17 Q6) |
 | Right-click inspector upgrade: here, nearest nodes, fields, conduits, pickups, actions | "Storage near here" (inventory §10 "not yet") |
 | `rank_build_sites` as the World **rank** tab (§2.2) | A pickup route planner (vision Q13 is open) |
 | Spoiler flag on nodes and pickups; locked nodes are drawn faded, the pickup layers follow the switch | Items as spoilers (§12.4, still open) |
@@ -53,7 +56,7 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 2. **rank** tab (its own level-2 tab, address `world/rank?…`; the resource carries over from
    fields) calls `/api/world/sites` once one resource is chosen. Columns are the score and its
    raw components; one line states the weights. No resource: one `dashkit.empty` line.
-3. The rank tab's filter bar (`world-rank.ts`): resource, then
+3. The rank tab's filter bar (`dash/world/world-rank.ts`): resource, then
    **near** anywhere (default, the whole map) | the HUB | the player | a pin | a factory | a
    map point (the selected point, or **pick on map**, one click); **within** a slider from
    0.5 to 5 km, default 1 km; **pure only**, off by default. They go to the route as
@@ -132,7 +135,7 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 ## 3. Routes
 
 All GET, all `?save=`/`?world=`, all pinned by `as_of` through the existing middleware. New
-routes live in one router `interfaces/web/routers/finders.py`, prefix `/api/world`, appended to
+routes live in one router `interfaces/web/routers/world/world_finders.py`, prefix `/api/world`, appended to
 `ALL_ROUTERS`. Errors are `{"error": ...}`. Numbers out of their declared range are FastAPI's
 422; every domain refusal is 400; "needs a save and none loads" is 404. No route writes, so
 there is no guard change and no 409 besides the pinning middleware's.
@@ -141,12 +144,12 @@ there is no guard change and no 409 besides the pinning middleware's.
 
 | Path | Params (default) | Model | Codes | Domain |
 |---|---|---|---|---|
-| `/api/world/here` | `radius_m` (500, 1–5000) | `HereResponse` | 200, 404 no save | `place.here` |
-| `/api/world/nodes` | `view` nodes\|fields (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near` | `NodeFindResponse` | 200, 400 bad value / unresolvable near / every selector failed | `finder.find_nodes` |
-| `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `RankedSitesResponse` | 200, 400 unknown resource, 404 no save | `finder.rank` |
-| `/api/world/conduits` | `near` (me); `radius_m` (250, 1–2000); `to`; `to_radius_m`; `conduit_kind` belt\|pipe\|all; `view` runs\|networks; `network`; `run`; `offset` (0); `limit` (200, 1–500) | `ConduitsResponse` | 200, 400 bad value / unresolvable place / networks with belt, 404 no save | `conduits.search`, `conduits.networks` |
+| `/api/world/here` | `radius_m` (500, 1–5000) | `HereResponse` | 200, 404 no save | `surroundings.player_surroundings` |
+| `/api/world/nodes` | `view` nodes\|fields (nodes); `resource`; `purity` pure\|normal\|impure\|all; `kind` node\|well_sat\|geyser\|all; `status` all\|free\|tapped (all); `source` (repeatable selector); `near` | `NodeFindResponse` | 200, 400 bad value / unresolvable near / every selector failed | `search.find_nodes` |
+| `/api/world/sites` | `resource` (required); `source` (repeatable); `limit` (10, 1–50) | `RankedSitesResponse` | 200, 400 unknown resource, 404 no save | `search.rank` |
+| `/api/world/conduits` | `near` (me); `radius_m` (250, 1–2000); `to`; `to_radius_m`; `conduit_kind` belt\|pipe\|all; `view` runs\|networks; `network`; `run`; `offset` (0); `limit` (200, 1–500) | `ConduitsResponse` | 200, 400 bad value / unresolvable place / networks with belt, 404 no save | `conduit_search.search`, `conduit_search.networks` |
 | `/api/world/regions` | `resource` | `RegionTableResponse` | 200, 400 unknown resource | `regions.region_rows` |
-| `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new, the elevation reach | `InspectResponse` + fields in §3.2 | as today | `place.describe` |
+| `/api/inspect` (changed) | `x_m`, `y_m`; `radius_m` (200, 1–2000) new, the elevation reach | `InspectResponse` + fields in §3.2 | as today | `surroundings.describe_point` |
 | `/api/nodes` (changed) | as today | `NodeRow` + `spoiler` | as today | as today |
 | `/api/collectibles` (changed) | as today + `spoilers` 0\|1 | `CollectiblesResponse` + fields in §3.2 | as today | `collect_view` + `service.census_rows` |
 
@@ -156,13 +159,13 @@ categories, every count in the reply counts only what is returned, and `hidden_s
 how many categories were dropped. Node routes take no `spoilers`: a locked node is always sent,
 flagged, and the page fades it (§8.1).
 
-`resource` takes an item name or class id, resolved by `domain/planning/scenario.resolve_item`
-(the tools' `_item_id`). `near`, `to` and `at` take the place vocabulary of `resolve_origin`
+`resource` takes an item name or class id, resolved by `core/gamedata/search.resolve_item`
+(the tools' `_item_id`). `near`, `to` and `at` take the place vocabulary of `resolve_place`
 (`x,y` metres, `me`, a factory label, `node:`, `slab:`, `chain:`, `pipe:`, `plan:`).
 
 ### 3.2 Response models (TypedDict, declaration order = wire order)
 
-Shared shapes go in `serial.py` only where two routers build them (`TableAge`, `Region`).
+Shared shapes go in `serial/` only where two routers build them (`TableAge`, `Region`).
 
 ```python
 class TableAge(TypedDict):            # serial.py; "is this map data older than the save"
@@ -192,7 +195,7 @@ class FoundNode(TypedDict):           # finders.py
 
 class FoundField(TypedDict):
     key: str                          # "field:<smallest member leaf>", stable across saves
-    selector: str                     # sites.selector(centroid, diameter): near:x,y@r
+    selector: str                     # sites.near_selector(centroid, diameter): near:x,y@r
     members: list[str]                # member leaves
     region: str | None; grid: str; direction: str
     x_m: float; y_m: float            # centroid
@@ -301,7 +304,7 @@ class RegionRow(TypedDict):           # RegionTableResponse = {resource, resourc
 ```
 
 `label` on pickups is the server's word for a category ("blue power slugs"), moved from
-`markers.ts` `PICKUP_NAME` into `domain/collectibles/service.py` so the tool, the layer and the
+`map/drawn/markers.ts` `PICKUP_NAME` into `domain/collectibles/service.py` so the tool, the layer and the
 tables use one vocabulary.
 
 ---
@@ -313,13 +316,13 @@ domain function. `tests/test_world_parity.py` pins that both answer alike.
 
 | New or changed domain function | Taken from | Used by |
 |---|---|---|
-| `domain/spatial/finder.py`: `find_nodes(st, game, *, sources, resource, purity, kind, status, view, near) -> NodeFind` | `search_resource_nodes` body (selection, annotate, status filter, distance, clusters, totals, notes, water block) | tool, `/api/world/nodes`, `place.here`, `place.describe` |
-| `finder.fields(rows) -> list[FieldView]`, `finder.rank(st, game, resource, sources) -> SiteRank` | tool bodies of fields view and `rank_build_sites` | tool, `/api/world/nodes?view=fields`, `/api/world/sites` |
-| `domain/spatial/place.py`: `here(st, game, radius_m) -> Here`, `describe(st, game, x, y, radius_m) -> Description` | `whereami`, `describe_location`, `routers/inspect.py` assembly | tools, `/api/world/here`, `/api/inspect` |
-| `domain/world/conduits.py`: `search(st, near, radius_m, to, to_radius_m, kind, network, run) -> ConduitSearch`, `networks(st, origin) -> list[NetworkView]` | `search_conduits` body and `_networks_view` | tool, `/api/world/conduits` |
+| `domain/spatial/nodes/search.py`: `find_nodes(st, game, *, sources, resource, purity, kind, status, view, near) -> NodeSearchResult` | `search_resource_nodes` body (selection, annotate, status filter, distance, clusters, totals, notes, water block) | tool, `/api/world/nodes`, `surroundings.player_surroundings`, `surroundings.describe_point` |
+| `search.fields(rows) -> list[FieldView]`, `search.rank(st, game, resource, sources) -> SiteRank` | tool bodies of fields view and `rank_build_sites` | tool, `/api/world/nodes?view=fields`, `/api/world/sites` |
+| `domain/spatial/surroundings.py`: `here(st, game, radius_m) -> Here`, `describe(st, game, x, y, radius_m) -> Description` | `whereami`, `describe_location`, `routers/world/inspect.py` assembly | tools, `/api/world/here`, `/api/inspect` |
+| `domain/world/conduit_search.py`: `search(st, near, radius_m, to, to_radius_m, kind, network, run) -> ConduitSearch`, `networks(st, origin) -> list[NetworkView]` | `search_conduits` body and `_networks_view` | tool, `/api/world/conduits` |
 | `domain/spatial/regions.py`: `region_rows(table, rid, rows=None) -> list[dict]` | `list_regions` body | tool, `/api/world/regions` |
-| `domain/spatial/nodes.py`: `table_age(header, table, instances) -> dict \| None` | `skew_for_save` + `skew_notes`, scoped | every node-bearing route |
-| `domain/collectibles/service.py`: `census_rows(st)`, `found(st)`, `is_spoiler(category, found)`, `table_age(st)`, `LABELS` | `render_collectibles` census assembly, `PICKUP_NAME` | tool, `/api/collectibles`, `place.describe` |
+| `domain/spatial/nodes/`: `table_age(header, table, instances) -> dict \| None` | `skew_for_save` + `skew_notes`, scoped | every node-bearing route |
+| `domain/collectibles/service.py`: `census_rows(st)`, `found(st)`, `is_spoiler(category, found)`, `table_age(st)`, `LABELS` | `render_collectibles` census assembly, `PICKUP_NAME` | tool, `/api/collectibles`, `surroundings.describe_point` |
 
 `status` in `find_nodes`: `free` = untapped (as `only_free` today), `tapped` = an extractor
 stands on it, `all`. "Locked" is not a filter; it is a row status and the spoiler.
@@ -342,11 +345,11 @@ None new. Behaviour on the existing ones:
 
 | Tool | Change | Text output |
 |---|---|---|
-| `search_resource_nodes` | body → `finder.find_nodes`; new `status: free \| tapped \| all` (`only_free=true` stays, means `status=free`) | unchanged except a tapped-only header word |
-| `rank_build_sites` | body → `finder.rank` | unchanged |
-| `search_conduits` | body → `conduits.search`/`networks`; new `network: int` (runs of one fluid network) | unchanged |
-| `whereami` | body → `place.here` | unchanged |
-| `describe_location` | body → `place.describe`; prints `nearest_node`, `fields` (count and the nearest), `pickups` (remaining within 500 m) | three new kv lines |
+| `search_resource_nodes` | body → `search.find_nodes`; new `status: free \| tapped \| all` (`only_free=true` stays, means `status=free`) | unchanged except a tapped-only header word |
+| `rank_build_sites` | body → `search.rank` | unchanged |
+| `search_conduits` | body → `conduit_search.search`/`networks`; new `network: int` (runs of one fluid network) | unchanged |
+| `whereami` | body → `surroundings.player_surroundings` | unchanged |
+| `describe_location` | body → `surroundings.describe_point`; prints `nearest_node`, `fields` (count and the nearest), `pickups` (remaining within 500 m) | three new kv lines |
 | `list_regions` | body → `regions.region_rows` | unchanged |
 | `show_on_map` | local link carries `show=node:<leaf>` / `chain:<n>` / `pipe:<n>` for those places | link text only |
 | `collected_from_world` | census built by `service.census_rows`; labels from `service.LABELS` | unchanged |
@@ -362,30 +365,32 @@ and `test_surface.py` follow the signature changes.
 
 No new primitive. Every table is `dashkit.table`, every action `dashkit.button`, every toggle
 `dashkit.pressed`, every level-2 switch `dashkit.tabs2`, every state `loading/empty/error`,
-every tag `chip`. Numbers through `format.ts`, words through `words.ts`, addresses through
-`nav.ts`, map moves through `map.flyToBox`/`flyPadded`, the card through `mapcard.ts`.
+every tag `chip`. Numbers through `kit/format.ts`, words through `kit/words.ts`, addresses through
+`app/nav.ts`, map moves through `map.flyToBox`/`flyPadded`, the card through `map/mapcard.ts`.
 
 | Module | Owns | Primitives it must use |
 |---|---|---|
-| `world.ts` (new) | section shell `renderWorld(body, subject)`, `tabs2` of the six views, **here** and **regions** views; registers `/api/world/here` (live wave); exports `here()`, `onHere()` | `tabs2`, `table`, `button`, `link`, `empty/loading/error`, `chip`, `format.num/perMin`, `W`, `nav.dashParts`/`subjectQuery`, `pointButton` |
-| `world-nodes.ts` (new) | nodes and fields | `table` (sortable), `pressed` (free), `button` (map, show all on map), `chip` (status, moved), `code()` copy cells, `latest("world-nodes")` |
-| `world-rank.ts` (new) | the rank tab: resource, near anchor, within slider, pure only, the sites table; `rankSources(params)`, `fromFieldsRank(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (world.ts), `note`, `panel.vitals`, `pins.livePins` |
-| `world-conduits.ts` (new) | runs and networks | `table`, `tabs2` (runs/networks), `button`, `latest("world-conduits")` |
-| `world-pickups.ts` (new) | census and lists | `table`, `tabs2` (remaining/collected/nearest), `chip`, `markers.pickupName`, `crates`-style loot line from `markers.lootLine` (exported), `latest("world-pickups")` |
-| `finder.ts` (new) | the map card `finder`, the `finder` pane (z 445, under trace's 450), `startAt(kind, x, y)`, `showRows(...)`, `showRef(ref)`, delegated click on `data-find` | `mapCard`, `claim`, `cardHead/Row/Line/Heading`, `tabs2`, `table`, `button`, `HIGHLIGHT`, `latest("finder")`, `select()` |
-| `inspector.ts` | new rows and action buttons (popup HTML through `dom.popup`, all data escaped) | `popup`, `code`, `esc`, `traceButtons`, `FIND_ATTR` buttons |
-| `selection.ts` | kinds `node`, `field`, `conduit`, `pickup` added; each carries `x_m`/`y_m` and `ref` | — |
-| `status.ts` | kind words for the new kinds; `fly()` sends the new kinds to `finder.showRef` | existing |
-| `dashboard.ts` | `["world", "World"]` after Inventory in `TABS`; route to `renderWorld` | — |
-| `nav.ts` | `subjectQuery(subject) -> {head, params}` and `withQuery(head, params)`; `recipes.ts` `parseBrowse`/`browseDash` switch to them | — |
-| `markers.ts` | node layer draws `spoiler` rows faded; pickup layer hides `spoiler` rows while the switch is off, redraw on `onSetting`; `PICKUP_NAME` is deleted and `pickupName` reads the census `label` from the collectibles reply (category words as the fallback before it lands); export `pickupName`, `lootLine`, `PICKUP_COLOUR`, `RESOURCE_COLOUR` | `settings.setting` |
-| `panel.ts` | `showSelector` hands `node:`, `chain:`, `pipe:` to `finder.showRef` (one line) | — |
-| `planner.ts` | `focusBody().selection` = the shared selection outside the planner workbench; `onSelect(scheduleFocus)` | — |
-| `settings.ts` | spoiler hint: "later tiers, MAM trees, phases, locked recipes and unfound pickups" | — |
-| `words.ts` | `free`, `tapped`, `locked`, `field`, `node`, `run`, `network`, `remaining`, `collected`, `neverStreamed: "never streamed"`, `mapDataBehind: "map data older than this save"` | — |
-| `dom.ts` | `FIND_ATTR = "data-find"`, `FIND_AT_ATTR = "data-find-at"` beside the trace constants | — |
-| `main.ts` | FEATURES line `import "./world";`; `listenForFinds()` beside `listenForTraces()` | — |
-| `api-shapes.ts` | aliases for every §3.2 name | — |
+| `dash/world/world.ts` (new) | section shell `renderWorld(body, subject)`, `tabs2` of the six views, the **regions** view | `tabs2`, `table`, `button`, `link`, `empty/loading/error`, `chip`, `format.num/perMin`, `W`, `nav.dashParts`/`subjectQuery`, `pointButton` |
+| `dash/world/world-here.ts` | the **here** view; registers `/api/world/here` (live wave) | as `world.ts` |
+| `dash/world/world-kit.ts` | what the views share: the address, one read per view, the filter fields, the repeated columns | `selectBox`, `capRows`, `code()` copy cells |
+| `dash/world/world-nodes.ts` (new) | nodes and fields | `table` (sortable), `pressed` (free), `button` (map, show all on map), `chip` (status, moved), `code()` copy cells, `latest("world-nodes")` |
+| `dash/world/world-rank.ts` (new) | the rank tab: resource, near anchor, within slider, pure only, the sites table; `rankSources(params)`, `fromFieldsRank(params)` | `choice` via `selectField`, `pressed`, `button`, `rangeField` (dash/world/world-kit.ts), `note`, `panel.vitals`, `pins.livePins` |
+| `dash/world/world-conduits.ts` (new) | runs and networks | `table`, `tabs2` (runs/networks), `button`, `latest("world-conduits")` |
+| `dash/world/world-pickups.ts` (new) | census and lists | `table`, `tabs2` (remaining/collected/nearest), `chip`, `markers.pickupName`, `crates`-style loot line from `markers.lootLine` (exported), `latest("world-pickups")` |
+| `map/tools/finder.ts` (new) | the map card `finder`, the `finder` pane (z 445, under trace's 450), `startAt(kind, x, y)`, `showRows(...)`, `showRef(ref)`, delegated click on `data-find` | `mapCard`, `claim`, `cardHead/Row/Line/Heading`, `tabs2`, `table`, `button`, `HIGHLIGHT`, `latest("finder")`, `select()` |
+| `map/inspector.ts` | new rows and action buttons (popup HTML through `dom.popup`, all data escaped) | `popup`, `code`, `esc`, `traceButtons`, `FIND_ATTR` buttons |
+| `app/selection.ts` | kinds `node`, `field`, `conduit`, `pickup` added; each carries `x_m`/`y_m` and `ref` | — |
+| `app/status.ts` | kind words for the new kinds; `fly()` sends the new kinds to `finder.showRef` | existing |
+| `dash/shell.ts` | `["world", "World"]` after Inventory in `TABS`; route to `renderWorld` | — |
+| `app/nav.ts` | `subjectQuery(subject) -> {head, params}` and `withQuery(head, params)`; `dash/recipes/browse.ts` `parseBrowse`/`browseDash` switch to them | — |
+| `map/drawn/markers.ts` | node layer draws `spoiler` rows faded; pickup layer hides `spoiler` rows while the switch is off, redraw on `onSetting`; `PICKUP_NAME` is deleted and `pickupName` reads the census `label` from the collectibles reply (category words as the fallback before it lands); export `pickupName`, `lootLine`, `PICKUP_COLOUR`, `RESOURCE_COLOUR` | `settings.setting` |
+| `map/panel.ts` | `showSelector` hands `node:`, `chain:`, `pipe:` to `finder.showRef` (one line) | — |
+| `dash/planner/planner.ts` | `focusBody().selection` = the shared selection outside the planner workbench; `onSelect(scheduleFocus)` | — |
+| `app/settings.ts` | spoiler hint: "later tiers, MAM trees, phases, locked recipes and unfound pickups" | — |
+| `kit/words.ts` | `free`, `tapped`, `locked`, `field`, `node`, `run`, `network`, `remaining`, `collected`, `neverStreamed: "never streamed"`, `mapDataBehind: "map data older than this save"` | — |
+| `kit/dom.ts` | `FIND_ATTR = "data-find"`, `FIND_AT_ATTR = "data-find-at"` beside the trace constants | — |
+| `main.ts` | FEATURES line `import "./dash/world/world-here";`; `listenForFinds()` beside `listenForTraces()` | — |
+| `api/shapes.ts` | aliases for every §3.2 name | — |
 | `style.css` | World filter bar, finder pane classes; tokens only, no hex | — |
 
 Addresses: `world` (here), `world/nodes?…`, `world/fields?…`,
@@ -507,7 +512,7 @@ Backend (`PYTHONPATH=<worktree>/src`, the main venv, `satisfactory_mcp.__file__`
 
 | File | Covers |
 |---|---|
-| `tests/test_world_finder_domain.py` (new) | `find_nodes` filters (resource, purity, kind, status, region source, near), nearest ordering, totals, locked capacity; `fields`; `rank`; `place.here` no pawn; `place.describe` fields and pickups; `conduits.search` near/to/network/run and bridged; `region_rows`; `table_age` scoping; `census_rows`, `found`, spoiler rule incl. pods and caches |
+| `tests/test_world_finder_domain.py` (new) | `find_nodes` filters (resource, purity, kind, status, region source, near), nearest ordering, totals, locked capacity; `fields`; `rank`; `surroundings.player_surroundings` no pawn; `surroundings.describe_point` fields and pickups; `conduit_search.search` near/to/network/run and bridged; `region_rows`; `table_age` scoping; `census_rows`, `found`, spoiler rule incl. pods and caches |
 | `tests/test_web_world_finders.py` (new) | each `/api/world/*` route: shape, defaults, every 400/404/422, locked nodes kept and counted, `save_error` path, `as_of` 409 via the middleware, Host 403 |
 | `tests/test_world_parity.py` (new) | tool vs route on the fixture: same node ids and order, same field centres and totals, same site order, same run ids, same census numbers |
 | `tests/test_web_inspect.py` | new fields; `radius_m`; no-save path keeps nodes and nulls conduits |
@@ -555,31 +560,31 @@ Frontend: `npm ci`, `npx tsc --noEmit`, `npm run build`; schema regenerated offl
 17. Keyboard: every World tab, filter, row and action reachable with Tab, with the one focus
     ring; Enter on a row selects it; Esc closes the finder card.
 18. No raw class id, `null`, `NaN` or `undefined` on screen; unknown values read `–`.
-19. No hex in `style.css` outside `:root`; no new colour declared outside `palette.ts` owners.
+19. No hex in `style.css` outside `:root`; no new colour declared outside `map/palette.ts` owners.
 
 ---
 
 ## 14. File ownership
 
-`api-schema.d.ts` is in neither list; the integrator regenerates it. This contract is
+`api/schema.d.ts` is in neither list; the integrator regenerates it. This contract is
 read-only for both.
 
 **BACKEND**
 
-- `src/satisfactory_mcp/domain/spatial/finder.py` (new), `domain/spatial/place.py` (new)
-- `domain/spatial/nodes.py`, `domain/spatial/regions.py`, `domain/spatial/maplink.py`
+- `src/satisfactory_mcp/domain/spatial/nodes/search.py` (new), `domain/spatial/surroundings.py` (new)
+- `domain/spatial/nodes/`, `domain/spatial/regions.py`, `domain/spatial/maplink.py`
 - `domain/world/conduits.py`, `domain/world/sites.py` (only if `selector` moves)
 - `domain/collectibles/service.py`, `domain/collectibles/removed.py` (census only)
 - `interfaces/mcp/tools/spatial.py`, `interfaces/mcp/tools/progression.py` (`collected_from_world` only), `interfaces/mcp/tools/planning.py` (`_focus_line` only)
 - `presenters/text/collectibles.py` (census source only)
-- `interfaces/web/routers/finders.py` (new), `routers/inspect.py`, `routers/nodes.py`, `routers/collectibles.py`, `routers/__init__.py` (append only), `interfaces/web/serial.py` (`TableAge`)
+- `interfaces/web/routers/world/world_finders.py` (new), `routers/world/inspect.py`, `routers/world/nodes.py`, `routers/world/collectibles.py`, `routers/__init__.py` (append only), `interfaces/web/serial/` (`TableAge`)
 - `tests/test_world_finder_domain.py`, `tests/test_web_world_finders.py`, `tests/test_world_parity.py` (new); `tests/test_web_inspect.py`, `tests/test_web_nodes.py`, `tests/test_web_collectibles.py`, `tests/test_node_search.py`, `tests/test_conduits.py`, `tests/test_collected_from_world.py`, `tests/test_ranking.py`, `tests/test_local_map_link.py`, `tests/test_maplink.py`, `tests/test_ui_context.py`, `tests/test_surface.py`
 - `docs/frontend_vision.md` (§3.1 rows, §6 row 6, a new §18 "World finders"), `docs/mcp-surface.md`, `docs/selectors.md` (`show=` forms), `docs/spatial-and-map.md` (inspector paragraph)
 
 **FRONTEND**
 
-- `frontend/src/world.ts`, `world-nodes.ts`, `world-conduits.ts`, `world-pickups.ts`, `finder.ts` (new)
-- `frontend/src/inspector.ts`, `selection.ts`, `status.ts`, `dashboard.ts`, `nav.ts`, `recipes.ts` (query helper only), `markers.ts`, `panel.ts` (`showSelector` only), `planner.ts` (`focusBody`, `onSelect` only), `settings.ts` (hint only), `words.ts`, `dom.ts` (constants only), `main.ts` (FEATURES line and one listener), `api-shapes.ts`, `style.css`
+- `frontend/src/dash/world/world.ts`, `dash/world/world-here.ts`, `dash/world/world-kit.ts`, `dash/world/world-nodes.ts`, `dash/world/world-conduits.ts`, `dash/world/world-pickups.ts`, `map/tools/finder.ts` (new)
+- `frontend/src/map/inspector.ts`, `app/selection.ts`, `app/status.ts`, `dash/shell.ts`, `app/nav.ts`, `dash/recipes/browse.ts` (query helper only), `map/drawn/markers.ts`, `map/panel.ts` (`showSelector` only), `dash/planner/planner.ts` (`focusBody`, `onSelect` only), `app/settings.ts` (hint only), `kit/words.ts`, `kit/dom.ts` (constants only), `main.ts` (FEATURES line and one listener), `api/shapes.ts`, `style.css`
 
 ---
 

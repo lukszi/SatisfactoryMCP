@@ -44,20 +44,20 @@ Section numbers like §8.4 refer to [planning.md](planning.md).
 
 | Step | Domain code | Tool | What it really does | Limits that matter to a UI |
 |---|---|---|---|---|
-| Goal | `planning/scenario.py` `build_scenario` | `plan_factory` | Objectives: `max_mw`, `max_item`, `min_raw`, `min_machines`, `min_power`. "X per minute of Y" = `exports=[Y]` + `export_minimums={Y: X}` (the `design_factory` prompt uses `min_machines`) | There is no single "target rate" argument. `exports` **replaces** `[MW]`, and exporting MW forbids drawing from the grid (§8.9) |
-| Scope | `spatial/select.py`, `spatial/nodes.py` | same | Selectors pick nodes. `annotate` marks tapped/reachable. Water is a cap (`WATER_EXTRACTOR_CAP_ASSUMED` or `water_extractors`) | The LP picks extractor **counts per (building, resource, purity)**, not nodes. Only `trunks` names nodes |
-| Recipes | `scenario.match_recipes`, `_ban_processes` | same | Every unlocked part recipe is allowed. Patterns ban or keep. A pattern that matches nothing is refused | No "use recipe R for item I". Only global bans and keeps |
-| Solve | `planning/optimize.py` `solve` | same | Two-phase LP. Every item balances to exactly zero. The duplicate-pid guard and the free-lunch audit run on every solve (§8.3) | Clocks are **derived**. `clocks` and `extractor_clocks` offer modes; there is no per-row clock |
-| Machines | `optimize.emit` | same | `ceil(x)` machines at `x/ceil(x)`. Extractor modes are folded. Negligible rows are omitted but still counted | – |
-| Bill | `planning/slice.py`, `report.py` | same | Exact MW, shard bill, sloop use, flows with line counts, buildings never built, overclocked rows, zero exports | The plan draws from the grid freely unless MW is exported (`grid_import_mw = 1e6`) |
-| Byproducts | `planning/byproducts.py` `analyse` | `explain_byproducts` | 2 + up to 8 solves. Names stuck items, whether they can be sunk, and legal consumers | Takes **8 of the 18 plan arguments** (gap G6) |
-| Routes | `planning/compare.py`, `bom.py` | `compare_recipe_options`, `bom` | Whole map, per item, in isolation | Do not see the plan's sources or exclusions |
-| Layout | `layout.py`, `layout_service.py`, `trunks.py`, `materials.py`, `sites.py`, `fit.py` | `plan_layout` | Blocks by line count, one bus per item, floors by SCC-condensed depth, deck cap, head ordering, trunks, materials, site partition, fit to a platform | A **schematic**: no world coordinates, no belt routing (§8.5) |
-| Site | `planning/siting.py` | `site_plan`, `plan_factory site_at=` | A *record* of origin, yaw and footprint. `survey` counts what stands on the pad. Terrain is read at the pad | Never fed to the LP. Not part of `plan_id` |
+| Goal | `planning/solver/scenario.py` `build_scenario` | `plan_factory` | Objectives: `max_mw`, `max_item`, `min_raw`, `min_machines`, `min_power`. "X per minute of Y" = `exports=[Y]` + `export_minimums={Y: X}` (the `design_factory` prompt uses `min_machines`) | There is no single "target rate" argument. `exports` **replaces** `[MW]`, and exporting MW forbids drawing from the grid (§8.9) |
+| Scope | `spatial/nodes/selectors.py`, `spatial/nodes/` | same | Selectors pick nodes. `annotate` marks tapped/reachable. Water is a cap (`WATER_EXTRACTOR_CAP_ASSUMED` or `water_extractors`) | The LP picks extractor **counts per (building, resource, purity)**, not nodes. Only `trunks` names nodes |
+| Recipes | `search.match_recipes`, `_ban_processes` | same | Every unlocked part recipe is allowed. Patterns ban or keep. A pattern that matches nothing is refused | No "use recipe R for item I". Only global bans and keeps |
+| Solve | `planning/solver/optimize.py` `solve` | same | Two-phase LP. Every item balances to exactly zero. The duplicate-pid guard and the free-lunch audit run on every solve (§8.3) | Clocks are **derived**. `clocks` and `extractor_clocks` offer modes; there is no per-row clock |
+| Machines | `build_table.build_rows` | same | `ceil(x)` machines at `x/ceil(x)`. Extractor modes are folded. Negligible rows are omitted but still counted | – |
+| Bill | `planning/readout/slice.py`, `report.py` | same | Exact MW, shard bill, sloop use, flows with line counts, buildings never built, overclocked rows, zero exports | The plan draws from the grid freely unless MW is exported (`grid_import_mw = 1e6`) |
+| Byproducts | `planning/analysis/byproducts.py` `analyse` | `explain_byproducts` | 2 + up to 8 solves. Names stuck items, whether they can be sunk, and legal consumers | Takes **8 of the 18 plan arguments** (gap G6) |
+| Routes | `planning/analysis/recipe_routes.py`, `bom.py` | `compare_recipe_options`, `bom` | Whole map, per item, in isolation | Do not see the plan's sources or exclusions |
+| Layout | `planning/layout/schematic.py`, `layout/service.py`, `trunks.py`, `materials.py`, `site_partition.py`, `fit.py` | `plan_layout` | Blocks by line count, one bus per item, floors by SCC-condensed depth, deck cap, head ordering, trunks, materials, site partition, fit to a platform | A **schematic**: no world coordinates, no belt routing (§8.5) |
+| Site | `planning/siting/` | `site_plan`, `plan_factory site_at=` | A *record* of origin, yaw and footprint. `survey` counts what stands on the pad. Terrain is read at the pad | Never fed to the LP. Not part of `plan_id` |
 | Where to mine | `spatial/ranking.py` | `rank_build_sites` | Fields for **one resource**, with a weighted score and every raw term | Siting by the whole bill is not built (roadmap §2.1) |
-| Startup | `planning/commission.py` | `commission_plan` | Waves under nameplate headroom; generators refund power | A startup order, not a build order (§8.5d) |
-| Track | `diff.py`, `diff_service.py`, `commission.track` | `diff_vs_save` | Matches machines by identity. Actions UNPAUSE → SETRECIPE → BUILD. Water is a range. Stages appear for a stored plan | "Running" can be proven. "Unpowered" never is |
-| Unlock value | `planning/sensitivity.py` | `rank_unlocks` | One counterfactual solve per locked alternate | – |
+| Startup | `planning/progress/startup.py` | `commission_plan` | Waves under nameplate headroom; generators refund power | A startup order, not a build order (§8.5d) |
+| Track | `planning/progress/diff.py`, `diff_service.py`, `stages.track` | `diff_vs_save` | Matches machines by identity. Actions UNPAUSE → SETRECIPE → BUILD. Water is a range. Stages appear for a stored plan | "Running" can be proven. "Unpowered" never is |
+| Unlock value | `planning/analysis/sensitivity.py` | `rank_unlocks` | One counterfactual solve per locked alternate | – |
 | Context | `progression/shards.py` etc. | `power_shards`, `somersloops` | Held, committed and free | – |
 | Built factories | `factories/query.py`, `cohere.py`, `trace.py`, `floors.py` | `factory_query`, `propose_factories`, `select_machines`, `trace_upstream`, `factory_floors` | Built flows (inputs in deficit), clusters, traces, decks | Inputs to planning, not planning itself |
 
@@ -83,7 +83,7 @@ Section numbers like §8.4 refer to [planning.md](planning.md).
 | The MCP server is **stdio**, one process per client session | `server.py` `mcp.run()` (stdio default). Claude Desktop config and `~/.claude.json` both launch `uv run … satisfactory-mcp` as `type: stdio` |
 | **Several MCP processes run at once** | 3 × `satisfactory-mcp` and 1 × `satisfactory-mcp-web` running when this was written |
 | The web server is a **separate process** (FastAPI, 127.0.0.1:8712) | `satisfactory-mcp-web` script |
-| They share nothing in memory. They **share the plan and label files** | `config.plans_dir()`, `labels_dir()`. Each process parses the save itself (~4 s, per `watch.py`) |
+| They share nothing in memory. They **share the plan and label files** | `config.plans_dir()`, `labels_dir()`. Each process parses the save itself (~4 s, per `watch/watcher.py`) |
 | Cross-process signalling today = **the web server polls file mtimes every 3 s** | `SaveWatcher`: `save` for `*.sav`, `notes` for labels/plans `*.json`. The payload is `{filename, mtime}`, and both trees use `<world>.json`, so the page **cannot tell a plan write from a label write** |
 | So chat → page **already half-works** for *saved* things | `plan_factory save_as`, `site_plan` and `name_factory` write a file → within 3 s `notes` fires → `sse.ts` refetches `/api/factories`, `/api/factories/health`, `/api/plans` → the pad outline and labels redraw |
 | Nothing travels page → chat | The MCP tools read the save and the stores; no page state is written anywhere |
@@ -444,7 +444,7 @@ Warm process, live save, 490 in-scope nodes, 126 unlocked part recipes, **172 LP
 | `bom` / `byproducts.analyse` / `compare_routes` | 12.5 / 13.3 / 29.6 ms | – |
 | `sweep_unlocks` (79 locked alternates) | **317 ms** HMF · **621 ms** stored plan | 80 solves |
 | `load_state` / `proposals` facet | 109 ms / 424 ms | cached per save |
-| Save parse after a new save | ~4 s | **documented** in `watch.py`, not measured here; pre-warmed |
+| Save parse after a new save | ~4 s | **documented** in `watch/watcher.py`, not measured here; pre-warmed |
 
 **Consequences:**
 
@@ -543,10 +543,10 @@ split for Site (§11 D1). Every view marks chat-changed rows with the **chat** b
 | | |
 |---|---|
 | Shows | Process nodes (machines, clock, building, recipe) and item edges (rate, belt/pipe lines). Raw on the left, exports and sinks on the right. Cycles in one column. Pin tags; chat badges |
-| Columns | `layout.chain_depth`, the SCC condensation shared by diff and commission (§8.5h), sent by the server. Not recomputed in TypeScript |
+| Columns | `graph.chain_depth`, the SCC condensation shared by diff and commission (§8.5h), sent by the server. Not recomputed in TypeScript |
 | Controls | Node: alternates, ban, pin, ask chat. Edge: pin to logistics, explain byproduct. Hover: rates |
 | Data | `POST /api/plan/solve` → `processes[].rates`, `flows`, `depth[]` |
-| Reuse | `frontend/src/graph.ts` already draws a built factory's recipe-group graph (frontend_vision.md §9.8). It takes any `{nodes, edges}` of that shape, so a plan can be mapped onto it; its longest-path layers would yield to the server's `depth[]` |
+| Reuse | `frontend/src/dash/graph.ts` already draws a built factory's recipe-group graph (frontend_vision.md §9.8). It takes any `{nodes, edges}` of that shape, so a plan can be mapped onto it; its longest-path layers would yield to the server's `depth[]` |
 | Rendering | Hand-written SVG, no library. Edge width ∝ log(rate). No new hues |
 
 ### 4.3 Build list
@@ -762,7 +762,7 @@ each, because they are resident in every session's schema.
 |---|---|---|---|---|
 | **G1** | **Plan op log**: the store, the merge, snapshots, migration; `base_rev` on the MCP write tools | Load → mutate → save in N MCP processes and the web; lost updates are silent | Everything that writes a plan, from either side | **Medium, first** |
 | **G0** | Activity journal | Only mtime polling | Chat solves on the page, focus, "since you last looked" | Small |
-| G2 | Logic in tool bodies | Plan save, list status, plan detail, rename validation, site ranking live in `tools/planning.py` / `tools/spatial.py` | Routes must share it | Medium, mechanical |
+| G2 | Logic in tool bodies | Plan save, list status, plan detail, rename validation, site ranking live in `tools/planning/` / `tools/spatial/` | Routes must share it | Medium, mechanical |
 | G3 | No structured results | Text presenters only | Every route | Medium: 7 report types |
 | G4 | `required` recipes (Q4) | Global bans only | Require in the drawer; named blockers when infeasible | Small |
 | G5 | No in-plan what-if per alternative | – | Alternates deltas | Small |

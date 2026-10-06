@@ -2,22 +2,15 @@
 
     uv run --extra gen python tools/gen_region_names.py
 
-This is layer 2 of the spatial design. Layer 1 (grid cells, cones, radii, clustering) is exact
-and derived, and every calculation uses it. This layer only puts human names on coordinates,
-and a name must never feed a computation.
-
-The geometry is the game's own. ``FGMapAreaTexture`` is a 4096x4096 raster of palette indices
-at 1.83 m to the texel, and ``mColorToArea`` resolves each index to a ``UFGMapArea`` carrying
-the game's display name for the place; ``core.gameassets.maparea`` reads it, and
-``tools/gen_map_renders.py`` reads the same asset. Two grids come out: the 30x30 at 256 m
-``/api/regions`` serves, and a 120x120 at 64 m ``domain.spatial.regions`` looks names up in,
-each with a confidence grid of its own shape. The emitted ``_meta`` carries the rest -- the
-naming rules, the measurement that chose 64 m, the licence, and the record of the retired
-wiki trace.
+docs/spatial-and-map.md §7.2 is the design. ``core.gameassets.maparea`` reads the area raster,
+the same asset ``mapgen.gamedata.biome`` pins to the map square. Two grids come out, each with
+a confidence grid of its own shape: 256 m for ``/api/regions`` and 64 m for
+``domain.spatial.regions``. The emitted ``_meta`` carries the naming rules and the measurements.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import UTC, datetime
@@ -26,20 +19,28 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, str(ROOT / "tools" / "mapgen" / "src"))
+for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 # The corners and the edge-ratio statistic come from the generators that measured them, so
 # three artifacts cannot drift into three opinions about where the world is.
 from mapgen.common import base_parser, require_gen
 from mapgen.gamedata.biome import calibrate_biome
 from mapgen.gamedata.frame import BOUNDS_M
-from satisfactory_mcp.core.gameassets.container import open_container, read_artwork_sheet
+from satisfactory_mcp.core.gameassets.container import (
+    CONTAINER,
+    open_container,
+    paks_dir,
+    read_artwork_sheet,
+)
 from satisfactory_mcp.core.gameassets.iostore import oodle_decompress
 from satisfactory_mcp.core.gameassets.maparea import (
     MAP_AREA_CLASS,
+    MAP_AREA_DIR,
     MAP_AREA_PATH,
     MapAreaError,
+    MapAreas,
     read_map_areas,
 )
 from satisfactory_mcp.core.gameassets.packages import ScriptObjects
@@ -114,11 +115,12 @@ LAND_MASK_CATEGORIES = (
 VOID_DISTANCE_M = 1000.0
 
 #: The confidence letters, and what each one measures about its own cell.
+INTERIOR, BOUNDARY, UNNAMED = "l", "b", "u"
 CONFIDENCE_LEGEND = {
-    "l": "interior cell: one area covers the whole 256 m cell",
-    "b": "boundary cell: an exact area boundary runs through it",
-    "u": "unnamed cell: the game names no region here, so the label is its No Man's Land",
-    ".": "void: the game names no region and no known object is within 1 km -- ocean or off-map",
+    INTERIOR: "interior cell: one area covers the whole 256 m cell",
+    BOUNDARY: "boundary cell: an exact area boundary runs through it",
+    UNNAMED: "unnamed cell: the game names no region here, so the label is its No Man's Land",
+    VOID: "void: the game names no region and no known object is within 1 km -- ocean or off-map",
 }
 
 #: Measured once, on 2026-07-30, against the committed wiki trace at the commit before it was
@@ -147,8 +149,27 @@ RETIRED_TRACE_COMPARISON = {
     "names_the_game_has_and_the_wiki_did_not": ["Blue Crater is a game name, not a wiki one"],
 }
 
+KNOWN_LIMITATIONS = [
+    (
+        "The published grid is 256 m and the lookup grid is 64 m, so a name near a "
+        "boundary can be one region out. The SOURCE boundaries are exact -- this is "
+        "the cost of publishing a small table, not of not knowing."
+    ),
+    (
+        "No Man's Land is a label, not a region with edges anybody drew: it is "
+        "everything the game does not name, from the outer coast to open ocean, and "
+        "the land mask is what separates the two here."
+    ),
+    (
+        "The corners are MEASURED, not stated in the asset. Nothing in the texture "
+        "says where its 4096 texels go; calibration above re-measures it every run "
+        "and this file refuses to write if the pin stops holding."
+    ),
+]
 
-def load(name: str, key: str) -> list[dict]:
+
+def load_positioned_rows(name: str, key: str) -> list[dict]:
+    """The ``key`` rows of a committed ``data/`` table, each of which must carry x and y."""
     path = ROOT / "data" / name
     if not path.exists():
         raise SystemExit(f"{path.relative_to(ROOT)} missing -- the land mask needs it")
@@ -167,10 +188,10 @@ def reference_points() -> tuple[np.ndarray, dict[str, int]]:
     """
     pts: list[tuple[float, float]] = []
     counts: dict[str, int] = {}
-    nodes = load("world_resource_nodes.json", "nodes")
+    nodes = load_positioned_rows("world_resource_nodes.json", "nodes")
     pts.extend((node["x"], node["y"]) for node in nodes)
     counts["resource_nodes"] = len(nodes)
-    for row in load("world_collectibles.json", "collectibles"):
+    for row in load_positioned_rows("world_collectibles.json", "collectibles"):
         category = row.get("category")
         if category in LAND_MASK_CATEGORIES:
             pts.append((row["x"], row["y"]))
@@ -227,22 +248,21 @@ def nearest_distance_m(points: np.ndarray, x: float, y: float) -> float:
     return float(np.sqrt(((points[:, 0] - x) ** 2 + (points[:, 1] - y) ** 2).min())) / 100.0
 
 
-def classify(
+def classify_cells(
     grid: list[list[str | None]],
     pure: list[list[bool]],
     points: np.ndarray,
     cell: float,
-    inherit: tuple[set[tuple[int, int]], int] | None,
+    inherited_void: tuple[set[tuple[int, int]], int] | None,
 ) -> tuple[set[tuple[int, int]], list[str], dict[str, int]]:
-    """Void set, confidence letters and cell counts for one grid, in place.
+    """Void set, confidence letters and cell counts for one grid.
 
-    Mutates ``grid``: a cell the game leaves unnamed and that the mask calls land is written
-    back as the No Man's Land label, so the grid that comes out has no ``None`` in it that is
-    not also void.
+    Mutates ``grid``: an unnamed cell the mask calls land is written back as the No Man's
+    Land label, so every ``None`` left in it is void.
 
-    ``inherit`` is how the fine grid gets the coarse grid's sea: ``(void cells, ratio)``, and
-    a fine cell is void exactly when the coarse cell over it is. Without it the mask is asked
-    at this grid's own centres.
+    ``inherited_void`` is ``(coarse void cells, cells per coarse cell)``: a fine cell is void
+    exactly when the coarse cell over it is, so the two grids share one coastline. Without it
+    the mask is asked at this grid's own centres.
     """
     void: set[tuple[int, int]] = set()
     rows: list[str] = []
@@ -253,10 +273,10 @@ def classify(
             if name is not None and name != UNNAMED_LABEL:
                 key = "interior" if pure[j][i] else "boundary"
                 counts[key] += 1
-                row += "l" if pure[j][i] else "b"
+                row += INTERIOR if pure[j][i] else BOUNDARY
                 continue
-            if inherit is not None:
-                coarse_void, ratio = inherit
+            if inherited_void is not None:
+                coarse_void, ratio = inherited_void
                 is_void = (i // ratio, j // ratio) in coarse_void
             else:
                 cx, cy = GRID_X0 + (i + 0.5) * cell, GRID_Y0 + (j + 0.5) * cell
@@ -268,7 +288,7 @@ def classify(
             else:
                 grid[j][i] = UNNAMED_LABEL
                 counts["unnamed"] += 1
-                row += "u"
+                row += UNNAMED
         rows.append(row)
     return void, rows, counts
 
@@ -288,9 +308,10 @@ def letters_for(names: list[str]) -> dict[str, str]:
     return {name: chr(ord("A") + i) for i, name in enumerate(sorted(names))}
 
 
-def encode(
+def encode_grid_rows(
     grid: list[list[str | None]], letters: dict[str, str], void: set[tuple[int, int]]
 ) -> list[str]:
+    """One string per grid row: a region letter per cell, ``VOID`` where nothing is named."""
     return [
         "".join(
             VOID if (i, j) in void or name is None else letters[name] for i, name in enumerate(row)
@@ -299,7 +320,7 @@ def encode(
     ]
 
 
-def main() -> int:
+def _parse_args() -> argparse.Namespace:
     parser = base_parser(__doc__.splitlines()[0])
     parser.add_argument(
         "-o", "--out", type=Path, default=DEST, help=f"destination (default {DEST})"
@@ -309,7 +330,25 @@ def main() -> int:
         action="store_true",
         help="rewrite a table this run cannot show was cut from the installed build",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def _grid_meta(fine_nx: int, fine_ny: int) -> dict:
+    return {
+        "x0": GRID_X0,
+        "y0": GRID_Y0,
+        "cell": GRID_CELL,
+        "nx": GRID_NX,
+        "ny": GRID_NY,
+        "void": VOID,
+        "fine_cell": FINE_CELL,
+        "fine_nx": fine_nx,
+        "fine_ny": fine_ny,
+    }
+
+
+def main() -> int:
+    args = _parse_args()
 
     versions = require_gen("ooz", "texture2ddecoder", "PIL.Image")
     import texture2ddecoder as decoder
@@ -326,25 +365,12 @@ def main() -> int:
     print(f"installed build: {build_pin}")
 
     dest: Path = args.out
-    if dest.is_file() and not args.force:
-        try:
-            existing = json.loads(dest.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            existing = {}
-        pinned = read_path(existing, ("_meta", "game_version_pinned"))
-        if pinned is not None and pinned != build_pin:
-            print(
-                f"{dest.relative_to(ROOT)} was cut from another build, and a region table from "
-                "another build describes another world's coastline.\n"
-                f"  installed:   {build_pin}\n"
-                f"  that table:  {pinned}\n"
-                "Drift is announced rather than overwritten. Pass --force to replace it."
-            )
-            return 3
+    if dest.is_file() and not args.force and not check_existing_pin(dest, build_pin):
+        return 3
 
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
-    if not (paks / "FactoryGame-Windows.utoc").exists():
-        print(f"no FactoryGame-Windows.utoc under {paks}")
+    paks = paks_dir(args.game)
+    if not (paks / f"{CONTAINER}.utoc").exists():
+        print(f"no {CONTAINER}.utoc under {paks}")
         return 1
     print(f"reading the game's own assets from {paks} with pyooz {versions['pyooz']}")
     store = open_container(args.game)
@@ -356,41 +382,16 @@ def main() -> int:
         return 4
 
     raster = np.frombuffer(areas.texels, np.uint8).reshape(areas.width, areas.width)
-    unknown = sorted(
-        {a.key or f"<{a.asset} states no display name>" for a in areas.areas if a is not None}
-        - set(DISPLAY_NAMES)
-    )
-    if unknown:
-        print(
-            "the game names a region this file has no label for: "
-            + ", ".join(unknown)
-            + "\nA label cannot be invented -- add it to DISPLAY_NAMES with the name the game "
-            "shows for it. Nothing was written."
-        )
+    names = area_display_names(areas)
+    if names is None:
         return 5
-    names: list[str | None] = [
-        None if area is None else DISPLAY_NAMES[area.key] for area in areas.areas
-    ]
     print(
         f"  {areas.width}x{areas.width} palette indices, {len(areas.areas)} entries, "
         f"{len(areas.assets)} area assets, {len({n for n in names if n})} named regions"
     )
 
-    # ---- the pin, re-measured rather than inherited ----------------------------------
-    biome = {"width": areas.width, "area": raster}
-    artwork = read_artwork_sheet(store, decoder, Image)
-    calibration = calibrate_biome(biome, artwork, Image)
-    print(
-        f"  calibration: edge ratio {calibration['edge_ratio_at_the_pin']} at the pin against "
-        f"{calibration['edge_ratio_at_the_best_rival_shift']} for the best rival shift "
-        f"-- margin {calibration['margin_over_the_best_rival']}x"
-    )
-    if not calibration["pin_holds"]:
-        print(
-            "  the raster no longer sits on the map square by the required margin, so every "
-            "cell below would be named from a picture pinned to the wrong place. Nothing "
-            "was written; look at the asset."
-        )
+    calibration = calibrate_pin(store, areas, raster, decoder, Image)
+    if calibration is None:
         return 6
 
     # ---- the two grids, each with a confidence of its own shape ----------------------
@@ -404,29 +405,137 @@ def main() -> int:
 
     # The mask is asked once, at 256 m, and the fine grid inherits the answer: asking it at
     # both resolutions gives the two grids two coastlines.
-    void_coarse, coarse_conf, counts = classify(coarse, coarse_pure, points, GRID_CELL, None)
+    void_coarse, coarse_conf, coarse_counts = classify_cells(
+        coarse, coarse_pure, points, GRID_CELL, None
+    )
     per_fine = int(GRID_CELL / FINE_CELL)
-    void_fine, fine_conf, fine_counts = classify(
+    void_fine, fine_conf, fine_counts = classify_cells(
         fine, fine_pure, points, FINE_CELL, (void_coarse, per_fine)
     )
-    print(
-        f"cells at {GRID_CELL / 100:.0f} m: {counts['interior']} interior, "
-        f"{counts['boundary']} boundary, {counts['unnamed']} unnamed, {counts['void']} void"
-    )
-    print(
-        f"cells at {FINE_CELL / 100:.0f} m: {fine_counts['interior']} interior, "
-        f"{fine_counts['boundary']} boundary, {fine_counts['unnamed']} unnamed, "
-        f"{fine_counts['void']} void"
-    )
+    print(cell_count_line(GRID_CELL, coarse_counts))
+    print(cell_count_line(FINE_CELL, fine_counts))
 
     present = sorted(
         {name for row in coarse for name in row if name} | {n for r in fine for n in r if n}
     )
     letters = letters_for(present)
-    region_rows = encode(coarse, letters, void_coarse)
-    fine_rows = encode(fine, letters, void_fine)
+    region_rows = encode_grid_rows(coarse, letters, void_coarse)
+    fine_rows = encode_grid_rows(fine, letters, void_fine)
+    regions = region_extents(region_rows, letters, areas, names)
 
-    # ---- per-region extents, from the published grid so containment holds -------------
+    out = {
+        "_meta": build_meta(
+            build_pin=build_pin,
+            exe_build=exe_build,
+            areas=areas,
+            calibration=calibration,
+            coarse_counts=coarse_counts,
+            fine_counts=fine_counts,
+            mask_counts=mask_counts,
+            mask_points=len(points),
+            name_map=area_name_map(areas),
+            unreferenced=sorted(_unreferenced_assets(store, areas)),
+            fine_shape=(fine_nx, fine_ny),
+            versions=versions,
+        ),
+        "grid_meta": _grid_meta(fine_nx, fine_ny),
+        "legend": {letter: name for name, letter in sorted(letters.items(), key=lambda kv: kv[1])},
+        # Four grids in two pairs: each confidence is indexed exactly like the grid it is
+        # named after, and the two pairs are different shapes.
+        "region_grid": region_rows,
+        "confidence_grid": coarse_conf,
+        "fine_grid": fine_rows,
+        "fine_confidence": fine_conf,
+        "regions": dict(sorted(regions.items())),
+    }
+
+    # The trailing newline is load-bearing: the committed blob carries one, and without it
+    # every regeneration reports a diff and so says nothing on any run.
+    dest.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"wrote {_shown(dest)}  {dest.stat().st_size} B  {len(regions)} regions")
+    return 0
+
+
+def _shown(path: Path) -> Path:
+    """``path`` relative to the repository when it is inside it, as given otherwise."""
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+
+
+def check_existing_pin(dest: Path, build_pin: str) -> bool:
+    """Whether ``dest`` may be replaced: True unless it states another build than this one.
+
+    A table with no readable pin may be replaced; one cut from another build describes
+    another world's coastline, so the refusal is printed and False returned.
+    """
+    try:
+        existing = json.loads(dest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        existing = {}
+    pinned = read_path(existing, ("_meta", "game_version_pinned"))
+    if pinned is None or pinned == build_pin:
+        return True
+    print(
+        f"{_shown(dest)} was cut from another build, and a region table from "
+        "another build describes another world's coastline.\n"
+        f"  installed:   {build_pin}\n"
+        f"  that table:  {pinned}\n"
+        "Drift is announced rather than overwritten. Pass --force to replace it."
+    )
+    return False
+
+
+def area_display_names(areas: MapAreas) -> list[str | None] | None:
+    """The display name of each palette entry, or None (printed) for a key with no label."""
+    unknown = sorted(
+        {a.key or f"<{a.asset} states no display name>" for a in areas.areas if a is not None}
+        - set(DISPLAY_NAMES)
+    )
+    if unknown:
+        print(
+            "the game names a region this file has no label for: "
+            + ", ".join(unknown)
+            + "\nA label cannot be invented -- add it to DISPLAY_NAMES with the name the game "
+            "shows for it. Nothing was written."
+        )
+        return None
+    return [None if area is None else DISPLAY_NAMES[area.key] for area in areas.areas]
+
+
+def calibrate_pin(store, areas: MapAreas, raster: np.ndarray, decoder, image_mod) -> dict | None:
+    """The raster's pin to the map square, re-measured rather than inherited; None, with the
+    reason printed, when it no longer holds by the required margin."""
+    biome = {"width": areas.width, "area": raster}
+    artwork = read_artwork_sheet(store, decoder, image_mod)
+    calibration = calibrate_biome(biome, artwork, image_mod)
+    print(
+        f"  calibration: edge ratio {calibration['edge_ratio_at_the_pin']} at the pin against "
+        f"{calibration['edge_ratio_at_the_best_rival_shift']} for the best rival shift "
+        f"-- margin {calibration['margin_over_the_best_rival']}x"
+    )
+    if not calibration["pin_holds"]:
+        print(
+            "  the raster no longer sits on the map square by the required margin, so every "
+            "cell below would be named from a picture pinned to the wrong place. Nothing "
+            "was written; look at the asset."
+        )
+        return None
+    return calibration
+
+
+def cell_count_line(cell: float, counts: dict[str, int]) -> str:
+    return (
+        f"cells at {cell / 100:.0f} m: {counts['interior']} interior, "
+        f"{counts['boundary']} boundary, {counts['unnamed']} unnamed, {counts['void']} void"
+    )
+
+
+def region_extents(
+    region_rows: list[str],
+    letters: dict[str, str],
+    areas: MapAreas,
+    names: list[str | None],
+) -> dict[str, dict]:
+    """Per region: bbox, centroid and cells, read off the published grid so containment holds."""
     regions: dict[str, dict] = {}
     for name, letter in letters.items():
         cells = [
@@ -462,8 +571,12 @@ def main() -> int:
                 }
             ),
         }
+    return regions
 
-    name_map = {
+
+def area_name_map(areas: MapAreas) -> dict[str, dict]:
+    """Area asset -> its package, localisation key, display name, palette indices and texels."""
+    return {
         area.asset: {
             "package": area.stem,
             "display_name_key": area.key,
@@ -474,60 +587,11 @@ def main() -> int:
         }
         for area in sorted({a for a in areas.areas if a is not None}, key=lambda a: a.asset)
     }
-    unreferenced = sorted(_unreferenced_assets(store, areas))
-
-    out = {
-        "_meta": _meta(
-            build_pin=build_pin,
-            exe_build=exe_build,
-            areas=areas,
-            calibration=calibration,
-            counts=counts,
-            fine_counts=fine_counts,
-            mask_counts=mask_counts,
-            mask_points=len(points),
-            name_map=name_map,
-            unreferenced=unreferenced,
-            fine=(fine_nx, fine_ny),
-            versions=versions,
-        ),
-        "grid_meta": {
-            "x0": GRID_X0,
-            "y0": GRID_Y0,
-            "cell": GRID_CELL,
-            "nx": GRID_NX,
-            "ny": GRID_NY,
-            "void": VOID,
-            "fine_cell": FINE_CELL,
-            "fine_nx": fine_nx,
-            "fine_ny": fine_ny,
-        },
-        "legend": {letter: name for name, letter in sorted(letters.items(), key=lambda kv: kv[1])},
-        # Four grids in two pairs: each confidence is indexed exactly like the grid it is
-        # named after, and the two pairs are different shapes.
-        "region_grid": region_rows,
-        "confidence_grid": coarse_conf,
-        "fine_grid": fine_rows,
-        "fine_confidence": fine_conf,
-        "regions": dict(sorted(regions.items())),
-    }
-
-    # The trailing newline is load-bearing: the committed blob carries one, and without it
-    # every regeneration reports a diff and so says nothing on any run.
-    dest.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"wrote {dest.relative_to(ROOT)}  {dest.stat().st_size} B  {len(regions)} regions")
-    return 0
 
 
-def _unreferenced_assets(store, areas) -> set[str]:
-    """Area assets that exist beside the texture and that no palette index reaches.
-
-    ``Area_EasternDuneForest_1`` states the display name Eastern Dune Forest and the raster
-    puts no ground under it, so recording these is what separates "the game has the name and
-    no geometry for it" from "the name is gone".
-    """
-    from satisfactory_mcp.core.gameassets.maparea import MAP_AREA_DIR
-
+def _unreferenced_assets(store, areas: MapAreas) -> set[str]:
+    """Area assets beside the texture that no palette index reaches: the game has the name and
+    puts no ground under it (``Area_EasternDuneForest_1``)."""
     on_disk = {
         path.rsplit("/", 1)[-1].removesuffix(".uasset")
         for path in store.by_path
@@ -536,9 +600,22 @@ def _unreferenced_assets(store, areas) -> set[str]:
     return on_disk - {a.asset for a in areas.areas if a is not None}
 
 
-def _meta(**kw) -> dict:
-    areas = kw["areas"]
-    fine_nx, fine_ny = kw["fine"]
+def build_meta(
+    *,
+    build_pin: str,
+    exe_build: str | None,
+    areas: MapAreas,
+    calibration: dict,
+    coarse_counts: dict[str, int],
+    fine_counts: dict[str, int],
+    mask_counts: dict[str, int],
+    mask_points: int,
+    name_map: dict[str, dict],
+    unreferenced: list[str],
+    fine_shape: tuple[int, int],
+    versions: dict[str, str],
+) -> dict:
+    """The table's ``_meta``: provenance, the naming rules, the grids and the land mask."""
     return {
         "purpose": (
             "ADVISORY region names only. Layer 1 (grid cells, cones, radii, clustering) is "
@@ -547,8 +624,8 @@ def _meta(**kw) -> dict:
         ),
         "generated": datetime.now(UTC).strftime("%Y-%m-%d"),
         "generator": "tools/gen_region_names.py",
-        "game_version_pinned": kw["build_pin"],
-        "game_build": kw["exe_build"],
+        "game_version_pinned": build_pin,
+        "game_build": exe_build,
         "units": "centimetres; north is -Y, east is +X, up is +Z",
         "accuracy_m": int(FINE_CELL / 100),
         "source": {
@@ -569,7 +646,7 @@ def _meta(**kw) -> dict:
                 "Decoded for the record and never drawn or shipped; this file emits no "
                 "colour at all."
             ),
-            "pyooz_version": kw["versions"]["pyooz"],
+            "pyooz_version": versions["pyooz"],
         },
         "licence": (
             "First-party. Every value here is derived from Coffee Stain's cooked assets, read "
@@ -579,79 +656,15 @@ def _meta(**kw) -> dict:
             "obligation reaches this file; the CC BY-SA wiki trace it used to rasterise is "
             "retired, and data/satisfactory_regions.json is deleted."
         ),
-        "calibration": kw["calibration"],
-        "area_display_names": {
-            asset: entry["display_name"] for asset, entry in kw["name_map"].items()
-        },
-        "name_map": kw["name_map"],
-        "naming_rules": {
-            "rule": (
-                "the display name is the game's own, taken from each Area_* asset's "
-                "mDisplayName localisation key. Geometry is game-granular: where two assets "
-                "carry one key they are one region, and where two assets with the same "
-                "package name carry different keys they are two."
-            ),
-            "one_key_two_assets": (
-                "Area_Savanna_1 and Area_Savanna_2 both state Locations/RockyDesert, so the "
-                "game has a Savanna asset and no Savanna region. Same for the pairs behind "
-                "Dune Desert, Grass Fields, Lake Forest, Maze Canyons, Northern Forest, "
-                "Rocky Desert, Southern Forest, Swamp, Titan Forest and Western Dune Forest."
-            ),
-            "one_asset_name_two_keys": (
-                "Area_crater_1 is Blue Crater and Area_crater_2 is Crater Lakes; "
-                "Area_RedJungle_1 is Red Jungle and Area_RedJungle_2 is Jungle Spires. "
-                "Resolving by package name would answer one of each pair at random."
-            ),
-            "no_mans_land": (
-                "Area_NoMansLand is 43% of the raster and is the ocean and the outer coast. "
-                "It is labelled No Man's Land -- the game's own display name for it -- rather "
-                "than blanked, because a player standing on the outer coast is standing "
-                "somewhere and the game has a name for it. A cell is void instead only when "
-                f"the game names no region AND no known static object is within "
-                f"{VOID_DISTANCE_M:.0f} m, which is ocean and off-map."
-            ),
-            "spellings": {
-                key: {"key": key, "emitted": label, "why": "the plural every player uses"}
-                for key, label in PLURALISED.items()
-            },
-            "names_with_no_ground": (
-                "Area assets that exist beside the texture and that no palette index reaches. "
-                "Eastern Dune Forest is a name the game has and puts nowhere."
-            ),
-            "unreferenced_area_assets": kw["unreferenced"],
-        },
-        "grids": {
-            "published": (
-                f"region_grid and confidence_grid are {GRID_NX}x{GRID_NY} at "
-                f"{GRID_CELL / 100:.0f} m -- what /api/regions serves and what the map paints."
-            ),
-            "fine": (
-                f"fine_grid and fine_confidence are {fine_nx}x{fine_ny} at "
-                f"{FINE_CELL / 100:.0f} m and are what domain.spatial.regions looks names up "
-                "in. Not served: the payload contract is the coarse pair and nothing else."
-            ),
-            "pairing": (
-                "each confidence grid is indexed exactly like the grid it is named after. "
-                "confidence_grid goes with region_grid at 256 m; fine_confidence goes with "
-                "fine_grid at 64 m. They are different shapes and swapping them reads fine "
-                "and answers wrong."
-            ),
-            "why_64_m": (
-                "measured on 5,054 known static world objects, looked up in a majority "
-                "downsample against the raster itself: 256 m mislabels 714 (14.13%), 128 m "
-                "421 (8.33%), 64 m 268 (5.30%), 32 m 132 (2.61%). 64 m costs 14,400 "
-                "characters; 32 m costs 57,600 for twice the accuracy and was refused."
-            ),
-            "not_exact": (
-                "a majority downsample of an exact boundary is still a downsample. The "
-                "boundaries in the source are exact; these two grids are not, and the "
-                "confidence letter says which cells that bites in."
-            ),
-        },
+        "calibration": calibration,
+        "area_display_names": {asset: entry["display_name"] for asset, entry in name_map.items()},
+        "name_map": name_map,
+        "naming_rules": _naming_rules(unreferenced),
+        "grids": _grids(fine_shape),
         "confidence_legend": CONFIDENCE_LEGEND,
         "cell_counts": {
-            f"{GRID_CELL / 100:.0f}m": kw["counts"],
-            f"{FINE_CELL / 100:.0f}m": kw["fine_counts"],
+            f"{GRID_CELL / 100:.0f}m": coarse_counts,
+            f"{FINE_CELL / 100:.0f}m": fine_counts,
         },
         "void_distance_m": VOID_DISTANCE_M,
         "land_mask": {
@@ -669,8 +682,8 @@ def _meta(**kw) -> dict:
                     "the game's own cooked map packages, read from the installed game"
                 ),
             },
-            "reference_points": kw["mask_points"],
-            "categories": kw["mask_counts"],
+            "reference_points": mask_points,
+            "categories": mask_counts,
         },
         "node_region_overrides": (
             "gone, key and all. It held 48 oil nodes whose region had been read off a wiki "
@@ -681,23 +694,78 @@ def _meta(**kw) -> dict:
             "where it stands, like every other coordinate."
         ),
         "retired_wiki_trace": RETIRED_TRACE_COMPARISON,
-        "known_limitations": [
-            (
-                "The published grid is 256 m and the lookup grid is 64 m, so a name near a "
-                "boundary can be one region out. The SOURCE boundaries are exact -- this is "
-                "the cost of publishing a small table, not of not knowing."
-            ),
-            (
-                "No Man's Land is a label, not a region with edges anybody drew: it is "
-                "everything the game does not name, from the outer coast to open ocean, and "
-                "the land mask is what separates the two here."
-            ),
-            (
-                "The corners are MEASURED, not stated in the asset. Nothing in the texture "
-                "says where its 4096 texels go; calibration above re-measures it every run "
-                "and this file refuses to write if the pin stops holding."
-            ),
-        ],
+        "known_limitations": KNOWN_LIMITATIONS,
+    }
+
+
+def _naming_rules(unreferenced: list[str]) -> dict:
+    return {
+        "rule": (
+            "the display name is the game's own, taken from each Area_* asset's "
+            "mDisplayName localisation key. Geometry is game-granular: where two assets "
+            "carry one key they are one region, and where two assets with the same "
+            "package name carry different keys they are two."
+        ),
+        "one_key_two_assets": (
+            "Area_Savanna_1 and Area_Savanna_2 both state Locations/RockyDesert, so the "
+            "game has a Savanna asset and no Savanna region. Same for the pairs behind "
+            "Dune Desert, Grass Fields, Lake Forest, Maze Canyons, Northern Forest, "
+            "Rocky Desert, Southern Forest, Swamp, Titan Forest and Western Dune Forest."
+        ),
+        "one_asset_name_two_keys": (
+            "Area_crater_1 is Blue Crater and Area_crater_2 is Crater Lakes; "
+            "Area_RedJungle_1 is Red Jungle and Area_RedJungle_2 is Jungle Spires. "
+            "Resolving by package name would answer one of each pair at random."
+        ),
+        "no_mans_land": (
+            "Area_NoMansLand is 43% of the raster and is the ocean and the outer coast. "
+            "It is labelled No Man's Land -- the game's own display name for it -- rather "
+            "than blanked, because a player standing on the outer coast is standing "
+            "somewhere and the game has a name for it. A cell is void instead only when "
+            f"the game names no region AND no known static object is within "
+            f"{VOID_DISTANCE_M:.0f} m, which is ocean and off-map."
+        ),
+        "spellings": {
+            key: {"key": key, "emitted": label, "why": "the plural every player uses"}
+            for key, label in PLURALISED.items()
+        },
+        "names_with_no_ground": (
+            "Area assets that exist beside the texture and that no palette index reaches. "
+            "Eastern Dune Forest is a name the game has and puts nowhere."
+        ),
+        "unreferenced_area_assets": unreferenced,
+    }
+
+
+def _grids(fine_shape: tuple[int, int]) -> dict:
+    fine_nx, fine_ny = fine_shape
+    return {
+        "published": (
+            f"region_grid and confidence_grid are {GRID_NX}x{GRID_NY} at "
+            f"{GRID_CELL / 100:.0f} m -- what /api/regions serves and what the map paints."
+        ),
+        "fine": (
+            f"fine_grid and fine_confidence are {fine_nx}x{fine_ny} at "
+            f"{FINE_CELL / 100:.0f} m and are what domain.spatial.regions looks names up "
+            "in. Not served: the payload contract is the coarse pair and nothing else."
+        ),
+        "pairing": (
+            "each confidence grid is indexed exactly like the grid it is named after. "
+            "confidence_grid goes with region_grid at 256 m; fine_confidence goes with "
+            "fine_grid at 64 m. They are different shapes and swapping them reads fine "
+            "and answers wrong."
+        ),
+        "why_64_m": (
+            "measured on 5,054 known static world objects, looked up in a majority "
+            "downsample against the raster itself: 256 m mislabels 714 (14.13%), 128 m "
+            "421 (8.33%), 64 m 268 (5.30%), 32 m 132 (2.61%). 64 m costs 14,400 "
+            "characters; 32 m costs 57,600 for twice the accuracy and was refused."
+        ),
+        "not_exact": (
+            "a majority downsample of an exact boundary is still a downsample. The "
+            "boundaries in the source are exact; these two grids are not, and the "
+            "confidence letter says which cells that bites in."
+        ),
     }
 
 

@@ -18,7 +18,7 @@ want a unified and sleek interface, no duplicate vocabulary even to keep backwar
 Five rows closed that day as **breaks** rather than aliases: the retired spellings error and
 name their replacement. They closed in a chain, and the chain is the point — settling the
 radius syntax exposed that the two sides accepted different *places*, and settling that removed
-the last place resolver in the codebase that was not `resolve_origin`. **There is now one place
+the last place resolver in the codebase that was not `resolve_place`. **There is now one place
 grammar, one radius grammar and one resolver.** Two deliberate rows survive, because settling
 them is a judgement about the surface and not a defect.
 
@@ -73,7 +73,7 @@ All closed.
 | # | What it was | Closed by |
 |---|---|---|
 | 10 | 15 tools printed "call again with `offset=N`" and had no `offset` parameter; only 5 of 44 accepted one. 23 of 50 tools take one now, `search_resource_nodes` among them, and the sentence is gated: passing `offset` to `render.table` is the caller's DECLARATION that it pages, and everything else says "narrow the query, or raise limit". | `91c4d90` |
-| 11 | `search_conduits` printed `connects: pipe:333 -> pipe:335` and told the reader to follow it while taking no run id. `resolve_origin` now accepts `chain:`/`pipe:` for every tool that resolves a place. The spelling was settled on the tool's ident; the map's belt popup keeps `chain #n` as a caption of the same number. | `8f6f03e` |
+| 11 | `search_conduits` printed `connects: pipe:333 -> pipe:335` and told the reader to follow it while taking no run id. `resolve_place` now accepts `chain:`/`pipe:` for every tool that resolves a place. The spelling was settled on the tool's ident; the map's belt popup keeps `chain #n` as a caption of the same number. | `8f6f03e` |
 | 12 | `diff_vs_save` ordered actions and dropped the instance ids it had already computed. Each actionable row carries `act_instances` — the verb's own machines, deliberately not the first three of `have_instances` — rendered as reusable `machine:` selectors. | `ce2ba66`, `ae87521` |
 | 13 | Bare platforms were listed by an index no tool accepted. `slab:<n>` now resolves for `describe_location`, `show_on_map` and `plan_factory(site_at=)`, and closes item 28 with it. | `1b6b242`, `56abf09`, `70df1ae` |
 | 14 | `diff_vs_save` documented a plan-id cross-check that `plan_factory` never printed for an unsaved plan. | `7d063c9`, `97ce1f6` |
@@ -83,12 +83,12 @@ All closed.
 All closed.
 
 **15 — CLOSED.** Floors, storage contents and crates were closed first: `factory_floors`
-(`interfaces/mcp/tools/floors.py`), `storage` and `crates` (`interfaces/mcp/tools/inventory.py`),
+(`interfaces/mcp/tools/factories/floors.py`), `storage` and `crates` (`interfaces/mcp/tools/inventory.py`),
 landed by `4f47e33`, `571a59a` and `3678718`.
 
 The power half was less blind than this row originally claimed, and the correction mattered
 because it changed the remedy. Power ISLANDS already reached text:
-`domain/factories/identity.py::bases` calls `graph.machine_components("power",
+`domain/factories/candidates.py::bases` calls `graph.machine_components("power",
 skip=graph.towers())` and `factory_map show=candidates` prints them under
 `## power islands (bases)`.
 
@@ -121,7 +121,7 @@ spot are written up in [save-projection.md](save-projection.md) §6.1a.
 **All eleven closed**, in one chain on 2026-08-10 under the owner's instruction: *one
 vocabulary, no alias kept alive for compatibility.* Each unification exposed the next
 divergence under it — the radius syntax showed that the two sides accepted different **places**,
-closing that removed the last place resolver which was not `resolve_origin`, and the inventory
+closing that removed the last place resolver which was not `resolve_place`, and the inventory
 taken for the last three rows turned up a fourth family nobody had named.
 
 **A correction, kept because the ledger is a record and not a scoreboard.** Until 2026-08-10
@@ -133,7 +133,7 @@ for a ruling. They were open and unexamined the whole time.
 - **Two radius grammars — CLOSED** (`538f08f`). `@` won on an argument rather than a
   preference: `save-projection.md` states that **commas inside one term are ORed**, so a radius
   as a third comma value made `near:` the one exception to a rule the language already had.
-  `near:<place>@<radius_m>` on both sides, parsed by one shared `origin.parse_near`, and the
+  `near:<place>@<radius_m>` on both sides, parsed by one shared `places.parse_near`, and the
   radius is now **required** — the machine side's undocumented 150 m default was the same
   complaint one level down. The comma form errors with the rewrite generated from the input.
   The grammar is written out in [selectors.md](selectors.md).
@@ -164,7 +164,7 @@ for a ruling. They were open and unexamined the whole time.
   `group` — renaming only the MCP parameter would have made that agreement worse. Its second,
   unrelated meaning went with the view row above.
 - **`near:` accepts a different set of PLACES on each side — CLOSED** (`798efca`). Both
-  selector modules are handed the world state and call `origin.resolve_origin`; **neither
+  selector modules are handed the world state and call `places.resolve_place`; **neither
   resolves a place itself any more**, which is what the divergence was actually made of. Seven
   kinds work everywhere `near:` appears — `x,y`, `me`, a factory, `node:<id>`, `slab:<n>`,
   `chain:<n>`/`pipe:<n>`, `plan:<name>` — and the two map facts among them resolve with no save

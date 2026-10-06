@@ -72,18 +72,27 @@ class SchematicLadder:
         done = self.unlocks.purchased_schematic_ids
         stock = self.inventory.stock()
         out = []
-        for s in sorted(self.game.schematics.values(), key=lambda s: s.name.casefold()):
-            if s.type != type or s.is_retired:
+        for schematic in sorted(
+            self.game.schematics.values(), key=lambda schematic: schematic.name.casefold()
+        ):
+            if schematic.type != type or schematic.is_retired:
                 continue
             missing = tuple(
-                Missing(item=f.item, need=f.amount, have=stock.get(f.item, 0.0))
-                for f in s.cost
-                if stock.get(f.item, 0.0) < f.amount
+                Missing(item=cost.item, need=cost.amount, have=stock.get(cost.item, 0.0))
+                for cost in schematic.cost
+                if stock.get(cost.item, 0.0) < cost.amount
             )
             blocked = tuple(
-                self.game.schematics[d].name
-                for d in s.dependencies
-                if d in self.game.schematics and d not in done
+                self.game.schematics[dependency].name
+                for dependency in schematic.dependencies
+                if dependency in self.game.schematics and dependency not in done
             )
-            out.append(Rung(schematic=s, done=s.cls in done, missing=missing, blocked_by=blocked))
+            out.append(
+                Rung(
+                    schematic=schematic,
+                    done=schematic.cls in done,
+                    missing=missing,
+                    blocked_by=blocked,
+                )
+            )
         return out

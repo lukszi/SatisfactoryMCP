@@ -61,6 +61,13 @@ Planned as 0.2.0.
   the painted layer, because the tree crowns are written once, where the bake reads them.
   `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
   after the run that wrote it.
+- `pioneersav`'s submodules re-export less; the top-level `pioneersav` API is unchanged.
+  `pioneersav.properties` no longer exposes `ObjectReference`, `ObjectSlice`, `ParseError`,
+  `Reader`, `FIRST_MODERN_BODY` or `TAG_EXTENSIONS`; `objects` no longer lists `ParseError`,
+  `save` no longer lists `PLAIN_TRAILER`, and `lightweight` and `trailers` no longer re-export
+  `ObjectReference`. Import each from `pioneersav` itself or from its defining module
+  (`references`, `objects`, `errors`, `reader`, `versions`, `properties.tags`,
+  `properties.payload`).
 
 ### Deprecated
 

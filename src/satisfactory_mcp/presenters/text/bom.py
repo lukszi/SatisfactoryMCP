@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...domain.planning.bom import BOM
+from ...domain.planning.analysis.bom import BOM
 from . import primitives as render
 
 __all__ = ["render_bom"]
@@ -52,9 +52,8 @@ def render_bom(bom: BOM, limit: int = 20, offset: int = 0) -> str:
         "only_recipes/exclude_recipes for an arithmetic answer"
     )
 
-    start = max(0, offset)
-    n = render.clamp(limit, default=20)
-    page = bom.rows[start : start + n]
+    window = render.page(limit, offset, default=20)
+    page = window.of(bom.rows)
     rows = [
         (
             r.name,
@@ -70,8 +69,8 @@ def render_bom(bom: BOM, limit: int = 20, offset: int = 0) -> str:
         ("item", "made", "used", "recipe", "machines", "building"),
         rows,
         total=len(bom.rows),
-        offset=start,
-        limit=n,
+        offset=window.start,
+        limit=window.size,
     )
     ids = render.ids_footer(
         (r.name, r.recipe_ids[0]) for r in page if r.recipe_ids and len(r.recipe_ids) == 1

@@ -1,5 +1,8 @@
 # Planner P3: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 The build contract for phase P3 of [planner_vision.md](planner_vision.md) §8: *graph,
 alternates, pins*. It covers vision §4.2 (production graph), G5 (alternates drawer) and G11
 (`pin:` in selectors). It builds on P1 ([planner_slice_contract.md](planner_slice_contract.md))
@@ -109,7 +112,7 @@ badge "chat", never a hue; local only; the page never prompts the agent.
 ## 3. Data: the production graph (on `SolveResponse`)
 
 Built by `summary.solve_summary` from the solver's own processes (item ids), with
-`layout.chain_depth` over each row's non-MW inputs and outputs. TypeScript no longer builds
+`graph.chain_depth` over each row's non-MW inputs and outputs. TypeScript no longer builds
 edges (`planner-result.ts graphOf` is deleted).
 
 | Model | Field | Type | Rule |
@@ -137,7 +140,7 @@ local, so the budget was restated rather than the fields trimmed, and no gzip is
 
 ### 4.1 Store
 
-`domain/planning/pins.py`. File `config.pins_dir()/<world>.json` (new sibling of `ui_dir()`),
+`domain/session/pins.py`. File `config.pins_dir()/<world>.json` (new sibling of `ui_dir()`),
 sanitised like `focus.path_for`. Writes hold `filelock.held(<file>)` and use
 `atomic.write_text`; readers take no lock. The web process was the only writer in P3; since
 C1 was decided, `show_on_map(pin=True)` creates pins from MCP processes too, under the same lock.
@@ -192,9 +195,9 @@ def drop(world_id: str, n: int, rev: int) -> dict: ...
 def live(st) -> list[dict]: ...                  # rows as PinRow (§5.2), gone/selector filled
 def get(st, n: int) -> dict: ...                 # PinMissing
 def parse(text: str) -> int | None: ...          # "pin:3" -> 3, case-insensitive, else None
-def place(st, n: int) -> tuple[tuple[float, float], str]: ...        # cm + echo, or PinError
-def terms(st, n: int, grammar: str) -> tuple[list[str], str]: ...    # §7 table; (terms, echo)
-def canonical(st, field: str, members: list) -> tuple[list, list[str]]: ...  # writer rewrite (§7.2)
+def position(st, n: int) -> tuple[tuple[float, float], str]: ...     # cm + echo, or PinError
+def selector_terms(st, n: int, grammar: str) -> tuple[list[str], str]: ...  # §7; (terms, echo)
+def expand(st, field: str, members: list) -> tuple[list, list[str]]: ...  # writer rewrite (§7.2)
 ```
 
 ---
@@ -222,7 +225,7 @@ the plan lock the server adds `remove required R'` for every other required reci
 the head holds (`swaps.replaced_required`, C3), merged by M1 like the rest, so one required since
 the page's base refuses with the usual 409 instead of leaving two.
 
-`push_ops`, `push_args`, `create_plan` (planlog.py) additionally run `pins.canonical` on
+`push_ops`, `push_args`, `create_plan` (planlog.py) additionally run `pins.expand` on
 `sources`, `required`, `banned` members before the store (§7.2): a pin that cannot stand there
 is a 400 naming it. Every pin write appends one journal entry (§8).
 
@@ -278,7 +281,7 @@ class PinStaleResponse(TypedDict): error: str; stale: bool; pin: PinRow
 
 ### 5.3 Rules
 
-- **Swap semantics** (`domain/planning/swaps.py swap_deltas(g, st, state, item_id, spoilers)`):
+- **Swap semantics** (`domain/planning/analysis/swaps.py swap_deltas(g, st, state, item_id, spoilers)`):
   for recipe R making item I (R's first product is I, or I is any product of R when no recipe
   has I first), `require_ops` = `add required R`, `remove required R'` for every other
   required R' whose first product is I, `remove banned R` when R is a literal banned member.
@@ -314,11 +317,11 @@ class PinStaleResponse(TypedDict): error: str; stale: bool; pin: PinRow
 |---|---|
 | `alternates_for_item` | New `plan: str \| None = None` ("a stored plan: add what requiring each recipe would change in it"). With `plan`, it recalls the head, calls `swaps.swap_deltas` and appends columns `in plan` (status), `Δmach`, `ΔMW draw`, `Δraw` (first two inputs), and a note `plan "x" v14; require one with plan_factory(plan="x", required=[...], base_rev=14, save_as="x")`. Journals `plan.view` with `args {"view": "alternates", "item": <item class id>}` |
 | `ui_context` | New `pins:` line and `(pin:N)` after a selection that matches a pin (§6.3) |
-| `plan_factory`, `plan_layout`, `diff_vs_save`, `commission_plan`, `explain_byproducts`, `rank_unlocks`, `search_resource_nodes`, `rank_build_sites`, `advise_hard_drive_pick` | `sources=` accept `pin:N` (via `spatial/select.py`) |
-| `plan_factory` | `required=` and `exclude_recipes=` accept a process pin; `save_as` stores canonical members (§7.2); `site_at=` accepts any located pin (via `resolve_origin`) |
+| `plan_factory`, `plan_layout`, `diff_vs_save`, `commission_plan`, `explain_byproducts`, `rank_unlocks`, `search_resource_nodes`, `rank_build_sites`, `advise_hard_drive_pick` | `sources=` accept `pin:N` (via `spatial/nodes/selectors.py`) |
+| `plan_factory` | `required=` and `exclude_recipes=` accept a process pin; `save_as` stores canonical members (§7.2); `site_at=` accepts any located pin (via `resolve_place`) |
 | every `plan=` argument | accepts a plan pin (via `recall.recall_plan`) |
 | `select_machines`, `name_factory`, `amend_factory`, and every `factory=` term | accept machine and factory pins (via `factories/select.py`) |
-| `show_on_map`, `describe_location`, `site_plan`, `search_conduits`, `storage`, `collected_from_world` (`at=`/`near=`/`to=`) | accept any located pin (via `resolve_origin`) |
+| `show_on_map`, `describe_location`, `site_plan`, `search_conduits`, `storage`, `collected_from_world` (`at=`/`near=`/`to=`) | accept any located pin (via `resolve_place`) |
 
 No new tool. Descriptions stay one line; `test_surface.BUDGET` holds.
 
@@ -351,13 +354,13 @@ since you last looked: … · journal: 14:06 page pinned pin:4 process Blender �
 
 | Grammar | Resolver | Accepts | Becomes |
 |---|---|---|---|
-| place (`at=`, `near=`, `to=`, `site_at=`, `near:<place>@r` in both selector languages) | `origin.resolve_origin`, prefix `pin` | point, node, field, machine, factory, plan (sited) | the pin's position |
-| node sources | `spatial/select.py` term `pin:N` | node, field | `node:<id>` (field: one per member) |
+| place (`at=`, `near=`, `to=`, `site_at=`, `near:<place>@r` in both selector languages) | `places.resolve_place`, prefix `pin` | point, node, field, machine, factory, plan (sited) | the pin's position |
+| node sources | `spatial/nodes/selectors.py` term `pin:N` | node, field | `node:<id>` (field: one per member) |
 | machine select / `factory=` | `factories/select.py` term `pin:N` (with `-` exclusion) | machine, factory | `machine:<instance>` / `label:<name>` |
 | `plan=` | `recall.recall_plan` | plan | the plan key |
-| `required=`, `exclude_recipes=`/`banned` | tool boundary / planlog routes, via `pins.canonical` | process | recipe class id |
+| `required=`, `exclude_recipes=`/`banned` | tool boundary / planlog routes, via `pins.expand` | process | recipe class id |
 
-All five call `pins.terms` / `pins.place`; nothing else parses `pin:`.
+All five call `pins.selector_terms` / `pins.position`; nothing else parses `pin:`.
 
 ### 7.2 Stored plans never hold `pin:`
 
@@ -494,7 +497,7 @@ Not measured: a late-game save with every alternate unlocked (more options per i
 | File | Owner | Covers |
 |---|---|---|
 | `tests/test_pins.py` (new) | backend | store: create/dedupe/rename/drop, numbers never reused, `rev`/`version`, 409-equivalent `PinStale`, label length, 500 cap, newer schema refused, torn/missing file reads empty; field = cluster of the node; gone rules per kind |
-| `tests/test_pin_selectors.py` (new) | backend | each §7.1 row: accepted kinds resolve and echo; refused kinds use the §6.2 words; `near:pin:N@r` in both selector languages; deleted/gone pins refuse; `pins.canonical` rewrites for stored plans |
+| `tests/test_pin_selectors.py` (new) | backend | each §7.1 row: accepted kinds resolve and echo; refused kinds use the §6.2 words; `near:pin:N@r` in both selector languages; deleted/gone pins refuse; `pins.expand` rewrites for stored plans |
 | `tests/test_swaps.py` (new) | backend | `require_ops`/`ban_ops`/`free_ops` shapes (other required for the same item removed; literal banned removed); delta equals `result_delta` of the two solves; pattern ban → `solved: false`; locked hidden with spoilers off; order is by status, not delta |
 | `tests/test_web_planner.py` | backend | `graph` nodes/edges/ranks on a known request; row `id`/`depth`; infeasible → empty graph; `/api/plan/alternates` 200/400/404; `DeltaResponse.rows` added/changed/removed |
 | `tests/test_web_pins.py` (new) | backend | every route and status code in §5.1 incl. 409 bodies and guard refusal (bad Host on POST/PATCH/DELETE); journal entry per write; push/create with `pin:` members stored canonical |
@@ -577,7 +580,7 @@ names through `api-shapes.ts` aliases.
 
 | Group | Owns (create or edit) |
 |---|---|
-| **BACKEND** | `src/satisfactory_mcp/domain/planning/pins.py` (new); `domain/planning/swaps.py` (new); `domain/planning/summary.py`; `domain/planning/manage.py`; `domain/planning/recall.py`; `domain/spatial/origin.py`; `domain/spatial/select.py`; `domain/factories/select.py`; `src/satisfactory_mcp/config.py` (`pins_dir`); `interfaces/web/routers/pins.py` (new); `interfaces/web/routers/__init__.py` (append `pins.router` at the end); `interfaces/web/routers/planner.py`; `interfaces/web/routers/planlog.py`; `interfaces/web/serial.py` (only if a shape is shared by two routers); `interfaces/mcp/tools/planning.py`; `interfaces/mcp/tools/gamedata.py`; `interfaces/mcp/tools/factories.py`, `interfaces/mcp/tools/spatial.py` (only where a pin echo must be printed); `tests/test_pins.py`, `tests/test_pin_selectors.py`, `tests/test_swaps.py`, `tests/test_web_pins.py` (new); `tests/test_web_planner.py`, `tests/test_ui_context.py`, `tests/test_surface.py`, `tests/test_plan_tools_log.py`, `tests/test_plan_manage.py`, `tests/test_regions_and_select.py`; `docs/selectors.md`, `docs/mcp-surface.md`, `docs/web-wire.md`, `docs/planner_vision.md` (§8 P3 marked built), `docs/plan_management.md` (the §2.7 open item), `docs/planner_p3.md` (new: what was built) |
+| **BACKEND** | `src/satisfactory_mcp/domain/session/pins.py` (new); `domain/planning/analysis/swaps.py` (new); `domain/planning/readout/summary.py`; `domain/planning/stored/manage.py`; `domain/planning/stored/recall.py`; `domain/spatial/places.py`; `domain/spatial/nodes/selectors.py`; `domain/factories/select.py`; `src/satisfactory_mcp/config.py` (`pins_dir`); `interfaces/web/routers/bridge/pins.py` (new); `interfaces/web/routers/__init__.py` (append `pins.router` at the end); `interfaces/web/routers/plans/plan_solve.py`; `interfaces/web/routers/plans/planlog.py`; `interfaces/web/serial/` (only if a shape is shared by two routers); `interfaces/mcp/tools/planning.py`; `interfaces/mcp/tools/gamedata.py`; `interfaces/mcp/tools/factories.py`, `interfaces/mcp/tools/spatial.py` (only where a pin echo must be printed); `tests/test_pins.py`, `tests/test_pin_selectors.py`, `tests/test_swaps.py`, `tests/test_web_pins.py` (new); `tests/test_web_planner.py`, `tests/test_ui_context.py`, `tests/test_surface.py`, `tests/test_plan_tools_log.py`, `tests/test_plan_manage.py`, `tests/test_regions_and_select.py`; `docs/selectors.md`, `docs/mcp-surface.md`, `docs/web-wire.md`, `docs/planner_vision.md` (§8 P3 marked built), `docs/plan_management.md` (the §2.7 open item), `docs/planner_p3.md` (new: what was built) |
 | **FRONTEND** | `src/satisfactory_mcp/interfaces/web/frontend/src/graph.ts`; `planner-result.ts`; `planner-alternates.ts` (new); `planner-core.ts`; `planner.ts`; `planner-bench.ts`; `planner-list.ts`; `pins.ts` (new); `pins-card.ts` (new); `inspector.ts`; `markers.ts` (node popup only); `factory-detail.ts` (header pin only); `sse.ts`; `main.ts` (FEATURES line and `listenForPins`); `words.ts`; `style.css`; `api-shapes.ts` |
 | **integrator** | `frontend/src/api-schema.d.ts` (regenerated) |
 

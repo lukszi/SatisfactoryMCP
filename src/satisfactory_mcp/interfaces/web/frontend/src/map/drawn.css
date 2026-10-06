@@ -1,0 +1,304 @@
+/* The crate glyph's body: an SVG box drawn by crateGlyph() in crates.ts, which owns the
+   colour and the shape. What is left here is what a divIcon does not get for free --
+   `line-height: 0` so the inline SVG sits on the icon's own box instead of on a text baseline
+   three pixels below it, and a pointer, because the popup IS this layer.
+
+   A drop shadow rather than a second stroke: a 13 px box has to be findable against bright
+   terrain and against the concrete alike, and a dark halo does that without thickening the
+   outline the dashed kind depends on being able to show. */
+.crate-mark {
+  line-height: 0;
+  cursor: pointer;
+  filter: drop-shadow(0 0 2px rgba(6, 8, 10, 0.9));
+}
+
+/* The one ACTION on a popup card, and the only button inside one. Full width and under the
+   rows, so it reads as what the card offers rather than as one more row of what it says. */
+.card-action {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--ink-cool);
+  font: inherit;
+  cursor: pointer;
+}
+
+.card-action:hover {
+  color: var(--ink-hi);
+  border-color: var(--dim);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.leaflet-control-attribution {
+  background: var(--panel) !important;
+  color: var(--muted);
+}
+
+.factory-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 600;
+  padding: 1px var(--sp-1);
+  box-shadow: none;
+}
+
+.factory-label::before {
+  display: none;
+}
+
+.factory-label.proposal {
+  font-weight: 400;
+  color: var(--muted);
+  border-style: dashed;
+}
+
+/* Clickable, and it has to look it: the label is the map's index, not a caption. */
+.factory-label.leaflet-interactive:hover {
+  border-color: var(--accent);
+  color: var(--ink-hi);
+}
+
+/* The zero-size body a factory label hangs from. It exists so the tooltip has an anchor in
+   the marker pane; it draws nothing and, at 0x0 with no image, catches nothing -- the tooltip
+   is the whole visible and clickable body. */
+.factory-anchor {
+  width: 0;
+  height: 0;
+}
+
+/* A label the declutter pass found covered by a bigger factory's label -- see
+   declutter() in labels.ts. Hidden entirely: a label that cannot be read cannot be a click
+   target either, or it steals the click of the label drawn over it. */
+.factory-label.label-hidden,
+.region-label.label-hidden {
+  display: none;
+}
+
+.factory-label.label-chosen {
+  z-index: 1;
+  border-color: var(--select);
+}
+
+.pin-label {
+  background: var(--panel);
+  border: 1px solid var(--select);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.pin-label::before {
+  display: none;
+}
+
+.popup-more summary {
+  margin-top: var(--sp-1);
+  color: var(--accent);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* "+n": the names this label is sitting on top of. Absolutely positioned so it hangs off
+   the corner without widening the rectangle the declutter pass measures -- see
+   badgeHidden() in labels.ts -- and clickable, because on this map a visible label is a
+   clickable one and a badge that only reported would be the one exception. */
+.factory-label .label-more {
+  position: absolute;
+  top: -7px;
+  right: -9px;
+  min-width: 15px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r);
+  background: var(--accent);
+  color: var(--bg-deep);
+  font-size: var(--fs-s);
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.factory-label .label-more:hover {
+  background: var(--accent-hi);
+}
+
+/* Biome names: printed on the ground the way an atlas prints a region, so they stay out of
+   the way -- no box, no pointer events, quiet enough that the factory labels and the ore dots
+   still win the eye.
+
+   Light text with a dark HALO, which is the atlas answer and needs to know nothing about what
+   it sits on -- and the ground under a label is not knowable from here, which rules out
+   picking a colour to suit it. The halo is eight offsets plus two blurs rather than a single
+   shadow, because a drop shadow protects one side of a glyph and leaves the other three on
+   the bare ground. paint-order and -webkit-text-stroke would be the tidier spelling and are
+   not used: a stroke centred on the glyph outline eats into thin uppercase strokes at 11 px,
+   and paint-order on HTML text is not something this page can assume. The letterspacing pays
+   for the width the size costs, so a long name still fits the region it names. */
+.region-label {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: rgba(245, 244, 240, 0.92);
+  font-size: var(--fs-m);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow:
+    1px 0 1px rgba(6, 8, 10, 0.95),
+    -1px 0 1px rgba(6, 8, 10, 0.95),
+    0 1px 1px rgba(6, 8, 10, 0.95),
+    0 -1px 1px rgba(6, 8, 10, 0.95),
+    1px 1px 1px rgba(6, 8, 10, 0.95),
+    1px -1px 1px rgba(6, 8, 10, 0.95),
+    -1px 1px 1px rgba(6, 8, 10, 0.95),
+    -1px -1px 1px rgba(6, 8, 10, 0.95),
+    0 0 4px rgba(6, 8, 10, 0.85),
+    0 0 9px rgba(6, 8, 10, 0.6);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.region-label::before {
+  display: none;
+}
+
+/* The label column of every popup card. `nowrap` because these are LABELS and not sentences,
+   and auto table layout otherwise folds "dismantle crate" into two lines whenever the value
+   beside it happens to be a long sentence. The longest label is about 110 px against a 380 px
+   card, so nothing here can push a popup out of shape. */
+.popup-key {
+  color: var(--muted);
+  padding-right: var(--sp-2);
+  white-space: nowrap;
+}
+
+/* A selector, marked as something you can click. Dotted rather than solid underline, so it
+   reads as an affordance and not as a link to somewhere: there is nowhere to go, the click
+   puts the text on the clipboard. `word-break` because an instance id is one long token and
+   a popup is 300 px wide. See code() in dom.ts and the listener in copy.ts. */
+.copyable {
+  cursor: pointer;
+  border-bottom: 1px dotted var(--muted);
+  word-break: break-all;
+}
+
+.copyable:hover {
+  color: var(--ok);
+  border-bottom-color: var(--ok);
+}
+
+/* THE INVENTORY GRID: what is in a crate or a container. See contentsRows() in map/drawn/inventory-grid.ts.
+
+   A wrapping flex row rather than `display: grid`, because a grid with a fixed column count
+   reserves the empty cells, and a container holding nine kinds would draw five tiles and five
+   holes. These are stacks, not slots -- the save gives no slot ORDER, only what is in the box
+   -- so the picture must not imply a layout the data does not have.
+
+   7 x 38 + 6 x 4 = 290, inside the value cell of a 380 px card; see CONTENTS_POPUP_PX in
+   inventory-grid.ts. `width` and not `max-width`: a wrapping flex box has a min-content width of ONE
+   tile, so under `max-width` the table hands this column whatever is left after every other
+   row has had its say, and the same twelve stacks wrap 7+5 on one card and 6+6 on another. */
+.item-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  width: 290px;
+  padding: 2px 0;
+}
+
+/* One tile. `position: relative` is what lets the count sit ON the picture the way it does in
+   the game, rather than beside it in a column that would make this a table again. The frame
+   and the wash under it are not decoration: an item icon is a transparent PNG of a mostly
+   dark object, and a row of them on the popup's own panel colour reads as a scatter of shapes
+   rather than as a set of things in a box. */
+.item-tile {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+/* 34 px inside a 38 px tile, so the artwork has a hairline of frame around it and the count
+   in the corner has something other than the picture to sit against. Never shrunk and never
+   stretched: the generator writes square PNGs at one size, and `contain` makes a stray
+   non-square file a letterbox rather than a distortion. */
+.item-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+/* The quantity, over the bottom-right corner, which is where the game puts it. Not a box: a
+   badge with a background would cover a quarter of the artwork on every tile, and the artwork
+   is the thing being identified. The ring of shadow is what makes it legible over a picture
+   of any brightness -- the same device the region labels use over terrain. */
+.item-count {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  font-size: var(--fs-s);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--count-ink);
+  text-shadow:
+    1px 0 1px rgba(6, 8, 10, 0.95),
+    -1px 0 1px rgba(6, 8, 10, 0.95),
+    0 1px 1px rgba(6, 8, 10, 0.95),
+    0 -1px 1px rgba(6, 8, 10, 0.95),
+    0 0 3px rgba(6, 8, 10, 0.9);
+}
+
+/* The tile for a class with no picture, and it is a TILE and not a hole: a reader who never
+   ran the icon generator has no pictures at all, so this is the ordinary state rather than
+   the edge case. Hidden until the <img> above it fails and removes itself; see tile() in
+   inventory-grid.ts. */
+.item-abbr {
+  display: none;
+}
+
+.item-tile-bare .item-abbr {
+  display: block;
+  /* The bottom 11 px are the count's, so a name that needs three lines is clipped rather
+     than printed under the number. The full name is on the tile's `title` and in the caption
+     line either way. */
+  padding: 2px 2px var(--sp-3);
+  font-size: var(--fs-s);
+  line-height: 1.1;
+  text-align: center;
+  color: var(--ink-soft);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* ...and the tile that stands for the kinds the server did not send. Muted, because it is a
+   statement about the list rather than a thing in the box. */
+.item-tile-more {
+  font-size: var(--fs-m);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* The names under the grid, and the half that keeps a grid honest: a picture identifies a
+   thing to whoever recognises it, and this identifies it to everyone else -- with no pointer
+   to hover and no icon directory. Never nowrap: it is a sentence, and it is meant to wrap. */
+.item-names {
+  display: inline-block;
+  color: var(--muted);
+  font-size: var(--fs-s);
+  line-height: 1.35;
+}

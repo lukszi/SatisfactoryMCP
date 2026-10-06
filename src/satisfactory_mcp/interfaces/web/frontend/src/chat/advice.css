@@ -1,0 +1,155 @@
+/* Advisors: one line per row at desktop width, two below 600 px; docs/advisors_contract.md §8. */
+
+.advice-card .dash-title {
+  justify-content: space-between;
+}
+
+.advice-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.advice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  padding: 3px 0;
+  border-top: 1px solid var(--line);
+}
+
+.advice-row:first-child {
+  border-top: 0;
+}
+
+.advice-main {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.advice-main:hover .advice-text {
+  color: var(--ink-hi);
+}
+
+.advice-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.advice-hidden .advice-text {
+  color: var(--muted);
+}
+
+.advice-acts {
+  position: relative;
+  align-items: center;
+}
+
+.advice-split {
+  position: relative;
+  display: inline-flex;
+}
+
+.advice-split > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.advice-caret {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.advice-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: var(--z-dropdown);
+  display: flex;
+  flex-direction: column;
+  min-width: 12em;
+  margin-top: 2px;
+  padding: var(--sp-1) 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.advice-menu-item {
+  padding: var(--sp-1) var(--sp-3);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.advice-menu-item:hover,
+.advice-menu-item:focus {
+  background: var(--bg);
+  color: var(--accent-hi);
+}
+
+.advice-lines {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0 0 var(--sp-1) var(--sp-3);
+  color: var(--muted);
+  list-style: none;
+}
+
+.advice-foot {
+  margin: var(--sp-1) 0 0;
+}
+
+.advice-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.advice-link:hover {
+  color: var(--accent-hi);
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .advice-main {
+    flex-basis: 100%;
+    align-items: flex-start;
+    min-height: 44px;
+  }
+
+  .advice-text {
+    white-space: normal;
+  }
+
+  .advice-acts {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .advice-acts .btn,
+  .advice-link,
+  .advice-menu-item {
+    min-height: 44px;
+  }
+}

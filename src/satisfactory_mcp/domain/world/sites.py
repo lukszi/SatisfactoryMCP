@@ -6,9 +6,10 @@ three carries state, and the record list is the census's to hand over.
 
 from __future__ import annotations
 
+from ...core.saveio.records import instance_leaf
 from ..spatial import geo
 
-__all__ = ["consumer_z", "infra_points", "selector", "sites"]
+__all__ = ["consumer_z", "infra_points", "near_selector", "sites"]
 
 
 def infra_points(records: list[dict]) -> list[tuple[float, float]]:
@@ -27,7 +28,7 @@ def consumer_z(
     return sum(zs) / len(zs) if zs else None
 
 
-def selector(centroid_cm: tuple[float, ...], diameter_m: float) -> str:
+def near_selector(centroid_cm: tuple[float, ...], diameter_m: float) -> str:
     """The ``near:`` circle that covers a site: 0.6x its spread, never under 50 m.
 
     Half the spread measurably clips members (432 of 461 on the reference world's main
@@ -62,10 +63,8 @@ def sites(records: list[dict], link_m: float = 300.0) -> list[dict]:
                 "buildings": counts,
                 "count": c.size,
                 "diameter_m": round(c.diameter_m),
-                "selector": selector((round(cx), round(cy)), round(c.diameter_m)),
-                "instances": [
-                    str(m["rec"].get("instance", "")).rsplit(".", 1)[-1] for m in c.members
-                ],
+                "selector": near_selector((round(cx), round(cy)), round(c.diameter_m)),
+                "instances": [instance_leaf(m["rec"].get("instance", "")) for m in c.members],
             }
         )
     out.sort(key=lambda s: -s["count"])

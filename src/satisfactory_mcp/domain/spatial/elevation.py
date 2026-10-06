@@ -35,7 +35,7 @@ class Sample:
     x: float
     y: float
     z: float
-    dist_m: float = 0.0
+    distance_m: float = 0.0
 
 
 @dataclass
@@ -60,17 +60,17 @@ class Elevation:
         """The field's own answer in metres, or ``None`` if it has none here."""
         return None if self.terrain is None else self.terrain.z_m
 
-    def of(self, *sources: str) -> list[float]:
+    def heights_m(self, *sources: str) -> list[float]:
         keep = set(sources) if sources else None
         return sorted(s.z / 100.0 for s in self.samples if keep is None or s.source in keep)
 
     @property
-    def ground(self) -> list[float]:
+    def ground_m(self) -> list[float]:
         """Metres, from sources that genuinely rest on terrain."""
-        return self.of(*GROUND_SOURCES)
+        return self.heights_m(*GROUND_SOURCES)
 
     @property
-    def built(self) -> list[float]:
+    def built_m(self) -> list[float]:
         return sorted(s.z / 100.0 for s in self.samples if s.source not in GROUND_SOURCES)
 
     @property
@@ -81,22 +81,22 @@ class Elevation:
         return out
 
     @staticmethod
-    def middle(values: list[float]) -> float | None:
+    def median_of(values: list[float]) -> float | None:
         if not values:
             return None
         mid = len(values) // 2
         return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2.0
 
     def median(self, *sources: str) -> float | None:
-        return self.middle(self.of(*sources))
+        return self.median_of(self.heights_m(*sources))
 
     def spread(self, *sources: str) -> float | None:
-        vals = self.of(*sources)
+        vals = self.heights_m(*sources)
         return (max(vals) - min(vals)) if vals else None
 
     @property
     def nearest(self) -> Sample | None:
-        return min(self.samples, key=lambda s: s.dist_m) if self.samples else None
+        return min(self.samples, key=lambda s: s.distance_m) if self.samples else None
 
     @property
     def fill_m(self) -> float | None:
@@ -108,10 +108,10 @@ class Elevation:
         ground level. A large positive number is foundation already stacked here; a negative
         one means the nodes nearby stand above the platform.
         """
-        ground, built = self.ground, self.built
-        if len(ground) < MIN_GROUND_SAMPLES or not built:
+        ground_m, built_m = self.ground_m, self.built_m
+        if len(ground_m) < MIN_GROUND_SAMPLES or not built_m:
             return None
-        return self.middle(built) - self.middle(ground)
+        return self.median_of(built_m) - self.median_of(ground_m)
 
 
 def sample_points(node_table=None, state=None) -> list[Sample]:
@@ -128,7 +128,7 @@ def sample_points(node_table=None, state=None) -> list[Sample]:
     if state is None:
         return out
 
-    for record in state._all_records():
+    for record in state.all_records():
         pos = record.get("pos")
         if pos and len(pos) >= 3:
             out.append(Sample("building", float(pos[0]), float(pos[1]), float(pos[2])))
@@ -163,5 +163,5 @@ def probe(
         d = geo.distance_m((x, y), (s.x, s.y))
         if d <= radius_m:
             out.samples.append(Sample(s.source, s.x, s.y, s.z, d))
-    out.samples.sort(key=lambda s: s.dist_m)
+    out.samples.sort(key=lambda s: s.distance_m)
     return out

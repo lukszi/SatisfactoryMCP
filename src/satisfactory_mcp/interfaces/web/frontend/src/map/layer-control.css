@@ -1,0 +1,286 @@
+/* The colour swatch in a layer-control row: the legend half of the control. */
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r);
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+/* Leaflet's own chrome, restyled to match rather than left white on a dark map. */
+.leaflet-container {
+  background: var(--sea);
+  font: inherit;
+  font-size: var(--fs-m);
+}
+
+.leaflet-control-layers label,
+.leaflet-popup-content {
+  font-size: var(--fs-m);
+}
+
+.leaflet-control-layers,
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip,
+.leaflet-bar a {
+  background: var(--panel);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.leaflet-bar a:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.leaflet-control-layers-expanded {
+  padding: var(--sp-2) var(--sp-3);
+  max-height: 70vh;
+  overflow-y: auto;
+  /* A row can never widen the box, only wrap inside it: the width is settled by the
+     folded-row rule below, and overflow-x would otherwise answer a long name with a
+     horizontal scrollbar. */
+  overflow-x: hidden;
+  /* Reserved in EVERY state, scrollbar or not. Past about thirty rows the list hits the 70vh
+     cap and starts scrolling, and a classic scrollbar arriving at that moment takes its 15 px
+     out of the interior -- the same horizontal jump the folded-row rule below removes, one
+     row later. Chromium counts a stable gutter in the shrink-to-fit width. */
+  scrollbar-gutter: stable;
+}
+
+/* The control's folds -- see decorateControl() in layercontrol/control.ts. These rules match
+   Leaflet's own stylesheet's specificity and win on order, which is the only reason no
+   !important is needed; main.ts pins that order.
+
+   A folded row is COLLAPSED, not removed, and that one word is what keeps the control at one
+   width. A `display: none` row contributes no width at all, so the box would shrink to its
+   widest VISIBLE row and every unfold would re-widen it -- and this control is a floated,
+   shrink-to-fit box, so each of those is a reflow that slides the map sideways under a
+   pointer that was only trying to open a section. A collapsed row still takes part in layout,
+   so the browser measures the widest row the control can ever hold, on the real strings in
+   the real font. Not a px constant: the widest row is a pickup category name, and the
+   vocabulary has no end this file can see.
+
+   visibility:hidden as well as height:0, because a folded row must also leave the tab order
+   and the accessibility tree -- it is put away, not merely clipped to nothing. */
+.leaflet-control-layers .layer-folded {
+  visibility: hidden;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.layers-head,
+.layer-section,
+.layer-fold {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  user-select: none;
+}
+
+/* Pointer only on what folds. The family checkbox beside it is a checkbox and says so with
+   the cursor, which is half of how the row's two gestures stay told apart. */
+.layers-head,
+.layer-fold {
+  cursor: pointer;
+}
+
+/* The fold half takes the rest of the row, so its "n of m" still lands at the right edge
+   (margin-left:auto) instead of hugging the title. */
+.layer-fold {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The family's tri-state box. Sized and aligned to Leaflet's own row checkboxes so the
+   heads and the rows they head read as one column rather than two indents. */
+.layer-section-box {
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+}
+
+.layers-head {
+  padding-bottom: var(--sp-1);
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  font-size: var(--fs-s);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Folded, the head is the whole control: no rule under it to separate it from nothing. */
+.layers-head.shut {
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.layer-section {
+  margin: 5px 0 1px;
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+
+.layers-head:hover,
+.layer-fold:hover {
+  color: var(--ink-hi);
+}
+
+.layer-caret {
+  display: inline-block;
+  width: 8px;
+  color: var(--muted);
+}
+
+/* The MODE section: which picture the base map is, as radios rather than checkboxes. The rule
+   under it is what makes the two kinds of row read as two kinds of question -- one answer out
+   of four above it, a couple of dozen independent yes/nos below. Leaflet draws its own
+   separator between base layers and overlays, and these are not its base layers, so the line
+   is drawn here. */
+.layer-modes {
+  padding-bottom: var(--sp-2);
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Leaflet's own rows are `display: block` labels and these sit in the same column, so they
+   are too: a flex row here would put the radio and its word on a different baseline from
+   the checkbox and its word one row down. Same for `.layer-floor` below. */
+.layer-mode {
+  display: block;
+}
+
+/* A mode whose pyramid has never been generated stays LISTED and greyed rather than being
+   left out: the row's `title` is where the page names the tool that would draw it, and a name
+   that is simply absent asks nobody to go looking. The help cursor is the hint that the row
+   has something to say; the disabled radio inside it already refuses clicks and the
+   keyboard. */
+.layer-mode-off {
+  opacity: 0.45;
+  cursor: help;
+}
+
+/* The amber word on a map type whose data is outdated. */
+.layer-mode-flag {
+  margin-left: var(--sp-1);
+  color: var(--flash);
+  font-size: var(--fs-s);
+}
+
+/* What a fold head says without being opened: how many of a folded family are drawn, or --
+   for the modes, where one of four is always the answer -- which one. */
+.layer-count {
+  margin-left: auto;
+  padding-left: var(--sp-3);
+  color: var(--dim);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The FLOOR section: which storey of one factory the map is showing. Above the modes, which
+   is the question order -- which slice of the world, then what picture it is drawn on, then
+   what is ticked over it. It is only in the document while the page is slicing something, so
+   its rule never appears over a world map. */
+.layer-floors {
+  padding-bottom: var(--sp-2);
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.layer-floor {
+  display: block;
+}
+
+/* The measurement under the name: `+42.2 m · 175 cells · 35 machines`. Its own element and
+   its own weight, because the NAME is what is being picked and the numbers are what make the
+   pick informed -- a row where both read at the same weight is a row a reader has to parse. */
+.layer-floor-detail {
+  display: block;
+  padding-left: calc(var(--sp-3) + var(--sp-2));
+  color: var(--dim);
+  font-size: var(--fs-s);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A mezzanine, subordinate BY ITS CELL SHARE. Indented and dimmed rather than renamed or
+   hidden: a six-cell ledge is a real band that a machine can stand on, and merging it into
+   the storey below would put machines on a floor they are not on. It reads as minor and stays
+   pickable. */
+.layer-floor-minor {
+  padding-left: var(--sp-3);
+  opacity: 0.72;
+}
+
+.layer-floor-minor .layer-floor-detail {
+  padding-left: calc(var(--sp-3) + var(--sp-2));
+}
+
+/* The way out, on the section head. Not a row in the radio group: leaving is not one of the
+   floors, and a fifth radio that meant "none of these" would make the group answer two
+   questions. */
+.layer-floor-exit {
+  flex: none;
+  order: 99;
+  margin-left: 4px;
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.layer-floor-exit:hover {
+  color: var(--ink-hi);
+  border-color: var(--dim);
+}
+
+/* What the picker says when there is nothing to pick: the API's own sentence -- a save too
+   old to record foundations, or a factory standing on bare terrain. A message rather than an
+   empty list, because an empty list reads as a failure to load. */
+.layer-floor-note {
+  max-width: 240px;
+  padding: var(--sp-1) 0 2px var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-s);
+  line-height: 1.45;
+  white-space: normal;
+}
+
+/* A floor connector's glyph: which way a lift or riser leaves this storey. The box is REAL
+   and is set by GLYPH_PX in floors.ts, because here the arrow is what a reader clicks -- an
+   overflowing character on a zero-size icon looks the same and cannot be hit.
+
+   The colour is the belts' own steel, because a connector is a piece of the network it
+   belongs to rather than a fifth thing on the page. The shadow is what keeps it readable over
+   both the pale deck and the dark ground under it. */
+.floor-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-cool);
+  font-size: var(--fs-m);
+  line-height: 1;
+  text-shadow: 0 0 3px var(--bg-deep), 0 0 3px var(--bg-deep);
+  cursor: pointer;
+}
+
+/* Up is lighter than down, which is the one thing a reader has to be able to tell across a
+   floor plan full of them without opening a popup. */
+.floor-connector-up {
+  color: var(--floor-up);
+}
+
+.floor-connector-down {
+  color: var(--floor-down);
+}

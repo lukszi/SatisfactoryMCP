@@ -15,16 +15,24 @@ restated per formatter:
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import NamedTuple
 
 from ...core.text import num, plural
 
 __all__ = [
     "NARROW_HINT",
+    "Page",
     "bullets",
+    "capped",
+    "clamp",
+    "cut",
     "envelope",
+    "flows",
     "ids_footer",
     "kv",
     "num",
+    "page",
+    "paged_table",
     "plural",
     "rate",
     "table",
@@ -105,6 +113,11 @@ def ids_footer(pairs: Iterable[tuple[str, str]], label: str = "ids") -> str:
     return f"# {label}: " + " ".join(items)
 
 
+def cut(text: str, width: int) -> str:
+    """``text`` cut to ``width`` with a visible ``~``: a silently clipped list reads as whole."""
+    return text if len(text) <= width else text[: width - 1] + "~"
+
+
 def kv(pairs: Iterable[tuple[str, object]], sep: str = "  ") -> str:
     return sep.join(f"{k}={v}" for k, v in pairs if v not in (None, "", []))
 
@@ -113,10 +126,10 @@ def bullets(lines: Iterable[str], marker: str = "-") -> str:
     return "\n".join(f"{marker} {line}" for line in lines if line)
 
 
-def flows(items: Iterable[tuple[str, float, bool]]) -> str:
-    """Render an ingredient/product list: ``30 Crude Oil + 20 Water``. Fluids arrive
+def flows(items: Iterable[tuple[str, float]]) -> str:
+    """Render ``(name, amount)`` pairs as ``30 Crude Oil + 20 Water``. Fluids arrive
     pre-divided by 1000, so this never shows raw litres."""
-    return " + ".join(f"{num(amount)} {name}" for name, amount, _ in items) or "-"
+    return " + ".join(f"{num(amount)} {name}" for name, amount in items) or "-"
 
 
 def where_bands(distances_m: Iterable[float], gap_m: float = 200.0, max_bands: int = 3) -> str:
@@ -149,3 +162,40 @@ def clamp(value: int | None, default: int = 10, lo: int = 1, hi: int = MAX_ROWS)
     if value is None:
         return default
     return max(lo, min(hi, int(value)))
+
+
+class Page(NamedTuple):
+    """The rows a ``limit``/``offset`` pair asks for: ``rows[start:end]``, ``size`` at most."""
+
+    start: int
+    end: int
+    size: int
+
+    def of(self, rows: Sequence) -> Sequence:
+        return rows[self.start : self.end]
+
+
+def page(limit: int | None, offset: int, default: int = 10) -> Page:
+    """The page ``limit`` rows from ``offset`` names, the limit clamped like every table's."""
+    size = clamp(limit, default=default)
+    start = max(0, offset)
+    return Page(start, start + size, size)
+
+
+def paged_table(
+    headers: Sequence[str], rows: Sequence, window: Page, total: int | None = None
+) -> str:
+    """``table`` over the rows ``window`` selects, counting ``total`` (default: all rows)."""
+    return table(
+        headers,
+        window.of(rows),
+        total=len(rows) if total is None else total,
+        offset=window.start,
+        limit=window.size,
+    )
+
+
+def capped(items: Sequence[str], shown: int, *, sep: str = ", ", more: str = " (+{n} more)") -> str:
+    """The first ``shown`` items joined by ``sep``, and the rest counted in ``more``'s words."""
+    rest = len(items) - shown
+    return sep.join(items[:shown]) + (more.format(n=rest) if rest > 0 else "")

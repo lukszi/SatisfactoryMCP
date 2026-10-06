@@ -1,5 +1,8 @@
 # Map types: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 Several pictures of one world can sit under the map at once: the game's own artwork, renders
 of the 1 m heightfield, and whatever a palette experiment produces next. This file says how
 they are registered, dated, generated from the page, chosen between, and served. Where it and
@@ -174,7 +177,7 @@ light, and every type on `GET /api/maps` carries it. The page's overlay colours 
 
 ### 3.3 Verdicts
 
-Computed on every read by `domain/maps/axes.py` `verdict(axes, current)`; nothing is stored.
+Computed on every read by `domain/maps/axes.py` `freshness(axes, current)`; nothing is stored.
 
 | Verdict | When | Shown as |
 |---|---|---|
@@ -355,7 +358,7 @@ On start the served instance reads every job file. A job that says `running` is 
 its pid is alive and its process creation time is the one recorded (a reused pid cannot match):
 the log is re-read from the start and watched to the end, the exit code read through a held
 process handle. Otherwise it is `interrupted`. Queued jobs carry on. Test apps
-(`create_app(tail=False)`) neither read nor re-adopt.
+(`create_app(served=False)`) neither read nor re-adopt.
 
 ### 5.5 The `maps` event
 
@@ -377,7 +380,7 @@ rather than `settings.json` (shared-settings.md §1 says why).
 
 ### 6.2 Settings → maps (`#dash=settings/maps`)
 
-`maps.ts`. One card per block; every confirm is inline.
+`dash/maps/settings-maps.ts`. One card per block; every confirm is inline.
 
 1. **Status**: "N map types · size · free", the raster cache with **clear cache**, a muted
    setup line when generation cannot run, and "found N unregistered pyramids · add".
@@ -406,7 +409,7 @@ rather than `settings.json` (shared-settings.md §1 says why).
 
 ### 6.3 The switcher
 
-`tiles.ts` builds its modes from `mapstore.ts`: every `ready` type ticked "in switcher", the
+`map/tiles.ts` builds its modes from `app/map-types.ts`: every `ready` type ticked "in switcher", the
 default first, plus whatever is on screen or named by the address, plus plain. A row shows the
 title (§3.5) and an amber "older build" or "older data" after a stale one. Its tooltip is the
 technical name and the size, then the stale reason. Each pyramid is HEAD-probed as before. A

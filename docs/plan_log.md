@@ -1,8 +1,22 @@
 # The plan log
 
-How `domain/planning/planlog.py` stores plans. The specification is
+How `domain/planning/stored/planlog/` stores plans. The specification is
 [planner_slice_contract.md](planner_slice_contract.md) §2–§5 and §7; this note records where
 the code had to choose something the contract leaves open, and why.
+
+## Modules
+
+| Module | Holds |
+|---|---|
+| `stored/plan_args.py` | `PlanArgs`, each field's kind and check, `PLAN_ARGS`, `PLAN_DEFAULTS`, `InvalidOp`; reads nothing else in `stored` |
+| `planlog/records.py` | `PlanState`, `Commit`, `Actor`, `Conflict`, `Pushed`, `Stamp` and the refusals |
+| `planlog/ops.py` | One op at a time: canonical form, apply, inverse, merge key, clash; `diff_args`; undo chains |
+| `planlog/wording.py` | `describe_op`, `describe_commit` and the words of a conflict |
+| `planlog/log.py` | `PlanLog` and `PlanView`: the files, the locks, snapshots and the merge |
+| `planlog/migrate.py` | The one-time move of the legacy file into the log |
+
+`planlog/__init__.py` re-exports the log's own names, so callers name the package, not a
+module; `PlanArgs`, `InvalidOp` and the other request names are imported from `plan_args`.
 
 ## Layout
 
@@ -43,7 +57,7 @@ world id the same way.
 
 ## The merge, in detail
 
-`_clash(mine, theirs)` compares one op of mine with one op of theirs. Every pair is checked;
+`clash(mine, theirs)` compares one op of mine with one op of theirs. Every pair is checked;
 any `conflict` makes the whole push `Outdated` and nothing is written.
 
 - `record` ops never clash.
@@ -116,7 +130,7 @@ case-insensitive name, then a unique substring, as the old store did.
 
 ## Until the tools take `base_rev`
 
-The store stage leaves `interfaces/mcp/tools/planning.py` writing through the log **at the
+The store stage leaves the planning tools (now `interfaces/mcp/tools/planning/`) writing through the log **at the
 head** (`_at_head`, `_save_request`): last writer wins, exactly as the old store behaved.
 One difference: `save_as` now saves over a live plan only on an exact (case-insensitive)
 name, where the old `put` also took a unique substring and could overwrite "north oil" when

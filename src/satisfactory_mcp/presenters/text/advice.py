@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import re
 
+from ...core.text import ellipsize
 from ...domain.advice import WORDS, Advisory, Current
-from ...domain.advice.rules import capped
+from ...domain.advice.advisory import capped
 
 __all__ = ["CONTEXT_ROWS", "SUMMARY_ROWS", "context_lines", "parse_hide", "summary_block"]
 
@@ -20,10 +21,6 @@ _HIDE = re.compile(
     r"\s*(adv:[0-9a-f]{4,6})(?:\s+(snooze)(?:\s+(\d+(?:\.\d+)?)\s*(h|m|min)?)?)?\s*",
     re.IGNORECASE,
 )
-
-
-def _cut(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 def parse_hide(raw) -> tuple[str, str, float | None] | None:
@@ -43,8 +40,8 @@ def parse_hide(raw) -> tuple[str, str, float | None] | None:
     return adv_id, "snooze", hours
 
 
-def _short(adv: Advisory) -> str:
-    return _cut(f"{adv.id} {WORDS[adv.kind]}: {adv.tool_text}", ROW_WIDTH)
+def _context_row(adv: Advisory) -> str:
+    return ellipsize(f"{adv.id} {WORDS[adv.kind]}: {adv.tool_text}", ROW_WIDTH)
 
 
 def context_lines(cur: Current) -> list[str]:
@@ -54,7 +51,7 @@ def context_lines(cur: Current) -> list[str]:
     if not total:
         return [f"{head}: nothing worth a look"]
     first, _rest = capped([a for a, _back, _rev in cur.active])
-    shown = [_short(a) for a in first[:CONTEXT_ROWS]]
+    shown = [_context_row(a) for a in first[:CONTEXT_ROWS]]
     line = f"{head}: " + " · ".join(shown)
     if total > CONTEXT_ROWS:
         line += f" (+{total - CONTEXT_ROWS} more: world_summary)"

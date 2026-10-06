@@ -1,7 +1,8 @@
 """Advisors: the cheap list of things worth a look, and what the player hid of it.
 
-``rules`` computes the rows, ``store`` keeps dismiss and snooze, and ``current`` joins the
-two the way the page and chat both read them. docs/advisors_contract.md is the specification.
+``advisory`` is the row contract, ``rules`` computes the rows, ``store`` keeps dismiss and
+snooze, and ``current`` joins the two the way the page and chat both read them.
+docs/advisors_contract.md is the specification.
 """
 
 from __future__ import annotations
@@ -11,9 +12,8 @@ from dataclasses import dataclass
 from ...core.schema import NewerSchema
 from ...core.singleflight import Singleflight
 from .. import settings
-from ..planning.planlog import PlanLog, PlanLogError
-from . import rules, store
-from .rules import KINDS, PER_KIND, SEVERITIES, TONE, VISIBLE, WORDS, Advisory, Spot
+from . import advisory, rules, store
+from .advisory import KINDS, PER_KIND, SEVERITIES, TONE, VISIBLE, WORDS, Advisory, Spot
 
 __all__ = [
     "KINDS",
@@ -25,6 +25,7 @@ __all__ = [
     "Advisory",
     "Current",
     "Spot",
+    "advisory",
     "current",
     "options",
     "rules",
@@ -65,20 +66,12 @@ def options(biomass: bool | None = None, headroom: str | None = None) -> tuple[d
     return out, notes
 
 
-def _heads(st) -> tuple:
-    try:
-        heads = PlanLog(st.world_id, st.header.get("session_name") or "").heads()
-    except (PlanLogError, OSError):
-        return ()
-    return tuple(sorted((s.key, s.rev) for s in heads))
-
-
 def _rows(st, opts: dict, spoilers: bool) -> list[Advisory]:
     key = (
         id(st.projection),
         id(st.game),
         st.labels.version,
-        _heads(st),
+        tuple(sorted((state.key, state.rev) for state in rules.plan_heads(st))),
         tuple(sorted(opts.items())),
         spoilers,
     )

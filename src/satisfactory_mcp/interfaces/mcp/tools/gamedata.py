@@ -12,36 +12,31 @@ from pydantic import Field
 
 from ....core.gamedata import search
 from ....core.gamedata.unlocks import granted_by_label
-from ....domain.planning import journal, swaps
-from ....domain.planning.planlog import PlanLog
-from ....domain.planning.recall import plan_ref
-from ....domain.world import pin as save_pin
+from ....domain.planning.analysis import swaps
+from ....domain.planning.stored.planlog import PlanLog
+from ....domain.planning.stored.recall import expand_plan_pin
+from ....domain.session import journal
 from ....presenters.text import primitives as render
-from ....presenters.text.search import render_search
-from ..app import AsOf, Limit, _item_id, _state, actor, game, mcp, retired
+from ....presenters.text.search import item_flows, render_search
+from .. import app
+from ..params import AsOf, Limit
 
 
 def _no_save_note(reason: str | None) -> str:
     """Why the HAVE/LOCKED column is blank, in the one wording all three tools use.
 
-    Three tools here mark rows against the save and all three blank the column when it
-    will not read. Two of them used to blank it in SILENCE, which produces a confident
-    table of dashes that reads as "nothing is unlocked" -- the single most misleading
-    answer this surface can give a player deciding what to build next, because it is
-    indistinguishable from a correct answer about a fresh world.
-
-    The reason is carried through rather than summarised: "could not read save" is the
-    same sentence for a save mid-write, a save directory that is not there and a game
-    patch this parser has not caught up with, and only the first is worth retrying.
+    A blank column read without this note says "nothing is unlocked". The reason is carried
+    through because "could not read save" covers a save mid-write, a missing directory and a
+    game patch, and only the first is worth retrying.
     """
     detail = f" ({reason})" if reason else ""
     return f"no save could be read{detail}, so HAVE/LOCKED is blank -- game data only"
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     """Find items by name. Returns form, energy and sink points."""
-    hits = search.find_items(game(), query)
+    hits = search.find_items(app.game(), query)
     page = hits[offset : offset + render.clamp(limit)]
     rows = [
         (i.name, "fluid" if i.is_fluid else "solid", render.num(i.energy_mj), i.sink_points)
@@ -54,29 +49,21 @@ def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     return render.envelope(f"# {len(hits)} item(s) matching {query!r}", body + "\n" + footer)
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def recipe_detail(recipe_id: str) -> str:
     """Exact numbers for one recipe: rates, machine, power, unlock source.
 
-    Takes a class id OR a display name. Refusing the name cost a caller two round trips
-    to fetch an id this function could resolve itself, which is a poor trade for strictness
-    that buys nothing -- `match_recipes` already does exactly this resolution for
-    `exclude_recipes`.
+    Takes a class id OR a display name, resolved the way `exclude_recipes` resolves one.
     """
-    from ....domain.planning.scenario import find_recipe
-
-    g = game()
-    r, hits = find_recipe(g, recipe_id)
+    g = app.game()
+    r, hits = search.find_recipe(g, recipe_id)
     if r is None and hits:
-        # Ambiguous is not the same as unknown, and listing the candidates is the
-        # answer rather than an invitation to search again.
+        # Ambiguous is not unknown: listing the candidates is the answer.
         shown = ", ".join(g.recipes[h].name for h in hits[:8])
         return f"{recipe_id!r} matches {len(hits)} recipes: {shown}"
     if r is None:
         return f"unknown recipe {recipe_id!r} -- use search_recipes to find the id"
     b = g.machine(r)
-    ing = render.flows((g.item_name(f.item), f.per_min, False) for f in r.ingredients)
-    out = render.flows((g.item_name(f.item), f.per_min, False) for f in r.products)
     unlocks = [g.schematics[s].name for s in r.unlocked_by if s in g.schematics]
     lines = [
         f"{r.name}  ({'ALTERNATE' if r.is_alternate else r.kind})",
@@ -87,8 +74,8 @@ def recipe_detail(recipe_id: str) -> str:
                 ("power", f"{render.num(g.recipe_power_mw(r))}MW"),
             ]
         ),
-        f"in/min : {ing}",
-        f"out/min: {out}",
+        f"in/min : {item_flows(g, r.ingredients)}",
+        f"out/min: {item_flows(g, r.products)}",
         f"unlock : {', '.join(unlocks) or '-'}",
     ]
     if r.is_variable_power:
@@ -108,10 +95,10 @@ def _delta_cells(option: dict) -> list[str]:
     return [f"{delta['machines']:+d}", f"{delta['mw_draw']:+g}", raw or "0"]
 
 
-def _in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
+def _alternates_in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
     """The alternates table against a stored plan: status and deltas per recipe."""
     try:
-        key, echo = plan_ref(st, plan)
+        key, echo = expand_plan_pin(st, plan)
     except KeyError as exc:
         return f"! {exc.args[0]}"
     stored = st.plans.find(key)
@@ -121,20 +108,20 @@ def _in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
     state = PlanLog(st.world_id).state(stored.key)
     result = swaps.swap_deltas(g, st, state, iid, spoilers=include_locked)
     rows = []
-    for o in result["options"]:
-        r = g.recipes[o["recipe_id"]]
-        status = o["status"]
-        if o["banned_by"] and status == "banned":
-            status += f" by {o['banned_by']!r}"
+    for option in result["options"]:
+        r = g.recipes[option["recipe_id"]]
+        status = option["status"]
+        if option["banned_by"] and status == "banned":
+            status += f" by {option['banned_by']!r}"
         rows.append(
             [
-                o["name"],
-                o["machine"] or "-",
-                render.flows((g.item_name(f.item), f.per_min, False) for f in r.ingredients),
-                render.flows((g.item_name(f.item), f.per_min, False) for f in r.products),
-                "HAVE" if o["unlocked"] else "LOCKED",
+                option["name"],
+                option["machine"] or "-",
+                item_flows(g, r.ingredients),
+                item_flows(g, r.products),
+                "HAVE" if option["unlocked"] else "LOCKED",
                 status,
-                *_delta_cells(o),
+                *_delta_cells(option),
             ]
         )
     headers = ["recipe", "building", "in/min", "out/min", "status", "in plan"]
@@ -154,8 +141,8 @@ def _in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
     journal.append(
         st.world_id,
         "plan.view",
-        actor=actor(ctx),
-        sav=_sav(st),
+        actor=app.actor(ctx),
+        sav=app.save_token(st),
         tool="alternates_for_item",
         plan=state.key,
         rev=state.rev,
@@ -165,14 +152,7 @@ def _in_plan(g, st, iid: str, plan: str, include_locked: bool, ctx) -> str:
     return render.envelope(f"# {result['text']}", body + "\n" + footer, notes)
 
 
-def _sav(st) -> str:
-    try:
-        return save_pin.check(st.header, None)
-    except Exception:
-        return ""
-
-
-@mcp.tool(structured_output=False)
+@app.tool()
 def alternates_for_item(
     item: str,
     save: str | None = None,
@@ -192,29 +172,19 @@ def alternates_for_item(
     With ``plan`` each recipe also carries its status in that plan and what requiring it
     would change there: machines, MW draw and the first raw inputs.
     """
-    g = game()
-    iid = _item_id(item)
+    g = app.game()
+    iid = app.resolve_item_id(item)
     if iid is None:
         return f"no item matching {item!r}"
     if plan:
-        try:
-            st = _state(save, world, as_of)
-        except Exception as exc:
-            return f"could not read save: {exc}"
-        return _in_plan(g, st, iid, plan, include_locked, ctx)
+        st = app.load_world(save, world, as_of)
+        return _alternates_in_plan(g, st, iid, plan, include_locked, ctx)
     producers = search.makers_of(g, iid)
-    # ``None``, not an empty set. The status column blanks for both "no save" and "a save
-    # whose recipe list is empty", and only one of those is a fact about the world -- so
-    # the reason is carried rather than collapsed, and said out loud in the notes below.
-    have: set[str] | None = None
-    save_error: str | None = None
-    try:
-        have = _state(save, world, as_of).available_recipe_ids
-    except Exception as exc:
-        save_error = str(exc)
+    # None, not an empty set: "no save" and "a save with no recipes" are different facts.
+    st, save_error = app.load_world_or_none(save, world, as_of)
+    have: set[str] | None = st.available_recipe_ids if st is not None else None
     shown = [r for r in producers if include_locked or have is None or r.cls in have]
-    # Only when something is locked: on a page where everything is HAVE the column would
-    # be a row of blanks.
+    # Only when something is locked; otherwise the column is a row of blanks.
     granted = have is not None and any(r.cls not in have for r in shown)
     rows = []
     for r in shown:
@@ -223,8 +193,8 @@ def alternates_for_item(
         row = [
             r.name,
             f"{b.name} {render.num(g.recipe_power_mw(r))}MW" if b else "-",
-            render.flows((g.item_name(f.item), f.per_min, False) for f in r.ingredients),
-            render.flows((g.item_name(f.item), f.per_min, False) for f in r.products),
+            item_flows(g, r.ingredients),
+            item_flows(g, r.products),
             status,
         ]
         if granted:
@@ -236,9 +206,6 @@ def alternates_for_item(
         headers.append("granted by")
     body = render.table(headers, rows)
     footer = render.ids_footer((r.name, r.cls) for r in producers)
-    # The blank status column is the WHOLE point of this tool for a player deciding what to
-    # build, and a blank that means "could not read your save" reads exactly like a blank
-    # that means "nothing is unlocked". Same note ``list_buildings`` already carries.
     notes = [_no_save_note(save_error)] if have is None else []
     return render.envelope(
         f"# {len(rows)} automatable recipe(s) make {g.item_name(iid)} "
@@ -248,14 +215,12 @@ def alternates_for_item(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def search_recipes(
     query: str = "",
     consumes: str | None = None,
     produces: str | None = None,
-    recipe_kind: Annotated[
-        str, Field(description="part | building | manual | all")
-    ] = "part",
+    recipe_kind: Annotated[str, Field(description="part | building | manual | all")] = "part",
     only_alternates: bool = False,
     include_events: bool = False,
     save: str | None = None,
@@ -263,9 +228,7 @@ def search_recipes(
     as_of: AsOf = None,
     limit: Limit = 10,
     offset: int = 0,
-    kind: Annotated[
-        str | None, Field(description="retired -- write recipe_kind= instead")
-    ] = None,
+    kind: Annotated[str | None, Field(description="retired -- write recipe_kind= instead")] = None,
 ) -> str:
     """Search recipes by name, or by what they consume/produce. Marks HAVE/LOCKED.
 
@@ -274,27 +237,28 @@ def search_recipes(
     "all" -- and the header counts EVERY kind over the whole recipe table whatever it
     is set to, so a part-only view still says how many buildings eat the item.
     """
-    if gone := retired(("kind", kind, "recipe_kind")):
+    if gone := app.retired(("kind", kind, "recipe_kind")):
         return gone
-    g = game()
+    g = app.game()
     notes: list[str] = []
     consumes_id = produces_id = None
     if consumes:
-        consumes_id = _item_id(consumes)
+        consumes_id = app.resolve_item_id(consumes)
         if consumes_id is None:
             return f"no item matching {consumes!r}"
     if produces:
-        produces_id = _item_id(produces)
+        produces_id = app.resolve_item_id(produces)
         if produces_id is None:
             return f"no item matching {produces!r}"
     if consumes_id and produces_id:
         notes.append("consumes and produces are ANDed: this is the loop test, not a union")
 
+    st, save_error = app.load_world_or_none(save, world, as_of)
     have: set[str] | None = None
-    try:
-        have = _state(save, world, as_of).available_recipe_ids
-    except Exception as exc:
-        notes.append(_no_save_note(str(exc)))
+    if st is None:
+        notes.append(_no_save_note(save_error))
+    else:
+        have = st.available_recipe_ids
 
     try:
         hits, census = search.search(
@@ -339,8 +303,42 @@ def search_recipes(
 #: are walls you can walk through and are listed with them.
 _ARCH_TOKENS = ("Foundation", "Ramp", "Wall", "Pillar", "Beam", "Stair", "Walkway", "Door")
 
+#: Which buildings each ``building_kind`` lists. Pumps are logistics: they move fluid, and
+#: their head lift is the number a fluid plan needs.
+_BUILDING_KINDS = {
+    "production": lambda b: b.is_manufacturer,
+    "extractor": lambda b: b.is_extractor,
+    "generator": lambda b: b.is_generator,
+    "logistics": lambda b: bool(b.items_per_min or b.flow_m3_min or b.head_lift_m),
+    "foundation": lambda b: "Foundation" in b.native,
+    "ramp": lambda b: "Ramp" in b.native,
+    "wall": lambda b: "Wall" in b.native or "Door" in b.native,
+    "pillar": lambda b: "Pillar" in b.native,
+    "beam": lambda b: "Beam" in b.native,
+    "architecture": lambda b: any(t in b.native for t in _ARCH_TOKENS),
+    "all": lambda b: True,
+}
 
-@mcp.tool(structured_output=False)
+
+def _building_detail(b) -> str:
+    """The one figure that says what a building does: its rate, its output or its lift."""
+    if b.is_extractor and b.base_extract_rate:
+        return f"{render.num(b.extract_rate('normal'))}/min @normal"
+    if b.is_generator:
+        detail = f"{render.num(b.power_production_mw)}MW out"
+        if b.requires_supplemental:
+            detail += f", {render.num(b.supplemental_m3_min())} m3/min water"
+        return detail
+    if b.items_per_min:
+        return f"{render.num(b.items_per_min)} items/min"
+    if b.flow_m3_min:
+        return f"{render.num(b.flow_m3_min)} m3/min"
+    if b.head_lift_m:
+        return f"lifts {render.num(b.head_lift_m)}m head (max {render.num(b.max_head_lift_m)})"
+    return ""
+
+
+@app.tool()
 def list_buildings(
     building_kind: Annotated[
         str,
@@ -361,76 +359,28 @@ def list_buildings(
     """Buildings by kind: production, extractor, generator, logistics, foundation,
     ramp, wall, pillar, beam, architecture (all five families together), or all.
 
-    Rows are marked HAVE or LOCKED against the save when one can be read. That matters
-    most for ``logistics``: a planner assuming a belt or pipe tier it has not unlocked
-    gets every line count wrong by a factor and nothing says so, which is the worst
-    failure mode a planner has.
-
-    Paged: ``all`` is 540 buildings and unpaged it ran to ~60k characters, which is not
-    an answer, it is a context eviction. The envelope says how many more there are and
-    which offset fetches them.
+    Rows are marked HAVE or LOCKED against the save when one can be read -- it matters most
+    for ``logistics``, where a planner assuming a tier it has not unlocked gets every line
+    count wrong. Paged with ``offset=``: ``all`` is hundreds of buildings.
     """
-    if gone := retired(("kind", kind, "building_kind")):
+    if gone := app.retired(("kind", kind, "building_kind")):
         return gone
-    g = game()
-    try:
-        st = _state(save, world, as_of)
-        unlocked, built = st.unlocked_building_ids, st.built_counts
-        save_error = None
-    except Exception as exc:
-        # Game data alone is still a useful answer; the columns just go blank -- and the
-        # note at the bottom says which save could not be read and why.
-        st, unlocked, built = None, None, {}
-        save_error = str(exc)
-    # Every kind reachable, and nothing unreachable. "all" used to match nothing at all,
-    # and the AWESOME Sink and both Pipeline Pumps fell through every branch -- so a
-    # caller could not check sink draw or pump head from the data and fell back on
-    # general knowledge, which is precisely the failure the rest of this surface works to
-    # prevent. Pumps are logistics: they move fluid, and their head lift is the number
-    # a fluid plan needs.
-    kinds = {
-        "production": lambda b: b.is_manufacturer,
-        "extractor": lambda b: b.is_extractor,
-        "generator": lambda b: b.is_generator,
-        "logistics": lambda b: bool(b.items_per_min or b.flow_m3_min or b.head_lift_m),
-        # The build-piece families, grouped by native class. "foundation" was refused
-        # while "all" was accepted, which made the only route to a foundation's size a
-        # 60k-character page-through.
-        "foundation": lambda b: "Foundation" in b.native,
-        "ramp": lambda b: "Ramp" in b.native,
-        "wall": lambda b: "Wall" in b.native or "Door" in b.native,
-        "pillar": lambda b: "Pillar" in b.native,
-        "beam": lambda b: "Beam" in b.native,
-        "architecture": lambda b: any(t in b.native for t in _ARCH_TOKENS),
-        "all": lambda b: True,
-    }
-    want = kinds.get((building_kind or "").strip().casefold())
+    g = app.game()
+    # Game data alone is still a useful answer: without a save the columns go blank and a
+    # note says which save could not be read and why.
+    st, save_error = app.load_world_or_none(save, world, as_of)
+    unlocked, built = (st.unlocked_building_ids, st.built_counts) if st is not None else (None, {})
+    want = _BUILDING_KINDS.get((building_kind or "").strip().casefold())
     if want is None:
         return (
             f"! unknown building_kind {building_kind!r}. "
-            f"Choose from: {', '.join(sorted(kinds))}"
+            f"Choose from: {', '.join(sorted(_BUILDING_KINDS))}"
         )
-    picks = [b for b in g.buildings.values() if want(b)]
-    picks.sort(key=lambda b: b.name)
-    offset = max(0, offset)
-    page = picks[offset : offset + render.clamp(limit, default=25)]
+    picks = sorted((b for b in g.buildings.values() if want(b)), key=lambda b: b.name)
+    window = render.page(limit, offset, default=25)
+    page = window.of(picks)
     rows = []
     for b in page:
-        detail = ""
-        if b.is_extractor and b.base_extract_rate:
-            detail = f"{render.num(b.extract_rate('normal'))}/min @normal"
-        elif b.is_generator:
-            detail = f"{render.num(b.power_production_mw)}MW out"
-            if b.requires_supplemental:
-                detail += f", {render.num(b.supplemental_m3_min())} m3/min water"
-        elif b.items_per_min:
-            detail = f"{render.num(b.items_per_min)} items/min"
-        elif b.flow_m3_min:
-            detail = f"{render.num(b.flow_m3_min)} m3/min"
-        elif b.head_lift_m:
-            detail = (
-                f"lifts {render.num(b.head_lift_m)}m head (max {render.num(b.max_head_lift_m)})"
-            )
         fp = b.footprint
         have = "" if unlocked is None else ("HAVE" if b.cls in unlocked else "LOCKED")
         rows.append(
@@ -443,7 +393,7 @@ def list_buildings(
                 b.sloop_slots,
                 str(fp) if fp else "-",
                 fp.foundations if fp else "-",
-                detail,
+                _building_detail(b),
             )
         )
 
@@ -466,8 +416,8 @@ def list_buildings(
         )
     elif unlocked is None:
         notes.append(_no_save_note(save_error))
-    # Page-scoped, like the footer: naming buildings the caller cannot see in this
-    # page's rows would read as rows gone missing.
+    # Page-scoped, like the footer: naming buildings this page does not show would read as
+    # rows gone missing.
     unknown = [b.name for b in page if not b.footprint]
     if unknown:
         notes.append(
@@ -491,7 +441,7 @@ def list_buildings(
             ),
             rows,
             total=len(picks),
-            offset=offset,
+            offset=window.start,
             limit=limit,
         )
         + "\n"

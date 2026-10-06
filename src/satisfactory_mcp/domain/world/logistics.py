@@ -16,17 +16,27 @@ from dataclasses import dataclass, field
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 from ...core.saveio import rows as saverows
+from ...core.saveio.records import actor_class
+from ...core.unionfind import UnionFind
 
-__all__ = ["Link", "PhysicalGraph", "build_physical_graph"]
+__all__ = [
+    "BASIS_UNKNOWN",
+    "BY_NATURE",
+    "BY_ROLE",
+    "Link",
+    "PhysicalGraph",
+    "build_physical_graph",
+    "side_by_nature",
+]
 
-#: How a link's direction was settled, most local evidence first. ``ROLE`` is a port that
-#: names itself an input or an output; ``NATURE`` is a run between two devices whose ports
+#: How a link's direction was settled, most local evidence first. ``BY_ROLE`` is a port that
+#: names itself an input or an output; ``BY_NATURE`` is a run between two devices whose ports
 #: do not, resolved because an extractor only ever produces and a generator only ever
-#: consumes; ``UNKNOWN`` is a run between two pipe fittings, which genuinely has no
+#: consumes; ``BASIS_UNKNOWN`` is a run between two pipe fittings, which genuinely has no
 #: direction without the rates.
 BY_ROLE = "role"
 BY_NATURE = "nature"
-UNKNOWN = "unknown"
+BASIS_UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -34,7 +44,7 @@ class Link:
     """One conduit run, contracted to the two things it joins.
 
     ``source``/``target`` are actor short names, in flow order only when ``basis`` is not
-    ``UNKNOWN``. Either is ``None`` for a run whose other end reaches nothing -- a torn
+    ``BASIS_UNKNOWN``. Either is ``None`` for a run whose other end reaches nothing -- a torn
     line, a build in progress. ``pieces`` is how many conduit actors the run contracted.
     """
 
@@ -46,14 +56,13 @@ class Link:
     #: The port role at each end, as the save spells it. ``""`` at an end that is nothing.
     source_role: str = ""
     target_role: str = ""
-    #: A ``chain:<n>`` or ``pipe:<row>`` on the run, which ``search_conduits`` prints and
-    #: ``resolve_origin`` takes. Both join by ACTOR INDEX, so the id names a piece this very
-    #: run contracted rather than the nearest one -- §6.15, ``docs/save-projection.md``.
+    #: A ``chain:<n>`` or ``pipe:<row>`` naming a piece this very run contracted, which
+    #: ``search_conduits`` prints and ``resolve_place`` takes; save-projection.md §6.15.
     #: Empty only where no piece of the run is in ``graph["actors"]`` at all.
     ident: str = ""
 
     def other(self, actor: str) -> str | None:
-        """The far end from ``actor``. The only safe way to walk an ``UNKNOWN`` link.
+        """The far end from ``actor``. The only safe way to walk a ``BASIS_UNKNOWN`` link.
 
         An undirected link is indexed from both of its ends, so ``feeds(x)`` can hand back
         one whose ``source`` IS ``x`` -- reading ``source`` there walks in a circle.
@@ -65,9 +74,9 @@ class Link:
 class PhysicalGraph:
     """Every link, indexed both ways, plus what could not be joined.
 
-    ``dangling`` holds the links whose ``target`` is ``None``. ``undirected`` counts the
-    links whose direction was declined: they appear in both indexes, because a run that
-    might feed a machine has to be visible from it.
+    ``dangling`` holds the links with one end on nothing. ``undirected`` counts the links
+    whose direction was declined: they appear in both indexes, because a run that might feed
+    a machine has to be visible from it.
     """
 
     links: list[Link] = field(default_factory=list)
@@ -89,16 +98,7 @@ class PhysicalGraph:
         return list(self.outbound.get(actor, ()))
 
 
-def _orient(role: str) -> str | None:
-    lowered = role.lower()
-    if "output" in lowered:
-        return "out"
-    if "input" in lowered:
-        return "in"
-    return None
-
-
-def _nature(cls: str, game: GameData) -> str | None:
+def side_by_nature(cls: str, game: GameData) -> str | None:
     """Which way material can move at a device whose ports do not say."""
     building = game.buildings.get(cls)
     if building is None:
@@ -110,25 +110,143 @@ def _nature(cls: str, game: GameData) -> str | None:
     return None
 
 
-def _class_of(actor: str) -> str:
-    head, _, tail = actor.rpartition("_")
-    return head if tail.isdigit() else actor
+def _named_side(roles: list[str]) -> str | None:
+    """The first direction any of a node's port roles names on this run."""
+    return next((ports.port_direction(r) for r in roles if ports.port_direction(r)), None)
 
 
-class _Union:
-    def __init__(self, size: int) -> None:
-        self._parent = list(range(size))
+def _contract_conduits(projection: dict, actors: list[str], roles: list[str]):
+    """Conduit pieces joined into runs: ``(pieces by run root, nodes and roles at each run)``.
 
-    def find(self, x: int) -> int:
-        while self._parent[x] != x:
-            self._parent[x] = self._parent[self._parent[x]]
-            x = self._parent[x]
-        return x
+    A conduit is a piece with geometry in one of the polyline tables and no behaviour of its
+    own; everything else the graph names is a node, including the fittings.
+    """
 
-    def union(self, a: int, b: int) -> None:
-        ra, rb = self.find(a), self.find(b)
-        if ra != rb:
-            self._parent[ra] = rb
+    def role_at(index: object) -> str:
+        return roles[index] if isinstance(index, int) and 0 <= index < len(roles) else ""
+
+    conduit_classes = set((projection.get("belts") or {}).get("classes") or ()) | set(
+        (projection.get("pipes") or {}).get("classes") or ()
+    )
+    is_conduit = [actor_class(a) in conduit_classes for a in actors]
+
+    joins = UnionFind()
+    edges: list[tuple[int, int, str, str]] = []
+    for edge in (projection.get("graph") or {}).get("material") or ():
+        if not isinstance(edge, (list, tuple)) or len(edge) < 4:
+            continue
+        a, b = edge[0], edge[1]
+        if not (isinstance(a, int) and isinstance(b, int)):
+            continue
+        if not (0 <= a < len(actors) and 0 <= b < len(actors)):
+            continue
+        role_a, role_b = role_at(edge[2]), role_at(edge[3])
+        if ports.is_hypertube_edge(role_a, role_b):
+            continue
+        edges.append((a, b, role_a, role_b))
+        if is_conduit[a] and is_conduit[b]:
+            joins.union(a, b)
+
+    runs: dict[int, list[int]] = defaultdict(list)
+    for i, conduit in enumerate(is_conduit):
+        if conduit:
+            runs[joins.find(i)].append(i)
+    boundary: dict[int, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
+    for a, b, role_a, role_b in edges:
+        if is_conduit[a] and not is_conduit[b]:
+            boundary[joins.find(a)][b].append(role_b)
+        elif is_conduit[b] and not is_conduit[a]:
+            boundary[joins.find(b)][a].append(role_a)
+    return runs, boundary
+
+
+def _run_numbers(projection: dict) -> dict[int, int]:
+    """Every conduit piece's actor index to its run number: a pipe's row, a belt's chain.
+
+    Keyed by the actor index both tables carry, the save's own identity for the piece rather
+    than a nearest match; save-projection.md §6.15.
+    """
+    numbers: dict[int, int] = {
+        seg.actor_index: seg.index
+        for seg in saverows.iter_pipe_segments(projection)
+        if seg.actor_index >= 0
+    }
+    numbers.update(
+        (seg.actor_index, seg.chain)
+        for seg in saverows.iter_belt_segments(projection)
+        if seg.actor_index >= 0
+    )
+    return numbers
+
+
+def _run_ident(pieces: list[int], numbers: dict[int, int], medium: str) -> str:
+    """``chain:<n>`` or ``pipe:<row>`` by the LOWEST number on the run, which does not move
+    when a piece is added at the far end."""
+    found = [numbers[i] for i in pieces if i in numbers]
+    prefix = "pipe" if medium == ports.PIPE else "chain"
+    return f"{prefix}:{min(found)}" if found else ""
+
+
+def _dangling_link(attached: dict, actors, game, medium: str, pieces: int, ident: str) -> Link:
+    """A run with one known end: its SOURCE where the run leaves it, its TARGET where the run
+    arrives, so "leaves and reaches nothing" and "arrives from nothing" stay apart."""
+    ((node, node_roles),) = attached.items()
+    side = _named_side(node_roles) or side_by_nature(actor_class(actors[node]), game)
+    arriving = side == "in"
+    return Link(
+        source=None if arriving else actors[node],
+        target=actors[node] if arriving else None,
+        medium=medium,
+        basis=BY_ROLE if side else BASIS_UNKNOWN,
+        pieces=pieces,
+        source_role="" if arriving else node_roles[0],
+        target_role=node_roles[0] if arriving else "",
+        ident=ident,
+    )
+
+
+def _joined_link(attached: dict, actors, game, medium: str, pieces: int, ident: str) -> Link:
+    """A run between two nodes, oriented by their port roles, else by their natures."""
+    (node_a, roles_a), (node_b, roles_b) = attached.items()
+    side_a, side_b = _named_side(roles_a), _named_side(roles_b)
+    basis = BY_ROLE
+    if side_a is None and side_b is None:
+        side_a = side_by_nature(actor_class(actors[node_a]), game)
+        side_b = side_by_nature(actor_class(actors[node_b]), game)
+        basis = BY_NATURE if (side_a or side_b) else BASIS_UNKNOWN
+    if side_a == "out" or side_b == "in":
+        source, target, source_roles, target_roles = node_a, node_b, roles_a, roles_b
+    elif side_a == "in" or side_b == "out":
+        source, target, source_roles, target_roles = node_b, node_a, roles_b, roles_a
+    else:
+        source, target, source_roles, target_roles = node_a, node_b, roles_a, roles_b
+        basis = BASIS_UNKNOWN
+    return Link(
+        source=actors[source],
+        target=actors[target],
+        medium=medium,
+        basis=basis,
+        pieces=pieces,
+        source_role=source_roles[0],
+        target_role=target_roles[0],
+        ident=ident,
+    )
+
+
+def _index_link(graph: PhysicalGraph, link: Link) -> None:
+    graph.links.append(link)
+    if link.source is None or link.target is None:
+        graph.dangling.append(link)
+    if link.source is not None:
+        graph.outbound[link.source].append(link)
+    if link.target is not None:
+        graph.inbound[link.target].append(link)
+    if link.basis == BASIS_UNKNOWN and link.source is not None and link.target is not None:
+        graph.undirected += 1
+        # No direction means either end may be the feeder, so the link answers from both.
+        # Reporting one arbitrary orientation is the confident wrong edge.
+        graph.outbound[link.target].append(link)
+        graph.inbound[link.source].append(link)
 
 
 def build_physical_graph(projection: dict, game: GameData) -> PhysicalGraph:
@@ -144,140 +262,21 @@ def build_physical_graph(projection: dict, game: GameData) -> PhysicalGraph:
     out = PhysicalGraph()
     if not actors:
         return out
-
-    def role_at(index: object) -> str:
-        return roles[index] if isinstance(index, int) and 0 <= index < len(roles) else ""
-
-    # A conduit is a piece with geometry in one of the polyline tables and no behaviour of
-    # its own; everything else the graph names is a node, including the fittings.
-    conduit_classes = set((projection.get("belts") or {}).get("classes") or ()) | set(
-        (projection.get("pipes") or {}).get("classes") or ()
-    )
-    is_conduit = [_class_of(a) in conduit_classes for a in actors]
-
-    joins = _Union(len(actors))
-    edges: list[tuple[int, int, str, str]] = []
-    for edge in graph.get("material") or ():
-        if not isinstance(edge, (list, tuple)) or len(edge) < 4:
-            continue
-        a, b = edge[0], edge[1]
-        if not (isinstance(a, int) and isinstance(b, int)):
-            continue
-        if not (0 <= a < len(actors) and 0 <= b < len(actors)):
-            continue
-        role_a, role_b = role_at(edge[2]), role_at(edge[3])
-        if ports.is_hypertube_edge(role_a, role_b):
-            continue
-        edges.append((a, b, role_a, role_b))
-        if is_conduit[a] and is_conduit[b]:
-            joins.union(a, b)
-
-    boundary: dict[int, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
-    members: dict[int, list[int]] = defaultdict(list)
-    for i, conduit in enumerate(is_conduit):
-        if conduit:
-            members[joins.find(i)].append(i)
-    for a, b, role_a, role_b in edges:
-        if is_conduit[a] and not is_conduit[b]:
-            boundary[joins.find(a)][b].append(role_b)
-        elif is_conduit[b] and not is_conduit[a]:
-            boundary[joins.find(b)][a].append(role_a)
-
+    runs, boundary = _contract_conduits(projection, actors, roles)
+    numbers = _run_numbers(projection)
     pipe_classes = set((projection.get("pipes") or {}).get("classes") or ())
-    # Every conduit piece to the number its run gets named by -- a pipe's own row, a belt's
-    # CHAIN -- keyed by the actor index both tables carry, which is the save's own identity
-    # for the piece rather than a nearest match. §6.15, docs/save-projection.md.
-    numbered: dict[int, int] = {
-        seg.actor_index: seg.index
-        for seg in saverows.iter_pipe_segments(projection)
-        if seg.actor_index >= 0
-    }
-    numbered.update(
-        (seg.actor_index, seg.chain)
-        for seg in saverows.iter_belt_segments(projection)
-        if seg.actor_index >= 0
-    )
-
-    def register(link: Link, on: list[int]) -> None:
-        for i in on:
-            out.run_of[actors[i]] = link
-
-    for root, on in members.items():
-        pieces = len(on)
-        medium = ports.PIPE if _class_of(actors[root]) in pipe_classes else ports.CONVEYOR
-        # The LOWEST number on the run: any piece of it lands the reader on the run, and the
-        # lowest is the one that does not move when a piece is added at the far end.
-        found = [numbered[i] for i in on if i in numbered]
-        prefix = "pipe" if medium == ports.PIPE else "chain"
-        ident = f"{prefix}:{min(found)}" if found else ""
+    for root, pieces in runs.items():
+        medium = ports.PIPE if actor_class(actors[root]) in pipe_classes else ports.CONVEYOR
+        ident = _run_ident(pieces, numbers, medium)
         attached = boundary.get(root) or {}
-        if not attached:
+        # Three or more nodes on one run would be a conduit piece with three ports, which
+        # the game has none of; taking the first two would hide the malformed record.
+        if not attached or len(attached) > 2:
             out.orphan_runs += 1
             continue
-        if len(attached) == 1:
-            ((node, node_roles),) = attached.items()
-            side = next((_orient(r) for r in node_roles if _orient(r)), None) or _nature(
-                _class_of(actors[node]), game
-            )
-            # The one known end is the SOURCE where the run leaves it and the TARGET where
-            # it arrives, so "a belt leaves this machine and reaches nothing" and "a belt
-            # arrives from nothing" stay distinguishable.
-            arriving = side == "in"
-            link = Link(
-                source=None if arriving else actors[node],
-                target=actors[node] if arriving else None,
-                medium=medium,
-                basis=BY_ROLE if side else UNKNOWN,
-                pieces=pieces,
-                source_role="" if arriving else node_roles[0],
-                target_role=node_roles[0] if arriving else "",
-                ident=ident,
-            )
-            out.links.append(link)
-            out.dangling.append(link)
-            (out.inbound if arriving else out.outbound)[actors[node]].append(link)
-            register(link, on)
-            continue
-        # A run with three or more nodes on it would mean a conduit piece with three ports,
-        # which the game has none of; taking the first two would hide the malformed record.
-        if len(attached) > 2:
-            out.orphan_runs += 1
-            continue
-        (na, roles_a), (nb, roles_b) = attached.items()
-        side_a = next((_orient(r) for r in roles_a if _orient(r)), None)
-        side_b = next((_orient(r) for r in roles_b if _orient(r)), None)
-        basis = BY_ROLE
-        if side_a is None and side_b is None:
-            side_a, side_b = (
-                _nature(_class_of(actors[na]), game),
-                _nature(_class_of(actors[nb]), game),
-            )
-            basis = BY_NATURE if (side_a or side_b) else UNKNOWN
-        if side_a == "out" or side_b == "in":
-            src, dst, src_role, dst_role = na, nb, roles_a[0], roles_b[0]
-        elif side_a == "in" or side_b == "out":
-            src, dst, src_role, dst_role = nb, na, roles_b[0], roles_a[0]
-        else:
-            src, dst, src_role, dst_role = na, nb, roles_a[0], roles_b[0]
-            basis = UNKNOWN
-        link = Link(
-            source=actors[src],
-            target=actors[dst],
-            medium=medium,
-            basis=basis,
-            pieces=pieces,
-            source_role=src_role,
-            target_role=dst_role,
-            ident=ident,
-        )
-        out.links.append(link)
-        out.outbound[link.source].append(link)
-        out.inbound[actors[dst]].append(link)
-        register(link, on)
-        if basis == UNKNOWN:
-            out.undirected += 1
-            # No direction means either end may be the feeder, so the link answers from
-            # both. Reporting one arbitrary orientation is the confident wrong edge.
-            out.outbound[actors[dst]].append(link)
-            out.inbound[link.source].append(link)
+        make = _dangling_link if len(attached) == 1 else _joined_link
+        link = make(attached, actors, game, medium, len(pieces), ident)
+        _index_link(out, link)
+        for i in pieces:
+            out.run_of[actors[i]] = link
     return out

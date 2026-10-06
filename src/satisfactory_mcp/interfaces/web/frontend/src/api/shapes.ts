@@ -1,0 +1,337 @@
+/* What the API sends, under the names the page uses -- one line per shape.
+ *
+ * THE POINT OF THIS FILE IS THAT IT HAS NO FIELDS IN IT. Every type below resolves to a
+ * component of `api/schema.d.ts`, which is generated from the server's own `/openapi.json`;
+ * a field spelled here would be a hand-written copy of a generated type.
+ *
+ * The indirection is what buys the page its own names. `components["schemas"]["…"]` at
+ * fifteen call sites would put the generator's addressing scheme into every drawing module,
+ * so a converted endpoint would be a rename across all of them; here it is one line in one
+ * file.
+ */
+
+import type { components } from "./schema";
+import type { ApiError } from "./client";
+
+type Schema = components["schemas"];
+
+/** A response BODY: the server's own schema for it, plus the error branch any reply may
+ *  carry instead. `ApiError` has only optional members, so this intersection is what makes a
+ *  generated body assignable to `get<T extends ApiError>`. */
+type Body<K extends keyof Schema> = Schema[K] & ApiError;
+
+/* ----------------------------------------------------------------- /api/nodes */
+
+export type NodeRow = Schema["NodeRow"];
+export type NodesResponse = Body<"NodesResponse">;
+
+/* --------------------------------------------------------------- /api/inspect */
+
+export type Elevation = Schema["Elevation"];
+export type NearestNode = Schema["NearestNode"];
+export type InspectResponse = Body<"InspectResponse">;
+
+/* --------------------------------------------------------------- /api/regions */
+
+export type RegionsResponse = Body<"RegionsResponse">;
+
+/* ---------------------------------------------------------------- /api/worlds */
+
+/** The five keys the picker reads, which is all `/api/worlds` sends: a response model
+ *  filters, so declaring this row kept the other eight save-header keys off the wire. */
+export type SaveRow = Schema["SaveRow"];
+
+/** One world: its saves, and the newest one's headline figures hoisted onto it.
+ *  state.ts stores these (`state.worlds`) and re-exports nothing; import from here. */
+export type WorldRow = Schema["WorldRow"];
+
+export type WorldsResponse = Body<"WorldsResponse">;
+
+/* --------------------------------------------------------------- /api/summary */
+
+/** Its `header` is an open map; see `SummaryResponse` in routers/world/worlds.py. `player` is
+ *  always sent and its three fields are what go null; markers.ts branches on that, and
+ *  reads the branch off this type as `SummaryResponse["player"]`. */
+export type SummaryResponse = Body<"SummaryResponse">;
+
+/* -------------------------------------------- /api/machines and /api/structures */
+
+export type PlacementRow = Schema["PlacementRow"];
+export type MachinesResponse = Body<"MachinesResponse">;
+export type StructureRow = Schema["StructureRow"];
+export type StructuresResponse = Body<"StructuresResponse">;
+
+/* ------------------------------------------------ /api/belts and /api/pipes */
+
+export type BeltRow = Schema["BeltRow"];
+export type AttachmentRow = Schema["AttachmentRow"];
+export type BeltsResponse = Body<"BeltsResponse">;
+
+export type PipeRow = Schema["PipeRow"];
+export type PipesResponse = Body<"PipesResponse">;
+
+/** The two closed vocabularies `/api/pipes` publishes, read off the row's own fields rather
+ *  than restated. `PIPE_FLOW_BASIS` in map/drawn/pipes.ts is a `Record` keyed by the second, so a
+ *  fifth basis in `domain/world/flow.py` is a missing key and a compile error here. */
+export type PipeDirection = PipeRow["direction"];
+export type PipeFlowBasis = PipeRow["basis"];
+
+/* --------------------------------------------------------------- /api/storage */
+
+export type StoredItem = Schema["StoredItem"];
+
+/** A container or a fluid buffer, discriminated by `kind`. The other kind's fields are
+ *  ABSENT rather than null, so a reader branches on `kind` and gets the half it is looking
+ *  at with every field required -- see docs/web-wire.md "Storage". */
+export type StorageRow = Schema["StorageSolid"] | Schema["StorageFluid"];
+export type StorageResponse = Body<"StorageResponse">;
+
+/* ----------------------------------------------------------------- /api/power */
+
+/** `cls` and `name` are nullable and the three coordinates are not: a pole is decoded out of
+ *  an INTERNED table, so its class is an index into a legend that can point past the end,
+ *  while `iter_power_poles` drops a row whose position will not read. */
+export type PoleRow = Schema["PoleRow"];
+
+/** Its ends are `[number, number, number]` rather than `number[]`, because the router spells
+ *  them as tuples and typegen carries `prefixItems` through -- so `w.a_m[2]` needs no length
+ *  guard. `from`/`to` are null for the endpoints that land on an actor no record list names.
+ *  `a_pole`/`b_pole` are each end's pole as an index into the same payload's `poles`, and
+ *  null wherever the end terminates at anything else. */
+export type WireRow = Schema["WireRow"];
+
+export type PowerResponse = Body<"PowerResponse">;
+
+/* ------------------------------------------------------------- /api/crates */
+
+export type CrateRow = Schema["CrateRow"];
+export type CratesResponse = Body<"CratesResponse">;
+
+/* ------------------------------------------------------------- /api/factories */
+
+export type FactoryRow = Schema["FactoryRow"];
+export type ProposalRow = Schema["ProposalRow"];
+export type FactoriesResponse = Body<"FactoriesResponse">;
+
+/* ------------------------------------- /api/factories/candidates and /api/labels */
+
+export type CandidateRow = Schema["CandidateRow"];
+export type Flow = Schema["Flow"];
+export type CandidatesResponse = Body<"CandidatesResponse">;
+export type NamedResponse = Body<"NamedResponse">;
+export type ForgotResponse = Body<"ForgotResponse">;
+export type RenamedResponse = Body<"RenamedResponse">;
+export type LabelRefused = Body<"LabelRefusedResponse">;
+export type GraphNode = Schema["GraphNode"];
+export type FactoryGraphResponse = Body<"FactoryGraphResponse">;
+export type MachineSpot = Schema["MachineSpot"];
+export type FactoryMachinesResponse = Body<"FactoryMachinesResponse">;
+export type AmendedResponse = Body<"AmendedResponse">;
+
+/* ------------------------------------- /api/factories/health and /api/power/circuits */
+
+export type MachineIssue = Schema["MachineIssue"];
+export type FactoryHealthRow = Schema["FactoryHealthRow"];
+export type FactoryHealthResponse = Body<"FactoryHealthResponse">;
+
+export type Ledger = Schema["Ledger"];
+export type StarvedGenerator = Schema["StarvedGenerator"];
+export type MachineRef = Schema["MachineRef"];
+export type CircuitRow = Schema["CircuitRow"];
+export type CircuitsResponse = Body<"CircuitsResponse">;
+
+/* ------------------------------------------------------- /api/progress/milestones */
+
+export type MilestoneRow = Schema["MilestoneRow"];
+export type MilestonesResponse = Body<"MilestonesResponse">;
+
+/* ------------------------------------------- /api/progress/{mam,phase,shards,sloops,harddrives} */
+
+export type MamRow = Schema["MamRow"];
+export type MamResponse = Body<"MamResponse">;
+export type PhaseRow = Schema["PhaseRow"];
+export type PhaseResponse = Body<"PhaseResponse">;
+export type ShardsResponse = Body<"ShardsResponse">;
+export type SloopsResponse = Body<"SloopsResponse">;
+export type DriveRow = Schema["DriveRow"];
+export type HardDrivesResponse = Body<"HardDrivesResponse">;
+
+/* ------------------------------------------------------------------ /api/stock */
+
+export type StockPile = Schema["StockPile"];
+export type StockPlace = Schema["StockPlace"];
+export type StockResponse = Body<"StockResponse">;
+
+/* ------------------------------------------------------ /api/gamedata and /api/search */
+
+export type ItemRow = Schema["ItemRow"];
+export type ItemsResponse = Body<"ItemsResponse">;
+export type RecipeRow = Schema["RecipeRow"];
+export type RecipesResponse = Body<"RecipesResponse">;
+export type Rate = Schema["Rate"];
+export type RecipeDetail = Body<"RecipeDetail">;
+export type MakerRow = Schema["MakerRow"];
+export type AlternatesResponse = Body<"AlternatesResponse">;
+export type UnlockedResponse = Body<"UnlockedResponse">;
+export type SearchResponse = Body<"SearchResponse">;
+
+/* ------------------------------------------------------------------ /api/plans */
+
+/** A stored plan's pad. Its coordinates are METRES already -- the siting is a statement the
+ *  player typed, not a save reading -- so nothing on either side divides by 100. */
+export type PlanSiting = Schema["PlanSiting"];
+export type PlansResponse = Body<"PlansResponse">;
+export type PlanIndexRow = Schema["PlanIndexRow"];
+
+/* ------------------------------------------ /api/plans/{key}, /ops, /undo, /args */
+
+export type PlanOpBody = Schema["PlanOpBody"];
+export type ActorBody = Schema["ActorBody"];
+export type CommitBody = Schema["CommitBody"];
+export type PlanArgsBody = Schema["PlanArgsBody"];
+export type PlanStateBody = Body<"PlanStateBody">;
+export type PlanOpsResponse = Body<"PlanOpsResponse">;
+export type PushedResponse = Body<"PushedResponse">;
+export type ConflictBody = Schema["ConflictBody"];
+export type OutdatedResponse = Body<"OutdatedResponse">;
+export type AlreadyUndoneResponse = Body<"AlreadyUndoneResponse">;
+export type NameTakenResponse = Body<"NameTakenResponse">;
+
+/* ------------------------------------------ /api/plan/solve, /api/ui/focus, /api/activity */
+
+export type SolveRate = Schema["SolveRate"];
+export type SolveRow = Schema["SolveRow"];
+export type SolveResponse = Body<"SolveResponse">;
+export type FocusSelection = Schema["Selection"];
+export type FocusResponse = Body<"FocusResponse">;
+export type ActivityRow = Schema["ActivityRow"];
+export type ActivityResponse = Body<"ActivityResponse">;
+
+/* ------------------------------------ /api/plans/{key}/versions, /restore, /duplicate, /api/plan/delta */
+
+export type VersionRow = Schema["VersionRow"];
+export type VersionsResponse = Body<"VersionsResponse">;
+export type DeltaRow = Schema["DeltaRow"];
+export type DeltaResponse = Body<"DeltaResponse">;
+
+/* ------------------------------ planner P3: graph, alternates, pins (docs/planner-p3_contract.md §5.2) */
+
+export type PlanGraphNode = Schema["PlanGraphNode"];
+export type PlanGraphEdge = Schema["PlanGraphEdge"];
+export type PlanGraph = Schema["PlanGraph"];
+export type RowChange = Schema["RowChange"];
+export type ResultDelta = Schema["ResultDelta"];
+export type SwapOption = Schema["SwapOption"];
+export type PlanAlternatesResponse = Body<"PlanAlternatesResponse">;
+export type PinRef = Schema["PinRef"];
+export type PinRow = Schema["PinRow"];
+export type PinsResponse = Body<"PinsResponse">;
+export type PinCreated = Body<"PinCreated">;
+export type PinDropped = Body<"PinDropped">;
+export type PinStaleResponse = Body<"PinStaleResponse">;
+
+/* ------------------------------------- /api/plan/track, /api/plan/feeders, /api/asks */
+
+export type SitePreviewResponse = Body<"SitePreviewResponse">;
+export type TrackState = Schema["TrackState"];
+export type TrackMachine = Schema["TrackMachine"];
+export type TrackTarget = Schema["TrackTarget"];
+export type TrackRow = Schema["TrackRow"];
+export type TrackStageRow = Schema["TrackStageRow"];
+export type TrackStage = Schema["TrackStage"];
+export type TrackStartup = Schema["TrackStartup"];
+export type TrackPower = Schema["TrackPower"];
+export type TrackCost = Schema["TrackCost"];
+export type TrackNeighbour = Schema["TrackNeighbour"];
+export type TrackSiteRow = Schema["TrackSiteRow"];
+export type TrackSite = Schema["TrackSite"];
+export type TrackResponse = Body<"TrackResponse">;
+export type TrackBuiltCandidate = Schema["TrackBuiltCandidate"];
+export type TrackBuiltAt = Schema["TrackBuiltAt"];
+export type PlanBuiltRow = Schema["PlanBuiltRow"];
+export type PlansBuiltResponse = Body<"PlansBuiltResponse">;
+export type Feeder = Schema["Feeder"];
+export type FeedersResponse = Body<"FeedersResponse">;
+export type AskAbout = Schema["AskAbout"];
+export type AskRow = Schema["AskRow"];
+export type AsksResponse = Body<"AsksResponse">;
+export type AskCreateBody = Schema["AskCreateBody"];
+export type AskDropBody = Schema["AskDropBody"];
+export type AskDropped = Body<"AskDropped">;
+export type AskStaleResponse = Body<"AskStaleResponse">;
+
+/* ---------------------------------------------------------------- /api/advice */
+
+export type AdviceRow = Schema["AdviceRow"];
+export type AdviceResponse = Body<"AdviceResponse">;
+export type AdviceRestored = Body<"AdviceRestored">;
+export type AdviceStaleResponse = Body<"AdviceStaleResponse">;
+
+/* ---------------------------------------------------------- /api/collectibles */
+
+export type CollectibleRow = Schema["CollectibleRow"];
+export type CensusRow = Schema["CensusRow"];
+export type CollectiblesResponse = Body<"CollectiblesResponse">;
+
+/* ------------------------------------------------------------------ /api/world/* */
+
+export type TableAge = Schema["TableAge"];
+export type FoundNode = Schema["FoundNode"];
+export type FoundField = Schema["FoundField"];
+export type WaterBlock = Schema["WaterBlock"];
+export type NodeChoices = Schema["NodeChoices"];
+export type NodeFindResponse = Body<"NodeFindResponse">;
+export type RankedSite = Schema["RankedSite"];
+export type RankedSitesResponse = Body<"RankedSitesResponse">;
+export type RunEnd = Schema["RunEnd"];
+export type RunRow = Schema["RunRow"];
+export type NetworkRow = Schema["NetworkRow"];
+export type ConduitsResponse = Body<"ConduitsResponse">;
+export type HereResponse = Body<"HereResponse">;
+export type RegionRow = Schema["RegionRow"];
+export type RegionTableResponse = Body<"RegionTableResponse">;
+export type ConduitCount = Schema["ConduitCount"];
+export type NearPickup = Schema["NearPickup"];
+
+/* ------------------------------------------------------------------ both, and shared */
+
+/** A region lookup, hung on a node row and answered for an inspected point. Declared once
+ *  on the server too -- in `serial/shapes.py`, for the same reason it is one name here. */
+export type Region = Schema["Region"];
+
+/* ------------------------------------------------------------------ /api/trace */
+
+export type TraceMachine = Schema["TraceMachine"];
+export type TraceResponse = Body<"TraceResponse">;
+
+/* ------------------------------------------- /api/factories/aspects and /sites */
+
+export type AspectBalance = Schema["AspectBalance"];
+export type AspectMachine = Schema["AspectMachine"];
+export type AspectCount = Schema["AspectCount"];
+export type AspectNode = Schema["AspectNode"];
+export type AspectLink = Schema["AspectLink"];
+export type FactoryAspectsResponse = Body<"FactoryAspectsResponse">;
+export type SiteRow = Schema["SiteRow"];
+export type SitesResponse = Body<"SitesResponse">;
+export type FloorPlatform = Schema["FloorPlatform"];
+export type FloorBand = Schema["FloorBand"];
+export type FloorDeck = Schema["FloorDeck"];
+export type FloorRun = Schema["FloorRun"];
+export type FloorsResponse = Body<"FloorsResponse">;
+
+/* ---------------------------------------------------------------- /api/settings */
+
+export type SettingsResponse = Body<"SettingsResponse">;
+export type SettingsStaleResponse = Body<"SettingsStaleResponse">;
+
+/* -------------------------------------------------------------------- /api/maps */
+
+export type MapTypeBody = Schema["MapTypeBody"];
+export type MapJobBody = Schema["MapJobBody"];
+export type MapInputBody = Schema["MapInputBody"];
+export type MapsResponse = Body<"MapsResponse">;
+export type MapJobResponse = Body<"MapJobResponse">;
+export type MapJobDetailResponse = Body<"MapJobDetailResponse">;
+export type MapEstimateResponse = Body<"MapEstimateResponse">;
+export type MapCacheResponse = Body<"MapCacheResponse">;

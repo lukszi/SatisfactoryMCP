@@ -68,7 +68,7 @@ excluded from the model entirely, not modelled with a zero.
 
 - **Pipe fill is readable, and this is the useful finding.** Every `Build_Pipeline*` actor
   carries `mFluidBox`, a float of cubic metres — not only the junctions, pumps and valves
-  (`core/saveio/extract.py`). Capacity is proportional to length: across the reference
+  (`core/saveio/extract/`). Capacity is proportional to length: across the reference
   world's 503 pipes, binned by spline length in 5 m steps, the fullest pipe in every bin from
   15 m to 55 m reads **1.858 m³/m** to four significant figures. So "how full is this pipe"
   is a measurement, and the manual's central rule — a pipe only flows at its rated rate when
@@ -147,7 +147,7 @@ supplemental water away from every generator on the reference world and 32 of th
 of Water. As the base is actually wired the plumbing reaches all 32, so every one is answered at
 rung (3), the rates. Cut power to every pump and the *same* 32 move to rung (2) behind the five
 crests that appear — with not one of them still being told to check its supply. Pinned in
-`tests/test_health.py`; it is the whole of phase 3 in one assertion.
+`tests/domain/factories/health/test_fluid_rungs.py`; it is the whole of phase 3 in one assertion.
 
 ### Limits
 

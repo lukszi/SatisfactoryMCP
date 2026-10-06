@@ -3,22 +3,10 @@
 from __future__ import annotations
 
 from ...core.saveio import ports
+from ...core.saveio.records import actor_class, iter_machine_records
 from .model import Edge, FactoryGraph, kind_of
 
-__all__ = ["build_graph", "class_of"]
-
-
-def class_of(actor: str) -> str:
-    """Buildable class from an actor's short instance name.
-
-    ``Build_ConstructorMk1_C_2147441119`` -> ``Build_ConstructorMk1_C``. The trailing
-    id is what makes an actor unique across saves, so it must be stripped to get the
-    class and kept to get identity.
-    """
-    parts = actor.rsplit("_", 1)
-    if len(parts) == 2 and parts[1].isdigit():
-        return parts[0]
-    return actor
+__all__ = ["build_graph"]
 
 
 def build_graph(projection: dict) -> FactoryGraph:
@@ -26,15 +14,11 @@ def build_graph(projection: dict) -> FactoryGraph:
     actors: list[str] = payload.get("actors", [])
     roles: list[str] = payload.get("roles", [])
 
-    cls = {a: class_of(a) for a in actors}
-    # The interned actor list is derived from EDGES, so a machine wired to nothing --
-    # 6 of 570 on the reference save, mostly half-built assemblers -- would be absent
-    # from the graph entirely and so could never be reported as unlabelled. An
-    # isolated machine is exactly the thing a coverage report exists to surface.
-    for key in ("machines", "extractors", "generators"):
-        for record in projection.get(key, ()):
-            name = record["instance"].rsplit(".", 1)[-1]
-            cls.setdefault(name, class_of(name))
+    cls = {a: actor_class(a) for a in actors}
+    # The interned actor list is derived from EDGES, so a machine wired to nothing would be
+    # absent from the graph and could never be reported; seed every machine record (§6.1).
+    for _group, leaf, _record in iter_machine_records(projection):
+        cls.setdefault(leaf, actor_class(leaf))
     graph = FactoryGraph(cls=cls)
 
     def role(index: int) -> str:

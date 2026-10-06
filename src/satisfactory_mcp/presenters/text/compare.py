@@ -2,25 +2,31 @@
 
 from __future__ import annotations
 
-from ...domain.planning.compare import PROBE_RATE, Route, RouteComparison, _short
+from ...domain.planning.analysis.recipe_routes import (
+    PROBE_RATE,
+    Route,
+    RouteComparison,
+    short_recipe_name,
+)
 from . import primitives as render
 
 __all__ = ["render_comparison"]
 
 
-def render_comparison(cmp: RouteComparison, limit: int = 10) -> str:
+def render_comparison(comparison: RouteComparison, limit: int = 10) -> str:
     """The routes as compact TSV, best first."""
-    unit = cmp.primary_unit
-    short_primary = cmp.primary_name.split()[-1].lower()
+    unit = comparison.primary_unit
+    short_primary = comparison.primary_name.split()[-1].lower()
     head = (
-        f"# {len(cmp.routes)} route(s) make {cmp.item_name} at {render.num(cmp.rate)}/min. "
+        f"# {len(comparison.routes)} route(s) make {comparison.item_name} at "
+        f"{render.num(comparison.rate)}/min. "
         "one producer pinned per route, LP picks the rest; "
         "mach=at best raw/fewest at any raw, MW=the chain's own draw."
     )
-    if not cmp.routes:
-        return render.envelope(head, "", cmp.notes)
+    if not comparison.routes:
+        return render.envelope(head, "", comparison.notes)
 
-    gap = _gap_line(cmp, short_primary, unit)
+    gap = _gap_line(comparison, short_primary, unit)
     headers = [
         "route",
         f"{render.num(PROBE_RATE)}{short_primary}->",
@@ -28,44 +34,48 @@ def render_comparison(cmp: RouteComparison, limit: int = 10) -> str:
         "mach",
         "MW",
     ]
-    if cmp.generator_mw_per_unit:
+    if comparison.generator_mw_per_unit:
         headers.append(f"MW/{short_primary}")
     headers += ["byproduct", "with"]
     n_cols = len(headers)
 
     rows = []
-    for r in cmp.routes[: render.clamp(limit)]:
+    for r in comparison.routes[: render.clamp(limit)]:
         if not r.ok:
-            rows.append([_short(r.name), r.status.upper(), *["-"] * (n_cols - 3), r.note])
+            rows.append(
+                [short_recipe_name(r.name), r.status.upper(), *["-"] * (n_cols - 3), r.note]
+            )
             continue
         row = [
-            _short(r.name),
+            short_recipe_name(r.name),
             render.num(r.yield_per_probe),
             render.num(r.per_unit, 4),
             _machines(r),
-            # round() first: render.num strips trailing zeros, so formatting -190.1
-            # to zero places yields the string "-19".
+            # round() first: render.num strips trailing zeros, so -190.1 to zero places
+            # would read "-19".
             render.num(round(r.mw)),
         ]
-        if cmp.generator_mw_per_unit:
+        if comparison.generator_mw_per_unit:
             row.append(render.num(r.power_yield))
         row.append(
             ", ".join(f"{b.name} {render.num(b.rate)} {b.outlet.upper()}" for b in r.byproducts[:2])
             or "-"
         )
-        row.append(_with(r.upstream))
+        row.append(_upstream_summary(r.upstream))
         rows.append(row)
 
     body = render.table(
         headers,
         rows,
-        total=len(cmp.routes),
+        total=len(comparison.routes),
         hint="raise limit -- the routes are ranked, so there is no offset",
     )
     footer = render.ids_footer(
-        (_short(r.name), r.recipe) for r in cmp.routes[: render.clamp(limit)]
+        (short_recipe_name(r.name), r.recipe) for r in comparison.routes[: render.clamp(limit)]
     )
-    return render.envelope(head + ("\n" + gap if gap else ""), body + "\n" + footer, cmp.notes)
+    return render.envelope(
+        head + ("\n" + gap if gap else ""), body + "\n" + footer, comparison.notes
+    )
 
 
 def _machines(r: Route) -> str:
@@ -79,31 +89,28 @@ def _machines(r: Route) -> str:
     return str(r.machines)
 
 
-def _with(upstream: list[str], keep: int = 2) -> str:
-    if not upstream:
-        return "-"
-    if len(upstream) <= keep:
-        return " + ".join(upstream)
-    return " + ".join(upstream[:keep]) + f" +{len(upstream) - keep}"
+def _upstream_summary(upstream: list[str], keep: int = 2) -> str:
+    """The recipes a route leans on upstream: the first ``keep``, then a count."""
+    return render.capped(upstream, keep, sep=" + ", more=" +{n}") or "-"
 
 
-def _gap_line(cmp: RouteComparison, short_primary: str, unit: str) -> str:
+def _gap_line(comparison: RouteComparison, short_primary: str, unit: str) -> str:
     """The best-to-worst spread as a line of its own, so the multiple is stated rather than
     left to be divided out of two table cells."""
-    ok = cmp.feasible
+    ok = comparison.feasible
     if len(ok) < 2:
         return ""
     best, worst = ok[0], ok[-1]
     parts = [
         (
-            f"# best vs worst: {_short(best.name)} needs {render.num(best.per_unit, 4)} vs "
-            f"{render.num(worst.per_unit, 4)} {unit} {cmp.primary_name} per {cmp.item_name} "
-            f"({render.num(worst.per_unit / best.per_unit)}x)"
+            f"# best vs worst: {short_recipe_name(best.name)} needs {render.num(best.per_unit, 4)} vs "
+            f"{render.num(worst.per_unit, 4)} {unit} {comparison.primary_name} per "
+            f"{comparison.item_name} ({render.num(worst.per_unit / best.per_unit)}x)"
         )
     ]
     if best.power_yield and worst.power_yield:
         parts.append(
-            f"burnt in the {cmp.generator}: {render.num(best.power_yield)} vs "
+            f"burnt in the {comparison.generator}: {render.num(best.power_yield)} vs "
             f"{render.num(worst.power_yield)} net MW per {unit} {short_primary} "
             f"({render.num(best.power_yield / worst.power_yield)}x)"
         )

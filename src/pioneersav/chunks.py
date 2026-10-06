@@ -72,10 +72,10 @@ def decompress_body(data: bytes, offset: int, *, old: bool = False) -> bytes:
                 "being written"
             )
         max_plain = r.i64()
-        algo = ZLIB if old else r.i8()
-        if algo != ZLIB:
+        compressor = ZLIB if old else r.i8()
+        if compressor != ZLIB:
             raise ParseError(
-                f"chunk at {start} uses compressor {algo}, only {ZLIB} (zlib) is known"
+                f"chunk at {start} uses compressor {compressor}, only {ZLIB} (zlib) is known"
             )
         first_compressed, first_plain = r.i64(), r.i64()
         compressed, plain = r.i64(), r.i64()

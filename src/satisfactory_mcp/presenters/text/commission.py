@@ -9,39 +9,18 @@ build order are not.
 
 from __future__ import annotations
 
-from ...core.gamedata.model import GameData
-from ...domain.planning.commission_service import CommissionReport
-from ...domain.planning.diff_service import MEASURED_SOURCE, NAMEPLATE_SOURCE
+from ...domain.planning.progress.commission_service import CommissionReport
+from ...domain.planning.progress.diff_service import MEASURED_SOURCE, NAMEPLATE_SOURCE
 from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render
-from .diff import built_lines
+from .diff import built_at_lines
 
 __all__ = ["render_commission"]
 
 
-def render_commission(
-    g: GameData,
-    st: WorldState,
-    report: CommissionReport,
-    *,
-    objective: str,
-    limit: int,
-    offset: int = 0,
-    plan_name: str = "",
-    plan_notes: list[str] | None = None,
-) -> str:
-    prepared = report.prepared
-    if prepared.failure:
-        return render.envelope(
-            f"# {prepared.failure.headline} -- nothing to commission",
-            "",
-            [*prepared.failure.notes, "see plan_factory for why"],
-        )
-    plan_notes = [*(plan_notes or [])]
-    plan_run, power = report.plan_run, report.power
-    head, source = report.head_mw, report.head_source
-
+def _wave_rows(plan_run) -> list[tuple]:
+    """Each wave's summary line, followed by the processes it switches on."""
     rows = []
     for w in plan_run.waves:
         rows.append(
@@ -67,38 +46,13 @@ def render_commission(
                     "",
                 )
             )
-    # Truncation applies to the WHOLE sequence, never per wave: a wave's generator rows sort
-    # last by chain depth, and they are the only rows that pay for the next wave. `offset`
-    # continues that one sequence, so a page can start mid-wave and show no wave summary line.
-    offset = max(0, offset)
-    body = render.table(
-        ("wave", "chain", "on", "cum", "process", "MW", "free after"),
-        rows[offset : offset + render.clamp(limit, default=25)],
-        total=len(rows),
-        offset=offset,
-        limit=limit,
-    )
+    return rows
 
-    summary = "\n".join(
-        [
-            f"# startup order for {objective}"
-            + (f" ({plan_name})" if plan_name else "")
-            + f", {len(plan_run.waves)} wave(s)",
-            f"# {st.age_note}",
-            *built_lines(report.built_at, plan_name),
-            (
-                f"headroom_MW={head:,.0f} (source: {source})  "
-                f"plant_draw_MW={plan_run.plant_draw_mw:,.0f}  "
-                f"plant_generation_MW={plan_run.plant_generation_mw:,.0f}"
-            ),
-            (
-                f"minimum_slice_MW={plan_run.minimum_slice_mw:,.0f} "
-                "(one machine of every process -- the floor no order can go under)"
-            ),
-        ]
-    )
 
-    notes = [*plan_notes, *plan_run.warnings]
+def _headroom_notes(report: CommissionReport) -> list[str]:
+    """Which headroom the waves were cut against, and how the other figure compares."""
+    power, head, source = report.power, report.headroom_mw, report.headroom_source
+    notes = []
     if source in (NAMEPLATE_SOURCE, MEASURED_SOURCE) and biomass_note(power):
         notes.append(biomass_note(power))
     if source == NAMEPLATE_SOURCE and power["measured_headroom_mw"] > head * 1.2:
@@ -118,46 +72,114 @@ def render_commission(
             "un-starve idle machines and the fuse blows on demand, not on averages"
             + (f". pass headroom_mw={nameplate:.0f} to plan against it" if nameplate >= 1 else "")
         )
-    if plan_run.ok:
-        notes.append(
+    return notes
+
+
+def _startup_notes(report: CommissionReport) -> list[str]:
+    """How to carry the sequence out safely: build first, switches, waits, cutover risk."""
+    plan_run = report.startup
+    if not plan_run.ok:
+        return []
+    notes = [
+        (
             "build EVERYTHING first, unpowered: a machine draws only when it runs, so "
             "construction is never the constraint. These waves are switch-ons"
         )
-        # Read from the save's own connections, and only PROVEN-running generators count.
-        if report.live:
-            notes.append(
-                "CUTOVER RISK -- these are already feeding running generators, so "
-                "repiping one mid-startup takes that power out at the worst moment: "
-                + "; ".join(f"{name} ({mw:,.0f} MW)" for name, mw in report.live[:4])
-                + ". trace_upstream on any of them shows what hangs off it"
-            )
+    ]
+    # Read from the save's own connections; only PROVEN-running generators count.
+    if report.live_feeders:
         notes.append(
-            "wire one Power Switch per block before starting. Energising is then a "
-            "switch flip, and a block that misbehaves can be isolated -- without one, "
-            "an overload blows the fuse on the WHOLE grid and stops the plant feeding it"
+            "CUTOVER RISK -- these are already feeding running generators, so "
+            "repiping one mid-startup takes that power out at the worst moment: "
+            + "; ".join(f"{name} ({mw:,.0f} MW)" for name, mw in report.live_feeders[:4])
+            + ". trace_upstream on any of them shows what hangs off it"
         )
-        waits = [w.index for w in plan_run.waves if w.waits_for_fill]
-        if waits:
-            notes.append(
-                "wave(s) "
-                + ", ".join(f"W{i}" for i in waits[:6])
-                + " energise consumers and the generators they feed: let the pipes fill "
-                "and the generators come up to speed BEFORE starting the next wave. A "
-                "wave's own generation is not counted until it completes, so the free-MW "
-                "column is what you have during the wait, not after it"
-            )
-        slowest = max((w.fill_s() for w in plan_run.waves), default=0.0)
+    notes.append(
+        "wire one Power Switch per block before starting. Energising is then a "
+        "switch flip, and a block that misbehaves can be isolated -- without one, "
+        "an overload blows the fuse on the WHOLE grid and stops the plant feeding it"
+    )
+    waits = [w.index for w in plan_run.waves if w.waits_for_fill]
+    if waits:
         notes.append(
-            f"the wait is a LOWER bound (>={slowest:.0f}s on the longest wave): it sums "
-            "one full cycle at each chain depth, which every stage must finish before the "
-            "next sees anything. It does NOT include pipe transit -- a pipe's fluid volume "
-            "is not in the dump (only mRadius, which is collision geometry) and route "
-            "lengths are unknown -- so on a long run the real wait is longer, and the "
-            "deficit is carried for all of it"
+            "wave(s) "
+            + ", ".join(f"W{i}" for i in waits[:6])
+            + " energise consumers and the generators they feed: let the pipes fill "
+            "and the generators come up to speed BEFORE starting the next wave. A "
+            "wave's own generation is not counted until it completes, so the free-MW "
+            "column is what you have during the wait, not after it"
         )
-        notes.append(
-            "waves are power-ordered, not ratio-balanced -- whole machines cannot hit "
-            "the plan's ratios at the bottom of the ramp, so early waves run starved. "
-            "That is safe: a starved machine idles and draws less than modelled"
+    slowest = max((w.fill_s() for w in plan_run.waves), default=0.0)
+    notes.append(
+        f"the wait is a LOWER bound (>={slowest:.0f}s on the longest wave): it sums "
+        "one full cycle at each chain depth, which every stage must finish before the "
+        "next sees anything. It does NOT include pipe transit -- a pipe's fluid volume "
+        "is not in the dump (only mRadius, which is collision geometry) and route "
+        "lengths are unknown -- so on a long run the real wait is longer, and the "
+        "deficit is carried for all of it"
+    )
+    notes.append(
+        "waves are power-ordered, not ratio-balanced -- whole machines cannot hit "
+        "the plan's ratios at the bottom of the ramp, so early waves run starved. "
+        "That is safe: a starved machine idles and draws less than modelled"
+    )
+    return notes
+
+
+def render_commission(
+    st: WorldState,
+    report: CommissionReport,
+    *,
+    objective: str,
+    limit: int,
+    offset: int = 0,
+    plan_name: str = "",
+    plan_notes: list[str] | None = None,
+) -> str:
+    prepared = report.prepared
+    if prepared.failure:
+        return render.envelope(
+            f"# {prepared.failure.headline} -- nothing to commission",
+            "",
+            [*prepared.failure.notes, "see plan_factory for why"],
         )
+    plan_run = report.startup
+    head, source = report.headroom_mw, report.headroom_source
+
+    rows = _wave_rows(plan_run)
+    # Truncation applies to the WHOLE sequence, never per wave: a wave's generator rows sort
+    # last and are the only rows that pay for the next wave, so a page may start mid-wave.
+    window = render.page(limit, offset, default=25)
+    body = render.table(
+        ("wave", "chain", "on", "cum", "process", "MW", "free after"),
+        window.of(rows),
+        total=len(rows),
+        offset=window.start,
+        limit=limit,
+    )
+
+    summary = "\n".join(
+        [
+            f"# startup order for {objective}"
+            + (f" ({plan_name})" if plan_name else "")
+            + f", {len(plan_run.waves)} wave(s)",
+            f"# {st.age_note}",
+            *built_at_lines(report.built_at, plan_name),
+            (
+                f"headroom_MW={head:,.0f} (source: {source})  "
+                f"plant_draw_MW={plan_run.plant_draw_mw:,.0f}  "
+                f"plant_generation_MW={plan_run.plant_generation_mw:,.0f}"
+            ),
+            (
+                f"minimum_slice_MW={plan_run.minimum_slice_mw:,.0f} "
+                "(one machine of every process -- the floor no order can go under)"
+            ),
+        ]
+    )
+    notes = [
+        *(plan_notes or []),
+        *plan_run.warnings,
+        *_headroom_notes(report),
+        *_startup_notes(report),
+    ]
     return render.envelope(summary, body, notes)

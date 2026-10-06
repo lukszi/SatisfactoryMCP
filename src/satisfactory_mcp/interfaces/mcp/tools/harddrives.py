@@ -1,45 +1,29 @@
-"""Hard-drive research: what is waiting to be picked, and which option to take.
-
-Split from ``planning`` because the question is different in kind. The optimiser sizes a
-factory you have decided to build; this ranks a one-off choice against the factory you
-already have.
-
-**The choice is not irreversible, and saying it was made this advice worse.** Confirmed by
-the player in-game (2026-07-28), closing OQ2: the option you do NOT take **returns to the
-pool** and can be offered by a later drive. Only the drive is spent, never the schematic.
-
-That inverts the advice. Picking is low-stakes, so the right move is to take whatever helps
-the factory you have now and let the other alternate come back around -- there is nothing
-to agonise over and no reason to hoard an unclaimed drive waiting for a better roll. The
-old framing ("irreversible") argued for exactly the opposite behaviour.
-"""
+"""Hard-drive research: pending choices and which option to take (pool rule: docs/planning.md)."""
 
 from __future__ import annotations
 
-from ....domain.planning import advisor
+from ....domain.planning.analysis import advisor
 from ....presenters.text import primitives as render
-from ..app import AsOf, Limit, _state, mcp
+from ....presenters.text.search import item_flows
+from .. import app
+from ..params import AsOf, Limit
 
-#: Said on every hard-drive response, because it is the fact that decides how hard to
-#: think about the choice, and it is not visible anywhere in the game's own UI.
+#: Said on every hard-drive response: it decides how hard to think about the choice, and
+#: the game's own UI does not show it.
 POOL_RULE = (
     "the option you do NOT pick is not lost -- it returns to the pool and a later drive "
     "can offer it again. Only the drive is spent, so pick what helps now"
 )
 
-
-#: Character budget for one option's grant list. 25 drives x 2 options is most of this
-#: response, and the whole response has to stay inside a model's context.
+#: Character budget for one option's grant list: 25 drives x 2 options is most of a response.
 _GRANT_CHARS = 90
 
 
 def _grants(option: dict, game) -> str:
-    """What an option is actually offering: what its recipes make, and in what.
+    """What an option offers: what its recipes make, and in what.
 
-    The name of an alternate schematic is the name of the recipe it grants, so listing
-    the recipes by name says nothing a reader cannot already see. What it makes and where
-    is the part that decides between two drives, and it is the part that used to cost a
-    ``recipe_detail`` call per option.
+    The schematic's name is already the recipe's name; what it makes and where is the part
+    that decides between two drives.
     """
     if option["slots"]:
         return f"+{option['slots']} inventory slots"
@@ -47,18 +31,17 @@ def _grants(option: dict, game) -> str:
         return "nothing new"
     out = []
     for r in option["recipes"]:
-        made = render.flows((game.item_name(f.item), f.per_min, False) for f in r.products)
+        made = item_flows(game, r.products)
         machine = game.machine(r)
         out.append(f"{made}{f' @{machine.name}' if machine else ''}")
-    # Whole entries or none of them: half a rate ("270 Silic") reads as a smaller number
-    # rather than as a truncation, which is the one thing this column must not do.
+    # Whole entries or none: half a rate ("270 Silic") reads as a smaller number.
     kept: list[str] = []
     while out and len(", ".join([*kept, out[0]])) <= _GRANT_CHARS:
         kept.append(out.pop(0))
     return ", ".join(kept + ([f"+{len(out)} more"] if out else []))
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def list_pending_hard_drive_choices(
     save: str | None = None,
     world: str | None = None,
@@ -67,32 +50,32 @@ def list_pending_hard_drive_choices(
     offset: int = 0,
 ) -> str:
     """The pending hard-drive choices stored in the save, with rerolls left."""
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
+    st = app.load_world(save, world, as_of)
     g = st.game
     offers = st.hard_drive_offers
+    window = render.page(limit, offset, default=25)
     rows = []
-    start = max(0, offset)
-    n = render.clamp(limit, default=25)
-    for o in offers[start : start + n]:
-        opts = [f"{opt['name']} ({_grants(opt, g)})" for opt in o.options]
-        rows.append((o.hard_drive_id, o.rerolls_left, " | ".join(opts)))
+    for offer in window.of(offers):
+        options = [f"{opt['name']} ({_grants(opt, g)})" for opt in offer.options]
+        rows.append((offer.hard_drive_id, offer.rerolls_left, " | ".join(options)))
     last = st.harddrive_desk.last_used_hard_drive_id
     return render.envelope(
         f"# {st.age_note}\n"
         f"# {len(offers)} unclaimed hard drive(s), each a live choice; "
         f"{st.spare_hard_drives()} unanalysed drive(s) on hand"
         + (f"; drive {last} was the last one analysed" if last is not None else ""),
-        render.table(("id", "rerolls", "options"), rows, total=len(offers), offset=start, limit=n),
+        render.table(
+            ("id", "rerolls", "options"),
+            rows,
+            total=len(offers),
+            offset=window.start,
+            limit=window.size,
+        ),
         [
             "use advise_hard_drive_pick(hard_drive_id=N) to rank one drive's options",
             "an option shows what its recipes MAKE and where; recipe_detail has the inputs",
             POOL_RULE,
-            # Measured across all 25 offers on the reference save: every drive shows
-            # exactly 2 options and starts with exactly 1 reroll, which matches
-            # mNumSchematicsPerHardDrive and mNumRerollsPerHardDrive in the headers.
+            # mNumSchematicsPerHardDrive and mNumRerollsPerHardDrive in the save headers.
             (
                 "each drive offers 2 options and allows 1 reroll; a reroll can re-serve "
                 "an excluded schematic when the pool is thin, so it is never simply wasted"
@@ -101,7 +84,7 @@ def list_pending_hard_drive_choices(
     )
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def advise_hard_drive_pick(
     hard_drive_id: int,
     sources: list[str] | None = None,
@@ -118,45 +101,44 @@ def advise_hard_drive_pick(
     ``sources`` is plan_factory's selector list and means the same thing here, so the
     baseline printed is the same quantity plan_factory reports for the same nodes.
     """
-    try:
-        st = _state(save, world, as_of)
-    except Exception as exc:
-        return f"could not read save: {exc}"
-
+    st = app.load_world(save, world, as_of)
     try:
         results = advisor.advise_hard_drive(st, sources, hard_drive_id)
     except ValueError as exc:
         return str(exc)
     if not results:
         return f"no unclaimed hard drive with id {hard_drive_id}"
-    res = results[0]
+    advice = results[0]
 
-    rows_out = []
-    for opt in res["options"]:
-        d = opt["deltas"]
-        rows_out.append(
+    rows = []
+    for option in advice["options"]:
+        deltas = option["deltas"]
+        rows.append(
             (
-                opt["name"],
-                render.num(d.get("net_mw")),
-                render.num(d.get("mw_with_products")),
-                render.num(d.get("min_machines_for_plastic")),
-                f"{render.num(d.get('own_output_machines'))} ({opt.get('own_output_item') or '-'})",
-                ", ".join(opt["new_recipes"]) or "-",
-                "; ".join(opt["new_buildings"] + opt["blocked_by"] + opt["notes"]) or "",
+                option["name"],
+                render.num(deltas.get("net_mw")),
+                render.num(deltas.get("mw_with_products")),
+                render.num(deltas.get("min_machines_for_plastic")),
+                (
+                    f"{render.num(deltas.get('own_output_machines'))} "
+                    f"({option.get('own_output_item') or '-'})"
+                ),
+                ", ".join(option["new_recipes"]) or "-",
+                "; ".join(option["new_buildings"] + option["blocked_by"] + option["notes"]) or "",
             )
         )
-    base = res["baseline"]
+    baseline = advice["baseline"]
     last = st.harddrive_desk.last_used_hard_drive_id
     return render.envelope(
         "\n".join(
             [
-                f"# hard drive {res['hard_drive_id']}, rerolls left {res['rerolls_left']}"
+                f"# hard drive {advice['hard_drive_id']}, rerolls left {advice['rerolls_left']}"
                 + (f" (drive {last} was the last one analysed)" if last is not None else ""),
                 f"# {st.age_note}",
-                f"# sources: {res['basket']}",
-                "# baseline: " + render.kv([(k, render.num(v)) for k, v in base.items()]),
-                f"# {res['baseline_note']}",
-                f"# suggestion: {res['suggestion']}",
+                f"# sources: {advice['basket']}",
+                "# baseline: " + render.kv([(k, render.num(v)) for k, v in baseline.items()]),
+                f"# {advice['baseline_note']}",
+                f"# suggestion: {advice['suggestion']}",
             ]
         ),
         render.table(
@@ -169,11 +151,11 @@ def advise_hard_drive_pick(
                 "new recipes",
                 "caveats",
             ),
-            rows_out,
+            rows,
         ),
         [
-            *res.get("selector_errors", []),
-            *res.get("notes", []),
+            *advice.get("selector_errors", []),
+            *advice.get("notes", []),
             "deltas are marginal value vs this world's current recipes",
             "a 0 delta means the player already has a route that dominates it",
             POOL_RULE,

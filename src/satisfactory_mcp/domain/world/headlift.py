@@ -5,15 +5,16 @@ Head lift is an ABSOLUTE HEIGHT rather than a budget: a source at ``z`` pushes f
 pump is ``max(incoming, its own centre + its lift)`` and never a sum. A buffer is the one
 element that BLOCKS an altitude: below ``BUFFER_TRANSMITS_ABOVE_FILL`` the line above it gets
 the buffer's own head, which is its fill-proportional surface or its connectors, whichever is
-the higher. The finding is the CREST that stops a line,
-named once with every consumer behind it, because that is where a pump would go. The rules,
-the exclusions and what a reading does not mean are in `docs/fluids_model.md`.
+the higher. The finding is the CREST that stops a line, named once with every consumer
+behind it, because that is where a pump would go. The rules, the exclusions and what a
+reading does not mean are in `docs/fluids_model.md`.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from ...core.gamedata.constants import (
     BUFFER_TRANSMIT_BRACKET,
@@ -24,8 +25,9 @@ from ...core.gamedata.constants import (
 )
 from ...core.gamedata.model import GameData
 from ...core.saveio import rows as saverows
-from ...core.saveio.ports import PIPE as _PIPE
-from ...core.saveio.ports import medium as _medium
+from ...core.saveio.records import instance_leaf
+from ..spatial.geo import CM_PER_M
+from .fluid_couplings import coupling_actor_class, fluid_couplings, producer_consumer_classes
 
 __all__ = ["Crest", "HeadLift", "head_lift"]
 
@@ -40,8 +42,8 @@ _PUMP = "FGBuildablePipelinePump"
 #: CONNECTION -- fluid crosses it at any fill -- and a barrier for HEIGHT until it is full.
 _BODIES = (_JUNCTION, _RESERVOIR)
 
-_CM_PER_M = 100.0
-_LOW = -1e18
+#: Below every real altitude: what a node no head reaches compares as.
+_NO_HEAD_M = -1e18
 
 
 @dataclass(frozen=True)
@@ -116,6 +118,44 @@ class HeadLift:
         return tuple(c for c in self.crests if c.buffer_gated)
 
 
+class _Span(NamedTuple):
+    """A pipe between two nodes, with the highest altitude on it and where that stands."""
+
+    u: tuple
+    v: tuple
+    crest_m: float
+    pos: tuple[float, float, float]
+
+
+class _Pump(NamedTuple):
+    """A pump or valve. ``reach_m`` is the measured reach where a class has been measured
+    and the declared ``mMaxPressure`` where it has not."""
+
+    inlet: tuple
+    outlet: tuple
+    rated_m: float
+    reach_m: float
+    powered: bool
+
+
+class _Source(NamedTuple):
+    node: tuple
+    actor: str
+    #: The head lift the class STATES, or 0.0 where it states none.
+    stated_m: float
+
+
+class _Sink(NamedTuple):
+    node: tuple
+    actor: str
+
+
+class _Tank(NamedTuple):
+    node: tuple
+    head_m: float
+    transmits: bool
+
+
 @dataclass
 class _Plumbing:
     """The fluid graph as altitudes and crossings, with every gas network already dropped."""
@@ -124,68 +164,15 @@ class _Plumbing:
     z: dict = field(default_factory=dict)
     #: node -> the fluid of the network it belongs to.
     fluid_of: dict = field(default_factory=dict)
-    #: (u, v, the highest altitude between them, where that is).
-    spans: list = field(default_factory=list)
-    #: (inlet, outlet, rated lift, how high it reaches, powered). The reach is the measured
-    #: one where a class has been measured and the declared ``mMaxPressure`` where it has not.
-    devices: list = field(default_factory=list)
-    #: (node, actor, the head lift its class STATES, or 0.0 where it states none).
-    sources: list = field(default_factory=list)
-    sinks: list = field(default_factory=list)
-    #: (node, the altitude it delivers at, whether it passes head on).
-    tanks: list = field(default_factory=list)
+    spans: list[_Span] = field(default_factory=list)
+    devices: list[_Pump] = field(default_factory=list)
+    sources: list[_Source] = field(default_factory=list)
+    sinks: list[_Sink] = field(default_factory=list)
+    tanks: list[_Tank] = field(default_factory=list)
     networks: int = 0
     gas_networks: int = 0
     ambiguous: int = 0
     undecided_tanks: int = 0
-
-
-class _Union:
-    def __init__(self) -> None:
-        self._parent: dict = {}
-
-    def find(self, x):
-        parent = self._parent
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(self, a, b) -> None:
-        ra, rb = self.find(a), self.find(b)
-        if ra != rb:
-            self._parent[ra] = rb
-
-
-def _class_of(short: str) -> str:
-    head, sep, _tail = short.rpartition("_C_")
-    return head + "_C" if sep else short
-
-
-def _couplings(projection: dict, native):
-    """Union-find over ``(actor, role)``, which is what one fluid coupling joins."""
-    graph = projection.get("graph") or {}
-    actors = list(graph.get("actors") or ())
-    roles = list(graph.get("roles") or ())
-    fluid = {i for i, name in enumerate(roles) if _medium(name) == _PIPE}
-    joins = _Union()
-    ports: dict[int, set[int]] = defaultdict(set)
-    for edge in graph.get("material") or ():
-        if not isinstance(edge, (list, tuple)) or len(edge) < 4:
-            continue
-        a, b, ra, rb = edge[0], edge[1], edge[2], edge[3]
-        if ra not in fluid or rb not in fluid:
-            continue
-        joins.union((a, ra), (b, rb))
-        ports[a].add(ra)
-        ports[b].add(rb)
-    for actor, held in ports.items():
-        if 0 <= actor < len(actors) and native(actors[actor]) in _BODIES:
-            first = min(held)
-            for role in held:
-                joins.union((actor, first), (actor, role))
-    return joins, ports, actors, roles
 
 
 def _spans(projection: dict, joins, ports, gas: set, plumbing: _Plumbing) -> dict:
@@ -206,16 +193,16 @@ def _spans(projection: dict, joins, ports, gas: set, plumbing: _Plumbing) -> dic
             if role in held
         ]
         for node, point in ends:
-            heights[node].append(point[2] / _CM_PER_M)
+            heights[node].append(point[2] / CM_PER_M)
             network_of.setdefault(node, seg.network_index)
         if len(ends) == 2 and ends[0][0] != ends[1][0]:
             top = max(seg.points, key=lambda p: p[2])
             plumbing.spans.append(
-                (
+                _Span(
                     ends[0][0],
                     ends[1][0],
-                    top[2] / _CM_PER_M,
-                    tuple(v / _CM_PER_M for v in top[:3]),
+                    top[2] / CM_PER_M,
+                    tuple(v / CM_PER_M for v in top[:3]),
                 )
             )
     plumbing.z.update({node: sum(v) / len(v) for node, v in heights.items()})
@@ -226,10 +213,10 @@ def _build(projection: dict, game: GameData, powered: set[str]) -> _Plumbing:
     """The plumbing as a height graph. Gas is dropped here and never reaches the model."""
 
     def native(actor: str) -> str:
-        building = game.buildings.get(_class_of(actor))
+        building = game.buildings.get(coupling_actor_class(actor))
         return building.native if building else ""
 
-    joins, ports, actors, roles = _couplings(projection, native)
+    joins, ports, actors, roles = fluid_couplings(projection, lambda a: native(a) in _BODIES)
     role_ix = {name: i for i, name in enumerate(roles)}
     d0, d1 = role_ix.get("Connection0"), role_ix.get("Connection1")
 
@@ -248,10 +235,9 @@ def _build(projection: dict, game: GameData, powered: set[str]) -> _Plumbing:
     network_of = _spans(projection, joins, ports, gas, out)
     out.fluid_of = {node: fluid_of.get(ix) for node, ix in network_of.items()}
 
-    producers = {r.get("cls") for r in projection.get("extractors") or () if isinstance(r, dict)}
-    consumers = {r.get("cls") for r in projection.get("generators") or () if isinstance(r, dict)}
+    producers, consumers = producer_consumer_classes(projection)
     tank_rows = {
-        str(r.get("instance", "")).rsplit(".", 1)[-1]: r
+        instance_leaf(r.get("instance", "")): r
         for r in projection.get("storage") or ()
         if isinstance(r, dict)
     }
@@ -260,7 +246,7 @@ def _build(projection: dict, game: GameData, powered: set[str]) -> _Plumbing:
         if not (0 <= actor < len(actors)):
             continue
         name = actors[actor]
-        cls = _class_of(name)
+        cls = coupling_actor_class(name)
         kind = native(name)
         if kind == _PUMP:
             building = game.buildings[cls]
@@ -268,7 +254,7 @@ def _build(projection: dict, game: GameData, powered: set[str]) -> _Plumbing:
                 inlet, outlet = joins.find((actor, d0)), joins.find((actor, d1))
                 if inlet in out.z and outlet in out.z:
                     out.devices.append(
-                        (
+                        _Pump(
                             inlet,
                             outlet,
                             building.head_lift_m,
@@ -293,19 +279,19 @@ def _build(projection: dict, game: GameData, powered: set[str]) -> _Plumbing:
             # Most local evidence first: the port's own typing outranks the building's
             # nature, so an extractor that also takes a fluid in is read a port at a time.
             if spelled.startswith("PipeOutputFactory"):
-                out.sources.append((port, name, stated))
+                out.sources.append(_Source(port, name, stated))
             elif spelled.startswith("PipeInputFactory"):
-                out.sinks.append((port, name))
+                out.sinks.append(_Sink(port, name))
             elif cls in producers:
-                out.sources.append((port, name, stated))
+                out.sources.append(_Source(port, name, stated))
             elif cls in consumers:
-                out.sinks.append((port, name))
+                out.sinks.append(_Sink(port, name))
             else:
                 # Nothing says which way it faces, so it is taken as both: a source that may
                 # not be one, and a consumer that may not be one.
                 out.ambiguous += 1
-                out.sources.append((port, name, stated))
-                out.sinks.append((port, name))
+                out.sources.append(_Source(port, name, stated))
+                out.sinks.append(_Sink(port, name))
     return out
 
 
@@ -316,7 +302,7 @@ def _add_tank(out: _Plumbing, game: GameData, cls: str, row, node) -> None:
     if not building.storage_capacity_m3:
         return
     fill = float(row.get("stored_m3") or 0.0) / building.storage_capacity_m3
-    base = float((row.get("pos") or (0, 0, 0))[2]) / _CM_PER_M
+    base = float((row.get("pos") or (0, 0, 0))[2]) / CM_PER_M
     low, high = BUFFER_TRANSMIT_BRACKET
     if low <= fill < high:
         out.undecided_tanks += 1
@@ -325,7 +311,7 @@ def _add_tank(out: _Plumbing, game: GameData, cls: str, row, node) -> None:
     # crossing a flat pipe out of a buffer 4.3% full, whose surface stood 1.40 m under that
     # pipe. ``out.z[node]`` is the connector height, averaged over the pipes that meet there.
     surface = base + building.footprint.height_m * min(1.0, fill)
-    out.tanks.append((node, max(surface, out.z[node]), fill >= BUFFER_TRANSMITS_ABOVE_FILL))
+    out.tanks.append(_Tank(node, max(surface, out.z[node]), fill >= BUFFER_TRANSMITS_ABOVE_FILL))
 
 
 def _adjacency(plumbing: _Plumbing):
@@ -380,7 +366,7 @@ def _spread(
         own = capped.get(node)
         if own is not None and own < height:
             height, from_machine, from_buffer = own, False, True
-        if height <= reach.get(node, _LOW) or height < z.get(node, _LOW):
+        if height <= reach.get(node, _NO_HEAD_M) or height < z.get(node, _NO_HEAD_M):
             return False
         reach[node] = height
         assumed[node] = from_machine
@@ -433,7 +419,7 @@ def _walls(plumbing: _Plumbing, reach: dict):
     out = []
     for a, b, crest, pos in plumbing.spans:
         for u, v in ((a, b), (b, a)):
-            obstacle = max(crest, plumbing.z.get(v, _LOW))
+            obstacle = max(crest, plumbing.z.get(v, _NO_HEAD_M))
             if u in reach and v not in reach and reach[u] < obstacle:
                 out.append((u, v, obstacle, pos))
     for inlet, outlet, *_rest in plumbing.devices:
@@ -514,9 +500,7 @@ def head_lift(projection: dict, game: GameData, graph) -> HeadLift:
     ceiling, ceiling_from, ceiling_gate = _spread(plumbing, fed, MACHINE_MAX_HEAD_LIFT_M, True)
 
     supplied = {node for node, _actor in plumbing.sinks if node in fed}
-    crests = _crests(
-        plumbing, ceiling, ceiling_from, supplied - set(ceiling), False, ceiling_gate
-    )
+    crests = _crests(plumbing, ceiling, ceiling_from, supplied - set(ceiling), False, ceiling_gate)
     crests += _crests(
         plumbing, rated, rated_from, (supplied & set(ceiling)) - set(rated), True, rated_gate
     )

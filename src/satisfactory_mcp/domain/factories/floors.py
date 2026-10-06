@@ -1,24 +1,22 @@
 """Floors: the storeys of a factory, recovered from geometry rather than read off the save.
 
-Nothing in a ``.sav`` says "floor". What it does say is where every foundation piece sits,
-and players build storeys at discrete repeated heights, so a floor is recoverable from
-geometry alone. The unit is a PLATFORM -- a 4-connected flood fill of occupied 8 m cells --
-and pointedly not a ``structure.py`` slab, which welds foundations through ramps and so
-spans 287 m of Z where a ramp chain climbs a tower; slabs and the player's labels are still
-read, but only to NAME the result. Within a platform the top surfaces cluster by single
-linkage at ``CLUSTER_TOL_CM`` with no assumed storey pitch, because this world's module is
-12 m mixed with 1-2 m half-steps that have to stay separate bands, and every band carries
-its own cell area so a six-cell mezzanine reads as minor rather than as a storey. The
-premise holds empirically: 99.87% of foundation pieces on platforms of 20 cells or more sit
-within ``BAND_EPS_CM`` of a detected band.
+Nothing in a ``.sav`` says "floor", but players build storeys at discrete repeated heights.
+The unit is a PLATFORM, a 4-connected flood fill of occupied 8 m cells, and never a
+``structure.py`` slab, which only NAMES the result. Within a platform the foundation tops
+cluster by single linkage into bands, with no assumed storey pitch and each band carrying its
+own cell area. docs/parked.md §16b has the measurements behind every constant here.
 """
 
 from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from ...core.saveio import rows as saverows
+from ...core.saveio.records import instance_leaf
+from .select import resolve_factory
+from .structure import TILE_CM
 
 __all__ = [
     "BAND_EPS_CM",
@@ -37,66 +35,53 @@ __all__ = [
     "TERRAIN_TOL_M",
     "TOO_OLD_NOTE",
     "Band",
+    "BeltChain",
     "Deck",
     "FloorReport",
+    "FoundationTop",
     "Placement",
     "Platform",
     "Run",
     "floor_decomposition",
 ]
 
-#: One foundation tile, centimetres. The grid every platform is flood-filled over.
-CELL_CM = 800.0
+#: One foundation tile: the grid every platform is flood-filled over.
+CELL_CM = TILE_CM
 
-#: Single-linkage gap, centimetres: tops further apart than this start a new band. Anything
-#: from 10 to 50 gives the identical decomposition; only past 100 does the count collapse.
+#: Tops further apart than this start a new band; 10 to 50 decompose identically.
 CLUSTER_TOL_CM = 50.0
 
-#: How close a piece has to be to a band's level to be one of its members, centimetres. The
-#: bands are exact, so 5 and 50 report the same pieces as banded.
+#: How close a piece has to be to a band's level to be one of its members.
 BAND_EPS_CM = 25.0
 
-#: Pieces before a cluster is a band. Below three every stray piece becomes its own storey;
-#: above three, real half-steps start disappearing.
+#: Pieces before a cluster is a band: fewer makes strays storeys, more loses half-steps.
 MIN_BAND_PIECES = 3
 
-#: How far ABOVE a thing its deck may be found, centimetres. A production building's pivot
-#: is its base and its base is the deck top, so this is float slop and nothing else: at 0
-#: dozens of buildings fall out to the orphan group, and everything from 5 to 450 agrees.
+#: How far ABOVE a building its deck may be found: float slop, as its pivot is its base.
 DECK_SLACK_CM = 25.0
 
-#: The same slack for a belt or pipe endpoint, which sits a metre up rather than on the
-#: deck. The top of this range is NOT free: widen it towards 450 and a deck several storeys
-#: above the run starts winning, which flatters every same-deck statistic. 50 cm absorbs a
-#: run stepping over a kerb and nothing more.
+#: The same slack for a run endpoint; wider lets a deck storeys above win (§16b).
 RUN_SLACK_CM = 50.0
 
-#: Belt centre-line height above the deck, centimetres. The median attachment sits at
-#: +100.2 cm, and the legal set of endpoint heights is 100/300/500.
+#: Belt centre-line height above the deck; the median attachment sits at +100.2 cm.
 BELT_HEIGHT_CM = 100.0
 
-#: A chain that climbs this far is a floor connector. Below it, a lift is a belt-height jog
-#: -- 24% of lift chains are, which is why "a lift joins two floors" is not a usable rule.
+#: A chain that climbs this far is a floor connector; below it a lift is a belt-height jog.
 RISER_CM = 600.0
 
-#: How close to the extracted heightfield a no-band thing has to be to be called "on
-#: terrain", metres. 89% of orphans are inside it; 4% of band-assigned things are.
+#: How close to the heightfield, in metres, a no-band thing is "on terrain".
 TERRAIN_TOL_M = 2.0
 
-#: A band holding less than this share of its platform's largest band's cells is minor --
-#: a mezzanine, a walkway ledge, a machine plinth. Reported, never merged and never dropped.
+#: Below this share of its platform's widest band, a band is minor: reported, never merged.
 MINOR_SHARE = 0.25
 
-#: How many cells either side of its own a thing may look for the deck it stands on. One,
-#: so a machine on the very edge of a deck still finds it, and no further.
+#: Cells either side a thing may look for its deck: one, so an edge machine still finds it.
 NEIGHBOUR_CELLS = 1
 
-#: What counts as a floor piece, the same two hints ``structure.py`` matches on: lightweight
-#: buildables carry no docs entry to resolve a native class from.
+#: The same two hints ``structure.py`` matches: lightweights carry no native class to read.
 FOUNDATION_HINTS = ("Foundation", "Platform")
 
-#: Thickness in centimetres by the size token in the class name: ``8x1`` is an 8 m square
-#: 1 m thick.
+#: Thickness by the size token in the class name: ``8x1`` is an 8 m square 1 m thick.
 THICKNESS_CM = {
     "8x1": 100.0,
     "8x2": 200.0,
@@ -106,27 +91,19 @@ THICKNESS_CM = {
     "4x4": 400.0,
 }
 
-#: What a foundation family with no size token in its name is taken to be. Every family
-#: seen so far carries one, so this is a floor under a case that has not happened.
+#: A foundation family with no size token; every family seen so far carries one.
 DEFAULT_THICKNESS_CM = 100.0
 
-#: The dump's own native classes for the two things that do not stand on a deck: a miner
-#: stands on a resource node and a water extractor stands on water. Natives rather than
-#: substrings, because a substring match on an engine id is not a classification.
-#: ``FGBuildableResourceExtractor`` covers the miners and the oil pumps alike.
+#: What stands on a node (miners, oil pumps) or on water rather than on a deck, by native.
 EXEMPT_NATIVES = ("FGBuildableResourceExtractor", "FGBuildableWaterPump")
 
-#: The dump's native class for a conveyor lift, told apart from a belt the same way
-#: ``/api/belts`` tells them apart.
+#: A conveyor lift, told apart from a belt the way ``/api/belts`` does it.
 LIFT_NATIVE = "FGBuildableConveyorLift"
 
-#: Where a placed thing ended up. ``band`` is the answer; the other three are the honest
-#: ways of not having one.
+#: Where a placed thing ended up: ``band``, or one of three honest ways of not having one.
 GROUPS = ("band", "exempt", "terrain", "off-deck")
 
-#: How a run relates to the floors. ``same-deck`` is the floor-assignable case, ``connector``
-#: joins two decks, ``terrain`` is over no deck at all and ``mixed`` runs from one to the
-#: other.
+#: How a run relates to the floors: on one deck, between two, over none, or from one to none.
 MEMBERSHIPS = ("same-deck", "connector", "terrain", "mixed")
 
 #: What the report says instead of an empty band list when the save cannot carry the data.
@@ -144,6 +121,25 @@ NO_FOUNDATIONS_NOTE = (
 
 
 # ------------------------------------------------------------------ the pieces
+
+
+class FoundationTop(NamedTuple):
+    """One foundation piece by its row in the ``structures`` table, and its top surface."""
+
+    row: int
+    x: float
+    y: float
+    top_cm: float
+    cls: str
+
+
+class BeltChain(NamedTuple):
+    """One belt chain, its pieces' points joined in travel order."""
+
+    chain: int
+    is_lift: bool
+    pieces: int
+    points: list
 
 
 @dataclass(frozen=True)
@@ -375,84 +371,79 @@ def _single_linkage(values: list[float], tol: float) -> list[list[float]]:
     return clusters
 
 
-def foundation_tops(projection: dict) -> list[tuple[int, float, float, float, str]]:
-    """``(row, x, y, top, class)`` for every foundation piece, centimetres.
+def foundation_tops(projection: dict) -> list[FoundationTop]:
+    """Every foundation piece and the surface a machine stands on, in centimetres.
 
-    ``top`` is the surface a machine stands on: ``z + thickness/2``, because a lightweight's
-    stored Z is its vertical CENTRE. Reading ``z`` as the deck surface puts every band half
-    a metre low and every machine half a metre in the air.
-
-    ``row`` is the piece's position in the decoded ``structures`` table, which is the only
-    name a lightweight buildable has -- the subsystem stores no instance ids. Every reader
-    walks the same ``saveio.rows`` iterator in the same order, which is what makes the
-    position a join rather than a coincidence, and counting over what the iterator YIELDS
-    drops a malformed row from both sides of that join at once.
-
-    ``cls`` is ``""`` rather than ``None`` for an unresolvable class index: what follows
-    asks whether a hint is a substring of it, and an unnamed piece is not a foundation.
+    ``top_cm`` is ``z + thickness/2``, because a lightweight's stored Z is its vertical
+    CENTRE. ``row`` is the piece's position in the decoded ``structures`` table, the only name
+    a lightweight has; every reader walks the same ``saveio.rows`` iterator, so the position
+    is a join, and a malformed row drops from both sides of it at once. ``cls`` is ``""``
+    for an unresolvable class, which is then no foundation.
     """
-    out: list[tuple[int, float, float, float, str]] = []
+    out: list[FoundationTop] = []
     for row, piece in enumerate(saverows.iter_structures(projection)):
         cls = piece.cls or ""
         if not any(hint in cls for hint in FOUNDATION_HINTS):
             continue
-        out.append((row, piece.x, piece.y, piece.z + thickness_cm(cls) / 2.0, cls))
+        out.append(FoundationTop(row, piece.x, piece.y, piece.z + thickness_cm(cls) / 2.0, cls))
     return out
 
 
-def _platforms(tops: list[tuple[int, float, float, float, str]]) -> tuple[list[Platform], dict]:
-    """Flood-fill the tops into platforms and cluster each platform's own levels.
-
-    Returns the platforms and the cell index every assignment goes through: an 8 m cell to
-    the decks that actually have a foundation in it, low to high. Per cell rather than per
-    platform bounding box, so a machine standing over a HOLE in a deck is not assigned to a
-    floor that is not under it.
-    """
+def _tops_by_cell(tops: list[FoundationTop]) -> dict[tuple[int, int], list[int]]:
     by_cell: dict[tuple[int, int], list[int]] = defaultdict(list)
-    for i, (_row, x, y, _top, _cls) in enumerate(tops):
-        by_cell[cell_of(x, y)].append(i)
+    for i, top in enumerate(tops):
+        by_cell[cell_of(top.x, top.y)].append(i)
+    return by_cell
 
+
+def _platform_bands(tops: list[FoundationTop], members: list[int]) -> list[Band]:
+    """One platform's tops clustered into bands, low to high, each with its share."""
+    levels = [tops[i].top_cm for i in members]
+    bands: list[Band] = []
+    for cluster in _single_linkage(levels, CLUSTER_TOL_CM):
+        if len(cluster) < MIN_BAND_PIECES:
+            continue
+        # The most common exact top, not the mean, which would smear the band's own level.
+        level = Counter(cluster).most_common(1)[0][0]
+        inside = [i for i in members if abs(tops[i].top_cm - level) <= BAND_EPS_CM]
+        cells = {cell_of(tops[i].x, tops[i].y) for i in inside}
+        bands.append(
+            Band(
+                ordinal=0,
+                top_cm=level,
+                low_cm=min(cluster),
+                high_cm=max(cluster),
+                pieces=len(cluster),
+                cells=len(cells),
+                # Sorted, so two runs over one save give the same list and a client can
+                # binary-search it.
+                rows=sorted(tops[i].row for i in inside),
+            )
+        )
+    bands.sort(key=lambda b: b.top_cm)
+    widest = max((b.cells for b in bands), default=0)
+    for ordinal, band in enumerate(bands):
+        band.ordinal = ordinal
+        band.share = band.cells / widest if widest else 1.0
+    return bands
+
+
+def _bands_of(tops: list[FoundationTop]) -> list[Platform]:
+    """Flood-fill the tops into platforms and cluster each platform's own levels."""
+    by_cell = _tops_by_cell(tops)
     platforms: list[Platform] = []
-    index: dict[tuple[int, int], list[Deck]] = defaultdict(list)
     for order, component in enumerate(_flood(set(by_cell))):
         members = [i for cell in sorted(component) for i in by_cell[cell]]
-        levels = [tops[i][3] for i in members]
-        bands: list[Band] = []
-        for cluster in _single_linkage(levels, CLUSTER_TOL_CM):
-            if len(cluster) < MIN_BAND_PIECES:
-                continue
-            # The most common exact top, not the mean: a band has its own level and a mean
-            # would smear it by however many pieces happen to sit at the edge of the eps.
-            level = Counter(cluster).most_common(1)[0][0]
-            inside = [i for i in members if abs(tops[i][3] - level) <= BAND_EPS_CM]
-            cells = {cell_of(tops[i][1], tops[i][2]) for i in inside}
-            bands.append(
-                Band(
-                    ordinal=0,
-                    top_cm=level,
-                    low_cm=min(cluster),
-                    high_cm=max(cluster),
-                    pieces=len(cluster),
-                    cells=len(cells),
-                    # Sorted, so the list is the same list on two runs over one save and a
-                    # client can binary-search it rather than build a set from it.
-                    rows=sorted(tops[i][0] for i in inside),
-                )
-            )
-        bands.sort(key=lambda b: b.top_cm)
-        widest = max((b.cells for b in bands), default=0)
-        for ordinal, band in enumerate(bands):
-            band.ordinal = ordinal
-            band.share = band.cells / widest if widest else 1.0
-
-        levels_only = [b.top_cm for b in bands]
+        levels = [tops[i].top_cm for i in members]
+        bands = _platform_bands(tops, members)
+        band_levels = [b.top_cm for b in bands]
         banded = sum(
             1
             for z in levels
-            if min((abs(z - level) for level in levels_only), default=1e9) <= BAND_EPS_CM
+            if min((abs(z - level) for level in band_levels), default=1e9) <= BAND_EPS_CM
         )
-        xs = [tops[i][1] for i in members]
-        ys = [tops[i][2] for i in members]
+        xs = [tops[i].x for i in members]
+        ys = [tops[i].y for i in members]
         platforms.append(
             Platform(
                 index=order,
@@ -465,15 +456,25 @@ def _platforms(tops: list[tuple[int, float, float, float, str]]) -> tuple[list[P
                 clean=banded / len(levels) if levels else 1.0,
             )
         )
-        for band in bands:
+    return platforms
+
+
+def _index_decks(platforms: list[Platform], tops: list[FoundationTop]) -> dict:
+    """An 8 m cell to the decks with a foundation in it, low to high.
+
+    Per cell rather than per platform bounding box, so a machine standing over a HOLE in a
+    deck is not assigned to a floor that is not under it.
+    """
+    by_cell = _tops_by_cell(tops)
+    index: dict[tuple[int, int], list[Deck]] = defaultdict(list)
+    for platform in platforms:
+        members = [i for cell in sorted(platform.cell_set) for i in by_cell[cell]]
+        for band in platform.bands:
+            deck = Deck(platform=platform.index, ordinal=band.ordinal, top_cm=band.top_cm)
             for i in members:
-                if abs(tops[i][3] - band.top_cm) <= BAND_EPS_CM:
-                    index[cell_of(tops[i][1], tops[i][2])].append(
-                        Deck(platform=order, ordinal=band.ordinal, top_cm=band.top_cm)
-                    )
-    return platforms, {
-        cell: sorted(set(decks), key=lambda d: d.top_cm) for cell, decks in index.items()
-    }
+                if abs(tops[i].top_cm - band.top_cm) <= BAND_EPS_CM:
+                    index[cell_of(tops[i].x, tops[i].y)].append(deck)
+    return {cell: sorted(set(decks), key=lambda d: d.top_cm) for cell, decks in index.items()}
 
 
 def _deck_under(index: dict, x: float, y: float, z: float, slack: float) -> Deck | None:
@@ -523,7 +524,7 @@ def _assign(projection, game, index, platforms, terrain_field) -> list[Placement
     by_key = {(p.index, b.ordinal): b for p in platforms for b in p.bands}
     out: list[Placement] = []
     for kind, cls, instance, point in _records(projection):
-        leaf = instance.rsplit(".", 1)[-1]
+        leaf = instance_leaf(instance)
         if _is_exempt(game, cls):
             out.append(Placement(instance=leaf, cls=cls, kind=kind, pos_cm=point, group="exempt"))
             continue
@@ -567,14 +568,13 @@ def _assign(projection, game, index, platforms, terrain_field) -> list[Placement
 # ------------------------------------------------------------------- the runs
 
 
-def belt_runs(projection: dict, game=None) -> list[tuple[int, bool, int, list]]:
-    """``(chain, is_lift, pieces, points)`` per belt CHAIN, in travel order.
+def belt_runs(projection: dict, game=None) -> list[BeltChain]:
+    """One ``BeltChain`` per belt CHAIN, in travel order.
 
     The grouping that has to happen before any vertical reasoning: consecutive pieces of a
     chain join at a median 0.00 cm, so the chain is the run and a piece is a fragment of one.
     """
-    # Resolved once per belt CLASS rather than once per piece, which is what the interned
-    # class index is for: thousands of pieces share a handful of classes.
+    # Resolved once per belt CLASS rather than once per piece: thousands share a handful.
     lift_of: dict[int, bool] = {}
     chains: dict[int, list[tuple[int, list]]] = defaultdict(list)
     for segment in saverows.iter_belt_segments(projection):
@@ -586,7 +586,8 @@ def belt_runs(projection: dict, game=None) -> list[tuple[int, bool, int, list]]:
     for chain in sorted(chains):
         pieces = chains[chain]
         points = [p for _index, part in pieces for p in part]
-        out.append((chain, any(lift_of[index] for index, _ in pieces), len(pieces), points))
+        is_lift = any(lift_of[index] for index, _ in pieces)
+        out.append(BeltChain(chain, is_lift, len(pieces), points))
     return out
 
 
@@ -599,8 +600,17 @@ def pipe_runs(projection: dict) -> list[tuple[int, list]]:
     return [(segment.index, segment.points) for segment in saverows.iter_pipe_segments(projection)]
 
 
-def _classify(index: dict, points: list, slack: float) -> Run:
-    """One run's membership, from its two ENDS -- which is what a run is joined by."""
+def _run_over_decks(
+    index: dict,
+    points: list,
+    slack: float,
+    *,
+    kind: str,
+    key: int,
+    pieces: int = 1,
+    lift: bool = False,
+) -> Run:
+    """One run and its membership, from its two ENDS -- which is what a run is joined by."""
     head_pt = [float(v) for v in points[0][:3]]
     tail_pt = [float(v) for v in points[-1][:3]]
     head = _deck_under(index, head_pt[0], head_pt[1], head_pt[2], slack)
@@ -612,28 +622,35 @@ def _classify(index: dict, points: list, slack: float) -> Run:
     else:
         membership = "same-deck" if head.key == tail.key else "connector"
     return Run(
-        kind="",
-        key=0,
+        kind=kind,
+        key=key,
         membership=membership,
         rise_cm=abs(head_pt[2] - tail_pt[2]),
-        pieces=1,
-        lift=False,
+        pieces=pieces,
+        lift=lift,
         ends=(head, tail),
         end_cells=(cell_of(head_pt[0], head_pt[1]), cell_of(tail_pt[0], tail_pt[1])),
     )
 
 
-def _runs(projection, game, index) -> tuple[list[Run], list[Run]]:
+def _classify_runs(projection, game, index) -> tuple[list[Run], list[Run]]:
+    """Every belt chain and pipe as a ``Run``, and the risers among them that break the rule."""
     runs: list[Run] = []
-    for chain, lift, pieces, points in belt_runs(projection, game):
-        run = _classify(index, points, RUN_SLACK_CM)
-        run.kind, run.key, run.pieces, run.lift = "belt", chain, pieces, lift
-        runs.append(run)
+    for belt in belt_runs(projection, game):
+        runs.append(
+            _run_over_decks(
+                index,
+                belt.points,
+                RUN_SLACK_CM,
+                kind="belt",
+                key=belt.chain,
+                pieces=belt.pieces,
+                lift=belt.is_lift,
+            )
+        )
     for order, points in pipe_runs(projection):
         # No belt-height offset: a pipe meets a machine at its port, not a metre up.
-        run = _classify(index, points, 0.0)
-        run.kind, run.key = "pipe", order
-        runs.append(run)
+        runs.append(_run_over_decks(index, points, 0.0, kind="pipe", key=order))
     return runs, _violations(runs)
 
 
@@ -714,9 +731,10 @@ def floor_decomposition(
     if not tops:
         return FloorReport(note=NO_FOUNDATIONS_NOTE)
 
-    platforms, index = _platforms(tops)
+    platforms = _bands_of(tops)
+    index = _index_decks(platforms, tops)
     placements = _assign(projection, getattr(st, "game", None), index, platforms, terrain_field)
-    runs, violations = _runs(projection, getattr(st, "game", None), index)
+    runs, violations = _classify_runs(projection, getattr(st, "game", None), index)
     _name_platforms(st, platforms, placements)
 
     report = FloorReport(
@@ -744,8 +762,6 @@ def _narrow(report: FloorReport, st, platform: int | None, label: str | None) ->
         wanted.add(platform)
         selection.append(f"platform {platform}")
     if label is not None:
-        from .resolve import resolve_factory
-
         name, machines = resolve_factory(st, label)
         selection.append(f"factory {name!r}")
         chosen = set(machines)

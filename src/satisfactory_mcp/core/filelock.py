@@ -6,13 +6,19 @@ releases its lock with it. docs/frontend_vision.md §9.6 says who shares these f
 
 from __future__ import annotations
 
+import json
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TypeVar
 
-__all__ = ["LockTimeout", "held"]
+from . import atomic
+
+__all__ = ["LockTimeout", "held", "update_versioned_json"]
+
+T = TypeVar("T")
 
 TIMEOUT_S = 10.0
 
@@ -69,3 +75,18 @@ def held(target: Path, timeout: float = TIMEOUT_S) -> Iterator[None]:
             _release(fd)
     finally:
         os.close(fd)
+
+
+def update_versioned_json(
+    path: Path, read: Callable[[], dict], change: Callable[[dict], tuple[T, bool]]
+) -> T:
+    """Run ``change(read()) -> (result, dirty)`` under ``path``'s lock; when dirty, bump
+    ``version`` and rewrite the file atomically. Returns ``result``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with held(path):
+        data = read()
+        result, dirty = change(data)
+        if dirty:
+            data["version"] += 1
+            atomic.write_text(path, json.dumps(data, ensure_ascii=False))
+    return result

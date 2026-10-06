@@ -21,17 +21,20 @@ ROOT = Path(__file__).resolve().parents[1]
 #: Save actors are keyed by this prefix; the world table stores bare ids.
 INSTANCE_PREFIX = "Persistent_Level:PersistentLevel."
 
+FRACKING_SATELLITE_CLASS = "BP_FrackingSatellite_C"
+FRACKING_CORE_CLASS = "BP_FrackingCore_C"
+
 #: A well satellite yields half a plain node's rate AND needs a Pressurizer on its parent
 #: core, so conflating the two with a plain node overstates a field by 2x.
 _KINDS = {
     "BP_ResourceNode_C": "node",
-    "BP_FrackingSatellite_C": "well_sat",
+    FRACKING_SATELLITE_CLASS: "well_sat",
     "BP_ResourceNodeGeyser_C": "geyser",
 }
 
 #: A fracking core produces nothing itself and reaches the table as ``well_core`` on its
 #: satellites.
-_EXCLUDED = {"BP_FrackingCore_C"}
+_EXCLUDED = {FRACKING_CORE_CLASS}
 
 #: Synthetic: a geyser is not an item in Docs.json, it is a placement target for the
 #: Geothermal Generator.
@@ -45,7 +48,8 @@ _PURITIES = {"impure", "normal", "pure"}
 ROUNDING_FLOOR_CM = math.sqrt(3) / 2 * 0.01
 
 
-def load_world() -> tuple[list[dict], dict]:
+def load_world_node_table() -> tuple[list[dict], dict]:
+    """The rows and ``_meta`` of ``data/world_resource_nodes.json``, or exit naming its generator."""
     path = ROOT / "data" / "world_resource_nodes.json"
     if not path.is_file():
         raise SystemExit(
@@ -55,7 +59,46 @@ def load_world() -> tuple[list[dict], dict]:
     return payload["nodes"], payload["_meta"]
 
 
-def check_geometry(world: list[dict]) -> dict:
+def project_nodes(world: list[dict]) -> tuple[list[dict], int]:
+    """The served rows, in world-table order, and how many fracking cores the table holds."""
+    nodes: list[dict] = []
+    core_ids: set[str] = set()
+    unknown_purity: list[str] = []
+    for entry in world:
+        if entry["class"] == FRACKING_CORE_CLASS:
+            core_ids.add(entry["id"])
+        kind = _KINDS.get(entry["class"])
+        if kind is None:
+            if entry["class"] not in _EXCLUDED:
+                raise SystemExit(f"{entry['id']}: unexpected class {entry['class']}")
+            continue
+
+        resource = _GEYSER_RESOURCE if kind == "geyser" else entry["resource"]
+        purity = entry["purity"]
+        if purity not in _PURITIES:
+            unknown_purity.append(f"{entry['id']}: {purity!r}")
+
+        nodes.append(
+            {
+                "instance": INSTANCE_PREFIX + entry["id"],
+                "resource": resource,
+                "purity": purity,
+                "kind": kind,
+                "x": round(float(entry["x"]), 2),
+                "y": round(float(entry["y"]), 2),
+                "z": round(float(entry["z"]), 2),
+                "well_core": INSTANCE_PREFIX + entry["core"] if kind == "well_sat" else None,
+            }
+        )
+
+    if unknown_purity:
+        for u in unknown_purity:
+            print("  UNKNOWN PURITY:", u)
+        raise SystemExit(f"{len(unknown_purity)} row(s) carry a purity this table cannot speak")
+    return nodes, len(core_ids)
+
+
+def check_well_links_by_position(world: list[dict]) -> dict:
     """Re-derive the well grouping from positions and compare with the ``mCore`` link.
 
     Returns the distance distribution and the ambiguity margin: satellites sit in a tight
@@ -63,8 +106,8 @@ def check_geometry(world: list[dict]) -> dict:
     further, so the nearest core is the recorded one or something moved.
     """
     pos = {e["id"]: (e["x"], e["y"], e["z"]) for e in world}
-    cores = [e["id"] for e in world if e["class"] == "BP_FrackingCore_C"]
-    sat_core = {e["id"]: e["core"] for e in world if e["class"] == "BP_FrackingSatellite_C"}
+    cores = [e["id"] for e in world if e["class"] == FRACKING_CORE_CLASS]
+    sat_core = {e["id"]: e["core"] for e in world if e["class"] == FRACKING_SATELLITE_CLASS}
     missing = sorted(s for s, c in sat_core.items() if not c)
     if missing:
         raise SystemExit(f"{len(missing)} satellite(s) carry no core link: {missing}")
@@ -104,7 +147,7 @@ def check_geometry(world: list[dict]) -> dict:
 def check_projection(nodes: list[dict], world: list[dict], world_meta: dict) -> dict:
     """Every emitted row against the source file: the projection cannot drift silently.
 
-    The returned block is shaped the way ``domain/spatial/nodes.py`` reads a positions
+    The returned block is shaped the way ``domain/spatial/nodes/`` reads a positions
     comparison, so renaming a key here silences that skew gate.
     """
     by_id = {e["id"]: e for e in world if e["class"] not in _EXCLUDED}
@@ -145,45 +188,9 @@ def check_projection(nodes: list[dict], world: list[dict], world_meta: dict) -> 
 
 
 def main() -> int:
-    world, world_meta = load_world()
-
-    nodes: list[dict] = []
-    cores: dict[str, dict] = {}
-    unknown_purity: list[str] = []
-
-    for entry in world:
-        if entry["class"] == "BP_FrackingCore_C":
-            cores[entry["id"]] = entry
-        kind = _KINDS.get(entry["class"])
-        if kind is None:
-            if entry["class"] not in _EXCLUDED:
-                raise SystemExit(f"{entry['id']}: unexpected class {entry['class']}")
-            continue
-
-        resource = _GEYSER_RESOURCE if kind == "geyser" else entry["resource"]
-        purity = entry["purity"]
-        if purity not in _PURITIES:
-            unknown_purity.append(f"{entry['id']}: {purity!r}")
-
-        nodes.append(
-            {
-                "instance": INSTANCE_PREFIX + entry["id"],
-                "resource": resource,
-                "purity": purity,
-                "kind": kind,
-                "x": round(float(entry["x"]), 2),
-                "y": round(float(entry["y"]), 2),
-                "z": round(float(entry["z"]), 2),
-                "well_core": INSTANCE_PREFIX + entry["core"] if kind == "well_sat" else None,
-            }
-        )
-
-    if unknown_purity:
-        for u in unknown_purity:
-            print("  UNKNOWN PURITY:", u)
-        raise SystemExit(f"{len(unknown_purity)} row(s) carry a purity this table cannot speak")
-
-    geometry = check_geometry(world)
+    world, world_meta = load_world_node_table()
+    nodes, core_count = project_nodes(world)
+    geometry = check_well_links_by_position(world)
     projection = check_projection(nodes, world, world_meta)
 
     nodes.sort(key=lambda n: n["instance"])
@@ -191,79 +198,104 @@ def main() -> int:
     for n in nodes:
         by_kind[n["kind"]] = by_kind.get(n["kind"], 0) + 1
 
-    out = {
-        "_meta": {
-            "description": "Static resource node table: type, purity, world position.",
-            "why": (
-                "Save files serialize only mResourcesLeft for node actors; resource "
-                "type and purity are level data and must come from a static table."
+    meta = build_meta(
+        nodes=nodes,
+        by_kind=by_kind,
+        core_count=core_count,
+        geometry=geometry,
+        projection=projection,
+        world_meta=world_meta,
+    )
+    dest = ROOT / "data" / "resource_nodes.json"
+    dest.write_text(json.dumps({"_meta": meta, "nodes": nodes}, indent=1), encoding="utf-8")
+    print_summary(dest, nodes, by_kind, core_count, geometry, projection)
+    return 0
+
+
+def build_meta(
+    *,
+    nodes: list[dict],
+    by_kind: dict[str, int],
+    core_count: int,
+    geometry: dict,
+    projection: dict,
+    world_meta: dict,
+) -> dict:
+    """The table's ``_meta``: its source, the cross-checks this run made, and the exclusions."""
+    return {
+        "description": "Static resource node table: type, purity, world position.",
+        "why": (
+            "Save files serialize only mResourcesLeft for node actors; resource "
+            "type and purity are level data and must come from a static table."
+        ),
+        "sources": {
+            "primary": {
+                "name": "data/world_resource_nodes.json",
+                "licence": (
+                    "first-party; read from the installed game's own packaged map "
+                    "data by tools/gen_world_resource_nodes.py -- no third-party "
+                    "table, no external licence, no attribution obligation"
+                ),
+                "derivation": (
+                    "node exports of the installed build's Persistent_Level.umap, "
+                    "read out of the IoStore container: mResourceClass, mPurity, "
+                    "mCore and the composed root-component transform"
+                ),
+                "role": (
+                    "authoritative node set, resource, purity, position, and the "
+                    "satellite -> fracking-core link"
+                ),
+                "game_version_pinned": world_meta.get("game_version_pinned"),
+                "generated": world_meta.get("generated"),
+            },
+            "retired": (
+                "the MIT-licensed node table this file used to merge from, and the "
+                "GPL SCIM grouping before it, are both gone; the retirement record "
+                "and the parity that justified it are _meta.retired_mit_table in "
+                "data/world_resource_nodes.json"
             ),
-            "sources": {
-                "primary": {
-                    "name": "data/world_resource_nodes.json",
-                    "licence": (
-                        "first-party; read from the installed game's own packaged map "
-                        "data by tools/gen_world_resource_nodes.py -- no third-party "
-                        "table, no external licence, no attribution obligation"
-                    ),
-                    "derivation": (
-                        "node exports of the installed build's Persistent_Level.umap, "
-                        "read out of the IoStore container: mResourceClass, mPurity, "
-                        "mCore and the composed root-component transform"
-                    ),
-                    "role": (
-                        "authoritative node set, resource, purity, position, and the "
-                        "satellite -> fracking-core link"
-                    ),
-                    "game_version_pinned": world_meta.get("game_version_pinned"),
-                    "generated": world_meta.get("generated"),
-                },
-                "retired": (
-                    "the MIT-licensed node table this file used to merge from, and the "
-                    "GPL SCIM grouping before it, are both gone; the retirement record "
-                    "and the parity that justified it are _meta.retired_mit_table in "
-                    "data/world_resource_nodes.json"
-                ),
-            },
-            "cross_validation": {
-                "satellites": by_kind.get("well_sat", 0),
-                "fracking_cores_referenced": len(cores),
-                "geometry": geometry,
-                # A re-measure against a newer build adds a second block beside this one;
-                # the skew gate speaks when any block's deltas pass its floor.
-                "positions": {"against_the_installed_build": projection},
-            },
-            "excluded": {
-                "BP_ResourceDeposit_C": (
-                    "hand-mineable only, no extractor can be placed; the world table "
-                    "emits no deposit rows in the first place"
-                ),
-                "BP_FrackingCore_C": (
-                    "produces nothing itself; referenced as well_core on satellites"
-                ),
-            },
-            "geyser_note": (
-                "Desc_Geyser_C is a synthetic label. A geyser is not an item in "
-                "Docs.json -- it is a placement target for the Geothermal Generator."
-            ),
-            "join_key": "instance (matches save actor instanceName exactly)",
-            "count": len(nodes),
-            "by_kind": by_kind,
-            "fracking_cores": len(cores),
-            "purity_multiplier": {"impure": 0.5, "normal": 1.0, "pure": 2.0},
-            "units": "centimetres; north is -Y, east is +X, up is +Z",
         },
-        "nodes": nodes,
+        "cross_validation": {
+            "satellites": by_kind.get("well_sat", 0),
+            "fracking_cores_referenced": core_count,
+            "geometry": geometry,
+            # A re-measure against a newer build adds a second block beside this one;
+            # the skew gate speaks when any block's deltas pass its floor.
+            "positions": {"against_the_installed_build": projection},
+        },
+        "excluded": {
+            "BP_ResourceDeposit_C": (
+                "hand-mineable only, no extractor can be placed; the world table "
+                "emits no deposit rows in the first place"
+            ),
+            FRACKING_CORE_CLASS: "produces nothing itself; referenced as well_core on satellites",
+        },
+        "geyser_note": (
+            "Desc_Geyser_C is a synthetic label. A geyser is not an item in "
+            "Docs.json -- it is a placement target for the Geothermal Generator."
+        ),
+        "join_key": "instance (matches save actor instanceName exactly)",
+        "count": len(nodes),
+        "by_kind": by_kind,
+        "fracking_cores": core_count,
+        "purity_multiplier": {"impure": 0.5, "normal": 1.0, "pure": 2.0},
+        "units": "centimetres; north is -Y, east is +X, up is +Z",
     }
 
-    dest = ROOT / "data" / "resource_nodes.json"
-    dest.write_text(json.dumps(out, indent=1), encoding="utf-8")
 
+def print_summary(
+    dest: Path,
+    nodes: list[dict],
+    by_kind: dict[str, int],
+    core_count: int,
+    geometry: dict,
+    projection: dict,
+) -> None:
     print(f"wrote {dest.relative_to(ROOT)}  {len(nodes)} nodes  {dest.stat().st_size} B")
     print("by kind:", by_kind)
     d = geometry["distance_to_own_core_cm"]
     print(
-        f"well links: {geometry['satellites_checked']} satellites over {len(cores)} cores, "
+        f"well links: {geometry['satellites_checked']} satellites over {core_count} cores, "
         f"nearest-core agrees {geometry['nearest_core_agrees']}/{geometry['satellites_checked']}, "
         f"distance {d['min']:.0f}-{d['max']:.0f} cm (median {d['median']:.0f}), "
         f"runner-up at least {geometry['runner_up_core_distance_ratio_min']:.2f}x further"
@@ -280,7 +312,6 @@ def main() -> int:
         f"crude oil: {len(oil)} total, {len(pump)} pumpable nodes, "
         f"{len(oil) - len(pump)} well satellites"
     )
-    return 0
 
 
 if __name__ == "__main__":

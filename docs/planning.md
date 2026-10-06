@@ -28,7 +28,17 @@ Extra rows: somersloop budget, belt/pipe throughput caps, machine cap.
 
 **Two-phase lexicographic solve is mandatory.** With only `n_p ≥ x_p`, any larger `n_p` is optimal — an
 unguarded run returned machine counts of 1e12. Phase 1 optimises the goal; phase 2 pins that value and
-minimises machine count.
+minimises machine count. `solver/lp.py` builds the matrix and runs both phases; `solver/build_table.py`
+reads the result out as whole machines; `solver/optimize.py` is the pipeline between them.
+
+**Clocks are discrete modes, never a continuous variable.** Power goes as `clock**1.32`, which is
+non-convex as a constraint, and for a fixed throughput power strictly falls as machine count rises, so a
+min-power objective over a continuous clock would drive machines to infinity.
+
+**Grid import is one more column on the power row**, capped by `grid_import_mw`. Without it the power row
+forces generation == consumption, so every plan would have to be self-powered — which silently reports 0
+output for any factory with no on-site generator able to burn its own byproducts. It is forced to 0 when
+MW is an export, since a power plant that imports power to export it is unbounded.
 
 ### 8.2 The byproduct rule — the crux
 
@@ -37,6 +47,9 @@ minimises machine count.
 3. `sinks` restricted to `is_solid AND mResourceSinkPoints > 0 AND mCanBeDiscarded`; each AWESOME Sink
    draws 30 MW.
 4. Export **targets** are first-class: `max MW subject to plastic ≥ X, rubber ≥ Y` — still linear.
+
+MW-only is the default export set for a power plant, and it is why a crude-oil plant can come back
+infeasible: every crude→fuel route emits Polymer Resin, and resin only terminates in Plastic or Rubber.
 
 Why it matters, measured on crude→plastic from 300 m³/min:
 
@@ -56,14 +69,14 @@ and it can say "impossible", which a naive model never does.
 nothing about the resource end, and that asymmetry was expensive: a rocket-fuel plan returned a bare
 INFEASIBLE, `explain_byproducts` correctly reported no byproduct was stuck, and the real cause —
 **Nitrogen Gas exists only as resource-well satellites, and this world has no Pressurizer** — had to be
-recovered by hand by cross-referencing a node scan against a recipe. `planning/supply.py` closes it.
+recovered by hand by cross-referencing a node scan against a recipe. `planning/analysis/supply.py` closes it.
 
 Three things had to be fixed for an INFEASIBLE response to say anything at all:
 
 1. **Every early `Solution("infeasible", …)` filed its reason under the wrong field.** The tenth
    positional field is `machine_penalty_mw`, not `warnings`, so `"phase 1 infeasible: …"` went into a
    float and the caller got an INFEASIBLE with no reason attached. This is most of what "bare INFEASIBLE"
-   actually was. Now passed by keyword.
+   actually was. Every such return is now `Solution.infeasible(reason)`, which files it as the warning.
 2. **An export or target nothing in scope can make is named without any probe.** An export with no
    producing column cannot be exported at any rate, and the distinction is the one a player acts on:
    *no unlocked recipe makes it* versus *its recipe needs a machine you have not unlocked*.
@@ -95,6 +108,31 @@ node in scope (with the map-wide count) → nodes in scope but none reachable �
 (`only_free_nodes`) → reachable and free but modelled by no extractor (well satellites and geysers,
 which `build_scenario` never turns into extractor columns). If none of those hold it says the cause is
 not established rather than inventing one.
+
+**`explain_byproducts` is the same rule from the other end** (`planning/analysis/byproducts.py`):
+which produced item has no outlet. Two static analyses are tempting and both are wrong on the
+reference recipe set. "An item with no consumer is stuck" misses the real trap — Polymer Resin has two
+unlocked consumers (Residual Plastic, Residual Rubber) and is stuck anyway, because Plastic and Rubber
+have nowhere to go either. "An item whose consumers reach an outlet is fine" over-reports the other way:
+Plastic terminates via Empty Canister → Packaged Liquid Biofuel → a Biomass Burner, true as a chain and
+useless as a plan, since nothing in a crude-oil scope supplies the biofuel; a chain test ignores
+co-inputs. So candidates come from a **relaxed probe** — every produced item made exportable, the naive
+`net >= 0` formulation, used only to size and rank and never shown as a plan — and each is confirmed by
+re-solving with that one item opened. An item is named as the blocker only when opening it alone
+measurably moves the caller's own objective, and fixes are priced only for a confirmed blocker.
+
+Anything the base plan produces is already consumed exactly (every balance is an equality), so it
+cannot be the dead end and is skipped. Without that, the probe only works for maximising objectives:
+under `min_power`, `min_raw` or `min_machines` dumping an intermediate is cheaper than processing it, so
+the probe exports every one and each gets reported STUCK in a plan that works.
+
+The graph work left is explanatory: which recipes would consume the item, unlocked or not, and whether
+the chain out of it runs into a closed loop. The loop is scoped to the DIRECT products of the item's
+unlocked consumers rather than a whole strongly connected component — the big component absorbs plenty
+in principle, none of which the scope can supply. Whether a loop can absorb anything is itself a tiny
+LP: Recycled Plastic and Recycled Rubber consume each other's product, and reading that as "they cancel"
+gets it backwards — no non-negative mix of the two absorbs either, and the pair net-CREATES both out of
+Fuel, so it can never soak up a resin surplus.
 
 `nodes.blocking_buildings` supplies the actionable half — *which* building to go and unlock. It is
 strictly sharper than the `reachable` flag in one direction that matters: `reachable` asks only whether
@@ -132,7 +170,7 @@ says so rather than implying it catches the bug.
 ### 8.2c Three gaps a planning session found
 
 **Generator burn had no name to ban.** `exclude_recipes` searches `game.recipes`, but
-generator burn and extraction are *synthesised* in `optimize.py` from building data —
+generator burn and extraction are *synthesised* in `processes.py` from building data —
 they are not recipes and have no entry in Docs.json. So `"Coal-Powered Generator on
 Coal"`, the exact string the build table prints, matched nothing. The recourse was
 deleting 20 generators by hand, which only worked because coal happened to be a leaf in
@@ -203,7 +241,9 @@ mode's clock preserved the rate and silently inflated the count — `water_extra
 came back as **64 machines at 149.7 %**, because 54 machines' worth of units read at a lower
 clock needs more machines. It looked correct at 27 only because that solution happened to
 use a single mode. The fold now keeps `sum(v)` as the count and lets the clock absorb the
-rate: `built = ceil(sum(v))`, `clock = units / built`.
+rate: `built = ceil(sum(v))`, `clock = units / built`. `ceil(sum(v))` can never exceed the cap,
+because the cap bounds `sum(v)` itself, and the clock never exceeds the highest mode, because
+the units are at most the count times that mode.
 
 **Binding also had to move to the group.** It was tested per process against that
 process's `max_count`, but grouped modes share one cap, so a solve spreading extractors
@@ -215,7 +255,9 @@ column at 0.0001 machine-equivalents making 0.0017/min — one item every ten ho
 one clock mode, so there is nothing to fold it into. The row is omitted from the build
 table (a whole machine at 0.0087 % clock reads as an instruction) but the machine is
 **still counted**: dropping both silently turned a measured "9 buildings" into 8 in
-`compare_recipe_options`. Omitting a row is presentation; changing a total is not.
+`compare_recipe_options`. Omitting a row is presentation; changing a total is not. The threshold,
+`NEGLIGIBLE_IPM`, is a rate rather than a machine count, because the same fraction of a machine is
+very different throughput on a miner and on a refinery.
 
 This is the one place the reporter's original instinct — filter below an epsilon — was
 right, and it was right for the *opposite* reason to the extractor case. The two look
@@ -274,7 +316,7 @@ naive figure now appears only as the thing being corrected.
 ### 8.2e Plan slices, and the shard bill
 
 Every plan-level question that is not "solve it" is the same operation: take some of the
-processes and total their power, flows, shards and sloop slots. `planning/slice.py` is that
+processes and total their power, flows, shards and sloop slots. `planning/readout/slice.py` is that
 operation; the shard bill is one call to it and commissioning will be it in a loop.
 
 **Two power figures, and the difference is not rounding.** `mw_linear` is what the LP
@@ -528,7 +570,13 @@ lets the solver *spread* a fixed throughput over more machines purely to save po
 `machine_cost_mw` (default **5 MW**, set just above that measured figure) whenever the objective is
 `max_mw` or `min_power`. Above a 0 h payback horizon each building's own price, its build points
 over the horizon (`K / (H r)`), replaces it ([planner-payback-horizon_contract.md](planner-payback-horizon_contract.md) §2). For `max_item` / `min_raw` no penalty is applied because underclocking gives no
-throughput benefit at all and is never selected.
+throughput benefit at all and is never selected. A `machine_cost_mw` of 0 reproduces the unpriced,
+ill-posed max-power solve.
+
+**`objective_value` is the pure goal; the machine price is reported apart**, as
+`machine_penalty_mw`. Reading the priced phase-1 value as the objective understated `max_mw` by about
+5,000 MW and made a per-unit cost derived from it wrong — two separate tools tripped on exactly this
+(§9.2 records the advisor's 4,966 MW).
 
 The warning fires **only** for genuine spreading, never for a derived ratio clock. An earlier version
 warned on any clock below 100%, which meant a routine 99.4% ratio looked like a tradeoff the caller
@@ -705,7 +753,10 @@ edge with the crude already arrived. `plan_layout show="trunks"` fills the gap:
 running past it, so nodes are ordered along a nearest-neighbour chain from the node
 furthest from the destination inward, and the chain is cut wherever the next node would
 overflow. Capacitated clustering would give tighter blobs and a worse answer: two nodes
-40 m apart on opposite sides of a run are not on the same pipe.
+40 m apart on opposite sides of a run are not on the same pipe. The chain is greedy on purpose:
+an optimal order is a travelling-salesman problem, and the gap between greedy and optimal is
+dwarfed by terrain this model cannot see — a cliff in the way costs more than a suboptimal join
+order ever does.
 
 **This is where the head span becomes actionable.** `search_resource_nodes` reports the
 Spire crude field spanning 40 m (§ 8.5b). Attached to a trunk, the answer is sharper --
@@ -826,7 +877,7 @@ Three modules and no new tool, because each already owns exactly one half of the
 | the matching | `build_diff()` | which of them exist in the save |
 | the evidence | `graph.health.assess()` | what each existing one is doing |
 
-`track()` only joins them, on `diff.group_key` — the same key the diff matches on, promoted from
+`track()` only joins them, on `jobs.group_key` — the same key the diff matches on, promoted from
 private to public for exactly this reason. Joining on anything else (the display label, the building
 class) would let the tracker credit a Refinery on Alt HOR with one making alumina, which is the
 failure §8.6 exists to prevent, re-introduced one layer up.
@@ -919,6 +970,9 @@ Motor                    10705    5254    5451  Fuel-Powered Generator, Blender,
 Heavy Modular Frame        920     244     676  Blender
 ```
 
+Every number is data: a building's cost is `Building.build_cost`, the ingredients of the
+`kind == "building"` recipe that constructs it, so a game update moves it without a code change.
+
 **This does not replace `diff._cost`, and the difference is the point.** That charges the
 **delta** -- what is left to place -- filtered to what you are short of and ranked by how
 hard the shortfall is to fix: a shopping list for the next session. This charges the
@@ -992,7 +1046,7 @@ A sweep for "same computation implemented twice", prompted by the sizing primiti
 turning out to be exactly that. Ranked by whether the copies can actually disagree.
 
 **Chain depth — fixed, and it was a live bug.** `commission._depths` relaxed depths
-iteratively with a cap while `layout.chain_depth` condenses strongly connected components,
+iteratively with a cap while `graph.chain_depth` condenses strongly connected components,
 and `diff` already used the latter. On a Recycled-shaped 2-cycle they disagree outright:
 
 | process | `chain_depth` | the relaxation |
@@ -1018,7 +1072,7 @@ exactly two lines; binary rounding makes it three) and nobody arrives at it inde
 so one copy came from the other. They had already drifted on `capacity <= 0`: layout
 returned 1 line, optimize returned `None`. Unreachable — capacity comes from a tier lookup
 with a non-zero fallback — but a divergence inside duplicated code is a bug waiting for the
-day it becomes reachable. Now `planning/carrier.py`, resolved toward 1, because the count
+day it becomes reachable. Now `planning/solver/carrier.py`, resolved toward 1, because the count
 feeds block splitting and `None` would need a guard at every use.
 
 **Centroid and spread — fixed, six sites.** `graph/identity.py` and `graph/query.py`
@@ -1097,8 +1151,9 @@ sinks — and not merely the drawing.
 underneath — across every alternate *not* unlocked, which would change the factory being
 built — was being answered by tracing the recipe tree by hand.
 
-`rank_unlocks` is one counterfactual per candidate, reusing `advisor._solve_with` rather
-than growing a second copy of that machinery. On the measured Spire Coast plan:
+`rank_unlocks` is one counterfactual per candidate, adding it through `scenario.with_recipes`
+as the hard-drive advisor does rather than growing a second copy of that machinery. On the
+measured Spire Coast plan:
 
 ```
 baseline=107257.64  candidates=79  movers=1
@@ -1252,10 +1307,26 @@ however good its arithmetic.
 
 **The search metric is a proxy, and it is checked.** It minimises pipe-storeys weighted by
 LINE COUNT — pumps serve one pipe each, so 10,300 m³/min of water is eighteen risers, not
-"10,300 units of badness". But pumps round *up* per line, so a 21% better proxy bought only
-4% of pumps here. A proxy that can be wrong in the small can be wrong in the large, so both
-stacks are built and their real pump counts compared, and the head order is discarded if it
-does not win. Two floor builds, against 40,320 if the search itself counted pumps.
+"10,300 units of badness". Rate and lines are near-proportional, so the weighting rarely changes
+the winner; it changes what the quoted number means. But pumps round *up* per line, so a 21% better
+proxy bought only 4% of pumps here. A proxy that can be wrong in the small can be wrong in the large, so
+both stacks are built and their real pump counts compared, and the head order is discarded if it does not
+win. Two floor builds, against 40,320 if the search itself counted pumps.
+
+The search is exact up to `MAX_ORDERED_STAGES` = 8 stages: 8! is 40,320 permutations and instant, 12! is
+half a billion. Measured plans run to four or five stages, so the cap has never bitten; past it a plan
+keeps chain order with a note rather than hanging.
+
+**A site partition stacks per site.** Declared sites are separate buildings, and one merged stack
+got this badly wrong: `order_floors_by="head"` over a three-site plan fused rig, hall and resin plant into
+one 80 m tower and priced 46 pumps of fluid lift where the per-site stacks need 6. So each site gets its
+own stack and floor order, claimed by the same `claim_processes` pass the interface table uses, and
+anything unclaimed or contested lands in a trailing `(unassigned)` stack rather than vanishing — a
+dropped block would silently shrink the materials bill. The merged view shifts each site's stages, floor
+indexes and buses by an offset so they stay disjoint, which keeps `fluid_head` exact on the
+concatenation: a stage maps to one floor and the floors between two same-site stages are same-site, so
+the whole-plan riser count is the sum of the per-site counts, never a lift between buildings that share
+no pipe.
 
 **And the risers are now in the bill.** Pumps were absent from `show="materials"`
 entirely, so a fluid-heavy plan understated its own build by 46 buildings. Metres come from
@@ -1296,7 +1367,9 @@ a belt, and a belt has no direction as an object — only the machine end does.
 
 **Logistics is traversed, not reported.** A trace from the generators touches 331 nodes at
 depth 72, almost all conveyor. The walk passes through and lists only machines, the same
-thing `graph.query` does to find a factory boundary.
+thing `graph.query` does to find a factory boundary. It keeps which conduit RUNS it crossed
+(`Trace.crossed`, contracted by `world.logistics`), so the route can be named without the
+table growing 300 rows.
 
 **Only proven-running generators are charged.** `power_at_risk` counts a generator that
 produced inside the last complete 300 s window; one that did not may be idle for a dozen
@@ -1462,11 +1535,70 @@ for, and §8.2 makes `exports` the most load-bearing argument in the model.
 −57.78 vs −46.67 on the same objective). Either apply a documented lexicographic tie-break or label
 reported raw vectors as one of several optima. Never present a degenerate component as *the* number.
 
+A bare `min_raw` also sums every resource with weight one, so it trades crude against water — and water
+is effectively unlimited on this map, so that trade is always the wrong way round: Recycled Plastic came
+back at **0.94 m³ crude per Plastic with zero water**, when 0.33 crude plus some water was available.
+
 `Scenario.raw_weights` is the mechanism: a per-resource weight in the `min_raw` objective, defaulting to
 1.0 and applied to both the raw columns and the extractor columns. A weight of 0 only makes sense as the
 first half of a lexicographic pair — minimise the priced resources, then pin them and minimise the free
 one, or the free one comes back at its stand-in cap. `bom` uses it for water ([§10.1c](mcp-surface.md#101c-bom--the-flattened-bill));
-`compare_recipe_options` predates it and pins its primary resource by cap instead.
+`compare_recipe_options` predates it and pins its primary resource by cap instead (§8.10).
+
+### 8.10 Route comparison
+
+`alternates_for_item` answers "which recipes make this". `compare_recipe_options`
+(`planning/analysis/recipe_routes.py`) answers what each way of making it COSTS, end to end — raw per
+unit, buildings, power, byproducts that need an outlet, and machine types the player owns but has never
+placed.
+
+**A route is one pinned producer.** The interesting comparison is a sub-chain — `Crude → Alt HOR → Diluted
+Fuel` against `Crude → Fuel` — not one recipe against another. So a route pins the recipe that makes the
+final item, deletes its RIVALS from the recipe set, and lets the LP choose everything upstream. Deleting
+the rivals is what makes it a route rather than a blend: with them present the LP mixes producers and
+there is nothing to compare. Both `bom` and this start from `chain_scenario`: every resource a free raw
+input at a stand-in cap, `extractor_nodes={}`, so the per-unit economics never depend on which nodes the
+save happens to have free.
+
+**Not a tree, and not shadow prices.** Recycled Plastic and Recycled Rubber form a real 2-cycle, so a tree
+has no correct depth — and the best Plastic route runs through it. Machine counts, byproduct outlets and
+unbuilt buildings are not dual quantities at all; duals would also be non-unique on these degenerate
+`min_raw` LPs (§8.7), and a reduced cost prices one marginal unit at the current basis rather than
+committing to a chain that is not in it.
+
+**Three solves per route**, because one objective cannot answer the question:
+
+1. `min_machines` at the requested rate — the fewest-buildings floor.
+2. `max_item` with the primary resource capped at `PROBE_RATE` (60/min) — the scale-free headline, "60
+   crude in, 160 Fuel out".
+3. `min_raw` at the requested rate with the primary resource pinned to what solve 2 proved reachable — the
+   buildable plan, and the lexicographic tie-break §8.7 asks for: the scarce resource first, then total
+   raw. Without the pin a bare `min_raw` buys crude back with water (§8.7's 0.94 against 0.33).
+
+The pin in solve 3 needs headroom. `objective_value` is rounded to 4 dp, so the probe yield can read high
+by up to 5e-5 and a cap derived from it sits just below what the route needs — which reported Motor,
+Battery and both Heavy Modular Frame routes, all buildable, as having no route at all. The cap is widened
+by exactly that rounding plus the MILP's 1e-6.
+
+**One ranking resource for the whole table**, chosen once: the resource most routes spend, water excluded
+since it is a pipe burden rather than a scarcity. A per-unit column whose denominator changed between rows
+would not be a comparison. `per_resource` re-runs the table on another one.
+
+The figures reproduce the oil finding exactly: 60 crude → 160 Fuel at 30.00 net MW per m³/min crude via
+Alt HOR + Diluted Fuel, against 40 Fuel and 7.58 MW for the base Fuel recipe. The power yield burns the
+output in the best generator this save has **unlocked**, on the LP's linear draw so it stays scale-free.
+
+What the pinning cannot answer:
+
+* two chains ending in the same recipe — `Residual Fuel` fed by Alt HOR or by base Plastic is one route,
+  and the LP keeps only the cheaper;
+* a deliberate BLEND of two producers, which real factories run;
+* the cost of a rival's OTHER products — deleting it also deletes it as their source, so a route can be
+  charged for replacing a byproduct it never wanted;
+* whether a reachable node of each raw exists, which is `plan_factory`'s question;
+* a route that never spends the ranking resource: it is buildable, has no denominator here, and is
+  reported as such rather than as a chain that cannot close. A route spending several resources is ranked
+  on the shared one and the rest are named, never priced.
 
 ---
 
@@ -1486,7 +1618,9 @@ The counterfactual must add **all new recipes of the schematic** (two carry thre
 
 Because a recipe can be worthless for power and excellent elsewhere, evaluate every candidate against a
 small standard battery — max net MW from a resource basket; min raw for a fixed target part; min
-machines; min power — and **never collapse them into one score without naming the tradeoff**.
+machines; min power — and **never collapse them into one score without naming the tradeoff**. Each
+candidate is also measured on its own main product, or one outside the battery's scope reads 0 for
+every objective: Coated Cable makes Cable, which a plastic-and-power battery never sees.
 
 Report alongside, explicitly labelled as heuristics not maths: byproducts created/removed, new building
 types required (and whether they're unlocked *and built*), water/pipe burden, belt pressure, complexity.
@@ -1506,6 +1640,18 @@ types required (and whether they're unlocked *and built*), water/pipe burden, be
   reports only the ore saving is misleading.
 - **Charge only genuinely new infrastructure.** One run charged all 3,280 m³/min of water as newly
   extracted, including 400 m³/min from 4 already-built extractors.
+- **The baseline is the quantity `plan_factory` reports.** Every advisor scenario goes through
+  `build_scenario`, so raw material arrives through real extractors on real nodes — power charged,
+  count capped by the nodes. Feeding the same basket in as free `raw_caps` inflated the northern
+  baseline from 92,269 MW to 171,882 MW; the deltas mostly survived, since the bias cancels between the
+  two solves, but the absolute number a player compares against `plan_factory` did not. For the same
+  reason a power objective reads `net_mw`, never `objective_value`, which carries the machine price
+  (§8.4) and put the baseline 4,966 MW below the `plan_factory` figure it invites comparison with.
+- **An empty scope is refused, not solved.** `build_scenario` always grants water pumps, so a typo'd
+  region still solves: a baseline of 0 MW and a 0 delta on every option, a confident "neither is worth
+  anything" that reads as a verdict rather than a misspelling.
+- **Only a researchable candidate is recommended.** 24 of the 109 alternates are dependency-blocked on
+  the reference save, and ranking alone would let one of them become the headline advice.
 
 ### 9.3 Unverified mechanics — must be labelled in output
 

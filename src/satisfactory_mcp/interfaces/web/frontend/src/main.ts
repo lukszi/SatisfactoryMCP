@@ -1,14 +1,6 @@
 /* The map. Reads /api, draws markers, and refetches when the game writes a save.
  *
- * Two coordinate facts drive everything below.
- *
- *   1. The API already speaks metres. Nothing here divides by 100 -- if a number looks
- *      like centimetres, the bug is server-side.
- *   2. Satisfactory is +X east and +Y SOUTH, while Leaflet's CRS.Simple is +lat north.
- *      So a point is plotted at [-y, x], and that negation lives in map.ts and nowhere else.
- *
- * And one content fact: every string that reaches a popup or a label is DATA, so popup()
- * escapes everything by default and the few rows that need markup say so with html().
+ * Coordinates (metres, plotted at [-y, x]) are map/map.ts's header.
  *
  * This file is the entry point and draws nothing. What it holds is the ORDER of two things
  * neither of which is visible from inside a module: which map events are listened for, and
@@ -16,35 +8,42 @@
  */
 
 import "leaflet/dist/leaflet.css";
-import "./style.css";
+import "./app/base.css";
+import "./map/layer-control.css";
+import "./map/drawn.css";
+import "./dash/panel.css";
+import "./dash/planner/site.css";
+import "./chat/advice.css";
+import "./dash/maps/settings-maps.css";
+import "./map/live-light.css";
 
-import { listenForCopies } from "./copy";
-import { el } from "./dom";
-import { listenForFinds } from "./finder";
-import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./floors";
-import { listenToFragment } from "./fragment";
-import { inspect } from "./inspector";
-import { declutter } from "./labels";
-import { isBatching, onSettled } from "./layercontrol";
-import { loadLive, loadOne, loadRegions, loadStatic } from "./load";
-import { rememberTick } from "./layers";
-import { fitWorld, map, padPopups, writeHash } from "./map";
-import { listenForEmptyClicks } from "./mapclick";
-import { markHiddenRows, notePickupChoice } from "./markers";
-import { render as renderPanel, showSelector } from "./panel";
-import { listenForPins } from "./pins";
-import { noteRegionChoice, updateRegionBlend } from "./regions";
-import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./routes";
-import { wireSearch } from "./search";
-import { syncSharedSettings } from "./shared-settings";
-import { listen } from "./sse";
-import { BOOT, BOOT_GARBLED, garbledNote, state } from "./state";
-import { wireStatus } from "./status";
-import { loadBaseMap } from "./tiles";
-import { onTone } from "./tone";
-import { fail } from "./toast";
-import { listenForTraces } from "./trace";
-import { loadWorlds } from "./worlds";
+import { listenForCopies } from "./kit/copy";
+import { el } from "./kit/dom";
+import { listenForFinds } from "./map/tools/finder";
+import { applyFloorFragment, escapeLeavesFloorMode, noteFloorChoice } from "./map/floors/floors";
+import { listenToFragment } from "./app/fragment";
+import { inspect } from "./map/inspector";
+import { declutter } from "./map/labels";
+import { isBatching, onSettled } from "./map/layercontrol/control";
+import { loadLive, loadOne, loadRegions, loadStatic } from "./app/load";
+import { rememberTick } from "./map/layers";
+import { fitWorld, map, padPopups, writeHash } from "./map/map";
+import { listenForEmptyClicks } from "./map/mapclick";
+import { markHiddenRows, notePickupChoice } from "./map/drawn/pickups";
+import { renderPanel, showSelector } from "./map/panel";
+import { listenForPins } from "./chat/pins";
+import { noteRegionChoice, updateRegionBlend } from "./map/regions";
+import { restyleRoutesForZoom, ROUTE_LAYERS, sinkRoutes } from "./map/drawn/route-passes";
+import { wireSearch } from "./app/search";
+import { syncSharedSettings } from "./app/shared-settings";
+import { connectLiveEvents } from "./app/sse";
+import { BOOT, BOOT_GARBLED, garbledNote, state } from "./app/state";
+import { wireStatus } from "./app/status";
+import { loadBaseMap } from "./map/tiles";
+import { onMapTone } from "./map/map-tone";
+import { fail } from "./kit/toast";
+import { listenForTraces } from "./map/tools/trace";
+import { loadWorlds } from "./app/world-picker";
 
 /* ---------------------------------------------------------------- features */
 
@@ -56,25 +55,27 @@ import { loadWorlds } from "./worlds";
  *
  * DELETING A LINE HERE DELETES ITS LAYER, silently: each module registers what it wants
  * fetched as it is evaluated, load.ts imports none of them, and Rollup drops what nothing
- * imports -- no compile error, no runtime one. `test_architecture.py` checks this list
- * against the set of modules that call `registerFetch`, in both directions. Three of these are
+ * imports -- no compile error, no runtime one. `test_frontend_layout.py` checks this list
+ * against the set of modules that call `registerFetch`, in both directions. Four of these are
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
-import "./advice";
-import "./crates";
-import "./header";
-import "./inventory";
-import "./labels";
-import "./markers";
-import "./panel";
-import "./pins";
-import "./placements";
-import "./plans";
-import "./power";
-import "./progress";
-import "./recipes";
-import "./routes";
-import "./world";
+import "./chat/advice";
+import "./map/drawn/belts";
+import "./dash/recipes/cache";
+import "./map/drawn/crates";
+import "./dash/progress/feeds";
+import "./app/header";
+import "./dash/inventory";
+import "./map/labels";
+import "./map/drawn/markers";
+import "./map/panel";
+import "./map/drawn/pickups";
+import "./chat/pins";
+import "./map/drawn/pipes";
+import "./map/drawn/placements";
+import "./map/drawn/plan-sitings";
+import "./map/drawn/power-wires";
+import "./dash/world/world-here";
 
 /* ------------------------------------------------------------------- wiring */
 
@@ -84,9 +85,9 @@ import "./world";
  * consequence of the import graph, so reordering two imports would silently reorder the
  * handlers -- and three of these events have more than one listener:
  *
- *   zoomend            writeHash, styleRoutes, declutter, markHiddenRows
+ *   zoomend            writeHash, restyleRoutesForZoom, declutter, markHiddenRows
  *   overlayadd         (the control's own decorator), noteRegionChoice, noteFloorChoice,
- *                      notePickupChoice, styleRoutes + sinkRoutes, declutter
+ *                      notePickupChoice, restyleRoutesForZoom + sinkRoutes, declutter
  *   overlayremove      (the control's own decorator), noteRegionChoice, noteFloorChoice,
  *                      notePickupChoice, declutter
  *
@@ -96,23 +97,23 @@ import "./world";
 map.on("moveend zoomend", writeHash);
 map.on("layeradd layerremove", updateRegionBlend);
 // Which of the region box's ticks were the player's, which is what makes the base map's
-// default for it a default rather than an override. See regionsUnderMode.
+// default for it a default rather than an override. See applyRegionDefaultForMode.
 map.on("overlayadd overlayremove", noteRegionChoice);
 // The same question for floor mode -- and a layer ticked on mid-mode owes the floor filter a
 // pass, which this does too.
 map.on("overlayadd overlayremove", noteFloorChoice);
 // ...and for the pickup rows, which the fragment carries: see notePickupChoice.
 map.on("overlayadd overlayremove", notePickupChoice);
-map.on("zoomend", styleRoutes);
+map.on("zoomend", restyleRoutesForZoom);
 
 /* A layer added long after both fetches landed is appended to the canvas' draw list, i.e. on
  * top of everything, so the sink has to run again when the player ticks the box. And so does
- * the restyle: styleRoutes skips a layer that is not on the map, so a layer ticked on carries
- * the pixel sizes of the zoom it was last drawn at. Style first, then sink -- the order both
- * draw functions already end in. */
+ * the restyle: restyleRoutesForZoom skips a layer that is not on the map, so a layer ticked on
+ * carries the pixel sizes of the zoom it was last drawn at. Style first, then sink -- the order
+ * both draw functions already end in. */
 map.on("overlayadd", function (event) {
   if (!ROUTE_LAYERS.some(function (n) { return state.layers[n] === event.layer; })) return;
-  styleRoutes();
+  restyleRoutesForZoom();
   sinkRoutes();
 });
 
@@ -128,7 +129,7 @@ map.on("zoomend", markHiddenRows);
 
 /* The layers whose colours follow the base map's tone and keep no copy of their data to repaint
  * from; the node dots and pickups repaint themselves. */
-onTone(function () {
+onMapTone(function () {
   if (!state.worlds.length) return;
   loadOne("/api/belts");
   loadOne("/api/power");
@@ -178,5 +179,5 @@ loadWorlds().then(function () {
     applyFloorFragment(BOOT.floor);
     if (BOOT.show) showSelector(BOOT.show);
   } else renderPanel();
-  listen();
+  connectLiveEvents();
 });

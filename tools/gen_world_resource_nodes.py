@@ -22,11 +22,24 @@ import collections
 import json
 import sys
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+for _path in (ROOT / "src", ROOT / "tools" / "mapgen" / "src"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+from mapgen.common import base_parser, require_gen
+from satisfactory_mcp.core.gameassets.container import CONTAINER, paks_dir
 from satisfactory_mcp.core.gameassets.iostore import IoStore, oodle_decompress
-from satisfactory_mcp.core.gameassets.levels import LEVEL_SUFFIX, level_paths, walk_levels
+from satisfactory_mcp.core.gameassets.levels import (
+    LEVEL_SUFFIX,
+    WORLD_LEVEL_DIR,
+    level_paths,
+    walk_levels,
+)
 from satisfactory_mcp.core.gameassets.packages import (
     AssetIndex,
     ClassFacts,
@@ -38,23 +51,20 @@ from satisfactory_mcp.core.gameassets.packages import (
 )
 from satisfactory_mcp.core.gameassets.provenance import InstallNotFound, installed_build
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from tools._common import base_parser, require_gen
-
-WORLD_PREFIX = "Map/GameLevel01"
 PERSISTENT_LEAF = "Persistent_Level.umap"
+
+RESOURCE_NODE_CLASS = "BP_ResourceNode_C"
+FRACKING_SATELLITE_CLASS = "BP_FrackingSatellite_C"
+GEYSER_CLASS = "BP_ResourceNodeGeyser_C"
+FRACKING_CORE_CLASS = "BP_FrackingCore_C"
+
+#: The classes that become rows.
+NODE_CLASSES = (RESOURCE_NODE_CLASS, FRACKING_SATELLITE_CLASS, GEYSER_CLASS, FRACKING_CORE_CLASS)
 
 #: A deposit is counted every run but never emitted, so its exclusion stays a decision
 #: rather than a blind spot.
-EMITTED = (
-    "BP_ResourceNode_C",
-    "BP_FrackingSatellite_C",
-    "BP_ResourceNodeGeyser_C",
-    "BP_FrackingCore_C",
-)
-DEPOSIT = "BP_ResourceDeposit_C"
+DEPOSIT_CLASS = "BP_ResourceDeposit_C"
+COUNTED_CLASSES = {*NODE_CLASSES, DEPOSIT_CLASS}
 
 #: ``mPurity`` FName -> the vocabulary every consumer speaks. UE omits a property equal to
 #: its class default and the default is ``RP_Normal``, so absence decodes to ``normal``
@@ -63,11 +73,11 @@ PURITY = {None: "normal", "RP_Normal": "normal", "RP_Inpure": "impure", "RP_Pure
 
 #: Decimal places of a centimetre. The composed float32 transforms are not meaningful past
 #: this, and a fixed rounding keeps regeneration diffs readable.
-ROUND = 4
+POSITION_DECIMALS = 4
 
 #: The retirement record for ``data/world_resource_nodes.mit.json``, deleted in the same
 #: commit that first generated this file. Transcribed, not recomputed -- the file it was
-#: measured against is gone -- so no run gates on it. ``tests/test_nodes_provenance.py``
+#: measured against is gone -- so no run gates on it. ``tests/data/test_nodes_provenance.py``
 #: pins these figures.
 RETIRED_MIT_TABLE = {
     "what": (
@@ -143,15 +153,26 @@ RETIRED_MIT_TABLE = {
 }
 
 
-def sweep(store: IoStore, scripts: ScriptObjects) -> tuple[dict, dict, PackageView, str]:
-    """Count the emitted classes over every world package; hand back the persistent level.
+@dataclass
+class WorldSweep:
+    """One walk over every world package: the census, and the persistent level it found."""
 
-    Returns ``(per-package counts for packages placing any counted class, the world-wide
-    class census, the persistent level's view, its container path)``. The view comes out
-    of the same walk that proves it is the only package that matters, so the proof and the
-    read cannot diverge.
+    #: Package leaf -> counts, for the packages placing any counted class.
+    per_package: dict[str, collections.Counter]
+    #: Counted class -> how many the whole world places.
+    census: dict[str, int]
+    persistent_view: PackageView
+    persistent_path: str
+    packages_swept: int
+
+
+def sweep_world_levels(store: IoStore, scripts: ScriptObjects) -> WorldSweep:
+    """Count the counted classes over every world package; hand back the persistent level.
+
+    The view comes out of the same walk that proves it is the only package placing a node,
+    so the proof and the read cannot diverge. Dies if any package is unreadable or a node
+    turns up in a streamed cell.
     """
-    counted = set(EMITTED) | {DEPOSIT}
     per_package: dict[str, collections.Counter] = {}
     census: collections.Counter = collections.Counter()
     persistent: PackageView | None = None
@@ -161,7 +182,7 @@ def sweep(store: IoStore, scripts: ScriptObjects) -> tuple[dict, dict, PackageVi
     def unreadable(_path: str, exc: Exception) -> None:
         failures[type(exc).__name__] += 1
 
-    paths = level_paths(store, contains=WORLD_PREFIX)
+    paths = level_paths(store, contains=WORLD_LEVEL_DIR)
     started = time.time()
     for number, total, path, view in walk_levels(
         store, scripts, paths=paths, on_unreadable=unreadable
@@ -172,7 +193,7 @@ def sweep(store: IoStore, scripts: ScriptObjects) -> tuple[dict, dict, PackageVi
             if view.outer_of.get(slot) not in view.level_slots:
                 continue
             cls = class_name_of(view.class_of.get(slot))
-            if cls in counted:
+            if cls in COUNTED_CLASSES:
                 here[cls] += 1
         if here:
             per_package[path.rsplit("/", 1)[-1]] = here
@@ -185,31 +206,36 @@ def sweep(store: IoStore, scripts: ScriptObjects) -> tuple[dict, dict, PackageVi
     if failures:
         raise SystemExit(f"unreadable world packages, so the census is not a proof: {failures}")
     if persistent is None or persistent_path is None:
-        raise SystemExit(f"no {PERSISTENT_LEAF} under {WORLD_PREFIX} -- container layout moved")
+        raise SystemExit(f"no {PERSISTENT_LEAF} under {WORLD_LEVEL_DIR} -- container layout moved")
 
     outside = {
-        leaf: {cls: n for cls, n in here.items() if cls in EMITTED}
+        leaf: {cls: n for cls, n in here.items() if cls in NODE_CLASSES}
         for leaf, here in per_package.items()
-        if leaf != PERSISTENT_LEAF and any(cls in EMITTED for cls in here)
+        if leaf != PERSISTENT_LEAF and any(cls in NODE_CLASSES for cls in here)
     }
     if outside:
         raise SystemExit(
             "emitted classes are placed outside the persistent level, so a one-package "
             f"read is incomplete from this build on: {outside}"
         )
-    return per_package, dict(census), persistent, persistent_path
+    return WorldSweep(
+        per_package=per_package,
+        census=dict(census),
+        persistent_view=persistent,
+        persistent_path=persistent_path,
+        packages_swept=len(paths),
+    )
 
 
-def other_levels(store: IoStore, scripts: ScriptObjects) -> list[dict]:
+def sweep_other_levels(store: IoStore, scripts: ScriptObjects) -> list[dict]:
     """The container's non-world levels, swept with the identical rule.
 
-    The developer test map places resource nodes too, so a count from outside GameLevel01
-    is recorded rather than treated as a contradiction.
+    The developer test map places resource nodes too, so a count from outside the world
+    level is recorded rather than treated as a contradiction.
     """
-    counted = set(EMITTED) | {DEPOSIT}
     out: list[dict] = []
     for path in sorted(
-        p for p in store.by_path if p.endswith(LEVEL_SUFFIX) and WORLD_PREFIX not in p
+        p for p in store.by_path if p.endswith(LEVEL_SUFFIX) and WORLD_LEVEL_DIR not in p
     ):
         entry: dict = {"package": path.rsplit("/", 1)[-1]}
         try:
@@ -225,97 +251,113 @@ def other_levels(store: IoStore, scripts: ScriptObjects) -> list[dict]:
             continue
         entry["actors"] = sum(counts.values())
         entry["of_a_counted_class"] = {
-            cls: n for cls, n in sorted(counts.items()) if cls in counted
+            cls: n for cls, n in sorted(counts.items()) if cls in COUNTED_CLASSES
         }
         out.append(entry)
     return out
 
 
 def read_rows(view: PackageView, classes: ClassFacts) -> list[dict]:
-    """Every emitted actor of the persistent level as a finished row, or die saying why."""
-    rows: list[dict] = []
-    core_names: dict[int, str] = {}
-    resource_of_core: dict[str, str | None] = {}
+    """Every node actor of the persistent level as a finished row, or die saying why."""
     problems: list[str] = []
-
     actors = [
         (export, class_name_of(view.class_of.get(export["slot"])))
         for export in view.exports
         if view.outer_of.get(export["slot"]) in view.level_slots
     ]
+    core_names = {
+        export["slot"]: export["name"] for export, cls in actors if cls == FRACKING_CORE_CLASS
+    }
+    rows: list[dict] = []
     for export, cls in actors:
-        if cls == "BP_FrackingCore_C":
-            core_names[export["slot"]] = export["name"]
-
-    for export, cls in actors:
-        if cls not in EMITTED:
+        if cls not in NODE_CLASSES:
             continue
-        slot = export["slot"]
-        name = export["name"]
-        props = view.props(slot)
-
-        raw = props.get("mPurity")
-        purity_name = view._fname(raw) if raw is not None else None
-        if purity_name not in PURITY:
-            problems.append(f"{name}: unknown mPurity value {purity_name!r}")
-            continue
-
-        resource_path = (
-            view.import_path(props["mResourceClass"]) if "mResourceClass" in props else None
-        )
-        resource = class_name_of(resource_path) if resource_path else None
-        if cls == "BP_ResourceNodeGeyser_C":
-            if resource is not None:
-                problems.append(f"{name}: a geyser carrying mResourceClass ({resource}) is new")
-        elif resource is None:
-            problems.append(f"{name}: no readable mResourceClass")
-
-        core = None
-        if cls == "BP_FrackingSatellite_C":
-            ref = view.export_ref(props.get("mCore", b""))
-            core = core_names.get(ref) if ref is not None else None
-            if core is None:
-                problems.append(f"{name}: mCore resolves to no BP_FrackingCore_C export")
-
-        root = root_component(view, slot)
-        transform = world_transform(view, root, classes)[0] if root is not None else None
-        if transform is None:
-            problems.append(f"{name}: no composable root-component transform")
-            continue
-
-        row = {
-            "id": name,
-            "class": cls,
-            "resource": resource,
-            "purity": PURITY[purity_name],
-            "x": round(transform[0][0], ROUND),
-            "y": round(transform[0][1], ROUND),
-            "z": round(transform[0][2], ROUND),
-        }
-        if cls == "BP_FrackingCore_C":
-            resource_of_core[name] = resource
-        if core is not None:
-            row["core"] = core
-        rows.append(row)
-
-    # A core and its satellites tap one deposit, so a resource disagreement across the
-    # link is a misread rather than a curiosity.
-    referenced = {row["core"] for row in rows if "core" in row}
-    for row in rows:
-        if row["class"] == "BP_FrackingCore_C" and row["id"] not in referenced:
-            problems.append(f"{row['id']}: a fracking core no satellite references")
-        if "core" in row and row["resource"] != resource_of_core.get(row["core"]):
-            problems.append(
-                f"{row['id']}: satellite says {row['resource']}, its core "
-                f"{row['core']} says {resource_of_core.get(row['core'])}"
-            )
-
+        row = _read_node_row(view, classes, export, cls, core_names, problems)
+        if row is not None:
+            rows.append(row)
+    problems.extend(_check_well_links(rows))
     if problems:
         for p in problems:
             print("  PROBLEM:", p)
         raise SystemExit(f"{len(problems)} problem(s); refusing to write a partial table")
     rows.sort(key=lambda r: r["id"])
     return rows
+
+
+def _read_node_row(
+    view: PackageView,
+    classes: ClassFacts,
+    export: dict,
+    cls: str,
+    core_names: dict[int, str],
+    problems: list[str],
+) -> dict | None:
+    """One node's row, appending what is wrong with it to ``problems``.
+
+    None where the row cannot be written at all: an unknown purity or no transform.
+    """
+    slot = export["slot"]
+    name = export["name"]
+    props = view.props(slot)
+
+    raw = props.get("mPurity")
+    purity_name = view._fname(raw) if raw is not None else None
+    if purity_name not in PURITY:
+        problems.append(f"{name}: unknown mPurity value {purity_name!r}")
+        return None
+
+    resource_path = view.import_path(props["mResourceClass"]) if "mResourceClass" in props else None
+    resource = class_name_of(resource_path) if resource_path else None
+    if cls == GEYSER_CLASS:
+        if resource is not None:
+            problems.append(f"{name}: a geyser carrying mResourceClass ({resource}) is new")
+    elif resource is None:
+        problems.append(f"{name}: no readable mResourceClass")
+
+    core = None
+    if cls == FRACKING_SATELLITE_CLASS:
+        ref = view.export_ref(props.get("mCore", b""))
+        core = core_names.get(ref) if ref is not None else None
+        if core is None:
+            problems.append(f"{name}: mCore resolves to no {FRACKING_CORE_CLASS} export")
+
+    root = root_component(view, slot)
+    transform = world_transform(view, root, classes)[0] if root is not None else None
+    if transform is None:
+        problems.append(f"{name}: no composable root-component transform")
+        return None
+
+    row = {
+        "id": name,
+        "class": cls,
+        "resource": resource,
+        "purity": PURITY[purity_name],
+        "x": round(transform[0][0], POSITION_DECIMALS),
+        "y": round(transform[0][1], POSITION_DECIMALS),
+        "z": round(transform[0][2], POSITION_DECIMALS),
+    }
+    if core is not None:
+        row["core"] = core
+    return row
+
+
+def _check_well_links(rows: list[dict]) -> list[str]:
+    """A core and its satellites tap one deposit, so a resource disagreement across the link
+    is a misread rather than a curiosity; so is a core no satellite references."""
+    problems: list[str] = []
+    resource_of_core = {
+        row["id"]: row["resource"] for row in rows if row["class"] == FRACKING_CORE_CLASS
+    }
+    referenced = {row["core"] for row in rows if "core" in row}
+    for row in rows:
+        if row["class"] == FRACKING_CORE_CLASS and row["id"] not in referenced:
+            problems.append(f"{row['id']}: a fracking core no satellite references")
+        if "core" in row and row["resource"] != resource_of_core.get(row["core"]):
+            problems.append(
+                f"{row['id']}: satellite says {row['resource']}, its core "
+                f"{row['core']} says {resource_of_core.get(row['core'])}"
+            )
+    return problems
 
 
 def main() -> int:
@@ -334,125 +376,135 @@ def main() -> int:
     except InstallNotFound as exc:
         print(f"{exc}\nPass --game if the install is somewhere else.")
         return 1
-    paks = args.game / "FactoryGame" / "Content" / "Paks"
-    if not (paks / "FactoryGame-Windows.utoc").exists():
-        print(f"no FactoryGame-Windows.utoc under {paks}")
+    paks = paks_dir(args.game)
+    if not (paks / f"{CONTAINER}.utoc").exists():
+        print(f"no {CONTAINER}.utoc under {paks}")
         return 1
     print(f"installed build: {build_pin}")
     print(f"reading the game's own assets from {paks} with pyooz {versions['pyooz']}")
 
-    store = IoStore(paks, "FactoryGame-Windows", oodle_decompress)
+    store = IoStore(paks, CONTAINER, oodle_decompress)
     scripts = ScriptObjects(paks, oodle_decompress)
     classes = ClassFacts(store, AssetIndex(store))
 
-    per_package, census, persistent, persistent_path = sweep(store, scripts)
-    rows = read_rows(persistent, classes)
-    side_levels = other_levels(store, scripts)
-
-    by_class = collections.Counter(r["class"] for r in rows)
-    by_purity = collections.Counter(r["purity"] for r in rows)
-    satellites = [r for r in rows if r["class"] == "BP_FrackingSatellite_C"]
-    cores = {r["id"] for r in rows if r["class"] == "BP_FrackingCore_C"}
-    deposits_in_cells = census.get(DEPOSIT, 0) - per_package.get(PERSISTENT_LEAF, {}).get(
-        DEPOSIT, 0
+    world = sweep_world_levels(store, scripts)
+    rows = read_rows(world.persistent_view, classes)
+    meta = build_meta(
+        rows=rows,
+        world=world,
+        side_levels=sweep_other_levels(store, scripts),
+        build_pin=build_pin,
+        versions=versions,
     )
-
-    out = {
-        "_meta": {
-            "description": (
-                "Every resource-node actor the game's world level places: class, resource, "
-                "purity, world position, and the satellite -> fracking-core link. The "
-                "authoritative first-party node set that data/resource_nodes.json, the "
-                "region layer's land mask, the map sheet's calibration and the heightmap's "
-                "validation gate all project from."
-            ),
-            "licence": (
-                "First-party. Identifiers, classes, purities and coordinates are facts "
-                "about Coffee Stain's map, read from the reader's own installed copy of "
-                "the game by tools/gen_world_resource_nodes.py. No third-party table "
-                "contributed to this file, in any form; no external licence and no "
-                "attribution obligation attaches. The MIT-licensed table this replaced is "
-                "retired and deleted -- see retired_mit_table."
-            ),
-            "source": {
-                "container": "FactoryGame-Windows.utoc/.ucas",
-                "package": persistent_path.lstrip("./"),
-                "read_by": "satisfactory_mcp.core.gameassets (iostore, packages, levels)",
-                "method": (
-                    "exports whose Outer is the package's /Script/Engine.Level export; "
-                    "resource from the mResourceClass ObjectProperty via the import map; "
-                    "purity from the mPurity ByteProperty FName (absent means the class "
-                    "default, normal); the well link from the satellite's mCore "
-                    "ObjectProperty, an export reference in the same package; positions "
-                    "from the composed root-component world transform"
-                ),
-                "decoder": versions,
-            },
-            "game_version_pinned": build_pin,
-            "generated": datetime.now(UTC).date().isoformat(),
-            "count": len(rows),
-            "by_class": dict(sorted(by_class.items())),
-            "by_purity": dict(sorted(by_purity.items())),
-            "coverage": {
-                "world_level": WORLD_PREFIX,
-                "packages_swept": len(level_paths(store, contains=WORLD_PREFIX)),
-                "emitted_classes_outside_the_persistent_level": 0,
-                "note": (
-                    "all four emitted classes are placed exclusively by the persistent "
-                    "level; the streamed cell packages place none -- measured this run "
-                    "over every world package, and the run refuses to write when that "
-                    "stops holding, so the one-package read cannot go quietly incomplete"
-                ),
-                "other_levels_in_the_container": side_levels,
-            },
-            "deposits": {
-                "why_no_rows": (
-                    "BP_ResourceDeposit_C is hand-mineable only -- no extractor can be "
-                    "placed on one -- so a deposit row would advertise capacity that "
-                    "cannot be built"
-                ),
-                "placed_by_the_persistent_level": per_package.get(PERSISTENT_LEAF, {}).get(
-                    DEPOSIT, 0
-                ),
-                "placed_by_the_streamed_cells": deposits_in_cells,
-            },
-            "geysers": (
-                "carry no mResourceClass -- a geyser is a placement target for the "
-                "Geothermal Generator, not an item -- so resource is null here and "
-                "consumers label it synthetically"
-            ),
-            "well_links": {
-                "satellites": len(satellites),
-                "cores": len(cores),
-                "statement": (
-                    "total on both sides and resource-consistent: every satellite carries "
-                    "mCore, every core is referenced, and every satellite names its "
-                    "core's resource -- re-checked every run, the run dies otherwise"
-                ),
-            },
-            "not_carried": (
-                "the retired MIT rows also carried a yaw rotation and a display name; no "
-                "consumer ever read either, so neither is a field here"
-            ),
-            "join_key": (
-                "id; a save actor's instanceName is 'Persistent_Level:PersistentLevel.' "
-                "plus this, byte for byte"
-            ),
-            "units": "centimetres; north is -Y, east is +X, up is +Z",
-            "retired_mit_table": RETIRED_MIT_TABLE,
-        },
-        "nodes": rows,
-    }
-
-    args.out.write_text(json.dumps(out, indent=1) + "\n", encoding="utf-8")
-    print(f"wrote {args.out.relative_to(ROOT)}  {len(rows)} rows  {args.out.stat().st_size} B")
-    print("by class:", dict(sorted(by_class.items())))
-    print("by purity:", dict(sorted(by_purity.items())))
+    args.out.write_text(json.dumps({"_meta": meta, "nodes": rows}, indent=1) + "\n", "utf-8")
+    shown = args.out.relative_to(ROOT) if args.out.is_relative_to(ROOT) else args.out
+    print(f"wrote {shown}  {len(rows)} rows  {args.out.stat().st_size} B")
+    print("by class:", meta["by_class"])
+    print("by purity:", meta["by_purity"])
     print(
-        f"deposits: {out['_meta']['deposits']['placed_by_the_persistent_level']} in the "
-        f"persistent level, {deposits_in_cells} in the streamed cells, 0 emitted"
+        f"deposits: {meta['deposits']['placed_by_the_persistent_level']} in the "
+        f"persistent level, {meta['deposits']['placed_by_the_streamed_cells']} in the "
+        "streamed cells, 0 emitted"
     )
     return 0
+
+
+def build_meta(
+    *,
+    rows: list[dict],
+    world: WorldSweep,
+    side_levels: list[dict],
+    build_pin: str,
+    versions: dict[str, str],
+) -> dict:
+    """The table's ``_meta``: provenance, counts, coverage, and the retired table's record."""
+    by_class = collections.Counter(r["class"] for r in rows)
+    by_purity = collections.Counter(r["purity"] for r in rows)
+    satellites = [r for r in rows if r["class"] == FRACKING_SATELLITE_CLASS]
+    cores = {r["id"] for r in rows if r["class"] == FRACKING_CORE_CLASS}
+    deposits_in_persistent = world.per_package.get(PERSISTENT_LEAF, {}).get(DEPOSIT_CLASS, 0)
+    return {
+        "description": (
+            "Every resource-node actor the game's world level places: class, resource, "
+            "purity, world position, and the satellite -> fracking-core link. The "
+            "authoritative first-party node set that data/resource_nodes.json, the "
+            "region layer's land mask, the map sheet's calibration and the heightmap's "
+            "validation gate all project from."
+        ),
+        "licence": (
+            "First-party. Identifiers, classes, purities and coordinates are facts "
+            "about Coffee Stain's map, read from the reader's own installed copy of "
+            "the game by tools/gen_world_resource_nodes.py. No third-party table "
+            "contributed to this file, in any form; no external licence and no "
+            "attribution obligation attaches. The MIT-licensed table this replaced is "
+            "retired and deleted -- see retired_mit_table."
+        ),
+        "source": {
+            "container": "FactoryGame-Windows.utoc/.ucas",
+            "package": world.persistent_path.lstrip("./"),
+            "read_by": "satisfactory_mcp.core.gameassets (iostore, packages, levels)",
+            "method": (
+                "exports whose Outer is the package's /Script/Engine.Level export; "
+                "resource from the mResourceClass ObjectProperty via the import map; "
+                "purity from the mPurity ByteProperty FName (absent means the class "
+                "default, normal); the well link from the satellite's mCore "
+                "ObjectProperty, an export reference in the same package; positions "
+                "from the composed root-component world transform"
+            ),
+            "decoder": versions,
+        },
+        "game_version_pinned": build_pin,
+        "generated": datetime.now(UTC).date().isoformat(),
+        "count": len(rows),
+        "by_class": dict(sorted(by_class.items())),
+        "by_purity": dict(sorted(by_purity.items())),
+        "coverage": {
+            "world_level": WORLD_LEVEL_DIR,
+            "packages_swept": world.packages_swept,
+            "emitted_classes_outside_the_persistent_level": 0,
+            "note": (
+                "all four emitted classes are placed exclusively by the persistent "
+                "level; the streamed cell packages place none -- measured this run "
+                "over every world package, and the run refuses to write when that "
+                "stops holding, so the one-package read cannot go quietly incomplete"
+            ),
+            "other_levels_in_the_container": side_levels,
+        },
+        "deposits": {
+            "why_no_rows": (
+                "BP_ResourceDeposit_C is hand-mineable only -- no extractor can be "
+                "placed on one -- so a deposit row would advertise capacity that "
+                "cannot be built"
+            ),
+            "placed_by_the_persistent_level": deposits_in_persistent,
+            "placed_by_the_streamed_cells": world.census.get(DEPOSIT_CLASS, 0)
+            - deposits_in_persistent,
+        },
+        "geysers": (
+            "carry no mResourceClass -- a geyser is a placement target for the "
+            "Geothermal Generator, not an item -- so resource is null here and "
+            "consumers label it synthetically"
+        ),
+        "well_links": {
+            "satellites": len(satellites),
+            "cores": len(cores),
+            "statement": (
+                "total on both sides and resource-consistent: every satellite carries "
+                "mCore, every core is referenced, and every satellite names its "
+                "core's resource -- re-checked every run, the run dies otherwise"
+            ),
+        },
+        "not_carried": (
+            "the retired MIT rows also carried a yaw rotation and a display name; no "
+            "consumer ever read either, so neither is a field here"
+        ),
+        "join_key": (
+            "id; a save actor's instanceName is 'Persistent_Level:PersistentLevel.' "
+            "plus this, byte for byte"
+        ),
+        "units": "centimetres; north is -Y, east is +X, up is +Z",
+        "retired_mit_table": RETIRED_MIT_TABLE,
+    }
 
 
 if __name__ == "__main__":

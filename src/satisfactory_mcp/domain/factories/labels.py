@@ -1,28 +1,9 @@
 """Persistent factory names, anchored to machines rather than to positions or ids.
 
-A label stores the SET of machine instance names it was created from. Instance names
-were verified stable across saves -- 365 of 365 machines kept the same id and position
-between two different save files -- so a set of them is a durable handle.
-
-Matching uses **recall**, not Jaccard::
-
-    recall = |anchors ∩ candidate| / |anchors|
-
-That is what survives the edits a player actually makes:
-
-* moving a machine       -- no effect at all, the id does not change
-* adding a wing to it    -- recall stays 1.0; new machines are not in the denominator
-* removing a few         -- recall dips slightly, still far above threshold
-* rebuilding half of it  -- recall ~0.5, flagged for confirmation rather than lost
-
-Jaccard would *punish growth*, which is exactly backwards: extending a factory is the
-most common thing that happens to one. On a confirmed match the label re-anchors to
-the current membership, so gradual rebuilding never accumulates drift.
-
-Labels deliberately do not attach to a base or a line. Measured against a player's own
-list, a real factory can be several material components (one Christmas factory is a
-Tree Branch line plus a Candy Cane line) or part of one (a steel site and a tier 1&2
-site inside a single belt-connected mass). Only an arbitrary machine set covers both.
+A label stores the SET of machine instance names it was created from, which are stable
+across saves, and attaches to an arbitrary set rather than to a base or a line. Matching is
+by recall, ``|anchors ∩ candidate| / |anchors|``, not Jaccard, because extending a factory is
+the most common thing that happens to one. docs/save-projection.md §6.3 has the rules.
 """
 
 from __future__ import annotations
@@ -48,15 +29,11 @@ __all__ = [
     "NameClash",
     "StaleStore",
     "UnknownLabel",
-    "stamp",
+    "edit_stamp",
 ]
 
-#: Above this share of a machine set covered by labels, the set is something the player has
-#: already named rather than something to offer them. The clusterer runs over the whole
-#: world and so rediscovers every named factory; the two obvious alternatives both misfire
-#: on that. "Any anchor" hides a genuinely new cluster that happens to have swallowed one
-#: neighbouring machine, and "every anchor" re-offers a factory the player named all but one
-#: machine of. A majority is the only rule that survives both edits.
+#: Above this share covered by labels a machine set is already named; a majority is the only
+#: rule that survives both edits "any" and "every" misread (§6.3).
 NAMED_SHARE = 0.5
 
 #: Below this a label is not considered present in a candidate at all.
@@ -143,7 +120,7 @@ class Label:
         )
 
 
-def stamp(header: dict) -> str:
+def edit_stamp(header: dict) -> str:
     """The save a label edit is dated by."""
     return str(header.get("save_datetime") or header.get("filename") or "")
 
@@ -171,8 +148,7 @@ class LabelStore:
 
     @staticmethod
     def path_for(world_id: str) -> Path:
-        safe = "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"
-        return config.labels_dir() / f"{safe}.json"
+        return config.labels_dir() / f"{config.world_file_stem(world_id)}.json"
 
     @classmethod
     def load(cls, world_id: str, session_name: str = "") -> LabelStore:
@@ -227,12 +203,17 @@ class LabelStore:
     # ---- mutation ------------------------------------------------------
 
     def find(self, name: str) -> Label | None:
+        """The label a player means: by name or slug, else the one name containing it."""
         needle = name.strip().casefold()
         for label in self.labels:
             if label.name.casefold() == needle or label.id == slugify(name):
                 return label
         hits = [x for x in self.labels if needle in x.name.casefold()]
         return hits[0] if len(hits) == 1 else None
+
+    def named(self, name: str) -> Label | None:
+        """The label carrying exactly ``name``, as a listing printed it."""
+        return next((x for x in self.labels if x.name == name), None)
 
     def put(
         self, name: str, machines: list[str], notes: str = "", when: str = "", create: bool = False
@@ -247,13 +228,6 @@ class LabelStore:
             existing.notes = notes
         return existing
 
-    def remove(self, name: str) -> bool:
-        label = self.find(name)
-        if label is None:
-            return False
-        self.labels.remove(label)
-        return True
-
     def rename(self, label: Label, to: str) -> str:
         """Give a label a new name and change nothing else about it. Returns the old name.
 
@@ -261,12 +235,12 @@ class LabelStore:
         label left holding its old slug would go on answering to the name it was renamed
         away from, and the rename would be a rename in the listing only.
         """
-        wanted = self._free(to, besides=label)
+        wanted = self._validated_name(to, besides=label)
         was = label.name
         label.name, label.id = wanted, slugify(wanted)
         return was
 
-    def _free(self, name: str, besides: Label | None = None) -> str:
+    def _validated_name(self, name: str, besides: Label | None = None) -> str:
         """``name`` stripped, or ``BadName`` / ``NameClash`` saying why it cannot be used."""
         wanted = name.strip()
         if not wanted:
@@ -288,17 +262,19 @@ class LabelStore:
                 )
         return wanted
 
-    def name(self, name: str, cand, notes: str = "", when: str = "", create: bool = False) -> Label:
+    def name(
+        self, name: str, candidate, notes: str = "", when: str = "", create: bool = False
+    ) -> Label:
         """What naming a factory writes: ``put`` plus the candidate's centroid and signature.
 
         ``create`` refuses a name this world already holds instead of re-anchoring it. A name
         no label answers to is checked as a new one either way.
         """
         if create or self.find(name) is None:
-            name = self._free(name)
-        label = self.put(name, cand.machines, notes=notes, when=when, create=create)
-        label.centroid = cand.centroid
-        label.signature = dict(cand.buildings)
+            name = self._validated_name(name)
+        label = self.put(name, candidate.machines, notes=notes, when=when, create=create)
+        label.centroid = candidate.centroid
+        label.signature = dict(candidate.buildings)
         return label
 
     def overlaps(self, machines: Iterable[str], name: str) -> dict[str, int]:
@@ -325,7 +301,7 @@ class LabelStore:
         """Drop machines from one label. Returns the ones it actually held.
 
         Emptying a label is refused rather than done: the name and its notes are the only
-        things in this file the player typed, and ``remove`` is how they say those go.
+        things in this file the player typed, and ``edits.forget`` is how they say those go.
         """
         held = set(label.anchors)
         dropped = sorted(held & set(machines))

@@ -13,7 +13,7 @@ quoted asset paths -- ``split(',')`` and regex approaches are wrong.
 
 from __future__ import annotations
 
-__all__ = ["amount", "as_list", "obj_class", "parse_struct"]
+__all__ = ["amount", "as_float", "as_list", "obj_class", "parse_struct"]
 
 _WS = " \t\r\n"
 
@@ -173,16 +173,29 @@ def obj_class(ref: str | None) -> str | None:
     return s.rsplit(".", 1)[-1] if "." in s else s
 
 
+def as_float(raw: object, default: float = 0.0) -> float:
+    """A float from a Docs field, tolerating absence and struct-valued fields.
+
+    ``Desc_Locomotive_C.mPowerConsumption`` is ``(Min=25,Max=110)``, so a blanket ``float()``
+    over every class crashes; a range reads as its ``Max``.
+    """
+    if raw is None or raw == "":
+        return default
+    if isinstance(raw, str) and raw.startswith("("):
+        parsed = parse_struct(raw)
+        if isinstance(parsed, dict):
+            return as_float(parsed.get("Max") or parsed.get("Min"), default)
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 def amount(entry: dict, key: str = "Amount", default: float = 0.0) -> float:
     """Read a numeric struct member, defaulting when UE omitted it.
 
     UE omits struct members equal to their default, so ``Schematic_Goat_C.mCost``
     has an ``ItemClass`` but no ``Amount``. Indexing would KeyError.
     """
-    raw = entry.get(key)
-    if raw is None or raw == "":
-        return default
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return default
+    return as_float(entry.get(key), default)

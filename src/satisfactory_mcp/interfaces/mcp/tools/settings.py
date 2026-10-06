@@ -12,9 +12,9 @@ from ....core.schema import NewerSchema
 from ....core.text import ago
 from ....domain import settings as store
 from ....domain.maps import registry as maps
-from ....domain.planning.planlog import Actor
+from ....domain.planning.stored.planlog import Actor
 from ....presenters.text import primitives as render
-from ..app import actor, mcp
+from .. import app
 
 
 def _word(value) -> str:
@@ -71,7 +71,7 @@ def _render(view: dict, head: str) -> str:
     return render.envelope(head, render.table(("setting", "value", "takes", "means"), rows))
 
 
-@mcp.tool(structured_output=False)
+@app.tool()
 def settings(
     change: Annotated[
         dict[str, str | bool | float | None] | None,
@@ -90,7 +90,7 @@ def settings(
     try:
         if change:
             before = store.read()["version"]
-            view = store.write(dict(change), actor(ctx))
+            view = store.write(dict(change), app.actor(ctx))
             moved = view["version"] != before
             head = f"# shared settings v{view['version']}: " + (
                 "changed; every open page follows" if moved else "already so, nothing written"

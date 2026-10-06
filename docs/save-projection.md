@@ -119,6 +119,30 @@ The **committed fixture and the current save have none** — every wired machine
 a generator stands on, which is the sharper sentence and the one the tool prints. The degree-zero
 half stands at 7 on the fixture and 8 on the current save.
 
+**`power_report` carries draw twice, because the two answer different questions.** Uptime
+is the 300 s productivity monitor, carried by **524 of 570** records on the reference save.
+`headroom_mw` (nameplate) is the *safe* figure: what is free if everything built ran at once,
+and energising a block can un-starve idle machines downstream, so it is the one not to exceed
+when nobody is watching. `measured_headroom_mw` is the *current* figure, weighted by how much
+of the factory is actually running. They are far apart: nameplate draw **6,901 MW** against a
+measured **2,389 MW**, so 649 MW of headroom nameplate against roughly **5,161 MW** actual.
+
+- A machine with no monitor is charged at full nameplate on both sides: unknown utilisation
+  must not read as idle. Paused buildings are excluded from both.
+- Generators are capacity either way, since they burn to meet demand. The exception is
+  `starved_generators`: a plant with a dry input is a number that will not appear when the
+  grid asks for it, and each is named, because knowing WHICH plant is the whole value. The
+  dry input decides and a zero uptime only corroborates — a generator load-follows, so one
+  below 1.0 with full tanks is healthy, and one with no monitor is left alone.
+- With the wire layer present, a record on no power edge is left out of both sides and counted
+  under `unwired_*`, so the ledger is the sum of the circuits. The wire is tested first: a
+  paused record on no wire is still counted there, at no MW, which is the rule `assess` lists
+  its unwired machines by.
+- Wired biomass burners count only with `biomass=true`; otherwise they are left out of
+  generation, both headrooms and the starved list, and summed under `biomass_*`, so a surface
+  can say what it left out. The HUB's built-in burner has no rating and stays under
+  `unmodellable` in both modes.
+
 ### 6.2a Foundation slabs — the fourth signal
 
 A player builds a platform, then fills it. Belts and wires cross between platforms freely
@@ -362,6 +386,17 @@ Two implementation notes that were both bugs first:
   under `issues`. Anything whose building class cannot be resolved is reported rather than
   silently contributing 0 MW — an understated draw with no explanation is worse than an
   error.
+- **Nameplate and measured are carried side by side, and their safe directions are
+  opposite.** A Foundry on Solid Steel Ingot at 150% is nameplate 1.5× its recipe rate
+  whether or not it has ever had iron; the pair is what says which. An unreadable machine
+  charged in full makes a power figure conservative but an output figure optimistic, so a
+  machine with no monitor contributes nothing to the measured flows and its nameplate rate
+  is parked in `unmonitored_*`: measured production is a floor by construction, and
+  measured + unmonitored ≤ nameplate. `unmonitored_producers` equal to `producers` means
+  the set has no *measured* production, which is not the same as none. `producing_now`
+  counts machines mid-production at the instant of the save, beside the five-minute
+  window; on a factory that has just stopped the two disagree, and the disagreement is the
+  finding.
 
 This is explicitly **not** throughput. A starved factory reports its full rate; measuring
 what actually flows needs the productivity fields, and conflating the two would make a
@@ -400,6 +435,11 @@ settle it. **Every rule below was wrong before it was measured:**
   set but points at an `FGWaterVolume` that is not a purity-table key; that one works fine.
 - **Generators keep a `FuelInventory`, not an `InputInventory`.** Without capturing it a
   starved coal plant shows no evidence either way.
+- **A starved input names what feeds it.** One `Feed` row per arriving run of the input's
+  medium: `nothing` (no run arrives) and `unfed` (a pipe arrives, and no source anywhere
+  reaches its network) are findings; `open` (the save joins the far end to no actor, a
+  feeder unknown rather than absent), `joined` (the run's direction was declined) and `fed`
+  are not.
 
 `STACK_SIZE` joins §5.6's register: Docs.json gives only the enum symbol (`SS_BIG`), so
 the numbers are game knowledge. Verified against observed buffers — Wire 500 = `SS_HUGE`,
@@ -412,7 +452,7 @@ blocked machine is a problem, because nothing is taking what it makes, so `todo`
 `health.ACTIONABLE`: `dead node`, `no recipe`, `blocked`, `starved` and `stalled`. The web
 dashboard counts the same tuple (docs/frontend_vision.md §8.6), and so does the map:
 `/api/machines` sends `actionable` per row (`state in health.ACTIONABLE`), and
-`frontend/src/placements.ts` keeps no list of its own.
+`frontend/src/map/drawn/placements.ts` keeps no list of its own.
 
 **How the map marks a machine.** The fill stays the kind's hue (machines blue, extractors
 ultramarine, generators mint); the outline carries the state:
@@ -446,7 +486,7 @@ and appends "need action" for every actionable state. The marker key lists both 
 
 The side panel and the dashboard use the same yellow for anything that names `blocked`: the
 state chips, the machine-row labels, the per-state table cell and its bar. The CSS twin of the
-declared colour is `--blocked` in the `:root` of style.css, and `states.ts` `tone()` picks the
+declared colour is `--blocked` in the `:root` of app/base.css, and `dash/machine-states.ts` `stateTone()` picks the
 class, so all three surfaces read one token. The other actionable states stay red. On the
 panel background (`#1f2228`) the yellow has a contrast ratio of about 11:1.
 
@@ -457,8 +497,25 @@ id and position across two saves). Matching is **recall**, `|anchors ∩ candida
 Jaccard — Jaccard punishes growth, and extending a factory is the most common thing that happens to
 one. Match at ≥ 0.5, re-anchor at ≥ 0.8 with no competing label.
 
+Recall is what survives the edits a player actually makes:
+
+| edit | recall |
+|---|---|
+| moving a machine | unchanged: the id does not change |
+| adding a wing | stays 1.0: new machines are not in the denominator |
+| removing a few | dips slightly, still far above the threshold |
+| rebuilding half of it | ~0.5, flagged for confirmation rather than lost |
+
+On a confirmed match the label re-anchors to the current membership, so gradual rebuilding
+never accumulates drift.
+
 Labels attach to **arbitrary machine sets**, not to a base or a line, because a real factory is
 sometimes several components (Christmas) and sometimes part of one (steel inside the base).
+
+**A set counts as already named when a majority of it is covered** (`NAMED_SHARE`, 0.5). The
+clusterer runs over the whole world and so rediscovers every named factory, and both obvious
+rules misfire on that: "any anchor" hides a genuinely new cluster that swallowed one
+neighbouring machine, and "every anchor" re-offers a factory named all but one machine of.
 
 Persisted per world under `saveIdentifier` in `user_data_dir/labels/`, deliberately **not** under
 `cache_dir` (which `cache_prune` wipes) and **not** in the repo.
@@ -580,7 +637,7 @@ froze *after* a delivery and fall back to `stale`, an item at zero in it and a l
 it still bills for; neither can happen to a full cost. A partial payment below the remainder cannot be
 detected, so the subtraction can only **understate** what is owed and `derived 0` means "nothing left
 that this can see". Untestable on any save of this world — `mTargetGamePhasePaidOffCosts` is empty in
-all 29 — so it is pinned on constructed projections in `tests/test_phase_and_shards.py`.
+all 29 — so it is pinned on constructed projections in `tests/domain/progression/test_phases.py`.
 
 ### 6.5 Power Shards — committed is read, never derived
 
@@ -658,6 +715,15 @@ It **warns rather than refuses**, because planning ahead of cheap research is le
 the same reasoning that makes `must build first:` a note and not an error. It fires only
 when `sloops > 0`, since a plan spending none is buildable today and a standing warning
 would be noise.
+
+**Which MAM tree a node is in is read off its class id.** The trees themselves are not in
+Docs.json (the `BPD_ResearchTree_*` assets do not ship) and the save names only which trees
+are open, so `ResearchGates.TREE_PREFIXES` maps each tree to the class-id prefixes its nodes
+carry. Nine trees pair 1:1 with a prefix of their own name; the four alien-organism prefixes
+are grouped by elimination — they are the MAM nodes left once the other nine trees have
+theirs — and are `[UNVERIFIED]`. `BPD_ResearchTree_HardDrive_C` is deliberately absent: its
+nodes are `EST_Alternate` schematics won from drives, not `EST_MAM` rows, and no MAM view
+lists them. A node no prefix claims is never reported as locked.
 
 `mam_research` exposes the whole tree: status (DONE / READY / short / BLOCKED), cost,
 what you are short of, prerequisites, and a `LOCKS <capability>` marker on the rows that
@@ -746,7 +812,7 @@ update while the merged union never falls, and the trailer list carries internal
 of the 31 saves that the vendored parser reproduces exactly. Format, overlap predicates and the
 oracle parity are in `docs/savparse-notes.md`.
 
-`WorldState.removed_actors(group=None)` groups by class-name prefix and `collected_from_world`
+`WorldState.collected_summary(group=None)` groups by class-name prefix and `collected_from_world`
 prints it. On the reference save, **889 actors over 284 cells**: flora 185, dropped_pickup 170,
 slug_blue 163, mercer_shrine 80, artifact_unsplit 65, crash_site 55, debris 51, slug_yellow 50,
 slug_purple 37, mercer_sphere 27, somersloop 6. Both the census and the per-group listing are
@@ -774,12 +840,20 @@ names spell `BP_WAT1_C` unambiguously, while the player holds **11 somersloops i
 Depot plus 4 slotted in machines** — so at least nine of the unsplit names are sloops, on the one
 game-behaviour premise that a somersloop is only ever picked up off the map.
 
-One inconsistency in `removed_actors()` is known and stated rather than hidden: `groups` is built
+One inconsistency in `collected_summary()` is known and stated rather than hidden: `groups` is built
 from `counts`, whose keys have already lost their `_C`, so the two `strict` groups can never
 match there and `groups["somersloop"]` / `groups["mercer_sphere"]` are absent on **31 of 31
-saves** even though `removed_actors("mercer_sphere")["actors"]` returns 27 entries. 65 + 6 + 27 =
+saves** even though `collected_summary("mercer_sphere")["actors"]` returns 27 entries. 65 + 6 + 27 =
 98, so nothing is lost, but the census and the listing disagree about whether the split exists.
 Details in `docs/savparse-notes.md`.
+
+**Since the map's placement table, the name rule is only the fallback, and it is measurably
+wrong with no fix.** `RemovedActors.REMOVED_GROUPS` runs only when the table is absent. Besides
+the glued counter above, the map's own actors kept the names of the actors they were copied
+from — 98 rows the map calls `BP_Crystal_mk2_C` are named `BP_Crystal_C_<n>` — which spells a
+class outright and spells the wrong one. Scored against the map on the reference save the
+rule misfiles 51 of 713 and leaves 65 as `artifact_unsplit`, which is why every caller of the
+save-only census has to label it.
 
 ### 6.12 Power wires — the save publishes the drawn line, not just the pair
 
@@ -820,7 +894,7 @@ Two details the reference save forced:
   an average line neither occupies.
 - **The save's endpoint order is not the edge's.** Over the 1,297 wires, the order the two
   `PowerConnection` components were serialised in agrees with the order the two `Locations` are
-  stored in **687 times and disagrees 608** — a coin flip. `extract._power` therefore assigns each
+  stored in **687 times and disagrees 608** — a coin flip. `extract.power.power_network` therefore assigns each
   end to the nearer of the two actors in plan, and the evidence that the assignment is right is
   that only under it do the per-class offsets above collapse to a constant.
 
@@ -925,7 +999,7 @@ for the first time. On the reference save the move is 48 items over 6 classes �
 crates' contents exactly, verified item for item against the `crates` rows.
 
 Because `inventories` is a banked schema-11 key, 19 owes the parity filter a reconstruction:
-`_unfix_19` in `tests/test_savparse_parity.py` folds `crate` back into `machine` (a pure
+`_unfix_19` in `tests/pioneersav/test_vendor_parity.py` folds `crate` back into `machine` (a pure
 integer addition — cheaper than `_unfix_16`'s re-routing, and with no cancellation blindness,
 since nothing is subtracted) so the banked digests still compare on all 31 saves. A pickle
 written under 18 disagrees about `machine` and lacks `crate`, so the cache key had to move
@@ -936,7 +1010,7 @@ with the number, as every correcting bump's must.
 `domain.world.logistics` contracts the 3,597 conduit actors of `graph["material"]` into 2,198
 node-to-node runs in ~15 ms, by actor identity rather than by geometry. `domain.world.conduits`
 builds a parallel set of runs from the *drawn line* — `chain:<n>` per belt chain, `pipe:<row>`
-per pipeline piece — and those are the ids `search_conduits` prints and `resolve_origin`
+per pipeline piece — and those are the ids `search_conduits` prints and `resolve_place`
 accepts. Two views of the same conduit, and **schema 20 is the column that joins them.**
 
 **Pipes joined from the start.** `pipes["segments"]` carries `actorIndex` (schema 14), a
@@ -946,7 +1020,7 @@ the actor the physical graph knows it by. A contracted pipe run names itself wit
 
 **Belts did not, and the geometric substitute was measured before being refused.**
 `belts["segments"]` used to be `[chainIndex, classIndex, points, spans]` with no actor:
-`extract._belts` read each piece's instance name only to recover its class and then threw it
+`extract.routes.belts` read each piece's instance name only to recover its class and then threw it
 away. The two groupings are nearly the same size — 1,909 chains against 1,916 contracted belt
 runs — but nothing paired them, so the only available join was geometric:
 
@@ -1004,6 +1078,139 @@ re-cut takes 3.5 s. The one thing to notice on review is that 20 does not only a
 the actor at column 3 to match the pipe layout MOVES schema 15's tangents from column 3 to
 column 4, so every reader of a raw belt row had to move with it. Inside a dropped key that is
 free; on a banked row it would have owed a reconstruction.
+
+### 6.16 Row layouts
+
+The big tables are interned and positional, because a record per piece would be megabytes:
+each carries a `classes` list and rows that hold an index into it. `core/saveio/rows.py` is the
+one reader that decodes them; `core/saveio/extract/` is the one writer. Trailing columns are
+additive, so a short row means "this projection predates the column", never a tear.
+
+**`structures`** — `{classes, instances}`, row `[classIndex, x, y, z, yaw]`. Read out of
+`FGLightweightBuildableSubsystem`'s `actorSpecificInfo`, which is `[version, [classPath,
+[instance, ...]], ...]` with each instance `[rotationQuaternion, position, ...]`. Positions are
+**truncated** to whole centimetres — sub-centimetre precision cannot change whether two 8 m
+foundations touch, and the truncation is in the banked parity digests, so it cannot move now.
+A record naming neither a swatch nor a recipe is a stale slot and is skipped (`placed`): across
+31 saves not one record names exactly one, so the test is clean rather than a heuristic. Slab
+geometry is not computed here: it lives behind a subprocess and a cache, and freezing a link
+distance in the extractor would mean a re-parse to tune a threshold.
+
+**Yaw**, on structures, poles and every placed record (schema 12), measured against
+tile-spaced foundation pairs rather than assumed:
+
+- the axis is world Z only — every lightweight buildable has `x == y == 0`, and the `Build_`
+  actors that do not are wall-mounted parts, whose pitch this ignores and whose yaw this is;
+- positive yaw turns +X towards +Y in the projection's own `pos` coordinates, so it compares
+  directly with `atan2(dy, dx)` between two positions;
+- the range is `(-180, 180]`: a float32 half turn lands on `-179.999…`, so `-180.0` is folded
+  to `180.0` or one facing would have two spellings;
+- a rotation that will not read is `null`, never `0.0` (schema 16), and the extractor counts
+  the nulls into `warnings`. On the reference world 4,631 of 8,347 pieces sit off the 90° grid.
+
+**`belts`** — `{classes, segments}`, row `[chainIndex, classIndex, points, actorIndex]`, plus
+`spans` where the run bends. The geometry is in `FGConveyorChainActor`'s trailing bytes, which
+`pioneersav.trailers` decodes as location, arrive tangent and leave tangent per point.
+
+- `chainIndex` is dense and ordered, and groups pieces the way the game does: one chain is one
+  continuous flow of items. Concatenate a chain's rows for its polyline, or draw each row.
+- `classIndex` carries the mark and whether the piece is a belt or a LIFT, the connector
+  between two Z bands.
+- `points` are the spline's control points, **rounded** to whole centimetres — unbiased, and
+  commutative with the whole-centimetre translation below.
+- `actorIndex` points into `graph["actors"]` (schema 20, §6.15), `-1` for none.
+- **The spline is in the chain actor's frame, translated and not rotated.** The actor position
+  is added back; every chain on this disk carries an identity rotation, so a chain that ever
+  carried one would need its points rotated first.
+- **Segments are stored output-first**: offsets grow towards the output and `segments[-1]`
+  holds offset 0, so rows are emitted reversed, in TRAVEL ORDER. In file order consecutive
+  segments of one chain do not meet and every chain draws as a zigzag.
+- A chain whose trailing bytes will not decode costs that chain, is counted into `warnings`,
+  and the first five name their exception on stderr, because the exception type is what says
+  whether the format moved.
+
+**`pipes`** — `{classes, networks, segments}`, row `[networkIndex, classIndex, points,
+actorIndex]` plus `spans`: the belt layout column for column, so no reader has to remember
+which table puts the actor where. The spline is the `mSplineData` property — `Location` per
+control point, `ArriveTangent`/`LeaveTangent` for the curve.
+
+- `networkIndex` points into `networks`, `[{id, fluid}, ...]`, the game's own `FGPipeNetwork`
+  grouping; `-1` for a pipe no network claims.
+- `classIndex` is Mk1 or Mk2, each with a `NoIndicator` variant.
+- The frame is the pipe actor's, translated and not rotated: all 18,069 pipeline actors across
+  the 66 saves on this disk carry an identity quaternion.
+- Flow direction is **not** on a pipe. Its connectors are `PipelineConnection0` and `1`, not
+  input and output; `mFluidBox` is one float; the spline runs the way the player dragged it.
+  `PipelineConnection0` is `points[0]` and `1` is `points[-1]`, measured against the
+  couplings in `graph["material"]`; direction is inferred in `domain/world/flow.py`.
+
+**The `spans` column** (schema 15) — one entry per SPAN, not per point: the leave tangent of
+the point behind and the arrive tangent of the point ahead, six integers, or `0` for a flat
+span. A route with no bend gets no column at all, so a straight run's row is byte-identical to
+schema 14's. Tangents are rounded but never translated: they are displacements. A point that
+will not decode costs its whole triple, so the point and tangent lists can never slip apart.
+
+"Flat" is `bulge < 1 cm`: the control points' own resolution, so a curve that cannot leave its
+chord by a whole centimetre describes something finer than the geometry. It is what keeps
+schema 15 a 15% payload growth rather than a 54% one. `bulge` is an **upper bound** on how far
+the cubic Hermite span `Q(t) = h00 p0 + h10 m0 + h01 p1 + h11 m1` leaves its chord segment
+`v = p1 − p0`, and may only overstate: overstating costs bytes, understating flattens a bend.
+
+- Sideways is `h10 m0⊥ + h11 m1⊥`; both basis functions peak at 4/27 (at t = 1/3 and 2/3), so
+  it never exceeds `(4/27)(|m0⊥| + |m1⊥|)`.
+- Along is the cubic `u(t) = (s0+s1−2)t³ + (3−2s0−s1)t² + s0·t`, `s` being a tangent's
+  chord-relative length, solved exactly: any excursion outside `[0, 1]` is a real overshoot
+  past an endpoint. Exactly, because the crude bound reads 7% of the chord for the game's
+  commonest tangent (half the chord) where the true overshoot is zero.
+- Coincident control points — the zero-length joint where a lift meets its belt — have no
+  chord, so all of both tangents counts as sideways.
+
+Checked against a 512-point tessellation of every span in the reference save: never smaller
+than the sampled truth, and never more than 3.08× it.
+
+**`power`** — poles `[classIndex, x, y, z, yaw, actorIndex]` in whole centimetres, `-1` for a
+pole no wire names; wires as §6.12 describes.
+
+**`storage`** — one dict per container and fluid buffer rather than an interned table: there
+are few enough that the whole key costs tens of kilobytes. A container is `{cls, instance, pos,
+yaw, items, slots}`, joined to its `StorageInventory` component by owner instance name: `items`
+is `[[item, count], ...]` biggest first, ties by class, and `slots` comes off the component,
+because the docs dump spells capacity as two numbers to multiply. A buffer is `{cls, instance,
+pos, yaw, fluid, stored_m3}`: cubic metres, not the litres an inventory fluid stack is stored
+in, checked against the capacities the dump states; the fluid comes off the `FGPipeNetwork`
+claiming the buffer, `null` when none does. Sorted by class then instance, so two saves of one
+world diff cleanly.
+
+**`removed`** — `{cells, instances, counts}`, row `[cellIndex, leaf]`. The actor path is
+reduced to its leaf, because the full path repeats `Persistent_Level:PersistentLevel.` and says
+nothing; rows are sorted, because their order is an artefact of which list was read first.
+`counts` groups by the class recovered from the name alone, stripped from the right — the
+trailing index, then a `_UAID_<hex>`, then `_C` — since the game spells names three ways
+(`BP_Crystal_mk3_C_2146`, `BP_Crystal2_228`, `BP_MercerShrine_C_UAID_…_1397405905`). It is
+approximate: `BP_Crystal2_228` cannot be told from a class named `BP_Crystal2`, so slug
+callers match a prefix. When the parser does not merge the three lists into
+`destroyed_actors`, the extractor reads each level's `collectables1`/`collectables2` and the
+two save-level lists itself; the two readings were verified equal set for set (§6.11).
+
+### Schema history
+
+`SCHEMA_VERSION` lives in `core/saveio/projection.py`, which keys the pickle cache on it; the
+extractor stamps the same constant. A CORRECTING bump matters more than an additive one: an old
+pickle then disagrees with the code rather than merely being thinner.
+
+| schema | change |
+|---|---|
+| 12 | adds placement yaw and belt splines |
+| 13 | adds pipe splines and the belt `attachments`, the splitters and mergers a run passes through |
+| 14 | adds a pipe segment's actor index, joining the drawn pipe to `graph["material"]` |
+| 15 | adds spline tangents to both route keys, and `storage`: containers, buffers, contents |
+| 16 | CORRECTS container contents bucketed as machine buffers, and yaw `0` for an unreadable rotation |
+| 17 | adds `power`: the poles and every wire's drawn span (§6.12) |
+| 18 | adds `crates`, the death and dismantle crates on the ground (§6.13) |
+| 19 | CORRECTS a crate's contents out of `inventories["machine"]` into `inventories["crate"]` (§6.14) |
+| 20 | adds a belt segment's actor index at column 3, moving the tangents to column 4 (§6.15) |
+| 21 | CORRECTS what the parser saw: large saves read to the end, every lightweight piece arrives, `_RepSizeNoCull` chains decode |
+| 22 | CORRECTS a false "possibly incomplete" note on saves whose older levels carry the previous build's changelist |
 
 ---
 
@@ -1154,7 +1361,7 @@ corrupting the inflated body takes a deliberate re-compression rather than a tea
 flips, 599 were refused and the survivor landed in a deflate block's unused padding bits and
 inflated to byte-identical output.
 
-Four defects, now fixed with tests in `tests/test_savparse_robustness.py`:
+Four defects, now fixed with tests in `tests/pioneersav/test_robustness.py`:
 
 * **Nested `StructProperty` tags raised `RecursionError`, not `ParseError`.** 29 KB of crafted
   payload was enough; through the sidecar it came out as `{"error": "RecursionError"}` with a
@@ -1272,7 +1479,7 @@ decision that matters is the deletion, and the flip belongs to it.
 flip, over the whole folder rather than a sample, because the same measurement is the acceptance
 test — and bank the vendored parser's projection for every save first, since after the deletion
 that comparison can never be run again; strip the last references outside `sidecar/vendor/`
-(`extract_save.py`'s switch, `tests/test_savparse_save.py`'s default pin, and prose in
+(`extract_save.py`'s switch, `tests/pioneersav/test_save.py`'s default pin, and prose in
 `README.md`, this file and `docs/savparse-notes.md`); and settle `sav_data/`'s licence
 separately, since it is build-time input to `tools/gen_*.py` and not on this path — noting that
 its four collectible location tables would now buy a real feature, which makes that the harder
@@ -1293,7 +1500,7 @@ an instance name like `BP_WAT112` belongs to.
 
 The two layers `pioneersav` spends its lines on: `objects.py` (747 lines) walks the inflated
 body into levels, object headers, one property-block slice per object and the three
-destroyed-actor lists, and `properties.py` (1,160) turns a slice into the `[name, value]` pairs
+destroyed-actor lists, and `properties/` (926) turns a slice into the `[name, value]` pairs
 the projection reads. Together they are 64% of the package and all of the format that could not
 be read off a hex dump.
 
@@ -1487,3 +1694,29 @@ this is a measured opportunity rather than a guess.
 End to end, including interpreter start, over the 31 readable saves: **vendor 75.7 s, own
 59.2 s.**
 
+## 13c. Save facts the web placement layers rest on
+
+What the save itself records, as the placement payloads in [web-wire.md](web-wire.md) read it.
+The payload rules live there; these are the facts about the file that those rules depend on.
+
+- **Lightweight buildables are in no actor header.** Foundations, ramps, walls and catwalks live
+  only in `FGLightweightBuildableSubsystem`, which is why the projection interns them as a
+  positional table and a save too old to carry the subsystem has no floors to show.
+- **A belt chain is stored output-first**, and its trailer stores two tangents beside each
+  control point; the projection reverses the points into travel order and keeps the tangents
+  as the per-span curve column.
+- **The game keeps one `FGPipeNetwork` per connected plumbing system**, with the fluid on it
+  and its members listed. Nothing on a pipe records which way the fluid goes, but every fluid
+  coupling is serialised and a machine's ports are named `PipeInputFactory` or
+  `PipeOutputFactory`, which is what `domain/world/flow.py` infers a direction from.
+- **A fluid buffer stores a bare `mFluidBox` float** of cubic metres and never names its
+  contents; the network that claims it does.
+- **Every splitter and merger owns a component named `StorageInventory`** holding the one to
+  three items physically inside the junction, so storage found by that name alone is mostly
+  items in transit.
+- **A power wire's ends are connector positions**, each at a fixed offset on its owner (7 m
+  above a Mk1 pole; 2.1 m forward and 4.7 m to one side of a constructor's centre), and
+  `mCachedLength` is the straight chord between them: the save carries no sag. The save's own
+  endpoint order agrees with the power edge's only about half the time.
+- **`graph["actors"]` holds an identity per actor**, the class with a serial glued on
+  (`Build_SmelterMk1_C_2147380350`), which the record lists join back to a class and a name.

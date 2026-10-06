@@ -8,10 +8,11 @@ only when something real feeds it. docs/frontend_vision.md §9.5 has what the wa
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
+from ...core.saveio.records import actor_class
 from .model import kind_of
 from .trace import trace
 
-__all__ = ["FED", "NOT_FED", "TRANSPORT", "VERDICTS", "feeding"]
+__all__ = ["FED", "NOT_FED", "TRANSPORT", "VERDICTS", "feed_verdict"]
 
 FED = "fed"
 NOT_FED = "not fed"
@@ -20,14 +21,14 @@ VERDICTS = (FED, NOT_FED, TRANSPORT)
 
 
 def _transport(actor: str) -> bool:
-    cls = actor.rpartition("_")[0] if actor.rpartition("_")[2].isdigit() else actor
+    cls = actor_class(actor)
     return kind_of(cls) == "transport" or "DockingStation" in cls
 
 
-def feeding(state, game: GameData, machines: list[str]) -> str:
+def feed_verdict(state, game: GameData, machines: list[str]) -> str:
     """``FED``, ``NOT_FED``, or ``TRANSPORT`` when the walk ends at a station it cannot see past."""
-    for m in machines:
-        building = game.buildings.get(state.graph.cls.get(m, ""))
+    for machine in machines:
+        building = game.buildings.get(state.graph.cls.get(machine, ""))
         if building is not None and building.is_extractor:
             return FED
     walk = trace(state, game, list(machines), "up")

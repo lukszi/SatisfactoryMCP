@@ -12,6 +12,7 @@ from math import ceil
 
 from ...core.gamedata.constants import STACK_SIZE
 from ...core.gamedata.model import GameData
+from ...core.saveio.records import instance_leaf
 
 __all__ = ["BUCKETS", "CRATE_KIND_TEXT", "SPENDABLE", "Holding", "Inventory"]
 
@@ -79,29 +80,21 @@ class Inventory:
         key, and every ``.get`` below reads that as an empty bucket."""
         return self.projection.get("inventories", {}) or {}
 
+    def bucket(self, name: str) -> dict[str, float]:
+        """One of ``BUCKETS`` as raw stacks; ``depot`` is a top-level projection key."""
+        source = self.projection.get("depot") if name == "depot" else self.sources.get(name)
+        return source or {}
+
     def stock(self) -> dict[str, float]:
-        """What the player can actually spend: carried + storage + Dimensional Depot.
+        """What the player can actually spend: the ``SPENDABLE`` buckets, fluids in m3.
 
-        Deliberately EXCLUDES machine buffers. Summing every stack in the world gives
-        Water 5,556,375 and Fuel 1,048,762 -- pipe and machine contents in litres --
-        so a build-cost check against that would say anything is affordable. Fluids
-        are scaled to m3 here; the sidecar reports raw litres.
-
-        Also excludes the ``crate`` bucket, and that is a decision stated rather than an
-        oversight: a death crate's contents are recoverable -- schema 19 moved them out of
-        ``machine`` for exactly that reason -- but a crate deletes itself the moment it is
-        emptied and exists because something went wrong, so counting its contents as
-        affordable would have a build plan quietly depending on the player walking back to
-        where they died. ``/api/crates`` itemises what is out there; nothing here spends it.
+        Machine buffers are excluded (every stack in the world gives Water 5,556,375 L,
+        so anything would look affordable), and so are crates on the ground, which delete
+        themselves when emptied; save-projection.md §6.14 has the decision.
         """
         out: dict[str, float] = {}
-        sources = [
-            self.sources.get("player", {}),
-            self.sources.get("storage", {}),
-            self.projection.get("depot", {}),
-        ]
-        for source in sources:
-            for item, amount in source.items():
+        for name in SPENDABLE:
+            for item, amount in self.bucket(name).items():
                 out[item] = out.get(item, 0.0) + amount
         for item in list(out):
             it = self.game.items.get(item)
@@ -145,13 +138,12 @@ class Inventory:
         different situations with different fixes.
         """
         out: dict[str, dict[str, float]] = {}
-        for bucket in BUCKETS:
-            source = self.projection.get("depot") if bucket == "depot" else self.sources.get(bucket)
-            for item, amount in (source or {}).items():
+        for name in BUCKETS:
+            for item, amount in self.bucket(name).items():
                 row = out.setdefault(item, dict.fromkeys((*BUCKETS, "spendable"), 0.0))
                 scaled = self._m3(item, float(amount))
-                row[bucket] += scaled
-                if bucket in SPENDABLE:
+                row[name] += scaled
+                if name in SPENDABLE:
                     row["spendable"] += scaled
         for item, m3 in self.fluid_buffers().items():
             row = out.setdefault(item, dict.fromkeys((*BUCKETS, "spendable"), 0.0))
@@ -191,7 +183,7 @@ class Inventory:
         common = {
             "source": source,
             "cls": cls,
-            "instance": str(row.get("instance", "")).rsplit(".", 1)[-1],
+            "instance": instance_leaf(row.get("instance", "")),
             "pos": (float(pos[0]), float(pos[1]), float(pos[2])) if pos and len(pos) >= 3 else None,
             "slots": row.get("slots"),
         }

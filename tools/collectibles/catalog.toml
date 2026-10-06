@@ -1,0 +1,144 @@
+# The class catalog of the collectibles generator, read by catalog.py. Every string below
+# is copied verbatim into data/world_collectibles.json, so an edit here is a data change.
+# Why each class sits where it does: docs/world-collectibles.md.
+
+# Map actor class -> the category its rows are reported under. Each is a one-shot pickup or
+# the pedestal of one; a class in neither table lands in _meta.not_classified.
+[categories]
+BP_Crystal_C = "power_slug_blue"
+BP_Crystal_mk2_C = "power_slug_yellow"
+BP_Crystal_mk3_C = "power_slug_purple"
+BP_WAT1_C = "somersloop"
+BP_WAT2_C = "mercer_sphere"
+BP_MercerShrine_C = "mercer_shrine"
+BP_SomerSloopShrine_C = "somersloop_shrine"
+BP_DropPod_C = "crashed_drop_pod"
+FGItemPickup_Spawnable = "loot_cache"
+BP_UnlockPickup_Customization_C = "customization_unlock_pickup"
+BP_TapePickup_C = "tape_pickup"
+BP_Shroom_01_C = "mushroom"
+
+# Category -> the note carried into _meta.totals.by_category.<category>.note.
+[category_notes]
+mercer_shrine = """
+the pedestal a Mercer sphere stands on, attached to the sphere's own root -- see \
+attached_to. One per sphere, which totals.pedestals.mercer_shrine.one_to_one checks every \
+run, so it is a second row about one find and not a second collectible."""
+somersloop_shrine = """
+the pedestal under a somersloop, attached to the somersloop's root, and there are fewer of \
+them than there are somersloops -- compare the two 'placed' counts. It is not \
+save-serialised at all: no live header for this class appears in any save on disk and none \
+of the destroyed-actor lists names one -- rows_any_save_mentions is 0 -- so every row is \
+state 'unknown' by construction, and this class can be located but never state-tracked."""
+crashed_drop_pod = """
+stays in the world after it is looted, so present-vs-collected is the wrong question for \
+it: 'looted' is the one that matters and is emitted alongside 'state'. Only a dismantled \
+pod is destroyed. unlock_cost is the pod's own mUnlockCost -- what it wants before it gives \
+up its hard drive."""
+loot_cache = """
+a loose pile of manufactured parts, the FGItemPickup_Spawnable the map places at crash \
+sites and abandoned camps. 'contents' is the actor's own mPickupItems. This is the class an \
+earlier revision of this file missed entirely, because a native class cannot appear in a \
+/Game/ walk. A crate the PLAYER drops is the same class and has no map row, so it is never \
+a row here; how many such records the saves hold is counted under \
+status_evidence.live_records_with_no_map_row rather than asserted. Some of these caches \
+carry no _UAID_ placement id and are map placements all the same, which is why \
+with_the_map_s_own_placement_id is reported below instead of the suffix being used as a \
+filter."""
+tape_pickup = """
+class path is under /Game/FactoryGame/Testing/BoomBox/. Three are placed, the saves do \
+serialise it, and this file locates them; it does not claim to know what picking one up \
+grants."""
+customization_unlock_pickup = """
+a single placement. No save on disk mentions it, live or gone -- see rows_any_save_mentions \
+-- so whether the class is save-serialised at all or the player has simply never been there \
+is not settled here. Either way: unknown."""
+mushroom = """
+the harvestable mushroom, and the ONE of the three harvestable plants that does not regrow \
+-- which is why it is a row while the berry and nut bushes are in _meta.excluded. It is not \
+asserted: _meta.respawn.flora shows BP_Shroom_01_C carrying neither mNumRespawns nor \
+mUpdatedOnDayNr on any save record on disk, while both bushes carry both, and \
+_meta.respawn.durability shows no mushroom key ever leaving a destroyed list or turning up \
+live after one. So 'collected' is durable for it and the three states mean the same thing \
+here as they do for a power slug. What harvesting one grants is NOT claimed: contents_read \
+counts the placements whose own mPickupItems the map writes, it comes back 0, and a yield \
+taken off the class default instead would be a different kind of fact under the same key. \
+Two mushrooms can stand less than a metre apart, which is measured rather than explained \
+away -- see _meta.identity.coincident_note."""
+
+# Map-placed classes left out on purpose -> why. The map's count of each is filled in per
+# run, under _meta.excluded.
+[excluded]
+BP_Ship_C = """
+crash-site scenery. Its only saved property is mDismantleRefundsIndex -- there is nothing \
+in it to collect; the hard drive is in the BP_DropPod_C beside it and the parts are in the \
+FGItemPickup_Spawnable caches, both of which ARE rows here."""
+BP_CrashSiteDebris_C = "crash-site scenery, same as BP_Ship_C: mDismantleRefundsIndex only."
+BP_DebrisActor_01_C = "crash-site scenery, as BP_CrashSiteDebris_C."
+BP_DebrisActor_02_C = "crash-site scenery, as BP_CrashSiteDebris_C."
+BP_DebrisActor_03_C = "crash-site scenery, as BP_CrashSiteDebris_C."
+BP_BerryBush_C = """
+regrows, so 'collected' is not a durable fact about it and none of the three states could \
+mean what it means for the rest of this file. The measurement is in _meta.respawn.flora: \
+this class carries mNumRespawns and mUpdatedOnDayNr, the counter rises and never falls, and \
+it is not capped at the value this world happens to have reached. The map's placements are \
+still the denominator for it -- they are simply not emitted, because a location whose state \
+can never be stated is better left out than shipped with a state-shaped field. NOTE for \
+anyone tempted to put it back: mSavedNumItems is the bush's FIXED YIELD and not a remaining \
+count."""
+BP_NutBush_C = """
+regrows, as BP_BerryBush_C -- mNumRespawns and mUpdatedOnDayNr, measured in \
+_meta.respawn.flora. Its mSavedNumItems is 5 on every record on disk, which is the clearest \
+demonstration that the field is a yield and not a countdown."""
+BP_ResourceNode_C = "has its own table with resource and purity: data/resource_nodes.json."
+BP_ResourceNodeGeyser_C = "in data/resource_nodes.json."
+BP_FrackingSatellite_C = "in data/resource_nodes.json."
+BP_FrackingCore_C = "in data/resource_nodes.json."
+BP_ResourceDeposit_C = """
+hand-mineable only; no extractor can be placed on it. Read here for one thing only: a \
+deposit's mOverrideResourceClass is where the map's uranium is, which is the whole of the \
+world's static radiation -- see hazard.nearest_uranium_cm."""
+BP_DestructibleLargeRock_C = "destructible scenery, not a pickup."
+BP_DestructibleSmallRock_C = "destructible scenery, not a pickup."
+BP_DestructibleFlatRock_C = "destructible scenery, not a pickup."
+BP_DestructibleFoliage_C = "destructible scenery, not a pickup."
+BP_CreatureSpawner_C = """
+spawns creatures; there is nothing to collect at the spawner itself. Read here for hazard \
+context: mCreatureClass says what it spawns, mSpawnData how many, and mSpawnRadius how far \
+-- see hazard.hostiles_nearby."""
+Char_CrabHatcher_C = """
+a hostile creature placed directly rather than through a spawner, so it is a hazard and not \
+a pickup. Its class declares mDetectionRadius, which is the containment test \
+hazard.spawns_here uses for it."""
+Char_BigCrabHatcher_C = "as Char_CrabHatcher_C, the elite variant."
+BP_SporeFlower_C = """
+destructible scenery, not a pickup. Read here for hazard context: its class carries a \
+DamageSphere whose SphereRadius is a stated fact, which is what makes \
+hazard.inside_spore_flower_damage_sphere a fact rather than a threshold."""
+BP_VolumeGas_01_C = """
+the fog perimeter of a gas field, and a volume rather than a damage source. Its position \
+feeds hazard.nearest_gas_cm; no radius is derived from it, because the extent it does carry \
+(mSize_X/mSize_Y) scales a box whose base size is not in the cooked data."""
+FGDamageOverTimeVolume = """
+the one class that looks like it should BE the gas channel and is not. Every placement's \
+mDotClass is resolved and counted in \
+_meta.hazard_context.sources.damage_over_time_volume_classes; they come back as the \
+world-boundary kill box rather than as gas, which is why the gas channel reads spore \
+flowers and gas pillars instead of this."""
+FGAmbientVolume = """
+sound-design zones, of which the ones naming a cave ambient setting are the closest the \
+assets come to marking a cave. Not used: they are placed for audio, so they neither cover \
+every cave nor stop at its mouth -- see _meta.not_derived."""
+FGWorldSettings = """
+one per cell, and the reason a bare instance name is not unique over the widened walk: the \
+map places one per cell under a name that repeats across them. Never a collectible, so the \
+row set is unaffected -- see _meta.identity."""
+Model = """
+the cell's BSP model, one per cell and named as repetitively as FGWorldSettings."""
+StaticMeshActor = "plain scenery meshes. No interaction, nothing to collect."
+InstancedFoliageActor = """
+one per cell, holding that cell's foliage as instance transforms in bulk rather than as \
+actors. The harvestable plants ARE separate actors and are excluded above on their own \
+merits."""
+FGCliffActor = "cliff-face scenery meshes."
+WorldPartitionHLOD = "the low-detail stand-in a cell shows before it has streamed in."

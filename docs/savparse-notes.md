@@ -18,17 +18,20 @@ was corrected rather than kept alongside.
 
 | layer | module | state |
 |---|---|---|
-| primitives | `pioneersav/reader.py` (95 lines) | done |
-| one exception type | `pioneersav/errors.py` (27) | done |
-| header | `pioneersav/header.py` (183) | done |
-| chunk decompression | `pioneersav/chunks.py` (123) | done |
-| body, levels, object headers, destroyed actors | `pioneersav/objects.py` (747) | done |
-| tagged property serialiser | `pioneersav/properties.py` (1,160) | done |
-| composition + the sidecar switch | `pioneersav/save.py` (212) | done |
-| the lightweight buildables' trailing bytes | `pioneersav/lightweight.py` (172) | done |
-| the other seven classes' trailing bytes | `pioneersav/trailers.py` (192) | done |
+| primitives | `pioneersav/reader.py` (87 lines) | done |
+| one exception type and its check | `pioneersav/errors.py` (25) | done |
+| object references | `pioneersav/references.py` (67) | done |
+| header | `pioneersav/header.py` (236) | done |
+| chunk decompression | `pioneersav/chunks.py` (124) | done |
+| body, levels, object headers | `pioneersav/objects.py` (741) | done |
+| the three destroyed-actor lists | `pioneersav/destroyed.py` (78) | done |
+| tagged property serialiser | `pioneersav/properties/` (926, in five modules) | done |
+| composition + the sidecar switch | `pioneersav/save.py` (201) | done |
+| the lightweight buildables' trailing bytes | `pioneersav/lightweight.py` (190) | done |
+| the other seven classes' trailing bytes | `pioneersav/trailers.py` (156) | done |
 
-Line counts are `wc -l` on the tree as it stands; 2,969 with `__init__.py`'s 58.
+Line counts are `wc -l` on the tree as it stands; 2,972 with `__init__.py`'s 68 and
+`versions.py`'s 73.
 
 **132 tests** across eight `tests/test_savparse_*.py` files, inside a suite of **918 passing, 1
 skipped** — the same count with `SATISFACTORY_SAVPARSE=own` and with `=vendor`. They run
@@ -56,7 +59,7 @@ read its implementation for structure or naming.
 
 ## What we actually depend on
 
-Runtime, in `src/satisfactory_mcp/core/saveio/extract.py`, is **three entry points**:
+Runtime, in `src/satisfactory_mcp/core/saveio/extract/`, is **three entry points**:
 
 | entry point | used for | status |
 |---|---|---|
@@ -251,6 +254,37 @@ Two things measured for the property stage:
   more int32 (every component), or **keeps going** — 3,209 of 44,634 actors carry
   class-specific binary data after it.
 
+The entry's size counts from immediately after itself, which is what puts version 60's
+trailing int32 at the far end rather than in the head. The walk does not parse the payload; it
+steps over it, and only the walk knows where the block ends, so it is the walk that refuses a
+size running past it.
+
+**The archive version header** is 26 fixed bytes — four int32s, three uint16s read as the
+engine's major/minor/patch, and the changelist — then the engine branch as a length-prefixed
+string, so its total varies by build: 59 bytes on `rel-main-1.2.0`, 70 on
+`rel-main-anniversary-2026`. The same header opens the body and appears again between level
+records, around 1,900 times on the reference save, and each is read field by field. The engine
+version triple carries no label and is constant on this disk, so that reading is an
+interpretation of one value. `changelist & CHANGELIST_MASK` is the build that wrote *that
+record*, not the save: the first save of the reference world under build 502094 carries 279
+headers on 502094 and 1,628 still on 495413, the levels the new build had not rewritten yet. So
+a changelist at or below the header's `buildVersion` is ordinary, and only one *above* it — a
+record from a build newer than the one that wrote the file — is a finding. It warns rather than
+refuses, and runs only when the caller supplies `build_version`, since a value invented inside
+the walk would only ever match itself.
+
+**Pre-1.0 bodies.** Below saveVersion 52 every size field is an int32, and an object entry is a
+bare size with no version and no flag, which is why `read_body` takes `save_version` rather
+than sniffing it. Below saveVersion 30 there is no level list at all: one run of headers, one
+run of entries, and nothing about levels — no count, no names, no block sizes. The level is in
+each header's `root_object`, where three values occur (`Persistent_Level`,
+`Persistent_Exploration`, `Persistent_Exploration_2`), and the walk groups by it, because one
+flat level would have to be *called* something and any name would be wrong for the objects
+rooted elsewhere. With a level list (saveVersion 30 and 36), the unnamed persistent record is
+followed by one more bare destroyed-actor list before the closing one; it is read as that
+record's trailer, like every other level's. Reading it as a second closing list consumes the
+same bytes, and nothing in these saves tells the two apart.
+
 **Verification:** black-box against the vendored parser on all 31 readable saves — identical
 level counts, identical per-level header and object counts, identical `typePath` multisets.
 Object-by-object on the reference save: `instanceName`, the actor/component split and
@@ -358,7 +392,7 @@ deduplicated unions. **Zero differences on any list on any save**, duplicates in
 readable/refused split unchanged — 31 readable, every other file in the folder refused by both.
 
 **What it costs: 1–3 ms, under 1.1% of the walk.** Interleaved A/B, best of 7, against a
-monkeypatched `_read_destroyed_block` that jumps straight to `end`:
+monkeypatched `read_destroyed_block` that jumps straight to `end`:
 
 | save | body | read | skip | delta |
 |---|---|---|---|---|
@@ -461,7 +495,10 @@ groups["artifact_unsplit"] = 65                                             65 e
 so the two paths cannot diverge again. `counts` stays in the projection as a raw class census for
 diagnostics, and nothing derives a group from it.
 
-### Properties (`pioneersav/properties.py`) — DONE
+### Properties (`pioneersav/properties/`) — DONE
+
+The package reads the tag layouts in `tags.py`, the self-serialising structs in `structs.py`,
+the values and containers in `decoder.py`, and one object's whole payload in `payload.py`.
 
 `read_object(body, slice, actor=…)` turns one property block into `[[name, value], …]`,
 which is what `extract.props()` reads. `actor` comes from the header: nothing inside a
@@ -510,10 +547,11 @@ of the format details above, including the two below.
 
 **Two things that cost real objects to find.** The version-60 terminator is a *bare name*
 with no type tree after it; reading the tree first turned the 4 trailing bytes into a string
-length and broke 16,445 objects. And `InventoryItem` writes one extra int32 on version **36**
-only, not on 52 — the single place those two versions disagree, worth 87 pickups.
+length and broke 16,445 objects. And `InventoryItem` has two layouts that no version number in
+the file tells apart, worth 87 pickups when first misread; the declared size now decides, see
+*Struct layouts the bytes do not name* below.
 
-**Struct bodies.** Decided by NAME (`_NATIVE_STRUCTS`), not by the flag, because the flag is
+**Struct bodies.** Decided by NAME (`NATIVE_STRUCTS`), not by the flag, because the flag is
 not reliably per-element: the foliage subsystem's `mSaveData` is one MapProperty with `0x08`
 set whose keys are native `IntVector` and whose values are property lists. Nine native
 structs are enough for every save: `Vector` (three **doubles**, on version-52 objects too —
@@ -521,6 +559,22 @@ the width follows the writer), `Quat`, `Box` (6 doubles + a validity byte), `Lin
 (four floats), `Guid`, `IntVector`, `FluidBox` (one float of pipe contents),
 `ClientIdentityInfo`, `InventoryItem`. `PlayerInfoHandle` and `UniqueNetIdRepl` are kept as
 raw bytes on purpose. Everything else — 37 more struct names — is a nested property list.
+Add nothing to the native table on the strength of a name: `Vector_NetQuantize` looks like it
+belongs and does not — the map markers' `Location` is 135 bytes of tagged `X`/`Y`/`Z`
+DoubleProperties. UE4's tag layout has no native-serialise bit at all, and synthesising one for
+version 36/52 would skip plain property lists such as a creature spawner's `SpawnData`.
+
+**Value shapes.** The values keep the shapes the projection was written against, quirks
+included, so changing one is a silent behaviour change downstream:
+
+* `BoolProperty` yields the raw byte — 16, 1 or 0 — rather than a `bool`, because
+  `extract.truthy` reads it;
+* `ByteProperty` yields `[enumName or None, value]`: `mLastAutoSaveId` is `[None, 2]`,
+  `mGamePhaseCosts[].gamePhase` is `['EGamePhase', 'EGP_MidGame']`, and readers take `[-1]`;
+* a struct serialised as a nested property list yields `[values, types]`;
+* `InventoryItem` yields `[itemClassPath, state]` with the class as a bare path string, because
+  `_accumulate_inventory`'s `ref_class` resolves a path string and not a reference object;
+* `Int8Property` yields raw `bytes`; nothing in the projection reads one.
 
 **Census on the reference save** — 44,634 objects and **82,660 top-level properties**, which
 between them declare **208,548 property tags at every depth**, because a struct's fields and a
@@ -603,6 +657,16 @@ and keeping the result only when it lands exactly on the declared end recovers
 **three warnings per saveVersion 52 save and zero on a saveVersion 60 one**, in data nothing
 above reads.
 
+Those three have since been recovered. Before falling back to a property list, the parser offers
+candidate struct types and keeps the first that lands exactly on the declared end: `IntVector`
+for a map key (the foliage subsystem's `mSaveData` keys its per-cell records by world-partition
+cell coordinate), then `Guid` and `Vector` for a set element (the scanner's `mDestroyedPickups`
+and `mLootedDropPods`, and `FGFoliageRemoval.mRemovalLocations`). Each candidate is the type
+saveVersion 60 writes out in full for the same field, so the newer format is the authority
+rather than the guess. Only the key is substituted: an unnamed map *value* is always a property
+list. A set is offered unframed readings first, because it writes its elements end to end,
+without the struct-array header a version-36/52 array opens with.
+
 #### Adversarial pass over the containers and the escape hatches
 
 The module was then attacked deliberately: hand-built property blocks for the cases no save
@@ -615,7 +679,7 @@ container's declared length, which is not the element's length.
   out of the bytes after the map and the *next* skip dragged the cursor back onto that end —
   so the declared size balanced and the object parsed. A hand-built
   `map<int, array<Vector>>` came back as two pairs, both values `None`, the second key
-  invented out of the terminator's length prefix, **no error**. `unknown()` now refuses to
+  invented out of the terminator's length prefix, **no error**. `skip_unknown()` now refuses to
   move the cursor backwards. Skipping the *last* element of a container still works, because
   there the container's remaining length **is** the element's length — verified on real bytes
   by renaming the value type of the calendar subsystem's one-entry
@@ -623,7 +687,7 @@ container's declared length, which is not the element's length.
 * `FText` had the same hole: a history type other than 0xFF inside an *array* of texts
   consumed the rest of the array and the elements after it were invented
   (`[[0, 3], [5, 78]]`, a "history type" that was really a string length). Its skip now goes
-  through `unknown()` and inherits the guard.
+  through `skip_unknown()` and inherits the guard.
 * A container's element count is now bounded by the bytes left in its own block instead of a
   flat 10,000,000. The count lives *inside* the payload, so the tag's size check does not
   bound it: a count of 9,000,000 planted in a 12-byte array inside a 40 MB body read
@@ -661,7 +725,7 @@ correct rather than lucky:
 * Version-60 tag flags seen: `0x00`, `0x08`, `0x09` (native + array index), `0x10`. Never
   `0x02`, never `0x04`, never anything above `0x10`.
 * Strings: **27,648,606** read, of which **25** are negative-length UTF-16 — and all 25 are
-  inside an `attempt()` guess that is then thrown away. No save on this disk holds a UTF-16
+  inside an `first_exact_fit()` guess that is then thrown away. No save on this disk holds a UTF-16
   string in a property.
 
 Verified as already correct, and worth not re-deriving: skip-by-declared-length recovers
@@ -672,6 +736,32 @@ large by four bytes fails on that property with its offset, in both directions. 
 inside arrays inside maps, and arrays inside structs inside arrays, read correctly. A struct
 array element whose property list has no terminator fails loudly instead of eating the next
 element.
+
+**Struct layouts the bytes do not name.** A standalone `StructProperty` declares its own size,
+which makes that size a referee the decoder passes down as `exact`; an element inside a
+container has only the container's end, and never gets it. Two cases use it:
+
+* **`InventoryItem` follows no version number in the file.** An object stamped version 46 in an
+  autosave written at build 416835 uses two bare references — 16 declared bytes, four empty
+  strings. An object stamped version 46 in Episode 107, build 463028, uses the modern layout —
+  99 declared bytes, a reference and a has-state int32, where two references cannot fit. Same
+  object version, same `saveVersion` 52: somewhere between those builds the game began writing
+  these records the modern way without restamping them. So where the declared size is known it
+  chooses between the two readings outright — they can never land on the same byte, since the
+  modern one is a reference plus 4 and the legacy one a reference plus another reference, 8
+  bytes at its shortest. Only a bare container element, with no size of its own, still guesses
+  from the object's version.
+* **An unknown struct that is not a property list costs one property, not the save.** That
+  combination is not a base-game shape; it is what mods write. `FicsItCam`'s `FICFrameRange` is
+  two int64s under a cleared self-serialising flag, and reading it as a tagged property list
+  takes a frame number for a string length and walks off the end of a 164 MB body. With
+  `exact`, the property-list reading is refereed by the declared end and a failure becomes a
+  skip plus a warning.
+
+The skip deliberately does **not** cover the native-struct table, `InventoryItem` included:
+there the declared size *chooses* between readings the parser knows, and only a record that is
+neither degrades to a skip. A struct the parser claims to know and then quietly drops would hide
+exactly the kind of bug the `InventoryItem` gate was.
 
 **Two messages fixed by the truncation sweep, both in the commonest failure there is.**
 Cutting two real saves at fourteen fractions of their length each put **all 28** failures on
@@ -767,11 +857,32 @@ per class:
         reference    empty
         uint8        0
         reference    the recipe the piece was built from
-        reference    empty
-        int32        0
-        uint8        version 4 only
+        reference    the blueprint proxy it was placed as part of, empty when placed by hand
+        int32        COUNT of the type-specific data blocks that follow, 0 on most classes
+        per block:
+            reference      the data struct's type, e.g. BuildableBeamLightweightData
+            int32          byte size of the property list that follows
+            property list  tagged and "None"-terminated, kept as raw bytes
+        uint8        version 4 only: with the int32 after it, one FPlayerInfoHandle
         int32        version 4 only
 ```
+
+**The int32 before the blocks is a count, not a constant.** It is 0 for foundations, walls,
+catwalks and railings, which is every class on a save built without beams — so it read as
+"0 everywhere" for as long as no beam had been placed. A beam carries one block holding its
+`BeamLength`, because a beam's length is chosen per piece and there is nowhere else to keep it.
+Reading the field as a constant leaves the walk 116 bytes short on the first beam, and the next
+class path fails its own length check thousands of records later. The blocks are kept as raw
+bytes: each is size-prefixed, so consuming it exactly needs no tag reader, and decoding
+`BeamLength` is separate work. They are appended as the record's *last* field, so every index
+the record already had keeps its meaning — the version-4 player handle stays at 13 and 14 — and
+as a nested list, because `extract._placed` tells a real piece from a stale slot by scanning an
+instance's top-level fields for a non-empty string or a `pathName`, and a bare type path at that
+level would make every stale slot look placed.
+
+`RECORD_BYTES` is therefore a **minimum** per instance rather than the whole of one, which is
+what it always was — the two reference paths were never in it either. It is used only to bound a
+claimed instance count, and a bound that is too generous is still a bound.
 
 **How this was derived, and what that leaves uncertain.** The class count and the first
 instance count were read off the front and matched against the oracle's census. The record
@@ -999,7 +1110,7 @@ shows 29 chains apparently moving one way and 16 the other.
      `ParseError`. Written over one real object and run through the sidecar it came out as
      `{"error": "RecursionError", "detail": "maximum recursion depth exceeded"}` with a
      traceback on stderr and **no offset** — exactly the report `errors.py` was written to
-     abolish, arriving through the one door it did not cover. `_Decoder.property_list` now
+     abolish, arriving through the one door it did not cover. `PropertyDecoder.property_list` now
      counts its own depth against `_MAX_NESTING = 32`; the deepest real list in any of the 31
      saves is **4**.
    * **A property list that terminates early was absorbed in silence.** Overwriting one
@@ -1138,23 +1249,19 @@ shows 29 chains apparently moving one way and 16 the other.
   the length prefix (which leaves every declared size correct), give byte-identical results
   from both parsers. That is as close to data as it gets until somebody plays with an umlaut
   in their session name.
-* **An unrecognised struct name loses the whole save on a version-36/52 object, and only the
-  property on a version-60 one.** Version 60's flags byte has `0x08` for "this struct
-  serialises itself", so an unknown native struct there becomes `struct 'X' serialises itself,
-  kept as bytes` — measured by renaming `FluidBox` to `MyModBox` in a v60 save's body:
-  44,634 objects still read, 798 warnings, and the vendored parser refuses the file outright.
-  UE4's tag has no such bit, so `native_hint` is always false and an unknown struct is read as
-  a property list with nothing to referee it; the same rename on a v52 save is a `ParseError`.
-  **25 of the 31 readable saves are v52**, so this is the version it matters on. Nothing on
-  disk hits it — every struct name in every save is either in `_NATIVE_STRUCTS` or genuinely a
-  property list — and the vendored parser is worse here, refusing all of these. The fix is
-  known and was left undone on purpose: a top-level `StructProperty` declares its size, so
-  routing an *unknown-named* struct on an old-version object through `attempt()` would turn
-  the loss into a skip plus a warning. It must apply **only** where `end` is the struct's own
-  end. Called from `struct_array` or `element`, `end` is the *container's* end, so `attempt`
-  would reject every element but the last and skip real `SplinePointData` arrays that parse
-  correctly today. That needs a flag threaded through `struct()`, which is more than a
-  one-liner in the module the size check protects.
+* **An unrecognised struct name inside a version-36/52 container can still lose the whole
+  save.** Version 60's flags byte has `0x08` for "this struct serialises itself", so an unknown
+  native struct there becomes `struct 'X' serialises itself, kept as bytes` — measured by
+  renaming `FluidBox` to `MyModBox` in a v60 save's body: 44,634 objects still read, 798
+  warnings, and the vendored parser refuses the file outright. UE4's tag has no such bit. A
+  top-level `StructProperty` declares its own size, and that size now referees the
+  property-list reading (the `exact` path under *Struct layouts the bytes do not name*), so
+  there an unknown struct costs one property and a warning. An element of an array or a map
+  has only the container's end, and refereeing by it would reject every element but the last
+  and skip real `SplinePointData` arrays that parse correctly; there an unknown struct is still
+  read as a property list with nothing to referee it. **25 of the 31 readable saves are v52**,
+  so this is the version it matters on. Nothing on disk hits it — every struct name in every
+  save is either in the native table or genuinely a property list.
 * Version-60 tag bits **above `0x10` are ignored, while `0x04` refuses the save**. That is
   inconsistent, and deliberately left as it is: no bit above `0x10` is set on any of the
   2,269,824 properties, and inventing a meaning for one — or refusing a save because of one —
@@ -1253,7 +1360,7 @@ variable, and should happen as part of that deletion rather than before it.
    the moment the rest of it is being removed. That tension is the user's to resolve, not a
    detail — see *Opportunities*.
 5. Every reference to the library outside `sidecar/vendor/` is removed or reworded:
-   `src/satisfactory_mcp/core/saveio/extract.py`'s two-engine switch, `tests/test_savparse_save.py`'s default pin,
+   `src/satisfactory_mcp/core/saveio/extract/`'s two-engine switch, `tests/test_savparse_save.py`'s default pin,
    and prose in `README.md`, `DESIGN.md` and this file.
 6. The deletion is the user's call. Nothing here should make it for them.
 
