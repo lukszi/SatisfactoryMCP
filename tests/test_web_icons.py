@@ -19,7 +19,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from satisfactory_mcp.interfaces.web.app import create_app
-from satisfactory_mcp.interfaces.web.routers import icons as web_icons
+from satisfactory_mcp.interfaces.web.routers.assets import icons as web_icons
 
 #: The smallest thing Pillow and every browser agree is a PNG: 1x1, fully transparent.
 #: Its CONTENT is irrelevant here -- what is under test is which bytes are served and with
@@ -195,7 +195,7 @@ def test_a_segment_that_is_not_a_class_name_never_becomes_a_path(app_client, ico
 def test_the_router_reads_the_directory_the_generator_writes(icons_dir):
     """The names the tool and the endpoint have to agree about, and nothing else joins them.
 
-    Imported from the tool rather than retyped on this side, the way ``routers/tiles.py``
+    Imported from the tool rather than retyped on this side, the way ``routers/assets/tiles.py``
     takes the pyramid's names from the cutter: a second copy is a second opinion waiting to
     happen, and the cost of getting it wrong is an endpoint that 404s over a directory full
     of pictures.

@@ -132,7 +132,7 @@ Base: `feat/world-finders` at `71bf388`. Frontend paths are relative to
 ## 3. Routes
 
 All GET, all `?save=`/`?world=`, all pinned by `as_of` through the existing middleware. New
-routes live in one router `interfaces/web/routers/finders.py`, prefix `/api/world`, appended to
+routes live in one router `interfaces/web/routers/world/world_finders.py`, prefix `/api/world`, appended to
 `ALL_ROUTERS`. Errors are `{"error": ...}`. Numbers out of their declared range are FastAPI's
 422; every domain refusal is 400; "needs a save and none loads" is 404. No route writes, so
 there is no guard change and no 409 besides the pinning middleware's.
@@ -162,7 +162,7 @@ flagged, and the page fades it (§8.1).
 
 ### 3.2 Response models (TypedDict, declaration order = wire order)
 
-Shared shapes go in `serial.py` only where two routers build them (`TableAge`, `Region`).
+Shared shapes go in `serial/` only where two routers build them (`TableAge`, `Region`).
 
 ```python
 class TableAge(TypedDict):            # serial.py; "is this map data older than the save"
@@ -315,7 +315,7 @@ domain function. `tests/test_world_parity.py` pins that both answer alike.
 |---|---|---|
 | `domain/spatial/finder.py`: `find_nodes(st, game, *, sources, resource, purity, kind, status, view, near) -> NodeFind` | `search_resource_nodes` body (selection, annotate, status filter, distance, clusters, totals, notes, water block) | tool, `/api/world/nodes`, `place.here`, `place.describe` |
 | `finder.fields(rows) -> list[FieldView]`, `finder.rank(st, game, resource, sources) -> SiteRank` | tool bodies of fields view and `rank_build_sites` | tool, `/api/world/nodes?view=fields`, `/api/world/sites` |
-| `domain/spatial/place.py`: `here(st, game, radius_m) -> Here`, `describe(st, game, x, y, radius_m) -> Description` | `whereami`, `describe_location`, `routers/inspect.py` assembly | tools, `/api/world/here`, `/api/inspect` |
+| `domain/spatial/place.py`: `here(st, game, radius_m) -> Here`, `describe(st, game, x, y, radius_m) -> Description` | `whereami`, `describe_location`, `routers/world/inspect.py` assembly | tools, `/api/world/here`, `/api/inspect` |
 | `domain/world/conduits.py`: `search(st, near, radius_m, to, to_radius_m, kind, network, run) -> ConduitSearch`, `networks(st, origin) -> list[NetworkView]` | `search_conduits` body and `_networks_view` | tool, `/api/world/conduits` |
 | `domain/spatial/regions.py`: `region_rows(table, rid, rows=None) -> list[dict]` | `list_regions` body | tool, `/api/world/regions` |
 | `domain/spatial/nodes.py`: `table_age(header, table, instances) -> dict \| None` | `skew_for_save` + `skew_notes`, scoped | every node-bearing route |
@@ -572,7 +572,7 @@ read-only for both.
 - `domain/collectibles/service.py`, `domain/collectibles/removed.py` (census only)
 - `interfaces/mcp/tools/spatial.py`, `interfaces/mcp/tools/progression.py` (`collected_from_world` only), `interfaces/mcp/tools/planning.py` (`_focus_line` only)
 - `presenters/text/collectibles.py` (census source only)
-- `interfaces/web/routers/finders.py` (new), `routers/inspect.py`, `routers/nodes.py`, `routers/collectibles.py`, `routers/__init__.py` (append only), `interfaces/web/serial.py` (`TableAge`)
+- `interfaces/web/routers/world/world_finders.py` (new), `routers/world/inspect.py`, `routers/world/nodes.py`, `routers/world/collectibles.py`, `routers/__init__.py` (append only), `interfaces/web/serial/` (`TableAge`)
 - `tests/test_world_finder_domain.py`, `tests/test_web_world_finders.py`, `tests/test_world_parity.py` (new); `tests/test_web_inspect.py`, `tests/test_web_nodes.py`, `tests/test_web_collectibles.py`, `tests/test_node_search.py`, `tests/test_conduits.py`, `tests/test_collected_from_world.py`, `tests/test_ranking.py`, `tests/test_local_map_link.py`, `tests/test_maplink.py`, `tests/test_ui_context.py`, `tests/test_surface.py`
 - `docs/frontend_vision.md` (§3.1 rows, §6 row 6, a new §18 "World finders"), `docs/mcp-surface.md`, `docs/selectors.md` (`show=` forms), `docs/spatial-and-map.md` (inspector paragraph)
 

@@ -132,7 +132,7 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 )
 from satisfactory_mcp.domain.maps import presets, registry
 from satisfactory_mcp.domain.spatial import heightfield as hf
-from satisfactory_mcp.interfaces.web.routers import tiles as web_tiles
+from satisfactory_mcp.interfaces.web.routers.assets import tiles as web_tiles
 
 
 def test_the_render_generator_writes_where_the_layered_route_looks(tmp_path, monkeypatch):

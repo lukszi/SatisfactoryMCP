@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 
 from satisfactory_mcp.core.saveio.projection import World
 from satisfactory_mcp.interfaces.web.app import create_app
-from satisfactory_mcp.interfaces.web.routers import world as web_world
+from satisfactory_mcp.interfaces.web.routers.world import worlds as web_world
 
 
 #: A save header exactly as the sidecar's ``header_info`` builds one -- all thirteen keys,
@@ -93,8 +93,21 @@ def test_worlds_lists_the_save_picker_rows(client, monkeypatch):
     ]
     assert body["unsupported"] == [{"filename": "old.sav", "reason": "saveHeaderType 8 is pre-1.0"}]
     row = body["worlds"][0]
-    assert list(row) == ["world_id", "session_name", "saves", "mtime", "newest_filename", "play_duration_s"]
-    assert list(row["saves"][0]) == ["path", "filename", "session_name", "play_duration_s", "mtime_ns"]
+    assert list(row) == [
+        "world_id",
+        "session_name",
+        "saves",
+        "mtime",
+        "newest_filename",
+        "play_duration_s",
+    ]
+    assert list(row["saves"][0]) == [
+        "path",
+        "filename",
+        "session_name",
+        "play_duration_s",
+        "mtime_ns",
+    ]
 
 
 def test_summary_carries_the_same_save_token_the_tools_print(client, state):

@@ -24,7 +24,7 @@ routers point at this file instead of re-telling them.
 7. **A write says what it refuses, in the schema.** A request body is a `TypedDict` taken as
    `Annotated[Body, Body()]` (routers may not import pydantic), and every non-2xx body the page
    branches on is declared with `responses={409: {"model": ...}}`, so it reaches
-   `api-schema.d.ts` like a 200 does. The planner routes (`routers/planlog.py`) answer a
+   `api-schema.d.ts` like a 200 does. The planner routes (`routers/plans/planlog.py`) answer a
    conflict with `OutdatedResponse` and never apply part of a push. The server stamps the
    actor (`page`, its own pid); the page never sends one.
 8. **Metres, one decimal.** The save stores centimetres; every coordinate that leaves this
@@ -106,7 +106,7 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
 
 ## Nodes
 
-`/api/nodes` (`routers/nodes.py`) is the static node table joined to what the save built on it.
+`/api/nodes` (`routers/world/nodes.py`) is the static node table joined to what the save built on it.
 
 - The join is partial and says so: `occupancy` resolves only the extractors whose target is a
   node key, so `occupied` false means "no extractor known here", never "free". The node id
@@ -124,7 +124,7 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
 
 ## Placements
 
-`/api/machines` and `/api/structures` (`routers/placements.py`) answer one question in two
+`/api/machines` and `/api/structures` (`routers/layers/placements.py`) answer one question in two
 resolutions, and the line between them decides every nullable field on the placement layers.
 
 - An **actor** record has an instance id, a recipe and a clock. The projection writes
@@ -167,7 +167,7 @@ resolutions, and the line between them decides every nullable field on the place
 
 ## Belts and pipes
 
-`/api/belts` and `/api/pipes` (`routers/routes_layer.py`) send every conveyor piece and fluid
+`/api/belts` and `/api/pipes` (`routers/layers/belts_pipes.py`) send every conveyor piece and fluid
 pipe as the polyline it was built along, one row per piece and ungrouped, because the per-piece
 class is what a popup reads. Pieces are interned rows (see Placements); splitters and mergers
 are actors.
@@ -214,7 +214,7 @@ are actors.
 
 ## Power lines
 
-`/api/power` (`routers/power.py`) sends every pole, wall outlet and tower platform and the span
+`/api/power` (`routers/layers/power_lines.py`) sends every pole, wall outlet and tower platform and the span
 of every wire. The geometry sits beside `graph["power"]`, which says who is joined to whom; the
 join is positional (`wires[i]` is the span of `graph["power"][i]`) and this route is the one
 place the two are put back together.
@@ -239,7 +239,7 @@ place the two are put back together.
 
 ## Storage
 
-`/api/storage` (`routers/storage.py`) answers "where did I put the steel" rather than "how much
+`/api/storage` (`routers/layers/storage.py`) answers "where did I put the steel" rather than "how much
 have I got": every Storage Container and Industrial one, Personal Storage Box, Dimensional
 Depot uploader, the HUB's built-in container, the Blueprint Designer's, and every fluid buffer,
 in one ungrouped payload.
@@ -267,7 +267,7 @@ in one ungrouped payload.
 
 ## Floors
 
-`/api/floors` (`routers/floors.py`) is what is built, one storey at a time. Nothing in the save
+`/api/floors` (`routers/layers/floors.py`) is what is built, one storey at a time. Nothing in the save
 says "floor": `domain.factories.floors` recovers them from the geometry, 4-connected platforms
 of 8 m foundation cells and then a per-platform cluster of deck heights, and the route parses
 the query, calls it once and rounds.
@@ -306,7 +306,7 @@ the query, calls it once and rounds.
 
 ## Inspect
 
-`/api/inspect` (`routers/inspect.py`) answers what is at a map coordinate. Every answer comes
+`/api/inspect` (`routers/world/inspect.py`) answers what is at a map coordinate. Every answer comes
 out of `place.describe`, the function `describe_location` calls; the route converts metres to
 centimetres and rounds. `radius_m` is the elevation reach (default 200 m, the tool's own);
 conduits count within 250 m, fields and pickups look 500 m out, and five nearest nodes are
@@ -354,7 +354,7 @@ sent.
 
 ## Pins
 
-`/api/pins` (`routers/pins.py`) follows the rules above: `?save=`/`?world=`, the guard on
+`/api/pins` (`routers/bridge/pins.py`) follows the rules above: `?save=`/`?world=`, the guard on
 every method, `{error}` with a 4xx. A write carries the `rev` it read; a different `rev` is a
 409 `PinStaleResponse {error, stale: true, pin}` with the row as it stands, and nothing is
 written. A create of an object that already has a live pin is a **200** with `existing: true`
@@ -363,16 +363,16 @@ naming the pins, not the path. Pin numbers are never reused.
 
 `PlanOpBody` lives in `serial` because two routers publish it (`planlog` for pushes,
 `plan_solve` for the ops an alternates option would push). The alternates route's reply is
-named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes an
+named `PlanAlternatesResponse` because `routers/codex/gamedata.py` already publishes an
 `AlternatesResponse` and two models with one name would rename both in `api-schema.d.ts`.
 
 `Flow`, `MachineSpot` and their builders `flow_json` and `machine_spots` live in `serial`
-because `routers/naming.py` (candidates, amend) and `routers/factory_graph.py` (`/api/factories/graph`,
+because `routers/factories/factory_labels.py` (candidates, amend) and `routers/factories/factory_graph.py` (`/api/factories/graph`,
 `/api/factories/machines`) both send them.
 
 ## Track and asks
 
-`GET /api/plan/track?key=&rev=&biomass=&headroom=` (`routers/plan_track.py`) builds its whole reply from one
+`GET /api/plan/track?key=&rev=&biomass=&headroom=` (`routers/plans/plan_track.py`) builds its whole reply from one
 solve (`domain/planning/track.py`). Not feasible, empty, and a count-as-built factory with no
 machines left are all 200s that say so (`feasible`, `empty`, `scope_error`) with empty lists;
 a 400 is only a solve that refuses its arguments. `biomass` is `include` or `exclude`, the
@@ -383,7 +383,7 @@ defaults when the query is absent. `written_ago` is the save's age alone (`12 mi
 keeps the full line for a tooltip. `GET /api/plan/feeders` is the ~0.7 s
 extractor walk, never run per save.
 
-`/api/asks` (`routers/asks.py`) follows the pins rules: the guard on every method, a delete
+`/api/asks` (`routers/bridge/asks.py`) follows the pins rules: the guard on every method, a delete
 carries the `rev` it read and a different one is a 409 `AskStaleResponse {error, stale: true,
 ask}`, a newer asks file is a 503 `{error, newer_schema: true}`. `about.plan` must be a live plan
 key (404 otherwise). Ask numbers are never reused. Unlike pins, the store has writers in every
@@ -391,7 +391,7 @@ MCP process (seen, answered), so every write holds the file lock.
 
 ## Advice
 
-`/api/advice` (`routers/advice.py`) follows the asks rules: the guard on every write, a write
+`/api/advice` (`routers/dashboard/advice.py`) follows the asks rules: the guard on every write, a write
 carries the `rev` it read (0 for a row never hidden) and a different one is a 409
 `AdviceStaleResponse {error, stale: true, row}` with the row as it stands, a newer file is a 503
 `{error, newer_schema: true}`. A hide names the row by `key`, a restore by `adv:` id in the
@@ -399,7 +399,7 @@ path. [advisors_contract.md](advisors_contract.md) is the specification.
 
 ## Settings
 
-`/api/settings` (`routers/settings.py`) reads and writes the settings the page and chat share:
+`/api/settings` (`routers/bridge/settings.py`) reads and writes the settings the page and chat share:
 `GET` sends `SettingsResponse`, `PATCH {values, version?, only_unset?}` changes some. A write
 passes the guard. A different `version` is a 409 `SettingsStaleResponse {error, stale: true,
 settings}` and writes nothing, a newer file is a 503 `{error, newer_schema: true}`, and the route
@@ -415,7 +415,7 @@ the price used and the overclock-last pick
 
 ## Maps
 
-`/api/maps` (`routers/maps.py`) lists the base map types and runs the jobs that make them;
+`/api/maps` (`routers/assets/maps.py`) lists the base map types and runs the jobs that make them;
 [maps_contract.md](maps_contract.md) is the specification. The writes (`PUT /api/maps/default`,
 `PATCH` and `DELETE /api/maps/{id}`, `POST /api/maps/adopt`, `POST` and `DELETE /api/maps/jobs…`,
 `DELETE /api/maps/cache`) pass the guard. A registry write carries the list `version` it read;

@@ -493,7 +493,7 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   counts, the eight worst machines, and label review.
 - **Power:** the world ledger, the circuits table, a detail view per circuit, and the
   starved, unwired and no-generator lists.
-- **Progress:** `/api/progress/milestones` (`routers/progress.py`) runs the `milestones`
+- **Progress:** `/api/progress/milestones` (`routers/dashboard/progress_unlocks.py`) runs the `milestones`
   tool's `SchematicLadder` over every milestone, with a per-tier tally and the tool's READY
   caveat.
 - **Refresh:** the SSE `save` event refetches the live wave, and the dashboard redraws from it.
@@ -591,7 +591,7 @@ storage box"), and "renaming a factory is kinda elemental". This **reverses park
 ### 9.1 What was built
 
 - **Detect.** Dashboard > Factories has an "unnamed clusters" card with a **detect** button.
-  It calls `GET /api/factories/candidates` (`routers/naming.py`). The reply lists every
+  It calls `GET /api/factories/candidates` (`routers/factories/factory_labels.py`). The reply lists every
   `st.proposals` entry that `LabelStore.covers` does not claim: the same proposal list and the
   same "already named" test that `propose_factories unnamed_only=true` and `/api/factories`
   use. Each row carries:
@@ -958,7 +958,7 @@ Roadmap phase 3: the `stock`, `storage` and `crates` tools as one dashboard sect
 - **Address:** `dash=inventory[/<item>]`. The subject is the item filter, so a link such as
   `dash=inventory/Quartz Crystal` opens the section filtered. Typing in the filter rewrites the
   fragment in place (no history entry per keystroke).
-- **Route:** `GET /api/stock` (`routers/stock.py`), live wave, rank 70. It sends
+- **Route:** `GET /api/stock` (`routers/dashboard/stock.py`), live wave, rank 70. It sends
   `Inventory.breakdown()` as `items` (the `stock` tool's piles: spendable, carried, storage,
   depot, machine buffers, crates) and `Inventory.holdings()` as `places` (the rows the `storage`
   and `crates` tools print), plus a census and the player position. Each place carries its
@@ -1009,8 +1009,9 @@ advisors (`rank_unlocks`, `advise_hard_drive_pick`) stay in phase 12.
 
 ### 11.1 What was built
 
-- **Routes.** Five GET routes join `/api/progress/milestones` in `routers/progress.py`:
-  `mam`, `phase`, `shards`, `sloops` and `harddrives`. Each reads the same domain objects
+- **Routes.** Five GET routes join `/api/progress/milestones`: `mam`, `phase` and
+  `harddrives` in `routers/dashboard/progress_unlocks.py`, `shards` and `sloops` in
+  `routers/dashboard/progress_boosts.py`. Each reads the same domain objects
   as its MCP tool: `SchematicLadder` and `ResearchGates` for MAM, `PhaseLedger` for the
   elevator, `OverclockBudget` for shards and sloops, and `HardDriveDesk` for the drives.
   The tool bodies are unchanged. Every route declares a response model and follows the
@@ -1162,7 +1163,7 @@ Phase 7 of §6. What feeds a machine or a factory, or what it feeds, drawn on th
 
 ### 13.1 What was built
 
-- **Route.** `GET /api/trace?seed=&direction=up|down&as_of=` (`routers/trace.py`). The seed
+- **Route.** `GET /api/trace?seed=&direction=up|down&as_of=` (`routers/factories/trace.py`). The seed
   grammar is `resolve_seeds` in `domain/factories/trace.py`: an instance, a building name, a
   factory label, or any selector. The MCP tool `trace_upstream` now calls the same function,
   so the two cannot disagree about what a seed means. The walk is the existing `trace()`.
@@ -1412,7 +1413,7 @@ Phase 2 of §6. The factory page gains level-2 tabs past its overview.
   `/`, so the last segment counts as an aspect only when it is one of those ids and the whole
   subject is not a factory name (`factoryAddress` in `factory-detail.ts`). Renaming keeps the
   open tab.
-- **`GET /api/factories/aspects?factory=`** (`routers/factory_detail.py`). One
+- **`GET /api/factories/aspects?factory=`** (`routers/factories/factory_detail.py`). One
   `query.build_view` pass, the one `factory_query` makes, sent as rows: summary numbers,
   power, balance, machines, recipes, buildings, nodes, links and issues. The doc's earlier
   `/api/factories/{id}?aspect=` became one call with every aspect, because the view computes
@@ -1462,7 +1463,7 @@ section records what the backend built and what it decided on the way.
   `label`/`LABELS` and `table_age`. Each tool body is now that call plus its text; the tool
   text is byte-identical to before on the fixture world except where the contract adds a
   line (§18.2).
-- **Routes** under `/api/world/` in `routers/finders.py`: `here`, `nodes`, `sites`,
+- **Routes** under `/api/world/` in `routers/world/world_finders.py`: `here`, `nodes`, `sites`,
   `conduits`, `regions`. `/api/inspect` gained `radius_m`, `grid`, `direction`, `conduits`,
   `fields`, `pickups` and `stale`; `/api/nodes` gained `spoiler`; `/api/collectibles`
   gained `spoilers`, `spoiler` per row, `census`, `found`, `hidden_spoilers` and `stale`.
@@ -1489,7 +1490,7 @@ section records what the backend built and what it decided on the way.
   the table's `game_build`; `observed_from` is the session the generator read.
 - **Schema names.** `SiteRow` and `SitesResponse` were taken by `/api/factories/sites`, so
   the ranking's shapes are `RankedSite` and `RankedSitesResponse`. `CollectibleRow` and
-  `FoundField` moved to `serial.py`, since `/api/inspect` sends them too.
+  `FoundField` moved to `serial/`, since `/api/inspect` sends them too.
 - **A geyser search no longer raises.** `show=nodes kind=geyser` hit a `KeyError` on the
   geyser's missing item; the unit now falls back to `/min`.
 - **Rank is its own World tab** (2026-09-30), `world/rank?…`, beside fields; old

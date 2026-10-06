@@ -130,7 +130,7 @@ confirm, since it moves the pad onto what is built.
 ### 4.1 Route
 
 `GET /api/plan/site-preview?key=&rev=&x_m=&y_m=&yaw_deg=&w_m=&d_m=&first=&full=&biomass=&headroom=`
-→ `SitePreviewResponse` (`routers/plan_site.py`).
+→ `SitePreviewResponse` (`routers/plans/plan_site.py`).
 
 - Any of x, y, yaw, w, d left out comes from the stored site, else from `start_siting`.
 - `first=1` adds `nodes` (the plan's chosen nodes) and `content_bbox_m`.

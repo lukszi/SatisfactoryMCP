@@ -198,7 +198,7 @@ def test_the_productivity_window_is_not_the_constant_it_looks_like(proj):
 
 
 def test_the_crate_census_extract_and_the_endpoint_cite(proj):
-    """``core/saveio/extract._crates`` and ``routers/crates.py``, schema 18.
+    """``core/saveio/extract._crates`` and ``routers/layers/crates.py``, schema 18.
 
     Two crates, and the pair is the whole argument for the ``kind`` field existing: one
     says what it is and one cannot. The dismantle crate was made under a build that has
@@ -211,7 +211,9 @@ def test_the_crate_census_extract_and_the_endpoint_cite(proj):
     would leave both of these rows holding nothing while still reporting two crates.
     """
     crates = proj["crates"]
-    assert len(crates) == 2, "core/saveio/extract.py:_crates and routers/crates.py quote this"
+    assert len(crates) == 2, (
+        "core/saveio/extract.py:_crates and routers/layers/crates.py quote this"
+    )
     assert [c["kind"] for c in crates] == ["dismantle", "none"], "sorted by kind, then instance"
     assert all(c["cls"] == "BP_Crate_C" for c in crates), "CRATE_CLASSES is a list of one"
     assert all(c["yaw"] is not None and c["pos"] for c in crates)

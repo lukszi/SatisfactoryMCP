@@ -22,7 +22,7 @@ from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning
 from satisfactory_mcp.interfaces.web import terrain
 from satisfactory_mcp.interfaces.web.app import create_app
-from satisfactory_mcp.interfaces.web.routers import plan_site
+from satisfactory_mcp.interfaces.web.routers.plans import plan_site
 
 ORIGIN = {"origin": "http://testserver"}
 WORLD = "X2faPVKjX06VaRzClNv5KQ"

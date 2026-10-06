@@ -381,14 +381,14 @@ ROUTER_ALLOWED_PREFIXES: tuple[str, ...] = (
 
 #: The one measured exception, and it is one module reaching one module.
 #:
-#: ``routers/events.py`` streams what ``watch.SaveWatcher`` publishes. It reads the watcher
-#: off ``request.app.state`` and imports only the event names and record, which live in
-#: ``watch_events``. Named as a pair rather than as a prefix: any OTHER router importing the
-#: watcher's modules is the failure this is shaped to still catch.
+#: ``routers/bridge/events.py`` streams what ``watch.SaveWatcher`` publishes. It reads the
+#: watcher off ``request.app.state`` and imports only the event names and record, which live
+#: in ``watch_events``. Named as a pair rather than as a prefix: any OTHER router importing
+#: the watcher's modules is the failure this is shaped to still catch.
 ROUTER_EXTRA_EDGES: frozenset[tuple[str, str]] = frozenset(
     {
         (
-            "satisfactory_mcp.interfaces.web.routers.events",
+            "satisfactory_mcp.interfaces.web.routers.bridge.events",
             "satisfactory_mcp.interfaces.web.watch_events",
         )
     }
@@ -399,7 +399,7 @@ ROUTER_EXTRA_EDGES: frozenset[tuple[str, str]] = frozenset(
 #: Not a style preference: it is the number that makes "one module per concern" checkable.
 #: What it stops is the drift back: a second concern lands in a router, then a third, and
 #: nothing says so until the file is api.py again under a different name. The largest router
-#: measured 624 lines (planlog.py) when the cap was set, so a breach is a real change.
+#: measured 624 lines (plans/planlog.py) when the cap was set, so a breach is a real change.
 ROUTER_MAX_LINES = 650
 
 #: The classes FastAPI treats as "this handler answers for itself".

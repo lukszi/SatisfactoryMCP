@@ -448,7 +448,7 @@ Every write may also raise `filelock.LockTimeout`.
 with `.world_id`, `.plans` (live plans as `Plan`-compatible objects carrying `.key` and `.rev`
 alongside `.name`, `.args`, `.kwargs()`, `.notes`, `.plan_id`, `.factory`, `.created`,
 `.provenance` and `.siting`) and `.find(name)`. `recall`, `diff_service`, `layout_service`,
-`siting`, `spatial.origin` and `routers/plans.py` keep working unchanged.
+`siting`, `spatial.origin` and `routers/plans/plan_index.py` keep working unchanged.
 
 `PlanStore`'s write paths (`editing`, `save`, `put`, `remove`) are deleted. `store.py` keeps
 `Plan` and `PLAN_ARGS` (+ `required`), and `PlanStore.load` only for migration.
@@ -622,7 +622,7 @@ since you last looked: "north hmf" v11 -> v14 by page: v12 rate Heavy Modular Fr
 
 ## 11. Web (owned by "web")
 
-A new router `routers/planner.py` goes at the **end** of `ALL_ROUTERS`. If it would pass 700
+A new router `routers/plans/plan_solve.py` goes at the **end** of `ALL_ROUTERS`. If it would pass 700
 lines, split it into `planner.py` (solve, focus, activity) + `planlog.py` (plan CRUD and ops),
 both appended. Every write passes `guard.py` unchanged. Every handler declares
 `response_model`, and 409 bodies are declared with `responses={409: {"model": OutdatedResponse}}`
@@ -635,7 +635,7 @@ from `_state`). The page sends `actor` implicitly: the server stamps `Actor("pag
 
 | Handler | Method, path | Request body | 2xx response | Errors |
 |---|---|---|---|---|
-| `plans` (existing, `routers/plans.py`) | GET `/api/plans` | – | `PlansResponse` **+ `index: list[PlanIndexRow]`**, and `PlanSiting` **+ `key`** (additive) | 404 |
+| `plans` (existing, `routers/plans/plan_index.py`) | GET `/api/plans` | – | `PlansResponse` **+ `index: list[PlanIndexRow]`**, and `PlanSiting` **+ `key`** (additive) | 404 |
 | `create_plan` | POST `/api/plans` | `CreatePlanBody {name: str, args: dict, from_entry: str = ""}` | 201 `PushedResponse` | 400 invalid, 409 `{error, name_taken: true}`, 503 lock |
 | `plan_state` | GET `/api/plans/{key}?rev=` | – | `PlanStateBody` | 404 unknown key or rev |
 | `plan_ops` | GET `/api/plans/{key}/ops?since=0` | – | `PlanOpsResponse {key, head, commits: list[CommitBody]}` | 404 |
@@ -871,7 +871,7 @@ lead before touching it. This contract is read-only for all four.
 |---|---|
 | **store** (next stage, before the three) | `src/satisfactory_mcp/domain/planning/planlog.py` (new); `domain/planning/store.py`; `domain/planning/recall.py`; `domain/planning/scenario.py` (G4 `required`); `domain/planning/prepare.py` and `domain/planning/report.py` only as far as G4's infeasibility note needs; `domain/factories/edits.py`; `domain/world/state.py` (`plans` property); `src/satisfactory_mcp/config.py` (`activity_dir`, `ui_dir`); `tests/test_planlog*.py` (new); `tests/test_plan_store.py`; `tests/test_required_recipes.py` (new); `tests/test_label_edits.py` (repoint only) |
 | **tools** | `src/satisfactory_mcp/interfaces/mcp/tools/planning.py`; `interfaces/mcp/tools/factories.py` (pass `actor` to `edits.rename` only); `interfaces/mcp/tools/spatial.py` only if a `plan:` recall there needs the view; `interfaces/mcp/app.py` (`instructions`, actor helper); `src/satisfactory_mcp/server.py` (`journal.set_writer("chat")`); `src/satisfactory_mcp/domain/planning/journal.py` (new); `presenters/text/**` only where a planning presenter must print the version; `tests/test_plan_tools_log.py` (new); `tests/test_journal.py` (new); `tests/test_ui_context.py` (new); `tests/test_surface.py`; `tests/test_plan_provenance.py`, `tests/test_planner_gaps.py`, `tests/test_siting.py` (only where they call the plan tools' write paths); `docs/mcp-surface.md` |
-| **web** | `src/satisfactory_mcp/interfaces/web/routers/planner.py` (new), `routers/planlog.py` (new, if split); `routers/plans.py`; `routers/naming.py` (pass `actor` to `edits.rename` only); `routers/events.py`; `routers/__init__.py` (append only); `interfaces/web/watch.py`; `interfaces/web/app.py` (lifespan: `journal.set_writer("web")`, tailer start); `interfaces/web/serial.py` (only if a shape is shared by two routers); `src/satisfactory_mcp/domain/planning/summary.py` (new); `src/satisfactory_mcp/domain/planning/focus.py` (new); `frontend/src/api-schema.d.ts` (regenerated, never hand-edited); `tests/test_web_planner.py` (new), `tests/test_web_plans.py`, `tests/test_web_events.py`, `tests/test_watch.py`, `tests/test_web_naming.py`, `tests/test_focus.py` (new); `docs/web-wire.md` |
+| **web** | `src/satisfactory_mcp/interfaces/web/routers/plans/plan_solve.py` (new), `routers/plans/planlog.py` (new, if split); `routers/plans/plan_index.py`; `routers/factories/factory_labels.py` (pass `actor` to `edits.rename` only); `routers/bridge/events.py`; `routers/__init__.py` (append only); `interfaces/web/watch.py`; `interfaces/web/app.py` (lifespan: `journal.set_writer("web")`, tailer start); `interfaces/web/serial/` (only if a shape is shared by two routers); `src/satisfactory_mcp/domain/planning/summary.py` (new); `src/satisfactory_mcp/domain/planning/focus.py` (new); `frontend/src/api-schema.d.ts` (regenerated, never hand-edited); `tests/test_web_planner.py` (new), `tests/test_web_plans.py`, `tests/test_web_events.py`, `tests/test_watch.py`, `tests/test_web_naming.py`, `tests/test_focus.py` (new); `docs/web-wire.md` |
 | **page** | `src/satisfactory_mcp/interfaces/web/frontend/src/planner*.ts` (new); `frontend/src/dashboard.ts` (Planner tab wiring only); `frontend/src/settings.ts` (`follow` entry); `frontend/src/sse.ts` (`plans`/`activity` listeners); `frontend/src/api.ts` (PUT, 409-returning push); `frontend/src/api-shapes.ts` (aliases for §11.2 names); `frontend/src/main.ts` (FEATURES line, only if a planner module registers a fetch); `frontend/src/style.css`; `frontend/src/toast.ts` (only if a toast needs an action button); `frontend/index.html` (only if the tab needs markup) |
 
 **Hand-over rule.** The store stage leaves the suite green. Any existing test it breaks by

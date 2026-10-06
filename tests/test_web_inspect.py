@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from satisfactory_mcp.domain.world import conduits as conduits_mod
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.web.app import create_app
-from satisfactory_mcp.interfaces.web.routers import inspect as web_inspect
+from satisfactory_mcp.interfaces.web.routers.world import inspect as web_inspect
 
 #: The same three coordinates ``test_elevation`` probes, and for the same reasons: a
 #: developed platform where the built population swamps the ground one, open field with

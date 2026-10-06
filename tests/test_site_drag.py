@@ -90,7 +90,7 @@ def test_check_refuses_in_words(value, words):
 
 def test_the_map_square_is_the_tile_router_one():
     pytest.importorskip("fastapi")
-    from satisfactory_mcp.interfaces.web.routers.tiles import DEFAULT_MAP_BOUNDS_M as b
+    from satisfactory_mcp.interfaces.web.routers.assets.tiles import DEFAULT_MAP_BOUNDS_M as b
 
     assert geo.MAP_SQUARE_M == (b["x_min_m"], b["y_min_m"], b["x_max_m"], b["y_max_m"])
 

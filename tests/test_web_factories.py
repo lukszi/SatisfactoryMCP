@@ -13,7 +13,7 @@ import pytest
 
 fastapi = pytest.importorskip("fastapi")
 
-from satisfactory_mcp.interfaces.web.routers import factories as web_factories
+from satisfactory_mcp.interfaces.web.routers.factories import factory_list as web_factories
 
 # ------------------------------------------------------------------ factories
 

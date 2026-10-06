@@ -96,7 +96,7 @@ def test_a_site_lists_its_members_and_a_covering_selector():
 
 
 def test_an_issue_names_the_building_and_keeps_the_id_for_a_selector():
-    from satisfactory_mcp.interfaces.web.routers.factory_detail import _issue
+    from satisfactory_mcp.interfaces.web.routers.factories.factory_detail import _issue
 
     names = {"Build_ConstructorMk1_C": "Constructor"}.get
     assert _issue("Build_ConstructorMk1_C_2146520259: paused (Copper Sheet)", names) == {

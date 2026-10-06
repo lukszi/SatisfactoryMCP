@@ -7,7 +7,7 @@ Every test here injects both loaders -- through the ``client`` fixture in ``conf
 or by building its own app around a hand-written projection -- so nothing in this file
 spawns the sidecar, reads a ``.sav`` or needs the save directory to exist.
 
-One file for both, mirroring ``routers/routes_layer.py`` and for the same reason: the
+One file for both, mirroring ``routers/layers/belts_pipes.py`` and for the same reason: the
 curvature block at the bottom drives ``_curve_m``, which belts and pipes share and nothing
 else calls, and it exercises the belts and the pipes through one loop.
 """

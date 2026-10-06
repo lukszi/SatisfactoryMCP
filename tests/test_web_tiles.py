@@ -31,7 +31,7 @@ from satisfactory_mcp.core.gameassets.pyramid import (
     TILES_DIR_NAME,
 )
 from satisfactory_mcp.domain.maps import registry
-from satisfactory_mcp.interfaces.web.routers import tiles as web_tiles
+from satisfactory_mcp.interfaces.web.routers.assets import tiles as web_tiles
 
 #: The three ids the page used before the registry, which it still answers unregistered.
 LEGACY_LAYERS = tuple(registry.LEGACY)
