@@ -28,7 +28,8 @@
 import { get, latest } from "../../api/client";
 import { popup } from "../../kit/dom";
 import { pct } from "../../kit/format";
-import { batch, hideFloors, onFloorExit, onFloorPick, showFloors } from "../layercontrol/control";
+import { batch } from "../layercontrol/control";
+import { hideFloors, onFloorExit, onFloorPick, showFloors } from "../layercontrol/floor-picker";
 import { BUILT_AREA_LAYERS, turnOnLayers } from "../layers";
 import { L } from "../leaflet";
 import { flyPadded, map, writeHash } from "../map";
@@ -40,7 +41,7 @@ import { bandOf, busiestBand, GROUND, groundPlacements, groundRuns, hasGround } 
 
 import type { FloorPlatform, FloorsResponse } from "../../api/shapes";
 import type { Row } from "../../kit/dom";
-import type { FloorChoice } from "../layercontrol/control";
+import type { FloorChoice } from "../layercontrol/floor-picker";
 
 /* How close the flight to a platform may get: the factory-label flight's limit, for the same
  * reason as the padding in filter.ts. */

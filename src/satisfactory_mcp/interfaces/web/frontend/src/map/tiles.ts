@@ -6,12 +6,12 @@
  * the same grid, so a mode is at most one L.TileLayer against
  * `/api/maptiles/{id}/{z}/{x}/{y}` and a switch changes one path segment and nothing else.
  * Each pyramid does declare its own DEPTH, so `maxNativeZoom` comes from that layer's own
- * probe headers. `onModePick` is the seam to layercontrol/control.ts, which draws the radios and
+ * probe headers. `onModePick` is the seam to layercontrol/mode-picker.ts, which draws the radios and
  * knows nothing about tiles; the arrow points this way because an import back would be a ring.
  */
 
 import { tilePath } from "../api/client";
-import { onModePick, showModes } from "./layercontrol/control";
+import { onModePick, showModes } from "./layercontrol/mode-picker";
 import { L } from "./leaflet";
 import { makeLitLayer, parseLight, webglReady } from "./litlayer";
 import { fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "../app/map-types";
@@ -24,7 +24,7 @@ import { setTone } from "./map-tone";
 
 import type { MapTypeBody } from "../api/shapes";
 import type { BboxM } from "./geometry";
-import type { ModeChoice } from "./layercontrol/control";
+import type { ModeChoice } from "./layercontrol/mode-picker";
 import type { Tone } from "./map-tone";
 import type { BaseMode } from "../app/state";
 
@@ -412,7 +412,7 @@ function probeMapImage(spec: ModeSpec): Promise<void> {
     });
 }
 
-/** The rows layercontrol/control.ts draws, rebuilt from the probes every time anything changes. */
+/** The rows layercontrol/mode-picker.ts draws, rebuilt from the probes every time anything changes. */
 function modeChoices(): ModeChoice[] {
   return MODES.map(function (spec): ModeChoice {
     var ready = spec.key === "plain" || !!makers[spec.key];
