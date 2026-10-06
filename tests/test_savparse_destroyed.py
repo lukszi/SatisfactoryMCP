@@ -44,7 +44,7 @@ from pathlib import Path
 import pytest
 
 from pioneersav import Level, ParseError, Reader, SaveBody, read_body
-from pioneersav.objects import _read_destroyed_block, _read_destroyed_refs
+from pioneersav.destroyed import read_destroyed_block, read_destroyed_refs
 
 FIXTURE = Path(__file__).parent / "fixtures" / "save_body_destroyed.bin"
 
@@ -151,14 +151,14 @@ def test_the_grouped_shape_walks_more_than_one_group(raw):
     one = _grouped_blob(raw)
     assert struct.unpack_from("<i", one)[0] == 1, "the real list is a single group"
     doubled = struct.pack("<i", 2) + one[4:] + one[4:]
-    refs = _read_destroyed_block(Reader(doubled), "P", len(doubled), grouped=True)
+    refs = read_destroyed_block(Reader(doubled), "P", len(doubled), grouped=True)
     assert len(refs) == 10
     assert refs[:5] == refs[5:]
 
 
 def test_a_level_with_no_list_is_not_a_level_with_an_empty_one(save):
     """``0O2UIH8ZOBYWRN8PY7727SVBT``'s header block ends on its last header, with no count
-    at all -- so ``_read_destroyed_block`` is not called for it. The other levels spend four
+    at all -- so ``read_destroyed_block`` is not called for it. The other levels spend four
     bytes on a zero. Treating "no bytes left" as "read a count" would run into the object
     block's own size field, and the two cases are four bytes apart."""
     empty = next(lv for lv in save.levels if lv.name == LEVEL_EMPTY)
@@ -182,7 +182,7 @@ def test_reading_the_grouped_shape_as_a_bare_list_is_caught_by_where_it_lands(ra
     """
     grouped = _grouped_blob(raw)
     reader = Reader(grouped)
-    misread = _read_destroyed_refs(reader, "as if bare", len(grouped))
+    misread = read_destroyed_refs(reader, "as if bare", len(grouped))
     assert len(misread) == 1, "the wrong shape does not fail, which is the point"
     assert reader.pos == 34 and reader.pos != len(grouped)
 
@@ -229,11 +229,11 @@ def test_a_truncated_list_is_refused_rather_than_returned_short(raw):
     """
     at = _toc_at(raw, LEVEL_TWO)
     blob = raw[at + 12 : at + 12 + 200]
-    assert len(_read_destroyed_refs(Reader(blob), "whole", len(blob))) == 2
+    assert len(read_destroyed_refs(Reader(blob), "whole", len(blob))) == 2
     for cut in (40, 100, 199):
         short = blob[:cut]
         with pytest.raises(ParseError, match="runs past end"):
-            _read_destroyed_refs(Reader(short), "cut", len(short))
+            read_destroyed_refs(Reader(short), "cut", len(short))
 
 
 def test_an_absurd_count_is_refused_without_looping_over_it(raw):

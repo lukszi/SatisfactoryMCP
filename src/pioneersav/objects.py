@@ -36,16 +36,17 @@ An object's serialisation version is per object rather than per save -- an untou
 world-partition cell keeps the bytes it was written with, so 36, 52 and 60 all appear in one
 file. A version-60 payload carries one extra byte immediately before its property list (after
 the reference lists on an actor, at the very start on a component); it is inside the slice, so
-``properties.py`` reads it.
+``pioneersav.properties`` reads it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .errors import ParseError
+from .destroyed import read_closing_destroyed_table, read_destroyed_block, read_destroyed_refs
+from .errors import ParseError, expect
 from .reader import Reader
-from .versions import FIRST_LEVEL_LIST, FIRST_MODERN_BODY
+from .versions import FIRST_LEVEL_LIST, FIRST_MODERN_BODY, FIRST_UE5_OBJECT_VERSION
 
 __all__ = [
     "ARCHIVE_HEADER_FIXED_LEN",
@@ -57,7 +58,6 @@ __all__ = [
     "Grid",
     "Level",
     "ObjectSlice",
-    "ParseError",
     "SaveBody",
     "read_body",
 ]
@@ -210,7 +210,7 @@ class Level:
     #: a number so a caller can see it is nonzero even though it is read.
     toc_extra_bytes: int = 0
     #: Actors the save records as gone: ``(level cell, actor path)`` pairs from this level's
-    #: header block. See ``_read_destroyed_block``.
+    #: header block. See ``destroyed.read_destroyed_block``.
     destroyed: list[tuple[str, str]] = field(default_factory=list)
 
     @property
@@ -234,7 +234,7 @@ class SaveBody:
 
     @property
     def object_count(self) -> int:
-        return sum(len(lv.objects) for lv in self.levels)
+        return sum(len(level.objects) for level in self.levels)
 
     @property
     def destroyed_actors(self) -> list[tuple[str, str]]:
@@ -247,8 +247,8 @@ class SaveBody:
         rather than repeating each other, so all three have to be merged.
         """
         seen: dict[tuple[str, str], None] = {}
-        for lv in self.levels:
-            for ref in lv.destroyed:
+        for level in self.levels:
+            for ref in level.destroyed:
                 seen[ref] = None
         for ref in self.trailer_destroyed:
             seen[ref] = None
@@ -261,12 +261,7 @@ class SaveBody:
         """Destroyed-actor bytes stepped over by declared length, summed over levels. A number
         rather than thousands of per-level warnings, and expected to be nonzero.
         """
-        return sum(lv.toc_extra_bytes for lv in self.levels)
-
-
-def _expect(condition: bool, offset: int, message: str) -> None:
-    if not condition:
-        raise ParseError(f"at body offset {offset}: {message}")
+        return sum(level.toc_extra_bytes for level in self.levels)
 
 
 def _at_archive_header(r: Reader) -> bool:
@@ -279,8 +274,8 @@ def _at_archive_header(r: Reader) -> bool:
     """
     if r.remaining < 12:
         return False
-    look = Reader(r.data, r.pos)
-    return (look.i32(), look.i32(), look.i32()) == (*_ARCHIVE_MARK, 1017)
+    peek = Reader(r.data, r.pos)
+    return (peek.i32(), peek.i32(), peek.i32()) == (*_ARCHIVE_MARK, 1017)
 
 
 def _read_archive_header(
@@ -288,34 +283,16 @@ def _read_archive_header(
     warnings: list[tuple[int, str]],
     build_version: int | None = None,
 ) -> tuple[tuple[int, int, int, int], tuple[int, int, int], int, str]:
-    """The version header: four int32s, the engine version, the changelist, the branch.
-
-    26 fixed bytes, then the branch as a length-prefixed string, so the total varies by build:
-    59 bytes on ``rel-main-1.2.0``, 70 on ``rel-main-anniversary-2026``.
-
-    Read field by field so a change is caught here. The same header appears at the front of the
-    body and again between level records -- around 1,900 times on the reference save -- so it is
-    one function rather than an inline skip.
-
-    The engine version is three uint16s of major/minor/patch; the bytes carry no label, and it
-    is constant on this disk, so that reading is an interpretation of one value.
-    ``changelist & CHANGELIST_MASK`` is the build that wrote THIS record, not the save: the
-    first save of the reference world under build 502094 carries 279 headers on 502094 and
-    1,628 still on 495413, the levels the new build had not rewritten yet. So a changelist at
-    or below the header's ``buildVersion`` is ordinary, and only one ABOVE it -- a record from
-    a build newer than the one that wrote the file -- is a finding. It **warns rather than
-    refuses**, and runs only when the caller supplies ``build_version``, since a value
-    invented here would only ever match itself.
-    """
+    """The archive version header: four int32s, three uint16s of engine version, the
+    changelist, then the engine branch as a length-prefixed string (savparse-notes.md)."""
     start = r.pos
     fields = (r.i32(), r.i32(), r.i32(), r.i32())
-    _expect(
+    expect(
         fields[:2] == _ARCHIVE_MARK,
         start,
         f"expected an archive version header starting {_ARCHIVE_MARK}, found {fields[:2]}",
     )
-    # Unpacked here rather than by a Reader primitive: this is the only uint16 anything in this
-    # parser reads, and reader.py's vocabulary is worth keeping small.
+    # the parser's only uint16s, so they get no Reader primitive
     raw = r.bytes(6)
     engine_version = (
         int.from_bytes(raw[0:2], "little"),
@@ -324,6 +301,7 @@ def _read_archive_header(
     )
     changelist_at = r.pos
     changelist = r.u32()
+    # warns, never refuses: per-level headers lag the save's build
     if build_version is not None and changelist & CHANGELIST_MASK > build_version:
         what = (
             f"the body says changelist {changelist & CHANGELIST_MASK} "
@@ -335,7 +313,7 @@ def _read_archive_header(
             warnings.append((changelist_at, what))
     branch_at = r.pos
     branch = r.string()
-    _expect(
+    expect(
         branch_at - start == ARCHIVE_HEADER_FIXED_LEN,
         start,
         f"archive header read {branch_at - start} bytes before the engine branch string, "
@@ -349,7 +327,7 @@ def _read_custom_versions(r: Reader) -> list[tuple[bytes, int]]:
     terminates it; there is no sentinel.
     """
     count = r.i32()
-    _expect(0 <= count <= 4096, r.pos - 4, f"custom version count {count} is not plausible")
+    expect(0 <= count <= 4096, r.pos - 4, f"custom version count {count} is not plausible")
     return [(r.bytes(16), r.i32()) for _ in range(count)]
 
 
@@ -364,20 +342,20 @@ def _read_grids(r: Reader) -> list[Grid]:
     -- so this is a one-way correspondence and not a set equality.
     """
     count = r.i32()
-    _expect(0 <= count <= 256, r.pos - 4, f"grid count {count} is not plausible")
+    expect(0 <= count <= 256, r.pos - 4, f"grid count {count} is not plausible")
     grids = []
     for _ in range(count):
         name = r.string()
         cell_size = r.i32()
         content_id = r.u32()
-        n_cells = r.i32()
-        _expect(
-            0 <= n_cells <= 1_000_000,
+        cell_count = r.i32()
+        expect(
+            0 <= cell_count <= 1_000_000,
             r.pos - 4,
-            f"grid {name!r} claims {n_cells} cells",
+            f"grid {name!r} claims {cell_count} cells",
         )
         cells = []
-        for _ in range(n_cells):
+        for _ in range(cell_count):
             cells.append(r.string())
             r.u32()  # per-cell content id, unread by anything above this
         grids.append(Grid(name=name, cell_size=cell_size, content_id=content_id, cell_names=cells))
@@ -385,16 +363,11 @@ def _read_grids(r: Reader) -> list[Grid]:
 
 
 def _read_header(r: Reader, save_version: int) -> ActorHeader | ComponentHeader:
-    """One object header, of either kind. Both open the same way -- class path, root object,
-    instance name, then UE's ``EObjectFlags``.
+    """One object header, of either kind: class path, root object, instance name, then UE's
+    ``EObjectFlags`` from saveVersion 52 (``None`` below, since 0 is a legal flags word).
 
-    **Which kind it is comes from the leading int32, not from the flags.** Eight distinct flags
-    values occur across the saves on this disk, and although the ``RF_DefaultSubObject`` bit
-    does separate actors from components in the common case, it is not an invariant.
-
-    **The flags word arrives at saveVersion 52.** Below it the transform follows the instance
-    name directly. It is ``None`` rather than 0 there, because 0 is a legal flags word and
-    "absent" must not read as "no flags set".
+    The kind comes from the leading int32: the ``RF_DefaultSubObject`` flag separates actors
+    from components only in the common case.
     """
     at = r.pos
     kind = r.i32()
@@ -433,18 +406,11 @@ def _read_header(r: Reader, save_version: int) -> ActorHeader | ComponentHeader:
 
 
 def _read_object_entry(r: Reader, save_version: int) -> ObjectSlice:
-    """One object entry: three int32s, the payload, and on version 60 a trailing int32 that is
-    0 on every object seen. The size counts from immediately after itself, which is what puts
-    that trailing int32 at the far end rather than in the head.
+    """One object entry's head: version, flag and payload size, leaving ``r`` on the first
+    payload byte for the caller, which knows the block's end.
 
-    The payload is NOT parsed here; its boundaries are the deliverable. ``r`` is left at the
-    FIRST payload byte, and the caller steps over the payload and reads the version-60 trailer,
-    because only the caller knows where the block ends and can refuse a size that runs past it.
-
-    **Below saveVersion 52 the entry is a bare size.** There is no version int32 and no flag
-    int32, so the object's serialisation version is *not in the bytes* and has to be taken from
-    the save. That is the one place in this parser where a version is supplied rather than
-    read, and it is why ``read_body`` takes ``save_version`` at all.
+    Below saveVersion 52 the entry is a bare size, so the object's version is taken from the
+    save: the one version this parser is given rather than reads.
     """
     if save_version >= FIRST_MODERN_BODY:
         version = r.i32()
@@ -452,47 +418,8 @@ def _read_object_entry(r: Reader, save_version: int) -> ObjectSlice:
     else:
         version, flag = save_version, 0
     size = r.i32()
-    _expect(size >= 0, r.pos - 4, f"object entry declares a negative payload size {size}")
+    expect(size >= 0, r.pos - 4, f"object entry declares a negative payload size {size}")
     return ObjectSlice(version=version, flag=flag, offset=r.pos, length=size)
-
-
-def _read_destroyed_refs(r: Reader, where: str, limit: int) -> list[tuple[str, str]]:
-    """A count, then that many ``(level name, actor path)`` pairs."""
-    at = r.pos
-    count = r.i32()
-    _expect(
-        0 <= count <= 1_000_000 and r.pos + count * 8 <= limit,
-        at,
-        f"{where}: {count} destroyed actors do not fit in the {limit - r.pos} bytes left",
-    )
-    return [(r.string(), r.string()) for _ in range(count)]
-
-
-def _read_destroyed_block(
-    r: Reader, name: str, end: int, *, grouped: bool
-) -> list[tuple[str, str]]:
-    """The destroyed-actor list trailing a level's header block.
-
-    Two shapes, and which one appears is decided by the level rather than by a flag in the
-    file: a sub-level writes one bare ``[i32 count][refs]``, and the persistent level writes it
-    grouped by the world-partition cell the actors lived in,
-    ``[i32 groups][str cell][i32 count][refs]``. Reading the wrong shape lands off the block's
-    declared end, which the caller checks.
-    """
-    if not grouped:
-        return _read_destroyed_refs(r, f"level {name!r}", end)
-    at = r.pos
-    groups = r.i32()
-    _expect(
-        0 <= groups <= 100_000,
-        at,
-        f"level {name!r}: its destroyed-actor list claims {groups} cell groups",
-    )
-    out: list[tuple[str, str]] = []
-    for _ in range(groups):
-        cell = r.string()
-        out.extend(_read_destroyed_refs(r, f"level {name!r} cell {cell!r}", end))
-    return out
 
 
 def _read_block_size(r: Reader, save_version: int) -> int:
@@ -500,106 +427,122 @@ def _read_block_size(r: Reader, save_version: int) -> int:
     return r.i64() if save_version >= FIRST_MODERN_BODY else r.i32()
 
 
-def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
-    """One level record. ``named=False`` is the persistent level at the very end.
+def _read_object_entries(
+    r: Reader, count: int, end: int, save_version: int, where: str
+) -> list[ObjectSlice]:
+    """``count`` object entries, each payload stepped over and refused if it runs past ``end``."""
+    slots = []
+    for index in range(count):
+        slot = _read_object_entry(r, save_version)
+        expect(
+            slot.end <= end,
+            slot.offset - 4,
+            f"{where}: object {index} declares {slot.length} bytes, which runs "
+            f"{slot.end - end} past the end of its block",
+        )
+        slots.append(slot)
+        r.pos = slot.end
+        if slot.version >= FIRST_UE5_OBJECT_VERSION:
+            trailing = r.i32()
+            expect(
+                trailing == 0,
+                r.pos - 4,
+                f"{where}: version {slot.version} object {index} is followed by {trailing} "
+                "where the format has 0. Something after the payload is not understood",
+            )
+    return slots
 
-    The two block sizes are the load-bearing part. Headers are walked one by one and
-    must finish inside the TOC block; objects are walked one by one and must finish
-    exactly ON the data block's declared end. The first catches a header layout change,
-    the second catches a payload size that lies.
+
+def _read_header_block(
+    r: Reader, name: str, save_version: int, *, named: bool
+) -> tuple[list[ActorHeader | ComponentHeader], int, list[tuple[str, str]]]:
+    """A level's TOC block: its object headers, then the destroyed-actor list filling the rest.
+
+    Returns the headers, the list's byte count and the list. The headers must finish inside the
+    block, which catches a header layout change.
     """
-    name = r.string() if named else "Persistent_Level"
-
-    toc_size_at = r.pos
-    toc_size = _read_block_size(r, save_version)
-    toc_start = r.pos
-    toc_end = toc_start + toc_size
-    _expect(
-        0 <= toc_size <= r.remaining,
-        toc_size_at,
-        f"level {name!r} declares a {toc_size}-byte header block, {r.remaining} left",
+    size_at = r.pos
+    size = _read_block_size(r, save_version)
+    end = r.pos + size
+    expect(
+        0 <= size <= r.remaining,
+        size_at,
+        f"level {name!r} declares a {size}-byte header block, {r.remaining} left",
     )
     header_count = r.i32()
-    _expect(
+    expect(
         0 <= header_count <= 10_000_000,
         r.pos - 4,
         f"level {name!r} claims {header_count} object headers",
     )
     headers: list[ActorHeader | ComponentHeader] = []
     for _ in range(header_count):
-        _expect(
-            r.pos < toc_end,
+        expect(
+            r.pos < end,
             r.pos,
             f"level {name!r}: header {len(headers)} of {header_count} starts past the "
-            f"end of its {toc_size}-byte block",
+            f"end of its {size}-byte block",
         )
         headers.append(_read_header(r, save_version))
-    extra = toc_end - r.pos
-    _expect(
-        extra >= 0,
+    destroyed_bytes = end - r.pos
+    expect(
+        destroyed_bytes >= 0,
         r.pos,
-        f"level {name!r}: {header_count} headers overran the header block by {-extra} bytes",
+        f"level {name!r}: {header_count} headers overran the header block by "
+        f"{-destroyed_bytes} bytes",
     )
-    # Grouped by partition cell on the persistent level, but only from saveVersion 52: there is
-    # no world partition below that, so the old persistent record writes the same bare list a
-    # sub-level does, and reading it as grouped turns the count into a string length.
+    # grouped by cell only on a modern persistent level: below 52 there is no world partition
     grouped = not named and save_version >= FIRST_MODERN_BODY
-    destroyed = _read_destroyed_block(r, name, toc_end, grouped=grouped) if extra else []
-    _expect(
-        r.pos == toc_end,
+    destroyed = read_destroyed_block(r, name, end, grouped=grouped) if destroyed_bytes else []
+    expect(
+        r.pos == end,
         r.pos,
         f"level {name!r}: its destroyed-actor list ended at {r.pos}, but the header block "
-        f"declared {toc_end}. The list's shape is wrong, not its length",
+        f"declared {end}. The list's shape is wrong, not its length",
     )
+    return headers, destroyed_bytes, destroyed
 
-    data_size_at = r.pos
-    data_size = _read_block_size(r, save_version)
-    data_start = r.pos
-    data_end = data_start + data_size
-    _expect(
-        0 <= data_size <= r.remaining,
-        data_size_at,
-        f"level {name!r} declares a {data_size}-byte object block, {r.remaining} left",
+
+def _read_object_block(
+    r: Reader, name: str, header_count: int, save_version: int
+) -> list[ObjectSlice]:
+    """A level's data block: one entry per header, landing exactly on the block's declared end,
+    which catches a payload size that lies."""
+    size_at = r.pos
+    size = _read_block_size(r, save_version)
+    end = r.pos + size
+    expect(
+        0 <= size <= r.remaining,
+        size_at,
+        f"level {name!r} declares a {size}-byte object block, {r.remaining} left",
     )
     object_count = r.i32()
-    _expect(
+    expect(
         object_count == header_count,
         r.pos - 4,
         f"level {name!r} has {header_count} headers but {object_count} objects. They are "
         "parallel lists; a mismatch means one of the two blocks was misread",
     )
-    objects = []
-    for _ in range(object_count):
-        slot = _read_object_entry(r, save_version)
-        _expect(
-            slot.end <= data_end,
-            slot.offset - 4,
-            f"level {name!r}: object {len(objects)} declares {slot.length} bytes, which "
-            f"runs {slot.end - data_end} past the end of its block",
-        )
-        objects.append(slot)
-        r.pos = slot.end
-        if slot.version >= 60:
-            trailing = r.i32()
-            _expect(
-                trailing == 0,
-                r.pos - 4,
-                f"level {name!r}: version {slot.version} object {len(objects) - 1} is "
-                f"followed by {trailing}, and every one of the 39,015 in the reference "
-                "save is followed by 0. Something after the payload is not understood",
-            )
-    _expect(
-        r.pos == data_end,
+    objects = _read_object_entries(r, object_count, end, save_version, f"level {name!r}")
+    expect(
+        r.pos == end,
         r.pos,
         f"level {name!r}: {object_count} object payloads ended at {r.pos}, but the block "
-        f"declared {data_end}. One payload size is wrong",
+        f"declared {end}. One payload size is wrong",
     )
+    return objects
 
+
+def _read_level(r: Reader, *, named: bool, save_version: int) -> Level:
+    """One level record. ``named=False`` is the persistent level at the very end."""
+    name = r.string() if named else "Persistent_Level"
+    headers, destroyed_bytes, destroyed = _read_header_block(r, name, save_version, named=named)
+    objects = _read_object_block(r, name, len(headers), save_version)
     return Level(
         name=name,
         headers=headers,
         objects=objects,
-        toc_extra_bytes=extra,
+        toc_extra_bytes=destroyed_bytes,
         destroyed=destroyed,
     )
 
@@ -613,94 +556,40 @@ def _read_level_trailer(
     versioned_archive: bool,
     build_version: int | None = None,
 ) -> list[tuple[str, str]]:
-    """A sub-level's trailer: a version, a destroyed-actor list, and maybe a flag.
-
-    On a saveVersion 60 body the flag says whether an archive version header follows, and the
-    correlation is checked rather than trusted -- the header's own signature has to be there.
-    On a saveVersion 52 body there is no flag and no per-level archive headers: the next
-    level's name follows the destroyed-actor list directly.
-
-    Below saveVersion 52 there is no version int32 either, so the trailer is nothing but the
-    destroyed-actor list. That list and the header block's do not always hold the same actors,
-    which is why both are read and merged rather than one taken as authoritative.
-    """
+    """A sub-level's trailer: a version (from saveVersion 52), a destroyed-actor list, and on a
+    body with archive headers a flag saying whether one follows, whose signature is then
+    checked rather than trusted."""
     if save_version >= FIRST_MODERN_BODY:
         version = r.i32()
-        _expect(
+        expect(
             version in (52, 60),
             r.pos - 4,
             f"level {name!r} trailer version {version}, expected 52 or 60",
         )
-    destroyed = _read_destroyed_refs(r, f"level {name!r} trailer", len(r.data))
+    destroyed = read_destroyed_refs(r, f"level {name!r} trailer", len(r.data))
     if not versioned_archive:
         return destroyed
     flag = r.i32()
-    _expect(flag in (0, 1), r.pos - 4, f"level {name!r} trailer flag {flag}, expected 0 or 1")
+    expect(flag in (0, 1), r.pos - 4, f"level {name!r} trailer flag {flag}, expected 0 or 1")
     if flag:
-        # Checked, not skipped: nearly every archive header in a body is one of these per-level
-        # ones, so a body assembled from two builds' level records is caught here rather than
-        # only at the front.
+        # read, not skipped: nearly every archive header in a body is one of these
         _read_archive_header(r, warnings, build_version)
         _read_custom_versions(r)
     return destroyed
 
 
-def _read_final_destroyed_table(
-    r: Reader, warnings: list[tuple[int, str]], save_version: int
-) -> list[tuple[str, str]]:
-    """The body's last structure: destroyed actors, grouped by level name, in two lists per
-    group -- looted drop pods and crashed ships, then Mercer shrines.
-
-    Parsed rather than skipped because it is the only thing that can prove the whole walk
-    consumed the file: landing exactly on the last byte is what says every level count, block
-    size and payload size before it was right.
-
-    Below saveVersion 52 it is one bare ``[i32 count][refs]`` list rather than a table grouped
-    by level, and a body with a level list (saveVersion 30 and 36) is preceded by one more such
-    list, read as the unnamed persistent record's trailer.
-    """
-    if save_version < FIRST_MODERN_BODY:
-        out = _read_destroyed_refs(r, "the closing destroyed-actor list", len(r.data))
-        if r.remaining:
-            warnings.append((r.pos, f"{r.remaining} bytes after the closing destroyed-actor list"))
-        return out
-    at = r.pos
-    groups = r.i32()
-    _expect(0 <= groups <= 100_000, at, f"the closing table claims {groups} level groups")
-    out: list[tuple[str, str]] = []
-    for _ in range(groups):
-        name = r.string()
-        for which in (1, 2):
-            out.extend(
-                _read_destroyed_refs(r, f"closing table, level {name!r}, list {which}", len(r.data))
-            )
-    if r.remaining:
-        warnings.append((r.pos, f"{r.remaining} bytes after the closing destroyed-actor table"))
-    return out
-
-
 def _read_flat_levels(r: Reader, save_version: int) -> list[Level]:
     """Every object in a body written before the level list existed, grouped by its own level.
 
-    Below saveVersion 30 the body holds one run of headers and one run of entries and says
-    nothing about levels -- no count, no names, no block sizes. The level is in each header's
-    ``root_object`` instead, and three values occur: ``Persistent_Level``,
-    ``Persistent_Exploration`` and ``Persistent_Exploration_2``. Grouping by that field is what
-    gives every level the name the bytes give it; one flat level would have to be *called*
-    something, and any name would be wrong for the objects rooted elsewhere.
-
-    Groups are in first-appearance order and order within a group is the file's, so
-    ``header[i]`` still describes ``object[i]``. Neither run is bounded by a declared size --
-    there is no block to end -- so the only referee is the whole-body one, that the closing
-    destroyed-actor list lands on the last byte.
+    Below saveVersion 30 the body is one run of headers and one run of entries, and the level
+    is only in each header's ``root_object``. Groups keep first-appearance order and the file's
+    order within, so ``header[i]`` still describes ``object[i]``. No block bounds either run;
+    the closing destroyed-actor list landing on the last byte is the referee.
     """
     at = r.pos
     header_count = r.i32()
-    # Bounded by the bytes left rather than by a flat ceiling, because there is no enclosing
-    # block to bound it: an object header is an int32 kind plus three length-prefixed strings,
-    # so the shortest conceivable one is 16 bytes. A flat ceiling on a count that lives inside
-    # the payload lets a torn file allocate for millions of records before anything notices.
-    _expect(
+    # bounded by the bytes left, since no block encloses it: a header is at least 16 bytes
+    expect(
         0 <= header_count <= (r.remaining) // 16,
         at,
         f"the body claims {header_count} object headers with {r.remaining} bytes left, and a "
@@ -710,23 +599,13 @@ def _read_flat_levels(r: Reader, save_version: int) -> list[Level]:
 
     at = r.pos
     object_count = r.i32()
-    _expect(
+    expect(
         object_count == header_count,
         at,
         f"the body has {header_count} headers but {object_count} objects. They are parallel "
         "lists; a mismatch means the header run was misread",
     )
-    slots = []
-    for index in range(object_count):
-        slot = _read_object_entry(r, save_version)
-        _expect(
-            slot.end <= len(r.data),
-            slot.offset - 4,
-            f"object {index} declares {slot.length} bytes, which runs "
-            f"{slot.end - len(r.data)} past the end of the body",
-        )
-        slots.append(slot)
-        r.pos = slot.end
+    slots = _read_object_entries(r, object_count, len(r.data), save_version, "the body")
 
     grouped: dict[str, Level] = {}
     for header, slot in zip(headers, slots, strict=True):
@@ -740,94 +619,118 @@ def _read_flat_levels(r: Reader, save_version: int) -> list[Level]:
     return list(grouped.values())
 
 
+def _read_body_size(r: Reader, *, old: bool) -> int:
+    """The size field the body opens with, int32 below saveVersion 52 and int64 from it, which
+    must count exactly the bytes after it."""
+    size_width = 4 if old else 8
+    body_length = len(r.data)
+    # a save truncated to its header inflates to nothing; say so rather than "offset 0 of 0"
+    expect(
+        body_length >= size_width,
+        0,
+        f"the inflated body is {body_length} bytes, too short to hold the int{size_width * 8} "
+        "size field it opens with -- a save truncated to its header inflates to nothing at all",
+    )
+    declared = r.i32() if old else r.i64()
+    expect(
+        declared == body_length - size_width,
+        0,
+        f"the body says it is {declared} bytes; {body_length - size_width} follow the size field",
+    )
+    return declared
+
+
+def _read_preamble(
+    r: Reader,
+    declared: int,
+    warnings: list[tuple[int, str]],
+    build_version: int | None,
+) -> BodyPreamble:
+    """A modern body's preamble: the archive header only saveVersion 60 has, then the grids."""
+    preamble = BodyPreamble(declared_size=declared, grids=[])
+    if _at_archive_header(r):
+        fields, engine_version, changelist, branch = _read_archive_header(
+            r, warnings, build_version
+        )
+        preamble.version_fields = fields
+        preamble.engine_version = engine_version
+        preamble.changelist = changelist
+        preamble.branch = branch
+        preamble.custom_versions = _read_custom_versions(r)
+    preamble.grids = _read_grids(r)
+    return preamble
+
+
+def _read_level_list(
+    r: Reader,
+    warnings: list[tuple[int, str]],
+    *,
+    save_version: int,
+    versioned_archive: bool,
+    build_version: int | None,
+) -> tuple[list[Level], list[tuple[str, str]]]:
+    """The sub-levels, each followed by its trailer, then the unnamed persistent level.
+
+    Returns the levels and the destroyed actors their trailers list.
+    """
+    sub_count = r.i32()
+    expect(
+        0 <= sub_count <= 1_000_000,
+        r.pos - 4,
+        f"the body claims {sub_count} sub-levels",
+    )
+    levels: list[Level] = []
+    trailer_destroyed: list[tuple[str, str]] = []
+    for _ in range(sub_count):
+        level = _read_level(r, named=True, save_version=save_version)
+        levels.append(level)
+        trailer_destroyed += _read_level_trailer(
+            r,
+            level.name,
+            warnings,
+            save_version=save_version,
+            versioned_archive=versioned_archive,
+            build_version=build_version,
+        )
+    levels.append(_read_level(r, named=False, save_version=save_version))
+    if save_version < FIRST_MODERN_BODY:
+        # an old persistent record has a trailer too: one bare list before the closing one
+        trailer_destroyed += read_destroyed_refs(r, "the persistent level's trailer", len(r.data))
+    return levels, trailer_destroyed
+
+
 def read_body(
     body: bytes, save_version: int = FIRST_MODERN_BODY, build_version: int | None = None
 ) -> SaveBody:
     """Walk the inflated body up to (not into) the property blocks.
 
-    ``body`` is the concatenation of the inflated chunks. The returned slices index into it, so
-    it must stay alive for as long as they are used -- nothing is copied, which is what keeps a
-    44 MB body at a quarter of a second.
-
-    ``save_version`` picks which fields are there; see ``versions.py``. It is a parameter and
-    not a sniff because **an old body does not say**: below saveVersion 52 an object entry
-    carries no version of its own. The two modern layouts, 52 and 60, do tell themselves apart
-    from the bytes, which is why the default is the modern one.
-
+    ``body`` is the concatenation of the inflated chunks, and the returned slices index into
+    it, so it must stay alive while they are used. ``save_version`` picks which fields are there
+    (see ``versions.py``); it is a parameter because below saveVersion 52 the body does not say.
     ``build_version`` is the header's, and passing it arms the changelist check in
-    ``_read_archive_header``. Left ``None`` -- what a caller with a bare body must do -- the
-    changelist is read and reported but nothing is compared.
+    ``_read_archive_header``.
     """
-    old = save_version < FIRST_MODERN_BODY
-    size_width = 4 if old else 8
     r = Reader(body)
-    # A save truncated to exactly its header inflates to an EMPTY body, which is the shape of a
-    # save the game created and had not finished. Named here, because otherwise the size field
-    # below reports an offset of 0 in a buffer of 0 with no hint that the body is meant.
-    _expect(
-        len(body) >= size_width,
-        0,
-        f"the inflated body is {len(body)} bytes, too short to hold the int{size_width * 8} "
-        "size field it opens with -- a save truncated to its header inflates to nothing at all",
-    )
-    declared = r.i32() if old else r.i64()
-    _expect(
-        declared == len(body) - size_width,
-        0,
-        f"the body says it is {declared} bytes; {len(body) - size_width} follow the size field",
-    )
+    declared = _read_body_size(r, old=save_version < FIRST_MODERN_BODY)
     warnings: list[tuple[int, str]] = []
-    preamble = BodyPreamble(declared_size=declared, grids=[])
-    if not old:
-        # No world partition and no archive versioning below saveVersion 52: the level list --
-        # or, below 30, the header run -- starts straight after the size.
-        if _at_archive_header(r):
-            fields, engine_version, changelist, branch = _read_archive_header(
-                r, warnings, build_version
-            )
-            preamble.version_fields = fields
-            preamble.engine_version = engine_version
-            preamble.changelist = changelist
-            preamble.branch = branch
-            preamble.custom_versions = _read_custom_versions(r)
-        preamble.grids = _read_grids(r)
-
-    levels: list[Level] = []
-    trailer_destroyed: list[tuple[str, str]] = []
+    if save_version < FIRST_MODERN_BODY:
+        # no world partition and no archive versioning: the levels follow the size directly
+        preamble = BodyPreamble(declared_size=declared, grids=[])
+    else:
+        preamble = _read_preamble(r, declared, warnings, build_version)
 
     if save_version < FIRST_LEVEL_LIST:
-        levels = _read_flat_levels(r, save_version)
+        levels, trailer_destroyed = _read_flat_levels(r, save_version), []
     else:
-        sub_count = r.i32()
-        _expect(
-            0 <= sub_count <= 1_000_000,
-            r.pos - 4,
-            f"the body claims {sub_count} sub-levels",
+        levels, trailer_destroyed = _read_level_list(
+            r,
+            warnings,
+            save_version=save_version,
+            versioned_archive=preamble.has_archive_header,
+            build_version=build_version,
         )
-        for _ in range(sub_count):
-            level = _read_level(r, named=True, save_version=save_version)
-            levels.append(level)
-            trailer_destroyed += _read_level_trailer(
-                r,
-                level.name,
-                warnings,
-                save_version=save_version,
-                versioned_archive=preamble.has_archive_header,
-                build_version=build_version,
-            )
 
-        # The persistent level closes the list: the same record with no name, and no trailer.
-        levels.append(_read_level(r, named=False, save_version=save_version))
-        if old:
-            # ...except on an old body, where the unnamed record is followed by one more bare
-            # list before the closing one. Read as that record's trailer, like every other
-            # level's. Reading it instead as a second closing list consumes the same bytes, and
-            # nothing in these saves distinguishes the two.
-            trailer_destroyed += _read_destroyed_refs(
-                r, "the persistent level's trailer", len(body)
-            )
-
-    closing_destroyed = _read_final_destroyed_table(r, warnings, save_version)
+    closing_destroyed = read_closing_destroyed_table(r, warnings, save_version)
 
     return SaveBody(
         preamble=preamble,

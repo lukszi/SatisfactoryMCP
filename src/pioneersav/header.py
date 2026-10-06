@@ -135,6 +135,7 @@ class SaveInfo:
 
 
 def read_info_bytes(data: bytes) -> SaveInfo:
+    """The header of a save already in memory; any refusal is prefixed with its two versions."""
     try:
         return _walk_header(data)
     except ParseError as exc:
@@ -146,11 +147,11 @@ def _header_context(data: bytes) -> str:
     if len(data) < 8:
         return f"{len(data)}-byte file, too short to hold a save header"
     r = Reader(data)
-    kind, version = r.i32(), r.i32()
+    header_type, save_version = r.i32(), r.i32()
     known = ""
-    if kind not in KNOWN_HEADER_TYPES:
+    if header_type not in KNOWN_HEADER_TYPES:
         known = f" (known: {', '.join(map(str, KNOWN_HEADER_TYPES))})"
-    return f"saveHeaderType {kind}{known}, saveVersion {version}"
+    return f"saveHeaderType {header_type}{known}, saveVersion {save_version}"
 
 
 def _walk_header(data: bytes) -> SaveInfo:
@@ -161,36 +162,49 @@ def _walk_header(data: bytes) -> SaveInfo:
     the field list was right, and landing anywhere else refuses the file and names the type.
     """
     r = Reader(data)
-    kind = r.i32()
-    modern = kind >= HEADER_TYPE_SAVE_NAME
+    header_type = r.i32()
+    type14_fields = header_type >= HEADER_TYPE_SAVE_NAME
+    save_version = r.i32()
+    build_version = r.i32()
+    save_name = r.string() if type14_fields else ""
+    map_name = r.string()
+    map_options = r.string()
+    session_name = r.string()
+    play_duration_s = r.i32()
+    save_datetime_ticks = r.i64()
+    session_visibility = r.i8()
+    editor_object_version = r.i32()
+    # all zero on every old save, where only the total width can be checked: the modern
+    # (str, i32) grouping sums to it on all four header types
+    mod_metadata = r.string()
+    is_modded = bool(r.i32())
+    save_identifier = r.string() if header_type >= HEADER_TYPE_SAVE_IDENTIFIER else ""
+    save_data_hash: tuple[int, int] | None = None
+    is_creative: bool | None = None
+    if type14_fields:
+        r.i32()  # unnamed, 1 on every save seen
+        r.i32()  # unnamed, 1 on every save seen
+        save_data_hash = (r.u64(), r.u64())
+        is_creative = bool(r.i32())
     info = SaveInfo(
-        save_header_type=kind,
-        save_version=r.i32(),
-        build_version=r.i32(),
-        save_name=r.string() if modern else "",
-        map_name=r.string(),
-        map_options=r.string(),
-        session_name=r.string(),
-        play_duration_s=r.i32(),
-        save_datetime_ticks=r.i64(),
-        session_visibility=r.i8(),
-        editor_object_version=r.i32(),
-        # These eight bytes are all zero on every old save, so no grouping of them can be told
-        # from another there: (str, i32) as read here, two int32s, or one int64. The reading is
-        # the modern field order, which sums to the right width for all four types.
-        mod_metadata=r.string(),
-        is_modded=bool(r.i32()),
-        save_identifier=r.string() if kind >= HEADER_TYPE_SAVE_IDENTIFIER else "",
-        save_data_hash=None,
-        is_creative=None,
-        body_offset=0,
+        save_header_type=header_type,
+        save_version=save_version,
+        build_version=build_version,
+        save_name=save_name,
+        map_name=map_name,
+        map_options=map_options,
+        session_name=session_name,
+        play_duration_s=play_duration_s,
+        save_datetime_ticks=save_datetime_ticks,
+        session_visibility=session_visibility,
+        editor_object_version=editor_object_version,
+        mod_metadata=mod_metadata,
+        is_modded=is_modded,
+        save_identifier=save_identifier,
+        save_data_hash=save_data_hash,
+        is_creative=is_creative,
+        body_offset=r.pos,
     )
-    if modern:
-        r.i32()  # unnamed, 1 on every save seen
-        r.i32()  # unnamed, 1 on every save seen
-        info.save_data_hash = (r.u64(), r.u64())
-        info.is_creative = bool(r.i32())
-    info.body_offset = r.pos
 
     # The tag is the proof: every field above is positional, so a wrong width anywhere lands
     # here at the wrong byte. Never skip this when fewer than four bytes are left -- that

@@ -13,7 +13,7 @@ These tests run against committed real bytes, so the suite needs no game install
 still pass once the vendored parser is deleted.
 
 ``fixtures/save_properties.bin``, 26,200 bytes, is 18 real property blocks lifted verbatim
-from the reference save, chosen so that every distinct code path in ``properties.py`` is
+from the reference save, chosen so that every distinct code path in ``pioneersav.properties`` is
 exercised by bytes the game actually wrote:
 
 * both tag layouts -- version 60's type-name tree and version 36/52's fixed tag data;
@@ -52,9 +52,9 @@ from pioneersav import ObjectSlice, ParseError, Reader
 from pioneersav.properties import (
     TAG_BOOL_TRUE,
     TAG_NATIVE_SERIALIZE,
-    ObjectReference,
     read_object,
 )
+from pioneersav.references import ObjectReference
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE = FIXTURES / "save_properties.bin"
@@ -741,9 +741,9 @@ def test_the_bool_bit_and_the_native_bit_are_the_documented_ones():
 # So three properties on every saveVersion 52 save cannot be told apart from a property list by
 # anything in the file: the foliage subsystem's `mSaveData` and the scanner's `mDestroyedPickups`
 # and `mLootedDropPods`, 918,917 bytes on the reference v52 save. They are read by offering
-# candidate struct types to `attempt` and keeping the one that lands exactly on the property's
-# declared end -- `IntVector` for a map key, `Guid` then `Vector` for a set element, each of them
-# a type version 60 writes out in full for the same field.
+# candidate struct types to `first_exact_fit` and keeping the one that lands exactly on the
+# property's declared end -- `IntVector` for a map key, `Guid` then `Vector` for a set element,
+# each of them a type version 60 writes out in full for the same field.
 #
 # That reading shipped with no test of its own. The only thing exercising it was a real save, and
 # the check there is a digest of the projection -- which reads none of these three fields, so the
@@ -757,8 +757,8 @@ def test_the_bool_bit_and_the_native_bit_are_the_documented_ones():
 # * that the candidates are tried narrowest-first. No two of them can land on the same bytes --
 #   16, 24 and a property list of any length differ -- so a test asserting the order would only
 #   restate the constant it reads.
-# * that `attempt` throws away the warnings a rejected candidate produced. It was measured for:
-#   a map whose keys are property lists and whose values hold an unknown property type produces
+# * that `first_exact_fit` throws away the warnings a rejected candidate produced. It was
+#   measured for: a map whose keys are property lists and whose values hold an unknown type produces
 #   the same two warnings with the discard and without it, because the `IntVector` candidate
 #   fails on the first key and never reaches a value. Nothing observable distinguishes the two,
 #   so the discard is unpinned and this comment is the record of that.
