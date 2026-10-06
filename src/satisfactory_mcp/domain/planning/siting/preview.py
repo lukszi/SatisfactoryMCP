@@ -9,7 +9,6 @@ import math
 from dataclasses import dataclass, field
 
 from ....core.gamedata.model import GameData
-from ....core.text import plural
 from ...spatial import geo
 from ...spatial.places import parse_near
 from ...world.state import WorldState
@@ -30,7 +29,6 @@ __all__ = [
     "Session",
     "open_session",
     "preview",
-    "preview_lines",
     "start_siting",
 ]
 
@@ -402,64 +400,3 @@ def preview(
             )
     out["fits"] = fits[:FIT_CANDIDATES]
     return out
-
-
-def preview_lines(out: dict) -> list[str]:
-    """The preview in chat's words, one section a line."""
-    lines = [f"where: {out['region'] or 'off any named region'}"]
-    if not out["in_map"]:
-        return lines + ["outside the map: a site here is refused"]
-    if not out["in_content"]:
-        lines.append("off the playable ground (allowed; check the spot in game)")
-    lines.append(f"height: {out['z_m']:g} m" if out["z_m"] is not None else out["z_note"])
-    t = out["terrain"]
-    if t is None:
-        lines.append(f"terrain: {out['terrain_note']}")
-    elif t["z_min_m"] is None:
-        lines.append("terrain: no data under the pad")
-    else:
-        lines.append(
-            f"terrain: ground {t['z_min_m']:g}…{t['z_max_m']:g} m · slope {t['slope_mean_deg'] or 0:g}° "
-            f"(p90 {t['slope_p90_deg'] or 0:g}°) · rough {t['roughness_m'] or 0:g} m · "
-            f"{t['submerged_pct']:g}% under water"
-        )
-        if t["cave_pct"]:
-            lines.append(
-                f"cave: one lies under {t['cave_pct']:g}% of the pad; heights are the surface"
-            )
-        if t["water_m"] is None:
-            lines.append(f"water: none within {WATER_SEARCH_M:.0f} m")
-        elif t["water_m"] == 0:
-            lines.append("water: on the pad")
-        else:
-            drop = "" if t["water_below_m"] is None else f", {t['water_below_m']:g} m below"
-            lines.append(f"water: {t['water_m']:,.0f} m away{drop}")
-    lines.append("floors: " + ("; ".join(out["slabs"]) or "bare ground"))
-    if out["failure"]:
-        return lines + [f"plan: {out['failure']}"]
-    on_pad = f"{out['on_pad']} {plural('machine', out['on_pad'])}"
-    lines.append(f"on the pad now: {on_pad} (plan: {out['planned']}), by class only")
-    if out["trunks"]:
-        run = sum(t["run_m"] for t in out["trunks"])
-        leg = sum(t["to_site_m"] for t in out["trunks"])
-        pumps = sum(1 for t in out["trunks"] if t["pumps"])
-        lines.append(
-            f"trunks: {len(out['trunks'])} · {run:,.0f} m node to node + {leg:,.0f} m to the pad"
-            f" (straight lines, lower bounds) · {pumps} need pumps"
-        )
-    if out["placeless"]:
-        lines.append("no node, no geometry: " + ", ".join(out["placeless"]))
-    b, n = out["built"], out["now"]
-    lines.append(f"built here: {b['where']} · {b['figure']}")
-    lines.append(f"built now (stored site): {n['where']} · {n['figure']}")
-    if out["basis"]:
-        lines.append(out["basis"])
-    if b["stage_text"]:
-        lines.append(f"stage here: {b['stage_text']}")
-    if out["loses"]:
-        lines.append("loses progress: " + out["loses"]["text"])
-    for f in out["fits"]:
-        lines.append(f"fit pad to “{f['name']}”: {f['machines']} machines outside the pad")
-    if out["overlaps"]:
-        lines.append("overlaps the pad of " + ", ".join(f"“{n}”" for n in out["overlaps"]))
-    return lines

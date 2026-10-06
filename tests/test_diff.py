@@ -257,7 +257,7 @@ def test_the_ids_of_an_action_reach_the_reader(game, state):
     from satisfactory_mcp.presenters.text.diff import render_diff
 
     report = build_diff_report(game, state, dict(SPIRE), objective="max_mw")
-    out = render_diff(game, state, report, objective="max_mw", limit=20)
+    out = render_diff(state, report, objective="max_mw", limit=20)
     water = _row(report.rep, "normal Water")
     assert "# machines to act on, reusable as machine: selectors" in out
     assert f"#   UNPAUSE normal Water: {' '.join(water.act_instances)}" in out
@@ -430,7 +430,7 @@ def test_the_cost_table_says_when_it_hid_rows(game, state):
         CostLine(item=f"Desc_{i}_C", name=f"Item {i}", need=100.0, stock=1.0, lines=0)
         for i in range(COST_ROWS + 3)
     ]
-    out = render_diff(game, state, report, objective="max_mw", limit=20)
+    out = render_diff(state, report, objective="max_mw", limit=20)
     assert f"{COST_ROWS + 3} match(es), showing {COST_ROWS}" in out
 
 

@@ -185,7 +185,6 @@ def diff_vs_save(
         plan_notes = [moved, *plan_notes]
 
     return render_diff(
-        g,
         st,
         report,
         objective=request.objective,
@@ -285,7 +284,6 @@ def commission_plan(
         plan_notes = [moved, *plan_notes]
 
     return render_commission(
-        g,
         st,
         report,
         objective=request.objective,

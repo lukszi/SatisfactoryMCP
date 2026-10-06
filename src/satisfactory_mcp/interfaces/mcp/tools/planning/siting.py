@@ -13,6 +13,7 @@ from .....domain.planning.siting import preview as site_preview
 from .....domain.planning.stored.planlog import PlanLog, Pushed
 from .....domain.spatial import heightfield, maplink, regions
 from .....presenters.text import primitives as render
+from .....presenters.text.site_preview import render_site_preview
 from ... import app
 from ...params import AsOf, BaseRev
 from ._plan_log import _journal_view, _needs_base, _world_plan_log, _write
@@ -231,4 +232,4 @@ def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx
         f"to keep it: site_plan plan={stored.name!r} at='{sit.x_m:g},{sit.y_m:g}' "
         f"base_rev={stored.rev}, or [use it] on the page"
     )
-    return "\n".join([head, *site_preview.preview_lines(out), nxt])
+    return "\n".join([head, render_site_preview(out), nxt])

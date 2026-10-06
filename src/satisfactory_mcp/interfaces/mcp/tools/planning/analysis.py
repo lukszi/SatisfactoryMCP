@@ -9,11 +9,12 @@ from pydantic import Field
 from .....core.gamedata.unlocks import granted_by_label
 from .....domain.planning.analysis import bom as bom_mod
 from .....domain.planning.analysis import recipe_routes
+from .....domain.planning.analysis.byproducts import analyse
 from .....domain.planning.analysis.sensitivity import sweep_unlocks
 from .....domain.planning.solver.prepare import prepare
-from .....presenters.text import byproducts as byproducts_text
 from .....presenters.text import primitives as render
 from .....presenters.text.bom import render_bom
+from .....presenters.text.byproducts import render_byproducts
 from .....presenters.text.compare import render_comparison
 from ... import app
 from ...params import AsOf, Limit, PlanName
@@ -47,19 +48,19 @@ def explain_byproducts(
     """
     g = app.game()
     st = app.load_world(save, world, as_of)
-    return byproducts_text.explain(
+    report = analyse(
         g,
         st,
         objective=objective,
         target_item=target_item,
-        item=app.resolve_item_id(item) if item else None,
         sources=sources,
         exports=exports,
         export_minimums=export_minimums,
         allow_sinks=allow_sinks,
+        item=app.resolve_item_id(item) if item else None,
         exclude_recipes=exclude_recipes,
-        limit=render.clamp(limit, default=12),
     )
+    return render_byproducts(g, report, limit=render.clamp(limit, default=12))
 
 
 @app.tool()
@@ -163,12 +164,10 @@ def _unlock_notes(st, sweep, movers, on_offer: dict[str, int], plan: str | None)
     if sweep.unsolved:
         # Adding a recipe only ever widens the LP, so an unsolved counterfactual is a
         # solver failure and never a verdict on the recipe.
-        shown = sweep.unsolved[:4]
         notes.append(
             f"INFEASIBLE: {len(sweep.unsolved)} candidate(s) did not solve with the recipe "
             "added, so their worth is UNKNOWN rather than zero -- "
-            + ", ".join(r.name for r in shown)
-            + (f" (+{len(sweep.unsolved) - len(shown)} more)" if len(sweep.unsolved) > 4 else "")
+            + render.capped([r.name for r in sweep.unsolved], 4)
         )
     notes.append(
         "'activates' is what the gain DEPENDS on -- processes the counterfactual switches "

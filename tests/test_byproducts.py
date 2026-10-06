@@ -34,6 +34,11 @@ def crude(game, state):
     return byproducts.analyse(game, state, **_CRUDE)
 
 
+def _explain(game, state, **kw) -> str:
+    """The diagnostic as the tool answers it: analysed, then rendered at its default size."""
+    return byproducts_text.render_byproducts(game, byproducts.analyse(game, state, **kw), limit=6)
+
+
 def test_the_northern_crude_blocker_is_named_with_its_rate(crude):
     """The whole point of the tool. plan_factory reports 0 MW and no rows, which
     reads as 'crude is worthless'; the real answer is one item with no outlet, and
@@ -200,7 +205,7 @@ def test_an_item_the_working_plan_already_consumes_is_never_called_stuck(game, s
     rep = byproducts.analyse(game, state, **kw)
     assert rep.base_value is not None and rep.base_value > 0  # the plan works
     assert rep.blockers == []
-    assert "no dead-end byproduct" in byproducts_text.explain(game, state, **kw)
+    assert "no dead-end byproduct" in _explain(game, state, **kw)
 
 
 def test_the_lead_line_never_contradicts_the_line_under_it(game, state):
@@ -208,15 +213,13 @@ def test_the_lead_line_never_contradicts_the_line_under_it(game, state):
     response names one of them. A bare rate==0 test opens with 'not produced in this
     scope' directly above it, and a reader who catches the contradiction has no
     reason to believe the rest of the answer."""
-    text = byproducts_text.explain(game, state, item="Heavy Oil Residue", **_CRUDE)
+    text = _explain(game, state, item="Heavy Oil Residue", **_CRUDE)
     first, second = text.splitlines()[:2]
     assert "not produced in this scope" not in first
     assert "none is left over" in first
     assert "Alternate: Heavy Oil Residue" in second
     # The genuinely absent item still gets the blunt answer.
-    assert "not produced in this scope" in byproducts_text.explain(
-        game, state, item="Nitrogen Gas", **_CRUDE
-    )
+    assert "not produced in this scope" in _explain(game, state, item="Nitrogen Gas", **_CRUDE)
 
 
 def test_an_item_nothing_in_the_save_consumes_says_so(game, state):
@@ -227,9 +230,7 @@ def test_an_item_nothing_in_the_save_consumes_says_so(game, state):
     top = rep.blockers[0]
     assert top.allowed_consumers == 0
     assert top.outlets and not top.unlocked_outlets
-    assert "nothing you own consumes it" in byproducts_text.explain(
-        game, state, item="Nitrogen Gas", **_CRUDE
-    )
+    assert "nothing you own consumes it" in _explain(game, state, item="Nitrogen Gas", **_CRUDE)
 
 
 # ------------------------------------------------------------------ rendering
@@ -238,7 +239,7 @@ def test_an_item_nothing_in_the_save_consumes_says_so(game, state):
 def test_the_response_leads_with_the_finding_and_stays_compact(game, state):
     """Context budget is the binding constraint, and a diagnostic that opens with a
     table has buried its own answer."""
-    text = byproducts_text.explain(game, state, **_CRUDE)
+    text = _explain(game, state, **_CRUDE)
     lines = text.splitlines()
     assert lines[0].startswith("# STUCK: Polymer Resin")
     assert "58369" in lines[0]  # what it is worth once fixed, on the first line
