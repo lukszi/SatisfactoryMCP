@@ -251,6 +251,37 @@ Two things measured for the property stage:
   more int32 (every component), or **keeps going** — 3,209 of 44,634 actors carry
   class-specific binary data after it.
 
+The entry's size counts from immediately after itself, which is what puts version 60's
+trailing int32 at the far end rather than in the head. The walk does not parse the payload; it
+steps over it, and only the walk knows where the block ends, so it is the walk that refuses a
+size running past it.
+
+**The archive version header** is 26 fixed bytes — four int32s, three uint16s read as the
+engine's major/minor/patch, and the changelist — then the engine branch as a length-prefixed
+string, so its total varies by build: 59 bytes on `rel-main-1.2.0`, 70 on
+`rel-main-anniversary-2026`. The same header opens the body and appears again between level
+records, around 1,900 times on the reference save, and each is read field by field. The engine
+version triple carries no label and is constant on this disk, so that reading is an
+interpretation of one value. `changelist & CHANGELIST_MASK` is the build that wrote *that
+record*, not the save: the first save of the reference world under build 502094 carries 279
+headers on 502094 and 1,628 still on 495413, the levels the new build had not rewritten yet. So
+a changelist at or below the header's `buildVersion` is ordinary, and only one *above* it — a
+record from a build newer than the one that wrote the file — is a finding. It warns rather than
+refuses, and runs only when the caller supplies `build_version`, since a value invented inside
+the walk would only ever match itself.
+
+**Pre-1.0 bodies.** Below saveVersion 52 every size field is an int32, and an object entry is a
+bare size with no version and no flag, which is why `read_body` takes `save_version` rather
+than sniffing it. Below saveVersion 30 there is no level list at all: one run of headers, one
+run of entries, and nothing about levels — no count, no names, no block sizes. The level is in
+each header's `root_object`, where three values occur (`Persistent_Level`,
+`Persistent_Exploration`, `Persistent_Exploration_2`), and the walk groups by it, because one
+flat level would have to be *called* something and any name would be wrong for the objects
+rooted elsewhere. With a level list (saveVersion 30 and 36), the unnamed persistent record is
+followed by one more bare destroyed-actor list before the closing one; it is read as that
+record's trailer, like every other level's. Reading it as a second closing list consumes the
+same bytes, and nothing in these saves tells the two apart.
+
 **Verification:** black-box against the vendored parser on all 31 readable saves — identical
 level counts, identical per-level header and object counts, identical `typePath` multisets.
 Object-by-object on the reference save: `instanceName`, the actor/component split and
