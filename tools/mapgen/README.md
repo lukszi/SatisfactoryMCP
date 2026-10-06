@@ -109,6 +109,9 @@ as the artwork. The main options:
   from before the light was the default, still means `--light`. See §29.
 - `--cache-dir` with `--keep-direct` keeps the geometry rasters, so a later run at the same
   size and build reuses them.
+- `--scratch-dir` puts the light's `light.cache/` elsewhere, such as a fast local disk; by
+  default it sits beside the raster caches. It is scratch for one run, kept by no flag: the
+  run deletes it however it ends, and the next lit run removes what a killed one left (§29).
 - `--restyle` draws only from those kept caches and exits with code 9 when one is missing or
   was cut for another size or build, so a palette change never turns into a full render.
 - `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
@@ -116,8 +119,8 @@ as the artwork. The main options:
 
 At full size those caches take about 0.9 GB of scratch space, stored as a zstd band store
 (§39). A raw cache kept by an older version is 18.5 GB at full size; it is still reused, and
-`compress-cache` converts it. The light cache adds 14.5 GB, and 10.7 GB more with the painted
-layer (§29, "Scratch"). See §25 to §27 and §39, and
+`compress-cache` converts it. The light cache adds 14.5 GB while the run lasts, and 5.4 GB
+more with the painted layer; the run deletes it (§29, "Scratch"). See §25 to §27 and §39, and
 [maps_contract.md](../../docs/maps_contract.md) for how the server registers the result.
 
 ### check-fill

@@ -8,6 +8,7 @@ it; the sidecar's ``storage`` says which (docs/spatial-and-map.md section 39).
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Self
 
@@ -110,6 +111,22 @@ def clear_planes(directory: Path, names) -> None:
     for name in names:
         for storage in STORAGES:
             plane_file(directory, name, storage).unlink(missing_ok=True)
+
+
+def held_open(paths) -> Path | None:
+    """The first file another process holds open, found by renaming it to itself and back.
+
+    Windows refuses to rename an open file; elsewhere a rename always succeeds, and nothing is
+    found.
+    """
+    for path in paths:
+        probe = path.with_name(path.name + ".probe")
+        try:
+            os.replace(path, probe)
+        except OSError:
+            return path
+        os.replace(probe, path)
+    return None
 
 
 class RawWriter:
