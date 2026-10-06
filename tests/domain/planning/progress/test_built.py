@@ -13,6 +13,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 from satisfactory_mcp import config
+from satisfactory_mcp.core.saveio.records import instance_leaf
 from satisfactory_mcp.domain.planning.progress import built
 from satisfactory_mcp.domain.world.state import WorldState
 from tests.support.paths import FIXTURES
@@ -46,7 +47,7 @@ def same_spot(game, projection):
 def _truth(st, name):
     raw = json.loads((FIXTURES / "labels_reference.json").read_text(encoding="utf-8"))
     anchors = next(x["anchors"] for x in raw["labels"] if x["name"] == name)
-    recs = built._records(st)
+    recs = built._placed_machines(st)
     return recs, {m for m in anchors if m in recs and recs[m].group != "extractors"}
 
 
@@ -127,12 +128,12 @@ def test_a_partial_build_is_found_from_one_seed(named, game, projection):
     gone = truth - kept
     cut = {
         **projection,
-        "machines": [m for m in projection["machines"] if built._leaf(m["instance"]) not in gone],
+        "machines": [m for m in projection["machines"] if instance_leaf(m["instance"]) not in gone],
     }
     st = WorldState(projection=cut, game=game)
     prepared, state = _pseudo(recs, truth)
     b = built.detect(game, st, state, prepared)
-    assert _found(b, built._records(st)) == kept
+    assert _found(b, built._placed_machines(st)) == kept
 
 
 def test_no_site_means_no_progress(named):
@@ -220,7 +221,7 @@ def test_the_radius_grows_with_the_plan(game):
 
 
 def test_node_owner_names_the_cluster_its_nodes_feed(named):
-    recs = built._records(named)
+    recs = built._placed_machines(named)
     pump = next(r for r in recs.values() if r.group == "extractors" and r.node)
     node = {
         "kind": "node",

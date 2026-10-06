@@ -256,7 +256,7 @@ def _pin_origin(st, text: str) -> tuple[tuple[float, float], str]:
     if n is None:
         raise ValueError(f"{text!r} is not a pin: write pin:<n>, as the pins card prints it")
     try:
-        return pins.place(st, n)
+        return pins.position(st, n)
     except pins.PinError as exc:
         raise ValueError(str(exc)) from None
 

@@ -8,9 +8,12 @@ longer exists -- silently.
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from satisfactory_mcp import server as srv
+from satisfactory_mcp.domain.planning.solver.scenario import build_scenario
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.stored.store import PLAN_ARGS, Plan, PlanStore
 
@@ -271,6 +274,12 @@ def test_plan_defaults_cover_every_stored_argument():
     assert set(PLAN_ARGS) == set(srv.PLAN_DEFAULTS)
 
 
+def test_every_stored_argument_is_one_build_scenario_takes():
+    """``PLAN_ARGS`` is derived from the stored fields, so a field the solve does not take
+    would reach ``build_scenario`` as an unknown keyword on every recall."""
+    assert set(PLAN_ARGS) <= set(inspect.signature(build_scenario).parameters)
+
+
 def test_kwargs_filters_out_anything_no_longer_accepted():
     """A plan saved by an older build must not blow up a newer build_scenario call."""
     plan = Plan(name="p", args={"objective": "max_mw", "retired_knob": 7})
@@ -281,9 +290,9 @@ def test_kwargs_filters_out_anything_no_longer_accepted():
 
 
 def _diff_index(state, request, scope=None):
-    from satisfactory_mcp.domain.planning.progress.diff import _index
+    from satisfactory_mcp.domain.planning.progress.diff import _index_save
 
-    return _index(state, request, scope)
+    return _index_save(state, request, scope)
 
 
 def test_scoping_limits_what_counts_as_already_built(game, state):

@@ -57,8 +57,8 @@ from ....domain.planning.stored.planlog import (
 from ....domain.planning.stored.recall import (
     PLAN_DEFAULTS,
     UNSAVED_OVERRIDE,
+    expand_plan_pin,
     overrides_of,
-    plan_ref,
     with_overrides,
 )
 from ....domain.planning.stored.recall import recall_plan as _plan_kwargs
@@ -617,7 +617,7 @@ def site_plan(
                 when=when,
             )
             # The stored z stays; a missing one is read from the terrain under the pad.
-            sit = siting_mod.settle_z(st, sit, existing.z_m, "stored", siting_mod.LOAD_FIELD)
+            sit = siting_mod.settle_z(st, sit, existing.z_m, "stored", siting_mod.INSTALLED_FIELD)
     except ValueError as exc:
         return f"! {exc}"
 
@@ -625,7 +625,7 @@ def site_plan(
     if sit.z_source == "terrain":
         # Snapping moved the pad, so its terrain z is read again where it now stands.
         sit = siting_mod.settle_z(
-            st, dataclasses.replace(sit, z_m=None), None, "", siting_mod.LOAD_FIELD
+            st, dataclasses.replace(sit, z_m=None), None, "", siting_mod.INSTALLED_FIELD
         )
     pushed, text = push(sit.to_dict(), "not sited")
     if pushed is None:
@@ -688,7 +688,7 @@ def _site_preview(g, st, stored, existing, at: str, yaw_deg, footprint: str, ctx
                 plan_kwargs=stored.kwargs(),
             )
         else:
-            base = existing or site_preview.start_siting(g, st, sess)
+            base = existing or site_preview.initial_siting(g, st, sess)
             width, depth = base.width_m, base.depth_m
             if footprint:
                 width, depth = siting_mod.parse_footprint(footprint)
@@ -735,7 +735,7 @@ def _refusal(exc: Exception) -> str:
 
 def _plan_pin(st, plan: str | None) -> tuple[str | None, list[str]]:
     """``plan`` with a plan pin swapped for its key, and the echo. Raises ``KeyError``."""
-    found, echo = plan_ref(st, plan)
+    found, echo = expand_plan_pin(st, plan)
     return found, [echo] if echo else []
 
 
@@ -1208,12 +1208,12 @@ def plan_factory(
 
     try:
         plan, pin_notes = _plan_pin(st, plan)
-        sources, said = pins.canonical(st, "sources", sources) if sources else (sources, [])
+        sources, said = pins.expand(st, "sources", sources) if sources else (sources, [])
         pin_notes += said
-        required, said = pins.canonical(st, "required", required) if required else (required, [])
+        required, said = pins.expand(st, "required", required) if required else (required, [])
         pin_notes += said
         if exclude_recipes:
-            exclude_recipes, said = pins.canonical(st, "exclude_recipes", exclude_recipes)
+            exclude_recipes, said = pins.expand(st, "exclude_recipes", exclude_recipes)
             pin_notes += said
     except (KeyError, pins.PinError) as exc:
         return f"! {_refusal(exc)}; nothing solved"
@@ -1711,7 +1711,6 @@ def diff_vs_save(
             stage=stage,
             factory=_factory_value(factory),
             biomass=biomass,
-            headroom_mw=stored.headroom_mw if stored is not None else None,
             stored=stored,
             default=default,
         )

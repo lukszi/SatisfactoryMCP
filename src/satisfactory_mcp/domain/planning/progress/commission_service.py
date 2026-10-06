@@ -9,6 +9,7 @@ that repipes one of those takes running generation down mid-startup.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
 from ...factories.select import SelectorError
@@ -16,9 +17,12 @@ from ...factories.trace import live_feeders
 from ...world.state import WorldState
 from ..solver.prepare import PreparedPlan, prepare
 from ..stored.planlog import PlanState
-from .diff_service import DEFAULT_HEADROOM, STORED_SOURCE, default_headroom, match_scope
+from .diff_service import DEFAULT_HEADROOM, diff_in_scope, resolve_headroom
 from .stages import Tracking, track
 from .startup import Commissioning, commission
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from .built import BuiltAt
 
 __all__ = ["CommissionReport", "build_commission_report"]
 
@@ -29,18 +33,18 @@ class CommissionReport:
 
     prepared: PreparedPlan
     #: ``None`` when the plan failed -- there is nothing to switch on.
-    plan_run: Commissioning | None = None
+    startup: Commissioning | None = None
     #: The headroom the sequence was actually built against, and where it came from.
-    head_mw: float = 0.0
-    head_source: str = ""
+    headroom_mw: float = 0.0
+    headroom_source: str = ""
     power: dict = field(default_factory=dict)
     #: Built extractors already feeding running generators. Only computed for a
     #: sequence that exists, since it is advice about following one.
-    live: list[tuple[str, float]] = field(default_factory=list)
+    live_feeders: list[tuple[str, float]] = field(default_factory=list)
     #: The same waves matched against the save, only for a stored plan.
     tracking: Tracking | None = None
-    #: Where the stored plan's built machines were found (``built.BuiltAt``).
-    built_at: object | None = None
+    #: Where the stored plan's built machines were found.
+    built_at: BuiltAt | None = None
 
 
 def build_commission_report(
@@ -66,31 +70,26 @@ def build_commission_report(
 
     # Headroom is an INPUT and is printed as one. A sequence computed against a save
     # that has since moved is then visibly stale rather than quietly wrong -- the same
-    # reason phase_requirements labels its rows instead of filtering them.
+    # reason phase_requirements labels its rows instead of filtering them. Measured by
+    # default: on the reference save nameplate leaves 116 MW free against a 392 MW minimum
+    # slice, so no plan gets stages (docs/planner_p4.md, B3).
     report.power = power = st.power_report(biomass=biomass)
-    if headroom_mw is not None:
-        head, source = float(headroom_mw), "given by caller"
-    elif stored is not None and stored.headroom_mw is not None:
-        head, source = float(stored.headroom_mw), STORED_SOURCE
-    else:
-        # Measured by default: on the reference save nameplate leaves 116 MW free against a
-        # 392 MW minimum slice, so no plan gets stages. The text names nameplate as the
-        # safe bound beside it (docs/planner_p4.md, B3).
-        head, source = default_headroom(power, default)
-    report.head_mw, report.head_source = head, source
+    report.headroom_mw, report.headroom_source = resolve_headroom(
+        power, given=headroom_mw, stored=stored, default=default
+    )
 
-    report.plan_run = plan_run = commission(prepared, g, head, source)
-    if plan_run.ok:
+    report.startup = startup = commission(prepared, g, report.headroom_mw, report.headroom_source)
+    if startup.ok:
         # What the sequence is standing on. A wave that repipes an extractor already
         # feeding live generators takes that power down mid-startup, which is exactly the
         # moment the plan has least headroom to spare. Read from the save's own
         # connections rather than assumed, and only PROVEN-running generators are charged.
-        report.live = live_feeders(g, st)
+        report.live_feeders = live_feeders(g, st)
     if stored is not None and prepared.solution.processes:
         try:
-            rep, _ = match_scope(g, st, prepared, None, biomass, stored=stored)
+            diff, _ = diff_in_scope(g, st, prepared, None, biomass, stored=stored)
         except SelectorError:
             return report
-        report.built_at = rep.built_at
-        report.tracking = track(prepared, plan_run, rep, g, st, plan_name=stored.name)
+        report.built_at = diff.built_at
+        report.tracking = track(prepared, startup, diff, g, st, plan_name=stored.name)
     return report

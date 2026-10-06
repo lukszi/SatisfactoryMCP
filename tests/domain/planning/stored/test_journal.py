@@ -87,7 +87,7 @@ def test_a_failed_write_is_swallowed(jdir, monkeypatch):
     def boom(*_a, **_k):
         raise OSError("disk full")
 
-    monkeypatch.setattr(journal, "_write", boom)
+    monkeypatch.setattr(journal, "_append_line", boom)
     assert journal.append("W", "plan.solve", actor=CHAT) is None
 
 

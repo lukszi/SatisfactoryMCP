@@ -312,7 +312,7 @@ def _pin_nodes(st, value: str, by_instance: dict, short_index: dict, sel: Select
         sel.errors.append(f"{value!r} is not a pin: write pin:<n>. {SELECTOR_HELP}")
         return None, ""
     try:
-        wanted, echo = pins.terms(st, n, "nodes")
+        wanted, echo = pins.selector_terms(st, n, "nodes")
     except pins.PinError as exc:
         sel.errors.append(str(exc))
         return None, ""

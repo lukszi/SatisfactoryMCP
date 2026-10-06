@@ -23,6 +23,7 @@ from .startup import Commissioning, commission
 
 __all__ = [
     "DEFAULT_HEADROOM",
+    "GIVEN_SOURCE",
     "HEADROOM_DEFAULTS",
     "MEASURED_SOURCE",
     "NAMEPLATE_SOURCE",
@@ -30,13 +31,15 @@ __all__ = [
     "DiffVsSaveReport",
     "build_diff_report",
     "default_headroom",
-    "match_scope",
+    "diff_in_scope",
     "plan_progress",
+    "resolve_headroom",
 ]
 
 NAMEPLATE_SOURCE = "nameplate from the save"
 MEASURED_SOURCE = "measured from the save"
 STORED_SOURCE = "stored on the plan"
+GIVEN_SOURCE = "given by caller"
 
 #: What a plan with no stored headroom is partitioned against (docs/planner_p4.md, B3).
 HEADROOM_DEFAULTS = ("measured", "nameplate")
@@ -50,18 +53,34 @@ def default_headroom(power: dict, which: str = DEFAULT_HEADROOM) -> tuple[float,
     return float(power.get("measured_headroom_mw", 0.0)), MEASURED_SOURCE
 
 
+def resolve_headroom(
+    power: dict,
+    *,
+    given: float | None = None,
+    stored: PlanState | None = None,
+    default: str = DEFAULT_HEADROOM,
+) -> tuple[float, str]:
+    """The headroom a startup order is built against, and its source words: the caller's,
+    else the plan's stored one, else the save's ``default`` reading."""
+    if given is not None:
+        return float(given), GIVEN_SOURCE
+    if stored is not None and stored.headroom_mw is not None:
+        return float(stored.headroom_mw), STORED_SOURCE
+    return default_headroom(power, default)
+
+
 @dataclass
 class DiffVsSaveReport:
     """A solved plan, the save it was matched against, and the stages if asked."""
 
     prepared: PreparedPlan
     #: ``None`` when the plan failed or came back empty -- there is nothing to diff.
-    rep: DiffReport | None = None
+    diff: DiffReport | None = None
     power: dict = field(default_factory=dict)
     #: The startup partition matched against the save, only when a stage was asked for.
     tracking: Tracking | None = None
     #: The startup order the partition came from, beside ``tracking``.
-    run: Commissioning | None = None
+    startup: Commissioning | None = None
     #: graph.health state per matched machine, from the one pass ``tracking`` also read.
     health: dict[str, str] = field(default_factory=dict)
     #: What the scope costs the reader, when a factory narrowed what counts as built.
@@ -77,7 +96,14 @@ class DiffVsSaveReport:
     site_survey: siting_mod.SiteSurvey | None = None
 
 
-def match_scope(
+def _scope_note(name: str, count: int) -> str:
+    return (
+        f"scoped to {name!r} ({count} machines): everything outside it counts as not built, "
+        "and nodes tapped by other factories are unavailable"
+    )
+
+
+def diff_in_scope(
     g: GameData,
     st: WorldState,
     prepared: PreparedPlan,
@@ -95,7 +121,7 @@ def match_scope(
     """
     if stored is not None:
         found = built.detect(g, st, stored, prepared, scope_name)
-        rep = build_diff(
+        diff = build_diff(
             g, st, prepared.solution, prepared.request, scope=found.scope, biomass=biomass
         )
         low = None
@@ -103,16 +129,12 @@ def match_scope(
             low = build_diff(
                 g, st, prepared.solution, prepared.request, scope=found.scope_low, biomass=biomass
             )
-        built.fill_progress(found, rep, low)
-        rep.built_at = found
+        built.fill_progress(found, diff, low)
+        diff.built_at = found
         note = ""
         if found.mode == "picked":
-            note = (
-                f"scoped to {found.picked!r} ({len(found.scope or ())} machines): everything "
-                "outside it counts as not built, and nodes tapped by other factories are "
-                "unavailable"
-            )
-        return rep, note
+            note = _scope_note(found.picked, len(found.scope or ()))
+        return diff, note
     scope = None
     note = ""
     if scope_name and built.mode_of(scope_name) == "world":
@@ -126,22 +148,57 @@ def match_scope(
                 f"{scope_name!r} resolved to no machines that still exist in this save"
             )
         scope = set(machines)
-        note = (
-            f"scoped to {resolved_name!r} ({len(scope)} machines): everything outside it "
-            "counts as not built, and nodes tapped by other factories are unavailable"
-        )
-    rep = build_diff(g, st, prepared.solution, prepared.request, scope=scope, biomass=biomass)
-    return rep, note
+        note = _scope_note(resolved_name, len(scope))
+    diff = build_diff(g, st, prepared.solution, prepared.request, scope=scope, biomass=biomass)
+    return diff, note
 
 
-def plan_progress(g: GameData, st: WorldState, state) -> built.BuiltAt | None:
+def plan_progress(g: GameData, st: WorldState, stored: PlanState) -> built.BuiltAt | None:
     """A stored plan's ``built_at`` alone, for a list of plans: one solve and one match, no
     startup order. None when the plan does not solve or builds nothing."""
-    prepared = prepare(g, st, state.kwargs(), diagnose=False)
+    prepared = prepare(g, st, stored.kwargs(), diagnose=False)
     if prepared.failure or not prepared.solution.processes:
         return None
-    rep, _ = match_scope(g, st, prepared, None, False, stored=state)
-    return rep.built_at
+    diff, _ = diff_in_scope(g, st, prepared, None, False, stored=stored)
+    return diff.built_at
+
+
+def _track_stages(
+    g: GameData,
+    st: WorldState,
+    report: DiffVsSaveReport,
+    *,
+    plan_name: str,
+    stored: PlanState | None,
+    default: str,
+) -> None:
+    """Partition the plan into startup stages and match them against the save, in place."""
+    head, source = resolve_headroom(report.power, stored=stored, default=default)
+    report.startup = commission(report.prepared, g, head, source)
+    report.health = machine_states(report.diff, g, st)
+    report.tracking = track(
+        report.prepared,
+        report.startup,
+        report.diff,
+        g,
+        st,
+        plan_name=plan_name,
+        health=report.health,
+    )
+    if stored is not None:
+        saved_plan = stored
+    else:
+        saved_plan = st.plans.find(plan_name) if plan_name else None
+    plan_id = report.prepared.request.plan_id
+    saved_id = saved_plan.plan_id if saved_plan is not None else ""
+    if plan_name and saved_id and saved_id != plan_id:
+        # A stage number is a milestone the player remembers, and a re-solve against a
+        # moved world can renumber the whole partition under them.
+        report.drift_note = (
+            f"plan {plan_name!r} was saved against plan_id {saved_id} and "
+            f"re-solves to {plan_id} -- the WORLD moved, so these stage numbers "
+            "may not be the ones you were given before"
+        )
 
 
 def build_diff_report(
@@ -155,30 +212,29 @@ def build_diff_report(
     stage: int | None = None,
     factory: str | None = None,
     biomass: bool = False,
-    headroom_mw: float | None = None,
     stored: PlanState | None = None,
     default: str = DEFAULT_HEADROOM,
 ) -> DiffVsSaveReport:
     """Solve ``plan_kwargs`` and match it against the save under an optional scope.
 
-    ``stored`` is the recalled plan version: scope, siting and plan_id come from it rather
-    than from ``st.plans``. ``headroom_mw`` replaces the save's headroom (``default``:
-    measured or nameplate) for the startup partition.
+    ``stored`` is the recalled plan version: scope, siting, plan_id and the startup
+    headroom come from it rather than from ``st.plans``; a plan with no stored headroom is
+    partitioned against the save's ``default`` reading (measured or nameplate).
     """
     prepared = prepare(g, st, plan_kwargs, objective_label=objective, diagnose=False)
     report = DiffVsSaveReport(prepared=prepared)
     if prepared.failure:
         return report
-    req, sol = prepared.request, prepared.solution
 
-    if not sol.processes:
+    if not prepared.solution.processes:
         report.empty = True
         return report
 
     recalled = stored if stored is not None else (st.plans.find(plan) if plan else None)
-    rep, report.scope_note = match_scope(g, st, prepared, factory, biomass, stored=recalled)
-    report.rep = rep
-    report.power = pw = st.power_report(biomass=biomass)
+    report.diff, report.scope_note = diff_in_scope(
+        g, st, prepared, factory, biomass, stored=recalled
+    )
+    report.power = st.power_report(biomass=biomass)
 
     # A sited plan gets the census over its own pad. Beside the identity-matched diff,
     # not instead of it: the diff says whether the machines exist, the survey says
@@ -187,29 +243,9 @@ def build_diff_report(
         sit = siting_mod.parse(recalled)
         if sit is not None:
             report.site = sit
-            report.site_survey = siting_mod.survey(g, st, sit, sol.processes)
+            report.site_survey = siting_mod.survey(g, st, sit, prepared.solution.processes)
 
     # Off unless asked for: the stage numbering is only stable for a STORED plan.
     if plan or stored is not None or stage is not None:
-        if headroom_mw is None:
-            head, source = default_headroom(pw, default)
-        else:
-            head, source = float(headroom_mw), STORED_SOURCE
-        report.run = run = commission(prepared, g, head, source)
-        report.health = machine_states(rep, g, st)
-        report.tracking = track(
-            prepared, run, rep, g, st, plan_name=plan_name, health=report.health
-        )
-        if stored is not None:
-            then = stored
-        else:
-            then = st.plans.find(plan_name) if plan_name else None
-        if plan_name and then is not None and then.plan_id and then.plan_id != req.plan_id:
-            # A stage number is a milestone the player remembers, and a re-solve against a
-            # moved world can renumber the whole partition under them.
-            report.drift_note = (
-                f"plan {plan_name!r} was saved against plan_id {then.plan_id} and "
-                f"re-solves to {req.plan_id} -- the WORLD moved, so these stage numbers "
-                "may not be the ones you were given before"
-            )
+        _track_stages(g, st, report, plan_name=plan_name, stored=stored, default=default)
     return report

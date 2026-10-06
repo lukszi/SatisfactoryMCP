@@ -12,6 +12,7 @@ from satisfactory_mcp.domain.planning.progress.diff import (
     _row_for,
     _SaveIndex,
 )
+from satisfactory_mcp.domain.planning.progress.jobs import BuildJob
 from satisfactory_mcp.domain.planning.progress.track import page_text
 
 PUMP = "Build_WaterPump_C"
@@ -22,21 +23,21 @@ class _World:
         return 1
 
 
-def _group(machines: int, clock: float = 1.0) -> dict:
-    return {
-        "key": ("extractor", PUMP, "Desc_Water_C", ""),
-        "kind": "extractor",
-        "building_id": PUMP,
-        "building": "Water Extractor",
-        "recipe": None,
-        "resource": "Desc_Water_C",
-        "purity": "",
-        "machines": machines,
-        "clock": clock * machines,
-        "mw": 20.0 * machines,
-        "labels": [("Water", machines)],
-        "rates": {},
-    }
+def _group(machines: int, clock: float = 1.0) -> BuildJob:
+    return BuildJob(
+        key=("extractor", PUMP, "Desc_Water_C", ""),
+        kind="extractor",
+        building_id=PUMP,
+        building="Water Extractor",
+        recipe=None,
+        resource="Desc_Water_C",
+        purity="",
+        machines=machines,
+        clock_sum=clock * machines,
+        mw=20.0 * machines,
+        labels=[("Water", machines)],
+        rates={},
+    )
 
 
 def _pumps(running: int, paused: int) -> _SaveIndex:

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
+from ....core.saveio.records import instance_leaf
 from ...spatial.nodes.selectors import split_spec
 from ..solver.scenario import select_for
 
@@ -41,10 +42,6 @@ LEAF_CAP = 250
 NAME_CAP = 5
 
 
-def _short(instance: str) -> str:
-    return str(instance).rsplit(".", 1)[-1]
-
-
 def _bbox(nodes: list[dict]) -> list[float] | None:
     """The box these nodes occupy, in METRES -- the form ``bbox:`` selectors take."""
     if not nodes:
@@ -55,7 +52,7 @@ def _bbox(nodes: list[dict]) -> list[float] | None:
 
 
 def _entry(selector: str, nodes: list[dict]) -> dict:
-    leaves = sorted(_short(n["instance"]) for n in nodes)
+    leaves = sorted(instance_leaf(n["instance"]) for n in nodes)
     return {
         "selector": selector,
         "count": len(leaves),

@@ -39,8 +39,8 @@ def render_commission(
             [*prepared.failure.notes, "see plan_factory for why"],
         )
     plan_notes = [*(plan_notes or [])]
-    plan_run, power = report.plan_run, report.power
-    head, source = report.head_mw, report.head_source
+    plan_run, power = report.startup, report.power
+    head, source = report.headroom_mw, report.headroom_source
 
     rows = []
     for w in plan_run.waves:
@@ -124,11 +124,11 @@ def render_commission(
             "construction is never the constraint. These waves are switch-ons"
         )
         # Read from the save's own connections, and only PROVEN-running generators count.
-        if report.live:
+        if report.live_feeders:
             notes.append(
                 "CUTOVER RISK -- these are already feeding running generators, so "
                 "repiping one mid-startup takes that power out at the worst moment: "
-                + "; ".join(f"{name} ({mw:,.0f} MW)" for name, mw in report.live[:4])
+                + "; ".join(f"{name} ({mw:,.0f} MW)" for name, mw in report.live_feeders[:4])
                 + ". trace_upstream on any of them shows what hangs off it"
             )
         notes.append(

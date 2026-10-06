@@ -204,7 +204,7 @@ def render_diff(
     plan_notes = [*(plan_notes or [])]
     if report.scope_note:
         plan_notes.append(report.scope_note)
-    rep, pw, tracking = report.rep, report.power, report.tracking
+    rep, pw, tracking = report.diff, report.power, report.tracking
     found = built_lines(rep.built_at, plan_name)
     if report.drift_note:
         plan_notes.append(report.drift_note)
@@ -396,10 +396,10 @@ def render_diff(
         if block:
             parts.append(block)
         notes += stage_notes
-        if report.run is not None and report.run.headroom_source:
+        if report.startup is not None and report.startup.headroom_source:
             notes.append(
-                f"stages use {render.num(report.run.headroom_mw)} MW of headroom, "
-                f"{report.run.headroom_source}"
+                f"stages use {render.num(report.startup.headroom_mw)} MW of headroom, "
+                f"{report.startup.headroom_source}"
             )
 
     if plan_name:

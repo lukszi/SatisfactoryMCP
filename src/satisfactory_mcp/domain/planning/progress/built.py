@@ -7,11 +7,15 @@ the thresholds and the measurements behind them.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from ....core.gamedata.model import GameData
+from ....core.saveio.records import instance_leaf
 from ....core.text import plural
 from ...factories import naming
 from ...factories.select import SelectorError, resolve_factory
@@ -21,7 +25,8 @@ from ...world.state import WorldState
 from .. import siting as siting_mod
 from ..solver.prepare import PreparedPlan
 from ..stored.planlog import PlanState
-from .diff import DiffReport, _group_processes, machine_rate
+from .diff import DiffReport, machine_rate
+from .jobs import group_processes
 
 __all__ = [
     "AUTO",
@@ -53,6 +58,9 @@ SURE_SHARE = 0.8
 RIVAL_SHARE = 0.2
 RIVAL_FIT = 0.5
 THIN_SHARE = 0.1
+#: How much of the plan's rate auto detection must see elsewhere before a picked factory
+#: gets the hint that the site holds another.
+HINT_SHARE = 0.5
 
 
 @dataclass(frozen=True)
@@ -68,14 +76,10 @@ class SearchArea:
 
     def contains(self, x_cm: float, y_cm: float) -> bool:
         if self.siting is not None and self.siting.has_footprint:
-            s = self.siting
-            wide = siting_mod.Siting(
-                s.x_m,
-                s.y_m,
-                None,
-                s.yaw_deg,
-                s.width_m + 2 * self.margin_m,
-                s.depth_m + 2 * self.margin_m,
+            wide = dataclasses.replace(
+                self.siting,
+                width_m=self.siting.width_m + 2 * self.margin_m,
+                depth_m=self.siting.depth_m + 2 * self.margin_m,
             )
             return wide.contains_cm(x_cm, y_cm)
         return any(geo.distance_m((cx, cy), (x_cm, y_cm)) <= r for cx, cy, r in self.circles)
@@ -214,22 +218,18 @@ def plan_radius_m(g: GameData, prepared: PreparedPlan) -> float:
     return max(SITE_MIN_RADIUS_M, side / math.sqrt(2.0) + SITE_MARGIN_M)
 
 
-def _leaf(text: str) -> str:
-    return str(text or "").rsplit(".", 1)[-1]
-
-
 def search_area(
-    g: GameData, st: WorldState, state: PlanState, prepared: PreparedPlan
+    g: GameData, st: WorldState, stored: PlanState, prepared: PreparedPlan
 ) -> SearchArea | None:
     """Where this plan's machines would stand, or None when it has no single spot."""
     radius = plan_radius_m(g, prepared)
-    sit = siting_mod.parse(state)
+    sit = siting_mod.parse(stored)
     if sit is not None and sit.has_footprint:
         return SearchArea("footprint", siting=sit, margin_m=SITE_MARGIN_M, words="its pad")
     if sit is not None:
         centre = (sit.x_m * 100.0, sit.y_m * 100.0)
         return SearchArea("circle", ((*centre, radius),), words=f"{radius:,.0f} m around its site")
-    args = state.args
+    args = stored.args
     raw = args.get("sources") if isinstance(args, dict) else args.sources
     sources = [str(s).strip() for s in (raw or [])]
     near = [s for s in sources if s.casefold().startswith("near:")]
@@ -251,7 +251,7 @@ def search_area(
     if sources and all(s.casefold().startswith("node:") for s in sources):
         rows = [r for r in prepared.request.node_rows if r.get("kind") == "node"]
         circles = tuple((float(r["x"]), float(r["y"]), radius) for r in rows)
-        ids = frozenset(_leaf(r["instance"]) for r in rows)
+        ids = frozenset(instance_leaf(r["instance"]) for r in rows)
         if circles:
             return SearchArea(
                 "nodes",
@@ -266,7 +266,7 @@ def search_area(
 
 
 @dataclass
-class _Rec:
+class _PlacedMachine:
     leaf: str
     group: str
     cls: str
@@ -276,11 +276,25 @@ class _Rec:
     node: str
 
 
-def _records(st: WorldState) -> dict[str, _Rec]:
-    out: dict[str, _Rec] = {}
+class _Owner(NamedTuple):
+    """Who holds a machine: a named ``factory``, a ``cluster`` (proposal index) or ``loose``."""
+
+    kind: str
+    ref: str | int
+
+
+class _Ranked(NamedTuple):
+    owner: _Owner
+    members: list[_PlacedMachine]
+    share: float
+    fit: float
+
+
+def _placed_machines(st: WorldState) -> dict[str, _PlacedMachine]:
+    out: dict[str, _PlacedMachine] = {}
     for group in ("machines", "generators", "extractors"):
         for r in st.projection.get(group, ()):
-            leaf = _leaf(r.get("instance"))
+            leaf = instance_leaf(r.get("instance"))
             if group == "machines":
                 key: tuple = ("recipe", r["cls"], r.get("recipe") or "")
             elif group == "generators":
@@ -288,14 +302,14 @@ def _records(st: WorldState) -> dict[str, _Rec]:
             else:
                 key = ("extractor", r["cls"])
             pos = r.get("pos")
-            out[leaf] = _Rec(
+            out[leaf] = _PlacedMachine(
                 leaf,
                 group,
                 r["cls"],
                 key,
                 machine_rate(r),
                 (pos[0], pos[1]) if pos else None,
-                _leaf(r.get("node") or ""),
+                instance_leaf(r.get("node")),
             )
     return out
 
@@ -308,8 +322,8 @@ def _coverage(have: dict[tuple, float], want: dict[tuple, float]) -> tuple[float
     return overlap / total, overlap / (total + surplus)
 
 
-def _bbox_m(recs: list[_Rec]) -> list[float] | None:
-    points = [r.xy for r in recs if r.xy is not None]
+def _bbox_m(machines: list[_PlacedMachine]) -> list[float] | None:
+    points = [r.xy for r in machines if r.xy is not None]
     if not points:
         return None
     xs, ys = [p[0] / 100.0 for p in points], [p[1] / 100.0 for p in points]
@@ -327,150 +341,143 @@ def _cluster_names(st: WorldState, wanted: set[int]) -> dict[int, str]:
     return {i: names.get(i, f"cluster {i}") for i in wanted}
 
 
-def _rates(recs: list[_Rec]) -> dict[tuple, float]:
+def _rate_by_job(machines: list[_PlacedMachine]) -> dict[tuple, float]:
     have: dict[tuple, float] = {}
-    for r in recs:
+    for r in machines:
         if r.group != "extractors":
             have[r.key] = have.get(r.key, 0.0) + r.rate
     return have
 
 
-def _auto(g: GameData, st: WorldState, prepared: PreparedPlan, area: SearchArea) -> BuiltAt:
-    groups = _group_processes(prepared.solution)
-    want = {gr["key"]: gr["clock"] for gr in groups if gr["kind"] != "extractor"}
-    extractor_classes = {gr["building_id"] for gr in groups if gr["kind"] == "extractor"}
-    recs = _records(st)
-    out = BuiltAt(mode="auto", area=area, confidence="nothing", scope=set())
-
-    seeds = [
+def _seed_machines(
+    placed: dict[str, _PlacedMachine], want: dict[tuple, float], area: SearchArea
+) -> list[_PlacedMachine]:
+    """Machines doing a job the plan wants, standing in its search area."""
+    return [
         r
-        for r in recs.values()
+        for r in placed.values()
         if r.group != "extractors" and r.key in want and r.xy is not None and area.contains(*r.xy)
     ]
-    plan_nodes = {
-        _leaf(row["instance"]) for row in prepared.request.node_rows if row.get("kind") == "node"
-    }
-    on_nodes = [r for r in recs.values() if r.group == "extractors" and r.node in plan_nodes]
-    if not seeds and not on_nodes:
-        return out
 
-    label_of = {m: label.name for label in st.labels.labels for m in label.anchors}
-    proposals = st.proposals
-    prop_of = {m: i for i, pr in enumerate(proposals) for m in pr.machines}
-    makes = {
-        prop_of[r.leaf] for r in recs.values() if r.group != "extractors" and r.leaf in prop_of
-    }
 
-    def owner(leaf: str) -> tuple:
-        if leaf in label_of:
-            return ("factory", label_of[leaf])
-        if leaf in prop_of:
-            return ("cluster", prop_of[leaf])
-        return ("loose", leaf)
-
-    # Seeds grow into their clusters; extractors never grow one.
-    grown = sorted({prop_of[s.leaf] for s in seeds if s.leaf in prop_of})
+def _grow_into_clusters(
+    seeds: list[_PlacedMachine],
+    placed: dict[str, _PlacedMachine],
+    want: dict[tuple, float],
+    proposals: list,
+    proposal_of: dict[str, int],
+) -> tuple[list[int], set[str]]:
+    """The clusters the seeds stand in, and the seeds plus every machine in those clusters
+    doing a wanted job. Extractors never grow a cluster."""
+    grown = sorted({proposal_of[s.leaf] for s in seeds if s.leaf in proposal_of})
     counted = {s.leaf for s in seeds}
     for i in grown:
         counted |= {
             m
             for m in proposals[i].machines
-            if m in recs and recs[m].group != "extractors" and recs[m].key in want
+            if m in placed and placed[m].group != "extractors" and placed[m].key in want
         }
+    return grown, counted
 
-    by_owner: dict[tuple, list[_Rec]] = {}
+
+def _rank_owners(
+    counted: set[str],
+    placed: dict[str, _PlacedMachine],
+    want: dict[tuple, float],
+    owner_of: Callable[[str], _Owner],
+) -> tuple[list[_Ranked], dict[_Owner, list[_PlacedMachine]]]:
+    """The counted machines by owner, best fit to the plan first."""
+    by_owner: dict[_Owner, list[_PlacedMachine]] = {}
     for m in sorted(counted):
-        by_owner.setdefault(owner(m), []).append(recs[m])
+        by_owner.setdefault(owner_of(m), []).append(placed[m])
     ranked = []
-    for o, members in by_owner.items():
-        share, fit = _coverage(_rates(members), want)
-        ranked.append((o, members, share, fit))
-    ranked.sort(key=lambda c: (-c[3], -c[2], -len(c[1]), str(c[0][1])))
-    top_owner = ranked[0][0] if ranked else None
+    for owner, members in by_owner.items():
+        share, fit = _coverage(_rate_by_job(members), want)
+        ranked.append(_Ranked(owner, members, share, fit))
+    ranked.sort(key=lambda c: (-c.fit, -c.share, -len(c.members), str(c.owner.ref)))
+    return ranked, by_owner
 
-    # A machine another named factory holds never counts.
-    def ours(m: str) -> bool:
-        return m not in label_of or owner(m) == top_owner
 
-    kept = {m for m in counted if ours(m)}
-    excluded = counted - kept
-
-    kept_owners = {owner(m) for m in kept}
-    fed: dict[tuple, list[_Rec]] = {}
+def _attribute_node_extractors(
+    on_nodes: list[_PlacedMachine],
+    kept_owners: set[_Owner],
+    owner_of: Callable[[str], _Owner],
+    makes: set[int],
+) -> tuple[list[_PlacedMachine], dict[_Owner, list[_PlacedMachine]]]:
+    """Extractors on the plan's nodes: (those that count for it, those feeding another plant
+    by owner). One counts when a kept owner holds it or nothing that makes anything does."""
+    counted: list[_PlacedMachine] = []
+    fed: dict[_Owner, list[_PlacedMachine]] = {}
     for r in on_nodes:
-        o = owner(r.leaf)
-        standalone = o[0] == "loose" or (o[0] == "cluster" and o[1] not in makes)
-        if o in kept_owners or standalone:
-            kept.add(r.leaf)
-            if not ranked:
-                by_owner.setdefault(o, []).append(r)
+        owner = owner_of(r.leaf)
+        standalone = owner.kind == "loose" or (owner.kind == "cluster" and owner.ref not in makes)
+        if owner in kept_owners or standalone:
+            counted.append(r)
         else:
-            fed.setdefault(o, []).append(r)
-    for i in grown:
-        kept |= {
-            m
-            for m in proposals[i].machines
-            if m in recs
-            and recs[m].group == "extractors"
-            and recs[m].cls in extractor_classes
-            and ours(m)
-        }
-    if not ranked:
-        ranked = [
-            (o, members, 0.0, 0.0)
-            for o, members in sorted(by_owner.items(), key=lambda kv: -len(kv[1]))
-        ]
+            fed.setdefault(owner, []).append(r)
+    return counted, fed
 
+
+def _also_here(
+    g: GameData,
+    grown: list[int],
+    proposals: list,
+    placed: dict[str, _PlacedMachine],
+    want: dict[tuple, float],
+    ours: Callable[[str], bool],
+) -> list[str]:
+    """The three commonest buildings in the grown clusters that the plan does not want."""
     also: Counter = Counter()
     for i in grown:
         for m in proposals[i].machines:
-            rec = recs.get(m)
+            rec = placed.get(m)
             if rec is not None and rec.group != "extractors" and rec.key not in want and ours(m):
                 also[g.building_name(rec.cls) or rec.cls] += 1
-
-    clusters = {int(o[1]) for o, *_ in ranked if o[0] == "cluster"}
-    clusters |= {int(o[1]) for o in fed if o[0] == "cluster"}
-    names = _cluster_names(st, clusters)
-
-    def display(o: tuple) -> str:
-        if o[0] == "factory":
-            return str(o[1])
-        if o[0] == "cluster":
-            return names.get(int(o[1]), f"cluster {o[1]}")
-        return "a loose machine"
-
-    out.candidates = [
-        Candidate(
-            kind="factory" if o[0] == "factory" else "cluster",
-            name=display(o),
-            proposal=int(o[1]) if o[0] == "cluster" else None,
-            machines=[r.leaf for r in members],
-            rate_share=round(share, 3),
-            fit=round(fit, 3),
-            bbox_m=_bbox_m(members),
-        )
-        for o, members, share, fit in ranked
-    ]
-    out.foreign = sorted(
-        Counter(label_of[m] for m in excluded).items(), key=lambda kv: (-kv[1], kv[0])
-    )
-    out.also_here = [
+    return [
         f"{n} {plural(name, n)}"
         for name, n in sorted(also.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
     ]
-    resource = {_leaf(row["instance"]): row["resource"] for row in prepared.request.node_rows}
-    out.node_owner = "; ".join(
+
+
+def _owner_name(owner: _Owner, cluster_names: dict[int, str]) -> str:
+    if owner.kind == "factory":
+        return str(owner.ref)
+    if owner.kind == "cluster":
+        return cluster_names.get(int(owner.ref), f"cluster {owner.ref}")
+    return "a loose machine"
+
+
+def _node_owner_note(
+    g: GameData,
+    prepared: PreparedPlan,
+    fed: dict[_Owner, list[_PlacedMachine]],
+    cluster_names: dict[int, str],
+) -> str:
+    """``its 3 iron ore nodes already feed “north smelters”``, one clause per other plant."""
+    resource = {
+        instance_leaf(row["instance"]): row["resource"] for row in prepared.request.node_rows
+    }
+    return "; ".join(
         f"its {len(rows)} {(g.item_name(resource.get(rows[0].node, '')) or 'resource').lower()} "
         f"{plural('node', len(rows))} already {'feeds' if len(rows) == 1 else 'feed'} "
-        f"“{display(o)}”"
-        for o, rows in sorted(fed.items(), key=lambda kv: (-len(kv[1]), str(kv[0][1])))
+        f"“{_owner_name(owner, cluster_names)}”"
+        for owner, rows in sorted(fed.items(), key=lambda kv: (-len(kv[1]), str(kv[0].ref)))
     )
-    if not kept:
-        return out
 
+
+def _decide_confidence(
+    out: BuiltAt,
+    kept: set[str],
+    excluded: set[str],
+    placed: dict[str, _PlacedMachine],
+    want: dict[tuple, float],
+    label_of: dict[str, str],
+    area: SearchArea,
+) -> None:
+    """Set ``out``'s confidence and scope: unsure with rivals or a thin top, else sure or likely."""
     top = out.candidates[0]
-    kept_share, _ = _coverage(_rates([recs[m] for m in kept]), want)
-    excluded_share, _ = _coverage(_rates([recs[m] for m in excluded]), want)
+    kept_share, _ = _coverage(_rate_by_job([placed[m] for m in kept]), want)
+    excluded_share, _ = _coverage(_rate_by_job([placed[m] for m in excluded]), want)
     rivals = [
         c
         for c in out.candidates[1:]
@@ -481,7 +488,7 @@ def _auto(g: GameData, st: WorldState, prepared: PreparedPlan, area: SearchArea)
         out.confidence = "unsure"
         out.scope_low = {m for m in kept if m not in label_of}
         out.scope = set(kept).union(*(set(c.machines) for c in rivals))
-        return out
+        return
     sure = (
         top.kind == "factory"
         and area.kind != "nodes"
@@ -490,26 +497,119 @@ def _auto(g: GameData, st: WorldState, prepared: PreparedPlan, area: SearchArea)
     )
     out.confidence = "sure" if sure else "likely"
     out.scope = kept
+
+
+def _detect_at_site(
+    g: GameData, st: WorldState, prepared: PreparedPlan, area: SearchArea
+) -> BuiltAt:
+    jobs = group_processes(prepared.solution)
+    want = {job.key: job.clock_sum for job in jobs if job.kind != "extractor"}
+    extractor_classes = {job.building_id for job in jobs if job.kind == "extractor"}
+    placed = _placed_machines(st)
+    out = BuiltAt(mode="auto", area=area, confidence="nothing", scope=set())
+
+    seeds = _seed_machines(placed, want, area)
+    plan_nodes = {
+        instance_leaf(row["instance"])
+        for row in prepared.request.node_rows
+        if row.get("kind") == "node"
+    }
+    on_nodes = [r for r in placed.values() if r.group == "extractors" and r.node in plan_nodes]
+    if not seeds and not on_nodes:
+        return out
+
+    label_of = {m: label.name for label in st.labels.labels for m in label.anchors}
+    proposals = st.proposals
+    proposal_of = {m: i for i, pr in enumerate(proposals) for m in pr.machines}
+    makes = {
+        proposal_of[r.leaf]
+        for r in placed.values()
+        if r.group != "extractors" and r.leaf in proposal_of
+    }
+
+    def owner_of(leaf: str) -> _Owner:
+        if leaf in label_of:
+            return _Owner("factory", label_of[leaf])
+        if leaf in proposal_of:
+            return _Owner("cluster", proposal_of[leaf])
+        return _Owner("loose", leaf)
+
+    grown, counted = _grow_into_clusters(seeds, placed, want, proposals, proposal_of)
+    ranked, by_owner = _rank_owners(counted, placed, want, owner_of)
+    top_owner = ranked[0].owner if ranked else None
+
+    # A machine another named factory holds never counts.
+    def ours(m: str) -> bool:
+        return m not in label_of or owner_of(m) == top_owner
+
+    kept = {m for m in counted if ours(m)}
+    excluded = counted - kept
+
+    node_extractors, fed = _attribute_node_extractors(
+        on_nodes, {owner_of(m) for m in kept}, owner_of, makes
+    )
+    for r in node_extractors:
+        kept.add(r.leaf)
+        if not ranked:
+            by_owner.setdefault(owner_of(r.leaf), []).append(r)
+    for i in grown:
+        kept |= {
+            m
+            for m in proposals[i].machines
+            if m in placed
+            and placed[m].group == "extractors"
+            and placed[m].cls in extractor_classes
+            and ours(m)
+        }
+    if not ranked:
+        ranked = [
+            _Ranked(owner, members, 0.0, 0.0)
+            for owner, members in sorted(by_owner.items(), key=lambda kv: -len(kv[1]))
+        ]
+
+    clusters = {int(c.owner.ref) for c in ranked if c.owner.kind == "cluster"}
+    clusters |= {int(owner.ref) for owner in fed if owner.kind == "cluster"}
+    cluster_names = _cluster_names(st, clusters)
+
+    out.candidates = [
+        Candidate(
+            kind="factory" if c.owner.kind == "factory" else "cluster",
+            name=_owner_name(c.owner, cluster_names),
+            proposal=int(c.owner.ref) if c.owner.kind == "cluster" else None,
+            machines=[r.leaf for r in c.members],
+            rate_share=round(c.share, 3),
+            fit=round(c.fit, 3),
+            bbox_m=_bbox_m(c.members),
+        )
+        for c in ranked
+    ]
+    out.foreign = sorted(
+        Counter(label_of[m] for m in excluded).items(), key=lambda kv: (-kv[1], kv[0])
+    )
+    out.also_here = _also_here(g, grown, proposals, placed, want, ours)
+    out.node_owner = _node_owner_note(g, prepared, fed, cluster_names)
+    if kept:
+        _decide_confidence(out, kept, excluded, placed, want, label_of, area)
     return out
 
 
 def detect(
     g: GameData,
     st: WorldState,
-    state: PlanState,
+    stored: PlanState,
     prepared: PreparedPlan,
     factory: str | None = None,
 ) -> BuiltAt:
     """What a stored plan counts as built. ``factory`` overrides the stored value for one
     call; the stored value always wins the count over detection (docs/planner_p4.md)."""
-    value = state.factory if factory is None else factory
+    value = stored.factory if factory is None else factory
     mode = mode_of(value)
     if mode == "world":
         return BuiltAt(mode="world", scope=None)
-    area = search_area(g, st, state, prepared)
+    area = search_area(g, st, stored, prepared)
     if mode == "none":
         out = BuiltAt(mode="none", area=area, scope=set())
-        seen = _auto(g, st, prepared, area) if area is not None else None
+        seen = _detect_at_site(g, st, prepared, area) if area is not None else None
         if seen is not None and seen.scope:
             out.hint = f"auto sees {len(seen.scope)} matching machines here"
         return out
@@ -520,9 +620,9 @@ def detect(
             name, machines = value, []
         if machines:
             out = BuiltAt(mode="picked", picked=name, scope=set(machines), area=area)
-            seen = _auto(g, st, prepared, area) if area is not None else None
+            seen = _detect_at_site(g, st, prepared, area) if area is not None else None
             top = seen.top if seen is not None and seen.scope else None
-            if top is not None and top.name != name and top.rate_share >= 0.5:
+            if top is not None and top.name != name and top.rate_share >= HINT_SHARE:
                 out.hint = (
                     f"auto sees {len(top.machines)} matching machines in “{top.name}” at the site"
                 )
@@ -534,7 +634,7 @@ def detect(
     if area is None:
         out = BuiltAt(mode="auto", confidence="no site", scope=None)
     else:
-        out = _auto(g, st, prepared, area)
+        out = _detect_at_site(g, st, prepared, area)
     out.fallback = fallback
     return out
 
@@ -544,14 +644,13 @@ def detect(
 
 def _row_figures(rows) -> tuple[int, int, int, float, float]:
     total = built = built_max = 0
-    need_rate = low_rate = high_rate = 0.0
+    low_rate = high_rate = 0.0
     for r in rows:
         total += r.need
         high = min(r.need, r.have)
         low = min(r.need, r.have if r.have_min is None else r.have_min)
         built += low
         built_max += high
-        need_rate += r.need_rate
         high_rate += min(r.need_rate, r.have_rate)
         low_rate += min(
             r.need_rate, r.have_rate if r.have_min is None else r.have_min * r.plan_clock
@@ -559,10 +658,10 @@ def _row_figures(rows) -> tuple[int, int, int, float, float]:
     return total, built, built_max, low_rate, high_rate
 
 
-def fill_progress(built: BuiltAt, rep: DiffReport, low: DiffReport | None = None) -> None:
+def fill_progress(built: BuiltAt, diff: DiffReport, low: DiffReport | None = None) -> None:
     """Progress figures from the matched diff; ``low`` is the strict set's diff when unsure."""
-    total, lo, hi, lo_rate, hi_rate = _row_figures(rep.rows)
-    need_rate = sum(r.need_rate for r in rep.rows) or 1.0
+    total, lo, hi, lo_rate, hi_rate = _row_figures(diff.rows)
+    need_rate = sum(r.need_rate for r in diff.rows) or 1.0
     built.total = total
     if built.mode == "auto" and built.confidence == "no site":
         built.built = built.built_max = None
@@ -573,5 +672,5 @@ def fill_progress(built: BuiltAt, rep: DiffReport, low: DiffReport | None = None
         built.built, built.built_max = lo, hi
         built.percent = round(100.0 * lo_rate / need_rate, 1)
         built.percent_max = round(100.0 * hi_rate / need_rate, 1)
-    short = sorted((r for r in rep.rows if r.build > 0), key=lambda r: (-r.build, r.process))
+    short = sorted((r for r in diff.rows if r.build > 0), key=lambda r: (-r.build, r.process))
     built.missing = [f"{r.build} {plural(r.building, r.build)} ({r.process})" for r in short[:3]]

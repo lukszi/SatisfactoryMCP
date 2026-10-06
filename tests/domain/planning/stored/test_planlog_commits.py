@@ -20,6 +20,7 @@ from satisfactory_mcp.domain.planning.stored.planlog import (
     PlanArgs,
     UnknownPlan,
     describe_op,
+    wording,
 )
 from tests.support.plan_log import BOLTED, CHAT, PAGE, head_bytes, site_value
 
@@ -282,7 +283,9 @@ def test_recipe_members_read_as_names_once_a_namer_is_set(monkeypatch):
     op = {"op": "add", "field": "banned", "member": "Recipe_UnpackageOilResidue_C"}
     assert describe_op(op) == "+banned Recipe_UnpackageOilResidue_C"
     monkeypatch.setattr(
-        planlog, "_namer", [lambda: {"Recipe_UnpackageOilResidue_C": "Unpackage Heavy Oil Residue"}]
+        wording,
+        "_recipe_name_source",
+        [lambda: {"Recipe_UnpackageOilResidue_C": "Unpackage Heavy Oil Residue"}],
     )
     assert describe_op(op) == "+banned Unpackage Heavy Oil Residue"
     assert describe_op({**op, "member": "Recycled"}) == "+banned Recycled"

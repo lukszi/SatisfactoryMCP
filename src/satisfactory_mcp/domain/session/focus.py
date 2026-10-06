@@ -16,6 +16,7 @@ from ...core import atomic
 __all__ = [
     "FOLLOW",
     "OPEN_WITHIN_S",
+    "SCHEMA",
     "VIEWS",
     "InvalidFocus",
     "is_open",
@@ -35,8 +36,7 @@ class InvalidFocus(ValueError):
 
 
 def path_for(world_id: str) -> Path:
-    safe = "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"
-    return config.ui_dir() / f"{safe}.json"
+    return config.ui_dir() / f"{config.world_file_stem(world_id)}.json"
 
 
 def _text(focus: dict, name: str, default: str = "") -> str:
@@ -73,7 +73,7 @@ def _selection(focus: dict) -> dict | None:
     return {name: _text(value, name) for name in ("kind", "label", "ref")}
 
 
-def clean(focus: dict) -> dict:
+def _clean(focus: dict) -> dict:
     """The stored shape of ``focus``, every field present; raises ``InvalidFocus``."""
     if not isinstance(focus, dict):
         raise InvalidFocus(f"focus must be an object, not {focus!r}")
@@ -92,7 +92,7 @@ def clean(focus: dict) -> dict:
 
 
 def write(world_id: str, focus: dict) -> dict:
-    out = clean(focus)
+    out = _clean(focus)
     out["heartbeat"] = time.time()
     path = path_for(world_id)
     path.parent.mkdir(parents=True, exist_ok=True)

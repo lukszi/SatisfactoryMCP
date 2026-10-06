@@ -1,33 +1,8 @@
 """What to change to get from the factory in the save to the factory in the plan.
 
-The hard part is not arithmetic, it is deciding which machine that already exists
-COUNTS toward the plan. Three rules do the work, and all three are forced by what the
-save actually stores rather than chosen for elegance.
-
-**Identity, never position.** A manufacturer is identified by ``(building, recipe)``,
-because ``mCurrentRecipe`` is a per-machine setting and is exactly what the player
-would have to change. A generator is identified by its building alone, because a
-generator has no recipe -- its fuel is whatever is piped into it, so two fuels are one
-build job. An extractor is identified by the node it occupies, which the save records
-directly and which is therefore an exact join.
-
-Class-only matching for manufacturers is the failure this design exists to avoid. This
-world has 36 Refineries; 5 run Alternate Heavy Oil Residue and 31 run seven other
-recipes, making copper, plastic and alumina. "You have 36 Refineries, build 10" is
-arithmetically true and would tell the player to break their copper line. Off-recipe
-machines are reported as a reuse pool and never counted.
-
-**Position seeds; clusters decide.** Which machines a stored plan may count is ``built``'s
-answer, handed in as ``scope`` (docs/planner_p4.md, "How built is found"). Here proximity
-decides only what to MENTION: which idle machines are plausibly reusable, and what stands
-among the plant without being in the plan.
-
-**Where identity is unavailable, emit a range.** Water Extractors have no recipe, and
-all 23 in this save point at ``FGWaterVolume`` objects that are not node keys (OQ5), so
-they cannot be matched at all. 31 needed against 23 built is reported as "build 8..27":
-the lower bound counts every pump in the world, the upper counts only those standing
-among the plan's own machines. A single number there would be a confident lie in
-whichever direction it fell.
+Deciding which existing machine COUNTS toward the plan is the hard part: identity never
+position, position only seeds, and a range where identity is unavailable. docs/planning.md
+§8.6 has the rules and the measurements that forced them.
 """
 
 from __future__ import annotations
@@ -35,15 +10,22 @@ from __future__ import annotations
 import hashlib
 import math
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
+from ....core.saveio.records import instance_leaf
 from ....core.text import plural
 from ...spatial import geo
 from ...spatial import nodes as nodes_mod
 from ...world.state import WorldState
-from ..solver.graph import chain_depth
+from ..layout.materials import cost_of
+from ..solver.graph import chain_depth_of_rates
 from ..solver.model import MW, Solution
 from ..solver.scenario import PlanRequest
+from .jobs import BuildJob, group_processes
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from .built import BuiltAt
 
 __all__ = [
     "NEIGHBOUR_RADIUS_M",
@@ -52,9 +34,9 @@ __all__ = [
     "DiffReport",
     "DiffRow",
     "build_diff",
-    "group_key",
     "machine_rate",
-    "rate_units",
+    "save_id",
+    "whole_machines",
 ]
 
 #: How close a machine must stand to one of the plan's own matched machines before it
@@ -88,7 +70,7 @@ class DiffRow:
     #: class standing among the plan's own, as opposed to every one in the world. None
     #: when the match is exact and ``have`` needs no interval.
     have_min: int | None = None
-    #: What this row is matched ON (see group_key). The join key for anything that needs
+    #: What this row is matched ON (see ``jobs.group_key``). The join key for anything that needs
     #: to say something else about the same build job, such as which startup wave it is in.
     key: tuple = ()
     #: instanceNames of the machines counted in ``have``, so a caller can ask the save
@@ -156,69 +138,8 @@ class DiffReport:
     slices: int
     anchor: tuple[float, float] | None
     save_id: str
-    #: ``built.BuiltAt`` when a stored plan was matched: where it was found and how sure.
-    built_at: object | None = None
-
-
-# ------------------------------------------------------------------- plan side
-
-
-def _resource_of(proc: dict) -> str:
-    """The single item an extractor column produces."""
-    produced = [item for item, rate in proc.get("rates", {}).items() if rate > 0]
-    return produced[0] if produced else ""
-
-
-def group_key(proc: dict) -> tuple:
-    """The identity a plan row is matched on, as a hashable tuple.
-
-    Public because it is the join between the two things this package says about one
-    machine: what to BUILD (here) and when to SWITCH IT ON (commission). Both must agree
-    on what counts as the same build job, and the only way to guarantee that is for both
-    to call this.
-    """
-    if proc["kind"] == "recipe":
-        return ("recipe", proc["building_id"], proc["recipe"])
-    if proc["kind"] == "generator":
-        return ("generator", proc["building_id"])
-    return ("extractor", proc["building_id"], _resource_of(proc), proc.get("purity", ""))
-
-
-def _group_processes(sol: Solution) -> list[dict]:
-    """Collapse solution rows into one entry per build job.
-
-    Only generators actually merge, and that is the point: the plan runs 176 Fuel
-    Generators on Fuel and 20 on Turbofuel, but that is 196 identical buildings and one
-    plumbing decision, not two different machines to place.
-    """
-    groups: dict[tuple, dict] = {}
-    for proc in sol.processes:
-        key = group_key(proc)
-        entry = groups.get(key)
-        if entry is None:
-            entry = {
-                "key": key,
-                "kind": proc["kind"],
-                "building_id": proc["building_id"] or "",
-                "building": proc["building"],
-                "recipe": proc.get("recipe"),
-                "resource": _resource_of(proc) if proc["kind"] == "extractor" else "",
-                "purity": proc.get("purity", ""),
-                "machines": 0,
-                "clock": 0.0,
-                "mw": 0.0,
-                "labels": [],
-                "rates": {},
-            }
-            groups[key] = entry
-        entry["machines"] += proc["machines"]
-        entry["clock"] += proc["machines"] * float(proc.get("clock") or 1.0)
-        entry["mw"] += proc["mw"]
-        entry["labels"].append((proc["label"], proc["machines"]))
-        for item, rate in proc.get("rates", {}).items():
-            if item != MW:
-                entry["rates"][item] = entry["rates"].get(item, 0.0) + rate
-    return list(groups.values())
+    #: Where a stored plan's built machines were found and how sure that is.
+    built_at: BuiltAt | None = None
 
 
 # ------------------------------------------------------------------- save side
@@ -227,11 +148,6 @@ def _group_processes(sol: Solution) -> list[dict]:
 def _xy(record: dict) -> tuple[float, float] | None:
     pos = record.get("pos")
     return (pos[0], pos[1]) if pos else None
-
-
-def _short(record: dict) -> str:
-    """The leaf of an instanceName -- the spelling every selector and health check takes."""
-    return str(record.get("instance") or "").rsplit(".", 1)[-1]
 
 
 def _nearest_m(
@@ -248,12 +164,12 @@ def machine_rate(record: dict) -> float:
     return 1.0 if clock is None else float(clock)
 
 
-def rate_units(rate: float, clock: float) -> int:
+def whole_machines(rate: float, clock: float) -> int:
     """Whole machines at ``clock`` that ``rate`` covers."""
     return math.floor(rate / clock + 1e-6) if clock > 0 else 0
 
 
-def _short_units(need_rate: float, have_rate: float, clock: float) -> int:
+def _machines_to_add(need_rate: float, have_rate: float, clock: float) -> int:
     """Machines at ``clock`` still to add before ``have_rate`` meets ``need_rate``."""
     gap = need_rate - have_rate
     return max(0, math.ceil(gap / clock - 1e-6)) if clock > 0 and gap > 0 else 0
@@ -273,7 +189,9 @@ class _SaveIndex:
     extractor_on: dict[str, dict]
 
 
-def _index(state: WorldState, request: PlanRequest, scope: set[str] | None = None) -> _SaveIndex:
+def _index_save(
+    state: WorldState, request: PlanRequest, scope: set[str] | None = None
+) -> _SaveIndex:
     """What the save already offers this plan.
 
     ``scope`` restricts reuse to one factory's machines. Without it, "you already have
@@ -282,7 +200,7 @@ def _index(state: WorldState, request: PlanRequest, scope: set[str] | None = Non
     """
 
     def inside(record: dict) -> bool:
-        return scope is None or record["instance"].rsplit(".", 1)[-1] in scope
+        return scope is None or instance_leaf(record["instance"]) in scope
 
     by_recipe: dict[tuple[str, str], list[dict]] = {}
     idle: dict[str, list[dict]] = {}
@@ -350,7 +268,7 @@ def _anchor(index: _SaveIndex) -> tuple[float, float] | None:
     return geo.centroid(points)
 
 
-def _save_id(state: WorldState) -> str:
+def save_id(state: WorldState) -> str:
     """Short hash of the machine census.
 
     Pairs with the plan id: same plan id and a different save id means the plan did not
@@ -370,25 +288,25 @@ def _save_id(state: WorldState) -> str:
 # ----------------------------------------------------------------- the matching
 
 
-def _matched(group: dict, index: _SaveIndex) -> list[dict]:
+def _machines_doing(job: BuildJob, index: _SaveIndex) -> list[dict]:
     """Machines in the save that already do this plan row's job.
 
     Recipe rows join on (building, recipe); a Refinery on another recipe is busy, not
     spare. Generator rows join on building only. Extractor rows join through the node,
     which is the only exact machine-level match the save supports.
     """
-    if group["kind"] == "recipe":
-        return list(index.by_recipe.get((group["building_id"], group["recipe"] or ""), []))
-    if group["kind"] == "generator":
-        return list(index.by_generator.get(group["building_id"], []))
+    if job.kind == "recipe":
+        return list(index.by_recipe.get((job.building_id, job.recipe or ""), []))
+    if job.kind == "generator":
+        return list(index.by_generator.get(job.building_id, []))
     return [
         actor
-        for row in index.tapped.get((group["building_id"], group["resource"], group["purity"]), [])
+        for row in index.tapped.get((job.building_id, job.resource, job.purity), [])
         if (actor := index.extractor_on.get(row["instance"])) is not None
     ]
 
 
-def _node_backed(group: dict, index: _SaveIndex) -> bool:
+def _node_backed(job: BuildJob, index: _SaveIndex) -> bool:
     """Whether this extractor row has any node in scope to join against.
 
     Data-driven rather than a hardcoded class check: water volumes are simply absent
@@ -397,22 +315,22 @@ def _node_backed(group: dict, index: _SaveIndex) -> bool:
     does not cover.
     """
     return bool(
-        index.tapped.get((group["building_id"], group["resource"], group["purity"]))
-        or index.free.get((group["resource"], group["purity"]))
+        index.tapped.get((job.building_id, job.resource, job.purity))
+        or index.free.get((job.resource, job.purity))
     )
 
 
-def _plan_clock(group: dict) -> float:
+def _plan_clock(job: BuildJob) -> float:
     """The clock the plan runs this job at, 1.0 when it only differs by a derived ratio."""
-    clock = group["clock"] / group["machines"] if group["machines"] else 1.0
+    clock = job.clock_sum / job.machines if job.machines else 1.0
     return 1.0 if abs(clock - 1.0) <= RECLOCK_TOLERANCE else clock
 
 
-def _reclock_note(records: list[dict], to_build: int, group: dict) -> str:
+def _reclock_note(records: list[dict], to_build: int, job: BuildJob) -> str:
     """A note when the built clocks plus the machines still to build at the plan's clock
     miss the plan's total, or "" when they meet it. More machines at a lower clock is
     the same rate, so neither the count nor one machine's clock decides it."""
-    need, planned = group["machines"], group["clock"]
+    need, planned = job.machines, job.clock_sum
     if not records or not need or planned <= 0:
         return ""
     each = planned / need
@@ -422,154 +340,202 @@ def _reclock_note(records: list[dict], to_build: int, group: dict) -> str:
     return f"clocks give {ratio * 100:.0f}% of the planned rate (plan: {need} at {each * 100:.4g}%)"
 
 
+@dataclass
+class _Notes:
+    """A row's notes in chat's words and in the page's, which leave some out or reword them."""
+
+    chat: list[str] = field(default_factory=list)
+    page: list[str] = field(default_factory=list)
+
+    def both(self, text: str) -> None:
+        self.chat.append(text)
+        self.page.append(text)
+
+
+def _class_count_range(
+    job: BuildJob,
+    index: _SaveIndex,
+    matched_points: list[tuple[float, float]],
+    need_rate: float,
+    plan_clock: float,
+) -> tuple[list[dict], list[dict], int, int]:
+    """Count a job with no node to join on by its class: (machines nearest first, the ones
+    among the plant, the most still to build, the fewest already built)."""
+    records = list(index.by_extractor_class.get(job.building_id, []))
+    near = [
+        r
+        for r in records
+        if (d := _nearest_m(_xy(r), matched_points)) is not None and d <= NEIGHBOUR_RADIUS_M
+    ]
+    near_rate = sum(machine_rate(r) for r in near)
+    build_max = _machines_to_add(need_rate, near_rate, plan_clock)
+    have_min = whole_machines(near_rate, plan_clock)
+    # Nearest first, so anything downstream that samples this row's machines samples the
+    # ones plausibly at the plant before the ones 2.5 km away; no count changes.
+    close = {id(r) for r in near}
+    return [*near, *(r for r in records if id(r) not in close)], near, build_max, have_min
+
+
+def _free_node_targets(
+    job: BuildJob, index: _SaveIndex, anchor: tuple[float, float] | None, count: int
+) -> list[tuple[str, float]]:
+    """The ``count`` free nodes nearest the anchor to build this extractor job on."""
+
+    def metres(row: dict) -> float:
+        return geo.distance_m((row["x"], row["y"]), anchor) if anchor else 0.0
+
+    free = sorted(index.free.get((job.resource, job.purity), []), key=metres)
+    return [(instance_leaf(r.get("instance")), metres(r)) for r in free[: max(0, count)]]
+
+
+def _claim_idle(
+    job: BuildJob,
+    index: _SaveIndex,
+    matched_points: list[tuple[float, float]],
+    claimed_idle: set[str],
+    build: int,
+) -> list[dict]:
+    """Idle machines of this job's class among the plant, up to ``build``, claimed once."""
+    reassigned_machines: list[dict] = []
+    if job.kind != "recipe" or build <= 0:
+        return reassigned_machines
+    for idle_machine in index.idle.get(job.building_id, []):
+        if len(reassigned_machines) >= build:
+            break
+        key = idle_machine.get("instance") or ""
+        if key in claimed_idle:
+            continue
+        distance = _nearest_m(_xy(idle_machine), matched_points)
+        if distance is not None and distance <= NEIGHBOUR_RADIUS_M:
+            claimed_idle.add(key)
+            reassigned_machines.append(idle_machine)
+    return reassigned_machines
+
+
+def _choose_verb(unpause: list[dict], reassigned: int, build: int) -> tuple[str, int]:
+    """The one action a row asks for, free ones first: unpause, then set a recipe, then build."""
+    if unpause:
+        return "UNPAUSE", len(unpause)
+    if reassigned:
+        return "SETRECIPE", reassigned
+    if build > 0:
+        return "BUILD", build
+    return "OK", 0
+
+
+def _process_label(job: BuildJob) -> str:
+    if job.kind == "extractor":
+        return job.labels[0][0].split(" on ", 1)[-1]
+    return job.labels[0][0] if len(job.labels) == 1 else job.building
+
+
 def _row_for(
     state: WorldState,
-    group: dict,
+    job: BuildJob,
     index: _SaveIndex,
     stage: int,
     anchor: tuple[float, float] | None,
     matched_points: list[tuple[float, float]],
     claimed_idle: set[str],
 ) -> DiffRow:
-    need = group["machines"]
-    plan_clock = _plan_clock(group)
+    need = job.machines
+    plan_clock = _plan_clock(job)
     need_rate = need * plan_clock
-    records = _matched(group, index)
-    notes: list[str] = []
-    page: list[str] = []
+    records = _machines_doing(job, index)
+    notes = _Notes()
     build_max: int | None = None
     have_min: int | None = None
     targets: list[tuple[str, float]] = []
     near: list[dict] = []
 
-    if group["kind"] == "extractor" and not _node_backed(group, index):
+    if job.kind == "extractor" and not _node_backed(job, index):
         # Nothing to join against, so fall back to counting the class. That cannot say
         # which pump serves which plant, so the answer has to be an interval.
-        records = list(index.by_extractor_class.get(group["building_id"], []))
-        near = [
-            r
-            for r in records
-            if (d := _nearest_m(_xy(r), matched_points)) is not None and d <= NEIGHBOUR_RADIUS_M
-        ]
-        near_rate = sum(machine_rate(r) for r in near)
-        build_max = _short_units(need_rate, near_rate, plan_clock)
-        have_min = rate_units(near_rate, plan_clock)
-        # Nearest first, so anything downstream that samples this row's machines samples
-        # the ones plausibly at the plant before the ones 2.5 km away. It changes no
-        # count -- both bounds are already fixed above -- only which machines get asked.
-        close = {id(r) for r in near}
-        records = [*near, *(r for r in records if id(r) not in close)]
-        notes.append("no node link (OQ5), low bound counts every one built")
-        if len(near) != len(records):
-            page.append("not tied to a node, so built is a range")
-    elif group["kind"] == "extractor":
-        free = sorted(
-            index.free.get((group["resource"], group["purity"]), []),
-            key=lambda r: geo.distance_m((r["x"], r["y"]), anchor) if anchor else 0.0,
+        records, near, build_max, have_min = _class_count_range(
+            job, index, matched_points, need_rate, plan_clock
         )
-        targets = [
-            (
-                _short(r),
-                geo.distance_m((r["x"], r["y"]), anchor) if anchor else 0.0,
-            )
-            for r in free[: max(0, need - len(records))]
-        ]
+        notes.chat.append("no node link (OQ5), low bound counts every one built")
+        if len(near) != len(records):
+            notes.page.append("not tied to a node, so built is a range")
+    elif job.kind == "extractor":
+        targets = _free_node_targets(job, index, anchor, need - len(records))
 
     have_rate = sum(machine_rate(r) for r in records)
-    have = rate_units(have_rate, plan_clock)
+    have = whole_machines(have_rate, plan_clock)
     paused = [r for r in records if r.get("paused")]
     unpause = paused[: max(0, need - (have - len(paused)))]
-    build = _short_units(need_rate, have_rate, plan_clock)
+    build = _machines_to_add(need_rate, have_rate, plan_clock)
 
-    reused: list[dict] = []
-    setrecipe = 0
-    if group["kind"] == "recipe" and build > 0:
-        for cand in index.idle.get(group["building_id"], []):
-            if setrecipe >= build:
-                break
-            key = cand.get("instance") or ""
-            if key in claimed_idle:
-                continue
-            distance = _nearest_m(_xy(cand), matched_points)
-            if distance is not None and distance <= NEIGHBOUR_RADIUS_M:
-                claimed_idle.add(key)
-                setrecipe += 1
-                reused.append(cand)
-        build -= setrecipe
+    reassigned_machines = _claim_idle(job, index, matched_points, claimed_idle, build)
+    reassigned = len(reassigned_machines)
+    build -= reassigned
     if build_max is not None:
         build_max = max(build, build_max)
 
-    verb, count = "OK", 0
-    if unpause:
-        verb, count = "UNPAUSE", len(unpause)
-    elif setrecipe:
-        verb, count = "SETRECIPE", setrecipe
-    elif build > 0:
-        verb, count = "BUILD", build
+    verb, count = _choose_verb(unpause, reassigned, build)
 
     if verb != "BUILD" and build > 0:
-        notes.append(f"then BUILD {build}..{build_max}" if build_max else f"then BUILD {build}")
-    if setrecipe:
-        away = [d for d in (_nearest_m(_xy(r), [anchor] if anchor else []) for r in reused) if d]
+        notes.chat.append(
+            f"then BUILD {build}..{build_max}" if build_max else f"then BUILD {build}"
+        )
+    if reassigned:
+        away = [
+            d
+            for d in (_nearest_m(_xy(r), [anchor] if anchor else []) for r in reassigned_machines)
+            if d
+        ]
         mean = sum(away) / len(away) if away else None
-        idle = f"{setrecipe} idle {plural(group['building'], setrecipe)}"
+        idle = f"{reassigned} idle {plural(job.building, reassigned)}"
         where = f" {mean / 1000:.1f}km out" if mean is not None else ""
-        notes.append(f"{idle}{where}, no output today")
-        page.append(f"{idle}{f' {mean:,.0f} m out' if mean is not None else ''}, no output today")
+        notes.chat.append(f"{idle}{where}, no output today")
+        notes.page.append(
+            f"{idle}{f' {mean:,.0f} m out' if mean is not None else ''}, no output today"
+        )
 
     if len(paused) > len(unpause) and (have_min is None or have_min >= need):
         spare = len(paused) - len(unpause)
-        notes.append(f"{spare} {'more ' if unpause else ''}paused, not needed to cover this job")
-        page.append(notes[-1])
+        notes.both(f"{spare} {'more ' if unpause else ''}paused, not needed to cover this job")
 
     if have_min is None:
-        reclock = _reclock_note([*records, *reused], build, group)
+        reclock = _reclock_note([*records, *reassigned_machines], build, job)
     else:
-        reclock = _reclock_note(records[: len(near)], build_max or 0, group)
+        reclock = _reclock_note(records[: len(near)], build_max or 0, job)
     if reclock:
         # Not a change the plan asks for, so it never becomes the verb.
-        notes.append(reclock)
-        page.append(notes[-1])
+        notes.both(reclock)
 
-    if len(group["labels"]) > 1:
-        notes.append(
-            " + ".join(f"{n} on {lbl.rsplit(' on ', 1)[-1]}" for lbl, n in group["labels"])
-        )
-        page.append(notes[-1])
-    elif group["kind"] == "recipe" and have and verb == "BUILD":
+    if len(job.labels) > 1:
+        notes.both(" + ".join(f"{n} on {lbl.rsplit(' on ', 1)[-1]}" for lbl, n in job.labels))
+    elif job.kind == "recipe" and have and verb == "BUILD":
         # Pre-empts "but I already own 36 Refineries": 31 of them are making copper,
         # plastic and alumina, and counting them would tell the player to break those.
         busy = sum(
             len(v)
             for (cls, rid), v in index.by_recipe.items()
-            if cls == group["building_id"] and rid != group["recipe"]
+            if cls == job.building_id and rid != job.recipe
         )
         if busy:
-            notes.append(f"{busy} {plural(group['building'], busy)} busy on other recipes")
-            page.append(notes[-1])
-    if group["building_id"] and state.built(group["building_id"]) == 0:
-        notes.append("NEW BUILDING TYPE")
+            notes.both(f"{busy} {plural(job.building, busy)} busy on other recipes")
+    if job.building_id and state.built(job.building_id) == 0:
+        notes.chat.append("NEW BUILDING TYPE")
 
-    added = build + len(unpause) + setrecipe
-    per_machine = group["mw"] / group["machines"] if group["machines"] else 0.0
+    added = build + len(unpause) + reassigned
+    per_machine = job.mw / job.machines if job.machines else 0.0
+    acted = unpause if verb == "UNPAUSE" else reassigned_machines
 
     return DiffRow(
         stage=stage,
-        key=group["key"],
-        have_instances=[_short(r) for r in records],
-        act_instances=[_short(r) for r in (unpause if verb == "UNPAUSE" else reused)]
+        key=job.key,
+        have_instances=[instance_leaf(r.get("instance")) for r in records],
+        act_instances=[instance_leaf(r.get("instance")) for r in acted]
         if verb in ("UNPAUSE", "SETRECIPE")
         else [],
         have_min=have_min,
         verb=verb,
         count=count,
-        process=(
-            group["labels"][0][0].split(" on ", 1)[-1]
-            if group["kind"] == "extractor"
-            else (group["labels"][0][0] if len(group["labels"]) == 1 else group["building"])
-        ),
-        building_id=group["building_id"],
-        building=group["building"],
+        process=_process_label(job),
+        building_id=job.building_id,
+        building=job.building,
         need=need,
         have=have,
         build=build,
@@ -579,10 +545,10 @@ def _row_for(
             for d in (_nearest_m(_xy(r), [anchor] if anchor else []) for r in records)
             if d is not None
         ),
-        reuse=setrecipe,
+        reuse=reassigned,
         targets=targets,
-        note="; ".join(notes),
-        page_note="; ".join(page),
+        note="; ".join(notes.chat),
+        page_note="; ".join(notes.page),
         delta_mw=added * per_machine,
         need_rate=need_rate,
         have_rate=have_rate,
@@ -594,7 +560,7 @@ def _row_for(
 # ------------------------------------------------------------ cost, neighbours
 
 
-def _cost(game: GameData, state: WorldState, rows: list[DiffRow]) -> list[CostLine]:
+def _shortfall_lines(game: GameData, state: WorldState, rows: list[DiffRow]) -> list[CostLine]:
     """Materials for the build counts, against what the player can actually spend.
 
     Uses the LOWER bound of any range, since that is what will certainly be built, and
@@ -603,11 +569,10 @@ def _cost(game: GameData, state: WorldState, rows: list[DiffRow]) -> list[CostLi
     """
     needed: dict[str, float] = {}
     for row in rows:
-        b = game.buildings.get(row.building_id)
-        if b is None or row.build <= 0:
+        if row.build <= 0:
             continue
-        for flow in b.build_cost:
-            needed[flow.item] = needed.get(flow.item, 0.0) + flow.amount * row.build
+        for item, amount in cost_of(game, row.building_id, row.build).parts.items():
+            needed[item] = needed.get(item, 0.0) + amount
 
     stock = state.stock()
     produced: dict[str, int] = {}
@@ -646,26 +611,18 @@ def _cost(game: GameData, state: WorldState, rows: list[DiffRow]) -> list[CostLi
 def _neighbours(
     game: GameData,
     state: WorldState,
-    groups: list[dict],
+    jobs: list[BuildJob],
     matched_points: list[tuple[float, float]],
     claimed_idle: set[str],
 ) -> list[tuple[str, int]]:
     """Machines standing among the plan's own that the plan does not include.
 
-    Reported, never actioned. There is deliberately no DISMANTLE verb: this is the
-    player's factory. Three guards keep it from being alarming nonsense:
-
-    * the proximity radius, which excludes this world's 32 Coal Generators at 887 m;
-    * generators are skipped entirely, since every generator in the world "produces"
-      the MW a max_mw plan produces and would all look superseded;
-    * and a neighbour must share an ITEM with the plan. Without that last test the
-      block filled up with 22 Iron Ingot Smelters and 19 Iron Rod Constructors -- the
-      main base, swept in because one matched Assembler happens to stand in it. What
-      is worth naming is the machines contending for the same materials: the Diluted
-      Packaged Fuel route the plan's Blenders replace.
+    Reported, never actioned: there is deliberately no DISMANTLE verb. The radius, the
+    skipped generators and the shared-item test keep it from naming the whole main base
+    (docs/planning.md §8.6).
     """
-    in_plan = {(g["building_id"], g["recipe"]) for g in groups if g["kind"] == "recipe"}
-    plan_items = {item for g in groups for item in g["rates"] if item != MW}
+    in_plan = {(j.building_id, j.recipe) for j in jobs if j.kind == "recipe"}
+    plan_items = {item for j in jobs for item in j.rates if item != MW}
 
     counts: dict[str, int] = {}
     for m in state.projection.get("machines", ()):
@@ -704,37 +661,26 @@ def build_diff(
 
     ``scope`` limits what counts as already built to one factory's machines.
     """
-    index = _index(state, request, scope)
+    index = _index_save(state, request, scope)
     anchor = _anchor(index)
-    groups = _group_processes(sol)
+    jobs = group_processes(sol)
 
     # Build order is chain depth over the plan's own item graph, condensed so that the
-    # genuine Recycled Plastic / Recycled Rubber cycle shares a stage instead of
-    # running the relaxation to its cap. Extractors fall out at the bottom and
-    # generators at the top without being special-cased.
-    depths = chain_depth(
-        [
-            (
-                [i for i, rate in g["rates"].items() if rate < 0],
-                [i for i, rate in g["rates"].items() if rate > 0],
-            )
-            for g in groups
-        ]
-    )
-    for group, depth in zip(groups, depths):
-        group["depth"] = depth
-    stage_of = {d: n + 1 for n, d in enumerate(sorted({g["depth"] for g in groups}))}
+    # genuine Recycled Plastic / Recycled Rubber cycle shares a stage.
+    for job, depth in zip(jobs, chain_depth_of_rates([job.rates for job in jobs])):
+        job.depth = depth
+    stage_of = {d: n + 1 for n, d in enumerate(sorted({job.depth for job in jobs}))}
 
     # Every matched machine, gathered before any row is built: the proximity tests need
     # the whole plant, not the part of it seen so far.
     matched_points = [
-        p for g in groups for p in (_xy(r) for r in _matched(g, index)) if p is not None
+        p for job in jobs for p in (_xy(r) for r in _machines_doing(job, index)) if p is not None
     ]
 
     claimed_idle: set[str] = set()
     rows = [
-        _row_for(state, g, index, stage_of[g["depth"]], anchor, matched_points, claimed_idle)
-        for g in sorted(groups, key=lambda g: (g["depth"], -g["machines"]))
+        _row_for(state, job, index, stage_of[job.depth], anchor, matched_points, claimed_idle)
+        for job in sorted(jobs, key=lambda j: (j.depth, -j.machines))
     ]
 
     power = state.power_report(biomass=biomass)
@@ -767,8 +713,8 @@ def build_diff(
 
     return DiffReport(
         rows=rows,
-        cost=_cost(game, state, rows),
-        neighbours=_neighbours(game, state, groups, matched_points, claimed_idle),
+        cost=_shortfall_lines(game, state, rows),
+        neighbours=_neighbours(game, state, jobs, matched_points, claimed_idle),
         notes=notes,
         to_build=sum(r.build for r in rows),
         to_build_max=sum(r.build_max if r.build_max is not None else r.build for r in rows),
@@ -776,5 +722,5 @@ def build_diff(
         deficit_mw=deficit,
         slices=slices,
         anchor=anchor,
-        save_id=_save_id(state),
+        save_id=save_id(state),
     )

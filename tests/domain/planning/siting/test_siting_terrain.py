@@ -76,11 +76,11 @@ def test_the_installed_provider_fills_a_dragged_pad_and_keeps_a_stated_z(field):
     dragged = {"origin_m": [3.0, 2.0, None], "footprint_m": [8.0, 8.0], "footprint_source": "given"}
     try:
         siting.set_ground_z(siting.terrain_provider(lambda: field))
-        assert siting.check(dragged)["origin_m"][2] == 3.0
+        assert siting.normalise_record(dragged)["origin_m"][2] == 3.0
         typed = {**dragged, "origin_m": [3.0, 2.0, 12.5]}
-        assert siting.check(typed)["origin_m"][2] == 12.5
+        assert siting.normalise_record(typed)["origin_m"][2] == 12.5
         siting.set_ground_z(siting.terrain_provider(lambda: None))
-        assert siting.check(dragged)["origin_m"][2] is None
+        assert siting.normalise_record(dragged)["origin_m"][2] is None
     finally:
         siting.set_ground_z(None)
 

@@ -192,9 +192,9 @@ def drop(world_id: str, n: int, rev: int) -> dict: ...
 def live(st) -> list[dict]: ...                  # rows as PinRow (§5.2), gone/selector filled
 def get(st, n: int) -> dict: ...                 # PinMissing
 def parse(text: str) -> int | None: ...          # "pin:3" -> 3, case-insensitive, else None
-def place(st, n: int) -> tuple[tuple[float, float], str]: ...        # cm + echo, or PinError
-def terms(st, n: int, grammar: str) -> tuple[list[str], str]: ...    # §7 table; (terms, echo)
-def canonical(st, field: str, members: list) -> tuple[list, list[str]]: ...  # writer rewrite (§7.2)
+def position(st, n: int) -> tuple[tuple[float, float], str]: ...     # cm + echo, or PinError
+def selector_terms(st, n: int, grammar: str) -> tuple[list[str], str]: ...  # §7; (terms, echo)
+def expand(st, field: str, members: list) -> tuple[list, list[str]]: ...  # writer rewrite (§7.2)
 ```
 
 ---
@@ -222,7 +222,7 @@ the plan lock the server adds `remove required R'` for every other required reci
 the head holds (`swaps.replaced_required`, C3), merged by M1 like the rest, so one required since
 the page's base refuses with the usual 409 instead of leaving two.
 
-`push_ops`, `push_args`, `create_plan` (planlog.py) additionally run `pins.canonical` on
+`push_ops`, `push_args`, `create_plan` (planlog.py) additionally run `pins.expand` on
 `sources`, `required`, `banned` members before the store (§7.2): a pin that cannot stand there
 is a 400 naming it. Every pin write appends one journal entry (§8).
 
@@ -355,9 +355,9 @@ since you last looked: … · journal: 14:06 page pinned pin:4 process Blender �
 | node sources | `spatial/nodes/selectors.py` term `pin:N` | node, field | `node:<id>` (field: one per member) |
 | machine select / `factory=` | `factories/select.py` term `pin:N` (with `-` exclusion) | machine, factory | `machine:<instance>` / `label:<name>` |
 | `plan=` | `recall.recall_plan` | plan | the plan key |
-| `required=`, `exclude_recipes=`/`banned` | tool boundary / planlog routes, via `pins.canonical` | process | recipe class id |
+| `required=`, `exclude_recipes=`/`banned` | tool boundary / planlog routes, via `pins.expand` | process | recipe class id |
 
-All five call `pins.terms` / `pins.place`; nothing else parses `pin:`.
+All five call `pins.selector_terms` / `pins.position`; nothing else parses `pin:`.
 
 ### 7.2 Stored plans never hold `pin:`
 
@@ -494,7 +494,7 @@ Not measured: a late-game save with every alternate unlocked (more options per i
 | File | Owner | Covers |
 |---|---|---|
 | `tests/test_pins.py` (new) | backend | store: create/dedupe/rename/drop, numbers never reused, `rev`/`version`, 409-equivalent `PinStale`, label length, 500 cap, newer schema refused, torn/missing file reads empty; field = cluster of the node; gone rules per kind |
-| `tests/test_pin_selectors.py` (new) | backend | each §7.1 row: accepted kinds resolve and echo; refused kinds use the §6.2 words; `near:pin:N@r` in both selector languages; deleted/gone pins refuse; `pins.canonical` rewrites for stored plans |
+| `tests/test_pin_selectors.py` (new) | backend | each §7.1 row: accepted kinds resolve and echo; refused kinds use the §6.2 words; `near:pin:N@r` in both selector languages; deleted/gone pins refuse; `pins.expand` rewrites for stored plans |
 | `tests/test_swaps.py` (new) | backend | `require_ops`/`ban_ops`/`free_ops` shapes (other required for the same item removed; literal banned removed); delta equals `result_delta` of the two solves; pattern ban → `solved: false`; locked hidden with spoilers off; order is by status, not delta |
 | `tests/test_web_planner.py` | backend | `graph` nodes/edges/ranks on a known request; row `id`/`depth`; infeasible → empty graph; `/api/plan/alternates` 200/400/404; `DeltaResponse.rows` added/changed/removed |
 | `tests/test_web_pins.py` (new) | backend | every route and status code in §5.1 incl. 409 bodies and guard refusal (bad Host on POST/PATCH/DELETE); journal entry per write; push/create with `pin:` members stored canonical |

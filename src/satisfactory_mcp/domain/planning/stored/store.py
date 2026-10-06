@@ -11,43 +11,30 @@ migration can read ``plans/<world>.json``; docs/plan_log.md has the layout.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+from typing import TypeVar
 
 from .... import config
 from ....core import schema
+from .plan_args import PLAN_ARGS
 
-__all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore"]
+__all__ = ["PLAN_ARGS", "SCHEMA", "Plan", "PlanStore", "find_by_name"]
 
 SCHEMA = 1
 
-#: Argument names a plan captures: everything build_scenario takes that changes the
-#: answer, and so not `limit` (presentation) or `save`/`world` (which save was read).
-PLAN_ARGS = (
-    "objective",
-    "target_item",
-    "sources",
-    "exports",
-    "export_minimums",
-    "only_free_nodes",
-    "allow_sinks",
-    "clocks",
-    "extractor_clocks",
-    "machine_cost_mw",
-    "exclude_recipes",
-    "required",
-    "only_recipes",
-    "water_extractors",
-    "sloops",
-    "belt_ipm",
-    "pipe_m3min",
-    "recycle_once",
-    "supplied",
-    "payback_hours",
-    "overclock_last",
-    "power_price",
-    "row_overclock",
-)
+_Item = TypeVar("_Item")
+
+
+def find_by_name(items: list[_Item], name_of: Callable[[_Item], str], needle: str) -> _Item | None:
+    """The first item named ``needle`` (any case), else the one whose name contains it."""
+    wanted = needle.strip().casefold()
+    exact = [x for x in items if name_of(x).casefold() == wanted]
+    if exact:
+        return exact[0]
+    hits = [x for x in items if wanted in name_of(x).casefold()]
+    return hits[0] if len(hits) == 1 else None
 
 
 @dataclass
@@ -87,8 +74,7 @@ class PlanStore:
     @staticmethod
     def path_for(world_id: str) -> Path:
         """The legacy file; ``planlog.PlanLog.dir_for`` is the same path without ``.json``."""
-        safe = "".join(c for c in world_id if c.isalnum() or c in "-_") or "world"
-        return config.plans_dir() / f"{safe}.json"
+        return config.plans_dir() / f"{config.world_file_stem(world_id)}.json"
 
     @classmethod
     def load(cls, world_id: str, session_name: str = "") -> PlanStore:
@@ -107,9 +93,4 @@ class PlanStore:
         )
 
     def find(self, name: str) -> Plan | None:
-        needle = name.strip().casefold()
-        for plan in self.plans:
-            if plan.name.casefold() == needle:
-                return plan
-        hits = [p for p in self.plans if needle in p.name.casefold()]
-        return hits[0] if len(hits) == 1 else None
+        return find_by_name(self.plans, lambda p: p.name, name)

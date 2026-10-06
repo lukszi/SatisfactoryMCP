@@ -26,8 +26,8 @@ from satisfactory_mcp.domain.planning.progress.diff import (
     DiffReport,
     DiffRow,
     build_diff,
-    group_key,
 )
+from satisfactory_mcp.domain.planning.progress.jobs import group_key
 from satisfactory_mcp.domain.planning.progress.stages import track
 from satisfactory_mcp.domain.planning.progress.startup import commission
 from satisfactory_mcp.domain.planning.solver.prepare import prepare

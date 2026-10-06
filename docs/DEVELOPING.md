@@ -44,6 +44,8 @@ tools/mapgen/    the map generators, a uv workspace member (python -m mapgen)
 the save format across six `saveVersion`s, and the server talks to it through one subprocess
 boundary, so a torn autosave or a format change cannot take the server down.
 
+In planning signatures a PlanState is `stored`; `state`/`st` is a WorldState.
+
 ### Test suite
 
 **Two runs.** The default run deselects `integration`; `-m integration` needs `Docs.json` and

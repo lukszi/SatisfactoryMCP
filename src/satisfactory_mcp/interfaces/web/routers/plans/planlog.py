@@ -368,7 +368,7 @@ def create_plan(
     st = require_world(request, save, world)
     log = plan_log(st)
     try:
-        canon, _said = pins.canonical_args(st, body["args"])
+        canon, _said = pins.expand_args(st, body["args"])
     except pins.PinError as exc:
         return error_response(str(exc), 400)
     try:
@@ -444,7 +444,7 @@ def push_ops(
     st, log = _world_and_log(request, key, save, world)
     sav = _save_token(st, body.get("sav"))
     try:
-        ops, _said = pins.canonical_ops(st, body["ops"])
+        ops, _said = pins.expand_ops(st, body["ops"])
     except pins.PinError as exc:
         return error_response(str(exc), 400)
     item = body.get("require_item")
@@ -487,7 +487,7 @@ def push_args(
     st, log = _world_and_log(request, key, save, world)
     sav = _save_token(st, body.get("sav"))
     try:
-        args, _said = pins.canonical_args(st, body["args"])
+        args, _said = pins.expand_args(st, body["args"])
     except pins.PinError as exc:
         return error_response(str(exc), 400)
     try:

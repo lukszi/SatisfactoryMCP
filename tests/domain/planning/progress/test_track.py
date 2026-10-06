@@ -35,7 +35,7 @@ def test_rows_follow_the_diff_with_stable_ids_and_ranges_kept(world):
     state = _plan(world)
     out = track_mod.track_view(world.game, world, state)
     report = build_diff_report(world.game, world, state.kwargs(), plan=state.key, stored=state)
-    assert [r["id"] for r in out["rows"]] == [track_mod.job_id(r.key) for r in report.rep.rows]
+    assert [r["id"] for r in out["rows"]] == [track_mod.job_id(r.key) for r in report.diff.rows]
     assert all(r["id"].startswith("job:") for r in out["rows"])
     water = next(r for r in out["rows"] if r["building"] == "Water Extractor")
     assert water["id"] == "job:extractor|Build_WaterPump_C|Desc_Water_C|normal"
@@ -61,7 +61,10 @@ def test_positions_are_metres_and_the_box_covers_them(world):
     acted = [r for r in out["rows"] if r["act"]]
     assert acted, "the fixture plan has an unpause or set-recipe row"
     for row in out["rows"]:
-        assert len(row["act"]) <= track_mod.CAP and len(row["targets"]) <= track_mod.CAP
+        assert (
+            len(row["act"]) <= track_mod.MAX_LISTED_INSTANCES
+            and len(row["targets"]) <= track_mod.MAX_LISTED_INSTANCES
+        )
         for m in row["act"]:
             pos = by_leaf[m["instance"]]
             assert m["x_m"] == round(pos[0] / 100, 1) and m["y_m"] == round(pos[1] / 100, 1)
@@ -75,7 +78,7 @@ def test_positions_are_metres_and_the_box_covers_them(world):
 
 
 def test_act_and_targets_are_capped(world, monkeypatch):
-    monkeypatch.setattr(track_mod, "CAP", 1)
+    monkeypatch.setattr(track_mod, "MAX_LISTED_INSTANCES", 1)
     out = track_mod.track_view(world.game, world, _plan(world))
     assert all(len(r["act"]) <= 1 and len(r["targets"]) <= 1 for r in out["rows"])
     assert all(r["selectors"].count(",") == 0 for r in out["rows"])
@@ -133,7 +136,7 @@ def test_tools_default_to_the_same_measured_headroom_as_the_page(world):
     state = _plan(world)
     out = track_mod.track_view(world.game, world, state)
     report = build_commission_report(world.game, world, state.kwargs(), None, stored=state)
-    assert report.head_source == "measured from the save"
+    assert report.headroom_source == "measured from the save"
     assert partition_id(report.tracking) == out["partition_id"]
 
 
@@ -141,7 +144,7 @@ def test_tools_and_track_share_one_partition(world):
     state = _plan(world, headroom_mw=2000)
     out = track_mod.track_view(world.game, world, state)
     report = build_commission_report(world.game, world, state.kwargs(), None, stored=state)
-    assert report.head_source == "stored on the plan"
+    assert report.headroom_source == "stored on the plan"
     assert partition_id(report.tracking) == out["partition_id"]
 
 

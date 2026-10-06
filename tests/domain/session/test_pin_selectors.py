@@ -6,7 +6,7 @@ import pytest
 
 from satisfactory_mcp.domain.factories import select as gsel
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
-from satisfactory_mcp.domain.planning.stored.recall import plan_ref, recall_plan
+from satisfactory_mcp.domain.planning.stored.recall import expand_plan_pin, recall_plan
 from satisfactory_mcp.domain.session import pins
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.nodes.selectors import select_nodes
@@ -132,8 +132,8 @@ def test_plan_takes_a_plan_pin_and_refuses_others(world):
     made = PlanLog(FIXTURE_WORLD).create("rip", FIVE_RIP_ARGS, actor=CHAT)
     plan, _ = pins.create(world, "plan", {"plan": made.key})
     point, _ = pins.create(world, "point", {"x_m": 1.0, "y_m": 2.0})
-    assert plan_ref(world, plan["id"]) == (made.key, f"{plan['id']} = rip (plan “rip”)")
-    assert plan_ref(world, "rip") == ("rip", "")
+    assert expand_plan_pin(world, plan["id"]) == (made.key, f"{plan['id']} = rip (plan “rip”)")
+    assert expand_plan_pin(world, "rip") == ("rip", "")
     kwargs, name, notes = recall_plan(world, plan["id"], {})
     assert name == "rip" and kwargs["export_minimums"] == {RIP: 5.0}
     assert f"{plan['id']} = rip (plan “rip”)" in notes
@@ -167,7 +167,7 @@ def test_canonical_rewrites_what_a_stored_plan_would_hold(world):
     iron = next(n for n in _nodes() if n["resource"] == "Desc_OreIron_C")
     field, _ = pins.create(world, "field", {"node": iron["instance"]})
     point, _ = pins.create(world, "point", {"x_m": 100.0, "y_m": -200.5})
-    sources, said = pins.canonical(
+    sources, said = pins.expand(
         world, "sources", [field["id"], f"near:{point['id']}@200", "region:Somewhere"]
     )
     assert sources == [
@@ -176,13 +176,13 @@ def test_canonical_rewrites_what_a_stored_plan_would_hold(world):
         "region:Somewhere",
     ]
     assert len(said) == 2
-    required, _ = pins.canonical(world, "required", [process["id"], "Recipe_Other_C"])
+    required, _ = pins.expand(world, "required", [process["id"], "Recipe_Other_C"])
     assert required == ["Recipe_IronPlate_C", "Recipe_Other_C"]
-    banned, _ = pins.canonical(world, "exclude_recipes", [process["id"]])
+    banned, _ = pins.expand(world, "exclude_recipes", [process["id"]])
     assert banned == ["Recipe_IronPlate_C"]
     with pytest.raises(pins.PinError, match="is a point: it cannot stand for a recipe"):
-        pins.canonical(world, "required", [point["id"]])
-    ops, _ = pins.canonical_ops(
+        pins.expand(world, "required", [point["id"]])
+    ops, _ = pins.expand_ops(
         world,
         [
             {"op": "add", "field": "sources", "member": field["id"]},
@@ -194,7 +194,7 @@ def test_canonical_rewrites_what_a_stored_plan_would_hold(world):
         f"node:{m}" for m in field["ref"]["nodes"]
     ]
     assert ops[-2] == {"op": "remove", "field": "sources", "member": "pin:77"}
-    args, _ = pins.canonical_args(world, {"sources": [point and field["id"]], "banned": []})
+    args, _ = pins.expand_args(world, {"sources": [point and field["id"]], "banned": []})
     assert all(not s.startswith("pin:") for s in args["sources"])
 
 

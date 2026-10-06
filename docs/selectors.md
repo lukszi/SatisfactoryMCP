@@ -156,8 +156,8 @@ thing it pins could stand, and `domain/session/pins.py` is the only code that pa
 | place (`at=`, `near=`, `to=`, `site_at=`, `near:pin:<n>@r`) | `resolve_place` | point, node, field, machine, factory, sited plan | the pin's position |
 | node sources | `select_nodes` | node, field | `node:<id>` per node |
 | machine select, `factory=` | `select_machines` (also `-pin:<n>`) | machine, factory | `machine:<instance>` / `label:<name>` |
-| `plan=` | `recall.plan_ref` | plan | the plan key |
-| `required=`, `exclude_recipes=` | `pins.canonical` at the tool or route | process | the recipe class id |
+| `plan=` | `recall.expand_plan_pin` | plan | the plan key |
+| `required=`, `exclude_recipes=` | `pins.expand` at the tool or route | process | the recipe class id |
 
 Every expansion is echoed as `pin:3 = node:BP_ResourceNode30_103 (Iron Ore, pure)`. A pin
 that cannot stand somewhere is refused in words: `pin:9 does not exist (pins run to pin:6)`,

@@ -24,7 +24,7 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/api")
 
-_PREVIEW_CACHE: OrderedDict[tuple, site_preview.Session] = OrderedDict()
+_PREVIEW_CACHE: OrderedDict[tuple, site_preview.PreviewSession] = OrderedDict()
 _LOCK = threading.Lock()
 PREVIEW_CACHE_MAX = 8
 
@@ -152,7 +152,9 @@ class SitePreviewResponse(TypedDict):
     failure: str
 
 
-def _preview_session(st, state, biomass: bool, headroom: str, token: str) -> site_preview.Session:
+def _preview_session(
+    st, state, biomass: bool, headroom: str, token: str
+) -> site_preview.PreviewSession:
     key = (st.world_id, state.key, state.rev, token, biomass, headroom)
     with _LOCK:
         hit = _PREVIEW_CACHE.get(key)
@@ -191,7 +193,7 @@ def plan_site_preview(
     state = require_plan(plan_log(st), key, rev)
     token = pin.check(st.header, None)
     session = _preview_session(st, state, biomass == "include", headroom, token)
-    base = siting.parse(state) or site_preview.start_siting(st.game, st, session)
+    base = siting.parse(state) or site_preview.initial_siting(st.game, st, session)
     w = base.width_m if w_m is None else w_m
     d = base.depth_m if d_m is None else d_m
     if not (w > 0 and d > 0):
@@ -215,7 +217,7 @@ def plan_site_preview(
         sit,
         terrain=field,
         terrain_cap=0 if full else site_preview.DRAG_TEXELS,
-        first=first,
+        include_static=first,
     )
     if unread and out["in_map"]:
         out["terrain_note"] = site_preview.NOT_READ

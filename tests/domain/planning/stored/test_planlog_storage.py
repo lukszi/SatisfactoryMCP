@@ -202,7 +202,7 @@ def test_two_processes_writing_at_once_lose_nothing(user_data):
     env = {
         **os.environ,
         "SATISFACTORY_USER_DATA": str(user_data),
-        "PYTHONPATH": str(Path(planlog.__file__).resolve().parents[4]),
+        "PYTHONPATH": str(Path(planlog.__file__).resolve().parents[5]),
     }
     procs = [
         subprocess.Popen([sys.executable, "-c", _WRITER, key, tag, "25"], env=env)
