@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from ...core.saveio import ports
 from ...core.saveio.records import actor_class, iter_machine_records
+from ...core.saveio.schema import Projection
 from .model import Edge, FactoryGraph, kind_of
 
 __all__ = ["build_graph"]
 
 
-def build_graph(projection: dict) -> FactoryGraph:
+def build_graph(projection: Projection) -> FactoryGraph:
     payload = projection.get("graph") or {}
     actors: list[str] = payload.get("actors", [])
     roles: list[str] = payload.get("roles", [])

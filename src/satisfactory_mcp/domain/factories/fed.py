@@ -7,10 +7,15 @@ only when something real feeds it. docs/frontend_vision.md §9.5 has what the wa
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ...core.gamedata.model import GameData
 from ...core.saveio.records import actor_class
 from .model import kind_of
 from .trace import trace
+
+if TYPE_CHECKING:
+    from ..world.state import WorldState
 
 __all__ = ["FED", "NOT_FED", "TRANSPORT", "VERDICTS", "feed_verdict"]
 
@@ -25,7 +30,7 @@ def _transport(actor: str) -> bool:
     return kind_of(cls) == "transport" or "DockingStation" in cls
 
 
-def feed_verdict(state, game: GameData, machines: list[str]) -> str:
+def feed_verdict(state: WorldState, game: GameData, machines: list[str]) -> str:
     """``FED``, ``NOT_FED``, or ``TRANSPORT`` when the walk ends at a station it cannot see past."""
     for machine in machines:
         building = game.buildings.get(state.graph.cls.get(machine, ""))

@@ -6,13 +6,19 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from ...core.gamedata.model import GameData
 from . import flowgraph
 from .candidates import Candidate, describe
+from .cohere import Proposal
 from .flowgraph import FlowGraph
 from .labels import slugify
 from .query import build_view
+
+if TYPE_CHECKING:
+    from ..spatial.regions import RegionMap
+    from ..world.state import WorldState
 
 __all__ = ["DEFAULT_STYLE", "STYLES", "lead", "lead_of", "proposal_names", "suggest"]
 
@@ -76,7 +82,7 @@ def suggest(item: str, region: str | None, taken: Iterable[str], style: str = DE
     return name
 
 
-def lead_of(st, machines: list[str], cand: Candidate | None = None) -> tuple[str, bool]:
+def lead_of(st: WorldState, machines: list[str], cand: Candidate | None = None) -> tuple[str, bool]:
     """``lead`` for a machine set of ``st``, building the view and flow graph it reads."""
     if cand is None:
         cand = describe(machines, st.graph, st.game, st.projection, "proposal")
@@ -85,7 +91,12 @@ def lead_of(st, machines: list[str], cand: Candidate | None = None) -> tuple[str
     return lead(flowgraph.build(st, st.game, view), cand, st.game, extracted)
 
 
-def proposal_names(st, proposals, style: str = DEFAULT_STYLE, region_map=None) -> dict[int, str]:
+def proposal_names(
+    st: WorldState,
+    proposals: list[Proposal],
+    style: str = DEFAULT_STYLE,
+    region_map: RegionMap | None = None,
+) -> dict[int, str]:
     """The suggested name of every proposal no label covers, by index, numbered in index
     order past the names already taken -- one answer for the map, Detect and chat."""
     taken = [label.name for label in st.labels.labels]

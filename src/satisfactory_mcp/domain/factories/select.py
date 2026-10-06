@@ -9,10 +9,16 @@ carving is subtractive in practice. docs/selectors.md has the whole grammar.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ...core.gamedata.model import GameData
+from ...core.saveio.schema import Projection
 from ..spatial import geo, places
 from .candidates import bases, cluster_machines, machines_making, positions, recipes_by_machine
 from .model import FactoryGraph
+
+if TYPE_CHECKING:
+    from ..world.state import WorldState
 
 __all__ = [
     "INDEX_WARNING",
@@ -49,13 +55,13 @@ def _values(spec: str) -> list[str]:
     return [v.strip() for v in spec.split(",") if v.strip()]
 
 
-def _by_product(game: GameData, projection: dict, spec: str) -> set[str]:
+def _by_product(game: GameData, projection: Projection, spec: str) -> set[str]:
     return set(machines_making(game, projection, _values(spec)))
 
 
-def _by_recipe(game: GameData, projection: dict, spec: str) -> set[str]:
+def _by_recipe(game: GameData, projection: Projection, spec: str) -> set[str]:
     wants = [v.casefold() for v in _values(spec)]
-    out = set()
+    out: set[str] = set()
     for machine, recipe_id in recipes_by_machine(projection).items():
         recipe = game.recipes.get(recipe_id)
         if recipe is None:
@@ -73,10 +79,10 @@ def _by_building(graph: FactoryGraph, game: GameData, spec: str) -> set[str]:
     selector copied out of a tool result still works.
     """
     wants = [v.casefold() for v in _values(spec)]
-    classes = set()
+    classes: set[str] = set()
     for cls in set(graph.cls.values()):
         building = game.buildings.get(cls)
-        name = (getattr(building, "name", "") or "").casefold()
+        name: str = (getattr(building, "name", "") or "").casefold()
         low = cls.casefold()
         if any(w in low or (name and w in name) for w in wants):
             classes.add(cls)
@@ -85,7 +91,7 @@ def _by_building(graph: FactoryGraph, game: GameData, spec: str) -> set[str]:
     return {m for m in graph.machines() if graph.cls.get(m) in classes}
 
 
-def _by_near(st, graph: FactoryGraph, projection: dict, spec: str) -> set[str]:
+def _by_near(st: WorldState, graph: FactoryGraph, projection: Projection, spec: str) -> set[str]:
     """A circle around any place, resolved by the one place resolver every tool uses."""
     try:
         body, radius_m = places.parse_near(spec)
@@ -111,7 +117,9 @@ def _indexed(groups: list[list[str]], spec: str, what: str) -> set[str]:
     return set(groups[_parse_index(spec, what, len(groups))])
 
 
-def _resolve(term: str, st, graph: FactoryGraph, game: GameData, projection: dict) -> set[str]:
+def _resolve(
+    term: str, st: WorldState, graph: FactoryGraph, game: GameData, projection: Projection
+) -> set[str]:
     # Every facet is read from ``st`` INSIDE the branch that wants it: ``st.proposals`` is
     # the half-second view, and reading it up here would cost that on every term.
     if term.casefold() in ("all", "*"):
@@ -181,7 +189,7 @@ def _resolve(term: str, st, graph: FactoryGraph, game: GameData, projection: dic
     raise SelectorError(f"unknown selector {kind!r}. Use one of: {SELECTOR_HELP}")
 
 
-def _pin_terms(term: str, st) -> tuple[list[str], str]:
+def _pin_terms(term: str, st: WorldState) -> tuple[list[str], str]:
     from ..session import pins
 
     n = pins.parse(term)
@@ -193,7 +201,9 @@ def _pin_terms(term: str, st) -> tuple[list[str], str]:
         raise SelectorError(str(exc)) from None
 
 
-def _by_pin(term: str, st, graph: FactoryGraph, game: GameData, projection: dict) -> set[str]:
+def _by_pin(
+    term: str, st: WorldState, graph: FactoryGraph, game: GameData, projection: Projection
+) -> set[str]:
     wanted, _echo = _pin_terms(term, st)
     out: set[str] = set()
     for inner in wanted:
@@ -201,9 +211,9 @@ def _by_pin(term: str, st, graph: FactoryGraph, game: GameData, projection: dict
     return out
 
 
-def pin_notes(selectors: list[str] | None, st) -> list[str]:
+def pin_notes(selectors: list[str] | None, st: WorldState) -> list[str]:
     """What each ``pin:N`` term among ``selectors`` stood for, as tools echo it."""
-    notes = []
+    notes: list[str] = []
     for raw in selectors or ():
         term = raw.strip().removeprefix("-").strip()
         if term.casefold().startswith("pin:"):
@@ -231,7 +241,7 @@ def expand_to_components(machines: set[str], graph: FactoryGraph) -> set[str]:
 
 def select_machines(
     selectors: list[str],
-    st,
+    st: WorldState,
     split: bool = False,
     expand: bool = False,
 ) -> list[str]:
@@ -282,7 +292,7 @@ def select_machines(
     return sorted(result)
 
 
-def resolve_factory(st, factory: str):
+def resolve_factory(st: WorldState, factory: str) -> tuple[str, list[str]]:
     """A label name, a selector, or a proposal index -- in that order.
 
     Label first because that is what a player types. Falling through to the selector
