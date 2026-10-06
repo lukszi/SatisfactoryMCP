@@ -205,15 +205,13 @@ def test_a_material_walks_its_parents_to_its_cliff_family(monkeypatch):
         "/Game/X/M_Rock": _View(),
         "/Game/X/SM_Rock": _View(imports=["/Game/X/PhysicalMaterial/PM", "/Game/X/Material/MI_C"]),
     }
-    monkeypatch.setattr(rockfamily, "_view", lambda _s, _c, _i, package: chain.get(package))
-    cache: dict = {}
+    monkeypatch.setattr(rockfamily, "open_package", lambda _s, _c, _i, asset: chain.get(asset))
+    resolver = rockfamily.FamilyResolver(None, None, None)
     forest = rockfamily.FAMILIES.index("forest")
-    assert rockfamily.family_of(None, None, None, "/Game/X/CliffFlat_03_Forest", cache) == forest
-    assert rockfamily.family_of(None, None, None, "/Game/X/MI_Rocks_Moss", cache) == 0
-    assert rockfamily.family_of(None, None, None, None, cache) == 0
-    assert (
-        rockfamily.mesh_material(None, None, None, "/Game/X/SM_Rock", {}) == "/Game/X/Material/MI_C"
-    )
+    assert resolver.family_of("/Game/X/CliffFlat_03_Forest") == forest
+    assert resolver.family_of("/Game/X/MI_Rocks_Moss") == 0
+    assert resolver.family_of(None) == 0
+    assert resolver.mesh_material("/Game/X/SM_Rock") == "/Game/X/Material/MI_C"
 
 
 def test_desert_rock_roots_the_desert_family_and_reads_no_cliff_colour(monkeypatch):
@@ -223,26 +221,28 @@ def test_desert_rock_roots_the_desert_family_and_reads_no_cliff_colour(monkeypat
         base + "MI_DesertRock_05": _View(parent=base + "MI_DesertRock"),
         base + "MI_DesertRock": _View(parent="/Game/FactoryGame/World/Environment/Rock/M_Rock"),
     }
-    monkeypatch.setattr(rockfamily, "_view", lambda _s, _c, _i, package: chain.get(package))
+    monkeypatch.setattr(rockfamily, "open_package", lambda _s, _c, _i, asset: chain.get(asset))
     desert = rockfamily.FAMILIES.index("desert")
     for leaf in ("MI_DesertRock_05_Vista", "MI_DesertRock_05", "MI_DesertRock"):
-        assert rockfamily.family_of(None, None, None, base + leaf, {}) == desert
+        assert rockfamily.FamilyResolver(None, None, None).family_of(base + leaf) == desert
     opened: list[str] = []
-    monkeypatch.setattr(rockfamily, "_view", lambda _s, _c, _i, package: opened.append(package))
+    monkeypatch.setattr(rockfamily, "open_package", lambda _s, _c, _i, asset: opened.append(asset))
     sources = rockfamily.family_sources(None, None, None)
     assert "desert" not in sources and "cliff" in sources, "the palette's target colours it"
     assert not any("DesertRock" in package for package in opened)
 
 
 def test_an_override_wins_over_the_mesh_s_own_material(monkeypatch):
-    monkeypatch.setattr(rockfamily, "mesh_material", lambda *a: rockfamily.ROOT_DIR + "Cliff_Sand")
+    monkeypatch.setattr(
+        rockfamily.FamilyResolver, "mesh_material", lambda *a: rockfamily.ROOT_DIR + "Cliff_Sand"
+    )
     sweep = {
         "meshes": ["/Game/Rock/A"],
         "placements": np.zeros((3, 11)),
         "placement_materials": np.array([0, -1, 1], np.int32),
         "materials": [rockfamily.ROOT_DIR + "Cliff_Grass", "/Game/Unknown/MI"],
     }
-    monkeypatch.setattr(rockfamily, "_view", lambda *a: None)
+    monkeypatch.setattr(rockfamily, "open_package", lambda *a: None)
     codes = rockfamily.placement_families(None, None, None, sweep)
     names = [rockfamily.FAMILIES[c] for c in codes]
     assert names == ["grass", "sand", "none"]
