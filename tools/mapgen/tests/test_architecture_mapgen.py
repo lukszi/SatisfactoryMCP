@@ -27,6 +27,7 @@ ALLOWED: dict[str, frozenset[str]] = {
     "common": frozenset(),
     "bandstore": frozenset(),
     "cache": frozenset({"common", "bandstore"}),
+    "compress_cache": frozenset({"common", "bandstore", "cache"}),
     "gamedata": frozenset({"common", "gamedata"}),
     "terrain": frozenset({"common", "cache", "gamedata", "terrain"}),
     "lighting": frozenset({"common", "gamedata", "terrain", "lighting"}),

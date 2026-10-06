@@ -1,4 +1,5 @@
-"""The raster caches' zstd band store: round trips, both storages hitting, a corrupt band.
+"""The raster caches' zstd band store: round trips, both storages hitting, a corrupt band, and
+the ``compress-cache`` converter.
 
 docs/spatial-and-map.md section 39. Synthetic planes throughout: no install, no field.
 """
@@ -6,12 +7,15 @@ docs/spatial-and-map.md section 39. Synthetic planes throughout: no install, no 
 from __future__ import annotations
 
 import json
+import os
+import sys
 
 import pytest
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("zstandard")
 
+from mapgen import cli  # noqa: E402
 from mapgen.bandstore import BandArray, BandStoreError, BandWriter  # noqa: E402
 from mapgen.cache import (  # noqa: E402
     BANDS_SUFFIX,
@@ -33,6 +37,7 @@ from mapgen.cache import (  # noqa: E402
     mesh_stamp,
     missing_caches,
 )
+from mapgen.compress_cache import Refused, compress  # noqa: E402
 from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
 from mapgen.terrain import rasters  # noqa: E402
 from mapgen.terrain.rasters import (  # noqa: E402
@@ -258,3 +263,73 @@ def test_a_truncated_band_file_is_a_miss(tmp_path):
     plane.write_bytes(plane.read_bytes()[:-100])
     assert cached_direct(tmp_path, stamp) is None
     assert cached_family(tmp_path, stamp) is None
+
+
+# ------------------------------------------------------------------------ the converter
+
+
+def _raw_caches(root):
+    stamp = direct_cache_stamp(SIZE, 1, "b1")
+    rasterise_direct(_band_raster, root / DIRECT_CACHE_DIR_NAME, SIZE, 1, stamp, False,
+                     STORAGE_RAW)  # fmt: skip
+    key = mesh_stamp(SIZE, "b1", 2)
+    rasterise_meshes({"items": {}, "shapes": {}}, root / MESH_CACHE_DIR_NAME, key, BOUNDS_M, 256,
+                     False, STORAGE_RAW)  # fmt: skip
+    return stamp, key
+
+
+def test_the_converter_round_trips_a_raw_cache_in_place(tmp_path):
+    stamp, _key = _raw_caches(tmp_path)
+    folder = tmp_path / DIRECT_CACHE_DIR_NAME
+    before = {name: (folder / name).read_bytes() for name in DIRECT_PLANES}
+    recorded = json.loads((folder / DIRECT_CACHE_SIDECAR).read_text(encoding="utf-8"))
+    done = compress(folder)
+    assert sorted(done["planes"]) == sorted(DIRECT_PLANES)
+    assert done["band_bytes"] < done["raw_bytes"] == sum(map(len, before.values()))
+    after = json.loads((folder / DIRECT_CACHE_SIDECAR).read_text(encoding="utf-8"))
+    assert after == {**recorded, "storage": STORAGE_BANDS}
+    assert not any((folder / name).exists() for name in DIRECT_PLANES)
+    planes = (*cached_direct(folder, stamp), cached_family(folder, stamp))
+    for plane, name in zip(planes, DIRECT_PLANES, strict=True):
+        assert isinstance(plane, BandArray) and np.asarray(plane).tobytes() == before[name]
+    assert compress(folder) == {"already": True}
+
+
+def test_the_command_converts_a_folder_into_a_target_and_leaves_the_source(tmp_path, monkeypatch):
+    stamp, key = _raw_caches(tmp_path / "kept")
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", ["mapgen"])
+    assert cli.main(["compress-cache", str(tmp_path / "kept"), "--to", str(out)]) == 0
+    assert isinstance(cached_direct(out / DIRECT_CACHE_DIR_NAME, stamp)[0], BandArray)
+    assert isinstance(cached_meshes(out / MESH_CACHE_DIR_NAME, key)[1], BandArray)
+    source = cached_direct(tmp_path / "kept" / DIRECT_CACHE_DIR_NAME, stamp)
+    assert isinstance(source[0], np.memmap)
+    assert _same(np.asarray(source[0]), np.asarray(cached_direct(out / DIRECT_CACHE_DIR_NAME,
+                                                                 stamp)[0]))  # fmt: skip
+    del source
+
+
+def test_the_converter_refuses_a_cache_being_written(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["mapgen"])
+    _raw_caches(tmp_path)
+    folder = tmp_path / DIRECT_CACHE_DIR_NAME
+    (folder / DIRECT_CACHE_SIDECAR).unlink()
+    with pytest.raises(Refused, match="still being written"):
+        compress(folder)
+    assert cli.main(["compress-cache", str(folder)]) == 1
+    assert "still being written" in capsys.readouterr().out
+    assert all((folder / name).exists() for name in DIRECT_PLANES)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="only Windows refuses to rename an open file")
+def test_the_converter_refuses_a_cache_a_render_holds_open(tmp_path):
+    stamp, _key = _raw_caches(tmp_path)
+    folder = tmp_path / DIRECT_CACHE_DIR_NAME
+    held = cached_direct(folder, stamp)
+    with pytest.raises(Refused, match="held open"):
+        compress(folder)
+    del held
+    recorded = json.loads((folder / DIRECT_CACHE_SIDECAR).read_text("utf-8"))
+    assert recorded["storage"] == STORAGE_RAW
+    assert not list(folder.glob("*" + BANDS_SUFFIX))
+    assert compress(folder)["planes"]

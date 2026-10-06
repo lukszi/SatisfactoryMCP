@@ -20,6 +20,7 @@ COMMANDS: dict[str, tuple[str, tuple[str, ...]]] = {
     "artwork": ("mapgen.artwork", ()),
     "paint": ("mapgen.gamedata.paint", ()),
     "check-fill": ("mapgen.check_fill", ()),
+    "compress-cache": ("mapgen.compress_cache", ()),
 }
 
 
