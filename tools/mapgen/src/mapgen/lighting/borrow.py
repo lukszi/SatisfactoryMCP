@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, TypedDict
+
 import numpy as np
 from scipy import ndimage
 
 from mapgen.gamedata.frame import BOUNDS_M
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I8Grid, U8Grid
 from satisfactory_mcp.core.gameassets.container import SHEET_PX
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 __all__ = [
     "BORROW_CLAMP",
@@ -19,6 +26,7 @@ __all__ = [
     "BORROW_INK_PX",
     "BORROW_LUMA",
     "BORROW_PROVENANCE",
+    "ProvinceBorrow",
     "artwork_detail",
     "borrow_metadata",
     "coarse_province",
@@ -46,21 +54,30 @@ BORROW_GAIN = 0.30
 BORROW_CLAMP = (0.74, 1.26)
 
 #: Rec. 601 luma: the artwork's light crosses, its colour never does.
-BORROW_LUMA = np.array([0.299, 0.587, 0.114], np.float32)
+BORROW_LUMA: F32Grid = np.array([0.299, 0.587, 0.114], np.float32)
 
 
-def _disk(diameter_px: float) -> np.ndarray:
+class ProvinceBorrow(TypedDict):
+    """Where the borrow applies: the coarse provinces, their share of the field, the feather."""
+
+    provinces: list[str]
+    share_of_the_field: float
+    feather_m: float
+    role: str
+
+
+def _disk(diameter_px: float) -> BoolMask:
     r = (diameter_px - 1) / 2.0
     yy, xx = np.mgrid[-int(r) : int(r) + 1, -int(r) : int(r) + 1]
     return xx * xx + yy * yy <= r * r + 0.5
 
 
-def _high_pass(luma: np.ndarray) -> np.ndarray:
+def _high_pass(luma: F32Grid) -> F32Grid:
     high = luma - ndimage.gaussian_filter(luma, BORROW_DETAIL_SIGMA_PX, mode="nearest")
     return ndimage.gaussian_filter(high, BORROW_DETAIL_SOFTEN_PX, mode="nearest")
 
 
-def artwork_detail(sheet) -> tuple[np.ndarray, dict]:
+def artwork_detail(sheet: U8Grid | Image.Image) -> tuple[I8Grid, JsonObject]:
     """The artwork's luminance high pass as int8 (67 MB, not 268), and its scaling.
 
     A grey closing, then an opening, first removes every stroke narrower than
@@ -101,7 +118,7 @@ def artwork_detail(sheet) -> tuple[np.ndarray, dict]:
     }
 
 
-def coarse_province(field) -> tuple[np.ndarray, dict]:
+def coarse_province(field: hf.Field) -> tuple[U8Grid, ProvinceBorrow]:
     """Where the field is coarser than the artwork: a feathered uint8 mask at 1 m."""
     inside = np.isin(field.provenance_plane, BORROW_PROVENANCE)
     share = float(inside.mean())
@@ -121,7 +138,7 @@ def coarse_province(field) -> tuple[np.ndarray, dict]:
     }
 
 
-def borrow_metadata(detail_meta: dict, province_meta: dict) -> dict:
+def borrow_metadata(detail_meta: JsonObject, province_meta: ProvinceBorrow) -> JsonObject:
     """The render sidecar's ``artwork_detail`` source: what the borrow read and where."""
     return {
         "artwork_detail": {
@@ -133,7 +150,12 @@ def borrow_metadata(detail_meta: dict, province_meta: dict) -> dict:
                 "redistributed, and served to localhost only."
             ),
             **detail_meta,
-            "applied_where": province_meta,
+            "applied_where": {
+                "provinces": list(province_meta["provinces"]),
+                "share_of_the_field": province_meta["share_of_the_field"],
+                "feather_m": province_meta["feather_m"],
+                "role": province_meta["role"],
+            },
             "gain": BORROW_GAIN,
             "clamp": list(BORROW_CLAMP),
             "reading": (

@@ -6,7 +6,13 @@ has its value: docs/spatial-and-map.md section 29.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TypeAlias
+
 import numpy as np
+from numpy.typing import NDArray
+
+from satisfactory_mcp.core.arrays import F32Grid, U8Grid
 
 __all__ = [
     "BILINEAR_PX",
@@ -19,6 +25,8 @@ __all__ = [
     "SKY_STEPS",
     "STEP_GROWTH",
     "STRIP_ROWS",
+    "Fade",
+    "Slabs",
     "crown_horizon",
     "crown_horizons",
     "crown_surface",
@@ -32,14 +40,26 @@ __all__ = [
     "sky_view",
 ]
 
+#: Where a blocker counts fully, and where it stops counting, in metres.
+Fade: TypeAlias = tuple[float, float]
+
+#: Geometry with open space beneath it: the surface without it, its underside, its top.
+Slabs: TypeAlias = tuple[F32Grid, F32Grid, F32Grid]
+
+#: ``z[r0 + oy : r1 + oy, c0 + ox : c1 + ox]``, read at a fractional offset.
+_Sampler: TypeAlias = Callable[[F32Grid, int, int, int, int, float, float], NDArray[np.floating]]
+
+#: A float32 raster known to be 2-D, which is what lets numpy's stubs type its gradient.
+_Plane: TypeAlias = np.ndarray[tuple[int, int], np.dtype[np.float32]]
+
 #: Directions stored per pixel, evenly spaced from north.
 HORIZON_DIRS = 32
 
 #: A blocker counts fully up to the first distance and not at all past the second.
-FADE_M = (40.0, 150.0)
+FADE_M: Fade = (40.0, 150.0)
 
 #: Crowns are porous and their far shadow diffuse, so an occluder fades sooner than rock.
-OCCLUDER_FADE_M = (25.0, 80.0)
+OCCLUDER_FADE_M: Fade = (25.0, 80.0)
 
 #: Single-pixel steps up to this distance, then steps growing by STEP_GROWTH.
 FINE_M = 44.0
@@ -57,34 +77,38 @@ BILINEAR_PX = 16
 STRIP_ROWS = 64
 
 
-def fade_weight(d_m: float, fade: tuple[float, float] = FADE_M) -> float:
+def fade_weight(d_m: float, fade: Fade = FADE_M) -> float:
     """How much of a blocker's height counts at ``d_m``: 1 near, 0 past the fade."""
     return float(np.clip((fade[1] - d_m) / (fade[1] - fade[0]), 0.0, 1.0))
 
 
-def horizon_reach_px(spacing_m: float, fade: tuple[float, float] = FADE_M) -> int:
+def horizon_reach_px(spacing_m: float, fade: Fade = FADE_M) -> int:
     """How far a horizon looks, in pixels: the halo a block needs."""
     return int(np.ceil(fade[1] / spacing_m)) + 2
 
 
 def _steps(max_px: float, fine_px: float, growth: float = STEP_GROWTH) -> list[int]:
     """Integer step lengths: every pixel to ``fine_px``, then growing geometrically."""
-    out, t = [], 1.0
+    out: list[int] = []
+    t = 1.0
     while t <= max_px:
         out.append(round(t))
         t += 1.0 if t < fine_px else max(1.0, t * growth)
     return sorted(set(out))
 
 
-def normals(z: np.ndarray, spacing_m: float) -> tuple[np.ndarray, np.ndarray]:
+def normals(z: NDArray[np.floating], spacing_m: float) -> tuple[F32Grid, F32Grid]:
     """East and south components of the unit normal, for ``z`` with a one-pixel margin."""
-    d_south, d_east = np.gradient(np.asarray(z, np.float32), spacing_m)
+    plane: _Plane = np.asarray(z, np.float32)
+    d_south, d_east = np.gradient(plane, spacing_m)
     d_south, d_east = d_south[1:-1, 1:-1], d_east[1:-1, 1:-1]
     inv = 1.0 / np.sqrt(d_east * d_east + d_south * d_south + 1.0)
     return (-d_east * inv).astype(np.float32), (-d_south * inv).astype(np.float32)
 
 
-def _bilinear(z, r0, r1, c0, c1, oy, ox):
+def _bilinear(
+    z: F32Grid, r0: int, r1: int, c0: int, c1: int, oy: float, ox: float
+) -> NDArray[np.floating]:
     iy, ix = int(np.floor(oy)), int(np.floor(ox))
     fy, fx = np.float32(oy - iy), np.float32(ox - ix)
     a = z[r0 + iy : r1 + iy, c0 + ix : c1 + ix]
@@ -94,7 +118,9 @@ def _bilinear(z, r0, r1, c0, c1, oy, ox):
     return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + e * fx) * fy
 
 
-def sky_view(z: np.ndarray, halo: int, spacing_m: float, radius_m: float = SKY_RADIUS_M):
+def sky_view(
+    z: NDArray[np.floating], halo: int, spacing_m: float, radius_m: float = SKY_RADIUS_M
+) -> F32Grid:
     """``1 - mean(sin(horizon))`` within ``radius_m``, for the core of ``z`` inside ``halo``."""
     z = np.asarray(z, np.float32)
     r0, r1, c0, c1 = halo, z.shape[0] - halo, halo, z.shape[1] - halo
@@ -118,7 +144,9 @@ def sky_view(z: np.ndarray, halo: int, spacing_m: float, radius_m: float = SKY_R
     return out
 
 
-def crown_surface(z, top, cover=None) -> np.ndarray:
+def crown_surface(
+    z: NDArray[np.floating], top: NDArray[np.floating], cover: NDArray[np.floating] | None = None
+) -> F32Grid:
     """The ground with its crowns stood on it, each lift scaled by the pixel's crown cover.
 
     ``top`` is the crown top in metres, NaN where none; ``cover`` the covered share, 0 to 1,
@@ -129,12 +157,20 @@ def crown_surface(z, top, cover=None) -> np.ndarray:
     return z + (lift if cover is None else lift * np.asarray(cover, np.float32))
 
 
-def _nearest(z, r0, r1, c0, c1, oy, ox):
+def _nearest(z: F32Grid, r0: int, r1: int, c0: int, c1: int, oy: float, ox: float) -> F32Grid:
     iy, ix = round(oy), round(ox)
     return z[r0 + iy : r1 + iy, c0 + ix : c1 + ix]
 
 
-def march_horizon(z, halo, az_deg, spacing_m, occluder=None, slabs=None, fade=FADE_M):
+def march_horizon(
+    z: NDArray[np.floating],
+    halo: int,
+    az_deg: float,
+    spacing_m: float,
+    occluder: F32Grid | None = None,
+    slabs: Slabs | None = None,
+    fade: Fade = FADE_M,
+) -> F32Grid:
     """The faded horizon toward one azimuth for the core of ``z``, in degrees.
 
     ``occluder`` (tree crowns, NaN where none) adds ``crown_horizon`` on top of the ground's,
@@ -155,7 +191,13 @@ def march_horizon(z, halo, az_deg, spacing_m, occluder=None, slabs=None, fade=FA
     return np.maximum(out, crowns)
 
 
-def crown_horizon(crown_z, halo, az_deg, spacing_m, blockers=None) -> np.ndarray:
+def crown_horizon(
+    crown_z: NDArray[np.floating],
+    halo: int,
+    az_deg: float,
+    spacing_m: float,
+    blockers: NDArray[np.floating] | None = None,
+) -> F32Grid:
     """The horizon of a ``crown_surface`` under ``OCCLUDER_FADE_M``, received on it, degrees.
 
     The receivers stand on the crown tops, so a crown is lit or shaded where it is drawn.
@@ -168,11 +210,20 @@ def crown_horizon(crown_z, halo, az_deg, spacing_m, blockers=None) -> np.ndarray
     return np.degrees(np.arctan(best)).astype(np.float32)
 
 
-def _march(solid, zc, halo, az_deg, spacing_m, fade, best, slabs=None) -> None:
+def _march(
+    solid: F32Grid,
+    zc: F32Grid,
+    halo: int,
+    az_deg: float,
+    spacing_m: float,
+    fade: Fade,
+    best: F32Grid,
+    slabs: Slabs | None = None,
+) -> None:
     r0, r1, c0, c1 = halo, solid.shape[0] - halo, halo, solid.shape[1] - halo
     az = np.deg2rad(az_deg)
     dr, dc = -np.cos(az), np.sin(az)
-    steps = []
+    steps: list[tuple[_Sampler, float, float, np.float32]] = []
     for t in _steps(fade[1] / spacing_m, FINE_M / spacing_m):
         d = t * spacing_m
         w = fade_weight(d, fade)
@@ -194,14 +245,21 @@ def _march(solid, zc, halo, az_deg, spacing_m, fade, best, slabs=None) -> None:
                 _raise_by_slab(top, (lo - near) * scale, (hi - near) * scale)
 
 
-def _raise_by_slab(best, lo, hi):
+def _raise_by_slab(best: F32Grid, lo: F32Grid, hi: F32Grid) -> None:
     """A floating slab extends the horizon only where nothing open shows beneath it."""
     closed = np.isfinite(lo) & (lo <= best)
     np.maximum(best, np.where(closed, hi, best), out=best)
 
 
-def faded_horizons(z, halo, spacing_m, occluder=None, slabs=None, dirs=HORIZON_DIRS,
-                   fade=FADE_M) -> np.ndarray:  # fmt: skip
+def faded_horizons(
+    z: NDArray[np.floating],
+    halo: int,
+    spacing_m: float,
+    occluder: F32Grid | None = None,
+    slabs: Slabs | None = None,
+    dirs: int = HORIZON_DIRS,
+    fade: Fade = FADE_M,
+) -> F32Grid:
     """Every direction's faded horizon for the core of ``z``: ``(dirs, h, w)`` degrees."""
     return np.stack(
         [
@@ -211,18 +269,26 @@ def faded_horizons(z, halo, spacing_m, occluder=None, slabs=None, dirs=HORIZON_D
     )
 
 
-def crown_horizons(crown_z, halo, spacing_m, blockers=None, dirs=HORIZON_DIRS) -> np.ndarray:
+def crown_horizons(
+    crown_z: NDArray[np.floating],
+    halo: int,
+    spacing_m: float,
+    blockers: NDArray[np.floating] | None = None,
+    dirs: int = HORIZON_DIRS,
+) -> F32Grid:
     """Every direction's ``crown_horizon``: ``(dirs, h, w)`` degrees."""
     return np.stack(
         [crown_horizon(crown_z, halo, k * 360.0 / dirs, spacing_m, blockers) for k in range(dirs)]
     )
 
 
-def encode_horizon(deg: np.ndarray) -> np.ndarray:
+def encode_horizon(deg: NDArray[np.floating]) -> U8Grid:
     """Degrees to the stored byte: ``255 * sqrt(deg / 90)``, finest near the horizon."""
     return np.round(np.sqrt(np.clip(deg / 90.0, 0.0, 1.0)) * 255.0).astype(np.uint8)
 
 
-def decode_horizon(q: np.ndarray) -> np.ndarray:
-    v = np.asarray(q, np.float32) / 255.0
-    return v * v * np.float32(90.0)
+def decode_horizon(q: NDArray[np.integer]) -> F32Grid:
+    """The stored byte back to degrees."""
+    v: F32Grid = np.asarray(q, np.float32) / 255.0
+    squared: F32Grid = v * v
+    return squared * np.float32(90.0)
