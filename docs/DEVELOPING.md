@@ -100,7 +100,8 @@ selector returned, widened by 1 cm on each edge so that sub-centimetre node posi
 fall out of it. It also holds 17 nodes (8 limestone, 5 iron, 2 copper, 2 raw quartz) that are
 irrelevant to plans maximising power from crude and coal, which is why the hand-verified
 numbers held unchanged. The stored `spire-coast-full` plan keeps its region selector on
-purpose.
+purpose. `SPIRE_COAST_NODES` is the second sanctioned field: the 18 `node:` ids that region
+resolved to when the payback tests were written, frozen so only a node-table change moves them.
 
 **`live` and `state`.** `state` is the committed projection, frozen; `live` is the newest save
 on the machine, for tests that measure the tool's real answer. `live` skips on `SaveError`, so
@@ -289,7 +290,7 @@ code calls `solverlane.run` instead of the solver directly.
 You do not need any of this to use the project: every world table the server uses is committed
 under `data/`. The generators exist so the tables can be rebuilt from your own installed game
 after a map update, and so the map's imagery — which is the game's artwork and is therefore
-**never committed** — can be produced locally. They need `uv sync --extra gen` and a
+**never committed** — can be produced locally. They need `uv sync --all-extras` and a
 Satisfactory install. Approximate runtimes on one mid-range machine:
 
 The map generators are one package, `tools/mapgen/`, with one command per output. Install it

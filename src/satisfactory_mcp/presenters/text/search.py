@@ -101,7 +101,8 @@ def render_search(
     recipe_kind: str = "part",
     notes: list[str] | None = None,
 ) -> str:
-    page = hits[offset : offset + render.clamp(limit)]
+    window = render.page(limit, offset)
+    page = window.of(hits)
     show_qty = bool(item_column)
     show_status = any(h.unlocked is not None for h in hits)
     # Only part recipes have a rate at all, so the /min suffix goes in the header
@@ -141,7 +142,8 @@ def render_search(
         headers,
         rows,
         total=len(hits),
-        offset=offset,
+        offset=window.start,
+        limit=window.size,
         hint="or narrow the query.",
     )
     return render.envelope(

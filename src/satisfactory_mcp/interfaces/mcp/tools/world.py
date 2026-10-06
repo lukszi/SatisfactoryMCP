@@ -167,7 +167,7 @@ def unlocked_recipes(
     return render.envelope(
         f"# {st.age_note}\n"
         f"# {len(st.unlocked_alternates)} of {len(st.game.alternates())} alternates unlocked; "
-        f"{len(st.unlocked_recipes('part'))} automatable recipes total",
+        f"{len(st.unlocked_recipes('part'))} automatable recipes unlocked",
         render.table(
             ("recipe", "building"),
             rows,

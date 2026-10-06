@@ -10,7 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 from ....core.gamedata.model import Building, GameData
+from ...factories import candidates
 from ...factories.select import resolve_factory
+from ...spatial import geo
 from ...world.state import WorldState
 from ..solver.carrier import TierChoice
 from ..solver.model import Solution
@@ -89,13 +91,10 @@ def _show_payload(
         target, target_label = None, "the node field's centroid"
         if factory:
             resolved_name, machines = resolve_factory(st, factory)
-            pts = [m["pos"] for m in machines if m.get("pos")]
-            if pts:
-                target = (
-                    sum(p[0] for p in pts) / len(pts),
-                    sum(p[1] for p in pts) / len(pts),
-                )
-                target_label = resolved_name
+            placed = candidates.positions(st.projection)
+            found = geo.centroid([placed[m][:2] for m in machines if m in placed])
+            if found:
+                target, target_label = found, resolved_name
         return plan_trunks(prepared, g, target, target_label)
     return None
 

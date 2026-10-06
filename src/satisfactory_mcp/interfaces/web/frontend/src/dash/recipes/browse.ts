@@ -295,7 +295,7 @@ function renderUnlocked(card: HTMLElement, browse: Browse): boolean {
   if (waiting(card, fetched, "the unlocked recipes")) return false;
   const data = fetched.data!;
   const alternates = count(data.alternates_unlocked) + (hidesLocked() ? "" : " of " + count(data.alternates_total)) + " alternates unlocked";
-  appendNote(card, [alternates, counted(data.automatable_total, "automatable recipe") + " in all", savedFrom(data)].join(" · "));
+  appendNote(card, [alternates, counted(data.automatable_total, "automatable recipe") + " unlocked", savedFrom(data)].join(" · "));
   const query = browse.query.toLowerCase();
   const rows = data.recipes.filter(function (recipe) {
     return !query || recipe.name.toLowerCase().indexOf(query) >= 0;

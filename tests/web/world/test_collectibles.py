@@ -113,15 +113,16 @@ def test_spoilers_zero_hides_unfound_categories_and_recounts(client):
 
 
 def test_the_table_age_follows_the_save_build(state, game):
+    cut = int(state.collectibles.build.rsplit("CL-", 1)[1])
     newer = type(state)(
-        projection={**state.projection, "header": {**state.header, "build_version": 502094}},
+        projection={**state.projection, "header": {**state.header, "build_version": cut + 1}},
         game=game,
     )
     with client_over(newer, game) as c:
         body_now = c.get("/api/collectibles", params={"mode": "census"}).json()
     stale = body_now["stale"]
     assert stale["table"] == "collectibles" and stale["behind"] is True
-    assert stale["gap"] == "buildVersion 495413 -> 502094"
+    assert stale["gap"] == f"buildVersion {cut} -> {cut + 1}"
     assert stale["observed_matches"] is True
 
 

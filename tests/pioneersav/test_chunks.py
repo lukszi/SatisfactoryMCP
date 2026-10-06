@@ -11,6 +11,7 @@ compared rather than one being skipped.
 
 from __future__ import annotations
 
+import random
 import zlib
 
 import pytest
@@ -38,6 +39,12 @@ def _chunk(payload: bytes, *, tag: int = CHUNK_TAG, algo: int = ZLIB, lie: bool 
 
 def test_a_single_chunk_round_trips():
     payload = b"factory" * 900
+    assert decompress_body(_chunk(payload), 0) == payload
+
+
+def test_an_incompressible_full_chunk_is_accepted():
+    """zlib output can exceed its input, so the compressed size may pass the maximum."""
+    payload = random.Random(0).randbytes(131072)
     assert decompress_body(_chunk(payload), 0) == payload
 
 

@@ -480,6 +480,9 @@ def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = N
         fields["overclock_last"] = sc.overclock_shards
     if sc.row_overclock:
         fields["row_overclock"] = [sorted(sc.row_overclock.items()), sc.overclock_shards]
+    if sc.excluded_pids:
+        # Only when present, so a plan without bans keeps the id it was stored under.
+        fields["excluded_pids"] = sorted(sc.excluded_pids)
     payload = json.dumps(
         {
             **fields,

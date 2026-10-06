@@ -10,7 +10,7 @@ from pydantic import Field
 from .....domain.planning.layout.service import LayoutReport, build_layout_report
 from .....domain.planning.readout import payback, summary
 from .....domain.planning.solver.carrier import resolve_tiers
-from .....presenters.text.layout import render_layout
+from .....presenters.text.layout import LAYOUT_VIEWS, render_layout
 from ... import app
 from ...params import (
     AsOf,
@@ -42,9 +42,7 @@ def plan_layout(
     sources: list[str] | None = None,
     exports: list[str] | None = None,
     export_minimums: dict[str, float] | None = None,
-    show: Annotated[
-        str, Field(description="floors | blocks | buses | trunks | materials | sites")
-    ] = "floors",
+    show: Annotated[str, Field(description=" | ".join(LAYOUT_VIEWS))] = "floors",
     detail: Annotated[str | None, Field(description="retired -- write show= instead")] = None,
     only_free_nodes: bool = False,
     allow_sinks: bool = True,
@@ -95,11 +93,11 @@ def plan_layout(
 ) -> str:
     """Turn a plan into a buildable schematic: blocks, buses and floors.
 
-    Same arguments as plan_factory, plus ``show``: "floors" (default, the stack), "blocks"
-    (every module with its size and rates), "buses" (item flows), "trunks" (which resource
-    nodes share each pipe or belt run into the site), "materials" (what the whole thing
-    costs to build, machines plus deck), or "sites" (cut the plan into named modules and
-    report what crosses between them).
+    The plan_factory arguments it declares (a saved plan, ``plan=``, carries the rest), plus
+    ``show``: "floors" (default, the stack), "blocks" (every module, its size and rates),
+    "buses" (item flows), "trunks" (which nodes share each pipe or belt run in), "materials"
+    (build cost, machines plus deck), or "sites" (the plan cut into named modules, and what
+    crosses between them).
 
     A SCHEMATIC, not a blueprint: modules, connections, floor assignment and a space budget,
     but no world coordinates or belt routing -- there is no terrain data to place them on.
@@ -109,6 +107,10 @@ def plan_layout(
     g = app.game()
     if gone := app.retired(("detail", detail, "show")):
         return gone
+    wanted = show.strip().casefold()
+    if wanted not in LAYOUT_VIEWS:
+        return f"! unknown show {show!r}. Choose from: {', '.join(LAYOUT_VIEWS)}"
+    show = wanted
     st = app.load_world(save, world, as_of)
 
     row_overclock, refused = resolve_row_overclock(row_overclock)

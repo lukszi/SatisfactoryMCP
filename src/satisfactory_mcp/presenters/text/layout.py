@@ -16,7 +16,10 @@ from ...domain.planning.readout.slice import slice_of
 from ...domain.world.state import WorldState
 from . import primitives as render
 
-__all__ = ["render_layout"]
+__all__ = ["LAYOUT_VIEWS", "render_layout"]
+
+#: Every ``show`` a layout answers; ``floors`` is the default stack.
+LAYOUT_VIEWS = ("floors", "blocks", "buses", "trunks", "materials", "sites")
 
 #: What ``show='sites'`` needs, said when it was asked for without ``sites=``.
 _SITES_USAGE = (
@@ -172,10 +175,7 @@ def _materials_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str,
     )
     riser_pumps = _riser_pumps(report)
     if riser_pumps:
-        notes.append(
-            f"includes {riser_pumps} {report.pump_name}(s) for the fluid risers -- these "
-            "were missing entirely, so a fluid-heavy plan used to understate its own bill"
-        )
+        notes.append(f"includes {riser_pumps} {report.pump_name}(s) for the fluid risers")
     notes.append(
         "belts and pipes are NOT costed: their cost is per metre and there is no "
         "route, so a length here would be invented. Use show='buses' for line "
@@ -308,7 +308,7 @@ def _floors_view(g: GameData, report: LayoutReport, limit: int) -> tuple[str, li
     return body, notes
 
 
-#: The table each ``show`` asks for; anything else draws the floors.
+#: The table each ``show`` other than ``floors`` asks for.
 _VIEWS: dict[str, Callable[[GameData, LayoutReport, int], tuple[str, list[str]]]] = {
     "blocks": _blocks_view,
     "sites": _sites_view,

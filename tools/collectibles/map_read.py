@@ -73,8 +73,10 @@ class MapWorld:
     names_with_two_classes: int
     packages_read: int
     packages_without_a_level: int
-    #: Why a package or actor read came up short, by reason.
-    read_problems: collections.Counter
+    #: Exception type -> how many world packages raised it and were skipped whole.
+    packages_failed: collections.Counter
+    #: Why an actor of a row or hazard class got no position, by reason and class.
+    actors_without_transform: collections.Counter
     unresolved_script_classes: int
     seconds: float
 
@@ -155,19 +157,11 @@ def _pod_unlock_cost(view: PackageView, actor: int) -> dict | None:
     return out
 
 
-def _placement_detail(view: PackageView, slot: int, cls: str) -> tuple[dict, bool]:
-    """A row's class-specific fields, and whether a loot cache's contents were unreadable."""
+def _placement_detail(view: PackageView, slot: int, cls: str) -> dict:
+    """A row's class-specific fields. A pickup whose contents will not read is still a row,
+    counted as ``placed`` minus ``contents_read`` in its category's tally."""
     detail: dict = {}
-    contents_unreadable = False
-    if cls == LOOT_CACHE_CLASS:
-        contents = _pickup_contents(view, slot)
-        if contents is None:
-            contents_unreadable = True
-        else:
-            detail["contents"] = contents
-    if cls == MUSHROOM_CLASS:
-        # Asked without a warning: a mushroom's yield lives on its class, and "the map does
-        # not say" is then a count in the artifact.
+    if cls in (LOOT_CACHE_CLASS, MUSHROOM_CLASS):
         contents = _pickup_contents(view, slot)
         if contents is not None:
             detail["contents"] = contents
@@ -175,7 +169,7 @@ def _placement_detail(view: PackageView, slot: int, cls: str) -> tuple[dict, boo
         cost = _pod_unlock_cost(view, slot)
         if cost is not None:
             detail["unlock_cost"] = cost
-    return detail, contents_unreadable
+    return detail
 
 
 def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> MapWorld:
@@ -189,13 +183,14 @@ def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> M
     census = _ActorCensus()
     placements: list[Placement] = []
     hazards: list[Hazard] = []
-    read_problems: collections.Counter = collections.Counter()
+    packages_failed: collections.Counter = collections.Counter()
+    without_transform: collections.Counter = collections.Counter()
     no_level = 0
     started = time.time()
 
     def unreadable(_path: str, exc: Exception) -> None:
         # One bad package must not lose the rest; the exception type says which kind it is.
-        read_problems[f"package failed to parse: {type(exc).__name__}"] += 1
+        packages_failed[type(exc).__name__] += 1
 
     packages = level_paths(store, contains=WORLD_LEVEL_DIR)
     for number, total, path, view in walk_levels(
@@ -220,16 +215,14 @@ def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> M
                 continue
             root = root_component(view, slot)
             if root is None:
-                read_problems[f"no root component: {cls}"] += 1
+                without_transform[f"no root component: {cls}"] += 1
                 continue
             transform, parent = world_transform(view, root, classes)
             if transform is None:
-                read_problems[f"unresolvable attach chain: {cls}"] += 1
+                without_transform[f"unresolvable attach chain: {cls}"] += 1
                 continue
             if is_row:
-                detail, contents_unreadable = _placement_detail(view, slot, cls)
-                if contents_unreadable:
-                    read_problems["pickup with no readable mPickupItems"] += 1
+                detail = _placement_detail(view, slot, cls)
                 placements.append(
                     Placement(
                         instance=instance,
@@ -269,7 +262,8 @@ def read_map(store: IoStore, scripts: ScriptObjects, progress: bool = True) -> M
         names_with_two_classes=sum(1 for v in census.classes_by_name.values() if len(v) > 1),
         packages_read=len(packages),
         packages_without_a_level=no_level,
-        read_problems=read_problems,
+        packages_failed=packages_failed,
+        actors_without_transform=without_transform,
         unresolved_script_classes=census.unresolved_scripts,
         seconds=time.time() - started,
     )
@@ -367,6 +361,12 @@ def placements_source_meta(
         "game_build": game_build,
         "packages_read": world.packages_read,
         "packages_with_no_level_export": world.packages_without_a_level,
+        "packages_that_failed_to_parse": by_count(world.packages_failed),
+        "packages_that_failed_to_parse_note": (
+            "world packages the reader refused, by exception type, each skipped whole. "
+            "Their actors are in neither the rows nor the class histogram, so accounting "
+            "cannot see them; empty means every package listed in packages_read was read."
+        ),
         "map_actors_placed": world.actor_count,
         "actor_classes_placed": len(world.class_counts),
         "level_read": WORLD_LEVEL_DIR,
@@ -384,13 +384,14 @@ def placements_source_meta(
             "test map -- the test map does place resource nodes, which is why the "
             "check is run against emitted classes rather than eyeballed."
         ),
-        "actors_read_but_given_no_transform": by_count(world.read_problems),
+        "actors_read_but_given_no_transform": by_count(world.actors_without_transform),
         "actors_read_but_given_no_transform_note": (
             "an actor of a class this file reads whose root component or attach chain "
             "could not be resolved, so it has no position and is NOT a row. Empty "
-            "means every one was placed. This is the one way a collectible could go "
-            "missing without the accounting noticing, since the class histogram counts "
-            "it either way -- hence a number here rather than nothing."
+            "means every one was placed. This is one of the two ways a collectible could "
+            "go missing without the accounting noticing, since the class histogram counts "
+            "it either way -- hence a number here rather than nothing. "
+            "packages_that_failed_to_parse is the other."
         ),
         "actor_rule": (
             "an export whose Outer is the package's /Script/Engine.Level export. A "

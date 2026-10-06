@@ -24,9 +24,9 @@ still in the tree as the no-table fallback, and
 answer for the very rows it was reporting on.
 
 Numbers come from the committed projection (the reference save: 889 destroyed records in 284
-cells) joined against ``data/world_collectibles.json``. That file is untracked, so every test
-needing it goes through the ``table`` fixture and skips without it -- and the degraded path it
-skips to is itself tested.
+cells) joined against ``data/world_collectibles.json``. That file is tracked, so every test
+needing it goes through the ``table`` fixture, which fails without it; the degraded path a
+missing table falls back to is tested on its own.
 """
 
 from __future__ import annotations
@@ -103,12 +103,11 @@ UNRESOLVED = 176
 
 @pytest.fixture(scope="session")
 def table():
-    """The map's placement table. Untracked, so absent is a normal condition."""
-    loaded = load_collectibles()
+    """The map's placement table. Tracked, so absent is a broken checkout; ``strict`` keeps an
+    unreadable file from passing for an absent one."""
+    loaded = load_collectibles(strict=True)
     if loaded is None:
-        pytest.skip(
-            "needs data/world_collectibles.json (uv run python tools/gen_world_collectibles.py)"
-        )
+        pytest.fail("data/world_collectibles.json is tracked and missing -- broken checkout?")
     return loaded
 
 
@@ -282,8 +281,10 @@ def test_remaining_is_placed_minus_collected_and_the_parts_add_up(state, table):
             assert row["remaining"] == row["placed"] - row["collected"] == buckets
     census = {r["category"]: r for r in state.collectible_census()}
     assert census["power_slug_blue"]["remaining"] == 596 - 119 == 477
-    assert census["power_slug_blue"]["standing"] == 381
+    assert census["power_slug_blue"]["standing"] == 379
     assert census["power_slug_blue"]["never_streamed"] == 96
+    # The table's newest save is later than the reference save and has taken two more.
+    assert census["power_slug_blue"]["gone_in_a_later_save"] == 2
     assert census["somersloop"]["remaining"] == 88
 
 
@@ -456,7 +457,7 @@ def test_the_census_shows_placed_collected_and_remaining(tool, table):
     assert "unresolved=176" in out
     assert "showing=every category" in out
     assert "category\tplaced\tcollected\tremaining\tstanding\tnever_streamed" in out
-    assert "power_slug_blue\t596\t119\t477\t381\t96" in out
+    assert "power_slug_blue\t596\t119\t477\t379\t96\t2" in out
     assert "somersloop\t106\t18\t88\t66\t22" in out
 
 

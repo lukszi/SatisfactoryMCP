@@ -1523,7 +1523,7 @@ change.
 
 | Mark | Light base | Dark base | Why |
 |---|---|---|---|
-| Collected pickup X (`map/drawn/markers.ts`) | `#2a3147` | `#9aa0a8` | the old `#6b7078` was 2.2–4.5 from the ground on every base. The light value is the colour study's `#30374d` nudged 2.7 to clear the foundations by 16.5 |
+| Collected pickup X (`map/drawn/pickups.ts`) | `#2a3147` | `#9aa0a8` | the old `#6b7078` was 2.2–4.5 from the ground on every base. The light value is the colour study's `#30374d` nudged 2.7 to clear the foundations by 16.5 |
 | Coal node | `#4c4c4c` | `#8c8f96` | near-black coal vanished on the dark relief (2.0) |
 | Power casing | `#1c1550` | `#08060f` | the indigo was 18 from the dark ground |
 | Belts | casing in the lift fill `#0e1116`, 2 px | no casing | mid steel was 4.8 from bare ground on the artwork |

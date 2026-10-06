@@ -26,35 +26,25 @@ into a named test.
 from __future__ import annotations
 
 import struct
-from pathlib import Path
 
 import pytest
 
 from pioneersav import ParseError, read_lightweight
 from pioneersav.lightweight import RECORD_BYTES, VERSION
-from tests.support.paths import FIXTURES
-
-FIXTURE = FIXTURES / "save_lightweight.bin"
-FIXTURE_V2 = FIXTURES / "save_lightweight_v2.bin"
+from tests.support.paths import committed_fixture
 
 SWATCH = "/Game/FactoryGame/Buildable/-Shared/Customization/Swatches/SwatchDesc_Slot16.SwatchDesc_Slot16_C"
 FOUNDATION = "Build_Foundation_8x1_01_C"
 
 
-def _read(path: Path) -> bytes:
-    if not path.is_file():
-        pytest.skip(f"{path.name} not committed")
-    return path.read_bytes()
-
-
 @pytest.fixture(scope="module")
 def raw() -> bytes:
-    return _read(FIXTURE)
+    return committed_fixture("save_lightweight.bin").read_bytes()
 
 
 @pytest.fixture(scope="module")
 def raw_v2() -> bytes:
-    return _read(FIXTURE_V2)
+    return committed_fixture("save_lightweight_v2.bin").read_bytes()
 
 
 @pytest.fixture(scope="module")

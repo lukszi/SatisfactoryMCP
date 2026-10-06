@@ -72,7 +72,7 @@ from satisfactory_mcp.core.saveio.extract.census import Drops
 from satisfactory_mcp.core.saveio.extract.structures import lightweight, placed, structures
 from satisfactory_mcp.domain.factories.structure import build_structures
 from tests.support.fanout import fanout_width, in_order
-from tests.support.paths import FIXTURES
+from tests.support.paths import committed_fixture
 
 #: The foundation class in both committed fixtures. ``graph/structure.py`` only treats a record
 #: as a floor tile if its class name says foundation, so the slab tests below need this one.
@@ -92,10 +92,7 @@ class Subsystem:
 
 
 def _blob(name: str) -> list:
-    path = FIXTURES / name
-    if not path.is_file():
-        pytest.skip(f"{name} not committed")
-    raw = path.read_bytes()
+    raw = committed_fixture(name).read_bytes()
     return read_lightweight(raw, 0, len(raw))
 
 

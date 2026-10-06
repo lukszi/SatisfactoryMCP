@@ -230,24 +230,30 @@ var DISCHARGED: Exception[] = [
   },
   /* Dark-tone values, drawn only over a dark base (map-tone.ts), where the belts' steel and a
    * light grey are both chosen to read against near-black ground. Each pair is a different
-   * kind of mark: a 1 px X or a filled disc against a stroked run. docs/frontend_vision.md §19. */
+   * kind of mark: a 1 px X, a filled disc or a stroked run. docs/frontend_vision.md §19. */
   {
-    a: "markers/pickup collected dark",
+    a: "pickups/pickup collected dark",
     b: "routes/belts",
     de: 5.7,
     why: "the dark-tone X over a collected pickup: two crossed 8 px strokes, never a run.",
   },
   {
-    a: "markers/pickup collected dark",
+    a: "pickups/pickup collected dark",
     b: "routes/belt slow",
     de: 8.6,
     why: "as above.",
   },
   {
-    a: "markers/pickup collected dark",
+    a: "pickups/pickup collected dark",
     b: "routes/belt fast",
     de: 10.0,
     why: "as above.",
+  },
+  {
+    a: "pickups/pickup collected dark",
+    b: "markers/coal dark",
+    de: 6.4,
+    why: "the same X against coal's filled disc: two crossed strokes, never a disc.",
   },
   {
     a: "markers/coal dark",
@@ -272,6 +278,14 @@ var DISCHARGED: Exception[] = [
     b: "routes/lift fill",
     de: 3.5,
     why: "a 1 px rim either side of a lilac wire against the hole inside a steel ring.",
+  },
+  {
+    a: "pickups/pickup collected",
+    b: "markers/locked casing",
+    de: 11.5,
+    why:
+      "the light-tone X against the 3 px ring under a locked node, which always carries the " +
+      "ore's own dashed colour on top: two crossed strokes, never a ring.",
   },
 ];
 

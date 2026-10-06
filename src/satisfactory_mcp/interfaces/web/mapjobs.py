@@ -191,6 +191,8 @@ class MapJobRunner:
         if job is None:
             raise KeyError(ident)
         if job["status"] == "queued":
+            # Synchronously, so a ``_launch`` already past its queue check sees it.
+            job["status"] = "cancelled"
             await asyncio.to_thread(self._record_outcome, job, "cancelled", None)
             self.announce(job)
         elif (
@@ -261,16 +263,23 @@ class MapJobRunner:
                 await asyncio.sleep(1.0)
 
     async def _launch(self, job: dict) -> None:
+        """Start a queued job; a cancel during any await here leaves no generator running."""
         cost = await asyncio.to_thread(presets.estimate, job["preset"], job["options"])
+        if job["status"] != "queued":
+            return
         if not cost["ok"]:
             job["error_line"] = cost["reason"]
             await self._finish_and_announce(job, "failed", None)
             return
         child = await asyncio.to_thread(self._spawn, job)
+        if job["status"] != "queued":
+            await asyncio.to_thread(kill_tree, child.pid)
+            child.close()
+            return
         job.update(status="running", started=time.time(), pid=child.pid, pid_created=child.created)
         job["stage_words"] = "starting"
-        await asyncio.to_thread(store.save, job)
         self.active_run = ActiveRun(job, child)
+        await asyncio.to_thread(store.save, job)
         self.announce(job)
 
     def _spawn(self, job: dict) -> Child:

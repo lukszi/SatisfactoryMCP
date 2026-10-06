@@ -178,16 +178,16 @@ def identity_meta(ctx: BuildContext) -> dict:
             "hand-placed ones. with_the_map_s_own_placement_id is reported per category "
             "so a consumer filtering on the suffix can see what that filter would cost."
         ),
-        "rows_within_1m_of_another_row_in_the_same_category": ctx.coincident_pair_count,
-        "rows_within_1m_of_another_row_by_category": by_count(ctx.coincident_by_category),
+        "coincident_pairs_in_the_same_category": ctx.coincident_pair_count,
+        "coincident_pairs_by_category": by_count(ctx.coincident_by_category),
         "coincident_pairs_the_saves_hold_a_record_for_both_of": ctx.coincident_both_recorded,
         "coincident_pairs_where_both_carry_a_placement_id": (
             ctx.coincident_both_have_a_placement_id
         ),
         "coincident_pairs_the_saves_give_different_states": ctx.coincident_states_differ,
         "coincident_note": (
-            "pairs, not rows, and a question rather than an error: two rows of one "
-            "category within a metre of each other COULD be one physical collectible "
+            "a pair is two rows of one category within a metre of each other, and a "
+            "question rather than an error: such a pair COULD be one physical collectible "
             "emitted twice. For every artefact class the count is 0, which is the result "
             "worth having. It is not 0 for the mushroom, which is what a mushroom is -- "
             "they grow in clumps. What settles those pairs is identity, not distance, and "

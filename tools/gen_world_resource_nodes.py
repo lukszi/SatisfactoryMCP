@@ -397,8 +397,7 @@ def main() -> int:
         versions=versions,
     )
     args.out.write_text(json.dumps({"_meta": meta, "nodes": rows}, indent=1) + "\n", "utf-8")
-    shown = args.out.relative_to(ROOT) if args.out.is_relative_to(ROOT) else args.out
-    print(f"wrote {shown}  {len(rows)} rows  {args.out.stat().st_size} B")
+    print(f"wrote {_shown(args.out)}  {len(rows)} rows  {args.out.stat().st_size} B")
     print("by class:", meta["by_class"])
     print("by purity:", meta["by_purity"])
     print(
@@ -407,6 +406,11 @@ def main() -> int:
         "streamed cells, 0 emitted"
     )
     return 0
+
+
+def _shown(path: Path) -> Path:
+    """``path`` relative to the repository when it is inside it, as given otherwise."""
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
 
 
 def build_meta(

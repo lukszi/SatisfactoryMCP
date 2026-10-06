@@ -91,7 +91,9 @@ def read_world(store: IoStore, scripts: ScriptObjects) -> tuple[MapWorld, Hazard
         f"{len(world.hazards)} hazard actors, {store.blocks_read} blocks -> "
         f"{store.bytes_out / 1e6:.0f} MB, {world.seconds:.1f}s"
     )
-    for reason, count in world.read_problems.most_common(5):
+    for exc_type, count in world.packages_failed.most_common(5):
+        print(f"  WARNING: {count} package(s) failed to parse: {exc_type}")
+    for reason, count in world.actors_without_transform.most_common(5):
         print(f"  WARNING: {count} x {reason}")
     stale = [cls for cls in EXCLUDED if not world.class_counts.get(cls)]
     if stale:

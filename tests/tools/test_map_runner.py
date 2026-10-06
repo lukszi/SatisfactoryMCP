@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -19,7 +20,7 @@ import pytest
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.maps import jobs as store
 from satisfactory_mcp.domain.maps import presets, registry
-from satisfactory_mcp.interfaces.web import childproc
+from satisfactory_mcp.interfaces.web import childproc, mapjobs
 from satisfactory_mcp.interfaces.web.mapjobs import MapJobRunner
 from satisfactory_mcp.interfaces.web.watch.events import KIND_MAPS
 from satisfactory_mcp.interfaces.web.watch.watcher import SaveWatcher
@@ -128,6 +129,76 @@ def test_one_runs_at_a_time_and_the_queue_holds_four(env, monkeypatch):
     assert first["status"] == "cancelled"
     assert first["produces"][0] not in registry.read()["types"]
     assert not (registry.maps_dir() / first["id"] / "terrain").exists()
+
+
+class _HeldChild:
+    """A spawned generator that runs until it is killed."""
+
+    pid, created = 4242, 1
+
+    def __init__(self) -> None:
+        self.killed = self.closed = False
+
+    def exit_code(self) -> int | None:
+        return 1 if self.killed else None
+
+    def peak_rss(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.parametrize(
+    ("held_at", "replied", "spawns"),
+    [("estimate", "cancelled", False), ("spawn", "cancelled", True), ("save", "running", True)],
+)
+def test_a_cancel_during_the_launch_stops_the_generator(env, monkeypatch, held_at, replied, spawns):
+    """Wherever the launch is waiting, a cancel keeps the child from starting or kills it."""
+    entered, release = threading.Event(), threading.Event()
+    child, spawned, killed = _HeldChild(), [], []
+    runner = MapJobRunner(SaveWatcher(root=env, notes=()))
+    job = runner.submit("render", PREVIEW, None, None)
+
+    def kill(pid: int) -> None:
+        killed.append(pid)
+        child.killed = True
+
+    def spawn(record: dict) -> _HeldChild:
+        spawned.append(record["id"])
+        return child
+
+    monkeypatch.setattr(mapjobs, "kill_tree", kill)
+    monkeypatch.setattr(runner, "_spawn", spawn)
+    owner, name = {"estimate": (presets, "estimate"), "spawn": (runner, "_spawn"),
+                   "save": (store, "save")}[held_at]  # fmt: skip
+    step = getattr(owner, name)
+
+    def held(*args):
+        if held_at != "save" or args[0]["status"] == "running":
+            entered.set()
+            assert release.wait(10)
+        return step(*args)
+
+    monkeypatch.setattr(owner, name, held)
+
+    async def main() -> str:
+        launch = asyncio.create_task(runner._launch(job))
+        assert await asyncio.to_thread(entered.wait, 10)
+        status = (await runner.cancel(job["id"]))["status"]
+        release.set()
+        await launch
+        if runner.active_run is not None:
+            await asyncio.wait_for(runner._watch(runner.active_run), timeout=10)
+        return status
+
+    assert _run(main()) == replied
+    assert job["status"] == "cancelled" and runner.active_run is None
+    assert spawned == ([job["id"]] if spawns else [])
+    assert killed == ([child.pid] if spawns else []) and child.closed is spawns
+    assert job["produces"][0] not in registry.read()["types"]
+    on_disk = json.loads((store.jobs_dir() / f"{job['id']}.json").read_text(encoding="utf-8"))
+    assert on_disk["status"] == "cancelled"
 
 
 def test_a_failing_generator_leaves_a_failed_job_and_no_type(env, monkeypatch):

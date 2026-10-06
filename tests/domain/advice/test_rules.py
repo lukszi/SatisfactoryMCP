@@ -3,10 +3,15 @@ order, the caps, the keys and the ids. The fixture world with its reference fact
 
 from __future__ import annotations
 
+import ast
+import importlib
 import itertools
+import pkgutil
+from pathlib import Path
 
 import pytest
 
+from satisfactory_mcp import domain
 from satisfactory_mcp.domain.advice import advisory, rules
 from satisfactory_mcp.domain.factories import health
 from satisfactory_mcp.domain.planning.stored import manage
@@ -196,6 +201,32 @@ def test_k9_honours_spoilers_and_never_counts_hard_drives(world, monkeypatch):
     [told] = rules._pickups(world, spoilers=True)
     assert told.weight == 2 and told.text.endswith("mercer sphere 200 m")
     assert told.reveal == ("pickup: mercer_sphere", "pickup: power_slug_blue")
+
+
+def _dotted_sources() -> set[str]:
+    """Every dotted ``source=`` literal in rules.py, both branches of a conditional included."""
+    tree = ast.parse(Path(rules.__file__).read_text(encoding="utf-8"))
+    return {
+        leaf.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.keyword) and node.arg == "source"
+        for leaf in ast.walk(node.value)
+        if isinstance(leaf, ast.Constant) and isinstance(leaf.value, str) and "." in leaf.value
+    }
+
+
+def test_every_dotted_source_names_a_function_that_exists():
+    """A source tag points at the code behind a row, and a rename leaves it pointing nowhere."""
+    homes = {
+        name.rsplit(".", 1)[-1]: name
+        for _finder, name, _ispkg in pkgutil.walk_packages(domain.__path__, domain.__name__ + ".")
+    }
+    sources = _dotted_sources()
+    assert {"health.assess", "surroundings.pickups_near", "built.detect"} <= sources
+    for source in sources:
+        module, attr = source.split(".")
+        home = getattr(rules, module, None) or importlib.import_module(homes[module])
+        assert callable(getattr(home, attr, None)), source
 
 
 def test_capped_keeps_three_of_a_kind_and_five_in_all(world):

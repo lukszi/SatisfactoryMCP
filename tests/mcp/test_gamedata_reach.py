@@ -76,6 +76,23 @@ def test_an_unknown_building_kind_lists_the_kinds(game):
     assert "logistics" in out and "all" in out
 
 
+def test_the_tier_note_follows_the_kind_in_any_case(state, use_world):
+    """The lookup casefolded the kind and the note compared it raw, so "Logistics" listed the
+    tiers without saying which one planning assumes."""
+    use_world(state)
+    out = srv.list_buildings(building_kind="Logistics")
+    assert "planning defaults to the fastest UNLOCKED tier" in out
+
+
+def test_a_negative_offset_reads_as_the_first_page(state, use_world):
+    """Both searches sliced with the raw offset, so -3 showed the last three rows and told
+    the caller to page from a negative offset."""
+    use_world(state)
+    assert srv.search_items("iron", offset=-3) == srv.search_items("iron")
+    assert srv.search_recipes(query="iron", offset=-3) == srv.search_recipes(query="iron")
+    assert "offset -" not in srv.search_recipes(query="iron", offset=-3)
+
+
 def test_the_sink_and_the_pumps_are_reachable(game):
     """The sink's 30 MW is the AWESOME_SINK_MW constant the optimizer charges, and pump
     head is what a fluid plan sizes risers with. Neither was listable."""

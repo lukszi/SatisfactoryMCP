@@ -76,3 +76,11 @@ def test_the_centroid_keeps_its_altitude(tools):
     rows = [line for line in tools.factory_sites(limit=1).splitlines() if "\t" in line]
     x, y, z = rows[1].split("\t")[2].split(",")
     assert (int(x), int(y), int(z)) == (-674, -1446, 31)
+
+
+def test_the_recipe_count_says_it_is_the_unlocked_one(tools, state):
+    """It said "automatable recipes total" over the unlocked part recipes, well under the
+    game's own count."""
+    out = tools.unlocked_recipes()
+    assert f"{len(state.unlocked_recipes('part'))} automatable recipes unlocked" in out
+    assert "total" not in out.splitlines()[1]
