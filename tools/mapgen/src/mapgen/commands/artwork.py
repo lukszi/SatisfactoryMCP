@@ -20,7 +20,7 @@ from mapgen.enhance.levels import ENHANCE_WORK, enhance_levels
 from mapgen.enhance.upscaler import (
     ENHANCE_MODEL,
     ENHANCE_SCALE,
-    MissingUpscaler,
+    EnhanceError,
     check_array_stack,
     ensure_upscaler,
 )
@@ -166,7 +166,7 @@ def _prove_upscaler(args) -> tuple[dict | None, int | None]:
     try:
         upscaler = ensure_upscaler(args.esrgan_cache)
         upscaler["numpy"], upscaler["scipy"] = check_array_stack()
-    except MissingUpscaler as exc:
+    except EnhanceError as exc:
         print(exc)
         return None, 6
     print(
@@ -267,7 +267,7 @@ def main() -> int:
             with_2x=not args.no_tiles_2x,
             build_pin=build_pin,
         )
-    except MissingUpscaler as exc:
+    except EnhanceError as exc:
         print(exc)
         return 6
     except PyramidError as exc:

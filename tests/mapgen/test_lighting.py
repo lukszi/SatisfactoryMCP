@@ -172,10 +172,10 @@ def test_the_stage_and_an_unlit_install_write_what_the_server_serves(tmp_path):
     from PIL import Image
 
     from mapgen.lighting.stage import Surface, bake_light
-    from mapgen.render.light import UNLIT_DIR_NAME, UnlitRun
+    from mapgen.render.light import UNLIT_DIR_NAME, LightingRun
 
     size = 512
-    run = UnlitRun(tmp_path / "cache", size)
+    run = LightingRun(tmp_path / "cache", size)
     surface = run.surface_for()
     assert run.surface_for() is None  # only the first layer captures
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)

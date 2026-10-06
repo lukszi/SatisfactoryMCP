@@ -171,7 +171,7 @@ def test_a_lit_layer_encodes_the_unlit_tree_while_the_sheet_is_relit(tmp_path, m
     monkeypatch.setattr(cut, "commit_tree", commit)
     results = {}
     for name, workers in (("serial", 1), ("parallel", 2)):
-        run = light.UnlitRun.__new__(light.UnlitRun)
+        run = light.LightingRun.__new__(light.LightingRun)
         run.surface, run.meta, run.unlit = None, {"tiles": {}}, {}
         sheet = _sheet(512, seed=3)
         stats, dense, _ = run.install(sheet, Image, tmp_path / name, "terrain", workers, 7, "r")

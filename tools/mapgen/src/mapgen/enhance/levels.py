@@ -29,7 +29,7 @@ from mapgen.enhance.upscaler import (
     ENHANCE_OVERLAP_PX,
     ENHANCE_SCALE,
     ENHANCE_TILE_PX,
-    MissingUpscaler,
+    EnhanceError,
     run_upscaler,
 )
 from mapgen.gamedata.artwork_sheet import line_bytes, mean_abs
@@ -288,7 +288,7 @@ def enhance_levels(
     enhanced_top = enhanced_top_z(sheet.width, scale, tile_px)
     grid = sheet.width // source_tile
     if grid * source_tile != sheet.width:
-        raise MissingUpscaler(
+        raise EnhanceError(
             f"a {sheet.width} px sheet does not divide into {source_tile} px squares, so the "
             "upscaler cannot be fed without a partial tile"
         )
@@ -322,7 +322,7 @@ def enhance_levels(
     t_upscale = time.perf_counter() - started
     produced = sorted(up_dir.glob("*.png"))
     if code != 0 or len(produced) != grid * grid:
-        raise MissingUpscaler(
+        raise EnhanceError(
             f"{upscaler['exe']} exited {code} after {t_upscale:.0f}s with "
             f"{len(produced)} of {grid * grid} squares written.\n"
             f"{log}\n"

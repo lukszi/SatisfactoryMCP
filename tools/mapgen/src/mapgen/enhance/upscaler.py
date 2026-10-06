@@ -18,7 +18,7 @@ __all__ = [
     "ENHANCE_SHA256",
     "ENHANCE_TILE_PX",
     "ENHANCE_URL",
-    "MissingUpscaler",
+    "EnhanceError",
     "check_array_stack",
     "ensure_upscaler",
     "run_upscaler",
@@ -58,8 +58,8 @@ ENHANCE_TILE_PX = 1024
 ENHANCE_OVERLAP_PX = 96
 
 
-class MissingUpscaler(RuntimeError):
-    """The GPU stage cannot run, and says what to do about it.
+class EnhanceError(RuntimeError):
+    """The GPU enhancement stage cannot run or did not finish, and says what to do about it.
 
     Raised rather than degraded from: giving back Lanczos levels would write a sidecar
     that says ``enhanced`` over pixels that are not.
@@ -145,7 +145,7 @@ def ensure_upscaler(cache: Path | None = None, *, smoke: bool = True) -> dict:
                 shutil.copyfileobj(response, handle)
         except OSError as exc:
             partial.unlink(missing_ok=True)
-            raise MissingUpscaler(
+            raise EnhanceError(
                 f"could not download the upscaler from {ENHANCE_URL}: {exc}\n"
                 f"Fetch it by hand into {archive} and run this again -- the download is the "
                 "only part of --enhance that needs the network, and it happens once."
@@ -154,7 +154,7 @@ def ensure_upscaler(cache: Path | None = None, *, smoke: bool = True) -> dict:
 
     digest = sha256_of(archive)
     if digest != ENHANCE_SHA256:
-        raise MissingUpscaler(
+        raise EnhanceError(
             f"{archive} hashes to {digest}, not the pinned {ENHANCE_SHA256}.\n"
             "That asset is an immutable GitHub release, so a different digest means the "
             "download was truncated or intercepted, not that upstream changed its mind. "
@@ -166,12 +166,12 @@ def ensure_upscaler(cache: Path | None = None, *, smoke: bool = True) -> dict:
         with zipfile.ZipFile(archive) as bundle:
             bundle.extractall(home)
     if not exe.is_file() or not models.is_dir():
-        raise MissingUpscaler(
+        raise EnhanceError(
             f"{archive} unpacked into {home} without {ENHANCE_EXE_NAME} or models/ in it. "
             "Delete both and run this again."
         )
     if not (models / f"{ENHANCE_MODEL}.param").is_file():
-        raise MissingUpscaler(
+        raise EnhanceError(
             f"{models} has no {ENHANCE_MODEL}.param -- this archive does not ship the model "
             "this file was measured against, so the run would be a different pipeline."
         )
@@ -181,7 +181,7 @@ def ensure_upscaler(cache: Path | None = None, *, smoke: bool = True) -> dict:
             probe = Path(tmp) / "smoke.png"
             code, log = run_upscaler(exe, models, home / "input.jpg", probe, ENHANCE_SCALE)
             if code != 0 or not probe.is_file():
-                raise MissingUpscaler(
+                raise EnhanceError(
                     f"{exe} could not upscale its own 12 KB sample image (exit {code}), so "
                     "the GPU stage will not run on this machine.\n"
                     f"{log}\n"
@@ -212,13 +212,13 @@ def check_array_stack() -> tuple[str, str]:
         import numpy
         import scipy
     except ImportError as exc:
-        raise MissingUpscaler(
+        raise EnhanceError(
             "--enhance needs numpy and scipy, which are dependencies of this project "
             "outright: run this through `uv run` rather than a bare python."
         ) from exc
     homes = {Path(module.__file__).resolve().parents[1] for module in (numpy, scipy)}
     if len(homes) != 1:
-        raise MissingUpscaler(
+        raise EnhanceError(
             "numpy and scipy are imported from different environments -- "
             + " and ".join(sorted(str(home) for home in homes))
             + ".\nThat happens when something ahead of the project environment on sys.path "

@@ -38,7 +38,7 @@ from satisfactory_mcp.core.gameassets.pyramid import PYRAMID_TILE_PX, install_py
 __all__ = [
     "LIGHT_CACHE_DIR_NAME",
     "UNLIT_DIR_NAME",
-    "UnlitRun",
+    "LightingRun",
     "add_light_flags",
     "claim_scratch",
     "crown_layers",
@@ -130,8 +130,9 @@ def crown_occluder(painted, cache_root: Path, size: int):
     return sheet_crowns(crown, painted.meta["grid"], size, top, cover), cover
 
 
-class UnlitRun:
-    """One ``--unlit`` run: the surface the first layer captures, the bake, the installs.
+class LightingRun:
+    """The default ``--light`` run: the surface the first layer captures, the light bake,
+    and each layer's ``unlit/`` and relit installs.
 
     ``light_workers`` bake the light, None counting them from the cores and free memory;
     ``install``'s own ``workers`` encode the tiles.
@@ -229,11 +230,11 @@ class UnlitRun:
 
 @contextmanager
 def light_run(root: Path | None, size: int, painted,
-              workers: int | None = None) -> Iterator[UnlitRun | None]:  # fmt: skip
+              workers: int | None = None) -> Iterator[LightingRun | None]:  # fmt: skip
     """The run's light stage in ``root``, crowns first, closed however the run ends; or None."""
     run = None
     if root is not None:
-        run = UnlitRun(root, size, crown_occluder(painted, root, size), light_workers=workers)
+        run = LightingRun(root, size, crown_occluder(painted, root, size), light_workers=workers)
     try:
         yield run
     finally:
