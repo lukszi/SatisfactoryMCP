@@ -16,6 +16,18 @@ testing contract. Section numbers are continuous with the rest of the spec;
 > benefit (580 → 1,136 bytes on the real Plastic response). Enforced by the shared decorator
 > `app.tool`.
 
+> **An argument a tool does not declare is refused, on every tool.** FastMCP validates a call
+> against a model that ignores unknown keys, so `diff_vs_save`, `commission_plan`,
+> `rank_unlocks` and `plan_layout` dropped the `plan_factory` arguments they lack (`sloops`,
+> `required`, `supplied`, …) and answered for a different plant without a word. A misspelt
+> optional argument went the same way. `app.StrictFastMCP.call_tool` compares the names with
+> the tool's published schema before the tool runs and answers
+> `! <tool> does not take x=; nothing ran.`, with the declared name it resembles, and on a
+> tool that takes `plan=` the way to carry a stored plan argument: save it with
+> `plan_factory(save_as=)`, then pass `plan=`. It overrides FastMCP's own `call_tool`, so
+> `tests/mcp/test_undeclared_arguments.py` drives a real client session: an mcp upgrade that
+> routes calls past the override fails there.
+
 ### 10.1 Tools
 
 **Game data:** `search_items`, `search_recipes`, `recipe_detail`, `alternates_for_item`, `list_buildings`

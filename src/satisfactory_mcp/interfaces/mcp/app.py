@@ -6,12 +6,15 @@ Split out so tool modules can register against one ``mcp`` without importing eac
 
 from __future__ import annotations
 
+import difflib
 import functools
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from functools import lru_cache
+from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import ContentBlock, TextContent
 
 from ... import config
 from ...core.gameassets import provenance
@@ -22,6 +25,7 @@ from ...core.gamedata.search import resolve_item
 from ...core.schema import NewerSchema
 from ...domain import settings
 from ...domain.factories.select import SelectorError
+from ...domain.planning.stored.plan_args import PLAN_DEFAULTS
 from ...domain.planning.stored.planlog import Actor
 from ...domain.session import journal
 from ...domain.world import pin
@@ -34,7 +38,54 @@ INSTRUCTIONS = (
     "ask: or pin: id, call ui_context first."
 )
 
-mcp = FastMCP("satisfactory", instructions=INSTRUCTIONS)
+
+def undeclared_refusal(tool: str, arguments: Mapping[str, object], declared: frozenset[str]) -> str:
+    """The refusal for the arguments ``tool`` does not declare, or '' when it declares them all."""
+    unknown = sorted(set(arguments) - declared)
+    if not unknown:
+        return ""
+    parts = [f"! {tool} does not take {', '.join(f'{arg}=' for arg in unknown)}; nothing ran."]
+    near = [
+        f"{close[0]}= for {arg}="
+        for arg in unknown
+        if (close := difflib.get_close_matches(arg, declared, n=1))
+    ]
+    if near:
+        parts.append(f"Did you mean {', '.join(near)}?")
+    stored = [f"{arg}=" for arg in unknown if arg in PLAN_DEFAULTS]
+    if stored and "plan" in declared:
+        parts.append(
+            f"A saved plan carries {', '.join(stored)}: save it with "
+            "plan_factory(..., save_as=<name>), then pass plan=<name> here."
+        )
+    return " ".join(parts)
+
+
+class StrictFastMCP(FastMCP):
+    """``FastMCP`` refusing an argument a tool does not declare; FastMCP itself drops it.
+
+    docs/mcp-surface.md §10 says why; ``tests/mcp/test_undeclared_arguments.py`` drives a real
+    client session, so an mcp upgrade that stops routing calls through here fails it.
+    """
+
+    async def call_tool(
+        self, name: str, arguments: dict[str, Any]
+    ) -> Sequence[ContentBlock] | dict[str, Any]:
+        declared = await self.declared_arguments(name)
+        refusal = undeclared_refusal(name, arguments, declared) if declared is not None else ""
+        if refusal:
+            return [TextContent(type="text", text=refusal)]
+        return await super().call_tool(name, arguments)
+
+    async def declared_arguments(self, name: str) -> frozenset[str] | None:
+        """The argument names tool ``name`` publishes, or None for no such tool."""
+        for tool in await self.list_tools():
+            if tool.name == name:
+                return frozenset(tool.inputSchema.get("properties") or ())
+        return None
+
+
+mcp = StrictFastMCP("satisfactory", instructions=INSTRUCTIONS)
 
 
 class Refusal(Exception):

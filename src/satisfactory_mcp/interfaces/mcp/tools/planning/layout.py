@@ -93,11 +93,11 @@ def plan_layout(
 ) -> str:
     """Turn a plan into a buildable schematic: blocks, buses and floors.
 
-    Same arguments as plan_factory, plus ``show``: "floors" (default, the stack), "blocks"
-    (every module with its size and rates), "buses" (item flows), "trunks" (which resource
-    nodes share each pipe or belt run into the site), "materials" (what the whole thing
-    costs to build, machines plus deck), or "sites" (cut the plan into named modules and
-    report what crosses between them).
+    The plan_factory arguments it declares (a saved plan, ``plan=``, carries the rest), plus
+    ``show``: "floors" (default, the stack), "blocks" (every module, its size and rates),
+    "buses" (item flows), "trunks" (which nodes share each pipe or belt run in), "materials"
+    (build cost, machines plus deck), or "sites" (the plan cut into named modules, and what
+    crosses between them).
 
     A SCHEMATIC, not a blueprint: modules, connections, floor assignment and a space budget,
     but no world coordinates or belt routing -- there is no terrain data to place them on.
