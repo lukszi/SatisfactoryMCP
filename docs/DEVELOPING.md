@@ -57,7 +57,8 @@ it looks like it does.
 `mcp/`, `web/` (one file per router, in folders named after the router packages),
 `pioneersav/`, `data/` (the committed world tables held
 against the game), `tools/` (the generator scripts and the map job runner), `mapgen/` (the map
-generator's own tests, until they join `tools/mapgen/tests/`), `frontend/` and `architecture/`.
+generator's own tests, until they join `tools/mapgen/tests/`), `frontend/`, `architecture/` and
+`docs/` (every relative link, anchor and section reference in the docs resolves).
 Shared helpers and fixtures live in `tests/support/` and are imported as
 `tests.support.<module>`; a test module never imports another test module or `conftest`, which
 `tests/architecture/test_test_imports.py` enforces. Pytest runs with `--import-mode=importlib`
