@@ -44,9 +44,7 @@ import pytest
 
 from pioneersav import Level, ParseError, Reader, SaveBody, read_body
 from pioneersav.destroyed import read_destroyed_block, read_destroyed_refs
-from tests.support.paths import FIXTURES
-
-FIXTURE = FIXTURES / "save_body_destroyed.bin"
+from tests.support.paths import committed_fixture
 
 #: The three sub-levels, in fixture order. 25-character partition-cell ids.
 LEVEL_ONE = "AHMDFO6QF4K7AA0N6ETSVWH0T"
@@ -56,9 +54,7 @@ LEVEL_EMPTY = "0O2UIH8ZOBYWRN8PY7727SVBT"
 
 @pytest.fixture(scope="module")
 def raw() -> bytes:
-    if not FIXTURE.is_file():
-        pytest.skip("destroyed-actor body fixture not committed")
-    return FIXTURE.read_bytes()
+    return committed_fixture("save_body_destroyed.bin").read_bytes()
 
 
 @pytest.fixture(scope="module")

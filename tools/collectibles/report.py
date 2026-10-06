@@ -73,8 +73,8 @@ def _print_identity(ident: dict, totals: dict) -> None:
         f"{ident['instance_names_carrying_two_classes']} carrying two classes, "
         f"{ident['names_with_the_map_s_placement_id_distinct']} of "
         f"{ident['names_with_the_map_s_placement_id']} placement-id names distinct; "
-        f"{ident['rows_within_1m_of_another_row_in_the_same_category']} rows within 1 m of "
-        "another in the same category"
+        f"{ident['coincident_pairs_in_the_same_category']} pairs of rows within 1 m of "
+        "each other in the same category"
     )
 
 
