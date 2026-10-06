@@ -12,24 +12,25 @@ import math
 
 from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, SUN_ALTITUDE_DEG
 from mapgen.palette.styles import PAINTED_PALETTE
+from satisfactory_mcp.core.jsontypes import JsonObject
 
 __all__ = ["shader_light"]
 
 
-def shader_light(layer: str) -> dict:
+def shader_light(layer: str) -> JsonObject:
     """``{space, ambient, sky, sun, tone_knee, tone_white, crowns}`` for one layer.
 
     A knee of 1 is no tone curve.
     """
     if layer == "painted":
-        p = PAINTED_PALETTE
+        palette = PAINTED_PALETTE
         return {
             "space": "linear",
-            "ambient": float(p["ambient"]),
-            "sky": [float(v) for v in p["sky"]],
-            "sun": [float(v) for v in p["sun"]],
-            "tone_knee": float(p["tone"]["knee"]),
-            "tone_white": float(p["tone"]["white"]),
+            "ambient": float(palette["ambient"]),
+            "sky": [float(v) for v in palette["sky"]],
+            "sun": [float(v) for v in palette["sun"]],
+            "tone_knee": float(palette["tone"]["knee"]),
+            "tone_white": float(palette["tone"]["white"]),
             "crowns": True,
         }
     flat = SHADE_FLOOR + SHADE_RANGE * math.sin(math.radians(SUN_ALTITUDE_DEG))
