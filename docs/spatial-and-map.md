@@ -687,12 +687,12 @@ rather than a stage of a loader: probed only when its pyramid does not answer, a
 
 The same split, one level in. "Which storey of this factory am I looking at" is one question
 with one answer, so it is radios in its own folded section above the modes, drawn by
-`layercontrol.ts` and decided by `floors.ts` through `onFloorPick` — exactly the seam
-`onModePick` is, for exactly the reason. It differs where the rows differ: a mode is a word and
-a floor is a word plus a measurement, and a mezzanine has to read as subordinate to the storey
-it is a ledge on. The section exists only while the page is slicing something, and
-`floor=<platform>/<band>` joins the fragment between `save` and `mode` — subject, then how much
-of the subject, then picture, then viewport. See [§16b](parked.md#16b-built-floor-wise-factory-view-2026-07-31--only-think-about-that-idea)
+`layercontrol/floor-picker.ts` and decided by `floors/floors.ts` through `onFloorPick` —
+exactly the seam `onModePick` is, for exactly the reason. It differs where the rows differ: a
+mode is a word and a floor is a word plus a measurement, and a mezzanine has to read as
+subordinate to the storey it is a ledge on. The section exists only while the page is slicing
+something, and `floor=<platform>/<band>` joins the fragment between `save` and `mode` —
+subject, then how much of the subject, then picture, then viewport. See [§16b](parked.md#16b-built-floor-wise-factory-view-2026-07-31--only-think-about-that-idea)
 for what a floor is and how it is recovered.
 
 ---
