@@ -21,16 +21,7 @@ import { registerFetch } from "../../app/registry";
 import type { Row } from "../../kit/dom";
 import type { PlanSiting, PlansResponse } from "../../api/shapes";
 
-/* Green, measured against every colour already declared on this page. Its nearest neighbour
- * anywhere is the uranium node dot at dE 25.0, then the mushroom pickup at 38.6 and the crate
- * green at 43.8 -- all small marks on open ground, none of them a rectangle a hundred metres
- * across. Against the things this outline is actually laid over it is far clear: dE 105.5
- * from the concrete it will replace, 110.7 from the machine blue standing on it, and 69.9
- * from the nearest biome ground.
- *
- * Green because the page spends almost none of it on anything built: blue, ultramarine,
- * blue-violet, slate and rust are placements or networks, and the one built green, the pale
- * generator mint, is a filled footprint dE 46.6 away from this dashed outline. */
+// Green, which nothing built spends; measured in docs/frontend_palette.md.
 export var PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
 
 /* One pad's card. `source` is the row that decides whether the outline is worth trusting to

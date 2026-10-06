@@ -43,14 +43,7 @@ import type {
  * leaves hairline seams between neighbouring tiles at low zoom, and a stroke in any other
  * colour draws an 8 m grid.
  */
-/* Concrete. A slab is poured ON the biome fill, both are large areas at full strength wherever
- * there is no imagery, and no warrant talks that pair apart -- so this colour has to clear the
- * grounds, and slate violet is the one cool direction they leave open (a neutral grey dies on
- * the coal dot at one end and No Man's Land at the other, and the teal side is Blue Crater and
- * Spire Coast). Measured: dE 18.1 from the nearest ground (Blue Crater), 17.9 from its nearest
- * cross-owner neighbour anywhere (that same coal dot), 24.7 from the nearest belt tone, and
- * 15.3 from the nearest of the six artwork tones binned in power-wires.ts -- the one comparison
- * REGION_BLEND does not soften, since the render is what shows through the fade. */
+// Concrete: slate violet, the one cool direction the grounds leave open (docs/frontend_palette.md).
 var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).foundations;
 
 export function drawStructures(data: StructuresResponse): void {
@@ -99,12 +92,7 @@ registerFetch<StructuresResponse>({
  * Constructor (8x10 m). */
 var MACHINE_FALLBACK_M = 6;
 
-/* Blue, ultramarine, mint. The water node dot at dE 8.6 from this blue is DISCHARGED in
- * palette.ts: the only machine in the dot's square metre is a water extractor, drawn in this
- * table's ultramarine at dE 76.5, under a dot raiseNodeDots() keeps on top. Extractors left amber
- * because amber is the pending removal; generators left tan because tan vanished on sand. Nearest
- * cross-owner colours: extractors the oil dot at 36.2, generators the crates at 21.5. Measurements
- * in docs/frontend_vision.md (T2). */
+// Blue, ultramarine, mint, one per machine layer (docs/frontend_palette.md).
 var KIND_COLOUR: Record<string, string> = declareColours("placements", {
   machines: "#4aa3df",
   extractors: "#19039c",
@@ -178,7 +166,7 @@ export function drawMachines(data: MachinesResponse): void {
           ],
           // The only measured number in this whole project -- the fraction of the machine's
           // own ~300 s window it spent producing. Absent, not "0%", for a building that
-          // carries no monitor: 46 of this world's 570 do not.
+          // carries no monitor.
           ["uptime", m.uptime === null ? null : pct(m.uptime)],
           // All three sides of the clearance box: a Refinery being 15 m tall is why a floor
           // view can say it comes through the ceiling, and the reader looking at that ghost
@@ -241,13 +229,7 @@ registerFetch<MachinesResponse>({
  * layers.ts.
  */
 
-/* Storage, measured. A container is drawn as a filled footprint box, so what it has to
- * separate from is the other filled boxes and the selection pink, which the old magenta sat
- * too close to. A cool blue-violet: dE 18.0 from its nearest cross-owner colour (the hard-drive
- * dot), 20.4 from the water dot, 27.4 from the machine blue, and 64.1 from the selection pink
- * (the magenta was 37.5). The fluid buffers are a deep ultramarine, dE 31.3 below it: the old
- * #4a5596 was 3.2 from foundations on the bases. Nearest cross-owner colour dE 16.2 (crude oil).
- */
+// A cool blue-violet box, and the fluid buffers a value step below it (docs/frontend_palette.md).
 var STORAGE = declareColours("placements", {
   storage: "#6a78c8",
   "storage fluid": "#253496",
@@ -314,9 +296,9 @@ function storagePopup(s: StorageRow): Row[] {
 }
 
 export function drawStorage(data: StorageResponse): void {
-  // Off at the whole-world zoom, like the machines and the routes: 151 boxes across 7 km is a
-  // scatter of specks. Last of the built band, because the row is off by default and the
-  // bottom of the list is where a reader who wants it goes looking.
+  // Off at the whole-world zoom, like the machines and the routes: a world's boxes are a
+  // scatter of specks. Near the bottom of the built band, because the row is off by default
+  // and the bottom of the list is where a reader who wants it goes looking.
   var group = clearedLayer("storage", { on: false, colour: STORAGE_COLOUR, rank: [BAND.built, 70, "storage"] });
   data.storage.forEach(function (s) {
     if (s.x_m === null || s.y_m === null) return;

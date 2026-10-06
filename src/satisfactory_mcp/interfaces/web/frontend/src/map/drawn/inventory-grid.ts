@@ -42,8 +42,6 @@ export interface Stack {
  * short keys against short values, and a card wider than it needs to be covers more of the
  * map than it has to. This number is arithmetic: at 380 the value cell fits SEVEN 38 px tiles
  * to a row, and eight would need 424 px and start covering the thing that was clicked.
- * Measured with the widest card either layer can produce -- the fullest crate on this
- * machine, 38 kinds at 381x568 px, without overflow.
  */
 export var CONTENTS_POPUP_PX = 380;
 

@@ -46,27 +46,22 @@ function titleRow(key: string, name: string | null, cls: string | null): Row {
 /* The curve, drawn: how a spline becomes a polyline, and how many pieces that is worth.
  *
  * A belt or pipe spline stores a tangent either side of every control point, so a run the
- * player laid as an arc is an arc -- a chord through the corners is out by up to 16.4 m on a
- * single belt piece.
+ * player laid as an arc is an arc, and a chord through its corners can be metres out.
  *
- * THE SUBDIVISION IS ZOOM-DEPENDENT, which is why it is affordable. Tessellating to a fixed
- * quality would put the most points on the canvas at the whole-world view, exactly where all
- * 3,085 belt pieces are on screen at once; asking "how far is this curve from its chord IN
- * PIXELS, right now" instead adds no points at all below zoom -1, and grows the whole network
- * from 6,691 line points to 8,712 at maxZoom.
+ * THE SUBDIVISION IS ZOOM-DEPENDENT, which is why it is affordable: asking "how far is this
+ * curve from its chord IN PIXELS, right now" adds no points at the whole-world view, where every
+ * route is on screen at once, and only a few at maxZoom.
  *
  * A SPAN WITH NO CURVE IS NEVER TOUCHED: the server sends null for a straight span and for a
  * route with no bend anywhere in it, so a straight run is the same two points at every zoom.
  */
 
-/* Half a pixel: below this a bend and the line through it land on the same pixels. Not a
- * quarter -- the canvas is not drawing sub-pixel geometry to that accuracy anyway, and the
- * error halves the step count. */
+/* Half a pixel: below this a bend and the line through it land on the same pixels, and the
+ * canvas draws no finer than that anyway. */
 var CURVE_TOLERANCE_PX = 0.5;
 
-/* A ceiling, so that the bound on the work does not come from the data. Generous rather than
- * tight: cutting it from 16 to 8 moves the whole world's line-point count by 58 out of 8,712,
- * because span flatness has a median of 3.9 cm and only 5% exceed 69 cm. */
+/* A ceiling, so that the bound on the work does not come from the data. Generous, because
+ * almost every span is nearly flat and never comes close to it. */
 var CURVE_MAX_STEPS = 8;
 
 /* How far one span's curve can leave the straight line between its ends, in metres.
@@ -169,7 +164,7 @@ function routePolyline(
 /* Redraw one route for a new scale, and say whether it actually moved. Guarded on the step
  * counts rather than on the zoom, because most pieces do not change at most zoom steps: a run
  * with no bend never changes at all, and a gentle one holds the same subdivision across several
- * steps. At world zoom the guard skips every one of the 3,588 routes. */
+ * steps. */
 function retessellate(piece: L.Polyline, ppm: number): boolean {
   var route = piece._route;
   if (!route || !route.curve_m) return false;
@@ -190,35 +185,21 @@ function retessellate(piece: L.Polyline, ppm: number): boolean {
  * measured footprint.
  *
  * A LIFT gets a ring instead of a line, because a line is not available: a lift is exactly
- * vertical (measured server-side -- all 302 on the reference world have zero horizontal
- * extent), so its top-down polyline is one point and draws nothing at all. A class the docs
+ * vertical, so its top-down polyline is one point and draws nothing at all. A class the docs
  * dump has no entry for gets a `lift` of NULL rather than false, and earns the same ring on
  * different evidence -- "this route covers no ground" -- which the popup says out loud,
  * because a reader cannot tell a measured ring from an inferred one by looking.
  *
  * A SPLITTER or MERGER gets a square, in this layer and in no other: it is in no other payload,
- * and without it a belt-only view has a four-metre hole at every one of a world's 848
- * junctions.
+ * and without it a belt-only view has a four-metre hole at every junction.
  */
-/* Mid steel, and mid because this is the one layer with no ground of its own: it has to read
- * over the dark concrete it mostly runs on AND over pale sand where it crosses country. A
- * near-white line does the first and vanishes into the second. */
-/* The three tier tones are one step of value either side of the middle one, which stays the
- * network's colour and the swatch in the layer control. The step is dE 15.6 between slowest and
- * fastest and it is the page's house step -- the pipes' 15.1 below, the storage pair's 16.7 and
- * the poles' 16.0 all match it. Every one of those is a ramp INSIDE one module, which is why
- * palette.ts compares across modules and never within one.
- *
- * The belt steel is the page's oldest network colour and was never measured against anything;
- * everything else moves around it. Its nearest cross-owner neighbour is the limestone dot, at
- * dE 19.3 from this middle tone and 13.2 from the fast one -- that last pair is a filled disc
- * against a stroked line and is DISCHARGED in palette.ts at its measured distance. */
+/* Mid steel with one value step either side for the tiers (docs/frontend_palette.md); the
+ * middle stays the layer's swatch. */
 var BELTS = declareColours("routes", {
   belts: "#93a5b4",
   "belt slow": "#7f8f9d",
   "belt fast": "#a7b9c7",
-  // The hole the ring is drawn around, and near-black because a hole can always get darker:
-  // dE 21.7 from Abyss Cliffs, 34.8 from the concrete, nothing else within 24.
+  // The hole inside a lift's ring, and the belts' casing: near-black.
   "lift fill": "#0e1116",
 });
 var BELT_COLOUR = BELTS.belts;
@@ -241,8 +222,8 @@ function beltColour(items_per_min: number | null | undefined): string {
  * Two metres is the game's own belt width, and it is a CONSTANT rather than a field because
  * the save does not carry one: a spline is a centre line, and every tier rides the same frame.
  *
- * The floor is where honesty stops paying: at the whole-world zoom a metre is 0.14 px, so a
- * true-size belt would be a quarter-pixel of nothing. It is ROUTE_MIN_PX and not BELT_MIN_PX
+ * The floor is where honesty stops paying: at the whole-world zoom a true-size belt would be a
+ * fraction of a pixel. It is ROUTE_MIN_PX and not BELT_MIN_PX
  * because it is not a statement about belts but about the width below which a stroked line
  * stops being drawn at all -- one hairline for both networks, or they fade out at different
  * zooms and the page invents a difference the world does not have. */
@@ -332,9 +313,8 @@ function beltPopup(b: BeltRow, kind: string | null, first: Point3M, last: Point3
 }
 
 export function drawBelts(data: BeltsResponse): void {
-  // Off by default, like `machines`: 3,085 routes across 7 km is a smear. See reveal() in
-  // labels.ts. Immediately over the concrete they run on, and in the order a reader names the
-  // networks: belts, then pipes, then power.
+  // Off by default, like `machines`: a world's routes are a smear at the whole-world view. Just
+  // over the concrete they run on, in the order a reader names the networks: belts, pipes, power.
   var group = clearedLayer("belts", { on: false, colour: BELT_COLOUR, rank: [BAND.built, 10, "belts"] });
   var ppm = pixelsPerMetre();
   var runs: L.Polyline[] = [];
@@ -369,8 +349,8 @@ export function drawBelts(data: BeltsResponse): void {
     piece.bindPopup(beltPopup(b, beltKind(b, ring), first, last)).addTo(group);
     if (!ring) runs.push(piece as L.Polyline);
   });
-  // On a light base mid steel sinks into bare ground, so runs get the power wires' casing; added
-  // after every core so sinkRoutes puts it underneath. See power-wires.ts, CASED LINES.
+  // On a light base mid steel sinks into bare ground, so runs are cased (docs/frontend_palette.md);
+  // added after every core so sinkRoutes puts the casing underneath.
   if (tone() === "light") {
     runs.forEach(function (run) {
       var cased = L.polyline(run.getLatLngs() as L.LatLng[], {
@@ -432,11 +412,10 @@ registerFetch<BeltsResponse>({
  * here is a polygon in map units and needs none of this.
  *
  * Restyling on zoomend rather than drawing routes as thin polygons in map units, because a
- * polygon cannot have a floor -- below zoom -2 a true two-metre belt is a fraction of a pixel,
+ * polygon cannot have a floor -- zoomed out, a true two-metre belt is a fraction of a pixel,
  * and the floor is a pixel statement that needs a pixel size to make it in -- and because a
- * 3,085-piece layer of two-metre ribbons would be unclickable at exactly the zooms where the
- * popup is worth opening. The pass costs 0.6 to 0.7 ms median and 3 ms at its worst over 3,933
- * pieces, once per zoom step, against a 16.7 ms frame.
+ * layer of two-metre ribbons would be unclickable at exactly the zooms where the popup is worth
+ * opening. The pass runs once per zoom step and costs well under a frame.
  *
  * A LAYER NOBODY IS LOOKING AT IS SKIPPED, which is most zoomends, since both of these start
  * unticked. That means ticking a layer on at a zoom it was not drawn at HAS to restyle it, or a
@@ -486,30 +465,18 @@ export function styleRoutes() {
  * width physical -- because a page that encodes two networks by two different grammars makes
  * the reader learn twice.
  *
- * NO GLYPH, and that is a measurement rather than an omission: there is no vertical pipe piece,
- * the tightest of the reference world's 503 spanning 11.6 cm horizontally. The one-point guard
- * below stays, because "none on this world" is not "none ever".
+ * NO LIFT GLYPH: no pipe piece is vertical, so every pipe is drawn as a line. The one-point
+ * guard below stays anyway, because "none so far" is not "none ever".
  *
  * ARROWS WHERE THE DIRECTION IS INFERRED, and nothing at all where it is not. The save does not
  * record a pipe's flow direction, but it does record the plumbing graph and TYPE a machine's
  * ports, so `/api/pipes` infers a direction where the network admits only one and says
  * `unknown` where it admits two. The popup names which of the two a reader is looking at.
  */
-/* Oxide. A pipe's obvious colour is a saturated amber (#d99a3e), which is the pending
- * removal's own family, and the mid-rust band is the bauxite dot's own neighbourhood -- pipes run exactly
- * where bauxite is refined -- so the network went darker instead of brighter. Still warm where
- * the belts are cool. Measured against the current full table: dE 27.4 from the bauxite dot,
- * 28.7 from the stopped red, 30.1 from the nearest ground (Red Bamboo Fields), 49.0 from the
- * nearest of the artwork tones binned in power-wires.ts, and 102.1 from the extractor ultramarine. */
+// Oxide: warm where the belts are cool (docs/frontend_palette.md). The middle tone is the swatch.
 var PIPE_COLOUR = declareColours("routes", { pipes: "#7d221a" }).pipes;
 
-/* The two tier tones, one step of value either side of PIPE_COLOUR -- which stays the middle
- * one, so the swatch in the layer control is still the network's own colour. The step is the
- * belts' step, dE 15.1 between Mk1 and Mk2 against the belts' 15.6.
- *
- * A ramp can walk a colour into a neighbour, so both ends are measured: Mk2, the lighter end
- * and the closest the family comes to the bauxite dot, stays dE 21.4 from it and 23.4 from the
- * stopped red; Mk1's nearest is Red Bamboo Fields at 32.6, with the bauxite dot at 33.5. */
+// The two tiers, one value step either side of PIPE_COLOUR.
 var PIPE_TIER = declareColours("routes", { "pipe mk1": "#690e06", "pipe mk2": "#91362e" });
 var PIPE_MK1 = PIPE_TIER["pipe mk1"];
 var PIPE_MK2 = PIPE_TIER["pipe mk2"];
@@ -602,11 +569,7 @@ var CHEVRON_MIN_RUN_M = 4;
 var CHEVRON_MIN_PX = 5;
 var CHEVRON_WEIGHT_PX = 1.5;
 
-/* A value step far above all three pipe tones, so it reads against the line it is drawn on: at
- * its 0.7 opacity the composite over those tones is dE 41.3 to 50.6 from the pipe underneath.
- * The nearest colour anywhere else on the page is the iron-ore dot, at dE 14.3 to 17.0 from
- * those composites -- a filled disc on terrain rather than a thin V on a line, and the
- * discharge in palette.ts carries that measurement. The extractor ultramarine is dE 119.2 away. */
+// Pale cream, far above every pipe tone, so the mark reads on the line it sits on.
 var CHEVRON_COLOUR = declareColours("routes", { chevrons: "#e8cbb4" }).chevrons;
 var CHEVRON_OPACITY = 0.7;
 

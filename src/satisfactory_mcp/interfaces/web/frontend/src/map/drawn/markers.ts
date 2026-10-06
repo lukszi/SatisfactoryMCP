@@ -58,12 +58,8 @@ export function raiseNodeDots() {
   });
 }
 
-// Ore colours follow the in-game item tints closely enough to be recognisable without shipping
-// a single game asset: they are hex strings, not textures. That is also why they are the one
-// family here that cannot MOVE when the audit objects -- an ore's colour is the ore's. Where
-// they collide the other side moves, and where it cannot the pair is DISCHARGED in palette.ts
-// with a measured warrant: coal against eight dark grounds, water against the machine blue,
-// limestone against the fast belt.
+// The in-game item tints, as hex strings rather than game assets: the one family that cannot
+// move when the audit objects (docs/frontend_palette.md).
 export var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
   Desc_OreIron_C: "#c8b6a6",
   Desc_OreCopper_C: "#e08a4b",
@@ -223,7 +219,7 @@ registerSection({ key: "nodes", prefix: "node: ", title: "resource nodes", start
  * prefix of more than this.
  *
  * FETCH RANK, not row rank: this is the first request of the wave and its rows are the
- * second-to-last band in the control. See layers.ts. */
+ * second-to-last band in the control. See "Two ranks" in frontend/README.md. */
 registerFetch<NodesResponse>({
   wave: "static",
   rank: 10,
@@ -275,15 +271,8 @@ export function drawPlayer(p: SummaryResponse["player"]): void {
     .addTo(group);
 }
 
-// One colour per pickup category, so ten separate checkboxes stop drawing one indistinguishable
-// teal dot. Unlisted categories share the fallback below.
-//
-// Handed out one per kind rather than measured against the page, except for the three the audit
-// caught. The drop pod is the drab olive no network or ground spends: nearest cross-owner
-// neighbour Dune Desert at dE 28.1, the three belt tones 50.8 to 53.5 away. The somersloop
-// takes the rose the page's reds leave free, dE 28.3 from the stopped red and 35.9 from the
-// lighter pipe tone. The hard drive is an indigo, dE 42.1 from the machine blue and 36.6 from the
-// wire violet -- still blue enough to be the drive it is.
+// One colour per pickup category, so the category rows do not all draw one teal dot; unlisted
+// categories share the fallback below (docs/frontend_palette.md).
 export var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
   somersloop: "#d84378",
   mercer_sphere: "#b06ae0",
@@ -299,7 +288,7 @@ export var PICKUP_COLOUR: Record<string, string> = declareColours("markers", {
 
 /* For the categories the table above does not name, and DECLARED rather than left a bare
  * literal: a stand-in that reaches the screen is a colour on the page and belongs in the
- * comparison. `customization_unlock_pickup` draws it on the reference save. */
+ * comparison. */
 var PICKUP_FALLBACK = declareColours("markers", { "pickup fallback": "#7fd1b9" })[
   "pickup fallback"
 ];

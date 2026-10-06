@@ -18,7 +18,7 @@ var REGION_FILL = 1; // opaque cells, or the shared borders become a grid: see R
 
 /* How much of the base map shows through the region fill when BOTH are drawn.
  *
- * THE ALPHA GOES ON THE PANE, NOT ON THE CELLS. A per-cell fillOpacity blends 768 rectangles
+ * THE ALPHA GOES ON THE PANE, NOT ON THE CELLS. A per-cell fillOpacity blends every rectangle
  * against the picture ONE AT A TIME, and every shared border -- where a cell's antialiased
  * edge and its neighbour's overlap -- is blended twice, which draws a visible 256 m grid. That
  * is why the cells are opaque and their strokes are their own fill colour: painted into the
@@ -92,14 +92,10 @@ export function noteRegionChoice(event: L.LeafletEvent): void {
   if ((event as L.LayersControlEvent).layer === state.layers["regions"]) chosen = true;
 }
 
-/* One muted colour per biome letter, keyed by the legend letter `data/region_names.json`
- * assigns -- which is alphabetical by region name, so adding a region moves the letters.
- * Hand-picked to read as ground at a glance, and 19 hex strings rather than a single pixel of
- * anyone's artwork.
- *
- * These are the BLENDED values, baked in, because every cell is painted at full opacity; see
- * REGION_BLEND above for why the transparency is not done here. The letter is also the name
- * each colour is declared under, because it is the API's own key.
+/* One muted ground per biome letter, keyed by the legend letter `data/region_names.json`
+ * assigns -- alphabetical by region name, so adding a region moves the letters. These are the
+ * BLENDED values, painted at full opacity; see REGION_BLEND. Why each is where it is:
+ * docs/frontend_palette.md.
  */
 var REGION_COLOUR: Record<string, string> = declareColours("regions", {
   A: "#3e3e3c", // Abyss Cliffs
@@ -111,20 +107,7 @@ var REGION_COLOUR: Record<string, string> = declareColours("regions", {
   G: "#294834", // Jungle Spires
   H: "#32544d", // Lake Forest
   I: "#594a37", // Maze Canyons
-  /* No Man's Land: the game's own name for the outer coast and the ocean, and 287 of the
-   * 768 painted cells -- so it is the largest thing on this layer and the one that must NOT
-   * read as a biome. Bare, pale and desaturated, one step brighter than any ground here.
-   *
-   * Measured like the pipe rust and the storage blue-violet. In CIE Lab it is dE 17.1 from its
-   * nearest neighbour (Rocky Desert, which it borders for most of the west coast), 18.4 from
-   * Dune Desert and 20.6 from Western Dune Forest -- above the ~15.6 step the belts use and
-   * comfortably above the pipes' 15.1. All three are same-owner comparisons and palette.ts
-   * makes none of them: this is the ground's own ramp, and the audit draws its line at owners
-   * so that a deliberate step like this one never has to be excused. The alternatives measured
-   * beside it were all worse against that same Rocky Desert border: the render's own
-   * no-man's-land tone (#7c7a6c) lands at dE 12.6, a warm sand (#807a68) at 13.3, and anything
-   * darker collapses onto it (#5a5750 is dE 3.9). Cool greys were rejected for the other end:
-   * #46484a is dE 5.1 from Abyss Cliffs. */
+  // The outer coast and the ocean: the one ground that must not read as a biome.
   J: "#8a8478", // No Man's Land
   K: "#2e4637", // Northern Forest
   L: "#65423b", // Red Bamboo Fields
