@@ -90,12 +90,12 @@ def test_a_steep_shore_is_still_one_pixel_and_a_flat_one_does_not_blow_up():
 
 def _field(water_dm, grades, height_dm):
     return SimpleNamespace(
-        _water_raster=lambda: water_dm,
-        _water_quality_raster=lambda: grades,
+        water_raster=lambda: water_dm,
+        water_quality_raster=lambda: grades,
         height=water_dm.shape[0],
         width=water_dm.shape[1],
         spacing_cm=100.0,
-        _height_dm=height_dm,
+        height_dm=height_dm,
     )
 
 
@@ -369,8 +369,8 @@ def test_the_painted_layer_samples_its_ground_over_each_pixel_s_footprint(monkey
     spacing_cm = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) * 100 / n
     height = np.full((n, n), 100, np.int16)
     field = SimpleNamespace(
-        _height_dm=height, _prov=np.ones((n, n), np.uint8), _water_raster=lambda: None,
-        _water_quality_raster=lambda: None, x0_cm=BOUNDS_M["x_min_m"] * 100 + spacing_cm / 2,
+        height_dm=height, provenance_plane=np.ones((n, n), np.uint8), water_raster=lambda: None,
+        water_quality_raster=lambda: None, x0_cm=BOUNDS_M["x_min_m"] * 100 + spacing_cm / 2,
         y0_cm=BOUNDS_M["y_min_m"] * 100 + spacing_cm / 2, spacing_cm=spacing_cm, width=n, height=n,
     )  # fmt: skip
     stripes = np.tile((np.arange(n) % 4 == 0).astype(np.float32), (n, 1))

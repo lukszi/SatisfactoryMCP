@@ -51,10 +51,10 @@ def _scene(tmp_path):
     water = np.where(height == -1000, OCEAN_DM, hf.NODATA).astype(np.int16)
     grades = np.where(height == -1000, hf.WATER_MEASURED, hf.WATER_DRY).astype(np.uint8)
     field = SimpleNamespace(
-        _height_dm=height,
-        _prov=(r // 97 % 3 + 1).astype(np.uint8),
-        _water_raster=lambda: water,
-        _water_quality_raster=lambda: grades,
+        height_dm=height,
+        provenance_plane=(r // 97 % 3 + 1).astype(np.uint8),
+        water_raster=lambda: water,
+        water_quality_raster=lambda: grades,
         x0_cm=BOUNDS_M["x_min_m"] * 100 + step_cm / 2,
         y0_cm=BOUNDS_M["y_min_m"] * 100 + step_cm / 2,
         spacing_cm=step_cm,

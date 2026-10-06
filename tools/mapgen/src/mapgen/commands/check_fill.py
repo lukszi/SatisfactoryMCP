@@ -108,9 +108,9 @@ RECIPE4_CLAMP_M = FILL_VERTICAL_M
 
 def terrain_m(field) -> np.ndarray:
     """``terrain.u16.z`` on the field grid in metres, NaN where it has no sample."""
-    plane = np.asarray(field._plane(hf.TERRAIN_NAME))
-    grid = field._terrain_grid
-    out = np.full(field._height_dm.shape, np.nan, np.float32)
+    plane = np.asarray(field.plane(hf.TERRAIN_NAME))
+    grid = field.terrain_grid
+    out = np.full(field.height_dm.shape, np.nan, np.float32)
     rows, cols = plane.shape
     z = (plane.astype(np.float32) - grid["zero"]) / grid["units_per_m"] + grid["offset_m"]
     window = (
@@ -136,10 +136,10 @@ def nearest_index(position: np.ndarray) -> np.ndarray:
 
 def check_fill(field, land, raster_m, ok, rec) -> dict:
     """Median absolute error of the fill reading on held-out dry landscape."""
-    prov = np.asarray(field._prov)
-    wet = np.asarray(field._water_quality_raster()) > 0
-    top = np.asarray(field._plane(hf.TOP_NAME))
-    raised = top > np.asarray(field._height_dm) + 5
+    prov = np.asarray(field.provenance_plane)
+    wet = np.asarray(field.water_quality_raster()) > 0
+    top = np.asarray(field.plane(hf.TOP_NAME))
+    raised = top > np.asarray(field.height_dm) + 5
     near_rock = ndimage.binary_dilation(np.isin(prov, hf.PROV_CLIFF_VALUES) | raised, iterations=8)
     near_wet = ndimage.binary_dilation(wet, iterations=16)
     rows, cols = raster_grid(field)
@@ -178,13 +178,13 @@ def seam_jump(out: np.ndarray, truth: np.ndarray) -> float:
 
 def check_seam(field, land, raster_m, ok, rec) -> dict:
     """The jump at a fake seam through dry landscape, before and after the band."""
-    prov = np.asarray(field._prov)
-    wet = np.asarray(field._water_quality_raster()) > 0
+    prov = np.asarray(field.provenance_plane)
+    wet = np.asarray(field.water_quality_raster()) > 0
     bad = np.isnan(land) | ndimage.binary_dilation(
         np.isin(prov, hf.PROV_CLIFF_VALUES) | wet, iterations=4
     )
     rows, cols = raster_grid(field)
-    grid = field._terrain_grid
+    grid = field.terrain_grid
     rng = np.random.default_rng(SEAM_SEED)
     padded = nearest_fill(np.where(ok, raster_m, 0.0), ok)
     width = SEAM_WINDOW
@@ -217,7 +217,7 @@ def check_seam(field, land, raster_m, ok, rec) -> dict:
 
 def check_holes(field, land) -> dict:
     """Median MAE of a hole fill over the field's own hole shapes on known landscape."""
-    labels, _count = ndimage.label(np.asarray(field._prov) == hf.PROV_NODATA)
+    labels, _count = ndimage.label(np.asarray(field.provenance_plane) == hf.PROV_NODATA)
     edge = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])))
     shapes = []
     for label, box in enumerate(ndimage.find_objects(labels), start=1):
@@ -349,7 +349,7 @@ def main() -> int:
     report["holes"] = check_holes(field, land)
     print("holes", report["holes"], flush=True)
     del rec
-    ground, _meta = ground_lattice(field, field._height_dm.astype(np.float32))
+    ground, _meta = ground_lattice(field, field.height_dm.astype(np.float32))
     ground, _meta = terrain_lattice(field, ground)
     _heights, ground, fill_meta = fill_from_raster(field, ground, raster_m, ok)
     report["lattice"] = fill_meta

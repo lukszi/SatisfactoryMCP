@@ -336,7 +336,7 @@ def _layer_job(params: dict) -> SimpleNamespace:
     job.x_cm = x_cm = x_cm[c0:c1]
     job.spacing_m = (BOUNDS_M["x_max_m"] - BOUNDS_M["x_min_m"]) / size
     job.blur_px = WATER_EDGE_BLUR_M / job.spacing_m
-    job.heights = field._height_dm if job.height_dm is None else job.height_dm
+    job.heights = field.height_dm if job.height_dm is None else job.height_dm
     job.ramp = ramp_range(field)
     job.noise = noise_fields(NOISE_SEED) if job.layer == "satellite" else None
     planes = (job.water_level, None) if job.sea is None else job.sea.planes
@@ -434,7 +434,7 @@ def _band_ground(job, rows) -> tuple[dict, list]:
             )
             picked = np.ix_(prov_rows, job.prov_cols)
             regimes = job.regimes.measure(
-                field._prov[picked], weight[keep], job.measured_plane_u8[picked] > 0
+                field.provenance_plane[picked], weight[keep], job.measured_plane_u8[picked] > 0
             )
             owed.append((job.regimes.merge, regimes))
     top_weight = None

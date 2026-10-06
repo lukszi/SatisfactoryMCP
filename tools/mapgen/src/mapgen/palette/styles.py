@@ -335,7 +335,7 @@ def ramp_range(field) -> tuple[float, float]:
     percentile needs and a sixteenth of the arithmetic, and the answer moves by less than a
     decimetre either way.
     """
-    sample = field._height_dm[::4, ::4]
+    sample = field.height_dm[::4, ::4]
     land = sample[sample != hf.NODATA].astype(np.float32) / hf.DM_PER_M
     return (
         float(np.percentile(land, RAMP_LO_PCT)),
@@ -352,8 +352,8 @@ def ramp_position(height_m, lo_m: float, hi_m: float, cdf_m: np.ndarray, equalis
 
 def dry_land_range(field, lo_pct: float, hi_pct: float) -> tuple[float, float, np.ndarray]:
     """The ramp's height range and CDF, over dry land only (waterq dry, height known)."""
-    height = field._height_dm[::4, ::4]
-    grades = field._water_quality_raster()
+    height = field.height_dm[::4, ::4]
+    grades = field.water_quality_raster()
     dry = height != hf.NODATA
     if grades is not None:
         dry &= grades[::4, ::4] == hf.WATER_DRY

@@ -59,8 +59,8 @@ class RiverWater:
 
     def __init__(self, cached: dict, field):
         samples = sample_rivers(cached["rivers"])
-        shape = field._height_dm.shape
-        heights = field._height_dm
+        shape = field.height_dm.shape
+        heights = field.height_dm
         ground = np.where(
             heights == hf.NODATA, np.float32(np.nan), heights / np.float32(hf.DM_PER_M)
         )
@@ -143,8 +143,8 @@ def _reconcile(field, ground, ribbon, plane_m, tops):
     """
     speaks, valley, draws = ribbon
     river_top, other_top, boxes = tops
-    water = field._water_raster().copy()
-    grades = field._water_quality_raster().copy()
+    water = field.water_raster().copy()
+    grades = field.water_quality_raster().copy()
     level = water / np.float32(hf.DM_PER_M)
     wet = grades != hf.WATER_DRY
     with np.errstate(invalid="ignore"):
@@ -161,7 +161,7 @@ def _reconcile(field, ground, ribbon, plane_m, tops):
     del level
     water[drop] = hf.NODATA
     grades[drop] = hf.WATER_DRY
-    water, lowered = lower_bodies(water, grades, field._height_dm, boxes, OCEAN_LEVEL_M)
+    water, lowered = lower_bodies(water, grades, field.height_dm, boxes, OCEAN_LEVEL_M)
     hung = _over_the_river(water, grades != hf.WATER_DRY, plane_m, valley)
     water[hung] = np.round(plane_m[hung] * hf.DM_PER_M).astype(np.int16)
     with np.errstate(invalid="ignore"):
@@ -236,7 +236,7 @@ def water_sources(field, rivers: RiverWater | None, level=None, grades=None):
         wet = (grades != hf.WATER_DRY).astype(np.uint8)
         measured = (grades == hf.WATER_MEASURED).astype(np.uint8)
     if level is None:
-        level = field._water_raster() if rivers is None else rivers.water_dm
+        level = field.water_raster() if rivers is None else rivers.water_dm
     return level, wet, measured
 
 

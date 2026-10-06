@@ -424,9 +424,9 @@ def ground_lattice(field, heights: np.ndarray) -> tuple[np.ndarray, dict]:
     substitutes the whole field's fold there -- inside a formation, where the rock covers the
     pixel and answers it anyway.
     """
-    cliff = np.isin(field._prov, hf.PROV_CLIFF_VALUES)
+    cliff = np.isin(field.provenance_plane, hf.PROV_CLIFF_VALUES)
     ground = np.where(cliff, np.float32(hf.NODATA), heights).astype(np.float32)
-    known = field._height_dm != hf.NODATA
+    known = field.height_dm != hf.NODATA
     return ground, {
         "role": (
             "the landscape and fill lattices with the cliff province removed, which is what "
@@ -451,8 +451,8 @@ def terrain_lattice(field, ground: np.ndarray) -> tuple[np.ndarray, dict]:
     cliff, so the lattice under a rock is the real terrain rather than a hole. Fill keeps
     its value for ``map_fill`` to rebuild. A field without the plane comes back unchanged.
     """
-    plane = field._plane(hf.TERRAIN_NAME) if hasattr(field, "_plane") else None
-    grid = getattr(field, "_terrain_grid", None)
+    plane = field.plane(hf.TERRAIN_NAME) if hasattr(field, "plane") else None
+    grid = getattr(field, "terrain_grid", None)
     if plane is None or grid is None or grid.get("row_off") is None:
         return ground, {"absent": f"no usable {hf.TERRAIN_NAME}; the decimetre plane is drawn"}
     rows, cols = plane.shape
@@ -464,13 +464,13 @@ def terrain_lattice(field, ground: np.ndarray) -> tuple[np.ndarray, dict]:
     z_dm = ((raw.astype(np.float32) - grid["zero"]) / grid["units_per_m"] + grid["offset_m"]) * (
         hf.DM_PER_M
     )
-    prov = np.asarray(field._prov)[window]
+    prov = np.asarray(field.provenance_plane)[window]
     use = (raw != 0) & np.isin(prov, (hf.PROV_LANDSCAPE, *hf.PROV_CLIFF_VALUES))
     out = ground.copy()
     target = out[window]
     target[use] = z_dm[use]
     landscape = use & (prov == hf.PROV_LANDSCAPE)
-    moved = np.abs(z_dm[landscape] - np.asarray(field._height_dm)[window][landscape])
+    moved = np.abs(z_dm[landscape] - np.asarray(field.height_dm)[window][landscape])
     return out, {
         "plane": hf.TERRAIN_NAME,
         "vertical_step_m": round(1.0 / grid["units_per_m"], 5),
@@ -482,13 +482,13 @@ def terrain_lattice(field, ground: np.ndarray) -> tuple[np.ndarray, dict]:
 
 def fill_from_raster(field, ground, raster_m, raster_ok, void=None) -> tuple:
     """``fill_field`` on this field: ``(heights_dm, ground_dm, meta)``."""
-    shape = field._height_dm.shape
-    quality = field._water_quality_raster()
-    water = field._water_raster()
+    shape = field.height_dm.shape
+    quality = field.water_quality_raster()
+    water = field.water_raster()
     heights, rebuilt, _source, meta = fill_field(
         ground_dm=ground,
-        height_dm=np.asarray(field._height_dm),
-        prov=np.asarray(field._prov),
+        height_dm=np.asarray(field.height_dm),
+        prov=np.asarray(field.provenance_plane),
         water_quality=np.zeros(shape, np.uint8) if quality is None else np.asarray(quality),
         water_dm=np.full(shape, hf.NODATA, np.int16) if water is None else np.asarray(water),
         raster_m=raster_m,

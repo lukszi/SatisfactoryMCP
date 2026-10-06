@@ -165,9 +165,9 @@ def test_without_rivers_the_shore_composite_is_unchanged():
 
 def _field(height_m, water_m, grades):
     return SimpleNamespace(
-        _height_dm=np.round(height_m * 10).astype(np.int16),
-        _water_raster=lambda: np.where(np.isnan(water_m), hf.NODATA, np.round(water_m * 10)).astype(np.int16),
-        _water_quality_raster=lambda: grades.astype(np.uint8),
+        height_dm=np.round(height_m * 10).astype(np.int16),
+        water_raster=lambda: np.where(np.isnan(water_m), hf.NODATA, np.round(water_m * 10)).astype(np.int16),
+        water_quality_raster=lambda: grades.astype(np.uint8),
     )  # fmt: skip
 
 

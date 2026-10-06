@@ -33,10 +33,12 @@ OCEAN_DM = round(OCEAN_LEVEL_M * hf.DM_PER_M)
 def _field(height_dm, water_dm, grades, spacing_cm=100.0):
     rows, cols = height_dm.shape
     return SimpleNamespace(
-        _height_dm=height_dm,
-        _prov=np.where(height_dm == hf.NODATA, hf.PROV_NODATA, hf.PROV_LANDSCAPE).astype(np.uint8),
-        _water_raster=lambda: water_dm,
-        _water_quality_raster=lambda: grades,
+        height_dm=height_dm,
+        provenance_plane=np.where(height_dm == hf.NODATA, hf.PROV_NODATA, hf.PROV_LANDSCAPE).astype(
+            np.uint8
+        ),
+        water_raster=lambda: water_dm,
+        water_quality_raster=lambda: grades,
         x0_cm=BOUNDS_M["x_min_m"] * 100,
         y0_cm=BOUNDS_M["y_min_m"] * 100,
         spacing_cm=spacing_cm,

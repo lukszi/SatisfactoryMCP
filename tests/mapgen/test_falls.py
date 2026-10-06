@@ -105,8 +105,8 @@ def _field(ground_m, water_m=None):
         spacing_cm=100.0,
         width=n,
         height=n,
-        _height_dm=np.where(np.isnan(ground_m), hf.NODATA, ground_m * 10).astype(np.int16),
-        _water_raster=lambda: np.where(np.isnan(water), hf.NODATA, water * 10).astype(np.int16),
+        height_dm=np.where(np.isnan(ground_m), hf.NODATA, ground_m * 10).astype(np.int16),
+        water_raster=lambda: np.where(np.isnan(water), hf.NODATA, water * 10).astype(np.int16),
     )
 
 

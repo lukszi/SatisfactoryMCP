@@ -22,9 +22,9 @@ def stub_field(height_m: np.ndarray, water_m: np.ndarray | None = None, grades=N
     water = None if water_m is None else (water_m * hf.DM_PER_M).astype(np.int16)
     rows, cols = height.shape
     return SimpleNamespace(
-        _height_dm=height,
-        _water_raster=lambda: water,
-        _water_quality_raster=lambda: grades,
+        height_dm=height,
+        water_raster=lambda: water,
+        water_quality_raster=lambda: grades,
         spacing_cm=100.0,
         width=cols,
         height=rows,

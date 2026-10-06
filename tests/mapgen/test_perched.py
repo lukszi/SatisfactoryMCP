@@ -33,9 +33,9 @@ BOX_TOP_DM = 120
 
 def _field(water_dm, grades, height_dm):
     return SimpleNamespace(
-        _water_raster=lambda: water_dm,
-        _water_quality_raster=lambda: grades,
-        _height_dm=height_dm,
+        water_raster=lambda: water_dm,
+        water_quality_raster=lambda: grades,
+        height_dm=height_dm,
         x0_cm=0.0,
         y0_cm=0.0,
         spacing_cm=100.0,

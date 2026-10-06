@@ -435,7 +435,7 @@ def test_the_classes_are_read_off_the_water_as_drawn_not_the_fields_box_levels()
     shape = (4, 6)
     dry = np.full(shape, hf.NODATA, np.int16)
     field = SimpleNamespace(
-        _water_raster=lambda: dry, _water_quality_raster=lambda: np.zeros(shape, np.uint8)
+        water_raster=lambda: dry, water_quality_raster=lambda: np.zeros(shape, np.uint8)
     )
     ground = object.__new__(PaintedGround)
     ground.water_class, ground.source = None, {}

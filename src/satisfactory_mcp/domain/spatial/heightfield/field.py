@@ -84,32 +84,32 @@ class Field(FieldAreas):
         self.spacing_cm = float(grid["spacing_cm"])
         self._planes: dict[str, np.ndarray | None] = {}
         self.cache_events: dict[str, str] = {}
-        self._height_dm = self._plane(HEIGHT_NAME)
-        self._prov = self._plane(PROV_NAME)
-        if self._height_dm is None or self._prov is None:
+        self.height_dm = self.plane(HEIGHT_NAME)
+        self.provenance_plane = self.plane(PROV_NAME)
+        if self.height_dm is None or self.provenance_plane is None:
             raise FileNotFoundError("height or provenance plane missing")
         self._accuracy = {
             int(key): value.get("accuracy_m")
             for key, value in (meta.get("provenance") or {}).items()
             if str(key).lstrip("-").isdigit()
         }
-        self._terrain_grid = self._read_terrain_grid(meta.get("terrain_grid"))
+        self.terrain_grid = self._read_terrain_grid(meta.get("terrain_grid"))
 
     # -- planes ------------------------------------------------------------------------
 
     def _plane_shape(self, name: str) -> tuple[int, int, str]:
         if name == TERRAIN_NAME:
-            tg = self._terrain_grid
+            tg = self.terrain_grid
             return tg["height"], tg["width"], "u16"
         kind = "u8" if name.endswith(".u8.z") else "i16"
         return self.height, self.width, kind
 
-    def _plane(self, name: str) -> np.ndarray | None:
+    def plane(self, name: str) -> np.ndarray | None:
         """A decoded plane, or ``None`` when this field was written without it."""
         if name in self._planes:
             return self._planes[name]
         path = self.directory / name
-        if not path.is_file() or (name == TERRAIN_NAME and self._terrain_grid is None):
+        if not path.is_file() or (name == TERRAIN_NAME and self.terrain_grid is None):
             self._planes[name] = None
             return None
         height, width, kind = self._plane_shape(name)
@@ -204,18 +204,18 @@ class Field(FieldAreas):
 
     @property
     def has_terrain(self) -> bool:
-        return self._plane(TERRAIN_NAME) is not None
+        return self.plane(TERRAIN_NAME) is not None
 
     @property
     def has_top(self) -> bool:
-        return self._plane(TOP_NAME) is not None
+        return self.plane(TOP_NAME) is not None
 
-    def _water_raster(self) -> np.ndarray | None:
-        return self._plane(WATER_NAME)
+    def water_raster(self) -> np.ndarray | None:
+        return self.plane(WATER_NAME)
 
-    def _water_quality_raster(self) -> np.ndarray | None:
+    def water_quality_raster(self) -> np.ndarray | None:
         """``waterq.u8.z``, or ``None`` for a field written before it existed."""
-        return self._plane(WATER_QUALITY_NAME)
+        return self.plane(WATER_QUALITY_NAME)
 
     def caves(self) -> cave_masks.Caves | None:
         """The cave masks beside this field, loaded on first use and again when rewritten.
@@ -257,7 +257,7 @@ class Field(FieldAreas):
         """Whether any vertex of the quad holding a point is cliff."""
         c0 = math.floor((x_cm - self.x0_cm) / self.spacing_cm)
         r0 = math.floor((y_cm - self.y0_cm) / self.spacing_cm)
-        block = self._prov[max(r0, 0) : r0 + 2, max(c0, 0) : c0 + 2]
+        block = self.provenance_plane[max(r0, 0) : r0 + 2, max(c0, 0) : c0 + 2]
         return bool(np.isin(block, PROV_CLIFF_VALUES).any())
 
     def collision(self, x_cm: float, y_cm: float, found: Surfaces) -> Surfaces | None:
@@ -307,7 +307,7 @@ class Field(FieldAreas):
         cliff layer did not answer. ``None`` is not zero: a field predating the plane knows
         nothing about its own density.
         """
-        return self._plane(DENSITY_NAME)
+        return self.plane(DENSITY_NAME)
 
     # -- geometry ----------------------------------------------------------------------
 
@@ -341,18 +341,18 @@ class Field(FieldAreas):
         if where is None:
             return None
         row, col = where
-        raw = int(self._height_dm[row, col])
+        raw = int(self.height_dm[row, col])
         if raw == NODATA:
             return None
-        provenance = int(self._prov[row, col])
-        water = self._water_raster()
+        provenance = int(self.provenance_plane[row, col])
+        water = self.water_raster()
         water_m = None
         quality = WATER_DRY
         if water is not None:
             wet = int(water[row, col])
             if wet != NODATA:
                 water_m = wet / DM_PER_M
-                grades = self._water_quality_raster()
+                grades = self.water_quality_raster()
                 if grades is not None:
                     quality = int(grades[row, col])
         return Reading(
@@ -438,8 +438,8 @@ class Field(FieldAreas):
         return None if got is None else (got[0] / DM_PER_M, got[1])
 
     def _terrain_m(self, x_cm: float, y_cm: float, bilinear: bool) -> float | None:
-        plane = self._plane(TERRAIN_NAME)
-        tg = self._terrain_grid
+        plane = self.plane(TERRAIN_NAME)
+        tg = self.terrain_grid
         if plane is None or tg is None:
             return None
         got = self._sample(
@@ -463,8 +463,8 @@ class Field(FieldAreas):
         where = self.texel(x_cm, y_cm)
         if where is None:
             return None
-        ground = self._ground_m(self._height_dm, x_cm, y_cm, bilinear)
-        top_plane = self._plane(TOP_NAME) if top else None
+        ground = self._ground_m(self.height_dm, x_cm, y_cm, bilinear)
+        top_plane = self.plane(TOP_NAME) if top else None
         top = self._ground_m(top_plane, x_cm, y_cm, bilinear)
         terrain = self._terrain_m(x_cm, y_cm, bilinear)
         if ground is None and top is None and terrain is None:
@@ -474,7 +474,7 @@ class Field(FieldAreas):
             ground_m=None if ground is None else round(ground[0], 3),
             terrain_m=None if terrain is None else round(terrain, 3),
             top_m=None if top is None else round(top[0], 3),
-            provenance=int(self._prov[row, col]),
+            provenance=int(self.provenance_plane[row, col]),
         )
 
     def z(
@@ -546,10 +546,10 @@ class Field(FieldAreas):
             ambiguous = found.provenance in PROV_CLIFF_VALUES
         row, col = self.texel(x_cm, y_cm)  # type: ignore[misc]
         water_m, quality = None, WATER_DRY
-        water = self._water_raster()
+        water = self.water_raster()
         if water is not None and int(water[row, col]) != NODATA:
             water_m = int(water[row, col]) / DM_PER_M
-            grades = self._water_quality_raster()
+            grades = self.water_quality_raster()
             if grades is not None:
                 quality = int(grades[row, col])
         return Reading(

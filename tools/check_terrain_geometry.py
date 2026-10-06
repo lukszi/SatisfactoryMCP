@@ -420,7 +420,7 @@ def load_probes(
         texels = (np.clip(row, 0, GRID_PX - 1), np.clip(col, 0, GRID_PX - 1))
         # Both cliff values: testing ``== PROV_CLIFF`` scores a v3 field on a quarter of
         # the probes and calls it the same measurement.
-        province[name] = np.isin(field._prov[texels], hf.PROV_CLIFF_VALUES)
+        province[name] = np.isin(field.provenance_plane[texels], hf.PROV_CLIFF_VALUES)
         print(f"  {name}: {len(pts)} probes, {int(province[name].sum())} on the cliff province")
     return probes, province
 

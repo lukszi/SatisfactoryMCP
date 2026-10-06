@@ -231,10 +231,10 @@ def perched_levels(field, planes=None) -> tuple[np.ndarray | None, dict]:
     (``_below_drops``) is judged first, by its own ring or the body's, and once re-levelled
     is a bank of the rest. Every other body, and the ocean, is returned byte for byte.
     """
-    water, grades = planes or (field._water_raster(), field._water_quality_raster())
+    water, grades = planes or (field.water_raster(), field.water_quality_raster())
     if water is None or grades is None:
         return water, {"absent": "no water planes"}
-    heights = field._height_dm
+    heights = field.height_dm
     known = heights != hf.NODATA
     measured = (grades == hf.WATER_MEASURED) & (water != hf.NODATA) & known
     # Ground the water encloses is no bank: the artwork draws deep water too dark for its
@@ -354,7 +354,7 @@ def wet_holes(field, before, level, grades, dropped=None) -> tuple:
     them, and ``level`` is its result. ``dropped`` is water the river reconcile took out,
     which stays out. New arrays where anything changed; the ocean is never touched.
     """
-    heights = field._height_dm
+    heights = field.height_dm
     known = heights != hf.NODATA
     wet = grades != hf.WATER_DRY
     if dropped is not None:
@@ -442,11 +442,11 @@ def water_surfaces(field, kernel_only: bool, rivers=None) -> WaterSurfaces:
     )
     planes = None if rivers is None else (rivers.water_dm, rivers.grades)
     level, meta = perched_levels(field, planes)
-    own = field._water_quality_raster()
+    own = field.water_quality_raster()
     grades = own if rivers is None else rivers.grades
     if "bodies" in meta:
         print(f"  perched water: {meta['bodies']} bodies, {meta['texels']} texels re-levelled")
-        before = field._water_raster() if rivers is None else rivers.water_dm
+        before = field.water_raster() if rivers is None else rivers.water_dm
         dropped = None if rivers is None else (own != hf.WATER_DRY) & (grades == hf.WATER_DRY)
         level, grades, meta["holes"] = wet_holes(field, before, level, grades, dropped)
         holes = meta["holes"]

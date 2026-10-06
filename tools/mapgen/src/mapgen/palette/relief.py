@@ -55,11 +55,11 @@ def water_tint_plane(field, water: dict, planes=None, heights_dm=None) -> np.nda
     ``planes`` is ``(level_dm, grades)`` as drawn and ``heights_dm`` the ground the run draws
     (with the open sea's bed, ``palette.water.open_sea``); the field's own when None.
     """
-    surface, grades = planes or (field._water_raster(), field._water_quality_raster())
+    surface, grades = planes or (field.water_raster(), field.water_quality_raster())
     if surface is None or grades is None:
         return None
     wet = (grades != hf.WATER_DRY).astype(np.float32)
-    ground = field._height_dm if heights_dm is None else heights_dm
+    ground = field.height_dm if heights_dm is None else heights_dm
     depth = (surface.astype(np.float32) - ground) / np.float32(hf.DM_PER_M)
     tau = np.float32(water["tau_m"])
     tint = np.where(

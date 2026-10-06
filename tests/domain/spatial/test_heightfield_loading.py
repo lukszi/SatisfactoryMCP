@@ -107,7 +107,7 @@ def test_the_last_column_answers_and_the_one_past_it_does_not(tmp_path):
     to ``width - 1`` and the fencepost is one character. Mutating the comparison leaves the
     whole module green today.
 
-    What it would cost is not an exception. ``_height_dm`` is a numpy array and ``[row, width]``
+    What it would cost is not an exception. ``height_dm`` is a numpy array and ``[row, width]``
     raises, but the FIRST thing an out-of-range column does on a C-ordered raster is nothing
     visible at all in the row direction, and the failure a reader would see is the map's east
     edge answering with the west edge of the row below. So the pair is asserted directly: the
@@ -159,9 +159,9 @@ def test_the_mapped_cache_matches_the_in_memory_decode(tmp_path):
     mapped = hf.Field(_meta(directory), directory)
     plain = hf.Field(_meta(directory), directory, cache=False)
     assert mapped.cache_events[hf.HEIGHT_NAME] == "mapped"
-    assert isinstance(mapped._height_dm, np.memmap)
+    assert isinstance(mapped.height_dm, np.memmap)
     for name in (hf.HEIGHT_NAME, hf.PROV_NAME, hf.TERRAIN_NAME, hf.TOP_NAME):
-        assert np.array_equal(mapped._plane(name), plain._plane(name)), name
+        assert np.array_equal(mapped.plane(name), plain.plane(name)), name
     assert mapped.z(125.0, 100.0) == plain.z(125.0, 100.0)
 
 
@@ -178,7 +178,7 @@ def test_a_changed_source_invalidates_the_cache(tmp_path):
     _bump_mtime(directory / hf.HEIGHT_NAME)
     again = hf.Field(_meta(directory), directory)
     assert again.cache_events[hf.HEIGHT_NAME] == "written"
-    assert np.array_equal(again._height_dm, changed)
+    assert np.array_equal(again.height_dm, changed)
 
 
 def test_a_new_generator_version_invalidates_the_cache(tmp_path):

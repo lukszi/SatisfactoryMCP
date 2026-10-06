@@ -103,7 +103,7 @@ def artwork_detail(sheet) -> tuple[np.ndarray, dict]:
 
 def coarse_province(field) -> tuple[np.ndarray, dict]:
     """Where the field is coarser than the artwork: a feathered uint8 mask at 1 m."""
-    inside = np.isin(field._prov, BORROW_PROVENANCE)
+    inside = np.isin(field.provenance_plane, BORROW_PROVENANCE)
     share = float(inside.mean())
     feather = ndimage.gaussian_filter(
         inside.astype(np.float32), BORROW_FEATHER_M * 100.0 / field.spacing_cm, mode="nearest"

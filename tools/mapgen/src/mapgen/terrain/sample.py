@@ -82,7 +82,7 @@ def direct_weight(field, spacing_m: float) -> tuple[np.ndarray | None, dict]:
     need = DIRECT_SAMPLES_PER_TEXEL / (spacing_m * spacing_m)
     qualifies = density >= min(need, 255.0)
     share = float(qualifies.mean())
-    cliff = np.isin(field._prov, hf.PROV_CLIFF_VALUES)
+    cliff = np.isin(field.provenance_plane, hf.PROV_CLIFF_VALUES)
     return (qualifies.astype(np.uint8) * 255), {
         "plane": hf.DENSITY_NAME,
         "rule": (

@@ -128,7 +128,7 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
     """
     started = time.time()
     heights_dm, ground_dm = lattice
-    level, grades = planes or (field._water_raster(), field._water_quality_raster())
+    level, grades = planes or (field.water_raster(), field.water_quality_raster())
     tones = np.asarray(artwork_water, np.uint8)
     nodata = heights_dm == hf.NODATA
     sea = nodata & ((tones > 0) | (grades != hf.WATER_DRY))
@@ -137,7 +137,7 @@ def open_sea(field, lattice, planes, artwork_water, ocean_level_m: float) -> Ope
     unknown = (ocean & (grades == hf.WATER_LEVEL_ONLY)) | (sea & (grades == hf.WATER_DRY))
     # Read against the field's own heights: the rebuilt fill stands a metre above them.
     top = (ocean_level_m + OCEAN_BAND_M) * hf.DM_PER_M
-    stored = np.asarray(field._height_dm)
+    stored = np.asarray(field.height_dm)
     beside = (grades == hf.WATER_DRY) & ~nodata & ndimage.binary_dilation(unknown, iterations=3)
     coast = beside & (stored >= top + COAST_ABOVE_M * hf.DM_PER_M)
     sunken = (grades == hf.WATER_DRY) & ~nodata & (stored <= top) & (stored != hf.NODATA)

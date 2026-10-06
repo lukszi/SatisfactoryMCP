@@ -61,8 +61,8 @@ WET_MIX_MOST = 1 / 3
 
 def ocean_reach(field) -> tuple[np.ndarray, dict]:
     """1 where the crossing rule applies: within the reach of measured ocean water."""
-    water = field._water_raster()
-    grades = field._water_quality_raster()
+    water = field.water_raster()
+    grades = field.water_quality_raster()
     if water is None or grades is None:
         return np.zeros((field.height, field.width), np.uint8), {"absent": "no water planes"}
     level_m = water.astype(np.float32) / np.float32(hf.DM_PER_M)

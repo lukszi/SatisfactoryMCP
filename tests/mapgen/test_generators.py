@@ -315,13 +315,13 @@ def test_water_whose_depth_was_never_measured_is_still_drawn_as_water():
     # And a field with no quality byte at all falls back to the comparison rather than
     # reading missing as dry -- which is all such a field can say.
     class _Old:
-        _height_dm = numpy.array([[0, 0], [0, 0]], numpy.int16)
-        _prov = numpy.zeros((2, 2), numpy.uint8)
+        height_dm = numpy.array([[0, 0], [0, 0]], numpy.int16)
+        provenance_plane = numpy.zeros((2, 2), numpy.uint8)
 
-        def _water_raster(self):
+        def water_raster(self):
             return numpy.array([[5, hf.NODATA], [5, 5]], numpy.int16)
 
-        def _water_quality_raster(self):
+        def water_quality_raster(self):
             return None
 
     plane, measured, note = water_planes(_Old())
@@ -340,10 +340,10 @@ class _Field:
     spacing_cm = 100.0
 
     def __init__(self, height_dm, prov, density=None):
-        self._height_dm = numpy.asarray(height_dm, numpy.int16)
-        self._prov = numpy.asarray(prov, numpy.uint8)
+        self.height_dm = numpy.asarray(height_dm, numpy.int16)
+        self.provenance_plane = numpy.asarray(prov, numpy.uint8)
         self._density = None if density is None else numpy.asarray(density, numpy.uint8)
-        self.height, self.width = self._height_dm.shape
+        self.height, self.width = self.height_dm.shape
         self.x0_cm = self.y0_cm = 0.0
 
     def density_raster(self):
@@ -379,7 +379,7 @@ def test_the_density_plane_decides_per_texel_and_says_nothing_when_it_is_absent(
     assert set(numpy.unique(coarse)) == {0, 255}
     assert coarse[20, 20] == 255 and coarse[20, 27] == 0
 
-    absent, absent_meta = direct_weight(_Field(field._height_dm, prov), 0.2289)
+    absent, absent_meta = direct_weight(_Field(field.height_dm, prov), 0.2289)
     assert absent is None and hf.DENSITY_NAME in absent_meta["absent"]
 
 
@@ -819,10 +819,10 @@ class _TerrainField(_Field):
     def __init__(self, height_dm, prov, raw):
         super().__init__(height_dm, prov)
         self._raw = numpy.asarray(raw, numpy.uint16)
-        self._terrain_grid = {"zero": 32768.0, "units_per_m": 128.0, "offset_m": 1.0}
-        self._terrain_grid.update(row_off=1, col_off=1)
+        self.terrain_grid = {"zero": 32768.0, "units_per_m": 128.0, "offset_m": 1.0}
+        self.terrain_grid.update(row_off=1, col_off=1)
 
-    def _plane(self, name):
+    def plane(self, name):
         return self._raw if name == hf.TERRAIN_NAME else None
 
 

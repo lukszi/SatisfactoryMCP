@@ -55,7 +55,7 @@ def write_caves(args, build_pin: str, build_raw) -> int:
     classes = ClassFacts(store, AssetIndex(store))
     print("sweeping the world for cave sound volumes and cave decoration")
     found = sweep_caves(store, scripts, classes, not args.quiet)
-    arrays, counts = build_caves(found, field._height_dm)
+    arrays, counts = build_caves(found, field.height_dm)
     seconds = round(time.time() - started, 1)
     for name, value in counts.items():
         print(f"  {name:>22}: {value}")

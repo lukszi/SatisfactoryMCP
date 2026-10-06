@@ -143,7 +143,7 @@ def land_cells(field, shape: tuple[int, int]) -> np.ndarray | None:
     """Ground the sea does not cover, on a grid of ``shape`` over the field, nearest; None for a
     field without water planes. Water at the ocean's level is sea whatever its grade, and so is
     the void off the landscape."""
-    water, grades = field._water_raster(), field._water_quality_raster()
+    water, grades = field.water_raster(), field.water_quality_raster()
     if water is None or grades is None:
         return None
     rows = np.minimum(np.arange(shape[0]) * field.height // shape[0], field.height - 1)
@@ -152,7 +152,7 @@ def land_cells(field, shape: tuple[int, int]) -> np.ndarray | None:
     level = water[pick].astype(np.float32) / np.float32(hf.DM_PER_M)
     sea = (grades[pick] != hf.WATER_DRY) & (water[pick] != hf.NODATA)
     sea &= np.abs(level - OCEAN_LEVEL_M) <= OCEAN_LEVEL_BAND_M
-    return (field._height_dm[pick] != hf.NODATA) & ~sea
+    return (field.height_dm[pick] != hf.NODATA) & ~sea
 
 
 class PaintedGround:
@@ -306,7 +306,7 @@ class PaintedGround:
         ``planes`` is ``(level_dm, grades)`` after rivers and perched water took their share;
         the field's own planes when None.
         """
-        water, grades = planes or (field._water_raster(), field._water_quality_raster())
+        water, grades = planes or (field.water_raster(), field.water_quality_raster())
         if self._bodies is None:
             found = "a paint store without water bodies: all water draws as the ocean"
         elif water is None or grades is None:

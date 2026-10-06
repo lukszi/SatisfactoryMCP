@@ -85,12 +85,12 @@ def water_over(rgb, depth, alpha, shade, shallow, deep):
 
 def water_planes(field) -> tuple[np.ndarray | None, np.ndarray | None, str]:
     """The ``wet`` and ``measured`` 0/1 planes off ``waterq.u8.z``, and their source."""
-    water = field._water_raster()
+    water = field.water_raster()
     if water is None:
         return None, None, "no water raster in this field; nothing is drawn as water"
-    grades = field._water_quality_raster()
+    grades = field.water_quality_raster()
     if grades is None:
-        wet = ((water != hf.NODATA) & (water > field._height_dm)).astype(np.uint8)
+        wet = ((water != hf.NODATA) & (water > field.height_dm)).astype(np.uint8)
         return (
             wet,
             wet,

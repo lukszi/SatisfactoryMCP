@@ -102,9 +102,9 @@ def _basin():
                "sections": [_section(-20, 180, 60, 104.0, 70.0)]}]  # fmt: skip
     water, grades = _levels(boxes, wet, ground)
     field = SimpleNamespace(
-        _height_dm=np.round(ground * hf.DM_PER_M).astype(np.int16),
-        _water_raster=lambda: water,
-        _water_quality_raster=lambda: grades,
+        height_dm=np.round(ground * hf.DM_PER_M).astype(np.int16),
+        water_raster=lambda: water,
+        water_quality_raster=lambda: grades,
     )
     return RiverWater({"rivers": rivers, "boxes": boxes}, field), water
 

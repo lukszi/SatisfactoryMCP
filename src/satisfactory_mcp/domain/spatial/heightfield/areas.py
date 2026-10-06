@@ -126,7 +126,9 @@ class FieldAreas:
             counts = np.zeros(PROV_CLIFF_DIRECT + 1, np.int64)
             counts[PROV_LANDSCAPE] = n_good
         else:
-            counts = np.bincount(self._prov[cut].ravel(), minlength=PROV_CLIFF_DIRECT + 1)
+            counts = np.bincount(
+                self.provenance_plane[cut].ravel(), minlength=PROV_CLIFF_DIRECT + 1
+            )
         provenance_pct = {
             int(code): round(100.0 * float(counts[code]) * stride * stride / denom, 1)
             for code in range(len(counts))
@@ -164,15 +166,15 @@ class FieldAreas:
         """``(z in metres as float32, has-data mask)`` for one surface over a cut of the grid."""
         if surface == "terrain":
             return self._terrain_cut(cut)
-        plane = self._height_dm if surface == "ground" else self._plane(TOP_NAME)
+        plane = self.height_dm if surface == "ground" else self.plane(TOP_NAME)
         raw = plane[cut]  # type: ignore[index]
         good = raw != NODATA
         return np.where(good, raw, 0).astype(np.float32) / np.float32(DM_PER_M), good
 
     def _terrain_cut(self, cut: tuple[slice, slice]) -> tuple[np.ndarray, np.ndarray]:
         """The terrain plane resampled-free onto a cut of the main grid; off its frame is no data."""
-        plane = self._plane(TERRAIN_NAME)
-        tg = self._terrain_grid
+        plane = self.plane(TERRAIN_NAME)
+        tg = self.terrain_grid
         rows = np.arange(cut[0].start, cut[0].stop, cut[0].step)
         cols = np.arange(cut[1].start, cut[1].stop, cut[1].step)
         z = np.zeros((rows.size, cols.size), np.float32)
@@ -200,10 +202,10 @@ class FieldAreas:
         """Texels of a cut where the ground may be a roof: over terrain by ``AMBIGUOUS_M``."""
         ground, has_ground = self._surface_cut("ground", cut)
         if not self.has_terrain:
-            return int((has_ground & np.isin(self._prov[cut], PROV_CLIFF_VALUES)).sum())
+            return int((has_ground & np.isin(self.provenance_plane[cut], PROV_CLIFF_VALUES)).sum())
         terrain, has_terrain = self._terrain_cut(cut)
         over = has_terrain & (ground - terrain > AMBIGUOUS_M)
-        hole = ~has_terrain & np.isin(self._prov[cut], PROV_CLIFF_VALUES)
+        hole = ~has_terrain & np.isin(self.provenance_plane[cut], PROV_CLIFF_VALUES)
         return int((has_ground & (over | hole)).sum())
 
     def _cave_count(self, cut: tuple[slice, slice], good: np.ndarray) -> int:
@@ -227,7 +229,7 @@ class FieldAreas:
         denom: float,
     ) -> tuple[float, float | None, float | None]:
         """Submerged share, water surface level, and its drop below the dry ground."""
-        water = self._water_raster()
+        water = self.water_raster()
         if water is None:
             return 0.0, None, None
         wet_dm = water[cut]
@@ -252,10 +254,10 @@ class FieldAreas:
         pre-quality field is still readable, not because the comparison is sound.
         """
         wet = wet_dm != NODATA
-        grades = self._water_quality_raster()
+        grades = self.water_quality_raster()
         if grades is not None:
             return wet & (grades[cut] != WATER_DRY)
-        raw = self._height_dm[cut]
+        raw = self.height_dm[cut]
         return wet & (raw != NODATA) & (wet_dm > raw)
 
     def nearest_water(
@@ -272,7 +274,7 @@ class FieldAreas:
         ``max_texels`` exactly as ``window`` is, so ``distance_m`` is quantised to
         ``stride`` metres and ``stride`` is reported rather than folded away.
         """
-        water = self._water_raster()
+        water = self.water_raster()
         if water is None:
             return None
         radius_m = radius_cm / 100.0
@@ -301,7 +303,7 @@ class FieldAreas:
         centre_row = ((y_cm - self.y0_cm) / self.spacing_cm - row_lo) / stride
         d2 = (cols - centre_col) ** 2 + (rows - centre_row) ** 2
         best = int(np.argmin(d2))
-        grades = self._water_quality_raster()
+        grades = self.water_quality_raster()
         return NearWater(
             radius_m=radius_m,
             stride=stride,

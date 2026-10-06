@@ -380,7 +380,7 @@ def main() -> int:
             "pixel"
         )
     recipe = RECIPE_KERNEL_ONLY if args.kernel_only else RECIPE
-    heights = None if args.kernel_only else field._height_dm.astype(np.float32)
+    heights = None if args.kernel_only else field.height_dm.astype(np.float32)
     if heights is None:
         print(f"  --kernel-only: drawing recipe {recipe}, the picture before the two regimes")
     ground, ground_meta = (None, {}) if heights is None else ground_lattice(field, heights)
