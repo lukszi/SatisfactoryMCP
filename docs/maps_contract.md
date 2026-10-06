@@ -236,7 +236,9 @@ command (`renders`, `artwork`, `heightmap`, `caves`, `rocks`, `paint`); the code
 `ARTWORK_GENERATOR` in `domain/maps/axes.py` match the `_meta.generator` every sidecar
 records, and a job record still names its `script`.
 
-- `--force` goes only to the input presets; a map job always writes a new folder.
+- `--force` goes only to the input presets; a map job always writes a new folder. Its types
+  are registered before it starts but hold no tiles yet, so the generator's refusal to write
+  over a registered type (exit 10) lets it through without `--overwrite-in-use`.
 - `gen_map_renders.py --size` gained 2048 and 1024, the preview sizes: a 1024 terrain render
   took 189 s here, of which the geometry sweep and the direct raster are most.
 - `--cache-dir` puts `direct.cache/` and `top.cache/` where a later run at the same size and

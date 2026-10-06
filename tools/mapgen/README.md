@@ -93,6 +93,13 @@ as the artwork. The main options:
 - `--layer L`, repeatable, picks the layers. The default is all five.
 - `--size` takes 1024 to 32768. The smaller sizes are previews.
 - `--renders-name` writes beside the current renders instead of over them.
+- `--overwrite-in-use` writes even into a folder holding tiles of a map type the server's
+  registry (`data/local/maps/manifest.json`) lists. Without it, a run whose
+  `<out-dir>/<renders-name>` holds one is refused with exit code 10 before the field or the
+  game is read, and the message names the types. Junctions and links are followed, so where
+  `renders` links to the set the default map is drawn from, a run without `--renders-name`
+  stops there. `--force` overrides only the build check. With no manifest nothing is in use.
+  The server's jobs always write a new folder and never pass it.
 - `--unlit` draws the colour without light, bakes the lighting pyramid into
   `<renders>/light/`, and keeps a default-sun copy in each layer's `tiles/`. See §29.
 - `--cache-dir` with `--keep-direct` keeps the geometry rasters, so a later run at the same
@@ -169,6 +176,7 @@ be traced to the axis it should move.
 | `tiles/compose.py` | | The band loop that draws a layer |
 | `tiles/pyramid.py` | | Installing a layer and cutting its pyramid |
 | `tiles/sidecar.py` | | The render sidecar |
+| `tiles/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/recipes.py` | | The recipe numbers and their words, renders and artwork |
 | `tiles/rendertext.py` | | The render sidecar's sampling, composition, z7 and level-only text |
 | `tiles/artwork_output.py` | | The artwork's `tiles/` and `tiles@2x/` trees, its `map.json`, and the staleness guard that reads it back |
