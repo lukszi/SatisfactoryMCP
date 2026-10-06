@@ -61,6 +61,10 @@ Planned as 0.2.0.
   the painted layer, because the tree crowns are written once, where the bake reads them.
   `--scratch-dir` moves it off the cache drive. It is still not compressed: nothing reads it
   after the run that wrote it.
+- Map generator: drawing a layer skips arithmetic whose answer it already had. Planes are
+  sampled without the weight sums nothing read, and the void and the water are blended only
+  on the pixels they cover. A full-size render draws about 12% faster, 10 to 15 minutes of
+  one core over the five layers; the tiles are the same bytes.
 
 ### Deprecated
 

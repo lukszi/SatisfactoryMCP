@@ -12,7 +12,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
-from mapgen.palette.shore import water_composite
+from mapgen.palette.shore import blend_where, water_composite
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -55,6 +55,7 @@ __all__ = [
     "TERRAIN_SHORE",
     "UNKNOWN_BIOME_RGB",
     "VOID_EDGE_RGB",
+    "VOID_MOST",
     "VOID_RIM_RGB",
     "WATER_DEEP",
     "WATER_SHALLOW",
@@ -147,6 +148,9 @@ VOID_EDGE_RGB = np.array([66, 79, 90], np.float32)
 PIT_EDGE_RGB = np.array([76, 76, 76], np.float32)
 PIT_RGB = np.array([4, 5, 6], np.float32)
 VOID_RIM_RGB = np.array([236, 236, 230], np.float32)
+
+#: Past this share of a band under the void's cover or rim, ``with_void`` blends every pixel.
+VOID_MOST = 2 / 3
 
 # The satellite layer's own rules (tools/mapgen/README.md, "Design notes").
 
@@ -309,10 +313,13 @@ def with_void(rgb: np.ndarray, cover: np.ndarray, falloff=None, pit=None, rim=No
     weight = cover[..., None]
     if falloff is None:
         return rgb * (1.0 - weight) + SEA_RGB * weight
-    deep, hole = falloff[..., None], pit[..., None]
+    planes = (weight, falloff[..., None], pit[..., None], rim[..., None])
+    return blend_where((cover != 0) | (rim != 0), VOID_MOST, _void_blend, rgb, *planes)
+
+
+def _void_blend(rgb, weight, deep, hole, line):
     edge = VOID_EDGE_RGB * (1.0 - hole) + PIT_EDGE_RGB * hole
     colour = edge * (1.0 - deep) + (SEA_RGB * (1.0 - hole) + PIT_RGB * hole) * deep
-    line = rim[..., None]
     return (rgb * (1.0 - weight) + colour * weight) * (1.0 - line) + VOID_RIM_RGB * line
 
 

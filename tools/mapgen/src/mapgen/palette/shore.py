@@ -23,8 +23,10 @@ __all__ = [
     "OCEAN_LEVEL_BAND_M",
     "OCEAN_LEVEL_M",
     "OCEAN_REACH_M",
+    "WET_MIX_MOST",
     "add_foam",
     "blend_water",
+    "blend_where",
     "composite_meshes",
     "ocean_reach",
     "optical_depth",
@@ -33,6 +35,7 @@ __all__ = [
     "shore_terms",
     "water_composite",
     "wet_band",
+    "wet_mix",
 ]
 
 #: The sea surface the coast is drawn at, metres. The one number to change if the sandbars
@@ -51,6 +54,9 @@ MESH_REACH_M = 0.6
 
 #: The lift over which a pixel counts as wholly covered by a render-only mesh, metres.
 MESH_FULL_LIFT_M = 0.25
+
+#: Past this share of wet pixels in a band, ``wet_mix`` mixes them all: that is cheaper.
+WET_MIX_MOST = 1 / 3
 
 
 # ----------------------------------------------------------------------- the shore
@@ -153,12 +159,34 @@ def water_composite(
     tint = water["depth"][..., None]
     colour = (shallow * (1 - tint) + deep * tint) * (shade_floor + shade_range * shade[..., None])
     under = land * wet * (1.0 - opacity) + colour * opacity
-    cover = water["cover"][..., None]
-    rgb = land * (1.0 - cover) + under * cover
+    rgb = wet_mix(land, under, water["cover"][..., None])
     stroke = np.float32(optics.get("stroke", 0.0))
     if stroke:
         rgb = rgb * (1.0 - stroke * water["edge"][..., None])
     return add_foam(rgb, water, optics.get("foam"), np.float32(255.0))
+
+
+def blend_where(touched, most: float, blend, base, *planes):
+    """``blend(base, *planes)``, worked only on the ``touched`` pixels, where it may differ
+    from ``base``, unless they are more than ``most`` of them. Every array has a trailing
+    channel axis; docs/spatial-and-map.md section 26, "Drawing less"."""
+    at = np.flatnonzero(touched)
+    if at.size > most * touched.size:
+        return blend(base, *planes)
+    rows = [np.take(a.reshape(-1, a.shape[-1]), at, axis=0) for a in (base, *planes)]
+    done = blend(*rows)
+    out = base.astype(done.dtype, order="C")
+    out.reshape(-1, done.shape[-1])[at] = done
+    return out
+
+
+def wet_mix(land, under, cover):
+    """``land * (1 - cover) + under * cover``; ``cover`` has the trailing channel axis."""
+    return blend_where(cover[..., 0] != 0, WET_MIX_MOST, _mix, land, under, cover)
+
+
+def _mix(land, under, cover):
+    return land * (1.0 - cover) + under * cover
 
 
 def wet_band(land, water: dict, band: dict | None):

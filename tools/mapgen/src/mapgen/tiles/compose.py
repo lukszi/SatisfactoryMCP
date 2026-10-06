@@ -52,6 +52,7 @@ from mapgen.terrain.rasters import pixel_coverage
 from mapgen.terrain.sample import (
     frame_coordinates,
     grid_position,
+    reads_nothing,
     sample_coverage,
     sample_noise,
     sample_plain,
@@ -216,7 +217,7 @@ def _band_water(z_m, planes, smooth, linear):
     level_m = np.where(water_missing, np.nan, water_m)
     wet = sample_coverage(wet_plane, linear)
     measured = sample_coverage(measured_plane, linear) / np.where(wet <= 0.0, 1.0, wet)
-    if sea is not None:
+    if sea is not None and not reads_nothing(sea.void.cover, linear):
         land = 1.0 - sample_plain(sea.void.cover, linear) / np.float32(255.0)
         wet = np.clip(wet / np.maximum(land, np.float32(1e-3)), 0.0, 1.0)
     return water_m, level_m, wet, np.clip(measured, 0.0, 1.0)
@@ -233,8 +234,11 @@ def _rock_kept(z_rock_cm, missing, planes, linear):
     if sea is None:
         return None
     above = np.clip(z_rock_cm / np.float32(100.0) - np.float32(OCEAN_LEVEL_M) + 0.5, 0.0, 1.0)
-    cover = np.clip(sample_plain(sea.void.cover, linear) / np.float32(255.0), 0.0, 1.0)
-    under = np.where(missing, np.float32(1.0), cover * sample_coverage(wet_plane, linear))
+    if reads_nothing(sea.void.cover, linear):
+        under = np.where(missing, np.float32(1.0), np.float32(0.0))
+    else:
+        cover = np.clip(sample_plain(sea.void.cover, linear) / np.float32(255.0), 0.0, 1.0)
+        under = np.where(missing, np.float32(1.0), cover * sample_coverage(wet_plane, linear))
     return (1.0 - (1.0 - above) * under).astype(np.float32)
 
 
@@ -244,6 +248,8 @@ def _void(rgb, missing, sea, linear, rock, z_m):
     out of the sea; without the open sea, no data only, in the page's sea."""
     if sea is None:
         return with_sea(rgb, missing)
+    if not missing.any() and all(reads_nothing(p, linear) for p in (sea.void.cover, sea.void.rim)):
+        return rgb.astype(np.result_type(rgb, np.float32), copy=False)
     cover, falloff, pit, rim = (sample_plain(p, linear) / np.float32(255.0) for p in sea.void)
     if rock is not None:
         # A rock deep in the void, under the sea's level, is the void's, as the artwork has it.

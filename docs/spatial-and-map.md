@@ -1544,6 +1544,83 @@ from 3,638 to 3,554, and the pure-kernel p99 fell from 2.11 to 1.24.
 `--renders-name renders-v3` writes to `data/local/renders-v3/<layer>/`. Switching works as in
 section 25.
 
+### Drawing less (2026-10-06)
+
+The band loop did arithmetic whose answer it already had. Three places now skip it, and the
+tiles are the same bytes:
+
+- **A plane with no holes is sampled without weights.** `sample_plain` reads the province
+  mask, the artwork's high pass, every painted plane, the void's planes and the river
+  presence: 40 planes a band in the painted layer. It called `resample`, which also sums the
+  stencil's weights for the no-data bookkeeping, a second gather and multiply per tap that
+  nothing read. It now sums the values alone, in `resample`'s order, from the same zeroed
+  accumulators. `reads_nothing` checks the texels under the band's rows first: when they are
+  all zero the sample is 0.0 everywhere, so it is not worked out.
+- **The void is drawn where it is.** `with_void` blended every pixel of the band. Where its
+  cover and rim are both 0 the blend gives back the pixel, so only the pixels under one of
+  them are blended. A band with no void under its rows and no pixel without data returns
+  before the void's four planes are sampled, and `_band_water` and `_rock_kept` skip the
+  cover there too.
+- **Water is mixed where it is.** The terrain and satellite styles (`water_composite`), the
+  painted style and the relief styles all end their water with
+  `land * (1 - cover) + under * cover`. `wet_mix` works that out only on the pixels whose
+  cover is not 0. The colour under the water is still worked out for every pixel; painting
+  only the wet pixels is the larger step left for later.
+
+`blend_where` in `palette/shore.py` does the masking for the last two. It gathers the touched
+pixels, blends them with the same expression and writes them over a copy of the input. Past a
+share of the band it blends the whole band instead, because gathering is then slower: 2/3 of
+the pixels for the void (`VOID_MOST`), 1/3 for the water (`WET_MIX_MOST`). On a synthetic
+272-row band 32,768 wide, in milliseconds:
+
+| Share of the band touched | 5% | 10% | 30% | 60% | 100% |
+| --- | --- | --- | --- | --- | --- |
+| Void, every pixel | 769 | 724 | 800 | 721 | 748 |
+| Void, touched pixels only | 70 | 109 | 305 | 561 | 963 |
+| Water mix, every pixel | 133 | 120 | 132 | 124 | 126 |
+| Water mix, wet pixels only | 29 | 41 | 96 | 180 | 268 |
+
+On the same band, a plane sampled bilinearly from the 1 m grid without the weights took 38 ms
+instead of 70.
+
+**Why the bits do not move.** A pixel left out is left as it was. The full blend gave
+`x * 1.0 + y * 0.0` there, which is `x` for every finite `y`. All it could change is the sign
+of a zero, `-0.0 + 0.0`, and cutting the band to 8 bits drops that. A plane of zeros sampled
+the long way gives `+0.0` too, because the accumulators start at zero. Only a `y` that is not
+finite would differ: an under-water colour of NaN or infinity on a dry pixel, or a NaN rock
+coverage in a band the void's skip passes over. Neither turned up in the checks below, where
+either would have changed a hash; a NaN coverage would also have made that pixel's height NaN
+before the void is reached.
+
+**Checked (2026-10-06, build 502094).**
+
+- The same 2048 render, all five layers lit with `--workers 2`, before and after: all 1,125
+  tiles, the layers' trees, their @2x trees and the light pyramid, are byte-identical by
+  SHA-256. The six sidecars differ only in their timings.
+- Three full-width windows of the 32768 sheet, 1,024 rows each at rows 0, 14,336 and 31,744
+  (the north edge, the middle and the south edge), all five layers, drawn by separate runs
+  before and after: all 15 arrays hash the same.
+
+**Cost.** Both versions of the changed functions ran in one process at those three places,
+512 rows each, alternating, twice each. Seconds of CPU on one core, the faster run of each,
+scaled to the whole 32768 sheet:
+
+| Layer | Before | After | Saved |
+| --- | --- | --- | --- |
+| terrain | 799 | 744 | 56 (7%) |
+| satellite | 769 | 653 | 116 (15%) |
+| painted | 1,546 | 1,346 | 201 (13%) |
+| relief | 1,038 | 886 | 152 (15%) |
+| relief-dark | 958 | 853 | 105 (11%) |
+| All five | 5,110 | 4,482 | 628 (12%) |
+
+Every band of the middle window skipped the void, and every band of the two edge windows had
+void and pixels without data. The middle window alone saves more, 929 s over the five layers,
+so a full render should save between the two: 10 to 15 minutes of drawing on one core. The
+machine was running other renders, so single runs spread by up to a third; alternating keeps
+that spread out of the comparison. The windowed runs peaked at 8.3 to 8.7 GB either way: a
+masked blend allocates the same output array as the full one, plus the touched pixels.
+
 ## 27. A crisp shore, render-only meshes and the game-painted satellite: recipe 6 (2026-10-05)
 
 Recipe 6 fixes the north beach in every style and adds a third style. Build 502094.
