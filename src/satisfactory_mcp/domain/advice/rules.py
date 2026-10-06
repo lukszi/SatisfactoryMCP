@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from ...core.singleflight import Singleflight
 from ...core.text import plural
 from ..factories import health
-from ..planning.diff_service import match_scope
+from ..planning.progress.diff_service import match_scope
 from ..planning.solver.prepare import prepare
 from ..planning.stored import manage
 from ..planning.stored.planlog import PlanLog, PlanLogError

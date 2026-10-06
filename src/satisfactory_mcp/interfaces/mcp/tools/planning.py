@@ -27,10 +27,10 @@ from ....domain.planning import siting as siting_mod
 from ....domain.planning.analysis import bom as bom_mod
 from ....domain.planning.analysis import recipe_routes
 from ....domain.planning.analysis.sensitivity import sweep_unlocks
-from ....domain.planning.commission import partition_id
-from ....domain.planning.commission_service import build_commission_report
-from ....domain.planning.diff_service import build_diff_report, plan_progress
 from ....domain.planning.layout.service import LayoutReport, build_layout_report
+from ....domain.planning.progress.commission_service import build_commission_report
+from ....domain.planning.progress.diff_service import build_diff_report, plan_progress
+from ....domain.planning.progress.stages import partition_id
 from ....domain.planning.readout import payback, summary
 from ....domain.planning.readout.report import build_plan_report
 from ....domain.planning.solver.carrier import resolve_tiers

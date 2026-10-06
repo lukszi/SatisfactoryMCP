@@ -11,18 +11,18 @@ import math
 from collections import Counter
 from dataclasses import dataclass, field
 
-from ...core.gamedata.model import GameData
-from ...core.text import plural
-from ..factories import naming
-from ..factories.resolve import resolve_factory
-from ..factories.select import SelectorError
-from ..spatial import geo
-from ..spatial.origin import parse_near, resolve_origin
-from ..world.state import WorldState
-from . import siting as siting_mod
+from ....core.gamedata.model import GameData
+from ....core.text import plural
+from ...factories import naming
+from ...factories.resolve import resolve_factory
+from ...factories.select import SelectorError
+from ...spatial import geo
+from ...spatial.origin import parse_near, resolve_origin
+from ...world.state import WorldState
+from .. import siting as siting_mod
+from ..solver.prepare import PreparedPlan
+from ..stored.planlog import PlanState
 from .diff import DiffReport, _group_processes, machine_rate
-from .solver.prepare import PreparedPlan
-from .stored.planlog import PlanState
 
 __all__ = [
     "AUTO",

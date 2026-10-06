@@ -1049,7 +1049,7 @@ A full projection per save would be far too expensive to do eagerly, so the shap
 INDEX: one small row per save (playtime, mtime, machine count, power drawn and installed, phase,
 a few inventory totals, per-factory machine counts), computed once and cached beside the
 projection cache, with deep pairwise diffs only on demand between two chosen saves — sharing
-`domain/planning/diff.py`'s machinery rather than growing a second one. Measured on the reference
+`domain/planning/progress/diff.py`'s machinery rather than growing a second one. Measured on the reference
 install: **112 s to index 50 saves cold** — one parse each, and only ever once — for **101 kB**
 of index. Every later question is answered from the rows.
 

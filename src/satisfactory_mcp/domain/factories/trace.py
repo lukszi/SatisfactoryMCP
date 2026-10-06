@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 
-__all__ = ["Reached", "Trace", "orient", "resolve_seeds", "trace"]
+__all__ = ["Reached", "Trace", "feeder_records", "live_feeders", "orient", "resolve_seeds", "trace"]
 
 #: Hard stop on the walk. The reference save's deepest chain is 72 hops of mostly belt,
 #: so this is far above anything real -- it exists so a malformed graph cannot spin.
@@ -271,3 +271,30 @@ def power_at_risk(state, game: GameData, machines: list[str]) -> tuple[float, in
         if building:
             mw += building.power_production_mw * (record.get("clock") or 1.0)
     return mw, total, running
+
+
+def live_feeders(g, st, floor_mw: float = 1.0) -> list[tuple[str, float]]:
+    """Built extractors whose output currently reaches a running generator.
+
+    Which of the machines already on the ground are load-bearing right now, which a startup
+    order cannot answer on its own. The distribution is lopsided in practice -- one of
+    sixteen Oil Extractors carrying all the running fuel generation -- so "repipe the
+    extractors" is usually many safe moves and one that browns out the base.
+    """
+    return [
+        (f"{name} {record['instance'].rsplit('.', 1)[-1][-10:]}", mw)
+        for record, name, mw in feeder_records(g, st, floor_mw)
+    ]
+
+
+def feeder_records(g, st, floor_mw: float = 1.0) -> list[tuple[dict, str, float]]:
+    """``live_feeders`` as (extractor record, building name, MW), largest first."""
+    out: list[tuple[dict, str, float]] = []
+    for record in st.projection.get("extractors", ()):
+        instance = record["instance"].rsplit(".", 1)[-1]
+        mw, _, running = power_at_risk(st, g, [instance])
+        if running and mw >= floor_mw:
+            building = g.buildings.get(record.get("cls", ""))
+            out.append((record, building.name if building else str(record.get("cls")), mw))
+    out.sort(key=lambda row: -row[2])
+    return out

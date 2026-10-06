@@ -10,10 +10,10 @@ import json
 import pytest
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import track as track_mod
-from satisfactory_mcp.domain.planning.commission import partition_id
-from satisfactory_mcp.domain.planning.commission_service import build_commission_report
-from satisfactory_mcp.domain.planning.diff_service import build_diff_report
+from satisfactory_mcp.domain.planning.progress import track as track_mod
+from satisfactory_mcp.domain.planning.progress.commission_service import build_commission_report
+from satisfactory_mcp.domain.planning.progress.diff_service import build_diff_report
+from satisfactory_mcp.domain.planning.progress.stages import partition_id
 from satisfactory_mcp.domain.planning.stored.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.world.state import WorldState
 
@@ -230,7 +230,7 @@ def test_the_page_reads_no_ids_codes_or_property_names(world):
 
 
 def test_page_text_rewrites_the_tool_caveats():
-    from satisfactory_mcp.domain.planning.commission import (
+    from satisfactory_mcp.domain.planning.progress.stages import (
         ENERGISED_CAVEAT,
         NO_MONITOR,
         RANGE_CAVEAT,

@@ -55,7 +55,7 @@ def test_the_two_edge_counts_domain_factories_model_cites(proj):
     graph = proj["graph"]
     assert len(graph["material"]) == 11_664, "domain/factories/model.py:9 quotes this"
     assert len(graph["power"]) == 1_297, (
-        "domain/factories/model.py:12 and domain/planning/commission.py:63 both quote this"
+        "domain/factories/model.py:12 and domain/planning/progress/stages.py both quote this"
     )
 
 
@@ -87,17 +87,17 @@ def test_the_power_geometry_extract_and_the_map_cite(proj):
 
 
 def test_the_machine_census_five_modules_cite(proj):
-    """570, spelled in ``commission.py``, ``build.py``, ``elevation.py`` and this file.
+    """570, spelled in ``stages.py``, ``build.py``, ``elevation.py`` and this file.
 
     One number in four docstrings is exactly the failure mode this file is for: when the
     fixture moves, three of the four get updated and the fourth reads as a measurement
     for another year.
     """
     assert len(_records(proj)) == 570, (
-        "domain/planning/commission.py:53, domain/factories/build.py:29 and "
+        "domain/planning/progress/stages.py, domain/factories/build.py:29 and "
         "domain/spatial/elevation.py:29,193 all quote this"
     )
-    assert proj["n_objects"] == 44_634, "domain/planning/commission.py:67 quotes this"
+    assert proj["n_objects"] == 44_634, "domain/planning/progress/stages.py quotes this"
 
 
 def test_the_six_machines_wired_to_nothing(proj):
@@ -186,7 +186,7 @@ def test_the_productivity_window_is_not_the_constant_it_looks_like(proj):
     tempting version, so that nobody re-derives it from a sample that happens to agree.
     """
     live = [r["uptime"] for r in _records(proj) if r.get("uptime")]
-    assert len(live) == 524, "domain/planning/commission.py:53 and health.py:12 quote this"
+    assert len(live) == 524, "domain/planning/progress/stages.py and health.py:12 quote this"
     windows = {u["window_s"] for u in live}
     assert windows == {300.0, 300.01, 300.02}, (
         "domain/factories/health.py:9 says this field is NOT a constant -- if the fixture "

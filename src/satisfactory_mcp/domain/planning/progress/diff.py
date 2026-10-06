@@ -36,14 +36,14 @@ import hashlib
 import math
 from dataclasses import dataclass, field
 
-from ...core.gamedata.model import GameData
-from ...core.text import plural
-from ..spatial import geo
-from ..spatial import nodes as nodes_mod
-from ..world.state import WorldState
-from .solver.graph import chain_depth
-from .solver.model import MW, Solution
-from .solver.scenario import PlanRequest
+from ....core.gamedata.model import GameData
+from ....core.text import plural
+from ...spatial import geo
+from ...spatial import nodes as nodes_mod
+from ...world.state import WorldState
+from ..solver.graph import chain_depth
+from ..solver.model import MW, Solution
+from ..solver.scenario import PlanRequest
 
 __all__ = [
     "NEIGHBOUR_RADIUS_M",

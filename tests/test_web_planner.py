@@ -600,7 +600,7 @@ def test_track_refuses_unknown_plans_and_revs(client):
 
 
 def test_track_is_a_400_when_the_solve_refuses(client, monkeypatch):
-    from satisfactory_mcp.domain.planning import track
+    from satisfactory_mcp.domain.planning.progress import track
 
     key = _create(client)["key"]
 

@@ -10,8 +10,8 @@ build order are not.
 from __future__ import annotations
 
 from ...core.gamedata.model import GameData
-from ...domain.planning.commission_service import CommissionReport
-from ...domain.planning.diff_service import MEASURED_SOURCE, NAMEPLATE_SOURCE
+from ...domain.planning.progress.commission_service import CommissionReport
+from ...domain.planning.progress.diff_service import MEASURED_SOURCE, NAMEPLATE_SOURCE
 from ...domain.power.report import biomass_note
 from ...domain.world.state import WorldState
 from . import primitives as render

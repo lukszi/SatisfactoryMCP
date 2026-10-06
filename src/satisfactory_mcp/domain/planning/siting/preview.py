@@ -13,12 +13,13 @@ from ....core.text import plural
 from ...spatial import geo
 from ...spatial.origin import parse_near
 from ...world.state import WorldState
-from .. import built as built_mod
 from .. import siting as siting_mod
-from ..commission import Commissioning, commission, track
-from ..diff import _save_id, build_diff
-from ..diff_service import DEFAULT_HEADROOM, STORED_SOURCE, default_headroom
 from ..layout.trunks import plan_trunks
+from ..progress import built as built_mod
+from ..progress.diff import _save_id, build_diff
+from ..progress.diff_service import DEFAULT_HEADROOM, STORED_SOURCE, default_headroom
+from ..progress.stages import track
+from ..progress.startup import Commissioning, commission
 from ..solver.prepare import PreparedPlan, prepare
 from ..stored.planlog import PlanState
 

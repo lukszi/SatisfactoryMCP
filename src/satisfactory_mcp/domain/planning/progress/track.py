@@ -8,27 +8,27 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from ...core.gamedata.model import GameData
-from ...core.text import ago
-from ..factories.select import SelectorError
-from ..power.report import biomass_note
-from ..spatial import nodes as nodes_mod
-from ..spatial.regions import load_regions
-from ..world.state import WorldState
+from ....core.gamedata.model import GameData
+from ....core.text import ago
+from ...factories.select import SelectorError
+from ...factories.trace import feeder_records
+from ...power.report import biomass_note
+from ...spatial import nodes as nodes_mod
+from ...spatial.regions import load_regions
+from ...world.state import WorldState
+from ..readout import summary
+from ..stored.planlog import PlanState
 from . import built as built_mod
-from .commission import (
+from .diff import _save_id
+from .diff_service import DEFAULT_HEADROOM, STORED_SOURCE, build_diff_report, default_headroom
+from .stages import (
     ENERGISED_CAVEAT,
     MONITORED_STATES,
     NO_MONITOR,
     RANGE_CAVEAT,
     RUNNING_STATES,
-    feeder_records,
     partition_id,
 )
-from .diff import _save_id
-from .diff_service import DEFAULT_HEADROOM, STORED_SOURCE, build_diff_report, default_headroom
-from .readout import summary
-from .stored.planlog import PlanState
 
 __all__ = [
     "CAP",
@@ -516,7 +516,7 @@ def feeders_view(g: GameData, st: WorldState, *, biomass: bool = False) -> dict:
     Extractors feeding the same generators each carry that generation, so the headline is
     the union reached from any of them, counted once.
     """
-    from ..factories.trace import power_at_risk
+    from ...factories.trace import power_at_risk
 
     found = feeder_records(g, st)
     try:

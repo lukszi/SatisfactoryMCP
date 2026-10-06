@@ -299,8 +299,8 @@ def test_the_three_planning_tools_share_one_pipeline(game, state):
     re-solved at defaults. One implementation cannot drift from itself."""
     import inspect
 
-    from satisfactory_mcp.domain.planning import diff_service as diff_mod
     from satisfactory_mcp.domain.planning.layout import service as layout_mod
+    from satisfactory_mcp.domain.planning.progress import diff_service as diff_mod
     from satisfactory_mcp.domain.planning.readout import report as report_mod
     from satisfactory_mcp.interfaces.mcp.tools import planning
 

@@ -16,7 +16,7 @@ from typing import Any, Literal, TypedDict
 
 from fastapi import APIRouter, Request
 
-from ....domain.planning import track
+from ....domain.planning.progress import track
 from ....domain.planning.stored.planlog import InvalidOp, PlanLog, UnknownPlan
 from ....domain.world import pin
 from ..serial import Biomass, _fail, _state

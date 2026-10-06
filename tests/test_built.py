@@ -14,7 +14,7 @@ import pytest
 from conftest import FIXTURE_WORLD, FIXTURES
 
 from satisfactory_mcp import config
-from satisfactory_mcp.domain.planning import built
+from satisfactory_mcp.domain.planning.progress import built
 from satisfactory_mcp.domain.world.state import WorldState
 
 #: The two factories that stand on one spot and run the same recipes.

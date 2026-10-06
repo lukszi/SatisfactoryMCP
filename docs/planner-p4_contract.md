@@ -150,7 +150,7 @@ re-requests Track. `scope_error` (the named factory has no machines left) shows
 
 ## 3. Data: the track view
 
-`domain/planning/track.py` `track_view(g, st, state: PlanState, *, biomass=False) -> dict`
+`domain/planning/progress/track.py` `track_view(g, st, state: PlanState, *, biomass=False) -> dict`
 builds the whole response from **one** `build_diff_report` call (one solve). Changes that
 feed it:
 
@@ -158,7 +158,7 @@ feed it:
 |---|---|
 | `planlog.py` | `headroom_mw` joins `PLAN_SCALARS`; `_SCALAR_CHECK["headroom_mw"]` = optional number, > 0, ≤ 1e6, `null` clears. `PlanState.headroom_mw: float \| None = None`, in `to_dict`/`from_dict` (absent reads as `None`, schema stays 1). Merge key `headroom_mw` (scalar, M1). `describe_op`: `startup headroom 2,000 MW` / `startup headroom: save default` (null follows the save's default, measured since 2026-09-30). Not part of `plan_id` |
 | `diff_service.build_diff_report` | New kwargs `headroom_mw: float \| None = None` (used for `commission` when given; source `"stored on the plan"`), `stored: PlanState \| None = None` (scope, siting and plan_id come from it instead of `st.plans.find`). Keeps the `Commissioning` it computes as `report.run` |
-| `commission.py` | `StageRow.key` (the `group_key`), `StageRow.states` via the same health pass; `Stage.describe()` (the words of today's `presenters/text/diff._stage_state`, moved so text and web share them); `Tracking.headline()` (today's `_stage_overview` headline); `partition_id(tracking) -> str` = first 10 hex of sha1 over `[[stage.index, [[repr(row.key), row.machines], …]], …]`; `""` when there are no stages |
+| `progress/stages.py` | `StageRow.key` (the `group_key`), `StageRow.states` via the same health pass; `Stage.describe()` (the words of today's `presenters/text/diff._stage_state`, moved so text and web share them); `Tracking.headline()` (today's `_stage_overview` headline); `partition_id(tracking) -> str` = first 10 hex of sha1 over `[[stage.index, [[repr(row.key), row.machines], …]], …]`; `""` when there are no stages |
 | `presenters/text/diff.py` | Uses `Stage.describe` / `Tracking.headline`; output unchanged apart from §6.2 |
 
 **Job row id** = `"job:" + "|".join(str(k) for k in group_key)`, e.g.
@@ -600,7 +600,7 @@ names through `api-shapes.ts` aliases.
 
 | Group | Owns (create or edit) |
 |---|---|
-| **BACKEND** | `src/satisfactory_mcp/domain/planning/track.py` (new); `domain/session/asks.py` (new); `domain/planning/commission.py`; `domain/planning/diff_service.py`; `domain/planning/commission_service.py`; `domain/planning/stored/planlog.py`; `domain/session/journal.py` (only if `KINDS` is extended); `src/satisfactory_mcp/config.py` (`asks_dir`); `presenters/text/diff.py`; `presenters/text/commission.py`; `interfaces/web/routers/asks.py` (new); `interfaces/web/routers/__init__.py` (append `asks.router` at the end); `interfaces/web/routers/planner.py`; `interfaces/web/routers/planlog.py`; `interfaces/web/serial.py` (only if a shape is shared by two routers); `interfaces/mcp/tools/planning.py`; `interfaces/mcp/app.py` (`INSTRUCTIONS`); `tests/test_track.py`, `tests/test_asks.py`, `tests/test_web_asks.py` (new); `tests/test_web_planner.py`, `tests/test_ui_context.py`, `tests/test_plan_tools_log.py`, `tests/test_diff.py`, `tests/test_commission.py`, `tests/test_surface.py`, `tests/test_planlog.py`; `docs/web-wire.md`, `docs/mcp-surface.md`, `docs/planner_vision.md` (§8 P4 marked built), `docs/plan_management.md` (the Asks line), `docs/planner_p4.md` (new: what was built) |
+| **BACKEND** | `src/satisfactory_mcp/domain/planning/progress/track.py` (new); `domain/session/asks.py` (new); `domain/planning/progress/startup.py`; `domain/planning/progress/diff_service.py`; `domain/planning/progress/commission_service.py`; `domain/planning/stored/planlog.py`; `domain/session/journal.py` (only if `KINDS` is extended); `src/satisfactory_mcp/config.py` (`asks_dir`); `presenters/text/diff.py`; `presenters/text/commission.py`; `interfaces/web/routers/asks.py` (new); `interfaces/web/routers/__init__.py` (append `asks.router` at the end); `interfaces/web/routers/planner.py`; `interfaces/web/routers/planlog.py`; `interfaces/web/serial.py` (only if a shape is shared by two routers); `interfaces/mcp/tools/planning.py`; `interfaces/mcp/app.py` (`INSTRUCTIONS`); `tests/test_track.py`, `tests/test_asks.py`, `tests/test_web_asks.py` (new); `tests/test_web_planner.py`, `tests/test_ui_context.py`, `tests/test_plan_tools_log.py`, `tests/test_diff.py`, `tests/test_commission.py`, `tests/test_surface.py`, `tests/test_planlog.py`; `docs/web-wire.md`, `docs/mcp-surface.md`, `docs/planner_vision.md` (§8 P4 marked built), `docs/plan_management.md` (the Asks line), `docs/planner_p4.md` (new: what was built) |
 | **FRONTEND** | `src/satisfactory_mcp/interfaces/web/frontend/src/planner-track.ts` (new); `asks.ts` (new); `asks-card.ts` (new); `planner-core.ts`; `planner.ts`; `planner-result.ts`; `planner-bench.ts`; `planner-list.ts`; `pins-card.ts`; `pins.ts`; `nav.ts`; `panel.ts` (`showBox` only); `format.ts` (`range` only); `words.ts`; `sse.ts`; `style.css`; `api-shapes.ts` |
 | **integrator** | `frontend/src/api-schema.d.ts` (regenerated) |
 
