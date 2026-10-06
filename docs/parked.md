@@ -777,7 +777,7 @@ sharing badly.
 **Built, and two of its parts turned out to be wrong when the picture was looked at.** The
 design below is kept verbatim because it is what was implemented against; what shipped, what it
 measured and where it departed are in
-[`docs/spatial-and-map.md`](spatial-and-map.md#20-the-two-regime-sampler-and-a-smoothed-z7-2026-07-31).
+[`docs/map/renders.md`](map/renders.md#20-the-two-regime-sampler-and-a-smoothed-z7-2026-07-31).
 The half that was right and is unchanged: `tools/gen_map_renders.py` imports the heightmap
 generator's own sweep, mesh decode, cull rules and `MaxZRaster` and rasterises the same rocks
 into its own 32768² grid at 0.229 m, banded, once, shared by both layers.
