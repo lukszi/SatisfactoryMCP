@@ -22,8 +22,10 @@ from mapgen.cache import (
     mesh_stamp,
     restyle_gaps,
 )
+from mapgen.colour import tone as shader_tone
+from mapgen.colour import untone as shader_untone
 from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
-from mapgen.lighting.model import _tone, _untone, apply_terms
+from mapgen.lighting.model import apply_terms
 from mapgen.palette.lightparams import shader_light
 from mapgen.palette.painted.ground import painted_ndl, tone
 from mapgen.palette.relief import FLAT_LIT, _shade
@@ -53,9 +55,9 @@ def test_the_shader_tone_is_the_painted_style_s_own_and_inverts():
     t = PAINTED_PALETTE["tone"]
     assert (params["tone_knee"], params["tone_white"]) == (t["knee"], t["white"])
     y = np.linspace(0.0, 1.5, 61, dtype=np.float32)
-    np.testing.assert_allclose(_tone(y, t["knee"], t["white"]), tone(y, t["knee"], t["white"]),
-                               atol=1e-6)  # fmt: skip
-    back = _untone(_tone(y, t["knee"], t["white"]), t["knee"], t["white"])
+    shaded = shader_tone(y, t["knee"], t["white"])
+    np.testing.assert_allclose(shaded, tone(y, t["knee"], t["white"]), atol=1e-6)
+    back = shader_untone(shaded, t["knee"], t["white"])
     np.testing.assert_allclose(back, y, atol=2e-4)
     assert shader_light("relief")["tone_knee"] == 1.0
 
