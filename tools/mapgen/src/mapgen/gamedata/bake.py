@@ -7,11 +7,14 @@ layers' albedos refitted to it. docs/spatial-and-map.md section 30 describes bot
 
 from __future__ import annotations
 
+import json
 import re
 import struct
+from pathlib import Path
 
 import numpy as np
 
+from mapgen.common import ROOT
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.sweep import LANDSCAPE_SECTION_ORIGIN
 from satisfactory_mcp.core.gameassets.packages import PackageView, class_name_of, property_tags
@@ -23,7 +26,12 @@ __all__ = [
     "FIT_MIN_PURE",
     "FIT_SAMPLES",
     "FIT_STEP",
+    "NODE_TABLE",
+    "OIL_NODE",
     "PERSISTENT_LEVEL",
+    "STAMP_INNER_M",
+    "STAMP_OUTER_M",
+    "STAMP_RING_MIN",
     "VT_BORDER_PX",
     "VT_BULK_FLAGS",
     "VT_TILE_PX",
@@ -31,7 +39,9 @@ __all__ = [
     "bake_have",
     "demorton",
     "fit_layer_table",
+    "oil_nodes",
     "read_bake",
+    "stamp_windows",
 ]
 
 BAKE_NAME = "bake.rgb.u8.z"
@@ -52,6 +62,16 @@ VT_BULK_FLAGS = 66817
 FIT_STEP = 4
 FIT_SAMPLES = 400_000
 FIT_MIN_PURE = 200
+
+#: The node table, and the node whose oil puddle every bake cell carries as a stamp.
+NODE_TABLE = ROOT / "data" / "world_resource_nodes.json"
+OIL_NODE = ("BP_ResourceNode_C", "Desc_LiquidOil_C")
+
+#: The bake gives way within ``STAMP_INNER_M`` of an oil node and is back by ``STAMP_OUTER_M``;
+#: the ring between is measured when it holds at least ``STAMP_RING_MIN`` texels.
+STAMP_INNER_M = 11.0
+STAMP_OUTER_M = 15.0
+STAMP_RING_MIN = 50
 
 
 def demorton(k: int) -> tuple[int, int]:
@@ -74,6 +94,34 @@ def bake_cell_origin(gx: int, gy: int) -> tuple[int, int]:
 def bake_have(rgb: np.ndarray) -> np.ndarray:
     """Where the bake says anything: covered and not one of its black holes."""
     return rgb.astype(np.uint16).sum(-1) >= 3
+
+
+def oil_nodes(table: Path = NODE_TABLE) -> np.ndarray:
+    """``(n, 2)`` world metres of every crude oil node in the table; none without one."""
+    try:
+        nodes = json.loads(table.read_text(encoding="utf-8"))["nodes"]
+    except (OSError, ValueError, KeyError):
+        nodes = []
+    found = [(n["x"] / 100.0, n["y"] / 100.0) for n in nodes
+             if (n.get("class"), n.get("resource")) == OIL_NODE]  # fmt: skip
+    return np.asarray(found, np.float64).reshape(-1, 2)
+
+
+def stamp_windows(nodes_m: np.ndarray, shape: tuple[int, int]):
+    """Per node on the 1 m grid of ``shape``: its window's slices and the bake's own share
+    there, 0 within ``STAMP_INNER_M`` and 1 again from ``STAMP_OUTER_M``, smoothstepped."""
+    reach = int(np.ceil(STAMP_OUTER_M * 100.0 / SPACING_CM)) + 1
+    for x_m, y_m in nodes_m:
+        col = (x_m * 100.0 - ORIGIN_X_CM) / SPACING_CM
+        row = (y_m * 100.0 - ORIGIN_Y_CM) / SPACING_CM
+        r0, c0 = max(int(row) - reach, 0), max(int(col) - reach, 0)
+        r1, c1 = min(int(row) + reach + 1, shape[0]), min(int(col) + reach + 1, shape[1])
+        if r0 >= r1 or c0 >= c1:
+            continue
+        rr, cc = np.ogrid[r0:r1, c0:c1]
+        metres = np.hypot(rr - row, cc - col) * SPACING_CM / 100.0
+        t = np.clip((metres - STAMP_INNER_M) / (STAMP_OUTER_M - STAMP_INNER_M), 0.0, 1.0)
+        yield (slice(r0, r1), slice(c0, c1)), (t * t * (3.0 - 2.0 * t)).astype(np.float32)
 
 
 def _mip0(view, export, entries, ubulk: bytes, decoder) -> np.ndarray | None:

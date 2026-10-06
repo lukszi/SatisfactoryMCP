@@ -1982,6 +1982,29 @@ speckle of the third review. Over the river_0 area isolated speck pixels go from
 pixel no wider than a texel keeps the bilinear taps, so 8192 px and up, the full-size render
 included, draw exactly as before.
 
+### Crude oil stamps (2026-10-06)
+
+Every crude oil node (`BP_ResourceNode_C` with `Desc_LiquidOil_C`) leaves a stamp in its
+cell's bake: the same blot about 20 m across, either near black (sRGB about 45, 45, 38) or a
+pale rainbow speckle. The paint layers under it are the ground around it, sand on the Spire
+Coast islets, and the artwork draws nothing there. Drawn as ground, the 1 m bake stretched over
+4.4 pixels of the full-size sheet, so each stamp drew as a black, blurred, blocky blot: the
+islet blobs of the fifth render. On build 502094, 26 of the 30 nodes stand on bake; the other
+four lie in its holes. None of the 541 other nodes, wells and geysers on bake carries a stamp.
+A stamp reaches at most 10.2 m from its node, and past 9 m the bake is back to its usual
+distance from the paint mix.
+
+Since style version 10 the painted ground patches each stamp before the bake is blended
+(`palette/painted.py` `patch_stamps`). Within 11 m of a crude oil node (`STAMP_INNER_M`) the
+bake takes the paint mix, scaled to the bake by the median per-texel ratio of bake to paint on
+the ring out to 15 m (`STAMP_OUTER_M`). Across that ring it hands back to the bake by a
+smoothstep. The nodes come from `data/world_resource_nodes.json` (`gamedata/bake.py`
+`oil_nodes`). The bake keeps its weight there, so the biome tint stays off, as it is around the
+node. 10,011 texels are replaced and 8,635 blended; the sidecar records
+`paint.bake_stamps_patched`. In the Spire Coast window at (269, -1943), pixels darker than sRGB
+luma 70 within 11 m of its three nodes go from 4,463 in the fifth render to 0. The speckle at
+(494, -47) goes from 0.0104 to 0.0042 (90th percentile OKLab distance from a 5x5 median).
+
 ### Rock surfaces
 
 **Families.** The sweep now records each placement's first `OverrideMaterials` entry. A rock

@@ -66,6 +66,7 @@ from mapgen.cache import (
     top_cache_dir,
 )
 from mapgen.common import LOCAL_DIR, RENDERS_DIR_NAME, base_parser, require_gen
+from mapgen.gamedata.bake import oil_nodes
 from mapgen.gamedata.biome import calibrate_biome, read_biome, region_table_is_current
 from mapgen.gamedata.frame import BOUNDS_M, RENDER_PX
 from mapgen.gamedata.paint import PAINT_DIR
@@ -619,7 +620,7 @@ def main() -> int:
             return 8
         started = time.time()
         palette, STYLE_DIGESTS["painted"] = painted_style(args.no_titan_trees)
-        painted = PaintedGround(args.paint_dir, palette, field, biome, list(drawn))
+        painted = PaintedGround(args.paint_dir, palette, field, biome, list(drawn), oil_nodes())
         inputs["paint"] = {
             "cl": paint_meta.get("cl"),
             "generator_version": paint_meta.get("generator_version"),

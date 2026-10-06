@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-from mapgen.gamedata.bake import BAKE_NAME, bake_have
+from mapgen.gamedata.bake import BAKE_NAME, STAMP_RING_MIN, bake_have, stamp_windows
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM, SPACING_CM
 from mapgen.gamedata.paint import CANOPY_NAME, CROWN_NAME, META_NAME, PIGMENT_NAME
 from mapgen.gamedata.waterbodies import CLASSES, WATER_BODIES_NAME, classify
@@ -105,6 +105,7 @@ __all__ = [
     "oklab",
     "over_crowns",
     "painted_colours",
+    "patch_stamps",
     "ramp_position",
     "rock_surface",
     "sample_titan",
@@ -267,6 +268,25 @@ class GroundBake:
         return cls(linear, np.asarray(have, bool) & (rgb.astype(np.uint16).sum(-1) >= 3))
 
 
+def patch_stamps(rgb, ok, paint, nodes_m) -> int:
+    """Over each node's stamp, in place on the sRGB bake ``rgb`` where ``ok``: the linear paint
+    mix scaled by the median ratio of bake to paint on the ring where the bake comes back
+    (``stamp_windows``). Returns the texels replaced outright."""
+    replaced = 0
+    for window, keep in stamp_windows(nodes_m, rgb.shape[:2]):
+        bake, mix, have = srgb_to_linear(rgb[window]), paint[window], ok[window]
+        ring = have & (keep > 0) & (keep < 1) & (mix.min(-1) > 0)
+        ratio = np.ones(3, np.float32)
+        if ring.sum() >= STAMP_RING_MIN:
+            ratio = np.median(bake[ring] / mix[ring], axis=0)
+        k = keep[..., None]
+        patched = np.round(linear_to_srgb(bake * k + np.clip(mix * ratio, 0.0, 1.0) * (1 - k)))
+        write = (have & (keep < 1))[..., None]
+        rgb[window] = np.where(write, patched, rgb[window]).astype(np.uint8)
+        replaced += int((have & (keep == 0)).sum())
+    return replaced
+
+
 def ground_albedo(paint, have, bake: GroundBake | None, feather_m: float) -> tuple:
     """The ground albedo source: the bake where it exists, else the paint mix.
 
@@ -281,7 +301,10 @@ def ground_albedo(paint, have, bake: GroundBake | None, feather_m: float) -> tup
 
 
 class PaintedGround:
-    """Everything the painted style samples per band, built once from the paint store."""
+    """Everything the painted style samples per band, built once from the paint store.
+
+    ``stamps`` are the ``(x, y)`` metres of the nodes whose stamp the store's bake carries.
+    """
 
     def __init__(
         self,
@@ -290,6 +313,7 @@ class PaintedGround:
         field,
         biome: dict,
         area_names: list[str],
+        stamps: np.ndarray | None = None,
         bake: GroundBake | None = None,
     ):
         meta = load_paint_meta(paint_dir)
@@ -297,6 +321,7 @@ class PaintedGround:
             raise FileNotFoundError(f"no paint store at {paint_dir}")
         self.meta, self.palette = meta, palette
         self.source: dict = {}
+        self._stamps = stamps
         grid = meta["grid"]
         rows, cols = grid["height"], grid["width"]
         table = bake_table(meta) if palette.get("ground") == "bake" else None
@@ -504,10 +529,15 @@ class PaintedGround:
         """The bake where it exists, feathered over ``have_blur_m`` into the paint mix.
 
         A hole the bake encloses is ground the game hides, so its paint (one solid layer per
-        component) is dropped and the biome fallback draws there instead.
+        component) is dropped and the biome fallback draws there instead. A node's stamp is
+        patched over first (``patch_stamps``).
         """
         rgb = _plane(paint_dir, self.meta, BAKE_NAME)
         ok = bake_have(rgb)
+        if self._stamps is not None:
+            rgb = np.array(rgb)
+            texels = patch_stamps(rgb, ok, albedo, self._stamps)
+            self.source["bake_stamps_patched"] = {"nodes": len(self._stamps), "texels": texels}
         soft = ndimage.gaussian_filter(ok.astype(np.float32), self.palette["have_blur_m"])
         w = (np.clip(soft * 2.0 - 1.0, 0.0, 1.0) * ok).astype(np.float32)
         for start in range(0, albedo.shape[0], 512):
