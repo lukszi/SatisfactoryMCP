@@ -260,12 +260,8 @@ colour value, so every colour sits with its owner and its warrant.
 - **`typing.Any` is banned** in `src/` and `tools/` by ruff's TID251. Data crossing a boundary
   (`json.load`, a sidecar, a request body) is `JsonValue` or `JsonObject` from
   `core/jsontypes.py`, narrowed with `isinstance`, or cast once to a TypedDict where a schema or
-  version check already guards the read. At run time `JsonValue` is a named `TypeAliasType`,
-  because pydantic cannot resolve a string alias inside a response model; pyright reads the
-  plain recursive alias under `TYPE_CHECKING`. pyright loses a string `TypeAliasType`'s
-  recursion whenever an alias built on it, such as `JsonObject`, is evaluated first, and the
-  order the files are checked in decides that: `JsonValue` then reads as `list[Unknown]` in
-  strict code. The
+  version check already guards the read. `JsonValue` is a named `TypeAliasType` rather than a
+  string alias, because pydantic cannot resolve a string alias inside a response model. The
   modules that still import `Any` are listed one by one in `[tool.ruff.lint.per-file-ignores]`.
   The gate fails on an entry that is no longer needed and on a glob, so the list only shrinks.
 - **Shapes.** Data with a fixed key set is a TypedDict, or a dataclass when it never leaves

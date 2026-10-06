@@ -14,7 +14,9 @@ from typing_extensions import TypeAliasType
 __all__ = ["JsonArray", "JsonObject", "JsonScalar", "JsonValue"]
 
 JsonScalar: TypeAlias = str | int | float | bool | None
-# pydantic needs the named alias, pyright the plain one (docs/DEVELOPING.md, "Types").
+# Named at runtime, because pydantic cannot resolve a plain string alias in a response model.
+# pyright reads the plain alias: its TypeAliasType loses the self-reference when JsonObject is
+# the first name another module evaluates.
 if TYPE_CHECKING:
     JsonValue: TypeAlias = "JsonScalar | list[JsonValue] | dict[str, JsonValue]"
 else:
