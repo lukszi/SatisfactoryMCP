@@ -11,11 +11,13 @@ from __future__ import annotations
 import ctypes
 import os
 import subprocess
+import sys
 from ctypes import wintypes
 
 __all__ = ["Child", "creation_time", "kill_tree", "launch"]
 
-WINDOWS = os.name == "nt"
+#: POSIX-only calls test ``sys.platform`` itself: pyright narrows on that, not on this name.
+WINDOWS = sys.platform == "win32"
 STILL_ACTIVE = 259
 SYNCHRONIZE = 0x00100000
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -204,7 +206,7 @@ def launch(command: list[str], log, cwd: str, env: dict[str, str]) -> Child:
         creationflags=flags,
         start_new_session=not WINDOWS,
     )
-    if not WINDOWS:
+    if sys.platform != "win32":
         try:
             os.setpriority(os.PRIO_PROCESS, popen.pid, 10)
         except (AttributeError, OSError):
@@ -214,7 +216,7 @@ def launch(command: list[str], log, cwd: str, env: dict[str, str]) -> Child:
 
 def kill_tree(pid: int) -> None:
     """End a generator and every worker it started; killing the parent alone orphans them."""
-    if WINDOWS:
+    if sys.platform == "win32":
         subprocess.run(
             ["taskkill", "/T", "/F", "/PID", str(pid)],
             stdin=subprocess.DEVNULL,

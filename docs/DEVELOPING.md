@@ -9,7 +9,7 @@ Versions, branches and releases are in [releasing.md](releasing.md).
 ## Tests
 
 ```bash
-uv sync --extra dev
+uv sync --all-extras               # the type gate reads the web and gen extras too ("Types")
 uv run pytest -q                   # the default run: needs nothing but this checkout
 uv run pytest -q -m integration    # the other half: needs the game and at least one save
 ```
@@ -158,7 +158,8 @@ moves the digest.
 ### Architecture rules
 
 `tests/architecture/` holds the rules that read the source rather than run it, standard
-library only, so they pass on a clone with no game, no Node and no web extra. The shared graph
+library only, so they pass on a clone with no game, no Node and no web extra. The one exception
+is the type gate, which runs pyright from the dev extra ("Types" below). The shared graph
 walker is `tests/support/import_graph.py`; every import node at any depth is an edge, so a lazy
 import inside a method body is checked like a top-level one.
 
@@ -227,6 +228,48 @@ evaluated first; `registry.ts` imports types only. `palette.ts` holds the colour
 colour value, so every colour sits with its owner and its warrant.
 
 **Prose** (`test_comment_budget.py`): see [comments.md](comments.md), rule 9.
+
+### Types
+
+`tests/architecture/test_typing.py` runs pyright once over `src/` and `tools/` under
+`[tool.pyright]` in `pyproject.toml` and holds each package's error count to its entry in
+`BUDGETS`. Tests are outside the type rules.
+
+- **The floor is `standard` mode** for every package. A package or module that reaches zero
+  errors in strict mode joins the `strict` list in the config, and from then on the gate wants
+  zero there. When every package has joined, `typeCheckingMode` becomes `strict` and the list
+  and the budgets go.
+- **A budget only moves down.** The gate fails on a count above its budget, and the remedy is
+  to fix the error, not to raise the number. It also fails on a count below its budget and
+  prints the numbers to write, so the table always holds today's counts and a fix in one place
+  cannot quietly pay for a new error in another. A file counts toward the longest key that holds
+  it.
+- **The environment is part of the count.** pyright (`pyright[nodejs]`, which brings its own
+  Node) and `scipy-stubs` are exact pins in the dev extra, because a new checker or stub release
+  moves the counts. The web and gen extras have to be installed too: an unresolved import is an
+  error of its own and hides every error behind it. So the gate first checks the environment
+  against the three extras and fails with `uv sync --all-extras` when it does not match. It
+  checks against `pythonVersion = "3.11"`, the oldest Python the project supports, with
+  `pythonPlatform = "Windows"` fixed so that every machine counts alike.
+- **`extraPaths` is required.** The venv's editable install points at the main checkout, so in
+  a git worktree pyright would resolve `satisfactory_mcp` to the main checkout's code;
+  `extraPaths = ["src", "tools/mapgen/src", "."]` puts the worktree's own source first. The gate
+  passes the interpreter running the tests as `--pythonpath`.
+- **`typing.Any` is banned** in `src/` and `tools/` by ruff's TID251. Data crossing a boundary
+  (`json.load`, a sidecar, a request body) is `JsonValue` or `JsonObject` from
+  `core/jsontypes.py`, narrowed with `isinstance`, or cast once to a TypedDict where a schema or
+  version check already guards the read. `JsonValue` is a named `TypeAliasType` rather than a
+  string alias, because pydantic cannot resolve a string alias inside a response model. The
+  modules that still import `Any` are listed one by one in `[tool.ruff.lint.per-file-ignores]`.
+  The gate fails on an entry that is no longer needed and on a glob, so the list only shrinks.
+- **Arrays and stubs.** A numpy array is typed by its dtype through `core/arrays.py`
+  (`F32Grid`, `U8Grid`, `BoolMask` and the rest) rather than as a bare `ndarray`. scipy is typed
+  by `scipy-stubs`, and pyooz, which ships no types, by the local stub `typings/ooz.pyi`.
+- **Platform branches test `sys.platform` itself** (`interfaces/web/childproc.py`): pyright
+  narrows on that expression, not on a name that holds its value.
+- **Speed.** One pyright run over the 443 files takes 20 s on one thread. With `--threads 8` it
+  measured 7 s alone; 12 and 16 threads were no faster. Inside the parallel suite it took 10 s,
+  on one worker.
 
 ## Solver threads
 

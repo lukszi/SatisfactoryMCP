@@ -916,6 +916,8 @@ why there is no resident daemon.
   server and every CLI invocation, and giving each worker its own would have replaced a 0.10 s
   warm load with a 3.17 s parse, eight times over.
 
-Deps: `mcp[cli]>=1.28`, `pydantic>=2.13`, `platformdirs`, `scipy>=1.11`, `numpy`; dev `pytest`,
-`pytest-cov`, `pytest-xdist>=3.6,<4`, `ruff`. `requires-python = ">=3.11"`.
+Deps: `mcp[cli]>=1.28`, `pydantic>=2.13`, `platformdirs`, `scipy>=1.11`, `numpy`,
+`typing-extensions>=4.6`; dev `pytest`, `pytest-cov`, `pytest-xdist>=3.6,<4`, `ruff`,
+`pyright[nodejs]` and `scipy-stubs` (exact pins, docs/DEVELOPING.md "Types").
+`requires-python = ">=3.11"`.
 
