@@ -1,5 +1,8 @@
 # Planner P3: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 The build contract for phase P3 of [planner_vision.md](planner_vision.md) §8: *graph,
 alternates, pins*. It covers vision §4.2 (production graph), G5 (alternates drawer) and G11
 (`pin:` in selectors). It builds on P1 ([planner_slice_contract.md](planner_slice_contract.md))

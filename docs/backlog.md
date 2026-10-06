@@ -83,7 +83,7 @@ All closed.
 All closed.
 
 **15 — CLOSED.** Floors, storage contents and crates were closed first: `factory_floors`
-(`interfaces/mcp/tools/floors.py`), `storage` and `crates` (`interfaces/mcp/tools/inventory.py`),
+(`interfaces/mcp/tools/factories/floors.py`), `storage` and `crates` (`interfaces/mcp/tools/inventory.py`),
 landed by `4f47e33`, `571a59a` and `3678718`.
 
 The power half was less blind than this row originally claimed, and the correction mattered

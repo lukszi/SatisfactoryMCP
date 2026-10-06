@@ -1,5 +1,8 @@
 # Advisors: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 Roadmap phase 12 of [frontend_vision.md](frontend_vision.md) §6, rebuilt as a cheap list:
 "worth a look", a short list of things on the current save that are worth acting on. Each row
 is **one measured fact plus where to look**. Nothing is scored, nothing has an ETA, and the

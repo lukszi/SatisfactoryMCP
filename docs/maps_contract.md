@@ -1,5 +1,8 @@
 # Map types: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 Several pictures of one world can sit under the map at once: the game's own artwork, renders
 of the 1 m heightfield, and whatever a palette experiment produces next. This file says how
 they are registered, dated, generated from the page, chosen between, and served. Where it and

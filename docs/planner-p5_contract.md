@@ -1,5 +1,8 @@
 # Planner P5: site drag, the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 The build contract for phase P5 of [planner_vision.md](planner_vision.md) §8, *site*, with
 vision §4.7 (site on the map) and §5 (map integration). It builds on P1
 ([planner_slice_contract.md](planner_slice_contract.md)), P3

@@ -546,7 +546,7 @@ split for Site (§11 D1). Every view marks chat-changed rows with the **chat** b
 | Columns | `graph.chain_depth`, the SCC condensation shared by diff and commission (§8.5h), sent by the server. Not recomputed in TypeScript |
 | Controls | Node: alternates, ban, pin, ask chat. Edge: pin to logistics, explain byproduct. Hover: rates |
 | Data | `POST /api/plan/solve` → `processes[].rates`, `flows`, `depth[]` |
-| Reuse | `frontend/src/graph.ts` already draws a built factory's recipe-group graph (frontend_vision.md §9.8). It takes any `{nodes, edges}` of that shape, so a plan can be mapped onto it; its longest-path layers would yield to the server's `depth[]` |
+| Reuse | `frontend/src/dash/graph.ts` already draws a built factory's recipe-group graph (frontend_vision.md §9.8). It takes any `{nodes, edges}` of that shape, so a plan can be mapped onto it; its longest-path layers would yield to the server's `depth[]` |
 | Rendering | Hand-written SVG, no library. Edge width ∝ log(rate). No new hues |
 
 ### 4.3 Build list
@@ -762,7 +762,7 @@ each, because they are resident in every session's schema.
 |---|---|---|---|---|
 | **G1** | **Plan op log**: the store, the merge, snapshots, migration; `base_rev` on the MCP write tools | Load → mutate → save in N MCP processes and the web; lost updates are silent | Everything that writes a plan, from either side | **Medium, first** |
 | **G0** | Activity journal | Only mtime polling | Chat solves on the page, focus, "since you last looked" | Small |
-| G2 | Logic in tool bodies | Plan save, list status, plan detail, rename validation, site ranking live in `tools/planning.py` / `tools/spatial.py` | Routes must share it | Medium, mechanical |
+| G2 | Logic in tool bodies | Plan save, list status, plan detail, rename validation, site ranking live in `tools/planning/` / `tools/spatial/` | Routes must share it | Medium, mechanical |
 | G3 | No structured results | Text presenters only | Every route | Medium: 7 report types |
 | G4 | `required` recipes (Q4) | Global bans only | Require in the drawer; named blockers when infeasible | Small |
 | G5 | No in-plan what-if per alternative | – | Alternates deltas | Small |

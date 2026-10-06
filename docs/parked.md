@@ -74,7 +74,7 @@ caches keyed on `build_version`.
 **Two silent failure modes, which is why the gate machinery stays.** A join by instance name simply
 *misses* after a rename — and a per-kind count check cannot see it, because 459 == 459 across a
 rename. And a position can be a metre out while the answer stays confident. The **node-table skew
-gate** — `domain/spatial/nodes/`, pinned by `tests/test_node_table_skew.py` — reads whatever
+gate** — `domain/spatial/nodes/`, pinned by `tests/data/test_node_table_skew.py` — reads whatever
 drift the artifact records; today's table matches the installed build so it records none and the
 gate is silent, and the synthetic tests keep the firing half honest for the next update.
 
@@ -402,7 +402,7 @@ its own, because the world map drew angled platforms as staircases and drew no b
   already only the bends — 2,237 of 3,085 pieces are 2-point straight lines — so
   Douglas-Peucker at 1 cm drops 8% of points to save 1.2% of the projection, and at a lossy
   100 cm still saves only 3.2%. There is nothing there to win.
-* **The parity ripple resolved as planned.** `tests/test_savparse_parity.py` filters the
+* **The parity ripple resolved as planned.** `tests/pioneersav/test_vendor_parity.py` filters the
   projection back to the schema-11 shape through an explicit list of what 12 added, and
   `vendor_parity.json` is untouched.
 
@@ -674,7 +674,7 @@ the artifacts under `data/` do, and these are what cuts them.
 | `pyramid.py` | 253 | `tiles/{z}/{x}_{y}.png`, cut and renamed into place | map image, renders |
 
 `gen_world_collectibles.py` lost 904 lines and is 2,880; the three importers lost their loaders.
-`tools/` gained a package marker and `tools/_common.py` — `DEFAULT_GAME`, the shared `--game`
+`tools/` gained a package marker and `tools/_common.py` (now `tools/mapgen/src/mapgen/common.py`) — `DEFAULT_GAME`, the shared `--game`
 parser, and `require_gen`. The test suite reaches the generators the same way anything else does,
 `from tools import gen_map_image`, and no test loads a `tools/*.py` by path any more.
 

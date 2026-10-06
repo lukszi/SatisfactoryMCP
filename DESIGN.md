@@ -230,7 +230,7 @@ SatisfactoryMcp/
                        # extract/: runs IN the child and builds the projection --
                        # walk.py (the object pass), parser.py (the only pioneersav
                        # import), cli.py, and one module per table family
-      text.py          # num + plural ONLY — the two helpers domain may reach
+      text.py          # the plain-text helpers domain may reach: num, plural, hours...
     domain/            # returns dataclasses and dicts, NEVER formatted text
       world/           # state.py: WorldState, a thin aggregate over the facets
                        # identity  inventory  census  carriers  water  sites  flow
@@ -275,7 +275,7 @@ SatisfactoryMcp/
 `domain`, `interfaces` know everything. Only the interface layer may import the MCP SDK. All formatting
 lives in `presenters/text/` — context efficiency is cross-cutting and silently regresses if each tool
 formats its own output, so a domain function returns a dataclass and a `render_*` function turns it into
-the TSV a model reads. The two exceptions are `core/text.py`'s `num` and `plural`, which domain code may
+the TSV a model reads. The exception is `core/text.py` (`num`, `plural`, `hours` and a few more), which domain code may
 use for note strings it embeds in its own results. `server.py` contains no logic; it stays at the package
 root because the console script names `satisfactory_mcp.server:main`.
 

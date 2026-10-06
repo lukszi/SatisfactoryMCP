@@ -1,5 +1,8 @@
 # World finders: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 Roadmap phase 6 of [frontend_vision.md](frontend_vision.md) §6: the seven spatial tools
 (`search_resource_nodes`, `rank_build_sites`, `search_conduits`, `whereami`,
 `describe_location`, `list_regions`, `show_on_map`) and `collected_from_world`, on the page,

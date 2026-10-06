@@ -1186,7 +1186,7 @@ Phase 7 of §6. What feeds a machine or a factory, or what it feeds, drawn on th
 ### 13.2 The two bugs
 
 - **`trace_upstream` with a factory label.** Did not reproduce at `bb5b04c`: the fix is already
-  in, and `tests/test_trace_seeds.py` covers labels and selectors. The seed resolution moved from
+  in, and `tests/domain/factories/test_trace_seeds.py` covers labels and selectors. The seed resolution moved from
   the tool body into the domain (`resolve_seeds`) so the route shares it, with a domain-level
   test for the label path.
 - **`show_on_map` links.** The tool already led with a local link; its host and port were
@@ -1468,7 +1468,7 @@ section records what the backend built and what it decided on the way.
   `conduits`, `regions`. `/api/inspect` gained `radius_m`, `grid`, `direction`, `conduits`,
   `fields`, `pickups` and `stale`; `/api/nodes` gained `spoiler`; `/api/collectibles`
   gained `spoilers`, `spoiler` per row, `census`, `found`, `hidden_spoilers` and `stale`.
-  `tests/test_world_parity.py` holds each route against its tool.
+  `tests/mcp/test_world_parity.py` holds each route against its tool.
 - **Tool changes.** `search_resource_nodes` takes `status` (free, tapped, all);
   `search_conduits` takes `network`; `describe_location` prints `nearest_node`, `fields` and
   `pickups`; `show_on_map` writes `show=node:<leaf>`, `chain:<n>` or `pipe:<n>` into the

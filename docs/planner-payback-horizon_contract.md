@@ -1,5 +1,8 @@
 # Planner payback horizon: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 A per-plan trade between two real costs: the **one-off cost of extra machines** and the
 **running cost of the power** they save. It replaces the five-step clock cap
 (`power_priority`, 2026-09) and builds on P1 ([planner_slice_contract.md](planner_slice_contract.md))

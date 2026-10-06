@@ -1,5 +1,8 @@
 # Planner first slice: the contract
 
+> File paths are as of the commit this contract was written against; modules and tests have
+> moved since, so look a name up rather than trusting its path.
+
 The build contract for phase P1 of [planner_vision.md](planner_vision.md) §8, cut down to the
 smallest slice that still runs the loop in both directions. The vision note says what and why.
 This file says exactly what gets built, so four people can build it at once without meeting.

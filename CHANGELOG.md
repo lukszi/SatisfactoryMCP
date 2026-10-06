@@ -51,6 +51,13 @@ Planned as 0.2.0.
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
   still accepted. With the light a full-size render is budgeted at about 10 minutes more and
   needs 14.5 GB more scratch space.
+- `pioneersav`'s submodules re-export less; the top-level `pioneersav` API is unchanged.
+  `pioneersav.properties` no longer exposes `ObjectReference`, `ObjectSlice`, `ParseError`,
+  `Reader`, `FIRST_MODERN_BODY` or `TAG_EXTENSIONS`; `objects` no longer lists `ParseError`,
+  `save` no longer lists `PLAIN_TRAILER`, and `lightweight` and `trailers` no longer re-export
+  `ObjectReference`. Import each from `pioneersav` itself or from its defining module
+  (`references`, `objects`, `errors`, `reader`, `versions`, `properties.tags`,
+  `properties.payload`).
 
 ### Deprecated
 

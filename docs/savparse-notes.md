@@ -59,7 +59,7 @@ read its implementation for structure or naming.
 
 ## What we actually depend on
 
-Runtime, in `src/satisfactory_mcp/core/saveio/extract.py`, is **three entry points**:
+Runtime, in `src/satisfactory_mcp/core/saveio/extract/`, is **three entry points**:
 
 | entry point | used for | status |
 |---|---|---|
@@ -1360,7 +1360,7 @@ variable, and should happen as part of that deletion rather than before it.
    the moment the rest of it is being removed. That tension is the user's to resolve, not a
    detail — see *Opportunities*.
 5. Every reference to the library outside `sidecar/vendor/` is removed or reworded:
-   `src/satisfactory_mcp/core/saveio/extract.py`'s two-engine switch, `tests/test_savparse_save.py`'s default pin,
+   `src/satisfactory_mcp/core/saveio/extract/`'s two-engine switch, `tests/test_savparse_save.py`'s default pin,
    and prose in `README.md`, `DESIGN.md` and this file.
 6. The deletion is the user's call. Nothing here should make it for them.
 
