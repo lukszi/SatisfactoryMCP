@@ -14,6 +14,7 @@ from ....core.gamedata.constants import WATER_EXTRACTOR_KEY, WATER_EXTRACTOR_WAR
 from ....core.gamedata.footprint import Footprint, Packed
 from ....core.gamedata.model import GameData
 from ....core.gamedata.search import resolve_item
+from ...progression.views import ResearchGate, ShardBudget, SloopBudget
 from ...world.state import WorldState
 from ...world.water import SiteWater
 from ..solver.model import MW, LogisticsRow, ProcessRow, Solution
@@ -65,10 +66,10 @@ class PlanFactoryReport:
     water_binding: bool = False
     #: What the terrain measures at the site: evidence for the assumption, never a substitute.
     site_water: SiteWater | None = None
-    shard_budget: dict | None = None
-    sloop_budget: dict | None = None
+    shard_budget: ShardBudget | None = None
+    sloop_budget: SloopBudget | None = None
     #: The Production Amplifier research, when it is still in the way of the budget asked.
-    sloop_gate: dict | None = None
+    sloop_gate: ResearchGate | None = None
     #: Somersloops the request was allowed to spend, which is not what it spent.
     sloops_asked: int = 0
     flows: list[LogisticsRow] = field(default_factory=list[LogisticsRow])

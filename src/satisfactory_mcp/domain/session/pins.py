@@ -22,6 +22,7 @@ from ..planning.stored.plan_args import PlanLogError
 from ..planning.stored.planlog import PlanLog, PlanState
 from ..spatial import geo
 from ..spatial import nodes as nodes_mod
+from ..spatial.nodes import NodeRecord
 from . import versioned
 from .views import PinDescription, PinRecord, PinRef, PinRow, PinsDoc
 
@@ -189,8 +190,6 @@ def _number(ref: Mapping[str, object], name: str) -> float:
 
 #: A ref as a request sends it, or a stored one read field by field.
 RawRef = Mapping[str, object]
-#: A row of the node table.
-Node = dict[str, object]
 
 
 def _fields(ref: PinRef | None) -> RawRef:
@@ -205,7 +204,7 @@ class _World:
         self.st = st
         self._plans: dict[str, PlanState] | None = None
         self._machines: dict[str, BuildableRecord] | None = None
-        self._nodes: dict[str, Node] | None = None
+        self._nodes: dict[str, NodeRecord] | None = None
 
     @property
     def game(self) -> GameData | None:
@@ -230,14 +229,14 @@ class _World:
             self._machines = {instance_leaf(r.get("instance")): r for r in rows}
         return self._machines
 
-    def nodes(self) -> dict[str, Node]:
+    def nodes(self) -> dict[str, NodeRecord]:
         if self._nodes is None:
             self._nodes = {
                 instance_leaf(node["instance"]): node for node in nodes_mod.load_nodes().nodes
             }
         return self._nodes
 
-    def node(self, text: str) -> Node | None:
+    def node(self, text: str) -> NodeRecord | None:
         return self.nodes().get(instance_leaf(text.removeprefix("node:").strip()))
 
     def label(self, name: str) -> Label | None:
@@ -281,7 +280,7 @@ def _metres(pos: object) -> tuple[float, float]:
     return round(float(point[0]) / 100.0, 1), round(float(point[1]) / 100.0, 1)
 
 
-def _field(world: _World, node: Node) -> tuple[list[str], object]:
+def _field(world: _World, node: NodeRecord) -> tuple[list[str], object]:
     same = [n for n in world.nodes().values() if n["resource"] == node["resource"]]
     for group in geo.cluster(same, link_m=FIELD_LINK_M):
         if any(m["instance"] == node["instance"] for m in group.members):

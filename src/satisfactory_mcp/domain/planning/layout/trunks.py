@@ -17,6 +17,7 @@ from ...spatial import geo
 from ..solver.model import ProcessRow, Scenario
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
+    from ...spatial.nodes import AnnotatedNode
     from ..solver.prepare import PreparedPlan
 
 __all__ = ["Trunk", "TrunkPlan", "plan_trunks"]
@@ -148,7 +149,7 @@ def _split(chain: list[TrunkMember], capacity: float) -> list[list[TrunkMember]]
 
 
 def _take_cost(
-    node_row: dict, building_id: str | None, centre: tuple[float, float] | None
+    node_row: AnnotatedNode, building_id: str | None, centre: tuple[float, float] | None
 ) -> tuple[int, float]:
     """What taking a node costs: already ours, then untapped, then held by another
     extractor; ties go to the node nearest the pool's centre (docs/planning.md §8.5d)."""
@@ -162,7 +163,9 @@ def _take_cost(
     return rank, near
 
 
-def _choose_nodes(proc: ProcessRow, pool: list[dict], notes: list[str]) -> list[dict]:
+def _choose_nodes(
+    proc: ProcessRow, pool: list[AnnotatedNode], notes: list[str]
+) -> list[AnnotatedNode]:
     """The nodes of ``pool`` one extractor row taps, cheapest to take first.
 
     The solve only says how many of a purity; which ones is chosen here, and a note says
