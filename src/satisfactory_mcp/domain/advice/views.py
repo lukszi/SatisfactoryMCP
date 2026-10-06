@@ -12,7 +12,7 @@ __all__ = ["AdviceDoc", "AdviceOptions", "HiddenEntry"]
 
 class HiddenEntry(TypedDict):
     """One dismissed or snoozed advisory (docs/advisors_contract.md §4). ``ids`` is null past
-    the id cap; ``until_play_s`` and ``hours`` only for a snooze."""
+    the id cap; ``until_play_s`` and ``hours`` only for a snooze; ``by`` is ``Actor.to_dict``'s."""
 
     state: str
     ids: list[str] | None
@@ -20,7 +20,7 @@ class HiddenEntry(TypedDict):
     severity: str
     until_play_s: float | None
     hours: float | None
-    by: dict[str, object]
+    by: dict[str, str | int]
     at: float
     rev: int
 

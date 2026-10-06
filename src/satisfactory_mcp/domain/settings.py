@@ -9,7 +9,7 @@ import json
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, NotRequired, TypeAlias
+from typing import Literal, NotRequired, TypeAlias, cast
 
 from typing_extensions import TypedDict
 
@@ -72,17 +72,18 @@ class SettingsDoc(TypedDict):
     version: int
     values: JsonObject
     updated: float | None
-    by: JsonObject | None
+    by: dict[str, str | int] | None
 
 
 class SettingsView(TypedDict):
-    """Every setting's value, the keys set rather than defaulted, and the last write."""
+    """Every setting's value, the keys set rather than defaulted, and the last write; ``by``
+    is ``Actor.to_dict``'s."""
 
     version: int
     values: dict[str, SettingValue]
     stored: list[str]
     updated: float | None
-    by: JsonObject | None
+    by: dict[str, str | int] | None
 
 
 class StaleSettings(SettingsView):
@@ -178,7 +179,7 @@ def _raw() -> SettingsDoc:
         "version": int(version) if isinstance(version, int | float) else 0,
         "values": dict(values) if isinstance(values, dict) else {},
         "updated": updated if isinstance(updated, int | float) else None,
-        "by": by if isinstance(by, dict) else None,
+        "by": cast("dict[str, str | int]", by) if isinstance(by, dict) else None,
     }
 
 

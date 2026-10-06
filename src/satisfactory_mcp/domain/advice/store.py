@@ -115,7 +115,7 @@ def hide(
     mode: str,
     *,
     play_s: float,
-    by: dict[str, object],
+    by: dict[str, str | int],
     hours: float | None = None,
     rev: int | None = None,
     firing: Iterable[str] = (),
