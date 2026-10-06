@@ -570,6 +570,11 @@ Every tile decoded to the same mode and pixels both ways. At full size a lit lay
 trees, about 3.2 GB in renders-v7, grow by about 0.2 GB, and their encoding takes about a
 seventh of the CPU it did. The owner chose the trade on 2026-10-06.
 
+A 2048 render of all five layers, lit, `--workers 2`, before and after this and the normal
+tiles' WebP effort (section 29): all 1,125 tiles decode to the same mode and pixels, and the
+85 horizon atlases are the same bytes. The files grow 3.3% at that size: the PNG trees 1.8
+to 6.3%, the normal tiles 3.3%. The sidecars differ in byte counts and timings only.
+
 ### And a swap Windows can refuse
 
 `install_pyramid` renames the finished tree over the old one so a reader meets a whole
@@ -4517,6 +4522,11 @@ data drive. The second drew every layer on 8 threads.
 - Both runs peaked at a working set of 8.0 GB, the run's setup rather than its draw.
 - The same pair from the `master` before the code-quality merge (`9768976`) was
   byte-identical too.
+- With all four performance changes of 2026-10-06 merged (lean sampling, the light in strips
+  with one BLAS thread a worker, the parallel cutter and this threaded draw, `--workers 2`
+  setting both pools), the same render against `master` `af97dec`, one after the other:
+  all 1,125 tiles and light tiles byte-identical, the sidecars differing in timings and
+  `render.draw_threads` only.
 
 ### Known limits
 
