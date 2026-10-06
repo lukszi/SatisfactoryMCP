@@ -85,17 +85,18 @@ class RiverWater:
         planes = ribbon_planes(samples, shape=shape, hang=(ground, RIVER_MAX_DEPTH_M))
         boxes: Boxes = [(name, tuple(box)) for name, box in cached["boxes"]]
         river_top, other_top = box_tops(boxes, True, shape), box_tops(boxes, False, shape)
-        level, u, half = planes["level_m"], planes["u"], planes["half_m"]
-        zone = np.isfinite(u)
+        # ``across`` is the distance from the centreline in half widths, 1 at the plane's edge.
+        level, across, half_m = planes["level_m"], planes["u"], planes["half_m"]
+        zone = np.isfinite(across)
         with np.errstate(invalid="ignore"):
             deep = (level - ground > RIVER_MAX_DEPTH_M) | ~np.isfinite(ground)
-            fade = np.clip((1.0 - u) * half / RIVER_EDGE_FADE_M, 0.0, 1.0)
+            fade = np.clip((1.0 - across) * half_m / RIVER_EDGE_FADE_M, 0.0, 1.0)
             fade *= np.clip((RIVER_MAX_DEPTH_M - (level - ground)) / RIVER_EDGE_FADE_M, 0, 1)
         speaks = zone & ~deep
         steps = _beside_a_step(level)
         with np.errstate(invalid="ignore"):
             valley = speaks & (ground - level <= RIVER_MAX_DEPTH_M)
-            draws = speaks & (u <= 1.0) & ~steps & (level > ground)
+            draws = speaks & (across <= 1.0) & ~steps & (level > ground)
         tops = (river_top, other_top, boxes)
         self.water_dm: I16Grid
         self.grades: U8Grid
@@ -112,7 +113,7 @@ class RiverWater:
         )
         self.stats.update(
             rivers=len(cached["rivers"]),
-            sections=sum(len(cast(JsonArray, r["sections"])) for r in cached["rivers"]),
+            sections=sum(len(cast(JsonArray, river["sections"])) for river in cached["rivers"]),
             centreline_km=round(_length_m(samples) / 1000, 2),
             ribbon_km2=round(float((self.presence > 0).sum()) / 1e6, 4),
         )

@@ -101,27 +101,28 @@ def prepare_falls(records: list[FallRecord] | None, field: hf.Field) -> F64Grid:
     to the bottom of the tool's curtain, which often runs on underground.
     """
     rows: list[tuple[float, ...]] = []
-    for f in records or ():
-        x, y, z, (ux, uy), (nx, ny) = f["x"], f["y"], f["z"], f["along"], f["out"]
-        half = f["width_m"] / 2
+    for fall in records or ():
+        x, y, z, (ux, uy), (nx, ny) = fall["x"], fall["y"], fall["z"], fall["along"], fall["out"]
+        half_m = fall["width_m"] / 2
         ground, water = _surface_at(field, np.array([x]), np.array([y]))
         if z < OCEAN_LEVEL_M + SUBMERGED_M or water[0] > z + SUBMERGED_M:
             continue
         if not ground[0] <= z + BURIED_M:
             continue
         out_m = np.repeat(_OUT_M, len(_ACROSS))
-        across_m = np.tile(_ACROSS, len(_OUT_M)) * 2 * half
+        across_m = np.tile(_ACROSS, len(_OUT_M)) * 2 * half_m
         x_m, y_m = x + across_m * ux + out_m * nx, y + across_m * uy + out_m * ny
         z_out = np.fmax(*_surface_at(field, x_m, y_m))
         if np.isfinite(z_out).mean() < 0.5:
             continue
-        base = max(float(np.nanmin(z_out)), z - f["height_m"])
+        base = max(float(np.nanmin(z_out)), z - fall["height_m"])
         if z - base < MIN_DROP_M:
             continue
-        splash = [p for p in f.get("splash", ()) if p[2] <= z]
-        splash_out_m = [(p[0] - x) * nx + (p[1] - y) * ny for p in splash]
+        splash = [point for point in fall.get("splash", ()) if point[2] <= z]
+        splash_out_m = [(point[0] - x) * nx + (point[1] - y) * ny for point in splash]
         landing = float(np.median(splash_out_m)) if splash_out_m else 0.0
-        rows.append((x, y, z, ux, uy, nx, ny, half, f["top_len_m"], max(landing, 0.0), base))
+        top_len_m = fall["top_len_m"]
+        rows.append((x, y, z, ux, uy, nx, ny, half_m, top_len_m, max(landing, 0.0), base))
     return np.array(rows, np.float64).reshape(-1, 11)
 
 
@@ -134,7 +135,7 @@ def _fall_alpha(
     fall: F64Grid, style: FallsStyle, xs: F64Grid, ys: F64Grid, surface: FloatGrid, px_m: float
 ) -> tuple[F64Grid, F64Grid]:
     """Foam and mist opacity of one fall over a window of the band."""
-    x, y, z, ux, uy, nx, ny, half, top_len, landing, base = (float(v) for v in fall)
+    x, y, z, ux, uy, nx, ny, half_m, top_len, landing, base = (float(value) for value in fall)
     drop = z - base
     edge = max(px_m, style["edge_m"])
     surface = np.where(np.isfinite(surface), surface, z)
@@ -142,7 +143,7 @@ def _fall_alpha(
     across_m, out_m = dx * ux + dy * uy, dx * nx + dy * ny
     spread_gain, spread_lo, spread_hi = style["spread"]
     spread = float(np.clip(spread_gain * drop, spread_lo, spread_hi))
-    across = _soft_step(half - np.abs(across_m), edge)
+    across = _soft_step(half_m - np.abs(across_m), edge)
     along = _soft_step(out_m + top_len, edge) * _soft_step(spread - out_m, edge)
     upstream = style["top"] * np.clip(1.0 + out_m / max(top_len, 1e-6), 0.0, 1.0)
     downstream = 1.0 - (1.0 - style["streak_end"]) * np.clip(out_m / spread, 0, 1)
@@ -154,7 +155,7 @@ def _fall_alpha(
     pool_gain, pool_lo, pool_hi = style["pool_radius"]
     pool_radius_m = float(np.clip(pool_gain * drop, pool_lo, pool_hi))
     centre = max(landing, 0.5 * spread)
-    distance_m = np.hypot(np.maximum(np.abs(across_m) - half, 0.0), out_m - centre)
+    distance_m = np.hypot(np.maximum(np.abs(across_m) - half_m, 0.0), out_m - centre)
     width = style["ring_width"] * pool_radius_m
     ring = np.exp(-(((distance_m - pool_radius_m) / width) ** 2))
     rim = style["core"] + (1.0 - style["core"]) * ring
@@ -192,15 +193,17 @@ def draw_falls(
     )
     foam = np.asarray(style["foam"], np.float32)
     mist_rgb = np.asarray(style["mist_rgb"], np.float32)
-    for fall, r in zip(falls[near], reach[near], strict=True):
-        cols = np.flatnonzero(np.abs(xs - fall[_X]) <= r)
-        rows = np.flatnonzero(np.abs(ys - fall[_Y]) <= r)
+    for fall, fall_reach in zip(falls[near], reach[near], strict=True):
+        cols = np.flatnonzero(np.abs(xs - fall[_X]) <= fall_reach)
+        rows = np.flatnonzero(np.abs(ys - fall[_Y]) <= fall_reach)
         if not len(cols) or not len(rows):
             continue
-        win = np.ix_(rows, cols)
-        foam_alpha, mist_alpha = _fall_alpha(fall, style, xs[cols], ys[rows], surface_m[win], px_m)
-        part = rgb[win]
+        window = np.ix_(rows, cols)
+        foam_alpha, mist_alpha = _fall_alpha(
+            fall, style, xs[cols], ys[rows], surface_m[window], px_m
+        )
+        part = rgb[window]
         misty = part + mist_alpha[..., None] * (mist_rgb - part)
         foamy = misty + foam_alpha[..., None] * (foam - misty)
-        rgb[win] = np.maximum(part, foamy)
+        rgb[window] = np.maximum(part, foamy)
     return rgb

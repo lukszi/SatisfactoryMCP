@@ -193,8 +193,8 @@ def water_composite(
     banks = water.get("banks", water["ocean"])
     depth = optical_depth(water, optics.get("river"))
     fade = 1.0 - np.exp(-depth / np.float32(optics["clarity_m"]))
-    a0 = np.float32(optics["edge_alpha"])
-    opacity = (banks * (a0 + (1.0 - a0) * fade) + (1.0 - banks))[..., None]
+    edge_alpha = np.float32(optics["edge_alpha"])
+    opacity = (banks * (edge_alpha + (1.0 - edge_alpha) * fade) + (1.0 - banks))[..., None]
     wet = (1.0 - (1.0 - np.float32(optics["wet_darken"])) * banks)[..., None]
     tint = water["depth"][..., None]
     colour = (shallow * (1 - tint) + deep * tint) * (shade_floor + shade_range * shade[..., None])
@@ -212,13 +212,15 @@ def blend_where(
     """``blend(base, *planes)``, worked only on the ``touched`` pixels, where it may differ
     from ``base``, unless they are more than ``most`` of them. Every array has a trailing
     channel axis; docs/spatial-and-map.md section 26, "Drawing less"."""
-    at = np.flatnonzero(touched)
-    if at.size > most * touched.size:
+    picked = np.flatnonzero(touched)
+    if picked.size > most * touched.size:
         return blend(base, *planes)
-    rows = [np.take(a.reshape(-1, a.shape[-1]), at, axis=0) for a in (base, *planes)]
+    rows = [
+        np.take(plane.reshape(-1, plane.shape[-1]), picked, axis=0) for plane in (base, *planes)
+    ]
     done = blend(*rows)
     out = base.astype(done.dtype, order="C")
-    out.reshape(-1, done.shape[-1])[at] = done
+    out.reshape(-1, done.shape[-1])[picked] = done
     return out
 
 

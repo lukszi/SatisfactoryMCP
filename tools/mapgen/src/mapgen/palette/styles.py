@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -24,6 +24,7 @@ from mapgen.palette.scene import (
 )
 from mapgen.palette.schema import (
     PaintedPalette,
+    Palette,
     ReliefPalette,
     SatellitePalette,
     ShoreOptics,
@@ -36,6 +37,7 @@ from mapgen.palette.water.shore import blend_where, water_composite
 from satisfactory_mcp.core.arrays import BoolMask, F32Grid, I64Grid, U8Grid
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = [
@@ -98,8 +100,6 @@ __all__ = [
     "with_void",
 ]
 
-Palette = TypeVar("Palette", bound=Mapping[str, object])
-
 #: The palettes are files, one per style id, and a style's digest is the hash of its file's
 #: canonical JSON, so an edit without a version bump still reads as a different style.
 PALETTE_DIR = Path(__file__).resolve().parent / "palettes"
@@ -118,11 +118,9 @@ def palette_digest(palette: Mapping[str, object]) -> str:
     return sha256_hex(canonical)
 
 
-def load_palette(style: str) -> tuple[dict[str, object], str]:
+def load_palette(style: str) -> tuple[JsonObject, str]:
     """One palette file as read, and its digest."""
-    palette: dict[str, object] = json.loads(
-        (PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8")
-    )
+    palette: JsonObject = json.loads((PALETTE_DIR / f"{style}.json").read_text(encoding="utf-8"))
     return palette, palette_digest(palette)
 
 

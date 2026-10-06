@@ -21,6 +21,7 @@ __all__ = [
     "FoamStyle",
     "PaintedPalette",
     "PaintedWaterStyle",
+    "Palette",
     "PaletteError",
     "ReliefPalette",
     "ReliefRockStyle",
@@ -41,6 +42,7 @@ __all__ = [
     "checked",
 ]
 
+#: Any one of the palette shapes below.
 Palette = TypeVar("Palette", bound=Mapping[str, object])
 
 #: The value types a palette holds as themselves, a bool never counting as a number.

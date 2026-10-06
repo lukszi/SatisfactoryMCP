@@ -65,8 +65,8 @@ def ramp_lut(stops: Sequence[Sequence[float]], steps: int = LUT_STEPS) -> F32Gri
     path = ndimage.gaussian_filter1d(path, 60, axis=0, mode="nearest")
     arc = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
     arc /= arc[-1]
-    u = np.linspace(0.0, 1.0, steps)
-    return np.stack([np.interp(u, arc, path[:, k]) for k in range(3)], -1).astype(np.float32)
+    even = np.linspace(0.0, 1.0, steps)
+    return np.stack([np.interp(even, arc, path[:, k]) for k in range(3)], -1).astype(np.float32)
 
 
 def water_tint_plane(
@@ -168,14 +168,14 @@ def _shade(
         lit = np.zeros(z_m.shape, np.float32)
         for azimuth, altitude, weight in shade["suns"]:
             lit = lit + weight * _lambert(z_m, spacing_m, azimuth, altitude)
-    d = (lit - FLAT_LIT).astype(np.float32)
+    excess = (lit - FLAT_LIT).astype(np.float32)
     if shade["mode"] == "add":
-        lab[..., 0] += np.float32(shade["k"]) * d
+        lab[..., 0] += np.float32(shade["k"]) * excess
     else:
-        lab[..., 0] *= np.clip(1.0 + np.float32(shade["k"]) * d, shade["lo"], shade["hi"])
-    lab[..., 1:] *= (1.0 + np.float32(shade["dechroma"]) * np.minimum(d, 0.0))[..., None]
-    shadow = np.clip(-d / FLAT_LIT, 0.0, 1.0)[..., None]
-    sun = np.clip(d / (1.0 - FLAT_LIT), 0.0, 1.0)[..., None]
+        lab[..., 0] *= np.clip(1.0 + np.float32(shade["k"]) * excess, shade["lo"], shade["hi"])
+    lab[..., 1:] *= (1.0 + np.float32(shade["dechroma"]) * np.minimum(excess, 0.0))[..., None]
+    shadow = np.clip(-excess / FLAT_LIT, 0.0, 1.0)[..., None]
+    sun = np.clip(excess / (1.0 - FLAT_LIT), 0.0, 1.0)[..., None]
     lab[..., 1:] += ground.cool * shadow + ground.warm * sun
     lab[..., 0] = np.clip(lab[..., 0], 0.0, shade["l_max"])
     return lab, lit
@@ -187,8 +187,8 @@ def _slope_rock(
     """Rock's colour taking over the ramp's on steep ground, smoothly between its two slopes."""
     rock = ground.palette["rock"]
     slope = slope_degrees(z_m, spacing_m)
-    r = np.clip((slope - rock["lo_deg"]) / (rock["hi_deg"] - rock["lo_deg"]), 0.0, 1.0)
-    r = (r * r * (3.0 - 2.0 * r) * np.float32(rock["max"]))[..., None]
+    share = np.clip((slope - rock["lo_deg"]) / (rock["hi_deg"] - rock["lo_deg"]), 0.0, 1.0)
+    share = (share * share * (3.0 - 2.0 * share) * np.float32(rock["max"]))[..., None]
     target = np.concatenate(
         [
             lab[..., :1] + np.float32(rock["dl"]),
@@ -196,7 +196,7 @@ def _slope_rock(
         ],
         -1,
     )
-    return lab * (1.0 - r) + target * r
+    return lab * (1.0 - share) + target * share
 
 
 def relief_colours(
@@ -207,8 +207,9 @@ def relief_colours(
     scene = cast(ReliefScene, band)
     palette, z_m, spacing_m = ground.palette, scene["z_m"], scene["spacing_m"]
     lo, hi, cdf = ground.ramp
-    t = np.nan_to_num(ramp_position(z_m, lo, hi, cdf, palette["ramp_equalised"]))
-    lab = ground.lut[np.clip(np.rint(t * (LUT_STEPS - 1)), 0, LUT_STEPS - 1).astype(np.int64)]
+    position = np.nan_to_num(ramp_position(z_m, lo, hi, cdf, palette["ramp_equalised"]))
+    step = np.clip(np.rint(position * (LUT_STEPS - 1)), 0, LUT_STEPS - 1).astype(np.int64)
+    lab = ground.lut[step]
     if ground.biome is not None:
         tint = sample_biome(ground.biome).astype(np.float32)
         lab[..., 0] += tint[..., 0]
@@ -236,8 +237,8 @@ def _water(
     colour[..., 0] *= 1.0 - sunlit + sunlit * lit / FLAT_LIT
     ocean = water["ocean"]
     fade = 1.0 - np.exp(-water["depth_m"] / np.float32(shore["clarity_m"]))
-    a0 = np.float32(shore["edge_alpha"])
-    opacity = (ocean * (a0 + (1.0 - a0) * fade) + (1.0 - ocean))[..., None]
+    edge_alpha = np.float32(shore["edge_alpha"])
+    opacity = (ocean * (edge_alpha + (1.0 - edge_alpha) * fade) + (1.0 - ocean))[..., None]
     cover = np.clip(water["cover"], 0.0, 1.0)
     edge = (np.clip(4.0 * cover * (1.0 - cover), 0.0, 1.0) ** 1.5) * np.float32(
         water_style["stroke"]
