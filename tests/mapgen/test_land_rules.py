@@ -17,17 +17,17 @@ from mapgen.colour import oklab
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD
-from mapgen.palette.calibration import (
+from mapgen.palette.painted.calibration import (
     derived_hex,
     display_to_crown,
     display_to_ground,
     display_to_linear,
     with_derived,
 )
-from mapgen.palette.painted import ROCK_GRID_M, PaintedGround
+from mapgen.palette.painted.ground import ROCK_GRID_M, PaintedGround
+from mapgen.palette.painted.surfaces import mesh_surface
+from mapgen.palette.painted.trees import crown_lab, crown_layer, over_crowns, species_targets
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.palette.surfaces import mesh_surface
-from mapgen.palette.trees import crown_lab, crown_layer, over_crowns, species_targets
 from mapgen.terrain import render_meshes
 from mapgen.terrain.crown_stamp import CrownSet
 from mapgen.terrain.render_meshes import (

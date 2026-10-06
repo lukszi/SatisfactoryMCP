@@ -12,7 +12,7 @@ from mapgen.colour import flat_light, linear_from_oklab, oklab, unit_luminance
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.vegetation.crown_sprites import SPRITE_M
 from mapgen.lighting.hillshade import sun_dot
-from mapgen.palette.calibration import (
+from mapgen.palette.painted.calibration import (
     display_to_crown,
     sampled_rgb,
     scoped_planes,

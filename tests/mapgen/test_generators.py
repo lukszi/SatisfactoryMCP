@@ -74,7 +74,7 @@ from mapgen.palette.styles import (
     terrain_colours,
     with_sea,
 )
-from mapgen.palette.water import (
+from mapgen.palette.water.surface import (
     WATER_EDGE_M,
     water_alpha,
     water_depth_fraction,

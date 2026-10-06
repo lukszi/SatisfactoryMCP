@@ -10,13 +10,9 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
-from mapgen.palette.painted import (
-    dry_land_range,
-    linear_from_oklab,
-    linear_to_srgb,
-    ramp_position,
-)
-from mapgen.palette.shore import wet_mix
+from mapgen.palette.painted.ground import linear_from_oklab, linear_to_srgb
+from mapgen.palette.styles import dry_land_range, ramp_position
+from mapgen.palette.water.shore import wet_mix
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 __all__ = ["LUT_STEPS", "ReliefGround", "lch", "ramp_lut", "relief_colours", "water_tint_plane"]

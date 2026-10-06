@@ -10,7 +10,6 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.palette.shore import wet_mix
 from mapgen.palette.styles import (
     PIT_EDGE_RGB,
     PIT_RGB,
@@ -19,7 +18,8 @@ from mapgen.palette.styles import (
     VOID_RIM_RGB,
     with_void,
 )
-from mapgen.palette.water import VoidPlanes
+from mapgen.palette.water.open_sea import VoidPlanes
+from mapgen.palette.water.shore import wet_mix
 from mapgen.terrain.sample import (
     reads_nothing,
     resample,

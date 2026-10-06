@@ -8,7 +8,6 @@ docs/spatial-and-map.md sections 31 to 33, 36 and 37.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -16,15 +15,10 @@ from scipy import ndimage
 
 from mapgen.colour import srgb_to_linear
 from mapgen.gamedata.vegetation.carpet import COVER_NAME, TOP_NAME
-from mapgen.gamedata.water.bodies import (
-    CLASSES,
-    OCEAN,
-    WATER_BODIES_NAME,
-    class_shares,
-    classify,
-    feather_mouths,
-)
-from mapgen.palette.shore import OCEAN_LEVEL_M, optical_depth
+from mapgen.gamedata.water.bodies import CLASSES, OCEAN
+from mapgen.palette.painted.albedo import paint_plane
+from mapgen.palette.painted.water_classes import class_shares
+from mapgen.palette.water.shore import optical_depth
 from mapgen.terrain.sample import ClassMix, class_taps
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -33,11 +27,8 @@ __all__ = [
     "carpet_bed",
     "class_optics",
     "load_carpet",
-    "load_water_bodies",
     "opaque_share",
-    "paint_plane",
     "underwater",
-    "water_classes",
     "water_table",
 ]
 
@@ -45,35 +36,6 @@ __all__ = [
 WATER_TABLE_COLUMNS = (3, 3, 3, 1, 1, 3)
 
 _RIVER = CLASSES.index("river")
-
-
-def paint_plane(paint_dir: Path, meta: dict, name: str) -> np.ndarray:
-    """One plane of the paint store, decoded to its recorded shape."""
-    entry = meta["files"][name]
-    shape = entry["shape"]
-    flat_width = shape[1] * (shape[2] if len(shape) > 2 else 1)
-    decode = hf.decode_i16 if entry.get("kind") == "i16" else hf.decode_u8
-    grid = decode((paint_dir / name).read_bytes(), shape[0], flat_width)
-    return grid.reshape(shape)
-
-
-def load_water_bodies(paint_dir: Path, meta: dict) -> dict | None:
-    """The store's water actors and hot-spring terraces; None for a store that predates them."""
-    if WATER_BODIES_NAME not in meta.get("files", {}):
-        return None
-    return json.loads((paint_dir / WATER_BODIES_NAME).read_text(encoding="utf-8"))
-
-
-def water_classes(water, grades, bodies: dict, areas: tuple) -> tuple[np.ndarray, dict]:
-    """The class plane of the water as drawn, swamp feathered into the ocean where they meet
-    (``feather_mouths``), and what the sidecar records. ``water`` is the level plane in dm,
-    ``grades`` its quality, ``areas`` the area index grid and the names it indexes."""
-    level = np.where(water == hf.NODATA, np.nan, water / np.float32(hf.DM_PER_M))
-    wet = grades != hf.WATER_DRY
-    level = level.astype(np.float32)
-    plane, counts = classify(level, wet, bodies, areas, OCEAN_LEVEL_M)
-    counts["mouth_blend_texels"] = feather_mouths(plane, level)
-    return plane, {"source": f"paint/{WATER_BODIES_NAME}", **counts}
 
 
 def water_table(palette: dict) -> np.ndarray:

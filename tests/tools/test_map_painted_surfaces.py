@@ -36,12 +36,11 @@ from mapgen.gamedata.ground.weightmaps import component_origin
 from mapgen.gamedata.level.sweep import first_override
 from mapgen.gamedata.nodes import oil_nodes
 from mapgen.gamedata.rocks import families as rockfamily
-from mapgen.palette.painted import (
+from mapgen.palette.painted.albedo import bake_table, patch_stamps
+from mapgen.palette.painted.ground import (
     PaintedGround,
-    bake_table,
     canopy_over_rock,
     painted_colours,
-    patch_stamps,
     rock_surface,
     sample_titan,
     srgb_to_linear,

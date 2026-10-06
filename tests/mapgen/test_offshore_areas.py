@@ -9,16 +9,16 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from mapgen.palette.calibration import rehome_offshore
-from mapgen.palette.painted import (
+from mapgen.palette.painted.calibration import rehome_offshore
+from mapgen.palette.painted.ground import (
     ROCK_GRID_M,
     PaintedGround,
     display_to_ground,
     land_cells,
     oklab,
 )
-from mapgen.palette.shore import OCEAN_LEVEL_M
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 SEA, DESERT, SPIRE = 0, 1, 2

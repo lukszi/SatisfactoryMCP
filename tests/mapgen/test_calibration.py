@@ -13,15 +13,14 @@ import pytest
 from mapgen.gamedata.ground.landscape_albedo import LAYERS
 from mapgen.gamedata.rocks.families import FAMILIES
 from mapgen.gamedata.water.bodies import CLASSES
-from mapgen.palette.calibration import scoped_planes
-from mapgen.palette.painted import (
+from mapgen.palette.painted.albedo import GroundBake, ground_albedo
+from mapgen.palette.painted.calibration import scoped_planes
+from mapgen.palette.painted.ground import (
     ROCK_GRID_M,
-    GroundBake,
     PaintedGround,
     area_ids,
     display_to_ground,
     display_to_linear,
-    ground_albedo,
     layer_transfer,
     linear_from_oklab,
     linear_to_srgb,

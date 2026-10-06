@@ -19,10 +19,10 @@ from mapgen.gamedata.water.rivers import (
     ribbon_planes,
     sample_rivers,
 )
-from mapgen.palette.rivers import RiverWater, river_terms
-from mapgen.palette.shore import blend_water, optical_depth, water_composite
 from mapgen.palette.styles import SHORE_OPTICS, WATER_DEEP, WATER_SHALLOW
-from mapgen.palette.water import WATER_DEPTH_FULL_M
+from mapgen.palette.water.rivers import RiverWater, river_terms
+from mapgen.palette.water.shore import blend_water, optical_depth, water_composite
+from mapgen.palette.water.surface import WATER_DEPTH_FULL_M
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets import versions
 from satisfactory_mcp.domain.spatial import heightfield as hf

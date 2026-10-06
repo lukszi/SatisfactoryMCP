@@ -13,8 +13,8 @@ import pytest
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.vegetation import crown_sprites as data
 from mapgen.gamedata.vegetation.trees import RADIUS_BINS_M, canopy_cover
+from mapgen.palette.painted.trees import crown_layer, over_crowns
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.palette.trees import crown_layer, over_crowns
 from mapgen.terrain.crown_stamp import crown_band, load_crowns, meshed_species, sprite_levels
 
 LEAF = (0.1, 0.3, 0.05)

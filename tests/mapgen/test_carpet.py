@@ -18,8 +18,8 @@ from mapgen.gamedata.vegetation.carpet import (
     footprint,
     is_carpet,
 )
-from mapgen.palette.optics import carpet_bed, load_carpet
-from mapgen.palette.painted import srgb_to_linear
+from mapgen.palette.painted.ground import srgb_to_linear
+from mapgen.palette.painted.optics import carpet_bed, load_carpet
 from mapgen.palette.styles import PAINTED_PALETTE
 from satisfactory_mcp.core.gameassets import versions
 from satisfactory_mcp.domain.spatial import heightfield as hf

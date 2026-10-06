@@ -17,23 +17,18 @@ from mapgen.colour import linear_to_srgb, oklab
 from mapgen.gamedata.rocks import families as rockfamily
 from mapgen.gamedata.vegetation.crown_sprites import CROWN_RECORD, SPRITE_M
 from mapgen.gamedata.water.bodies import CLASSES, OCEAN
-from mapgen.palette.calibration import (
+from mapgen.palette.painted.albedo import hidden_ground
+from mapgen.palette.painted.calibration import (
     display_to_crown,
     display_to_ground,
     display_to_linear,
     scoped_planes,
     weighted_median,
 )
-from mapgen.palette.optics import class_optics, opaque_share, underwater, water_table
-from mapgen.palette.painted import PaintedGround, hidden_ground, painted_colours
-from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.palette.surfaces import (
-    family_tables,
-    mesh_surface,
-    rock_surface,
-    sunk_specks,
-)
-from mapgen.palette.trees import (
+from mapgen.palette.painted.ground import PaintedGround, painted_colours
+from mapgen.palette.painted.optics import class_optics, opaque_share, underwater, water_table
+from mapgen.palette.painted.surfaces import family_tables, mesh_surface, rock_surface, sunk_specks
+from mapgen.palette.painted.trees import (
     CANOPY_GREY,
     IDENTITY_OP,
     TARGET_GREY,
@@ -43,6 +38,7 @@ from mapgen.palette.trees import (
     hue_gate,
     over_crowns,
 )
+from mapgen.palette.styles import PAINTED_PALETTE
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from mapgen.terrain.sample import taps_linear
 

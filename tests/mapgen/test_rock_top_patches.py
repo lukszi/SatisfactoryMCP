@@ -12,15 +12,10 @@ import numpy as np
 
 from mapgen.colour import oklab
 from mapgen.gamedata.rocks.families import FAMILIES
-from mapgen.palette.calibration import display_to_ground
+from mapgen.palette.painted.calibration import display_to_ground
+from mapgen.palette.painted.surfaces import family_tables, rock_surface, top_cover, top_targets
 from mapgen.palette.styles import PAINTED_PALETTE
-from mapgen.palette.surfaces import (
-    family_tables,
-    patch_noise,
-    rock_surface,
-    top_cover,
-    top_targets,
-)
+from mapgen.terrain.sample import patch_noise
 
 RULE = PAINTED_PALETTE["rock_top"]
 PATCHES = RULE["patches"]

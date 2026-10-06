@@ -17,7 +17,7 @@ from scipy import ndimage
 from scipy import sparse as sp
 from scipy.sparse import csgraph
 
-from mapgen.palette.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
+from mapgen.palette.water.shore import OCEAN_LEVEL_BAND_M, OCEAN_LEVEL_M, OCEAN_REACH_M, ocean_reach
 from mapgen.terrain.fill import solve
 from satisfactory_mcp.domain.spatial import heightfield as hf
 

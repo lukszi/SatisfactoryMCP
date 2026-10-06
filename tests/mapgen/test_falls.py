@@ -17,8 +17,8 @@ from mapgen.gamedata.water.falls import (
     fall_from_modules,
     falls_input,
 )
-from mapgen.palette import falls as fallpaint
-from mapgen.palette.falls import FALL_STYLES, draw_falls, prepare_falls
+from mapgen.palette.water import falls as fallpaint
+from mapgen.palette.water.falls import FALL_STYLES, draw_falls, prepare_falls
 from mapgen.terrain.render_meshes import (
     MESH_ROCK,
     MESH_TERRACE,

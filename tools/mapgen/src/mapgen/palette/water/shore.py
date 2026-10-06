@@ -12,8 +12,6 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
-from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
-from mapgen.lighting.model import surface_direct
 from mapgen.terrain.render_meshes import MESH_ROCK
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -30,7 +28,6 @@ __all__ = [
     "composite_meshes",
     "ocean_reach",
     "optical_depth",
-    "painted_ndl",
     "seabed_keeps",
     "shore_terms",
     "water_composite",
@@ -244,21 +241,3 @@ def composite_meshes(z_m, mesh_z_cm, mesh_class_band, water_level_m, composite, 
     raised = composite(z_m, mesh_z_cm, keep.astype(np.uint8))
     weight = np.clip((raised - z_m) / np.float32(MESH_FULL_LIFT_M), 0.0, 1.0)
     return raised, weight, np.where(keep, mesh_class_band, 0).astype(np.uint8)
-
-
-def painted_ndl(z_m, spacing_m: float, unlit: bool, surface, meshes) -> np.ndarray:
-    """The game-painted style's sun term, ``n.L`` against the flat ``sin 45``.
-
-    Lit, the north-west hillshade. Unlit, flat, except on a mesh only this style draws, one
-    standing in the water, when another layer captured the light's ``surface``: that layer
-    left it to the seabed, so the live light leaves it alone, and it keeps the default sun's
-    light on its own top. ``meshes`` is ``(weight, kept class, water level)``.
-    """
-    if not unlit:
-        return sun_dot(z_m, spacing_m)
-    flat = np.full(z_m.shape, np.sin(np.deg2rad(SUN_ALTITUDE_DEG)), np.float32)
-    weight, kept, level = meshes
-    if surface is not None or weight is None:
-        return flat
-    sea = np.where((kept > 0) & ~seabed_keeps(kept, z_m, level), weight, np.float32(0.0))
-    return flat * (1.0 + sea * (surface_direct(z_m, spacing_m) - 1.0))

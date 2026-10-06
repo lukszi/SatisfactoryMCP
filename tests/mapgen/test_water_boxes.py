@@ -14,8 +14,8 @@ import pytest
 from mapgen.gamedata.frame import ORIGIN_X_CM, ORIGIN_Y_CM
 from mapgen.gamedata.water.channel import lower_bodies
 from mapgen.gamedata.water.rivers import RIVER_CLASS, ribbon_planes, sample_rivers
-from mapgen.palette.rivers import RIVER_MAX_DEPTH_M, RiverWater, river_terms
-from mapgen.palette.shore import OCEAN_LEVEL_M, blend_water
+from mapgen.palette.water.rivers import RIVER_MAX_DEPTH_M, RiverWater, river_terms
+from mapgen.palette.water.shore import OCEAN_LEVEL_M, blend_water
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 X0, Y0 = ORIGIN_X_CM / 100, ORIGIN_Y_CM / 100

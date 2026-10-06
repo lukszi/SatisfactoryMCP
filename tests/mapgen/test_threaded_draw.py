@@ -17,8 +17,8 @@ import pytest
 
 from mapgen.bandstore import BandArray, BandWriter
 from mapgen.gamedata.frame import BOUNDS_M
-from mapgen.palette.shore import OCEAN_LEVEL_M
-from mapgen.palette.water import open_sea
+from mapgen.palette.water.open_sea import open_sea
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.pools import free_ram_bytes
 from mapgen.terrain.measure import RegimeCoverage, SeamTrace
 from mapgen.tiles import compose, drawpool

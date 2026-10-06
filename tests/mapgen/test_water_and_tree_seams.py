@@ -12,7 +12,7 @@ import pytest
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.water.bodies import CLASSES, OCEAN
 from mapgen.lighting.occluders import sheet_crowns
-from mapgen.palette.painted import (
+from mapgen.palette.painted.ground import (
     WATER_TABLE_COLUMNS,
     PaintedGround,
     painted_colours,

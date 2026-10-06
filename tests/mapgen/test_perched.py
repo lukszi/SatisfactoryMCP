@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mapgen.palette.perched import (
+from mapgen.palette.water.perched import (
     HOLE_DEPTH_MAX_M,
     LIP_DROP_M,
     PERCHED_EXCESS_M,
@@ -22,8 +22,8 @@ from mapgen.palette.perched import (
     water_surfaces,
     wet_holes,
 )
-from mapgen.palette.rivers import water_sources
-from mapgen.palette.shore import OCEAN_LEVEL_M
+from mapgen.palette.water.rivers import water_sources
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.tiles.compose import render_layer
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
@@ -208,7 +208,7 @@ def test_the_water_a_render_draws_carries_the_wetted_holes():
     field = _field(water, grades, height)
     reach = (np.zeros(grades.shape, np.uint8), {"ocean_texels": 0, "reach_texels": 0})
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("mapgen.palette.perched.ocean_reach", lambda _field: reach)
+        mp.setattr("mapgen.palette.water.perched.ocean_reach", lambda _field: reach)
         got = water_surfaces(field, False)
     assert (got.grades[parts["middle"]] == hf.WATER_MEASURED).all()
     assert (got.level[parts["middle"]] == 110).all()
@@ -239,7 +239,7 @@ def test_the_rivers_reconciled_water_is_what_gets_relevelled():
     field = _field(water, grades, height)
     reach = (np.zeros((ROWS, COLS), np.uint8), {"ocean_texels": 0, "reach_texels": 0})
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("mapgen.palette.perched.ocean_reach", lambda _field: reach)
+        mp.setattr("mapgen.palette.water.perched.ocean_reach", lambda _field: reach)
         got = water_surfaces(field, False, rivers)
     assert got.grades is kept
     assert (got.level[:100] == hf.NODATA).all(), "dropped river water stays dropped"

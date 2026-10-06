@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mapgen.palette.painted import painted_colours
+from mapgen.palette.painted.ground import painted_colours
 from tests.support.map_scenes import class_optics, painted_ground_stub, water_scene
 
 N = 4

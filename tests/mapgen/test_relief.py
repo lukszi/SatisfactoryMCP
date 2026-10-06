@@ -21,7 +21,7 @@ from mapgen.cache import (
     missing_caches,
 )
 from mapgen.commands.renders import BIOME_LAYERS, LAYERS
-from mapgen.palette.painted import oklab, srgb_to_linear
+from mapgen.palette.painted.ground import oklab, srgb_to_linear
 from mapgen.palette.relief import (
     LUT_STEPS,
     lch,

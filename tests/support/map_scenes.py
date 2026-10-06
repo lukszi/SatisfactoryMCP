@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from mapgen.gamedata.water.bodies import CLASSES
-from mapgen.palette.painted import WATER_TABLE_COLUMNS, srgb_to_linear, water_table
+from mapgen.palette.painted.ground import WATER_TABLE_COLUMNS, srgb_to_linear, water_table
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import PAINTED_PALETTE, RELIEF_PALETTES
 from satisfactory_mcp.domain.spatial import heightfield as hf

@@ -18,18 +18,8 @@ from mapgen.gamedata.ground.landscape_albedo import layer_albedo
 from mapgen.gamedata.ground.weightmaps import component_origin, place, weightmap_channels
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
 from mapgen.palette import styles
-from mapgen.palette.painted import layer_table, mix_layers, oklab, seam_blend
-from mapgen.palette.shore import (
-    OCEAN_LEVEL_M,
-    OCEAN_REACH_M,
-    add_foam,
-    blend_water,
-    composite_meshes,
-    ocean_reach,
-    shore_terms,
-    water_composite,
-    wet_band,
-)
+from mapgen.palette.painted.albedo import layer_table, mix_layers, seam_blend
+from mapgen.palette.painted.ground import oklab
 from mapgen.palette.styles import (
     LAYER_STYLES,
     PAINTED_DIGEST,
@@ -41,7 +31,18 @@ from mapgen.palette.styles import (
     WATER_SHALLOW,
     load_palette,
 )
-from mapgen.palette.water import WATER_DEPTH_FULL_M, water_over
+from mapgen.palette.water.shore import (
+    OCEAN_LEVEL_M,
+    OCEAN_REACH_M,
+    add_foam,
+    blend_water,
+    composite_meshes,
+    ocean_reach,
+    shore_terms,
+    water_composite,
+    wet_band,
+)
+from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_over
 from mapgen.terrain.render_meshes import (
     MESH_CORAL,
     MESH_ROCK,

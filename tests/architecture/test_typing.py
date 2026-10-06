@@ -60,9 +60,9 @@ BUDGETS: dict[str, int] = {
     "tools/mapgen/src/mapgen": 1,
     "tools/mapgen/src/mapgen/commands": 19,
     "tools/mapgen/src/mapgen/enhance": 1,
-    "tools/mapgen/src/mapgen/gamedata": 14,
+    "tools/mapgen/src/mapgen/gamedata": 13,
     "tools/mapgen/src/mapgen/lighting": 26,
-    "tools/mapgen/src/mapgen/palette": 21,
+    "tools/mapgen/src/mapgen/palette": 22,
     "tools/mapgen/src/mapgen/terrain": 15,
     "tools/mapgen/src/mapgen/tiles": 5,
 }

@@ -12,16 +12,16 @@ import numpy as np
 from mapgen.gamedata.frame import BOUNDS_M
 from mapgen.gamedata.water.channel import VOID_ARTWORK_LUMA_MAX, artwork_planes
 from mapgen.palette.relief import water_tint_plane
-from mapgen.palette.rivers import water_sources
-from mapgen.palette.shore import OCEAN_LEVEL_M, composite_meshes
 from mapgen.palette.styles import RELIEF_PALETTES, SEA_RGB, with_void
-from mapgen.palette.water import (
+from mapgen.palette.water.open_sea import (
     OPEN_SEA_BLEND_M,
     OPEN_SEA_DEPTH_M,
     OPEN_SEA_SETTLE_M,
     OPEN_SEA_TONE_DEPTH_M,
     open_sea,
 )
+from mapgen.palette.water.rivers import water_sources
+from mapgen.palette.water.shore import OCEAN_LEVEL_M, composite_meshes
 from mapgen.terrain.fill import SOURCE_HOLE, SOURCE_PIT, fill_field, pits, relax
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK, MESH_SHELL
 from mapgen.tiles.compose import DIRECT_LIFT_KNEE_M, composite_top, render_layer

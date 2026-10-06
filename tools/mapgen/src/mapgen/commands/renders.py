@@ -80,7 +80,8 @@ from mapgen.lighting.borrow import (
     coarse_province,
 )
 from mapgen.lighting.hillshade import SHADE_FLOOR, SHADE_RANGE, SUN_ALTITUDE_DEG, SUN_AZIMUTH_DEG
-from mapgen.palette.painted import PaintedGround, load_paint_meta
+from mapgen.palette.painted.albedo import load_paint_meta
+from mapgen.palette.painted.ground import PaintedGround
 from mapgen.palette.relief import ReliefGround
 from mapgen.palette.styles import (
     BIOME_BLEND_TEXELS,
@@ -95,7 +96,7 @@ from mapgen.palette.styles import (
     biome_lookup,
     painted_style,
 )
-from mapgen.palette.water import (
+from mapgen.palette.water.surface import (
     WATER_DEPTH_FULL_M,
     WATER_EDGE_BLUR_M,
     WATER_EDGE_M,

@@ -17,29 +17,31 @@ from mapgen.gamedata.water.bodies import (
     CLASSES,
     HOT_SPRING_BOX_MAX_M,
     MATERIAL_CLASS,
-    MOUTH_BLEND,
-    MOUTH_FEATHER_M,
-    MOUTH_STEPS,
     OCEAN,
     SWAMP,
     WATER_BODIES_NAME,
     body_class,
-    class_shares,
     classify,
-    feather_mouths,
     level_bodies,
     open_sea,
 )
-from mapgen.palette.optics import class_optics as plane_optics
-from mapgen.palette.painted import (
+from mapgen.palette.painted.ground import (
     WATER_TABLE_COLUMNS,
     PaintedGround,
     load_water_bodies,
     painted_colours,
     water_table,
 )
-from mapgen.palette.shore import OCEAN_LEVEL_M
+from mapgen.palette.painted.optics import class_optics as plane_optics
+from mapgen.palette.painted.water_classes import (
+    MOUTH_BLEND,
+    MOUTH_FEATHER_M,
+    MOUTH_STEPS,
+    class_shares,
+    feather_mouths,
+)
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.terrain.sample import ClassMix, class_taps, taps_linear
 from tests.support.map_scenes import CLASS_ID, class_optics, painted_ground_stub, water_scene
 

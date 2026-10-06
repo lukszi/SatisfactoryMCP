@@ -16,8 +16,8 @@ import numpy as np
 from mapgen.cache import RIVER_CACHE_DIR_NAME, cached_rivers, river_stamp, write_rivers
 from mapgen.gamedata.water.channel import lower_bodies
 from mapgen.gamedata.water.rivers import box_tops, ribbon_planes, sample_rivers
-from mapgen.palette.shore import OCEAN_LEVEL_M, shore_terms
-from mapgen.palette.water import WATER_DEPTH_FULL_M, water_planes
+from mapgen.palette.water.shore import OCEAN_LEVEL_M, shore_terms
+from mapgen.palette.water.surface import WATER_DEPTH_FULL_M, water_planes
 from mapgen.terrain.sample import sample_plain, sample_surface
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.domain.spatial import heightfield as hf

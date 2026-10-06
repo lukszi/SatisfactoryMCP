@@ -12,7 +12,7 @@ import numpy as np
 from scipy import ndimage
 
 from mapgen.lighting.hillshade import WATER_SHADE_FLOOR, WATER_SHADE_RANGE
-from mapgen.palette.shore import blend_where, water_composite
+from mapgen.palette.water.shore import blend_where, water_composite
 from satisfactory_mcp.core.gameassets.maparea import NO_MANS_LAND
 from satisfactory_mcp.core.gameassets.provenance import sha256_hex
 from satisfactory_mcp.domain.spatial import heightfield as hf
@@ -62,11 +62,13 @@ __all__ = [
     "biome_colour_field",
     "biome_index",
     "biome_lookup",
+    "dry_land_range",
     "load_palette",
     "noise_fields",
     "painted_style",
     "palette_digest",
     "ramp",
+    "ramp_position",
     "ramp_range",
     "satellite_colours",
     "terrain_colours",
@@ -339,3 +341,23 @@ def ramp_range(field) -> tuple[float, float]:
         float(np.percentile(land, RAMP_LO_PCT)),
         float(np.percentile(land, RAMP_HI_PCT)),
     )
+
+
+def ramp_position(height_m, lo_m: float, hi_m: float, cdf_m: np.ndarray, equalised: float):
+    """Ground height to [0, 1] over dry land: part linear in metres, part equal-area."""
+    linear = np.clip((height_m - lo_m) / max(hi_m - lo_m, 1e-6), 0.0, 1.0)
+    quantile = np.interp(height_m, cdf_m, np.linspace(0.0, 1.0, len(cdf_m)))
+    return ((1.0 - equalised) * linear + equalised * quantile).astype(np.float32)
+
+
+def dry_land_range(field, lo_pct: float, hi_pct: float) -> tuple[float, float, np.ndarray]:
+    """The ramp's height range and CDF, over dry land only (waterq dry, height known)."""
+    height = field._height_dm[::4, ::4]
+    grades = field._water_quality_raster()
+    dry = height != hf.NODATA
+    if grades is not None:
+        dry &= grades[::4, ::4] == hf.WATER_DRY
+    metres = height[dry].astype(np.float32) / hf.DM_PER_M
+    lo, hi = np.percentile(metres, [lo_pct, hi_pct])
+    cdf = np.percentile(metres[(metres >= lo) & (metres <= hi)], np.linspace(0, 100, 101))
+    return float(lo), float(hi), cdf.astype(np.float32)

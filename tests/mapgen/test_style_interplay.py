@@ -25,10 +25,10 @@ from mapgen.cache import (
 from mapgen.lighting.hillshade import SUN_ALTITUDE_DEG, sun_dot
 from mapgen.lighting.model import _tone, _untone, apply_terms
 from mapgen.palette.lightparams import shader_light
-from mapgen.palette.painted import tone
+from mapgen.palette.painted.ground import painted_ndl, tone
 from mapgen.palette.relief import FLAT_LIT, _shade
-from mapgen.palette.shore import OCEAN_LEVEL_M, painted_ndl
 from mapgen.palette.styles import PAINTED_PALETTE
+from mapgen.palette.water.shore import OCEAN_LEVEL_M
 from mapgen.terrain.render_meshes import MESH_CORAL, MESH_ROCK
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from tests.support.map_scenes import relief_ground

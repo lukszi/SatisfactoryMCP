@@ -21,18 +21,8 @@ from mapgen.lighting.hillshade import (
     slope_degrees,
     sun_dot,
 )
-from mapgen.palette.falls import draw_falls
-from mapgen.palette.painted import ROCK_GRID_M, painted_colours
+from mapgen.palette.painted.ground import ROCK_GRID_M, painted_colours, painted_ndl
 from mapgen.palette.relief import relief_colours
-from mapgen.palette.rivers import water_sources
-from mapgen.palette.shore import (
-    MESH_FULL_LIFT_M,
-    OCEAN_LEVEL_M,
-    blend_water,
-    composite_meshes,
-    painted_ndl,
-    shore_terms,
-)
 from mapgen.palette.styles import (
     LAYER_PAINTERS,
     NOISE_SEED,
@@ -42,7 +32,16 @@ from mapgen.palette.styles import (
     with_sea,
     with_void,
 )
-from mapgen.palette.water import (
+from mapgen.palette.water.falls import draw_falls
+from mapgen.palette.water.rivers import water_sources
+from mapgen.palette.water.shore import (
+    MESH_FULL_LIFT_M,
+    OCEAN_LEVEL_M,
+    blend_water,
+    composite_meshes,
+    shore_terms,
+)
+from mapgen.palette.water.surface import (
     WATER_DEPTH_FULL_M,
     WATER_EDGE_BLUR_M,
     water_alpha,
