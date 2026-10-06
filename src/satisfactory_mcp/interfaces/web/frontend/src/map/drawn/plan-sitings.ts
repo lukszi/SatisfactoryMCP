@@ -13,7 +13,7 @@
 
 import { code, esc, html, popup } from "../../kit/dom";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, hashFor } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
@@ -21,16 +21,7 @@ import { registerFetch } from "../../app/registry";
 import type { Row } from "../../kit/dom";
 import type { PlanSiting, PlansResponse } from "../../api/shapes";
 
-/* Green, measured against every colour already declared on this page. Its nearest neighbour
- * anywhere is the uranium node dot at dE 25.0, then the mushroom pickup at 38.6 and the crate
- * green at 43.8 -- all small marks on open ground, none of them a rectangle a hundred metres
- * across. Against the things this outline is actually laid over it is far clear: dE 105.5
- * from the concrete it will replace, 110.7 from the machine blue standing on it, and 69.9
- * from the nearest biome ground.
- *
- * Green because the page spends almost none of it on anything built: blue, ultramarine,
- * blue-violet, slate and rust are placements or networks, and the one built green, the pale
- * generator mint, is a filled footprint dE 46.6 away from this dashed outline. */
+// Green, which nothing built spends; measured in docs/frontend_palette.md.
 export var PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
 
 /* One pad's card. `source` is the row that decides whether the outline is worth trusting to
@@ -38,7 +29,7 @@ export var PLAN_COLOUR = declareColours("plans", { plans: "#4ec22e" }).plans;
  * the machine count. Said in words rather than passed through, because "layout" alone on a
  * card reads as a category and not as a caveat. */
 function planPopup(p: PlanSiting): Row[] {
-  var measured = p.source === "given";
+  const measured = p.source === "given";
   return [
     ["plan", p.name],
     ["footprint", p.width_m + " x " + p.depth_m + " m"],
@@ -66,7 +57,7 @@ export function drawPlans(data: PlansResponse): void {
    * On by default, and cheap to be: a world has a handful of sitings or none, so the row is
    * empty and silent until the evening somebody sites a plan -- which is the one evening this
    * layer is worth anything at all. */
-  var group = layer("plan sitings", true, PLAN_COLOUR, [BAND.chrome, 50, "plan sitings"]);
+  const group = clearedLayer("plan sitings", { on: true, colour: PLAN_COLOUR, rank: [BAND.chrome, 50, "plan sitings"] });
   data.plans.forEach(function (p) {
     L.polygon(footprintCorners(p.x_m, p.y_m, p.width_m / 2, p.depth_m / 2, p.yaw_deg), {
       color: PLAN_COLOUR,

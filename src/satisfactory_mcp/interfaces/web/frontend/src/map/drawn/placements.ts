@@ -15,7 +15,7 @@ import { refreshFloors } from "../floors/floors";
 import { count, pct } from "../../kit/format";
 import { CONTENTS_POPUP_PX, contentsRows } from "./inventory-grid";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, hashFor } from "../map";
 import { raiseNodeDots } from "./markers";
 import { showMachine } from "../map-highlight";
@@ -32,38 +32,31 @@ import type {
   StructuresResponse,
 } from "../../api/shapes";
 
+// Concrete: slate violet, the one cool direction the grounds leave open (docs/frontend_palette.md).
+var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).foundations;
+
 /* The player's floor plan: one 8 m tile per placed foundation, ramp, wall or catwalk.
  *
- * NO PER-CLASS SIZE. None of these eighteen classes has clearance data, and they all snap to
- * the same grid, whose edge the server reports as `tile_m` -- so a wall paints the tile it
- * stands on rather than its own thin volume, straddling two tiles and fringing a walled
- * platform by half a tile, which is invisible at any zoom where the platform is legible.
+ * NO PER-CLASS SIZE. None of these classes has clearance data, and they all snap to the same
+ * grid, whose edge the server reports as `tile_m` -- so a wall paints the tile it stands on
+ * rather than its own thin volume, straddling two tiles and fringing a walled platform by half
+ * a tile, which is invisible at any zoom where the platform is legible.
  *
  * Stroked in its own fill colour, the trick the biome cells already use: no stroke at all
  * leaves hairline seams between neighbouring tiles at low zoom, and a stroke in any other
  * colour draws an 8 m grid.
  */
-/* Concrete. A slab is poured ON the biome fill, both are large areas at full strength wherever
- * there is no imagery, and no warrant talks that pair apart -- so this colour has to clear the
- * grounds, and slate violet is the one cool direction they leave open (a neutral grey dies on
- * the coal dot at one end and No Man's Land at the other, and the teal side is Blue Crater and
- * Spire Coast). Measured: dE 18.1 from the nearest ground (Blue Crater), 17.9 from its nearest
- * cross-owner neighbour anywhere (that same coal dot), 24.7 from the nearest belt tone, and
- * 15.3 from the nearest of the six artwork tones binned in power-wires.ts -- the one comparison
- * REGION_BLEND does not soften, since the render is what shows through the fade. */
-var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).foundations;
-
 export function drawStructures(data: StructuresResponse): void {
   // First of the built band, because the concrete is what everything else in it stands on
   // or runs over -- the legend reads a base bottom-up, exactly as the player laid it.
-  var group = layer("foundations", true, STRUCTURE_COLOUR, [BAND.built, 0, "foundations"]);
+  const group = clearedLayer("foundations", { on: true, colour: STRUCTURE_COLOUR, rank: [BAND.built, 0, "foundations"] });
   // No `|| 8`: `tile_m` is the server's FOUNDATION_M constant and is always sent, and a
   // fallback here would be the second copy of the number this field exists to prevent.
-  var half = data.tile_m / 2;
+  const half = data.tile_m / 2;
   data.structures.forEach(function (s, row) {
     // No position guard: `iter_structures` DROPS a row whose x, y or z will not read as a
     // number, so a piece that arrives here has all three and `StructureRow` declares that.
-    var piece = L.polygon(footprintCorners(s.x_m, s.y_m, half, half, s.yaw), {
+    const piece = L.polygon(footprintCorners(s.x_m, s.y_m, half, half, s.yaw), {
       color: STRUCTURE_COLOUR,
       weight: 1,
       opacity: 0.9,
@@ -99,12 +92,7 @@ registerFetch<StructuresResponse>({
  * Constructor (8x10 m). */
 var MACHINE_FALLBACK_M = 6;
 
-/* Blue, ultramarine, mint. The water node dot at dE 8.6 from this blue is DISCHARGED in
- * palette.ts: the only machine in the dot's square metre is a water extractor, drawn in this
- * table's ultramarine at dE 76.5, under a dot raiseNodeDots() keeps on top. Extractors left amber
- * because amber is the pending removal; generators left tan because tan vanished on sand. Nearest
- * cross-owner colours: extractors the oil dot at 36.2, generators the crates at 21.5. Measurements
- * in docs/frontend_vision.md (T2). */
+// Blue, ultramarine, mint, one per machine layer (docs/frontend_palette.md).
 var KIND_COLOUR: Record<string, string> = declareColours("placements", {
   machines: "#4aa3df",
   extractors: "#19039c",
@@ -134,25 +122,25 @@ export var STOPPED_COLOUR = declareColours("placements", { stopped: "#d9534f" })
 
 export function drawMachines(data: MachinesResponse): void {
   MACHINE_KINDS.forEach(function (kind) {
-    var group = layer(kind, kind !== "machines", KIND_COLOUR[kind], [
-      BAND.built,
-      MACHINE_SLOT[kind],
-      kind,
-    ]);
+    const group = clearedLayer(kind, {
+      on: kind !== "machines",
+      colour: KIND_COLOUR[kind],
+      rank: [BAND.built, MACHINE_SLOT[kind], kind],
+    });
     data[kind].forEach(function (m) {
       // One guard, on x only. The row type says `y_m` can be null too, and the assertion below
       // is that claim not being acted on: if the projection ever sends half a position it
       // should be visible rather than silently skipped.
       if (m.x_m === null) return;
-      var w = (m.w_m || MACHINE_FALLBACK_M) / 2;
-      var l = (m.l_m || MACHINE_FALLBACK_M) / 2;
+      const w = (m.w_m || MACHINE_FALLBACK_M) / 2;
+      const l = (m.l_m || MACHINE_FALLBACK_M) / 2;
       // Read off `state` and not off `paused`, though the two agree: `paused` is first in
       // health.STATES, so one field decides the whole mark and the two can never disagree
       // about the same rectangle.
-      var blocked = m.state === BLOCKED;
-      var stopped = m.actionable && !blocked;
-      var idle = stopped || m.state === "paused";
-      var piece = L.polygon(footprintCorners(m.x_m, m.y_m!, w, l, m.yaw), {
+      const blocked = m.state === BLOCKED;
+      const stopped = m.actionable && !blocked;
+      const idle = stopped || m.state === "paused";
+      const piece = L.polygon(footprintCorners(m.x_m, m.y_m!, w, l, m.yaw), {
         color: blocked ? BLOCKED_COLOUR : stopped ? STOPPED_COLOUR : KIND_COLOUR[kind],
         fillColor: KIND_COLOUR[kind],
         weight: m.actionable ? 3 : 1,
@@ -163,9 +151,8 @@ export function drawMachines(data: MachinesResponse): void {
           ["building", m.name],
           ["recipe", m.recipe_name || m.recipe],
           ["clock", m.clock === null ? null : pct(m.clock)],
-          // The state replaces the old "paused: yes" row rather than joining it: they would
-          // be the same claim twice, and this one can also say why a machine nobody paused
-          // is standing still.
+          // One state row and no separate "paused" row: that would be the same claim twice,
+          // and this one can also say why a machine nobody paused is standing still.
           [
             "state",
             (blocked ? "blocked: output full" : m.state) + (m.actionable ? " · " + WORDS.needAction : ""),
@@ -178,7 +165,7 @@ export function drawMachines(data: MachinesResponse): void {
           ],
           // The only measured number in this whole project -- the fraction of the machine's
           // own ~300 s window it spent producing. Absent, not "0%", for a building that
-          // carries no monitor: 46 of this world's 570 do not.
+          // carries no monitor.
           ["uptime", m.uptime === null ? null : pct(m.uptime)],
           // All three sides of the clearance box: a Refinery being 15 m tall is why a floor
           // view can say it comes through the ceiling, and the reader looking at that ghost
@@ -193,13 +180,13 @@ export function drawMachines(data: MachinesResponse): void {
           ["trace", traceButtons(m.instance_leaf)],
         ])
       );
-      var mark = { leaf: m.instance_leaf, name: m.name };
-      var at = { x_m: m.x_m, y_m: m.y_m! };
+      const mark = { leaf: m.instance_leaf, name: m.name };
+      const at = { x_m: m.x_m, y_m: m.y_m! };
       piece.on("click", function () {
         showMachine(mark.leaf, mark.name, at.x_m, at.y_m, { stay: true });
       });
       piece.on("contextmenu", function (e: L.LeafletMouseEvent) {
-        var dom = e.originalEvent as InspectedEvent | undefined;
+        const dom = e.originalEvent as InspectedEvent | undefined;
         if (dom && !dom._machine) dom._machine = mark;
       });
       // What the floor filter joins a machine by, and what it needs to know to tell whether
@@ -237,17 +224,11 @@ registerFetch<MachinesResponse>({
  * buffer and a storage container are both boxes the player put things in, so they belong to one
  * checkbox; a second hue would make the legend claim these are two networks.
  *
- * OFF BY DEFAULT, and NOT part of the reveal a factory label triggers -- see FACTORY_LAYERS in
- * labels.ts.
+ * OFF BY DEFAULT, and NOT part of the reveal a factory label triggers -- see BUILT_AREA_LAYERS in
+ * layers.ts.
  */
 
-/* Storage, measured. A container is drawn as a filled footprint box, so what it has to
- * separate from is the other filled boxes and the selection pink, which the old magenta sat
- * too close to. A cool blue-violet: dE 18.0 from its nearest cross-owner colour (the hard-drive
- * dot), 20.4 from the water dot, 27.4 from the machine blue, and 64.1 from the selection pink
- * (the magenta was 37.5). The fluid buffers are a deep ultramarine, dE 31.3 below it: the old
- * #4a5596 was 3.2 from foundations on the bases. Nearest cross-owner colour dE 16.2 (crude oil).
- */
+// A cool blue-violet box, and the fluid buffers a value step below it (docs/frontend_palette.md).
 var STORAGE = declareColours("placements", {
   storage: "#6a78c8",
   "storage fluid": "#253496",
@@ -272,9 +253,9 @@ var STORAGE_FALLBACK_M = 4;
  */
 function storageContents(s: StorageRow): Row[] {
   if (s.kind === "fluid") {
-    var stored = s.stored_m3;
+    const stored = s.stored_m3;
     if (stored === null || stored === undefined) return [["contents", "not recorded"]];
-    var level = count(Math.round(stored * 10) / 10) + " m³";
+    let level = count(Math.round(stored * 10) / 10) + " m³";
     // The capacity is what turns a level into a reading, and it comes from the docs dump
     // rather than the save -- so where the dump is silent the row says the level alone
     // instead of inventing a denominator.
@@ -294,12 +275,12 @@ function storageContents(s: StorageRow): Row[] {
 
 /* One container's whole card: what it is, what is in it, and where it stands.
  *
- * The contents come FIRST, above the placement rows every other popup on this page leads with,
- * because they are the reason this layer exists -- a reader who clicks a box is asking what is
- * in it, not where it is, and where it is was answered by the click.
+ * The contents come FIRST, above the placement rows, because they are the reason this layer
+ * exists -- a reader who clicks a box is asking what is in it, not where it is, and where it is
+ * was answered by the click.
  */
 function storagePopup(s: StorageRow): Row[] {
-  var rows: Row[] = [["storage", s.name]];
+  const rows: Row[] = [["storage", s.name]];
   storageContents(s).forEach(function (row) {
     rows.push(row);
   });
@@ -314,16 +295,16 @@ function storagePopup(s: StorageRow): Row[] {
 }
 
 export function drawStorage(data: StorageResponse): void {
-  // Off at the whole-world zoom, like the machines and the routes: 151 boxes across 7 km is a
-  // scatter of specks. Last of the built band, because the row is off by default and the
-  // bottom of the list is where a reader who wants it goes looking.
-  var group = layer("storage", false, STORAGE_COLOUR, [BAND.built, 70, "storage"]);
+  // Off at the whole-world zoom, like the machines and the routes: a world's boxes are a
+  // scatter of specks. Near the bottom of the built band, because the row is off by default
+  // and the bottom of the list is where a reader who wants it goes looking.
+  const group = clearedLayer("storage", { on: false, colour: STORAGE_COLOUR, rank: [BAND.built, 70, "storage"] });
   data.storage.forEach(function (s) {
     if (s.x_m === null || s.y_m === null) return;
-    var colour = s.kind === "fluid" ? STORAGE_FLUID_COLOUR : STORAGE_COLOUR;
-    var w = (s.w_m || STORAGE_FALLBACK_M) / 2;
-    var l = (s.l_m || STORAGE_FALLBACK_M) / 2;
-    var box = L.polygon(footprintCorners(s.x_m, s.y_m, w, l, s.yaw), {
+    const colour = s.kind === "fluid" ? STORAGE_FLUID_COLOUR : STORAGE_COLOUR;
+    const w = (s.w_m || STORAGE_FALLBACK_M) / 2;
+    const l = (s.l_m || STORAGE_FALLBACK_M) / 2;
+    const box = L.polygon(footprintCorners(s.x_m, s.y_m, w, l, s.yaw), {
       color: colour,
       weight: 1,
       fillColor: colour,

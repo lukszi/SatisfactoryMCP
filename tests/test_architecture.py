@@ -297,20 +297,24 @@ STATIC_IGNORE_LINE = "src/satisfactory_mcp/interfaces/web/static/"
 FRONTEND_SRC = FRONTEND / "src"
 FRONTEND_MAIN_TS = FRONTEND_SRC / "main.ts"
 
-#: The MECHANISM side of the page: five modules that hold a list and run it, and know none of
-#: the names in it.
+#: The MECHANISM side of the page: modules that hold a list and run it, and know none of the
+#: names in it.
 #:
 #: ``load.ts`` runs the two waves, ``registry.ts`` holds what is in them, ``layers.ts`` hands
-#: out the named groups, ``layercontrol/control.ts`` is the widget listing them, and ``palette.ts``
-#: records what colour each feature chose and checks the choices against each other. Every
-#: feature on the page reaches at least one of these; none of the five may reach a feature.
-#: That is what makes each of them a seam rather than a habit -- see the two rules below for
-#: the two different things that sentence has to mean.
+#: out the named groups, ``layercontrol/control.ts`` is the widget listing them, its two radio
+#: pickers draw choices another module decides, and ``palette.ts`` records what colour each
+#: feature chose and checks the choices against each other. Every feature on the page reaches
+#: at least one of these; none of them may reach a feature. That is what makes each of them a
+#: seam rather than a habit -- see the two rules below for the two different things that
+#: sentence has to mean.
 FRONTEND_MECHANISM = (
     FRONTEND_SRC / "app" / "load.ts",
     FRONTEND_SRC / "app" / "registry.ts",
     FRONTEND_SRC / "map" / "layers.ts",
     FRONTEND_SRC / "map" / "layercontrol" / "control.ts",
+    FRONTEND_SRC / "map" / "layercontrol" / "radio-section.ts",
+    FRONTEND_SRC / "map" / "layercontrol" / "mode-picker.ts",
+    FRONTEND_SRC / "map" / "layercontrol" / "floor-picker.ts",
     FRONTEND_SRC / "map" / "palette.ts",
 )
 FRONTEND_REGISTRY_TS = FRONTEND_SRC / "app" / "registry.ts"

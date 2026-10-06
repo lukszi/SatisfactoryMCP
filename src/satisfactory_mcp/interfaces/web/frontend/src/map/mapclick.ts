@@ -3,7 +3,7 @@
 
 import { coords } from "../kit/format";
 import { L } from "./leaflet";
-import { map } from "./map";
+import { gameXY, map } from "./map";
 import { showPoint } from "./map-highlight";
 import { select } from "../app/selection";
 
@@ -20,7 +20,7 @@ export function clicksPickPoints(owner: string, on: boolean): void {
 }
 
 function onLayer(e: L.LeafletMouseEvent): void {
-  var dom = e.originalEvent as Marked | undefined;
+  const dom = e.originalEvent as Marked | undefined;
   if (dom) dom._onLayer = true;
 }
 
@@ -32,11 +32,12 @@ L.Marker.addInitHook(function (this: L.Marker) {
 });
 
 function clicked(e: L.LeafletMouseEvent): void {
-  var dom = e.originalEvent as Marked | undefined;
+  const dom = e.originalEvent as Marked | undefined;
   if (!dom || dom._onLayer || map.getContainer().classList.contains("map-picking")) return;
   if (Object.keys(pointOwners).length) {
-    var x = Math.round(e.latlng.lng);
-    var y = Math.round(-e.latlng.lat);
+    const at = gameXY(e.latlng);
+    const x = Math.round(at[0]);
+    const y = Math.round(at[1]);
     showPoint(x, y, { label: coords(x, y), stay: true });
   } else select(null);
 }

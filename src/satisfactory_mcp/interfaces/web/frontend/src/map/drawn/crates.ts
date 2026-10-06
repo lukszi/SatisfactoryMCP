@@ -13,7 +13,8 @@ import { code, popup } from "../../kit/dom";
 import { count } from "../../kit/format";
 import { CONTENTS_POPUP_PX, contentsRows } from "./inventory-grid";
 import { L } from "../leaflet";
-import { BAND, layer } from "../layers";
+import { BAND, clearedLayer } from "../layers";
+import { latLngOf } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
 
@@ -23,19 +24,14 @@ import type { Row } from "../../kit/dom";
  * the actor's only saved property, so a co-op world's crate cannot say whose it is. */
 import type { CrateRow, CratesResponse } from "../../api/shapes";
 
-/* Spring green, measured against every colour already declared on this page the way every
- * other network tone here was. Its nearest colours anywhere are the uranium node dot at dE
- * 24.0 and the pickup fallback at 24.3, and both are honest comparisons -- a crate glyph, a
- * node dot and a pickup dot are all small marks lying on the same ground. The nearest ground
- * is Bamboo Fields at dE 50.2, which is what decides whether a 13 px glyph can be found on
- * open terrain at world zoom, and that is the zoom this layer has to work at. */
+// Spring green, far from every ground so a small glyph is found at world zoom
+// (docs/frontend_palette.md).
 var CRATE_COLOUR = declareColours("crates", { crates: "#3fcc94" }).crates;
 
 /* The glyph's box, in screen PIXELS, for the reason power-wires.ts gives for its poles: the
  * question a crate mark answers is "is there one here", not "does this fit", and a true-size
- * 2 m prop would be 0.28 px at the world view. 13 px is the size of the floor connectors'
- * arrows, which are the page's other fixed glyph that has to be CLICKED rather than merely
- * seen: the popup is the layer, so the mark is also its own pointer target. */
+ * 2 m prop is a fraction of a pixel at the world view. About the size of the floor connectors'
+ * arrows, the page's other fixed glyph that has to be CLICKED rather than merely seen. */
 var CRATE_PX = 13;
 
 /* Three kinds, and the glyph tells apart the one distinction a reader scans a map for.
@@ -52,9 +48,9 @@ var CRATE_PX = 13;
  * A fourth kind a later extractor learns is drawn as `none`, for the same reason.
  */
 function crateGlyph(kind: string): string {
-  var death = kind === "death";
-  var told = death || kind === "dismantle";
-  var box = CRATE_PX;
+  const death = kind === "death";
+  const told = death || kind === "dismantle";
+  const box = CRATE_PX;
   return (
     '<svg width="' + box + '" height="' + box + '" viewBox="0 0 ' + box + " " + box + '" ' +
     'aria-hidden="true" focusable="false">' +
@@ -90,12 +86,10 @@ export function crateLabel(kind: string): string {
  * no cause -- so in a co-op world nothing here can say whose death this was, and a row that
  * guessed would arrive looking exactly like a row that knew. */
 function cratePopup(c: CrateRow): Row[] {
-  var rows: Row[] = [[crateLabel(c.kind), c.kind_text || c.kind]];
+  const rows: Row[] = [[crateLabel(c.kind), c.kind_text || c.kind]];
   /* The same inventory grid a storage box gets, out of the same helper: "what is in it" is
-   * one question wherever it is asked. Whole crates, every kind -- the grid was measured
-   * holding all 38 kinds of the fullest crate on this machine at 381x568 px without
-   * overflow, so `more` arrives as 0 and contentsRows' "+N" tile is the net under any server
-   * that truncates again. */
+   * one question wherever it is asked. The server sends every kind, so `more` arrives as 0 and
+   * contentsRows' "+N" tile is the net under any server that truncates again. */
   contentsRows(c.items || [], c.more || 0).forEach(function (row) {
     rows.push(row);
   });
@@ -121,14 +115,14 @@ export function drawCrates(data: CratesResponse): void {
    * once, in a hurry, and an answer behind a checkbox nobody has noticed is not an answer.
    *
    * Last of the built band, after the containers: a crate is the inventory nobody built. */
-  var group = layer("crates", true, CRATE_COLOUR, [BAND.built, 80, "crates"]);
+  const group = clearedLayer("crates", { on: true, colour: CRATE_COLOUR, rank: [BAND.built, 80, "crates"] });
 
   data.crates.forEach(function (c) {
     // A crate whose position would not read is still SENT -- the projection knows it exists.
     // Skipping it is this page's call, and the same one every drawing module here makes.
     if (c.x_m === null || c.y_m === null) return;
-    L.marker([-c.y_m, c.x_m], {
-      /* A divIcon rather than a path, for the reason floors.ts's connector arrows are one: a
+    L.marker(latLngOf([c.x_m, c.y_m]), {
+      /* A divIcon rather than a path, for the reason floors/glyphs.ts's arrows are one: a
        * crate is a SHAPE at a fixed pixel size, and the canvas renderer this page draws paths
        * on offers a fixed-size circle and nothing else. A square drawn as a polygon would be
        * in world metres and would vanish at world zoom.

@@ -3,11 +3,11 @@
 
 import { get, latest } from "../../api/client";
 import { button, chip, table, toggleButton } from "../../kit/dashkit";
-import { code, esc, make, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
+import { code, esc, make, onAttributeClick, popup, TRACE_ATTR, TRACE_DIR_ATTR, traceButtons } from "../../kit/dom";
 import { count, perMin } from "../../kit/format";
 import { L } from "../leaflet";
-import { flyPadded, map } from "../map";
-import { cardHead, cardHeading, cardLine, cardSubject, claim, mapCard } from "../mapcard";
+import { boundsOfBbox, flyPadded, latLngOf, map } from "../map";
+import { cardLine, cardSectionHeading, cardSubject, cardTitleBar, closeOtherCards, mapCard } from "../mapcard";
 import { makeRoom } from "../panel";
 import { HIGHLIGHT } from "../map-highlight";
 import { onVitals } from "../../app/vitals";
@@ -26,7 +26,8 @@ type TraceItem = TraceResponse["items"][number];
 
 type TraceEdge = TraceResponse["edges"][number];
 
-var SHOWN = 10;
+/** How many rows each table in the card lists; the rest are counted. */
+var MAX_TABLE_ROWS = 10;
 
 var TRACE_MAX_ZOOM = 2;
 
@@ -48,12 +49,12 @@ var view = {
   error: "",
 };
 
-function card(): HTMLElement {
+function traceCard(): HTMLElement {
   return mapCard("trace", "trace", clearTrace);
 }
 
-function colour(m: TraceMachine): string {
-  var t = tone(m.state, m.actionable);
+function machineRingColour(m: TraceMachine): string {
+  const t = tone(m.state, m.actionable);
   return t === "blocked" ? BLOCKED_COLOUR : t === "bad" ? STOPPED_COLOUR : HIGHLIGHT;
 }
 
@@ -66,7 +67,7 @@ function rateText(rows: { item: string; per_min: number }[]): string {
 }
 
 function machinePopup(m: TraceMachine): string {
-  var rows: Row[] = [
+  const rows: Row[] = [
     ["building", m.name],
     ["recipe", m.recipe],
     ["makes", m.makes.length ? rateText(m.makes) : null],
@@ -82,10 +83,10 @@ function machinePopup(m: TraceMachine): string {
 function draw(data: TraceResponse): void {
   group.clearLayers();
   data.runs.forEach(function (run) {
-    var line = L.polyline(
+    const line = L.polyline(
       run.lines_m.map(function (points) {
         return points.map(function (p) {
-          return [-p[1], p[0]] as L.LatLngTuple;
+          return latLngOf(p);
         });
       }),
       { color: HIGHLIGHT, weight: 4, opacity: 0.8, renderer: renderer, pane: "trace" }
@@ -95,11 +96,11 @@ function draw(data: TraceResponse): void {
   });
   data.machines.forEach(function (m) {
     if (m.x_m === null || m.y_m === null) return;
-    var ring = L.circleMarker([-m.y_m, m.x_m], {
+    const ring = L.circleMarker(latLngOf([m.x_m, m.y_m]), {
       radius: m.seed ? 11 : 7,
-      color: colour(m),
+      color: machineRingColour(m),
       weight: m.seed ? 4 : 3,
-      fillColor: colour(m),
+      fillColor: machineRingColour(m),
       fillOpacity: m.actionable ? 0.45 : 0.2,
       renderer: renderer,
       pane: "trace",
@@ -111,16 +112,16 @@ function draw(data: TraceResponse): void {
 }
 
 function fly(data: TraceResponse): void {
-  var b = data.bbox_m;
+  const b = data.bbox_m;
   if (!b) return;
-  flyPadded(L.latLngBounds([-b[1], b[0]], [-b[3], b[2]]).pad(0.15), TRACE_MAX_ZOOM);
+  flyPadded(boundsOfBbox(b).pad(0.15), TRACE_MAX_ZOOM);
 }
 
 function stateCounts(data: TraceResponse): { stopped: number; blocked: number } {
-  var out = { stopped: 0, blocked: 0 };
+  const out = { stopped: 0, blocked: 0 };
   data.machines.forEach(function (m) {
     if (m.seed) return;
-    var t = tone(m.state, m.actionable);
+    const t = tone(m.state, m.actionable);
     if (t === "blocked") out.blocked += 1;
     else if (t === "bad") out.stopped += 1;
   });
@@ -129,7 +130,7 @@ function stateCounts(data: TraceResponse): { stopped: number; blocked: number } 
 
 function groupName(data: TraceResponse, id: string): string {
   if (id.indexOf("in:") === 0) return "outside the traced set";
-  var found = data.groups.filter(function (g) {
+  const found = data.groups.filter(function (g) {
     return g.id === id;
   })[0];
   return found ? found.label + " (" + found.detail + ")" : id;
@@ -155,7 +156,7 @@ function itemTable(rows: TraceItem[]): HTMLElement {
         },
       },
     ],
-    rows.slice(0, SHOWN)
+    rows.slice(0, MAX_TABLE_ROWS)
   );
 }
 
@@ -186,19 +187,19 @@ function flowTable(data: TraceResponse, rows: TraceEdge[]): HTMLElement {
         },
       },
     ],
-    rows.slice(0, SHOWN)
+    rows.slice(0, MAX_TABLE_ROWS)
   );
 }
 
 function render(): void {
-  var box = card();
+  const box = traceCard();
   box.textContent = "";
   if (!view.seed) {
     box.hidden = true;
     return;
   }
   box.hidden = false;
-  var head = cardHead(view.direction === "up" ? "Supply" : "Output");
+  const head = cardTitleBar(view.direction === "up" ? "Supply" : "Output");
   head.appendChild(
     toggleButton("↑ supply", view.direction === "up", function () {
       startTrace(view.seed, "up");
@@ -211,7 +212,7 @@ function render(): void {
   );
   head.appendChild(button("×", clearTrace, { title: "clear the trace", label: "clear the trace" }));
   box.appendChild(head);
-  var data = view.data;
+  const data = view.data;
   if (view.error) {
     cardLine(box, view.error, "bad");
     return;
@@ -220,7 +221,7 @@ function render(): void {
     cardLine(box, "tracing " + view.seed.replace(/^label:/, "") + "…");
     return;
   }
-  var only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;
+  const only = data.seeds === 1 ? data.machines.filter(function (m) { return m.seed; })[0] : undefined;
   cardSubject(box, only ? only.name + (only.recipe ? " · " + only.recipe : "") : data.subject);
   if (data.truncated) {
     cardLine(box, "the walk stopped at its hop limit: this is a floor, more lies beyond it", "blocked");
@@ -231,9 +232,9 @@ function render(): void {
       count(data.ambiguous) +
       " belt or pipe joins that state no direction; the walk takes them both ways, so it can over-report a feeder but never miss one";
   }
-  var others = data.machines.length - data.seeds;
-  var states = stateCounts(data);
-  var chips = make("div", "panel-chips");
+  const others = data.machines.length - data.seeds;
+  const states = stateCounts(data);
+  const chips = make("div", "panel-chips");
   chips.appendChild(chip(counted(others, "machine") + " " + (view.direction === "up" ? "upstream" : "downstream"), "muted"));
   if (states.stopped) chips.appendChild(chip(states.stopped + " " + WORDS.needAction, "bad"));
   if (states.blocked) chips.appendChild(chip(states.blocked + " " + WORDS.blocked, "blocked"));
@@ -250,25 +251,25 @@ function render(): void {
     );
   }
   if (data.items.length) {
-    cardHeading(box, view.direction === "up" ? "made along the path" : "used along the path");
+    cardSectionHeading(box, view.direction === "up" ? "made along the path" : "used along the path");
     box.appendChild(itemTable(data.items));
-    if (data.items.length > SHOWN) cardLine(box, data.items.length - SHOWN + " more");
+    if (data.items.length > MAX_TABLE_ROWS) cardLine(box, data.items.length - MAX_TABLE_ROWS + " more");
   }
-  var groupIds = new Set(
+  const groupIds = new Set(
     data.groups.map(function (g) {
       return g.id;
     })
   );
-  var flows = data.edges.filter(function (e) {
+  const flows = data.edges.filter(function (e) {
     return e.per_min !== null && groupIds.has(e.target);
   });
   flows.sort(function (a, b) {
     return (b.per_min || 0) - (a.per_min || 0);
   });
   if (flows.length) {
-    cardHeading(box, "flows between groups");
+    cardSectionHeading(box, "flows between groups");
     box.appendChild(flowTable(data, flows));
-    if (flows.length > SHOWN) cardLine(box, flows.length - SHOWN + " more");
+    if (flows.length > MAX_TABLE_ROWS) cardLine(box, flows.length - MAX_TABLE_ROWS + " more");
   }
 }
 
@@ -283,9 +284,9 @@ export function clearTrace(): void {
 }
 
 function fetchTrace(flyAfter: boolean): void {
-  var ticket = latest("trace");
+  const ticket = latest("trace");
   view.busy = true;
-  var path = ("/api/trace?seed=" + encodeURIComponent(view.seed) + "&direction=" + view.direction) as `/api/trace?${string}`;
+  const path = ("/api/trace?seed=" + encodeURIComponent(view.seed) + "&direction=" + view.direction) as `/api/trace?${string}`;
   get<TraceResponse>(path)
     .then(function (data) {
       if (!ticket.fresh()) return;
@@ -314,13 +315,14 @@ export function startTrace(seed: string, direction: Direction): void {
   view.epoch = state.epoch;
   view.data = null;
   view.error = "";
-  claim("trace");
+  closeOtherCards("trace");
   makeRoom("trace");
   render();
   fetchTrace(true);
 }
 
-var pending = 0;
+/** The debounce on a vitals-driven refetch. */
+var refreshTimer = 0;
 
 function refresh(): void {
   if (!view.seed) return;
@@ -329,26 +331,17 @@ function refresh(): void {
     return;
   }
   if (view.busy) return;
-  clearTimeout(pending);
-  pending = window.setTimeout(function () {
+  clearTimeout(refreshTimer);
+  refreshTimer = window.setTimeout(function () {
     fetchTrace(false);
   }, 50);
 }
 
 export function listenForTraces(): void {
-  document.addEventListener(
-    "click",
-    function (event) {
-      var target = event.target as Element | null;
-      var hit = target && target.closest ? target.closest("[" + TRACE_ATTR + "]") : null;
-      if (!hit) return;
-      event.stopPropagation();
-      event.preventDefault();
-      var dir: Direction = hit.getAttribute(TRACE_DIR_ATTR) === "down" ? "down" : "up";
-      map.closePopup();
-      startTrace(hit.getAttribute(TRACE_ATTR) || "", dir);
-    },
-    true
-  );
+  onAttributeClick(TRACE_ATTR, function (hit) {
+    const direction: Direction = hit.getAttribute(TRACE_DIR_ATTR) === "down" ? "down" : "up";
+    map.closePopup();
+    startTrace(hit.getAttribute(TRACE_ATTR) || "", direction);
+  });
   onVitals(refresh);
 }

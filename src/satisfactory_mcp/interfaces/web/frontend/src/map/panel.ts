@@ -1,13 +1,13 @@
 /* The side panel: factory health and the power circuits, over the map. See
  * docs/spatial-and-map.md §21. */
 
-import { button, chip, empty, error, link, loading } from "../kit/dashkit";
+import { button, chip, delegatedButton, empty, error, link, loading } from "../kit/dashkit";
 import { issueCount, issueGroups } from "../dash/machine-health";
 import { el, LASSO_ATTR, make, TRACE_ATTR, TRACE_DIR_ATTR } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
 import { showRef } from "./tools/finder";
-import { count, mw, pct } from "../kit/format";
-import { chooseLabel, FACTORY_PICKED, flyToFactory, paddedBounds, reveal } from "./labels";
+import { buildingCounts, count, mw, pct } from "../kit/format";
+import { FACTORY_PICKED, flyToBuiltArea, paddedBounds, prioritiseLabel, reveal } from "./labels";
 import { onLayersToggle, setLayersOpen } from "./layercontrol/control";
 import { loadOne } from "../app/load";
 import { flyPadded, NARROW } from "./map";
@@ -44,7 +44,8 @@ type Tab = "factories" | "power";
 
 var CIRCUIT_ZOOM = 1;
 
-var DARK_SHOWN = 40;
+/** How many machines a folded reference list shows; the rest are counted. */
+var REF_ROWS_SHOWN = 40;
 
 var STORE_KEY = "panel";
 
@@ -62,10 +63,11 @@ var view = {
 
 var readings = vitals();
 
-var missed = false;
+/** Set when a render was skipped because a rename was being typed; the rename renders after. */
+var renderDeferred = false;
 
 function changed(): void {
-  render();
+  renderPanel();
   notifyVitals();
 }
 
@@ -79,7 +81,7 @@ function remember(): void {
 
 function recall(): void {
   try {
-    var saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
     if (typeof saved.open === "boolean" && !NARROW.matches) view.open = saved.open;
     if (saved.tab === "factories" || saved.tab === "power") view.tab = saved.tab;
   } catch (ignored) {
@@ -93,7 +95,7 @@ export function makeRoom(keep: "panel" | "layers" | "trace"): void {
   if (keep !== "layers" && state.panel.open) setLayersOpen(false);
   if (keep !== "panel" && view.open) {
     view.open = false;
-    render();
+    renderPanel();
   }
 }
 
@@ -102,7 +104,7 @@ function setOpen(open: boolean): void {
   if (open) makeRoom("panel");
   else if (document.body.getAttribute("data-sheet") === "panel") document.body.removeAttribute("data-sheet");
   remember();
-  render();
+  renderPanel();
 }
 
 interface Placed {
@@ -114,60 +116,60 @@ export function located(row: { x_m: number | null; y_m: number | null }): row is
   return row.x_m !== null && row.y_m !== null;
 }
 
-function say(body: HTMLElement, text: string): void {
+function panelNote(body: HTMLElement, text: string): void {
   body.appendChild(make("p", "panel-note", text));
 }
 
 function selectFactory(row: FactoryHealthRow, fly: boolean): void {
   view.factory = row.name;
-  chooseLabel(row.name);
-  var bounds = fly ? flyToFactory(row.bbox_m) : paddedBounds(row.bbox_m);
+  prioritiseLabel(row.name);
+  const bounds = fly ? flyToBuiltArea(row.bbox_m) : paddedBounds(row.bbox_m);
   if (bounds) outline(bounds);
   else clearMark();
-  render();
+  renderPanel();
   select({ kind: "factory", key: row.name, label: row.name });
 }
 
 function selectCircuit(row: CircuitRow): void {
   view.circuit = view.circuit === row.index ? -1 : row.index;
-  var bounds = paddedBounds(row.bbox_m);
+  const bounds = paddedBounds(row.bbox_m);
   if (view.circuit >= 0 && bounds) {
     outline(bounds);
     flyPadded(bounds, CIRCUIT_ZOOM);
   } else {
     clearMark();
   }
-  render();
+  renderPanel();
   select(view.circuit >= 0 ? { kind: "circuit", key: String(row.index), label: circuitName(row) } : null);
 }
 
-function spot(s: Selection | null): boolean {
+function isPointSelection(s: Selection | null): boolean {
   return !!s && (s.kind === "point" || s.kind === "machine");
 }
 
-function follow(): void {
-  var s = selected();
+function followSelection(): void {
+  const s = selected();
   if (!s) clearMark();
-  var factory = s && s.kind === "factory" && factoryNamed(s.key) ? s.key : "";
-  var circuitRow = s && s.kind === "circuit" && readings.circuits ? readings.circuits.circuits[+s.key] : undefined;
-  var circuit = circuitRow ? circuitRow.index : -1;
-  if (s && spot(s) && ringedKey !== s.kind + ":" + s.key && s.x_m !== undefined && s.y_m !== undefined) {
+  const factory = s && s.kind === "factory" && factoryNamed(s.key) ? s.key : "";
+  const circuitRow = s && s.kind === "circuit" && readings.circuits ? readings.circuits.circuits[+s.key] : undefined;
+  const circuit = circuitRow ? circuitRow.index : -1;
+  if (s && isPointSelection(s) && ringedKey !== s.kind + ":" + s.key && s.x_m !== undefined && s.y_m !== undefined) {
     ringAt(s.x_m, s.y_m, s.label, s.kind + ":" + s.key);
   }
-  if (s && !factory && !circuitRow && !spot(s)) return;
+  if (s && !factory && !circuitRow && !isPointSelection(s)) return;
   if (factory === view.factory && circuit === view.circuit) return;
   view.factory = factory;
   view.circuit = circuit;
-  var box = factory ? factoryNamed(factory)!.bbox_m : circuitRow ? circuitRow.bbox_m : null;
-  var bounds = box ? paddedBounds(box) : null;
+  const box = factory ? factoryNamed(factory)!.bbox_m : circuitRow ? circuitRow.bbox_m : null;
+  const bounds = box ? paddedBounds(box) : null;
   if (bounds) outline(bounds);
-  else if (!spot(s)) clearMark();
-  render();
+  else if (!isPointSelection(s)) clearMark();
+  renderPanel();
 }
 
-function pinButton(row: { x_m: number | null; y_m: number | null }, label: string): HTMLElement | null {
+function showOnMapButton(row: { x_m: number | null; y_m: number | null }, label: string): HTMLElement | null {
   if (!located(row)) return null;
-  var at = row;
+  const at = row;
   return button(
     "map",
     function () {
@@ -179,9 +181,9 @@ function pinButton(row: { x_m: number | null; y_m: number | null }, label: strin
 }
 
 function stateChips(row: FactoryHealthRow): HTMLElement {
-  var chips = make("div", "panel-chips");
+  const chips = make("div", "panel-chips");
   row.states.forEach(function (s) {
-    var t = tone(s.state);
+    const t = tone(s.state);
     if (t === "ok") return;
     chips.appendChild(chip(s.count + " " + s.state, t));
   });
@@ -192,21 +194,21 @@ function stateChips(row: FactoryHealthRow): HTMLElement {
 }
 
 function issueRow(group: IssueGroup): HTMLElement {
-  var line = make("li", "panel-issue");
-  var text = make("span", "panel-issue-text");
+  const line = make("li", "panel-issue");
+  const text = make("span", "panel-issue-text");
   text.appendChild(make("span", "panel-issue-state " + tone(group.state, true), group.state));
   text.appendChild(make("span", "panel-issue-what", group.what));
-  var detail = [counted(group.issues.length, "machine"), group.cause].filter(Boolean).join(" · ");
+  const detail = [counted(group.issues.length, "machine"), group.cause].filter(Boolean).join(" · ");
   text.appendChild(make("span", "panel-issue-cause", detail));
   line.appendChild(text);
-  var go = pinButton(group.issues[0]!, group.what);
+  const go = showOnMapButton(group.issues[0]!, group.what);
   if (go) line.appendChild(go);
   return line;
 }
 
 function nameButton(text: string, expanded: boolean, action: () => void): HTMLElement {
-  var host = make("span", "panel-row-name");
-  var pick = make("button", "panel-pick", text);
+  const host = make("span", "panel-row-name");
+  const pick = make("button", "panel-pick", text);
   pick.type = "button";
   pick.title = text;
   pick.setAttribute("aria-expanded", String(expanded));
@@ -219,15 +221,15 @@ function nameButton(text: string, expanded: boolean, action: () => void): HTMLEl
 }
 
 function factoryRow(row: FactoryHealthRow): HTMLElement {
-  var selected = row.name === view.factory;
-  var item = make("li", "panel-row" + (selected ? " on" : "") + (row.bbox_m ? " go" : ""));
+  const selected = row.name === view.factory;
+  const item = make("li", "panel-row" + (selected ? " on" : "") + (row.bbox_m ? " go" : ""));
   item.setAttribute("data-factory", row.name);
-  var head = make("div", "panel-row-head");
-  var nameEl = nameButton(row.name, selected, function () {
+  const head = make("div", "panel-row-head");
+  const nameEl = nameButton(row.name, selected, function () {
     selectFactory(row, true);
   });
   head.appendChild(nameEl);
-  var up = make("span", "panel-badge", pct(row.uptime));
+  const up = make("span", "panel-badge", pct(row.uptime));
   up.title = "mean uptime over each machine's last 300 s window";
   head.appendChild(up);
   item.appendChild(head);
@@ -248,39 +250,37 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
   item.appendChild(stateChips(row));
   if (selected) {
     item.appendChild(link("factories/" + row.name, "open in dashboard", "panel-dash"));
-    var tools = make("div", "panel-row-tools");
+    const tools = make("div", "panel-row-tools");
     tools.appendChild(
       button(
         "rename",
         function () {
-          var health = readings.health;
+          const health = readings.health;
           if (!health) return;
           editName(nameEl, row.name, health.labels_version, function (reply) {
             if (reply) view.factory = reply.name;
-            if (reply || missed) render();
+            if (reply || renderDeferred) renderPanel();
           });
         },
         { title: "rename this factory" }
       )
     );
-    var trace = button("trace supply", function () {}, { title: "draw what feeds this factory on the map" });
-    trace.onclick = null;
-    trace.setAttribute(TRACE_ATTR, "label:" + row.name);
-    trace.setAttribute(TRACE_DIR_ATTR, "up");
-    tools.appendChild(trace);
-    var amend = button("amend", function () {}, { title: "draw around machines on the map to add them or remove them" });
-    amend.onclick = null;
-    amend.setAttribute(LASSO_ATTR, row.name);
-    tools.appendChild(amend);
+    const traceAttrs: Record<string, string> = {};
+    traceAttrs[TRACE_ATTR] = "label:" + row.name;
+    traceAttrs[TRACE_DIR_ATTR] = "up";
+    tools.appendChild(delegatedButton("trace supply", traceAttrs, { title: "draw what feeds this factory on the map" }));
+    const amendAttrs: Record<string, string> = {};
+    amendAttrs[LASSO_ATTR] = row.name;
+    tools.appendChild(delegatedButton("amend", amendAttrs, { title: "draw around machines on the map to add them or remove them" }));
     item.appendChild(tools);
   }
-  var groups = selected ? issueGroups([row]) : [];
+  const groups = selected ? issueGroups([row]) : [];
   if (groups.length) {
-    var list = make("ul", "panel-issues");
+    const list = make("ul", "panel-issues");
     groups.forEach(function (group) {
       list.appendChild(issueRow(group));
     });
-    var rest = row.actionable - issueCount(groups);
+    const rest = row.actionable - issueCount(groups);
     if (rest > 0) list.appendChild(make("li", "panel-more", counted(rest, "more machine", "more machines") + " " + WORDS.needAction));
     item.appendChild(list);
   }
@@ -310,19 +310,19 @@ function renderFactories(body: HTMLElement): void {
     loading(body, "factory health");
     return;
   }
-  var rows = readings.health.factories;
+  const rows = readings.health.factories;
   if (!rows.length) {
     empty(body, "no " + WORDS.factories + " named yet", link("factories", "find and name them on the Factories tab"));
     return;
   }
-  var todo = rows.filter(function (r) {
+  const todo = rows.filter(function (r) {
     return r.actionable > 0;
   }).length;
-  var line = make("p", "panel-note", counted(rows.length, WORDS.factory, WORDS.factories) + " · ");
+  const line = make("p", "panel-note", counted(rows.length, WORDS.factory, WORDS.factories) + " · ");
   line.appendChild(make("span", actionTone(statesOf(rows)), count(todo)));
   line.appendChild(document.createTextNode(" " + WORDS.needAction));
   body.appendChild(line);
-  var list = make("ul", "panel-list");
+  const list = make("ul", "panel-list");
   rows.forEach(function (row) {
     list.appendChild(factoryRow(row));
   });
@@ -330,9 +330,9 @@ function renderFactories(body: HTMLElement): void {
 }
 
 function ledgerBlock(r: Rated, starved: number): HTMLElement {
-  var box = make("div", "panel-ledger");
-  var grid = make("div", "panel-kv");
-  var pairs: [string, Reading][] = [
+  const box = make("div", "panel-ledger");
+  const grid = make("div", "panel-kv");
+  const pairs: [string, Reading][] = [
     [LEDGER.generation, readGeneration(r)],
     [LEDGER.measuredDraw, readMeasured(r)],
     [LEDGER.nameplateDraw, { value: mw(r.ledger.draw_mw), bad: false, why: "" }],
@@ -342,13 +342,13 @@ function ledgerBlock(r: Rated, starved: number): HTMLElement {
   if (starved) pairs.splice(1, 0, ["of it starved", { value: mw(starved), bad: true, why: "" }]);
   pairs.forEach(function (p) {
     grid.appendChild(make("span", "panel-k", p[0]));
-    var v = make("span", "panel-v" + (p[1].bad ? " bad" : ""), p[1].value);
+    const v = make("span", "panel-v" + (p[1].bad ? " bad" : ""), p[1].value);
     if (p[1].why) v.title = p[1].why;
     grid.appendChild(v);
   });
   box.appendChild(bar(r.ledger));
   box.appendChild(grid);
-  var extra = biomassLine(r.ledger);
+  const extra = biomassLine(r.ledger);
   if (extra) box.appendChild(make("p", "panel-note", extra));
   return box;
 }
@@ -358,42 +358,42 @@ type Ref = MachineRef | StarvedGenerator;
 var STARVED_HINT = "input ran dry and produced nothing in its window";
 
 function refList(title: string, rows: Ref[], hint: string): HTMLElement {
-  var fold = make("details", "panel-fold-list");
-  var summary = make("summary", "", title + " (" + rows.length + ")");
+  const fold = make("details", "panel-fold-list");
+  const summary = make("summary", "", title + " (" + rows.length + ")");
   summary.title = hint;
   fold.appendChild(summary);
-  var list = make("ul", "panel-issues");
-  rows.slice(0, DARK_SHOWN).forEach(function (r) {
-    var line = make("li", "panel-issue");
-    var text = make("span", "panel-issue-text");
+  const list = make("ul", "panel-issues");
+  rows.slice(0, REF_ROWS_SHOWN).forEach(function (r) {
+    const line = make("li", "panel-issue");
+    const text = make("span", "panel-issue-text");
     text.appendChild(make("span", "panel-issue-what", r.name));
-    var sub = "missing" in r ? mw(r.mw) + " · " + r.cause : whereOf(r).where;
+    const sub = "missing" in r ? mw(r.mw) + " · " + r.cause : whereOf(r).where;
     if (sub) text.appendChild(make("span", "panel-issue-cause", sub));
     line.appendChild(text);
-    var go = pinButton(r, r.name);
+    const go = showOnMapButton(r, r.name);
     if (go) line.appendChild(go);
     list.appendChild(line);
   });
-  var rest = rows.length - DARK_SHOWN;
+  const rest = rows.length - REF_ROWS_SHOWN;
   if (rest > 0) list.appendChild(make("li", "panel-more", rest + " more"));
   fold.appendChild(list);
   return fold;
 }
 
 function circuitRow(row: CircuitRow): HTMLElement {
-  var selected = row.index === view.circuit;
-  var led = row.ledger;
-  var r = ratedCircuit(row);
-  var item = make("li", "panel-row" + (selected ? " on" : "") + (row.bbox_m ? " go" : ""));
-  var head = make("div", "panel-row-head");
+  const selected = row.index === view.circuit;
+  const led = row.ledger;
+  const r = ratedCircuit(row);
+  const item = make("li", "panel-row" + (selected ? " on" : "") + (row.bbox_m ? " go" : ""));
+  const head = make("div", "panel-row-head");
   head.appendChild(
     nameButton(circuitName(row), selected, function () {
       selectCircuit(row);
     })
   );
-  var now = r.dark ? readGeneration(r) : readNow(r);
-  var tone = now.bad || led.starved_generation_mw > 0 ? " bad" : now.why ? "" : " ok";
-  var badge = make("span", "panel-badge" + tone, now.value);
+  const now = r.dark ? readGeneration(r) : readNow(r);
+  const badgeTone = now.bad || led.starved_generation_mw > 0 ? " bad" : now.why ? "" : " ok";
+  const badge = make("span", "panel-badge" + badgeTone, now.value);
   badge.title = now.why || LEDGER.headroomNow;
   head.appendChild(badge);
   item.appendChild(head);
@@ -414,19 +414,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
   if (selected) {
     item.appendChild(link("power/" + (row.index + 1), "open in dashboard", "panel-dash"));
     item.appendChild(ledgerBlock(r, led.starved_generation_mw));
-    if (row.generators.length) {
-      item.appendChild(
-        make(
-          "div",
-          "panel-row-sub",
-          row.generators
-            .map(function (g) {
-              return g.count + "× " + g.name;
-            })
-            .join(", ")
-        )
-      );
-    }
+    if (row.generators.length) item.appendChild(make("div", "panel-row-sub", buildingCounts(row.generators)));
     if (row.starved.length) item.appendChild(refList(WORDS.starvedGenerator + "s", row.starved, STARVED_HINT));
   }
   item.onclick = function (event) {
@@ -438,7 +426,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
 
 function renderPower(body: HTMLElement): void {
   if (unavailable(body, "power circuits", readings.circuitsError, CIRCUITS_PATH)) return;
-  var data = readings.circuits;
+  const data = readings.circuits;
   if (!data) {
     loading(body, "power circuits");
     return;
@@ -446,14 +434,14 @@ function renderPower(body: HTMLElement): void {
   body.appendChild(make("h3", "panel-h", "whole world"));
   body.appendChild(ledgerBlock(ratedWorld(data), data.world.starved_generation_mw));
   if (data.generators.length) {
-    var kinds = data.generators.map(function (g) {
+    const kinds = data.generators.map(function (g) {
       return g.count + "× " + g.name + " " + mw(g.mw);
     });
-    say(body, kinds.join(" · "));
+    panelNote(body, kinds.join(" · "));
   }
-  if (data.paused) say(body, counted(data.paused, "paused building") + ", left out of both sides");
+  if (data.paused) panelNote(body, counted(data.paused, "paused building") + ", left out of both sides");
   if (data.unmodellable.length) {
-    say(body, "not in game data, left out: " + data.unmodellable.join(", "));
+    panelNote(body, "not in game data, left out: " + data.unmodellable.join(", "));
   }
   if (data.unwired_generators.length) body.appendChild(refList("generators on no wire", data.unwired_generators, "generation no circuit can use"));
   if (data.starved.length || data.unwired.length || data.no_generator.length) body.appendChild(make("h3", "panel-h", WORDS.powerProblems));
@@ -461,34 +449,34 @@ function renderPower(body: HTMLElement): void {
   if (data.unwired.length) body.appendChild(refList(WORDS.noWire, data.unwired, "machines on no power line"));
   if (data.no_generator.length) body.appendChild(refList(WORDS.noGenerator, data.no_generator, "wired to a circuit no generator stands on"));
   body.appendChild(make("h3", "panel-h", counted(data.circuits.length, "circuit")));
-  var list = make("ul", "panel-list");
+  const list = make("ul", "panel-list");
   data.circuits.forEach(function (row) {
     list.appendChild(circuitRow(row));
   });
   body.appendChild(list);
 }
 
-export function render(): void {
-  var panel = el("panel");
+export function renderPanel(): void {
+  const panel = el("panel");
   if (renamingIn(panel)) {
-    missed = true;
+    renderDeferred = true;
     return;
   }
-  missed = false;
+  renderDeferred = false;
   panel.className = view.open ? "" : "shut";
-  var tabs = panel.querySelectorAll<HTMLButtonElement>("[data-tab]");
+  const tabs = panel.querySelectorAll<HTMLButtonElement>("[data-tab]");
   Array.prototype.forEach.call(tabs, function (tab: HTMLButtonElement) {
-    var on = view.open && tab.getAttribute("data-tab") === view.tab;
+    const on = view.open && tab.getAttribute("data-tab") === view.tab;
     tab.className = "panel-tab";
     tab.setAttribute("aria-selected", String(on));
     tab.tabIndex = on || (!view.open && tab.getAttribute("data-tab") === view.tab) ? 0 : -1;
   });
-  var fold = el("panel-fold");
+  const fold = el("panel-fold");
   fold.setAttribute("aria-expanded", String(view.open));
   fold.setAttribute("aria-label", view.open ? "fold the panel away" : "open the panel");
   fold.title = fold.getAttribute("aria-label")!;
-  var body = el("panel-body");
-  var scroll = body.scrollTop;
+  const body = el("panel-body");
+  const scroll = body.scrollTop;
   keepFocus(body, function () {
     body.textContent = "";
     if (!view.open) return;
@@ -507,7 +495,7 @@ function factoryNamed(name: string): FactoryHealthRow | undefined {
 }
 
 export function showFactory(name: string): void {
-  var row = factoryNamed(name);
+  const row = factoryNamed(name);
   if (!row) {
     view.pending = name;
     return;
@@ -525,7 +513,7 @@ export function showSelector(selector: string): void {
 }
 
 export function showCircuit(index: number): void {
-  var row = readings.circuits ? readings.circuits.circuits[index] : undefined;
+  const row = readings.circuits ? readings.circuits.circuits[index] : undefined;
   if (!row) return;
   view.tab = "power";
   view.circuit = -1;
@@ -534,8 +522,8 @@ export function showCircuit(index: number): void {
 }
 
 function scrollToFactory(): void {
-  var body = el("panel-body");
-  var rows = body.querySelectorAll<HTMLElement>("[data-factory]");
+  const body = el("panel-body");
+  const rows = body.querySelectorAll<HTMLElement>("[data-factory]");
   Array.prototype.forEach.call(rows, function (row: HTMLElement) {
     if (row.getAttribute("data-factory") === view.factory) row.scrollIntoView({ block: "nearest" });
   });
@@ -548,14 +536,14 @@ function pickTab(tab: Tab): void {
 }
 
 function wire(): void {
-  var tabs: HTMLElement[] = Array.prototype.slice.call(el("panel").querySelectorAll("[data-tab]"));
+  const tabs: HTMLElement[] = Array.prototype.slice.call(el("panel").querySelectorAll("[data-tab]"));
   tabs.forEach(function (tab, i) {
     tab.onclick = function () {
       pickTab(tab.getAttribute("data-tab") as Tab);
     };
     tab.onkeydown = function (event) {
       if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-      var next = tabs[(i + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]!;
+      const next = tabs[(i + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]!;
       pickTab(next.getAttribute("data-tab") as Tab);
       next.focus();
     };
@@ -568,7 +556,7 @@ function wire(): void {
     else if (document.body.getAttribute("data-sheet") === "layers") document.body.removeAttribute("data-sheet");
   });
   document.addEventListener(FACTORY_PICKED, function (event) {
-    var row = factoryNamed((event as CustomEvent<string>).detail);
+    const row = factoryNamed((event as CustomEvent<string>).detail);
     if (!row) return;
     view.tab = "factories";
     selectFactory(row, false);
@@ -578,8 +566,8 @@ function wire(): void {
 
 recall();
 wire();
-render();
-onSelect(follow);
+renderPanel();
+onSelect(followSelection);
 
 registerFetch<FactoryHealthResponse>({
   wave: "live",
@@ -597,9 +585,9 @@ registerFetch<FactoryHealthResponse>({
       clearMark();
       select(null);
     }
-    var s = selected();
+    const s = selected();
     if (s && s.kind === "factory" && !factoryNamed(s.key)) select(null);
-    follow();
+    followSelection();
     changed();
     if (view.pending) showFactory(view.pending);
   },
@@ -626,7 +614,7 @@ registerFetch<CircuitsResponse>({
     readings.circuits = data;
     readings.circuitsError = "";
     if (view.circuit >= data.circuits.length) view.circuit = -1;
-    follow();
+    followSelection();
     changed();
   },
   failed: function () {

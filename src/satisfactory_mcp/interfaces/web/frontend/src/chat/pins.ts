@@ -5,7 +5,7 @@ import { send } from "../api/client";
 import { copyText } from "../kit/copy";
 import { code, esc, html, popup } from "../kit/dom";
 import { L } from "../map/leaflet";
-import { BAND, layer } from "../map/layers";
+import { BAND, clearedLayer } from "../map/layers";
 import { liveStore } from "./livestore";
 import { flyToPoint, map, latLngOf } from "../map/map";
 import { goToMapThen } from "../app/nav";
@@ -80,7 +80,7 @@ function pinRows(p: PinRow): Row[] {
 }
 
 function draw(data: PinsResponse): void {
-  var group = layer("pins", true, undefined, [BAND.chrome, 60, "pins"]);
+  var group = clearedLayer("pins", { on: true, rank: [BAND.chrome, 60, "pins"] });
   markers = {};
   var stacked: Record<string, number> = {};
   data.pins.forEach(function (p) {

@@ -3,14 +3,15 @@
 
 import { get, latest } from "../../api/client";
 import { button, link, selectBox, statusChip, subTabs, table, toggleButton } from "../../kit/dashkit";
-import { FIND_AT_ATTR, FIND_ATTR } from "../../kit/dom";
+import { FIND_AT_ATTR, FIND_ATTR, onAttributeClick } from "../../kit/dom";
 import { keepFocus } from "../../kit/focus";
 import { coords, count, formatNumber, metres, perMin } from "../../kit/format";
 import { reveal } from "../labels";
 import { L } from "../leaflet";
-import { FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, latLngOf } from "../map";
-import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
-import { knownNodes, pickupName } from "../drawn/markers";
+import { boundsOfBbox, FIT_SNAP, flyPadded, flyToBox, flyToPoint, map, latLngOf } from "../map";
+import { cardTitleBar, cardLine, cardToolbar, cardSubject, closeOtherCards, mapCard } from "../mapcard";
+import { knownNodes } from "../drawn/markers";
+import { pickupName } from "../drawn/pickups";
 import { withQuery } from "../../app/nav";
 import {
   carriesText,
@@ -37,6 +38,7 @@ import { WORDS } from "../../kit/words";
 
 import type { ApiUrl } from "../../api/client";
 import type { Column } from "../../kit/dashkit";
+import type { BboxM } from "../geometry";
 import type {
   CollectibleRow,
   CollectiblesResponse,
@@ -51,14 +53,16 @@ import type { Selection } from "../../app/selection";
 
 export type FindKind = "nodes" | "conduits" | "pickups";
 
-export type Shown =
+/** What the finder card lists and the map rings: one kind of row at a time. */
+export type FinderResults =
   | { kind: "nodes"; rows: FoundNode[] }
   | { kind: "fields"; rows: FoundField[] }
   | { kind: "sites"; rows: RankedSite[] }
   | { kind: "runs"; rows: RunRow[] }
   | { kind: "pickups"; rows: CollectibleRow[] };
 
-var SHOWN = 25;
+/** How many rows the card lists; the rest are counted. */
+var MAX_TABLE_ROWS = 25;
 
 var NEAR_M = 500;
 
@@ -81,12 +85,14 @@ var group = L.layerGroup();
 var view = {
   open: false,
   title: "",
+  /** The point a "near here" search is about, or null for a list handed in from elsewhere. */
   at: null as { x: number; y: number } | null,
   kind: "nodes" as FindKind,
   ref: "",
   dash: "",
-  set: null as Shown | null,
-  seed: -1,
+  results: null as FinderResults | null,
+  /** The row picked in the card and ringed boldest on the map, or -1. */
+  selectedIndex: -1,
   note: "",
   error: "",
   busy: false,
@@ -94,20 +100,21 @@ var view = {
   epoch: 0,
   filter: { resource: "", free: false, conduitKind: "all", radius: CONDUIT_RADIUS_M, group: "" },
   groups: [] as string[],
-  beyond: 0,
-  focus: false,
-  back: null as HTMLElement | null,
+  /** Rows the server sent past the cap, counted in the card's "n more". */
+  hiddenByCap: 0,
+  focusOnRender: false,
+  returnFocusTo: null as HTMLElement | null,
 };
 
-function card(): HTMLElement {
+function finderCard(): HTMLElement {
   return mapCard("finder", "finder", closeFinder);
 }
 
-function ring(at: { x_m: number; y_m: number }, seed: boolean): void {
+function ringPoint(at: { x_m: number; y_m: number }, selected: boolean): void {
   L.circleMarker(latLngOf(at), {
-    radius: seed ? 11 : 7,
+    radius: selected ? 11 : 7,
     color: HIGHLIGHT,
-    weight: seed ? 4 : 2,
+    weight: selected ? 4 : 2,
     fill: false,
     renderer: renderer,
     pane: "finder",
@@ -115,8 +122,8 @@ function ring(at: { x_m: number; y_m: number }, seed: boolean): void {
   }).addTo(group);
 }
 
-function box(b: [number, number, number, number]): void {
-  L.rectangle(L.latLngBounds([latLngOf({ x_m: b[0], y_m: b[1] }), latLngOf({ x_m: b[2], y_m: b[3] })]), {
+function outlineBox(bbox: BboxM): void {
+  L.rectangle(boundsOfBbox(bbox), {
     color: HIGHLIGHT,
     weight: 2,
     dashArray: "6 4",
@@ -127,18 +134,18 @@ function box(b: [number, number, number, number]): void {
   }).addTo(group);
 }
 
-function latlngs(r: RunRow): L.LatLngTuple[][] {
-  return r.lines_m.map(function (points) {
-    return points.map(function (p) {
-      return [-p[1], p[0]] as L.LatLngTuple;
+function latlngs(run: RunRow): L.LatLngTuple[][] {
+  return run.lines_m.map(function (points) {
+    return points.map(function (point) {
+      return latLngOf(point);
     });
   });
 }
 
-function line(r: RunRow, seed: boolean): L.Polyline {
-  return L.polyline(latlngs(r), {
+function drawRunLine(run: RunRow, selected: boolean): L.Polyline {
+  return L.polyline(latlngs(run), {
     color: HIGHLIGHT,
-    weight: seed ? 5 : 3,
+    weight: selected ? 5 : 3,
     opacity: 0.8,
     renderer: renderer,
     pane: "finder",
@@ -146,87 +153,90 @@ function line(r: RunRow, seed: boolean): L.Polyline {
   }).addTo(group);
 }
 
-function runBounds(r: RunRow): L.LatLngBounds | null {
-  var points = ([] as L.LatLngTuple[]).concat.apply([], latlngs(r));
+function runBounds(run: RunRow): L.LatLngBounds | null {
+  const points = ([] as L.LatLngTuple[]).concat.apply([], latlngs(run));
   return points.length ? L.latLngBounds(points) : null;
 }
 
-function members(f: FoundField): void {
-  var wanted: Record<string, boolean> = {};
-  f.members.forEach(function (leaf) {
+/** Ring every node a field is made of, which only the drawn node dots know the places of. */
+function ringFieldMembers(field: FoundField): void {
+  const wanted: Record<string, boolean> = {};
+  field.members.forEach(function (leaf) {
     wanted[leaf] = true;
   });
-  knownNodes().forEach(function (n) {
-    if (wanted[n.name]) ring(n, false);
+  knownNodes().forEach(function (node) {
+    if (wanted[node.name]) ringPoint(node, false);
   });
 }
 
-function draw(set: Shown, seed: number): L.LatLngBounds | null {
+function draw(results: FinderResults, selectedIndex: number): L.LatLngBounds | null {
   group.clearLayers();
-  var bounds: L.LatLngBounds | null = null;
-  function grow(b: L.LatLngBounds | L.LatLngTuple): void {
-    if (bounds) bounds.extend(b);
-    else bounds = b instanceof L.LatLngBounds ? L.latLngBounds(b.getSouthWest(), b.getNorthEast()) : L.latLngBounds([b, b]);
+  let bounds: L.LatLngBounds | null = null;
+  function grow(more: L.LatLngBounds | L.LatLngTuple): void {
+    if (bounds) bounds.extend(more);
+    else bounds = more instanceof L.LatLngBounds ? L.latLngBounds(more.getSouthWest(), more.getNorthEast()) : L.latLngBounds([more, more]);
   }
-  if (set.kind === "nodes" || set.kind === "pickups" || set.kind === "sites") {
-    (set.rows as { x_m: number; y_m: number }[]).forEach(function (r, i) {
-      ring(r, i === seed);
-      grow(latLngOf(r));
+  if (results.kind === "nodes" || results.kind === "pickups" || results.kind === "sites") {
+    (results.rows as { x_m: number; y_m: number }[]).forEach(function (row, i) {
+      ringPoint(row, i === selectedIndex);
+      grow(latLngOf(row));
     });
-  } else if (set.kind === "fields") {
-    set.rows.forEach(function (f, i) {
-      box(f.bbox_m);
-      if (i === seed) members(f);
-      grow(L.latLngBounds([latLngOf({ x_m: f.bbox_m[0], y_m: f.bbox_m[1] }), latLngOf({ x_m: f.bbox_m[2], y_m: f.bbox_m[3] })]));
+  } else if (results.kind === "fields") {
+    results.rows.forEach(function (field, i) {
+      outlineBox(field.bbox_m);
+      if (i === selectedIndex) ringFieldMembers(field);
+      grow(boundsOfBbox(field.bbox_m));
     });
   } else {
-    set.rows.forEach(function (r, i) {
-      line(r, i === seed);
-      var b = runBounds(r);
-      if (b) grow(b);
+    results.rows.forEach(function (run, i) {
+      drawRunLine(run, i === selectedIndex);
+      const runBox = runBounds(run);
+      if (runBox) grow(runBox);
     });
   }
   if (!map.hasLayer(group)) group.addTo(map);
   return bounds;
 }
 
-function flyTo(set: Shown, seed: number, bounds: L.LatLngBounds | null): void {
-  var row = seed >= 0 ? set.rows[seed] : undefined;
-  if (row && set.kind === "fields") {
+function flyTo(results: FinderResults, selectedIndex: number, bounds: L.LatLngBounds | null): void {
+  const row = selectedIndex >= 0 ? results.rows[selectedIndex] : undefined;
+  if (row && results.kind === "fields") {
     flyToBox((row as FoundField).bbox_m, { maxZoom: POINT_ZOOM });
     return;
   }
-  if (row && set.kind === "runs") {
-    var b = runBounds(row as RunRow);
-    if (b) flyPadded(b.pad(0.2), POINT_ZOOM);
+  if (row && results.kind === "runs") {
+    const runBox = runBounds(row as RunRow);
+    if (runBox) flyPadded(runBox.pad(0.2), POINT_ZOOM);
     return;
   }
   if (row) {
-    var at = row as { x_m: number; y_m: number };
+    const at = row as { x_m: number; y_m: number };
     flyToPoint(latLngOf(at), Math.max(map.getZoom(), POINT_ZOOM));
     return;
   }
   if (bounds) flyPadded(bounds.pad(ALL_PAD), ALL_ZOOM, FIT_SNAP);
 }
 
-function selectionOf(set: Shown, i: number): Selection {
-  if (set.kind === "nodes") return nodeSelection(set.rows[i]!);
-  if (set.kind === "fields") return fieldSelection(set.rows[i]!);
-  if (set.kind === "sites") return siteSelection(set.rows[i]!);
-  if (set.kind === "runs") return runSelection(set.rows[i]!);
-  return pickupSelection(set.rows[i]!);
+function selectionOf(results: FinderResults, i: number): Selection {
+  if (results.kind === "nodes") return nodeSelection(results.rows[i]!);
+  if (results.kind === "fields") return fieldSelection(results.rows[i]!);
+  if (results.kind === "sites") return siteSelection(results.rows[i]!);
+  if (results.kind === "runs") return runSelection(results.rows[i]!);
+  return pickupSelection(results.rows[i]!);
 }
 
-function pick(i: number): void {
-  if (!view.set) return;
-  view.seed = i;
-  var bounds = draw(view.set, i);
-  render();
-  flyTo(view.set, i, bounds);
-  if (view.set.kind === "pickups") reveal(["pickup: " + view.set.rows[i]!.category]);
-  select(selectionOf(view.set, i));
+/** Pick one row: ring it boldest, fly to it, and make it the page's selection. */
+function selectResult(i: number): void {
+  if (!view.results) return;
+  view.selectedIndex = i;
+  const bounds = draw(view.results, i);
+  renderFinder();
+  flyTo(view.results, i, bounds);
+  if (view.results.kind === "pickups") reveal(["pickup: " + view.results.rows[i]!.category]);
+  select(selectionOf(view.results, i));
 }
 
+/** One table row of the card: the index of a result. */
 interface Listed {
   i: number;
 }
@@ -237,15 +247,15 @@ function column(key: string, label: string, render: (i: number) => string | HTML
     label: label,
     align: right ? "right" : undefined,
     className: right ? "dash-nowrap" : undefined,
-    render: function (r) {
-      return render(r.i);
+    render: function (listed) {
+      return render(listed.i);
     },
   };
 }
 
-function columns(set: Shown): Column<Listed>[] {
-  if (set.kind === "nodes") {
-    var nodes = set.rows;
+function columns(results: FinderResults): Column<Listed>[] {
+  if (results.kind === "nodes") {
+    const nodes = results.rows;
     return [
       column("node", WORDS.node, function (i) {
         return nodeLabel(nodes[i]!);
@@ -261,8 +271,8 @@ function columns(set: Shown): Column<Listed>[] {
       }, true),
     ];
   }
-  if (set.kind === "fields") {
-    var fields = set.rows;
+  if (results.kind === "fields") {
+    const fields = results.rows;
     return [
       column("field", WORDS.field, function (i) {
         return fieldLabel(fields[i]!);
@@ -275,8 +285,8 @@ function columns(set: Shown): Column<Listed>[] {
       }, true),
     ];
   }
-  if (set.kind === "sites") {
-    var sites = set.rows;
+  if (results.kind === "sites") {
+    const sites = results.rows;
     return [
       column("rank", "rank", function (i) {
         return String(sites[i]!.rank);
@@ -289,8 +299,8 @@ function columns(set: Shown): Column<Listed>[] {
       }, true),
     ];
   }
-  if (set.kind === "runs") {
-    var runs = set.rows;
+  if (results.kind === "runs") {
+    const runs = results.rows;
     return [
       column("run", WORDS.run, function (i) {
         return runLabel(runs[i]!);
@@ -306,7 +316,7 @@ function columns(set: Shown): Column<Listed>[] {
       }, true),
     ];
   }
-  var pickups = set.rows;
+  const pickups = results.rows;
   return [
     column("pickup", "pickup", function (i) {
       return pickupName(pickups[i]!.category);
@@ -320,60 +330,60 @@ function columns(set: Shown): Column<Listed>[] {
   ];
 }
 
-function listed(box: HTMLElement, set: Shown): void {
-  var total = set.rows.length;
+function renderResultTable(box: HTMLElement, results: FinderResults): void {
+  const total = results.rows.length;
   if (!total) {
-    cardLine(box, view.at && set.kind === "nodes" ? "no " + WORDS.node + " within " + count(NEAR_M) + " m" : "nothing found here");
+    cardLine(box, view.at && results.kind === "nodes" ? "no " + WORDS.node + " within " + count(NEAR_M) + " m" : "nothing found here");
     return;
   }
-  var rows: Listed[] = [];
-  for (var i = 0; i < Math.min(total, SHOWN); i++) rows.push({ i: i });
-  var measured = (set.rows as { distance_m?: number | null }[]).some(function (r) {
-    return r.distance_m !== null && r.distance_m !== undefined;
+  const rows: Listed[] = [];
+  for (let i = 0; i < Math.min(total, MAX_TABLE_ROWS); i++) rows.push({ i: i });
+  const measured = (results.rows as { distance_m?: number | null }[]).some(function (row) {
+    return row.distance_m !== null && row.distance_m !== undefined;
   });
-  var shownColumns = columns(set).filter(function (c) {
-    return measured || c.key !== "distance";
+  const shownColumns = columns(results).filter(function (shown) {
+    return measured || shown.key !== "distance";
   });
   box.appendChild(
     table<Listed>(shownColumns, rows, {
       caption: view.title,
-      onRow: function (r) {
-        pick(r.i);
+      onRow: function (listed) {
+        selectResult(listed.i);
       },
-      rowClass: function (r) {
-        return r.i === view.seed ? "on" : "";
+      rowClass: function (listed) {
+        return listed.i === view.selectedIndex ? "on" : "";
       },
     })
   );
-  var more = Math.max(0, total - SHOWN) + view.beyond;
+  const more = Math.max(0, total - MAX_TABLE_ROWS) + view.hiddenByCap;
   if (more) cardLine(box, count(more) + " more");
 }
 
 function filterRow(box: HTMLElement): void {
-  var row = cardRow();
+  const row = cardToolbar();
   row.classList.add("finder-filter");
-  var f = view.filter;
+  const filter = view.filter;
   if (view.kind === "nodes") {
     row.appendChild(
-      choose("resource", "finder-resource", f.resource, resourceOptions("any resource", f.resource), function (v) {
-        f.resource = v;
+      choose("resource", "finder-resource", filter.resource, resourceOptions("any resource", filter.resource), function (value) {
+        filter.resource = value;
       })
     );
     row.appendChild(
-      toggleButton(WORDS.free, f.free, function () {
-        f.free = !f.free;
+      toggleButton(WORDS.free, filter.free, function () {
+        filter.free = !filter.free;
         fetchPoint(true);
       }, { title: "only nodes with no extractor on them" })
     );
   } else if (view.kind === "conduits") {
     row.appendChild(
-      choose("kind", "finder-kind", f.conduitKind, [["all", "belts and pipes"], ["belt", "belts"], ["pipe", "pipes"]], function (v) {
-        f.conduitKind = v;
+      choose("kind", "finder-kind", filter.conduitKind, [["all", "belts and pipes"], ["belt", "belts"], ["pipe", "pipes"]], function (value) {
+        filter.conduitKind = value;
       })
     );
     row.appendChild(
-      choose("radius", "finder-radius", f.radius, RADII.map(function (r): [string, string] { return [r, "within " + r + " m"]; }), function (v) {
-        f.radius = v;
+      choose("radius", "finder-radius", filter.radius, RADII.map(function (radius): [string, string] { return [radius, "within " + radius + " m"]; }), function (value) {
+        filter.radius = value;
       })
     );
   } else {
@@ -381,14 +391,14 @@ function filterRow(box: HTMLElement): void {
       choose(
         "pickup kind",
         "finder-group",
-        f.group,
+        filter.group,
         [["", "every kind"] as [string, string]].concat(
-          view.groups.map(function (g): [string, string] {
-            return [g, pickupName(g)];
+          view.groups.map(function (category): [string, string] {
+            return [category, pickupName(category)];
           })
         ),
-        function (v) {
-          f.group = v;
+        function (value) {
+          filter.group = value;
         }
       )
     );
@@ -396,39 +406,39 @@ function filterRow(box: HTMLElement): void {
   box.appendChild(row);
 }
 
-function choose(label: string, candidate: string, value: string, options: [string, string][], change: (v: string) => void): HTMLSelectElement {
-  return selectBox(options, value, function (v) {
-    change(v);
+function choose(label: string, candidate: string, value: string, options: [string, string][], change: (value: string) => void): HTMLSelectElement {
+  return selectBox(options, value, function (picked) {
+    change(picked);
     fetchPoint(true);
   }, { label: label, candidate: candidate });
 }
 
-function render(): void {
-  var el = card();
-  keepFocus(el, function () {
-    fill(el);
+function renderFinder(): void {
+  const card = finderCard();
+  keepFocus(card, function () {
+    fillFinderCard(card);
   });
-  if (view.open && view.focus) {
-    view.focus = false;
-    var first = el.querySelector<HTMLElement>(".subtabs-item.on") || el.querySelector<HTMLElement>("tbody tr.on[tabindex]") || el.querySelector<HTMLElement>("tbody tr[tabindex]") || el.querySelector<HTMLElement>(".mapcard-head button");
+  if (view.open && view.focusOnRender) {
+    view.focusOnRender = false;
+    const first = card.querySelector<HTMLElement>(".subtabs-item.on") || card.querySelector<HTMLElement>("tbody tr.on[tabindex]") || card.querySelector<HTMLElement>("tbody tr[tabindex]") || card.querySelector<HTMLElement>(".mapcard-head button");
     if (first) first.focus({ preventScroll: true });
   }
 }
 
-function fill(el: HTMLElement): void {
-  el.textContent = "";
+function fillFinderCard(card: HTMLElement): void {
+  card.textContent = "";
   if (!view.open) {
-    el.hidden = true;
+    card.hidden = true;
     return;
   }
-  el.hidden = false;
-  var head = cardHead(view.at ? "Near this point" : "On the map");
+  card.hidden = false;
+  const head = cardTitleBar(view.at ? "Near this point" : "On the map");
   if (view.note) head.title = view.note;
   head.appendChild(button("×", closeFinder, { title: "close the finder", label: "close the finder and clear its rings" }));
-  el.appendChild(head);
-  cardSubject(el, view.title);
+  card.appendChild(head);
+  cardSubject(card, view.title);
   if (view.at) {
-    el.appendChild(
+    card.appendChild(
       subTabs(
         [
           { id: "nodes", label: "nodes" },
@@ -443,221 +453,240 @@ function fill(el: HTMLElement): void {
         "what to find near this point"
       )
     );
-    filterRow(el);
+    filterRow(card);
   }
-  if (view.error) cardLine(el, view.error, "bad");
-  else if (view.set) listed(el, view.set);
-  else if (view.busy) cardLine(el, "finding…");
+  if (view.error) cardLine(card, view.error, "bad");
+  else if (view.results) renderResultTable(card, view.results);
+  else if (view.busy) cardLine(card, "finding…");
   if (view.dash) {
-    var foot = cardRow();
+    const foot = cardToolbar();
     foot.appendChild(link(view.dash, "open in World"));
-    el.appendChild(foot);
+    card.appendChild(foot);
   }
 }
 
 export function closeFinder(): void {
-  var inside = card().contains(document.activeElement);
-  var back = view.back;
-  view.back = null;
+  const inside = finderCard().contains(document.activeElement);
+  const back = view.returnFocusTo;
+  view.returnFocusTo = null;
   latest("finder");
   view.open = false;
-  view.set = null;
+  view.results = null;
   view.at = null;
   view.ref = "";
-  view.seed = -1;
+  view.selectedIndex = -1;
   view.error = "";
   view.busy = false;
   group.clearLayers();
-  render();
+  renderFinder();
   if (!inside) return;
   if (back && back.isConnected && back.getClientRects().length) back.focus({ preventScroll: true });
   else map.getContainer().focus({ preventScroll: true });
 }
 
-function begin(title: string, dash: string): void {
-  var from = document.activeElement as HTMLElement | null;
-  if (!view.open) view.back = from && from !== document.body && !card().contains(from) ? from : null;
-  view.focus = true;
-  claim("finder");
+/** Open the card for a new search, remembering where the keyboard was so closing can go back. */
+function openFinder(title: string, dash: string): void {
+  const from = document.activeElement as HTMLElement | null;
+  if (!view.open) view.returnFocusTo = from && from !== document.body && !finderCard().contains(from) ? from : null;
+  view.focusOnRender = true;
+  closeOtherCards("finder");
   makeRoom("trace");
   view.open = true;
   view.title = title;
   view.dash = dash;
   view.note = "";
   view.error = "";
-  view.seed = -1;
-  view.beyond = 0;
+  view.selectedIndex = -1;
+  view.hiddenByCap = 0;
   view.world = state.world;
   view.epoch = state.epoch;
 }
 
-function at(): string {
+/** The searched point as the `near` parameter spells it, or "" when there is none. */
+function nearParam(): string {
   return view.at ? view.at.x + "," + view.at.y : "";
 }
 
 function pointQuery(): { url: ApiUrl; dash: string } {
-  var f = view.filter;
-  var here = at();
+  const filter = view.filter;
+  const here = nearParam();
   if (view.kind === "nodes") {
     return {
       url: worldUrl("/api/world/nodes", {
         view: "nodes",
         source: "near:" + here + "@" + NEAR_M,
         near: here,
-        resource: f.resource,
-        status: f.free ? "free" : "",
+        resource: filter.resource,
+        status: filter.free ? "free" : "",
       }),
-      dash: withQuery("world/nodes", { near: here, resource: f.resource, status: f.free ? "free" : "" }),
+      dash: withQuery("world/nodes", { near: here, resource: filter.resource, status: filter.free ? "free" : "" }),
     };
   }
   if (view.kind === "conduits") {
-    return {
-      url: worldUrl("/api/world/conduits", { near: here, radius_m: f.radius, conduit_kind: f.conduitKind === "all" ? "" : f.conduitKind }),
-      dash: withQuery("world/conduits", { near: here, radius_m: f.radius, conduit_kind: f.conduitKind === "all" ? "" : f.conduitKind }),
-    };
+    const params = { near: here, radius_m: filter.radius, conduit_kind: filter.conduitKind === "all" ? "" : filter.conduitKind };
+    return { url: worldUrl("/api/world/conduits", params), dash: withQuery("world/conduits", params) };
   }
   return {
-    url: worldUrl("/api/collectibles", { mode: "nearest", near: here, group: f.group, spoilers: spoilerFlag() }),
-    dash: withQuery("world/pickups", { view: "nearest", near: here, group: f.group }),
+    url: worldUrl("/api/collectibles", { mode: "nearest", near: here, group: filter.group, spoilers: spoilerFlag() }),
+    dash: withQuery("world/pickups", { view: "nearest", near: here, group: filter.group }),
   };
 }
 
-function landed(kind: FindKind, data: NodeFindResponse | ConduitsResponse | CollectiblesResponse): Shown {
-  view.beyond = 0;
+/** One point search's reply as card rows, plus what it says beside them. */
+interface PointReply {
+  results: FinderResults;
+  /** The conduit search's age note; absent for the other kinds, which leave the note as it is. */
+  note?: string;
+  /** The pickup categories the group picker offers; absent for the other kinds. */
+  groups?: string[];
+  hiddenByCap: number;
+}
+
+function resultsFromReply(kind: FindKind, data: NodeFindResponse | ConduitsResponse | CollectiblesResponse): PointReply {
   if (kind === "nodes") {
-    var nodes = (data as NodeFindResponse).nodes.slice().sort(function (a, b) {
+    const nodes = (data as NodeFindResponse).nodes.slice().sort(function (a, b) {
       return (a.distance_m || 0) - (b.distance_m || 0);
     });
-    return { kind: "nodes", rows: nodes };
+    return { results: { kind: "nodes", rows: nodes }, hiddenByCap: 0 };
   }
   if (kind === "conduits") {
-    view.note = (data as ConduitsResponse).age_note;
-    return { kind: "runs", rows: (data as ConduitsResponse).runs };
+    const conduits = data as ConduitsResponse;
+    return { results: { kind: "runs", rows: conduits.runs }, note: conduits.age_note, hiddenByCap: 0 };
   }
-  var pickups = data as CollectiblesResponse;
-  view.groups = pickups.census
-    .filter(function (c) {
-      return settingOn("spoilers") || !c.spoiler;
-    })
-    .map(function (c) {
-      return c.category;
-    });
-  view.beyond = Math.max(0, pickups.rows.length - SHOWN);
-  return { kind: "pickups", rows: pickups.rows.slice(0, SHOWN) };
+  const pickups = data as CollectiblesResponse;
+  return {
+    results: { kind: "pickups", rows: pickups.rows.slice(0, MAX_TABLE_ROWS) },
+    groups: pickups.census
+      .filter(function (entry) {
+        return settingOn("spoilers") || !entry.spoiler;
+      })
+      .map(function (entry) {
+        return entry.category;
+      }),
+    hiddenByCap: Math.max(0, pickups.rows.length - MAX_TABLE_ROWS),
+  };
 }
 
 function fetchPoint(fit: boolean): void {
-  var kind = view.kind;
-  var q = pointQuery();
-  var ticket = latest("finder");
-  view.dash = q.dash;
+  const kind = view.kind;
+  const query = pointQuery();
+  const ticket = latest("finder");
+  view.dash = query.dash;
   view.busy = true;
   view.error = "";
-  render();
-  get<NodeFindResponse | ConduitsResponse | CollectiblesResponse>(q.url)
+  renderFinder();
+  get<NodeFindResponse | ConduitsResponse | CollectiblesResponse>(query.url)
     .then(function (data) {
       if (!ticket.fresh()) return;
       view.busy = false;
-      view.set = landed(kind, data);
-      view.seed = -1;
-      var bounds = draw(view.set, -1);
-      render();
+      const reply = resultsFromReply(kind, data);
+      view.hiddenByCap = reply.hiddenByCap;
+      if (reply.note !== undefined) view.note = reply.note;
+      if (reply.groups) view.groups = reply.groups;
+      view.results = reply.results;
+      view.selectedIndex = -1;
+      const bounds = draw(view.results, -1);
+      renderFinder();
       if (fit && bounds) flyPadded(bounds.pad(0.15), map.getZoom());
     })
     .catch(function (err) {
       if (!ticket.fresh()) return;
       view.busy = false;
-      view.set = null;
+      view.results = null;
       view.error = friendlyError(err);
       group.clearLayers();
-      render();
+      renderFinder();
     });
 }
 
 export function startAt(kind: FindKind, x: number, y: number): void {
-  begin("near " + coords(x, y), "");
+  openFinder("near " + coords(x, y), "");
   view.at = { x: x, y: y };
   view.kind = kind;
   view.ref = "";
-  view.set = null;
+  view.results = null;
   fetchPoint(true);
 }
 
-export function showRows(set: Shown, title: string, dash: string, seed?: number): void {
-  begin(title, dash);
+/** List rows another page found, ringed on the map; `selectedIndex` picks one of them. */
+export function showRows(results: FinderResults, title: string, dash: string, selectedIndex?: number): void {
+  openFinder(title, dash);
   view.at = null;
   view.ref = "";
-  view.set = set;
-  view.seed = seed === undefined ? -1 : seed;
-  var bounds = draw(set, view.seed);
-  render();
-  flyTo(set, view.seed, bounds);
-  if (set.kind === "pickups" && view.seed >= 0) reveal(["pickup: " + set.rows[view.seed]!.category]);
-  if (view.seed >= 0) select(selectionOf(set, view.seed));
+  view.results = results;
+  if (selectedIndex !== undefined && selectedIndex >= 0) {
+    selectResult(selectedIndex);
+    return;
+  }
+  view.selectedIndex = -1;
+  const bounds = draw(results, -1);
+  renderFinder();
+  flyTo(results, -1, bounds);
 }
 
 function parsePoint(text: string): { x: number; y: number; r: number } | null {
-  var m = /^(?:near:)?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:@(\d+(?:\.\d+)?))?$/.exec(text.trim());
-  return m ? { x: +m[1]!, y: +m[2]!, r: m[3] ? +m[3] : 0 } : null;
+  const match = /^(?:near:)?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:@(\d+(?:\.\d+)?))?$/.exec(text.trim());
+  return match ? { x: +match[1]!, y: +match[2]!, r: match[3] ? +match[3] : 0 } : null;
 }
 
 function fetchRef(ref: string): void {
-  var ticket = latest("finder");
-  var conduit = /^(chain|pipe):/.test(ref);
-  var url = conduit
+  const ticket = latest("finder");
+  const conduit = /^(chain|pipe):/.test(ref);
+  const url = conduit
     ? worldUrl("/api/world/conduits", { near: ref, run: ref })
     : worldUrl("/api/world/nodes", { source: ref });
   view.busy = true;
-  render();
+  renderFinder();
   get<NodeFindResponse | ConduitsResponse>(url)
     .then(function (data) {
       if (!ticket.fresh()) return;
       view.busy = false;
-      var set: Shown = conduit
-        ? { kind: "runs", rows: (data as ConduitsResponse).runs.filter(function (r) { return r.id === ref; }) }
+      const results: FinderResults = conduit
+        ? { kind: "runs", rows: (data as ConduitsResponse).runs.filter(function (run) { return run.id === ref; }) }
         : { kind: "nodes", rows: (data as NodeFindResponse).nodes };
-      if (!set.rows.length) {
+      if (!results.rows.length) {
         view.error = ref + " is not in this save";
-        render();
+        renderFinder();
         return;
       }
-      view.set = set;
-      view.title = selectionOf(set, 0).label;
-      pick(0);
+      view.results = results;
+      view.title = selectionOf(results, 0).label;
+      selectResult(0);
     })
     .catch(function (err) {
       if (!ticket.fresh()) return;
       view.busy = false;
       view.error = friendlyError(err);
-      render();
+      renderFinder();
     });
 }
 
 export function showRef(ref: string, spot?: { x_m?: number; y_m?: number; label: string }): void {
-  var point = parsePoint(ref);
+  const point = parsePoint(ref);
   if (/^(node|chain|pipe):/.test(ref)) {
-    begin(ref.indexOf("node:") === 0 ? WORDS.node : WORDS.run, "");
+    openFinder(ref.indexOf("node:") === 0 ? WORDS.node : WORDS.run, "");
     view.at = null;
-    view.set = null;
+    view.results = null;
     view.ref = ref;
     fetchRef(ref);
     return;
   }
-  var x = point ? point.x : spot ? spot.x_m : undefined;
-  var y = point ? point.y : spot ? spot.y_m : undefined;
+  const x = point ? point.x : spot ? spot.x_m : undefined;
+  const y = point ? point.y : spot ? spot.y_m : undefined;
   if (x === undefined || y === undefined) return;
-  begin(spot ? spot.label : coords(x, y), "");
+  openFinder(spot ? spot.label : coords(x, y), "");
   view.at = null;
   view.ref = "";
-  view.set = null;
+  view.results = null;
   group.clearLayers();
-  ring({ x_m: x, y_m: y }, true);
+  ringPoint({ x_m: x, y_m: y }, true);
   if (!map.hasLayer(group)) group.addTo(map);
-  render();
+  renderFinder();
   flyToPoint(latLngOf({ x_m: x, y_m: y }), Math.max(map.getZoom(), POINT_ZOOM));
 }
 
-var pending = 0;
+/** The debounce on a vitals-driven refetch. */
+var refreshTimer = 0;
 
 function refresh(): void {
   if (!view.open) return;
@@ -666,35 +695,31 @@ function refresh(): void {
     return;
   }
   if (view.busy || (!view.at && !view.ref)) return;
-  clearTimeout(pending);
-  pending = window.setTimeout(function () {
+  clearTimeout(refreshTimer);
+  refreshTimer = window.setTimeout(function () {
     if (view.at) fetchPoint(false);
     else if (view.ref) fetchRef(view.ref);
   }, 50);
 }
 
 function hideSpoilers(): void {
-  if (!view.open || !view.set || view.set.kind !== "pickups" || settingOn("spoilers")) return;
-  var rows = view.set.rows as { spoiler?: boolean }[];
-  if (!rows.some(function (r) { return r.spoiler; })) return;
+  if (!view.open || !view.results || view.results.kind !== "pickups" || settingOn("spoilers")) return;
+  const rows = view.results.rows as { spoiler?: boolean }[];
+  if (!rows.some(function (row) { return row.spoiler; })) return;
   if (view.at || view.ref) {
     refresh();
     return;
   }
-  view.set = { kind: view.set.kind, rows: rows.filter(function (r) { return !r.spoiler; }) } as Shown;
-  view.seed = -1;
-  draw(view.set, -1);
-  render();
+  view.results = { kind: view.results.kind, rows: rows.filter(function (row) { return !row.spoiler; }) } as FinderResults;
+  view.selectedIndex = -1;
+  draw(view.results, -1);
+  renderFinder();
 }
 
-function finding(event: Event): void {
-  var target = event.target as Element | null;
-  var hit = target && target.closest ? target.closest("[" + FIND_ATTR + "]") : null;
-  if (!hit) return;
-  event.stopPropagation();
-  event.preventDefault();
-  var spot = parsePoint(hit.getAttribute(FIND_AT_ATTR) || "");
-  var kind = hit.getAttribute(FIND_ATTR);
+/** A "find" button in a popup: select that point, or search near it. */
+function handleFindClick(hit: Element): void {
+  const spot = parsePoint(hit.getAttribute(FIND_AT_ATTR) || "");
+  const kind = hit.getAttribute(FIND_ATTR);
   map.closePopup();
   if (!spot) return;
   if (kind === "point") {
@@ -704,7 +729,7 @@ function finding(event: Event): void {
 }
 
 export function listenForFinds(): void {
-  document.addEventListener("click", finding, true);
+  onAttributeClick(FIND_ATTR, handleFindClick);
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && view.open && !(event.target as Element).closest("input[type=text], input[type=search], textarea")) closeFinder();
   });

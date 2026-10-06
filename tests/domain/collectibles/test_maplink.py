@@ -301,7 +301,7 @@ def test_the_page_tells_the_three_loot_states_apart():
     a drive still in it -- and the category name is the other half, because null on a mushroom
     is not a claim about a mushroom at all.
     """
-    drawing = (FRONTEND / "map" / "drawn" / "markers.ts").read_text(encoding="utf-8")
+    drawing = (FRONTEND / "map" / "drawn" / "pickups.ts").read_text(encoding="utf-8")
     assert 'POD_CATEGORY = "crashed_drop_pod"' in drawing, "the page spells the category itself"
-    assert "r.looted === true" in drawing, "markers.ts does not single out a looted pod"
-    assert "r.looted === null" in drawing, "markers.ts draws an unread flag as a full pod"
+    assert "r.looted === true" in drawing, "pickups.ts does not single out a looted pod"
+    assert "r.looted === null" in drawing, "pickups.ts draws an unread flag as a full pod"

@@ -2,7 +2,8 @@
  * shared by the World tabs and the finder card on the map. */
 
 import { formatNumber, perMin, roundHalfEven } from "../../kit/format";
-import { knownNodes, pickupName } from "../../map/drawn/markers";
+import { knownNodes } from "../../map/drawn/markers";
+import { pickupName } from "../../map/drawn/pickups";
 import { withQuery } from "../../app/nav";
 import { WORDS } from "../../kit/words";
 

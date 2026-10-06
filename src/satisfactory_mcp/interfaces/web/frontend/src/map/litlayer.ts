@@ -47,7 +47,7 @@ export interface LightHeader {
 export function parseLight(raw: string | null): LightHeader | null {
   if (!raw) return null;
   try {
-    var head = JSON.parse(raw) as LightHeader;
+    const head = JSON.parse(raw) as LightHeader;
     if (head && head.params && head.model && isFinite(head.max_z) && isFinite(head.unlit_max_z)) return head;
   } catch (ignored) {
     /* a header this page cannot read is a layer drawn the baked way */
@@ -122,22 +122,32 @@ var IN_FLIGHT = 8;
 var FAILS_TO_GIVE_UP = 6;
 var COARSE_LEVELS = 4;
 
-interface Held {
+/** One tile's three textures, and the frame that last drew it. */
+interface CachedTile {
   tex: WebGLTexture[];
   used: number;
 }
 
-function unit(rgb: number[]): number[] {
-  var y = 0.2126 * rgb[0]! + 0.7152 * rgb[1]! + 0.0722 * rgb[2]!;
-  return rgb.map(function (v) {
-    return v / y;
+type Uniforms = Record<string, WebGLUniformLocation | null>;
+
+/** The sheet's two corners in container pixels: everything else is linear between them. */
+interface SheetOnScreen {
+  x0: number;
+  y0: number;
+  span: number;
+}
+
+function normaliseToLuma(rgb: number[]): number[] {
+  const luma = 0.2126 * rgb[0]! + 0.7152 * rgb[1]! + 0.0722 * rgb[2]!;
+  return rgb.map(function (channel) {
+    return channel / luma;
   });
 }
 
 function compile(gl: WebGL2RenderingContext): WebGLProgram {
-  var program = gl.createProgram()!;
+  const program = gl.createProgram()!;
   [[gl.VERTEX_SHADER, VS] as const, [gl.FRAGMENT_SHADER, FS] as const].forEach(function (pair) {
-    var shader = gl.createShader(pair[0])!;
+    const shader = gl.createShader(pair[0])!;
     gl.shaderSource(shader, pair[1]);
     gl.compileShader(shader);
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) || "shader");
@@ -148,194 +158,280 @@ function compile(gl: WebGL2RenderingContext): WebGLProgram {
   return program;
 }
 
-/** One lit layer for `layer`, or throws when WebGL will not start. `onFail` swaps it out. */
-export function makeLitLayer(layer: string, light: LightHeader, onFail: (why: string) => void): L.Layer {
-  var top = Math.log2(MAP_SHEET_PX / 256);
-  var maxT = Math.min(light.max_z, light.unlit_max_z);
-  var cache = new Map<string, Held>();
-  var pending = new Set<string>();
-  var queue: string[] = [];
-  var fails = 0;
-  var tick = 0;
-  var frame = 0;
-  var canvas: HTMLCanvasElement | null = null;
-  var gl: WebGL2RenderingContext | null = null;
-  var U: Record<string, WebGLUniformLocation | null> = {};
-  var drawnZoom = 0;
-  var drawnCorner: L.LatLng | null = null;
-  var self = new L.Layer();
+function texture(gl: WebGL2RenderingContext, bitmap: ImageBitmap, grey: boolean): WebGLTexture {
+  const made = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, made);
+  if (grey) gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gl.RED, gl.UNSIGNED_BYTE, bitmap);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return made;
+}
 
-  function url(kind: string, z: number, x: number, y: number): string {
-    return tilePath(layer, z, x, y) + "?kind=" + kind + "&v=" + encodeURIComponent(light.build);
-  }
-
-  function texture(bitmap: ImageBitmap, grey: boolean): WebGLTexture {
-    var g = gl!;
-    var t = g.createTexture()!;
-    g.bindTexture(g.TEXTURE_2D, t);
-    if (grey) g.texImage2D(g.TEXTURE_2D, 0, g.R8, g.RED, g.UNSIGNED_BYTE, bitmap);
-    else g.texImage2D(g.TEXTURE_2D, 0, g.RGBA8, g.RGBA, g.UNSIGNED_BYTE, bitmap);
-    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR);
-    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR);
-    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE);
-    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
-    return t;
-  }
-
-  function fetchBitmap(address: string): Promise<ImageBitmap> {
-    return fetch(address).then(function (r) {
-      if (!r.ok) throw new Error(address + ": " + r.status);
-      return r.blob().then(function (blob) {
-        return createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
-      });
+function fetchBitmap(address: string): Promise<ImageBitmap> {
+  return fetch(address).then(function (response) {
+    if (!response.ok) throw new Error(address + ": " + response.status);
+    return response.blob().then(function (blob) {
+      return createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
     });
-  }
+  });
+}
+
+/** The tiles held as textures, the ones in the air, and the ones still to ask for. */
+interface TileTextureCache {
+  /** Start a frame: these tiles are wanted, coarse first; load what is missing. */
+  request(keys: string[]): void;
+  /** A loaded tile, marked as drawn this frame, or undefined while it is not here yet. */
+  use(key: string): CachedTile | undefined;
+  /** Drop the longest-unused tiles past the budget, sparing `keep`. */
+  evict(keep: Set<string>): void;
+  /** Delete every texture and stop loading; replies still in the air are dropped. */
+  dispose(): void;
+}
+
+/* Tiles are fetched IN_FLIGHT at a time. `onGiveUp` fires when too many fail, or the root does:
+ * the layer is then swapped for its baked twin. */
+function createTileTextureCache(
+  gl: WebGL2RenderingContext,
+  urlFor: (kind: string, z: number, x: number, y: number) => string,
+  onLoaded: () => void,
+  onGiveUp: (why: string) => void
+): TileTextureCache {
+  const cache = new Map<string, CachedTile>();
+  const pending = new Set<string>();
+  let queue: string[] = [];
+  let fails = 0;
+  let tick = 0;
+  let disposed = false;
 
   function load(key: string): void {
-    var parts = key.split("/").map(Number);
+    const parts = key.split("/").map(Number);
     pending.add(key);
     Promise.all(
       KINDS.map(function (kind) {
-        return fetchBitmap(url(kind, parts[0]!, parts[1]!, parts[2]!));
+        return fetchBitmap(urlFor(kind, parts[0]!, parts[1]!, parts[2]!));
       })
     )
       .then(function (bitmaps) {
         pending.delete(key);
-        if (!gl) return;
+        if (disposed) return;
         cache.set(key, {
-          tex: bitmaps.map(function (b, i) {
-            return texture(b, i === 2);
+          tex: bitmaps.map(function (bitmap, i) {
+            return texture(gl, bitmap, i === 2);
           }),
           used: tick,
         });
-        bitmaps.forEach(function (b) {
-          b.close();
+        bitmaps.forEach(function (bitmap) {
+          bitmap.close();
         });
-        redraw();
+        onLoaded();
         pump();
       })
       .catch(function () {
         pending.delete(key);
         fails += 1;
-        if (fails >= FAILS_TO_GIVE_UP || key === "0/0/0") onFail("the lighting tiles would not load");
+        if (fails >= FAILS_TO_GIVE_UP || key === "0/0/0") onGiveUp("the lighting tiles would not load");
         pump();
       });
   }
 
   function pump(): void {
     while (pending.size < IN_FLIGHT && queue.length) {
-      var key = queue.shift()!;
+      const key = queue.shift()!;
       if (!cache.has(key) && !pending.has(key)) load(key);
     }
   }
 
-  function level(): number {
-    var t = Math.round(map.getZoom() + top + Math.log2(window.devicePixelRatio || 1));
-    return Math.max(0, Math.min(maxT, t));
-  }
-
-  /* Container pixels of the sheet's two corners: everything else is linear between them. */
-  function frameOf(): { x0: number; y0: number; span: number } {
-    var nw = map.latLngToContainerPoint(map.unproject(L.point(0, 0), 0));
-    var se = map.latLngToContainerPoint(map.unproject(L.point(MAP_SHEET_PX, MAP_SHEET_PX), 0));
-    return { x0: nw.x, y0: nw.y, span: se.x - nw.x };
-  }
-
-  function visible(t: number, f: { x0: number; y0: number; span: number }): string[] {
-    var size = map.getSize();
-    var n = 1 << t;
-    var cell = f.span / n;
-    var x0 = Math.max(0, Math.floor(-f.x0 / cell));
-    var x1 = Math.min(n - 1, Math.floor((size.x - f.x0) / cell));
-    var y0 = Math.max(0, Math.floor(-f.y0 / cell));
-    var y1 = Math.min(n - 1, Math.floor((size.y - f.y0) / cell));
-    var out: string[] = [];
-    for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) out.push(t + "/" + x + "/" + y);
-    return out;
-  }
-
-  function evict(keep: Set<string>): void {
-    if (cache.size <= CACHE_TILES) return;
-    var rows = Array.from(cache.entries()).filter(function (row) {
-      return !keep.has(row[0]);
-    });
-    rows.sort(function (a, b) {
-      return a[1].used - b[1].used;
-    });
-    rows.slice(0, cache.size - CACHE_TILES).forEach(function (row) {
-      row[1].tex.forEach(function (t) {
-        gl!.deleteTexture(t);
+  return {
+    request: function (keys) {
+      tick += 1;
+      queue = keys.filter(function (key) {
+        return !cache.has(key) && !pending.has(key);
       });
-      cache.delete(row[0]);
+      pump();
+    },
+    use: function (key) {
+      const held = cache.get(key);
+      if (held) held.used = tick;
+      return held;
+    },
+    evict: function (keep) {
+      if (cache.size <= CACHE_TILES) return;
+      const rows = Array.from(cache.entries()).filter(function (row) {
+        return !keep.has(row[0]);
+      });
+      rows.sort(function (a, b) {
+        return a[1].used - b[1].used;
+      });
+      rows.slice(0, cache.size - CACHE_TILES).forEach(function (row) {
+        row[1].tex.forEach(function (tex) {
+          gl.deleteTexture(tex);
+        });
+        cache.delete(row[0]);
+      });
+    },
+    dispose: function () {
+      disposed = true;
+      cache.forEach(function (held) {
+        held.tex.forEach(function (tex) {
+          gl.deleteTexture(tex);
+        });
+      });
+      cache.clear();
+      queue = [];
+    },
+  };
+}
+
+/* The uniforms that hold for the layer's whole life: the light's colours and tone curve, and
+ * the shadow model the pyramid was baked with. */
+function uploadLightUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, light: LightHeader): void {
+  const params = light.params;
+  const sky = normaliseToLuma(params.sky);
+  const sun = normaliseToLuma(params.sun);
+  gl.uniform3f(uniforms.uSky!, sky[0]!, sky[1]!, sky[2]!);
+  gl.uniform3f(uniforms.uSun!, sun[0]!, sun[1]!, sun[2]!);
+  gl.uniform3f(uniforms.uF!, params.ambient * sky[0]! + (1 - params.ambient) * sun[0]!,
+    params.ambient * sky[1]! + (1 - params.ambient) * sun[1]!, params.ambient * sky[2]! + (1 - params.ambient) * sun[2]!);
+  gl.uniform1f(uniforms.uAmb!, params.ambient);
+  gl.uniform1f(uniforms.uTK!, params.tone_knee);
+  gl.uniform1f(uniforms.uTW!, params.tone_white);
+  gl.uniform1f(uniforms.uLinear!, params.space === "linear" ? 1 : 0);
+  const model = light.model;
+  gl.uniform1f(uniforms.uSoft!, model.shadow_soft_deg);
+  gl.uniform1f(uniforms.uFill!, model.shadow_fill || 0);
+  gl.uniform1f(uniforms.uFloor!, model.shadow_floor);
+  gl.uniform1f(uniforms.uKnee!, model.shadow_floor_knee);
+  gl.uniform1f(uniforms.uRows!, Math.ceil((model.hz_cells || model.dirs) / 8));
+  gl.uniform1i(uniforms.uCrown!, model.crown_cell || 0);
+  gl.uniform1f(uniforms.uCrownOn!, params.crowns && model.crown_cell ? 1 : 0);
+}
+
+/* The uniforms that follow the sun: its direction, the normalisation, and which two of the
+ * baked horizon directions to blend between. */
+function uploadSunUniforms(gl: WebGL2RenderingContext, uniforms: Uniforms, light: LightHeader, sun: Sun): void {
+  const model = light.model;
+  const toRadians = Math.PI / 180;
+  const azimuth = sun.azimuthDeg * toRadians;
+  const elevation = sun.elevationDeg * toRadians;
+  gl.uniform3f(uniforms.uL!, Math.cos(elevation) * Math.sin(azimuth), -Math.cos(elevation) * Math.cos(azimuth), Math.sin(elevation));
+  gl.uniform1f(uniforms.uEl!, sun.elevationDeg);
+  gl.uniform1f(uniforms.uInvNorm!, 1 / Math.max(Math.sin(elevation), Math.sin(model.normalise_min_el * toRadians)));
+  const dirs = model.dirs;
+  const direction = sun.azimuthDeg / (360 / dirs);
+  const lower = Math.floor(direction) % dirs;
+  gl.uniform1i(uniforms.uI0!, lower);
+  gl.uniform1i(uniforms.uI1!, (lower + 1) % dirs);
+  gl.uniform1f(uniforms.uW!, direction - Math.floor(direction));
+  gl.uniform1f(uniforms.uShadowOn!, sun.shadows ? 1 : 0);
+  gl.uniform1f(uniforms.uSkyOn!, sun.sky ? 1 : 0);
+}
+
+/** The sheet's two corners in container pixels, now. */
+function sheetOnScreen(): SheetOnScreen {
+  const nw = map.latLngToContainerPoint(map.unproject(L.point(0, 0), 0));
+  const se = map.latLngToContainerPoint(map.unproject(L.point(MAP_SHEET_PX, MAP_SHEET_PX), 0));
+  return { x0: nw.x, y0: nw.y, span: se.x - nw.x };
+}
+
+/** Every tile of one pyramid level that overlaps the view, as "z/x/y" keys. */
+function visibleTiles(tileZoom: number, sheet: SheetOnScreen): string[] {
+  const size = map.getSize();
+  const count = 1 << tileZoom;
+  const cell = sheet.span / count;
+  const x0 = Math.max(0, Math.floor(-sheet.x0 / cell));
+  const x1 = Math.min(count - 1, Math.floor((size.x - sheet.x0) / cell));
+  const y0 = Math.max(0, Math.floor(-sheet.y0 / cell));
+  const y1 = Math.min(count - 1, Math.floor((size.y - sheet.y0) / cell));
+  const keys: string[] = [];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) keys.push(tileZoom + "/" + x + "/" + y);
+  return keys;
+}
+
+/* Draw the loaded tiles from COARSE_LEVELS below `tileZoom` up to it, finest last, so a missing
+ * tile shows its coarser parent. Returns the keys it drew. */
+function drawVisibleTiles(
+  gl: WebGL2RenderingContext,
+  uniforms: Uniforms,
+  cache: TileTextureCache,
+  sheet: SheetOnScreen,
+  tileZoom: number,
+  dpr: number
+): string[] {
+  const drawn: string[] = [];
+  for (let zoom = Math.max(0, tileZoom - COARSE_LEVELS); zoom <= tileZoom; zoom++) {
+    const cell = (sheet.span / (1 << zoom)) * dpr;
+    visibleTiles(zoom, sheet).forEach(function (key) {
+      const held = cache.use(key);
+      if (!held) return;
+      drawn.push(key);
+      const parts = key.split("/").map(Number);
+      gl.uniform4f(uniforms.uRect!, sheet.x0 * dpr + parts[1]! * cell, sheet.y0 * dpr + parts[2]! * cell, cell, cell);
+      held.tex.forEach(function (tex, i) {
+        gl.activeTexture(gl.TEXTURE0 + i);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+      });
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     });
   }
+  return drawn;
+}
 
-  function setSun(g: WebGL2RenderingContext, sun: Sun): void {
-    var d = Math.PI / 180;
-    var az = sun.az * d;
-    var el = sun.el * d;
-    g.uniform3f(U.uL!, Math.cos(el) * Math.sin(az), -Math.cos(el) * Math.cos(az), Math.sin(el));
-    g.uniform1f(U.uEl!, sun.el);
-    g.uniform1f(U.uInvNorm!, 1 / Math.max(Math.sin(el), Math.sin(light.model.normalise_min_el * d)));
-    var dirs = light.model.dirs;
-    var f = sun.az / (360 / dirs);
-    var i0 = Math.floor(f) % dirs;
-    g.uniform1i(U.uI0!, i0);
-    g.uniform1i(U.uI1!, (i0 + 1) % dirs);
-    g.uniform1f(U.uW!, f - Math.floor(f));
-    g.uniform1f(U.uShadowOn!, sun.shadows ? 1 : 0);
-    g.uniform1f(U.uSkyOn!, sun.sky ? 1 : 0);
+/** One lit layer for `tileLayerId`, or throws when WebGL will not start. `onFail` swaps it out. */
+export function makeLitLayer(tileLayerId: string, light: LightHeader, onFail: (why: string) => void): L.Layer {
+  const sheetZoomOffset = Math.log2(MAP_SHEET_PX / 256);
+  const maxTileZoom = Math.min(light.max_z, light.unlit_max_z);
+  let frame = 0;
+  let canvas: HTMLCanvasElement | null = null;
+  let gl: WebGL2RenderingContext | null = null;
+  let cache: TileTextureCache | null = null;
+  const uniforms: Uniforms = {};
+  let drawnZoom = 0;
+  let drawnCorner: L.LatLng | null = null;
+  const self = new L.Layer();
+
+  function url(kind: string, z: number, x: number, y: number): string {
+    return tilePath(tileLayerId, z, x, y) + "?kind=" + kind + "&v=" + encodeURIComponent(light.build);
+  }
+
+  function tileZoomForView(): number {
+    const tileZoom = Math.round(map.getZoom() + sheetZoomOffset + Math.log2(window.devicePixelRatio || 1));
+    return Math.max(0, Math.min(maxTileZoom, tileZoom));
   }
 
   function draw(): void {
     frame = 0;
-    if (!gl || !canvas) return;
-    var g = gl;
-    var size = map.getSize();
-    var dpr = window.devicePixelRatio || 1;
-    var w = Math.round(size.x * dpr);
-    var h = Math.round(size.y * dpr);
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
+    if (!gl || !canvas || !cache) return;
+    const size = map.getSize();
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.round(size.x * dpr);
+    const height = Math.round(size.y * dpr);
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
     }
     canvas.style.width = size.x + "px";
     canvas.style.height = size.y + "px";
     L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]));
     drawnZoom = map.getZoom();
     drawnCorner = map.containerPointToLatLng([0, 0]);
-    var f = frameOf();
-    var t = level();
-    var want = visible(t, f);
-    var coarse = visible(Math.max(0, t - COARSE_LEVELS), f);
-    tick += 1;
-    queue = coarse.concat(want).filter(function (key) {
-      return !cache.has(key) && !pending.has(key);
+    const sheet = sheetOnScreen();
+    const tileZoom = tileZoomForView();
+    const want = visibleTiles(tileZoom, sheet);
+    const coarse = visibleTiles(Math.max(0, tileZoom - COARSE_LEVELS), sheet);
+    cache.request(coarse.concat(want));
+    gl.viewport(0, 0, width, height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform2f(uniforms.uVP!, width, height);
+    uploadSunUniforms(gl, uniforms, light, currentSun());
+    const keep = new Set<string>(want.concat(coarse));
+    drawVisibleTiles(gl, uniforms, cache, sheet, tileZoom, dpr).forEach(function (key) {
+      keep.add(key);
     });
-    pump();
-    g.viewport(0, 0, w, h);
-    g.clearColor(0, 0, 0, 0);
-    g.clear(g.COLOR_BUFFER_BIT);
-    g.uniform2f(U.uVP!, w, h);
-    setSun(g, currentSun());
-    var keep = new Set<string>(want.concat(coarse));
-    for (var level0 = Math.max(0, t - COARSE_LEVELS); level0 <= t; level0++) {
-      var cell = (f.span / (1 << level0)) * dpr;
-      visible(level0, f).forEach(function (key) {
-        var held = cache.get(key);
-        if (!held) return;
-        held.used = tick;
-        keep.add(key);
-        var p = key.split("/").map(Number);
-        g.uniform4f(U.uRect!, f.x0 * dpr + p[1]! * cell, f.y0 * dpr + p[2]! * cell, cell, cell);
-        held.tex.forEach(function (tex, i) {
-          g.activeTexture(g.TEXTURE0 + i);
-          g.bindTexture(g.TEXTURE_2D, tex);
-        });
-        g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
-      });
-    }
-    evict(keep);
+    cache.evict(keep);
   }
 
   function redraw(): void {
@@ -344,8 +440,8 @@ export function makeLitLayer(layer: string, light: LightHeader, onFail: (why: st
 
   function animZoom(event: L.ZoomAnimEvent): void {
     if (!canvas || !drawnCorner) return;
-    var scale = map.getZoomScale(event.zoom, drawnZoom);
-    var private_ = map as unknown as {
+    const scale = map.getZoomScale(event.zoom, drawnZoom);
+    const private_ = map as unknown as {
       _latLngToNewLayerPoint(at: L.LatLng, zoom: number, centre: L.LatLng): L.Point;
     };
     L.DomUtil.setTransform(canvas, private_._latLngToNewLayerPoint(drawnCorner, event.zoom, event.center), scale);
@@ -353,52 +449,34 @@ export function makeLitLayer(layer: string, light: LightHeader, onFail: (why: st
 
   function start(): void {
     canvas = L.DomUtil.create("canvas", "lit-layer leaflet-zoom-animated");
-    var made = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false });
+    const made = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false });
     if (!made) throw new Error("no WebGL2");
-    var g: WebGL2RenderingContext = made;
-    gl = g;
-    var program = compile(g);
-    g.useProgram(program);
+    gl = made;
+    const program = compile(made);
+    made.useProgram(program);
     UNIFORMS.forEach(function (name) {
-      U[name] = g.getUniformLocation(program, name);
+      uniforms[name] = made.getUniformLocation(program, name);
     });
-    var buffer = g.createBuffer();
-    g.bindBuffer(g.ARRAY_BUFFER, buffer);
-    g.bufferData(g.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), g.STATIC_DRAW);
-    var at = g.getAttribLocation(program, "aP");
-    g.enableVertexAttribArray(at);
-    g.vertexAttribPointer(at, 2, g.FLOAT, false, 0, 0);
-    g.uniform1i(U.tCol!, 0);
-    g.uniform1i(U.tNrm!, 1);
-    g.uniform1i(U.tHz!, 2);
-    g.pixelStorei(g.UNPACK_COLORSPACE_CONVERSION_WEBGL, g.NONE);
-    g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    var p = light.params;
-    var sky = unit(p.sky);
-    var sun = unit(p.sun);
-    g.uniform3f(U.uSky!, sky[0]!, sky[1]!, sky[2]!);
-    g.uniform3f(U.uSun!, sun[0]!, sun[1]!, sun[2]!);
-    g.uniform3f(U.uF!, p.ambient * sky[0]! + (1 - p.ambient) * sun[0]!, p.ambient * sky[1]! + (1 - p.ambient) * sun[1]!,
-      p.ambient * sky[2]! + (1 - p.ambient) * sun[2]!);
-    g.uniform1f(U.uAmb!, p.ambient);
-    g.uniform1f(U.uTK!, p.tone_knee);
-    g.uniform1f(U.uTW!, p.tone_white);
-    g.uniform1f(U.uLinear!, p.space === "linear" ? 1 : 0);
-    var m = light.model;
-    g.uniform1f(U.uSoft!, m.shadow_soft_deg);
-    g.uniform1f(U.uFill!, m.shadow_fill || 0);
-    g.uniform1f(U.uFloor!, m.shadow_floor);
-    g.uniform1f(U.uKnee!, m.shadow_floor_knee);
-    g.uniform1f(U.uRows!, Math.ceil((m.hz_cells || m.dirs) / 8));
-    g.uniform1i(U.uCrown!, m.crown_cell || 0);
-    g.uniform1f(U.uCrownOn!, p.crowns && m.crown_cell ? 1 : 0);
+    const buffer = made.createBuffer();
+    made.bindBuffer(made.ARRAY_BUFFER, buffer);
+    made.bufferData(made.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), made.STATIC_DRAW);
+    const corner = made.getAttribLocation(program, "aP");
+    made.enableVertexAttribArray(corner);
+    made.vertexAttribPointer(corner, 2, made.FLOAT, false, 0, 0);
+    made.uniform1i(uniforms.tCol!, 0);
+    made.uniform1i(uniforms.tNrm!, 1);
+    made.uniform1i(uniforms.tHz!, 2);
+    made.pixelStorei(made.UNPACK_COLORSPACE_CONVERSION_WEBGL, made.NONE);
+    made.pixelStorei(made.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    uploadLightUniforms(made, uniforms, light);
+    cache = createTileTextureCache(made, url, redraw, onFail);
     canvas.addEventListener("webglcontextlost", function (event) {
       event.preventDefault();
       if (gl) onFail("the graphics context was lost");
     });
   }
 
-  var events: Record<string, L.LeafletEventHandlerFn> = {
+  const events: Record<string, L.LeafletEventHandlerFn> = {
     move: redraw,
     moveend: redraw,
     zoomend: redraw,
@@ -418,16 +496,10 @@ export function makeLitLayer(layer: string, light: LightHeader, onFail: (why: st
     m.off(events);
     if (frame) cancelAnimationFrame(frame);
     frame = 0;
-    cache.forEach(function (held) {
-      held.tex.forEach(function (t) {
-        gl!.deleteTexture(t);
-      });
-    });
-    cache.clear();
-    queue = [];
-    var held = gl;
+    if (cache) cache.dispose();
+    const lostGl = gl;
     gl = null;
-    var lose = held ? held.getExtension("WEBGL_lose_context") : null;
+    const lose = lostGl ? lostGl.getExtension("WEBGL_lose_context") : null;
     if (lose) lose.loseContext();
     if (canvas) L.DomUtil.remove(canvas);
     canvas = null;

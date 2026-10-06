@@ -107,20 +107,38 @@ the module that fetches tiles.
 imports control — to say "the list has stopped changing". It now offers `onSettled`, and
 `main.ts` registers the pass.
 
-The control does not import `map/tiles.ts` either, and the same shape fixes it: the control
-draws the four base-map radios and `map/tiles.ts` registers what a click on one means, through
-`onModePick`. The arrow can only point that way — `map/tiles.ts` reaches the control through
-`map/layers.ts` already — and the seam is what keeps "which picture is the base map" out of a
-widget that otherwise knows nothing about pyramids.
+The control does not import `map/tiles.ts` either, and the same shape fixes it:
+`map/layercontrol/mode-picker.ts` draws the base-map radios and `map/tiles.ts` registers what a
+click on one means, through `onModePick`. The arrow can only point that way — `map/tiles.ts`
+reaches the control through `map/layers.ts` already — and the seam is what keeps "which picture
+is the base map" out of a widget that otherwise knows nothing about pyramids. Both pickers are
+built on `map/layercontrol/radio-section.ts` and hook into the control's render through
+`onDecorate`, so `control.ts` imports neither of them.
 
 The control does not import `map/floors/floors.ts` for the third time round the same shape:
-`onFloorPick` and `onFloorExit` are the seam, and the control draws a floor picker without
-knowing what a storey is. The floors module is imported by `map/labels.ts` (the card's action),
-`app/fragment.ts` and `main.ts` (the address bar and the Esc key), `app/load.ts` (a redraw
-replaces a layer's contents, and the floor filter is a fact about contents) and
+`onFloorPick` and `onFloorExit` in `map/layercontrol/floor-picker.ts` are the seam, and the
+picker is drawn without knowing what a storey is. The floors module is imported by
+`map/labels.ts` (the card's action), `app/fragment.ts` and `main.ts` (the address bar and the
+Esc key), `app/load.ts` (a redraw replaces a layer's contents, and the floor filter is a fact
+about contents) and
 `map/drawn/placements.ts` (a save write changes what is built, so `/api/machines` re-asks for
 the decomposition) and `dash/factories/factory-detail.ts` (the floors aspect's way in) — so it
 must import none of those six, and does not.
+
+### Two ranks
+
+The page has two ranks, they decide different things, and neither drives the other. The FETCH
+rank is `Fetcher.rank` in `app/registry.ts`: one number per wave, deciding WHEN a request goes
+out and so which reply lands first. The ROW rank is the `[band, slot, name]` a layer declares
+when `clearedLayer()` in `map/layers.ts` creates it: it decides WHERE that layer's row sits in
+the control and nothing else. A feature declares both and they are free to disagree — the node
+dots are fetched first and listed late.
+
+The row rank is not draw order either. Everything clickable shares one canvas, and that canvas
+draws in the order paths were ADDED to it, a list Leaflet keeps and the rank appears nowhere in.
+The control's `sortFunction` reads the rank when it rebuilds its list and nothing else does,
+which is why `raiseNodeDots` in `map/drawn/markers.ts` exists and why no band order could
+replace it.
 
 Leaflet is the `leaflet` npm package pinned to **1.9.4** — the exact version that used to sit
 in `static/vendor/leaflet.js` — and it is compiled into the bundle together with its own

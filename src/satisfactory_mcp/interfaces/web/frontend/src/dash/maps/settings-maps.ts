@@ -10,7 +10,7 @@ import { appendNote, button, checkbox, chip, empty, error, fieldError, idChip, l
 import { make } from "../../kit/dom";
 import { bytes, duration, isoDate } from "../../kit/format";
 import { adoptMaps, fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "../../app/map-types";
-import { askMode } from "../../map/tiles";
+import { requestBaseMode } from "../../map/tiles";
 import { fail, friendlyError } from "../../kit/toast";
 
 import type { ApiPath, StatusError } from "../../api/client";
@@ -700,7 +700,7 @@ function thumb(row: MapTypeBody): HTMLElement {
     link.appendChild(img);
     link.onclick = function () {
       if (host) host.leaveDashThen(function () {
-        askMode(row.id, true);
+        requestBaseMode(row.id, true);
       });
     };
   } else link.disabled = true;

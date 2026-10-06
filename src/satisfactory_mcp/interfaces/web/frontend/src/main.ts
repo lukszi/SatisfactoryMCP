@@ -22,18 +22,18 @@ import { loadLive, loadOne, loadRegions, loadStatic } from "./app/load";
 import { rememberTick } from "./map/layers";
 import { fitWorld, map, padPopups, writeHash } from "./map/map";
 import { listenForEmptyClicks } from "./map/mapclick";
-import { markHiddenRows, notePickupChoice } from "./map/drawn/markers";
-import { render as renderPanel, showSelector } from "./map/panel";
+import { markHiddenRows, notePickupChoice } from "./map/drawn/pickups";
+import { renderPanel, showSelector } from "./map/panel";
 import { listenForPins } from "./chat/pins";
 import { noteRegionChoice, updateRegionBlend } from "./map/regions";
-import { ROUTE_LAYERS, sinkRoutes, styleRoutes } from "./map/drawn/routes";
+import { restyleRoutesForZoom, ROUTE_LAYERS, sinkRoutes } from "./map/drawn/route-passes";
 import { wireSearch } from "./app/search";
 import { syncSharedSettings } from "./app/shared-settings";
 import { listen } from "./app/sse";
 import { BOOT, BOOT_GARBLED, garbledNote, state } from "./app/state";
 import { wireStatus } from "./app/status";
 import { loadBaseMap } from "./map/tiles";
-import { onTone } from "./map/map-tone";
+import { onMapTone } from "./map/map-tone";
 import { fail } from "./kit/toast";
 import { listenForTraces } from "./map/tools/trace";
 import { loadWorlds } from "./app/world-picker";
@@ -53,19 +53,21 @@ import { loadWorlds } from "./app/world-picker";
  * imported by name above as well, and are repeated here anyway: a rule with exceptions in it
  * is a rule nobody can check at a glance. */
 import "./chat/advice";
+import "./map/drawn/belts";
 import "./map/drawn/crates";
 import "./app/header";
 import "./dash/inventory";
 import "./map/labels";
 import "./map/drawn/markers";
 import "./map/panel";
+import "./map/drawn/pickups";
 import "./chat/pins";
+import "./map/drawn/pipes";
 import "./map/drawn/placements";
 import "./map/drawn/plan-sitings";
 import "./map/drawn/power-wires";
 import "./dash/progress/progress";
 import "./dash/recipes/recipes";
-import "./map/drawn/routes";
 import "./dash/world/world";
 
 /* ------------------------------------------------------------------- wiring */
@@ -76,9 +78,9 @@ import "./dash/world/world";
  * consequence of the import graph, so reordering two imports would silently reorder the
  * handlers -- and three of these events have more than one listener:
  *
- *   zoomend            writeHash, styleRoutes, declutter, markHiddenRows
+ *   zoomend            writeHash, restyleRoutesForZoom, declutter, markHiddenRows
  *   overlayadd         (the control's own decorator), noteRegionChoice, noteFloorChoice,
- *                      notePickupChoice, styleRoutes + sinkRoutes, declutter
+ *                      notePickupChoice, restyleRoutesForZoom + sinkRoutes, declutter
  *   overlayremove      (the control's own decorator), noteRegionChoice, noteFloorChoice,
  *                      notePickupChoice, declutter
  *
@@ -88,23 +90,23 @@ import "./dash/world/world";
 map.on("moveend zoomend", writeHash);
 map.on("layeradd layerremove", updateRegionBlend);
 // Which of the region box's ticks were the player's, which is what makes the base map's
-// default for it a default rather than an override. See regionsUnderMode.
+// default for it a default rather than an override. See applyRegionDefaultForMode.
 map.on("overlayadd overlayremove", noteRegionChoice);
 // The same question for floor mode -- and a layer ticked on mid-mode owes the floor filter a
 // pass, which this does too.
 map.on("overlayadd overlayremove", noteFloorChoice);
 // ...and for the pickup rows, which the fragment carries: see notePickupChoice.
 map.on("overlayadd overlayremove", notePickupChoice);
-map.on("zoomend", styleRoutes);
+map.on("zoomend", restyleRoutesForZoom);
 
 /* A layer added long after both fetches landed is appended to the canvas' draw list, i.e. on
  * top of everything, so the sink has to run again when the player ticks the box. And so does
- * the restyle: styleRoutes skips a layer that is not on the map, so a layer ticked on carries
- * the pixel sizes of the zoom it was last drawn at. Style first, then sink -- the order both
- * draw functions already end in. */
+ * the restyle: restyleRoutesForZoom skips a layer that is not on the map, so a layer ticked on
+ * carries the pixel sizes of the zoom it was last drawn at. Style first, then sink -- the order
+ * both draw functions already end in. */
 map.on("overlayadd", function (event) {
   if (!ROUTE_LAYERS.some(function (n) { return state.layers[n] === event.layer; })) return;
-  styleRoutes();
+  restyleRoutesForZoom();
   sinkRoutes();
 });
 
@@ -120,7 +122,7 @@ map.on("zoomend", markHiddenRows);
 
 /* The layers whose colours follow the base map's tone and keep no copy of their data to repaint
  * from; the node dots and pickups repaint themselves. */
-onTone(function () {
+onMapTone(function () {
   if (!state.worlds.length) return;
   loadOne("/api/belts");
   loadOne("/api/power");

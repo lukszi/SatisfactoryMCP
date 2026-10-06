@@ -8,7 +8,7 @@ import { showRows } from "../../map/tools/finder";
 import { pickupPlace, pickupSelection, worldUrl } from "./world-finds";
 import { count } from "../../kit/format";
 import { hashFor } from "../../map/map";
-import { lootLine, pickupName } from "../../map/drawn/markers";
+import { lootLine, pickupName } from "../../map/drawn/pickups";
 import { isSelected, select } from "../../app/selection";
 import { spoilerFlag } from "../../app/settings";
 import { state } from "../../app/state";

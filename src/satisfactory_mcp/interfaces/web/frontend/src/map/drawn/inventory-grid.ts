@@ -42,8 +42,6 @@ export interface Stack {
  * short keys against short values, and a card wider than it needs to be covers more of the
  * map than it has to. This number is arithmetic: at 380 the value cell fits SEVEN 38 px tiles
  * to a row, and eight would need 424 px and start covering the thing that was clicked.
- * Measured with the widest card either layer can produce -- the fullest crate on this
- * machine, 38 kinds at 381x568 px, without overflow.
  */
 export var CONTENTS_POPUP_PX = 380;
 
@@ -85,11 +83,11 @@ function tile(item: Stack): string {
  * anyway -- a grid that simply stops is a container that looks emptier than it is.
  */
 export function contentsRows(items: Stack[], more: number): Row[] {
-  var stacks = items || [];
+  const stacks = items || [];
   // Said in words, because an empty grid and a container this page failed to read are the
   // same picture, and one of the two is an answer.
   if (!stacks.length) return [["contents", more ? "not shown" : "empty"]];
-  var tiles = stacks.map(tile).join("");
+  let tiles = stacks.map(tile).join("");
   if (more) {
     tiles +=
       '<span class="item-tile item-tile-more" title="' +
@@ -102,7 +100,7 @@ export function contentsRows(items: Stack[], more: number): Row[] {
    * recognises the picture, and the names say it to everyone else, including anyone with no
    * pointer to hover with. A middle dot rather than a comma, because several item names have
    * a comma in them and none has this. */
-  var names = stacks
+  let names = stacks
     .map(function (s) {
       return s.name;
     })

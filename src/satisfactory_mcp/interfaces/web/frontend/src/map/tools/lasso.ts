@@ -3,10 +3,11 @@
 
 import { get, latest, send } from "../../api/client";
 import { button, chip, toggleButton } from "../../kit/dashkit";
-import { LASSO_ATTR, make } from "../../kit/dom";
+import { LASSO_ATTR, make, onAttributeClick } from "../../kit/dom";
+import { buildingCounts, tallyBy } from "../../kit/format";
 import { L } from "../leaflet";
-import { flyPadded, map } from "../map";
-import { cardHead, cardLine, cardRow, cardSubject, claim, mapCard } from "../mapcard";
+import { flyPadded, gameXY, latLngOf, map } from "../map";
+import { cardLine, cardSubject, cardTitleBar, cardToolbar, closeOtherCards, mapCard } from "../mapcard";
 import { makeRoom } from "../panel";
 import { onVitals } from "../../app/vitals";
 import { newest, refreshLabels, refusal, wrote } from "../../dash/factories/rename";
@@ -15,10 +16,9 @@ import { fail, friendlyError, notify } from "../../kit/toast";
 import { counted, WORDS } from "../../kit/words";
 
 import type { AmendedResponse, FactoryMachinesResponse, MachineSpot } from "../../api/shapes";
+import type { PointM } from "../geometry";
 
 type Mode = "add" | "drop";
-
-type Corner = [number, number];
 
 var FLY_ZOOM = 2;
 
@@ -28,19 +28,23 @@ var pane = map.createPane("lasso");
 pane.style.zIndex = "455";
 pane.style.pointerEvents = "none";
 var renderer = L.svg({ pane: "lasso", padding: 0.5 });
-var rings = L.layerGroup();
-var ink = L.layerGroup();
+/** The rings on the machines, and the areas being drawn. */
+var ringLayer = L.layerGroup();
+var areaLayer = L.layerGroup();
 
 var view = {
   title: "",
   kind: "",
   factory: "",
+  /** The cluster selector an unnamed cluster's members are asked for by. */
+  candidateSelector: "",
   mode: "add" as Mode,
   token: "",
   members: null as MachineSpot[] | null,
   error: "",
-  areas: [] as Corner[][],
-  more: false,
+  areas: [] as PointM[][],
+  /** Whether the next drag adds an area instead of starting over. */
+  appendNextArea: false,
   preview: null as AmendedResponse | null,
   busy: false,
   world: "",
@@ -49,117 +53,112 @@ var view = {
 
 var stroke: { points: L.LatLng[]; line: L.Polyline; last: L.Point } | null = null;
 
-var drew = false;
+/** Set when a drag ends, so the click the browser fires after it does not reach the map. */
+var swallowNextClick = false;
 
-function card(): HTMLElement {
+function lassoCard(): HTMLElement {
   return mapCard("lasso", "machines on the map", closeLasso);
 }
 
 function ring(spot: MachineSpot, className: string, radius: number): void {
-  L.circleMarker([-spot.y_m, spot.x_m], {
+  L.circleMarker(latLngOf(spot), {
     radius: radius,
     className: className,
     renderer: renderer,
     pane: "lasso",
     interactive: false,
-  }).addTo(rings);
+  }).addTo(ringLayer);
 }
 
 function draw(): void {
-  rings.clearLayers();
-  (view.members || []).forEach(function (s) {
-    ring(s, "lasso-member", 6);
+  ringLayer.clearLayers();
+  (view.members || []).forEach(function (spot) {
+    ring(spot, "lasso-member", 6);
   });
-  var p = view.preview;
-  if (p) {
-    p.added.forEach(function (s) {
-      ring(s, "lasso-add", 8);
+  const preview = view.preview;
+  if (preview) {
+    preview.added.forEach(function (spot) {
+      ring(spot, "lasso-add", 8);
     });
-    p.dropped.forEach(function (s) {
-      ring(s, "lasso-drop", 8);
+    preview.dropped.forEach(function (spot) {
+      ring(spot, "lasso-drop", 8);
     });
   }
-  if (!map.hasLayer(rings)) rings.addTo(map);
-  if (!map.hasLayer(ink)) ink.addTo(map);
+  if (!map.hasLayer(ringLayer)) ringLayer.addTo(map);
+  if (!map.hasLayer(areaLayer)) areaLayer.addTo(map);
 }
 
 function fly(spots: MachineSpot[]): void {
   if (!spots.length) return;
-  var bounds = L.latLngBounds(
-    spots.map(function (s) {
-      return [-s.y_m, s.x_m] as L.LatLngTuple;
+  const bounds = L.latLngBounds(
+    spots.map(function (spot) {
+      return latLngOf(spot);
     })
   );
   flyPadded(bounds.pad(0.15), FLY_ZOOM);
 }
 
+/** "3× Constructor, 2× Smelter", most first. */
 function buildings(spots: MachineSpot[]): string {
-  var tally: Record<string, number> = {};
-  spots.forEach(function (s) {
-    tally[s.building] = (tally[s.building] || 0) + 1;
-  });
-  return Object.keys(tally)
-    .sort(function (a, b) {
-      return tally[b]! - tally[a]!;
+  return buildingCounts(
+    tallyBy(spots, function (spot) {
+      return spot.building;
     })
-    .map(function (k) {
-      return tally[k] + "× " + k;
-    })
-    .join(", ");
+  );
 }
 
-function toggle(text: string, title: string, mode: Mode): HTMLButtonElement {
+function modeButton(text: string, title: string, mode: Mode): HTMLButtonElement {
   return toggleButton(
     text,
     view.mode === mode,
     function () {
       if (view.mode === mode) return;
       view.mode = mode;
-      if (view.areas.length) check();
+      if (view.areas.length) previewAmendment();
       else render();
     },
     { title: title }
   );
 }
 
-function previewBlock(box: HTMLElement, p: AmendedResponse): void {
-  var changes = p.added.length + p.dropped.length;
-  var chips = make("div", "panel-chips");
-  if (p.added.length) chips.appendChild(chip("+" + counted(p.added.length, "machine") + " to add", "ok"));
-  if (p.dropped.length) chips.appendChild(chip("−" + counted(p.dropped.length, "machine") + " to remove", "remove"));
+function previewBlock(box: HTMLElement, preview: AmendedResponse): void {
+  const changes = preview.added.length + preview.dropped.length;
+  const chips = make("div", "panel-chips");
+  if (preview.added.length) chips.appendChild(chip("+" + counted(preview.added.length, "machine") + " to add", "ok"));
+  if (preview.dropped.length) chips.appendChild(chip("−" + counted(preview.dropped.length, "machine") + " to remove", "remove"));
   if (!changes) chips.appendChild(chip(view.mode === "add" ? "nothing new inside" : "none of its machines inside", "muted"));
-  chips.appendChild(chip(p.before + " → " + counted(p.after, "anchor"), "muted"));
+  chips.appendChild(chip(preview.before + " → " + counted(preview.after, "anchor"), "muted"));
   if (view.areas.length > 1) chips.appendChild(chip(counted(view.areas.length, "area"), "muted"));
   box.appendChild(chips);
-  var moved = p.added.length ? p.added : p.dropped;
+  const moved = preview.added.length ? preview.added : preview.dropped;
   if (moved.length) cardLine(box, buildings(moved));
-  var named = p.added.filter(function (s) {
-    return s.factory !== null;
+  const named = preview.added.filter(function (spot) {
+    return spot.factory !== null;
   });
   if (named.length) {
-    var held: Record<string, number> = {};
-    named.forEach(function (s) {
-      held[s.factory!] = (held[s.factory!] || 0) + 1;
+    const held: Record<string, number> = {};
+    named.forEach(function (spot) {
+      held[spot.factory!] = (held[spot.factory!] || 0) + 1;
     });
     cardLine(
       box,
       Object.keys(held)
-        .map(function (k) {
-          return counted(held[k]!, "machine") + " already in “" + k + "”; both factories will hold them";
+        .map(function (factory) {
+          return counted(held[factory]!, "machine") + " already in “" + factory + "”; both factories will hold them";
         })
         .join(" · "),
       "blocked"
     );
   }
-  var acts = cardRow();
-  acts.appendChild(button(view.busy ? "applying…" : "apply", apply, { title: "write this change to the factory", disabled: view.busy || !changes }));
-  acts.appendChild(button("discard", discard, { title: "clear every area and draw again" }));
+  const acts = cardToolbar();
+  acts.appendChild(button(view.busy ? "applying…" : "apply", applyAmendment, { title: "write this change to the factory", disabled: view.busy || !changes }));
+  acts.appendChild(button("discard", discardAreas, { title: "clear every area and draw again" }));
   acts.appendChild(
     toggleButton(
       "+ area",
-      view.more,
+      view.appendNextArea,
       function () {
-        view.more = !view.more;
+        view.appendNextArea = !view.appendNextArea;
         render();
       },
       { title: "the next drag adds another area instead of starting over" }
@@ -170,7 +169,7 @@ function previewBlock(box: HTMLElement, p: AmendedResponse): void {
 }
 
 function render(): void {
-  var box = card();
+  const box = lassoCard();
   box.textContent = "";
   document.body.classList.toggle("lasso-on", !!view.factory);
   if (!view.title) {
@@ -178,10 +177,10 @@ function render(): void {
     return;
   }
   box.hidden = false;
-  var head = cardHead(view.factory ? "Amend" : view.kind);
+  const head = cardTitleBar(view.factory ? "Amend" : view.kind);
   if (view.factory) {
-    head.appendChild(toggle("+ add", "draw around machines to add them", "add"));
-    head.appendChild(toggle("− remove", "draw around machines to remove them", "drop"));
+    head.appendChild(modeButton("+ add", "draw around machines to add them", "add"));
+    head.appendChild(modeButton("− remove", "draw around machines to remove them", "drop"));
   }
   head.appendChild(button("×", closeLasso, { title: "stop", label: "clear the machines from the map" }));
   box.appendChild(head);
@@ -201,17 +200,15 @@ function render(): void {
   else cardLine(box, "drag around machines on the map to " + (view.mode === "add" ? "add them to" : "remove them from") + " this " + WORDS.factory);
 }
 
-var candidate = "";
-
 function membersPath(): `/api/factories/machines?${string}` {
-  var q = view.factory
+  const query = view.factory
     ? "factory=" + encodeURIComponent(view.factory)
-    : "candidate=" + encodeURIComponent(candidate) + "&token=" + encodeURIComponent(view.token);
-  return ("/api/factories/machines?" + q) as `/api/factories/machines?${string}`;
+    : "candidate=" + encodeURIComponent(view.candidateSelector) + "&token=" + encodeURIComponent(view.token);
+  return ("/api/factories/machines?" + query) as `/api/factories/machines?${string}`;
 }
 
 function fetchMembers(flyAfter: boolean): void {
-  var ticket = latest("lasso");
+  const ticket = latest("lasso");
   get<FactoryMachinesResponse>(membersPath())
     .then(function (data) {
       if (!ticket.fresh()) return;
@@ -226,28 +223,29 @@ function fetchMembers(flyAfter: boolean): void {
       if (!ticket.fresh()) return;
       view.members = null;
       view.error = friendlyError(err);
-      rings.clearLayers();
+      ringLayer.clearLayers();
       render();
     });
 }
 
 function begin(title: string, kind: string, factory: string): void {
-  claim("lasso");
+  closeOtherCards("lasso");
   stopStroke();
-  ink.clearLayers();
+  areaLayer.clearLayers();
   view.title = title;
   view.kind = kind;
   view.factory = factory;
+  view.candidateSelector = "";
   view.mode = "add";
   view.members = null;
   view.error = "";
   view.areas = [];
-  view.more = false;
+  view.appendNextArea = false;
   view.preview = null;
   view.busy = false;
   view.world = state.world;
   view.epoch = state.epoch;
-  rings.clearLayers();
+  ringLayer.clearLayers();
   makeRoom("trace");
   if (factory) map.dragging.disable();
   else map.dragging.enable();
@@ -261,7 +259,7 @@ export function startLasso(name: string): void {
 
 export function ringCandidate(selector: string, token: string, title: string): void {
   begin(title, WORDS.unnamedCluster, "");
-  candidate = selector;
+  view.candidateSelector = selector;
   view.token = token;
   fetchMembers(false);
 }
@@ -275,14 +273,16 @@ export function closeLasso(): void {
   view.members = null;
   view.preview = null;
   view.areas = [];
-  view.more = false;
-  rings.clearLayers();
-  ink.clearLayers();
+  view.appendNextArea = false;
+  ringLayer.clearLayers();
+  areaLayer.clearLayers();
   map.dragging.enable();
   render();
 }
 
-function body(dryRun: boolean): object {
+/** The `/api/labels/amend` body: a dry run previews against the members' token, a real write
+ *  against the preview's. */
+function amendRequest(dryRun: boolean): object {
   return {
     name: view.factory,
     area: view.areas[0],
@@ -294,22 +294,23 @@ function body(dryRun: boolean): object {
   };
 }
 
-function refused(err: unknown, what: string): void {
-  var why = refusal(err);
+/** A refused amend: a stale view starts over, anything else is said as it came. */
+function reportAmendRefusal(err: unknown, what: string): void {
+  const why = refusal(err);
   if (why === "stale" || why === "pin") {
     fail((why === "pin" ? "a newer save was written" : "factory names changed elsewhere") + ", so nothing was " + what + "; draw the area again");
     refreshLabels();
-    discard();
+    discardAreas();
     fetchMembers(false);
   } else fail(friendlyError(err));
 }
 
-function check(): void {
-  var ticket = latest("amend");
+function previewAmendment(): void {
+  const ticket = latest("amend");
   view.busy = true;
   view.preview = null;
   render();
-  send<AmendedResponse>("POST", "/api/labels/amend", body(true))
+  send<AmendedResponse>("POST", "/api/labels/amend", amendRequest(true))
     .then(function (reply) {
       if (!ticket.fresh()) return;
       view.preview = reply;
@@ -321,41 +322,41 @@ function check(): void {
       if (!ticket.fresh()) return;
       view.busy = false;
       render();
-      refused(err, "previewed");
+      reportAmendRefusal(err, "previewed");
     });
 }
 
-function apply(): void {
+function applyAmendment(): void {
   if (!view.preview || view.busy) return;
-  var ticket = latest("amend");
-  var name = view.factory;
+  const ticket = latest("amend");
+  const name = view.factory;
   view.busy = true;
   render();
-  send<AmendedResponse>("POST", "/api/labels/amend", body(false))
+  send<AmendedResponse>("POST", "/api/labels/amend", amendRequest(false))
     .then(function (reply) {
       if (!ticket.fresh()) return;
       view.busy = false;
       wrote(reply.version);
       notify("“" + name + "” now holds " + counted(reply.after, "machine") + " (+" + reply.added.length + " −" + reply.dropped.length + ")");
       refreshLabels();
-      discard();
+      discardAreas();
       fetchMembers(false);
     })
     .catch(function (err) {
       if (!ticket.fresh()) return;
       view.busy = false;
       render();
-      refused(err, "written");
+      reportAmendRefusal(err, "written");
     });
 }
 
-function discard(): void {
+function discardAreas(): void {
   latest("amend");
   view.areas = [];
-  view.more = false;
+  view.appendNextArea = false;
   view.preview = null;
   view.busy = false;
-  ink.clearLayers();
+  areaLayer.clearLayers();
   draw();
   render();
 }
@@ -368,15 +369,15 @@ function stopStroke(): void {
 
 function onDown(event: PointerEvent): void {
   if (!view.factory || view.busy || event.button !== 0) return;
-  var target = event.target as Element | null;
+  const target = event.target as Element | null;
   if (target && target.closest(".leaflet-control-container, .leaflet-popup")) return;
   event.preventDefault();
   event.stopPropagation();
-  if (!view.areas.length || !(event.shiftKey || view.more)) discard();
-  var at = map.mouseEventToLatLng(event as unknown as MouseEvent);
+  if (!view.areas.length || !(event.shiftKey || view.appendNextArea)) discardAreas();
+  const at = map.mouseEventToLatLng(event as unknown as MouseEvent);
   stroke = {
     points: [at],
-    line: L.polyline([at], { className: "lasso-ink", renderer: renderer, pane: "lasso", interactive: false }).addTo(ink),
+    line: L.polyline([at], { className: "lasso-ink", renderer: renderer, pane: "lasso", interactive: false }).addTo(areaLayer),
     last: map.mouseEventToContainerPoint(event as unknown as MouseEvent),
   };
   map.getContainer().setPointerCapture(event.pointerId);
@@ -385,7 +386,7 @@ function onDown(event: PointerEvent): void {
 function onMove(event: PointerEvent): void {
   if (!stroke) return;
   event.preventDefault();
-  var px = map.mouseEventToContainerPoint(event as unknown as MouseEvent);
+  const px = map.mouseEventToContainerPoint(event as unknown as MouseEvent);
   if (px.distanceTo(stroke.last) < STEP_PX) return;
   stroke.last = px;
   stroke.points.push(map.containerPointToLatLng(px));
@@ -394,23 +395,23 @@ function onMove(event: PointerEvent): void {
 
 function onUp(): void {
   if (!stroke) return;
-  var points = stroke.points;
+  const points = stroke.points;
   stroke.line.remove();
   stroke = null;
-  drew = true;
+  swallowNextClick = true;
   if (points.length < 3) return;
-  L.polygon(points, { className: "lasso-area", renderer: renderer, pane: "lasso", interactive: false }).addTo(ink);
+  L.polygon(points, { className: "lasso-area", renderer: renderer, pane: "lasso", interactive: false }).addTo(areaLayer);
   view.areas.push(
-    points.map(function (p) {
-      return [p.lng, -p.lat] as Corner;
+    points.map(function (point) {
+      return gameXY(point);
     })
   );
-  view.more = false;
-  check();
+  view.appendNextArea = false;
+  previewAmendment();
 }
 
 function wire(): void {
-  var box = map.getContainer();
+  const box = map.getContainer();
   box.addEventListener("pointerdown", onDown, true);
   box.addEventListener("pointermove", onMove, true);
   box.addEventListener("pointerup", onUp, true);
@@ -418,24 +419,15 @@ function wire(): void {
   box.addEventListener(
     "click",
     function (event) {
-      if (!drew) return;
-      drew = false;
+      if (!swallowNextClick) return;
+      swallowNextClick = false;
       event.stopPropagation();
     },
     true
   );
-  document.addEventListener(
-    "click",
-    function (event) {
-      var target = event.target as Element | null;
-      var hit = target && target.closest ? target.closest("[" + LASSO_ATTR + "]") : null;
-      if (!hit) return;
-      event.stopPropagation();
-      event.preventDefault();
-      startLasso(hit.getAttribute(LASSO_ATTR) || "");
-    },
-    true
-  );
+  onAttributeClick(LASSO_ATTR, function (hit) {
+    startLasso(hit.getAttribute(LASSO_ATTR) || "");
+  });
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && view.title && !(event.target as Element).closest("input, textarea")) closeLasso();
   });
@@ -451,7 +443,7 @@ function wire(): void {
       closeLasso();
       return;
     }
-    discard();
+    discardAreas();
     fetchMembers(false);
   });
 }

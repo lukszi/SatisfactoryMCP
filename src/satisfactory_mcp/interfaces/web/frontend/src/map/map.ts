@@ -2,8 +2,8 @@
  *
  * The page's one coordinate rule lives here and nowhere else: the API speaks metres (nothing on
  * the page divides by 100), and Satisfactory is +X east and +Y SOUTH while Leaflet is +lat
- * north, so a point is plotted at [-y, x]. `latLngOf`, `boundsOfBbox` and `footprintCorners`
- * apply it, and `gameXY` and `writeHash` invert it.
+ * north, so a point is plotted at [-y, x]. `latLngOf` and `boundsOfBbox` apply it and `gameXY`
+ * inverts it; everything else goes through those three.
  *
  * Creating the map is a SIDE EFFECT of importing this module, and the modules that decorate
  * it get their ordering from importing this one.
@@ -26,7 +26,7 @@ export function latLngOf(point: { x_m: number; y_m: number } | PointM | Point3M)
 
 /** A `[x_min, y_min, x_max, y_max]` box as Leaflet bounds, grown by `padM` metres a side. */
 export function boundsOfBbox(bbox: BboxM, padM?: number): L.LatLngBounds {
-  var pad = padM || 0;
+  const pad = padM || 0;
   return L.latLngBounds([latLngOf([bbox[0] - pad, bbox[1] - pad]), latLngOf([bbox[2] + pad, bbox[3] + pad])]);
 }
 
@@ -36,8 +36,8 @@ export function gameXY(latlng: L.LatLng | L.LatLngLiteral): PointM {
 }
 
 export function flyToBox(box: BboxM, options?: { maxZoom?: number; padLeft?: number }): void {
-  var bounds = boundsOfBbox(box);
-  var pad = overlayPad();
+  const bounds = boundsOfBbox(box);
+  const pad = overlayPad();
   if (options && options.padLeft !== undefined) pad.topLeft.x = options.padLeft;
   map.flyToBounds(bounds, {
     maxZoom: options ? options.maxZoom : undefined,
@@ -53,27 +53,27 @@ var GAP_PX = 12;
 var SHEET_SHARE = 0.9;
 
 function shown(id: string): DOMRect | null {
-  var node = document.getElementById(id);
+  const node = document.getElementById(id);
   if (!node || node.hidden || !node.getClientRects().length) return null;
   return node.getBoundingClientRect();
 }
 
 export function overlayPad(): { topLeft: L.Point; bottomRight: L.Point } {
-  var frame = map.getContainer().getBoundingClientRect();
-  var topLeft = L.point(GAP_PX, GAP_PX);
-  var bottomRight = L.point(GAP_PX, GAP_PX);
-  var cards: string[] = [];
+  const frame = map.getContainer().getBoundingClientRect();
+  const topLeft = L.point(GAP_PX, GAP_PX);
+  const bottomRight = L.point(GAP_PX, GAP_PX);
+  const cards: string[] = [];
   document.querySelectorAll<HTMLElement>(".mapcard[id]").forEach(function (card) {
     cards.push(card.id);
   });
   ["panel"].concat(cards).forEach(function (id) {
-    var r = shown(id);
+    const r = shown(id);
     if (!r) return;
     if (id !== "panel" || r.width >= frame.width * SHEET_SHARE) {
       bottomRight.y = Math.max(bottomRight.y, frame.bottom - r.top + GAP_PX);
     } else topLeft.x = Math.max(topLeft.x, r.right - frame.left + GAP_PX);
   });
-  var layers = map.getContainer().querySelector<HTMLElement>(".leaflet-control-layers");
+  const layers = map.getContainer().querySelector<HTMLElement>(".leaflet-control-layers");
   if (layers && layers.offsetHeight > 60) {
     bottomRight.x = Math.max(bottomRight.x, frame.right - layers.getBoundingClientRect().left + GAP_PX);
   }
@@ -86,7 +86,7 @@ var POPUP_BOTTOM_RIGHT = L.point(GAP_PX, GAP_PX);
 L.Popup.mergeOptions({ autoPanPaddingTopLeft: POPUP_TOP_LEFT, autoPanPaddingBottomRight: POPUP_BOTTOM_RIGHT });
 
 export function padPopups(): void {
-  var pad = overlayPad();
+  const pad = overlayPad();
   POPUP_TOP_LEFT.x = pad.topLeft.x;
   POPUP_TOP_LEFT.y = pad.topLeft.y;
   POPUP_BOTTOM_RIGHT.x = pad.bottomRight.x;
@@ -94,8 +94,8 @@ export function padPopups(): void {
 }
 
 export function flyPadded(bounds: L.LatLngBounds, maxZoom: number, snap?: number): void {
-  var pad = overlayPad();
-  var was = map.options.zoomSnap;
+  const pad = overlayPad();
+  const was = map.options.zoomSnap;
   if (snap) map.options.zoomSnap = snap;
   map.flyToBounds(bounds, { maxZoom: maxZoom, paddingTopLeft: pad.topLeft, paddingBottomRight: pad.bottomRight });
   map.options.zoomSnap = was;
@@ -108,14 +108,11 @@ export function flyToPoint(at: L.LatLngTuple, zoom: number): void {
 export var FIT_SNAP = 0.25;
 
 export function fitWorld(): void {
-  var pad = overlayPad();
-  var snap = map.options.zoomSnap;
+  const pad = overlayPad();
+  const snap = map.options.zoomSnap;
   map.options.zoomSnap = FIT_SNAP;
   map.fitBounds(
-    L.latLngBounds(
-      [-MAP_SQUARE_M.y_max, MAP_SQUARE_M.x_min],
-      [-MAP_SQUARE_M.y_min, MAP_SQUARE_M.x_max]
-    ),
+    boundsOfBbox([MAP_SQUARE_M.x_min, MAP_SQUARE_M.y_min, MAP_SQUARE_M.x_max, MAP_SQUARE_M.y_max]),
     { paddingTopLeft: pad.topLeft, paddingBottomRight: pad.bottomRight }
   );
   map.options.zoomSnap = snap;
@@ -164,23 +161,25 @@ export var map = L.map("map", {
 });
 state.map = map;
 
+// Leaflet's `_rebound` without the centring: where the bounds fit, move only an edge that is out.
 function rebound(lo: number, hi: number): number {
   if (lo + hi > 0) return lo < 0 ? lo : hi < 0 ? -hi : 0;
   return Math.max(0, Math.ceil(lo)) - Math.max(0, Math.floor(hi));
 }
 
+// Leaflet's maxBounds check, measured against the part of the map no card or panel covers.
 map._getBoundsOffset = function (px: L.Bounds, bounds: L.LatLngBounds, zoom?: number): L.Point {
-  var pad = overlayPad();
-  var min = px.min!.add(pad.topLeft);
-  var max = px.max!.subtract(pad.bottomRight);
+  const pad = overlayPad();
+  let min = px.min!.add(pad.topLeft);
+  let max = px.max!.subtract(pad.bottomRight);
   if (min.x >= max.x || min.y >= max.y) {
     min = px.min!;
     max = px.max!;
   }
-  var a = map.project(bounds.getNorthEast(), zoom);
-  var b = map.project(bounds.getSouthWest(), zoom);
-  var lo = L.point(Math.min(a.x, b.x) - min.x, Math.min(a.y, b.y) - min.y);
-  var hi = L.point(max.x - Math.max(a.x, b.x), max.y - Math.max(a.y, b.y));
+  const northEastPx = map.project(bounds.getNorthEast(), zoom);
+  const southWestPx = map.project(bounds.getSouthWest(), zoom);
+  const lo = L.point(Math.min(northEastPx.x, southWestPx.x) - min.x, Math.min(northEastPx.y, southWestPx.y) - min.y);
+  const hi = L.point(max.x - Math.max(northEastPx.x, southWestPx.x), max.y - Math.max(northEastPx.y, southWestPx.y));
   return L.point(rebound(lo.x, hi.x), rebound(lo.y, hi.y));
 };
 
@@ -188,11 +187,11 @@ map._getBoundsOffset = function (px: L.Bounds, bounds: L.LatLngBounds, zoom?: nu
   // The viewport the page opens on: the URL's, if the fragment carries one.
   // `+undefined` is NaN, which is precisely the "no z in the fragment" branch, so the
   // assertions below are about the type and not about the value.
-  var zoom = isFinite(+BOOT.z!) ? +BOOT.z! : HOME_VIEW.zoom;
-  var centre = HOME_VIEW.centre;
+  const zoom = isFinite(+BOOT.z!) ? +BOOT.z! : HOME_VIEW.zoom;
+  let centre = HOME_VIEW.centre;
   if (BOOT.c) {
-    var raw = BOOT.c.split(",");
-    if (raw.length === 2 && isFinite(+raw[0]!) && isFinite(+raw[1]!)) centre = [-+raw[1]!, +raw[0]!];
+    const raw = BOOT.c.split(",");
+    if (raw.length === 2 && isFinite(+raw[0]!) && isFinite(+raw[1]!)) centre = latLngOf([+raw[0]!, +raw[1]!]);
   }
   map.setView(centre, zoom);
 })();
@@ -207,7 +206,7 @@ map._getBoundsOffset = function (px: L.Bounds, bounds: L.LatLngBounds, zoom?: nu
  * given a size in metres instead. Polygons never need it: they are already in map units and
  * scale for free. */
 export function pixelsPerMetre(zoom?: number): number {
-  var z = zoom === undefined ? map.getZoom() : zoom;
+  const z = zoom === undefined ? map.getZoom() : zoom;
   return map.project([0, 1], z).x - map.project([0, 0], z).x;
 }
 
@@ -248,9 +247,9 @@ map.getPane("foundations")!.style.zIndex = "360";
  * yet: the fragment would say `plain` on a machine whose artwork was about to load, and the
  * next reload would honour it. */
 export function hashFor(dash: string): string {
-  var parts: string[] = [];
+  const parts: string[] = [];
   if (state.world) parts.push("world=" + encodeURIComponent(state.world));
-  var pinned = pinnedFilename();
+  const pinned = pinnedFilename();
   if (pinned) parts.push("save=" + encodeURIComponent(pinned));
   if (state.floor) parts.push("floor=" + state.floor.platform + "/" + state.floor.band);
   if (state.mode) parts.push("mode=" + state.mode);
@@ -259,9 +258,9 @@ export function hashFor(dash: string): string {
   // API's own snake_case, so joining them needs no escaping.
   if (state.pickups.length) parts.push("pickups=" + state.pickups.join(","));
   if (dash) parts.push("dash=" + encodeURIComponent(dash).replace(/%2F/g, "/"));
-  var c = map.getCenter();
+  const centre = gameXY(map.getCenter());
   parts.push("z=" + map.getZoom());
-  parts.push("c=" + Math.round(c.lng * 10) / 10 + "," + Math.round(-c.lat * 10) / 10);
+  parts.push("c=" + Math.round(centre[0] * 10) / 10 + "," + Math.round(centre[1] * 10) / 10);
   return "#" + parts.join("&");
 }
 
@@ -300,16 +299,16 @@ export function footprintCorners(
   l: number,
   yaw: number | null | undefined
 ): L.LatLngTuple[] {
-  var a = ((yaw || 0) * Math.PI) / 180;
-  var cos = Math.cos(a);
-  var sin = Math.sin(a);
-  var offsets: [number, number][] = [
+  const a = ((yaw || 0) * Math.PI) / 180;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  const offsets: [number, number][] = [
     [-w, -l],
     [w, -l],
     [w, l],
     [-w, l],
   ];
   return offsets.map(function (d): L.LatLngTuple {
-    return [-(y + d[0] * sin + d[1] * cos), x + d[0] * cos - d[1] * sin];
+    return latLngOf([x + d[0] * cos - d[1] * sin, y + d[0] * sin + d[1] * cos]);
   });
 }

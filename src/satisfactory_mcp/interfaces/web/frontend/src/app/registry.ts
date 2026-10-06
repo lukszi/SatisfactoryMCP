@@ -47,7 +47,7 @@ export interface Fetcher<T extends ApiError> {
   /* Whether the floor filter runs again after this draw. A redraw replaces a layer's
    * CONTENTS and the filter is a fact about contents, so a layer refetched during floor mode
    * would otherwise arrive holding every storey at once. Stated per fetch because the set is
-   * not derivable from floors.ts's own FILTERED list -- the node dots and the factory labels
+   * not derivable from floors/filter.ts's own FILTERED list -- the node dots and the factory labels
    * are in here and are not filtered there. */
   refilters: boolean;
 

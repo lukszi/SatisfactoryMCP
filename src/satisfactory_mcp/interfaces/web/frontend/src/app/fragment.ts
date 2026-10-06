@@ -8,7 +8,7 @@
  * call. This file sits above all of them and is imported only by main.ts.
  *
  * WHAT IT DOES NOT DO is decide anything. Every branch below ends in a call that is already
- * the page's one way of doing that thing -- `reload()`, `setMode()`, `map.setView`. A
+ * the page's one way of doing that thing -- `reload()`, `requestBaseMode()`, `map.setView`. A
  * fragment is a request to press the buttons the page already has.
  */
 
@@ -16,10 +16,10 @@ import { applyDash } from "../dash/shell";
 import { applyFloorFragment } from "../map/floors/floors";
 import { reload } from "./load";
 import { map, writeHash, writtenHash } from "../map/map";
-import { applyPickupFragment } from "../map/drawn/markers";
+import { applyPickupFragment } from "../map/drawn/pickups";
 import { showSelector } from "../map/panel";
 import { dashFromFragment, garbledNote, parseHash, pinnedPath, state } from "./state";
-import { askMode, knownMode } from "../map/tiles";
+import { requestBaseMode, servableMode } from "../map/tiles";
 import { fail } from "../kit/toast";
 import { syncPickers } from "./world-picker";
 
@@ -90,10 +90,10 @@ function apply(hash: string): void {
   var floored = applyFloorFragment(asked.floor);
   // Checked against the registry; a name it does not have is ignored rather than resolved
   // to plain: `mode=terrian` is a typo, and switching the base map off is a strange answer.
-  var mode = knownMode(asked.mode);
+  var mode = servableMode(asked.mode);
   // `false` because the write it would do here is the write two lines down, and one
   // normalising write beats two.
-  if (mode && mode !== state.mode) askMode(mode, false);
+  if (mode && mode !== state.mode) requestBaseMode(mode, false);
   applyPickupFragment(asked.pickups);
   applyDash(dashFromFragment(asked));
   // Not while the floor half is still moving: `enterFloors` is a fetch and a flight, and it
