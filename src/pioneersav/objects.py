@@ -234,7 +234,7 @@ class SaveBody:
 
     @property
     def object_count(self) -> int:
-        return sum(len(lv.objects) for lv in self.levels)
+        return sum(len(level.objects) for level in self.levels)
 
     @property
     def destroyed_actors(self) -> list[tuple[str, str]]:
@@ -247,8 +247,8 @@ class SaveBody:
         rather than repeating each other, so all three have to be merged.
         """
         seen: dict[tuple[str, str], None] = {}
-        for lv in self.levels:
-            for ref in lv.destroyed:
+        for level in self.levels:
+            for ref in level.destroyed:
                 seen[ref] = None
         for ref in self.trailer_destroyed:
             seen[ref] = None
@@ -261,7 +261,7 @@ class SaveBody:
         """Destroyed-actor bytes stepped over by declared length, summed over levels. A number
         rather than thousands of per-level warnings, and expected to be nonzero.
         """
-        return sum(lv.toc_extra_bytes for lv in self.levels)
+        return sum(level.toc_extra_bytes for level in self.levels)
 
 
 def _at_archive_header(r: Reader) -> bool:
@@ -274,8 +274,8 @@ def _at_archive_header(r: Reader) -> bool:
     """
     if r.remaining < 12:
         return False
-    look = Reader(r.data, r.pos)
-    return (look.i32(), look.i32(), look.i32()) == (*_ARCHIVE_MARK, 1017)
+    peek = Reader(r.data, r.pos)
+    return (peek.i32(), peek.i32(), peek.i32()) == (*_ARCHIVE_MARK, 1017)
 
 
 def _read_archive_header(
@@ -348,14 +348,14 @@ def _read_grids(r: Reader) -> list[Grid]:
         name = r.string()
         cell_size = r.i32()
         content_id = r.u32()
-        n_cells = r.i32()
+        cell_count = r.i32()
         expect(
-            0 <= n_cells <= 1_000_000,
+            0 <= cell_count <= 1_000_000,
             r.pos - 4,
-            f"grid {name!r} claims {n_cells} cells",
+            f"grid {name!r} claims {cell_count} cells",
         )
         cells = []
-        for _ in range(n_cells):
+        for _ in range(cell_count):
             cells.append(r.string())
             r.u32()  # per-cell content id, unread by anything above this
         grids.append(Grid(name=name, cell_size=cell_size, content_id=content_id, cell_names=cells))
@@ -556,17 +556,9 @@ def _read_level_trailer(
     versioned_archive: bool,
     build_version: int | None = None,
 ) -> list[tuple[str, str]]:
-    """A sub-level's trailer: a version, a destroyed-actor list, and maybe a flag.
-
-    On a saveVersion 60 body the flag says whether an archive version header follows, and the
-    correlation is checked rather than trusted -- the header's own signature has to be there.
-    On a saveVersion 52 body there is no flag and no per-level archive headers: the next
-    level's name follows the destroyed-actor list directly.
-
-    Below saveVersion 52 there is no version int32 either, so the trailer is nothing but the
-    destroyed-actor list. That list and the header block's do not always hold the same actors,
-    which is why both are read and merged rather than one taken as authoritative.
-    """
+    """A sub-level's trailer: a version (from saveVersion 52), a destroyed-actor list, and on a
+    body with archive headers a flag saying whether one follows, whose signature is then
+    checked rather than trusted."""
     if save_version >= FIRST_MODERN_BODY:
         version = r.i32()
         expect(
@@ -580,9 +572,7 @@ def _read_level_trailer(
     flag = r.i32()
     expect(flag in (0, 1), r.pos - 4, f"level {name!r} trailer flag {flag}, expected 0 or 1")
     if flag:
-        # Checked, not skipped: nearly every archive header in a body is one of these per-level
-        # ones, so a body assembled from two builds' level records is caught here rather than
-        # only at the front.
+        # read, not skipped: nearly every archive header in a body is one of these
         _read_archive_header(r, warnings, build_version)
         _read_custom_versions(r)
     return destroyed

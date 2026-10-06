@@ -28,55 +28,55 @@ __all__ = [
 ]
 
 
-def read_vector(d: PropertyDecoder) -> list[float]:
+def read_vector(decoder: PropertyDecoder) -> list[float]:
     """FVector: three doubles on a UE5 save, three floats on a UE4 one. The width follows the
     save, not the object: a UE5 game writes doubles even into a version-36 object."""
-    r = d.r
-    if d.ue4_save:
+    r = decoder.r
+    if decoder.ue4_save:
         return [r.f32(), r.f32(), r.f32()]
     return [r.f64(), r.f64(), r.f64()]
 
 
-def read_quat(d: PropertyDecoder) -> list[float]:
+def read_quat(decoder: PropertyDecoder) -> list[float]:
     """FQuat: four doubles on a UE5 save and four floats on a UE4 one, as ``read_vector``."""
-    r = d.r
-    if d.ue4_save:
+    r = decoder.r
+    if decoder.ue4_save:
         return [r.f32(), r.f32(), r.f32(), r.f32()]
     return [r.f64(), r.f64(), r.f64(), r.f64()]
 
 
-def read_box(d: PropertyDecoder) -> list:
+def read_box(decoder: PropertyDecoder) -> list:
     """FBox: min, max and a validity byte, seven entries at ``read_vector``'s width."""
-    return [*read_vector(d), *read_vector(d), d.r.i8() != 0]
+    return [*read_vector(decoder), *read_vector(decoder), decoder.r.i8() != 0]
 
 
-def read_linear_color(d: PropertyDecoder) -> list[float]:
+def read_linear_color(decoder: PropertyDecoder) -> list[float]:
     """FLinearColor stayed four *floats* through the UE5 upgrade; FVector did not."""
-    r = d.r
+    r = decoder.r
     return [r.f32(), r.f32(), r.f32(), r.f32()]
 
 
-def read_guid(d: PropertyDecoder) -> list[int]:
+def read_guid(decoder: PropertyDecoder) -> list[int]:
     """16 bytes, reported as two uint64s."""
-    r = d.r
+    r = decoder.r
     return [r.u64(), r.u64()]
 
 
-def read_int_vector(d: PropertyDecoder) -> list[int]:
+def read_int_vector(decoder: PropertyDecoder) -> list[int]:
     """FIntVector: a world-partition cell coordinate, e.g. the foliage grid's ``[-7,-25,-1]``."""
-    r = d.r
+    r = decoder.r
     return [r.i32(), r.i32(), r.i32()]
 
 
-def read_fluid_box(d: PropertyDecoder) -> float:
+def read_fluid_box(decoder: PropertyDecoder) -> float:
     """FFluidBox: one float, the fluid currently in a pipe segment."""
-    return d.r.f32()
+    return decoder.r.f32()
 
 
-def read_client_identity_info(d: PropertyDecoder) -> list:
+def read_client_identity_info(decoder: PropertyDecoder) -> list:
     """``[offlineId, [[platform, idBytes], ...]]``: who owns a player state, one length-prefixed
     account id per linked platform, left as bytes because nothing reads it."""
-    r = d.r
+    r = decoder.r
     offline_id = r.string()
     count = r.i32()
     expect(0 <= count <= 64, r.pos - 4, f"a client identity claims {count} platforms")
@@ -87,14 +87,14 @@ def read_client_identity_info(d: PropertyDecoder) -> list:
     return [offline_id, platforms]
 
 
-def read_inventory_item_modern(d: PropertyDecoder) -> list:
+def read_inventory_item_modern(decoder: PropertyDecoder) -> list:
     """``FInventoryItem`` as an object reference, a has-state int32, and the state if there is one.
 
     State is the state class plus a sized, nested property list (a weapon's ammo counter), so
     it is read rather than skipped. Element 0 is the bare path string, not an
     ``ObjectReference``, because ``_accumulate_inventory``'s ``ref_class`` resolves only that.
     """
-    r = d.r
+    r = decoder.r
     item_class = read_reference(r)
     has_state = r.i32()
     if not has_state:
@@ -106,27 +106,27 @@ def read_inventory_item_modern(d: PropertyDecoder) -> list:
         r.pos - 4,
         f"an item state claims {size} bytes with {r.remaining} left",
     )
-    values, types = d.property_list(r.pos + size)
+    values, types = decoder.property_list(r.pos + size)
     return [item_class.path_name, [state_class.path_name, values, types]]
 
 
-def read_inventory_item_legacy(d: PropertyDecoder) -> list:
+def read_inventory_item_legacy(decoder: PropertyDecoder) -> list:
     """``FInventoryItem`` as two bare object references: the descriptor, then the ``Equip_*_C``
     actor this item instance is, or two empty strings."""
-    r = d.r
+    r = decoder.r
     item_class = read_reference(r)
     return [item_class.path_name, read_reference(r).path_name or None]
 
 
-def read_inventory_item(d: PropertyDecoder) -> list:
+def read_inventory_item(decoder: PropertyDecoder) -> list:
     """``FInventoryItem`` where no declared size can referee the layout, so the version guesses.
 
     Only a bare container element lands here; ``read_struct`` lets the declared size choose
     everywhere else, because the layout follows no version in the file (savparse-notes.md).
     """
-    if d.version < FIRST_MODERN_BODY:
-        return read_inventory_item_legacy(d)
-    return read_inventory_item_modern(d)
+    if decoder.version < FIRST_MODERN_BODY:
+        return read_inventory_item_legacy(decoder)
+    return read_inventory_item_modern(decoder)
 
 
 #: Self-serialising identity handles kept as raw bytes without a warning, so that they do not

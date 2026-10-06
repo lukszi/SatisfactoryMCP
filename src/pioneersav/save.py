@@ -75,7 +75,7 @@ class ParsedSave:
 
     @property
     def object_count(self) -> int:
-        return sum(len(lv.objects) for lv in self.levels)
+        return sum(len(level.objects) for level in self.levels)
 
 
 #: Class paths that carry their own bytes after the property list on a save below
