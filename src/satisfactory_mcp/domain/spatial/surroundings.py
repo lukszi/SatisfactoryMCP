@@ -139,7 +139,7 @@ def pickups_near(st: WorldState, x: float, y: float) -> list[dict]:
         if c not in pedestals
         and any(abs(r["x"] - x) <= reach and abs(r["y"] - y) <= reach for r in rows)
     ]
-    out: list[dict] = []
+    out = []
     for category in close:
         for r in st.placements(category, remaining_only=True):
             r["distance_m"] = geo.distance_m((r["pos"][0], r["pos"][1]), (x, y))
