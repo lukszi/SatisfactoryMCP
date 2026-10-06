@@ -471,7 +471,7 @@ ORIGIN = {"origin": "http://testserver"}
 
 @pytest.fixture
 def world(tmp_path, monkeypatch, projection, game):
-    from satisfactory_mcp.domain.planning import journal
+    from satisfactory_mcp.domain.session import journal
     from satisfactory_mcp.domain.world.state import WorldState
     from satisfactory_mcp.interfaces.mcp.tools import planning
 

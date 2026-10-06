@@ -13,9 +13,9 @@ from pathlib import Path
 
 from ... import config
 from ...core import atomic, filelock, schema
+from ..planning.planlog import PlanLog, PlanLogError
 from ..spatial import geo
 from ..spatial import nodes as nodes_mod
-from .planlog import PlanLog, PlanLogError
 
 __all__ = [
     "KINDS",
@@ -261,7 +261,7 @@ def _field(world: _World, node: dict) -> tuple[list[str], tuple[float, float]]:
 def _in_plan(st, state, rid: str) -> bool:
     if rid in state.args.required:
         return True
-    from . import summary
+    from ..planning import summary
 
     try:
         solved = summary.solve_summary(st.game, st, state.kwargs())

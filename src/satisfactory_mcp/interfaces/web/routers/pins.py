@@ -1,6 +1,6 @@
 """``/api/pins``: numbered handles on plans, processes, machines, factories, fields, nodes, points.
 
-The store is ``domain/planning/pins.py``; every write passes the guard, carries the ``rev`` it
+The store is ``domain/session/pins.py``; every write passes the guard, carries the ``rev`` it
 read, and appends one journal entry. docs/planner-p3_contract.md §4, §5 and §8 are the
 specification.
 
@@ -19,9 +19,9 @@ from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
-from ....domain.planning import journal
-from ....domain.planning import pins as pin_store
 from ....domain.planning.planlog import Actor
+from ....domain.session import journal
+from ....domain.session import pins as pin_store
 from ..serial import _fail, _state
 
 __all__ = ["router"]

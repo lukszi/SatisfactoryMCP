@@ -305,7 +305,7 @@ def select_nodes(
 
 
 def _pin_nodes(st, value: str, by_instance: dict, short_index: dict, sel: Selection):
-    from ..planning import pins
+    from ..session import pins
 
     n = pins.parse(value)
     if n is None:

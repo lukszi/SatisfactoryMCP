@@ -21,7 +21,7 @@ from ....domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from ....domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
 from ....domain.factories.select import SelectorError
 from ....domain.factories.trace import power_at_risk, resolve_seeds, trace
-from ....domain.planning import journal
+from ....domain.session import journal
 from ....domain.spatial import nodes as nodes_mod
 from ....presenters.text import primitives as render
 from ..app import AsOf, Limit, _state, actor, game, mcp, retired

@@ -21,7 +21,8 @@ from __future__ import annotations
 
 from .domain.factories.select import INDEX_WARNING as GRAPH_INDEX_WARNING
 from .domain.factories.select import SELECTOR_HELP as GRAPH_SELECTOR_HELP
-from .domain.planning import journal, planlog, siting
+from .domain.planning import planlog, siting
+from .domain.session import journal
 from .interfaces.mcp import tools as _tools
 from .interfaces.mcp.app import (
     Limit,

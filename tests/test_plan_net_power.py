@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from satisfactory_mcp.domain.planning import journal
 from satisfactory_mcp.domain.planning.summary import solve_summary
+from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning
 

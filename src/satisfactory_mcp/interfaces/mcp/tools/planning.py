@@ -23,8 +23,8 @@ from ....core.schema import NewerSchema
 from ....domain import advice
 from ....domain.advice import store as advice_store
 from ....domain.factories.select import SelectorError
-from ....domain.planning import asks, compare, journal, manage, payback, pins, summary
 from ....domain.planning import bom as bom_mod
+from ....domain.planning import compare, manage, payback, summary
 from ....domain.planning import provenance as prov
 from ....domain.planning import siting as siting_mod
 from ....domain.planning.carrier import resolve_tiers
@@ -61,6 +61,7 @@ from ....domain.planning.report import build_plan_report
 from ....domain.planning.scenario import build_scenario
 from ....domain.planning.sensitivity import sweep_unlocks
 from ....domain.planning.store import PLAN_ARGS
+from ....domain.session import asks, journal, pins
 from ....domain.world import pin
 from ....presenters.text import advice as advice_text
 from ....presenters.text import byproducts as byproducts_text
@@ -2258,7 +2259,7 @@ _cursor: dict[str, tuple[float, dict[str, int]]] = {}
 
 def _page_focus(world_id: str) -> tuple[dict | None, bool]:
     """What the page last said it had open, and whether its heartbeat is fresh."""
-    from ....domain.planning import focus
+    from ....domain.session import focus
 
     found = focus.read(world_id)
     return found, focus.is_open(found)

@@ -233,6 +233,7 @@ LAYERED_HOMES: tuple[str, ...] = (
     "satisfactory_mcp.domain.spatial",
     "satisfactory_mcp.domain.collectibles",
     "satisfactory_mcp.domain.planning",
+    "satisfactory_mcp.domain.session",
     "satisfactory_mcp.domain.advice",
     "satisfactory_mcp.presenters.text",
     "satisfactory_mcp.interfaces.mcp",

@@ -88,7 +88,7 @@ def plan_ref(st, plan: str | None) -> tuple[str | None, str]:
 
     Raises ``KeyError`` with the refusal, as an unknown plan name does.
     """
-    from . import pins
+    from ..session import pins
 
     n = pins.parse(plan)
     if n is None:

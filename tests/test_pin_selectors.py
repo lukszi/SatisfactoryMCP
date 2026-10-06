@@ -6,9 +6,9 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.domain.factories import select as gsel
-from satisfactory_mcp.domain.planning import pins
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
 from satisfactory_mcp.domain.planning.recall import plan_ref, recall_plan
+from satisfactory_mcp.domain.session import pins
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.spatial.origin import resolve_origin
 from satisfactory_mcp.domain.spatial.select import select_nodes
@@ -204,7 +204,7 @@ def test_canonical_rewrites_what_a_stored_plan_would_hold(world):
 
 
 def test_plan_management_tools_take_a_plan_pin(world, tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import journal
+    from satisfactory_mcp.domain.session import journal
     from satisfactory_mcp.interfaces.mcp.tools import planning
 
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")
@@ -232,7 +232,7 @@ def test_a_site_at_a_pin_stores_the_place_not_the_pin(world):
 
 
 def test_show_on_map_pins_what_it_shows_once(world, tmp_path, monkeypatch):
-    from satisfactory_mcp.domain.planning import journal
+    from satisfactory_mcp.domain.session import journal
     from satisfactory_mcp.interfaces.mcp.tools import spatial
 
     monkeypatch.setattr(journal.config, "activity_dir", lambda: tmp_path / "activity")

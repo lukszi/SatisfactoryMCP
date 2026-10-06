@@ -149,7 +149,7 @@ ids.
 
 A pin is a numbered handle the page places on a plan, a process, a machine, a factory, a
 field, a node or a point (docs/planner-p3_contract.md §4). `pin:<n>` is accepted wherever the
-thing it pins could stand, and `domain/planning/pins.py` is the only code that parses it:
+thing it pins could stand, and `domain/session/pins.py` is the only code that parses it:
 
 | grammar | resolver | kinds accepted | becomes |
 |---|---|---|---|

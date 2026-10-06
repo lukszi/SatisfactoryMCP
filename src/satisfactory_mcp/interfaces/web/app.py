@@ -27,7 +27,8 @@ from ...core.gamedata.model import GameData
 from ...core.gamedata.normalize import normalize
 from ...core.gpu import vulkan_available
 from ...core.schema import NewerSchema
-from ...domain.planning import journal, planlog, siting
+from ...domain.planning import planlog, siting
+from ...domain.session import journal
 from ...domain.world.state import WorldState, load_state
 from . import terrain
 from .guard import guard

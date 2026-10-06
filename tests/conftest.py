@@ -10,7 +10,7 @@ from satisfactory_mcp import config
 from satisfactory_mcp.core.gamedata.loader import load_docs
 from satisfactory_mcp.core.gamedata.normalize import normalize
 from satisfactory_mcp.core.saveio.projection import SaveError
-from satisfactory_mcp.domain.planning import journal
+from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
 
 FIXTURES = Path(__file__).parent / "fixtures"

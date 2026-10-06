@@ -16,8 +16,8 @@ from fastapi.testclient import TestClient
 
 from satisfactory_mcp import config
 from satisfactory_mcp import server as srv
-from satisfactory_mcp.domain.planning import journal
 from satisfactory_mcp.domain.planning.planlog import PlanLog
+from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.domain.world.state import WorldState
 from satisfactory_mcp.interfaces.mcp.tools import planning
 from satisfactory_mcp.interfaces.web import terrain

@@ -25,9 +25,9 @@ from ...core.gamedata.normalize import normalize
 from ...core.schema import NewerSchema
 from ...domain import settings
 from ...domain.factories.resolve import resolve_factory as _resolve_factory
-from ...domain.planning import journal
 from ...domain.planning.planlog import Actor
 from ...domain.planning.scenario import resolve_item
+from ...domain.session import journal
 from ...domain.spatial.origin import player_xy as _player_xy
 from ...domain.spatial.origin import resolve_origin as _origin_for
 from ...domain.world import pin

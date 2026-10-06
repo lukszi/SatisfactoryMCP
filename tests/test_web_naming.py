@@ -498,7 +498,7 @@ def test_the_user_data_override_moves_labels_and_plans(tmp_path, monkeypatch):
 def test_a_rename_is_journalled_with_was_and_to(
     empty, store_dir, projection, game, monkeypatch, tmp_path
 ):
-    from satisfactory_mcp.domain.planning import journal
+    from satisfactory_mcp.domain.session import journal
     from satisfactory_mcp.interfaces.mcp.tools import factories as tools
 
     monkeypatch.setattr(config, "activity_dir", lambda: tmp_path / "activity")

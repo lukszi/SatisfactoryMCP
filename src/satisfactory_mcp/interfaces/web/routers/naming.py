@@ -31,8 +31,8 @@ from ....domain.factories.labels import (
 )
 from ....domain.factories.query import build_view
 from ....domain.factories.select import SelectorError, select_machines
-from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
+from ....domain.session import journal
 from ....domain.spatial import geo
 from ....domain.spatial import regions as spatial_regions
 from ....domain.world import pin

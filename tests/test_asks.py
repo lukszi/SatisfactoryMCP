@@ -12,8 +12,8 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.core.schema import NewerSchema
-from satisfactory_mcp.domain.planning import asks
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.session import asks
 
 WORLD = "W1"
 ABOUT = {"kind": "process", "label": "Blender · Diluted Fuel", "ref": "job:recipe|B|R"}

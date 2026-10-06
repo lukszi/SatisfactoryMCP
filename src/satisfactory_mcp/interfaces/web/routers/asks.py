@@ -1,6 +1,6 @@
 """``/api/asks``: questions the page queues for chat, which chat marks seen and answered.
 
-The store is ``domain/planning/asks.py``; every write passes the guard and appends one journal
+The store is ``domain/session/asks.py``; every write passes the guard and appends one journal
 entry, and a delete carries the ``rev`` it read. docs/planner-p4_contract.md §4, §5 and §7 are
 the specification.
 
@@ -19,9 +19,9 @@ from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....core.schema import NewerSchema
-from ....domain.planning import asks as ask_store
-from ....domain.planning import journal
 from ....domain.planning.planlog import Actor
+from ....domain.session import asks as ask_store
+from ....domain.session import journal
 from ..serial import _fail, _state
 
 __all__ = ["router"]

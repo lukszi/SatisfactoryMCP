@@ -15,8 +15,8 @@ import pytest
 
 from satisfactory_mcp import server as srv
 from satisfactory_mcp.core.filelock import LockTimeout
-from satisfactory_mcp.domain.planning import journal
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.session import journal
 from satisfactory_mcp.interfaces.mcp import app
 from satisfactory_mcp.interfaces.mcp.tools import planning
 
@@ -307,7 +307,7 @@ def pinned(tmp_path, monkeypatch, projection, game):
 
 
 def _iron_field(st):
-    from satisfactory_mcp.domain.planning import pins
+    from satisfactory_mcp.domain.session import pins
     from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 
     iron = [n for n in nodes_mod.load_nodes().nodes if n["resource"] == "Desc_OreIron_C"]
@@ -316,7 +316,8 @@ def _iron_field(st):
 
 
 def test_save_as_stores_what_source_and_required_pins_stand_for(pinned):
-    from satisfactory_mcp.domain.planning import pins, summary
+    from satisfactory_mcp.domain.planning import summary
+    from satisfactory_mcp.domain.session import pins
 
     field = _iron_field(pinned)
     wanted = {"objective": "min_machines", "exports": [RIP], "export_minimums": {RIP: 5}}
@@ -505,7 +506,9 @@ def test_a_recalled_outdated_save_never_tells_chat_to_pass_save_as(scratch, game
     srv.plan_factory(save_as="probe", **PROBE)
     world = srv._state().world_id
     key = PlanLog(world).find("probe").key
-    PlanLog(world).push(key, 1, [{"op": "set", "field": "water_extractors", "value": 5}], actor=PAGE)
+    PlanLog(world).push(
+        key, 1, [{"op": "set", "field": "water_extractors", "value": 5}], actor=PAGE
+    )
     out = srv.plan_factory(plan="probe", save_as="probe", base_rev=1, water_extractors=3, limit=2)
     assert "! outdated:" in out
     assert "pass save_as to keep it" not in out

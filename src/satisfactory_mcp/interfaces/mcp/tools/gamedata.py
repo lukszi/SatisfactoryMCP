@@ -12,9 +12,10 @@ from pydantic import Field
 
 from ....core.gamedata import search
 from ....core.gamedata.unlocks import granted_by_label
-from ....domain.planning import journal, swaps
+from ....domain.planning import swaps
 from ....domain.planning.planlog import PlanLog
 from ....domain.planning.recall import plan_ref
+from ....domain.session import journal
 from ....domain.world import pin as save_pin
 from ....presenters.text import primitives as render
 from ....presenters.text.search import render_search
@@ -253,9 +254,7 @@ def search_recipes(
     query: str = "",
     consumes: str | None = None,
     produces: str | None = None,
-    recipe_kind: Annotated[
-        str, Field(description="part | building | manual | all")
-    ] = "part",
+    recipe_kind: Annotated[str, Field(description="part | building | manual | all")] = "part",
     only_alternates: bool = False,
     include_events: bool = False,
     save: str | None = None,
@@ -263,9 +262,7 @@ def search_recipes(
     as_of: AsOf = None,
     limit: Limit = 10,
     offset: int = 0,
-    kind: Annotated[
-        str | None, Field(description="retired -- write recipe_kind= instead")
-    ] = None,
+    kind: Annotated[str | None, Field(description="retired -- write recipe_kind= instead")] = None,
 ) -> str:
     """Search recipes by name, or by what they consume/produce. Marks HAVE/LOCKED.
 
@@ -406,10 +403,7 @@ def list_buildings(
     }
     want = kinds.get((building_kind or "").strip().casefold())
     if want is None:
-        return (
-            f"! unknown building_kind {building_kind!r}. "
-            f"Choose from: {', '.join(sorted(kinds))}"
-        )
+        return f"! unknown building_kind {building_kind!r}. Choose from: {', '.join(sorted(kinds))}"
     picks = [b for b in g.buildings.values() if want(b)]
     picks.sort(key=lambda b: b.name)
     offset = max(0, offset)

@@ -7,7 +7,7 @@ from typing import Annotated
 from mcp.server.fastmcp import Context
 from pydantic import Field
 
-from ....domain.planning import journal, pins
+from ....domain.session import journal, pins
 from ....domain.spatial import caves, finder, geo, heightfield, place
 from ....domain.spatial import nodes as nodes_mod
 from ....domain.spatial import ranking as ranking_mod

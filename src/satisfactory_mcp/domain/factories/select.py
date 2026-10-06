@@ -241,7 +241,7 @@ def _resolve(term: str, st, graph: FactoryGraph, game: GameData, projection: dic
 
 
 def _pin_terms(term: str, st) -> tuple[list[str], str]:
-    from ..planning import pins
+    from ..session import pins
 
     n = pins.parse(term)
     if n is None:

@@ -7,8 +7,8 @@ import os
 
 import pytest
 
-from satisfactory_mcp.domain.planning import journal
 from satisfactory_mcp.domain.planning.planlog import Actor
+from satisfactory_mcp.domain.session import journal
 
 CHAT = Actor("chat", "claude-code", 8248)
 

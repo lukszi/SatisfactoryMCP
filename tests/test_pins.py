@@ -11,8 +11,8 @@ import pytest
 
 from satisfactory_mcp import config
 from satisfactory_mcp.core.schema import NewerSchema
-from satisfactory_mcp.domain.planning import pins
 from satisfactory_mcp.domain.planning.planlog import Actor, PlanLog
+from satisfactory_mcp.domain.session import pins
 from satisfactory_mcp.domain.spatial import geo
 from satisfactory_mcp.domain.spatial import nodes as nodes_mod
 from satisfactory_mcp.domain.world.state import WorldState

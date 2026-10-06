@@ -29,8 +29,8 @@ from pathlib import Path
 from ... import config
 from ...core.saveio.projection import load_projection
 from ...domain import settings
-from ...domain.planning import journal
 from ...domain.planning.planlog import Commit, PlanLog, PlanLogError
+from ...domain.session import journal
 from .serial import _actor_json, _settings_json
 
 __all__ = [

@@ -610,7 +610,7 @@ is what the MCP client sent at `initialize` (`claude-code` reads as "Claude Code
 as "Claude Desktop"), read through the `ctx: Context` FastMCP injects and never shows in a
 schema. Called as a plain function (tests, scripts) the client is blank and reads as "chat".
 
-**The activity journal** (`domain/planning/journal.py`, contract §8) holds what is not a plan
+**The activity journal** (`domain/session/journal.py`, contract §8) holds what is not a plan
 edit: `plan.solve` for a `plan_factory` without `save_as` (the page offers it as a from-chat
 card), `plan.view` for `plan_layout`, `diff_vs_save` and `commission_plan` with `plan=`,
 `world.find` for the finder tools (docs/web-wire.md, World), and `plan.rejected` from the web. One file per process under `activity/<world>/`, `chat-<pid>.jsonl`

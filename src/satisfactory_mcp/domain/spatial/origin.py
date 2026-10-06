@@ -250,7 +250,7 @@ def resolve_origin(st, near: str) -> tuple[tuple[float, float], str]:
 
 
 def _pin_origin(st, text: str) -> tuple[tuple[float, float], str]:
-    from ..planning import pins
+    from ..session import pins
 
     n = pins.parse(text)
     if n is None:

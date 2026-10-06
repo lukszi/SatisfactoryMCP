@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 
 from ....core.filelock import LockTimeout
 from ....core.gamedata.model import GameData
-from ....domain.planning import journal, manage, pins, summary, swaps
+from ....domain.planning import manage, summary, swaps
 from ....domain.planning.planlog import (
     Actor,
     AlreadyUndone,
@@ -39,6 +39,7 @@ from ....domain.planning.planlog import (
     Pushed,
     UnknownPlan,
 )
+from ....domain.session import journal, pins
 from ....domain.world import pin
 from ..serial import ActorBody, PlanOpBody, _actor_json, _fail, _state
 
