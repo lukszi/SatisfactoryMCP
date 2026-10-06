@@ -138,7 +138,8 @@ folder holding them, such as `data/local/maps/_cache/<size>`. It reads every ban
 before it records the new storage in the sidecar, and only then deletes the raw planes. It
 refuses a cache with no `meta.json`, which may still be being written, and on Windows one a
 render holds open. `--to <dir>` writes the band store elsewhere and leaves the source alone.
-It does not read the game. See §39.
+A `--to` that is the source, a folder holding it or a folder inside it, links and junctions
+followed, is refused before anything is written. It does not read the game. See §39.
 
 ## Package map
 

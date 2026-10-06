@@ -110,6 +110,11 @@ Planned as 0.2.0.
 - A render that fails deletes its light scratch too, and the next lit run removes what a
   killed run left. On Windows, a run that would share the scratch of a render already
   drawing is refused at the start, where it used to fail after the slow preparation.
+- `python -m mapgen compress-cache --to` on the source cache or its folder deleted the raw
+  planes and then reported the cache "left as it was". A `--to` that is the source, holds it
+  or lies inside it, through a junction or link too, is now refused before anything is
+  written. Raw planes left by an interrupted run are removed only once they match their
+  bands, and the report says whether a cache was converted in place or copied.
 
 ## [0.1.0] - 2026-09-27
 

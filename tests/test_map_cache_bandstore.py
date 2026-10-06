@@ -292,7 +292,7 @@ def test_the_converter_round_trips_a_raw_cache_in_place(tmp_path):
     planes = (*cached_direct(folder, stamp), cached_family(folder, stamp))
     for plane, name in zip(planes, DIRECT_PLANES, strict=True):
         assert isinstance(plane, BandArray) and np.asarray(plane).tobytes() == before[name]
-    assert compress(folder) == {"already": True}
+    assert compress(folder) == {"already": True, "removed": [], "kept": {}}
 
 
 def test_the_command_converts_a_folder_into_a_target_and_leaves_the_source(tmp_path, monkeypatch):
