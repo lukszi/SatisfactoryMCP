@@ -84,7 +84,9 @@ def test_a_translucent_box_claims_its_water_instead_of_the_lake_fallback():
     plane, counts = classify(level, wet, {**bodies, "actors": [*bodies["actors"], translucent]},
                              biome, OCEAN_LEVEL_M)  # fmt: skip
     assert (plane[40:45, 20:25] == CLASS_ID["translucent"]).all()
-    assert (plane[40:45, 40:45] == CLASS_ID["swamp"]).all(), "water outside the box keeps its fallback"
+    assert (plane[40:45, 40:45] == CLASS_ID["swamp"]).all(), (
+        "water outside the box keeps its fallback"
+    )
     assert counts["bodies_claimed"] == 3 and counts["classes"]["translucent"] == 25
 
 

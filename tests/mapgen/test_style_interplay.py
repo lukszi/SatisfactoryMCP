@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pytest
 
 from mapgen.cache import (
     DIRECT_CACHE_DIR_NAME,
