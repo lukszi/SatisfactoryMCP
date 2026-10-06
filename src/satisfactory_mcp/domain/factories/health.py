@@ -15,7 +15,7 @@ from ...core.gamedata.constants import STACK_SIZE
 from ...core.gamedata.model import GameData
 from ...core.saveio import ports
 from ...core.saveio.records import actor_class, iter_machine_records
-from ..power.report import NO_FUEL, dry_input_classes, dry_inputs
+from ..power.report import BIOMASS_BURNERS, NO_FUEL, dry_input_classes, dry_inputs
 from ..world.logistics import BASIS_UNKNOWN
 
 __all__ = [
@@ -130,7 +130,8 @@ class HealthReport:
     name: str
     machines: list[MachineHealth] = field(default_factory=list)
     by_state: Counter = field(default_factory=Counter)
-    #: item name -> how many machines are blocked on it / starved of it
+    #: item name -> how many machines are blocked on it / starved of it; a starved generator
+    #: counts, a hand-fed biomass burner does not.
     blocked_on: Counter = field(default_factory=Counter)
     starved_of: Counter = field(default_factory=Counter)
     #: Machines no generator can reach over the wires: no power edge at all, or wired to a
@@ -483,8 +484,9 @@ def assess(
         if state == "blocked":
             for item in entry.cause:
                 report.blocked_on[item] += 1
-        elif state == "starved" and recipe is not None:
-            for flow in recipe.ingredients:
-                report.starved_of[game.item_name(flow.item)] += 1
+        elif state == "starved" and record.get("cls") not in BIOMASS_BURNERS:
+            # The missing items as ``cause`` names them, before `_with_rungs` annotates them.
+            for item in cause:
+                report.starved_of[item] += 1
 
     return report

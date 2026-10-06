@@ -435,6 +435,11 @@ settle it. **Every rule below was wrong before it was measured:**
   set but points at an `FGWaterVolume` that is not a purity-table key; that one works fine.
 - **Generators keep a `FuelInventory`, not an `InputInventory`.** Without capturing it a
   starved coal plant shows no evidence either way.
+- **"Inputs not arriving" counts what is missing.** `starved_of` counts each starved
+  machine's cause, so the Black Powder assembler above counts Coal and not Sulfur. A starved
+  generator counts too, so a coal plant without water shows as Water. A biomass burner does
+  not count: every burner is hand-fed (frontend_vision.md §8.7), so an empty one is not a
+  supply fault. Decided 2026-10-06.
 - **A starved input names what feeds it.** One `Feed` row per arriving run of the input's
   medium: `nothing` (no run arrives) and `unfed` (a pipe arrives, and no source anywhere
   reaches its network) are findings; `open` (the save joins the far end to no actor, a
