@@ -18,6 +18,7 @@ from .....core.filelock import LockTimeout
 from .....core.schema import NewerSchema
 from .....domain import advice
 from .....domain.advice import store as hidden_store
+from .....domain.advice.views import HiddenEntry
 from .....domain.session import journal
 from .....domain.world import pin
 from ...serial import (
@@ -104,7 +105,7 @@ class AdviceStaleResponse(TypedDict):
     row: AdviceRow | None
 
 
-def _advice_row(adv, state: str, back: bool, rev: int, entry: dict | None) -> AdviceRow:
+def _advice_row(adv, state: str, back: bool, rev: int, entry: HiddenEntry | None) -> AdviceRow:
     by = (entry or {}).get("by") or {}
     return {
         "id": adv.id,

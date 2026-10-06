@@ -7,7 +7,10 @@ with their hazards, and the degraded save-only answer is a name-prefix guess.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from ...domain.collectibles.service import GENERATOR_COMMAND, CollectiblesView, census_rows
+from ...domain.collectibles.views import CensusRow, CollectedSummary
 from ...domain.spatial import geo, maplink
 from . import primitives as render
 
@@ -188,7 +191,9 @@ def _predates_world_partition(st) -> bool:
     return bool(version) and version < _FIRST_WORLD_PARTITION_SAVE
 
 
-def _census_notes(st, census: list[dict], removed: dict, table, group) -> list[str]:
+def _census_notes(
+    st, census: Sequence[CensusRow], removed: CollectedSummary, table, group
+) -> list[str]:
     """How to read the census: what each column is, and the rows it cannot speak for."""
     notes = [
         (
@@ -229,9 +234,9 @@ def _census_notes(st, census: list[dict], removed: dict, table, group) -> list[s
             "-- only a dismantled one is destroyed -- so its remaining is not a count of "
             f"hard drives left. Use show='remaining' group='{pods['category']}' to see which"
         )
-    if removed["unresolved"]:
+    if unresolved := removed.get("unresolved", 0):
         notes.append(
-            f"{removed['unresolved']} of the {removed['total']} destroyed records join no "
+            f"{unresolved} of the {removed['total']} destroyed records join no "
             "placement: either a class the map table excludes on purpose (crash-site "
             "scenery, regrowing berry and nut bushes, resource nodes) or an actor the map "
             "never placed -- which is what a pickup the PLAYER dropped is, and it shares its "
@@ -248,9 +253,10 @@ def _census_notes(st, census: list[dict], removed: dict, table, group) -> list[s
     return notes
 
 
-def _unresolved_stems_table(removed: dict, table, window: render.Page) -> str:
+def _unresolved_stems_table(removed: CollectedSummary, table, window: render.Page) -> str:
     """The destroyed records that join no placement, by name stem, with why."""
-    stems = [(k, v, table.excluded_reason(k) or "") for k, v in removed["unresolved_stems"].items()]
+    unjoined = removed.get("unresolved_stems", {})
+    stems = [(k, v, table.excluded_reason(k) or "") for k, v in unjoined.items()]
     return render.table(
         ("name_stem", "destroyed", "why the map table has no row for it"),
         [(k, v, why[:96]) for k, v, why in window.of(stems)],
@@ -310,9 +316,9 @@ def _census(st, view: CollectiblesView, limit: int, offset: int) -> str:
         # unscoped total is how one gets read as the other.
         + render.kv(
             [
-                ("whole_world_collected", removed["resolved"]),
+                ("whole_world_collected", removed.get("resolved", 0)),
                 ("destroyed_records", removed["total"]),
-                ("unresolved", removed["unresolved"]),
+                ("unresolved", removed.get("unresolved", 0)),
                 ("save_cells", removed["cells"]),
                 ("showing", group or "every category"),
             ]
@@ -417,10 +423,10 @@ def _save_only(st, view: CollectiblesView, limit: int, offset: int) -> str:
             "which on a map reads as 'you have taken them all'"
         ),
     ]
-    if removed.get("other"):
+    if other := removed.get("other"):
         notes.append(
             "'other' is classes no prefix matched, reported rather than dropped: "
-            + ", ".join(f"{k} {v}" for k, v in list(removed["other"].items())[:6])
+            + ", ".join(f"{k} {v}" for k, v in list(other.items())[:6])
         )
     if not removed["total"]:
         notes.append(
@@ -429,16 +435,19 @@ def _save_only(st, view: CollectiblesView, limit: int, offset: int) -> str:
         )
 
     body = [
-        render.table(("group", "collected"), [(k, str(v)) for k, v in removed["groups"].items()])
+        render.table(
+            ("group", "collected"), [(k, str(v)) for k, v in removed.get("groups", {}).items()]
+        )
     ]
     if group is not None:
         window = render.page(limit, offset, default=25)
-        rows = [(a["name"], a["cell"]) for a in window.of(removed["actors"])]
+        actors = removed.get("actors", [])
+        rows = [(a["name"], a["cell"]) for a in window.of(actors)]
         body.append(
             render.table(
                 ("actor", "cell"),
                 rows,
-                total=len(removed["actors"]),
+                total=len(actors),
                 offset=window.start,
                 limit=window.size,
             )

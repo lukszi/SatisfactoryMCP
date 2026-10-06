@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal, cast
 
 from ...core.gameassets.provenance import changelist, read_path
 from ...core.gameassets.versions import (
@@ -20,6 +22,8 @@ from ...core.gameassets.versions import (
     RENDER_RECIPES,
     STYLES,
 )
+from ...core.jsontypes import JsonObject, JsonValue
+from .views import MapAxes, MapFreshness, MapInputNow, MapInputsState, MapRerender, MapStaleAxis
 
 __all__ = [
     "INPUT_DIRS",
@@ -36,6 +40,13 @@ __all__ = [
 
 RENDERS_GENERATOR = "tools/gen_map_renders.py"
 ARTWORK_GENERATOR = "tools/gen_map_image.py"
+
+Tone = Literal["light", "dark"]
+
+#: The version tables, read as the mappings they are.
+RENDER_TABLE: Mapping[int, Mapping[str, object]] = RENDER_RECIPES
+ARTWORK_TABLE: Mapping[int, Mapping[str, object]] = ARTWORK_RECIPES
+STYLE_TABLE: Mapping[str, Mapping[str, object]] = STYLES
 
 #: The planes each legacy recipe opened, for sidecars written before ``provenance`` existed.
 LEGACY_PLANES = {
@@ -84,27 +95,31 @@ def int_or_none(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-def dict_at(obj: object, *keys: str) -> dict:
+def _text_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def dict_at(obj: object, *keys: str) -> JsonObject:
     """The dict at ``obj[k1][k2]...``, or ``{}`` where any step is missing or not a dict."""
     for key in keys:
-        obj = obj.get(key) if isinstance(obj, dict) else None
-    return obj if isinstance(obj, dict) else {}
+        obj = cast(JsonObject, obj).get(key) if isinstance(obj, dict) else None
+    return cast(JsonObject, obj) if isinstance(obj, dict) else {}
 
 
-def _legacy_renders(block: dict) -> dict:
+def _legacy_renders(block: JsonObject) -> MapAxes:
     sources = dict_at(block, "sources")
     field = dict_at(sources, "heightfield")
     cl = changelist(field.get("game_version_pinned"))
     recipe = int_or_none(block.get("recipe")) or 0
-    known = RENDER_RECIPES.get(recipe, {})
+    known = RENDER_TABLE.get(recipe, {})
     render = dict_at(block, "render")
     regime = dict_at(render, "two_regime")
     layer = str(block.get("layer") or "")
-    inputs: dict = {
+    inputs: JsonObject = {
         "heightfield": {
             "cl": cl,
             "generator_version": int_or_none(field.get("generator_version")),
-            "planes": LEGACY_PLANES.get(recipe, ["height"]),
+            "planes": [*LEGACY_PLANES.get(recipe, ["height"])],
             "digest": None,
         }
     }
@@ -122,19 +137,20 @@ def _legacy_renders(block: dict) -> dict:
             "family": "render",
             "recipe": recipe,
             "version": 1,
-            "label": known.get("label", f"recipe {recipe}"),
-            "sampler": known.get("sampler"),
+            "label": str(known.get("label", f"recipe {recipe}")),
+            "sampler": _text_or_none(known.get("sampler")),
             "two_regime": bool(regime.get("enabled", known.get("two_regime", False))),
             "size_px": int_or_none(render.get("width_px")),
             "subsamples": int_or_none(regime.get("subsamples_per_axis")),
         },
-        "style": {"id": style, "version": 1, "label": STYLES.get(style, {}).get("label", style),
+        "style": {"id": style, "version": 1,
+                  "label": str(STYLE_TABLE.get(style, {}).get("label", style)),
                   "digest": None, "inferred": True},
         "inferred": True,
     }  # fmt: skip
 
 
-def _legacy_artwork(block: dict) -> dict:
+def _legacy_artwork(block: JsonObject) -> MapAxes:
     slices = dict_at(block, "sources", "map_slices")
     cl = changelist(slices.get("game_version_raw")) or changelist(slices.get("game_version_pinned"))
     tiles = dict_at(block, "tiles")
@@ -148,14 +164,14 @@ def _legacy_artwork(block: dict) -> dict:
         "inputs": {"artwork_sheet": {"cl": cl, "reader_version": None, "digest": None,
                                      "inferred": True}},
         "renderer": {"family": "artwork", "recipe": recipe, "version": 1,
-                     "label": ARTWORK_RECIPES.get(recipe, {}).get("label", f"recipe {recipe}"),
+                     "label": str(ARTWORK_TABLE.get(recipe, {}).get("label", f"recipe {recipe}")),
                      "size_px": int_or_none(image.get("width_px"))},
         "style": {"id": "artwork", "version": 1, "label": "artwork", "digest": None},
         "inferred": True,
     }  # fmt: skip
 
 
-def axes_from_sidecar(sidecar: object, kind: str = "render") -> dict:
+def axes_from_sidecar(sidecar: object, kind: str = "render") -> MapAxes:
     """The axes a sidecar states, derived from its legacy fields when it has no ``provenance``.
 
     A sidecar nothing can be read from still answers: its axes are empty and ``inferred``.
@@ -179,15 +195,15 @@ def axes_from_sidecar(sidecar: object, kind: str = "render") -> dict:
     }
 
 
-def read_json(path: Path) -> dict | None:
+def read_json(path: Path) -> JsonObject | None:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return raw if isinstance(raw, dict) else None
 
 
-def _input_now(local: Path, name: str) -> dict | None:
+def _input_now(local: Path, name: str) -> MapInputNow | None:
     folder, sidecar, version_key = INPUT_DIRS[name]
     meta = read_json(local / folder / sidecar)
     if meta is None:
@@ -200,13 +216,13 @@ def _input_now(local: Path, name: str) -> dict | None:
     return {
         "version": int_or_none(meta.get(version_key)),
         "cl": cl if cl is not None else int_or_none(meta.get("cl")),
-        "digest": meta.get("digest") if isinstance(meta.get("digest"), str) else None,
+        "digest": _text_or_none(meta.get("digest")),
         "planes": sorted(files),
         "transcribed": meta.get("transcribed"),
     }
 
 
-def current_state(local: Path, game_cl: int | None) -> dict:
+def current_state(local: Path, game_cl: int | None) -> MapInputsState:
     """What every input is now: the installed build and each input directory's sidecar."""
     return {
         "game_cl": game_cl,
@@ -226,23 +242,25 @@ PLANE_FILES = {
 }
 
 
-def _inputs_to_rebuild(recipe: int, current: dict) -> list[str]:
+def _inputs_to_rebuild(recipe: int, current: MapInputsState) -> list[str]:
     """Which inputs have to be rebuilt before ``recipe`` can draw from what is on disk."""
-    wanted = RENDER_RECIPES[recipe]["requires"].get("heightfield", {})
+    wanted = dict_at(RENDER_TABLE[recipe], "requires", "heightfield")
     field = current["inputs"].get("heightfield")
     if field is None:
         return ["heightfield"]
     have = set(field["planes"])
-    planes = all(PLANE_FILES.get(p, p) in have for p in wanted.get("planes", []))
-    if (field["version"] or 0) < wanted.get("min_version", 0) or not planes:
+    needed = wanted.get("planes")
+    names = [str(p) for p in needed] if isinstance(needed, list) else []
+    planes = all(PLANE_FILES.get(p, p) in have for p in names)
+    if (field["version"] or 0) < (int_or_none(wanted.get("min_version")) or 0) or not planes:
         return ["heightfield"]
     return []
 
 
-def _stale_inputs(axes: dict, current: dict) -> tuple[list[dict], bool]:
+def _stale_inputs(axes: MapAxes, current: MapInputsState) -> tuple[list[MapStaleAxis], bool]:
     """``(stale, incomplete)``: what is out of date under a picture, and whether its record
     is too thin to say."""
-    stale: list[dict] = []
+    stale: list[MapStaleAxis] = []
     inputs = dict_at(axes, "inputs")
     recorded_cls = [int_or_none(v.get("cl")) for v in inputs.values() if isinstance(v, dict)]
     known_cls = [cl for cl in recorded_cls if cl is not None]
@@ -276,15 +294,15 @@ def _stale_inputs(axes: dict, current: dict) -> tuple[list[dict], bool]:
     return stale, incomplete
 
 
-def _rerender_offer(axes: dict, current: dict) -> dict | None:
+def _rerender_offer(axes: MapAxes, current: MapInputsState) -> MapRerender | None:
     """The current renderer, offered where it is newer than the one that drew this picture."""
     renderer = dict_at(axes, "renderer")
     recipe = int_or_none(renderer.get("recipe"))
     version = int_or_none(renderer.get("version")) or 0
     if renderer.get("family") != "render" or recipe is None:
         return None
-    best = RENDER_RECIPES[RENDER_RECIPE_CURRENT]
-    if (RENDER_RECIPE_CURRENT, best["version"]) <= (recipe, version):
+    best = RENDER_TABLE[RENDER_RECIPE_CURRENT]
+    if (RENDER_RECIPE_CURRENT, int_or_none(best.get("version")) or 0) <= (recipe, version):
         return None
     needs = _inputs_to_rebuild(RENDER_RECIPE_CURRENT, current)
     label = f"{best['label']} r{RENDER_RECIPE_CURRENT}"
@@ -296,18 +314,16 @@ def _rerender_offer(axes: dict, current: dict) -> dict | None:
     }
 
 
-def _restyle_offer(axes: dict) -> bool:
+def _restyle_offer(axes: MapAxes) -> bool:
     """Whether the style table has a newer version of this picture's palette."""
     style = dict_at(axes, "style")
-    known_style = STYLES.get(str(style.get("id")))
-    return bool(
-        known_style
-        and int_or_none(style.get("version")) is not None
-        and known_style["version"] > style["version"]
-    )
+    known_style = STYLE_TABLE.get(str(style.get("id")))
+    had = int_or_none(style.get("version"))
+    newest = int_or_none(known_style.get("version")) if known_style else None
+    return had is not None and newest is not None and newest > had
 
 
-def freshness(axes: dict, current: dict) -> dict:
+def freshness(axes: MapAxes, current: MapInputsState) -> MapFreshness:
     """``{stale: [{axis, text}], rerender, restyle, incomplete}`` for one map's axes."""
     stale, incomplete = _stale_inputs(axes, current)
     return {
@@ -318,22 +334,22 @@ def freshness(axes: dict, current: dict) -> dict:
     }
 
 
-def data_changelist(axes: dict) -> int | None:
+def data_changelist(axes: MapAxes) -> int | None:
     """The build the picture's data came from: the heightfield's, else the oldest input's."""
     inputs = dict_at(axes, "inputs")
-    field = inputs.get("heightfield")
-    if isinstance(field, dict) and int_or_none(field.get("cl")) is not None:
-        return field["cl"]
-    known = [int_or_none(v.get("cl")) for v in inputs.values() if isinstance(v, dict)]
-    known = [cl for cl in known if cl is not None]
+    field_cl = int_or_none(dict_at(inputs, "heightfield").get("cl"))
+    if field_cl is not None:
+        return field_cl
+    recorded = [int_or_none(v.get("cl")) for v in inputs.values() if isinstance(v, dict)]
+    known = [cl for cl in recorded if cl is not None]
     return min(known) if known else int_or_none(read_path(axes, ("game", "cl")))
 
 
-def _heightfield_version(axes: dict) -> int | None:
+def _heightfield_version(axes: MapAxes) -> int | None:
     return int_or_none(read_path(axes, ("inputs", "heightfield", "generator_version")))
 
 
-def renderer_label(axes: dict) -> str:
+def renderer_label(axes: MapAxes) -> str:
     renderer = dict_at(axes, "renderer")
     recipe = renderer.get("recipe")
     label = str(renderer.get("label") or "unknown")
@@ -342,32 +358,32 @@ def renderer_label(axes: dict) -> str:
     return f"{label} r{recipe}" if recipe is not None else label
 
 
-def style_label(axes: dict) -> str:
+def style_label(axes: MapAxes) -> str:
     style = dict_at(axes, "style")
     return str(style.get("label") or style.get("id") or "unknown")
 
 
-def style_tone(axes: dict) -> str:
+def style_tone(axes: MapAxes) -> Tone:
     """``light`` or ``dark``: the sidecar's word, else the style table's, else light."""
     style = dict_at(axes, "style")
-    tone = style.get("tone") or STYLES.get(str(style.get("id")), {}).get("tone")
-    return tone if tone in ("light", "dark") else "light"
+    tone = style.get("tone") or STYLE_TABLE.get(str(style.get("id")), {}).get("tone")
+    return "dark" if tone == "dark" else "light"
 
 
-def data_label(axes: dict) -> str:
+def data_label(axes: MapAxes) -> str:
     cl = data_changelist(axes)
     heightfield_version = _heightfield_version(axes)
     text = f"data {cl if cl is not None else '?'}"
     return text + (f"/hf v{heightfield_version}" if heightfield_version is not None else "")
 
 
-def light_label(axes: dict) -> str | None:
+def light_label(axes: MapAxes) -> str | None:
     """The light model a layer drawn unlit is relit with; ``None`` for one drawn lit."""
     light = dict_at(axes, "light")
     return str(light.get("label") or light.get("id") or "lit") if light else None
 
 
-def display_name(axes: dict, with_size: bool = False) -> str:
+def display_name(axes: MapAxes, with_size: bool = False) -> str:
     """``{style} · {renderer} · data {cl}/hf v{n}``, then the light and the size when present."""
     parts = [style_label(axes), renderer_label(axes), data_label(axes)]
     if light_label(axes):
@@ -378,7 +394,7 @@ def display_name(axes: dict, with_size: bool = False) -> str:
     return " · ".join(parts)
 
 
-def sort_key(axes: dict, ident: str) -> tuple:
+def sort_key(axes: MapAxes, ident: str) -> tuple[str, int, int, int, int, int, int, str]:
     """Style, then data (newest build, then highest input versions), renderer, style version."""
     renderer = dict_at(axes, "renderer")
     style = dict_at(axes, "style")

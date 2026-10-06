@@ -18,6 +18,7 @@ from ... import config
 from ...domain.maps import jobs as store
 from ...domain.maps import presets, registry
 from ...domain.maps.jobs import QUEUE_MAX
+from ...domain.maps.views import GeneratorPlan
 from .childproc import Child, kill_tree, launch
 from .watch.events import KIND_MAPS, WatchEvent
 
@@ -47,7 +48,7 @@ def _new_job_record(
     preset: str,
     label: str | None,
     replaces: str | None,
-    plan: dict,
+    plan: GeneratorPlan,
     estimate_s: int,
 ) -> dict:
     """A freshly queued job as the job file records it, before anything has run."""
@@ -160,17 +161,17 @@ class MapJobRunner:
         checked = presets.can_generate()
         if not checked["ok"]:
             raise presets.PresetError(checked["reason"])
-        options = presets.normalise(preset, options)
+        normalised = presets.normalise(preset, options)
         if preset == "render" and not checked["heightfield"]:
             raise presets.PresetError("render maps need the heightfield first")
         if replaces is not None and replaces not in registry.read()["types"]:
             raise registry.MapsUnknown(f"no map type “{replaces}” to replace")
-        cost = presets.estimate(preset, options)
+        cost = presets.estimate(preset, normalised)
         if not cost["ok"]:
             raise presets.DiskShort(cost["reason"])
         ident = store.new_id()
         plan = presets.plan(
-            preset, options, ident, registry.installed_changelist(), registry.taken_ids()
+            preset, normalised, ident, registry.installed_changelist(), registry.taken_ids()
         )
         if label:
             for entry in plan["produces"].values():
@@ -230,10 +231,13 @@ class MapJobRunner:
         registry.ensure()
         registry.purge_trash()
         for job in store.load_all():
-            self.jobs[job["id"]] = job
+            pid, created = job.get("pid"), job.get("pid_created")
+            self.jobs[str(job["id"])] = job
             if job["status"] != "running":
                 continue
-            child = Child.adopt(int(job.get("pid") or 0), job.get("pid_created"))
+            child = Child.adopt(
+                pid if isinstance(pid, int) else 0, created if isinstance(created, int) else None
+            )
             if child is not None and self.active_run is None:
                 self.active_run = ActiveRun(job, child)
                 log.info("re-adopted map job %s (pid %s)", job["id"], job["pid"])

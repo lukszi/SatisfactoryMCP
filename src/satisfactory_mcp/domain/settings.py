@@ -7,22 +7,26 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, NotRequired
+from typing import Literal, NotRequired, TypeAlias, cast
 
 from typing_extensions import TypedDict
 
 from .. import config
 from ..core import atomic, filelock, schema
+from ..core.jsontypes import JsonObject, JsonValue
 from .planning.stored.planlog import Actor
 
 __all__ = [
     "SCHEMA",
     "SPECS",
+    "SettingValue",
     "SettingsChanges",
     "SettingsError",
     "SettingsStale",
     "SettingsValues",
+    "SettingsView",
     "SiteSnap",
     "Spec",
     "StageHeadroom",
@@ -36,6 +40,7 @@ SCHEMA = 1
 
 StageHeadroom = Literal["measured", "nameplate"]
 SiteSnap = Literal["fine", "grid8"]
+SettingValue: TypeAlias = bool | str | float
 
 
 class SettingsValues(TypedDict):
@@ -60,12 +65,39 @@ class SettingsChanges(TypedDict):
     advice_box_fed: NotRequired[bool | None]
 
 
+class SettingsDoc(TypedDict):
+    """The settings file: ``values`` holds only the settings that were set."""
+
+    schema: int
+    version: int
+    values: JsonObject
+    updated: float | None
+    by: dict[str, str | int] | None
+
+
+class SettingsView(TypedDict):
+    """Every setting's value, the keys set rather than defaulted, and the last write; ``by``
+    is ``Actor.to_dict``'s."""
+
+    version: int
+    values: dict[str, SettingValue]
+    stored: list[str]
+    updated: float | None
+    by: dict[str, str | int] | None
+
+
+class StaleSettings(SettingsView):
+    """The settings as they are, and the ``version`` the refused write named."""
+
+    asked: int
+
+
 @dataclass(frozen=True)
 class Spec:
     """One setting: ``kind`` is ``choice``, ``switch`` or ``number``."""
 
     kind: str
-    default: bool | str | float
+    default: SettingValue
     hint: str
     options: tuple[str, ...] = ()
     low: float = 0.0
@@ -108,12 +140,12 @@ class SettingsError(ValueError):
 
 
 class SettingsStale(SettingsError):
-    def __init__(self, current: dict) -> None:
+    def __init__(self, current: StaleSettings) -> None:
         super().__init__(f"the settings changed elsewhere since version {current['asked']}")
         self.current = current
 
 
-def check(key: str, raw):
+def check(key: str, raw: object) -> SettingValue:
     """``raw`` as ``key`` stores it; ``SettingsError`` when it is not one of its values."""
     spec = SPECS.get(key)
     if spec is None:
@@ -123,7 +155,7 @@ def check(key: str, raw):
             return raw
         raise SettingsError(f"{key} is true or false, not {raw!r}")
     if spec.kind == "choice":
-        if raw in spec.options:
+        if isinstance(raw, str) and raw in spec.options:
             return raw
         raise SettingsError(f"{key} is one of {', '.join(spec.options)}, not {raw!r}")
     if isinstance(raw, int | float) and not isinstance(raw, bool) and spec.low <= raw <= spec.high:
@@ -131,27 +163,29 @@ def check(key: str, raw):
     raise SettingsError(f"{key} is a number from {spec.low:g} to {spec.high:g}, not {raw!r}")
 
 
-def _raw() -> dict:
+def _raw() -> SettingsDoc:
     path = config.settings_path()
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raw = None
     schema.check(raw, SCHEMA, path)
     if not isinstance(raw, dict):
         raw = {}
-    values = raw.get("values")
+    values, version, by = raw.get("values"), raw.get("version"), raw.get("by")
+    updated = raw.get("updated")
     return {
         "schema": SCHEMA,
-        "version": int(raw.get("version") or 0),
+        "version": int(version) if isinstance(version, int | float) else 0,
         "values": dict(values) if isinstance(values, dict) else {},
-        "updated": raw.get("updated"),
-        "by": raw.get("by") if isinstance(raw.get("by"), dict) else None,
+        "updated": updated if isinstance(updated, int | float) else None,
+        "by": cast("dict[str, str | int]", by) if isinstance(by, dict) else None,
     }
 
 
-def _view(data: dict) -> dict:
-    values, stored = {}, []
+def _view(data: SettingsDoc) -> SettingsView:
+    values: dict[str, SettingValue] = {}
+    stored: list[str] = []
     for key, spec in SPECS.items():
         try:
             values[key] = check(key, data["values"][key])
@@ -167,19 +201,22 @@ def _view(data: dict) -> dict:
     }
 
 
-def read() -> dict:
+def read() -> SettingsView:
     """``{version, values, stored, updated, by}``: every setting's value, the keys that were
     set rather than defaulted, and the last write. ``NewerSchema`` for a newer file."""
     return _view(_raw())
 
 
-def value(key: str):
+def value(key: str) -> SettingValue:
     return read()["values"][key]
 
 
 def write(
-    changes: dict, actor: Actor, version: int | None = None, only_unset: bool = False
-) -> dict:
+    changes: Mapping[str, object],
+    actor: Actor,
+    version: int | None = None,
+    only_unset: bool = False,
+) -> SettingsView:
     """Apply ``changes`` (``None`` clears one back to its default) and return ``read()``.
 
     ``version`` refuses with ``SettingsStale`` when the file moved since; ``only_unset``

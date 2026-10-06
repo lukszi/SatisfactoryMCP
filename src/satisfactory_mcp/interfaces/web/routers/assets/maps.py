@@ -24,7 +24,13 @@ from .....core.schema import NewerSchema
 from .....domain.maps import axes as ax
 from .....domain.maps import jobs as job_store
 from .....domain.maps import presets, registry
-from .....domain.maps.views import MapCanGenerate, MapEstimateResponse, MapFreshness, MapJobOptions
+from .....domain.maps.views import (
+    MapCanGenerate,
+    MapEstimateResponse,
+    MapFreshness,
+    MapJobOptions,
+    MapViewRow,
+)
 from ...serial import busy_response, error_response, newer_schema_response
 
 __all__ = ["newer_map_list", "router"]
@@ -179,7 +185,7 @@ class MapCacheResponse(TypedDict):
     freed_bytes: int
 
 
-def _type_json(row: dict, default: str | None) -> dict:
+def _type_json(row: MapViewRow, default: str | None) -> dict:
     entry, axes = row["entry"], row["axes"]
     return {
         "id": row["id"],
@@ -192,7 +198,7 @@ def _type_json(row: dict, default: str | None) -> dict:
         "kind": entry.get("kind") or "render",
         "layer": entry.get("layer") or "",
         "tone": ax.style_tone(axes),
-        "size_px": (axes.get("renderer") or {}).get("size_px") or entry.get("size_px"),
+        "size_px": ax.dict_at(axes, "renderer").get("size_px") or entry.get("size_px"),
         "dir": entry["dir"],
         "bytes": int(entry.get("bytes") or 0),
         "max_z": entry.get("max_z"),

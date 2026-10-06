@@ -26,6 +26,7 @@ from ...core.saveio.schema import (
 from ...core.singleflight import Singleflight
 from ..collectibles.removed import RemovedActors, observed_session
 from ..collectibles.table import CollectibleTable, load_collectibles
+from ..collectibles.views import CensusRow, CollectedSummary, Placement
 from ..power.report import PowerLedger, wired_actors
 from ..power.views import PowerReport
 from ..progression.harddrives import HardDriveDesk, HardDriveOffer
@@ -406,18 +407,20 @@ class WorldState:
     def destroyed_keys(self) -> frozenset[tuple[str, str]]:
         return self.removed.destroyed_keys
 
-    def placements(self, category: str | None = None, remaining_only: bool = False) -> list[dict]:
+    def placements(
+        self, category: str | None = None, remaining_only: bool = False
+    ) -> list[Placement]:
         return self.removed.placements(category, remaining_only)
 
     def nearest_placements(
         self, origin: tuple[float, float], category: str | None = None
-    ) -> list[dict]:
+    ) -> list[Placement]:
         return self.removed.nearest_placements(origin, category)
 
-    def collectible_census(self) -> list[dict]:
+    def collectible_census(self) -> list[CensusRow]:
         return self.removed.collectible_census()
 
-    def collected_summary(self, group: str | None = None) -> dict:
+    def collected_summary(self, group: str | None = None) -> CollectedSummary:
         return self.removed.collected_summary(group)
 
     def removed_group(self, name: str) -> str | None:

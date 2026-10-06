@@ -171,7 +171,7 @@ class CollectibleRow(TypedDict):
     spoiler: bool
 
 
-def collectible_json(row: dict, spoiler: bool) -> dict:
+def collectible_json(row: Mapping[str, object], spoiler: bool) -> dict:
     return {
         "category": row["category"],
         "name": row["name"],
@@ -297,7 +297,7 @@ def actor_json(raw: Any) -> ActorBody:
     return {**actor.to_dict(), "display": actor.display()}
 
 
-def settings_json(view: dict) -> dict:
+def settings_json(view: Mapping[str, object]) -> dict:
     """``domain.settings.read()`` as ``/api/settings`` and the ``settings`` event send it."""
     by = view.get("by")
     return {**view, "by": actor_json(by) if by else None}

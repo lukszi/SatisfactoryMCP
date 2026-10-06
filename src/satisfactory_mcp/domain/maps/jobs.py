@@ -13,9 +13,11 @@ import json
 import math
 import re
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 from ...core import atomic, mapprogress
+from ...core.jsontypes import JsonObject, JsonValue
 from . import registry
 
 __all__ = [
@@ -58,26 +60,31 @@ def new_id() -> str:
     return ident
 
 
-def save(job: dict) -> None:
+def save(job: Mapping[str, object]) -> None:
     jobs_dir().mkdir(parents=True, exist_ok=True)
     atomic.write_text(jobs_dir() / f"{job['id']}.json", json.dumps(job, ensure_ascii=False))
 
 
-def load_all() -> list[dict]:
+def _created(job: JsonObject) -> tuple[float, str]:
+    created = job.get("created")
+    return (created if isinstance(created, int | float) else 0), str(job["id"])
+
+
+def load_all() -> list[JsonObject]:
     """Every job on disk, oldest first."""
-    found = []
+    found: list[JsonObject] = []
     try:
         paths = sorted(jobs_dir().glob("*.json"))
     except OSError:
         return []
     for path in paths:
         try:
-            job = json.loads(path.read_text(encoding="utf-8"))
+            job: JsonValue = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         if isinstance(job, dict) and isinstance(job.get("id"), str):
             found.append(job)
-    found.sort(key=lambda job: (job.get("created") or 0, job["id"]))
+    found.sort(key=_created)
     return found
 
 
