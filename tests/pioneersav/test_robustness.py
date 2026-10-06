@@ -207,7 +207,7 @@ def test_a_chunk_preamble_that_contradicts_its_own_maximum_is_refused():
     changes, all eight of the max-size bytes. The value is 131072 on all 9,125 chunks of all
     31 readable saves, but requiring the constant would refuse a save the day the game picks a
     different block size, so what is checked is the contradiction: a maximum smaller than the
-    sizes written beside it.
+    uncompressed size written beside it.
     """
     from pioneersav import decompress_body
 

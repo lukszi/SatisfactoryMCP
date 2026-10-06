@@ -144,7 +144,7 @@ _TABLE: dict[tuple[str, int], CollectibleTable] = {}
 class CollectiblesUnreadable(Exception):
     """The table is THERE and will not parse -- a different fact from "not generated".
 
-    Absent is the ordinary state of a fresh clone, and the answer is "run the generator".
+    Absent is a checkout that lost the committed file, and the answer is "run the generator".
     Corrupt is a half-written file or an interrupted run, and the answer is "delete it and
     run the generator", which nobody can act on if the two arrive as one.
     """
@@ -153,8 +153,8 @@ class CollectiblesUnreadable(Exception):
 def load_collectibles(*, strict: bool = False) -> CollectibleTable | None:
     """The map's placement table, or ``None`` when it has not been generated.
 
-    ``None`` rather than an exception: the file is untracked, so a fresh clone does not
-    have one, and every caller degrades to the save-only census instead of failing. What
+    ``None`` rather than an exception: the file is committed, but a checkout without it
+    still works, since every caller degrades to the save-only census instead of failing. What
     is lost without it is everything the save cannot know by itself -- how many of each
     kind exist, where they are, and therefore what remains.
 

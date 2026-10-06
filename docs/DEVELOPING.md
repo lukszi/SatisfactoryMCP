@@ -290,7 +290,7 @@ code calls `solverlane.run` instead of the solver directly.
 You do not need any of this to use the project: every world table the server uses is committed
 under `data/`. The generators exist so the tables can be rebuilt from your own installed game
 after a map update, and so the map's imagery — which is the game's artwork and is therefore
-**never committed** — can be produced locally. They need `uv sync --extra gen` and a
+**never committed** — can be produced locally. They need `uv sync --all-extras` and a
 Satisfactory install. Approximate runtimes on one mid-range machine:
 
 The map generators are one package, `tools/mapgen/`, with one command per output. Install it
