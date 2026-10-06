@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 
-from ...core.text import ago, stamp
+from ...core.text import ago, format_local_time
 
 __all__ = ["TOKEN_HEX", "TOKEN_PREFIX", "TOKEN_SHAPE", "SaveIdentity", "save_token"]
 
@@ -102,7 +102,7 @@ class SaveIdentity:
         kind = self.save_kind
         is_autosave = kind == "autosave"
         hours = (h.get("play_duration_s") or 0) / 3600
-        written = stamp(h.get("mtime_ns"))
+        written = format_local_time(h.get("mtime_ns"))
         when = f", written {written} ({ago(h.get('mtime_ns'))})" if written else ""
         note = (
             f"{self.token} {h.get('filename', '?')} "
@@ -110,9 +110,7 @@ class SaveIdentity:
             f"{hours:.0f}h played, saveVersion {h.get('save_version')}{when})"
         )
         if is_autosave:
-            note += (
-                " -- the game writes autosaves periodically, so disk may lag the live world"
-            )
+            note += " -- the game writes autosaves periodically, so disk may lag the live world"
         return note
 
     @cached_property

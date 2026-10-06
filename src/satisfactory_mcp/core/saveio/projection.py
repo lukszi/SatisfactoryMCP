@@ -20,7 +20,7 @@ from pathlib import Path
 from ... import config
 from .. import atomic
 from ..singleflight import Singleflight
-from ..text import ago, stamp
+from ..text import ago, format_local_time
 
 #: Bumped whenever the projection's shape changes, and part of the disk cache key below, so
 #: every pickle written by an older schema misses rather than being served without its new
@@ -318,9 +318,7 @@ def _resolve_filename(p: Path) -> dict:
     """
     scan = scan_saves()
     needle = p.name.casefold()
-    matches = [
-        s for s in scan.get("saves", ()) if str(s.get("filename", "")).casefold() == needle
-    ]
+    matches = [s for s in scan.get("saves", ()) if str(s.get("filename", "")).casefold() == needle]
     if matches:
         return max(matches, key=lambda s: s["mtime_ns"])
     raise SaveError(
@@ -340,7 +338,7 @@ def _ambiguous_world(name: str, matches: list[World]) -> str:
         newest = w.newest
         lines.append(
             f"  world={w.world_id!r}: {len(w.saves)} save(s), newest "
-            f"{newest.get('filename')} written {stamp(newest.get('mtime_ns'))} "
+            f"{newest.get('filename')} written {format_local_time(newest.get('mtime_ns'))} "
             f"({ago(newest.get('mtime_ns'))}), saveVersion {newest.get('save_version')}"
         )
     return "\n".join(lines)

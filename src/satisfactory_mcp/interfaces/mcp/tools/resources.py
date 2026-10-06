@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ....core.text import ago, stamp
+from ....core.text import ago, format_local_time
 from ....domain.spatial import regions as regions_mod
 from ....presenters.text import primitives as render
 from ..app import _state, game, integrity_notes, mcp, stale_artifact_notes
@@ -46,7 +46,7 @@ def current_save() -> str:
         return f"no readable save: {exc}"
     p = st.progression()
     mtime_ns = st.header.get("mtime_ns")
-    written = f"{stamp(mtime_ns)} ({ago(mtime_ns)})" if mtime_ns else "?"
+    written = f"{format_local_time(mtime_ns)} ({ago(mtime_ns)})" if mtime_ns else "?"
     if "autosave" in (st.header.get("filename") or "").lower():
         written += " -- an autosave; the game writes them periodically, so disk may lag the world"
     return render.envelope(

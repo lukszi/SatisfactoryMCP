@@ -16,7 +16,7 @@ from pathlib import Path
 
 from ... import config
 from ...core import atomic
-from ...core.text import played, span, stamp
+from ...core.text import format_gap, format_local_time, format_playtime
 from .identity import TOKEN_SHAPE, save_token
 
 __all__ = ["LEDGER_MAX", "PinRefused", "check", "ledger_path", "recall", "remember"]
@@ -94,11 +94,11 @@ def recall(token: str) -> dict | None:
 
 def _describe(entry: dict) -> str:
     """One save as the three facts a reader compares two states on."""
-    written = stamp(entry.get("mtime_ns"))
+    written = format_local_time(entry.get("mtime_ns"))
     when = f", written {written}" if written else ""
     return (
         f"{entry.get('filename') or '?'} "
-        f"({played(entry.get('play_duration_s'))} played{when})"
+        f"({format_playtime(entry.get('play_duration_s'))} played{when})"
     )
 
 
@@ -111,7 +111,7 @@ def _distance(pinned: dict, current: dict) -> str:
     """
     play = (current.get("play_duration_s") or 0) - (pinned.get("play_duration_s") or 0)
     wall = ((current.get("mtime_ns") or 0) - (pinned.get("mtime_ns") or 0)) / 1e9
-    return f"{span(play)} of play and {span(wall)} of wall clock apart"
+    return f"{format_gap(play)} of play and {format_gap(wall)} of wall clock apart"
 
 
 #: The way out, said the same way by every refusal: there is exactly one that always works,

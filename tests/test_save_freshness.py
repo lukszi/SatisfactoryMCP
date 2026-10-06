@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 
-from satisfactory_mcp.core.text import ago, stamp
+from satisfactory_mcp.core.text import ago, format_local_time
 from satisfactory_mcp.domain.world.identity import SaveIdentity
 
 # ------------------------------------------------------------------ the units
@@ -39,14 +39,14 @@ def test_ago_clamps_a_file_from_the_future_to_fresh():
 
 def test_ago_and_stamp_say_nothing_for_no_mtime():
     assert ago(None) is None
-    assert stamp(None) is None
+    assert format_local_time(None) is None
     assert ago(0) is None
-    assert stamp(0) is None
+    assert format_local_time(0) is None
 
 
 def test_stamp_is_local_wall_clock_to_the_minute():
     expect = time.strftime("%Y-%m-%d %H:%M", time.localtime(_WRITE_S))
-    assert stamp(_WRITE_NS) == expect
+    assert format_local_time(_WRITE_NS) == expect
 
 
 # --------------------------------------------------------------- the sentence
@@ -70,7 +70,7 @@ def test_age_note_carries_the_files_own_mtime():
     an_hour_ago = int((time.time() - 3600) * 1e9)
     ident = SaveIdentity(projection={"header": _header("Han Solo_020826-082843.sav", an_hour_ago)})
     note = ident.age_note
-    assert f"written {stamp(an_hour_ago)}" in note
+    assert f"written {format_local_time(an_hour_ago)}" in note
     assert "(1h ago)" in note
     assert "manual save" in note
 
