@@ -6,7 +6,7 @@ TypeScript, built by Vite into `../static/`, which is the directory `app.py` mou
 compiled code -- Leaflet, minified -- and the repository does not carry or redistribute it.
 A fresh clone therefore has no page until the build below has run once; until then the
 server answers `/` with exactly that instruction (and the JSON API works regardless).
-`tests/test_architecture.py` enforces both halves: nothing under `static/` may ever be
+`tests/architecture/test_frontend_layout.py` enforces both halves: nothing under `static/` may ever be
 tracked, and every file a build puts there carries the build banner -- build output is
 exactly the kind of file someone edits in place, and the next build silently throws that
 edit away.
@@ -90,7 +90,7 @@ want fetched through `app/registry.ts` and `app/load.ts` runs the list knowing n
 The catch is that a module nothing imports is a module the build leaves out, and a registration
 that never ran is a layer that is simply never fetched — no compile error, no runtime error,
 just an absence. So `main.ts` names every one of them in its FEATURES block, and
-`tests/test_architecture.py` checks that block against the set of modules calling
+`tests/architecture/test_frontend_layout.py` checks that block against the set of modules calling
 `registerFetch` in both directions, plus the rule that keeps it load-bearing: `app/load.ts` and
 `app/registry.ts` may not import any of them. `map/regions.ts` is the exception `app/load.ts`
 still names, because `/api/regions` is geography — no world to scope it to, fetched once — so

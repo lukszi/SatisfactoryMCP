@@ -472,7 +472,7 @@ Evidence only: each row cites where the decision is written down.
 
 **Verdict: the case holds, as a view of the same page rather than a second page.** A
 `/dashboard` path would need a second Vite entry. That renames `app.js`, which
-`test_architecture.py` pins, and it adds a second EventSource and a second world picker. A
+`tests/architecture/test_frontend_layout.py` pins, and it adds a second EventSource and a second world picker. A
 fragment key reuses all of that, and a bookmark still lands on the view.
 
 ### 8.4 What was built

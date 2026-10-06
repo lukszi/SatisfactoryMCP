@@ -87,7 +87,7 @@ two code paths for every read, permanently, and the fallback is the one that run
 only uses the LLM. The MCP server would have to distinguish "connection refused" from "connected then
 hung" from "half a response" *per call*, under a client's timeout, and fall back correctly from each.
 It also inverts the stated architecture: the web stack is an optional extra (`[web]`), `interfaces/web`
-may not be importable at all, and `tests/test_architecture.py` enforces that the stdio server does not
+may not be importable at all, and `tests/architecture/test_import_direction.py` enforces that the stdio server does not
 depend on an ASGI stack. And the answer-names-its-file contract becomes a claim relayed from a process
 that may be pinned to a different `?save=` than the caller asked about — solvable, but it is a new way
 to be wrong about which file an answer describes, and that is the contract this project guards hardest.

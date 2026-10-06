@@ -21,9 +21,10 @@ seconds. The map generators' own tests live in `tools/mapgen/tests/`; their
 [the frontend README](../src/satisfactory_mcp/interfaces/web/frontend/README.md) covers the
 dev loop, the layer modules, and the type story.
 
-Architecture is enforced, not reviewed: `tests/test_architecture.py` reads the AST of every
-module to prove imports run one way — `core` knows nothing, `domain` knows `core`,
-`presenters` know `domain`, `interfaces` know everything.
+Architecture is enforced, not reviewed: the tests in `tests/architecture/` read the AST of
+every module to prove imports run one way — `core` knows nothing, `domain` knows `core`,
+`presenters` know `domain`, `interfaces` know everything. "Architecture rules" below says why
+each rule exists.
 
 ```
 src/satisfactory_mcp/
@@ -152,6 +153,79 @@ blindness confined to eight containers of one key. Schema 19 moved crate content
 `machine` into a `crate` bucket of their own (schema 18 had added `crates` and deliberately left
 them); `_unfix_19` folds them back, and because nothing is subtracted a miscounted crate still
 moves the digest.
+
+### Architecture rules
+
+`tests/architecture/` holds the rules that read the source rather than run it, standard
+library only, so they pass on a clone with no game, no Node and no web extra. The shared graph
+walker is `tests/support/import_graph.py`; every import node at any depth is an edge, so a lazy
+import inside a method body is checked like a top-level one.
+
+**Import direction** (`test_import_direction.py`). The layer table maps module prefixes to
+`core`, `domain`, `presenters`, `interfaces` and the pseudo-layers `sdk` (mcp, pydantic, the web
+stack) and `tools`. `WHITELIST` once held the violations that existed at the start of the
+layering refactor; each died in a named phase, the list is empty, and a new entry has to be
+argued for in the diff that adds it. Presenters are named a second time by literal package, so
+editing the table cannot dissolve the rule the refactor existed for: domain and core return
+data, never formatted text. `FORBIDDEN_PATHS` are the eight pre-refactor import paths, deleted
+after the shims that forwarded them; a forwarding path is a second name for one module, and the
+forwarding one is the one that goes stale. `LAYERED_HOMES` and `ROOT_ENTRIES` catch the failure
+the edge walker cannot: a package folded away leaves no bad edge behind.
+
+The parser `pioneersav` is a standalone library: it may not import the application, and
+exactly one application module (`core.saveio.extract.parser`, which runs in the child process)
+may import it. The subprocess boundary gives crash isolation, returns a 2.9 MB parse's memory to
+the OS and keeps the projection small enough to commit; one convenience import would quietly
+undo all three.
+
+`tools/` is a layer above everything: a generator may read the standard library, the `gen`
+extra, `core`, `mapgen` and itself, and no part of the package may read a generator, which is
+not in the wheel. The measured exceptions are numpy, scipy and platformdirs (hard dependencies),
+`pioneersav` (a one-shot CLI is the caller the subprocess boundary protects, not one it applies
+to) and `domain.spatial`, because the generator that writes the terrain field reads the package
+that reads it, so the two cannot disagree about the format.
+
+**Optional extras** (`test_optional_extras.py`). `ooz`, `texture2ddecoder` and Pillow are the
+`gen` extra, and optional means optional at import time: a clone without them imports every
+module, runs this suite and serves the map. Only `core.gameassets` may name them, and only from a
+function body. That proof is only as good as the AST, so the package may not use `importlib`,
+`__import__` or `sys.path` either. Besides the standard library and `core` it may import numpy,
+a hard dependency.
+
+**Line caps** (`test_module_caps.py`). No module of the application or the parser passes 850
+lines; routers stop at 650, MCP tool modules at 700, generators outside `tools/mapgen` at 800
+lines and 150 per function. `api.py` was 2,174 lines and `planning.py` 2,615 before they were
+split, and neither got there in one commit, so a cap is what makes "one module per concern" a
+measurement. The largest module, `core/gameassets/staticmesh.py`, sets the general cap: it
+splits only together with `tools/mapgen`, which reaches its names directly.
+
+**Routers** (`test_router_registry.py`). A router may import the standard library, FastAPI,
+`config`, `core`, `domain` and the web package's `serial` and `terrain` — never another router
+(the shared thing belongs in `serial`), never `app` (a cycle, and the mount order is what keeps
+`/openapi.json` byte-stable) and never a presenter (a formatted string in a payload is a
+decision made in the wrong place). The one exception is the event stream importing the
+watcher's event names. `ALL_ROUTERS` must match the directory, each router mounted exactly once
+and only through the loop in `app.py`, because an unmounted router is a 404 nothing reports and
+the tuple's order is the committed schema's path order. Every routed handler declares a
+`response_model` or returns a `Response` subclass in its annotation; without one the endpoint's
+`200` is `unknown` in `api/schema.d.ts`, and the page ends up typing it from observed payloads,
+which is how a 438-line hand-written types file with wrong nullability once came about. The four
+byte-serving endpoints are the named exemptions, and an exemption that stops being needed fails.
+
+**The page** (`test_frontend_layout.py`). `static/` is build output: gitignored (it embeds
+minified Leaflet, and the repository distributes no build), complete when present, every file
+carrying the build banner except Leaflet's copied licence, and nothing else in it. No Python
+names the frontend sources in code — the seam is the built directory — except the one
+not-built instruction `app.py` serves at `/`; comments and docstrings may. Each module that calls
+`registerFetch` is held in the bundle only by its bare import in `main.ts`'s FEATURES block, so
+the two are checked against each other in both directions: a dropped line would build, type-check
+and silently lose a map layer. The mechanism modules (`load.ts`, `registry.ts`, `layers.ts`, the
+layer control and its pickers, `palette.ts`) import no module that fetches and no module that
+imports them, since everything that draws reaches them and whatever they reached back would be
+evaluated first; `registry.ts` imports types only. `palette.ts` holds the colour comparison and no
+colour value, so every colour sits with its owner and its warrant.
+
+**Prose** (`test_comment_budget.py`): see [comments.md](comments.md), rule 9.
 
 ## Solver threads
 

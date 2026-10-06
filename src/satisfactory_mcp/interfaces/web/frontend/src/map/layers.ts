@@ -6,7 +6,7 @@
  * needs this and nothing that draws needs the folds.
  *
  * THIS FILE IMPORTS NOTHING THAT IMPORTS IT: every drawing module reaches this one, so
- * anything it reached back would be evaluated before all of them. test_architecture.py
+ * anything it reached back would be evaluated before all of them. test_frontend_layout.py
  * derives the rule from the source as "no module that imports ./layers".
  */
 

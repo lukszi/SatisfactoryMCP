@@ -18,7 +18,7 @@ const BANNER = [
   "BSD-2-Clause -- full text in vendor/LEAFLET-LICENSE beside this file.",
 ];
 
-// Stamps BANNER into every emitted file after minification; tests/test_architecture.py asserts BANNER.
+// Stamps BANNER into every emitted file after minification; tests/architecture/test_frontend_layout.py asserts BANNER.
 function banner(): Plugin {
   return {
     name: "build-banner",
@@ -61,7 +61,7 @@ export default defineConfig({
   build: {
     outDir: "../static",
     emptyOutDir: true,
-    // Stable names, no content hash: tests/test_architecture.py pins static/ by name.
+    // Stable names, no content hash: tests/architecture/test_frontend_layout.py pins static/ by name.
     rollupOptions: {
       output: {
         entryFileNames: "app.js",

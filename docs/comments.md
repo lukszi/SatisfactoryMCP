@@ -25,7 +25,7 @@ primary documentation; a comment exists only for what none of those can carry.
    [web-wire.md](web-wire.md).
 8. **Tripwires stay** — one imperative line at the exact line they guard ("renaming this
    function churns the committed schema"). This is what comments are for.
-9. **Budget, enforced as a ratchet.** `tests/test_comment_budget.py` fails when any file's
+9. **Budget, enforced as a ratchet.** `tests/architecture/test_comment_budget.py` fails when any file's
    prose:code ratio exceeds its layer's cap. The layers are the `src` packages, `tools/` and
    `tests/`, plus the frontend's hand-written TypeScript (`//` lines and every line of a
    `/* */` block count as prose; the generated schema types do not count). In Python, prose

@@ -687,7 +687,8 @@ one, which is what lets the suite drive them with stand-ins and lets the whole p
 on a machine that has none of the decoders installed. `iostore.oodle_decompress` is the real one,
 ready to be handed in, and its `import ooz` is inside the function body.
 
-Three rules are enforced by reading the source in `tests/test_architecture.py`, not by intention:
+Three rules are enforced by reading the source in `tests/architecture/test_optional_extras.py`, not
+by intention:
 
 * `test_the_gen_extra_is_optional_at_import_time` — outside `core.gameassets`, no module under
   `satisfactory_mcp` or `pioneersav` has an edge to `ooz`, `pyooz`, `texture2ddecoder` or `PIL` at

@@ -280,7 +280,7 @@ use for note strings it embeds in its own results. `server.py` contains no logic
 root because the console script names `satisfactory_mcp.server:main`.
 
 None of that is checkable at runtime — a lazy `import` three frames deep inside a method body loads fine
-and violates the architecture silently. So `tests/test_architecture.py` parses every module with `ast` and
+and violates the architecture silently. So `tests/architecture/test_import_direction.py` parses every module with `ast` and
 looks at *every* import node at *any* depth. It runs stdlib-only in under a second, and its whitelist of
 tolerated violations is empty.
 
@@ -305,7 +305,7 @@ its block decompressor as a callable (`iostore.oodle_decompress` is a convenienc
 module, so the suite drives all three with stand-ins. The one body that imports Pillow itself is
 `pyramid._encode_tile_row`, because a spawned worker cannot be handed a module through a pickle. The
 server, the parser, the domain and the whole test suite run on a machine with none of the three installed,
-and `tests/test_architecture.py` reads the AST to keep it that way. The full record is §19, in
+and `tests/architecture/test_optional_extras.py` reads the AST to keep it that way. The full record is §19, in
 [docs/parked.md](docs/parked.md).
 
 **The web adapter.** `interfaces/web/` is a *sibling* of `interfaces/mcp/`, not a layer above it: both are
@@ -319,7 +319,7 @@ the same AST-checked rule that confines the MCP SDK to `interfaces/mcp/`. The pa
 under `web/frontend/`, built by Vite into the **untracked** bundle at `web/static/` — gitignored, because
 minified Leaflet is a dependency's compiled code and the repository does not carry it. A fresh clone runs
 `npm ci && npm run build` there once (until then the server answers `/` with that instruction and the
-JSON API is unaffected), and `tests/test_architecture.py` insists both that nothing under `static/` is
+JSON API is unaffected), and `tests/architecture/test_frontend_layout.py` insists both that nothing under `static/` is
 ever tracked and that every built file carries the build banner. The map ships no game textures and no
 map tiles: Leaflet is bundled into that page with its BSD-2-Clause licence beside it in `static/vendor/`
 — copied at build time from `node_modules/leaflet/LICENSE`, so every build stays self-compliant for
@@ -345,7 +345,7 @@ Reasons (licensing is *not* one of them — it never was, and the parser is ours
   suite then runs with no game install and no parser.
 
 The parser itself is `src/pioneersav`, a standalone package beside the application rather than inside
-it: it implements a file format and knows nothing about factories, plans or MCP. `tests/test_architecture.py`
+it: it implements a file format and knows nothing about factories, plans or MCP. `tests/architecture/test_import_direction.py`
 pins both halves — `pioneersav` imports nothing from `satisfactory_mcp`, and `core/saveio/extract/parser.py`
 is the only module in the application allowed to import `pioneersav`, because everything else reaches it
 through the subprocess.

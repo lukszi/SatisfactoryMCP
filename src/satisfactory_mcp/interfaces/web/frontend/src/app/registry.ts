@@ -6,7 +6,7 @@
  * `import type`.
  *
  * A registration only exists if the module holding it is in the bundle, and load.ts imports
- * none of them, so main.ts names each one in its FEATURES block and test_architecture.py
+ * none of them, so main.ts names each one in its FEATURES block and test_frontend_layout.py
  * checks that block against the modules that call `registerFetch`. Without that pair, deleting
  * a feature's last named import drops its layer silently: the build succeeds, the page loads,
  * and the fetch never happens.

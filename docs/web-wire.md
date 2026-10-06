@@ -16,7 +16,8 @@ routers point at this file instead of re-telling them.
    type of the value.
 5. **A router never imports another router.** Shared shapes live in the `serial` package
    (`serial/shapes.py`) only when one function builds them for more than one router; two
-   shapes that merely look alike stay separate. Enforced by `tests/test_architecture.py`.
+   shapes that merely look alike stay separate. Enforced by
+   `tests/architecture/test_router_registry.py`.
 6. **Regenerate, never hand-edit** `api/schema.d.ts`: throwaway server on a port in
    8920–8999, then `npm run typegen -- <port>` (`scripts/typegen.mjs`: `openapi-typescript`
    against that port, then `scripts/stamp-schema.mjs`). Without an argument it reads

@@ -14,7 +14,7 @@ import tokenize
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 BUDGETS = [
     (ROOT / "src" / "satisfactory_mcp" / "interfaces", 0.80),
     (ROOT / "src" / "satisfactory_mcp" / "presenters", 0.40),

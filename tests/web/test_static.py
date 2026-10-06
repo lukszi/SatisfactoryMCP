@@ -6,7 +6,7 @@
 The one file of this set that is about ``app.py`` rather than about a router. The static
 mount is registered LAST -- a mount at ``/`` swallows every path that did not already
 match -- so "the page is served from the root" is also the assertion that no router was
-mounted after it. ``test_architecture.py`` covers the other half: that everything in
+mounted after it. ``test_frontend_layout.py`` covers the other half: that everything in
 ``static/`` is build output, and that none of it is tracked in git.
 
 ``static/`` is untracked build output now, so half of this file runs only where a build
