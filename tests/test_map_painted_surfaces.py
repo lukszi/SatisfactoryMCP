@@ -25,22 +25,30 @@ from mapgen.cache import (  # noqa: E402
 )
 from mapgen.gamedata import rockfamily  # noqa: E402
 from mapgen.gamedata.bake import (  # noqa: E402
+    BAKE_NAME,
+    STAMP_INNER_M,
+    STAMP_OUTER_M,
     bake_cell_origin,
     bake_have,
     demorton,
     fit_layer_table,
+    oil_nodes,
+    stamp_windows,
 )
-from mapgen.gamedata.frame import BOUNDS_M  # noqa: E402
+from mapgen.gamedata.frame import BOUNDS_M, ORIGIN_X_CM, ORIGIN_Y_CM  # noqa: E402
 from mapgen.gamedata.paint import (  # noqa: E402
     component_origin,
 )
 from mapgen.gamedata.sweep import first_override  # noqa: E402
 from mapgen.palette.painted import (  # noqa: E402
+    PaintedGround,
     bake_table,
     canopy_over_rock,
     painted_colours,
+    patch_stamps,
     rock_surface,
     sample_titan,
+    srgb_to_linear,
     titan_over,
 )
 from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style  # noqa: E402
@@ -100,6 +108,68 @@ def test_the_bake_table_is_only_offered_by_a_store_that_has_a_bake():
     assert bake_table(meta) is None
     meta["files"]["bake.rgb.u8.z"] = {}
     np.testing.assert_allclose(bake_table(meta)["A"], [0.1, 0.2, 0.3])
+
+
+SAND = (200, 180, 140)
+
+
+def test_only_crude_oil_nodes_carry_a_stamp(tmp_path):
+    table = tmp_path / "nodes.json"
+    rows = [
+        ("BP_ResourceNode_C", "Desc_LiquidOil_C", 26500.0, -194000.0),
+        ("BP_FrackingSatellite_C", "Desc_LiquidOil_C", 0.0, 0.0),
+        ("BP_ResourceNode_C", "Desc_Sulfur_C", 100.0, 100.0),
+    ]
+    nodes = [dict(zip(("class", "resource", "x", "y"), row, strict=True)) for row in rows]
+    table.write_text(json.dumps({"nodes": nodes}), encoding="utf-8")
+    assert oil_nodes(table).tolist() == [[265.0, -1940.0]]
+    assert oil_nodes(tmp_path / "absent.json").shape == (0, 2)
+    assert len(oil_nodes()) > 0, "the committed node table has crude oil nodes"
+
+
+def _stamped(n=64):
+    """A sand bake with a dark 8 m stamp on a node at texel (32, 32) and one hole in it."""
+    rgb = np.full((n, n, 3), SAND, np.uint8)
+    yy, xx = np.mgrid[0:n, 0:n]
+    metres = np.hypot(yy - 32, xx - 32)
+    rgb[metres <= 8] = (40, 40, 32)
+    rgb[30, 30] = 0
+    node = np.array([[ORIGIN_X_CM / 100 + 32, ORIGIN_Y_CM / 100 + 32]])
+    return rgb, node, metres
+
+
+def test_the_stamp_window_hands_the_bake_back_between_the_two_radii():
+    _rgb, node, _metres = _stamped()
+    ((window, keep),) = stamp_windows(node, (64, 64))
+    yy, xx = np.mgrid[window]
+    metres = np.hypot(yy - 32, xx - 32)
+    assert (keep[metres <= STAMP_INNER_M] == 0).all() and (keep[metres >= STAMP_OUTER_M] == 1).all()
+    between = (metres > STAMP_INNER_M) & (metres < STAMP_OUTER_M)
+    assert ((keep[between] > 0) & (keep[between] < 1)).all()
+    assert list(stamp_windows(node + 1000.0, (64, 64))) == [], "a node off the grid is skipped"
+
+
+def test_a_stamp_takes_the_paint_scaled_to_the_bake_around_it():
+    rgb, node, metres = _stamped()
+    ok = bake_have(rgb)
+    paint = np.broadcast_to(srgb_to_linear(SAND) * np.float32(0.7), (64, 64, 3)).copy()
+    replaced = patch_stamps(rgb, ok, paint, node)
+    assert (rgb[30, 30] == 0).all(), "a hole stays a hole"
+    np.testing.assert_allclose(rgb[ok], np.broadcast_to(SAND, rgb[ok].shape), atol=1)
+    assert replaced == int((ok & (metres <= STAMP_INNER_M)).sum())
+
+
+def test_the_painted_ground_patches_a_stamp_in_its_read_only_bake(tmp_path):
+    rgb, node, _metres = _stamped()
+    (tmp_path / BAKE_NAME).write_bytes(hf.encode_u8(rgb.reshape(64, -1)))
+    paint = np.broadcast_to(srgb_to_linear(SAND), (64, 64, 3)).copy()
+    for stamps, dark in ((None, True), (node, False)):
+        ground = PaintedGround.__new__(PaintedGround)
+        ground.meta = {"files": {BAKE_NAME: {"shape": [64, 64, 3], "kind": "u8"}}}
+        ground.palette, ground.source, ground._stamps = {"have_blur_m": 2.0}, {}, stamps
+        albedo, _have, _w = ground._bake(tmp_path, paint.copy(), np.ones((64, 64), bool))
+        assert (albedo[32, 32].max() < 0.1) == dark
+    assert ground.source["bake_stamps_patched"]["nodes"] == 1
 
 
 # ----------------------------------------------------------------------- crowns
