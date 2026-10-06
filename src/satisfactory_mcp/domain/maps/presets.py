@@ -83,7 +83,9 @@ DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
 RENDER_KEEP_BYTES = 830_000_000
 RENDER_KEEP_FLOOR = 10_000_000
-CACHE_BYTES_FULL = 10_700_000_000
+#: The raster caches of one full render in the zstd band store: 0.93 GB measured, where the
+#: raw layout they replace was 18.5 GB (docs/spatial-and-map.md section 39).
+CACHE_BYTES_FULL = 1_000_000_000
 SPARE_BYTES = 2_000_000_000
 
 FIXED = {
