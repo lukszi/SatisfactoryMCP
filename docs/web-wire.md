@@ -68,7 +68,7 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
   event goes out. No grace applies: an `activity` entry can move the page, and a find chat made
   a second before the page opened must not. A reconnect's replay of missed entries is
   `GET /api/activity?since=` from the newest entry heard, or page open, whichever is later.
-- Only the served instance tails (`create_app(tail=True)`), and it is also what names the
+- Only the served instance tails (`create_app(served=True)`), and it is also what names the
   process the `web` journal writer. Test apps leave both off. The same flag decides whether the
   map job runner reads and re-adopts the jobs on disk at start.
 - `maps` is state, not a journal: `since` does not apply, and the replay of the newest one is

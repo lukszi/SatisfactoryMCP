@@ -17,17 +17,14 @@ import uvicorn
 
 from ... import config
 
-__all__ = ["HOST", "PORT", "main"]
-
-HOST = config.WEB_HOST
-PORT = config.WEB_PORT
+__all__ = ["main"]
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="satisfactory-mcp-web")
     parser.add_argument("--port", type=int, default=config.web_port())
     port = parser.parse_args(argv).port
-    uvicorn.run("satisfactory_mcp.interfaces.web.app:app", host=HOST, port=port)
+    uvicorn.run("satisfactory_mcp.interfaces.web.app:app", host=config.WEB_HOST, port=port)
 
 
 if __name__ == "__main__":
