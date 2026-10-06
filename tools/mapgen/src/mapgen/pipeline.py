@@ -124,11 +124,11 @@ from mapgen.tiles.extras import KEPT_CACHE_DIRS, load_extras
 from mapgen.tiles.inuse import IN_USE, add_in_use_flag, in_use_refusal
 from mapgen.tiles.lit import add_light_flags, claim_scratch, light_run
 from mapgen.tiles.pyramid import (
-    DEFAULT_WORKERS,
-    add_cut_flags,
+    add_worker_flags,
     check_parallel,
     install_layer,
     layer_dir,
+    pool_sizes,
 )
 from mapgen.tiles.recipes import RECIPE, RECIPE_KERNEL_ONLY
 from mapgen.tiles.rendertext import COMPOSITION_TEXT, LEVEL_ONLY_TEXT, Z7_TEXT, sampling_text
@@ -312,15 +312,6 @@ def main() -> int:
         ),
     )
     parser.add_argument(
-        "--workers",
-        type=int,
-        default=DEFAULT_WORKERS,
-        help=(
-            f"processes baking the light (default {DEFAULT_WORKERS}); --cut-workers sets "
-            "the processes encoding tiles"
-        ),
-    )
-    parser.add_argument(
         "--check-parallel",
         action="store_true",
         help=(
@@ -334,13 +325,13 @@ def main() -> int:
         help="replace layers this run cannot show were drawn from the field now on disk",
     )
     add_light_flags(parser)
-    add_cut_flags(parser)
+    add_worker_flags(parser)
     parser.add_argument("--quiet", action="store_true", help="no per-band progress lines")
     add_in_use_flag(parser)
     args = parser.parse_args()
 
     layers = tuple(dict.fromkeys(args.layer)) if args.layer else LAYERS
-    workers, cut_workers = max(1, args.workers), max(1, args.cut_workers)
+    light_workers, cut_workers = pool_sizes(args)
     renders = args.out_dir / args.renders_name
     if refusal := in_use_refusal(LOCAL_DIR, renders, args.overwrite_in_use):
         print(refusal)
@@ -817,7 +808,7 @@ def main() -> int:
 
     # ---- draw and cut ----------------------------------------------------------------
     borrow_source = borrow_metadata(detail_meta, province_meta)
-    with light_run(scratch, args.size, painted, args.light_workers or workers) as light:
+    with light_run(scratch, args.size, painted, light_workers) as light:
         total_started = time.time()
         seam = SeamTrace() if direct is not None else None
         regimes = RegimeCoverage() if direct is not None else None

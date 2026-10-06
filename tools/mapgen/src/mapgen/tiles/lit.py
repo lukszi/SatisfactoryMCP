@@ -22,8 +22,6 @@ from mapgen.lighting.model import DIRECT_SCALE, apply_terms
 from mapgen.lighting.occluders import sheet_crowns
 from mapgen.lighting.stage import (
     LIGHT_DIR_NAME,
-    LIGHT_WORKER_BYTES,
-    LIGHT_WORKER_CAP,
     Surface,
     bake_light,
     default_terms,
@@ -66,15 +64,6 @@ def add_light_flags(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument("--unlit", dest="light", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument(
-        "--light-workers",
-        type=int,
-        default=None,
-        help=(
-            f"processes baking the light (default: one a core, at most {LIGHT_WORKER_CAP}, and "
-            f"no more than the free memory holds at {LIGHT_WORKER_BYTES / 1e9:.1f} GB each)"
-        ),
-    )
     parser.add_argument(
         "--scratch-dir",
         type=Path,

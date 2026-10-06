@@ -113,8 +113,11 @@ as the artwork. The main options:
   default it sits beside the raster caches. It is scratch for one run, kept by no flag: the
   run deletes it however it ends, and the next lit run removes what a killed one left (§29).
 - `--light-workers` sets how many processes bake the light. By default it is one a core, at
-  most 16, and no more than the free memory holds at 2.5 GB each, counted when the bake starts;
-  `--workers` no longer sets it (§29, "The stage").
+  most 16, and no more than the free memory holds at 1.5 GB each, counted when the bake starts
+  (§29, "The stage"). `--cut-workers` sets how many encode the tiles: by default one a core, at
+  most 24, fewer when memory is short, and `1` cuts serially (§17, "Cutting in parallel").
+  `--workers N` sets both where its own flag is not given, so older command lines keep their
+  meaning.
 - `--restyle` draws only from those kept caches and exits with code 9 when one is missing or
   was cut for another size or build, so a palette change never turns into a full render.
 - `--no-titan-trees` leaves the Titan forest's trees off the painted layer, a style variant
@@ -153,6 +156,7 @@ be traced to the axis it should move.
 |---|---|---|
 | `cli.py` | | The `python -m mapgen` command table. Standard library only, so a spawned worker does not import numpy. |
 | `common.py` | | Repository root, `data/local`, the default game path, the shared argument parser |
+| `pools.py` | | What a pool of workers may take: the free memory, and one BLAS thread in each worker |
 | `pipeline.py` | | The renders orchestrator: arguments, refusals, stage order |
 | `heightmap.py` | data | The heightmap, caves and rocks command: arguments, refusals, stage order |
 | `artwork.py` | data | The artwork command: arguments, stage order, refusals |
@@ -201,7 +205,8 @@ be traced to the axis it should move.
 | `lighting/occluders.py` | light | The canopy-top occluder raster the horizons take |
 | `lighting/lights/` | light | Light files (empty for now) |
 | `tiles/compose.py` | | The band loop that draws a layer |
-| `tiles/pyramid.py` | | Installing a layer and cutting its pyramid |
+| `tiles/pyramid.py` | | Installing a layer and cutting its pyramid; the worker flags |
+| `tiles/cutter.py` | | The parallel cutter: a layer's tile trees through one encode pool |
 | `tiles/sidecar.py` | | The render sidecar |
 | `tiles/inuse.py` | | The refusal to write over a registered map type. It reads the manifest as plain JSON, because mapgen may not import `domain.maps`. |
 | `tiles/recipes.py` | | The recipe numbers and their words, renders and artwork |

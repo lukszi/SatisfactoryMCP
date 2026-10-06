@@ -7,13 +7,17 @@ reference below is the whole-array arithmetic the strips replaced, kept as the o
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from concurrent.futures import Future, ProcessPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 import pytest
 from scipy import ndimage
 
+from mapgen import pools
 from mapgen.lighting import horizon as hz
 from mapgen.lighting import model, stage
 from mapgen.lighting.stage import Surface, bake_light
@@ -213,6 +217,15 @@ def test_a_level_is_the_same_bytes_however_far_ahead_it_runs(tmp_path, monkeypat
 
 def test_a_bake_is_the_same_bytes_on_one_worker_and_on_the_default_count(tmp_path, monkeypatch):
     monkeypatch.setattr(stage, "free_ram_bytes", lambda: 3 * stage.LIGHT_WORKER_BYTES)
+    entered = []
+
+    @contextmanager
+    def counted():
+        with pools.one_blas_thread():
+            entered.append(os.environ["OPENBLAS_NUM_THREADS"])
+            yield
+
+    monkeypatch.setattr(stage, "one_blas_thread", counted)
     trees, workers = {}, {}
     for name, asked in (("one", 1), ("default", None)):
         surface = Surface(tmp_path / name / "work", 512)
@@ -225,6 +238,7 @@ def test_a_bake_is_the_same_bytes_on_one_worker_and_on_the_default_count(tmp_pat
         workers[name] = meta["render"]["workers"]
     assert workers == {"one": 1, "default": min(3, os.cpu_count() or 1)}
     assert len(trees["one"]) == 2 * (4 + 1) and trees["one"] == trees["default"]
+    assert entered == ["1", "1"], "each bake's pool starts its workers with one BLAS thread"
 
 
 def test_light_workers_take_the_cores_capped_by_the_free_ram(monkeypatch):
@@ -241,5 +255,40 @@ def test_light_workers_take_the_cores_capped_by_the_free_ram(monkeypatch):
     monkeypatch.setattr(stage.os, "cpu_count", lambda: 6)
     assert stage.light_workers() == 6
     monkeypatch.undo()
-    free = stage.free_ram_bytes()
+    free = pools.free_ram_bytes()
     assert free is None or free > 0
+
+
+def test_one_blas_thread_reaches_the_processes_started_inside_and_then_unwinds(monkeypatch):
+    monkeypatch.setenv("OPENBLAS_NUM_THREADS", "7")
+    with pools.one_blas_thread(), ProcessPoolExecutor(1) as pool:
+        assert pool.submit(os.getenv, "OPENBLAS_NUM_THREADS").result() == "1"
+    assert os.environ["OPENBLAS_NUM_THREADS"] == "7", "the value before comes back"
+    monkeypatch.delenv("OPENBLAS_NUM_THREADS")
+    with pools.one_blas_thread():
+        assert os.environ["OPENBLAS_NUM_THREADS"] == "1"
+    assert "OPENBLAS_NUM_THREADS" not in os.environ
+
+
+#: A child that imports what a bake worker does and prints the bytes it has committed.
+_COMMIT_PROBE = """
+import ctypes, ctypes.wintypes as w
+import numpy, scipy.ndimage
+class C(ctypes.Structure):
+    _fields_ = [("cb", w.DWORD), ("faults", w.DWORD)] + [(f"f{i}", ctypes.c_size_t) for i in range(9)]
+k = ctypes.windll.kernel32
+k.GetCurrentProcess.restype = w.HANDLE
+k.K32GetProcessMemoryInfo.argtypes = [w.HANDLE, ctypes.POINTER(C), w.DWORD]
+c = C(cb=ctypes.sizeof(C))
+assert k.K32GetProcessMemoryInfo(k.GetCurrentProcess(), ctypes.byref(c), c.cb)
+print(c.f8)
+"""
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the commit charge is a Windows count")
+def test_a_worker_with_one_blas_thread_commits_no_blas_buffers():
+    """numpy and scipy each load an OpenBLAS: about 0.8 GB of commit apiece on 32 threads."""
+    with pools.one_blas_thread():
+        out = subprocess.run([sys.executable, "-c", _COMMIT_PROBE], capture_output=True,
+                             text=True, check=True)  # fmt: skip
+    assert int(out.stdout) < 200_000_000

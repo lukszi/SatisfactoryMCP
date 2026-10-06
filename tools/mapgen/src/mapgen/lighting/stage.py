@@ -12,7 +12,6 @@ import io
 import json
 import os
 import shutil
-import sys
 import time
 import warnings
 from collections import deque
@@ -37,6 +36,7 @@ from mapgen.lighting.horizon import (
 )
 from mapgen.lighting.model import DIRECT_SCALE, HZ_CELLS, direct_term, light_axis, sun_cells
 from mapgen.lighting.sun import DEFAULT_SUN
+from mapgen.pools import free_ram_bytes, one_blas_thread
 from satisfactory_mcp.core.gameassets.pyramid import (
     PYRAMID_TILE_PX,
     RETIRED_SUFFIX,
@@ -58,7 +58,6 @@ __all__ = [
     "decode_linear",
     "default_terms",
     "discard",
-    "free_ram_bytes",
     "hz_atlas",
     "light_workers",
     "occluder_planes",
@@ -81,10 +80,10 @@ HZ_LINEAR_SCALE = 2.8
 LEVEL_AHEAD = 4
 LEVEL_TASK_TILES = 4
 
-#: Light processes at most, and the free memory each one needs: its measured commit peak on a
-#: full-size block.
+#: Light processes at most, and the free memory each one needs: its measured peak on a
+#: full-size block with crowns or arches, started with one BLAS thread.
 LIGHT_WORKER_CAP = 16
-LIGHT_WORKER_BYTES = 2_500_000_000
+LIGHT_WORKER_BYTES = 1_500_000_000
 
 _FILES = (
     "z",
@@ -376,28 +375,6 @@ def _extra(work: Path, name: str, raster, dtype=np.float32) -> None:
         np.save(path, np.asarray(raster, dtype))
 
 
-def free_ram_bytes() -> int | None:
-    """Memory free now, in bytes, or None where the platform does not say.
-
-    On Windows the lesser of the free physical memory and the commit still available.
-    """
-    if sys.platform == "win32":
-        import ctypes
-
-        class _Status(ctypes.Structure):
-            _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [
-                (k, ctypes.c_ulonglong) for k in ("total", "free", "pt", "pf", "vt", "vf", "x")
-            ]
-
-        status = _Status(length=ctypes.sizeof(_Status))
-        ok = ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
-        return int(min(status.free, status.pf)) if ok else None
-    try:
-        return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
-    except (AttributeError, OSError, ValueError):
-        return None
-
-
 def light_workers(requested: int | None = None) -> int:
     """``requested``, else one a core up to ``LIGHT_WORKER_CAP`` that the free RAM holds."""
     if requested:
@@ -445,7 +422,7 @@ def bake_light(surface: Surface, out_dir: Path, workers: int | None, occluder=No
         for c in range(0, size, block)
     ]
     tiles = hz_bytes = 0
-    with ProcessPoolExecutor(max_workers=workers) as pool:
+    with one_blas_thread(), ProcessPoolExecutor(max_workers=workers) as pool:
         for k, done in enumerate(pool.map(_bake_block, jobs), 1):
             tiles += done["tiles"]
             hz_bytes += done["hz_bytes"]

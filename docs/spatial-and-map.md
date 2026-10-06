@@ -494,7 +494,8 @@ through one pool:
 - **One encode pool per layer.** `--cut-workers` processes (default one per logical core, at
   most 24) encode one row of tiles per job, for all three trees. A level's rows are queued as
   soon as its pixels are ready, so the pool encodes the unlit z7 while the levels are
-  resampled and the sheet is relit. `--workers` sizes the light bake only.
+  resampled and the sheet is relit. `--workers N`, as before, sizes both this pool and the
+  light bake's where `--cut-workers` or `--light-workers` is not given (section 29).
 - **One copy of the sheet per tree.** The sheet is copied into a `shared_memory` block and
   z7 is encoded from that block; no Pillow image of the whole sheet is made. The unlit tree
   encodes from its own block, so the relight can change the sheet underneath it.
@@ -512,8 +513,9 @@ through one pool:
 - **A level two trees share is resampled once.** `tiles@2x/` is cut from the sheet
   downscaled to 16384, the same resize as `tiles/` z6, so its top level is that block. On a
   sheet of 16384 or less every @2x level is a 1x level.
-- **Memory.** Before a new block the cutter checks free memory, physical and on Windows
-  commit; with less than the block plus 4 GB it waits for work in flight. The encoder count
+- **Memory.** Before a new block the cutter checks free memory (`mapgen/pools.py`, shared
+  with the light bake), physical and on Windows commit; with less than the block plus 4 GB
+  it waits for work in flight. The encoder count
   is capped the same way at 200 MB an encoder. A block is freed when the last job and strip
   reading it finish. A failed strip settles its level only after every strip of it has
   stopped, so no strip writes into a freed block.
@@ -2042,11 +2044,12 @@ none of which moves a byte:
   as 1 GB of floats with copies of it. The mean of one direction sums its four pixels as the
   stacked mean did, `(a + b) + (c + d)`, which a test holds.
 - **Workers of its own.** `--light-workers` sets the bake's pool. By default it is one a
-  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 2.5 GB
-  each (`LIGHT_WORKER_BYTES`, a worker's measured commit peak), counted when the bake
-  starts. On Windows the free memory is the lesser of the free RAM and the commit still
-  available: a process that cannot commit fails with RAM to spare, which other processes'
-  idle pools can bring about. `--workers` no longer sets it.
+  core, at most 16 (`LIGHT_WORKER_CAP`), and no more than the free memory holds at 1.5 GB
+  each (`LIGHT_WORKER_BYTES`, below), counted when the bake starts. On Windows the free
+  memory is the lesser of the free RAM and the commit still available
+  (`pools.free_ram_bytes`): a process that cannot commit fails with RAM to spare, which
+  other processes' idle pools can bring about. `--workers N` sets it where `--light-workers`
+  is not given, as it did before, and sizes the cutter's pool the same way.
 - **A fed pool for the coarser levels.** The parent submits a strip's tiles, 4 to a task
   (`LEVEL_TASK_TILES`), and computes the next strips while they encode, up to `LEVEL_AHEAD`
   (4) strips ahead. Before, it waited for each strip, whose 1 to 8 tasks left most of the
@@ -2076,6 +2079,18 @@ and after: all 1,125 tiles match by SHA-256, the light pyramid's 170 among them,
 sidecars differ in their timings only. Its light took 26.1 s before and 18.7 s after. A full-size block baked before and after writes the
 same 256 tiles' 512 files, default-sun terms and coarser-level sources by SHA-256, and the
 coarser levels from 8192 px the same 2,730 files.
+
+**One BLAS thread a worker (2026-10-06).** numpy and scipy each load an OpenBLAS, and on the
+32-thread reference machine each commits about 0.8 GB of thread buffers as it loads: 1.59 GB
+of the 2.5 GB commit in the table above, about 25 GB over 16 workers, for a bake that makes
+no BLAS call. The pool now starts its workers with `OPENBLAS_NUM_THREADS=1`
+(`pools.one_blas_thread`, set while the pool lives and put back after; the parent keeps the
+BLAS it loaded with), and a worker that imports both commits 0.04 GB. The same full-size
+block bakes in 72.5 s at a peak of 1.08 GB working set and 0.98 GB commit, and writes the
+same 512 files, terms and coarser-level sources by SHA-256; a full-size block under arches
+peaks at 1.36 and 1.04 GB. `LIGHT_WORKER_BYTES` is 1.5 GB, the larger of those with room for
+a block that has both. The cutter's encoders import no numpy, so their pool needs no such
+setting (section 17).
 
 **Step growth** (`STEP_GROWTH`, 1%). Past `FINE_M` (44 m) the march steps grow with the
 distance. A plateau is sampled at the first step past its edge, so the horizon jumps from

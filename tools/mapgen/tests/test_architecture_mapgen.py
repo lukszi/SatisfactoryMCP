@@ -22,24 +22,30 @@ PRESETS_PY = REPO / "src" / "satisfactory_mcp" / "domain" / "maps" / "presets.py
 
 #: Who may import whom inside ``mapgen``. A unit is a subpackage or a top-level module.
 #: gamedata <- terrain <- lighting <- palette <- tiles <- pipeline <- cli, with ``common``,
-#: ``bandstore`` and ``cache`` as leaves under all of them. ``cli`` reaches its commands
+#: ``bandstore`` and ``cache`` as leaves under all of them, and ``pools`` (free memory, a
+#: worker's BLAS threads) under the units that start pools. ``cli`` reaches its commands
 #: through ``importlib`` by name, so it statically imports nothing here.
 ALLOWED: dict[str, frozenset[str]] = {
     "common": frozenset(),
     "bandstore": frozenset(),
+    "pools": frozenset(),
     "cache": frozenset({"common", "bandstore"}),
     "compress_cache": frozenset({"common", "bandstore", "cache"}),
     "gamedata": frozenset({"common", "gamedata"}),
     "terrain": frozenset({"common", "cache", "gamedata", "terrain"}),
-    "lighting": frozenset({"common", "gamedata", "terrain", "lighting"}),
-    "palette": frozenset({"common", "cache", "gamedata", "terrain", "lighting", "palette"}),
-    "tiles": frozenset({"common", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}),
+    "lighting": frozenset({"common", "pools", "gamedata", "terrain", "lighting"}),
+    "palette": frozenset(
+        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette"}
+    ),
+    "tiles": frozenset(
+        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
+    ),
     "heightmap": frozenset({"common", "gamedata", "terrain"}),
     "enhance": frozenset({"common", "gamedata", "tiles", "enhance"}),
     "artwork": frozenset({"common", "gamedata", "tiles", "enhance"}),
     "check_fill": frozenset({"common", "cache", "gamedata", "terrain"}),
     "pipeline": frozenset(
-        {"common", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
+        {"common", "pools", "cache", "gamedata", "terrain", "lighting", "palette", "tiles"}
     ),
     "cli": frozenset(),
     "__main__": frozenset({"cli"}),

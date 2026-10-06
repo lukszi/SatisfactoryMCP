@@ -6,6 +6,7 @@ smooth field with noise, so the PNGs are real PNGs and every Lanczos tap matters
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import threading
 import time
@@ -116,7 +117,7 @@ def test_a_failed_strip_settles_its_level_only_after_every_strip_has_stopped(mon
 
 def test_the_encoders_are_capped_by_memory_and_a_block_waits_for_work_in_flight(monkeypatch):
     free = [cut.RAM_RESERVE + 3 * cut.WORKER_BYTES]
-    monkeypatch.setattr(cut, "available_ram", lambda: free[0])
+    monkeypatch.setattr(cut, "free_ram_bytes", lambda: free[0])
     with cut.Cutter(Image, 24, threads=1) as cutter:
         assert cutter.workers == 3
         free[0] = cut.RAM_RESERVE
@@ -181,6 +182,22 @@ def test_a_lit_layer_encodes_the_unlit_tree_while_the_sheet_is_relit(tmp_path, m
     a = _digests(tmp_path / "serial" / "r" / "terrain")
     assert len(a) == 11 and a == _digests(tmp_path / "parallel" / "r" / "terrain")
     assert a["unlit/1/0_0.png"] != a["tiles/1/0_0.png"], "the unlit tree kept the unlit pixels"
+
+
+def _pools(*argv: str) -> tuple[int | None, int]:
+    parser = argparse.ArgumentParser()
+    layer_pyramid.add_worker_flags(parser)
+    return layer_pyramid.pool_sizes(parser.parse_args(list(argv)))
+
+
+def test_workers_is_the_default_for_the_light_and_the_cut_and_each_flag_wins():
+    """An old command line's ``--workers N`` still sizes both pools."""
+    assert _pools() == (None, cut.CUT_WORKERS), "the bake counts its own when it starts"
+    assert _pools("--workers", "2") == (2, 2)
+    assert _pools("--workers", "2", "--light-workers", "6") == (6, 2)
+    assert _pools("--workers", "2", "--cut-workers", "9") == (2, 9)
+    assert _pools("--light-workers", "3", "--cut-workers", "1") == (3, 1)
+    assert _pools("--workers", "0") == (1, 1)
 
 
 def test_check_parallel_compares_a_whole_pyramid_and_says_so(tmp_path):

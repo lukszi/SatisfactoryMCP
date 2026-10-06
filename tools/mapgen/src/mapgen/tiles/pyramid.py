@@ -6,13 +6,13 @@ Moved verbatim from ``tools/gen_map_renders.py``.
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import time
 from pathlib import Path
 
 from mapgen.common import RENDERS_DIR_NAME
 from mapgen.gamedata.frame import RENDER_2X_PX
+from mapgen.lighting.stage import LIGHT_WORKER_BYTES, LIGHT_WORKER_CAP
 from mapgen.tiles.cutter import CUT_WORKERS, Cutter, Source, Tree
 from mapgen.tiles.recipes import RECIPE
 from satisfactory_mcp.core.gameassets.pyramid import (
@@ -24,35 +24,55 @@ from satisfactory_mcp.core.gameassets.pyramid import (
 )
 
 __all__ = [
-    "DEFAULT_WORKERS",
-    "WORKER_CAP",
-    "add_cut_flags",
+    "add_worker_flags",
     "check_parallel",
     "install_layer",
     "layer_dir",
+    "pool_sizes",
     "queue_layer",
 ]
-
-#: How many processes bake the light when ``--workers`` is not given. One per core, capped
-#: because each holds a block of the bake's planes.
-WORKER_CAP = 16
-DEFAULT_WORKERS = min(os.cpu_count() or 1, WORKER_CAP)
 
 # --------------------------------------------------------------------------------------
 # Installing a layer.
 # --------------------------------------------------------------------------------------
 
 
-def add_cut_flags(parser: argparse.ArgumentParser) -> None:
+def add_worker_flags(parser: argparse.ArgumentParser) -> None:
+    """``--light-workers`` and ``--cut-workers``, and ``--workers``, the default for both."""
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="processes for --light-workers and --cut-workers, where either is not given",
+    )
+    parser.add_argument(
+        "--light-workers",
+        type=int,
+        default=None,
+        help=(
+            f"processes baking the light (default: one a core, at most {LIGHT_WORKER_CAP}, and "
+            f"no more than the free memory holds at {LIGHT_WORKER_BYTES / 1e9:.1f} GB each)"
+        ),
+    )
     parser.add_argument(
         "--cut-workers",
         type=int,
-        default=CUT_WORKERS,
+        default=None,
         help=(
             f"processes encoding tiles (default {CUT_WORKERS}, fewer when memory is short; "
             "1 cuts serially). The tiles are the same bytes either way"
         ),
     )
+
+
+def pool_sizes(args: argparse.Namespace) -> tuple[int | None, int]:
+    """The light bake's processes and the cut's encoders: each flag, else ``--workers``.
+
+    None for the bake leaves it to count them from the cores and free memory when it starts.
+    """
+    light = args.workers if args.light_workers is None else args.light_workers
+    cut = args.workers if args.cut_workers is None else args.cut_workers
+    return None if light is None else max(1, light), max(1, CUT_WORKERS if cut is None else cut)
 
 
 def layer_dir(out_dir: Path, layer: str, name: str = RENDERS_DIR_NAME) -> Path:

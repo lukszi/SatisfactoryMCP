@@ -7,7 +7,6 @@ memory, and a level two trees share is resampled once. The bytes are the serial
 
 from __future__ import annotations
 
-import ctypes
 import gc
 import multiprocessing
 import os
@@ -26,6 +25,7 @@ from typing import Self
 
 import numpy as np
 
+from mapgen.pools import free_ram_bytes
 from satisfactory_mcp.core.gameassets.pyramid import (
     PyramidError,
     commit_tree,
@@ -42,7 +42,6 @@ __all__ = [
     "Cutter",
     "Source",
     "Tree",
-    "available_ram",
     "resample_strip",
     "strip_spans",
 ]
@@ -57,29 +56,6 @@ STRIP_BYTES = 1 << 27
 #: What one encoder holds, and what stays free while a new block waits for memory.
 WORKER_BYTES = 200 << 20
 RAM_RESERVE = 4 << 30
-
-
-def available_ram() -> int | None:
-    """Memory free for the taking, in bytes: physical, and on Windows commit too; or None."""
-    if os.name == "nt":
-
-        class Status(ctypes.Structure):
-            _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [
-                (name, ctypes.c_ulonglong)
-                for name in ("total", "avail", "page", "page_avail", "virt", "virt_avail", "ext")
-            ]
-
-        status = Status(length=ctypes.sizeof(Status))
-        ok = ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
-        return min(status.avail, status.page_avail) if ok else None
-    try:
-        with open("/proc/meminfo", encoding="ascii") as info:
-            for line in info:
-                if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) * 1024
-    except OSError:
-        pass
-    return None
 
 
 def strip_spans(source_px: int, side: int, width: int) -> list[tuple[int, int]]:
@@ -207,7 +183,7 @@ class Cutter:
     """One encode pool and one resampling pool for every tree of a layer."""
 
     def __init__(self, image_mod, workers: int, threads: int = LANCZOS_THREADS) -> None:
-        free = available_ram()
+        free = free_ram_bytes()
         if free is not None:
             workers = max(1, min(workers, (free - RAM_RESERVE) // WORKER_BYTES))
         self.image_mod, self.workers = image_mod, workers
@@ -236,7 +212,7 @@ class Cutter:
     def _block(self, shape: tuple[int, int, int]) -> Block:
         """A new block, once there is room: while RAM is short, in-flight work is waited on."""
         need = int(np.prod(shape)) + RAM_RESERVE
-        while (free := available_ram()) is not None and free < need:
+        while (free := free_ram_bytes()) is not None and free < need:
             busy = [future for future in list(self.inflight) if not future.done()]
             if not busy:
                 break
