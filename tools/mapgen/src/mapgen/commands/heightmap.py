@@ -1,53 +1,24 @@
 """Cut a real 1 m heightmap of this world out of the installed game.
 
-    uv run --extra gen python tools/gen_world_heightmap.py
-
-Five stages fuse into one field: the cooked UE Landscape heightfield (a
-``LandscapeComponent``'s ``GrassData`` blob opens with 128x128 uint16 height samples, one
-per 1 m quad), the rock meshes' own cooked geometry rasterised as a max-Z overlay, the
-2048 px ``HeightData_Test`` interface raster as fill outside the landscape frame, and the
-game's own water actors for where the water is and how high it stands. The landscape is the
-sculpted terrain and nothing else -- every cliff, mesa and boulder is a placed static mesh
--- so the overlay is what makes the tail of the error distribution bearable, and the run
-proves that per build by sampling the finished field at every static resource node and
-refusing to write if the trimmed RMS misses ``VALIDATION_TRIM_RMS_MAX_M``.
-
-It writes ``data/local/heightmap/``, six files, about 18 MB::
-
-    height.i16.z  7500x7500 int16 decimetres, row-delta + zlib, -32768 = no data
-    prov.u8.z     0 no-data, 1 landscape, 3 fill, 4 cliff interpolated, 5 cliff direct
-    density.u8.z  source vertices per texel over the cliff layer, clamped at 255
-    water.i16.z   water surface Z, same grid and no-data
-    waterq.u8.z   0 dry, 1 water with a measured depth, 2 water whose depth is unknowable
-    meta.json     georeference, game build, generator version, coverage, measured accuracy
-
-``--caves`` writes only the cave masks, to ``data/local/caves/`` (docs/spatial-and-map.md
-section 23). ``rocks.npz`` and ``rocks.json`` are every rock's collision mesh for exact
-heights; ``--rocks`` adds only them to an existing field (section 24).
-
-The georeference is ``x_cm = -324700 + col*100``, ``y_cm = -375000 + row*100``, and it is
-**vertex-aligned**: a texel's height belongs to that point exactly, not to a cell around it.
-The two cliff provenance values are one layer split by how the texel was answered, so a
-reader that knows only 4 sees 5 as "not landscape, not fill, not no-data" and is right. The
-codec lives in ``satisfactory_mcp.domain.spatial.heightfield`` and the container reader in
-``satisfactory_mcp.core.gameassets``; both are imported rather than reimplemented, and
-``ooz`` is imported inside the latter so a machine without the ``gen`` extra still imports
-every module and runs the tests.
-
-Everything written here is derived from Coffee Stain's cooked assets, read out of the
-reader's own install into a gitignored directory: the generator is committed and its output
-never is.
+The cooked landscape, every placed rock's own geometry folded max-Z, the ``HeightData_Test``
+interface raster outside the landscape frame and the game's water actors fuse into one field,
+measured on every static resource node before it is written. ``--caves`` and ``--rocks`` write
+only the cave masks or the collision pack. ``meta.json`` says what each plane holds, and
+docs/spatial-and-map.md sections 19 and 22 to 24 have the design.
 """
 
 from __future__ import annotations
 
+import argparse
+import dataclasses
 import json
 import time
 from pathlib import Path
+from types import ModuleType
 
 from mapgen.commands.caves import write_caves
 from mapgen.commands.rocks import write_rocks
-from mapgen.common import LOCAL_DIR, base_parser, require_gen
+from mapgen.common import LOCAL_DIR, Refusal, base_parser, require_gen
 from mapgen.gamedata.install import GameReader, missing_container, open_game
 from mapgen.gamedata.level.fill_raster import read_fill_raster
 from mapgen.gamedata.level.landscape import drop_offsets, landscape_frame
@@ -57,42 +28,33 @@ from mapgen.gamedata.nodes import NODE_TABLE
 from mapgen.gamedata.rocks.cliffs import rasterise_cliffs, rasterise_top
 from mapgen.gamedata.rocks.collision_pack import encode_rock_pack
 from mapgen.gamedata.water.channel import artwork_water_mask, water_surface
-from mapgen.terrain.heightfield.field import (
-    compose_field,
-    encode_planes,
-    fold_top_overlay,
-    report_field,
-)
-from mapgen.terrain.heightfield.sidecar import (
-    build_meta,
-    refuse_stale,
-    report_frame,
-    report_meshes,
-    report_sweep,
-)
-from mapgen.terrain.heightfield.sidecar_blocks import add_planes, describe_files
-from mapgen.terrain.heightfield.validate import (
-    TERRAIN_NODE_MEDIAN_MAX_M,
-    VALIDATION_TRIM_RMS_MAX_M,
-    report_validation,
-    report_water,
-    validate_field,
-    validate_terrain,
-    validate_water,
-    water_gate_failures,
-)
+from mapgen.terrain.heightfield import field, sidecar, sidecar_blocks, validate
+from satisfactory_mcp.core.arrays import I16Grid
 from satisfactory_mcp.core.gameassets.container import paks_dir
 from satisfactory_mcp.core.gameassets.provenance import (
     InstallNotFound,
     install_directory,
     installed_build,
 )
+from satisfactory_mcp.core.jsontypes import JsonObject
 from satisfactory_mcp.domain.spatial import caves
 from satisfactory_mcp.domain.spatial import heightfield as hf
 
 
-def parse_args():
-    parser = base_parser(__doc__.splitlines()[0])
+@dataclasses.dataclass
+class _Run:
+    """One field build: the opened install, whether to print progress, the stage timings."""
+
+    reader: GameReader
+    loud: bool
+    timings: dict[str, float] = dataclasses.field(default_factory=dict)
+
+    def timed(self, stage: str, started: float) -> None:
+        self.timings[stage] = round(time.time() - started, 1)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = base_parser((__doc__ or "").partition("\n")[0])
     parser.add_argument(
         "-o",
         "--out-dir",
@@ -121,11 +83,11 @@ def parse_args():
     return parser.parse_args()
 
 
-def refusal(args, build_pin: str) -> int | None:
+def refusal(args: argparse.Namespace, build_pin: str) -> int | None:
     """The exit code of the first refusal before any game read, or None to go on."""
     out_dir: Path = args.out_dir
     if out_dir.is_dir() and not args.force:
-        refused = refuse_stale(out_dir, build_pin)
+        refused = sidecar.refuse_stale(out_dir, build_pin)
         if refused is not None:
             return refused
 
@@ -154,16 +116,177 @@ def open_reader(game: Path, pyooz_version: str) -> GameReader:
     return reader
 
 
+def _landscape(run: _Run) -> tuple[dict, dict]:
+    """The level sweep, and the landscape stitched from it into one frame."""
+    reader = run.reader
+    print("sweeping the world's packages for landscape, placements and water volumes")
+    bounds = MeshBounds(reader.store, reader.scripts, reader.index)
+    sweep = sweep_levels(reader.store, reader.scripts, reader.classes, bounds, run.loud)
+    run.timings["sweep"] = round(sweep["seconds"], 1)
+    sidecar.report_sweep(sweep)
+    started = time.time()
+    frame = landscape_frame(sweep)
+    dx, dy = drop_offsets(frame)
+    run.timed("landscape", started)
+    sidecar.report_frame(frame, dx, dy)
+    return sweep, frame
+
+
+def _cliffs(run: _Run, sweep: dict, frame: dict) -> tuple[dict, dict]:
+    """Every placed rock's finest geometry, folded into the 1 m max-Z overlay."""
+    reader = run.reader
+    print("decoding the finest geometry every placed rock ships")
+    meshes = read_mesh_geometry(
+        reader.store, reader.scripts, reader.index, sweep["meshes"], run.loud
+    )
+    run.timings["mesh_decode"] = round(meshes["seconds"], 1)
+    sidecar.report_meshes(meshes)
+    if not meshes["geometry"]:
+        raise Refusal(
+            5,
+            "not one rock mesh decoded. The cooked collision layout changed, which is the "
+            "whole of what makes this field better than the interface raster. Refusing.",
+        )
+    print("rasterising them into a 1 m max-Z overlay")
+    cliffs = rasterise_cliffs(sweep, meshes["geometry"], frame, run.loud)
+    run.timings["rasterise"] = round(cliffs["seconds"], 1)
+    print(
+        f"  {cliffs['placements_used']}/{cliffs['placements_total']} placements, "
+        f"{cliffs['triangles'] / 1e6:.1f} M triangles in {cliffs['seconds']:.0f}s; "
+        f"dropped {cliffs['dropped']}"
+    )
+    return meshes, cliffs
+
+
+def _compose(run: _Run, frame: dict, cliffs: dict) -> dict:
+    """The fill raster decoded, and the three layers fused onto the output grid."""
+    started = time.time()
+    fill_cm, fill_valid = read_fill_raster(run.reader.store)
+    run.timed("fill", started)
+    print(f"  interface raster decoded, {fill_valid.mean() * 100:.1f}% of it says something")
+    started = time.time()
+    fused = field.compose_field(frame, cliffs, fill_cm, fill_valid)
+    run.timed("compose", started)
+    field.report_field(fused)
+    return fused
+
+
+def _top(run: _Run, sweep: dict, frame: dict, fused: dict) -> tuple[dict, I16Grid, int]:
+    """Arches and foliage boulders, folded over the field into the ``top`` plane."""
+    print("rasterising arches and foliage boulders for the top plane")
+    top = rasterise_top(sweep, frame, run.reader, run.loud)
+    run.timings["top"] = round(top["seconds"], 1)
+    top_dm, top_raised = field.fold_top_overlay(fused["height_dm"], frame, top)
+    print(
+        f"  {top['arch_placements']} arch placements, {top['foliage_instances']} foliage "
+        f"instances {top['foliage_by_mesh']}; raised {top_raised} texels over the ground"
+    )
+    return top, top_dm, top_raised
+
+
+def _water(
+    run: _Run, sweep: dict, fused: dict, decoder: ModuleType, image_mod: ModuleType
+) -> tuple[dict, dict]:
+    """The water channel, refused unless it passes its own four gates."""
+    print("classifying the map artwork's water and levelling it on the water volumes")
+    started = time.time()
+    mask = artwork_water_mask(run.reader.store, decoder, image_mod)
+    water = water_surface(mask, sweep["water"], fused["height_dm"], fused["prov"])
+    water_checks = validate.validate_water(water, mask, sweep["water"])
+    run.timed("water", started)
+    validate.report_water(water, water_checks)
+    failures = validate.water_gate_failures(water_checks)
+    if failures:
+        for sentence in failures:
+            print(f"  {sentence}")
+        raise Refusal(7, "Refusing to write a water channel that does not pass its own gates.")
+    return water, water_checks
+
+
+def _validate(run: _Run, frame: dict, fused: dict) -> tuple[dict, dict]:
+    """The field on the node table, and the bare terrain on the landscape's nodes."""
+    started = time.time()
+    validation = validate.validate_field(fused["height_dm"], fused["prov"])
+    run.timed("validate", started)
+    validate.report_validation(validation)
+    whole = validation["field"]
+    if whole["trim90_rms_m"] > validate.VALIDATION_TRIM_RMS_MAX_M:
+        raise Refusal(
+            6,
+            f"trimmed RMS is {whole['trim90_rms_m']:.3f} m against a gate of "
+            f"{validate.VALIDATION_TRIM_RMS_MAX_M} m. Something in the decode moved: the "
+            "workflow that proved this pipeline measured 0.368 m, and a field this far out "
+            "would be a plausible-looking raster that is quietly metres wrong. Refusing to "
+            "write.",
+        )
+    terrain_check = validate.validate_terrain(frame, fused["prov"])
+    print(
+        f"  bare terrain on {terrain_check['n']} landscape nodes: median absolute "
+        f"{terrain_check['medabs_m']} m (gate {validate.TERRAIN_NODE_MEDIAN_MAX_M} m)"
+    )
+    medabs = terrain_check["medabs_m"]
+    if medabs is None or medabs > validate.TERRAIN_NODE_MEDIAN_MAX_M:
+        raise Refusal(8, "the bare terrain plane does not sit on the nodes. Refusing to write it.")
+    return validation, terrain_check
+
+
+def build_field(
+    args: argparse.Namespace,
+    reader: GameReader,
+    build_pin: str,
+    build_raw: JsonObject,
+    decoders: dict[str, str],
+) -> int:
+    """Every stage of the field, then its planes, sidecar and collision pack written."""
+    import texture2ddecoder
+    from PIL import Image
+
+    run = _Run(reader, not args.quiet)
+    sweep, frame = _landscape(run)
+    meshes, cliffs = _cliffs(run, sweep, frame)
+    fused = _compose(run, frame, cliffs)
+    top, top_dm, top_raised = _top(run, sweep, frame, fused)
+    water, water_checks = _water(run, sweep, fused, texture2ddecoder, Image)
+    validation, terrain_check = _validate(run, frame, fused)
+    started = time.time()
+    payload = field.encode_planes(fused, water, frame, top_dm)
+    run.timed("encode", started)
+    meta = sidecar.build_meta(
+        build_pin=build_pin,
+        build_raw=build_raw,
+        sweep=sweep,
+        frame=frame,
+        meshes=meshes,
+        cliffs=cliffs,
+        field=fused,
+        water=water,
+        water_checks=water_checks,
+        validation=validation,
+        files=sidecar_blocks.describe_files(payload, frame),
+        decoders=decoders,
+        timings=run.timings,
+    )
+    sidecar_blocks.add_planes(meta, frame, terrain_check, top, top_raised)
+    print("packing every rock's collision mesh for exact heights")
+    started = time.time()
+    payload.update(encode_rock_pack(reader, sweep, build_pin, build_raw))
+    run.timed("rocks", started)
+    payload[hf.META_NAME] = json.dumps(meta, indent=1).encode("utf-8")
+    written = install_directory(args.out_dir, payload)
+    total = sum(written.values())
+    print(f"wrote {args.out_dir}  {total} B  ({total / 1e6:.1f} MB)")
+    for name, size in written.items():
+        print(f"  {name:>14}  {size:>10} B")
+    print("none of it is committed: data/local/ is gitignored and stays that way.")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
 
     # Three of the extra: the water channel's plan shape is the map sheet's own BC1 slices,
     # so this generator decodes textures as well as container blocks.
     decoders = require_gen("ooz", "texture2ddecoder", "PIL.Image")
-    pyooz_version = decoders["pyooz"]
-    import texture2ddecoder
-    from PIL import Image
-
     try:
         build_pin, build_raw = installed_build(args.game)
     except InstallNotFound as exc:
@@ -175,128 +298,13 @@ def main() -> int:
     if args.rocks:
         return write_rocks(args, build_pin, build_raw)
 
-    out_dir: Path = args.out_dir
     refused = refusal(args, build_pin)
     if refused is not None:
         return refused
-    reader = open_reader(args.game, pyooz_version)
-    store, scripts, index, classes = reader.store, reader.scripts, reader.index, reader.classes
-    loud = not args.quiet
-    timings: dict[str, float] = {}
-
-    print("sweeping the world's packages for landscape, placements and water volumes")
-    sweep = sweep_levels(store, scripts, classes, MeshBounds(store, scripts, index), loud)
-    timings["sweep"] = round(sweep["seconds"], 1)
-    report_sweep(sweep)
-    started = time.time()
-    frame = landscape_frame(sweep)
-    dx, dy = drop_offsets(frame)
-    timings["landscape"] = round(time.time() - started, 1)
-    report_frame(frame, dx, dy)
-
-    print("decoding the finest geometry every placed rock ships")
-    meshes = read_mesh_geometry(store, scripts, index, sweep["meshes"], loud)
-    timings["mesh_decode"] = round(meshes["seconds"], 1)
-    report_meshes(meshes)
-    if not meshes["geometry"]:
-        print(
-            "not one rock mesh decoded. The cooked collision layout changed, which is the "
-            "whole of what makes this field better than the interface raster. Refusing."
+    try:
+        return build_field(
+            args, open_reader(args.game, decoders["pyooz"]), build_pin, build_raw, decoders
         )
-        return 5
-    print("rasterising them into a 1 m max-Z overlay")
-    cliffs = rasterise_cliffs(sweep, meshes["geometry"], frame, loud)
-    timings["rasterise"] = round(cliffs["seconds"], 1)
-    print(
-        f"  {cliffs['placements_used']}/{cliffs['placements_total']} placements, "
-        f"{cliffs['triangles'] / 1e6:.1f} M triangles in {cliffs['seconds']:.0f}s; "
-        f"dropped {cliffs['dropped']}"
-    )
-
-    started = time.time()
-    baseline_cm, baseline_valid = read_fill_raster(store)
-    timings["fill"] = round(time.time() - started, 1)
-    print(f"  interface raster decoded, {baseline_valid.mean() * 100:.1f}% of it says something")
-
-    started = time.time()
-    field = compose_field(frame, cliffs, baseline_cm, baseline_valid)
-    timings["compose"] = round(time.time() - started, 1)
-    report_field(field)
-
-    print("rasterising arches and foliage boulders for the top plane")
-    top = rasterise_top(sweep, frame, reader, loud)
-    timings["top"] = round(top["seconds"], 1)
-    top_dm, top_raised = fold_top_overlay(field["height_dm"], frame, top)
-    print(
-        f"  {top['arch_placements']} arch placements, {top['foliage_instances']} foliage "
-        f"instances {top['foliage_by_mesh']}; raised {top_raised} texels over the ground"
-    )
-
-    print("classifying the map artwork's water and levelling it on the water volumes")
-    started = time.time()
-    mask = artwork_water_mask(store, texture2ddecoder, Image)
-    water = water_surface(mask, sweep["water"], field["height_dm"], field["prov"])
-    water_checks = validate_water(water, mask, sweep["water"])
-    timings["water"] = round(time.time() - started, 1)
-    report_water(water, water_checks)
-    failures = water_gate_failures(water_checks)
-    if failures:
-        for sentence in failures:
-            print(f"  {sentence}")
-        print("Refusing to write a water channel that does not pass its own gates.")
-        return 7
-
-    started = time.time()
-    validation = validate_field(field["height_dm"], field["prov"])
-    timings["validate"] = round(time.time() - started, 1)
-    report_validation(validation)
-    whole = validation["field"]
-    if whole["trim90_rms_m"] > VALIDATION_TRIM_RMS_MAX_M:
-        print(
-            f"trimmed RMS is {whole['trim90_rms_m']:.3f} m against a gate of "
-            f"{VALIDATION_TRIM_RMS_MAX_M} m. Something in the decode moved: the workflow "
-            "that proved this pipeline measured 0.368 m, and a field this far out would be "
-            "a plausible-looking raster that is quietly metres wrong. Refusing to write."
-        )
-        return 6
-
-    terrain_check = validate_terrain(frame, field["prov"])
-    print(
-        f"  bare terrain on {terrain_check['n']} landscape nodes: median absolute "
-        f"{terrain_check['medabs_m']} m (gate {TERRAIN_NODE_MEDIAN_MAX_M} m)"
-    )
-    if terrain_check["medabs_m"] is None or terrain_check["medabs_m"] > TERRAIN_NODE_MEDIAN_MAX_M:
-        print("the bare terrain plane does not sit on the nodes. Refusing to write it.")
-        return 8
-
-    started = time.time()
-    payload = encode_planes(field, water, frame, top_dm)
-    timings["encode"] = round(time.time() - started, 1)
-    meta = build_meta(
-        build_pin=build_pin,
-        build_raw=build_raw,
-        sweep=sweep,
-        frame=frame,
-        meshes=meshes,
-        cliffs=cliffs,
-        field=field,
-        water=water,
-        water_checks=water_checks,
-        validation=validation,
-        files=describe_files(payload, frame),
-        decoders=decoders,
-        timings=timings,
-    )
-    add_planes(meta, frame, terrain_check, top, top_raised)
-    print("packing every rock's collision mesh for exact heights")
-    started = time.time()
-    payload.update(encode_rock_pack(reader, sweep, build_pin, build_raw))
-    timings["rocks"] = round(time.time() - started, 1)
-    payload[hf.META_NAME] = json.dumps(meta, indent=1).encode("utf-8")
-    written = install_directory(out_dir, payload)
-    total = sum(written.values())
-    print(f"wrote {out_dir}  {total} B  ({total / 1e6:.1f} MB)")
-    for name, size in written.items():
-        print(f"  {name:>14}  {size:>10} B")
-    print("none of it is committed: data/local/ is gitignored and stays that way.")
-    return 0
+    except Refusal as stopped:
+        print(stopped.message)
+        return stopped.code
