@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import urllib.request
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 __all__ = [
@@ -19,8 +20,10 @@ __all__ = [
     "ENHANCE_TILE_PX",
     "ENHANCE_URL",
     "EnhanceError",
+    "Upscaler",
     "check_array_stack",
     "ensure_upscaler",
+    "ready_upscaler",
     "run_upscaler",
     "sha256_of",
     "upscaler_cache_dir",
@@ -32,29 +35,19 @@ ENHANCE_URL = (
     "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/"
     "realesrgan-ncnn-vulkan-20220424-windows.zip"
 )
-
-
 ENHANCE_SHA256 = "abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d"
-
-
 ENHANCE_EXE_NAME = "realesrgan-ncnn-vulkan.exe"
-
 
 #: The anime-tuned model of the five the archive ships: this artwork is flat colour and
 #: drawn linework, and x4plus keeps photographic texture the map does not have.
 ENHANCE_MODEL = "realesrgan-x4plus-anime"
-
-
 ENHANCE_SCALE = 4
-
 
 #: Source-side tiling, which is mandatory rather than an optimisation: handed the whole
 #: 32768 px output the binary segfaults on a signed 32-bit index into its output buffer.
 #: The overlap is context the model sees and the crop throws away, and 96 rather than 64
 #: because 64 left one seam of eight reading 2.4x its own in-tile control.
 ENHANCE_TILE_PX = 1024
-
-
 ENHANCE_OVERLAP_PX = 96
 
 
@@ -64,6 +57,18 @@ class EnhanceError(RuntimeError):
     Raised rather than degraded from: giving back Lanczos levels would write a sidecar
     that says ``enhanced`` over pixels that are not.
     """
+
+
+@dataclass(frozen=True)
+class Upscaler:
+    """The verified binary: where it and its models are, and the release it came from."""
+
+    exe: Path
+    models: Path
+    home: Path
+    archive: Path
+    url: str
+    sha256: str
 
 
 def upscaler_cache_dir() -> Path:
@@ -118,7 +123,7 @@ def run_upscaler(exe: Path, models: Path, src: Path, dst: Path, scale: int) -> t
     return proc.returncode, (proc.stderr or proc.stdout or "")[-2000:]
 
 
-def ensure_upscaler(cache: Path | None = None, *, smoke: bool = True) -> dict:
+def ensure_upscaler(cache: Path | None = None, *, smoke: bool = True) -> Upscaler:
     """Download, verify and unpack the upscaler once, and prove the GPU will run it.
 
     The digest is checked before the archive is opened: an executable is not unpacked on
@@ -191,14 +196,7 @@ def ensure_upscaler(cache: Path | None = None, *, smoke: bool = True) -> dict:
                     "needs a GPU."
                 )
 
-    return {
-        "exe": exe,
-        "models": models,
-        "home": home,
-        "archive": archive,
-        "url": ENHANCE_URL,
-        "sha256": digest,
-    }
+    return Upscaler(exe, models, home, archive, ENHANCE_URL, digest)
 
 
 def check_array_stack() -> tuple[str, str]:
@@ -216,7 +214,8 @@ def check_array_stack() -> tuple[str, str]:
             "--enhance needs numpy and scipy, which are dependencies of this project "
             "outright: run this through `uv run` rather than a bare python."
         ) from exc
-    homes = {Path(module.__file__).resolve().parents[1] for module in (numpy, scipy)}
+    files = [module.__file__ for module in (numpy, scipy)]
+    homes = {Path(file).resolve().parents[1] for file in files if file is not None}
     if len(homes) != 1:
         raise EnhanceError(
             "numpy and scipy are imported from different environments -- "
@@ -227,3 +226,14 @@ def check_array_stack() -> tuple[str, str]:
             "out of one environment."
         )
     return numpy.__version__, scipy.__version__
+
+
+def ready_upscaler(cache: Path | None = None) -> Upscaler:
+    """``ensure_upscaler`` and ``check_array_stack``: the GPU stage proved before any decode."""
+    upscaler = ensure_upscaler(cache)
+    numpy_version, scipy_version = check_array_stack()
+    print(
+        f"  upscaler: {upscaler.exe} ({ENHANCE_MODEL}, sha256 {upscaler.sha256[:16]}...), "
+        f"numpy {numpy_version} / scipy {scipy_version}"
+    )
+    return upscaler

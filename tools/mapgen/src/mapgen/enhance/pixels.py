@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol
+
+import numpy as np
+from numpy.typing import NDArray
+from scipy.ndimage import convolve, gaussian_filter, maximum_filter, uniform_filter
+
 from mapgen.enhance.upscaler import ENHANCE_SCALE
+from satisfactory_mcp.core.arrays import BoolMask, F32Grid, U8Grid
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 __all__ = [
     "COLOUR_FIX_SIGMA",
@@ -18,6 +29,7 @@ __all__ = [
     "PRESHARPEN_ON",
     "PRESHARPEN_ROUNDS",
     "PRESHARPEN_SIGMA",
+    "ImageModule",
     "colour_fix",
     "colour_fix_pixels",
     "faint_band",
@@ -35,19 +47,10 @@ __all__ = [
 #: is the band the AI drops; below it there is nothing to protect and above it the AI is
 #: better than Lanczos. FAINT_FEATHER then blurs the mask so the blend has no edge.
 FAINT_WINDOW = 9
-
-
 FAINT_GROW = 3
-
-
 FAINT_LO = 3.0
-
-
 FAINT_HI = 14.0
-
-
 FAINT_FEATHER = 5
-
 
 #: The pre-sharpen, on the INPUT square before the model sees it: three rounds of unsharp
 #: masking blended in where the same depth statistic says there is a faint mark. The amount
@@ -61,32 +64,32 @@ FAINT_FEATHER = 5
 #: only if more than three of its eight neighbours are already in, so a mark thickens and a
 #: lone speck of noise does not spread -- and PRESHARPEN_EDGE feathers the blend.
 PRESHARPEN_ROUNDS = 3
-
-
 PRESHARPEN_SIGMA = 1.0
-
-
 PRESHARPEN_AMOUNT = 0.14
-
-
 PRESHARPEN_HI = 10.0
-
-
 PRESHARPEN_ON = 0.15
-
-
 PRESHARPEN_NEIGHBOURS = 4
-
-
 PRESHARPEN_EDGE = 0.6
-
 
 #: In pixels of the 4x output, and it must exceed a stroke's width there -- strokes are 4
 #: to 8 px at 4x -- or the fix blurs back the sharpening it exists to protect.
 COLOUR_FIX_SIGMA = 6.0
 
 
-def faint_depth(luma):
+class ImageModule(Protocol):
+    """The parts of ``PIL.Image`` the enhancement uses; the module is passed in, not imported."""
+
+    @property
+    def Resampling(self) -> type[Image.Resampling]: ...
+
+    def open(self, fp: Path, /) -> Image.Image: ...
+
+    def new(self, mode: str, size: tuple[int, int], /) -> Image.Image: ...
+
+    def fromarray(self, obj: U8Grid, /) -> Image.Image: ...
+
+
+def faint_depth(luma: NDArray[np.floating]) -> F32Grid:
     """How far each pixel sits below its own neighbourhood, grown to cover a mark's halo.
 
     The one statistic both masks are built on. Measured on the SOURCE luma alone, so
@@ -94,49 +97,40 @@ def faint_depth(luma):
     candidate's output. The map's marks are all darker than what they are drawn on, so
     depth is positive on a mark and near zero on flat fill.
     """
-    import numpy as np
-    from scipy.ndimage import maximum_filter, uniform_filter
-
     value = luma.astype(np.float32)
     return maximum_filter(uniform_filter(value, FAINT_WINDOW) - value, FAINT_GROW)
 
 
-def faint_band(depth, hi: float):
+def faint_band(depth: F32Grid, hi: float) -> F32Grid:
     """The band from FAINT_LO to ``hi``, as feathered weights in [0, 1].
 
     A product of two clipped ramps, box-blurred, which cannot leave the interval -- so a
     caller can blend with it without clamping again.
     """
-    import numpy as np
-    from scipy.ndimage import uniform_filter
-
     weight = np.clip((hi - depth) / (hi - FAINT_LO), 0.0, 1.0)
     weight *= np.clip((depth - FAINT_LO) / FAINT_LO, 0.0, 1.0)
     return uniform_filter(weight, FAINT_FEATHER)
 
 
-def faint_mask(luma):
+def faint_mask(luma: NDArray[np.floating]) -> F32Grid:
     """Where the AI must not be trusted: 1 on faint marks, 0 on flat fill and strong ones."""
     return faint_band(faint_depth(luma), FAINT_HI)
 
 
-def presharpen_mask(luma):
+def presharpen_mask(luma: NDArray[np.floating]) -> BoolMask:
     """Where the input is nudged before the model sees it: a hard mask, grown passively.
 
     Stops at PRESHARPEN_HI where the repair's band stops at FAINT_HI: the repair covers
     every stroke the model weakens, mid ones included, while this one must cover only the
     weak ones, because a mid stroke handed more contrast is one the model expands harder.
     """
-    import numpy as np
-    from scipy.ndimage import convolve
-
     inside = faint_band(faint_depth(luma), PRESHARPEN_HI) > PRESHARPEN_ON
     neighbours = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], np.uint8)
     grown = convolve(inside.astype(np.uint8), neighbours, mode="nearest")
     return inside | (grown >= PRESHARPEN_NEIGHBOURS)
 
 
-def presharpen_pixels(rgb):
+def presharpen_pixels(rgb: NDArray[np.number]) -> tuple[NDArray[np.floating], BoolMask]:
     """Unsharp the faint marks of one source square, and nothing else. Returns (rgb, mask).
 
     A mark 4 to 10 luma below its surroundings sits under the model's response floor, and
@@ -144,9 +138,6 @@ def presharpen_pixels(rgb):
     it by a third on the way IN carries it over, and the model then keeps about 85% of what
     it was handed instead of 79% of a mark it half-missed. Off the mask it is the identity.
     """
-    import numpy as np
-    from scipy.ndimage import gaussian_filter
-
     flat = np.asarray(rgb, np.float32)
     sharp = flat.copy()
     for _ in range(PRESHARPEN_ROUNDS):
@@ -158,15 +149,15 @@ def presharpen_pixels(rgb):
     return np.clip(blend, 0.0, 255.0), mask
 
 
-def presharpen(source, image_mod):
+def presharpen(source: Image.Image, image_mod: ImageModule) -> tuple[Image.Image, float]:
     """``presharpen_pixels`` on one source square. Returns (image, mask coverage)."""
-    import numpy as np
-
     blend, mask = presharpen_pixels(np.asarray(source.convert("RGB"), np.float32))
     return image_mod.fromarray(blend.astype(np.uint8)), float(mask.mean())
 
 
-def colour_fix_pixels(out_rgb, source_rgb, sigma: float = COLOUR_FIX_SIGMA):
+def colour_fix_pixels(
+    out_rgb: NDArray[np.number], source_rgb: NDArray[np.number], sigma: float = COLOUR_FIX_SIGMA
+) -> F32Grid:
     """Put the source's low frequencies back into the output, and leave the detail alone.
 
         fixed = out - blur(out, sigma) + blur(source, sigma)
@@ -176,41 +167,42 @@ def colour_fix_pixels(out_rgb, source_rgb, sigma: float = COLOUR_FIX_SIGMA):
     a whole level of the map's own palette. Both arrays and ``sigma`` are at the OUTPUT's
     resolution: blurring the source small and stretching it drifts half again as much.
     """
-    import numpy as np
-    from scipy.ndimage import gaussian_filter
-
     out = np.array(out_rgb, np.float32)
     out -= gaussian_filter(out, (sigma, sigma, 0))
     out += gaussian_filter(np.asarray(source_rgb, np.float32), (sigma, sigma, 0))
     return np.clip(out, 0.0, 255.0, out=out)
 
 
-def colour_fix(upscaled, source, image_mod, sigma: float = COLOUR_FIX_SIGMA):
+def colour_fix(
+    upscaled: Image.Image,
+    source: Image.Image,
+    image_mod: ImageModule,
+    sigma: float = COLOUR_FIX_SIGMA,
+) -> Image.Image:
     """``colour_fix_pixels`` on one upscaled square, against the source Lanczos'd to meet it."""
-    import numpy as np
-
     fixed = colour_fix_pixels(
         np.asarray(upscaled.convert("RGB"), np.float32),
-        np.asarray(source.resize(upscaled.size, image_mod.LANCZOS), np.float32),
+        np.asarray(source.resize(upscaled.size, image_mod.Resampling.LANCZOS), np.float32),
         sigma,
     )
     return image_mod.fromarray(fixed.astype(np.uint8))
 
 
-def hybrid_upscale(source, upscaled, image_mod, scale: int = ENHANCE_SCALE):
+def hybrid_upscale(
+    source: Image.Image, upscaled: Image.Image, image_mod: ImageModule, scale: int = ENHANCE_SCALE
+) -> tuple[Image.Image, float]:
     """The AI everywhere, Lanczos where the AI drops detail. Returns (image, coverage).
 
     Both sides are computed from the same source square, so the only thing the mask picks
     between is two renderings of identical pixels. It is upsampled bilinearly: a blocky
     blend weight would print the mask's own 4 px grid into the output.
     """
-    import numpy as np
-
     side = source.width * scale
     weight = faint_mask(np.asarray(source, np.float32).mean(2))
     grid = image_mod.fromarray((weight * 255.0).astype(np.uint8))
-    big = np.asarray(grid.resize((side, side), image_mod.BILINEAR), np.float32)[..., None] / 255.0
+    resized = grid.resize((side, side), image_mod.Resampling.BILINEAR)
+    big = np.asarray(resized, np.float32)[..., None] / 255.0
     anime = np.asarray(upscaled, np.float32)
-    lanczos = np.asarray(source.resize((side, side), image_mod.LANCZOS), np.float32)
+    lanczos = np.asarray(source.resize((side, side), image_mod.Resampling.LANCZOS), np.float32)
     blend = anime * (1.0 - big) + lanczos * big
     return image_mod.fromarray(blend.astype(np.uint8)), float(weight.mean())
