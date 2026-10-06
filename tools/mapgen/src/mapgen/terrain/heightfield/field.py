@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 #: The interface raster's own resolution, for the accuracy the fill layer inherits.
-FILL_HORIZONTAL_M = 7500.0 / FILL_RASTER_PX
+FILL_HORIZONTAL_M = (FILL_RASTER_BOX_CM[1] - FILL_RASTER_BOX_CM[0]) / 100.0 / FILL_RASTER_PX
 FILL_VERTICAL_M = FILL_RASTER_SCALE_CM_PER_RAW / 255.0 / 100.0
 
 

@@ -444,13 +444,8 @@ def pixel_coverage(coverage: NDArray[np.generic], subsamples: int) -> F32Grid:
 def write_banded_raster(band_raster: BandRaster, directory: Path, size: int, subsamples: int,
                         stamp: DirectStamp, progress: bool, *,
                         role: str = DIRECT_RASTER_ROLE) -> RasterStats:  # fmt: skip
-    """Rasterise every placed rock into the render's own grid, banded, onto disk.
-
-    Banded because a 32768 square of float32 is 4.3 GB and the render already holds 3.2 GB
-    of output; 256 rows is 34 MB. On disk because the answer is the same for both layers and
-    rasterising 216 M triangles is twenty minutes. The planes are written beside a sidecar
-    naming what they are of, and ``cached_raster`` refuses anything that does not match
-    rather than drawing last week's rocks under this week's field.
+    """Rasterise every placed rock into the render's own grid, ``DIRECT_BAND_ROWS`` at a time,
+    into a cache ``cached_raster`` reads back only under the same ``stamp``.
 
     A ``band_raster`` that returns ``(z, source)`` also writes the family plane; the first
     band says which, before any plane is opened, and every band after it must agree.

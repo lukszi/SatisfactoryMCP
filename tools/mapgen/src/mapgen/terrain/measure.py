@@ -46,26 +46,13 @@ RegimeCounts: TypeAlias = list[tuple[int, list[int], float]]
 
 
 class SeamTrace:
-    """Second differences of the drawn height at the join, and what they can be read against.
+    """Second differences of the drawn height along every row, pooled by the regime weights.
 
-    A trace rather than probes: probes are sparse relative to a seam, and a ridge one texel
-    wide along a density contour is invisible to all of them. What is measured is
-    ``|d2z/dx2|`` along every row of every band over the whole square, with each 3-texel
-    stencil sorted by the weights under all three of its texels.
-
-    **Read the ratios against the switch, not against the pure regimes.** This file
-    composites a rock onto a lattice by the rock's own coverage, so the join IS the rock's
-    silhouette -- a real cliff edge, where enormous curvature is the correct answer, and the
-    pure-regime ratio reads 138 on the shipped render with every bit of that terrain.
-    Restricting the comparison to where the two surfaces agree only moves the join to the
-    rock's base, which is also real. The hard ``max`` over the same texels is the one
-    reference that is not the terrain, and it is not a gate either: a convex blend cannot be
-    rougher than the switch between its own extreme points, so the number says how much of
-    that ceiling the fade spends (0.5 on the shipped render).
-
-    The smoothness itself is guaranteed by the arithmetic rather than by this statistic:
-    ``blend_regimes`` is a convex combination in the pixel's coverage, plus a positive part
-    smoothed by ``DIRECT_LIFT_KNEE_M``.
+    A trace rather than probes, which miss a ridge one texel wide along a density contour.
+    Each 3-texel stencil is pooled by the weights under all three of its texels. Read it
+    against the hard switch, not the pure regimes: the join is the rock's own silhouette, and
+    ``blend_regimes``' arithmetic, not this statistic, is what keeps it smooth (the sidecar's
+    ``reading``; docs/spatial-and-map.md section 20).
     """
 
     def __init__(self) -> None:
@@ -197,15 +184,9 @@ class SeamTrace:
 class RegimeCoverage:
     """How much of the sheet each regime drew, per province of the field underneath it.
 
-    Counted rather than argued, because "the geometry answers this pixel" is a claim about
-    how much of a picture. The provinces are the field's own, sampled nearest at output
-    resolution: a province is a name and the average of two names is not one.
-
-    The direct bucket is **split by the density plane**, which is all that plane does here.
-    It does not decide whether the triangles are drawn -- the rock's own coverage of the
-    pixel decides that -- it decides what the drawn answer IS: a texel a source vertex landed
-    in is a measurement, and one the rasteriser reached across a triangle wider than itself
-    is a facet. The sidecar says which is which rather than letting a reader assume.
+    Provinces are sampled nearest: a province is a name, and two names do not average. The
+    direct bucket is split by the density plane into measurements and facets, which is all
+    that plane decides (docs/spatial-and-map.md section 20).
     """
 
     NAMES = ("direct_measured", "direct_facet", "faded", "kernel")

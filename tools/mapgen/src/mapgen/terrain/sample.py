@@ -67,25 +67,18 @@ STENCIL_WHOLE = 1.0 - 1e-4
 
 
 # --------------------------------------------------------------------------------------
-# The direct regime: which output texels the triangles are allowed to answer.
+# The direct regime's provenance: which drawn texels are measurements.
 # --------------------------------------------------------------------------------------
 
 
 def direct_mask(field: hf.Field, spacing_m: float) -> tuple[U8Grid | None, JsonObject]:
     """Where the geometry was sampled finer than the output texel: a 0/255 mask at 1 m.
 
-    ``None`` when the field carries no ``density.u8.z``, which is not "no samples anywhere"
-    and must never be read as one: a field written before the plane existed knows nothing
-    about its own density, so the caller refuses rather than assumes.
-
-    The rule is the field's (``DIRECT_SAMPLES_MIN``): **one source vertex under the output
-    texel**. The plane counts per 1 m texel, so the test is scaled by the output texel's own
-    area, and that is why fewer texels qualify at 0.229 m than at 0.458 m.
-
-    A **mask and not a weight**. What decides that the rocks are drawn is their own coverage
-    of the pixel; what this decides is what to CALL the answer -- a measurement, or the plane
-    of a triangle wider than a texel -- and a provenance label is a yes or a no per texel, so
-    it is read nearest and never blurred.
+    ``None`` when the field has no ``density.u8.z``, which is not "no samples anywhere": the
+    caller refuses rather than assumes. The rule is the field's, one source vertex
+    (``DIRECT_SAMPLES_MIN``) under the output texel, scaled by its area. A mask and not a
+    weight: it names what was drawn, never gates it, so it is read nearest and never blurred
+    (docs/spatial-and-map.md section 20).
     """
     density = field.density_raster()
     if density is None:

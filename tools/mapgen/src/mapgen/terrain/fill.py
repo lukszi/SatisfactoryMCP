@@ -502,20 +502,11 @@ def fill_field(
 
 
 def ground_lattice(field: hf.Field, heights: F32Grid) -> tuple[F32Grid, JsonObject]:
-    """The same heights with the CLIFF province removed, which is the surface underneath.
+    """The same heights with the CLIFF province removed: the surface under the rocks.
 
-    This is the kernel regime's real input. Interpolating the whole field over a rim
-    reconstructs the **fold**: a texel just outside a rock is still a cliff-top height,
-    because a cliff-top texel is one of the four the stencil reads, so the drop stays where
-    the 1 m lattice put it at any output resolution. Interpolating the lattice UNDERNEATH --
-    the landscape and the fill, which are continuous surfaces the game evaluates itself --
-    puts the ground where the ground is and lets the rasterised rock decide its own
-    silhouette on top of it.
-
-    The holes this leaves are handled by the sampler: where the 4x4 stencil is not whole it
-    falls back to 2x2, where nothing under it is known it says so, and the caller
-    substitutes the whole field's fold there -- inside a formation, where the rock covers the
-    pixel and answers it anyway.
+    The kernel regime interpolates this and never the composed field, whose 1 m fold comes
+    back as a staircase at any output resolution (docs/spatial-and-map.md section 20). Where
+    it knows nothing, inside a formation, the caller substitutes the fold and the rock answers.
     """
     cliff = np.isin(np.asarray(field.provenance_plane), hf.PROV_CLIFF_VALUES)
     ground = np.where(cliff, np.float32(hf.NODATA), heights).astype(np.float32)
