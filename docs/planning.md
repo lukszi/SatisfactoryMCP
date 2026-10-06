@@ -347,6 +347,26 @@ The arithmetic is easy to get wrong by hand and was: a shard raises the **maximu
 0.5, so 150% costs one and only 250% costs three. Assuming three apiece gave 192 where the
 answer is 109.
 
+**Slugs are latent shards.** A shard pool counted only from crafted Power Shards
+understates what a player can overclock with. On the reference save the Dimensional
+Depot holds **93 Blue, 58 Yellow and 39 Purple slugs — 404 shards — against 22 already
+crafted**, a 19x understatement.
+
+The 1/2/5 ratios are *derived*, never listed: `GameData.slug_yields()` reads every
+single-ingredient part recipe that produces a Power Shard, which is exactly
+`Power Shard (1)`, `(2)` and `(5)`. Restricting to one ingredient also excludes
+`Synthetic Power Shard`, which makes shards from Time Crystal, Dark Matter Crystal,
+Quartz and Photonic Matter — a production chain, not something lying in a crate.
+
+`craftable` is reported **apart from** `free`, because crafting is a manual step:
+folding it in would produce a number the player reads as available now. The
+affordability check uses both — "SHORT by 158, but 404 more are craftable from slugs you
+already hold".
+
+Slugs are found wherever `stock()` looks: carried, in crates, or in the Depot. The output
+also names *where*, since "is that the Depot?" is otherwise a question the player has to
+ask.
+
 **Somersloops are reported, never spent**, and only where they do something. Generators and
 extractors carry slots with `can_boost = False`, so `boost_for` correctly returns 1.0 — the
 first version advertised a Fuel Generator block at "1x output", which is nonsense dressed as
