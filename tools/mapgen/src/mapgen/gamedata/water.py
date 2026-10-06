@@ -25,25 +25,32 @@ WATER_ARTWORK_BLUE_OVER_RED = 25
 #: luma 0 to about 80); its ground is beige or white, 140 and up. docs/spatial-and-map.md §26.
 VOID_ARTWORK_LUMA_MAX = 110
 
+#: The artwork's water comes in four flat tones, G - R about 32, 48, 64 and 78 from the open
+#: sea's teal to the brightest cyan; these split them. docs/spatial-and-map.md §26.
+WATER_ARTWORK_BANDS = (40, 56, 70)
+
 #: Rows of the 1 m grid classified at a time, so the sheet is never held as integers whole.
 _ROWS_AT_ONCE = 500
 
 
 def artwork_planes(sheet) -> tuple[np.ndarray, np.ndarray]:
-    """The decoded artwork sheet as two masks on this file's 1 m grid: ``(water, void)``.
+    """The decoded artwork sheet on this file's 1 m grid: ``(water, void)``.
 
-    Water is ``artwork_water_mask``'s classifier; void is ground drawn darker than
-    ``VOID_ARTWORK_LUMA_MAX`` that is not water. Nearest-neighbour, as that function.
+    ``water`` is ``artwork_water_mask``'s classifier as a uint8 band: 0 where dry, else 1 for
+    the open sea's tone to ``len(WATER_ARTWORK_BANDS) + 1`` for the brightest. ``void`` is
+    ground drawn darker than ``VOID_ARTWORK_LUMA_MAX`` that is not water. Nearest-neighbour,
+    as that function.
     """
     pixels = np.asarray(sheet, np.uint8)
     index = np.clip((np.arange(GRID_PX) * SHEET_PX / GRID_PX).astype(np.int32), 0, SHEET_PX - 1)
-    water = np.zeros((GRID_PX, GRID_PX), bool)
+    water = np.zeros((GRID_PX, GRID_PX), np.uint8)
     void = np.zeros((GRID_PX, GRID_PX), bool)
     for start in range(0, GRID_PX, _ROWS_AT_ONCE):
         rows = pixels[index[start : start + _ROWS_AT_ONCE]][:, index].astype(np.int32)
         wet = rows[..., 2] - rows[..., 0] >= WATER_ARTWORK_BLUE_OVER_RED
+        band = 1 + np.digitize(rows[..., 1] - rows[..., 0], WATER_ARTWORK_BANDS)
         luma = (299 * rows[..., 0] + 587 * rows[..., 1] + 114 * rows[..., 2]) // 1000
-        water[start : start + len(rows)] = wet
+        water[start : start + len(rows)] = np.where(wet, band, 0)
         void[start : start + len(rows)] = ~wet & (luma <= VOID_ARTWORK_LUMA_MAX)
     return water, void
 

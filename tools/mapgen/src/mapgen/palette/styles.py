@@ -33,6 +33,8 @@ __all__ = [
     "PAINTED_DIGEST",
     "PAINTED_PALETTE",
     "PALETTE_DIR",
+    "PIT_EDGE_RGB",
+    "PIT_RGB",
     "RAMP_HI_PCT",
     "RAMP_LO_PCT",
     "RAMP_STOPS",
@@ -52,6 +54,8 @@ __all__ = [
     "TERRAIN_PALETTE",
     "TERRAIN_SHORE",
     "UNKNOWN_BIOME_RGB",
+    "VOID_EDGE_RGB",
+    "VOID_RIM_RGB",
     "WATER_DEEP",
     "WATER_SHALLOW",
     "biome_colour_field",
@@ -135,6 +139,14 @@ WATER_DEEP = np.array(TERRAIN_PALETTE["water_deep"], np.float32)
 
 #: No data, in the page's own ``--sea``, so the map's edge draws no border.
 SEA_RGB = np.array([16, 32, 44], np.float32)
+
+#: The void's edge beside the land, lit as the artwork lights it (luma about 70) in the page's
+#: hue, darkening to ``SEA_RGB``; a pit's from the artwork's flat grey to black; and the light
+#: rim the artwork draws round both. The same in every style.
+VOID_EDGE_RGB = np.array([66, 79, 90], np.float32)
+PIT_EDGE_RGB = np.array([76, 76, 76], np.float32)
+PIT_RGB = np.array([4, 5, 6], np.float32)
+VOID_RIM_RGB = np.array([236, 236, 230], np.float32)
 
 # The satellite layer's own rules (tools/mapgen/README.md, "Design notes").
 
@@ -288,11 +300,20 @@ def with_sea(rgb: np.ndarray, missing: np.ndarray) -> np.ndarray:
     return np.where(missing[..., None], SEA_RGB, rgb)
 
 
-def with_void(rgb: np.ndarray, cover: np.ndarray) -> np.ndarray:
-    """The void past the world's edge and in its pits, ``cover`` in [0, 1], in the page's
-    own sea colour whatever the style, so the map's edge draws no border."""
+def with_void(rgb: np.ndarray, cover: np.ndarray, falloff=None, pit=None, rim=None):
+    """The void past the world's edge and in its pits, each plane in [0, 1] and the same
+    whatever the style. ``cover`` is how much of a pixel the void hides. Past the edge it is
+    the page's own sea colour, so the map's edge draws no border; a pit is black. Both are lit
+    at their edge and darken over ``falloff``, 0 at the edge, with a light ``rim`` round them;
+    without those planes, all of it is the page's sea."""
     weight = cover[..., None]
-    return rgb * (1.0 - weight) + SEA_RGB * weight
+    if falloff is None:
+        return rgb * (1.0 - weight) + SEA_RGB * weight
+    deep, hole = falloff[..., None], pit[..., None]
+    edge = VOID_EDGE_RGB * (1.0 - hole) + PIT_EDGE_RGB * hole
+    colour = edge * (1.0 - deep) + (SEA_RGB * (1.0 - hole) + PIT_RGB * hole) * deep
+    line = rim[..., None]
+    return (rgb * (1.0 - weight) + colour * weight) * (1.0 - line) + VOID_RIM_RGB * line
 
 
 LAYER_PAINTERS = {"terrain": terrain_colours, "satellite": satellite_colours}
