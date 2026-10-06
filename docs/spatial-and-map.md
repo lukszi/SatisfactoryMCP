@@ -4077,13 +4077,26 @@ cache, or a folder holding them such as `data/local/maps/_cache/<size>`.
 3. The sidecar is rewritten with `storage`, through a temporary file and a rename.
 4. Only then are the raw planes deleted.
 
-A failure deletes what the command wrote and leaves the cache as it was. It refuses a
-directory with no readable `meta.json`, which is a cache still being written or not a cache.
-On Windows it also refuses a cache whose plane another process holds open, such as a render
-reading it: it renames each plane to itself and back, which Windows refuses for an open file.
-Elsewhere that test finds nothing. `--to <dir>` writes the band store there and leaves the
-source alone. A cache already in the band store is skipped, and raw planes left beside its
-band files are removed.
+A failure deletes what the command wrote and leaves the raw planes and the sidecar as they
+were. It refuses a directory with no readable `meta.json`, which is a cache still being
+written or not a cache. On Windows it also refuses a cache whose plane another process holds
+open, such as a render reading it: it renames each plane to itself and back, which Windows
+refuses for an open file. Elsewhere that test finds nothing. A plane left under its `.probe`
+name, by a run killed between those two renames, stops the command until it is renamed back.
+
+`--to <dir>` writes the band store there and leaves the source alone. The target must lie
+outside the source. A `--to` that is the source, a folder holding it, or a folder inside it
+is refused with exit code 1 before anything is written. Links, junctions and letter case are
+resolved first, and each cache's own target is checked against every cache of the run. A
+target holding raw planes is refused too, since a band store this command wrote has none.
+Each line of the report says which happened: "converted in place" with the raw planes
+removed, or "written to" the target with the source untouched.
+
+A cache already in the band store is skipped. Raw planes beside its band files are what a
+run killed after the sidecar was rewritten leaves. Each is removed only once its band file
+decodes to the raw plane's bytes. One that does not match, or has no band file, is kept and
+named, and the exit code is 1. Band files beside a raw cache are never read: a conversion in
+place rewrites or removes them, and `--to` clears every plane from the target first.
 
 On a copy of the renders-v5 Titan cache, the command took 1,342 MB to 10.8 MB in 4 to 5 s, at
 a peak working set of 97 MB, and the decoded planes hash to the raw files' SHA-256. A whole
