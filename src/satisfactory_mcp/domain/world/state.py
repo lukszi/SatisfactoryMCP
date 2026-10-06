@@ -11,10 +11,18 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, ClassVar
+from pathlib import Path
+from typing import TYPE_CHECKING, ClassVar, TypeVar
 
 from ...core.gamedata.model import GameData, Recipe
 from ...core.saveio import projection as proj
+from ...core.saveio.schema import (
+    BuildableRecord,
+    MachineRecord,
+    PlayerRecord,
+    Projection,
+    SaveHeader,
+)
 from ...core.singleflight import Singleflight
 from ..collectibles.removed import RemovedActors, observed_session
 from ..collectibles.table import CollectibleTable, load_collectibles
@@ -25,6 +33,13 @@ from ..progression.phases import PhaseLedger
 from ..progression.research import ResearchGates
 from ..progression.shards import OverclockBudget
 from ..progression.unlocks import UnlockSet
+from ..progression.views import (
+    PhaseRequirements,
+    ProgressionSummary,
+    ResearchGate,
+    ShardBudget,
+    SloopBudget,
+)
 from . import flow as world_flow
 from . import sites as world_sites
 from . import water as world_water
@@ -33,7 +48,18 @@ from .census import BuildCensus
 from .identity import SaveIdentity
 from .inventory import Inventory
 
+if TYPE_CHECKING:
+    from ..factories.cohere import Proposal
+    from ..factories.labels import LabelStore
+    from ..factories.model import FactoryGraph
+    from ..factories.structure import Structures
+    from ..planning.stored.planlog import PlanView
+    from .conduits import ConduitRun
+    from .logistics import PhysicalGraph
+
 __all__ = ["CollectibleTable", "HardDriveOffer", "WorldState", "load_collectibles"]
+
+_View = TypeVar("_View")
 
 #: The six expensive views that are pure functions of ``(projection, game)``, shared by every
 #: state built over the same pair -- a request builds its own ``WorldState`` and the whole
@@ -48,10 +74,10 @@ _DERIVED = Singleflight(maxsize=18)
 class WorldState:
     """A save projection plus the game data needed to interpret it."""
 
-    projection: dict
+    projection: Projection
     game: GameData
 
-    def _derived(self, name: str, build: Callable[[], Any]) -> Any:
+    def _derived(self, name: str, build: Callable[[], _View]) -> _View:
         """A view shared by every state over this same projection and game data.
 
         Only for views that are pure functions of that pair and that no caller mutates: two
@@ -140,7 +166,7 @@ class WorldState:
     # ---- identity ------------------------------------------------------
 
     @property
-    def header(self) -> dict:
+    def header(self) -> SaveHeader:
         return self.identity.header
 
     @property
@@ -161,7 +187,7 @@ class WorldState:
         return self.identity.age_note
 
     @cached_property
-    def graph(self):
+    def graph(self) -> FactoryGraph:
         """The factory graph, ~50 ms. Identity, health and layout all want it.
 
         Shared, so ``FactoryGraph.adjacency``'s lazy index is built under concurrency: it
@@ -173,13 +199,13 @@ class WorldState:
         return self._derived("graph", lambda: build_graph(self.projection))
 
     @cached_property
-    def pipe_flow(self) -> list[dict]:
+    def pipe_flow(self) -> list[world_flow.PipeFlow]:
         """Which way each pipe carries fluid, ~13 ms. It walks the plumbing once per pipe,
         and every caller wants the whole answer rather than one row."""
         return self._derived("pipe_flow", lambda: world_flow.pipe_flow(self.projection))
 
     @cached_property
-    def conduit_runs(self):
+    def conduit_runs(self) -> list[ConduitRun]:
         """Belt and pipe runs as queryable geometry, ~170 ms. describe_location and the
         conduit search both want the whole set."""
         from . import conduits
@@ -190,7 +216,7 @@ class WorldState:
         )
 
     @cached_property
-    def physical(self):
+    def physical(self) -> PhysicalGraph:
         """What actually feeds what, belt and pipe runs contracted away, ~19 ms. Health and
         the upstream walk both want the whole contraction."""
         from .logistics import build_physical_graph
@@ -198,14 +224,14 @@ class WorldState:
         return self._derived("physical", lambda: build_physical_graph(self.projection, self.game))
 
     @cached_property
-    def structures(self):
+    def structures(self) -> Structures:
         """Foundation slabs -- what was physically built as one platform. ~85 ms."""
         from ..factories.structure import build_structures
 
         return self._derived("structures", lambda: build_structures(self.projection))
 
     @cached_property
-    def proposals(self):
+    def proposals(self) -> list[Proposal]:
         """Coherence-scored factory proposals. ~0.5 s, the most expensive view here."""
         from ..factories.cohere import propose
 
@@ -215,14 +241,14 @@ class WorldState:
         )
 
     @cached_property
-    def plans(self):
+    def plans(self) -> PlanView:
         """Live plans saved for this world, read-only; ``planlog.PlanLog`` writes them."""
         from ..planning.stored.planlog import PlanLog
 
         return PlanLog(self.world_id, self.session_name).view()
 
     @cached_property
-    def labels(self):
+    def labels(self) -> LabelStore:
         """Persisted factory names for this world."""
         from ..factories.labels import LabelStore
 
@@ -279,18 +305,18 @@ class WorldState:
         return self.census.unlocked_but_unbuilt()
 
     @property
-    def paused(self) -> list[dict]:
+    def paused(self) -> list[BuildableRecord]:
         return self.census.paused
 
     @property
-    def misconfigured(self) -> list[dict]:
+    def misconfigured(self) -> list[MachineRecord]:
         return self.census.misconfigured
 
     @property
-    def overclocked(self) -> list[dict]:
+    def overclocked(self) -> list[BuildableRecord]:
         return self.census.overclocked
 
-    def all_records(self) -> list[dict]:
+    def all_records(self) -> list[BuildableRecord]:
         return self.census.all_records()
 
     # ---- power ---------------------------------------------------------
@@ -312,20 +338,31 @@ class WorldState:
     def best_pipe(self) -> tuple[str, float] | None:
         return self.carriers.best_pipe()
 
-    def water_volumes(self) -> dict:
+    def water_volumes(self) -> world_water.WaterVolumes:
         return world_water.water_volumes(self.projection)
 
-    def site_water(self, x_m: float, y_m: float, **kw) -> world_water.SiteWater | None:
-        return world_water.site_water(self.projection, x_m, y_m, **kw)
+    def site_water(
+        self,
+        x_m: float,
+        y_m: float,
+        *,
+        width_m: float = world_water.SITE_PAD_M,
+        depth_m: float = world_water.SITE_PAD_M,
+        search_m: float = world_water.WATER_SEARCH_M,
+        local_dir: Path | None = None,
+    ) -> world_water.SiteWater | None:
+        return world_water.site_water(
+            self.projection, x_m, y_m, width_m, depth_m, search_m, local_dir
+        )
 
     # ---- progression ---------------------------------------------------
 
     EGP_TO_PHASE: ClassVar[dict[str, str]] = PhaseLedger.EGP_TO_PHASE
 
-    def progression(self) -> dict:
+    def progression(self) -> ProgressionSummary:
         return self.phases.progression()
 
-    def phase_requirements(self) -> dict:
+    def phase_requirements(self) -> PhaseRequirements:
         return self.phases.phase_requirements()
 
     # ---- overclocking ----------------------------------------------------
@@ -333,10 +370,10 @@ class WorldState:
     SOMERSLOOP_ITEM: ClassVar[str] = OverclockBudget.SOMERSLOOP_ITEM
     MERCER_ITEM: ClassVar[str] = OverclockBudget.MERCER_ITEM
 
-    def shard_budget(self) -> dict:
+    def shard_budget(self) -> ShardBudget:
         return self.overclock.shard_budget()
 
-    def sloop_budget(self) -> dict:
+    def sloop_budget(self) -> SloopBudget:
         return self.overclock.sloop_budget()
 
     # ---- research gates --------------------------------------------------
@@ -346,7 +383,7 @@ class WorldState:
     def has_capability(self, name: str) -> bool:
         return self.research.has_capability(name)
 
-    def research_gate(self, name: str) -> dict | None:
+    def research_gate(self, name: str) -> ResearchGate | None:
         return self.research.research_gate(name)
 
     # ---- what the map placed, and what is left of it ----------------------
@@ -398,7 +435,7 @@ class WorldState:
     # ---- where the player is -------------------------------------------
 
     @property
-    def players(self) -> list[dict]:
+    def players(self) -> list[PlayerRecord]:
         return self.identity.players
 
     def player_position(self) -> tuple[float, float, float] | None:
@@ -420,7 +457,7 @@ class WorldState:
     def consumer_z(self, building_ids: tuple[str, ...] = ("Build_OilRefinery_C",)) -> float | None:
         return world_sites.consumer_z(self.all_records(), building_ids)
 
-    def sites(self, link_m: float = 300.0) -> list[dict]:
+    def sites(self, link_m: float = 300.0) -> list[world_sites.BuiltSite]:
         return world_sites.sites(self.all_records(), link_m)
 
 

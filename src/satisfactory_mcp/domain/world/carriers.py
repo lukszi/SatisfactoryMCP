@@ -15,7 +15,7 @@ class CarrierSet:
     """Carrier tiers, gated on what is unlocked rather than on what exists."""
 
     game: GameData
-    unlocked_building_ids: set[str] = field(default_factory=set)
+    unlocked_building_ids: set[str] = field(default_factory=set[str])
 
     #: Native classes that actually carry ITEMS between machines. Deliberately narrow.
     #: `items_per_min` alone is not the test: a Personnel Elevator reports 400/min and
@@ -36,7 +36,7 @@ class CarrierSet:
         for cls, b in self.game.buildings.items():
             if b.native != native or cls not in self.unlocked_building_ids:
                 continue
-            value = getattr(b, rate, 0.0)
+            value: float = getattr(b, rate, 0.0)
             if value and (best is None or value > best[1]):
                 best = (cls, value)
         return best

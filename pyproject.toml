@@ -198,7 +198,6 @@ ignore = [
 "src/satisfactory_mcp/domain/spatial/caves.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/heightfield/field.py" = ["TID251"]
 "src/satisfactory_mcp/domain/spatial/rocks.py" = ["TID251"]
-"src/satisfactory_mcp/domain/world/state.py" = ["TID251"]
 "src/satisfactory_mcp/interfaces/web/routers/assets/icons.py" = ["TID251"]
 "src/satisfactory_mcp/interfaces/web/routers/assets/maps.py" = ["TID251"]
 "src/satisfactory_mcp/interfaces/web/routers/assets/tiles.py" = ["TID251"]

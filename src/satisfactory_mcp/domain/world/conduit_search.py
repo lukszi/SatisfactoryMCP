@@ -7,13 +7,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from typing_extensions import TypedDict
 
 from ..spatial.places import resolve_place
 from .conduits import NEAR_RADIUS_M, ConduitRun
 
+if TYPE_CHECKING:
+    from .state import WorldState
+
 __all__ = ["KINDS", "ConduitSearch", "NetworkView", "networks", "search"]
 
 KINDS = ("belt", "pipe")
+
+
+class _Bridge(TypedDict):
+    """A fluid network with pieces near one end or the other: how many near each."""
+
+    fluid: str | None
+    a: int
+    b: int
 
 
 @dataclass
@@ -29,8 +43,8 @@ class ConduitSearch:
     kind: str | None = None
     network: int | None = None
     run: str | None = None
-    hits: list[ConduitRun] = field(default_factory=list)
-    bridged: list[str] = field(default_factory=list)
+    hits: list[ConduitRun] = field(default_factory=list[ConduitRun])
+    bridged: list[str] = field(default_factory=list[str])
     error: str | None = None
 
     @property
@@ -43,7 +57,7 @@ class ConduitSearch:
 
 
 def search(
-    st,
+    st: WorldState,
     near: str,
     radius_m: float = NEAR_RADIUS_M,
     to: str | None = None,
@@ -60,14 +74,17 @@ def search(
     """
     out = ConduitSearch(radius_m=radius_m, kind=kind, network=network, run=run)
     try:
-        out.origin, out.where = resolve_place(st, near)
+        origin, out.where = resolve_place(st, near)
+        out.origin = origin
         if to is not None:
             out.second, out.where_to = resolve_place(st, to)
     except ValueError as exc:
         out.error = f"! {exc}"
         return out
-    if out.second is not None:
-        out.to_radius_m = to_radius_m if to_radius_m is not None else radius_m
+    second = out.second
+    to_radius = to_radius_m if to_radius_m is not None else radius_m
+    if second is not None:
+        out.to_radius_m = to_radius
     runs = st.conduit_runs
     if run is not None:
         want = run.strip().casefold()
@@ -82,17 +99,17 @@ def search(
         )
         return out
 
-    bridged: dict[int, dict] = {}
+    bridged: dict[int, _Bridge] = {}
     direct_nets: set[int] = set()
     for r in runs:
         if kind is not None and (r.kind == "pipe") != (kind == "pipe"):
             continue
-        near_a = r.dist_m(*out.origin) <= radius_m
-        if out.second is None:
+        near_a = r.dist_m(*origin) <= radius_m
+        if second is None:
             if near_a:
                 out.hits.append(r)
             continue
-        near_b = r.dist_m(*out.second) <= out.to_radius_m
+        near_b = r.dist_m(*second) <= to_radius
         if near_a and near_b:
             out.hits.append(r)
             if r.network is not None:
@@ -139,13 +156,13 @@ class NetworkView:
         return len(self.runs)
 
 
-def networks(st, origin: tuple[float, float]) -> list[NetworkView]:
+def networks(st: WorldState, origin: tuple[float, float]) -> list[NetworkView]:
     """Every fluid network in the world, most pipe first, placed relative to ``origin``."""
-    grouped: dict[object, list[ConduitRun]] = {}
+    grouped: dict[int | None, list[ConduitRun]] = {}
     for r in st.conduit_runs:
         if r.kind == "pipe":
             grouped.setdefault(r.network, []).append(r)
-    out = []
+    out: list[NetworkView] = []
     for net, runs in sorted(grouped.items(), key=lambda kv: -sum(r.length_m for r in kv[1])):
         ends = [e for r in runs for e in (r.a, r.b)]
         touches: list[str] = []
