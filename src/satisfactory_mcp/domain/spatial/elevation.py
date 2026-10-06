@@ -132,9 +132,7 @@ def sample_points(
     """
     out: list[Sample] = []
     for n in node_table.nodes if node_table is not None else ():
-        z = n.get("z")
-        if z is not None:
-            out.append(Sample("node", n["x"], n["y"], float(z)))
+        out.append(Sample("node", n["x"], n["y"], float(n["z"])))
     if state is None:
         return out
 
