@@ -22,9 +22,9 @@ var DEBOUNCE_MS = 150;
 
 var timer = 0;
 var hits: Hit[] = [];
-var active = -1;
-var answered = "";
-var opening = "";
+var activeIndex = -1;
+var answeredQuery = "";
+var openFirstHitFor = "";
 
 function input(): HTMLInputElement {
   return el<HTMLInputElement>("search-q");
@@ -49,7 +49,7 @@ function flatten(data: SearchResponse): Hit[] {
   return rows;
 }
 
-function more(data: SearchResponse): string {
+function truncationNote(data: SearchResponse): string {
   var extra: string[] = [];
   if (data.factories_total > data.factories.length) extra.push(count(data.factories_total) + " factories");
   if (data.items_total > data.items.length) extra.push(count(data.items_total) + " items");
@@ -67,15 +67,15 @@ function close(): void {
   el("search-hits").hidden = true;
   input().setAttribute("aria-expanded", "false");
   input().removeAttribute("aria-activedescendant");
-  active = -1;
+  activeIndex = -1;
 }
 
-function mark(): void {
+function highlightActiveHit(): void {
   var rows = el("search-hits").querySelectorAll<HTMLElement>(".search-hit");
   Array.prototype.forEach.call(rows, function (row: HTMLElement, i: number) {
-    row.classList.toggle("on", i === active);
-    row.setAttribute("aria-selected", String(i === active));
-    if (i === active) {
+    row.classList.toggle("on", i === activeIndex);
+    row.setAttribute("aria-selected", String(i === activeIndex));
+    if (i === activeIndex) {
       row.scrollIntoView({ block: "nearest" });
       input().setAttribute("aria-activedescendant", row.id);
     }
@@ -91,7 +91,7 @@ function draw(data: SearchResponse): void {
   var box = el("search-hits");
   box.textContent = "";
   hits = flatten(data);
-  active = hits.length ? 0 : -1;
+  activeIndex = hits.length ? 0 : -1;
   var group = "";
   hits.forEach(function (hit, i) {
     if (hit.group !== group) {
@@ -111,7 +111,7 @@ function draw(data: SearchResponse): void {
     };
     box.appendChild(row);
   });
-  var notes = [hits.length ? "" : "nothing matches", more(data), data.save_note ? friendlyError(data.save_note) : ""];
+  var notes = [hits.length ? "" : "nothing matches", truncationNote(data), data.save_note ? friendlyError(data.save_note) : ""];
   notes.forEach(function (text) {
     if (!text) return;
     var line = make("div", "search-note", text);
@@ -119,15 +119,15 @@ function draw(data: SearchResponse): void {
     box.appendChild(line);
   });
   show(box);
-  mark();
+  highlightActiveHit();
 }
 
-function run(openFirst: boolean): void {
+function runSearch(openFirst: boolean): void {
   var text = input().value.trim();
   var ticket = latest("search");
-  opening = openFirst ? text : "";
+  openFirstHitFor = openFirst ? text : "";
   if (!text) {
-    answered = "";
+    answeredQuery = "";
     hits = [];
     close();
     return;
@@ -135,14 +135,14 @@ function run(openFirst: boolean): void {
   get<SearchResponse>(`/api/search?q=${encodeURIComponent(text)}&${spoilerQuery()}`)
     .then(function (data) {
       if (!ticket.fresh()) return;
-      answered = text;
+      answeredQuery = text;
       draw(data);
-      if (opening === text && hits.length) open(hits[0]!);
-      opening = "";
+      if (openFirstHitFor === text && hits.length) open(hits[0]!);
+      openFirstHitFor = "";
     })
     .catch(function (error: unknown) {
       if (!ticket.fresh()) return;
-      answered = "";
+      answeredQuery = "";
       hits = [];
       var box = el("search-hits");
       box.textContent = "";
@@ -151,19 +151,19 @@ function run(openFirst: boolean): void {
     });
 }
 
-function key(event: KeyboardEvent): void {
+function onSearchKeydown(event: KeyboardEvent): void {
   var box = el("search-hits");
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     if (!hits.length || box.hidden) return;
     event.preventDefault();
-    active = (active + (event.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
-    mark();
+    activeIndex = (activeIndex + (event.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
+    highlightActiveHit();
   } else if (event.key === "Enter") {
     event.preventDefault();
     window.clearTimeout(timer);
     var text = input().value.trim();
-    if (text && text === answered && !box.hidden && hits[active]) open(hits[active]!);
-    else if (text) run(true);
+    if (text && text === answeredQuery && !box.hidden && hits[activeIndex]) open(hits[activeIndex]!);
+    else if (text) runSearch(true);
   } else if (event.key === "Escape") {
     if (!box.hidden) {
       event.preventDefault();
@@ -181,13 +181,13 @@ export function wireSearch(): void {
   box.oninput = function () {
     window.clearTimeout(timer);
     timer = window.setTimeout(function () {
-      run(false);
+      runSearch(false);
     }, DEBOUNCE_MS);
   };
-  box.onkeydown = key;
+  box.onkeydown = onSearchKeydown;
   box.onblur = close;
   box.onfocus = function () {
-    if (box.value.trim()) run(false);
+    if (box.value.trim()) runSearch(false);
   };
   document.addEventListener("keydown", function (event) {
     var target = event.target as HTMLElement | null;

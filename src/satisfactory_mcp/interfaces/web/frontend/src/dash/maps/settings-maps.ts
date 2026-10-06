@@ -9,7 +9,7 @@ import { get, send } from "../../api/client";
 import { appendNote, button, checkbox, chip, empty, error, fieldError, idChip, loading, selectBox, slider } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { bytes, duration, isoDate } from "../../kit/format";
-import { adoptMaps, fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "../../app/map-types";
+import { adoptMapRegistry, fetchMapRegistry, mapTypeAxes, mapRegistry, onMapRegistry, staleReasons, staleLabel } from "../../app/map-types";
 import { askMode } from "../../map/tiles";
 import { fail, friendlyError } from "../../kit/toast";
 
@@ -72,14 +72,14 @@ function clockTime(ts: number | null | undefined): string {
 function refused(what: string): (reason: unknown) => void {
   return function (reason: unknown) {
     var status = (reason as StatusError).status;
-    if (status === 409 && ((reason as StatusError).body as { stale?: boolean } | undefined)?.stale) fetchMaps();
+    if (status === 409 && ((reason as StatusError).body as { stale?: boolean } | undefined)?.stale) fetchMapRegistry();
     fail(what + ": " + friendlyError(reason));
   };
 }
 
 function write(method: "PUT" | "PATCH" | "DELETE" | "POST", path: ApiPath, body?: object, subject?: string, query?: string): Promise<MapsResponse> {
   return send<MapsResponse>(method, path, body, subject, query).then(function (reply) {
-    adoptMaps(reply);
+    adoptMapRegistry(reply);
     return reply;
   });
 }
@@ -93,10 +93,10 @@ export function mapPickerRow(): HTMLElement {
   words.appendChild(make("span", "dash-setting-k", "default base map"));
   words.appendChild(make("span", "dash-setting-hint", "what a fresh page opens on, in every browser here; the map's own switcher still changes the view"));
   row.appendChild(words);
-  var body = mapState.body;
+  var body = mapRegistry.body;
   if (!body) {
-    row.appendChild(make("span", "dash-muted", mapState.failed ? "map list unreadable" : "loading…"));
-    if (!mapState.failed) fetchMaps();
+    row.appendChild(make("span", "dash-muted", mapRegistry.failed ? "map list unreadable" : "loading…"));
+    if (!mapRegistry.failed) fetchMapRegistry();
     return row;
   }
   var options: [string, string][] = body.types
@@ -178,7 +178,7 @@ function inlineConfirm(parent: HTMLElement, question: string, yes: string, no: s
 function cancelJob(job: MapJobBody): void {
   send<MapJobResponse>("DELETE", "/api/maps/jobs/{job}", undefined, job.id)
     .then(function () {
-      fetchMaps();
+      fetchMapRegistry();
     })
     .catch(refused("the job was not cancelled"));
 }
@@ -261,7 +261,7 @@ function queuedJob(job: MapJobBody, card: HTMLElement): void {
 }
 
 function replaceOffer(job: MapJobBody, card: HTMLElement): void {
-  var body = mapState.body;
+  var body = mapRegistry.body;
   var made = job.produces[0];
   var old = body && body.types.filter(function (t) {
     return t.id === made;
@@ -313,7 +313,7 @@ function finishedJob(job: MapJobBody, card: HTMLElement): void {
 
 function drawJobs(card: HTMLElement): void {
   card.textContent = "";
-  var body = mapState.body;
+  var body = mapRegistry.body;
   if (!body) return;
   var active = body.jobs.filter(function (j) {
     return j.status === "running" || j.status === "queued";
@@ -335,7 +335,7 @@ var estimateSerial = 0;
 
 function formOptions(): Record<string, unknown> {
   if (form.preset === "render") {
-    var body = mapState.body;
+    var body = mapRegistry.body;
     var restyle = form.restyle && !!body && body.cached_sizes.indexOf(form.size) >= 0 && form.recipe === "current";
     return {
       layers: (body ? body.styles : [])
@@ -354,7 +354,7 @@ function formOptions(): Record<string, unknown> {
       light: form.light,
     };
   }
-  if (form.preset === "artwork") return { enhance: form.enhance && !!mapState.body && mapState.body.can_generate.vulkan };
+  if (form.preset === "artwork") return { enhance: form.enhance && !!mapRegistry.body && mapRegistry.body.can_generate.vulkan };
   return {};
 }
 
@@ -399,7 +399,7 @@ function updateEstimate(line: HTMLElement, go: HTMLButtonElement, body: MapsResp
 function submit(preset: string, options: Record<string, unknown>, label: string, replaces: string | null): Promise<void> {
   return send<MapJobResponse>("POST", "/api/maps/jobs", { preset: preset, options: options, label: label || null, replaces: replaces })
     .then(function () {
-      fetchMaps();
+      fetchMapRegistry();
     })
     .catch(function (reason) {
       fail("the job was not queued: " + friendlyError(reason));
@@ -582,7 +582,7 @@ function rerender(row: MapTypeBody): void {
   var r = row.freshness.rerender;
   var chain: Promise<void> = Promise.resolve();
   if (r && r.needs.indexOf("heightfield") >= 0) chain = submit("heightmap", {}, "", null);
-  var body = mapState.body;
+  var body = mapRegistry.body;
   var size = row.size_px || 32768;
   var options =
     row.kind === "artwork"
@@ -626,21 +626,21 @@ function nameCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
   if (row.default) title.appendChild(chip("default", "ok"));
   if (row.status !== "ready") title.appendChild(chip(row.status, row.status === "failed" ? "bad" : "muted"));
   cell.appendChild(title);
-  cell.appendChild(make("div", "dash-sub", mapDetails(row) + " · data/local/" + row.dir.replace(/^\.$/, "")));
+  cell.appendChild(make("div", "dash-sub", mapTypeAxes(row) + " · data/local/" + row.dir.replace(/^\.$/, "")));
   return cell;
 }
 
 function freshnessCell(row: MapTypeBody): HTMLElement {
   var cell = make("div", "maps-fresh");
-  var stale = staleWord(row);
+  var stale = staleLabel(row);
   if (stale) {
-    var amber = chip(stale, "muted", staleWhy(row));
+    var amber = chip(stale, "muted", staleReasons(row));
     amber.classList.add("maps-stale");
     cell.appendChild(amber);
   }
   if (row.freshness.rerender) cell.appendChild(chip("re-render available", "muted", row.freshness.rerender.text));
   if (row.freshness.restyle) cell.appendChild(chip("newer palette", "muted"));
-  if (stale) cell.appendChild(make("div", "dash-sub", staleWhy(row)));
+  if (stale) cell.appendChild(make("div", "dash-sub", staleReasons(row)));
   if (row.freshness.incomplete) cell.title = "provenance incomplete: this map was drawn before its sidecar recorded every input";
   return cell;
 }
@@ -780,7 +780,7 @@ function renderStatus(parent: HTMLElement, body: MapsResponse): void {
       button("clear cache", function () {
         send("DELETE", "/api/maps/cache")
           .then(function () {
-            fetchMaps();
+            fetchMapRegistry();
           })
           .catch(refused("the cache was not cleared"));
       }, { title: "delete the rasters kept for fast re-renders" })
@@ -831,14 +831,14 @@ function redraw(): void {
 export function renderMaps(body: HTMLElement, into: MapsHost): void {
   host = into;
   tabBody = body;
-  var data = mapState.body;
+  var data = mapRegistry.body;
   if (!data) {
-    if (mapState.failed) error(body, "the map list", mapState.failed, function () {
-      fetchMaps();
+    if (mapRegistry.failed) error(body, "the map list", mapRegistry.failed, function () {
+      fetchMapRegistry();
     });
     else {
       loading(body, "the map list");
-      fetchMaps();
+      fetchMapRegistry();
     }
     return;
   }
@@ -853,7 +853,7 @@ export function renderMaps(body: HTMLElement, into: MapsHost): void {
   renderInputs(body, data);
 }
 
-onMaps(function (listed) {
+onMapRegistry(function (listed) {
   if (listed || !jobHost || !jobHost.isConnected || !tabBody || !tabBody.isConnected) return;
   drawJobs(jobHost);
 });

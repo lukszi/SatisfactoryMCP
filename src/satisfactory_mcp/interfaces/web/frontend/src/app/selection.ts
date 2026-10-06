@@ -1,6 +1,8 @@
 /* The one selected thing the map, the side panel, the dashboard and the status strip share,
  * shared across tabs too. See docs/frontend_vision.md §2.3 and §16. */
 
+import { createListeners } from "./listeners";
+
 export type SelectionKind = "factory" | "circuit" | "machine" | "point" | "node" | "field" | "conduit" | "pickup";
 
 export interface Selection {
@@ -51,7 +53,7 @@ function remember(s: Selection | null): void {
 
 var current: Selection | null = recall();
 
-var listeners: Array<() => void> = [];
+var selectListeners = createListeners();
 
 function same(a: Selection | null, b: Selection | null): boolean {
   if (!a || !b) return a === b;
@@ -60,9 +62,7 @@ function same(a: Selection | null, b: Selection | null): boolean {
 
 function settle(next: Selection | null): void {
   current = next;
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  selectListeners.emit();
 }
 
 export function selected(): Selection | null {
@@ -98,7 +98,7 @@ export function select(next: Selection | null): void {
 }
 
 export function onSelect(listener: () => void): void {
-  listeners.push(listener);
+  selectListeners.on(listener);
 }
 
 window.addEventListener("storage", function (event) {

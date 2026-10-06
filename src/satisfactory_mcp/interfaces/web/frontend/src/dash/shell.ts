@@ -26,7 +26,7 @@ import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
 import { circuitName } from "./power-ledger";
 import { mapPickerRow, renderMaps } from "./maps/settings-maps";
-import { onMaps } from "../app/map-types";
+import { onMapRegistry } from "../app/map-types";
 import { dashParts, go } from "../app/nav";
 import { drawRail } from "../app/rail";
 import { select } from "../app/selection";
@@ -426,7 +426,7 @@ function wire(): void {
   onSetting(function () {
     if (state.dash && address().tab === "settings") render();
   });
-  onMaps(function (listed) {
+  onMapRegistry(function (listed) {
     if (listed && state.dash && address().tab === "settings") render();
   });
   wireDetect();

@@ -11,9 +11,9 @@ import { refetchAsks } from "../chat/asks";
 import { onPlanChange, refetchPins } from "../chat/pins";
 import { onActivityEvent, onNotesEvent, onPlansEvent, onSaveEvent, resyncPlanner } from "../dash/planner/planner";
 import { onRenameActivity } from "../dash/factories/rename";
-import { fetchMaps, onMapsEvent } from "./map-types";
+import { fetchMapRegistry, onMapsEvent } from "./map-types";
 import { onSettingsEvent, refetchSharedSettings } from "./shared-settings";
-import { state } from "./state";
+import { isSincePageOpened, state } from "./state";
 import { fail } from "../kit/toast";
 import { onFindActivity } from "../dash/world/world";
 import { refreshWorlds } from "./world-picker";
@@ -41,7 +41,7 @@ function isNews(event: MessageEvent): boolean {
     /* a malformed event is treated as news, the safe direction */
   }
   var at = payload && (payload.mtime || payload.ts);
-  return !(at && at * 1000 < state.openedAtMs - 2000);
+  return !at || isSincePageOpened(at);
 }
 
 function parsed<T>(event: MessageEvent): T | null {
@@ -85,10 +85,43 @@ function showLive(kind: string, text: string, title: string): void {
   words.classList.toggle("dk-hidden", kind === "on");
 }
 
+function blinkLiveDot(): void {
+  var live = el("live");
+  live.classList.add("hit");
+  setTimeout(function () {
+    live.classList.remove("hit");
+  }, 800);
+}
+
+/* The reads that name factories, which a label write renames. */
+function refetchLabelledViews(): void {
+  loadOne("/api/factories");
+  loadOne("/api/factories/health");
+  loadOne("/api/power/circuits");
+}
+
+/* After a gap in the stream nothing it would have said can be assumed, so everything it could
+ * have changed is read again. */
+function resyncAfterGap(): void {
+  refreshWorlds();
+  if (!state.save) {
+    loadLive();
+    onSaveEvent();
+  }
+  refetchLabelledViews();
+  loadOne("/api/plans");
+  refetchPins();
+  refetchAsks();
+  refetchAdvice();
+  refetchSharedSettings();
+  fetchMapRegistry();
+  resyncPlanner(dispatchActivity);
+}
+
 /* One EventSource for the process; a write is an edge trigger and the response is a refetch
  * of what that kind of write can change. The grey dot means connecting, retrying or dead, so
  * its text says which, and losing an ESTABLISHED connection also says so in a toast. */
-export function listen() {
+export function connectLiveEvents() {
   var source: EventSource | null = null;
   var wasOpen = false;
   var missed = false;
@@ -113,7 +146,7 @@ export function listen() {
 
   function wire(es: EventSource) {
     es.onopen = function () {
-      if (missed) resync();
+      if (missed) resyncAfterGap();
       missed = false;
       wasOpen = true;
       showLive("on", "live", "live: watching for save writes");
@@ -126,33 +159,9 @@ export function listen() {
       else showLive("", "connecting…", "connecting to the save watcher…");
       if (dropped) fail("live updates lost; what is on screen may be stale");
     };
-    var resync = function () {
-      refreshWorlds();
-      if (!state.save) {
-        loadLive();
-        onSaveEvent();
-      }
-      loadOne("/api/factories");
-      loadOne("/api/factories/health");
-      loadOne("/api/power/circuits");
-      loadOne("/api/plans");
-      refetchPins();
-      refetchAsks();
-      refetchAdvice();
-      refetchSharedSettings();
-      fetchMaps();
-      resyncPlanner(dispatchActivity);
-    };
-    var blink = function () {
-      var live = el("live");
-      live.classList.add("hit");
-      setTimeout(function () {
-        live.classList.remove("hit");
-      }, 800);
-    };
     es.addEventListener("save", function (event) {
       if (!isNews(event)) return;
-      blink();
+      blinkLiveDot();
       refreshWorlds();
       // A pinned save is pinned: the point of the picker is to hold a view while the game
       // autosaves over the newest. The dot still blinks so the write is not invisible.
@@ -167,10 +176,8 @@ export function listen() {
      * a siting belong to the world rather than to one file in it. */
     es.addEventListener("notes", function (event) {
       if (!isNews(event)) return;
-      blink();
-      loadOne("/api/factories");
-      loadOne("/api/factories/health");
-      loadOne("/api/power/circuits");
+      blinkLiveDot();
+      refetchLabelledViews();
       loadOne("/api/plans");
       refetchPins();
       refetchAdvice();
@@ -179,7 +186,7 @@ export function listen() {
     es.addEventListener("plans", function (event) {
       var data = parsed<PlansEvent>(event);
       if (!data || !isNews(event)) return;
-      blink();
+      blinkLiveDot();
       loadOne("/api/plans");
       refetchAdvice();
       onPlanChange(data);

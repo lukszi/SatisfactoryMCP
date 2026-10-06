@@ -14,7 +14,7 @@ import { tilePath } from "../api/client";
 import { onModePick, showModes } from "./layercontrol/control";
 import { L } from "./leaflet";
 import { makeLitLayer, parseLight, webglReady } from "./litlayer";
-import { fetchMaps, mapDetails, mapState, onMaps, staleWhy, staleWord } from "../app/map-types";
+import { fetchMapRegistry, mapTypeAxes, mapRegistry, onMapRegistry, staleReasons, staleLabel } from "../app/map-types";
 import { MAP_SHEET_PX, MAP_SQUARE_M, map, writeHash } from "./map";
 import { regionsUnderMode, updateRegionBlend } from "./regions";
 import { BOOT, state } from "../app/state";
@@ -94,10 +94,10 @@ function specOf(row: MapTypeBody): ModeSpec {
     key: row.id,
     layer: row.id,
     label: row.title,
-    about: mapDetails(row) + (row.freshness.stale.length ? "\n" + staleWord(row) + ": " + staleWhy(row) : ""),
+    about: mapTypeAxes(row) + (row.freshness.stale.length ? "\n" + staleLabel(row) + ": " + staleReasons(row) : ""),
     generator: GENERATORS[row.layer] || "the Maps tab in Settings",
-    flag: staleWord(row),
-    flagTitle: staleWhy(row),
+    flag: staleLabel(row),
+    flagTitle: staleReasons(row),
   };
 }
 
@@ -109,7 +109,7 @@ export function aliasMode(raw: string): string {
 /* The modes the switcher lists: every ticked type that can be served, the default first, and
  * also whatever is on screen or was asked for by the address, ticked or not. */
 function wantedModes(): ModeSpec[] {
-  var body = mapState.body;
+  var body = mapRegistry.body;
   if (!body) return LEGACY.concat([PLAIN]);
   var chosen = body.default;
   var keep: Record<string, boolean> = {};
@@ -130,7 +130,7 @@ export function knownMode(raw: string | undefined): BaseMode | null {
   if (!raw) return null;
   var id = aliasMode(raw);
   if (id === "plain") return id;
-  var body = mapState.body;
+  var body = mapRegistry.body;
   if (!body) {
     return LEGACY.some(function (spec) {
       return spec.key === id;
@@ -438,7 +438,7 @@ function modeChoices(): ModeChoice[] {
 
 /** The tone a mode's picture declares; plain is the page's own dark sea. */
 function toneOf(mode: BaseMode): Tone {
-  var body = mapState.body;
+  var body = mapRegistry.body;
   if (mode === "plain") return body ? body.plain_tone : "dark";
   var row = body
     ? body.types.filter(function (t) {
@@ -484,7 +484,7 @@ export function setMode(key: BaseMode, pinned: boolean): void {
 function bootMode(): BaseMode {
   var asked = aliasMode(BOOT.mode || "");
   if (asked && (asked === "plain" || makers[asked])) return asked;
-  var chosen = mapState.body ? mapState.body.default : null;
+  var chosen = mapRegistry.body ? mapRegistry.body.default : null;
   if (chosen && (chosen === "plain" || makers[chosen])) return chosen;
   return makers[ARTWORK] ? ARTWORK : "plain";
 }
@@ -504,7 +504,7 @@ var readyBefore: Record<string, boolean> = {};
 
 function readyIds(): Record<string, boolean> {
   var out: Record<string, boolean> = {};
-  (mapState.body ? mapState.body.types : []).forEach(function (row) {
+  (mapRegistry.body ? mapRegistry.body.types : []).forEach(function (row) {
     if (row.status === "ready") out[row.id] = true;
   });
   return out;
@@ -542,8 +542,8 @@ export function askMode(key: BaseMode, pinned: boolean): void {
     setMode(key, pinned);
     return;
   }
-  var row = mapState.body
-    ? mapState.body.types.filter(function (t) {
+  var row = mapRegistry.body
+    ? mapRegistry.body.types.filter(function (t) {
         return t.id === key;
       })[0]
     : undefined;
@@ -565,10 +565,10 @@ export function loadBaseMap(): Promise<void> {
   onModePick(function (key) {
     setMode(key as BaseMode, true);
   });
-  onMaps(function (listed) {
+  onMapRegistry(function (listed) {
     if (listed && booted) rebuildModes();
   });
-  return fetchMaps()
+  return fetchMapRegistry()
     .then(function () {
       MODES = wantedModes();
       readyBefore = readyIds();

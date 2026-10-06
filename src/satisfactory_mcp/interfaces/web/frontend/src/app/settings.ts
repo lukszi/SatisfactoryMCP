@@ -3,6 +3,7 @@
  * docs/frontend_vision.md §8.6. A `shared` one lives on the server (shared-settings.ts). */
 
 import { WORDS } from "../kit/words";
+import { createListeners } from "./listeners";
 
 interface Base {
   key: string;
@@ -198,7 +199,7 @@ var NOTICE_KEY = "spoilers-off-notice";
 
 var values: Record<string, boolean | string | number> = {};
 
-var listeners: Array<() => void> = [];
+var settingListeners = createListeners();
 
 type Changes = Record<string, boolean | string | number | null>;
 
@@ -272,9 +273,7 @@ export function setSetting(key: string, value: boolean | string | number): void 
   if (!found || !valid(found, value)) return;
   values[key] = value;
   remember();
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  settingListeners.emit();
   if (found.shared && sharedWriter) sharedWriter({ [found.shared]: value });
 }
 
@@ -286,12 +285,11 @@ export function resetSettings(): void {
   if (sharedWriter) sharedWriter(cleared);
   values = {};
   remember();
-  listeners.forEach(function (listener) {
-    listener();
-  });
+  settingListeners.emit();
 }
 
-export function spoilerNotice(): boolean {
+/** True once per browser while spoilers were never set: the first visit owes a notice. */
+export function claimSpoilerNotice(): boolean {
   if ("spoilers" in values) return false;
   try {
     if (localStorage.getItem(NOTICE_KEY)) return false;
@@ -303,7 +301,7 @@ export function spoilerNotice(): boolean {
 }
 
 export function onSetting(listener: () => void): void {
-  listeners.push(listener);
+  settingListeners.on(listener);
 }
 
 export function writeSharedWith(writer: (changes: Changes) => void): void {
@@ -329,10 +327,7 @@ export function adoptShared(server: Record<string, unknown>): void {
     values[s.key] = value;
   });
   remember();
-  if (moved)
-    listeners.forEach(function (listener) {
-      listener();
-    });
+  if (moved) settingListeners.emit();
 }
 
 recall();
