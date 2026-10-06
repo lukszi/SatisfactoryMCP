@@ -160,8 +160,8 @@ def test_the_shader_and_the_python_model_read_the_same_constants():
     for key in ("dirs", "normalise_min_el", "shadow_soft_deg", "shadow_fill", "shadow_floor",
                 "shadow_floor_knee", "hz_cells", "crown_cell"):  # fmt: skip
         assert key in block, key
-        assert f"m.{key}" in source or f"light.model.{key}" in source, key
-    assert "1.0-sh*(1.0-uFill)" in source and "p.crowns" in source
+        assert f"model.{key}" in source, key
+    assert "1.0-sh*(1.0-uFill)" in source and "params.crowns" in source
     assert "1 - shade * (1 - SHADOW_FILL)" in inspect.getsource(model.direct_term)
     assert block["hz_cells"] == 2 * block["crown_cell"] == 2 * hz.HORIZON_DIRS
     assert json.loads(json.dumps(block)) == block
