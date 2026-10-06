@@ -1,23 +1,23 @@
 /* The track tab: where a half-built plan stands against the save, stage by stage and job by job.
  * See docs/planner-p4_contract.md §2 F2–F5 and §8. */
 
-import { askButton } from "../../chat/asks";
-import { renderAsks } from "../../chat/asks-card";
-import { button, chip, empty, error, loading, table } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
-import { count, countRange, mw } from "../../kit/format";
-import { boxMapButton, builtColumn, builtLine } from "./planner-built";
-import { loadTrack, pickStage } from "./planner-reads";
-import { bench, changed } from "./planner-state";
-import { headroomControls } from "./planner-track-headroom";
-import { startupCard, STARTUP_CTL } from "./planner-track-startup";
-import { appendAskMarks, askAbout, jobsCard, onSiteCard, shortItemsCard, stageCtl, stateChips, takeRefocusCtl, TRACK_TABLE_NARROW } from "./planner-track-tables";
-import { headroom } from "../power-ledger";
-import { actionTone } from "../machine-states";
-import { counted, WORDS } from "../../kit/words";
+import { askButton } from "../../../chat/asks";
+import { renderAsks } from "../../../chat/asks-card";
+import { button, chip, empty, error, loading, table } from "../../../kit/dashkit";
+import { make } from "../../../kit/dom";
+import { count, countRange, mw } from "../../../kit/format";
+import { boxMapButton, builtColumn, builtLine } from "../built";
+import { loadTrack, pickStage } from "../reads";
+import { bench, changed } from "../state";
+import { headroomControls } from "./headroom";
+import { startupCard, STARTUP_CTL } from "./startup";
+import { appendAskMarks, askAbout, jobsCard, onSiteCard, shortItemsCard, stageCtl, stateChips, takeRefocusCtl, TRACK_TABLE_NARROW } from "./tables";
+import { headroom } from "../../power-ledger";
+import { actionTone } from "../../machine-states";
+import { counted, WORDS } from "../../../kit/words";
 
-import type { Column } from "../../kit/dashkit";
-import type { FocusSelection, TrackResponse, TrackStage } from "../../api/shapes";
+import type { Column } from "../../../kit/dashkit";
+import type { FocusSelection, TrackResponse, TrackStage } from "../../../api/shapes";
 
 function trackHeadline(parent: HTMLElement, d: TrackResponse, asked: number): void {
   const card = make("section", "dash-card");

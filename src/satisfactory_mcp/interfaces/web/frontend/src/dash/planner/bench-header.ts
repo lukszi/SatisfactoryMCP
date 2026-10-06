@@ -7,10 +7,10 @@ import { button, chip, copyButton, inlineTextEdit, toggleButton } from "../../ki
 import { make } from "../../kit/dom";
 import { ageShort } from "../../kit/format";
 import { WORDS } from "../../kit/words";
-import { duplicateButton } from "./planner-history";
-import { toggleVersions } from "./planner-reads";
-import { bench, changed, NAME_MAX } from "./planner-state";
-import { dismissStrip, forgetPlan, redoLast, renamePlan, restorePlan, syncStatus, undoLast, undoRev } from "./planner-writes";
+import { duplicateButton } from "./history";
+import { toggleVersions } from "./reads";
+import { bench, changed, NAME_MAX } from "./state";
+import { dismissStrip, forgetPlan, redoLast, renamePlan, restorePlan, syncStatus, undoLast, undoRev } from "./writes";
 
 var renaming = { on: false, fresh: false };
 

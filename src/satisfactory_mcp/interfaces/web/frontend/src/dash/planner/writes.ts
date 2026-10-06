@@ -5,12 +5,12 @@ import { get, isNotFound, postWithConflict } from "../../api/client";
 import { nowSeconds } from "../../kit/format";
 import { fail, friendlyError, notify } from "../../kit/toast";
 import { WORDS } from "../../kit/words";
-import { delta, deltaForView, loadAlternates, loadTrack, loadVersions, saveToken, solveHead } from "./planner-reads";
-import { actorWord, bench, changed, commitWords, resetBench } from "./planner-state";
+import { delta, deltaForView, loadAlternates, loadTrack, loadVersions, saveToken, solveHead } from "./reads";
+import { actorWord, bench, changed, commitWords, resetBench } from "./state";
 
 import type { ApiError, StatusError } from "../../api/client";
 import type { CommitBody, DeltaResponse, PlanOpsResponse, PlanStateBody, PushedResponse } from "../../api/shapes";
-import type { Op, PlansEvent, Refusal } from "./planner-state";
+import type { Op, PlansEvent, Refusal } from "./state";
 
 type WritePath = "/api/plans/{key}/ops" | "/api/plans/{key}/args" | "/api/plans/{key}/undo" | "/api/plans/{key}/restore";
 

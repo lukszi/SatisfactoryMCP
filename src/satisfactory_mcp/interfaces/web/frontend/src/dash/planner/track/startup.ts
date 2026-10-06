@@ -1,19 +1,19 @@
 /* Track's startup order card, and the extractors that feed running generators today. See
  * docs/planner-p4_contract.md §2 F5. */
 
-import { copyText } from "../../kit/copy";
-import { button, empty, error, loading, table } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
-import { formatNumber, mw } from "../../kit/format";
-import { goToMapThen } from "../../app/nav";
-import { showMachine } from "../../map/map-highlight";
-import { loadFeeders } from "./planner-reads";
-import { bench } from "./planner-state";
-import { fail, notify } from "../../kit/toast";
-import { WORDS } from "../../kit/words";
+import { copyText } from "../../../kit/copy";
+import { button, empty, error, loading, table } from "../../../kit/dashkit";
+import { make } from "../../../kit/dom";
+import { formatNumber, mw } from "../../../kit/format";
+import { goToMapThen } from "../../../app/nav";
+import { showMachine } from "../../../map/map-highlight";
+import { loadFeeders } from "../reads";
+import { bench } from "../state";
+import { fail, notify } from "../../../kit/toast";
+import { WORDS } from "../../../kit/words";
 
-import type { Column } from "../../kit/dashkit";
-import type { Feeder, TrackResponse } from "../../api/shapes";
+import type { Column } from "../../../kit/dashkit";
+import type { Feeder, TrackResponse } from "../../../api/shapes";
 
 export var STARTUP_CTL = "track-startup";
 

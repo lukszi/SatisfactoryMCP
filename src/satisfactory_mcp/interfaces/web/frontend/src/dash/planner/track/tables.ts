@@ -1,21 +1,21 @@
 /* Track's tables: the jobs of the plan, the items it is short of and what stands on site, with
  * the row helpers the stages table shares. See docs/planner-p4_contract.md §2 F2–F4. */
 
-import { askButton, openAsksAbout } from "../../chat/asks";
-import { copyText } from "../../kit/copy";
-import { button, chip, empty, idChip, table } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
-import { count, countRange, formatNumber, signed } from "../../kit/format";
-import { recipesButton } from "./planner-alternates";
-import { boxMapButton, builtColumn } from "./planner-built";
-import { pickStage } from "./planner-reads";
-import { bench, changed } from "./planner-state";
-import { stateTone } from "../machine-states";
-import { fail, notify } from "../../kit/toast";
-import { counted, TRACK_VERB, WORDS } from "../../kit/words";
+import { askButton, openAsksAbout } from "../../../chat/asks";
+import { copyText } from "../../../kit/copy";
+import { button, chip, empty, idChip, table } from "../../../kit/dashkit";
+import { make } from "../../../kit/dom";
+import { count, countRange, formatNumber, signed } from "../../../kit/format";
+import { recipesButton } from "../alternates";
+import { boxMapButton, builtColumn } from "../built";
+import { pickStage } from "../reads";
+import { bench, changed } from "../state";
+import { stateTone } from "../../machine-states";
+import { fail, notify } from "../../../kit/toast";
+import { counted, TRACK_VERB, WORDS } from "../../../kit/words";
 
-import type { Column } from "../../kit/dashkit";
-import type { AskAbout, FocusSelection, TrackCost, TrackResponse, TrackRow, TrackSiteRow, TrackState } from "../../api/shapes";
+import type { Column } from "../../../kit/dashkit";
+import type { AskAbout, FocusSelection, TrackCost, TrackResponse, TrackRow, TrackSiteRow, TrackState } from "../../../api/shapes";
 
 export var TRACK_TABLE_NARROW = window.matchMedia("(max-width: 899px)");
 

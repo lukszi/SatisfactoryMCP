@@ -8,12 +8,12 @@ import { state } from "../../app/state";
 import { friendlyError } from "../../kit/toast";
 import { WORDS } from "../../kit/words";
 import { biomassQuery } from "../power-ledger";
-import { trackDash } from "./planner-address";
-import { bench, changed } from "./planner-state";
+import { trackDash } from "./address";
+import { bench, changed } from "./state";
 
 import type { ApiPath, ApiUrl } from "../../api/client";
 import type { DeltaResponse, FeedersResponse, PlanAlternatesResponse, PlanStateBody, SolveResponse, TrackResponse, VersionsResponse } from "../../api/shapes";
-import type { FeedersView, Partition, ResultTab } from "./planner-state";
+import type { FeedersView, Partition, ResultTab } from "./state";
 
 var ALTERNATES: ApiPath = "/api/plan/alternates";
 var TRACK: ApiPath = "/api/plan/track";

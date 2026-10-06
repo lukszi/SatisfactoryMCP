@@ -5,14 +5,14 @@ import { button, chip, empty, error, loading, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, mw, perMin, signed } from "../../kit/format";
 import { dashParts, go } from "../../app/nav";
-import { loadAlternates, showAlternates } from "./planner-reads";
-import { bench } from "./planner-state";
-import { applyOps, hasPushInFlight } from "./planner-writes";
+import { loadAlternates, showAlternates } from "./reads";
+import { bench } from "./state";
+import { applyOps, hasPushInFlight } from "./writes";
 import { counted, WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";
 import type { DeltaRow, PlanOpBody, SwapOption } from "../../api/shapes";
-import type { Op } from "./planner-state";
+import type { Op } from "./state";
 
 var NONE = "–";
 

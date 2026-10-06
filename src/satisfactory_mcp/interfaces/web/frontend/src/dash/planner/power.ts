@@ -4,11 +4,11 @@
 import { button, checkbox, selectBox, slider } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { count, formatNumber, mw, pct } from "../../kit/format";
-import { bench } from "./planner-state";
-import { applyOps } from "./planner-writes";
+import { bench } from "./state";
+import { applyOps } from "./writes";
 
 import type { SolveResponse, SolveRow } from "../../api/shapes";
-import type { Op } from "./planner-state";
+import type { Op } from "./state";
 
 type Payback = SolveResponse["power"];
 type Stop = Payback["stops"][number];

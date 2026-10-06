@@ -1,15 +1,15 @@
 /* Track's startup headroom: the measured and nameplate buttons and the given field, each one
  * stored on the plan as a versioned write. See docs/planner-p4_contract.md §2 F3. */
 
-import { fieldError, toggleButton } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
-import { count, mw } from "../../kit/format";
-import { stageHeadroom } from "./planner-reads";
-import { bench } from "./planner-state";
-import { applyOps } from "./planner-writes";
-import { WORDS } from "../../kit/words";
+import { fieldError, toggleButton } from "../../../kit/dashkit";
+import { make } from "../../../kit/dom";
+import { count, mw } from "../../../kit/format";
+import { stageHeadroom } from "../reads";
+import { bench } from "../state";
+import { applyOps } from "../writes";
+import { WORDS } from "../../../kit/words";
 
-import type { TrackResponse } from "../../api/shapes";
+import type { TrackResponse } from "../../../api/shapes";
 
 var HEADROOM_MAX = 1000000;
 var HEADROOM_WHAT: Record<string, string> = {

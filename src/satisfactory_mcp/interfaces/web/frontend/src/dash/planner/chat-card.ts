@@ -5,10 +5,10 @@ import { button } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { perMin } from "../../kit/format";
 import { go } from "../../app/nav";
-import { loadList, planTitle } from "./planner-plan-index";
-import { hours } from "./planner-power";
-import { bench, changed, inbox } from "./planner-state";
-import { applyArgs, createPlan } from "./planner-writes";
+import { loadList, planTitle } from "./plan-index";
+import { hours } from "./power";
+import { bench, changed, inbox } from "./state";
+import { applyArgs, createPlan } from "./writes";
 import { fail, friendlyError } from "../../kit/toast";
 import { counted, OBJECTIVES, objectiveText } from "../../kit/words";
 

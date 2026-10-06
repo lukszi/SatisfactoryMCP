@@ -20,7 +20,7 @@ import { refreshWorlds } from "./world-picker";
 
 import type { SettingsResponse } from "../api/shapes";
 import type { MapsEvent } from "./map-types";
-import type { ActivityEvent, PlansEvent } from "../dash/planner/planner-state";
+import type { ActivityEvent, PlansEvent } from "../dash/planner/state";
 
 /* Activity kinds that change a list the page and chat share, and the refetch each one owes. */
 var REFETCH_BY_KIND: [string, () => void][] = [

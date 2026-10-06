@@ -10,7 +10,7 @@ import { showPoint } from "../../map/map-highlight";
 import { onSetting, settingChoice } from "../../app/settings";
 import { state } from "../../app/state";
 import { notify, offer } from "../../kit/toast";
-import { actorWord } from "../planner/planner-state";
+import { actorWord } from "../planner/state";
 import { mapButton } from "../actions";
 import { resourceOptions, worldUrl } from "./world-finds";
 import { renderConduits } from "./world-conduits";
@@ -22,7 +22,7 @@ import { address, copyCell, filterBar, goToWorldParams, loaded, redraw, selectFi
 
 import type { Column, SortState } from "../../kit/dashkit";
 import type { RegionRow, RegionTableResponse } from "../../api/shapes";
-import type { ActivityEvent } from "../planner/planner-state";
+import type { ActivityEvent } from "../planner/state";
 
 const regionsBox = loaded<RegionTableResponse>();
 

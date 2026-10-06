@@ -4,7 +4,7 @@
 import { get } from "../../api/client";
 import { state } from "../../app/state";
 import { friendlyError } from "../../kit/toast";
-import { changed } from "./planner-state";
+import { changed } from "./state";
 
 import type { PlanBuiltRow, PlansBuiltResponse, PlansResponse } from "../../api/shapes";
 

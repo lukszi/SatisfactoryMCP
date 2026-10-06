@@ -2,17 +2,17 @@
 
 import { button, chip, empty, error, link, loading, selectBox, toggleButton } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
-import { bench, changed, displayName, itemList, knownItem, NAME_MAX, NOTES_MAX } from "./planner-state";
-import { applyOps, banOps, dropChip, openPlan } from "./planner-writes";
-import { cancelRename, forgottenBanner, renderBenchHeader, stripRows } from "./planner-bench-header";
-import { renderChatSolveCard } from "./planner-chat-card";
-import { renderVersions, renderRevisionView } from "./planner-history";
-import { powerRow } from "./planner-power";
-import { renderResult } from "./planner-result";
+import { bench, changed, displayName, itemList, knownItem, NAME_MAX, NOTES_MAX } from "./state";
+import { applyOps, banOps, dropChip, openPlan } from "./writes";
+import { cancelRename, forgottenBanner, renderBenchHeader, stripRows } from "./bench-header";
+import { renderChatSolveCard } from "./chat-card";
+import { renderVersions, renderRevisionView } from "./history";
+import { powerRow } from "./power";
+import { renderResult } from "./result";
 import { counted, OBJECTIVES } from "../../kit/words";
 
 import type { FocusSelection } from "../../api/shapes";
-import type { Op } from "./planner-state";
+import type { Op } from "./state";
 
 var CLOCKS = [1, 1.5, 2, 2.5];
 var BENCH_FIELDS = ["objective", "export_minimums", "target_item", "exports", "sources", "required", "banned", "water_extractors", "sloops", "extractor_clocks", "payback_hours", "overclock_last", "power_price", "notes"];

@@ -5,9 +5,9 @@ import { onToken, send } from "../../api/client";
 import { onSelect, selected, selectionRef } from "../../app/selection";
 import { onSetting, settingChoice } from "../../app/settings";
 import { state } from "../../app/state";
-import { openPlanKey } from "./planner-address";
-import { saveToken } from "./planner-reads";
-import { bench } from "./planner-state";
+import { openPlanKey } from "./address";
+import { saveToken } from "./reads";
+import { bench } from "./state";
 
 import type { FocusResponse, FocusSelection } from "../../api/shapes";
 

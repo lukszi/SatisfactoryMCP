@@ -1,5 +1,5 @@
 /* The open plan as the page holds it: the bench every planner view reads, its listeners, and the
- * words the views share. Reads are planner-reads.ts, writes planner-writes.ts. See
+ * words the views share. Reads are reads.ts, writes writes.ts. See
  * docs/planner_slice_contract.md §12. */
 
 import { get } from "../../api/client";

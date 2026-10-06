@@ -7,9 +7,9 @@ import { make } from "../../kit/dom";
 import { count } from "../../kit/format";
 import { L } from "../../map/leaflet";
 import { map } from "../../map/map";
-import { stageHeadroom } from "./planner-reads";
-import { bench, changed } from "./planner-state";
-import { applyOps } from "./planner-writes";
+import { stageHeadroom } from "./reads";
+import { bench, changed } from "./state";
+import { applyOps } from "./writes";
 import { biomassQuery } from "../power-ledger";
 import { onSetting, settingChoice } from "../../app/settings";
 import {

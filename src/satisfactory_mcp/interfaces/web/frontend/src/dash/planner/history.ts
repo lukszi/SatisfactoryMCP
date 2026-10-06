@@ -6,10 +6,10 @@ import { button, empty, error, link, loading, subTabs, table } from "../../kit/d
 import { make } from "../../kit/dom";
 import { ageShort } from "../../kit/format";
 import { go, withQuery } from "../../app/nav";
-import { describeArgs } from "./planner-chat-card";
-import { actorWord, bench, changed, commitWords, inbox } from "./planner-state";
-import { duplicatePlan, restoreRev, undoRevisionOf } from "./planner-writes";
-import { renderVersionResult } from "./planner-result";
+import { describeArgs } from "./chat-card";
+import { actorWord, bench, changed, commitWords, inbox } from "./state";
+import { duplicatePlan, restoreRev, undoRevisionOf } from "./writes";
+import { renderVersionResult } from "./result";
 import { state } from "../../app/state";
 import { fail, friendlyError, notify } from "../../kit/toast";
 import { counted, objectiveText, WORDS } from "../../kit/words";
