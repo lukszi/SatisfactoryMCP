@@ -13,7 +13,6 @@ from .record import Siting, _ground
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
 
-
 #: ``terrain_field`` left at this means "the installed provider's field"; ``None``, "none".
 LOAD_FIELD = object()
 

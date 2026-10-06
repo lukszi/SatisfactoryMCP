@@ -28,7 +28,6 @@ __all__ = [
     "track",
 ]
 
-
 #: ``graph.health`` states that PROVE a machine was energised: both mean it produced inside
 #: the last complete window, and a machine with no power produces nothing. Every other
 #: state is silence, and silence has several causes.

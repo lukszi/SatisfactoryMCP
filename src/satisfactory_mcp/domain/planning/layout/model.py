@@ -9,7 +9,6 @@ from ....core.gamedata.footprint import FOUNDATION_M, Packed
 
 __all__ = ["LOGISTICS_FLOOR_M", "Block", "Bus", "Floor", "Layout"]
 
-
 #: Height reserved for a logistics deck: belts, pipes and a walkway between them.
 LOGISTICS_FLOOR_M = 4.0
 

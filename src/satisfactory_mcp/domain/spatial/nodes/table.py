@@ -14,7 +14,6 @@ __all__ = ["EXTRACTOR_FOR_KIND", "KINDS", "PURITIES", "NodeTable", "load_nodes"]
 PURITIES = ("pure", "normal", "impure")
 KINDS = ("node", "well_sat", "geyser")
 
-
 #: Extractor class -> what it can tap. A well satellite needs a Well Extractor AND
 #: a Pressurizer on its parent core, so it is not interchangeable with a plain node.
 EXTRACTOR_FOR_KIND = {

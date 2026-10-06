@@ -39,7 +39,6 @@ from ...spatial import caves, geo
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ..stored.store import Plan
 
-
 #: Shape of the recorded block, so a later reader can tell this record's vintage apart
 #: from a future one rather than guessing from which keys happen to be present.
 SITING_SCHEMA = 1
