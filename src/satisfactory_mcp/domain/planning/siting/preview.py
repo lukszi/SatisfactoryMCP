@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
-from ...spatial import geo
+from ...spatial import geo, heightfield
 from ...spatial.places import parse_near
 from ...world.state import WorldState
 from .. import siting as siting_mod
@@ -22,6 +22,15 @@ from ..progress.stages import track
 from ..progress.startup import Commissioning, commission
 from ..solver.prepare import PreparedPlan, prepare
 from ..stored.planlog import PlanState
+from .views import (
+    SiteBuilt,
+    SiteFit,
+    SiteLoss,
+    SitePreviewNode,
+    SitePreviewResponse,
+    SiteTerrain,
+    SiteTrunk,
+)
 
 __all__ = [
     "DRAG_TEXELS",
@@ -45,6 +54,23 @@ NOT_READ = "terrain not read"
 Z_PENDING = "terrain height: pending"
 
 
+def _empty_built() -> SiteBuilt:
+    return {
+        "mode": "",
+        "confidence": "",
+        "figure": "–",
+        "where": "",
+        "hint": "",
+        "area": "",
+        "built": None,
+        "total": 0,
+        "current": 0,
+        "count": 0,
+        "stage_text": "",
+        "candidates": [],
+    }
+
+
 @dataclass
 class PreviewSession:
     """One plan version solved once per drag: everything that does not move with the pad."""
@@ -56,7 +82,7 @@ class PreviewSession:
     failure: str = ""
     pump_head_m: float = 0.0
     #: The built figure at the stored site, as ``_built_progress`` words it.
-    built_now: dict = field(default_factory=dict)
+    built_now: SiteBuilt = field(default_factory=_empty_built)
     pads: list[tuple[str, siting_mod.Siting]] = field(default_factory=list)
 
 
@@ -83,7 +109,7 @@ def open_session(
     if prepared.failure is not None:
         sess.failure = prepared.failure.headline
         return sess
-    if not prepared.solution.processes:
+    if prepared.solution is None or not prepared.solution.processes:
         sess.failure = "the plan builds nothing"
         return sess
     power = st.power_report(biomass=biomass)
@@ -98,18 +124,18 @@ def open_session(
     return sess
 
 
-def _built_progress(g: GameData, st: WorldState, sess: PreviewSession, stored: PlanState) -> dict:
+def _built_progress(
+    g: GameData, st: WorldState, sess: PreviewSession, stored: PlanState
+) -> SiteBuilt:
     """What counts as built for ``stored`` at its site, and the stage that puts it in."""
     prepared = sess.prepared
     found = built_mod.detect(g, st, stored, prepared)
-    diff = build_diff(
-        g, st, prepared.solution, prepared.request, scope=found.scope, biomass=sess.biomass
-    )
+    solution, request = prepared.solution, prepared.request
+    assert solution is not None and request is not None, "a session that solved has both"
+    diff = build_diff(g, st, solution, request, scope=found.scope, biomass=sess.biomass)
     low = None
     if found.scope_low is not None:
-        low = build_diff(
-            g, st, prepared.solution, prepared.request, scope=found.scope_low, biomass=sess.biomass
-        )
+        low = build_diff(g, st, solution, request, scope=found.scope_low, biomass=sess.biomass)
     built_mod.fill_progress(found, diff, low)
     tracking = None
     if sess.commissioning:
@@ -143,7 +169,8 @@ def initial_siting(g: GameData, st: WorldState, sess: PreviewSession) -> siting_
     """Where a never-sited plan's pad starts: its ``near:`` centre, its nodes, else the map's
     centre; sized by the layout square."""
     args = sess.stored.args
-    x = y = None
+    x: float | None = None
+    y: float | None = None
     for term in args.sources:
         text = str(term).strip()
         if text.casefold().startswith("near:"):
@@ -158,10 +185,10 @@ def initial_siting(g: GameData, st: WorldState, sess: PreviewSession) -> siting_
         if sess.prepared.request
         else []
     )
-    if x is None and rows:
-        cx, cy = geo.centroid([(r["x"], r["y"]) for r in rows])
-        x, y = cx / 100.0, cy / 100.0
-    if x is None:
+    centre = geo.centroid([(r["x"], r["y"]) for r in rows]) if x is None and rows else None
+    if centre is not None:
+        x, y = centre[0] / 100.0, centre[1] / 100.0
+    if x is None or y is None:
         x0, y0, x1, y1 = geo.MAP_SQUARE_M
         x, y = (x0 + x1) / 2, (y0 + y1) / 2
     try:
@@ -173,7 +200,9 @@ def initial_siting(g: GameData, st: WorldState, sess: PreviewSession) -> siting_
         return siting_mod.Siting(round(x, 2), round(y, 2), None, 0.0, side, side, "default", "")
 
 
-def _pad_terrain(sit: siting_mod.Siting, terrain, cap: int) -> tuple[dict | None, str]:
+def _pad_terrain(
+    sit: siting_mod.Siting, terrain: heightfield.Field | None, cap: int
+) -> tuple[SiteTerrain | None, str]:
     if terrain is None:
         return None, NO_FIELD
     x0, y0, x1, y1 = sit.bbox_cm()
@@ -184,11 +213,16 @@ def _pad_terrain(sit: siting_mod.Siting, terrain, cap: int) -> tuple[dict | None
             near = terrain.nearest_water(sit.x_m * 100, sit.y_m * 100, WATER_SEARCH_M * 100)
     except (MemoryError, OSError, ValueError):
         return None, NOT_READ
+    water_m: float | None
+    below: float | None
     if pad.water_level_m is not None:
         water_m, below = 0.0, pad.water_below_ground_m
     elif near is not None and near.distance_m is not None:
         water_m = near.distance_m
-        below = None if pad.z_median_m is None else round(pad.z_median_m - near.level_m, 1)
+        level = near.level_m
+        below = (
+            None if pad.z_median_m is None or level is None else round(pad.z_median_m - level, 1)
+        )
     else:
         water_m = below = None
     return {
@@ -214,7 +248,7 @@ def _covers(sit: siting_mod.Siting, bbox: list[float]) -> bool:
     )
 
 
-def _progress_lost(now: dict, here: dict) -> dict | None:
+def _progress_lost(now: SiteBuilt, here: SiteBuilt) -> SiteLoss | None:
     """The ``loses`` block: auto detection counts fewer built at the pad than at the site."""
     had, has = now.get("built"), here.get("built")
     if not had or here.get("mode") != "auto" or (has or 0) >= had:
@@ -224,27 +258,11 @@ def _progress_lost(now: dict, here: dict) -> dict | None:
     return {"now": had, "here": has or 0, "total": total, "text": text}
 
 
-def _empty_built() -> dict:
-    return {
-        "mode": "",
-        "confidence": "",
-        "figure": "–",
-        "where": "",
-        "hint": "",
-        "area": "",
-        "built": None,
-        "total": 0,
-        "current": 0,
-        "count": 0,
-        "stage_text": "",
-        "candidates": [],
-    }
-
-
 def _preview_base(
     st: WorldState, sess: PreviewSession, sit: siting_mod.Siting, include_static: bool
-) -> dict:
-    """The response with the pad's own facts filled and every measured field still blank."""
+) -> SitePreviewResponse:
+    """The response with the pad's own facts filled and every measured field still blank;
+    ``token`` is the web's to fill."""
     from ...spatial.regions import load_regions
 
     x_cm, y_cm = sit.x_m * 100, sit.y_m * 100
@@ -254,10 +272,11 @@ def _preview_base(
         region = load_regions().label_for(x_cm, y_cm).describe()
     except (OSError, ValueError, KeyError):
         region = ""
-    out = {
+    out: SitePreviewResponse = {
         "key": sess.stored.key,
         "rev": sess.stored.rev,
         "save_id": save_id(st),
+        "token": "",
         "x_m": sit.x_m,
         "y_m": sit.y_m,
         "yaw_deg": sit.yaw_deg,
@@ -278,7 +297,7 @@ def _preview_base(
         "trunks": [],
         "placeless": [],
         "built": _empty_built(),
-        "now": sess.built_now or _empty_built(),
+        "now": sess.built_now,
         "basis": "",
         "loses": None,
         "fits": [],
@@ -294,15 +313,16 @@ def _preview_base(
 
 def _trunk_rows(
     g: GameData, sess: PreviewSession, x_cm: float, y_cm: float, dest_z: float | None
-) -> tuple[list[dict], list[str], set[str]]:
+) -> tuple[list[SiteTrunk], list[str], set[str]]:
     """The plan's trunks toward the pad, its placeless inputs, and the nodes the trunks use."""
     trunks = plan_trunks(sess.prepared, g, (x_cm, y_cm))
-    rows, chosen = [], set()
+    rows: list[SiteTrunk] = []
+    chosen: set[str] = set()
     for trunk in trunks.trunks:
         chosen |= {m.instance for m in trunk.members}
         lift = trunk.lift_to_site_m(dest_z)
         pumps = None
-        if trunk.carrier == "pipe" and lift is not None and sess.pump_head_m:
+        if trunk.carrier == "pipe" and lift is not None and dest_z is not None and sess.pump_head_m:
             climb = trunk.members[0].z / 100.0 - dest_z
             pumps = math.ceil(-climb / sess.pump_head_m - 1e-9) if climb < 0 else 0
         rows.append(
@@ -320,7 +340,10 @@ def _trunk_rows(
     return rows, placeless, chosen
 
 
-def _chosen_nodes(g: GameData, sess: PreviewSession, chosen: set[str]) -> list[dict]:
+def _chosen_nodes(g: GameData, sess: PreviewSession, chosen: set[str]) -> list[SitePreviewNode]:
+    request = sess.prepared.request
+    if request is None:
+        return []
     return [
         {
             "instance": instance_leaf(r["instance"]),
@@ -328,21 +351,22 @@ def _chosen_nodes(g: GameData, sess: PreviewSession, chosen: set[str]) -> list[d
             "x_m": round(r["x"] / 100, 1),
             "y_m": round(r["y"] / 100, 1),
         }
-        for r in sess.prepared.request.node_rows
+        for r in request.node_rows
         if r.get("kind") == "node" and instance_leaf(r["instance"]) in chosen
     ]
 
 
-def _fit_candidates(sit: siting_mod.Siting, here: dict, when: str) -> list[dict]:
+def _fit_candidates(sit: siting_mod.Siting, here: SiteBuilt, when: str) -> list[SiteFit]:
     """Up to ``FIT_CANDIDATES`` auto-detected clusters the pad does not cover, as fitted pads."""
-    fits = []
+    fits: list[SiteFit] = []
     for c in here["candidates"] if here["mode"] == "auto" else []:
-        if c["bbox_m"] and not _covers(sit, c["bbox_m"]):
+        bbox = c["bbox_m"]
+        if bbox and not _covers(sit, bbox):
             fits.append(
                 {
                     "name": c["name"],
                     "machines": c["machines"],
-                    "value": siting_mod.fit_to_bbox(c["bbox_m"], c["name"], when),
+                    "value": siting_mod.fit_to_bbox(bbox, c["name"], when),
                 }
             )
     return fits[:FIT_CANDIDATES]
@@ -354,18 +378,18 @@ def preview(
     sess: PreviewSession,
     sit: siting_mod.Siting,
     *,
-    terrain=None,
+    terrain: heightfield.Field | None = None,
     terrain_cap: int = 0,
     include_static: bool = False,
 ) -> dict:
     """``SitePreviewResponse`` for ``sit``; writes nothing. ``terrain`` is a loaded field or None.
 
     ``include_static`` adds what does not move with the pad: the plan's chosen nodes and the
-    playable box.
+    playable box. A plain dict for the text presenter, which reads it as one.
     """
     out = _preview_base(st, sess, sit, include_static)
     if not out["in_map"]:
-        return out
+        return dict(out)
     z = siting_mod.ground_z(sit.x_m, sit.y_m, sit.yaw_deg, sit.width_m, sit.depth_m)
     if z is not None:
         out["z_m"], out["z_note"] = z, ""
@@ -377,13 +401,15 @@ def preview(
         if s.bbox[0] <= x1 and s.bbox[2] >= x0 and s.bbox[1] <= y1 and s.bbox[3] >= y0
     ][:4]
     out["overlaps"] = [name for name, other in sess.pads if sit.overlaps(other)]
-    if sess.failure:
+    solution = sess.prepared.solution
+    if sess.failure or solution is None:
         out["terrain_note"] = out["terrain_note"] or sess.failure
-        return out
-    survey = siting_mod.survey(g, st, sit, sess.prepared.solution.processes)
+        return dict(out)
+    survey = siting_mod.survey(g, st, sit, solution.processes)
     if survey is not None:
         out["on_pad"], out["planned"] = survey.standing_total, survey.planned_total
-    dest_z = out["z_m"] if out["z_m"] is not None else (out["terrain"] or {}).get("z_median_m")
+    terrain_read = out["terrain"]
+    dest_z = out["z_m"] if out["z_m"] is not None else (terrain_read or {}).get("z_median_m")
     out["trunks"], out["placeless"], chosen = _trunk_rows(
         g, sess, sit.x_m * 100, sit.y_m * 100, dest_z
     )
@@ -396,4 +422,4 @@ def preview(
         out["basis"] = f"counted on its pad from now (was: {sess.built_now['area']})"
     out["loses"] = _progress_lost(sess.built_now, here)
     out["fits"] = _fit_candidates(sit, here, str(st.header.get("save_datetime") or ""))
-    return out
+    return dict(out)

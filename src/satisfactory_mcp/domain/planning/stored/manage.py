@@ -6,14 +6,19 @@ docs/plan_management.md is the specification. Everything here reads or writes th
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from ....core.gamedata.model import GameData
 from ...world.state import WorldState
+from ..readout.views import ItemRate, SolveResponse, SolveRow
 from ..solver.scenario import build_scenario
 from . import provenance as prov
 from .plan_args import InvalidOp
 from .planlog import Actor, Commit, NameTaken, PlanLog, Pushed, Stamp
+from .store import StoredPlan
+from .views import DeltaRow, PlanStamp, ResultDelta, RowChange
 
 __all__ = [
     "COPY_TRIES",
@@ -30,6 +35,11 @@ COPY_TRIES = 50
 MINUS = "−"
 _EPS = 1e-6
 
+#: ``readout.summary.solve_summary``'s result, which still returns a plain dict.
+Solved: TypeAlias = SolveResponse | dict
+#: One ``versions`` row: the commit, the rev that undid it and the rev a restore brought back.
+VersionRow: TypeAlias = dict[str, Commit | int | None]
+
 
 @dataclass
 class PlanStatus:
@@ -41,7 +51,7 @@ class PlanStatus:
     broken: bool = False
 
 
-def plan_status(st: WorldState, plan, g: GameData | None = None) -> PlanStatus:
+def plan_status(st: WorldState, plan: StoredPlan, g: GameData | None = None) -> PlanStatus:
     """``plan`` is a ``Plan`` or a ``PlanState``: anything with ``kwargs``, ``plan_id``, ``provenance``."""
     out = PlanStatus()
     try:
@@ -67,11 +77,11 @@ def undone_by(commits: list[Commit]) -> dict[int, int]:
     return out
 
 
-def versions(log: PlanLog, key: str) -> list[dict]:
+def versions(log: PlanLog, key: str) -> list[VersionRow]:
     """Every commit of one plan, newest first, with ``undone_by`` and ``restores``."""
     commits = log.commits(key)
     undone = undone_by(commits)
-    rows = []
+    rows: list[VersionRow] = []
     for commit in reversed(commits):
         restores = None
         if commit.note.startswith("restore v"):
@@ -112,7 +122,7 @@ def duplicate(
     """A new plan at v1 equal to ``key`` at ``rev`` (the head when None): a ``create``, never a fork."""
     source = log.state(key, rev)
     wanted = log.free_name(name) if name and name.strip() else _copy_name(log, source.name)
-    stamped = {"plan_id": source.plan_id, "provenance": source.provenance}
+    stamped: PlanStamp = {"plan_id": source.plan_id, "provenance": source.provenance}
     if stamp is not None:
         try:
             stamped = stamp(source)
@@ -138,22 +148,28 @@ def _num(value: float, dp: int = 1) -> str:
     return ("+" if value > 0 else MINUS if value < 0 else "") + text
 
 
-def _machines(summary: dict) -> dict[str, int]:
+def _solve_rows(summary: Solved) -> list[SolveRow]:
+    return summary.get("rows") or []
+
+
+def _machines(summary: Solved) -> dict[str, int]:
     out: dict[str, int] = {}
-    for row in summary.get("rows") or ():
+    for row in _solve_rows(summary):
         out[row["building"]] = out.get(row["building"], 0) + int(row["machines"])
     return out
 
 
-def _rates(rows) -> dict[str, float]:
+def _rates(rows: Iterable[ItemRate] | None) -> dict[str, float]:
     out: dict[str, float] = {}
     for row in rows or ():
         out[row["item"]] = out.get(row["item"], 0.0) + float(row["per_min"])
     return out
 
 
-def _changes(before: dict, after: dict, round_to: int) -> list[dict]:
-    rows = []
+def _changes(
+    before: Mapping[str, float], after: Mapping[str, float], round_to: int
+) -> list[DeltaRow]:
+    rows: list[DeltaRow] = []
     for name in sorted(set(before) | set(after)):
         was, now = before.get(name, 0), after.get(name, 0)
         diff = round(now - was, round_to)
@@ -165,13 +181,16 @@ def _changes(before: dict, after: dict, round_to: int) -> list[dict]:
 _CHANGE_ORDER = {"added": 0, "changed": 1, "removed": 2}
 
 
-def row_changes(before: dict, after: dict) -> list[dict]:
+def row_changes(before: Solved, after: Solved) -> list[RowChange]:
     """Process rows added, removed or changed between two solves, joined on ``SolveRow.id``."""
-    was = {r["id"]: r for r in before.get("rows") or () if r.get("id")}
-    now = {r["id"]: r for r in after.get("rows") or () if r.get("id")}
-    out = []
+    was = {r["id"]: r for r in _solve_rows(before) if r.get("id")}
+    now = {r["id"]: r for r in _solve_rows(after) if r.get("id")}
+    out: list[RowChange] = []
     for rid in set(was) | set(now):
         old, new = was.get(rid), now.get(rid)
+        row = new or old
+        if row is None:
+            continue
         if old is None:
             change = "added"
         elif new is None:
@@ -186,7 +205,7 @@ def row_changes(before: dict, after: dict) -> list[dict]:
         out.append(
             {
                 "id": rid,
-                "label": (new or old)["recipe"],
+                "label": row["recipe"],
                 "change": change,
                 "machines_before": int(old["machines"]) if old else 0,
                 "machines_after": int(new["machines"]) if new else 0,
@@ -197,14 +216,14 @@ def row_changes(before: dict, after: dict) -> list[dict]:
     return sorted(out, key=lambda r: (_CHANGE_ORDER[r["change"]], r["label"], r["id"]))
 
 
-def result_delta(before: dict, after: dict) -> dict:
+def result_delta(before: Solved, after: Solved) -> ResultDelta:
     """How two ``summary.solve_summary`` results differ: machines, MW, raw inputs and rows.
 
     Facts only. When either side is not solvable, only that is said: the counts of an
     infeasible solve are zero, and a delta against zero would read as a real change.
     """
     both = bool(before.get("feasible")) and bool(after.get("feasible"))
-    out = {
+    out: ResultDelta = {
         "comparable": both,
         "machines": 0,
         "mw_draw": 0.0,

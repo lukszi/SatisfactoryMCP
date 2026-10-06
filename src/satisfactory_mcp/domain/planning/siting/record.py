@@ -31,13 +31,16 @@ reader treats as the feature simply being absent.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
+from ....core.jsontypes import JsonObject
 from ...spatial import caves, geo
+from .views import SiteValue, TerrainZ
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
-    from ..stored.store import Plan
+    from ..stored.store import StoredPlan
 
 #: Shape of the recorded block, so a later reader can tell this record's vintage apart
 #: from a future one rather than guessing from which keys happen to be present.
@@ -86,9 +89,16 @@ def ground_z(
     return round(float(z), 2) if z is not None and math.isfinite(z) else None
 
 
-def _finite(name: str, raw) -> float:
+def _finite(name: str, raw: object) -> float:
     if isinstance(raw, bool) or not isinstance(raw, int | float) or not math.isfinite(raw):
         raise ValueError(f"site {name} must be a finite number, not {raw!r}")
+    return float(raw)
+
+
+def _float(raw: object) -> float:
+    """``float(raw)`` for what a stored record may hold; ``TypeError`` for anything else."""
+    if not isinstance(raw, int | float | str):
+        raise TypeError(f"not a number: {raw!r}")
     return float(raw)
 
 
@@ -102,14 +112,23 @@ def footprint_box_cm(
     return (x_m - ex) * 100, (y_m - ey) * 100, (x_m + ex) * 100, (y_m + ey) * 100
 
 
-def normalise_record(value) -> dict:
+def _listed(raw: object) -> Sequence[object]:
+    """``raw`` when it is a list or tuple, else empty."""
+    if not isinstance(raw, list | tuple):
+        return ()
+    items: Sequence[object] = raw
+    return items
+
+
+def normalise_record(value: object) -> SiteValue:
     """``value`` as a ``site`` op stores it; ``ValueError`` in words when it cannot be.
 
     The map square is the one hard edge; a missing height is filled from ``ground_z``.
     """
     if not isinstance(value, dict):
         raise ValueError(f"site takes a siting object or null, not {value!r}")  # noqa: TRY004
-    schema = value.get("schema", SITING_SCHEMA)
+    record: Mapping[str, object] = value
+    schema = record.get("schema", SITING_SCHEMA)
     if isinstance(schema, bool) or not isinstance(schema, int) or schema < 1:
         raise ValueError(f"site schema must be a positive whole number, not {schema!r}")
     if schema > SITING_SCHEMA:
@@ -117,8 +136,8 @@ def normalise_record(value) -> dict:
             f"this siting was written by a newer version (schema {schema}; this one reads "
             f"up to {SITING_SCHEMA})"
         )
-    origin = value.get("origin_m")
-    if not isinstance(origin, list | tuple) or len(origin) not in (2, 3):
+    origin = _listed(record.get("origin_m"))
+    if len(origin) not in (2, 3):
         raise ValueError("site origin_m must be [x, y] or [x, y, z] in metres")
     x, y = _finite("x", origin[0]), _finite("y", origin[1])
     z = origin[2] if len(origin) == 3 else None
@@ -128,9 +147,9 @@ def normalise_record(value) -> dict:
         raise ValueError(f"the site is outside the map (x must be {x0:,.0f}…{x1:,.0f} m)")
     if not y0 <= y <= y1:
         raise ValueError(f"the site is outside the map (y must be {y0:,.0f}…{y1:,.0f} m)")
-    yaw = round(_finite("yaw_deg", value.get("yaw_deg", 0.0)) % 360.0, 6) % 360.0
-    fp = value.get("footprint_m") or [0.0, 0.0]
-    if not isinstance(fp, list | tuple) or len(fp) != 2:
+    yaw = round(_finite("yaw_deg", record.get("yaw_deg", 0.0)) % 360.0, 6) % 360.0
+    fp = _listed(record.get("footprint_m") or [0.0, 0.0])
+    if len(fp) != 2:
         raise ValueError("site footprint_m must be [width, depth] in metres")
     w, d = _finite("width", fp[0]), _finite("depth", fp[1])
     if (w, d) != (0.0, 0.0) and not all(FOOTPRINT_MIN_M <= v <= FOOTPRINT_MAX_M for v in (w, d)):
@@ -138,10 +157,10 @@ def normalise_record(value) -> dict:
             f"site footprint must be {FOOTPRINT_MIN_M:g}…{FOOTPRINT_MAX_M:,.0f} m each way, "
             f"not {w:g} × {d:g}"
         )
-    source = value.get("footprint_source", "")
-    if source not in SOURCES:
+    source = record.get("footprint_source", "")
+    if not isinstance(source, str) or source not in SOURCES:
         raise ValueError(f"site footprint_source is one of given, layout, default, not {source!r}")
-    label, when = value.get("origin_label", ""), value.get("when", "")
+    label, when = record.get("origin_label", ""), record.get("when", "")
     if not isinstance(label, str) or len(label) > LABEL_MAX:
         raise ValueError(f"site origin_label is text of at most {LABEL_MAX} characters")
     if not isinstance(when, str) or len(when) > WHEN_MAX:
@@ -188,7 +207,7 @@ def snap(
     return x, y, yaw
 
 
-def fit_to_bbox(bbox_m: list[float], name: str, when: str = "") -> dict:
+def fit_to_bbox(bbox_m: list[float], name: str, when: str = "") -> SiteValue:
     """The siting that covers a candidate's machines: its box plus ``FIT_MARGIN_M``, unturned."""
     x0, y0, x1, y1 = (float(v) for v in bbox_m)
     w = max(FOOTPRINT_MIN_M, float(math.ceil(x1 - x0 + FIT_MARGIN_M)))
@@ -209,13 +228,13 @@ def _turn(a: float, b: float) -> float:
     return (b - a + 180.0) % 360.0 - 180.0
 
 
-def move_words(was: dict | None, now: dict | None) -> str:
+def move_words(was: object, now: object) -> str:
     """``moved 1,503 m west, turned 30°`` and the like; "" when nothing readable moved."""
     old = Siting.from_record(was) if was else None
     new = Siting.from_record(now) if now else None
     if old is None or new is None:
         return ""
-    parts = []
+    parts: list[str] = []
     dist = math.hypot(new.x_m - old.x_m, new.y_m - old.y_m)
     if dist >= 0.5:
         way = geo.direction_of(new.x_m, new.y_m, old.x_m, old.y_m).replace("th", "th-", 1)
@@ -253,26 +272,30 @@ class Siting:
     #: stored: ``normalise_record`` owns the record, and this and ``terrain`` live for one reply.
     z_source: str = ""
     #: The heightfield's reading of the site, beside whatever z won; see ``terrain_z``.
-    terrain: dict | None = None
+    terrain: TerrainZ | None = None
 
     @classmethod
-    def from_record(cls, raw) -> Siting | None:
+    def from_record(cls, raw: object) -> Siting | None:
         """The siting a stored record describes, or None -- absence is ordinary, not an error."""
-        if not isinstance(raw, dict) or not raw.get("origin_m"):
+        if not isinstance(raw, dict):
             return None
-        origin = list(raw["origin_m"]) + [None, None, None]
-        fp = list(raw.get("footprint_m") or ()) + [0.0, 0.0]
+        record: Mapping[str, object] = raw
+        origin_m = record.get("origin_m")
+        if not origin_m:
+            return None
+        origin = [*_listed(origin_m), None, None, None]
+        fp = [*_listed(record.get("footprint_m") or ()), 0.0, 0.0]
         try:
             return cls(
-                x_m=float(origin[0]),
-                y_m=float(origin[1]),
-                z_m=None if origin[2] is None else float(origin[2]),
-                yaw_deg=float(raw.get("yaw_deg") or 0.0),
-                width_m=float(fp[0] or 0.0),
-                depth_m=float(fp[1] or 0.0),
-                source=str(raw.get("footprint_source") or ""),
-                origin_label=str(raw.get("origin_label") or ""),
-                when=str(raw.get("when") or ""),
+                x_m=_float(origin[0]),
+                y_m=_float(origin[1]),
+                z_m=None if origin[2] is None else _float(origin[2]),
+                yaw_deg=_float(record.get("yaw_deg") or 0.0),
+                width_m=_float(fp[0] or 0.0),
+                depth_m=_float(fp[1] or 0.0),
+                source=str(record.get("footprint_source") or ""),
+                origin_label=str(record.get("origin_label") or ""),
+                when=str(record.get("when") or ""),
             )
         except (TypeError, ValueError):
             # A hand-edited record that no longer parses reads as "not sited" rather than as
@@ -316,7 +339,8 @@ class Siting:
             return self.origin_label.split(" = ", 1)[1]
         return self.origin_label
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> JsonObject:
+        """The record ``normalise_record`` would store, as JSON."""
         return {
             "schema": SITING_SCHEMA,
             "origin_m": [self.x_m, self.y_m, self.z_m],
@@ -345,17 +369,19 @@ class Siting:
         t = self.terrain
         if not t:
             return None
-        if t.get("z_m") is None:
+        z = t.get("z_m")
+        if z is None:
             return f"terrain z: none -- {t.get('reason') or 'no data'}"
         cave_pct = t.get("cave_pct")
         acc = t.get("accuracy_m")
         parts = [
-            f"terrain z {t['z_m']:g}m ({t.get('surface', 'ground')}, {t.get('provenance')}"
+            f"terrain z {z:g}m ({t.get('surface', 'ground')}, {t.get('provenance')}"
             + (f", +-{acc:g}m" if isinstance(acc, (int, float)) else "")
             + ")"
         ]
-        if t.get("z_min_m") is not None:
-            parts.append(f"pad {t['z_min_m']:g}..{t['z_max_m']:g}m")
+        z_min = t.get("z_min_m")
+        if z_min is not None:
+            parts.append(f"pad {z_min:g}..{t.get('z_max_m'):g}m")
         if t.get("ambiguous"):
             bare = t.get("bare_m")
             parts.append(
@@ -370,10 +396,12 @@ class Siting:
             parts.append(f"a cave lies under {cave_pct:g}% of the pad: z is the surface above it")
         if t.get("coarse"):
             parts.append("coarse fill layer, metre-level")
-        if t.get("water_level_m") is not None:
-            parts.append(f"water surface {t['water_level_m']:g}m")
-        if t.get("hint_from"):
-            parts.append(f"surface picked by the {t['hint_from']} z {t['hint_m']:g}m")
+        water = t.get("water_level_m")
+        if water is not None:
+            parts.append(f"water surface {water:g}m")
+        hint_from = t.get("hint_from")
+        if hint_from:
+            parts.append(f"surface picked by the {hint_from} z {t.get('hint_m'):g}m")
         if self.z_source and self.z_source != "terrain":
             parts.append(f"z kept from {self.z_source}")
         return "; ".join(parts)
@@ -396,6 +424,6 @@ class Siting:
         return abs(local_x) <= self.width_m / 2 + 1e-9 and abs(local_y) <= self.depth_m / 2 + 1e-9
 
 
-def parse(plan: Plan) -> Siting | None:
+def parse(plan: StoredPlan) -> Siting | None:
     """The siting a stored plan carries, or None -- absence is ordinary, not an error."""
     return Siting.from_record(getattr(plan, "siting", None))

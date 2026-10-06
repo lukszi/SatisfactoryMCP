@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING
 
 from ....core.gamedata.model import GameData
 from ...spatial.places import PLAYER_WORDS, resolve_place
-from .ground import INSTALLED_FIELD, settle_z
+from .ground import INSTALLED_FIELD, TerrainField, settle_z
 from .record import Siting, parse
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only matters for type checkers
     from ...world.state import WorldState
+    from ..solver.model import Solution
 
 
 def parse_footprint(text: str) -> tuple[float, float]:
@@ -92,7 +93,7 @@ def _sited(
     *,
     yaw_deg: float,
     when: str,
-    terrain_field: Any,
+    terrain_field: TerrainField,
 ) -> Siting:
     """The siting at ``at``; a blank ``footprint`` asks ``blank_footprint`` for (w, d, source)."""
     x_m, y_m, z_m, label = resolve_site_origin(st, at)
@@ -120,7 +121,7 @@ def resolve_plan_site(
     footprint: str = "",
     when: str = "",
     *,
-    terrain_field: Any = INSTALLED_FIELD,
+    terrain_field: TerrainField = INSTALLED_FIELD,
 ) -> Siting:
     """A site for a plan being BUILT, resolved before there is a solution to size it from.
 
@@ -139,7 +140,17 @@ def resolve_plan_site(
     )
 
 
-def _layout_side(game: GameData, st: WorldState, solution, plan_kwargs: dict | None) -> float:
+def _rate(given: object, fallback: float) -> float:
+    """A stored belt or pipe rate, else the save's fastest tier."""
+    return float(given) if isinstance(given, int | float) and given else fallback
+
+
+def _layout_side(
+    game: GameData,
+    st: WorldState,
+    solution: Solution | None,
+    plan_kwargs: Mapping[str, object] | None,
+) -> float:
     """The side of the square ``plan_layout`` budgets for this plan, solving it if needed."""
     sol = solution
     if sol is None:
@@ -152,7 +163,7 @@ def _layout_side(game: GameData, st: WorldState, solution, plan_kwargs: dict | N
                 f"({prepared.failure.headline}). Pass footprint='WxD' in metres instead"
             )
         sol = prepared.solution
-    if not getattr(sol, "processes", None):
+    if sol is None or not sol.processes:
         raise ValueError(
             "cannot derive a footprint from an empty plan -- pass footprint='WxD' in metres"
         )
@@ -164,8 +175,8 @@ def _layout_side(game: GameData, st: WorldState, solution, plan_kwargs: dict | N
     lay = build_layout(
         game,
         sol,
-        belt_ipm=kwargs.get("belt_ipm") or tiers.belt_ipm,
-        pipe_m3min=kwargs.get("pipe_m3min") or tiers.pipe_m3min,
+        belt_ipm=_rate(kwargs.get("belt_ipm"), tiers.belt_ipm),
+        pipe_m3min=_rate(kwargs.get("pipe_m3min"), tiers.pipe_m3min),
     )
     side = lay.site_side_m()
     if side <= 0:
@@ -183,10 +194,10 @@ def build_siting(
     at: str,
     yaw_deg: float = 0.0,
     footprint: str = "",
-    solution=None,
-    plan_kwargs: dict | None = None,
+    solution: Solution | None = None,
+    plan_kwargs: Mapping[str, object] | None = None,
     when: str = "",
-    terrain_field: Any = INSTALLED_FIELD,
+    terrain_field: TerrainField = INSTALLED_FIELD,
 ) -> Siting:
     """Turn tool arguments into a Siting, deriving the footprint when none was given.
 

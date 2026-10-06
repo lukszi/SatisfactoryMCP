@@ -18,6 +18,7 @@ from ...power.views import PowerReport
 from ...world.state import WorldState
 from ..solver.prepare import PreparedPlan, prepare
 from ..stored.planlog import PlanState
+from .diff import solution_of
 from .diff_service import DEFAULT_HEADROOM, diff_in_scope, resolve_headroom
 from .stages import Tracking, track
 from .startup import Commissioning, commission
@@ -42,7 +43,7 @@ class CommissionReport:
     headroom_source: str = ""
     #: Built extractors already feeding running generators. Only computed for a
     #: sequence that exists, since it is advice about following one.
-    live_feeders: list[tuple[str, float]] = field(default_factory=list)
+    live_feeders: list[tuple[str, float]] = field(default_factory=list[tuple[str, float]])
     #: The same waves matched against the save, only for a stored plan.
     tracking: Tracking | None = None
     #: Where the stored plan's built machines were found.
@@ -86,7 +87,7 @@ def build_commission_report(
         # moment the plan has least headroom to spare. Read from the save's own
         # connections rather than assumed, and only PROVEN-running generators are charged.
         report.live_feeders = live_feeders(g, st)
-    if stored is not None and prepared.solution.processes:
+    if stored is not None and solution_of(prepared).processes:
         try:
             diff, _ = diff_in_scope(g, st, prepared, None, biomass, stored=stored)
         except SelectorError:
