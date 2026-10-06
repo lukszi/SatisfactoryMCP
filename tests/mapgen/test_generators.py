@@ -94,12 +94,15 @@ from mapgen.terrain.fill import (
 )
 from mapgen.terrain.measure import SEAM_MID, SEAM_SWITCH_CEILING, RegimeCoverage, SeamTrace
 from mapgen.terrain.rasters import (
+    PreparedPlacement,
+    TopItems,
     direct_placements,
     pixel_coverage,
     rasterise_direct_band,
     rasterise_top_band,
     reduce_direct,
 )
+from mapgen.terrain.render_meshes import InstanceSpans
 from mapgen.terrain.sample import direct_mask, sample_surface, taps_cubic, taps_linear, taps_pchip
 from mapgen.tiles import artwork_output
 from mapgen.tiles import sidecar as render_sidecar
@@ -841,7 +844,7 @@ def test_the_direct_pass_drops_what_the_field_drops_and_counts_it_the_same():
     field = rasterise_cliffs(sweep, {m: (*g, *bounds) for m, g in geometry.items()}, frame, False)
     want = {"owner": 1, "excluded_mesh": 1, "no_geometry": 1, "arch": 1, "oversize": 1}
     assert dropped == field["dropped"] == want
-    assert [entry[0] for entry in prepared] == [rock + "Slab"] and field["placements_used"] == 1
+    assert [entry.mesh for entry in prepared] == [rock + "Slab"] and field["placements_used"] == 1
 
 
 class _TerrainField(_Field):
@@ -912,22 +915,21 @@ def test_the_top_overlay_raises_the_ground_smoothly_and_lands_on_pixel_centres()
     up = numpy.array([[0, 1, 2], [0, 2, 3]], numpy.int64)
     matrix = numpy.eye(4, dtype=numpy.float32)
     matrix[3, :3] = (1000.0, 0.0, 0.0)
-    items = {
-        "arches": [
-            (
-                "Arc",
-                0,
-                numpy.eye(3, dtype=numpy.float32),
-                numpy.ones(3, numpy.float32),
-                numpy.array([3000.0, 0.0, 200.0], numpy.float32),
-                0.0,
-                0.0,
-                100.0,
-            )
-        ],
-        "boulders": {"Boulder": (matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
-        "shapes": {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
-    }
+    arch = PreparedPlacement(
+        "Arc",
+        0,
+        numpy.eye(3, dtype=numpy.float32),
+        numpy.ones(3, numpy.float32),
+        numpy.array([3000.0, 0.0, 200.0], numpy.float32),
+        0.0,
+        0.0,
+        100.0,
+    )
+    items = TopItems(
+        [arch],
+        {"Boulder": InstanceSpans(matrix[None], numpy.array([-200.0]), numpy.array([200.0]))},
+        {"Arc": (flat, up[:, ::-1].copy()), "Boulder": (flat, up)},
+    )
     band = rasterise_top_band(items, 0.0, 0.0, step_cm, 4, 160, 1)
     z_cm, cover = reduce_direct(band, 4, 160, 1)
     first = int(numpy.ceil(1000.0 / step_cm - 0.5))

@@ -11,14 +11,26 @@ import os
 import struct
 import threading
 from collections import OrderedDict
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Self
+from types import ModuleType
+from typing import Self, TypeAlias
 
 import numpy as np
+from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-__all__ = ["BAND_ROWS", "CACHED_BANDS", "ZSTD_LEVEL", "BandArray", "BandStoreError", "BandWriter"]
+from satisfactory_mcp.core.arrays import I64Grid
+
+__all__ = [
+    "BAND_ROWS",
+    "CACHED_BANDS",
+    "ZSTD_LEVEL",
+    "BandArray",
+    "BandKey",
+    "BandStoreError",
+    "BandWriter",
+]
 
 BAND_ROWS = 256
 ZSTD_LEVEL = 1
@@ -27,18 +39,25 @@ MAGIC = b"MGBANDS1"
 #: magic, rows, cols, band rows, dtype string, offset table bytes.
 TRAILER = struct.Struct("<8sqqq8sq")
 
+#: A plane's rows or columns: one, a slice, or a gather by index list, index array or mask.
+AxisKey: TypeAlias = int | np.integer | slice | list[int] | NDArray[np.integer] | NDArray[np.bool_]
+#: What ``BandArray`` takes: rows, then optionally columns.
+BandKey: TypeAlias = AxisKey | tuple[AxisKey] | tuple[AxisKey, AxisKey]
+
 
 class BandStoreError(ValueError):
     """A band file that is truncated, of another shape or type, or fails a frame checksum."""
 
 
-def _shuffle(band: np.ndarray) -> bytes:
+def _shuffle(band: NDArray[np.generic]) -> bytes:
     if band.itemsize == 1:
         return band.tobytes()
     return band.view(np.uint8).reshape(-1, band.itemsize).T.tobytes()
 
 
-def _unshuffle(raw: bytes, dtype: np.dtype, rows: int, cols: int) -> np.ndarray:
+def _unshuffle(
+    raw: bytes, dtype: np.dtype[np.generic], rows: int, cols: int
+) -> NDArray[np.generic]:
     flat = np.frombuffer(raw, np.uint8)
     if dtype.itemsize == 1:
         return flat.view(dtype).reshape(rows, cols)
@@ -47,13 +66,19 @@ def _unshuffle(raw: bytes, dtype: np.dtype, rows: int, cols: int) -> np.ndarray:
     return out.view(dtype).reshape(rows, cols)
 
 
+def _is_axis_key(part: object) -> bool:
+    return part is not Ellipsis and part is not None
+
+
 class BandWriter:
     """Writes a plane top to bottom, ``band_rows`` at a time; ``close`` commits it to disk."""
 
-    def __init__(self, path, shape, dtype, band_rows: int = BAND_ROWS, level: int = ZSTD_LEVEL):
+    def __init__(self, path: Path | str, shape: tuple[int, int], dtype: DTypeLike,
+                 band_rows: int = BAND_ROWS, level: int = ZSTD_LEVEL) -> None:  # fmt: skip
         import zstandard
 
-        self.path, self.dtype = Path(path), np.dtype(dtype)
+        self.path = Path(path)
+        self.dtype: np.dtype[np.generic] = np.dtype(dtype)
         self.shape = (int(shape[0]), int(shape[1]))
         self.band_rows = int(band_rows)
         self._zc = zstandard.ZstdCompressor(
@@ -63,7 +88,7 @@ class BandWriter:
         self._offsets = [0]
         self.next_row = 0
 
-    def write(self, top: int, band) -> None:
+    def write(self, top: int, band: ArrayLike) -> None:
         band = np.ascontiguousarray(band, dtype=self.dtype)
         rows = band.shape[0]
         whole = rows == self.band_rows or (
@@ -101,7 +126,7 @@ class BandWriter:
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, kind, *_rest) -> None:
+    def __exit__(self, kind: type[BaseException] | None, *_rest: object) -> None:
         if kind is None:
             self.close()
         elif not self._file.closed:
@@ -112,26 +137,29 @@ class BandArray:
     """A read-only plane decoded a band at a time, the last ``keep`` bands kept.
 
     Indexing takes a row, a row slice, an integer array of rows, and any column index after
-    them. ``on_corrupt`` is called before a corrupt band raises. Threads may share one: the
-    cache and the decoder are behind a lock.
+    them; a row and a column give a 0-d array. ``on_corrupt`` is called before a corrupt band
+    raises. Threads may share one: the cache and the decoder are behind a lock.
     """
 
     ndim = 2
 
-    def __init__(self, path, shape, dtype, keep: int = CACHED_BANDS,
-                 on_corrupt: Callable[[], None] | None = None):  # fmt: skip
+    def __init__(self, path: Path | str, shape: tuple[int, int], dtype: DTypeLike,
+                 keep: int = CACHED_BANDS,
+                 on_corrupt: Callable[[], None] | None = None) -> None:  # fmt: skip
         import zstandard
 
-        self.path, self.dtype = Path(path), np.dtype(dtype)
+        self.path = Path(path)
+        self.dtype: np.dtype[np.generic] = np.dtype(dtype)
         self.shape = (int(shape[0]), int(shape[1]))
         self.keep, self.on_corrupt = keep, on_corrupt
-        self._zstd, self._zd = zstandard, zstandard.ZstdDecompressor()
-        self._cache: OrderedDict[int, np.ndarray] = OrderedDict()
+        self._zstd: ModuleType = zstandard
+        self._zd = zstandard.ZstdDecompressor()
+        self._cache: OrderedDict[int, NDArray[np.generic]] = OrderedDict()
         self._lock = threading.Lock()
         self.band_rows, self._offsets = self._read_table()
 
     @contextmanager
-    def holding(self, bands: int) -> Iterator[Self]:
+    def holding(self, bands: int) -> Generator[Self]:
         """Keep at least ``bands`` decoded inside the block, and as many as before after it."""
         before = self._resize(max(self.keep, int(bands)))
         try:
@@ -146,16 +174,17 @@ class BandArray:
                 self._cache.popitem(last=False)
             return before
 
-    def _read_table(self) -> tuple[int, np.ndarray]:
+    def _read_table(self) -> tuple[int, I64Grid]:
         with open(self.path, "rb") as f:
             end = f.seek(0, os.SEEK_END)
             if end < TRAILER.size:
                 raise BandStoreError(f"{self.path} is too short to be a band file")
             f.seek(end - TRAILER.size)
-            magic, rows, cols, band_rows, dtype, table = TRAILER.unpack(f.read(TRAILER.size))
+            fields: tuple[bytes, int, int, int, bytes, int] = TRAILER.unpack(f.read(TRAILER.size))
+            magic, rows, cols, band_rows, dtype_raw, table = fields
             if magic != MAGIC:
                 raise BandStoreError(f"{self.path} is not a band file, or its end is missing")
-            dtype = dtype.rstrip(b"\0").decode("ascii", "replace")
+            dtype = dtype_raw.rstrip(b"\0").decode("ascii", "replace")
             if (rows, cols) != self.shape or dtype != self.dtype.str or band_rows < 1:
                 raise BandStoreError(
                     f"{self.path} holds a {rows}x{cols} {dtype} plane in bands of {band_rows}, "
@@ -165,7 +194,7 @@ class BandArray:
             if table % 8 or start < 0:
                 raise BandStoreError(f"{self.path}: the band table is damaged")
             f.seek(start)
-            offsets = np.frombuffer(f.read(table), "<i8")
+            offsets: I64Grid = np.frombuffer(f.read(table), "<i8")
         bands = -(-rows // band_rows)
         if (
             offsets.size != bands + 1
@@ -179,15 +208,20 @@ class BandArray:
     def __len__(self) -> int:
         return self.shape[0]
 
-    def __array__(self, dtype=None, copy=None) -> np.ndarray:
+    def __array__(
+        self, dtype: DTypeLike | None = None, copy: bool | None = None
+    ) -> NDArray[np.generic]:
+        """The whole plane decoded: always a new array, so ``copy=False`` is refused."""
+        if copy is False:
+            raise ValueError("a band array is decoded into a new array; it has no view to share")
         whole = self[:]
         return whole if dtype is None else whole.astype(dtype)
 
-    def _band(self, k: int) -> np.ndarray:
+    def _band(self, k: int) -> NDArray[np.generic]:
         with self._lock:
             return self._decoded(k)
 
-    def _decoded(self, k: int) -> np.ndarray:
+    def _decoded(self, k: int) -> NDArray[np.generic]:
         hit = self._cache.get(k)
         if hit is not None:
             self._cache.move_to_end(k)
@@ -216,20 +250,18 @@ class BandArray:
             self._cache.popitem(last=False)
         return band
 
-    def _span(self, r0: int, r1: int) -> np.ndarray:
+    def _span(self, r0: int, r1: int) -> NDArray[np.generic]:
         if r1 <= r0:
             return np.empty((0, self.shape[1]), self.dtype)
         k0, k1 = r0 // self.band_rows, (r1 - 1) // self.band_rows
-        parts = []
+        parts: list[NDArray[np.generic]] = []
         for k in range(k0, k1 + 1):
             top = k * self.band_rows
             parts.append(self._band(k)[max(r0, top) - top : min(r1, top + self.band_rows) - top])
         return parts[0] if len(parts) == 1 else np.concatenate(parts)
 
-    def _gather(self, idx: np.ndarray) -> np.ndarray:
-        if idx.dtype == bool:
-            idx = np.flatnonzero(idx)
-        idx = idx.astype(np.int64)
+    def _gather(self, rows: NDArray[np.integer] | NDArray[np.bool_]) -> NDArray[np.generic]:
+        idx = (np.flatnonzero(rows) if rows.dtype == bool else rows).astype(np.int64)
         if idx.ndim != 1:
             raise IndexError("a band array's rows are picked by a 1-D index")
         idx = np.where(idx < 0, idx + self.shape[0], idx)
@@ -242,16 +274,16 @@ class BandArray:
             out[sel] = self._band(int(k))[idx[sel] - int(k) * self.band_rows]
         return out
 
-    def __getitem__(self, key) -> np.ndarray:
-        key = key if isinstance(key, tuple) else (key,)
-        if not 1 <= len(key) <= 2 or any(k is Ellipsis or k is None for k in key):
+    def __getitem__(self, key: BandKey) -> NDArray[np.generic]:
+        parts = key if isinstance(key, tuple) else (key,)
+        if not 1 <= len(parts) <= 2 or not all(map(_is_axis_key, parts)):
             raise IndexError("a band array takes a row index and an optional column index")
-        rows, cols = key if len(key) == 2 else (key[0], slice(None))
+        rows, cols = (parts[0], parts[1]) if len(parts) == 2 else (parts[0], slice(None))
         if isinstance(rows, slice):
             r0, r1, step = rows.indices(self.shape[0])
             out = self._span(r0, r1) if step == 1 else self._gather(np.arange(r0, r1, step))
         elif np.ndim(rows) == 0:
-            row = operator.index(rows)
+            row = operator.index(np.asarray(rows).item())
             row = row + self.shape[0] if row < 0 else row
             if not 0 <= row < self.shape[0]:
                 raise IndexError(f"row {rows} is outside 0..{self.shape[0] - 1}")

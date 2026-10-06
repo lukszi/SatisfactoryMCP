@@ -48,7 +48,13 @@ from mapgen.palette.painted.ground import (
 )
 from mapgen.palette.styles import PAINTED_DIGEST, PAINTED_PALETTE, painted_style
 from mapgen.terrain.rasters import direct_placements, rasterise_direct_band, reduce_source
-from mapgen.terrain.render_meshes import TITAN_LEAVES, TITAN_TRUNK, mesh_pass, titan_class
+from mapgen.terrain.render_meshes import (
+    TITAN_LEAVES,
+    TITAN_TRUNK,
+    PreparedMeshes,
+    mesh_pass,
+    titan_class,
+)
 from satisfactory_mcp.core.gameassets.versions import READER_VERSIONS
 from satisfactory_mcp.domain.maps.axes import INPUT_NAMES
 from satisfactory_mcp.domain.maps.presets import normalise
@@ -369,7 +375,7 @@ def test_a_mesh_raster_is_reused_when_its_stamp_matches(tmp_path, capsys):
 
     def build():
         calls.append(1)
-        return {"items": {}, "shapes": {}}, {"placements": {}}
+        return PreparedMeshes({}, {}), {"placements": {}}
 
     maps, source = mesh_pass(tmp_path / "titan.cache", 16, "b1", "titan_trees", build, "t", True)
     assert maps is not None and calls == [1] and "raster" in source["titan_trees"]
