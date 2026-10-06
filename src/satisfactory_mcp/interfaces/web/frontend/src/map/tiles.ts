@@ -1,12 +1,12 @@
 /* The base map: which picture of this world everything else stands on.
  *
- * The MODES are the map types of the registry (`/api/maps`, held by mapstore.ts) that are
+ * The MODES are the map types of the registry (`/api/maps`, held by map-types.ts) that are
  * ticked for the switcher, plus plain, which is no imagery at all and is the shipped state
  * rather than an error. Every pyramid is cut on the same frame, at the same tile size, into
  * the same grid, so a mode is at most one L.TileLayer against
  * `/api/maptiles/{id}/{z}/{x}/{y}` and a switch changes one path segment and nothing else.
  * Each pyramid does declare its own DEPTH, so `maxNativeZoom` comes from that layer's own
- * probe headers. `onModePick` is the seam to layercontrol.ts, which draws the radios and
+ * probe headers. `onModePick` is the seam to layercontrol/control.ts, which draws the radios and
  * knows nothing about tiles; the arrow points this way because an import back would be a ring.
  */
 
@@ -419,7 +419,7 @@ function probeMapImage(spec: ModeSpec): Promise<void> {
     });
 }
 
-/** The rows layercontrol.ts draws, rebuilt from the probes every time anything changes. */
+/** The rows layercontrol/control.ts draws, rebuilt from the probes every time anything changes. */
 function modeChoices(): ModeChoice[] {
   return MODES.map(function (spec): ModeChoice {
     var ready = spec.key === "plain" || !!makers[spec.key];

@@ -29,7 +29,7 @@ import type { CrateRow, CratesResponse } from "../../api/shapes";
  * open terrain at world zoom, and that is the zoom this layer has to work at. */
 var CRATE_COLOUR = declareColours("crates", { crates: "#3fcc94" }).crates;
 
-/* The glyph's box, in screen PIXELS, for the reason power.ts gives for its poles: the
+/* The glyph's box, in screen PIXELS, for the reason power-wires.ts gives for its poles: the
  * question a crate mark answers is "is there one here", not "does this fit", and a true-size
  * 2 m prop would be 0.28 px at the world view. 13 px is the size of the floor connectors'
  * arrows, which are the page's other fixed glyph that has to be CLICKED rather than merely

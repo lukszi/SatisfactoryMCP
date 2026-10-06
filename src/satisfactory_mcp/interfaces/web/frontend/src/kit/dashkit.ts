@@ -1,4 +1,4 @@
-/* The dashboard's building blocks, shared by dashboard.ts and the sections split out of it. */
+/* The dashboard's building blocks, shared by dash/shell.ts and the sections split out of it. */
 
 import "./dashkit.css";
 import { COPY_ATTR, COPY_CLASS, count, make } from "./dom";

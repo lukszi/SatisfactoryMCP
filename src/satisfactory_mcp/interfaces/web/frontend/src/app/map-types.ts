@@ -1,5 +1,5 @@
 /* The map type registry as the page holds it: `/api/maps`, fetched at boot and again whenever
- * a `maps` event says the registry moved. The switcher (tiles.ts) and the Maps tab (maps.ts)
+ * a `maps` event says the registry moved. The switcher (tiles.ts) and the Maps tab (settings-maps.ts)
  * both read it here, so neither imports the other. docs/maps_contract.md §6. */
 
 import { get } from "../api/client";

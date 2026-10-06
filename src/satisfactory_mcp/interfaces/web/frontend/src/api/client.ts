@@ -2,7 +2,7 @@
  *
  * `world` and `save` are not per-call arguments -- they are the page's current selection, so
  * a caller that spelled them itself could drift from the picker. `get` is generic over the
- * response and the caller supplies the type, which comes from api-shapes.ts; the PATH comes
+ * response and the caller supplies the type, which comes from api/shapes.ts; the PATH comes
  * from the server's own generated schema, so a typo in a URL is a compile error rather than a
  * toast at runtime. Requests that read headers, carry no world, or are made by the browser
  * as images do not come through here.
@@ -19,7 +19,7 @@ export type ApiPath = keyof paths;
  * carries, because a handler that fails returns a JSONResponse, which SKIPS its own response
  * model -- so the document has no way to know the branch exists. It is the frontend's claim
  * about the whole surface and lives here, in the module that turns it into a throw, rather
- * than in api-shapes.ts where everything else resolves to a generated component.
+ * than in api/shapes.ts where everything else resolves to a generated component.
  *
  * Its members are all optional: `get` is generic over `T extends ApiError`, and a body type
  * with no `error` field at all would not be assignable to a required one. */

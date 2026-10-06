@@ -63,7 +63,7 @@ var chosen = false;
 /* Programmatic ticks are not decisions, and there is no way to tell them apart afterwards:
  * Leaflet fires `overlayadd` from the LAYER's own add event, so `map.addLayer(group)` is
  * indistinguishable from a click by the time the event arrives. The flag is the same trick
- * `setSection` uses in layercontrol.ts for the same reason. */
+ * `setSection` uses in layercontrol/control.ts for the same reason. */
 var applying = false;
 
 /* ...and nothing at all counts before the modes exist. `drawRegions` adds the group to the map

@@ -4,7 +4,7 @@ The rules every router in `interfaces/web/routers/` lives by. They are stated on
 routers point at this file instead of re-telling them.
 
 1. **The function name is the operation_id.** FastAPI's default id is
-   `{function_name}_{path}_{method}` and `frontend/src/api-schema.d.ts` is generated from
+   `{function_name}_{path}_{method}` and `frontend/src/api/schema.d.ts` is generated from
    it — renaming a handler churns the committed schema.
 2. **Declaration order is wire order** for every `TypedDict` a `response_model` names: the
    keys are emitted in the order they are declared.
@@ -17,14 +17,14 @@ routers point at this file instead of re-telling them.
 5. **A router never imports another router.** Shared shapes live in `serial.py` only when
    one function builds them for more than one router; two shapes that merely look alike stay
    separate. Enforced by `tests/test_architecture.py`.
-6. **Regenerate, never hand-edit** `api-schema.d.ts`: throwaway server on a port in
+6. **Regenerate, never hand-edit** `api/schema.d.ts`: throwaway server on a port in
    8920–8999, then `npm run typegen -- <port>` (`scripts/typegen.mjs`: `openapi-typescript`
    against that port, then `scripts/stamp-schema.mjs`). Without an argument it reads
    `SATISFACTORY_WEB_PORT`, then falls back to 8712.
 7. **A write says what it refuses, in the schema.** A request body is a `TypedDict` taken as
    `Annotated[Body, Body()]` (routers may not import pydantic), and every non-2xx body the page
    branches on is declared with `responses={409: {"model": ...}}`, so it reaches
-   `api-schema.d.ts` like a 200 does. The planner routes (`routers/planlog.py`) answer a
+   `api/schema.d.ts` like a 200 does. The planner routes (`routers/planlog.py`) answer a
    conflict with `OutdatedResponse` and never apply part of a push. The server stamps the
    actor (`page`, its own pid); the page never sends one.
 
@@ -124,7 +124,7 @@ naming the pins, not the path. Pin numbers are never reused.
 `PlanOpBody` lives in `serial.py` because two routers publish it (`planlog` for pushes,
 `planner` for the ops an alternates option would push). The alternates route's reply is
 named `PlanAlternatesResponse` because `routers/gamedata.py` already publishes an
-`AlternatesResponse` and two models with one name would rename both in `api-schema.d.ts`.
+`AlternatesResponse` and two models with one name would rename both in `api/schema.d.ts`.
 
 `Flow`, `MachineSpot` and their builders `_flow` and `_machine_spots` live in `serial.py`
 because `routers/naming.py` (candidates, amend) and `routers/factory_graph.py` (`/api/factories/graph`,

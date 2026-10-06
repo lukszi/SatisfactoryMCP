@@ -360,7 +360,7 @@ select {
   scrollbar-gutter: stable;
 }
 
-/* The control's folds -- see decorateControl() in layercontrol.ts. These rules match
+/* The control's folds -- see decorateControl() in layercontrol/control.ts. These rules match
    Leaflet's own stylesheet's specificity and win on order, which is the only reason no
    !important is needed; main.ts pins that order.
 
@@ -3625,7 +3625,7 @@ body.site-on #dash {
   }
 }
 
-/* Settings -> maps (maps.ts). One card per block; the type list stacks under 600 px. */
+/* Settings -> maps (settings-maps.ts). One card per block; the type list stacks under 600 px. */
 .maps-status-line,
 .maps-setup,
 .maps-job-head,

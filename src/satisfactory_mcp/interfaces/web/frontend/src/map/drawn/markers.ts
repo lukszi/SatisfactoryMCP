@@ -81,7 +81,7 @@ export var RESOURCE_COLOUR: Record<string, string> = declareColours("markers", {
   Desc_Geyser_C: "#d97b4f", // synthetic label; a geyser is a placement target, not an item
 });
 
-/* How big a node dot is, in pixels, by purity -- the grammar POLE_RADIUS_PX in power.ts calls
+/* How big a node dot is, in pixels, by purity -- the grammar POLE_RADIUS_PX in power-wires.ts calls
  * "is there one here": a fixed size, because the question a dot answers is whether there is a
  * node, not how much room it takes up. */
 var PURITY_RADIUS: Record<string, number> = { impure: 3, normal: 4.5, pure: 6 };

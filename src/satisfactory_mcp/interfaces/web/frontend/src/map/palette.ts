@@ -268,7 +268,7 @@ var DISCHARGED: Exception[] = [
       "published ramp -- moving it re-derives the house step every family here is measured " +
       "against.",
   },
-  /* Dark-tone values, drawn only over a dark base (tone.ts), where the belts' steel and a
+  /* Dark-tone values, drawn only over a dark base (map-tone.ts), where the belts' steel and a
    * light grey are both chosen to read against near-black ground. Each pair is a different
    * kind of mark: a 1 px X or a filled disc against a stroked run. docs/frontend_vision.md §19. */
   {

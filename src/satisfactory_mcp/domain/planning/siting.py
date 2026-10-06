@@ -191,7 +191,7 @@ def yaw_step(mode: str) -> float:
 def snap(
     x_m: float, y_m: float, yaw_deg: float, width_m: float, depth_m: float, mode: str = "fine"
 ) -> tuple[float, float, float]:
-    """The ``site_snap`` rule the page's drag also applies (``sitedrag.ts`` ``snap``).
+    """The ``site_snap`` rule the page's drag also applies (``pad-drag.ts`` ``snap``).
 
     ``fine`` rounds the centre to 1 m and yaw to 15°; ``grid8`` turns yaw to 90° and puts
     the pad's west and north edges on the 8 m world grid (a quarter turn swaps W and D).

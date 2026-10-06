@@ -36,7 +36,7 @@ export interface FloorMark {
    *   `pole`   -- a mark at one point; `x_m`/`y_m`/`z_m`, exactly like storage.
    *   `casing` -- the darker piece drawn under one of the other two. Same geometry, same
    *               answer, no popup and no glyph. Marked so the filter keeps a pair together
-   *               without having to know it is a pair. See drawPower in power.ts. */
+   *               without having to know it is a pair. See drawPower in power-wires.ts. */
   power?: "wire" | "pole" | "casing";
   /** The two ends of this piece in game metres, so a connector's glyph can be put on the
    *  end that is actually on this floor. `[x, y, z]`, the payload's own order. */
@@ -104,7 +104,7 @@ declare module "leaflet" {
      *
      * The casing under a power line, and nothing else on this page. A casing is a fixed rim
      * around a line whose own width follows the map, so the two cannot be added up once at
-     * the draw: styleRoutes re-adds this at every zoom. See WIRE_CASING_PX in power.ts. */
+     * the draw: styleRoutes re-adds this at every zoom. See WIRE_CASING_PX in power-wires.ts. */
     _widen?: number;
     /** The route this polyline was tessellated FROM, kept so it can be tessellated again at
      *  another scale: the drawn latlngs are an output and cannot be re-subdivided from

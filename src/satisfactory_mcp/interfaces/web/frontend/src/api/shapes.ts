@@ -1,7 +1,7 @@
 /* What the API sends, under the names the page uses -- one line per shape.
  *
  * THE POINT OF THIS FILE IS THAT IT HAS NO FIELDS IN IT. Every type below resolves to a
- * component of `api-schema.d.ts`, which is generated from the server's own `/openapi.json`;
+ * component of `api/schema.d.ts`, which is generated from the server's own `/openapi.json`;
  * a field spelled here would be a hand-written copy of a generated type.
  *
  * The indirection is what buys the page its own names. `components["schemas"]["…"]` at

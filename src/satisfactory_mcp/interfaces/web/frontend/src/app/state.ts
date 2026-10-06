@@ -16,7 +16,7 @@ import type * as L from "leaflet";
 
 import type { WorldRow } from "../api/shapes";
 
-/* The panel's fold state, which layercontrol.ts owns and sets. It survives a world switch for
+/* The panel's fold state, which layercontrol/control.ts owns and sets. It survives a world switch for
  * the same reason the checkboxes do: a switch replaces layer CONTENTS without rebuilding the
  * control or these flags. */
 export interface PanelState {
@@ -95,7 +95,7 @@ export var state: PageState = {
   epoch: 0,
   opened: Date.now(),
   // A placeholder so the field is never undefined, not a second declaration of the defaults:
-  // layercontrol.ts replaces it wholesale as it builds the control.
+  // layercontrol/control.ts replaces it wholesale as it builds the control.
   panel: { open: true, sections: {} },
   // "" and false until loadBaseMap has probed: the page has not chosen a mode yet, and
   // writeHash must not pin one it has not chosen.

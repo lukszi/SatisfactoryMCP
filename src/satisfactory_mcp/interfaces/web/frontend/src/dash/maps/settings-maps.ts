@@ -1,6 +1,6 @@
 /* Settings → maps: the map types, the job card, the generate form, and the default picker.
  *
- * The registry and its jobs come from mapstore.ts. A `maps` event that only moves a job
+ * The registry and its jobs come from map-types.ts. A `maps` event that only moves a job
  * redraws the job card in place, so the form keeps what was typed into it; a change to the
  * list redraws the tab. Every confirm is inline, never a browser dialog.
  * docs/maps_contract.md §6. */

@@ -100,9 +100,9 @@ this way: the page, another tab, or chat.
 
 ## 6. The page
 
-- `settings.ts` marks a shared entry with `shared: "<server name>"`. It keeps a mirror of the
+- `app/settings.ts` marks a shared entry with `shared: "<server name>"`. It keeps a mirror of the
   server's values in `localStorage`, so the first paint uses the last known value.
-- `shared-settings.ts` fetches `/api/settings` at boot and adopts it. Listeners hear only the
+- `app/shared-settings.ts` fetches `/api/settings` at boot and adopts it. Listeners hear only the
   settings that moved, so a changed value refetches exactly what it did before.
 - **Migration.** On the first boot after this change, a browser that had set a shared setting
   itself pushes that value with `only_unset: true`, only for keys the server has not

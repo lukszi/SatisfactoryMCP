@@ -4,7 +4,7 @@
  *
  * ITS OWN MODULE because applying a fragment means reaching the world picker, the base map
  * and the viewport, and no other file can reach all three: state.ts imports nothing, map.ts
- * is below tiles.ts in the graph, and worlds.ts is imported BY the loader it would have to
+ * is below tiles.ts in the graph, and world-picker.ts is imported BY the loader it would have to
  * call. This file sits above all of them and is imported only by main.ts.
  *
  * WHAT IT DOES NOT DO is decide anything. Every branch below ends in a call that is already

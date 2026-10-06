@@ -47,7 +47,7 @@ import type {
  * the coal dot at one end and No Man's Land at the other, and the teal side is Blue Crater and
  * Spire Coast). Measured: dE 18.1 from the nearest ground (Blue Crater), 17.9 from its nearest
  * cross-owner neighbour anywhere (that same coal dot), 24.7 from the nearest belt tone, and
- * 15.3 from the nearest of the six artwork tones binned in power.ts -- the one comparison
+ * 15.3 from the nearest of the six artwork tones binned in power-wires.ts -- the one comparison
  * REGION_BLEND does not soften, since the render is what shows through the fade. */
 var STRUCTURE_COLOUR = declareColours("placements", { foundations: "#545470" }).foundations;
 

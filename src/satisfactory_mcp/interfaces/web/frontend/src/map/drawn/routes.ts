@@ -5,9 +5,9 @@
  * run over them BY NAME: the pixel restyle on zoom, the sink that keeps a run from stealing a
  * machine's click, and the width table that is the only thing telling them apart.
  *
- * The power wires are drawn by power.ts and go through those same three passes: `power` is in
+ * The power wires are drawn by power-wires.ts and go through those same three passes: `power` is in
  * ROUTE_LAYERS and ROUTE_WIDTH_M at the bottom of this file. The import goes one way --
- * power.ts reads `sinkRoutes` from here and nothing here reads power.ts. */
+ * power-wires.ts reads `sinkRoutes` from here and nothing here reads power-wires.ts. */
 
 import { code, popup } from "../../kit/dom";
 import { L } from "../leaflet";
@@ -266,7 +266,7 @@ var ATTACHMENT_FALLBACK_M = 4;
 /* A route's stroke width, in pixels, from its width in the world. The one place the three
  * network layers agree completely.
  *
- * Exported for power.ts, with the two tables below, so the wires are drawn at their first width
+ * Exported for power-wires.ts, with the two tables below, so the wires are drawn at their first width
  * by the same expression the zoom pass restyles them with; two copies would be a layer that
  * changed thickness the first time anybody touched the map.
  *
@@ -372,7 +372,7 @@ export function drawBelts(data: BeltsResponse): void {
     if (!ring) runs.push(piece as L.Polyline);
   });
   // On a light base mid steel sinks into bare ground, so runs get the power wires' casing; added
-  // after every core so sinkRoutes puts it underneath. See power.ts, CASED LINES.
+  // after every core so sinkRoutes puts it underneath. See power-wires.ts, CASED LINES.
   if (tone() === "light") {
     runs.forEach(function (run) {
       var cased = L.polyline(run.getLatLngs() as L.LatLng[], {
@@ -472,7 +472,7 @@ export function styleRoutes() {
       } else if (!(piece instanceof L.Polygon)) {
         // `_widen` is a casing's fixed rim in SCREEN pixels around a line whose own width
         // follows the scale, so the two have to be recombined at every zoom or the rim grows
-        // with the map and stops being a rim. Only power.ts sets it.
+        // with the map and stops being a rim. Only power-wires.ts sets it.
         piece.setStyle({ weight: weight + (piece._widen || 0) });
         // And the geometry, not just the stroke: the zoom that changes the width is the zoom
         // that changes how many pieces a bend is worth.
@@ -502,7 +502,7 @@ export function styleRoutes() {
  * where bauxite is refined -- so the network went darker instead of brighter. Still warm where
  * the belts are cool. Measured against the current full table: dE 27.4 from the bauxite dot,
  * 28.7 from the stopped red, 30.1 from the nearest ground (Red Bamboo Fields), 49.0 from the
- * nearest of the artwork tones binned in power.ts, and 102.1 from the extractor ultramarine. */
+ * nearest of the artwork tones binned in power-wires.ts, and 102.1 from the extractor ultramarine. */
 var PIPE_COLOUR = declareColours("routes", { pipes: "#7d221a" }).pipes;
 
 /* The two tier tones, one step of value either side of PIPE_COLOUR -- which stays the middle
@@ -744,7 +744,7 @@ registerFetch<PipesResponse>({
  * A POWER POLE IS THE SAME CASE AS A SPLITTER, which is what `_fixed` buys here beyond the
  * restyle above: a pole sunk with the runs would be a mark under every line it terminates and a
  * popup nobody can open. Partitioned on the mark rather than on draw order, because draw order
- * is power.ts's business and this rule is not.
+ * is power-wires.ts's business and this rule is not.
  */
 export var ROUTE_LAYERS = ["belts", "pipes", "power"];
 
@@ -768,7 +768,7 @@ export var ROUTE_WIDTH_M: Record<string, number> = {
  * 2.5 px is the whole width rule for that layer rather than a lower bound on one: 0.2 m reaches
  * 2.5 px at 12.5 px to the metre and this map's maxZoom is worth 8.96, so a wire is at its
  * floor at EVERY zoom the page has. That puts a wire in the same grammar as the pole at its
- * end -- a MARK, sized to be seen, not a footprint. See POLE_RADIUS_PX in power.ts. */
+ * end -- a MARK, sized to be seen, not a footprint. See POLE_RADIUS_PX in power-wires.ts. */
 export var ROUTE_FLOOR_PX: Record<string, number> = {
   power: 2.5,
 };

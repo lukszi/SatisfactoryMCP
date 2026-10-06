@@ -164,7 +164,7 @@ def ids_for(keys) -> dict[str, str]:
 
 def capped(rows: list, visible: int = VISIBLE, per_kind: int = PER_KIND) -> tuple[list, list]:
     """``(shown, rest)``: the first rows a card shows, at most ``per_kind`` of one kind and
-    ``visible`` in all, keeping rank order. advice.ts applies the same rule."""
+    ``visible`` in all, keeping rank order. chat/advice.ts applies the same rule."""
     per: Counter = Counter()
     shown, rest = [], []
     for row in rows:
