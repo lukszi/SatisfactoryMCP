@@ -272,10 +272,10 @@ records, and a job record still names its `script`.
   cache leaves; `GET /api/maps` lists those sizes as `cached_sizes`. The generator's `--restyle`
   checks the stamps (size, sub-samples, build) itself and exits 9 rather than rebuilding a
   raster, so a palette change never turns into a full render. The plan drops the sweep, direct
-  and top stages: one full-size layer is prep plus draw and cut, about 8.5 min against about
-  37 min for a full two-layer render (§4.3), both without the light. With the light, the
-  default, a restyle bakes it again, budgeted at 10 min at full size, because the raster cache
-  does not keep it (§8.1). A restyle's history row is kept apart from full renders' when
+  and top stages: one full-size layer is prep plus draw and cut, about 7.5 min against about
+  29 min for a full two-layer render (§4.3), both without the light. With the light, the
+  default, a restyle bakes it again, budgeted at about 14 min at full size, because the raster
+  cache does not keep it (§8.1). A restyle's history row is kept apart from full renders' when
   scaling the next estimate.
 - The one write outside `data/local` is the pre-existing one: `--enhance` downloads the
   upscaler into the user cache folder once; the form says so.
@@ -301,9 +301,16 @@ and 2 GB more. Checked at the form, at submit and again at start.
 
 ### 4.3 Estimates
 
-From the stage seconds of one measured full render (prep 30, sweep 36, direct 692, top 119,
-draw 355 and cut 122 per layer), area-scaled, with the direct and top passes floored because
-the triangles are the same at any size. Once a job of the same preset and recipe, restyle or
+From the stage seconds of measured full renders, area-scaled, with the direct and top passes
+floored because the triangles are the same at any size: prep 30, sweep 36, direct 692 and
+top 119 (2026-10-05); per layer draw 340 and cut 73, and with the light a bake of 830 once
+and each layer's cut 1.8 times as long (2026-10-06). The 2026-10-06 figures are renders-v7's
+measured stages carried over the performance work of that day (spatial-and-map.md §17, §26,
+§29 and §40): the draw, 5,810 s for five layers, on 8 threads and less 12% for lean sampling,
+about 1,700 s; the light, 2,903 s, on 16 workers in strips; the cut of five lit layers,
+1,826 s, through one encode pool, about 660 s, before the PNG deflate level moved to 6. The
+cut without the light is that over 1.8, the share of pixels a layer encodes without its
+`unlit/` tree. Once a job of the same preset and recipe, restyle or
 not and light or not, has finished, its wall time scaled by area replaces the constants, and
 the form says "(from the last run)".
 

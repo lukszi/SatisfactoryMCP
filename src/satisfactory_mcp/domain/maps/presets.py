@@ -73,18 +73,23 @@ GEN_MODULES = ("ooz", "texture2ddecoder", "PIL", "zstandard")
 #: ``fixed`` stages do not scale with the sheet; the rest scale with its area, and ``direct``
 #: never drops under its floor because the triangles are the same at any size.
 RENDER_STAGE_S = {"prep": 30.0, "sweep": 36.0, "direct": 692.0, "top": 119.0}
-RENDER_LAYER_S = {"draw": 355.0, "cut": 122.0}
-#: ``--light``: the lighting bake once (projected, docs/spatial-and-map.md section 29), and per
-#: layer the unlit tree cut beside the baked one. The scratch is the light cache while it runs,
-#: and the crown occluder a painted layer adds to it, written once (section 29, "Scratch").
-LIGHT_STAGE_S = 600.0
+#: Per layer, from renders-v7's five lit layers and the 2026-10-06 performance work
+#: (docs/maps_contract.md section 4.3): the draw on 8 threads less lean sampling's 12%, and
+#: the parallel cut of a layer without the light.
+RENDER_LAYER_S = {"draw": 340.0, "cut": 73.0}
+#: ``--light``: the lighting bake once, on 16 workers (docs/spatial-and-map.md section 29), and
+#: per layer the unlit tree cut beside the baked one, ``LIGHT_CUT_FACTOR`` times the cut. The
+#: scratch is the light cache while it runs, and the crown occluder a painted layer adds to
+#: it, written once (section 29, "Scratch").
+LIGHT_STAGE_S = 830.0
+LIGHT_CUT_FACTOR = 1.8
 LIGHT_KEEP_BYTES = 1_000_000_000
-UNLIT_KEEP_BYTES = 420_000_000
+UNLIT_KEEP_BYTES = 450_000_000
 LIGHT_SCRATCH_BYTES = 14_500_000_000
 CROWN_SCRATCH_BYTES = 5_370_000_000
 DIRECT_FLOOR_S = 80.0
 TOP_FLOOR_S = 18.0
-RENDER_KEEP_BYTES = 830_000_000
+RENDER_KEEP_BYTES = 890_000_000
 RENDER_KEEP_FLOOR = 10_000_000
 #: The raster caches of one full render in the zstd band store: 0.93 GB measured, where the
 #: raw layout they replace was 18.5 GB (docs/spatial-and-map.md section 39).
@@ -184,7 +189,7 @@ def _render_seconds(options: dict) -> dict[str, float]:
         stages[f"draw:{layer}"] = RENDER_LAYER_S["draw"] * area + 2.0
         if options.get("light") and k == 0:
             stages["light"] = LIGHT_STAGE_S * area + 2.0
-        cut = RENDER_LAYER_S["cut"] * (1.5 if options.get("light") else 1.0)
+        cut = RENDER_LAYER_S["cut"] * (LIGHT_CUT_FACTOR if options.get("light") else 1.0)
         stages[f"cut:{layer}"] = cut * area + 2.0
     return stages
 

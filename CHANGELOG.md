@@ -55,7 +55,7 @@ Planned as 0.2.0.
 - Map renders bake the live-sun lighting by default, from `python -m mapgen renders` and from
   the Maps tab alike, so a new map can be relit for any sun. `--no-light`, or unticking
   "live sun", draws the hillshade into the colour as before. `--unlit`, the old opt-in, is
-  still accepted. With the light a full-size render is budgeted at about 10 minutes more and
+  still accepted. With the light a full-size render is budgeted at about 16 minutes more and
   needs 14.5 GB more scratch space.
 - Map generator: the light's scratch, `light.cache/`, is 5.4 GB smaller at full size with
   the painted layer, because the tree crowns are written once, where the bake reads them.
@@ -91,6 +91,9 @@ Planned as 0.2.0.
   seventh of the CPU for about 7% more bytes, and the light's lossless normal tiles at WebP
   effort 2 instead of 4, 2.6 times faster for about 6% more. The tiles decode to the same
   pixels; their files are not the same bytes as before.
+- The Maps tab's render estimate follows the faster draw, light bake and cut: a full-size
+  render of all five layers with the light is budgeted at about 68 minutes, the default two
+  layers at about 44.
 
 ### Deprecated
 
