@@ -39,8 +39,8 @@ carried on the path as `_widen`) and is re-added at every zoom, so the rim stays
 ## The table
 
 Nearest neighbour is the closest colour of any OTHER owner, as the audit computes it today.
-"Discharged" means the pair is listed in `DISCHARGED` in `palette.ts`; "standing" means it is on
-the debt list there, `STANDING`, which prints one warning at boot.
+"Discharged" means the pair is listed in `DISCHARGED` in `palette.ts`; "standing" would mean it
+is on the debt list there, `STANDING`, which prints one warning at boot and is empty.
 
 ### `markers` — node dots and the player (`drawn/markers.ts`)
 
@@ -50,15 +50,15 @@ the debt list there, `STANDING`, which prints one warning at boot.
 | `Desc_OreCopper_C` | `#e08a4b` | copper ore node | pickups/tape_pickup 15.0 | game tint |
 | `Desc_Stone_C` | `#cfcfcf` | limestone node | routes/belt fast 13.2, discharged | game tint |
 | `Desc_Coal_C` | `#4c4c4c` | coal node | regions/A 6.3, discharged with seven other grounds | game tint, near-black because coal is |
-| `Desc_OreGold_C` | `#e3c74a` | caterium node | pickups/power_slug_yellow 6.5, standing | game tint |
-| `Desc_Sulfur_C` | `#e8e35c` | sulfur node | pickups/power_slug_yellow 8.8, standing | game tint |
+| `Desc_OreGold_C` | `#e3c74a` | caterium node | pickups/power_slug_yellow 15.8 | game tint |
+| `Desc_Sulfur_C` | `#e8e35c` | sulfur node | pickups/power_slug_yellow 23.9 | game tint |
 | `Desc_RawQuartz_C` | `#e59ce0` | raw quartz node | power/wires 22.8 | game tint |
 | `Desc_OreBauxite_C` | `#b06a4a` | bauxite node | pickups/tape_pickup 18.4 | game tint; pipes run where bauxite is refined |
 | `Desc_OreUranium_C` | `#7ce07c` | uranium node | placements/generators 21.7 | game tint |
 | `Desc_LiquidOil_C` | `#6b4bb0` | crude oil node | placements/storage fluid 16.2 | game tint |
-| `Desc_NitrogenGas_C` | `#6ec5e0` | nitrogen node | pickups/power_slug_blue 4.6, standing | game tint |
+| `Desc_NitrogenGas_C` | `#6ec5e0` | nitrogen node | routes/belt fast 20.0 | game tint |
 | `Desc_Water_C` | `#3f8fd0` | water node | placements/machines 8.6, discharged | game tint |
-| `Desc_SAM_C` | `#b04bd0` | SAM node | pickups/power_slug_purple 8.0, standing | game tint |
+| `Desc_SAM_C` | `#b04bd0` | SAM node | map-highlight/highlight 27.6 | game tint |
 | `Desc_Geyser_C` | `#d97b4f` | geyser node (a placement target, not an item) | pickups/tape_pickup 15.3 | |
 | `coal dark` | `#8c8f96` | coal node on a dark base | routes/belt slow 6.1, discharged | near-black coal vanishes on a dark base |
 | `locked casing` | `#262040` | dark ring under a locked node's hollow dot | pickups/pickup collected 11.5, discharged | must read on every base |
@@ -69,13 +69,13 @@ the debt list there, `STANDING`, which prints one warning at boot.
 | key | hex | role | nearest cross-owner neighbour | constraint |
 | --- | --- | --- | --- | --- |
 | `somersloop` | `#d84378` | pickup | placements/stopped 28.3 | the rose the page's reds leave free |
-| `mercer_sphere` | `#b06ae0` | pickup | markers/Desc_SAM_C 13.5, standing | |
+| `mercer_sphere` | `#9f87ff` | pickup | markers/Desc_LiquidOil_C 24.4 | periwinkle: the violet the slugs and SAM leave open |
 | `hard_drive` | `#5468d4` | pickup | markers/Desc_LiquidOil_C 16.3 | indigo: blue enough to be a drive, clear of the machine blue |
 | `loot_cache` | `#d8b46e` | pickup | markers/Desc_OreGold_C 25.2 | |
 | `crashed_drop_pod` | `#838d3f` | pickup | regions/E 28.1 | the drab olive no network or ground spends |
-| `power_slug_blue` | `#5cc8e8` | pickup | markers/Desc_NitrogenGas_C 4.6, standing | |
-| `power_slug_yellow` | `#e8d55c` | pickup | markers/Desc_OreGold_C 6.5, standing | |
-| `power_slug_purple` | `#c85ce8` | pickup | markers/Desc_SAM_C 8.0, standing | |
+| `power_slug_blue` | `#81f6ff` | pickup | markers/Desc_NitrogenGas_C 20.7 | the slug's own blue, lifted to ice cyan past nitrogen |
+| `power_slug_yellow` | `#b4a200` | pickup | markers/Desc_OreGold_C 15.8 | the slug's own yellow, darkened to mustard below caterium and sulfur |
+| `power_slug_purple` | `#ed00ff` | pickup | map-highlight/highlight 36.0 | the slug's own purple, pushed to magenta past SAM |
 | `mushroom` | `#a8c86e` | pickup | markers/Desc_OreUranium_C 24.4 | |
 | `tape_pickup` | `#e09a6e` | pickup | markers/Desc_OreCopper_C 15.0 | |
 | `pickup fallback` | `#7fd1b9` | a category the table does not name | placements/generators 24.0 | a stand-in that reaches the screen is still audited |
@@ -84,10 +84,13 @@ the debt list there, `STANDING`, which prints one warning at boot.
 
 A pickup is the same filled disc as a node dot, on the same ground, so the two are their own
 owners and the audit measures every pickup against every node. Node colours are game tints, so
-where a pair is too close the pickup moves. Five pairs stand on the debt list until it does: the
-three power slugs and the mercer sphere against nitrogen, caterium, sulfur and SAM, the closest
-`power_slug_blue` against `Desc_NitrogenGas_C` at 4.6. The two X marks are a different kind of
-mark from a disc or a ring, and are discharged.
+where a pair is too close the pickup moves. The three power slugs and the mercer sphere moved
+that way, each picked by OKLab distance, which follows the eye across hues better than CIE76: as
+far as it could get from every node and pickup dot while keeping its own hue family (a slug is
+named by its colour), at a lightness that reads on both the light artwork and the dark base, and
+at least dE 15 from every other owner. The yellow slug is the tightest fit, between caterium,
+sulfur, the loot cache and the drop pod. The two X marks are a different kind of mark from a
+disc or a ring, and are discharged.
 
 ### `placements` — `drawn/placements.ts`
 
@@ -171,4 +174,4 @@ against a 256 m flat fill faded to 0.45 wherever there is imagery.
 | --- | --- | --- | --- | --- | --- |
 | `crates` | `crates` | `#3fcc94` | crate glyphs (`drawn/crates.ts`) | placements/generators 21.5 | a 13 px glyph found on open terrain at world zoom: dE 50.2 from the nearest ground |
 | `plans` | `plans` | `#4ec22e` | a sited plan's dashed outline (`drawn/plan-sitings.ts`) | markers/Desc_OreUranium_C 25.0 | green, which nothing built spends; dE 105.5 from the concrete and 110.7 from the machine blue it is laid over |
-| `map-highlight` | `highlight` | `#ff4fd8` | the one selection outline or ring (`map/map-highlight.ts`) | pickups/power_slug_purple 24.4 | |
+| `map-highlight` | `highlight` | `#ff4fd8` | the one selection outline or ring (`map/map-highlight.ts`) | markers/Desc_SAM_C 27.6 | |

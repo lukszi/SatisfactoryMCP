@@ -17,16 +17,17 @@ import type { LayerInput } from "../leaflet-private";
 import type { CollectibleRow, CollectiblesResponse } from "../../api/shapes";
 
 // One colour per pickup category, so the category rows do not all draw one teal dot; unlisted
-// categories share the fallback below (docs/frontend_palette.md).
+// categories share the fallback below. The slugs and the mercer sphere are picked against the
+// node dots (docs/frontend_palette.md).
 export var PICKUP_COLOUR: Record<string, string> = declareColours("pickups", {
   somersloop: "#d84378",
-  mercer_sphere: "#b06ae0",
+  mercer_sphere: "#9f87ff",
   hard_drive: "#5468d4",
   loot_cache: "#d8b46e",
   crashed_drop_pod: "#838d3f",
-  power_slug_blue: "#5cc8e8",
-  power_slug_yellow: "#e8d55c",
-  power_slug_purple: "#c85ce8",
+  power_slug_blue: "#81f6ff",
+  power_slug_yellow: "#b4a200",
+  power_slug_purple: "#ed00ff",
   mushroom: "#a8c86e",
   tape_pickup: "#e09a6e",
 });

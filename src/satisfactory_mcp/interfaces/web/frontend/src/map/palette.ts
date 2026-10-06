@@ -291,8 +291,9 @@ var DISCHARGED: Exception[] = [
 
 /* And the debt: pairs that are under the threshold, that no warrant defends, and that are
  * written down here so that making the discipline executable does not quietly turn into
- * making it optional. A colour that lands under the threshold while "which one moves" is
- * being decided stands here, and the boot warning below prints whatever is in here.
+ * making it optional. Empty, and kept as a mechanism: the next colour that lands under the
+ * threshold while "which one moves" is being decided needs somewhere honest to stand, and the
+ * boot warning below prints whatever is in here.
  */
 interface Standing {
   /** What these pairs have in common, and how far the argument for tolerating them goes. */
@@ -301,21 +302,7 @@ interface Standing {
   pairs: [string, string, number][];
 }
 
-var STANDING: Standing[] = [
-  {
-    note:
-      "pickup dots chosen while they shared the node dots' owner, so never compared with them: " +
-      "the same filled disc on the same ground, and nothing defends them. The node side is the " +
-      "game's tints, so the pickup side moves.",
-    pairs: [
-      ["markers/Desc_NitrogenGas_C", "pickups/power_slug_blue", 4.6],
-      ["markers/Desc_OreGold_C", "pickups/power_slug_yellow", 6.5],
-      ["markers/Desc_SAM_C", "pickups/power_slug_purple", 8.0],
-      ["markers/Desc_Sulfur_C", "pickups/power_slug_yellow", 8.8],
-      ["markers/Desc_SAM_C", "pickups/mercer_sphere", 13.5],
-    ],
-  },
-];
+var STANDING: Standing[] = [];
 
 /** One listed pair: the distance it was written down at, and whether it is owed or answered. */
 interface Listed {
