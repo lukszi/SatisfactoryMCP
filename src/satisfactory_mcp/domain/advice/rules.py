@@ -687,7 +687,7 @@ def _pickups(st, spoilers: bool) -> list[Advisory]:
             spots=spots,
             next_call="collected_from_world show=nearest near=me",
             reveal=tuple(sorted({f"pickup: {r['category']}" for r in near})),
-            source="surroundings._pickups_near",
+            source="surroundings.pickups_near",
         )
     ]
 

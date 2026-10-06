@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 import pytest
 
 from satisfactory_mcp.core.saveio import ports
@@ -20,6 +22,7 @@ from tests.support.factory_health import (
     link,
     machine,
     record_names,
+    state_of,
     uptime_record,
 )
 
@@ -115,6 +118,38 @@ def test_without_a_physical_graph_nothing_is_called_unfed(game):
     report = assess_records(game, machines=[_starved("Build_AssemblerMk1_C_106")])
     assert report.machines[0].state == "starved"
     assert report.machines[0].feeds == ()
+
+
+def test_inputs_not_arriving_counts_only_what_is_missing(game):
+    """The Sulfur is in the buffer, so only the Coal is an input not arriving."""
+    report = assess_records(game, machines=[_starved("Build_AssemblerMk1_C_109")])
+    assert report.starved_of == Counter({"Coal": 1})
+
+
+def _generator(name, fuel, held):
+    return machine(
+        name,
+        "",
+        fuel=fuel,
+        uptime=uptime_record(0.0),
+        buffers={"fuel": {"items": held, "slots": 2}},
+    )
+
+
+def test_a_starved_generator_counts_and_a_hand_fed_burner_does_not(game):
+    """A coal plant whose water stopped is a supply fault; an empty biomass burner is a
+    player's armful not yet delivered (frontend_vision.md §8.7)."""
+    burner = "Build_GeneratorBiomass_Automated_C_111"
+    report = assess_records(
+        game,
+        generators=[
+            _generator("Build_GeneratorCoal_C_110", "Desc_Coal_C", {"Desc_Coal_C": 50}),
+            _generator(burner, "Desc_Leaves_C", {}),
+        ],
+    )
+    assert state_of(report, "Build_GeneratorCoal_C_110") == "starved"
+    assert state_of(report, burner) == "starved"
+    assert report.starved_of == Counter({"Water": 1})
 
 
 def test_a_feeder_that_provably_makes_the_item_is_marked(game):

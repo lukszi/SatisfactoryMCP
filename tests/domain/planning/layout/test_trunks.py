@@ -14,8 +14,13 @@ import math
 import pytest
 
 from satisfactory_mcp import server as srv
+from satisfactory_mcp.domain.factories import candidates
+from satisfactory_mcp.domain.factories.select import resolve_factory
+from satisfactory_mcp.domain.planning.layout.service import build_layout_report
 from satisfactory_mcp.domain.planning.layout.trunks import plan_trunks
+from satisfactory_mcp.domain.planning.solver.carrier import resolve_tiers
 from satisfactory_mcp.domain.planning.solver.prepare import prepare
+from satisfactory_mcp.domain.spatial import geo
 from tests.support.reference_world import REFERENCE_MAX_MW_ARGS
 
 pytestmark = pytest.mark.integration
@@ -144,6 +149,20 @@ def test_the_destination_decides_which_end_is_far(game, state):
         if t.name == "Crude Oil"
     }
     assert a != b
+
+
+def test_a_named_factory_is_the_destination(game, state):
+    """``resolve_factory`` returns instance leaves, so their positions come from the save."""
+    tiers = resolve_tiers(game, state, "", "")
+    report = build_layout_report(
+        game, state, dict(REFERENCE_MAX_MW_ARGS), tiers, show="trunks", factory="proposal:1"
+    )
+    _, machines = resolve_factory(state, "proposal:1")
+    placed = candidates.positions(state.projection)
+    expected = geo.centroid([placed[m][:2] for m in machines if m in placed])
+    assert expected is not None
+    assert report.show_payload.destination_label == "proposal:1"
+    assert report.show_payload.destination == pytest.approx(expected)
 
 
 # ------------------------------------------------------- what has no place

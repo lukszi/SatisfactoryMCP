@@ -29,7 +29,10 @@ def list_dir(root: str) -> dict:
         try:
             saves.append(header_info(str(path)))
         except Exception as exc:
-            file_stat = path.stat()
+            try:
+                file_stat = path.stat()
+            except OSError:
+                continue  # deleted since the scan listed it: no longer a save to report
             unsupported.append(
                 {
                     "path": str(path),
@@ -60,7 +63,8 @@ def main(argv: list[str]) -> int:
             if len(argv) < 2:
                 json.dump({"error": "usage: --list <dir>"}, sys.stdout)
                 return 2
-            json.dump(list_dir(argv[1]), sys.stdout, separators=(",", ":"))
+            path = argv[1]
+            json.dump(list_dir(path), sys.stdout, separators=(",", ":"))
             return 0
         path = argv[0]
         if "--header-only" in argv:
